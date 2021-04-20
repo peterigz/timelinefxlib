@@ -1,4 +1,3 @@
-#define STR_IMPLEMENTATION
 #include "timelinefx.h"
 #include "Libraries/miniz.h"
 
