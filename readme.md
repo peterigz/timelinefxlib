@@ -1,10 +1,10 @@
-#Timeline FX C++ library
+# Timeline FX C++ library
 
 This is an early alpha version of the TimelineFX library that you can use to incorporate 2D particle effects directly into your games and applications. You can use the [TimelineFX Particle Editor](https://www.rigzsoft.co.uk/timelinefx-alpha-version/) to design your effects.
 
 **This is still very much a work in progress but feel free to use it and give some feedback on how to improve the interface and make it easier to use and implement.**
 
-##Usage
+## Usage
 The main library consists of 1 header file and 1 cpp file, but there are also 2 small depencies found in the Libraries folder. You have a few options for including in your project:
 * Copy the files (including the Libraries folder) into your project and `#include "timelinefx.h"`.
 * Add the timelinefx folder to your list of Includes Directories and `#include "timelinefx.h"`.
@@ -18,7 +18,7 @@ To load an effect library that you create with the editor, use
 	//Parameters are: filename, library object to load into, function pointer to the shape loader and any pointer to some custom data that you might want to pass through to the function.
 	LoadEffectLibrary("MyEffects.zip", library, ShapeLoader, this);
 
-###Setting up a ShapeLoader function to load the particle images
+### Setting up a ShapeLoader function to load the particle images
 ShapeLoader is a pointer to your function that the library loader will use to load the images in the library. Each renderer will have its own way of doing that so you will have to adopt the appropriate way.
 
 Here's an example of a Shapeloader using the same render that the Editor uses.
@@ -59,9 +59,10 @@ void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_da
 		//You'll need to use this in your render function to tell your renderer which texture to use to draw the particle
 		image_data.ptr = &example->particle_textures->GetImage(image_index);
 	}
-}```
+}
+```
 
-###Creating a render function to render the particles
+### Creating a render function to render the particles
 Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using.
 ```cpp
 void TfxExample::RenderParticles(float tween) {
@@ -113,9 +114,10 @@ void TfxExample::RenderParticles(float tween) {
 			}
 		}
 	}
-}```
+}
+```
 
-###Adding and updating effects
+### Adding and updating effects
 Effects and particles are updated using a `ParticleManager`. Every particle manager must be initialised before use to create the effect and particle pools. Set the maximum amount of effects and particles that you think you'll need for each manager. The default is 1000 effects and 50000 particles.
 
 	tfx::ParticleManager pm;
@@ -140,7 +142,8 @@ This would be a simple "fire and forget" method and you would have no way of act
 	//Set a callback for any particle spawned by a specific emitter
 	torch.SetParticleUpdateCallback("Torch/Embers", UpdateEmbers);
 	//Finally add the effect template to the particle manager
-	tfx::AddEffect(pm, torch); ```
+	tfx::AddEffect(pm, torch); 
+```
 
 Your callbacks need to pass in either an EffectEmitter object reference for effect/emitter callbacks or a Particle reference for a particle callback:
 
@@ -164,9 +167,10 @@ void UpdateEmbers(tfx::Particle &particle) {
 	particle.color.b = uint8_t(x * 255.f);
 
 	//You could also access the parent emitters user data with particle->parent->user_data if you needed to pull in more data to update the particle with
-}```
+}
+```
 
-###Update/Render loop
+### Update/Render loop
 You will need to update and render the particles in your main loop, and you will also need to make sure that you set the update frequency to the appropriate fps to match it to your own update loop frequencey.
 
 	tfx::SetUpdateFrequency(60);
@@ -188,7 +192,8 @@ An update loop might look something like:
 	timer->Set();
 
 	//Call your renderer function to render all the particles
-	RenderParticles(timer->Tween());```
+	RenderParticles(timer->Tween());
+```
 
 See the files in the examples folder for a full example.
 
