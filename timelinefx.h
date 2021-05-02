@@ -109,11 +109,14 @@
 #include <string>					//std::string
 #include <stdarg.h>					//va_list
 #include <chrono>					//std::chrono::high_resolution_clock
-#include <random>					//std::mt19937, std::uniform_real_distribution
 #include <cctype>					//std::is_digit
 #include "Libraries/robin_map.h"	//tsl::robin_map
+#include <stdint.h>
 
 namespace tfx {
+
+#define TWO63 0x8000000000000000u 
+#define TWO64f (TWO63*2.0)
 
 	//----------------------------------------------------------
 	//Forward declarations
@@ -552,7 +555,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		inline tfxVec2 operator+(float v) { return tfxVec2(x + v, y + v); }
 		inline tfxVec2 operator-(float v) { return tfxVec2(x - v, y - v); }
 		inline tfxVec2 operator*(float v) { return tfxVec2(x * v, y * v); }
-		inline tfxVec2 operator*=(float v) { return tfxVec2(x * v, y * v); }
+		inline void operator*=(float v) { x *= v; y *= v; }
 		inline tfxVec2 operator/(float v) { return tfxVec2(x / v, y / v); }
 		inline float Squared() { return x * x + y * y; }
 	};
@@ -723,11 +726,43 @@ typedef std::chrono::high_resolution_clock Clock;
 	};
 
 	struct Random {
-		std::mt19937 engine;
+		uint64_t seeds[2];
 		Random();
 
-		void ReSeed(unsigned int seed = 0);
+		void ReSeed();
+		void ReSeed(uint64_t seed1, uint64_t seed2);
 		double Millisecs();
+
+		inline float Generate() {
+			uint64_t s1 = seeds[0];
+			uint64_t s0 = seeds[1];
+			uint64_t result = s0 + s1;
+			seeds[0] = s0;
+			s1 ^= s1 << 23; // a
+			seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+			return float((double)result / TWO64f);
+		}
+
+		inline float Range(float max) {
+			return Generate() * max;
+		};
+
+		inline float Range(float from, float to) {
+			float a = Generate();
+			float range = to - from;
+			return to - range * a;
+		};
+
+		inline int RangeInt(float from, float to) {
+			float a = (to - from) * Generate() - to;
+			return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
+		};
+
+		inline unsigned int RangeUInt(unsigned int max) {
+			float a = Generate() * (float)max;
+			return unsigned int(a + 0.5f);
+		};
+
 	};
 
 	static Random random_generation;
@@ -948,8 +983,8 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxCUSTOM_IMAGE_DATA
 #endif // tfxCUSTOM_IMAGE_DATA
 
-			//Each particle shape saved in an effect library has a unique index
-			uint32_t shape_index;
+		//Each particle shape saved in an effect library has a unique index
+		uint32_t shape_index;
 		//The size of one frame of the image
 		tfxVec2 image_size;
 		//The number of frames in the image, can be one or more
@@ -1019,7 +1054,10 @@ typedef std::chrono::high_resolution_clock Clock;
 			emitter_handle(tfxVec2()),
 			end_behaviour(LineTraversalEndBehaviour::tfxLoop),
 			loop_length(0.f),
-			layer(0)
+			layer(0),
+			shape_index(1),
+			start_frame(0),
+			end_frame(0)
 		{ }
 	};
 
@@ -1278,7 +1316,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		void UpdateEmitterState();
 		void UpdateEffectState();
 		float GetEmissionDirection(Particle& p);
-		void ReSeed(unsigned int seed = 0);
+		void ReSeed(uint64_t seed = 0);
 		bool HasSingle();
 		bool RenameSubEffector(EffectEmitter &effect, const char *new_name);
 		bool NameExists(EffectEmitter &effect, const char *name);

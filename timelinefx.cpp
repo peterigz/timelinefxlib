@@ -197,8 +197,7 @@ namespace tfx {
 		float qty;
 		if (!(properties.flags & tfxEmitterPropertyFlags_single) && !(properties.flags & tfxEmitterPropertyFlags_one_shot)) {
 			qty = current.amount;
-			std::uniform_real_distribution<float> random_qty(0, current.amount_variation);
-			qty += random_qty(random_generation.engine);
+			qty += random_generation.Range(current.amount_variation);
 			qty *= lookup_callback(parent->library->global_graphs[parent->global].amount, current.frame);
 			qty *= UPDATE_TIME;
 			qty += current.amount_remainder;
@@ -231,8 +230,7 @@ namespace tfx {
 			//Set base values-------------------------------
 
 			//----Life
-			std::uniform_real_distribution<float> random_life(0, current.life_variation);
-			p.max_age = current.life + random_life(random_generation.engine);
+			p.max_age = current.life + random_generation.Range(current.life_variation);
 			p.age = 0.f;
 
 			//----Position
@@ -286,11 +284,8 @@ namespace tfx {
 					}
 				}
 				else {
-					std::uniform_real_distribution<float> random_emitter_width(0.f, current.emitter_size.x);
-					std::uniform_real_distribution<float> random_emitter_height(0.f, current.emitter_size.y);
-
-					position.x = random_emitter_width(random_generation.engine);
-					position.y = random_emitter_height(random_generation.engine);
+					position.x = random_generation.Range(current.emitter_size.x);
+					position.y = random_generation.Range(current.emitter_size.y);
 
 					p.local.position = position + current.emitter_handle;
 				}
@@ -330,9 +325,7 @@ namespace tfx {
 
 				}
 				else {
-					std::uniform_real_distribution<float> random_emitter_length(0.f, current.arc_size);
-
-					float th = random_emitter_length(random_generation.engine) + current.arc_offset;
+					float th = random_generation.Range(current.arc_size) + current.arc_offset;
 
 					p.local.position = tfxVec2(std::cosf(th) * emitter_size.x + current.emitter_handle.x + emitter_size.x,
 						-std::sinf(th) * emitter_size.y + current.emitter_handle.y + emitter_size.y);
@@ -371,10 +364,8 @@ namespace tfx {
 
 				}
 				else {
-					std::uniform_real_distribution<float> random_emitter_length(-current.emitter_size.y, 0.f);
-
 					p.local.position.x = 0.f;
-					p.local.position.y = random_emitter_length(random_generation.engine);
+					p.local.position.y = random_generation.Range(-current.emitter_size.y, 0.f);
 					p.distance_travelled = std::fabsf(p.local.position.y);
 
 					p.local.position += current.emitter_handle;
@@ -398,8 +389,7 @@ namespace tfx {
 			if (current.weight) {
 				p.base.weight = current.weight * library->overtime_graphs[overtime].weight.GetFirstValue();
 				if (current.weight_variation > 0) {
-					std::uniform_real_distribution<float> random_weight(-current.weight_variation, current.weight_variation);
-					p.base.weight += random_weight(random_generation.engine) * library->overtime_graphs[overtime].weight.GetFirstValue();
+					p.base.weight += random_generation.Range(-current.weight_variation, current.weight_variation) * library->overtime_graphs[overtime].weight.GetFirstValue();
 				}
 			}
 			else {
@@ -408,18 +398,13 @@ namespace tfx {
 			p.weight_acceleration = p.base.weight * library->overtime_graphs[overtime].weight.GetFirstValue() * UPDATE_TIME;
 
 			//----Velocity
-			std::uniform_real_distribution<float> random_velocity;
-			random_velocity = std::uniform_real_distribution<float>(-current.velocity_variation, current.velocity_variation);
 			p.velocity_scale = library->overtime_graphs[overtime].velocity.GetFirstValue() * current.velocity_adjuster;
-			p.base.velocity = current.velocity + random_velocity(random_generation.engine);
+			p.base.velocity = current.velocity + random_generation.Range(-current.velocity_variation, current.velocity_variation);
 
 			//----Size
 			if (!(properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-				std::uniform_real_distribution<float> random_width(0, current.size_variation.x);
-				std::uniform_real_distribution<float> random_height(0, current.size_variation.y);
-
-				p.base.random_size.x = random_width(random_generation.engine);
-				p.base.random_size.y = random_height(random_generation.engine);
+				p.base.random_size.x = random_generation.Range(current.size_variation.x);
+				p.base.random_size.y = random_generation.Range(current.size_variation.y);
 				p.base.height = p.base.random_size.y + current.size.y;
 				p.base.size.x = (p.base.random_size.x + current.size.x) / properties.image->image_size.x;
 				p.base.size.y = p.base.height / properties.image->image_size.y;
@@ -441,9 +426,7 @@ namespace tfx {
 				}
 			}
 			else {
-				std::uniform_real_distribution<float> random_width(0, current.size_variation.x);
-
-				p.base.random_size.x = random_width(random_generation.engine);
+				p.base.random_size.x = random_generation.Range(current.size_variation.x);
 				p.base.random_size.y = p.base.random_size.x;
 				p.base.height = p.base.random_size.y + current.size.y;
 				p.base.size.x = (p.base.random_size.x + current.size.x) / properties.image->image_size.x;
@@ -462,13 +445,11 @@ namespace tfx {
 			}
 
 			//----Spin
-			std::uniform_real_distribution<float> random_spin(-current.spin_variation, std::abs(current.spin_variation));
-			p.base.spin = random_spin(random_generation.engine) + current.spin;
+			p.base.spin = random_generation.Range(-current.spin_variation, std::abs(current.spin_variation)) + current.spin;
 
-			std::uniform_real_distribution<float> random_angle(0, properties.angle_offset);
 			switch (properties.angle_setting) {
 			case AngleSetting::tfxRandom:
-				p.local.rotation = random_angle(random_generation.engine);
+				p.local.rotation = random_generation.Range(properties.angle_offset);
 				break;
 			case AngleSetting::tfxSpecify:
 				p.local.rotation = properties.angle_offset;
@@ -479,15 +460,13 @@ namespace tfx {
 
 			//----Splatter
 			if (current.splatter) {
-				std::uniform_real_distribution<float> random_splatter(-current.splatter, current.splatter);
-
 				float splattertemp = current.splatter;
-				float splatx = random_splatter(random_generation.engine);
-				float splaty = random_splatter(random_generation.engine);
+				float splatx = random_generation.Range(-current.splatter, current.splatter);
+				float splaty = random_generation.Range(-current.splatter, current.splatter);
 
 				while (GetDistance(0, 0, splatx, splaty) >= splattertemp && splattertemp > 0) {
-					splatx = random_splatter(random_generation.engine);
-					splaty = random_splatter(random_generation.engine);
+					splatx = random_generation.Range(-current.splatter, current.splatter);
+					splaty = random_generation.Range(-current.splatter, current.splatter);
 				}
 
 				if (!(properties.flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -510,9 +489,8 @@ namespace tfx {
 			//----Motion randomness
 			p.motion_randomness = current.motion_randomness;
 			float mr = tfxRadians(p.motion_randomness * library->overtime_graphs[overtime].motion_randomness.GetFirstValue());
-			std::uniform_real_distribution<float> random_motion(-mr, mr);
-			p.motion_randomness_direction = tfxRadians(22.5f * random_motion(random_generation.engine));
-			p.motion_randomness_speed = 30.f * random_motion(random_generation.engine);
+			p.motion_randomness_direction = tfxRadians(22.5f * random_generation.Range(-mr, mr));
+			p.motion_randomness_speed = 30.f * random_generation.Range(-mr, mr);
 			p.motion_tracker = 0;
 
 			if (!(properties.flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != EmissionType::tfxLine) {
@@ -544,8 +522,7 @@ namespace tfx {
 			//----Image
 			//p.image = properties.image;
 			if (properties.flags & tfxEmitterPropertyFlags_random_start_frame && properties.image->animation_frames > 1) {
-				std::uniform_real_distribution<float> random_start_frame(0.f, properties.image->animation_frames);
-				p.image_frame = random_start_frame(random_generation.engine);
+				p.image_frame = random_generation.Range(properties.image->animation_frames);
 			}
 			else {
 				p.image_frame = properties.start_frame;
@@ -556,8 +533,7 @@ namespace tfx {
 			p.color.a = unsigned char(255.f * library->overtime_graphs[overtime].opacity.GetFirstValue() * parent->current.color.a);
 			p.intensity = library->overtime_graphs[overtime].opacity.GetFirstValue();
 			if (properties.flags & tfxEmitterPropertyFlags_random_color) {
-				std::uniform_real_distribution<float> random_color(0.f, p.max_age);
-				float age = random_color(random_generation.engine);
+				float age = random_generation.Range(p.max_age);
 				p.color.r = unsigned char(255.f * lookup_overtime_callback(library->overtime_graphs[overtime].red, age, p.max_age));
 				p.color.g = unsigned char(255.f * lookup_overtime_callback(library->overtime_graphs[overtime].green, age, p.max_age));
 				p.color.b = unsigned char(255.f * lookup_overtime_callback(library->overtime_graphs[overtime].blue, age, p.max_age));
@@ -592,11 +568,10 @@ namespace tfx {
 
 		//----Emission
 		float range = current.emission_angle_variation *.5f;
-		std::uniform_real_distribution<float> random_emission(-range, range);
 		float direction = 0;
 
 		if (properties.emission_type == EmissionType::tfxPoint)
-			return direction + current.emission_angle + random_emission(random_generation.engine);
+			return direction + current.emission_angle + random_generation.Range(-range, range);
 
 		tfxVec2 tmp_position;
 		if (p.local.position.x == 0 && p.local.position.y == 0)
@@ -660,7 +635,7 @@ namespace tfx {
 
 		if (std::isnan(direction))
 			direction = 0.f;
-		return direction + current.emission_angle + random_emission(random_generation.engine);
+		return direction + current.emission_angle + random_generation.Range(-range, range);
 	}
 
 	void EffectEmitter::UpdateEmitterState() {
@@ -887,8 +862,7 @@ namespace tfx {
 		}
 
 		//----Spin
-		std::uniform_real_distribution<float> random_spin(-e.current.spin_variation, std::abs(e.current.spin_variation));
-		p.base.spin = random_spin(random_generation.engine) + e.current.spin;
+		p.base.spin = random_generation.Range(-e.current.spin_variation, std::abs(e.current.spin_variation)) + e.current.spin;
 
 		//std::uniform_real_distribution<float> random_angle(0, e.properties.angle_offset);
 		//switch (e.properties.angle_setting) {
@@ -905,12 +879,10 @@ namespace tfx {
 		//----Weight
 		if (e.current.weight) {
 			if (e.current.weight_variation > 0) {
-				std::uniform_real_distribution<float> random_weight(0, e.current.weight_variation);
-				p.base.weight = (random_weight(random_generation.engine) + e.current.weight) * e.library->overtime_graphs[e.overtime].weight.GetFirstValue();
+				p.base.weight = (random_generation.Range(e.current.weight_variation) + e.current.weight) * e.library->overtime_graphs[e.overtime].weight.GetFirstValue();
 			}
 			else {
-				std::uniform_real_distribution<float> random_weight(e.current.weight_variation, 0);
-				p.base.weight = (random_weight(random_generation.engine) + e.current.weight) * e.library->overtime_graphs[e.overtime].weight.GetFirstValue();
+				p.base.weight = (random_generation.Range(e.current.weight_variation, 0) + e.current.weight) * e.library->overtime_graphs[e.overtime].weight.GetFirstValue();
 			}
 			//p.weight_acceleration = 0;
 		}
@@ -1034,9 +1006,8 @@ namespace tfx {
 			float mr = p.motion_randomness * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].motion_randomness, p.age, p.max_age);
 			p.motion_tracker += FRAME_LENGTH;
 			if (p.motion_tracker > 30.f) {
-				std::uniform_real_distribution<float> random_motion(-mr, mr);
-				p.motion_randomness_speed += 30.f * random_motion(random_generation.engine);
-				p.motion_randomness_direction += tfxRadians(22.5f * random_motion(random_generation.engine));
+				p.motion_randomness_speed += 30.f * random_generation.Range(-mr, mr);
+				p.motion_randomness_direction += tfxRadians(22.5f * random_generation.Range(-mr, mr));
 				p.motion_tracker = 0;
 			}
 			p.direction = p.emission_angle + p.motion_randomness_direction + lookup_overtime_callback(e.library->overtime_graphs[e.overtime].direction, p.age, p.max_age);
@@ -1448,8 +1419,11 @@ namespace tfx {
 		library->overtime_graphs[overtime].blue.AddNode(frame, color.b);
 	}
 
-	void EffectEmitter::ReSeed(unsigned int seed) {
-		random_generation.engine.seed(seed);
+	void EffectEmitter::ReSeed(uint64_t seed) {
+		if (seed == 0) {
+			seed = 0xFFFFFFFFFFF;
+		}
+		random_generation.ReSeed(seed, seed / 2);
 	}
 
 	 void EffectEmitter::SetUpdateCallback(void(*callback)(EffectEmitter &effectemitter)) {
@@ -1597,6 +1571,7 @@ namespace tfx {
 		clone = *this;
 		clone.sub_effectors.clear();
 		clone.flags |= tfxEmitterStateFlags_enabled;
+		clone.user_data = nullptr;
 
 		if (type == tfxEffect) {
 			if (root_parent == &clone) {
@@ -1964,7 +1939,7 @@ namespace tfx {
 	EffectEmitter &EffectLibrary::AddEffect(EffectEmitter &effect) {
 		effect.library_index = effects.current_size;
 		effect.type = tfxEffect;
-		effect.uid = uid++;
+		effect.uid = ++uid;
 		effect.library = this;
 		effects.push_back(effect);
 		ReIndex();
@@ -2175,6 +2150,7 @@ namespace tfx {
 		free_base_graphs.free_all();
 		free_variation_graphs.free_all();
 		free_overtime_graphs.free_all();
+		uid = 0;
 	}
 
 	void EffectLibrary::CompileAllGraphs() {
@@ -2686,12 +2662,17 @@ namespace tfx {
 	}
 
 	Random::Random() {
-		std::random_device random_device;
-		engine = std::mt19937(random_device());
+		ReSeed();
 	}
 
-	void Random::ReSeed(unsigned int seed) {
-		random_generation.engine.seed(seed ? seed : uint32_t(Millisecs() * .1f));
+	void Random::ReSeed() {
+		seeds[0] = (uint64_t)Millisecs();
+		seeds[1] = (uint64_t)Millisecs() * 2;
+	}
+
+	void Random::ReSeed(uint64_t seed1, uint64_t seed2) {
+		seeds[0] = seed1;
+		seeds[1] = seed2;
 	}
 
 	double Random::Millisecs() {
@@ -3184,20 +3165,17 @@ namespace tfx {
 				p = (age - lastf) / (a.frame - lastf);
 				float bezier_value = GetBezierValue(lastec, a, p, min.y, max.y);
 				if (bezier_value) {
-					std::uniform_real_distribution<float> random(0, bezier_value);
-					return random(random_generation.engine);
+					return random_generation.Range(bezier_value);
 				}
 				else {
-					std::uniform_real_distribution<float> random(0, lastv - p * (lastv - a.value));
-					return random(random_generation.engine);
+					return random_generation.Range(lastv - p * (lastv - a.value));
 				}
 			}
 			lastv = a.value;
 			lastf = a.frame - 1;
 			lastec = &a;
 		}
-		std::uniform_real_distribution<float> random(0, lastv);
-		return random(random_generation.engine);
+		return random_generation.Range(lastv);
 
 	}
 
@@ -3603,8 +3581,7 @@ namespace tfx {
 		if ((unsigned int)frame < graph.lookup.last_frame)
 			value = graph.lookup.values[(unsigned int)frame];
 		value = graph.lookup.values[graph.lookup.last_frame];
-		std::uniform_real_distribution<float> random(0, value);
-		return random(random_generation.engine);
+		return random_generation.Range(value);
 	}
 
 	float GetRandomPrecise(Graph &graph, float frame) {
