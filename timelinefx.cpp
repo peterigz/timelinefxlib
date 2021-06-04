@@ -1440,6 +1440,9 @@ namespace tfx {
 
 	void EffectEmitter::SetTimeout(unsigned int frames) {
 		timeout = frames;
+		for (auto &sub : sub_effectors) {
+			sub.SetTimeout(frames);
+		}
 	}
 
 	bool EffectEmitter::HasSingle() {
