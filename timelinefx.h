@@ -595,6 +595,12 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxRGB(float _r, float _g, float _b) : r(_r), g(_g), b(_b) { }
 	};
 
+	struct tfxHSV {
+		float h, s, v;
+		tfxHSV() { h = s = v = 0.f; }
+		tfxHSV(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
+	};
+
 	struct tfxRGBA {
 		float r, g, b, a;
 		tfxRGBA() { r = g = b = a = 1.f; }
@@ -1325,7 +1331,7 @@ typedef std::chrono::high_resolution_clock Clock;
 
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
-		void Clone(EffectEmitter &clone, EffectEmitter *root_parent);
+		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -1495,11 +1501,11 @@ typedef std::chrono::high_resolution_clock Clock;
 		void FreeBase(unsigned int index);
 		void FreeVariation(unsigned int index);
 		void FreeOvertime(unsigned int index);
-		unsigned int CloneGlobal(unsigned int source_index);
-		unsigned int CloneProperty(unsigned int source_index);
-		unsigned int CloneBase(unsigned int source_index);
-		unsigned int CloneVariation(unsigned int source_index);
-		unsigned int CloneOvertime(unsigned int source_index);
+		unsigned int CloneGlobal(unsigned int source_index, EffectLibrary *destination_library);
+		unsigned int CloneProperty(unsigned int source_index, EffectLibrary *destination_library);
+		unsigned int CloneBase(unsigned int source_index, EffectLibrary *destination_library);
+		unsigned int CloneVariation(unsigned int source_index, EffectLibrary *destination_library);
+		unsigned int CloneOvertime(unsigned int source_index, EffectLibrary *destination_library);
 		void AddEmitterGraphs(EffectEmitter& effect);
 		void AddEffectGraphs(EffectEmitter& effect);
 		unsigned int AddAnimationSettings(EffectEmitter& effect);

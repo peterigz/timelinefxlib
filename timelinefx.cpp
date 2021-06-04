@@ -1567,15 +1567,16 @@ namespace tfx {
 		ReIndex();
 	}
 
-	void EffectEmitter::Clone(EffectEmitter &clone, EffectEmitter *root_parent) {
+	void EffectEmitter::Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library) {
 		clone = *this;
 		clone.sub_effectors.clear();
 		clone.flags |= tfxEmitterStateFlags_enabled;
 		clone.user_data = nullptr;
+		clone.library = destination_library;
 
 		if (type == tfxEffect) {
 			if (root_parent == &clone) {
-				clone.global = library->CloneGlobal(global);
+				clone.global = library->CloneGlobal(global, destination_library);
 				clone.library->CompileGlobalGraph(clone.global);
 			}
 			else {
@@ -1583,10 +1584,10 @@ namespace tfx {
 			}
 		}
 		else {
-			clone.property = library->CloneProperty(property);
-			clone.base = library->CloneBase(base);
-			clone.variation = library->CloneVariation(variation);
-			clone.overtime = library->CloneOvertime(overtime);
+			clone.property = library->CloneProperty(property, destination_library);
+			clone.base = library->CloneBase(base, destination_library);
+			clone.variation = library->CloneVariation(variation, destination_library);
+			clone.overtime = library->CloneOvertime(overtime, destination_library);
 			clone.UpdateMaxLife();
 			clone.library->CompilePropertyGraph(clone.property);
 			clone.library->CompileBaseGraph(clone.base);
@@ -1597,13 +1598,13 @@ namespace tfx {
 		for (auto &e : sub_effectors) {
 			if (e.type == tfxEmitter) {
 				EffectEmitter emitter_copy;
-				e.Clone(emitter_copy, root_parent);
+				e.Clone(emitter_copy, root_parent, destination_library);
 				emitter_copy.user_data = nullptr;
 				clone.AddEmitter(emitter_copy);
 			}
 			else {
 				EffectEmitter effect_copy;
-				e.Clone(effect_copy, root_parent);
+				e.Clone(effect_copy, root_parent, destination_library);
 				effect_copy.user_data = nullptr;
 				clone.AddEffect(effect_copy);
 			}
@@ -1956,7 +1957,7 @@ namespace tfx {
 		EffectEmitter *effect = GetEffect(path);
 		assert(effect);
 		assert(effect->type == tfxEffect);
-		effect->Clone(effect_template.effect_template, &effect_template.effect_template);
+		effect->Clone(effect_template.effect_template, &effect_template.effect_template, this);
 		effect_template.AddPath(effect_template.effect_template, effect_template.effect_template.name);
 	}
 
@@ -2065,33 +2066,33 @@ namespace tfx {
 		free_overtime_graphs.push_back(index);
 	}
 
-	unsigned int EffectLibrary::CloneGlobal(unsigned int source_index) {
-		unsigned int index = AddGlobal();
-		global_graphs[index] = global_graphs[source_index];
+	unsigned int EffectLibrary::CloneGlobal(unsigned int source_index, EffectLibrary *destination_library) {
+		unsigned int index = destination_library->AddGlobal();
+		destination_library->global_graphs[index] = global_graphs[source_index];
 		return index;
 	}
 
-	unsigned int EffectLibrary::CloneProperty(unsigned int source_index) {
-		unsigned int index = AddProperty();
-		property_graphs[index] = property_graphs[source_index];
+	unsigned int EffectLibrary::CloneProperty(unsigned int source_index, EffectLibrary *destination_library) {
+		unsigned int index = destination_library->AddProperty();
+		destination_library->property_graphs[index] = property_graphs[source_index];
 		return index;
 	}
 
-	unsigned int EffectLibrary::CloneBase(unsigned int source_index) {
-		unsigned int index = AddBase();
-		base_graphs[index] = base_graphs[source_index];
+	unsigned int EffectLibrary::CloneBase(unsigned int source_index, EffectLibrary *destination_library) {
+		unsigned int index = destination_library->AddBase();
+		destination_library->base_graphs[index] = base_graphs[source_index];
 		return index;
 	}
 
-	unsigned int EffectLibrary::CloneVariation(unsigned int source_index) {
-		unsigned int index = AddVariation();
-		variation_graphs[index] = variation_graphs[source_index];
+	unsigned int EffectLibrary::CloneVariation(unsigned int source_index, EffectLibrary *destination_library) {
+		unsigned int index = destination_library->AddVariation();
+		destination_library->variation_graphs[index] = variation_graphs[source_index];
 		return index;
 	}
 
-	unsigned int EffectLibrary::CloneOvertime(unsigned int source_index) {
-		unsigned int index = AddOvertime();
-		overtime_graphs[index] = overtime_graphs[source_index];
+	unsigned int EffectLibrary::CloneOvertime(unsigned int source_index, EffectLibrary *destination_library) {
+		unsigned int index = destination_library->AddOvertime();
+		destination_library->overtime_graphs[index] = overtime_graphs[source_index];
 		return index;
 	}
 
@@ -3403,7 +3404,9 @@ namespace tfx {
 	}
 
 	void Graph::Copy(Graph &to) {
+		to.nodes.reserve(nodes.size());
 		std::copy(nodes.begin(), nodes.end(), to.nodes.begin());
+		to.nodes.current_size = nodes.current_size;
 	}
 
 	bool Graph::Sort() {
@@ -4246,7 +4249,7 @@ namespace tfx {
 		if (uid >= 0) {
 			lib.CompileAllGraphs();
 			lib.ReIndex();
-			lib.UpdateParticleShapeReferences(lib.effects, 1);
+			//lib.UpdateParticleShapeReferences(lib.effects, 1);
 			lib.UpdateEffectPaths();
 		}
 
