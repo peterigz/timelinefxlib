@@ -1238,6 +1238,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		void SetUpdateCallback(void(*callback)(EffectEmitter &effectemitter));
 		void SetUserData(void *data);
 		void *GetUserData();
+		void SetTimeout(unsigned int frames);
 
 		//Override graph functions for use in update_callback
 		//Some of these change the same state and property values, but they're named differently just to make it clearer as to whether you're overriding kEffect or a kEmitter.

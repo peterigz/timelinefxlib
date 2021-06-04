@@ -1438,6 +1438,10 @@ namespace tfx {
 		return user_data;
 	}
 
+	void EffectEmitter::SetTimeout(unsigned int frames) {
+		timeout = frames;
+	}
+
 	bool EffectEmitter::HasSingle() {
 		for (auto &e : sub_effectors) {
 			if (e.properties.flags & (tfxEmitterPropertyFlags_single | tfxEmitterPropertyFlags_one_shot))
