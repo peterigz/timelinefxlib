@@ -2539,7 +2539,7 @@ namespace tfx {
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, std::string &value) {
 		if (field == "name")
-			strcpy_s(effect.name, 35, value.c_str());
+			strcpy_s(effect.name, 64, value.c_str());
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, float value) {
 		if (field == "position_x")
