@@ -3265,6 +3265,28 @@ namespace tfx {
 		return nodes.find(n);
 	}
 
+	void Graph::ValidateCurves() {
+		unsigned int index = 0;
+		unsigned int last_index = nodes.size() - 1;
+		for(auto &n : nodes) {
+			if (n.is_curve) {
+				if (index < last_index) {
+					if (nodes[index + 1].frame < n.right.x)
+						n.right.x = nodes[index + 1].frame;
+				}
+				if (index > 0) {
+					if (nodes[index - 1].frame > n.left.x)
+						n.left.x = nodes[index - 1].frame;
+				}
+				if (n.left.x > n.frame)
+					n.left.x = n.frame;
+				if (n.right.x < n.frame)
+					n.right.x = n.frame;
+			}
+			index++;
+		}
+	}
+
 	void Graph::DeleteNode(const AttributeNode &n) {
 		nodes.erase(&n);
 	}

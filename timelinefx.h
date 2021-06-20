@@ -815,6 +815,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		float GetLastFrame();
 		tfxvec<AttributeNode>& Nodes();
 		AttributeNode* FindNode(const AttributeNode &n);
+		void ValidateCurves();
 		void DeleteNode(const AttributeNode &n);
 		void Reset(float first_node_value, GraphPreset preset, bool add_node = true);
 		void DragValues(GraphPreset preset, float &frame, float &value);
