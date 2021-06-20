@@ -3293,13 +3293,13 @@ namespace tfx {
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 360.f };
 			break;
 		case GraphPreset::tfxDimensionsPreset:
-			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 2000.f };
+			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 4000.f };
 			break;
 		case GraphPreset::tfxLifePreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 100000.f };
 			break;
 		case GraphPreset::tfxAmountPreset:
-			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 2000.f };
+			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 5000.f };
 			break;
 		case GraphPreset::tfxVelocityPreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 10000.f };

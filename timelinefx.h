@@ -383,7 +383,7 @@ typedef std::chrono::high_resolution_clock Clock;
 	const float kLIFE_STEPS = 200.f;
 
 	const float kAMOUNT_MIN = 0.f;
-	const float kAMOUNT_MAX = 2000.f;
+	const float kAMOUNT_MAX = 5000.f;
 	const float kAMOUNT_STEPS = 100.f;
 
 	const float kGLOBAL_PERCENT_MIN = 0.f;
@@ -411,7 +411,7 @@ typedef std::chrono::high_resolution_clock Clock;
 	const float kEMISSION_RANGE_STEPS = 30.f;
 
 	const float kDIMENSIONS_MIN = 0.f;
-	const float kDIMENSIONS_MAX = 2000.f;
+	const float kDIMENSIONS_MAX = 4000.f;
 	const float kDIMENSIONS_STEPS = 40.f;
 
 	const float kVELOCITY_MIN = 0.f;
