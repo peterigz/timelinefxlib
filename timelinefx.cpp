@@ -207,7 +207,7 @@ namespace tfx {
 		}
 
 		float tween = 0.f;
-		float interpolate = qty;
+		float interpolate = (float)(int)qty;
 		float count = 0;
 
 		while (qty >= 1.f) {
@@ -239,14 +239,7 @@ namespace tfx {
 					p.local.position = -current.emitter_handle;
 				else {
 					if (properties.flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
-						if (captured.position.x != world.position.x) {
-							tfxVec2 spawn_position = InterpolateVec2(tween, captured.position, world.position);
-							p.local.position = spawn_position;
-						}
-						else {
-							tfxVec2 spawn_position = InterpolateVec2(tween, captured.position, world.position);
-							p.local.position = spawn_position;
-						}
+						p.local.position = InterpolateVec2(tween, captured.position, world.position);
 					}
 					else {
 						tfxVec2 rotvec = matrix.TransformVector(-current.emitter_handle);
@@ -2394,6 +2387,7 @@ namespace tfx {
 		eff[hasher("dpi_factor")] = tfxFloat;
 		eff[hasher("graph_lookup_mode")] = tfxSInt;
 		eff[hasher("show_tool_tips")] = tfxBool;
+		eff[hasher("preview_trail_mode")] = tfxBool;
 	}
 
 	int ValidateEffectLibrary(const char *filename) {
