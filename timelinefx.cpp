@@ -253,32 +253,102 @@ namespace tfx {
 
 				if (properties.flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
+					if (properties.flags & tfxEmitterPropertyFlags_fill_area) {
+						if (!(properties.flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
+							current.grid_coords.x--;
+							if (current.grid_coords.x < 0.f) {
+								current.grid_coords.y--;
+								current.grid_coords.x = properties.grid_points.x - 1;
+								if (current.grid_coords.y < 0.f)
+									current.grid_coords.y = properties.grid_points.y - 1;
+							}
+						}
 
-					if (!(properties.flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
-						current.grid_coords.x--;
-						if (current.grid_coords.x < 0.f) {
-							current.grid_coords.y--;
-							current.grid_coords.x = properties.grid_points.x - 1;
-							if (current.grid_coords.y < 0.f)
-								current.grid_coords.y = properties.grid_points.y - 1;
+						p.local.position = position + (current.grid_coords * current.grid_segment_size) + current.emitter_handle;
+
+						if (properties.flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+							current.grid_coords.x++;
+							if (current.grid_coords.x == properties.grid_points.x) {
+								current.grid_coords.y++;
+								current.grid_coords.x = 0.f;
+								if (current.grid_coords.y >= properties.grid_points.y)
+									current.grid_coords.y = 0.f;
+							}
 						}
 					}
+					else {
 
-					p.local.position = position + (current.grid_coords * current.grid_segment_size) + current.emitter_handle;
+						if (properties.flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 
-					if (properties.flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
-						current.grid_coords.x++;
-						if (current.grid_coords.x == properties.grid_points.x) {
-							current.grid_coords.y++;
-							current.grid_coords.x = 0.f;
-							if (current.grid_coords.y >= properties.grid_points.y)
-								current.grid_coords.y = 0.f;
+							current.grid_direction.x = 1;
+							current.grid_direction.y = 0;
+							if (current.grid_coords.x == properties.grid_points.x - 1 && current.grid_coords.y >= 0 && current.grid_coords.y < properties.grid_points.y - 1) {
+								current.grid_direction.x = 0;
+								current.grid_direction.y = 1;
+							}
+							else if (current.grid_coords.x > 0 && current.grid_coords.x < properties.grid_points.x && current.grid_coords.y == properties.grid_points.y - 1) {
+								current.grid_direction.x = -1;
+								current.grid_direction.y = 0;
+							}
+							else if (current.grid_coords.x == 0 && current.grid_coords.y > 0 && current.grid_coords.y < properties.grid_points.y) {
+								current.grid_direction.x = 0;
+								current.grid_direction.y = -1;
+							}
+
 						}
+						else {
+
+							current.grid_direction.x = -1;
+							current.grid_direction.y = 0;
+							if (current.grid_coords.x == properties.grid_points.x - 1 && current.grid_coords.y > 0 && current.grid_coords.y < properties.grid_points.y) {
+								current.grid_direction.x = 0;
+								current.grid_direction.y = -1;
+							}
+							else if (current.grid_coords.x >= 0 && current.grid_coords.x < properties.grid_points.x - 1 && current.grid_coords.y == properties.grid_points.y - 1) {
+								current.grid_direction.x = 1;
+								current.grid_direction.y = 0;
+							}
+							else if (current.grid_coords.x == 0 && current.grid_coords.y >= 0 && current.grid_coords.y < properties.grid_points.y - 1) {
+								current.grid_direction.x = 0;
+								current.grid_direction.y = 1;
+							}
+
+						}
+
+						current.grid_coords += current.grid_direction; 
+						tfxBound(current.grid_coords, properties.grid_points);
+						p.local.position = position + (current.grid_coords * current.grid_segment_size) + current.emitter_handle;
 					}
 				}
 				else {
-					position.x = random_generation.Range(current.emitter_size.x);
-					position.y = random_generation.Range(current.emitter_size.y);
+					if (properties.flags & tfxEmitterPropertyFlags_fill_area) {
+						position.x = random_generation.Range(current.emitter_size.x);
+						position.y = random_generation.Range(current.emitter_size.y);
+					}
+					else {
+						//Spawn on one of 4 edges of the area
+						unsigned int side = random_generation.RangeUInt(4);
+						if (side == 0) {
+							//left side
+							position.x = 0.f;
+							position.y = random_generation.Range(current.emitter_size.y);
+						}
+						else if (side == 1) {
+							//right side
+							position.x = current.emitter_size.x;
+							position.y = random_generation.Range(current.emitter_size.y);
+						}
+						else if (side == 2) {
+							//top side
+							position.x = random_generation.Range(current.emitter_size.x);
+							position.y = 0.f;
+						}
+						else if (side == 3) {
+							//bottom side
+							position.x = random_generation.Range(current.emitter_size.x);
+							position.y = current.emitter_size.y;
+						}
+					}
 
 					p.local.position = position + current.emitter_handle;
 				}
@@ -294,7 +364,7 @@ namespace tfx {
 				tfxVec2 emitter_size = (current.emitter_size * .5f);
 				tfxVec2 position = tfxVec2(0.f, 0.f);
 
-				if (properties.flags & tfxEmitterPropertyFlags_spawn_on_grid) {
+				if (properties.flags & tfxEmitterPropertyFlags_spawn_on_grid && !(properties.flags & tfxEmitterPropertyFlags_fill_area)) {
 
 					current.grid_coords.y = 0.f;
 
@@ -317,12 +387,21 @@ namespace tfx {
 					}
 
 				}
-				else {
+				else if(!(properties.flags & tfxEmitterPropertyFlags_fill_area)) {
 					float th = random_generation.Range(current.arc_size) + current.arc_offset;
 
 					p.local.position = tfxVec2(std::cosf(th) * emitter_size.x + current.emitter_handle.x + emitter_size.x,
 						-std::sinf(th) * emitter_size.y + current.emitter_handle.y + emitter_size.y);
 
+				}
+				else {
+					p.local.position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
+					p.local.position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
+
+					while ((std::pow(p.local.position.x, 2) / std::pow(emitter_size.x, 2)) + (std::pow(p.local.position.y, 2) / std::pow(emitter_size.y, 2)) > 1) {
+						p.local.position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
+						p.local.position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
+					}
 				}
 
 				//----TForm and Emission
@@ -4050,6 +4129,16 @@ namespace tfx {
 		return output;
 	}
 
+	//Create a Vector field specifying the number of cells wide and high
+	VectorField CreateVectorField(unsigned int width, unsigned int height, tfxVectorFieldFlags flags) {
+		VectorField field;
+		field.forces.create_pool(width * height);
+		field.flags = flags;
+		field.scale.x = field.scale.y = 1.f;
+		field.force_factor.x = field.force_factor.y = 1.f;
+		return field;
+	}
+
 	//API Functions
 	 int LoadEffectLibrary(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char* filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		assert(shape_loader);
@@ -4292,12 +4381,12 @@ namespace tfx {
 		pm.Init(effects_limit, particle_limit_per_layer);
 	}
 
-		void AddEffect(ParticleManager &pm, EffectEmitter &effect, float x, float y) {
+	void AddEffect(ParticleManager &pm, EffectEmitter &effect, float x, float y) {
 		effect.Position(x, y);
 		pm.AddEffect(effect, pm.current_ebuff);
 	}
 
-		void AddEffect(ParticleManager &pm, EffectEmitterTemplate &effect, float x, float y) {
+	void AddEffect(ParticleManager &pm, EffectEmitterTemplate &effect, float x, float y) {
 		effect.effect_template.Position(x, y);
 		pm.AddEffect(effect, pm.current_ebuff);
 	}

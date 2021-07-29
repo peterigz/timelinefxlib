@@ -331,6 +331,7 @@ typedef std::chrono::high_resolution_clock Clock;
 	};
 
 	typedef unsigned int tfxEmitterPropertyFlags;
+	typedef unsigned int tfxVectorFieldFlags;
 	typedef unsigned char tfxParticleFlags;
 	typedef unsigned char tfxEmitterStateFlags;
 
@@ -354,7 +355,8 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxEmitterPropertyFlags_reverse_animation = 1 << 15,				//Make the image animation go in reverse
 		tfxEmitterPropertyFlags_play_once = 1 << 16,						//Play the animation once only
 		tfxEmitterPropertyFlags_random_start_frame = 1 << 17,				//Start the animation of the image from a random frame
-		tfxEmitterPropertyFlags_keep_alive = 1 << 18						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
+		tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
+		tfxEmitterPropertyFlags_use_vector_field = 1 << 19					//Enable the use of a vector field to apply forces to the particles
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -369,7 +371,13 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxEmitterStateFlags_remove = 1 << 1,									//Tells the effect/emitter to remove itself from the particle manager immediately
 		tfxEmitterStateFlags_enabled = 1 << 2,									//the emitter is enabled. If flag is not set then it will not be added to the particle manager with AddEffect
 		tfxEmitterStateFlags_retain_matrix = 1 << 3,							//Internal flag about matrix usage
-		tfxEmitterStateFlags_no_tween_this_update = 1 << 4,						//Internal flag generally, but you could use it if you want to teleport the effect to another location
+		tfxEmitterStateFlags_no_tween_this_update = 1 << 4						//Internal flag generally, but you could use it if you want to teleport the effect to another location
+	};
+
+	enum tfxVectorFieldFlags_: unsigned char {
+		tfxVectorFieldFlags_none = 0,
+		tfxVectorFieldFlags_repeat_horizontal = 1 << 0,							//Field will repeat horizontally
+		tfxVectorFieldFlags_repeat_vertical = 1 << 1								//Field will repeat vertically
 	};
 
 	//-----------------------------------------------------------
@@ -609,7 +617,9 @@ typedef std::chrono::high_resolution_clock Clock;
 
 	inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
 	inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
+	inline void tfxBound(tfxVec2 &s, tfxVec2 &b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1; if (s.y >= b.y) s.y = b.y - 1; }
 
+	//Very simple 2D Matix
 	struct Matrix2 {
 
 		float aa, ab, ba, bb;
@@ -760,13 +770,13 @@ typedef std::chrono::high_resolution_clock Clock;
 		};
 
 		inline int RangeInt(float from, float to) {
-			float a = (to - from) * Generate() - to;
+			float a = (to - from) * Generate() + (to - from);
 			return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
 		};
 
 		inline unsigned int RangeUInt(unsigned int max) {
 			float a = Generate() * (float)max;
-			return unsigned int(a + 0.5f);
+			return unsigned int(a);
 		};
 
 	};
@@ -1009,6 +1019,25 @@ typedef std::chrono::high_resolution_clock Clock;
 		{ }
 	};
 
+	//A vector field is an area that when particles pass through their velocity is affected based on the values in the forces list
+	struct VectorField {
+		//The width and height of the area of forces in cells. So number of cells wide and high
+		unsigned int width;
+		unsigned int height;
+		//The scale of the field, 1 would be 1 cell per pixel
+		tfxVec2 scale;
+		//The amount of force that is applied to the particle can be manipulated with the force factor
+		tfxVec2 force_factor;
+		//You can make the field move about or scroll if it's repeating
+		tfxVec2 velocity;
+		//position of the field
+		tfxVec2 position;
+		//Property flags
+		tfxVectorFieldFlags flags;
+		//Storage for each of the cells in the field
+		tfxvec<tfxVec2> forces;
+	};
+
 	struct EmitterProperties {
 		//Pointer to the ImageData in the EffectLibary. 
 		ImageData *image;
@@ -1127,6 +1156,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		bool emission_alternator;
 		bool single_shot_done;
 		tfxVec2 grid_coords;
+		tfxVec2 grid_direction;
 		tfxVec2 grid_segment_size;
 
 		EffectEmitterState() : grid_coords(tfxVec2()), single_shot_done(false), age(0.f), amount_remainder(0.f) {}
@@ -1147,6 +1177,9 @@ typedef std::chrono::high_resolution_clock Clock;
 		EffectEmitterState current;
 		//All of the properties of the effect/emitter
 		EmitterProperties properties;
+
+		//Temp location for this
+		VectorField vector_field;
 
 		//Name of the effect
 		char name[64];						//Todo: Do we need this here?
@@ -1654,6 +1687,9 @@ typedef std::chrono::high_resolution_clock Clock;
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
 
 	//Helper functions
+
+	//Create a Vector field specifying the number of cells wide and high
+	VectorField CreateVectorField(unsigned int width, unsigned int height, tfxVectorFieldFlags flags);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	inline void SetUpdateFrequency(float fps) {
