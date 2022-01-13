@@ -156,7 +156,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxAlign,												//Align the particle with it's direction of travel
 		tfxRandom,												//Chose a random angle at spawn time/flags
 		tfxSpecify,												//Specify the angle at spawn time
-		tfxGraph													//Unused, but the idea was to allow the angle to be changed overtime using a graph
+		tfxGraph												//Unused, but the idea was to allow the angle to be changed overtime using a graph
 	};
 
 	//Blend mode property of the emitter
@@ -202,6 +202,13 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxGraphCategory_variation,
 		tfxGraphCategory_overtime
 	};
+
+
+#define tfxGlobalCount  13
+#define	tfxPropertyCount  8
+#define	tfxBaseCount  7
+#define	tfxVariationCount  8
+#define	tfxOvertimeCount  15
 
 	//All the different types of graphs, split into main type: global, property, base, variation and overtime
 	enum GraphType : unsigned char {
@@ -260,7 +267,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxOvertime_velocity_adjuster,
 		tfxOvertime_intensity,
 		tfxOvertime_direction,
-		tfxGraphMaxIndex
+		tfxGraphMaxIndex,
 	};
 
 	//EffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
@@ -798,6 +805,64 @@ typedef std::chrono::high_resolution_clock Clock;
 		unsigned int node_id;
 	};
 
+	struct EffectLookUpData {
+		unsigned int global_life;
+		unsigned int global_amount;
+		unsigned int global_velocity;
+		unsigned int global_width;
+		unsigned int global_height;
+		unsigned int global_weight;
+		unsigned int global_spin;
+		unsigned int global_effect_angle;
+		unsigned int global_stretch;
+		unsigned int global_overal_scale;
+		unsigned int global_opacity;
+		unsigned int global_frame_rate;
+		unsigned int global_splatter;
+
+		unsigned int property_emission_angle;
+		unsigned int property_emission_range;
+		unsigned int property_emitter_angle;
+		unsigned int property_splatter;
+		unsigned int property_emitter_width;
+		unsigned int property_emitter_height;
+		unsigned int property_arc_size;
+		unsigned int property_arc_offset;
+
+		unsigned int base_life;
+		unsigned int base_amount;
+		unsigned int base_velocity;
+		unsigned int base_width;
+		unsigned int base_height;
+		unsigned int base_weight;
+		unsigned int base_spin;
+
+		unsigned int variation_life;
+		unsigned int variation_amount;
+		unsigned int variation_velocity;
+		unsigned int variation_width;
+		unsigned int variation_height;
+		unsigned int variation_weight;
+		unsigned int variation_spin;
+		unsigned int variation_motion_randomness;
+
+		unsigned int overtime_velocity;
+		unsigned int overtime_width;
+		unsigned int overtime_height;
+		unsigned int overtime_weight;
+		unsigned int overtime_spin;
+		unsigned int overtime_stretch;
+		unsigned int overtime_red;
+		unsigned int overtime_green;
+		unsigned int overtime_blue;
+		unsigned int overtime_opacity;
+		unsigned int overtime_frame_rate;
+		unsigned int overtime_motion_randomness;
+		unsigned int overtime_velocity_adjuster;
+		unsigned int overtime_intensity;
+		unsigned int overtime_direction;
+	};
+
 	struct Graph {
 		//The ratio to transalte graph frame/value to grid x/y coords on a graph editor
 		Point min;
@@ -848,8 +913,11 @@ typedef std::chrono::high_resolution_clock Clock;
 
 	};
 
+	tfxVec4 GetMinMaxGraphValues(GraphPreset preset);
+
 	Point GetQuadBezier(Point p0, Point p1, Point p2, float t, float ymin, float ymax, bool clamp = true);
 	Point GetCubicBezier(Point p0, Point p1, Point p2, Point p3, float t, float ymin, float ymax, bool clamp = true);
+	float GetBezierValue(const AttributeNode *lastec, const AttributeNode &a, float t, float ymin, float ymax);
 	float GetDistance(float fromx, float fromy, float tox, float toy);
 	float GetVectorAngle(float, float);
 	static bool CompareNodes(AttributeNode &left, AttributeNode &right);
@@ -1026,27 +1094,6 @@ typedef std::chrono::high_resolution_clock Clock;
 		{ }
 	};
 
-	//A vector field is an area that when particles pass through their velocity is affected based on the values in the forces list
-	struct VectorField {
-		//The width and height of the area of forces in cells. So number of cells wide and high
-		float width;
-		float height;
-		//The scale of the field, 1 would be 1 cell per pixel
-		tfxVec2 scale;
-		//size is number of cells * scale
-		tfxVec2 size;
-		//The amount of force that is applied to the particle can be manipulated with the force factor
-		tfxVec2 force_factor;
-		//You can make the field move about or scroll if it's repeating
-		tfxVec2 velocity;
-		//offset of the field will default to -size * 0.5
-		tfxVec2 offset;
-		//Property flags
-		tfxVectorFieldFlags flags;
-		//Storage for each of the cells in the field
-		tfxvec<tfxVec2> forces;
-	};
-
 	struct EmitterProperties {
 		//Pointer to the ImageData in the EffectLibary. 
 		ImageData *image;
@@ -1158,7 +1205,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		float motion_randomness;
 		//The current age of the emitter.
 		float age;
-		//The current starting frame of animation of the particle
+		//The current frame of the effect/emitter as calculated by age / update_frequency
 		float frame;
 		//internal use variables
 		float amount_remainder;
@@ -1186,9 +1233,6 @@ typedef std::chrono::high_resolution_clock Clock;
 		EffectEmitterState current;
 		//All of the properties of the effect/emitter
 		EmitterProperties properties;
-
-		//Temp location for this
-		VectorField vector_field;
 
 		//Name of the effect
 		char name[64];						//Todo: Do we need this here?
@@ -1224,6 +1268,8 @@ typedef std::chrono::high_resolution_clock Clock;
 		unsigned int base;
 		unsigned int variation;
 		unsigned int overtime;
+		//Experitment: index into the lookup index data in the effect library
+		unsigned int lookup_data_index;
 		//Index to animation settings stored in the effect library. Would like to move this at some point
 		unsigned int animation_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
@@ -1500,7 +1546,13 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxvec<VariationAttributes> variation_graphs;
 		tfxvec<OvertimeAttributes> overtime_graphs;
 		tfxvec<AnimationSettings> animation_settings;
-		tfxvec<Graph> graphs;
+		//Experiment, all nodes from graphs can get added to this one list to keep them in one place in memory, this is where data is read from when
+		//when updating particles and emitters. I'm starting to think towards getting this running in a compute shader, so will need data to be stored
+		//in buffers in one block as much as possible
+		tfxvec<AttributeNode> all_nodes;
+		tfxvec<EffectLookUpData> effect_lookup_indexes;
+		//This could probably be stored globally
+		tfxvec<tfxVec4> graph_min_max;
 
 		tfxvec<unsigned int> free_global_graphs;
 		tfxvec<unsigned int> free_property_graphs;
@@ -1554,6 +1606,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		void AddEmitterGraphs(EffectEmitter& effect);
 		void AddEffectGraphs(EffectEmitter& effect);
 		unsigned int AddAnimationSettings(EffectEmitter& effect);
+		void UpdateAllNodes();
 		void CompileAllGraphs();
 		void CompileGlobalGraph(unsigned int index);
 		void CompilePropertyGraph(unsigned int index);
@@ -1561,6 +1614,9 @@ typedef std::chrono::high_resolution_clock Clock;
 		void CompileVariationGraph(unsigned int index);
 		void CompileOvertimeGraph(unsigned int index);
 		void CompileColorGraphs(unsigned int index);
+		void SetMinMaxData();
+		float LookupPreciseOvertimeNodeList(GraphType graph_type, int index, float age, float life);
+		float LookupPreciseNodeList(GraphType graph_type, int index, float age);
 
 		//Debug stuff, used to check graphs are being properly recycled
 		unsigned int CountOfGraphsInUse();
@@ -1698,8 +1754,6 @@ typedef std::chrono::high_resolution_clock Clock;
 
 	//Helper functions
 
-	//Create a Vector field specifying the number of cells wide and high
-	VectorField CreateVectorField(unsigned int width, unsigned int height, tfxVectorFieldFlags flags);
 	//Get a graph by GraphID
 	Graph &GetGraph(EffectLibrary &library, GraphNodeID &graph_id);
 	//Get a node by GraphID

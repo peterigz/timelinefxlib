@@ -198,7 +198,8 @@ namespace tfx {
 		if (!(properties.flags & tfxEmitterPropertyFlags_single) && !(properties.flags & tfxEmitterPropertyFlags_one_shot)) {
 			qty = current.amount;
 			qty += random_generation.Range(current.amount_variation);
-			qty *= lookup_callback(parent->library->global_graphs[parent->global].amount, current.frame);
+			//qty *= lookup_callback(parent->library->global_graphs[parent->global].amount, current.frame);
+			qty *= parent->library->LookupPreciseNodeList(tfxGlobal_amount, parent->lookup_data_index, current.frame);
 			qty *= UPDATE_TIME;
 			qty += current.amount_remainder;
 		}
@@ -2233,6 +2234,91 @@ namespace tfx {
 		uid = 0;
 	}
 
+	void EffectLibrary::UpdateAllNodes() {
+		unsigned int running_index = 0;
+		tfxvec<EffectEmitter*> stack;
+		all_nodes.clear();
+		effect_lookup_indexes.clear();
+		for (auto &effect : effects) {
+			stack.push_back(&effect);
+			while(!stack.empty()) {
+				EffectEmitter *current = stack.pop_back();
+				EffectLookUpData lookup_data;
+				memset(&lookup_data, 0, sizeof(EffectLookUpData));
+				if (current->type == tfxEffect) {
+
+					for (int i = 0; i != tfxGlobalCount; ++i) {
+						Graph &graph = ((Graph*)(&global_graphs[current->global]))[i];
+						unsigned int &index = ((unsigned int*)&lookup_data)[i];
+						index = (running_index << 16) + graph.nodes.size();
+						for (auto &node : graph.nodes) {
+							all_nodes.push_back(node);
+							running_index++;
+						}
+					}
+
+				}
+				else if (current->type == tfxEmitter) {
+
+					int offset = tfxGlobalCount;
+
+					for (int i = 0; i != tfxPropertyCount; ++i) {
+						Graph &graph = ((Graph*)(&property_graphs[current->property]))[i];
+						unsigned int &index = ((unsigned int*)&lookup_data)[i + offset];
+						index = (running_index << 16) + graph.nodes.size();
+						for (auto &node : graph.nodes) {
+							all_nodes.push_back(node);
+							running_index++;
+						}
+					}
+
+					offset += tfxPropertyCount;
+
+					for (int i = 0; i != tfxBaseCount; ++i) {
+						Graph &graph = ((Graph*)(&base_graphs[current->base]))[i];
+						unsigned int &index = ((unsigned int*)&lookup_data)[i + offset];
+						index = (running_index << 16) + graph.nodes.size();
+						for (auto &node : graph.nodes) {
+							all_nodes.push_back(node);
+							running_index++;
+						}
+					}
+
+					offset += tfxBaseCount;
+
+					for (int i = 0; i != tfxVariationCount; ++i) {
+						Graph &graph = ((Graph*)(&variation_graphs[current->variation]))[i];
+						unsigned int &index = ((unsigned int*)&lookup_data)[i + offset];
+						index = (running_index << 16) + graph.nodes.size();
+						for (auto &node : graph.nodes) {
+							all_nodes.push_back(node);
+							running_index++;
+						}
+					}
+
+					offset += tfxVariationCount;
+
+					for (int i = 0; i != tfxOvertimeCount; ++i) {
+						Graph &graph = ((Graph*)(&overtime_graphs[current->overtime]))[i];
+						unsigned int &index = ((unsigned int*)&lookup_data)[i + offset];
+						index = (running_index << 16) + graph.nodes.size();
+						for (auto &node : graph.nodes) {
+							all_nodes.push_back(node);
+							running_index++;
+						}
+					}
+
+				}
+
+				effect_lookup_indexes.push_back(lookup_data);
+				current->lookup_data_index = effect_lookup_indexes.size() - 1;
+				for (auto &sub : current->sub_effectors) {
+					stack.push_back(&sub);
+				}
+			}
+		}
+	}
+
 	void EffectLibrary::CompileAllGraphs() {
 		for (auto &g : global_graphs) {
 			CompileGraph(g.amount);
@@ -2368,6 +2454,126 @@ namespace tfx {
 		CompileGraphOvertime(g.red);
 		CompileGraphOvertime(g.green);
 		CompileGraphOvertime(g.blue);
+	}
+
+	void EffectLibrary::SetMinMaxData() {
+		graph_min_max.create_pool(tfxGraphMaxIndex);
+
+		graph_min_max[tfxGlobal_life] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_amount] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_velocity] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_width] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_height] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_weight] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_spin] = GetMinMaxGraphValues(tfxGlobalPercentPresetSigned);
+		graph_min_max[tfxGlobal_effect_angle] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxGlobal_stretch] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_overal_scale] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_opacity] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
+		graph_min_max[tfxGlobal_frame_rate] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_splatter] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+
+		graph_min_max[tfxProperty_emitter_angle] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxProperty_emission_angle] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxProperty_emission_range] = GetMinMaxGraphValues(tfxEmissionRangePreset);
+		graph_min_max[tfxProperty_splatter] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxProperty_emitter_width] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxProperty_emitter_height] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxProperty_arc_size] = GetMinMaxGraphValues(tfxArcPreset);
+		graph_min_max[tfxProperty_arc_offset] = GetMinMaxGraphValues(tfxArcPreset);
+
+		graph_min_max[tfxBase_life] = GetMinMaxGraphValues(tfxLifePreset);
+		graph_min_max[tfxBase_amount] = GetMinMaxGraphValues(tfxAmountPreset);
+		graph_min_max[tfxBase_velocity] = GetMinMaxGraphValues(tfxVelocityPreset);
+		graph_min_max[tfxBase_width] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxBase_height] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxBase_weight] = GetMinMaxGraphValues(tfxWeightPreset);
+		graph_min_max[tfxBase_spin] = GetMinMaxGraphValues(tfxSpinPreset);
+
+		graph_min_max[tfxVariation_life] = GetMinMaxGraphValues(tfxLifePreset);
+		graph_min_max[tfxVariation_amount] = GetMinMaxGraphValues(tfxAmountPreset);
+		graph_min_max[tfxVariation_velocity] = GetMinMaxGraphValues(tfxVelocityPreset);
+		graph_min_max[tfxVariation_width] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxVariation_height] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxVariation_weight] = GetMinMaxGraphValues(tfxWeightVariationPreset);
+		graph_min_max[tfxVariation_spin] = GetMinMaxGraphValues(tfxSpinVariationPreset);
+		graph_min_max[tfxVariation_motion_randomness] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+
+		graph_min_max[tfxOvertime_velocity] = GetMinMaxGraphValues(tfxVelocityOvertimePreset);
+		graph_min_max[tfxOvertime_width] = GetMinMaxGraphValues(tfxPercentOvertime);
+		graph_min_max[tfxOvertime_height] = GetMinMaxGraphValues(tfxPercentOvertime);
+		graph_min_max[tfxOvertime_weight] = GetMinMaxGraphValues(tfxPercentOvertime);
+		graph_min_max[tfxOvertime_spin] = GetMinMaxGraphValues(tfxSpinOvertimePreset);
+		graph_min_max[tfxOvertime_stretch] = GetMinMaxGraphValues(tfxPercentOvertime);
+		graph_min_max[tfxOvertime_red] = GetMinMaxGraphValues(tfxColorPreset);
+		graph_min_max[tfxOvertime_green] = GetMinMaxGraphValues(tfxColorPreset);
+		graph_min_max[tfxOvertime_blue] = GetMinMaxGraphValues(tfxColorPreset);
+		graph_min_max[tfxOvertime_opacity] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
+		graph_min_max[tfxOvertime_intensity] = GetMinMaxGraphValues(tfxIntensityOvertimePreset);
+		graph_min_max[tfxOvertime_frame_rate] = GetMinMaxGraphValues(tfxFrameratePreset);
+		graph_min_max[tfxOvertime_motion_randomness] = GetMinMaxGraphValues(tfxPercentOvertime);
+		graph_min_max[tfxOvertime_velocity_adjuster] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxOvertime_direction] = GetMinMaxGraphValues(tfxDirectionOvertimePreset);
+
+	}
+
+	float EffectLibrary::LookupPreciseOvertimeNodeList(GraphType graph_type, int lookup_data_index, float age, float life) {
+		float lastv = 0;
+		float lastf = 0;
+		float p = 0;
+		AttributeNode *lastec = nullptr;
+		unsigned int &lookup_data = ((unsigned int*)&effect_lookup_indexes[lookup_data_index])[graph_type];
+		int node_index = (lookup_data & 0xFFFF0000) >> 16;
+		int length = lookup_data & 0x0000FFFF;
+		float min_y = graph_min_max[graph_type].y;
+		float max_y = graph_min_max[graph_type].w;
+		for (int i = node_index; i != node_index + length; ++i) {
+			AttributeNode &a = all_nodes[i];
+			float frame = a.frame * life;
+			if (age < frame) {
+				p = (age - lastf) / (frame - lastf);
+				float bezier_value = GetBezierValue(lastec, a, p, min_y, max_y);
+				if (bezier_value) {
+					return bezier_value;
+				}
+				else {
+					return lastv - p * (lastv - a.value);
+				}
+			}
+			lastv = a.value;
+			lastf = frame - 1;
+			lastec = &a;
+		}
+		return lastv;
+	}
+
+	float EffectLibrary::LookupPreciseNodeList(GraphType graph_type, int lookup_data_index, float age) {
+		float lastv = 0;
+		float lastf = 0;
+		float p = 0;
+		AttributeNode *lastec = nullptr;
+		unsigned int &lookup_data = ((unsigned int*)&effect_lookup_indexes[lookup_data_index])[graph_type];
+		int node_index = (lookup_data & 0xFFFF0000) >> 16;
+		int length = lookup_data & 0x0000FFFF;
+		float min_y = graph_min_max[graph_type].y;
+		float max_y = graph_min_max[graph_type].w;
+		for (int i = node_index; i != node_index + length; ++i) {
+			AttributeNode &a = all_nodes[i];
+			if (age < a.frame) {
+				p = (age - lastf) / (a.frame - lastf);
+				float bezier_value = GetBezierValue(lastec, a, p, min_y, max_y);
+				if (bezier_value) {
+					return bezier_value;
+				}
+				else {
+					return lastv - p * (lastv - a.value);
+				}
+			}
+			lastv = a.value;
+			lastf = a.frame - 1;
+			lastec = &a;
+		}
+		return lastv;
 	}
 
 	unsigned int EffectLibrary::CountOfGraphsInUse() {
@@ -3443,6 +3649,86 @@ namespace tfx {
 		graph_preset = preset;
 	}
 
+	tfxVec4 GetMinMaxGraphValues(GraphPreset preset) {
+		tfxVec4 mm;
+		switch (preset) {
+		case GraphPreset::tfxGlobalPercentPreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 20.f };
+			break;
+		case GraphPreset::tfxGlobalOpacityPreset:
+			mm = { 0.f, 0.f , tfxMAX_FRAME, 1.f };
+			break;
+		case GraphPreset::tfxGlobalPercentPresetSigned:
+			mm = { 0.f, -20.f, tfxMAX_FRAME, 20.f };
+			break;
+		case GraphPreset::tfxAnglePreset:
+			mm = { 0.f, -1080.f, tfxMAX_FRAME, 1080.f };
+			break;
+		case GraphPreset::tfxArcPreset:
+			mm = { 0.f, 0.f , tfxMAX_FRAME, 360.f };
+			break;
+		case GraphPreset::tfxEmissionRangePreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 360.f };
+			break;
+		case GraphPreset::tfxDimensionsPreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 4000.f };
+			break;
+		case GraphPreset::tfxLifePreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 100000.f };
+			break;
+		case GraphPreset::tfxAmountPreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 5000.f };
+			break;
+		case GraphPreset::tfxVelocityPreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 10000.f };
+			break;
+		case GraphPreset::tfxWeightPreset:
+			mm = { 0.f, -2500.f, tfxMAX_FRAME, 2500.f };
+			break;
+		case GraphPreset::tfxWeightVariationPreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 2500.f };
+			break;
+		case GraphPreset::tfxSpinPreset:
+			mm = { 0.f, -2000.f, tfxMAX_FRAME, 2000.f };
+			break;
+		case GraphPreset::tfxSpinVariationPreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 2000.f };
+			break;
+		case GraphPreset::tfxDirectionVariationPreset:
+			mm = { 0.f, 0.f, tfxMAX_FRAME, 22.5f };
+			break;
+		case GraphPreset::tfxWeightOvertimePreset:
+			mm = { 0.f, 0.f, 1.f, 20.f };
+			break;
+		case GraphPreset::tfxDirectionOvertimePreset:
+			mm = { 0.f, 0.f, 1.f, 4320.f };
+			break;
+		case GraphPreset::tfxSpinOvertimePreset:
+			mm = { 0.f, 0.f, 1.f, 20.f };
+			break;
+		case GraphPreset::tfxVelocityOvertimePreset:
+			mm = { 0.f, -20.f, 1.f, 20.f };
+			break;
+		case GraphPreset::tfxPercentOvertime:
+			mm = { 0.f, 0.f, 1.f, 20.f };
+			break;
+		case GraphPreset::tfxFrameratePreset:
+			mm = { 0.f, 0.f, 1.f, 200.f };
+			break;
+		case GraphPreset::tfxOpacityOvertimePreset:
+			mm = { 0.f, 0.f, 1.f, 1.f };
+			break;
+		case GraphPreset::tfxColorPreset:
+			mm = { 0.f, 0.f, 1.f, 255.f };
+			break;
+		case GraphPreset::tfxIntensityOvertimePreset:
+			mm = { 0.f, 0.f, 1.f, 5.f };
+			break;
+		}
+		
+		return mm;
+	}
+
 	void Graph::DragValues(GraphPreset preset, float &frame, float &value) {
 		switch (preset) {
 		case GraphPreset::tfxOpacityOvertimePreset:
@@ -3751,9 +4037,6 @@ namespace tfx {
 				emitter.pm = this;
 				emitter.active_children = 0;
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
-				//TEST
-				emitter.vector_field = CreateVectorField(200, 200, 0);
-				//TEST End
 				effects[buffer][parent_index].active_children++;
 			}
 		}
@@ -4129,21 +4412,6 @@ namespace tfx {
 		return output;
 	}
 
-	//Create a Vector field specifying the number of cells wide and high
-	VectorField CreateVectorField(unsigned int width, unsigned int height, tfxVectorFieldFlags flags) {
-		VectorField field;
-		field.forces.create_pool((int)width * (int)height);
-		field.width = (float)width;
-		field.height = (float)height;
-		field.flags = flags;
-		field.scale.x = field.scale.y = 10.f;
-		field.size = tfxVec2((float)width, (float)height);
-		field.size *= field.scale;
-		field.offset = -field.size * 0.5f;
-		field.force_factor.x = field.force_factor.y = 1.f;
-		return field;
-	}
-
 	//Get a graph by GraphID
 	Graph &GetGraph(EffectLibrary &library, GraphNodeID &graph_id) {
 		switch (graph_id.category) {
@@ -4451,6 +4719,8 @@ namespace tfx {
 			lib.ReIndex();
 			//lib.UpdateParticleShapeReferences(lib.effects, 1);
 			lib.UpdateEffectPaths();
+			lib.UpdateAllNodes();
+			lib.SetMinMaxData();
 		}
 
 		return uid - 1;
