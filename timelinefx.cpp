@@ -2492,6 +2492,8 @@ namespace tfx {
 			error = -1;
 		}
 
+		mz_free(data);
+		d.clear();
 		mz_zip_reader_end(&zip_archive);
 
 		return error;
@@ -2961,11 +2963,6 @@ namespace tfx {
 
 	Graph::~Graph() {
 		Free();
-	}
-
-	Point::Point(float _x, float _y) {
-		x = _x;
-		y = _y;
 	}
 
 	const float BEZIER_ACCURACY = 0.01f;
@@ -3754,6 +3751,9 @@ namespace tfx {
 				emitter.pm = this;
 				emitter.active_children = 0;
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
+				//TEST
+				emitter.vector_field = CreateVectorField(200, 200, 0);
+				//TEST End
 				effects[buffer][parent_index].active_children++;
 			}
 		}
@@ -4132,15 +4132,102 @@ namespace tfx {
 	//Create a Vector field specifying the number of cells wide and high
 	VectorField CreateVectorField(unsigned int width, unsigned int height, tfxVectorFieldFlags flags) {
 		VectorField field;
-		field.forces.create_pool(width * height);
+		field.forces.create_pool((int)width * (int)height);
+		field.width = (float)width;
+		field.height = (float)height;
 		field.flags = flags;
-		field.scale.x = field.scale.y = 1.f;
+		field.scale.x = field.scale.y = 10.f;
+		field.size = tfxVec2((float)width, (float)height);
+		field.size *= field.scale;
+		field.offset = -field.size * 0.5f;
 		field.force_factor.x = field.force_factor.y = 1.f;
 		return field;
 	}
 
+	//Get a graph by GraphID
+	Graph &GetGraph(EffectLibrary &library, GraphNodeID &graph_id) {
+		switch (graph_id.category) {
+		case tfxGraphCategory_base:
+			return library.base_graphs[graph_id.graph_id].life;
+			break;
+		}
+	}
+
+	//Get a node by GraphID
+	//Graph &GetGraphNode(EffectLibrary &library, GraphNodeID &graph_id) {
+	//}
+
+
 	//API Functions
-	 int LoadEffectLibrary(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char* filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+	int GetShapesInLibrary(const char *filename) {
+		tfxvec<EffectEmitter> effect_stack;
+		int context = 0;
+		int error = 0;
+		int uid = 0;
+		unsigned int current_global_graph = 0;
+
+		mz_zip_archive zip_archive;
+		memset(&zip_archive, 0, sizeof(zip_archive));
+
+		bool status = mz_zip_reader_init_file(&zip_archive, filename, 0);
+		if (!status)
+		{
+			error = -2;
+		}
+
+		if ((int)mz_zip_reader_get_num_files(&zip_archive) == 0)
+			error = -3;
+
+		size_t uncomp_size;
+		std::stringstream d;
+		void *data = mz_zip_reader_extract_file_to_heap(&zip_archive, "data.txt", &uncomp_size, 0);
+
+		if (!data)
+			error = -2;
+		else
+			d << (char*)data;
+
+
+		if (error < 0) {
+			mz_zip_reader_end(&zip_archive);
+			return error;
+		}
+
+		int shape_count = 0;
+
+		while (!d.eof()) {
+			std::string line;
+			std::getline(d, line);
+			bool context_set = false;
+			if (StringIsUInt(line) && context != tfxStartShapes) {
+				context = std::stoi(line);
+				if (context == tfxEndShapes)
+					break;
+				context_set = true;
+			}
+			if (context_set == false) {
+				std::vector<std::string> pair = SplitString(std::string(line));
+				if (pair.size() != 2) {
+					pair = SplitString(std::string(line), 44);
+					if (pair.size() < 2) {
+						error = 1;
+						break;
+					}
+				}
+				if (context == tfxStartShapes) {
+					if (pair.size() >= 5) {
+						int frame_count = std::stoi(pair[2]);
+						shape_count += frame_count;
+					}
+				}
+			}
+		}
+
+		mz_zip_reader_end(&zip_archive);
+		return shape_count;
+	}
+
+	int LoadEffectLibrary(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char* filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		assert(shape_loader);
 		lib.Clear();
 
@@ -4173,6 +4260,7 @@ namespace tfx {
 
 
 		if (error < 0) {
+			mz_free(data);
 			mz_zip_reader_end(&zip_archive);
 			return error;
 		}
@@ -4346,9 +4434,9 @@ namespace tfx {
 
 		}
 
-		delete data;
 		d.str(std::string());
 
+		mz_free(data);
 		mz_zip_reader_end(&zip_archive);
 
 		//Returning anything over 0 means that effects were loaded ok

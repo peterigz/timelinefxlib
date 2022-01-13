@@ -195,6 +195,14 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxIntensityOvertimePreset
 	};
 
+	enum GraphCategory : unsigned int {
+		tfxGraphCategory_global,
+		tfxGraphCategory_property,
+		tfxGraphCategory_base,
+		tfxGraphCategory_variation,
+		tfxGraphCategory_overtime
+	};
+
 	//All the different types of graphs, split into main type: global, property, base, variation and overtime
 	enum GraphType : unsigned char {
 		tfxGlobal_life,
@@ -691,14 +699,7 @@ typedef std::chrono::high_resolution_clock Clock;
 	//These are mainly internal structs
 	//------------------------------------------------------------
 
-	struct Point {
-
-		float x;
-		float y;
-
-		Point() : x(0), y(0) {}
-		Point(float, float);
-	};
+	typedef tfxVec2 Point;
 
 	struct AttributeNode {
 		float frame;
@@ -789,6 +790,12 @@ typedef std::chrono::high_resolution_clock Clock;
 		float life;
 
 		GraphLookup() : last_frame(0), life(0) {}
+	};
+
+	struct GraphNodeID {
+		GraphCategory category;
+		unsigned int graph_id;
+		unsigned int node_id;
 	};
 
 	struct Graph {
@@ -1022,16 +1029,18 @@ typedef std::chrono::high_resolution_clock Clock;
 	//A vector field is an area that when particles pass through their velocity is affected based on the values in the forces list
 	struct VectorField {
 		//The width and height of the area of forces in cells. So number of cells wide and high
-		unsigned int width;
-		unsigned int height;
+		float width;
+		float height;
 		//The scale of the field, 1 would be 1 cell per pixel
 		tfxVec2 scale;
+		//size is number of cells * scale
+		tfxVec2 size;
 		//The amount of force that is applied to the particle can be manipulated with the force factor
 		tfxVec2 force_factor;
 		//You can make the field move about or scroll if it's repeating
 		tfxVec2 velocity;
-		//position of the field
-		tfxVec2 position;
+		//offset of the field will default to -size * 0.5
+		tfxVec2 offset;
 		//Property flags
 		tfxVectorFieldFlags flags;
 		//Storage for each of the cells in the field
@@ -1209,7 +1218,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
-		//All graphs that the effect uses to lookup attribute values are stored in the library. This variables here are indexes to the array that they're stored
+		//All graphs that the effect uses to lookup attribute values are stored in the library. These variables here are indexes to the array where they're stored
 		unsigned int global;
 		unsigned int property;
 		unsigned int base;
@@ -1491,6 +1500,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxvec<VariationAttributes> variation_graphs;
 		tfxvec<OvertimeAttributes> overtime_graphs;
 		tfxvec<AnimationSettings> animation_settings;
+		tfxvec<Graph> graphs;
 
 		tfxvec<unsigned int> free_global_graphs;
 		tfxvec<unsigned int> free_property_graphs;
@@ -1690,6 +1700,10 @@ typedef std::chrono::high_resolution_clock Clock;
 
 	//Create a Vector field specifying the number of cells wide and high
 	VectorField CreateVectorField(unsigned int width, unsigned int height, tfxVectorFieldFlags flags);
+	//Get a graph by GraphID
+	Graph &GetGraph(EffectLibrary &library, GraphNodeID &graph_id);
+	//Get a node by GraphID
+	Graph &GetGraphNode(EffectLibrary &library, GraphNodeID &graph_id);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	inline void SetUpdateFrequency(float fps) {
@@ -1703,6 +1717,7 @@ typedef std::chrono::high_resolution_clock Clock;
 	inline void SetLookUpFrequencyOvertime(float frequency) {
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
+	int GetShapesInLibrary(const char *filename);
 	int LoadEffectLibrary(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
 	//Particle manager functions
