@@ -1732,170 +1732,46 @@ namespace tfx {
 
 	Graph* EffectEmitter::GetGraphByType(GraphType type) {
 
-		if (this->type == tfxEffect) {
-			switch (type) {
-			case tfxGlobal_life:
-				return &library->global_graphs[global].life;
-				break;
-			case tfxGlobal_amount:
-				return &library->global_graphs[global].amount;
-				break;
-			case tfxGlobal_velocity:
-				return &library->global_graphs[global].velocity;
-				break;
-			case tfxGlobal_width:
-				return &library->global_graphs[global].width;
-				break;
-			case tfxGlobal_height:
-				return &library->global_graphs[global].height;
-				break;
-			case tfxGlobal_weight:
-				return &library->global_graphs[global].weight;
-				break;
-			case tfxGlobal_spin:
-				return &library->global_graphs[global].spin;
-				break;
-			case tfxGlobal_effect_angle:
-				return &library->global_graphs[global].effect_angle;
-				break;
-			case tfxGlobal_stretch:
-				return &library->global_graphs[global].stretch;
-				break;
-			case tfxGlobal_overal_scale:
-				return &library->global_graphs[global].overal_scale;
-				break;
-			case tfxGlobal_opacity:
-				return &library->global_graphs[global].opacity;
-				break;
-			case tfxGlobal_frame_rate:
-				return &library->global_graphs[global].frame_rate;
-				break;
-			case tfxGlobal_splatter:
-				return &library->global_graphs[global].splatter;
-				break;
-			}
-
-			return nullptr;
+		if (type < tfxGlobalCount) {
+			return &((Graph*)&library->global_graphs[global])[type];
+		}
+		else if (type >= tfxPropertyStart && type < tfxBaseStart) {
+			int ref = type - tfxPropertyStart;
+			return &((Graph*)&library->property_graphs[property])[ref];
+		}
+		else if (type >= tfxBaseStart && type < tfxVariationStart) {
+			int ref = type - tfxBaseStart;
+			return &((Graph*)&library->base_graphs[base])[ref];
+		}
+		else if (type >= tfxVariationStart && type < tfxOvertimeStart) {
+			int ref = type - tfxVariationStart;
+			return &((Graph*)&library->variation_graphs[variation])[ref];
+		}
+		else if (type >= tfxOvertimeStart) {
+			int ref = type - tfxOvertimeStart;
+			return &((Graph*)&library->overtime_graphs[overtime])[ref];
 		}
 
-		switch (type) {
-		case tfxProperty_emission_angle:
-			return &library->property_graphs[property].emission_angle;
-			break;
-		case tfxProperty_emission_range:
-			return &library->property_graphs[property].emission_range;
-			break;
-		case tfxProperty_emitter_angle:
-			return &library->property_graphs[property].emitter_angle;
-			break;
-		case tfxProperty_splatter:
-			return &library->property_graphs[property].splatter;
-			break;
-		case tfxProperty_emitter_width:
-			return &library->property_graphs[property].emitter_width;
-			break;
-		case tfxProperty_emitter_height:
-			return &library->property_graphs[property].emitter_height;
-			break;
-		case tfxProperty_arc_size:
-			return &library->property_graphs[property].arc_size;
-			break;
-		case tfxProperty_arc_offset:
-			return &library->property_graphs[property].arc_offset;
-			break;
-		case tfxBase_life:
-			return &library->base_graphs[base].life;
-			break;
-		case tfxBase_amount:
-			return &library->base_graphs[base].amount;
-			break;
-		case tfxBase_velocity:
-			return &library->base_graphs[base].velocity;
-			break;
-		case tfxBase_width:
-			return &library->base_graphs[base].width;
-			break;
-		case tfxBase_height:
-			return &library->base_graphs[base].height;
-			break;
-		case tfxBase_weight:
-			return &library->base_graphs[base].weight;
-			break;
-		case tfxBase_spin:
-			return &library->base_graphs[base].spin;
-			break;
-		case tfxVariation_life:
-			return &library->variation_graphs[variation].life;
-			break;
-		case tfxVariation_amount:
-			return &library->variation_graphs[variation].amount;
-			break;
-		case tfxVariation_velocity:
-			return &library->variation_graphs[variation].velocity;
-			break;
-		case tfxVariation_width:
-			return &library->variation_graphs[variation].width;
-			break;
-		case tfxVariation_height:
-			return &library->variation_graphs[variation].height;
-			break;
-		case tfxVariation_weight:
-			return &library->variation_graphs[variation].weight;
-			break;
-		case tfxVariation_spin:
-			return &library->variation_graphs[variation].spin;
-			break;
-		case tfxVariation_motion_randomness:
-			return &library->variation_graphs[variation].motion_randomness;
-			break;
-		case tfxOvertime_velocity:
-			return &library->overtime_graphs[overtime].velocity;
-			break;
-		case tfxOvertime_width:
-			return &library->overtime_graphs[overtime].width;
-			break;
-		case tfxOvertime_height:
-			return &library->overtime_graphs[overtime].height;
-			break;
-		case tfxOvertime_weight:
-			return &library->overtime_graphs[overtime].weight;
-			break;
-		case tfxOvertime_spin:
-			return &library->overtime_graphs[overtime].spin;
-			break;
-		case tfxOvertime_stretch:
-			return &library->overtime_graphs[overtime].stretch;
-			break;
-		case tfxOvertime_red:
-			return &library->overtime_graphs[overtime].red;
-			break;
-		case tfxOvertime_green:
-			return &library->overtime_graphs[overtime].green;
-			break;
-		case tfxOvertime_blue:
-			return &library->overtime_graphs[overtime].blue;
-			break;
-		case tfxOvertime_opacity:
-			return &library->overtime_graphs[overtime].opacity;
-			break;
-		case tfxOvertime_intensity:
-			return &library->overtime_graphs[overtime].intensity;
-			break;
-		case tfxOvertime_frame_rate:
-			return &library->overtime_graphs[overtime].frame_rate;
-			break;
-		case tfxOvertime_motion_randomness:
-			return &library->overtime_graphs[overtime].motion_randomness;
-			break;
-		case tfxOvertime_velocity_adjuster:
-			return &library->overtime_graphs[overtime].velocity_adjuster;
-			break;
-		case tfxOvertime_direction:
-			return &library->overtime_graphs[overtime].direction;
-			break;
+	}
+
+	unsigned int EffectEmitter::GetGraphIndexByType(GraphType type) {
+
+		if (type < tfxGlobalCount) {
+			return global;
+		}
+		else if (type >= tfxGlobalCount && type < tfxPropertyCount) {
+			return property;
+		}
+		else if (type >= tfxPropertyCount && type < tfxBaseCount) {
+			return base;
+		}
+		else if (type >= tfxBaseCount && type < tfxVariationCount) {
+			return variation;
+		}
+		else if (type >= tfxOvertimeCount) {
+			return overtime;
 		}
 
-		return nullptr;
 	}
 
 	void EffectEmitter::FreeGraphs() {
@@ -4501,12 +4377,29 @@ namespace tfx {
 	}
 
 	//Get a graph by GraphID
-	Graph &GetGraph(EffectLibrary &library, GraphNodeID &graph_id) {
-		switch (graph_id.category) {
-		case tfxGraphCategory_base:
-			return library.base_graphs[graph_id.graph_id].life;
-			break;
+	Graph &GetGraph(EffectLibrary &library, GraphID &graph_id) {
+		GraphType type = graph_id.type;
+
+		if (type < tfxGlobalCount) {
+			return ((Graph*)&library.global_graphs[graph_id.graph_id])[type];
 		}
+		else if (type >= tfxPropertyStart && type < tfxBaseStart) {
+			int ref = type - tfxPropertyStart;
+			return ((Graph*)&library.property_graphs[graph_id.graph_id])[ref];
+		}
+		else if (type >= tfxBaseStart && type < tfxVariationStart) {
+			int ref = type - tfxBaseStart;
+			return ((Graph*)&library.base_graphs[graph_id.graph_id])[ref];
+		}
+		else if (type >= tfxVariationStart && type < tfxOvertimeStart) {
+			int ref = type - tfxVariationStart;
+			return ((Graph*)&library.variation_graphs[graph_id.graph_id])[ref];
+		}
+		else if (type >= tfxOvertimeStart) {
+			int ref = type - tfxOvertimeStart;
+			return ((Graph*)&library.overtime_graphs[graph_id.graph_id])[ref];
+		}
+
 	}
 
 	//Get a node by GraphID

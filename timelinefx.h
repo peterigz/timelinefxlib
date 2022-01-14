@@ -211,6 +211,12 @@ typedef std::chrono::high_resolution_clock Clock;
 #define	tfxVariationCount  8
 #define	tfxOvertimeCount  15
 
+#define tfxGlobalStart 0
+#define	tfxPropertyStart tfxGlobalCount
+#define	tfxBaseStart (tfxPropertyStart + tfxPropertyCount)
+#define	tfxVariationStart (tfxBaseStart + tfxBaseCount)
+#define	tfxOvertimeStart (tfxVariationStart + tfxVariationCount)
+
 	//All the different types of graphs, split into main type: global, property, base, variation and overtime
 	enum GraphType : unsigned char {
 		tfxGlobal_life,
@@ -800,10 +806,11 @@ typedef std::chrono::high_resolution_clock Clock;
 		GraphLookup() : last_frame(0), life(0) {}
 	};
 
-	struct GraphNodeID {
+	struct GraphID {
 		GraphCategory category;
-		unsigned int graph_id;
-		unsigned int node_id;
+		GraphType type = tfxGraphMaxIndex;
+		unsigned int graph_id = 0;
+		unsigned int node_id = 0;
 	};
 
 	struct GraphLookupIndex {
@@ -1414,6 +1421,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		void ResetEmitterGraphs(bool add_node = true);
 		void UpdateMaxLife();
 		Graph* GetGraphByType(GraphType type);
+		unsigned int GetGraphIndexByType(GraphType type);
 		void CompileGraphs();
 		void InitialiseUninitialisedGraphs();
 		void SetName(const char *n);
@@ -1478,6 +1486,7 @@ typedef std::chrono::high_resolution_clock Clock;
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
 	//Particles are stored in the particle manager particle buffer.
+	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
 	//180 bytes
 	struct Particle {
 		FormState local;				//The local position of the particle, relative to the emitter.
@@ -1773,9 +1782,9 @@ typedef std::chrono::high_resolution_clock Clock;
 	//Helper functions
 
 	//Get a graph by GraphID
-	Graph &GetGraph(EffectLibrary &library, GraphNodeID &graph_id);
+	Graph &GetGraph(EffectLibrary &library, GraphID &graph_id);
 	//Get a node by GraphID
-	Graph &GetGraphNode(EffectLibrary &library, GraphNodeID &graph_id);
+	Graph &GetGraphNode(EffectLibrary &library, GraphID &graph_id);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	inline void SetUpdateFrequency(float fps) {
