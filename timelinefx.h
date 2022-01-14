@@ -112,6 +112,7 @@
 #include <cctype>					//std::is_digit
 #include "Libraries/robin_map.h"	//tsl::robin_map
 #include <stdint.h>
+#include <math.h>
 
 namespace tfx {
 
@@ -811,6 +812,9 @@ typedef std::chrono::high_resolution_clock Clock;
 		float max_life;
 	};
 	
+	//This struct is used to store indexing data in order to index into large lists containing either the node data of graphs
+	//or the lookup data of compiled graphs. This is so that we can upload that data into a buffer on the GPU to get the particles
+	//updating in a compute shader.
 	struct EffectLookUpData {
 		GraphLookupIndex global_life;
 		GraphLookupIndex global_amount;
@@ -1171,6 +1175,8 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxVec2 emitter_size;
 		//Emitter handle - the offset at which the emitter is positioned
 		tfxVec2 emitter_handle;
+		//Offset to draw particles at
+		tfxVec2 image_handle;
 		//Current base life that particles will be spawned with (milliseconds)
 		float life;
 		//Current number of particles that will be spawned per second
@@ -1472,29 +1478,30 @@ typedef std::chrono::high_resolution_clock Clock;
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
 	//Particles are stored in the particle manager particle buffer.
+	//180 bytes
 	struct Particle {
 		FormState local;				//The local position of the particle, relative to the emitter.
 		FormState world;				//The world position of the particle relative to the screen.
 		FormState captured;				//The captured world coords for tweening
 		Matrix2 matrix;					//Simple 2d matrix for transforms
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
-		tfxVec2 velocity_normal;		//stores the current direction of travel for the particle
-		tfxVec2 velocity;				//=velocity_normal * base.velocity * velocity_scale (velocity overtime) Gets added to the particle coords each frame
-		tfxVec2 handle;					//The image handle
+		//tfxVec2 velocity_normal;		//stores the current direction of travel for the particle
+		//tfxVec2 velocity;				//=velocity_normal * base.velocity * velocity_scale (velocity overtime) Gets added to the particle coords each frame
+		//tfxVec2 handle;				//The image handle
 		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;					//max age before the particle expires
 		float image_frame_rate;			//current frame rate of the image if it's an animation
 		float velocity_scale;			//Current velocity overtime
-		float direction;				//Current direction of travel in radians
+		//float direction;				//Current direction of travel in radians
 		float emission_angle;			//Emission angle of the particle at spawn time
-		float spin;						//Current spin overtime
+		//float spin;						//Current spin overtime
 		float image_frame;				//Current frame of the image if it's an animation
 		float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float motion_randomness;		//The random velocity added each frame
 		float motion_randomness_speed;
-		float motion_randomness_direction;
-		float motion_tracker;
+		//float motion_randomness_direction;
+		//float motion_tracker;
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
 		tfxRGBA8 color;					//Colour of the particle
 		tfxParticleFlags flags;			//flags for different states
@@ -1506,14 +1513,14 @@ typedef std::chrono::high_resolution_clock Clock;
 		//Override functions, you can use these inside an update_callback if you want to modify the particle's behaviour
 		inline void OverridePosition(float x, float y) { local.position.x = x; local.position.y = y; }
 		inline void OverrideSize(float x, float y) { local.scale.x = x; local.scale.y = y; }
-		inline void OverrideVelocity(float x, float y) { velocity.x = x; velocity.y = y; }
+		//inline void OverrideVelocity(float x, float y) { velocity.x = x; velocity.y = y; }
 		inline void OverrideVelocityScale(float v) { velocity_scale = v; }
 		inline void OverrideRotation(float r) { local.rotation = r; }
 		inline void OverrideRotationDegrees(float d) { local.rotation = tfxDegrees(d); }
-		inline void OverrideDirection(float r) { direction = r; }
-		inline void OverrideDirectionDegrees(float d) { direction = tfxDegrees(d); }
-		inline void OverrideSpin(float r) { direction = r; }
-		inline void OverrideSpinDegrees(float d) { spin = tfxDegrees(d); }
+		//inline void OverrideDirection(float r) { direction = r; }
+		//inline void OverrideDirectionDegrees(float d) { direction = tfxDegrees(d); }
+		//inline void OverrideSpin(float r) { direction = r; }
+		//inline void OverrideSpinDegrees(float d) { spin = tfxDegrees(d); }
 		inline void OverrideAge(float a) { age = a; }
 		inline void OverrideImageFrameRate(float fr) { image_frame_rate = fr; }
 		inline void OverrideImageFrame(float f) { image_frame = f; }

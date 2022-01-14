@@ -452,11 +452,6 @@ namespace tfx {
 					p.local.position = world.position + p.local.position * world.scale;
 				}
 
-				if (properties.flags & tfxEmitterPropertyFlags_edge_traversal) {
-					p.direction = 0.f;
-					//p.hierarchy.relative = true;
-				}
-
 			}
 
 			//----Weight
@@ -553,8 +548,10 @@ namespace tfx {
 				}
 			}
 
+			float direction = 0;
+
 			if (properties.angle_setting == AngleSetting::tfxAlign && properties.flags & tfxEmitterPropertyFlags_edge_traversal)
-				p.world.rotation = p.local.rotation = p.direction + properties.angle_offset;
+				p.world.rotation = p.local.rotation = direction + properties.angle_offset;
 
 			TransformParticlePrevious(p, *this);
 			p.captured = p.world;
@@ -563,35 +560,35 @@ namespace tfx {
 			//----Motion randomness
 			p.motion_randomness = current.motion_randomness;
 			float mr = tfxRadians(p.motion_randomness * library->overtime_graphs[overtime].motion_randomness.GetFirstValue());
-			p.motion_randomness_direction = tfxRadians(22.5f * random_generation.Range(-mr, mr));
+			float motion_randomness_direction = tfxRadians(22.5f * random_generation.Range(-mr, mr));
 			p.motion_randomness_speed = 30.f * random_generation.Range(-mr, mr);
-			p.motion_tracker = 0;
 
 			if (!(properties.flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != EmissionType::tfxLine) {
-				p.direction = p.emission_angle = GetEmissionDirection(p) + p.motion_randomness_direction + library->overtime_graphs[overtime].direction.GetFirstValue();
+				direction = p.emission_angle = GetEmissionDirection(p) + motion_randomness_direction + library->overtime_graphs[overtime].direction.GetFirstValue();
 			}
 
 			//----Normalize Velocity to direction
-			p.velocity_normal.x = std::sinf(p.direction);
-			p.velocity_normal.y = -std::cosf(p.direction);
+			tfxVec2 velocity_normal;
+			velocity_normal.x = std::sinf(direction);
+			velocity_normal.y = -std::cosf(direction);
 
-			p.velocity = p.velocity_normal * p.base.velocity * p.velocity_scale * UPDATE_TIME;
+			//p.velocity = p.velocity_normal * p.base.velocity * p.velocity_scale * UPDATE_TIME;
 			bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
 
 			if (properties.angle_setting == AngleSetting::tfxAlign && !line) {
-				p.world.rotation = p.local.rotation = GetVectorAngle(p.velocity_normal.x, p.velocity_normal.y) + properties.angle_offset;
+				p.world.rotation = p.local.rotation = GetVectorAngle(velocity_normal.x, velocity_normal.y) + properties.angle_offset;
 				if (properties.flags & tfxEmitterPropertyFlags_relative_angle)
 					p.world.rotation += world.rotation;
 				p.captured.rotation = p.world.rotation;
 			}
 
 			//----Handle
-			if (properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
+			/*if (properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 				p.handle = tfxVec2(0.5f, 0.5f);
 			}
 			else {
 				p.handle = properties.image_handle;
-			}
+			}*/
 
 			//----Image
 			//p.image = properties.image;
@@ -796,6 +793,14 @@ namespace tfx {
 			current.motion_randomness = lookup_callback(library->variation_graphs[variation].motion_randomness, current.frame);
 			current.stretch = e.current.stretch;
 			local.scale = e.local.scale;
+
+			//----Handle
+			if (properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
+				current.image_handle = tfxVec2(0.5f, 0.5f);
+			}
+			else {
+				current.image_handle = properties.image_handle;
+			}
 
 			if (properties.emission_type == EmissionType::tfxArea || properties.emission_type == EmissionType::tfxEllipse) {
 				current.emitter_size.x = lookup_callback(library->property_graphs[property].emitter_width, current.frame);
@@ -1053,11 +1058,43 @@ namespace tfx {
 				return false;
 			}
 		}
+		float direction = 0;
+		if (e.properties.emission_type != tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal)) {
+			//----Motion randomness
+			float mr = p.motion_randomness * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].motion_randomness, p.age, p.max_age);
+			if (!(unsigned int)std::fmodf(p.age, FRAME_LENGTH * 2.f)) {
+				p.motion_randomness_speed += 30.f * random_generation.Range(-mr, mr);
+				p.emission_angle += tfxRadians(22.5f * random_generation.Range(-mr, mr));
+			}
+			direction = p.emission_angle + lookup_overtime_callback(e.library->overtime_graphs[e.overtime].direction, p.age, p.max_age);
+		}
+
+		//----Weight Changes
+		p.weight_acceleration += p.base.weight * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].weight, p.age, p.max_age) * UPDATE_TIME;
+
+		//----Velocity Changes
+		tfxVec2 velocity_normal;
+		velocity_normal.x = std::sinf(direction);
+		velocity_normal.y = -std::cosf(direction);
+		p.velocity_scale = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity, p.age, p.max_age) * e.current.velocity_adjuster;
+
+		//----Velocity
+		tfxVec2 current_velocity;
+		if (p.velocity_scale) {
+			if (e.properties.flags & tfxEmitterPropertyFlags_relative_position) {
+				current_velocity = ((p.base.velocity * p.velocity_scale) + p.motion_randomness_speed) * velocity_normal * UPDATE_TIME;
+				current_velocity.y += p.weight_acceleration * UPDATE_TIME;
+			}
+			else {
+				current_velocity = ((p.base.velocity * p.velocity_scale) + p.motion_randomness_speed) * velocity_normal * UPDATE_TIME * e.world.scale;
+				current_velocity.y += p.weight_acceleration * UPDATE_TIME * e.world.scale.y;
+			}
+		}
 
 		//Direction
 		if (e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal) {
-			tfxVec2 offset = p.velocity_normal * e.current.emitter_size.y;
-			float length = std::fabsf(std::sqrtf(p.velocity.Squared()));
+			tfxVec2 offset = velocity_normal * e.current.emitter_size.y;
+			float length = std::fabsf(std::sqrtf(current_velocity.Squared()));
 			p.distance_travelled += length;
 
 			float emitter_length = e.current.emitter_size.y;
@@ -1076,17 +1113,7 @@ namespace tfx {
 			}
 		}
 		else {
-			//----Motion randomness
-			float mr = p.motion_randomness * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].motion_randomness, p.age, p.max_age);
-			p.motion_tracker += FRAME_LENGTH;
-			if (p.motion_tracker > 30.f) {
-				p.motion_randomness_speed += 30.f * random_generation.Range(-mr, mr);
-				p.motion_randomness_direction += tfxRadians(22.5f * random_generation.Range(-mr, mr));
-				p.motion_tracker = 0;
-			}
-			p.direction = p.emission_angle + p.motion_randomness_direction + lookup_overtime_callback(e.library->overtime_graphs[e.overtime].direction, p.age, p.max_age);
-			p.velocity_normal.x = std::sinf(p.direction);
-			p.velocity_normal.y = -std::cosf(p.direction);
+
 		}
 
 		//----Color changes
@@ -1107,12 +1134,6 @@ namespace tfx {
 		//p.local.scale.x = p.base.size.x * e.library->LookupFastOvertimeValueList(tfxOvertime_width, e.lookup_value_index, p.age, p.max_age);
 		if (p.local.scale.x < 0.f)
 			p.local.scale.x = p.local.scale.x;
-
-		//----Velocity Changes
-		p.velocity_scale = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity, p.age, p.max_age) * e.current.velocity_adjuster;
-
-		//----Weight Changes
-		p.weight_acceleration += p.base.weight * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].weight, p.age, p.max_age) * UPDATE_TIME;
 
 		//----Stretch Changes
 		float stretch = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].stretch, p.age, p.max_age);
@@ -1137,9 +1158,10 @@ namespace tfx {
 		}
 
 		//----Spin and angle Changes
+		float spin = 0;
 		if (e.properties.angle_setting != AngleSetting::tfxAlign && !(e.properties.flags & tfxEmitterPropertyFlags_relative_angle)) {
 			float test = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].spin, p.age, p.max_age);
-			p.spin = p.base.spin * test;
+			spin = p.base.spin * test;
 		}
 
 		//----Image Changes
@@ -1153,29 +1175,17 @@ namespace tfx {
 		if (e.particle_update_callback)
 			e.particle_update_callback(p);
 
-		//----Velocity
-		if (p.velocity_scale) {
-			if (e.properties.flags & tfxEmitterPropertyFlags_relative_position) {
-				p.velocity = ((p.base.velocity * p.velocity_scale) + p.motion_randomness_speed) * p.velocity_normal * UPDATE_TIME;
-				p.velocity.y += p.weight_acceleration * UPDATE_TIME;
-			}
-			else {
-				p.velocity = ((p.base.velocity * p.velocity_scale) + p.motion_randomness_speed) * p.velocity_normal * UPDATE_TIME * e.world.scale;
-				p.velocity.y += p.weight_acceleration * UPDATE_TIME * e.world.scale.y;
-			}
-		}
-
 		//----Rotation
 		if (e.properties.angle_setting != AngleSetting::tfxAlign && !(e.properties.flags & tfxEmitterPropertyFlags_relative_angle)) {
-			if (p.spin)
-				p.local.rotation += p.spin * UPDATE_TIME;
+			if (spin)
+				p.local.rotation += spin * UPDATE_TIME;
 		}
 		else if (e.properties.angle_setting == AngleSetting::tfxAlign) {
-			p.local.rotation = GetVectorAngle(p.velocity_normal.x, p.velocity_normal.y) + e.properties.angle_offset;
+			p.local.rotation = GetVectorAngle(velocity_normal.x, velocity_normal.y) + e.properties.angle_offset;
 		}
 
 		//----Position
-		p.local.position += p.velocity;
+		p.local.position += current_velocity;
 
 		//----Image animation
 		if (e.properties.flags & tfxEmitterPropertyFlags_animate) {
@@ -1189,7 +1199,6 @@ namespace tfx {
 					p.image_frame = e.properties.end_frame;
 				else
 					p.image_frame -= e.properties.end_frame + 1;
-
 			}
 			else if (p.image_frame < 0) {
 				if (e.properties.flags & tfxEmitterPropertyFlags_play_once)
@@ -1198,7 +1207,6 @@ namespace tfx {
 					p.image_frame += e.properties.end_frame;
 			}
 		}
-
 		return true;
 	}
 
