@@ -199,7 +199,8 @@ namespace tfx {
 			qty = current.amount;
 			qty += random_generation.Range(current.amount_variation);
 			//qty *= lookup_callback(parent->library->global_graphs[parent->global].amount, current.frame);
-			qty *= parent->library->LookupPreciseNodeList(tfxGlobal_amount, parent->lookup_data_index, current.frame);
+			//qty *= parent->library->LookupPreciseNodeList(tfxGlobal_amount, parent->lookup_node_index, current.frame);
+			qty *= parent->library->LookupFastValueList(tfxGlobal_amount, parent->lookup_value_index, current.frame);
 			qty *= UPDATE_TIME;
 			qty += current.amount_remainder;
 		}
@@ -1101,6 +1102,9 @@ namespace tfx {
 
 		//----Size Changes
 		p.local.scale.x = p.base.size.x * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age);
+		//Just here to test:
+		//float test1 = p.base.size.x * e.library->LookupPreciseOvertimeNodeList(tfxOvertime_width, e.lookup_node_index, p.age, p.max_age);
+		//p.local.scale.x = p.base.size.x * e.library->LookupFastOvertimeValueList(tfxOvertime_width, e.lookup_value_index, p.age, p.max_age);
 		if (p.local.scale.x < 0.f)
 			p.local.scale.x = p.local.scale.x;
 
@@ -2235,28 +2239,44 @@ namespace tfx {
 	}
 
 	void EffectLibrary::UpdateAllNodes() {
-		unsigned int running_index = 0;
+		unsigned int running_node_index = 0;
+		unsigned int running_value_index = 0;
 		tfxvec<EffectEmitter*> stack;
 		all_nodes.clear();
-		effect_lookup_indexes.clear();
+		node_lookup_indexes.clear();
+		compiled_lookup_values.clear();
+		compiled_lookup_indexes.clear();
 		for (auto &effect : effects) {
 			stack.push_back(&effect);
 			while(!stack.empty()) {
 				EffectEmitter *current = stack.pop_back();
 				EffectLookUpData lookup_data;
+				EffectLookUpData value_lookup_data;
 				memset(&lookup_data, 0, sizeof(EffectLookUpData));
+				memset(&value_lookup_data, 0, sizeof(EffectLookUpData));
 				if (current->type == tfxEffect) {
-
 					for (int i = 0; i != tfxGlobalCount; ++i) {
+
 						Graph &graph = ((Graph*)(&global_graphs[current->global]))[i];
-						unsigned int &index = ((unsigned int*)&lookup_data)[i];
-						index = (running_index << 16) + graph.nodes.size();
+						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i];
+						index.start_index = running_node_index;
+						index.length = graph.nodes.size();
+						index.max_life = graph.lookup.life;
 						for (auto &node : graph.nodes) {
 							all_nodes.push_back(node);
-							running_index++;
+							running_node_index++;
 						}
-					}
 
+						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i];
+						value_index.start_index = running_value_index;
+						value_index.length = graph.lookup.values.size();
+						value_index.max_life = graph.lookup.life;
+						for (auto value : graph.lookup.values) {
+							compiled_lookup_values.push_back(value);
+							running_value_index++;
+						}
+
+					}
 				}
 				else if (current->type == tfxEmitter) {
 
@@ -2264,11 +2284,22 @@ namespace tfx {
 
 					for (int i = 0; i != tfxPropertyCount; ++i) {
 						Graph &graph = ((Graph*)(&property_graphs[current->property]))[i];
-						unsigned int &index = ((unsigned int*)&lookup_data)[i + offset];
-						index = (running_index << 16) + graph.nodes.size();
+						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i + offset];
+						index.start_index = running_node_index;
+						index.length = graph.nodes.size();
+						index.max_life = graph.lookup.life;
 						for (auto &node : graph.nodes) {
 							all_nodes.push_back(node);
-							running_index++;
+							running_node_index++;
+						}
+
+						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i + offset];
+						value_index.start_index = running_value_index;
+						value_index.length = graph.lookup.values.size();
+						value_index.max_life = graph.lookup.life;
+						for (auto value : graph.lookup.values) {
+							compiled_lookup_values.push_back(value);
+							running_value_index++;
 						}
 					}
 
@@ -2276,11 +2307,22 @@ namespace tfx {
 
 					for (int i = 0; i != tfxBaseCount; ++i) {
 						Graph &graph = ((Graph*)(&base_graphs[current->base]))[i];
-						unsigned int &index = ((unsigned int*)&lookup_data)[i + offset];
-						index = (running_index << 16) + graph.nodes.size();
+						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i + offset];
+						index.start_index = running_node_index;
+						index.length = graph.nodes.size();
+						index.max_life = graph.lookup.life;
 						for (auto &node : graph.nodes) {
 							all_nodes.push_back(node);
-							running_index++;
+							running_node_index++;
+						}
+
+						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i + offset];
+						value_index.start_index = running_value_index;
+						value_index.length = graph.lookup.values.size();
+						value_index.max_life = graph.lookup.life;
+						for (auto value : graph.lookup.values) {
+							compiled_lookup_values.push_back(value);
+							running_value_index++;
 						}
 					}
 
@@ -2288,11 +2330,22 @@ namespace tfx {
 
 					for (int i = 0; i != tfxVariationCount; ++i) {
 						Graph &graph = ((Graph*)(&variation_graphs[current->variation]))[i];
-						unsigned int &index = ((unsigned int*)&lookup_data)[i + offset];
-						index = (running_index << 16) + graph.nodes.size();
+						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i + offset];
+						index.start_index = running_node_index;
+						index.length = graph.nodes.size();
+						index.max_life = graph.lookup.life;
 						for (auto &node : graph.nodes) {
 							all_nodes.push_back(node);
-							running_index++;
+							running_node_index++;
+						}
+
+						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i + offset];
+						value_index.start_index = running_value_index;
+						value_index.length = graph.lookup.values.size();
+						value_index.max_life = graph.lookup.life;
+						for (auto value : graph.lookup.values) {
+							compiled_lookup_values.push_back(value);
+							running_value_index++;
 						}
 					}
 
@@ -2300,18 +2353,31 @@ namespace tfx {
 
 					for (int i = 0; i != tfxOvertimeCount; ++i) {
 						Graph &graph = ((Graph*)(&overtime_graphs[current->overtime]))[i];
-						unsigned int &index = ((unsigned int*)&lookup_data)[i + offset];
-						index = (running_index << 16) + graph.nodes.size();
+						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i + offset];
+						index.start_index = running_node_index;
+						index.length = graph.nodes.size();
+						index.max_life = graph.lookup.life;
 						for (auto &node : graph.nodes) {
 							all_nodes.push_back(node);
-							running_index++;
+							running_node_index++;
+						}
+
+						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i + offset];
+						value_index.start_index = running_value_index;
+						value_index.length = graph.lookup.values.size();
+						value_index.max_life = graph.lookup.life;
+						for (auto value : graph.lookup.values) {
+							compiled_lookup_values.push_back(value);
+							running_value_index++;
 						}
 					}
 
 				}
 
-				effect_lookup_indexes.push_back(lookup_data);
-				current->lookup_data_index = effect_lookup_indexes.size() - 1;
+				node_lookup_indexes.push_back(lookup_data);
+				compiled_lookup_indexes.push_back(value_lookup_data);
+				current->lookup_node_index = node_lookup_indexes.size() - 1;
+				current->lookup_value_index = compiled_lookup_indexes.size() - 1;
 				for (auto &sub : current->sub_effectors) {
 					stack.push_back(&sub);
 				}
@@ -2517,17 +2583,15 @@ namespace tfx {
 
 	}
 
-	float EffectLibrary::LookupPreciseOvertimeNodeList(GraphType graph_type, int lookup_data_index, float age, float life) {
+	float EffectLibrary::LookupPreciseOvertimeNodeList(GraphType graph_type, int lookup_node_index, float age, float life) {
 		float lastv = 0;
 		float lastf = 0;
 		float p = 0;
 		AttributeNode *lastec = nullptr;
-		unsigned int &lookup_data = ((unsigned int*)&effect_lookup_indexes[lookup_data_index])[graph_type];
-		int node_index = (lookup_data & 0xFFFF0000) >> 16;
-		int length = lookup_data & 0x0000FFFF;
+		GraphLookupIndex &lookup_data = ((GraphLookupIndex*)&node_lookup_indexes[lookup_node_index])[graph_type];
 		float min_y = graph_min_max[graph_type].y;
 		float max_y = graph_min_max[graph_type].w;
-		for (int i = node_index; i != node_index + length; ++i) {
+		for (int i = lookup_data.start_index; i != lookup_data.start_index + lookup_data.length; ++i) {
 			AttributeNode &a = all_nodes[i];
 			float frame = a.frame * life;
 			if (age < frame) {
@@ -2547,17 +2611,15 @@ namespace tfx {
 		return lastv;
 	}
 
-	float EffectLibrary::LookupPreciseNodeList(GraphType graph_type, int lookup_data_index, float age) {
+	float EffectLibrary::LookupPreciseNodeList(GraphType graph_type, int lookup_node_index, float age) {
 		float lastv = 0;
 		float lastf = 0;
 		float p = 0;
 		AttributeNode *lastec = nullptr;
-		unsigned int &lookup_data = ((unsigned int*)&effect_lookup_indexes[lookup_data_index])[graph_type];
-		int node_index = (lookup_data & 0xFFFF0000) >> 16;
-		int length = lookup_data & 0x0000FFFF;
+		GraphLookupIndex &lookup_data = ((GraphLookupIndex*)&node_lookup_indexes[lookup_node_index])[graph_type];
 		float min_y = graph_min_max[graph_type].y;
 		float max_y = graph_min_max[graph_type].w;
-		for (int i = node_index; i != node_index + length; ++i) {
+		for (int i = lookup_data.start_index; i != lookup_data.start_index + lookup_data.length; ++i) {
 			AttributeNode &a = all_nodes[i];
 			if (age < a.frame) {
 				p = (age - lastf) / (a.frame - lastf);
@@ -2574,6 +2636,24 @@ namespace tfx {
 			lastec = &a;
 		}
 		return lastv;
+	}
+
+	float EffectLibrary::LookupFastValueList(GraphType graph_type, int lookup_node_index, float frame) {
+		GraphLookupIndex &lookup_data = ((GraphLookupIndex*)&compiled_lookup_indexes[lookup_node_index])[graph_type];
+		frame += lookup_data.start_index;
+		if ((unsigned int)frame < lookup_data.start_index + lookup_data.length - 1)
+			return compiled_lookup_values[(unsigned int)frame];
+		return compiled_lookup_values[lookup_data.start_index + lookup_data.length - 1];
+	}
+
+	float EffectLibrary::LookupFastOvertimeValueList(GraphType graph_type, int lookup_value_index, float age, float lifetime) {
+		GraphLookupIndex &lookup_data = ((GraphLookupIndex*)&compiled_lookup_indexes[lookup_value_index])[graph_type];
+		float frame = (float)lookup_data.start_index;
+		if (lifetime)
+			frame += (age / lifetime * lookup_data.max_life) / tfxLOOKUP_FREQUENCY_OVERTIME;
+		if (frame < lookup_data.start_index + lookup_data.length - 1)
+			return compiled_lookup_values[(unsigned int)frame];
+		return compiled_lookup_values[lookup_data.start_index + lookup_data.length - 1];
 	}
 
 	unsigned int EffectLibrary::CountOfGraphsInUse() {

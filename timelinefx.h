@@ -805,62 +805,68 @@ typedef std::chrono::high_resolution_clock Clock;
 		unsigned int node_id;
 	};
 
+	struct GraphLookupIndex {
+		unsigned int start_index;
+		unsigned int length;
+		float max_life;
+	};
+	
 	struct EffectLookUpData {
-		unsigned int global_life;
-		unsigned int global_amount;
-		unsigned int global_velocity;
-		unsigned int global_width;
-		unsigned int global_height;
-		unsigned int global_weight;
-		unsigned int global_spin;
-		unsigned int global_effect_angle;
-		unsigned int global_stretch;
-		unsigned int global_overal_scale;
-		unsigned int global_opacity;
-		unsigned int global_frame_rate;
-		unsigned int global_splatter;
+		GraphLookupIndex global_life;
+		GraphLookupIndex global_amount;
+		GraphLookupIndex global_velocity;
+		GraphLookupIndex global_width;
+		GraphLookupIndex global_height;
+		GraphLookupIndex global_weight;
+		GraphLookupIndex global_spin;
+		GraphLookupIndex global_effect_angle;
+		GraphLookupIndex global_stretch;
+		GraphLookupIndex global_overal_scale;
+		GraphLookupIndex global_opacity;
+		GraphLookupIndex global_frame_rate;
+		GraphLookupIndex global_splatter;
 
-		unsigned int property_emission_angle;
-		unsigned int property_emission_range;
-		unsigned int property_emitter_angle;
-		unsigned int property_splatter;
-		unsigned int property_emitter_width;
-		unsigned int property_emitter_height;
-		unsigned int property_arc_size;
-		unsigned int property_arc_offset;
+		GraphLookupIndex property_emission_angle;
+		GraphLookupIndex property_emission_range;
+		GraphLookupIndex property_emitter_angle;
+		GraphLookupIndex property_splatter;
+		GraphLookupIndex property_emitter_width;
+		GraphLookupIndex property_emitter_height;
+		GraphLookupIndex property_arc_size;
+		GraphLookupIndex property_arc_offset;
 
-		unsigned int base_life;
-		unsigned int base_amount;
-		unsigned int base_velocity;
-		unsigned int base_width;
-		unsigned int base_height;
-		unsigned int base_weight;
-		unsigned int base_spin;
+		GraphLookupIndex base_life;
+		GraphLookupIndex base_amount;
+		GraphLookupIndex base_velocity;
+		GraphLookupIndex base_width;
+		GraphLookupIndex base_height;
+		GraphLookupIndex base_weight;
+		GraphLookupIndex base_spin;
 
-		unsigned int variation_life;
-		unsigned int variation_amount;
-		unsigned int variation_velocity;
-		unsigned int variation_width;
-		unsigned int variation_height;
-		unsigned int variation_weight;
-		unsigned int variation_spin;
-		unsigned int variation_motion_randomness;
+		GraphLookupIndex variation_life;
+		GraphLookupIndex variation_amount;
+		GraphLookupIndex variation_velocity;
+		GraphLookupIndex variation_width;
+		GraphLookupIndex variation_height;
+		GraphLookupIndex variation_weight;
+		GraphLookupIndex variation_spin;
+		GraphLookupIndex variation_motion_randomness;
 
-		unsigned int overtime_velocity;
-		unsigned int overtime_width;
-		unsigned int overtime_height;
-		unsigned int overtime_weight;
-		unsigned int overtime_spin;
-		unsigned int overtime_stretch;
-		unsigned int overtime_red;
-		unsigned int overtime_green;
-		unsigned int overtime_blue;
-		unsigned int overtime_opacity;
-		unsigned int overtime_frame_rate;
-		unsigned int overtime_motion_randomness;
-		unsigned int overtime_velocity_adjuster;
-		unsigned int overtime_intensity;
-		unsigned int overtime_direction;
+		GraphLookupIndex overtime_velocity;
+		GraphLookupIndex overtime_width;
+		GraphLookupIndex overtime_height;
+		GraphLookupIndex overtime_weight;
+		GraphLookupIndex overtime_spin;
+		GraphLookupIndex overtime_stretch;
+		GraphLookupIndex overtime_red;
+		GraphLookupIndex overtime_green;
+		GraphLookupIndex overtime_blue;
+		GraphLookupIndex overtime_opacity;
+		GraphLookupIndex overtime_frame_rate;
+		GraphLookupIndex overtime_motion_randomness;
+		GraphLookupIndex overtime_velocity_adjuster;
+		GraphLookupIndex overtime_intensity;
+		GraphLookupIndex overtime_direction;
 	};
 
 	struct Graph {
@@ -1269,7 +1275,8 @@ typedef std::chrono::high_resolution_clock Clock;
 		unsigned int variation;
 		unsigned int overtime;
 		//Experitment: index into the lookup index data in the effect library
-		unsigned int lookup_data_index;
+		unsigned int lookup_node_index;
+		unsigned int lookup_value_index;
 		//Index to animation settings stored in the effect library. Would like to move this at some point
 		unsigned int animation_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
@@ -1550,7 +1557,9 @@ typedef std::chrono::high_resolution_clock Clock;
 		//when updating particles and emitters. I'm starting to think towards getting this running in a compute shader, so will need data to be stored
 		//in buffers in one block as much as possible
 		tfxvec<AttributeNode> all_nodes;
-		tfxvec<EffectLookUpData> effect_lookup_indexes;
+		tfxvec<EffectLookUpData> node_lookup_indexes;
+		tfxvec<float> compiled_lookup_values;
+		tfxvec<EffectLookUpData> compiled_lookup_indexes;
 		//This could probably be stored globally
 		tfxvec<tfxVec4> graph_min_max;
 
@@ -1617,6 +1626,8 @@ typedef std::chrono::high_resolution_clock Clock;
 		void SetMinMaxData();
 		float LookupPreciseOvertimeNodeList(GraphType graph_type, int index, float age, float life);
 		float LookupPreciseNodeList(GraphType graph_type, int index, float age);
+		float LookupFastOvertimeValueList(GraphType graph_type, int index, float age, float life);
+		float LookupFastValueList(GraphType graph_type, int index, float age);
 
 		//Debug stuff, used to check graphs are being properly recycled
 		unsigned int CountOfGraphsInUse();
