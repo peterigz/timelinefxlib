@@ -106,13 +106,13 @@
 //Might possibly replace some of these in the future
 #include <fstream>					//std::basic_ofstream
 #include <sstream>					//std::basic_stringstream
-#include <string>					//std::string
+#include <stdio.h>
 #include <stdarg.h>					//va_list
 #include <chrono>					//std::chrono::high_resolution_clock
 #include <cctype>					//std::is_digit
-#include "Libraries/robin_map.h"	//tsl::robin_map
+#include <algorithm>
 #include <stdint.h>
-#include <math.h>
+#include <assert.h>
 
 namespace tfx {
 
@@ -335,6 +335,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxSInt,
 		tfxUint,
 		tfxFloat,
+		tfxDouble,
 		tfxBool
 	};
 	
@@ -706,6 +707,425 @@ typedef std::chrono::high_resolution_clock Clock;
 	inline float Interpolatef(float tween, float from, float to) {
 		return from * tween + to * (1.f - tween);
 	}
+
+	/*
+		MIT License
+
+		Copyright (c) 2018 Stephan Brumme
+
+		Permission is hereby granted, free of charge, to any person obtaining a copy
+		of this software and associated documentation files (the "Software"),
+		to deal in the Software without restriction, including without limitation
+		the rights to use, copy, modify, merge, publish, distribute, sublicense,
+		and/or sell copies of the Software, and to permit persons to whom the Software
+		is furnished to do so, subject to the following conditions:
+
+		The above copyright notice and this permission notice shall be included
+		in all copies or substantial portions of the Software.
+
+		THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+		INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+		PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+		HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+		OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+		SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+	/// XXHash (64 bit), based on Yann Collet's descriptions, see http://cyan4973.github.io/xxHash/
+	/** How to use:
+		uint64_t myseed = 0;
+		XXHash64 myhash(myseed);
+		myhash.add(pointerToSomeBytes,     numberOfBytes);
+		myhash.add(pointerToSomeMoreBytes, numberOfMoreBytes); // call add() as often as you like to ...
+		// and compute hash:
+		uint64_t result = myhash.hash();
+		// or all of the above in one single line:
+		uint64_t result2 = XXHash64::hash(mypointer, numBytes, myseed);
+		Note: my code is NOT endian-aware !
+	**/
+	class XXHash64
+	{
+	public:
+		/// create new XXHash (64 bit)
+		/** @param seed your seed value, even zero is a valid seed **/
+		explicit XXHash64(uint64_t seed)
+		{
+			state[0] = seed + Prime1 + Prime2;
+			state[1] = seed + Prime2;
+			state[2] = seed;
+			state[3] = seed - Prime1;
+			bufferSize = 0;
+			totalLength = 0;
+		}
+
+		/// add a chunk of bytes
+		/** @param  input  pointer to a continuous block of data
+			@param  length number of bytes
+			@return false if parameters are invalid / zero **/
+		bool add(const void* input, uint64_t length)
+		{
+			// no data ?
+			if (!input || length == 0)
+				return false;
+
+			totalLength += length;
+			// byte-wise access
+			const unsigned char* data = (const unsigned char*)input;
+
+			// unprocessed old data plus new data still fit in temporary buffer ?
+			if (bufferSize + length < MaxBufferSize)
+			{
+				// just add new data
+				while (length-- > 0)
+					buffer[bufferSize++] = *data++;
+				return true;
+			}
+
+			// point beyond last byte
+			const unsigned char* stop = data + length;
+			const unsigned char* stopBlock = stop - MaxBufferSize;
+
+			// some data left from previous update ?
+			if (bufferSize > 0)
+			{
+				// make sure temporary buffer is full (16 bytes)
+				while (bufferSize < MaxBufferSize)
+					buffer[bufferSize++] = *data++;
+
+				// process these 32 bytes (4x8)
+				process(buffer, state[0], state[1], state[2], state[3]);
+			}
+
+			// copying state to local variables helps optimizer A LOT
+			uint64_t s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
+			// 32 bytes at once
+			while (data <= stopBlock)
+			{
+				// local variables s0..s3 instead of state[0]..state[3] are much faster
+				process(data, s0, s1, s2, s3);
+				data += 32;
+			}
+			// copy back
+			state[0] = s0; state[1] = s1; state[2] = s2; state[3] = s3;
+
+			// copy remainder to temporary buffer
+			bufferSize = stop - data;
+			for (uint64_t i = 0; i < bufferSize; i++)
+				buffer[i] = data[i];
+
+			// done
+			return true;
+		}
+
+		/// get current hash
+		/** @return 64 bit XXHash **/
+		uint64_t hash() const
+		{
+			// fold 256 bit state into one single 64 bit value
+			uint64_t result;
+			if (totalLength >= MaxBufferSize)
+			{
+				result = rotateLeft(state[0], 1) +
+					rotateLeft(state[1], 7) +
+					rotateLeft(state[2], 12) +
+					rotateLeft(state[3], 18);
+				result = (result ^ processSingle(0, state[0])) * Prime1 + Prime4;
+				result = (result ^ processSingle(0, state[1])) * Prime1 + Prime4;
+				result = (result ^ processSingle(0, state[2])) * Prime1 + Prime4;
+				result = (result ^ processSingle(0, state[3])) * Prime1 + Prime4;
+			}
+			else
+			{
+				// internal state wasn't set in add(), therefore original seed is still stored in state2
+				result = state[2] + Prime5;
+			}
+
+			result += totalLength;
+
+			// process remaining bytes in temporary buffer
+			const unsigned char* data = buffer;
+			// point beyond last byte
+			const unsigned char* stop = data + bufferSize;
+
+			// at least 8 bytes left ? => eat 8 bytes per step
+			for (; data + 8 <= stop; data += 8)
+				result = rotateLeft(result ^ processSingle(0, *(uint64_t*)data), 27) * Prime1 + Prime4;
+
+			// 4 bytes left ? => eat those
+			if (data + 4 <= stop)
+			{
+				result = rotateLeft(result ^ (*(uint32_t*)data) * Prime1, 23) * Prime2 + Prime3;
+				data += 4;
+			}
+
+			// take care of remaining 0..3 bytes, eat 1 byte per step
+			while (data != stop)
+				result = rotateLeft(result ^ (*data++) * Prime5, 11) * Prime1;
+
+			// mix bits
+			result ^= result >> 33;
+			result *= Prime2;
+			result ^= result >> 29;
+			result *= Prime3;
+			result ^= result >> 32;
+			return result;
+		}
+
+
+		/// combine constructor, add() and hash() in one static function (C style)
+		/** @param  input  pointer to a continuous block of data
+			@param  length number of bytes
+			@param  seed your seed value, e.g. zero is a valid seed
+			@return 64 bit XXHash **/
+		static uint64_t hash(const void* input, uint64_t length, uint64_t seed)
+		{
+			XXHash64 hasher(seed);
+			hasher.add(input, length);
+			return hasher.hash();
+		}
+
+	private:
+		/// magic constants :-)
+		static const uint64_t Prime1 = 11400714785074694791ULL;
+		static const uint64_t Prime2 = 14029467366897019727ULL;
+		static const uint64_t Prime3 = 1609587929392839161ULL;
+		static const uint64_t Prime4 = 9650029242287828579ULL;
+		static const uint64_t Prime5 = 2870177450012600261ULL;
+
+		/// temporarily store up to 31 bytes between multiple add() calls
+		static const uint64_t MaxBufferSize = 31 + 1;
+
+		uint64_t      state[4];
+		unsigned char buffer[MaxBufferSize];
+		uint64_t      bufferSize;
+		uint64_t      totalLength;
+
+		/// rotate bits, should compile to a single CPU instruction (ROL)
+		static inline uint64_t rotateLeft(uint64_t x, unsigned char bits)
+		{
+			return (x << bits) | (x >> (64 - bits));
+		}
+
+		/// process a single 64 bit value
+		static inline uint64_t processSingle(uint64_t previous, uint64_t input)
+		{
+			return rotateLeft(previous + input * Prime2, 31) * Prime1;
+		}
+
+		/// process a block of 4x4 bytes, this is the main part of the XXHash32 algorithm
+		static inline void process(const void* data, uint64_t& state0, uint64_t& state1, uint64_t& state2, uint64_t& state3)
+		{
+			const uint64_t* block = (const uint64_t*)data;
+			state0 = processSingle(state0, block[0]);
+			state1 = processSingle(state1, block[1]);
+			state2 = processSingle(state2, block[2]);
+			state3 = processSingle(state3, block[3]);
+		}
+	};
+	//End of xxHash code
+
+	int FormatString(char* buf, size_t buf_size, const char* fmt, va_list args);
+
+	struct tfxText {
+		tfxvec<char> string;
+
+		tfxText() {}
+		tfxText(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (string.capacity < length) string.reserve((unsigned int)length); memcpy(string.data, text, length); string.current_size = (unsigned int)length; NullTerminate(); }
+		inline char operator[](unsigned int i) const { assert(i < string.current_size); return string[i]; }
+		inline char operator[](unsigned int i) { assert(i < string.current_size); return string[i]; }
+		inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (string.capacity < length) string.reserve((unsigned int)length); memcpy(string.data, text, length); string.current_size = (unsigned int)length; NullTerminate(); }
+		inline void operator=(const tfxText &label) { string = label.string; }
+		inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
+		inline bool operator==(const tfxText string) { return !strcmp(c_str(), string.c_str()); }
+		inline const char *c_str() const { return string.current_size ? string.data : ""; }
+		inline void Clear() { string.clear(); }
+		inline unsigned int Length() const { return string.current_size ? string.current_size - 1 : 0; }
+		void Appendf(const char *format, ...);
+		inline void Append(char c) { string.push_back(c); }
+		void NullTerminate() { string.push_back(NULL); }
+	};
+
+	typedef unsigned long long tfxKey;
+
+	//Simple storage map for storing things by key/pair. The data will be in order that you add items, but the map will be in key order so just do a foreach on the data
+	//and use At() to retrieve data items by name use [] overload to fetch by index if you have that.
+	//Should not be used to constantly insert/remove things every frame, it's designed for setting up lists and fetching values in loops (by index preferably), and modifying based on user interaction or setting up new situation.
+	//Note that if you reference things by index and you then remove something then that index may not be valid anymore so you would need to keep checks on that.
+	template<typename T>
+	struct tfxStorageMap {
+		struct pair {
+			tfxKey key;
+			unsigned int index;
+			pair(tfxKey k, unsigned int i) : key(k), index(i) {}
+		};
+
+		tfxvec<pair> map;
+		tfxvec<T> data;
+		void(*remove_callback)(T &item) = nullptr;
+
+		tfxStorageMap() {}
+
+		//Insert a new T value into the storage
+		inline void Insert(const char *name, const T &value) {
+			tfxKey key = XXHash64::hash(name, strlen(name), 0);
+			SetIndex(key, value);
+		}
+
+		//Insert a new T value into the storage
+		inline void Insert(tfxText name, const T &value) {
+			tfxKey key = XXHash64::hash(name.c_str(), name.Length(), 0);
+			SetIndex(key, value);
+		}
+
+		//Insert a new T value into the storage
+		inline void InsertByInt(int name, const T &value) {
+			tfxKey key = name;
+			SetIndex(key, value);
+		}
+
+		inline void Clear() {
+			data.clear();
+			map.clear();
+		}
+
+		inline unsigned int Size() {
+			return data.current_size;
+		}
+
+		inline unsigned int LastIndex() {
+			return data.current_size - 1;
+		}
+
+		inline bool ValidIndex(unsigned int index) {
+			return index < data.current_size;
+		}
+
+		inline bool ValidName(const char *name) {
+			return GetIndex(name) > -1;
+		}
+
+		inline bool ValidIntName(unsigned int name) {
+			return GetIntIndex(name) > -1;
+		}
+
+		inline bool ValidName(const tfxText &name) {
+			return GetIndex(name) > -1;
+		}
+
+		//Remove an item from the data. Slow function, 2 memmoves and then the map has to be iterated and indexes reduced by one
+		//to re-align them
+		inline void Remove(const char *name) {
+			tfxKey key = XXHash64::hash(name, strlen(name), 0);
+			pair *it = LowerBound(key);
+			if (remove_callback)
+				remove_callback(data[it->index]);
+			unsigned int index = it->index;
+			T* list_it = &data[index];
+			map.erase(it);
+			data.erase(list_it);
+			for (auto &p : map) {
+				if (p.index < index) continue;
+				p.index--;
+			}
+		}
+
+		//Remove an item from the data. Slow function, 2 memmoves and then the map has to be iterated and indexes reduced by one
+		//to re-align them
+		inline void RemoveInt(int name) {
+			tfxKey key = name;
+			pair *it = LowerBound(key);
+			if (remove_callback)
+				remove_callback(data[it->index]);
+			unsigned int index = it->index;
+			T* list_it = &data[index];
+			map.erase(it);
+			data.erase(list_it);
+			for (auto &p : map) {
+				if (p.index < index) continue;
+				p.index--;
+			}
+		}
+
+		inline T &At(const char *name) {
+			int index = GetIndex(name);
+			assert(index > -1);						//Key was not found
+			return data[index];
+		}
+
+		inline T &At(const tfxText &name) {
+			int index = GetIndex(name.c_str());
+			assert(index > -1);						//Key was not found
+			return data[index];
+		}
+
+		inline T &AtInt(int name) {
+			int index = GetIntIndex(name);
+			assert(index > -1);						//Key was not found
+			return data[index];
+		}
+
+		inline T &operator[](const unsigned int index) {
+			assert(index < data.current_size);		//Index was out of range
+			return data[index];
+		}
+
+		void SetIndex(tfxKey key, const T &value) {
+			pair* it = LowerBound(key);
+			if (it == map.end() || it->key != key)
+			{
+				data.push_back(value);
+				map.insert(it, pair(key, data.current_size - 1));
+				return;
+			}
+			data[it->index] = value;
+		}
+
+		int GetIndex(const char *name) {
+			tfxKey key = XXHash64::hash(name, strlen(name), 0);
+			pair* it = LowerBound(key);
+			if (it == map.end() || it->key != key)
+				return -1;
+			return it->index;
+		}
+
+		int GetIntIndex(int name) {
+			tfxKey key = name;
+			pair* it = LowerBound(key);
+			if (it == map.end() || it->key != key)
+				return -1;
+			return it->index;
+		}
+
+		int GetIndex(const tfxText &name) {
+			tfxKey key = XXHash64::hash(name.c_str(), name.Length(), 0);
+			pair* it = LowerBound(key);
+			if (it == map.end() || it->key != key)
+				return -1;
+			return it->index;
+		}
+
+		pair* LowerBound(tfxKey key)
+		{
+			tfxStorageMap::pair* first = map.data;
+			tfxStorageMap::pair* last = map.data + map.current_size;
+			size_t count = (size_t)(last - first);
+			while (count > 0)
+			{
+				size_t count2 = count >> 1;
+				tfxStorageMap::pair* mid = first + count2;
+				if (mid->key < key)
+				{
+					first = ++mid;
+					count -= count2 + 1;
+				}
+				else
+				{
+					count = count2;
+				}
+			}
+			return first;
+		}
+
+	};
 
 	//------------------------------------------------------------
 
@@ -1450,28 +1870,28 @@ typedef std::chrono::high_resolution_clock Clock;
 	};
 
 	struct EffectEmitterTemplate {
-		tsl::robin_map<std::string, EffectEmitter*> paths;
+		tfxStorageMap<EffectEmitter*> paths;
 		EffectEmitter effect_template;
 
-		void AddPath(EffectEmitter &effectemitter, std::string path) {
-			paths.insert_or_assign(path, &effectemitter);
+		void AddPath(EffectEmitter &effectemitter, tfxText path) {
+			paths.Insert(path, &effectemitter);
 			for (auto &sub : effectemitter.sub_effectors) {
-				std::string sub_path = path;
-				sub_path.append("/").append(sub.name);
+				tfxText sub_path = path;
+				sub_path.Appendf("/%s", sub.name);
 				AddPath(sub, sub_path);
 			}
 		}
 
 		inline EffectEmitter &Effect() { return effect_template; }
-		inline EffectEmitter *Get(std::string path) { if (paths.count(path)) return paths.at(path); return nullptr; }
-		inline void SetUserData(std::string path, void *data) { if(paths.count(path)) paths.at(path)->user_data = data; }
+		inline EffectEmitter *Get(tfxText path) { if (paths.ValidName(path)) return paths.At(path); return nullptr; }
+		inline void SetUserData(tfxText path, void *data) { if(paths.ValidName(path)) paths.At(path)->user_data = data; }
 		inline void SetUserData(void *data) { effect_template.user_data = data; }
 		void SetUserDataAll(void *data);
-		inline void SetUpdateCallback(std::string path, void(*update_callback)(EffectEmitter &effectemitter)) { if (paths.count(path)) paths.at(path)->update_callback = update_callback; }
+		inline void SetUpdateCallback(tfxText path, void(*update_callback)(EffectEmitter &effectemitter)) { if (paths.ValidName(path)) paths.At(path)->update_callback = update_callback; }
 		inline void SetUpdateCallback(void(*update_callback)(EffectEmitter &effectemitter)) { effect_template.update_callback = update_callback; }
 		void SetUpdateCallbackAll(void(*update_callback)(EffectEmitter &effectemitter));
-		void SetParticleUpdateCallback(std::string path, void(*particle_update_callback)(Particle &particle));
-		void SetParticleOnSpawnCallback(std::string path, void(*particle_onspawn_callback)(Particle &particle));
+		void SetParticleUpdateCallback(tfxText path, void(*particle_update_callback)(Particle &particle));
+		void SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(Particle &particle));
 	};
 
 	struct EffectEmitterSnapShot {
@@ -1559,9 +1979,9 @@ typedef std::chrono::high_resolution_clock Clock;
 	};
 
 	struct EffectLibrary {
-		tsl::robin_map<std::string, EffectEmitter*> effect_paths;
+		tfxStorageMap<EffectEmitter*> effect_paths;
 		tfxvec<EffectEmitter> effects;
-		tsl::robin_map<unsigned int, ImageData> particle_shapes;
+		tfxStorageMap<ImageData> particle_shapes;
 
 		tfxvec<GlobalAttributes> global_graphs;
 		tfxvec<PropertyAttributes> property_graphs;
@@ -1588,23 +2008,23 @@ typedef std::chrono::high_resolution_clock Clock;
 
 		//Get an effect from the library by index
 		EffectEmitter& operator[] (uint32_t index);
-		std::string name;
+		tfxText name;
 		bool open_library = false;
 		bool dirty = false;
-		std::string library_file_path;
+		tfxText library_file_path;
 		unsigned int uid = 0;
 
 		//Free everything in the library
 		void Clear();
 		//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
 		//You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
-		EffectEmitter *GetEffect(std::string path);
-		void PrepareEffectTemplate(std::string path, EffectEmitterTemplate &effect);
+		EffectEmitter *GetEffect(tfxText path);
+		void PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect);
 
 		//Mainly internal functions
 		EffectEmitter &AddEffect(EffectEmitter &effect);
 		void UpdateEffectPaths();
-		void AddPath(EffectEmitter &effectemitter, std::string path);
+		void AddPath(EffectEmitter &effectemitter, tfxText path);
 		void DeleteEffect(EffectEmitter *effect);
 		bool RenameEffect(EffectEmitter &effect, const char *new_name);
 		bool NameExists(EffectEmitter &effect, const char *name);
@@ -1727,15 +2147,16 @@ typedef std::chrono::high_resolution_clock Clock;
 
 	struct DataEntry {
 		DataType type;
-		std::string key;
-		std::string str_value;
+		tfxText key;
+		tfxText str_value;
 		int int_value;
 		bool bool_value;
 		float float_value;
+		double double_value;
 	};
 
 	struct DataTypesDictionary {
-		tsl::robin_map<size_t, DataType> eff;
+		tfxStorageMap<DataType> eff;
 
 		DataTypesDictionary();
 	};
@@ -1744,30 +2165,29 @@ typedef std::chrono::high_resolution_clock Clock;
 
 	//Internal functions
 	//Some file IO functions
-	bool HasDataValue(tsl::robin_map<std::string, DataEntry> &config, std::string key);
-	void AddDataValue(tsl::robin_map<std::string, DataEntry> &config, std::string key, std::string value);
-	void AddDataValue(tsl::robin_map<std::string, DataEntry> &config, std::string key, int value);
-	void AddDataValue(tsl::robin_map<std::string, DataEntry> &config, std::string key, bool value);
-	void AddDataValue(tsl::robin_map<std::string, DataEntry> &config, std::string key, float value);
-	std::string& GetDataStrValue(tsl::robin_map<std::string, DataEntry> &config, const char* key);
-	int& GetDataIntValue(tsl::robin_map<std::string, DataEntry> &config, const char* key);
-	float& GetDataFloatValue(tsl::robin_map<std::string, DataEntry> &config, const char* key);
-	void SaveDataFile(tsl::robin_map<std::string, DataEntry> &config, const char* path = "");
-	void LoadDataFile(tsl::robin_map<std::string, DataEntry> &config, const char* path);
+	bool HasDataValue(tfxStorageMap<DataEntry> &config, tfxText key);
+	void AddDataValue(tfxStorageMap<DataEntry> &config, tfxText key, const char *value);
+	void AddDataValue(tfxStorageMap<DataEntry> &config, tfxText key, int value);
+	void AddDataValue(tfxStorageMap<DataEntry> &config, tfxText key, bool value);
+	void AddDataValue(tfxStorageMap<DataEntry> &config, tfxText key, double value);
+	void AddDataValue(tfxStorageMap<DataEntry> &config, tfxText key, float value);
+	tfxText GetDataStrValue(tfxStorageMap<DataEntry> &config, const char* key);
+	int& GetDataIntValue(tfxStorageMap<DataEntry> &config, const char* key);
+	float& GetDataFloatValue(tfxStorageMap<DataEntry> &config, const char* key);
+	void SaveDataFile(tfxStorageMap<DataEntry> &config, const char* path = "");
+	void LoadDataFile(tfxStorageMap<DataEntry> &config, const char* path);
 	void StreamProperties(EmitterProperties &property, std::stringstream &file);
 	void StreamGraph(const char * name, Graph &graph, std::stringstream &file);
-	std::vector<std::string> SplitString(const std::string &s, char delim = 61);
-	bool StringIsUInt(const std::string &s);
-	int GetDataType(const std::string &s);
-	const std::string StringFormat(const char* format, ...);
-	const std::string vStringFormat(const char* format, va_list args);
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, uint32_t value);
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, float value);
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, bool value);
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, int value);
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, std::string &value);
-	void AssignGraphData(EffectEmitter &effect, std::vector<std::string> &values);
-	void AssignNodeData(AttributeNode &node, std::vector<std::string> &values);
+	tfxvec<tfxText> SplitString(const tfxText &s, char delim = 61);
+	bool StringIsUInt(const tfxText &s);
+	int GetDataType(const tfxText &s);
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, uint32_t value);
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, float value);
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, bool value);
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, int value);
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value);
+	void AssignGraphData(EffectEmitter &effect, tfxvec<tfxText> &values);
+	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
 	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
 	void TransformParticle(Particle &p, EffectEmitter &e);
 	void TransformParticlePrevious(Particle &p, EffectEmitter &e);
@@ -1776,7 +2196,6 @@ typedef std::chrono::high_resolution_clock Clock;
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectLibrary(const char *filename);
-	void LoadEffectData(EffectEmitter &e, std::vector<std::string> &pair);
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
 
 	//Helper functions

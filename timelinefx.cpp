@@ -2,6 +2,44 @@
 #include "Libraries/miniz.h"
 
 namespace tfx {
+	int FormatString(char* buf, size_t buf_size, const char* fmt, va_list args) {
+		int w = vsnprintf(buf, buf_size, fmt, args);
+		if (buf == NULL)
+			return w;
+		if (w == -1 || w >= (int)buf_size)
+			w = (int)buf_size - 1;
+		buf[w] = 0;
+		return w;
+	}
+
+	void tfxText::Appendf(const char *format, ...) {
+		va_list args;
+		va_start(args, format);
+
+		va_list args_copy;
+		va_copy(args_copy, args);
+
+		int len = FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		if (len <= 0)
+		{
+			va_end(args_copy);
+			return;
+		}
+
+		const int write_off = (string.size() != 0) ? string.size() : 1;
+		const int needed_sz = write_off + len;
+		if (write_off + (unsigned int)len >= string.capacity)
+		{
+			int new_capacity = string.capacity * 2;
+			string.reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
+		}
+
+		string.resize(needed_sz);
+		FormatString(&string[write_off - 1], (size_t)len + 1, format, args_copy);
+		va_end(args_copy);
+
+		va_end(args);
+	}
 
 	EffectEmitter::~EffectEmitter() {
 		sub_effectors.free_all();
@@ -1752,6 +1790,8 @@ namespace tfx {
 			return &((Graph*)&library->overtime_graphs[overtime])[ref];
 		}
 
+		return nullptr;
+
 	}
 
 	unsigned int EffectEmitter::GetGraphIndexByType(GraphType type) {
@@ -1771,6 +1811,10 @@ namespace tfx {
 		else if (type >= tfxOvertimeCount) {
 			return overtime;
 		}
+
+		assert(0);	//Unable to find a graph of that type (shouldn't happend)
+
+		return 0;
 
 	}
 
@@ -1891,16 +1935,16 @@ namespace tfx {
 
 	void EffectLibrary::UpdateEffectPaths() {
 		for (auto &e : effects) {
-			std::string path = e.name;
+			tfxText path = e.name;
 			AddPath(e, path);
 		}
 	}
 
-	void EffectLibrary::AddPath(EffectEmitter &effectemitter, std::string path) {
-		effect_paths.insert_or_assign(path, &effectemitter);
+	void EffectLibrary::AddPath(EffectEmitter &effectemitter, tfxText path) {
+		effect_paths.Insert(path, &effectemitter);
 		for (auto &sub : effectemitter.sub_effectors) {
-			std::string sub_path = path;
-			sub_path.append("/").append(sub.name);
+			tfxText sub_path = path;
+			sub_path.Appendf("/%s", sub.name);
 			AddPath(sub, sub_path);
 		}
 	}
@@ -1916,12 +1960,12 @@ namespace tfx {
 		return effects.back();
 	}
 
-	EffectEmitter* EffectLibrary::GetEffect(std::string path) {
-		assert(effect_paths.count(path) > 0);
-		return effect_paths.at(path);
+	EffectEmitter* EffectLibrary::GetEffect(tfxText path) {
+		assert(effect_paths.ValidName(path));
+		return effect_paths.At(path);
 	}
 
-	void EffectLibrary::PrepareEffectTemplate(std::string path, EffectEmitterTemplate &effect_template) {
+	void EffectLibrary::PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect_template) {
 		EffectEmitter *effect = GetEffect(path);
 		assert(effect);
 		assert(effect->type == tfxEffect);
@@ -1941,10 +1985,10 @@ namespace tfx {
 	void EffectLibrary::UpdateParticleShapeReferences(tfxvec<EffectEmitter> &effects, unsigned int default_index) {
 		for (auto &effect : effects) {
 			for (auto &emitter : effect.sub_effectors) {
-				if(particle_shapes.count(emitter.properties.shape_index)) 
-					emitter.properties.image = &particle_shapes.at(emitter.properties.shape_index);
+				if(particle_shapes.ValidIntName(emitter.properties.shape_index)) 
+					emitter.properties.image = &particle_shapes.AtInt(emitter.properties.shape_index);
 				else
-					emitter.properties.image = &particle_shapes.at(default_index);
+					emitter.properties.image = &particle_shapes.AtInt(default_index);
 				UpdateParticleShapeReferences(emitter.sub_effectors, default_index);
 			}
 		}
@@ -2107,7 +2151,7 @@ namespace tfx {
 			e.FreeGraphs();
 		}
 		effects.free_all();
-		particle_shapes.clear();
+		particle_shapes.Clear();
 		global_graphs.free_all();
 		property_graphs.free_all();
 		base_graphs.free_all();
@@ -2549,94 +2593,94 @@ namespace tfx {
 	}
 
 	DataTypesDictionary::DataTypesDictionary() {
-		std::hash<std::string> hasher;
-		eff[hasher("image_index")] = tfxUint;
-		eff[hasher("image_handle_x")] = tfxFloat;
-		eff[hasher("image_handle_y")] = tfxFloat;
-		eff[hasher("spawn_amount")] = tfxUint;
-		eff[hasher("blend_mode")] = tfxSInt;
-		eff[hasher("image_start_frame")] = tfxFloat;
-		eff[hasher("image_end_frame")] = tfxFloat;
+		eff.Insert("name", tfxString);
+		eff.Insert("image_index", tfxUint);
+		eff.Insert("image_handle_x", tfxFloat);
+		eff.Insert("image_handle_y", tfxFloat);
+		eff.Insert("spawn_amount", tfxUint);
+		eff.Insert("blend_mode", tfxSInt);
+		eff.Insert("image_start_frame", tfxFloat);
+		eff.Insert("image_end_frame", tfxFloat);
 
-		eff[hasher("emission_type")] = tfxSInt;
-		eff[hasher("emission_direction")] = tfxSInt;
-		eff[hasher("grid_rows")] = tfxFloat;
-		eff[hasher("grid_columns")] = tfxFloat;
-		eff[hasher("loop_length")] = tfxFloat;
-		eff[hasher("emitter_handle_x")] = tfxFloat;
-		eff[hasher("emitter_handle_y")] = tfxFloat;
-		eff[hasher("end_behaviour")] = tfxSInt;
-		eff[hasher("angle_setting")] = tfxSInt;
-		eff[hasher("angle_offset")] = tfxFloat;
-		eff[hasher("multiply_blend_factor")] = tfxFloat;
+		eff.Insert("emission_type", tfxSInt);
+		eff.Insert("emission_direction", tfxSInt);
+		eff.Insert("grid_rows", tfxFloat);
+		eff.Insert("grid_columns", tfxFloat);
+		eff.Insert("loop_length", tfxFloat);
+		eff.Insert("emitter_handle_x", tfxFloat);
+		eff.Insert("emitter_handle_y", tfxFloat);
+		eff.Insert("end_behaviour", tfxSInt);
+		eff.Insert("angle_setting", tfxSInt);
+		eff.Insert("angle_offset", tfxFloat);
+		eff.Insert("multiply_blend_factor", tfxFloat);
 
-		eff[hasher("random_color")] = tfxBool;
-		eff[hasher("relative_position")] = tfxBool;
-		eff[hasher("relative_angle")] = tfxBool;
-		eff[hasher("image_handle_auto_center")] = tfxBool;
-		eff[hasher("single")] = tfxBool;
-		eff[hasher("one_shot")] = tfxBool;
-		eff[hasher("spawn_on_grid")] = tfxBool;
-		eff[hasher("grid_spawn_clockwise")] = tfxBool;
-		eff[hasher("fill_area")] = tfxBool;
-		eff[hasher("emitter_handle_auto_center")] = tfxBool;
-		eff[hasher("edge_traversal")] = tfxBool;
-		eff[hasher("image_reverse_animation")] = tfxBool;
-		eff[hasher("image_play_once")] = tfxBool;
-		eff[hasher("image_animate")] = tfxBool;
-		eff[hasher("image_random_start_frame")] = tfxBool;
-		eff[hasher("global_uniform_size")] = tfxBool;
-		eff[hasher("base_uniform_size")] = tfxBool;
-		eff[hasher("lifetime_uniform_size")] = tfxBool;
+		eff.Insert("random_color", tfxBool);
+		eff.Insert("relative_position", tfxBool);
+		eff.Insert("relative_angle", tfxBool);
+		eff.Insert("image_handle_auto_center", tfxBool);
+		eff.Insert("single", tfxBool);
+		eff.Insert("one_shot", tfxBool);
+		eff.Insert("spawn_on_grid", tfxBool);
+		eff.Insert("grid_spawn_clockwise", tfxBool);
+		eff.Insert("fill_area", tfxBool);
+		eff.Insert("emitter_handle_auto_center", tfxBool);
+		eff.Insert("edge_traversal", tfxBool);
+		eff.Insert("image_reverse_animation", tfxBool);
+		eff.Insert("image_play_once", tfxBool);
+		eff.Insert("image_animate", tfxBool);
+		eff.Insert("image_random_start_frame", tfxBool);
+		eff.Insert("global_uniform_size", tfxBool);
+		eff.Insert("base_uniform_size", tfxBool);
+		eff.Insert("lifetime_uniform_size", tfxBool);
 
-		eff[hasher("frames")] = tfxUint;
-		eff[hasher("current_frame")] = tfxUint;
-		eff[hasher("frame_offset")] = tfxUint;
-		eff[hasher("layer")] = tfxUint;
-		eff[hasher("position_x")] = tfxFloat;
-		eff[hasher("position_y")] = tfxFloat;
-		eff[hasher("frame_width")] = tfxFloat;
-		eff[hasher("frame_height")] = tfxFloat;
-		eff[hasher("loop")] = tfxBool;
-		eff[hasher("seamless")] = tfxBool;
-		eff[hasher("seed")] = tfxUint;
-		eff[hasher("zoom")] = tfxFloat;
-		eff[hasher("scale")] = tfxFloat;
-		eff[hasher("color_option")] = tfxSInt;
-		eff[hasher("export_option")] = tfxSInt;
-		eff[hasher("export_with_transparency")] = tfxBool;
+		eff.Insert("frames", tfxUint);
+		eff.Insert("current_frame", tfxUint);
+		eff.Insert("frame_offset", tfxUint);
+		eff.Insert("layer", tfxUint);
+		eff.Insert("position_x", tfxFloat);
+		eff.Insert("position_y", tfxFloat);
+		eff.Insert("frame_width", tfxFloat);
+		eff.Insert("frame_height", tfxFloat);
+		eff.Insert("loop", tfxBool);
+		eff.Insert("seamless", tfxBool);
+		eff.Insert("seed", tfxUint);
+		eff.Insert("zoom", tfxFloat);
+		eff.Insert("scale", tfxFloat);
+		eff.Insert("color_option", tfxSInt);
+		eff.Insert("export_option", tfxSInt);
+		eff.Insert("export_with_transparency", tfxBool);
 
 		//Editor config, move this to the editor
-		eff[hasher("only_play_selected_emitter")] = tfxBool;
-		eff[hasher("load_examples")] = tfxBool;
-		eff[hasher("load_last_file")] = tfxBool;
-		eff[hasher("load_last_file_path")] = tfxString;
-		eff[hasher("recent1")] = tfxString;
-		eff[hasher("recent2")] = tfxString;
-		eff[hasher("recent3")] = tfxString;
-		eff[hasher("recent4")] = tfxString;
-		eff[hasher("background_color_red")] = tfxFloat;
-		eff[hasher("background_color_green")] = tfxFloat;
-		eff[hasher("background_color_blue")] = tfxFloat;
-		eff[hasher("use_checker_background")] = tfxBool;
-		eff[hasher("preview_zoom")] = tfxFloat;
-		eff[hasher("updates_per_second")] = tfxFloat;
-		eff[hasher("background_image")] = tfxString;
-		eff[hasher("use_background_image")] = tfxBool;
-		eff[hasher("background_image_scale_x")] = tfxFloat;
-		eff[hasher("background_image_scale_y")] = tfxFloat;
-		eff[hasher("background_image_offset_x")] = tfxFloat;
-		eff[hasher("background_image_offset_y")] = tfxFloat;
-		eff[hasher("autoplay_effect")] = tfxSInt;
-		eff[hasher("sync_refresh_rate")] = tfxBool;
-		eff[hasher("window_maximised")] = tfxBool;
-		eff[hasher("window_width")] = tfxSInt;
-		eff[hasher("window_height")] = tfxSInt;
-		eff[hasher("show_emitter_positions")] = tfxBool;
-		eff[hasher("dpi_factor")] = tfxFloat;
-		eff[hasher("graph_lookup_mode")] = tfxSInt;
-		eff[hasher("show_tool_tips")] = tfxBool;
-		eff[hasher("preview_trail_mode")] = tfxBool;
+		eff.Insert("only_play_selected_emitter", tfxBool);
+		eff.Insert("load_examples", tfxBool);
+		eff.Insert("load_last_file", tfxBool);
+		eff.Insert("load_last_file_path", tfxString);
+		eff.Insert("recent1", tfxString);
+		eff.Insert("recent2", tfxString);
+		eff.Insert("recent3", tfxString);
+		eff.Insert("recent4", tfxString);
+		eff.Insert("background_color_red", tfxFloat);
+		eff.Insert("background_color_green", tfxFloat);
+		eff.Insert("background_color_blue", tfxFloat);
+		eff.Insert("use_checker_background", tfxBool);
+		eff.Insert("preview_zoom", tfxFloat);
+		eff.Insert("updates_per_second", tfxFloat);
+		eff.Insert("background_image", tfxString);
+		eff.Insert("use_background_image", tfxBool);
+		eff.Insert("background_image_scale_x", tfxFloat);
+		eff.Insert("background_image_scale_y", tfxFloat);
+		eff.Insert("background_image_offset_x", tfxFloat);
+		eff.Insert("background_image_offset_y", tfxFloat);
+		eff.Insert("autoplay_effect", tfxSInt);
+		eff.Insert("sync_refresh_rate", tfxBool);
+		eff.Insert("window_maximised", tfxBool);
+		eff.Insert("window_width", tfxSInt);
+		eff.Insert("window_height", tfxSInt);
+		eff.Insert("show_emitter_positions", tfxBool);
+		eff.Insert("dpi_factor", tfxFloat);
+		eff.Insert("graph_lookup_mode", tfxSInt);
+		eff.Insert("show_tool_tips", tfxBool);
+		eff.Insert("preview_trail_mode", tfxBool);
 	}
 
 	int ValidateEffectLibrary(const char *filename) {
@@ -2669,11 +2713,7 @@ namespace tfx {
 		return error;
 	}
 
-	void LoadEffectData(EffectEmitter &e, std::vector<std::string> &pair) {
-		//Guess we just delete this?
-	}
-
-	void AssignGraphData(EffectEmitter &effect, std::vector<std::string> &values) {
+	void AssignGraphData(EffectEmitter &effect, tfxvec<tfxText> &values) {
 		if (values.size() > 0) {
 			if (values[0] == "global_amount") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].amount.AddNode(n); }
 			if (values[0] == "global_effect_angle") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].effect_angle.AddNode(n); }
@@ -2740,19 +2780,19 @@ namespace tfx {
 		}
 	}
 
-	void AssignNodeData(AttributeNode &n, std::vector<std::string> &values) {
-		n.frame = std::stof(values[1]);
-		n.value = std::stof(values[2]);
-		n.is_curve = (bool)std::stoi(values[3]);
-		n.left.x = std::stof(values[4]);
-		n.left.y = std::stof(values[5]);
-		n.right.x = std::stof(values[6]);
-		n.right.y = std::stof(values[7]);
+	void AssignNodeData(AttributeNode &n, tfxvec<tfxText> &values) {
+		n.frame = (float)atof(values[1].c_str());
+		n.value = (float)atof(values[2].c_str());
+		n.is_curve = (bool)atoi(values[3].c_str());
+		n.left.x = (float)atof(values[4].c_str());
+		n.left.y = (float)atof(values[5].c_str());
+		n.right.x = (float)atof(values[6].c_str());
+		n.right.y = (float)atof(values[7].c_str());
 		if (n.is_curve)
 			n.curves_initialised = true;
 	}
 
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, uint32_t value) {
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, uint32_t value) {
 		if (field == "image_index")
 			effect.properties.shape_index = value;
 		if (field == "spawn_amount")
@@ -2766,7 +2806,7 @@ namespace tfx {
 		if (field == "layer")
 			effect.properties.layer = value;
 	}
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, int value) {
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, int value) {
 		if (field == "emission_type")
 			effect.properties.emission_type = (EmissionType)value;
 		if (field == "emission_direction")
@@ -2782,11 +2822,11 @@ namespace tfx {
 		if (field == "end_behaviour")
 			effect.properties.end_behaviour = (LineTraversalEndBehaviour)value;
 	}
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, std::string &value) {
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value) {
 		if (field == "name")
 			strcpy_s(effect.name, 64, value.c_str());
 	}
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, float value) {
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, float value) {
 		if (field == "position_x")
 			effect.library->animation_settings[effect.animation_settings].position.x = value;
 		if (field == "position_y")
@@ -2820,7 +2860,7 @@ namespace tfx {
 		if (field == "angle_offset")
 			effect.properties.angle_offset = value;
 	}
-	void AssignEffectorProperty(EffectEmitter &effect, std::string &field, bool value) {
+	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, bool value) {
 		if (field == "loop")
 			effect.library->animation_settings[effect.animation_settings].loop = value;
 		if (field == "seamless")
@@ -4194,76 +4234,84 @@ namespace tfx {
 		update_base_values = true;
 	}
 
-	bool HasDataValue(tsl::robin_map<std::string, DataEntry> &config, std::string key) {
-		return config.count(key) > 0;
+	bool HasDataValue(tfxStorageMap<DataEntry> &config, tfxText key) {
+		return config.ValidName(key);
 	}
 
-	void AddDataValue(tsl::robin_map<std::string, DataEntry> &map, std::string key, std::string value) {
+	void AddDataValue(tfxStorageMap<DataEntry> &map, tfxText key, const char *value) {
 		DataEntry entry;
 		entry.type = tfxString;
 		entry.key = key;
 		entry.str_value = value;
-		map[key] = entry;
+		map.Insert(key, entry);
 	}
 
-	void AddDataValue(tsl::robin_map<std::string, DataEntry> &map, std::string key, int value) {
+	void AddDataValue(tfxStorageMap<DataEntry> &map, tfxText key, int value) {
 		DataEntry entry;
 		entry.type = tfxSInt;
 		entry.key = key;
 		entry.int_value = value;
 		entry.bool_value = (bool)value;
-		map[key] = entry;
+		map.Insert(key, entry);
 	}
 
-	void AddDataValue(tsl::robin_map<std::string, DataEntry> &map, std::string key, bool value) {
+	void AddDataValue(tfxStorageMap<DataEntry> &map, tfxText key, bool value) {
 		DataEntry entry;
 		entry.type = tfxBool;
 		entry.key = key;
 		entry.bool_value = value;
 		entry.int_value = (int)value;
-		map[key] = entry;
+		map.Insert(key, entry);
 	}
 
-	void AddDataValue(tsl::robin_map<std::string, DataEntry> &map, std::string key, float value) {
+	void AddDataValue(tfxStorageMap<DataEntry> &map, tfxText key, double value) {
+		DataEntry entry;
+		entry.type = tfxDouble;
+		entry.key = key;
+		entry.double_value = value;
+		map.Insert(key, entry);
+	}
+
+	void AddDataValue(tfxStorageMap<DataEntry> &map, tfxText key, float value) {
 		DataEntry entry;
 		entry.type = tfxFloat;
 		entry.key = key;
 		entry.float_value = value;
-		map[key] = entry;
+		map.Insert(key, entry);
 	}
 
-	std::string& GetDataStrValue(tsl::robin_map<std::string, DataEntry> &map, const char* key) {
-		return map[key].str_value;
+	tfxText GetDataStrValue(tfxStorageMap<DataEntry> &map, const char* key) {
+		return map.At(key).str_value;
 	}
-	int& GetDataIntValue(tsl::robin_map<std::string, DataEntry> &map, const char* key) {
-		return map[key].int_value;
+	int& GetDataIntValue(tfxStorageMap<DataEntry> &map, const char* key) {
+		return map.At(key).int_value;
 	}
-	float& GetDataFloatValue(tsl::robin_map<std::string, DataEntry> &map, const char* key) {
-		return map[key].float_value;
+	float& GetDataFloatValue(tfxStorageMap<DataEntry> &map, const char* key) {
+		return map.At(key).float_value;
 	}
 
-	void SaveDataFile(tsl::robin_map<std::string, DataEntry> &map, const char* path) {
+	void SaveDataFile(tfxStorageMap<DataEntry> &map, const char* path) {
 		std::ofstream file(path);
 
-		if (map.size()) {
-			for (auto &entry : map) {
-				std::string ini_line = entry.first;
-				ini_line.append("=");
-				switch (entry.second.type) {
+		if (map.Size()) {
+			for (auto &entry : map.data) {
+				tfxText ini_line = entry.key;
+				ini_line.Appendf("=");
+				switch (entry.type) {
 				case tfxString:
-					ini_line.append(entry.second.str_value.c_str());
+					ini_line.Appendf(entry.str_value.c_str());
 					break;
 				case tfxSInt:
-					ini_line.append(StringFormat("%i", entry.second.int_value));
+					ini_line.Appendf("%i", entry.int_value);
 					break;
 				case tfxFloat:
-					ini_line.append(StringFormat("%f", entry.second.float_value));
+					ini_line.Appendf("%f", entry.float_value);
 					break;
 				case tfxBool:
-					ini_line.append(StringFormat("%i", (int)entry.second.bool_value));
+					ini_line.Appendf("%i", (int)entry.bool_value);
 					break;
 				}
-				ini_line.append("\n");
+				ini_line.Appendf("\n");
 				file << ini_line.c_str();
 			}
 		}
@@ -4272,108 +4320,80 @@ namespace tfx {
 
 	}
 
-	void LoadDataFile(tsl::robin_map<std::string, DataEntry> &map, const char* path) {
-		std::ifstream file(path);
-
-		if (!file.good())
+	void LoadDataFile(tfxStorageMap<DataEntry> &map, const char* path) {
+		FILE* fp;
+		fp = fopen(path, "r");
+		if (fp == NULL) {
 			return;
+		}
 
-		std::hash<std::string> hasher;
+		const size_t max_line_length = 256;
+		char buffer[max_line_length];
 
-		while (!file.eof()) {
-			std::string str;
-			std::getline(file, str);
-			std::vector<std::string> pair = SplitString(str, 61);
+		while (fgets(buffer, max_line_length, fp)) {
+			buffer[strcspn(buffer, "\n")] = 0;
+			tfxText str = buffer;
+			tfxvec<tfxText> pair = SplitString(str, 61);
 			if (pair.size() == 2) {
-				std::string key = pair[0];
-				int t = data_types.eff[hasher(pair[0])];
+				tfxText key = pair[0];
+				DataType t = data_types.eff.At(pair[0]);
 				if (t == tfxBool) {
-					AddDataValue(map, key, (bool)std::stoi(pair[1].c_str()));
+					AddDataValue(map, key, (bool)atoi(pair[1].c_str()));
 				}
 				if (t == tfxSInt) {
-					AddDataValue(map, key, std::stoi(pair[1].c_str()));
+					AddDataValue(map, key, atoi(pair[1].c_str()));
 				}
 				else if(t == tfxFloat) {
-					AddDataValue(map, key, std::stof(pair[1].c_str()));
+					AddDataValue(map, key, (float)atof(pair[1].c_str()));
 				}
 				else if (t == tfxString) {
-					AddDataValue(map, key, std::string(pair[1].c_str()));
+					AddDataValue(map, key, pair[1].c_str());
 				}
 			}
 		}
 
-		file.close();
+		int close = fclose(fp);
 
 	}
 
-	std::vector<std::string> SplitString(const std::string &str, char delim) {
-		std::vector<std::string> ret;
-		std::stringstream ss(str);
+	tfxvec<tfxText> SplitString(const tfx::tfxText &str, char delim) {
+		tfxvec<tfxText> ret;
+		std::stringstream ss(str.c_str());
 		std::string item;
 
 		while (std::getline(ss, item, delim)) {
-			ret.push_back(item);
+			ret.push_back(item.c_str());
 		}
 
 		return ret;
 	}
 
-	bool StringIsUInt(const std::string &s) {
-		std::string::const_iterator it = s.begin();
-		while (it != s.end() && std::isdigit(*it)) ++it;
-		return !s.empty() && it == s.end();
+	bool StringIsUInt(const tfxText &s) {
+
+		for (auto c : s.string) {
+			if (!std::isdigit(c) && c != 0)
+				return false;
+		}
+
+		return true;
 	}
 
-	int GetDataType(const std::string &s) {
-		if (s.size() == 0)
+	int GetDataType(const tfxText &s) {
+		if (s.Length() == 0)
 			return tfxString;
 
 		if (s[0] >= 48 && s[0] <= 57) {
 			size_t size;
-			auto int_check = std::stoi(s, &size);
-			if (size == s.length())
+			auto int_check = std::stoi(s.c_str(), &size);
+			if (size == s.Length())
 				return tfxSInt;
 
-			auto float_check = std::stof(s, &size);
-			if (size == s.length())
+			auto float_check = std::stof(s.c_str(), &size);
+			if (size == s.Length())
 				return tfxFloat;
 		}
 
 		return tfxString;
-	}
-
-	const std::string StringFormat(const char *format, ...) {
-		va_list args;
-		va_start(args, format);
-		std::string output = vStringFormat(format, args);
-		va_end(args);
-		return output;
-	}
-
-	const std::string vStringFormat(const char* format, va_list args) {
-		std::string output;
-		va_list tmpargs;
-
-		va_copy(tmpargs, args);
-		int characters_used = vsnprintf(nullptr, 0, format, tmpargs);
-		va_end(tmpargs);
-
-		// Looks like we have a valid format string.
-		if (characters_used > 0) {
-			output.resize(characters_used + 1);
-
-			va_copy(tmpargs, args);
-			characters_used = vsnprintf(&output[0], output.capacity(), format, tmpargs);
-			va_end(tmpargs);
-
-			output.resize(characters_used);
-
-			// We shouldn't have a format error by this point, but I can't imagine what error we
-			// could have by this point. Still, return empty string;
-			if (characters_used < 0)
-				output.clear();
-		}
-		return output;
 	}
 
 	//Get a graph by GraphID
@@ -4399,6 +4419,10 @@ namespace tfx {
 			int ref = type - tfxOvertimeStart;
 			return ((Graph*)&library.overtime_graphs[graph_id.graph_id])[ref];
 		}
+
+		assert(0);	//This function must return a value, make sure the graph_id is valid
+
+		return((Graph*)&library.overtime_graphs[graph_id.graph_id])[type];
 
 	}
 
@@ -4448,16 +4472,16 @@ namespace tfx {
 			std::string line;
 			std::getline(d, line);
 			bool context_set = false;
-			if (StringIsUInt(line) && context != tfxStartShapes) {
-				context = std::stoi(line);
+			if (StringIsUInt(line.c_str()) && context != tfxStartShapes) {
+				context = atoi(line.c_str());
 				if (context == tfxEndShapes)
 					break;
 				context_set = true;
 			}
 			if (context_set == false) {
-				std::vector<std::string> pair = SplitString(std::string(line));
+				tfxvec<tfxText> pair = SplitString(std::string(line).c_str());
 				if (pair.size() != 2) {
-					pair = SplitString(std::string(line), 44);
+					pair = SplitString(std::string(line).c_str(), 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
@@ -4465,7 +4489,7 @@ namespace tfx {
 				}
 				if (context == tfxStartShapes) {
 					if (pair.size() >= 5) {
-						int frame_count = std::stoi(pair[2]);
+						int frame_count = atoi(pair[2].c_str());
 						shape_count += frame_count;
 					}
 				}
@@ -4519,8 +4543,8 @@ namespace tfx {
 			std::getline(d, line);
 			bool context_set = false;
 
-			if (StringIsUInt(line) && context != tfxStartShapes) {
-				context = std::stoi(line);
+			if (StringIsUInt(line.c_str()) && context != tfxStartShapes) {
+				context = atoi(line.c_str());
 				if (context == tfxEndShapes)
 					break;
 				context_set = true;
@@ -4550,30 +4574,28 @@ namespace tfx {
 			}
 
 			if (context_set == false) {
-				std::vector<std::string> pair = SplitString(std::string(line));
+				tfxvec<tfxText> pair = SplitString(line.c_str());
 				if (pair.size() != 2) {
-					pair = SplitString(std::string(line), 44);
+					pair = SplitString(line.c_str(), 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
 					}
 				}
 
-				std::hash<std::string> hasher;
-
 				if (context == tfxStartEffect) {
-					switch (data_types.eff[hasher(pair[0])]) {
+					switch (data_types.eff.At(pair[0])) {
 					case tfxUint:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (unsigned int)atoi(pair[1].c_str()));
 						break;
 					case tfxFloat:
-						AssignEffectorProperty(effect_stack.back(), pair[0], std::stof(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
 						break;
 					case tfxSInt:
-						AssignEffectorProperty(effect_stack.back(), pair[0], std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
 						break;
 					case tfxBool:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)(atoi(pair[1].c_str())));
 						break;
 					case tfxString:
 						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
@@ -4582,18 +4604,18 @@ namespace tfx {
 				}
 
 				if (context == tfxStartAnimationSettings) {
-					switch (data_types.eff[hasher(pair[0])]) {
+					switch (data_types.eff.At(pair[0])) {
 					case tfxUint:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)atoi(pair[1].c_str()));
 						break;
 					case tfxFloat:
-						AssignEffectorProperty(effect_stack.back(), pair[0], std::stof(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
 						break;
 					case tfxSInt:
-						AssignEffectorProperty(effect_stack.back(), pair[0], std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
 						break;
 					case tfxBool:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)atoi(pair[1].c_str()));
 						break;
 					case tfxString:
 						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
@@ -4602,18 +4624,18 @@ namespace tfx {
 				}
 
 				if (context == tfxStartEmitter) {
-					switch (data_types.eff[hasher(pair[0])]) {
+					switch (data_types.eff.At(pair[0])) {
 					case tfxUint:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)atoi(pair[1].c_str()));
 						break;
 					case tfxFloat:
-						AssignEffectorProperty(effect_stack.back(), pair[0], std::stof(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
 						break;
 					case tfxSInt:
-						AssignEffectorProperty(effect_stack.back(), pair[0], std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
 						break;
 					case tfxBool:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)std::stoi(pair[1]));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)atoi(pair[1].c_str()));
 						break;
 					case tfxString:
 						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
@@ -4633,12 +4655,12 @@ namespace tfx {
 					if (pair.size() >= 5) {
 						ShapeData s;
 						strcpy_s(s.name, pair[0].c_str());
-						s.shape_index = std::stoi(pair[1]);
-						s.frame_count = std::stoi(pair[2]);
-						s.width = std::stoi(pair[3]);
-						s.height = std::stoi(pair[4]);
+						s.shape_index = atoi(pair[1].c_str());
+						s.frame_count = atoi(pair[2].c_str());
+						s.width = atoi(pair[3].c_str());
+						s.height = atoi(pair[4].c_str());
 						if (pair.size() > 5)
-							s.import_filter = std::stoi(pair[5]);
+							s.import_filter = atoi(pair[5].c_str());
 						if (s.import_filter < 0 || s.import_filter>1)
 							s.import_filter = 0;
 
@@ -4657,7 +4679,7 @@ namespace tfx {
 							uid = -5;
 							break;
 						}
-						lib.particle_shapes.insert(std::pair<unsigned int, ImageData>(s.shape_index, image_data));
+						lib.particle_shapes.InsertByInt(s.shape_index, image_data);
 						free(tmp);
 					}
 				}
@@ -4754,16 +4776,16 @@ namespace tfx {
 		}
 	}
 
-	void EffectEmitterTemplate::SetParticleUpdateCallback(std::string path, void(*particle_update_callback)(Particle &particle)) {
-		assert(paths.count(path) > 0);
-		EffectEmitter &e = *paths.at(path);
+	void EffectEmitterTemplate::SetParticleUpdateCallback(tfxText path, void(*particle_update_callback)(Particle &particle)) {
+		assert(paths.ValidName(path));
+		EffectEmitter &e = *paths.At(path);
 		assert(e.type == tfxEmitter);
 		e.particle_update_callback = particle_update_callback;
 	}
 
-	void EffectEmitterTemplate::SetParticleOnSpawnCallback(std::string path, void(*particle_onspawn_callback)(Particle &particle)) {
-		assert(paths.count(path) > 0);
-		EffectEmitter &e = *paths.at(path);
+	void EffectEmitterTemplate::SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(Particle &particle)) {
+		assert(paths.ValidName(path));
+		EffectEmitter &e = *paths.At(path);
 		assert(e.type == tfxEmitter);
 		e.particle_onspawn_callback = particle_onspawn_callback;
 	}
