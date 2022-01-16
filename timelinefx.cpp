@@ -1516,7 +1516,7 @@ namespace tfx {
 	}
 
 	void EffectEmitter::SetName(const char *n) {
-		strncpy_s(name, n, strlen(n));
+		name = n;
 	}
 
 	FormState Tween(float tween, FormState &world, FormState &captured) {
@@ -1589,7 +1589,7 @@ namespace tfx {
 	bool EffectEmitter::NameExists(EffectEmitter &emitter, const char *name) {
 		for (auto &e : sub_effectors) {
 			if (&emitter != &e) {
-				if (!strcmp(e.name, name)) {
+				if (e.name == name) {
 					return true;
 				}
 			}
@@ -1915,7 +1915,7 @@ namespace tfx {
 	bool EffectLibrary::NameExists(EffectEmitter& effect, const char *name) {
 		for (auto &e : effects) {
 			if (effect.library_index != e.library_index) {
-				if (!strcmp(e.name, name)) {
+				if (e.name == name) {
 					return true;
 				}
 			}
@@ -1926,7 +1926,7 @@ namespace tfx {
 
 	bool EffectLibrary::NameExists2(EffectEmitter& effect, const char *name) {
 		for (auto &e : effects) {
-			if (!strcmp(e.name, name)) {
+			if (e.name == name) {
 				return true;
 			}
 		}
@@ -2451,6 +2451,7 @@ namespace tfx {
 	}
 
 	void EffectLibrary::SetMinMaxData() {
+		graph_min_max.clear();
 		graph_min_max.create_pool(tfxGraphMaxIndex);
 
 		graph_min_max[tfxGlobal_life] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
@@ -2824,7 +2825,7 @@ namespace tfx {
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value) {
 		if (field == "name")
-			strcpy_s(effect.name, 64, value.c_str());
+			effect.name = value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, float value) {
 		if (field == "position_x")

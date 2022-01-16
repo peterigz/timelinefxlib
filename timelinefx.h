@@ -936,11 +936,21 @@ typedef std::chrono::high_resolution_clock Clock;
 		inline void operator=(const tfxText &label) { string = label.string; }
 		inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
 		inline bool operator==(const tfxText string) { return !strcmp(c_str(), string.c_str()); }
+		inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
+		inline bool operator!=(const tfxText string) { return strcmp(c_str(), string.c_str()); }
+		const char* begin() const { return string.data ? &string.front() : NULL; }
+		const char* end() const { return string.data ? &string.back() : NULL; }  
 		inline const char *c_str() const { return string.current_size ? string.data : ""; }
 		inline void Clear() { string.clear(); }
 		inline unsigned int Length() const { return string.current_size ? string.current_size - 1 : 0; }
 		void Appendf(const char *format, ...);
-		inline void Append(char c) { string.push_back(c); }
+		inline void Append(char c) { 
+			if (string.current_size) {
+				string.pop();
+			}
+			string.push_back(c); 
+			NullTerminate();
+		}
 		void NullTerminate() { string.push_back(NULL); }
 	};
 
@@ -1674,7 +1684,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		EmitterProperties properties;
 
 		//Name of the effect
-		char name[64];						//Todo: Do we need this here?
+		tfxText name;						//Todo: Do we need this here?
 		//Is this a tfxEffect or tfxEmitter
 		EffectEmitterType type;
 		//A pointer to the library this effect belongs
