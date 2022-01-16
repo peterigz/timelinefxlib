@@ -29,17 +29,8 @@
     <ClInclude Include="libraries\miniz.h">
       <Filter>Libraries</Filter>
     </ClInclude>
-    <ClInclude Include="libraries\robin_hash.h">
-      <Filter>Libraries</Filter>
-    </ClInclude>
-    <ClInclude Include="libraries\robin_map.h">
-      <Filter>Libraries</Filter>
-    </ClInclude>
     <ClInclude Include="timelinefx.h">
       <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="libraries\robin_growth_policy.h">
-      <Filter>Libraries</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -236,9 +236,9 @@ namespace tfx {
 		if (!(properties.flags & tfxEmitterPropertyFlags_single) && !(properties.flags & tfxEmitterPropertyFlags_one_shot)) {
 			qty = current.amount;
 			qty += random_generation.Range(current.amount_variation);
-			//qty *= lookup_callback(parent->library->global_graphs[parent->global].amount, current.frame);
+			qty *= lookup_callback(parent->library->global_graphs[parent->global].amount, current.frame);
 			//qty *= parent->library->LookupPreciseNodeList(tfxGlobal_amount, parent->lookup_node_index, current.frame);
-			qty *= parent->library->LookupFastValueList(tfxGlobal_amount, parent->lookup_value_index, current.frame);
+			//qty *= parent->library->LookupFastValueList(tfxGlobal_amount, parent->lookup_value_index, current.frame);
 			qty *= UPDATE_TIME;
 			qty += current.amount_remainder;
 		}

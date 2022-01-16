@@ -241,11 +241,8 @@
     <ClCompile Include="timelinefx.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="libraries\robin_growth_policy.h" />
     <ClInclude Include="timelinefx.h" />
     <ClInclude Include="libraries\miniz.h" />
-    <ClInclude Include="libraries\robin_hash.h" />
-    <ClInclude Include="libraries\robin_map.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="readme.md" />
