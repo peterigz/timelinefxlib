@@ -2171,7 +2171,7 @@ typedef std::chrono::high_resolution_clock Clock;
 	void AddDataValue(tfxStorageMap<DataEntry> &config, tfxText key, bool value);
 	void AddDataValue(tfxStorageMap<DataEntry> &config, tfxText key, double value);
 	void AddDataValue(tfxStorageMap<DataEntry> &config, tfxText key, float value);
-	tfxText GetDataStrValue(tfxStorageMap<DataEntry> &config, const char* key);
+	tfxText &GetDataStrValue(tfxStorageMap<DataEntry> &config, const char* key);
 	int& GetDataIntValue(tfxStorageMap<DataEntry> &config, const char* key);
 	float& GetDataFloatValue(tfxStorageMap<DataEntry> &config, const char* key);
 	void SaveDataFile(tfxStorageMap<DataEntry> &config, const char* path = "");

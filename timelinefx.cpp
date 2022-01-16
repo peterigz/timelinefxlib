@@ -4280,7 +4280,7 @@ namespace tfx {
 		map.Insert(key, entry);
 	}
 
-	tfxText GetDataStrValue(tfxStorageMap<DataEntry> &map, const char* key) {
+	tfxText &GetDataStrValue(tfxStorageMap<DataEntry> &map, const char* key) {
 		return map.At(key).str_value;
 	}
 	int& GetDataIntValue(tfxStorageMap<DataEntry> &map, const char* key) {
