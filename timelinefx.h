@@ -987,6 +987,11 @@ typedef std::chrono::high_resolution_clock Clock;
 		}
 
 		//Insert a new T value into the storage
+		inline void Insert(tfxKey key, const T &value) {
+			SetIndex(key, value);
+		}
+
+		//Insert a new T value into the storage
 		inline void InsertByInt(int name, const T &value) {
 			tfxKey key = name;
 			SetIndex(key, value);
@@ -1011,6 +1016,10 @@ typedef std::chrono::high_resolution_clock Clock;
 
 		inline bool ValidName(const char *name) {
 			return GetIndex(name) > -1;
+		}
+
+		inline bool ValidKey(tfxKey key) {
+			return GetIndex(key) > -1;
 		}
 
 		inline bool ValidIntName(unsigned int name) {
@@ -1073,6 +1082,12 @@ typedef std::chrono::high_resolution_clock Clock;
 			return data[index];
 		}
 
+		inline T &At(tfxKey key) {
+			int index = GetIndex(key);
+			assert(index > -1);						//Key was not found
+			return data[index];
+		}
+
 		inline T &operator[](const unsigned int index) {
 			assert(index < data.current_size);		//Index was out of range
 			return data[index];
@@ -1107,6 +1122,13 @@ typedef std::chrono::high_resolution_clock Clock;
 
 		int GetIndex(const tfxText &name) {
 			tfxKey key = XXHash64::hash(name.c_str(), name.Length(), 0);
+			pair* it = LowerBound(key);
+			if (it == map.end() || it->key != key)
+				return -1;
+			return it->index;
+		}
+
+		int GetIndex(tfxKey key) {
 			pair* it = LowerBound(key);
 			if (it == map.end() || it->key != key)
 				return -1;
@@ -1685,6 +1707,8 @@ typedef std::chrono::high_resolution_clock Clock;
 
 		//Name of the effect
 		tfxText name;						//Todo: Do we need this here?
+		//A hash of the directory path to the effect ie Flare/spark
+		tfxKey path_hash;
 		//Is this a tfxEffect or tfxEmitter
 		EffectEmitterType type;
 		//A pointer to the library this effect belongs
@@ -1933,7 +1957,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		float velocity_scale;			//Current velocity overtime
 		//float direction;				//Current direction of travel in radians
 		float emission_angle;			//Emission angle of the particle at spawn time
-		//float spin;						//Current spin overtime
+		//float spin;					//Current spin overtime
 		float image_frame;				//Current frame of the image if it's an animation
 		float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
@@ -2034,6 +2058,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		//Mainly internal functions
 		EffectEmitter &AddEffect(EffectEmitter &effect);
 		void UpdateEffectPaths();
+		void UpdateEffectPaths(EffectEmitter &effect);
 		void AddPath(EffectEmitter &effectemitter, tfxText path);
 		void DeleteEffect(EffectEmitter *effect);
 		bool RenameEffect(EffectEmitter &effect, const char *new_name);

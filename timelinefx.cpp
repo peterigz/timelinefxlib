@@ -101,6 +101,7 @@ namespace tfx {
 		e.library = library;
 		e.uid = ++library->uid;
 		sub_effectors.push_back(e);
+		library->UpdateEffectPaths();
 		ReIndex();
 		return sub_effectors.back();
 	}
@@ -111,6 +112,7 @@ namespace tfx {
 		e.parent = this;
 		e.uid = ++library->uid;
 		sub_effectors.push_back(e);
+		library->UpdateEffectPaths();
 		ReIndex();
 		return sub_effectors.back();
 	}
@@ -120,7 +122,9 @@ namespace tfx {
 		e.library = library;
 		e.uid = ++library->uid;
 		e.type = EffectEmitterType::tfxEffect;
+		e.name = "New Effect";
 		sub_effectors.push_back(e);
+		library->UpdateEffectPaths();
 		ReIndex();
 		return sub_effectors.back();
 	}
@@ -131,7 +135,12 @@ namespace tfx {
 		e.type = type;
 		e.library = library;
 		e.uid = ++library->uid;
+		if(e.type == tfxEffect)
+			e.name = "New Effect";
+		else
+			e.name = "New Emitter";
 		sub_effectors.push_back(e);
+		library->UpdateEffectPaths();
 		ReIndex();
 		return sub_effectors.back();
 	}
@@ -1633,6 +1642,7 @@ namespace tfx {
 			unsigned int new_index = emitter.library_index - 1;
 			std::swap(sub_effectors[emitter.library_index], sub_effectors[new_index]);
 			ReIndex();
+			emitter.library->UpdateEffectPaths();
 			return &sub_effectors[new_index];
 		}
 
@@ -1644,6 +1654,7 @@ namespace tfx {
 			unsigned int new_index = emitter.library_index + 1;
 			std::swap(sub_effectors[emitter.library_index], sub_effectors[new_index]);
 			ReIndex();
+			emitter.library->UpdateEffectPaths();
 			return &sub_effectors[new_index];
 		}
 		return nullptr;
@@ -1934,17 +1945,26 @@ namespace tfx {
 	}
 
 	void EffectLibrary::UpdateEffectPaths() {
+		effect_paths.Clear();
 		for (auto &e : effects) {
 			tfxText path = e.name;
+			e.path_hash = XXHash64::hash(path.c_str(), path.Length(), 0);
 			AddPath(e, path);
 		}
+	}
+
+	void EffectLibrary::UpdateEffectPaths(EffectEmitter &effect) {
+		tfxText path = effect.name;
+		effect.path_hash = XXHash64::hash(path.c_str(), path.Length(), 0);
+		AddPath(effect, path);
 	}
 
 	void EffectLibrary::AddPath(EffectEmitter &effectemitter, tfxText path) {
 		effect_paths.Insert(path, &effectemitter);
 		for (auto &sub : effectemitter.sub_effectors) {
 			tfxText sub_path = path;
-			sub_path.Appendf("/%s", sub.name);
+			sub_path.Appendf("/%s", sub.name.c_str());
+			sub.path_hash = XXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
 			AddPath(sub, sub_path);
 		}
 	}
@@ -1998,6 +2018,7 @@ namespace tfx {
 		if (effect.library_index > 0) {
 			unsigned int new_index = effect.library_index - 1;
 			std::swap(effects[effect.library_index], effects[new_index]);
+			UpdateEffectPaths(effect);
 			ReIndex();
 			return &effects[new_index];
 		}
@@ -2008,6 +2029,7 @@ namespace tfx {
 		if (effect.library_index < effects.size() - 1) {
 			unsigned int new_index = effect.library_index + 1;
 			std::swap(effects[effect.library_index], effects[new_index]);
+			UpdateEffectPaths(effect);
 			ReIndex();
 			return &effects[new_index];
 		}
@@ -2018,6 +2040,7 @@ namespace tfx {
 		effects[effect->library_index].CleanUp();
 		effects.erase(&effects[effect->library_index]);
 
+		UpdateEffectPaths();
 		ReIndex();
 	}
 
