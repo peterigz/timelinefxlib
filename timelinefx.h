@@ -2058,7 +2058,6 @@ typedef std::chrono::high_resolution_clock Clock;
 		//Mainly internal functions
 		EffectEmitter &AddEffect(EffectEmitter &effect);
 		void UpdateEffectPaths();
-		void UpdateEffectPaths(EffectEmitter &effect);
 		void AddPath(EffectEmitter &effectemitter, tfxText path);
 		void DeleteEffect(EffectEmitter *effect);
 		bool RenameEffect(EffectEmitter &effect, const char *new_name);

@@ -1953,12 +1953,6 @@ namespace tfx {
 		}
 	}
 
-	void EffectLibrary::UpdateEffectPaths(EffectEmitter &effect) {
-		tfxText path = effect.name;
-		effect.path_hash = XXHash64::hash(path.c_str(), path.Length(), 0);
-		AddPath(effect, path);
-	}
-
 	void EffectLibrary::AddPath(EffectEmitter &effectemitter, tfxText path) {
 		effect_paths.Insert(path, &effectemitter);
 		for (auto &sub : effectemitter.sub_effectors) {
@@ -2018,7 +2012,7 @@ namespace tfx {
 		if (effect.library_index > 0) {
 			unsigned int new_index = effect.library_index - 1;
 			std::swap(effects[effect.library_index], effects[new_index]);
-			UpdateEffectPaths(effect);
+			UpdateEffectPaths();
 			ReIndex();
 			return &effects[new_index];
 		}
@@ -2029,7 +2023,7 @@ namespace tfx {
 		if (effect.library_index < effects.size() - 1) {
 			unsigned int new_index = effect.library_index + 1;
 			std::swap(effects[effect.library_index], effects[new_index]);
-			UpdateEffectPaths(effect);
+			UpdateEffectPaths();
 			ReIndex();
 			return &effects[new_index];
 		}
