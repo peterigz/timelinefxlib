@@ -1049,6 +1049,22 @@ typedef std::chrono::high_resolution_clock Clock;
 
 		//Remove an item from the data. Slow function, 2 memmoves and then the map has to be iterated and indexes reduced by one
 		//to re-align them
+		inline void Remove(const tfxKey &key) {
+			pair *it = LowerBound(key);
+			if (remove_callback)
+				remove_callback(data[it->index]);
+			unsigned int index = it->index;
+			T* list_it = &data[index];
+			map.erase(it);
+			data.erase(list_it);
+			for (auto &p : map) {
+				if (p.index < index) continue;
+				p.index--;
+			}
+		}
+
+		//Remove an item from the data. Slow function, 2 memmoves and then the map has to be iterated and indexes reduced by one
+		//to re-align them
 		inline void RemoveInt(int name) {
 			tfxKey key = name;
 			pair *it = LowerBound(key);
