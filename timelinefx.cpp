@@ -4376,11 +4376,20 @@ namespace tfx {
 
 	tfxvec<tfxText> SplitString(const tfx::tfxText &str, char delim) {
 		tfxvec<tfxText> ret;
-		std::stringstream ss(str.c_str());
-		std::string item;
 
-		while (std::getline(ss, item, delim)) {
-			ret.push_back(item.c_str());
+		tfxText line;
+		for (char c : str.string) {
+			if (c == delim && line.Length() && c != NULL) {
+				ret.push_back(line);
+				line.Clear();
+			}
+			else if(c != NULL) {
+				line.Append(c);
+			}
+		}
+
+		if (line.Length()) {
+			ret.push_back(line);
 		}
 
 		return ret;
