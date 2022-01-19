@@ -951,6 +951,22 @@ typedef std::chrono::high_resolution_clock Clock;
 			string.push_back(c); 
 			NullTerminate();
 		}
+		inline void Pop() {
+			if (!Length()) return;
+			if(string.back() == NULL)
+				string.pop();
+			string.pop();
+			NullTerminate();
+		}
+		inline void Trim(char c = 32) {
+			if (!Length()) return;
+			if(string.back() == NULL)
+				string.pop();
+			while (string.back() == c && string.current_size) {
+				string.pop();
+			}
+			NullTerminate();
+		}
 		void NullTerminate() { string.push_back(NULL); }
 	};
 
