@@ -2030,6 +2030,13 @@ namespace tfx {
 		return nullptr;
 	}
 
+	void EffectLibrary::RemoveShape(unsigned int shape_index) {
+		particle_shapes.RemoveInt(shape_index);
+		for (auto &m : particle_shapes.map) {
+			particle_shapes[m.index].shape_index = (unsigned int)m.key;
+		}
+	}
+
 	void EffectLibrary::DeleteEffect(EffectEmitter *effect) {
 		effects[effect->library_index].CleanUp();
 		effects.erase(&effects[effect->library_index]);

@@ -1577,7 +1577,7 @@ typedef std::chrono::high_resolution_clock Clock;
 #endif // tfxCUSTOM_IMAGE_DATA
 
 		//Each particle shape saved in an effect library has a unique index
-		uint32_t shape_index;
+		unsigned int shape_index;
 		//The size of one frame of the image
 		tfxVec2 image_size;
 		//The number of frames in the image, can be one or more
@@ -1766,6 +1766,11 @@ typedef std::chrono::high_resolution_clock Clock;
 
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
+
+		//Idea for adding you're own user define struct members
+#ifdef TFX_EMITTER_STRUCT_EXTRA
+TFX_CUSTOM_EMITTER
+#endif
 
 		//All graphs that the effect uses to lookup attribute values are stored in the library. These variables here are indexes to the array where they're stored
 		unsigned int global;
@@ -2088,6 +2093,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		void PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect);
 
 		//Mainly internal functions
+		void RemoveShape(unsigned int shape_index);
 		EffectEmitter &AddEffect(EffectEmitter &effect);
 		void UpdateEffectPaths();
 		void AddPath(EffectEmitter &effectemitter, tfxText path);
