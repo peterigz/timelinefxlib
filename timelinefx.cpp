@@ -1665,10 +1665,10 @@ namespace tfx {
 		stack.push_back(*emitter);
 		while (stack.size()) {
 			EffectEmitter &current = stack.pop_back();
-			if (current.type == tfxEffect) {
+			if (current.type == tfxEffect && !current.parent) {
 				library->FreeGlobal(current.global);
 			}
-			else {
+			else if(current.type == tfxEmitter) {
 				library->FreeProperty(current.property);
 				library->FreeBase(current.base);
 				library->FreeVariation(current.variation);
