@@ -603,6 +603,7 @@ namespace tfx {
 			TransformParticlePrevious(p, *this);
 			p.captured = p.world;
 			TransformParticle(p, *this);
+			p.captured.scale = p.world.scale;
 
 			//----Motion randomness
 			p.motion_randomness = current.motion_randomness;
