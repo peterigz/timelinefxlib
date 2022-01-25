@@ -2802,6 +2802,7 @@ namespace tfx {
 			if (values[0] == "overtime_height") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].height.AddNode(n); }
 			if (values[0] == "overtime_motion_randomness") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].motion_randomness.AddNode(n); }
 			if (values[0] == "overtime_direction") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].direction.AddNode(n); }
+			if (values[0] == "overtime_velocity_adjuster") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].velocity_adjuster.AddNode(n); }
 		}
 	}
 
