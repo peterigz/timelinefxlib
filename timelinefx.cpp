@@ -669,6 +669,7 @@ namespace tfx {
 					e.parent = nullptr;
 					e.parent_particle = &p;
 					e.particle_count = 0;
+					e.properties.loop_length = properties.loop_length;
 					pm->AddEffect(e, !pm->current_ebuff);
 				}
 			}
@@ -4067,6 +4068,7 @@ namespace tfx {
 				emitter.pm = this;
 				emitter.active_children = 0;
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
+				emitter.properties.loop_length = effect.properties.loop_length;
 				effects[buffer][parent_index].active_children++;
 			}
 		}
