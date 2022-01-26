@@ -491,9 +491,9 @@ typedef std::chrono::high_resolution_clock Clock;
 	static float FRAME_LENGTH = 1000.f / UPDATE_FREQUENCY;
 
 	//Look up frequency determines the resolution of graphs that are compiled into look up arrays.
-	static float tfxLOOKUP_FREQUENCY = 30.f;
+	static float tfxLOOKUP_FREQUENCY = 10.f;
 	//Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
-	static float tfxLOOKUP_FREQUENCY_OVERTIME = 10.f;
+	static float tfxLOOKUP_FREQUENCY_OVERTIME = 5.f;
 
 	//-----------------------------------------------------------
 	//Utility things:
@@ -2211,7 +2211,9 @@ TFX_CUSTOM_EMITTER
 		tfxvec<EffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(LookupMode mode);
 
-		inline bool FreeCapacity(unsigned int layer) { return particles[layer][current_pbuff].current_size <= max_particles_per_layer; }
+		inline bool FreeCapacity(unsigned int layer) { 
+			return particles[layer][current_pbuff].current_size < max_particles_per_layer;
+		}
 		inline bool FreeEffectCapacity() {
 			return effects[0].current_size + effects[1].current_size < max_effects;
 		}

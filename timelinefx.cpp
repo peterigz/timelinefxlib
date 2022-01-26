@@ -1208,8 +1208,8 @@ namespace tfx {
 		//----Spin and angle Changes
 		float spin = 0;
 		if (e.properties.angle_setting != AngleSetting::tfxAlign && !(e.properties.flags & tfxEmitterPropertyFlags_relative_angle)) {
-			float test = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].spin, p.age, p.max_age);
-			spin = p.base.spin * test;
+			spin = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].spin, p.age, p.max_age);
+			spin *= p.base.spin;
 		}
 
 		//----Image Changes
