@@ -565,12 +565,13 @@ namespace tfx {
 
 			switch (properties.angle_setting) {
 			case AngleSetting::tfxRandom:
-				p.local.rotation = random_generation.Range(properties.angle_offset);
+				p.captured.rotation = p.local.rotation = random_generation.Range(properties.angle_offset);
 				break;
 			case AngleSetting::tfxSpecify:
-				p.local.rotation = properties.angle_offset;
+				p.captured.rotation = p.local.rotation = properties.angle_offset;
 				break;
 			default:
+				p.captured.rotation = p.local.rotation = 0;
 				break;
 			}
 
@@ -600,6 +601,8 @@ namespace tfx {
 			if (properties.angle_setting == AngleSetting::tfxAlign && properties.flags & tfxEmitterPropertyFlags_edge_traversal)
 				p.world.rotation = p.local.rotation = direction + properties.angle_offset;
 
+			bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
+
 			TransformParticlePrevious(p, *this);
 			p.captured = p.world;
 			TransformParticle(p, *this);
@@ -621,13 +624,18 @@ namespace tfx {
 			velocity_normal.y = -std::cosf(direction);
 
 			//p.velocity = p.velocity_normal * p.base.velocity * p.velocity_scale * UPDATE_TIME;
-			bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
 
 			if (properties.angle_setting == AngleSetting::tfxAlign && !line) {
 				p.world.rotation = p.local.rotation = GetVectorAngle(velocity_normal.x, velocity_normal.y) + properties.angle_offset;
 				if (properties.flags & tfxEmitterPropertyFlags_relative_angle)
 					p.world.rotation += world.rotation;
 				p.captured.rotation = p.world.rotation;
+				//Reset the matrix again so that any child particles spawn in the correct place
+				if (sub_effectors.size()) {
+					float s = sin(p.local.rotation);
+					float c = cos(p.local.rotation);
+					p.matrix.Set(c, s, -s, c);
+				}
 			}
 
 			//----Handle
@@ -1107,7 +1115,9 @@ namespace tfx {
 			}
 		}
 		float direction = 0;
-		if (e.properties.emission_type != tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal)) {
+		bool et = !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal);
+		if ((e.properties.emission_type != tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal))
+			|| e.properties.emission_type == tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal)) {
 			//----Motion randomness
 			float mr = p.motion_randomness * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].motion_randomness, p.age, p.max_age);
 			if (!(unsigned int)std::fmodf(p.age, FRAME_LENGTH * 2.f)) {

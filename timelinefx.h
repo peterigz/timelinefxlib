@@ -113,6 +113,7 @@
 #include <algorithm>
 #include <stdint.h>
 #include <assert.h>
+#include <iostream>
 
 namespace tfx {
 
