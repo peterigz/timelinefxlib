@@ -1933,7 +1933,7 @@ TFX_CUSTOM_EMITTER
 
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
-		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library);
+		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data = false);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();

@@ -1709,11 +1709,12 @@ namespace tfx {
 		ReIndex();
 	}
 
-	void EffectEmitter::Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library) {
+	void EffectEmitter::Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data) {
 		clone = *this;
 		clone.sub_effectors.clear();
 		clone.flags |= tfxEmitterStateFlags_enabled;
-		clone.user_data = nullptr;
+		if(!keep_user_data)
+			clone.user_data = nullptr;
 		clone.library = destination_library;
 
 		if (type == tfxEffect) {
@@ -1741,13 +1742,15 @@ namespace tfx {
 			if (e.type == tfxEmitter) {
 				EffectEmitter emitter_copy;
 				e.Clone(emitter_copy, root_parent, destination_library);
-				emitter_copy.user_data = nullptr;
+				if(!keep_user_data)
+					emitter_copy.user_data = nullptr;
 				clone.AddEmitter(emitter_copy);
 			}
 			else {
 				EffectEmitter effect_copy;
 				e.Clone(effect_copy, root_parent, destination_library);
-				effect_copy.user_data = nullptr;
+				if(!keep_user_data)
+					effect_copy.user_data = nullptr;
 				clone.AddEffect(effect_copy);
 			}
 		}
