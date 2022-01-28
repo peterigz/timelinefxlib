@@ -1824,20 +1824,20 @@ namespace tfx {
 		if (type < tfxGlobalCount) {
 			return global;
 		}
-		else if (type >= tfxGlobalCount && type < tfxPropertyCount) {
+		else if (type >= tfxPropertyStart && type < tfxBaseStart) {
 			return property;
 		}
-		else if (type >= tfxPropertyCount && type < tfxBaseCount) {
+		else if (type >= tfxBaseStart && type < tfxVariationStart) {
 			return base;
 		}
-		else if (type >= tfxBaseCount && type < tfxVariationCount) {
+		else if (type >= tfxVariationStart && type < tfxOvertimeStart) {
 			return variation;
 		}
-		else if (type >= tfxOvertimeCount) {
+		else if (type >= tfxOvertimeStart) {
 			return overtime;
 		}
 
-		assert(0);	//Unable to find a graph of that type (shouldn't happend)
+		assert(0);	//Unable to find a graph of that type (shouldn't happen)
 
 		return 0;
 
