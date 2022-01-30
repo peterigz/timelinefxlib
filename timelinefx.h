@@ -1624,7 +1624,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		//The shape being used for all particles spawned from the emitter
 		unsigned int shape_index;
 
-		//Angle added to the rotation of the particle when spawned
+		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
 		float angle_offset;
 		//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
 		tfxVec2 grid_points;
@@ -1636,7 +1636,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		float end_frame;
 
 		EmitterProperties() :
-			angle_offset(0),
+			angle_offset(360),
 			flags(tfxEmitterPropertyFlags_image_handle_auto_center | tfxEmitterPropertyFlags_grid_spawn_clockwise | tfxEmitterPropertyFlags_emitter_handle_auto_center | tfxEmitterPropertyFlags_global_uniform_size | tfxEmitterPropertyFlags_base_uniform_size | tfxEmitterPropertyFlags_lifetime_uniform_size),
 			image(nullptr),
 			image_handle(tfxVec2()),
@@ -1651,7 +1651,8 @@ typedef std::chrono::high_resolution_clock Clock;
 			layer(0),
 			shape_index(1),
 			start_frame(0),
-			end_frame(0)
+			end_frame(0),
+			angle_setting(AngleSetting::tfxRandom)
 		{ }
 	};
 

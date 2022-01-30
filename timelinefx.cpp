@@ -3817,6 +3817,10 @@ namespace tfx {
 			frame = 0.001f;
 			value = 1.f;
 			break;
+		case GraphPreset::tfxPercentOvertime:
+			frame = 0.05f;
+			value = 0.05f;
+			break;
 		default:
 			frame = 1;
 			value = 0.1f;
