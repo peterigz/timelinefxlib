@@ -227,12 +227,12 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxGlobal_height,
 		tfxGlobal_weight,
 		tfxGlobal_spin,
-		tfxGlobal_effect_angle,
 		tfxGlobal_stretch,
 		tfxGlobal_overal_scale,
 		tfxGlobal_opacity,
 		tfxGlobal_frame_rate,
 		tfxGlobal_splatter,
+		tfxGlobal_effect_angle,
 
 		tfxProperty_emission_angle,
 		tfxProperty_emission_range,
@@ -1315,12 +1315,12 @@ typedef std::chrono::high_resolution_clock Clock;
 		GraphLookupIndex global_height;
 		GraphLookupIndex global_weight;
 		GraphLookupIndex global_spin;
-		GraphLookupIndex global_effect_angle;
 		GraphLookupIndex global_stretch;
 		GraphLookupIndex global_overal_scale;
 		GraphLookupIndex global_opacity;
 		GraphLookupIndex global_frame_rate;
 		GraphLookupIndex global_splatter;
+		GraphLookupIndex global_effect_angle;
 
 		GraphLookupIndex property_emission_angle;
 		GraphLookupIndex property_emission_range;
@@ -1444,7 +1444,12 @@ typedef std::chrono::high_resolution_clock Clock;
 	void ClampCurve(Graph &graph, Point &curve, AttributeNode &node);
 	void ClampGraph(Graph &graph);
 	bool IsOvertimeGraph(GraphType type);
+	bool IsOvertimePercentageGraph(GraphType type);
 	bool IsGlobalGraph(GraphType type);
+	bool IsGlobalPercentageGraph(GraphType type);
+	bool IsAngleGraph(GraphType type);
+	bool IsAngleOvertimeGraph(GraphType type);
+	bool IsEverythingElseGraph(GraphType type);
 
 	struct GlobalAttributes {
 		Graph life;
@@ -1454,12 +1459,12 @@ typedef std::chrono::high_resolution_clock Clock;
 		Graph height;
 		Graph weight;
 		Graph spin;
-		Graph effect_angle;
 		Graph stretch;
 		Graph overal_scale;
 		Graph opacity;
 		Graph frame_rate;
 		Graph splatter;
+		Graph effect_angle;
 	};
 
 	struct PropertyAttributes {
