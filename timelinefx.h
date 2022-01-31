@@ -1442,6 +1442,7 @@ typedef std::chrono::high_resolution_clock Clock;
 	bool SetNodeValue(Graph &graph, AttributeNode &node, float &value);
 	void ClampNode(Graph &graph, AttributeNode &node);
 	void ClampCurve(Graph &graph, Point &curve, AttributeNode &node);
+	void ClampGraph(Graph &graph);
 	bool IsOvertimeGraph(GraphType type);
 	bool IsGlobalGraph(GraphType type);
 

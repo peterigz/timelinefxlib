@@ -3185,6 +3185,16 @@ namespace tfx {
 		if (node.frame > graph.max.x) node.frame = graph.max.x;
 	}
 
+	void ClampGraph(Graph &graph) {
+		for (auto &node : graph.nodes) {
+			ClampNode(graph, node);
+			if (node.is_curve) {
+				ClampCurve(graph, node.left, node);
+				ClampCurve(graph, node.right, node);
+			}
+		}
+	}
+
 	void ClampCurve(Graph &graph, Point &p, AttributeNode &node) {
 		if (p.y < graph.min.y) p.y = graph.min.y;
 		if (p.x < graph.min.x) p.x = graph.min.x;
