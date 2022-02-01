@@ -12,6 +12,31 @@ namespace tfx {
 		return w;
 	}
 
+	void tfxText::Appendv(const char *format, va_list args) {
+		va_list args_copy;
+		va_copy(args_copy, args);
+
+		int len = FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		if (len <= 0)
+		{
+			va_end(args_copy);
+			return;
+		}
+
+		const int write_off = (string.size() != 0) ? string.size() : 1;
+		const int needed_sz = write_off + len;
+		if (write_off + (unsigned int)len >= string.capacity)
+		{
+			int new_capacity = string.capacity * 2;
+			string.reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
+		}
+
+		string.resize(needed_sz);
+		FormatString(&string[write_off - 1], (size_t)len + 1, format, args);
+		va_end(args_copy);
+
+	}
+
 	void tfxText::Appendf(const char *format, ...) {
 		va_list args;
 		va_start(args, format);

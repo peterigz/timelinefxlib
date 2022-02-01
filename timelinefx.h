@@ -945,6 +945,7 @@ typedef std::chrono::high_resolution_clock Clock;
 		inline void Clear() { string.clear(); }
 		inline unsigned int Length() const { return string.current_size ? string.current_size - 1 : 0; }
 		void Appendf(const char *format, ...);
+		void Appendv(const char *format, va_list args);
 		inline void Append(char c) { 
 			if (string.current_size) {
 				string.pop();
