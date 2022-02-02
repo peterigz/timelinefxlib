@@ -150,6 +150,12 @@ typedef std::chrono::high_resolution_clock Clock;
 #define tfxLAYERS 4
 #endif 
 
+//type defs
+typedef unsigned int u32;
+typedef int s32;
+typedef unsigned long long u64;
+typedef long long s64;
+
 	//----------------------------------------------------------
 	//enums/flags
 
@@ -351,7 +357,9 @@ typedef std::chrono::high_resolution_clock Clock;
 		tfxStartShapes,
 		tfxEndShapes,
 		tfxStartAnimationSettings,
-		tfxEndAnimationSettings
+		tfxEndAnimationSettings,
+		tfxStartImageData,
+		tfxStartEffectData
 	};
 
 	typedef unsigned int tfxEmitterPropertyFlags;
@@ -1192,6 +1200,55 @@ typedef std::chrono::high_resolution_clock Clock;
 		}
 
 	};
+
+	const u32 tfxMAGIC_NUMBER = (('!' << 24) + ('X' << 16) + ('F' << 8) + 'T');
+	const u32 tfxMAGIC_NUMBER_INVENTORY = (('!' << 24) + ('V' << 16) + ('N' << 8) + 'I');
+	const u32 tfxFILE_VERSION = 1;
+
+	//Basic package manager used for reading/writing effects files
+	struct tfxHeader {
+		u32 magic_number;						//Magic number to confirm file format
+		u32 file_version;						//The version of the file
+		u32 flags;								//Any flags for the file
+		u32 reserved0;							//Reserved for future if needed
+		u64 offset_to_inventory;				//Memory offset for the inventory of files
+		u64 reserved1;							//More reserved space
+		u64 reserved2;							//More reserved space
+		u64 reserved3;							//More reserved space
+		u64 reserved4;							//More reserved space
+		u64 reserved5;							//More reserved space
+	};
+
+	struct tfxEntryInfo {
+		tfxText file_name;						//The file name of the name stored in the package
+		u64 offset_from_start_of_file;			//Offset from the start of the file to where the file is located
+		u64 file_size;							//The size of the filej
+		tfxvec<char> data;						//The file data
+		
+		void FreeData();
+	};
+
+	struct tfxInventory {
+		u32 magic_number;						//Magic number to confirm format of the Inventory
+		u32 entry_count;						//Number of files in the inventory
+		tfxStorageMap<tfxEntryInfo> entries;	//The inventory list
+	};
+
+	struct tfxPackage {
+		tfxText file_path;
+		tfxHeader header;
+		tfxInventory inventory;
+
+		tfxEntryInfo *GetFile(const char *name);
+		void AddFile(tfxEntryInfo file);
+		void AddFile(const char *file_name, tfxvec<char> &data);
+		void Free();
+
+	};
+	
+	int LoadPackage(const char *file_name, tfxPackage &package);
+	tfxPackage CreatePackage(const char *file_path);
+	bool SavePackage(tfxPackage &package);
 
 	//------------------------------------------------------------
 
@@ -2302,6 +2359,7 @@ TFX_CUSTOM_EMITTER
 	}
 	int GetShapesInLibrary(const char *filename);
 	int LoadEffectLibrary(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
+	int LoadEffectLibrary2(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
 	//Particle manager functions
 	void StopSpawning(ParticleManager &pm);

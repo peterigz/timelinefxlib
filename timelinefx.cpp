@@ -66,6 +66,147 @@ namespace tfx {
 		va_end(args);
 	}
 
+	tfxPackage CreatePackage(const char *file_path) {
+		tfxPackage package;
+		package.header.magic_number = tfxMAGIC_NUMBER;
+		package.header.flags = 0;
+		package.header.offset_to_inventory = sizeof(tfxHeader);
+		package.header.file_version = tfxFILE_VERSION;
+
+		package.inventory.magic_number = tfxMAGIC_NUMBER_INVENTORY;
+		package.inventory.entry_count = 0;
+
+		package.file_path = file_path;
+		return package;
+	}
+
+	void tfxEntryInfo::FreeData() {
+		data.free_all();
+	}
+
+	tfxEntryInfo *tfxPackage::GetFile(const char *name) {
+		if (!inventory.entries.ValidName(name))
+			return nullptr;			//File not found in inventory
+		tfxEntryInfo *entry = &inventory.entries.At(name);
+		if (entry->data.size() != entry->file_size) {
+			std::ifstream file(file_path.c_str(), std::ios::binary);
+			file.seekg(entry->offset_from_start_of_file);
+			entry->data.resize((u32)entry->file_size);
+			file.read(entry->data.data, entry->file_size);
+			file.close();
+		}
+		return entry;
+	}
+
+	void tfxPackage::AddFile(tfxEntryInfo file) {
+		inventory.entries.Insert(file.file_name, file);
+		inventory.entry_count++;
+	}
+
+	void tfxPackage::AddFile(const char *file_name, tfxvec<char> &data) {
+		tfxEntryInfo entry;
+		entry.file_name = file_name;
+		entry.data = data;
+		entry.file_size = data.current_size;
+
+		inventory.entries.Insert(entry.file_name, entry);
+		inventory.entry_count++;
+	}
+
+	void tfxPackage::Free() {
+		for (auto &entry : inventory.entries.data) {
+			entry.data.free_all();
+		}
+		inventory.entries.data.free_all();
+		inventory.entries.map.free_all();
+	}
+
+	bool SavePackage(tfxPackage &package) {
+		if (!package.file_path.Length()) return false;											//Package must have a file path
+		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;						//Header of package must contain correct magic number. CreatePackage to correctly initialise a package.
+		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;			//Inventory of package must contain correct magic number
+
+		std::ofstream file(package.file_path.c_str(), std::ios::binary);
+
+		//Calculate the offset to the inventory which is stored at the end of the file after the contents
+		u64 inventory_offset = sizeof(tfxHeader);
+		for (auto &entry : package.inventory.entries.data) {
+			entry.offset_from_start_of_file = inventory_offset;
+			entry.file_size = entry.data.size();
+			inventory_offset += entry.data.size();
+		}
+
+		//just make sure that the entry count is the correct value
+		package.inventory.entry_count = package.inventory.entries.Size();
+
+		//Write the header, updating the inventory offset before hand
+		package.header.offset_to_inventory = inventory_offset;
+		file.write((char*)&package.header, sizeof(tfxHeader));
+
+		//Write the file contents
+		for (auto &entry : package.inventory.entries.data) {
+			file.write(entry.data.data, entry.data.size());
+		}
+
+		//Write the inventory
+		file.write((char*)&package.inventory.magic_number, sizeof(u32));
+		file.write((char*)&package.inventory.entry_count, sizeof(u32));
+		for (auto &entry : package.inventory.entries.data) {
+			file.write((char*)&entry.file_name.string.current_size, sizeof(u32));
+			file.write(entry.file_name.c_str(), entry.file_name.string.current_size);
+			file.write((char*)&entry.file_size, sizeof(u64));
+			file.write((char*)&entry.offset_from_start_of_file, sizeof(u64));
+		}
+
+		file.close();
+		return true;
+	}
+
+	int LoadPackage(const char *file_name, tfxPackage &package) {
+		std::ifstream file(file_name, std::ios::binary);
+
+		std::streampos file_size = 0;
+		file_size = file.tellg();
+		file.seekg(0, std::ios::end);
+		file_size = file.tellg() - file_size;
+		file.seekg(0);
+	
+		if (file_size < sizeof(tfxHeader))
+			return -1;				//the file size is smaller then the expected header size
+
+		file.read((char*)&package.header, sizeof(tfxHeader));
+
+		if (package.header.magic_number != tfxMAGIC_NUMBER)
+			return -2;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
+
+		if (package.header.offset_to_inventory > (u64)file_size)
+			return -3;				//The offset to the inventory is beyond the size of the file
+
+		file.seekg(package.header.offset_to_inventory);
+		file.read((char*)&package.inventory.magic_number, sizeof(u32));
+
+		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
+			return -4;				//The value at the inventory offset does not equal the expected magic number "INV!"
+
+		file.read((char*)&package.inventory.entry_count, sizeof(u32));
+		for (int i = 0; i != package.inventory.entry_count; ++i) {
+			tfxEntryInfo entry;
+			u32 file_name_size;
+			file.read((char*)&file_name_size, sizeof(u32));
+			entry.file_name.string.resize(file_name_size);
+			file.read(entry.file_name.string.data, file_name_size);
+			file.read((char*)&entry.file_size, sizeof(u64));
+			file.read((char*)&entry.offset_from_start_of_file, sizeof(u64));
+			package.inventory.entries.Insert(entry.file_name, entry);
+		}
+
+		package.file_path = file_name;
+
+		file.close();
+
+		return 0;
+	}
+
 	EffectEmitter::~EffectEmitter() {
 		sub_effectors.free_all();
 	}
@@ -2745,6 +2886,8 @@ namespace tfx {
 		eff.Insert("graph_lookup_mode", tfxSInt);
 		eff.Insert("show_tool_tips", tfxBool);
 		eff.Insert("preview_trail_mode", tfxBool);
+		eff.Insert("try_autorecover", tfxBool);
+		eff.Insert("autorecovery_file", tfxString);
 	}
 
 	int ValidateEffectLibrary(const char *filename) {
@@ -4839,7 +4982,227 @@ namespace tfx {
 
 	}
 
-	 void StopSpawning(ParticleManager &pm) {
+	int LoadEffectLibrary2(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char* filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+		assert(shape_loader);
+		lib.Clear();
+
+		tfxvec<EffectEmitter> effect_stack;
+		int context = 0;
+		int error = 0;
+		int uid = 0;
+		unsigned int current_global_graph = 0;
+
+		tfxPackage package;
+		error = LoadPackage(filename, package);
+
+		std::stringstream d;
+		tfxEntryInfo *data = package.GetFile("data.txt");
+
+		if (!data)
+			error = -5;
+		else
+			d << data->data.data;
+
+
+		if (error < 0) {
+			package.Free();
+			return error;
+		}
+
+		while (!d.eof()) {
+			std::string line;
+			std::getline(d, line);
+			bool context_set = false;
+
+			if (StringIsUInt(line.c_str()) && context != tfxStartShapes) {
+				context = atoi(line.c_str());
+				if (context == tfxEndShapes)
+					break;
+				context_set = true;
+				if (context == tfxStartEffect) {
+					EffectEmitter effect;
+					effect.library = &lib;
+					if (effect_stack.size() == 0) { //Only root effects get the global graphs
+						lib.AddEffectGraphs(effect);
+						effect.ResetEffectGraphs(false);
+						current_global_graph = effect.global;
+					}
+					effect.uid = uid++;
+					effect.properties = EmitterProperties();
+					effect.type = EffectEmitterType::tfxEffect;
+					effect_stack.push_back(effect);
+					lib.AddAnimationSettings(effect_stack.back());
+				}
+				if (context == tfxStartEmitter) {
+					EffectEmitter emitter;
+					emitter.library = &lib;
+					lib.AddEmitterGraphs(emitter);
+					emitter.uid = uid++;
+					emitter.type = EffectEmitterType::tfxEmitter;
+					emitter.ResetEmitterGraphs(false);
+					effect_stack.push_back(emitter);
+				}
+			}
+
+			if (context_set == false) {
+				tfxvec<tfxText> pair = SplitString(line.c_str());
+				if (pair.size() != 2) {
+					pair = SplitString(line.c_str(), 44);
+					if (pair.size() < 2) {
+						error = 1;
+						break;
+					}
+				}
+
+				if (context == tfxStartEffect) {
+					switch (data_types.eff.At(pair[0])) {
+					case tfxUint:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (unsigned int)atoi(pair[1].c_str()));
+						break;
+					case tfxFloat:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
+						break;
+					case tfxSInt:
+						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
+						break;
+					case tfxBool:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)(atoi(pair[1].c_str())));
+						break;
+					case tfxString:
+						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
+						break;
+					}
+				}
+
+				if (context == tfxStartAnimationSettings) {
+					switch (data_types.eff.At(pair[0])) {
+					case tfxUint:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)atoi(pair[1].c_str()));
+						break;
+					case tfxFloat:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
+						break;
+					case tfxSInt:
+						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
+						break;
+					case tfxBool:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)atoi(pair[1].c_str()));
+						break;
+					case tfxString:
+						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
+						break;
+					}
+				}
+
+				if (context == tfxStartEmitter) {
+					switch (data_types.eff.At(pair[0])) {
+					case tfxUint:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)atoi(pair[1].c_str()));
+						break;
+					case tfxFloat:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
+						break;
+					case tfxSInt:
+						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
+						break;
+					case tfxBool:
+						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)atoi(pair[1].c_str()));
+						break;
+					case tfxString:
+						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
+						break;
+					}
+				}
+
+				if (context == tfxStartGraphs && effect_stack.back().type == tfxEmitter) {
+					AssignGraphData(effect_stack.back(), pair);
+				}
+				else if (context == tfxStartGraphs && effect_stack.back().type == tfxEffect) {
+					if (effect_stack.size() == 1)
+						AssignGraphData(effect_stack.back(), pair);
+				}
+
+				if (context == tfxStartShapes) {
+					if (pair.size() >= 5) {
+						ShapeData s;
+						strcpy_s(s.name, pair[0].c_str());
+						s.shape_index = atoi(pair[1].c_str());
+						s.frame_count = atoi(pair[2].c_str());
+						s.width = atoi(pair[3].c_str());
+						s.height = atoi(pair[4].c_str());
+						if (pair.size() > 5)
+							s.import_filter = atoi(pair[5].c_str());
+						if (s.import_filter < 0 || s.import_filter>1)
+							s.import_filter = 0;
+
+						tfxEntryInfo *shape_entry = package.GetFile(s.name);
+						if (shape_entry) {
+							ImageData image_data;
+							image_data.animation_frames = (float)s.frame_count;
+							image_data.image_size = tfxVec2((float)s.width, (float)s.height);
+							image_data.shape_index = s.shape_index;
+							image_data.import_filter = s.import_filter;
+
+							shape_loader(s.name, image_data, shape_entry->data.data, (u32)shape_entry->file_size, user_data);
+
+							if (!image_data.ptr) {
+								uid = -6;
+								break;
+							}
+
+							lib.particle_shapes.InsertByInt(s.shape_index, image_data);
+						}
+						else {
+							uid = -7;
+							break;
+						}
+					}
+				}
+			}
+
+			if (context == tfxEndEmitter) {
+				effect_stack.back().InitialiseUninitialisedGraphs();
+				effect_stack.back().UpdateMaxLife();
+				effect_stack.parent().sub_effectors.push_back(effect_stack.back());
+				effect_stack.pop();
+			}
+
+			if (context == tfxEndEffect) {
+				effect_stack.back().ReIndex();
+				if (effect_stack.size() > 1)
+					effect_stack.parent().sub_effectors.push_back(effect_stack.back());
+				else {
+					lib.effects.push_back(effect_stack.back());
+					effect_stack.back().InitialiseUninitialisedGraphs();
+				}
+				effect_stack.pop();
+			}
+
+		}
+
+		d.str(std::string());
+
+		package.Free();
+		//Returning anything over 0 means that effects were loaded ok
+		//-1 to -4 = Package not in correct format
+		//-5 = Data in package could not be loaded
+		//-6 = ShapeLoader did not add a pointer into the image data
+		//-7 = A shape image could not be loaded from the package
+
+		if (uid >= 0) {
+			lib.CompileAllGraphs();
+			lib.ReIndex();
+			//lib.UpdateParticleShapeReferences(lib.effects, 1);
+			lib.UpdateEffectPaths();
+			lib.UpdateAllNodes();
+			lib.SetMinMaxData();
+		}
+
+		return uid - 1;
+
+	}
+
+	void StopSpawning(ParticleManager &pm) {
 		pm.SoftExpireAll();
 	}
 
