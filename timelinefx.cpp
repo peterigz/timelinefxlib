@@ -4812,7 +4812,7 @@ namespace tfx {
 			std::string line;
 			std::getline(d, line);
 			bool context_set = false;
-			if (StringIsUInt(line.c_str()) && context != tfxStartShapes) {
+			if (StringIsUInt(line.c_str())) {
 				context = atoi(line.c_str());
 				if (context == tfxEndShapes)
 					break;
@@ -5090,7 +5090,6 @@ namespace tfx {
 		else
 			d << data->data.data;
 
-
 		if (error < 0) {
 			package.Free();
 			return error;
@@ -5101,10 +5100,11 @@ namespace tfx {
 			std::getline(d, line);
 			bool context_set = false;
 
-			if (StringIsUInt(line.c_str()) && context != tfxStartShapes) {
+			if (StringIsUInt(line.c_str())) {
 				context = atoi(line.c_str());
-				if (context == tfxEndShapes)
+				if (context == tfxEndOfFile)
 					break;
+
 				context_set = true;
 				if (context == tfxStartEffect) {
 					EffectEmitter effect;
