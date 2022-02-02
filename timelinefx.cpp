@@ -106,7 +106,8 @@ namespace tfx {
 
 	tfxEntryInfo *tfxPackage::GetFile(const char *name) {
 		if (!inventory.entries.ValidName(name))
-			return nullptr;			//File not found in inventory
+			return nullptr;									//File not found in inventory
+		assert(ValidatePackage(*this));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
 		tfxEntryInfo *entry = &inventory.entries.At(name);
 		if (entry->data.size() != entry->file_size) {
 			std::ifstream file(file_path.c_str(), std::ios::binary);
