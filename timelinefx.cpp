@@ -80,8 +80,28 @@ namespace tfx {
 		return package;
 	}
 
+	bool ValidatePackage(tfxPackage &package) {
+		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;			//Package hasn't been initialised
+
+		std::ifstream file(package.file_path.c_str(), std::ios::binary);
+
+		std::streampos file_size = 0;
+		file_size = file.tellg();
+		file.seekg(0, std::ios::end);
+		file_size = file.tellg() - file_size;
+		file.seekg(0);
+		
+		if (file_size != package.file_size) return false;							//The file on disk is no longer the same size as the package file size since it was loaded
+
+		return true;
+	}
+
 	void tfxEntryInfo::FreeData() {
 		data.free_all();
+	}
+
+	tfxPackage::~tfxPackage() {
+		Free();
 	}
 
 	tfxEntryInfo *tfxPackage::GetFile(const char *name) {
@@ -170,6 +190,8 @@ namespace tfx {
 		file.seekg(0, std::ios::end);
 		file_size = file.tellg() - file_size;
 		file.seekg(0);
+
+		package.file_size = file_size;
 	
 		if (file_size < sizeof(tfxHeader))
 			return -1;				//the file size is smaller then the expected header size
@@ -2920,6 +2942,17 @@ namespace tfx {
 		return error;
 	}
 
+	int ValidateEffectPackage(const char *filename) {
+		tfxPackage package;
+		int status = LoadPackage(filename, package);
+		if (status) return status;					//returns -1 to -4 if it's an invalid package format
+
+		tfxEntryInfo *data_txt = package.GetFile("data.txt");
+		if (!data_txt) return -5;					//Unable to load the the data.txt file in the package
+
+		return 0;
+	}
+
 	void AssignGraphData(EffectEmitter &effect, tfxvec<tfxText> &values) {
 		if (values.size() > 0) {
 			if (values[0] == "global_amount") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].amount.AddNode(n); }
@@ -4684,7 +4717,7 @@ namespace tfx {
 
 
 	//API Functions
-	int GetShapesInLibrary(const char *filename) {
+	int GetShapesInZip(const char *filename) {
 		tfxvec<EffectEmitter> effect_stack;
 		int context = 0;
 		int error = 0;
@@ -4752,7 +4785,61 @@ namespace tfx {
 		return shape_count;
 	}
 
-	int LoadEffectLibrary(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char* filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+	int GetShapesInPackage(const char *filename) {
+		int context = 0;
+		int error = 0;
+
+		tfxPackage package;
+		error = LoadPackage(filename, package);
+
+		std::stringstream d;
+		tfxEntryInfo *data = package.GetFile("data.txt");
+
+		if (!data)
+			error = -5;
+		else
+			d << data->data.data;
+
+
+		if (error < 0) {
+			package.Free();
+			return error;
+		}
+
+		int shape_count = 0;
+
+		while (!d.eof()) {
+			std::string line;
+			std::getline(d, line);
+			bool context_set = false;
+			if (StringIsUInt(line.c_str()) && context != tfxStartShapes) {
+				context = atoi(line.c_str());
+				if (context == tfxEndShapes)
+					break;
+				context_set = true;
+			}
+			if (context_set == false) {
+				tfxvec<tfxText> pair = SplitString(std::string(line).c_str());
+				if (pair.size() != 2) {
+					pair = SplitString(std::string(line).c_str(), 44);
+					if (pair.size() < 2) {
+						error = 1;
+						break;
+					}
+				}
+				if (context == tfxStartShapes) {
+					if (pair.size() >= 5) {
+						int frame_count = atoi(pair[2].c_str());
+						shape_count += frame_count;
+					}
+				}
+			}
+		}
+
+		return shape_count;
+	}
+
+	int LoadEffectLibraryZip(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char* filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		assert(shape_loader);
 		lib.Clear();
 
@@ -4982,7 +5069,7 @@ namespace tfx {
 
 	}
 
-	int LoadEffectLibrary2(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char* filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+	int LoadEffectLibraryPackage(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char* filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		assert(shape_loader);
 		lib.Clear();
 

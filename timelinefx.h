@@ -1238,6 +1238,9 @@ typedef long long s64;
 		tfxText file_path;
 		tfxHeader header;
 		tfxInventory inventory;
+		u64 file_size;							//The total file size of the package, should match file size on disk
+
+		~tfxPackage();
 
 		tfxEntryInfo *GetFile(const char *name);
 		void AddFile(tfxEntryInfo file);
@@ -1249,6 +1252,7 @@ typedef long long s64;
 	int LoadPackage(const char *file_name, tfxPackage &package);
 	tfxPackage CreatePackage(const char *file_path);
 	bool SavePackage(tfxPackage &package);
+	bool ValidatePackage(tfxPackage &package);
 
 	//------------------------------------------------------------
 
@@ -2336,6 +2340,7 @@ TFX_CUSTOM_EMITTER
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectLibrary(const char *filename);
+	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
 
 	//Helper functions
@@ -2357,9 +2362,10 @@ TFX_CUSTOM_EMITTER
 	inline void SetLookUpFrequencyOvertime(float frequency) {
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
-	int GetShapesInLibrary(const char *filename);
-	int LoadEffectLibrary(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
-	int LoadEffectLibrary2(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
+	int GetShapesInZip(const char *filename);
+	int GetShapesInPackage(const char *filename);
+	int LoadEffectLibraryZip(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
+	int LoadEffectLibraryPackage(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
 	//Particle manager functions
 	void StopSpawning(ParticleManager &pm);
