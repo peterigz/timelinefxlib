@@ -413,6 +413,15 @@ typedef long long s64;
 		tfxVectorFieldFlags_repeat_vertical = 1 << 1								//Field will repeat vertically
 	};
 
+	enum tfxPackageErrorCode : unsigned int {
+		tfxPackageErrorCode_unable_to_open_file = 1,
+		tfxPackageErrorCode_unable_to_read_file,
+		tfxPackageErrorCode_wrong_file_size,
+		tfxPackageErrorCode_invalid_format,
+		tfxPackageErrorCode_no_inventory,
+		tfxPackageErrorCode_invalid_inventory,
+	};
+
 	//-----------------------------------------------------------
 	//Constants
 
@@ -570,6 +579,48 @@ typedef long long s64;
 
 		inline void			create_pool(unsigned int amount) { assert(current_size == 0); T base; reserve(amount); for (unsigned int i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 		inline void			create_pool_with(unsigned int amount, const T &base) { assert(current_size == 0);  reserve(amount); for (unsigned int i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
+
+	};
+
+	//A char buffer you can use to load a file into and read from
+	//Has no deconstructor so make sure you call free_all when done
+	struct tfxstream {
+		u64 size = 0;
+		u64 position = 0;
+		char* data = NULL;
+
+		inline tfxstream() { size = position = 0; data = NULL; }
+		inline tfxstream(u64 qty) { size = position = 0; data = NULL; Resize(qty); }
+		inline tfxstream(const tfxstream &src) { size = 0; data = NULL; Resize(src.size); memcpy(data, src.data, (u64)size * sizeof(char)); }
+
+		inline bool read(char* dst, u64 count) {
+			if (count + position <= size) { 
+				memcpy(dst, data + position, count); 
+				position += count; 
+				return true;
+			}
+			else { 
+				assert(false); //Trying to read beyond the data boundary
+			}
+			return false;
+		}
+		inline bool eof() { return position >= size; }
+		inline void seek(u64 offset) {
+			if (offset < size)
+				position = offset;
+			else
+				position = size;
+		}
+
+		inline bool			Empty() { return size == 0; }
+		inline u64			Size() { return size; }
+		inline const u64	Size() const { return size; }
+
+		inline void			FreeAll() { if (data) { size = size = 0; free(data); data = NULL; } }
+		inline void         Clear() { if (data) { size = 0; } }
+
+		inline void         Resize(u64 new_capacity) { if (new_capacity <= size) return; char* new_data = (char*)malloc((u64)new_capacity * sizeof(char)); if (data) { memcpy(new_data, data, (u64)size * sizeof(char)); free(data); } data = new_data; size = new_capacity; position = 0; }
+		inline void			NullTerminate() { *(data + size) = NULL; }
 
 	};
 
@@ -1204,7 +1255,7 @@ typedef long long s64;
 
 	const u32 tfxMAGIC_NUMBER = (('!' << 24) + ('X' << 16) + ('F' << 8) + 'T');
 	const u32 tfxMAGIC_NUMBER_INVENTORY = (('!' << 24) + ('V' << 16) + ('N' << 8) + 'I');
-	const u32 tfxFILE_VERSION = 1;
+	const u32 tfxFILE_VERSION = 1;	//Not doing anything with this yet
 
 	//Basic package manager used for reading/writing effects files
 	struct tfxHeader {
@@ -1240,6 +1291,7 @@ typedef long long s64;
 		tfxHeader header;
 		tfxInventory inventory;
 		u64 file_size;							//The total file size of the package, should match file size on disk
+		tfxstream file_data;					//Dump of the data from the package file on disk
 
 		~tfxPackage();
 
@@ -1250,6 +1302,7 @@ typedef long long s64;
 
 	};
 	
+	tfxstream ReadEntireFile(FILE *file, bool terminate = false);
 	int LoadPackage(const char *file_name, tfxPackage &package);
 	tfxPackage CreatePackage(const char *file_path);
 	bool SavePackage(tfxPackage &package);

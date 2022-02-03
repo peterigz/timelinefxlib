@@ -140,6 +140,37 @@ namespace tfx {
 		}
 		inventory.entries.data.free_all();
 		inventory.entries.map.free_all();
+		file_data.FreeAll();
+	}
+
+	// Reads the whole file on disk into memory and returns the pointer
+	tfxstream ReadEntireFile(FILE *file, bool terminate) {
+		tfxstream buffer;
+
+		// file invalid? fseek() fail?
+		if (file == NULL || fseek(file, 0, SEEK_END)) {
+			return buffer;
+		}
+
+		long length = ftell(file);
+		rewind(file);
+		// Did ftell() fail?  Is the length too long?
+		if (length == -1 || (unsigned long)length >= SIZE_MAX) {
+			return buffer;
+		}
+
+		if(terminate)
+			buffer.Resize(length + 1);
+		else
+			buffer.Resize(length);
+		if (buffer.data == NULL || fread(buffer.data, 1, length, file) != length) {
+			buffer.FreeAll();
+			return buffer;
+		}
+		if(terminate)
+			buffer.NullTerminate();
+
+		return buffer;
 	}
 
 	bool SavePackage(tfxPackage &package) {
@@ -184,48 +215,49 @@ namespace tfx {
 	}
 
 	int LoadPackage(const char *file_name, tfxPackage &package) {
-		std::ifstream file(file_name, std::ios::binary);
+		FILE *file = fopen(file_name, "rb");
+		if (!file) {
+			return tfxPackageErrorCode_unable_to_open_file;
+		}
 
-		std::streampos file_size = 0;
-		file_size = file.tellg();
-		file.seekg(0, std::ios::end);
-		file_size = file.tellg() - file_size;
-		file.seekg(0);
+		package.file_data = ReadEntireFile(file);
+		if(package.file_data.Size() == 0)
+			return tfxPackageErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
 
-		package.file_size = file_size;
+		fclose(file);
+
+		package.file_size = package.file_data.Size();
 	
-		if (file_size < sizeof(tfxHeader))
-			return -1;				//the file size is smaller then the expected header size
+		if (package.file_size < sizeof(tfxHeader))
+			return tfxPackageErrorCode_wrong_file_size;				//the file size is smaller then the expected header size
 
-		file.read((char*)&package.header, sizeof(tfxHeader));
+		package.file_data.read((char*)&package.header, sizeof(tfxHeader));
 
 		if (package.header.magic_number != tfxMAGIC_NUMBER)
-			return -2;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
+			return tfxPackageErrorCode_invalid_format;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
 
-		if (package.header.offset_to_inventory > (u64)file_size)
-			return -3;				//The offset to the inventory is beyond the size of the file
+		if (package.header.offset_to_inventory > package.file_size)
+			return tfxPackageErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
 
-		file.seekg(package.header.offset_to_inventory);
-		file.read((char*)&package.inventory.magic_number, sizeof(u32));
+		package.file_data.seek(package.header.offset_to_inventory);
+		package.file_data.read((char*)&package.inventory.magic_number, sizeof(u32));
 
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
-			return -4;				//The value at the inventory offset does not equal the expected magic number "INV!"
+			return tfxPackageErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
 
-		file.read((char*)&package.inventory.entry_count, sizeof(u32));
+		package.file_data.read((char*)&package.inventory.entry_count, sizeof(u32));
 		for (int i = 0; i != package.inventory.entry_count; ++i) {
 			tfxEntryInfo entry;
 			u32 file_name_size;
-			file.read((char*)&file_name_size, sizeof(u32));
+			package.file_data.read((char*)&file_name_size, sizeof(u32));
 			entry.file_name.string.resize(file_name_size);
-			file.read(entry.file_name.string.data, file_name_size);
-			file.read((char*)&entry.file_size, sizeof(u64));
-			file.read((char*)&entry.offset_from_start_of_file, sizeof(u64));
+			package.file_data.read(entry.file_name.string.data, file_name_size);
+			package.file_data.read((char*)&entry.file_size, sizeof(u64));
+			package.file_data.read((char*)&entry.offset_from_start_of_file, sizeof(u64));
 			package.inventory.entries.Insert(entry.file_name, entry);
 		}
 
 		package.file_path = file_name;
-
-		file.close();
 
 		return 0;
 	}
