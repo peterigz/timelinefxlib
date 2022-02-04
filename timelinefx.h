@@ -587,6 +587,7 @@ typedef long long s64;
 
 	//A char buffer you can use to load a file into and read from
 	//Has no deconstructor so make sure you call FreeAll() when done
+	//This is meant for limited usage in timeline fx only and not recommended for use outside!
 	struct tfxstream {
 		u64 size = 0;
 		u64 position = 0;
@@ -608,6 +609,17 @@ typedef long long s64;
 			return false;
 		}
 		inline tfxText ReadLine();
+		inline bool Write(void *src, u64 count) {
+			if (count + position <= size) {
+				memcpy(data + position, src, count);
+				position += count;
+				return true;
+			}
+			else {
+				assert(false); //Trying to write beyond the data boundary
+			}
+			return false;
+		}
 		inline bool EoF() { return position >= size; }
 		inline void Seek(u64 offset) {
 			if (offset < size)
@@ -990,6 +1002,7 @@ typedef long long s64;
 
 	int FormatString(char* buf, size_t buf_size, const char* fmt, va_list args);
 
+	//Very simple string builder
 	struct tfxText {
 		tfxvec<char> string;
 
@@ -1312,8 +1325,11 @@ typedef long long s64;
 	
 	tfxstream ReadEntireFile(const char *file_name, bool terminate = false);
 	int LoadPackage(const char *file_name, tfxPackage &package);
+	int LoadPackage(tfxstream &stream, tfxPackage &package);
 	tfxPackage CreatePackage(const char *file_path);
-	bool SavePackage(tfxPackage &package);
+	bool SavePackageDisk(tfxPackage &package);
+	tfxstream SavePackageMemory(tfxPackage &package);
+	u64 GetPackageSize(tfxPackage &package);
 	bool ValidatePackage(tfxPackage &package);
 
 	//------------------------------------------------------------

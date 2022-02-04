@@ -251,7 +251,7 @@ namespace tfx {
 		return buffer;
 	}
 
-	bool SavePackage(tfxPackage &package) {
+	bool SavePackageDisk(tfxPackage &package) {
 		if (!package.file_path.Length()) return false;											//Package must have a file path
 		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;						//Header of package must contain correct magic number. CreatePackage to correctly initialise a package.
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;			//Inventory of package must contain correct magic number
@@ -273,21 +273,16 @@ namespace tfx {
 
 		//Write the header, updating the inventory offset before hand
 		package.header.offset_to_inventory = inventory_offset;
-		u64 current_seek = _ftelli64(file);
 		fwrite((char*)&package.header, 1, sizeof(tfxHeader), file);
-		current_seek = _ftelli64(file);
 
 		//Write the file contents
 		for (auto &entry : package.inventory.entries.data) {
 			fwrite(entry.data.data, 1, entry.data.Size(), file);
 		}
-		current_seek = _ftelli64(file);
 
 		//Write the inventory
 		fwrite((char*)&package.inventory.magic_number, 1, sizeof(u32), file);
-		current_seek = _ftelli64(file);
 		fwrite((char*)&package.inventory.entry_count, 1, sizeof(u32), file);
-		current_seek = _ftelli64(file);
 		for (auto &entry : package.inventory.entries.data) {
 			fwrite((char*)&entry.file_name.string.current_size, 1, sizeof(u32), file);
 			fwrite(entry.file_name.c_str(), 1, entry.file_name.string.current_size, file);
@@ -297,6 +292,72 @@ namespace tfx {
 
 		fclose(file);
 		return true;
+	}
+
+	tfxstream SavePackageMemory(tfxPackage &package) {
+		if (!package.file_path.Length()) return false;											//Package must have a file path
+		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;						//Header of package must contain correct magic number. CreatePackage to correctly initialise a package.
+		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;			//Inventory of package must contain correct magic number
+
+		//char *file = (char*)malloc(GetPackageSize(package));
+		tfxstream file(GetPackageSize(package));
+		if (!file.Size())
+			return file;
+
+		//Calculate the offset to the inventory which is stored at the end of the file after the contents
+		u64 inventory_offset = sizeof(tfxHeader);
+		for (auto &entry : package.inventory.entries.data) {
+			entry.offset_from_start_of_file = inventory_offset;
+			entry.file_size = entry.data.Size();
+			inventory_offset += entry.data.Size();
+		}
+
+		//Sanity check, make sure that the entry count is the correct value
+		package.inventory.entry_count = package.inventory.entries.Size();
+
+		//Write the header, updating the inventory offset before hand
+		package.header.offset_to_inventory = inventory_offset;
+		file.Write(&package.header, sizeof(tfxHeader));
+
+		//Write the file contents
+		for (auto &entry : package.inventory.entries.data) {
+			//fwrite(entry.data.data, 1, entry.data.Size(), file);
+			file.Write(entry.data.data, entry.data.Size());
+		}
+
+		//Write the inventory
+		file.Write(&package.inventory.magic_number, sizeof(u32));
+		file.Write(&package.inventory.entry_count, sizeof(u32));
+		for (auto &entry : package.inventory.entries.data) {
+			file.Write(&entry.file_name.string.current_size, sizeof(u32));
+			file.Write(entry.file_name.string.data, entry.file_name.string.current_size);
+			file.Write(&entry.file_size, sizeof(u64));
+			file.Write(&entry.offset_from_start_of_file, sizeof(u64));
+		}
+
+		return file;
+	}
+
+	u64 GetPackageSize(tfxPackage &package) {
+		u64 space = 0;
+		space += sizeof(tfxHeader);
+
+		//Write the file contents
+		for (auto &entry : package.inventory.entries.data) {
+			space += entry.data.Size();
+		}
+
+		//Write the inventory
+		space += sizeof(u32);
+		space += sizeof(u32);
+		for (auto &entry : package.inventory.entries.data) {
+			space += sizeof(u32);
+			space += entry.file_name.string.current_size;
+			space += sizeof(u64);
+			space += sizeof(u64);
+		}
+
+		return space;
 	}
 
 	int LoadPackage(const char *file_name, tfxPackage &package) {
@@ -337,6 +398,46 @@ namespace tfx {
 		}
 
 		package.file_path = file_name;
+
+		return 0;
+	}
+
+	int LoadPackage(tfxstream &stream, tfxPackage &package) {
+		//Note: tfxstream doesn not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
+		package.file_data = stream;
+		if (package.file_data.Size() == 0)
+			return tfxPackageErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
+
+		package.file_size = package.file_data.Size();
+
+		if (package.file_size < sizeof(tfxHeader))
+			return tfxPackageErrorCode_wrong_file_size;				//the file size is smaller then the expected header size
+
+		package.file_data.Read((char*)&package.header, sizeof(tfxHeader));
+
+		if (package.header.magic_number != tfxMAGIC_NUMBER)
+			return tfxPackageErrorCode_invalid_format;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
+
+		if (package.header.offset_to_inventory > package.file_size)
+			return tfxPackageErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
+
+		package.file_data.Seek(package.header.offset_to_inventory);
+		package.file_data.Read((char*)&package.inventory.magic_number, sizeof(u32));
+
+		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
+			return tfxPackageErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
+
+		package.file_data.Read((char*)&package.inventory.entry_count, sizeof(u32));
+		for (int i = 0; i != package.inventory.entry_count; ++i) {
+			tfxEntryInfo entry;
+			u32 file_name_size;
+			package.file_data.Read((char*)&file_name_size, sizeof(u32));
+			entry.file_name.string.resize(file_name_size);
+			package.file_data.Read(entry.file_name.string.data, file_name_size);
+			package.file_data.Read((char*)&entry.file_size, sizeof(u64));
+			package.file_data.Read((char*)&entry.offset_from_start_of_file, sizeof(u64));
+			package.inventory.entries.Insert(entry.file_name, entry);
+		}
 
 		return 0;
 	}
