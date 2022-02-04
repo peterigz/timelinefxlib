@@ -234,15 +234,12 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="libraries\miniz.c">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-    </ClCompile>
+    <ClCompile Include="miniz.c" />
     <ClCompile Include="timelinefx.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="miniz.h" />
     <ClInclude Include="timelinefx.h" />
-    <ClInclude Include="libraries\miniz.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="readme.md" />

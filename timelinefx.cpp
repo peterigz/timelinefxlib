@@ -1,5 +1,5 @@
 #include "timelinefx.h"
-#include "Libraries/miniz.h"
+#include "miniz.h"
 
 namespace tfx {
 	int FormatString(char* buf, size_t buf_size, const char* fmt, va_list args) {
