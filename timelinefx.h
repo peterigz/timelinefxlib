@@ -104,8 +104,6 @@
 #endif
 
 //Might possibly replace some of these in the future
-#include <fstream>					//std::basic_ofstream
-#include <sstream>					//std::basic_stringstream
 #include <stdio.h>
 #include <stdarg.h>					//va_list
 #include <chrono>					//std::chrono::high_resolution_clock
@@ -113,7 +111,7 @@
 #include <algorithm>
 #include <stdint.h>
 #include <assert.h>
-#include <iostream>
+#include <iostream>					//temp for std::cout
 
 namespace tfx {
 
@@ -129,6 +127,7 @@ namespace tfx {
 	struct Particle;
 	struct AnimationSettings;
 	struct EffectLibrary;
+	struct tfxText;
 
 	//--------------------------------------------------------------
 	//macros
@@ -142,6 +141,10 @@ namespace tfx {
 #define Del << "=" <<
 #define Com << "," <<
 #define EndLine << std::endl
+
+#define Delt "=" 
+#define Comt ","
+#define EndLinet "\n"
 
 typedef std::chrono::high_resolution_clock Clock;
 
@@ -583,7 +586,7 @@ typedef long long s64;
 	};
 
 	//A char buffer you can use to load a file into and read from
-	//Has no deconstructor so make sure you call free_all when done
+	//Has no deconstructor so make sure you call FreeAll() when done
 	struct tfxstream {
 		u64 size = 0;
 		u64 position = 0;
@@ -593,7 +596,7 @@ typedef long long s64;
 		inline tfxstream(u64 qty) { size = position = 0; data = NULL; Resize(qty); }
 		inline tfxstream(const tfxstream &src) { size = 0; data = NULL; Resize(src.size); memcpy(data, src.data, (u64)size * sizeof(char)); }
 
-		inline bool read(char* dst, u64 count) {
+		inline bool Read(char* dst, u64 count) {
 			if (count + position <= size) { 
 				memcpy(dst, data + position, count); 
 				position += count; 
@@ -604,8 +607,9 @@ typedef long long s64;
 			}
 			return false;
 		}
-		inline bool eof() { return position >= size; }
-		inline void seek(u64 offset) {
+		inline tfxText ReadLine();
+		inline bool EoF() { return position >= size; }
+		inline void Seek(u64 offset) {
 			if (offset < size)
 				position = offset;
 			else
@@ -1004,6 +1008,7 @@ typedef long long s64;
 		inline const char *c_str() const { return string.current_size ? string.data : ""; }
 		inline void Clear() { string.clear(); }
 		inline unsigned int Length() const { return string.current_size ? string.current_size - 1 : 0; }
+		void AddLine(const char *format, ...);
 		void Appendf(const char *format, ...);
 		void Appendv(const char *format, va_list args);
 		inline void Append(char c) { 
@@ -1030,6 +1035,9 @@ typedef long long s64;
 			NullTerminate();
 		}
 		void NullTerminate() { string.push_back(NULL); }
+		bool SaveToFile(const char *file_name);
+		const bool IsInt() const;
+		const bool IsFloat() const;
 	};
 
 	typedef unsigned long long tfxKey;
@@ -2372,10 +2380,10 @@ TFX_CUSTOM_EMITTER
 	tfxText &GetDataStrValue(tfxStorageMap<DataEntry> &config, const char* key);
 	int& GetDataIntValue(tfxStorageMap<DataEntry> &config, const char* key);
 	float& GetDataFloatValue(tfxStorageMap<DataEntry> &config, const char* key);
-	void SaveDataFile(tfxStorageMap<DataEntry> &config, const char* path = "");
-	void LoadDataFile(tfxStorageMap<DataEntry> &config, const char* path);
-	void StreamProperties(EmitterProperties &property, std::stringstream &file);
-	void StreamGraph(const char * name, Graph &graph, std::stringstream &file);
+	bool SaveDataFile(tfxStorageMap<DataEntry> &config, const char* path = "");
+	bool LoadDataFile(tfxStorageMap<DataEntry> &config, const char* path);
+	void StreamProperties(EmitterProperties &property, tfxText &file);
+	void StreamGraph(const char * name, Graph &graph, tfxText &file);
 	tfxvec<tfxText> SplitString(const tfxText &s, char delim = 61);
 	bool StringIsUInt(const tfxText &s);
 	int GetDataType(const tfxText &s);

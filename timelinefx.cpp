@@ -37,6 +37,53 @@ namespace tfx {
 
 	}
 
+	void tfxText::AddLine(const char *format, ...) {
+		va_list args;
+		va_start(args, format);
+		Appendv(format, args);
+		va_end(args);
+		Append('\n');
+	}
+
+	bool tfxText::SaveToFile(const char *file_name) {
+		FILE *file = fopen(file_name, "wb");
+		if (!file)
+			return false;
+
+		u32 l = Length();
+		if (fwrite(string.data, 1, Length(), file) != Length())
+			return false;
+		
+		fclose(file);
+		return true;
+	}
+
+	const bool tfxText::IsInt() const {
+		if (!Length()) return false;
+		for (auto c : string) {
+			if (c >= '0' && c <= '9');
+			else {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	const bool tfxText::IsFloat() const {
+		if (!Length()) return false;
+		int dot_count = 0;
+		for (auto c : string) {
+			if (c >= '0' && c <= '9');
+			else if (c == '.' && dot_count == 0) {
+				dot_count++;
+			}
+			else {
+				return false;
+			}
+		}
+		return dot_count == 1;
+	}
+
 	void tfxText::Appendf(const char *format, ...) {
 		va_list args;
 		va_start(args, format);
@@ -66,6 +113,22 @@ namespace tfx {
 		va_end(args);
 	}
 
+	tfxText tfxstream::ReadLine() {
+		tfxText line;
+		if (EoF()) return line;
+		
+		while (!EoF()) {
+			char current = *(data + position);
+			if (current == '\n') {
+				position++;
+				break;
+			}
+			line.Append(current);
+			position++;
+		}
+		return line;
+	}
+
 	tfxPackage CreatePackage(const char *file_path) {
 		tfxPackage package;
 		package.header.magic_number = tfxMAGIC_NUMBER;
@@ -83,16 +146,25 @@ namespace tfx {
 	bool ValidatePackage(tfxPackage &package) {
 		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;			//Package hasn't been initialised
 
-		std::ifstream file(package.file_path.c_str(), std::ios::binary);
+		FILE *file = fopen(package.file_path.c_str(), "rb");
+		if (!file) {
+			return false;
+		}
 
-		std::streampos file_size = 0;
-		file_size = file.tellg();
-		file.seekg(0, std::ios::end);
-		file_size = file.tellg() - file_size;
-		file.seekg(0);
+		if (file == NULL || _fseeki64(file, 0, SEEK_END)) {
+			return false;
+		}
+
+		u64 length = _ftelli64(file);
+		rewind(file);
+		if (length == -1 || length >= SIZE_MAX) {
+			fclose(file);
+			return false;
+		}
 		
-		if (file_size != package.file_size) return false;							//The file on disk is no longer the same size as the package file size since it was loaded
+		if (length != package.file_size) return false;							//The file on disk is no longer the same size as the package file size since it was loaded
 
+		//Everything seems ok
 		return true;
 	}
 
@@ -110,11 +182,11 @@ namespace tfx {
 		assert(ValidatePackage(*this));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
 		tfxEntryInfo *entry = &inventory.entries.At(name);
 		if (entry->data.Size() != entry->file_size) {
-			std::ifstream file(file_path.c_str(), std::ios::binary);
-			file.seekg(entry->offset_from_start_of_file);
-			entry->data.Resize((u32)entry->file_size);
-			file.read(entry->data.data, entry->file_size);
-			file.close();
+			FILE *file = fopen(file_path.c_str(), "rb");
+			_fseeki64(file, entry->offset_from_start_of_file, SEEK_SET);
+			entry->data.Resize(entry->file_size);
+			fread(entry->data.data, 1, entry->file_size, file);
+			fclose(file);
 		}
 		return entry;
 	}
@@ -148,13 +220,11 @@ namespace tfx {
 		tfxstream buffer;
 		FILE *file = fopen(file_name, "rb");
 		if (!file) {
-			fclose(file);
 			return buffer;
 		}
 
 		// file invalid? fseek() fail?
 		if (file == NULL || fseek(file, 0, SEEK_END)) {
-			fclose(file);
 			return buffer;
 		}
 
@@ -187,7 +257,9 @@ namespace tfx {
 		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;						//Header of package must contain correct magic number. CreatePackage to correctly initialise a package.
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;			//Inventory of package must contain correct magic number
 
-		std::ofstream file(package.file_path.c_str(), std::ios::binary);
+		FILE * file = fopen(package.file_path.c_str(), "wb");
+		if (!file)
+			return false;
 
 		//Calculate the offset to the inventory which is stored at the end of the file after the contents
 		u64 inventory_offset = sizeof(tfxHeader);
@@ -197,29 +269,34 @@ namespace tfx {
 			inventory_offset += entry.data.Size();
 		}
 
-		//just make sure that the entry count is the correct value
+		//Sanity check, make sure that the entry count is the correct value
 		package.inventory.entry_count = package.inventory.entries.Size();
 
 		//Write the header, updating the inventory offset before hand
 		package.header.offset_to_inventory = inventory_offset;
-		file.write((char*)&package.header, sizeof(tfxHeader));
+		u64 current_seek = _ftelli64(file);
+		fwrite((char*)&package.header, 1, sizeof(tfxHeader), file);
+		current_seek = _ftelli64(file);
 
 		//Write the file contents
 		for (auto &entry : package.inventory.entries.data) {
-			file.write(entry.data.data, entry.data.Size());
+			fwrite(entry.data.data, 1, entry.data.Size(), file);
 		}
+		current_seek = _ftelli64(file);
 
 		//Write the inventory
-		file.write((char*)&package.inventory.magic_number, sizeof(u32));
-		file.write((char*)&package.inventory.entry_count, sizeof(u32));
+		fwrite((char*)&package.inventory.magic_number, 1, sizeof(u32), file);
+		current_seek = _ftelli64(file);
+		fwrite((char*)&package.inventory.entry_count, 1, sizeof(u32), file);
+		current_seek = _ftelli64(file);
 		for (auto &entry : package.inventory.entries.data) {
-			file.write((char*)&entry.file_name.string.current_size, sizeof(u32));
-			file.write(entry.file_name.c_str(), entry.file_name.string.current_size);
-			file.write((char*)&entry.file_size, sizeof(u64));
-			file.write((char*)&entry.offset_from_start_of_file, sizeof(u64));
+			fwrite((char*)&entry.file_name.string.current_size, 1, sizeof(u32), file);
+			fwrite(entry.file_name.c_str(), 1, entry.file_name.string.current_size, file);
+			fwrite((char*)&entry.file_size, 1, sizeof(u64), file);
+			fwrite((char*)&entry.offset_from_start_of_file, 1, sizeof(u64), file);
 		}
 
-		file.close();
+		fclose(file);
 		return true;
 	}
 
@@ -234,7 +311,7 @@ namespace tfx {
 		if (package.file_size < sizeof(tfxHeader))
 			return tfxPackageErrorCode_wrong_file_size;				//the file size is smaller then the expected header size
 
-		package.file_data.read((char*)&package.header, sizeof(tfxHeader));
+		package.file_data.Read((char*)&package.header, sizeof(tfxHeader));
 
 		if (package.header.magic_number != tfxMAGIC_NUMBER)
 			return tfxPackageErrorCode_invalid_format;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
@@ -242,21 +319,21 @@ namespace tfx {
 		if (package.header.offset_to_inventory > package.file_size)
 			return tfxPackageErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
 
-		package.file_data.seek(package.header.offset_to_inventory);
-		package.file_data.read((char*)&package.inventory.magic_number, sizeof(u32));
+		package.file_data.Seek(package.header.offset_to_inventory);
+		package.file_data.Read((char*)&package.inventory.magic_number, sizeof(u32));
 
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
 			return tfxPackageErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
 
-		package.file_data.read((char*)&package.inventory.entry_count, sizeof(u32));
+		package.file_data.Read((char*)&package.inventory.entry_count, sizeof(u32));
 		for (int i = 0; i != package.inventory.entry_count; ++i) {
 			tfxEntryInfo entry;
 			u32 file_name_size;
-			package.file_data.read((char*)&file_name_size, sizeof(u32));
+			package.file_data.Read((char*)&file_name_size, sizeof(u32));
 			entry.file_name.string.resize(file_name_size);
-			package.file_data.read(entry.file_name.string.data, file_name_size);
-			package.file_data.read((char*)&entry.file_size, sizeof(u64));
-			package.file_data.read((char*)&entry.offset_from_start_of_file, sizeof(u64));
+			package.file_data.Read(entry.file_name.string.data, file_name_size);
+			package.file_data.Read((char*)&entry.file_size, sizeof(u64));
+			package.file_data.Read((char*)&entry.offset_from_start_of_file, sizeof(u64));
 			package.inventory.entries.Insert(entry.file_name, entry);
 		}
 
@@ -2963,7 +3040,6 @@ namespace tfx {
 			error = -1;
 
 		size_t uncomp_size;
-		std::stringstream d;
 		void *data = mz_zip_reader_extract_file_to_heap(&zip_archive, "data.txt", &uncomp_size, 0);
 
 		if (!data)
@@ -2972,7 +3048,6 @@ namespace tfx {
 		}
 
 		mz_free(data);
-		d.clear();
 		mz_zip_reader_end(&zip_archive);
 
 		return error;
@@ -2981,7 +3056,7 @@ namespace tfx {
 	int ValidateEffectPackage(const char *filename) {
 		tfxPackage package;
 		int status = LoadPackage(filename, package);
-		if (status) return status;					//returns -1 to -4 if it's an invalid package format
+		if (status) return status;					//returns 1 to 4 if it's an invalid package format
 
 		tfxEntryInfo *data_txt = package.GetFile("data.txt");
 		if (!data_txt) return -5;					//Unable to load the the data.txt file in the package
@@ -3182,51 +3257,51 @@ namespace tfx {
 			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; else effect.properties.flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size;
 	}
 
-	void StreamProperties(EmitterProperties &property, std::stringstream &file) {
+	void StreamProperties(EmitterProperties &property, tfxText &file) {
 
-		file << "image_index" Del property.shape_index EndLine;
-		file << "image_handle_x" Del property.image_handle.x EndLine;
-		file << "image_handle_y" Del property.image_handle.y EndLine;
-		file << "image_start_frame" Del property.start_frame EndLine;
-		file << "image_end_frame" Del property.end_frame EndLine;
-		file << "image_play_once" Del (property.flags & tfxEmitterPropertyFlags_play_once) EndLine;
-		file << "image_reverse_animation" Del (property.flags & tfxEmitterPropertyFlags_reverse_animation) EndLine;
-		file << "image_animate" Del (property.flags & tfxEmitterPropertyFlags_animate) EndLine;
-		file << "image_random_start_frame" Del (property.flags & tfxEmitterPropertyFlags_random_start_frame) EndLine;
-		file << "spawn_amount" Del property.spawn_amount EndLine;
-		file << "blend_mode" Del property.blend_mode EndLine;
-		file << "emission_type" Del property.emission_type EndLine;
-		file << "emission_direction" Del property.emission_direction EndLine;
-		file << "grid_rows" Del property.grid_points.x EndLine;
-		file << "grid_columns" Del property.grid_points.y EndLine;
-		file << "loop_length" Del property.loop_length EndLine;
-		file << "emitter_handle_x" Del property.emitter_handle.x EndLine;
-		file << "emitter_handle_y" Del property.emitter_handle.y EndLine;
-		file << "end_behaviour" Del property.end_behaviour EndLine;
-		file << "random_color" Del (property.flags & tfxEmitterPropertyFlags_random_color) EndLine;
-		file << "relative_position" Del (property.flags & tfxEmitterPropertyFlags_relative_position) EndLine;
-		file << "relative_angle" Del (property.flags & tfxEmitterPropertyFlags_relative_angle) EndLine;
-		file << "image_handle_auto_center" Del (property.flags & tfxEmitterPropertyFlags_image_handle_auto_center) EndLine;
-		file << "single" Del (property.flags & tfxEmitterPropertyFlags_single) EndLine;
-		file << "one_shot" Del (property.flags & tfxEmitterPropertyFlags_one_shot) EndLine;
-		file << "spawn_on_grid" Del (property.flags & tfxEmitterPropertyFlags_spawn_on_grid) EndLine;
-		file << "grid_spawn_clockwise" Del (property.flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) EndLine;
-		file << "fill_area" Del (property.flags & tfxEmitterPropertyFlags_fill_area) EndLine;
-		file << "emitter_handle_auto_center" Del (property.flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) EndLine;
-		file << "edge_traversal" Del (property.flags & tfxEmitterPropertyFlags_edge_traversal) EndLine;
-		file << "angle_setting" Del property.angle_setting EndLine;
-		file << "angle_offset" Del property.angle_offset EndLine;
-		file << "global_uniform_size" Del (property.flags & tfxEmitterPropertyFlags_global_uniform_size) EndLine;
-		file << "base_uniform_size" Del (property.flags & tfxEmitterPropertyFlags_base_uniform_size) EndLine;
-		file << "lifetime_uniform_size" Del (property.flags & tfxEmitterPropertyFlags_lifetime_uniform_size) EndLine;
-		file << "layer" Del property.layer EndLine;
+		file.AddLine("image_index=%i", property.shape_index);
+		file.AddLine("image_handle_x=%f", property.image_handle.x);
+		file.AddLine("image_handle_y=%f", property.image_handle.y);
+		file.AddLine("image_start_frame=%f", property.start_frame);
+		file.AddLine("image_end_frame=%f", property.end_frame);
+		file.AddLine("image_play_once=%i", (property.flags & tfxEmitterPropertyFlags_play_once));
+		file.AddLine("image_reverse_animation=%i", (property.flags & tfxEmitterPropertyFlags_reverse_animation));
+		file.AddLine("image_animate=%i", (property.flags & tfxEmitterPropertyFlags_animate));
+		file.AddLine("image_random_start_frame=%i", (property.flags & tfxEmitterPropertyFlags_random_start_frame));
+		file.AddLine("spawn_amount=%i", property.spawn_amount);
+		file.AddLine("blend_mode=%i", property.blend_mode);
+		file.AddLine("emission_type=%i", property.emission_type);
+		file.AddLine("emission_direction=%i", property.emission_direction);
+		file.AddLine("grid_rows=%f", property.grid_points.x);
+		file.AddLine("grid_columns=%f", property.grid_points.y);
+		file.AddLine("loop_length=%f", property.loop_length);
+		file.AddLine("emitter_handle_x=%f", property.emitter_handle.x);
+		file.AddLine("emitter_handle_y=%f", property.emitter_handle.y);
+		file.AddLine("end_behaviour=%i", property.end_behaviour);
+		file.AddLine("random_color=%i", (property.flags & tfxEmitterPropertyFlags_random_color));
+		file.AddLine("relative_position=%i", (property.flags & tfxEmitterPropertyFlags_relative_position));
+		file.AddLine("relative_angle=%i", (property.flags & tfxEmitterPropertyFlags_relative_angle));
+		file.AddLine("image_handle_auto_center=%i", (property.flags & tfxEmitterPropertyFlags_image_handle_auto_center));
+		file.AddLine("single=%i", (property.flags & tfxEmitterPropertyFlags_single));
+		file.AddLine("one_shot=%i", (property.flags & tfxEmitterPropertyFlags_one_shot));
+		file.AddLine("spawn_on_grid=%i", (property.flags & tfxEmitterPropertyFlags_spawn_on_grid));
+		file.AddLine("grid_spawn_clockwise=%i", (property.flags & tfxEmitterPropertyFlags_grid_spawn_clockwise));
+		file.AddLine("fill_area=%i", (property.flags & tfxEmitterPropertyFlags_fill_area));
+		file.AddLine("emitter_handle_auto_center=%i", (property.flags & tfxEmitterPropertyFlags_emitter_handle_auto_center));
+		file.AddLine("edge_traversal=%i", (property.flags & tfxEmitterPropertyFlags_edge_traversal));
+		file.AddLine("angle_setting=%i", property.angle_setting);
+		file.AddLine("angle_offset=%f", property.angle_offset);
+		file.AddLine("global_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_global_uniform_size));
+		file.AddLine("base_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_base_uniform_size));
+		file.AddLine("lifetime_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
+		file.AddLine("layer=%i", property.layer);
 
 	}
 
-	void StreamGraph(const char * name, Graph &graph, std::stringstream &file) {
+	void StreamGraph(const char * name, Graph &graph, tfxText &file) {
 
 		for (auto &n : graph.nodes) {
-			file << name Com n.frame Com n.value Com n.is_curve Com n.left.x Com n.left.y Com n.right.x Com n.right.y EndLine;
+			file.AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, n.frame, n.value, n.is_curve, n.left.x, n.left.y, n.right.x, n.right.y);
 		}
 
 	}
@@ -4602,8 +4677,11 @@ namespace tfx {
 		return map.At(key).float_value;
 	}
 
-	void SaveDataFile(tfxStorageMap<DataEntry> &map, const char* path) {
-		std::ofstream file(path);
+	bool SaveDataFile(tfxStorageMap<DataEntry> &map, const char* path) {
+		FILE *file = fopen(path, "w");
+
+		if (file == NULL)
+			return false;
 
 		if (map.Size()) {
 			for (auto &entry : map.data) {
@@ -4624,19 +4702,20 @@ namespace tfx {
 					break;
 				}
 				ini_line.Appendf("\n");
-				file << ini_line.c_str();
+				fwrite(ini_line.c_str(), 1, ini_line.Length(), file);
 			}
 		}
 
-		file.close();
+		fclose(file);
+		return true;
 
 	}
 
-	void LoadDataFile(tfxStorageMap<DataEntry> &map, const char* path) {
+	bool LoadDataFile(tfxStorageMap<DataEntry> &map, const char* path) {
 		FILE* fp;
 		fp = fopen(path, "r");
 		if (fp == NULL) {
-			return;
+			return false;
 		}
 
 		const size_t max_line_length = 256;
@@ -4665,6 +4744,7 @@ namespace tfx {
 		}
 
 		int close = fclose(fp);
+		return true;
 
 	}
 
@@ -4703,16 +4783,11 @@ namespace tfx {
 		if (s.Length() == 0)
 			return tfxString;
 
-		if (s[0] >= 48 && s[0] <= 57) {
-			size_t size;
-			auto int_check = std::stoi(s.c_str(), &size);
-			if (size == s.Length())
-				return tfxSInt;
+		if(s.IsInt())
+			return tfxSInt;
 
-			auto float_check = std::stof(s.c_str(), &size);
-			if (size == s.Length())
-				return tfxFloat;
-		}
+		if (s.IsFloat())
+			return tfxFloat;
 
 		return tfxString;
 	}
@@ -4747,11 +4822,6 @@ namespace tfx {
 
 	}
 
-	//Get a node by GraphID
-	//Graph &GetGraphNode(EffectLibrary &library, GraphNodeID &graph_id) {
-	//}
-
-
 	//API Functions
 	int GetShapesInZip(const char *filename) {
 		tfxvec<EffectEmitter> effect_stack;
@@ -4773,13 +4843,15 @@ namespace tfx {
 			error = -3;
 
 		size_t uncomp_size;
-		std::stringstream d;
+		tfxstream d;
 		void *data = mz_zip_reader_extract_file_to_heap(&zip_archive, "data.txt", &uncomp_size, 0);
 
 		if (!data)
 			error = -2;
-		else
-			d << (char*)data;
+		else {
+			d.Resize(uncomp_size);
+			memcpy(d.data, data, uncomp_size);
+		}
 
 
 		if (error < 0) {
@@ -4789,9 +4861,9 @@ namespace tfx {
 
 		int shape_count = 0;
 
-		while (!d.eof()) {
-			std::string line;
-			std::getline(d, line);
+		while (!d.EoF()) {
+			tfxText line;
+			line = d.ReadLine();
 			bool context_set = false;
 			if (StringIsUInt(line.c_str()) && context != tfxStartShapes) {
 				context = atoi(line.c_str());
@@ -4800,9 +4872,9 @@ namespace tfx {
 				context_set = true;
 			}
 			if (context_set == false) {
-				tfxvec<tfxText> pair = SplitString(std::string(line).c_str());
+				tfxvec<tfxText> pair = SplitString(line.c_str());
 				if (pair.size() != 2) {
-					pair = SplitString(std::string(line).c_str(), 44);
+					pair = SplitString(line.c_str(), 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
@@ -4817,6 +4889,8 @@ namespace tfx {
 			}
 		}
 
+		d.FreeAll();
+
 		mz_zip_reader_end(&zip_archive);
 		return shape_count;
 	}
@@ -4828,13 +4902,10 @@ namespace tfx {
 		tfxPackage package;
 		error = LoadPackage(filename, package);
 
-		std::stringstream d;
 		tfxEntryInfo *data = package.GetFile("data.txt");
 
 		if (!data)
 			error = -5;
-		else
-			d << data->data.data;
 
 
 		if (error < 0) {
@@ -4844,9 +4915,8 @@ namespace tfx {
 
 		int shape_count = 0;
 
-		while (!d.eof()) {
-			std::string line;
-			std::getline(d, line);
+		while (!data->data.EoF()) {
+			tfxText line = data->data.ReadLine();
 			bool context_set = false;
 			if (StringIsUInt(line.c_str())) {
 				context = atoi(line.c_str());
@@ -4855,9 +4925,9 @@ namespace tfx {
 				context_set = true;
 			}
 			if (context_set == false) {
-				tfxvec<tfxText> pair = SplitString(std::string(line).c_str());
+				tfxvec<tfxText> pair = SplitString(line.c_str());
 				if (pair.size() != 2) {
-					pair = SplitString(std::string(line).c_str(), 44);
+					pair = SplitString(line.c_str(), 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
@@ -4898,13 +4968,15 @@ namespace tfx {
 			error = -3;
 
 		size_t uncomp_size;
-		std::stringstream d;
+		tfxstream d;
 		void *data = mz_zip_reader_extract_file_to_heap(&zip_archive, "data.txt", &uncomp_size, 0);
 
 		if (!data)
 			error = -2;
-		else 
-			d << (char*)data;
+		else {
+			d.Resize(uncomp_size);
+			memcpy(d.data, data, uncomp_size);
+		}
 
 
 		if (error < 0) {
@@ -4913,9 +4985,9 @@ namespace tfx {
 			return error;
 		}
 
-		while (!d.eof()) {
-			std::string line;
-			std::getline(d, line);
+		while (!d.EoF()) {
+			tfxText line;
+			line = d.ReadLine();
 			bool context_set = false;
 
 			if (StringIsUInt(line.c_str()) && context != tfxStartShapes) {
@@ -5080,7 +5152,7 @@ namespace tfx {
 
 		}
 
-		d.str(std::string());
+		d.FreeAll();
 
 		mz_free(data);
 		mz_zip_reader_end(&zip_archive);
@@ -5118,22 +5190,18 @@ namespace tfx {
 		tfxPackage package;
 		error = LoadPackage(filename, package);
 
-		std::stringstream d;
 		tfxEntryInfo *data = package.GetFile("data.txt");
 
 		if (!data)
 			error = -5;
-		else
-			d << data->data.data;
 
 		if (error < 0) {
 			package.Free();
 			return error;
 		}
 
-		while (!d.eof()) {
-			std::string line;
-			std::getline(d, line);
+		while (!data->data.EoF()) {
+			tfxText line = data->data.ReadLine();
 			bool context_set = false;
 
 			if (StringIsUInt(line.c_str())) {
@@ -5302,8 +5370,6 @@ namespace tfx {
 			}
 
 		}
-
-		d.str(std::string());
 
 		package.Free();
 		//Returning anything over 0 means that effects were loaded ok
