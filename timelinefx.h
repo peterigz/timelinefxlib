@@ -1253,8 +1253,8 @@ typedef long long s64;
 
 	};
 
-	const u32 tfxMAGIC_NUMBER = (('!' << 24) + ('X' << 16) + ('F' << 8) + 'T');
-	const u32 tfxMAGIC_NUMBER_INVENTORY = (('!' << 24) + ('V' << 16) + ('N' << 8) + 'I');
+	const u32 tfxMAGIC_NUMBER = '!XFT';
+	const u32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
 	const u32 tfxFILE_VERSION = 1;	//Not doing anything with this yet
 
 	//Basic package manager used for reading/writing effects files
