@@ -18,15 +18,9 @@
     <ClCompile Include="timelinefx.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="miniz.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="timelinefx.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="miniz.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -2401,7 +2401,6 @@ TFX_CUSTOM_EMITTER
 	FormState Tween(float tween, FormState &world, FormState &captured);
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
-	int ValidateEffectLibrary(const char *filename);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
 
@@ -2424,9 +2423,7 @@ TFX_CUSTOM_EMITTER
 	inline void SetLookUpFrequencyOvertime(float frequency) {
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
-	int GetShapesInZip(const char *filename);
 	int GetShapesInPackage(const char *filename);
-	int LoadEffectLibraryZip(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 	int LoadEffectLibraryPackage(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
 	//Particle manager functions

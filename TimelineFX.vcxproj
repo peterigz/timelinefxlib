@@ -234,11 +234,9 @@
     </Lib>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="miniz.c" />
     <ClCompile Include="timelinefx.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="miniz.h" />
     <ClInclude Include="timelinefx.h" />
   </ItemGroup>
   <ItemGroup>
