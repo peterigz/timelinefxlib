@@ -1275,7 +1275,7 @@ typedef long long s64;
 		tfxText file_name;						//The file name of the name stored in the package
 		u64 offset_from_start_of_file;			//Offset from the start of the file to where the file is located
 		u64 file_size;							//The size of the filej
-		tfxvec<char> data;						//The file data
+		tfxstream data;							//The file data
 		
 		void FreeData();
 	};
@@ -1297,12 +1297,12 @@ typedef long long s64;
 
 		tfxEntryInfo *GetFile(const char *name);
 		void AddFile(tfxEntryInfo file);
-		void AddFile(const char *file_name, tfxvec<char> &data);
+		void AddFile(const char *file_name, tfxstream &data);
 		void Free();
 
 	};
 	
-	tfxstream ReadEntireFile(FILE *file, bool terminate = false);
+	tfxstream ReadEntireFile(const char *file_name, bool terminate = false);
 	int LoadPackage(const char *file_name, tfxPackage &package);
 	tfxPackage CreatePackage(const char *file_path);
 	bool SavePackage(tfxPackage &package);

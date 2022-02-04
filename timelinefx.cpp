@@ -97,7 +97,7 @@ namespace tfx {
 	}
 
 	void tfxEntryInfo::FreeData() {
-		data.free_all();
+		data.FreeAll();
 	}
 
 	tfxPackage::~tfxPackage() {
@@ -109,10 +109,10 @@ namespace tfx {
 			return nullptr;									//File not found in inventory
 		assert(ValidatePackage(*this));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
 		tfxEntryInfo *entry = &inventory.entries.At(name);
-		if (entry->data.size() != entry->file_size) {
+		if (entry->data.Size() != entry->file_size) {
 			std::ifstream file(file_path.c_str(), std::ios::binary);
 			file.seekg(entry->offset_from_start_of_file);
-			entry->data.resize((u32)entry->file_size);
+			entry->data.Resize((u32)entry->file_size);
 			file.read(entry->data.data, entry->file_size);
 			file.close();
 		}
@@ -124,11 +124,11 @@ namespace tfx {
 		inventory.entry_count++;
 	}
 
-	void tfxPackage::AddFile(const char *file_name, tfxvec<char> &data) {
+	void tfxPackage::AddFile(const char *file_name, tfxstream &data) {
 		tfxEntryInfo entry;
 		entry.file_name = file_name;
 		entry.data = data;
-		entry.file_size = data.current_size;
+		entry.file_size = data.size;
 
 		inventory.entries.Insert(entry.file_name, entry);
 		inventory.entry_count++;
@@ -136,7 +136,7 @@ namespace tfx {
 
 	void tfxPackage::Free() {
 		for (auto &entry : inventory.entries.data) {
-			entry.data.free_all();
+			entry.data.FreeAll();
 		}
 		inventory.entries.data.free_all();
 		inventory.entries.map.free_all();
@@ -144,11 +144,17 @@ namespace tfx {
 	}
 
 	// Reads the whole file on disk into memory and returns the pointer
-	tfxstream ReadEntireFile(FILE *file, bool terminate) {
+	tfxstream ReadEntireFile(const char *file_name, bool terminate) {
 		tfxstream buffer;
+		FILE *file = fopen(file_name, "rb");
+		if (!file) {
+			fclose(file);
+			return buffer;
+		}
 
 		// file invalid? fseek() fail?
 		if (file == NULL || fseek(file, 0, SEEK_END)) {
+			fclose(file);
 			return buffer;
 		}
 
@@ -156,6 +162,7 @@ namespace tfx {
 		rewind(file);
 		// Did ftell() fail?  Is the length too long?
 		if (length == -1 || (unsigned long)length >= SIZE_MAX) {
+			fclose(file);
 			return buffer;
 		}
 
@@ -165,11 +172,13 @@ namespace tfx {
 			buffer.Resize(length);
 		if (buffer.data == NULL || fread(buffer.data, 1, length, file) != length) {
 			buffer.FreeAll();
+			fclose(file);
 			return buffer;
 		}
 		if(terminate)
 			buffer.NullTerminate();
 
+		fclose(file);
 		return buffer;
 	}
 
@@ -184,8 +193,8 @@ namespace tfx {
 		u64 inventory_offset = sizeof(tfxHeader);
 		for (auto &entry : package.inventory.entries.data) {
 			entry.offset_from_start_of_file = inventory_offset;
-			entry.file_size = entry.data.size();
-			inventory_offset += entry.data.size();
+			entry.file_size = entry.data.Size();
+			inventory_offset += entry.data.Size();
 		}
 
 		//just make sure that the entry count is the correct value
@@ -197,7 +206,7 @@ namespace tfx {
 
 		//Write the file contents
 		for (auto &entry : package.inventory.entries.data) {
-			file.write(entry.data.data, entry.data.size());
+			file.write(entry.data.data, entry.data.Size());
 		}
 
 		//Write the inventory
@@ -215,16 +224,10 @@ namespace tfx {
 	}
 
 	int LoadPackage(const char *file_name, tfxPackage &package) {
-		FILE *file = fopen(file_name, "rb");
-		if (!file) {
-			return tfxPackageErrorCode_unable_to_open_file;
-		}
 
-		package.file_data = ReadEntireFile(file);
+		package.file_data = ReadEntireFile(file_name);
 		if(package.file_data.Size() == 0)
 			return tfxPackageErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
-
-		fclose(file);
 
 		package.file_size = package.file_data.Size();
 	
