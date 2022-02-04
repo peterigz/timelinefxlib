@@ -5,7 +5,7 @@ This is an early alpha version of the TimelineFX library that you can use to inc
 **This is still very much a work in progress but feel free to use it and give some feedback on how to improve the interface and make it easier to use and implement.**
 
 ## Usage
-The main library consists of 1 header file and 1 cpp file, but there are also 2 small depencies found in the Libraries folder. You have a few options for including in your project:
+The main library consists of 1 header file and 1 cpp file, there are no other dependencies.
 * Copy the files (including the Libraries folder) into your project and `#include "timelinefx.h"`.
 * Add the timelinefx folder to your list of Includes Directories and `#include "timelinefx.h"`.
 * Add TimelineFX.lib as a dependency and `#include "timelinefx.h"`
@@ -73,12 +73,6 @@ void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_da
 Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using.
 ```cpp
 void TfxExample::RenderParticles(float tween) {
-	//In this example, a compute shader is used to transform all the vertices into 
-	//the right place by sending a batch of quads. A quad just has the size, orientation, 
-	//color and UV coords, the compute
-	//shader then builds the vertex buffer by doing all the transforms to save the CPU having to do it.
-	render_layer->StartQuadBatch(&particle_textures->PipelineIndex(qulkan::BlendMode::Alpha, 1));
-
 	//Loop through all the draw layers - particles can be assigned to a specific draw layer 
 	//so you can draw them in a specific order if necessary. The layer is set in the editor on the 
 	//properties tab.
@@ -109,7 +103,7 @@ void TfxExample::RenderParticles(float tween) {
 				//cast it into the appropriate type for the renderer
 				qulkan::SetImageHandle(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), p.handle.x, p.handle.y);
 				//Add the particle image quad to the renderer for the next render pass at the particle position/rotation/scale
-				render_layer->AddQuad(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), 
+				render_layer->DrawSprite(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), 
 					tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
 			}
 			else {
@@ -129,7 +123,7 @@ void TfxExample::RenderParticles(float tween) {
 				SetImageHandle(image, p.handle.x, p.handle.y);
 				//Add the particle frame of animation quad to the renderer for the next render pass 
 				//at the particle position/rotation/scale
-				render_layer->AddQuad(image, tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
+				render_layer->DrawSprite(image, tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
 			}
 		}
 	}
