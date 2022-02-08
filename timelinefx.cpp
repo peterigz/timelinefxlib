@@ -253,7 +253,7 @@ namespace tfx {
 
 	bool SavePackageDisk(tfxPackage &package) {
 		if (!package.file_path.Length()) return false;											//Package must have a file path
-		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;						//Header of package must contain correct magic number. CreatePackage to correctly initialise a package.
+		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;						//Header of package must contain correct magic number. Use CreatePackage to correctly initialise a package.
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;			//Inventory of package must contain correct magic number
 
 		FILE * file = fopen(package.file_path.c_str(), "wb");
@@ -403,7 +403,7 @@ namespace tfx {
 	}
 
 	int LoadPackage(tfxstream &stream, tfxPackage &package) {
-		//Note: tfxstream doesn not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
+		//Note: tfxstream does not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
 		package.file_data = stream;
 		if (package.file_data.Size() == 0)
 			return tfxPackageErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size

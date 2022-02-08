@@ -1956,7 +1956,7 @@ TFX_CUSTOM_EMITTER
 			parent_particle(nullptr),
 			user_data(nullptr),
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
-			timeout(100),
+			timeout(5000),
 			timeout_counter(0),
 			animation_settings(0),
 			library(nullptr),
