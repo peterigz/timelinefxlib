@@ -1922,7 +1922,7 @@ namespace tfx {
 			if (library->overtime_graphs[overtime].width.nodes.size() == 0) library->overtime_graphs[overtime].width.Reset(1.f, tfxPercentOvertime);
 			if (library->overtime_graphs[overtime].height.nodes.size() == 0) library->overtime_graphs[overtime].height.Reset(1.f, tfxPercentOvertime);
 			if (library->overtime_graphs[overtime].weight.nodes.size() == 0) library->overtime_graphs[overtime].weight.Reset(1.f, tfxPercentOvertime);
-			if (library->overtime_graphs[overtime].spin.nodes.size() == 0) library->overtime_graphs[overtime].spin.Reset(0.f, tfxSpinOvertimePreset);
+			if (library->overtime_graphs[overtime].spin.nodes.size() == 0) library->overtime_graphs[overtime].spin.Reset(1.f, tfxSpinOvertimePreset);
 			if (library->overtime_graphs[overtime].stretch.nodes.size() == 0) library->overtime_graphs[overtime].stretch.Reset(0.f, tfxPercentOvertime);
 			if (library->overtime_graphs[overtime].red.nodes.size() == 0) library->overtime_graphs[overtime].red.Reset(1.f, tfxColorPreset);
 			if (library->overtime_graphs[overtime].green.nodes.size() == 0) library->overtime_graphs[overtime].green.Reset(1.f, tfxColorPreset);
