@@ -2237,7 +2237,9 @@ TFX_CUSTOM_EMITTER
 		void Clear();
 		//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
 		//You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
-		EffectEmitter *GetEffect(tfxText path);
+		EffectEmitter *GetEffect(tfxText &path);
+		//Get an effect by it's path hash key
+		EffectEmitter *GetEffect(tfxKey key);
 		void PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect);
 
 		//Mainly internal functions

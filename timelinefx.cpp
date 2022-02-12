@@ -2389,9 +2389,14 @@ namespace tfx {
 		return effects.back();
 	}
 
-	EffectEmitter* EffectLibrary::GetEffect(tfxText path) {
+	EffectEmitter* EffectLibrary::GetEffect(tfxText &path) {
 		assert(effect_paths.ValidName(path));
 		return effect_paths.At(path);
+	}
+
+	EffectEmitter* EffectLibrary::GetEffect(tfxKey key) {
+		assert(effect_paths.ValidKey(key));
+		return effect_paths.At(key);
 	}
 
 	void EffectLibrary::PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect_template) {
