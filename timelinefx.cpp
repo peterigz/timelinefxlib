@@ -2393,6 +2393,8 @@ namespace tfx {
 		EffectEmitter folder;
 		folder.name = name;
 		folder.type = tfxFolder;
+		folder.library = this;
+		folder.uid = ++uid;
 		effects.push_back(folder);
 		ReIndex();
 		UpdateEffectPaths();
