@@ -2389,6 +2389,16 @@ namespace tfx {
 		return effects.back();
 	}
 
+	EffectEmitter &EffectLibrary::AddFolder(tfxText name) {
+		EffectEmitter folder;
+		folder.name = name;
+		folder.type = tfxFolder;
+		effects.push_back(folder);
+		ReIndex();
+		UpdateEffectPaths();
+		return effects.back();
+	}
+
 	EffectEmitter* EffectLibrary::GetEffect(tfxText &path) {
 		assert(effect_paths.ValidName(path));
 		return effect_paths.At(path);

@@ -291,7 +291,8 @@ typedef long long s64;
 	enum EffectEmitterType : unsigned char {
 		tfxEffect,
 		tfxEmitter,
-		tfxStage
+		tfxStage,
+		tfxFolder
 	};
 
 	//Different ways that particles can be emitted
@@ -2245,6 +2246,7 @@ TFX_CUSTOM_EMITTER
 		//Mainly internal functions
 		void RemoveShape(unsigned int shape_index);
 		EffectEmitter &AddEffect(EffectEmitter &effect);
+		EffectEmitter &AddFolder(tfxText name);
 		void UpdateEffectPaths();
 		void AddPath(EffectEmitter &effectemitter, tfxText path);
 		void DeleteEffect(EffectEmitter *effect);
