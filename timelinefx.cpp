@@ -498,6 +498,7 @@ namespace tfx {
 	}
 
 	EffectEmitter& EffectEmitter::AddEmitter(EffectEmitter &e) {
+		assert(e.name.Length());				//Emitter must have a name so that a hash can be generated
 		e.type = EffectEmitterType::tfxEmitter;
 		e.library = library;
 		e.uid = ++library->uid;
@@ -508,6 +509,7 @@ namespace tfx {
 	}
 
 	EffectEmitter& EffectEmitter::AddEffect(EffectEmitter &e) {
+		assert(e.name.Length());				//Effect must have a name so that a hash can be generated
 		e.type = EffectEmitterType::tfxEffect;
 		e.library = library;
 		e.parent = this;
@@ -561,7 +563,7 @@ namespace tfx {
 			UpdateEffectState();
 		}
 
-		if (parent) {
+		if (parent && parent->type != tfxFolder) {
 			parent = parent->next_ptr;
 			flags |= (parent->flags & tfxEmitterStateFlags_remove);
 			UpdateEmitterState();
@@ -615,7 +617,7 @@ namespace tfx {
 
 		if (particle_count == 0) {
 			timeout_counter++;
-			if (parent && timeout_counter >= timeout)
+			if (parent && parent->type != tfxFolder && timeout_counter >= timeout)
 				parent->active_children--;
 		}
 		else {
@@ -2043,7 +2045,6 @@ namespace tfx {
 
 	void EffectEmitter::ResetParents() {
 		parent = nullptr;
-		root_parent = nullptr;
 		for (auto &e : sub_effectors) {
 			e.ResetParents();
 		}
@@ -2073,6 +2074,7 @@ namespace tfx {
 	}
 
 	void EffectEmitter::DeleteEmitter(EffectEmitter *emitter) {
+		EffectLibrary *library = emitter->library;
 		tfxvec<EffectEmitter> stack;
 		stack.push_back(*emitter);
 		while (stack.size()) {
@@ -2093,6 +2095,8 @@ namespace tfx {
 		sub_effectors.erase(emitter);
 
 		ReIndex();
+		if(library)
+			library->UpdateEffectPaths();
 	}
 
 	void EffectEmitter::CleanUp() {
@@ -2137,7 +2141,7 @@ namespace tfx {
 				clone.global = root_parent->global;
 			}
 		}
-		else {
+		else if(type == tfxEmitter) {
 			clone.property = library->CloneProperty(property, destination_library);
 			clone.base = library->CloneBase(base, destination_library);
 			clone.variation = library->CloneVariation(variation, destination_library);
@@ -2157,9 +2161,12 @@ namespace tfx {
 					emitter_copy.user_data = nullptr;
 				clone.AddEmitter(emitter_copy);
 			}
-			else {
+			else if(e.type == tfxEffect) {
 				EffectEmitter effect_copy;
-				e.Clone(effect_copy, root_parent, destination_library);
+				if(clone.type == tfxFolder)
+					e.Clone(effect_copy, &effect_copy, destination_library);
+				else
+					e.Clone(effect_copy, root_parent, destination_library);
 				if(!keep_user_data)
 					effect_copy.user_data = nullptr;
 				clone.AddEffect(effect_copy);
@@ -2393,6 +2400,16 @@ namespace tfx {
 		EffectEmitter folder;
 		folder.name = name;
 		folder.type = tfxFolder;
+		folder.library = this;
+		folder.uid = ++uid;
+		effects.push_back(folder);
+		ReIndex();
+		UpdateEffectPaths();
+		return effects.back();
+	}
+
+	EffectEmitter &EffectLibrary::AddFolder(EffectEmitter &folder) {
+		assert(folder.type == tfxFolder);			//Must be type tfxFolder if adding a folder
 		folder.library = this;
 		folder.uid = ++uid;
 		effects.push_back(folder);

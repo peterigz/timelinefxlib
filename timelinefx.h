@@ -393,7 +393,8 @@ typedef long long s64;
 		tfxEmitterPropertyFlags_play_once = 1 << 16,						//Play the animation once only
 		tfxEmitterPropertyFlags_random_start_frame = 1 << 17,				//Start the animation of the image from a random frame
 		tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
-		tfxEmitterPropertyFlags_use_vector_field = 1 << 19					//Enable the use of a vector field to apply forces to the particles
+		tfxEmitterPropertyFlags_use_vector_field = 1 << 19,					//Enable the use of a vector field to apply forces to the particles
+		tfxEmitterPropertyFlags_is_in_folder = 1 << 20						//This effect is located inside a folder
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -1934,8 +1935,6 @@ TFX_CUSTOM_EMITTER
 		unsigned int animation_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 		float max_life;
-		//Pointer to the root effect
-		EffectEmitter *root_parent;
 		//Pointer to the immediate parent
 		EffectEmitter *parent;
 		//Pointer to the next pointer in the particle manager buffer. 
@@ -1952,7 +1951,6 @@ TFX_CUSTOM_EMITTER
 		tfxEmitterStateFlags flags;
 
 		EffectEmitter() : particle_count(0),
-			root_parent(nullptr),
 			parent(nullptr),
 			parent_particle(nullptr),
 			user_data(nullptr),
@@ -2247,6 +2245,7 @@ TFX_CUSTOM_EMITTER
 		void RemoveShape(unsigned int shape_index);
 		EffectEmitter &AddEffect(EffectEmitter &effect);
 		EffectEmitter &AddFolder(tfxText name);
+		EffectEmitter &AddFolder(EffectEmitter &effect);
 		void UpdateEffectPaths();
 		void AddPath(EffectEmitter &effectemitter, tfxText path);
 		void DeleteEffect(EffectEmitter *effect);
