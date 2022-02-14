@@ -2447,12 +2447,17 @@ namespace tfx {
 
 	void EffectLibrary::UpdateParticleShapeReferences(tfxvec<EffectEmitter> &effects, unsigned int default_index) {
 		for (auto &effect : effects) {
-			for (auto &emitter : effect.sub_effectors) {
-				if(particle_shapes.ValidIntName(emitter.properties.shape_index)) 
-					emitter.properties.image = &particle_shapes.AtInt(emitter.properties.shape_index);
-				else
-					emitter.properties.image = &particle_shapes.AtInt(default_index);
-				UpdateParticleShapeReferences(emitter.sub_effectors, default_index);
+			if (effect.type == tfxFolder) {
+				UpdateParticleShapeReferences(effect.sub_effectors, default_index);
+			}
+			else {
+				for (auto &emitter : effect.sub_effectors) {
+					if (particle_shapes.ValidIntName(emitter.properties.shape_index))
+						emitter.properties.image = &particle_shapes.AtInt(emitter.properties.shape_index);
+					else
+						emitter.properties.image = &particle_shapes.AtInt(default_index);
+					UpdateParticleShapeReferences(emitter.sub_effectors, default_index);
+				}
 			}
 		}
 	}
@@ -2651,6 +2656,12 @@ namespace tfx {
 			stack.push_back(&effect);
 			while(!stack.empty()) {
 				EffectEmitter *current = stack.pop_back();
+				if (current->type == tfxFolder) {
+					for (auto &sub : current->sub_effectors) {
+						stack.push_back(&sub);
+					}
+					continue;
+				}
 				EffectLookUpData lookup_data;
 				EffectLookUpData value_lookup_data;
 				memset(&lookup_data, 0, sizeof(EffectLookUpData));
@@ -5012,10 +5023,18 @@ namespace tfx {
 					break;
 
 				context_set = true;
+				if (context == tfxStartFolder) {
+					EffectEmitter effect;
+					effect.library = &lib;
+					effect.uid = uid++;
+					effect.properties = EmitterProperties();
+					effect.type = EffectEmitterType::tfxFolder;
+					effect_stack.push_back(effect);
+				}
 				if (context == tfxStartEffect) {
 					EffectEmitter effect;
 					effect.library = &lib;
-					if (effect_stack.size() == 0) { //Only root effects get the global graphs
+					if (effect_stack.size() <= 1) { //Only root effects get the global graphs
 						lib.AddEffectGraphs(effect);
 						effect.ResetEffectGraphs(false);
 						current_global_graph = effect.global;
@@ -5047,7 +5066,7 @@ namespace tfx {
 					}
 				}
 
-				if (context == tfxStartEffect) {
+				if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder) {
 					switch (data_types.eff.At(pair[0])) {
 					case tfxUint:
 						AssignEffectorProperty(effect_stack.back(), pair[0], (unsigned int)atoi(pair[1].c_str()));
@@ -5067,51 +5086,11 @@ namespace tfx {
 					}
 				}
 
-				if (context == tfxStartAnimationSettings) {
-					switch (data_types.eff.At(pair[0])) {
-					case tfxUint:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)atoi(pair[1].c_str()));
-						break;
-					case tfxFloat:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
-						break;
-					case tfxSInt:
-						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
-						break;
-					case tfxBool:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)atoi(pair[1].c_str()));
-						break;
-					case tfxString:
-						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
-						break;
-					}
-				}
-
-				if (context == tfxStartEmitter) {
-					switch (data_types.eff.At(pair[0])) {
-					case tfxUint:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (uint32_t)atoi(pair[1].c_str()));
-						break;
-					case tfxFloat:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
-						break;
-					case tfxSInt:
-						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
-						break;
-					case tfxBool:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)atoi(pair[1].c_str()));
-						break;
-					case tfxString:
-						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
-						break;
-					}
-				}
-
 				if (context == tfxStartGraphs && effect_stack.back().type == tfxEmitter) {
 					AssignGraphData(effect_stack.back(), pair);
 				}
 				else if (context == tfxStartGraphs && effect_stack.back().type == tfxEffect) {
-					if (effect_stack.size() == 1)
+					if (effect_stack.size() <= 2)
 						AssignGraphData(effect_stack.back(), pair);
 				}
 
@@ -5168,6 +5147,12 @@ namespace tfx {
 					lib.effects.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
 				}
+				effect_stack.pop();
+			}
+
+			if (context == tfxEndFolder) {
+				assert(effect_stack.size() == 1);			//Folders should not be contained within anything
+				lib.effects.push_back(effect_stack.back());
 				effect_stack.pop();
 			}
 

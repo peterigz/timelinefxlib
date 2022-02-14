@@ -364,7 +364,9 @@ typedef long long s64;
 		tfxEndAnimationSettings,
 		tfxStartImageData,
 		tfxStartEffectData,
-		tfxEndOfFile
+		tfxEndOfFile,
+		tfxStartFolder,
+		tfxEndFolder
 	};
 
 	typedef unsigned int tfxEmitterPropertyFlags;
