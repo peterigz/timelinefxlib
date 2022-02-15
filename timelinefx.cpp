@@ -1006,9 +1006,10 @@ namespace tfx {
 
 			bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
 
-			TransformParticlePrevious(p, *this);
-			p.captured = p.world;
+			//TransformParticlePrevious(p, *this);
+			//p.captured = p.world;
 			TransformParticle(p, *this);
+			p.captured = p.world;
 			p.captured.scale = p.world.scale;
 
 			//----Motion randomness
