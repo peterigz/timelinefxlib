@@ -2629,7 +2629,8 @@ namespace tfx {
 			e.FreeGraphs();
 		}
 		effects.free_all();
-		particle_shapes.Clear();
+		effect_paths.FreeAll();
+		particle_shapes.FreeAll();
 		global_graphs.free_all();
 		property_graphs.free_all();
 		base_graphs.free_all();

@@ -1105,6 +1105,11 @@ typedef long long s64;
 			map.clear();
 		}
 
+		inline void FreeAll() {
+			data.free_all();
+			map.free_all();
+		}
+
 		inline unsigned int Size() {
 			return data.current_size;
 		}
