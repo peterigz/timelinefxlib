@@ -532,6 +532,11 @@ typedef long long s64;
 		unsigned int capacity;
 		T* data;
 
+		// Provide standard typedefs but we don't use them ourselves.
+		typedef T                   value_type;
+		typedef value_type*         iterator;
+		typedef const value_type*   const_iterator;
+
 		inline tfxvec() { current_size = capacity = 0; data = NULL; }
 		inline tfxvec(unsigned int qty) { current_size = capacity = 0; data = NULL; resize(qty); }
 		inline tfxvec(T* from, T* to) { current_size = capacity = 0; data = NULL; auto current = from; while (current != to + 1) { push_back(*current); ++current; } }
