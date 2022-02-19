@@ -43,7 +43,7 @@ namespace tfx {
 		if (compare.Length() > Length()) return -1;
 		u32 pos = 0;
 		int found = 0;
-		while (compare.Length() + pos < Length()) {
+		while (compare.Length() + pos <= Length()) {
 			if (strncmp(lower.string.data + pos, compare.string.data, compare.Length()) == 0) {
 				return pos;
 			}
