@@ -2032,7 +2032,7 @@ namespace tfx {
 	}
 
 	EffectEmitter* EffectEmitter::GetRootEffect() {
-		if (!parent)
+		if (!parent || parent->type == tfxFolder)
 			return nullptr;
 		EffectEmitter *p = parent;
 		unsigned int timeout = 0;
