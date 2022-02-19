@@ -1029,6 +1029,8 @@ typedef long long s64;
 		const char* end() const { return string.data ? &string.back() : NULL; }  
 		inline const char *c_str() const { return string.current_size ? string.data : ""; }
 		inline void Clear() { string.clear(); }
+		int Find(const char *needle);
+		tfxText Lower();
 		inline unsigned int Length() const { return string.current_size ? string.current_size - 1 : 0; }
 		void AddLine(const char *format, ...);
 		void Appendf(const char *format, ...);

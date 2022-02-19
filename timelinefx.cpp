@@ -36,6 +36,30 @@ namespace tfx {
 
 	}
 
+	int tfxText::Find(const char *needle) {
+		tfxText compare = needle;
+		tfxText lower = Lower();
+		compare = compare.Lower();
+		if (compare.Length() > Length()) return -1;
+		u32 pos = 0;
+		int found = 0;
+		while (compare.Length() + pos < Length()) {
+			if (strncmp(lower.string.data + pos, compare.string.data, compare.Length()) == 0) {
+				return pos;
+			}
+			++pos;
+		}
+		return -1;
+	}
+
+	tfxText tfxText::Lower() {
+		tfxText convert = *this;
+		for (auto &c : convert.string) {
+			c = tolower(c);
+		}
+		return convert;
+	}
+
 	void tfxText::AddLine(const char *format, ...) {
 		va_list args;
 		va_start(args, format);
