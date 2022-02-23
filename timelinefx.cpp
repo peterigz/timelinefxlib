@@ -1636,10 +1636,16 @@ namespace tfx {
 		}
 		else {
 			if (e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-				p.local.scale.y = p.base.size.y * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age);
+				if(e.properties.flags & tfxEmitterPropertyFlags_base_uniform_size)
+					p.local.scale.y = p.local.scale.x;
+				else
+					p.local.scale.y = p.base.size.y * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age);
 			}
 			else {
-				p.local.scale.y = p.base.size.y * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].height, p.age, p.max_age);
+				if (e.properties.flags & tfxEmitterPropertyFlags_base_uniform_size)
+					p.local.scale.y = p.local.scale.x;
+				else
+					p.local.scale.y = p.base.size.y * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].height, p.age, p.max_age);
 			}
 		}
 
