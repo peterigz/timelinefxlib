@@ -5157,8 +5157,9 @@ namespace tfx {
 							lib.particle_shapes.InsertByInt(s.shape_index, image_data);
 						}
 						else {
-							uid = -7;
-							break;
+							//Maybe don't actually need to break here, just means for some a reason a shaped couldn't be loaded, but no reason not to load the effects anyway
+							//uid = -7;
+							//break;
 						}
 					}
 				}
