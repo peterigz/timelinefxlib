@@ -5,7 +5,7 @@ This is an early alpha version of the TimelineFX library that you can use to inc
 **This is still very much a work in progress but feel free to use it and give some feedback on how to improve the interface and make it easier to use and implement.**
 
 ## Usage
-The main library consists of 1 header file and 1 cpp file, there are no other dependencies.
+The main library consists of 1 header file and 1 cpp file, there are no other dependencies. Options for including the library in your project would be one of the following three:
 * Copy the files (including the Libraries folder) into your project and `#include "timelinefx.h"`.
 * Add the timelinefx folder to your list of Includes Directories and `#include "timelinefx.h"`.
 * Add TimelineFX.lib as a dependency and `#include "timelinefx.h"`
