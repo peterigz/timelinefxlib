@@ -2,9 +2,6 @@
 
 #include "pch.h"
 
-//Example implementation of Timelinefx. This won't compile as it requires Qulkan 2D renderer which currently isn't available.
-//It should still be a useful reference point for implementing with your own render library of choice.
-
 using namespace qulkan;
 
 class TfxExample {
@@ -15,8 +12,10 @@ public:
 	tfx::ParticleManager pm;
 	tfx::EffectEmitterTemplate torch;
 	qulkan::Timer *timer;
-	qulkan::QulkanLayer *render_layer;
-	qulkan::QulkanTextureLibrary *particle_textures;
+	u32 render_layer;
+	u32 base_target;
+	u32 particle_textures;
+	bool paused = false;
 
 	void Init();
 	void Update(float ellapsed);

@@ -41,30 +41,28 @@ void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_da
 	LoadStbImageMemory(image, (unsigned char*)raw_image_data, image_memory_size);
 	//Convert the image to RGBA which is necessary for this particular renderer
 	ConvertToRGBA(&image);
-	//The editor has the option to convert an image to an alpha map. I will probably change this so that 
-	//it gets baked into the saved effect so you won't need to apply the filter here.
+	//The editor has the option to convert an image to an alpha map. I will probably change this so that it gets baked into the saved effect so you won't need to apply the filter here.
 	//Alpha map is where all color channels are set to 255
 	if (image_data.import_filter)
 		ConvertToAlpha(image);
 
+	//Get the texture where we're storing all the particle shapes
+	QulkanTexture &texture = GetTexture(example->particle_textures);
+
 	//You'll probably need to load the image in such a way depending on whether or not it's an animation or not
 	if (image_data.animation_frames > 1) {
 		//Add the spritesheet to the texture in our renderer
-		unsigned int anim_index = example->particle_textures->AddAnimation(image, (unsigned int)image_data.image_size.x, (unsigned int)image_data.image_size.y, (unsigned int)image_data.animation_frames);
-		//Important step: you need to point the ImageData.ptr to the appropriate handle in the 
-		//renderer to point to the texture of the particle shape
-		//You'll need to use this in your render function to tell your renderer which texture 
-		//to use to draw the particle
-		image_data.ptr = &example->particle_textures->GetAnimation(anim_index);
+		u32 anim_index = texture.AddAnimation(image, (u32)image_data.image_size.x, (u32)image_data.image_size.y, (u32)image_data.animation_frames);
+		//Important step: you need to point the ImageData.ptr to the appropriate handle in the renderer to point to the texture of the particle shape
+		//You'll need to use this in your render function to tell your renderer which texture to use to draw the particle
+		image_data.ptr = &texture.GetImage(anim_index);
 	}
 	else {
 		//Add the image to the texture in our renderer
-		unsigned int image_index = example->particle_textures->AddImage(image);
-		//Important step: you need to point the ImageData.ptr to the appropriate handle in the 
-		//renderer to point to the texture of the particle shape
-		//You'll need to use this in your render function to tell your renderer which texture 
-		//to use to draw the particle
-		image_data.ptr = &example->particle_textures->GetImage(image_index);
+		u32 image_index = texture.AddImage(image);
+		//Important step: you need to point the ImageData.ptr to the appropriate handle in the renderer to point to the texture of the particle shape
+		//You'll need to use this in your render function to tell your renderer which texture to use to draw the particle
+		image_data.ptr = &texture.GetImage(image_index);
 	}
 }
 ```
@@ -73,38 +71,33 @@ void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_da
 Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using.
 ```cpp
 void TfxExample::RenderParticles(float tween) {
-	//Loop through all the draw layers - particles can be assigned to a specific draw layer 
-	//so you can draw them in a specific order if necessary. The layer is set in the editor on the 
-	//properties tab.
-	for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+	//Renderer specific, get the layer that we will draw on (there's only one layer in this example)
+	QulkanLayer &render_layer = GetLayer();
+
+	//Loop through all the draw layers - particles can be assigned to a specific draw layer so you can draw them in a specific order if necessary. The layer is set in the editor on the properties tab.
+	for (int layer = 0; layer != tfxLAYERS; ++layer) {
 		//Use GetParticleBuffer(layer) to get all of the particles in the current layer
 		for (auto p : *pm.GetParticleBuffer(layer)) {
-			//In order to set the correct blendmode we need to get the property from the 
-			//parent emitter that emitted the particle
+			//In order to set the correct blendmode we need to get the property from the parent emitter that emitted the particle
 			//A pointer to the parent emitter is stored in the parent member
 			tfx::EffectEmitter &e = *p.parent;
 
-			//Set the correct blendmode, see timelinefx::BlendMode. You may have to map the 
-			//blendmodes depending on the renderer you use
-			render_layer->SetBlendMode(qulkan::BlendMode(e.properties.blend_mode));
+			//Set the correct blendmode, see timelinefx::BlendMode. You may have to map the blendmodes depending on the renderer you use
+			render_layer.SetBlendMode(qulkan::BlendMode(e.properties.blend_mode));
 			//Set the color for the quad
-			render_layer->SetColor(p.color.r, p.color.g, p.color.b, p.color.a);
-			//Set the value that the color will be multiplied by, this happens in your fragment 
-			//shader. You can always omit this if you're not using intensity
-			render_layer->SetMultiplyFactor(p.intensity);
-			//You can use render tweening to smooth particle movement from frame to frame by 
-			//interpolating between captured and world states
+			render_layer.SetColor(p.color.r, p.color.g, p.color.b, p.color.a);
+			//Set the value that the color will be multiplied by, this happens in your fragment shader. You can always omit this if you're not using intensity
+			render_layer.SetMultiplyFactor(p.intensity);
+			//You can use render tweening to smooth particle movement from frame to frame by interpolating between captured and world states
 			tfx::FormState tweened = tfx::Tween(tween, p.world, p.captured);
 			//Is the particle using an image with more than one frame of animation?
 			if (e.properties.image->animation_frames == 1 && e.properties.start_frame == 0) {
 				//One frame of animation
 				//Set the image handle, this the offset that the particle is drawn at.
-				//This is where you can make use of the image->ptr from the ShapeLoader function, 
-				//cast it into the appropriate type for the renderer
-				qulkan::SetImageHandle(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), p.handle.x, p.handle.y);
+				//This is where you can make use of the image->ptr from the ShapeLoader function, cast it into the appropriate type for the renderer
+				qulkan::SetImageHandle(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), e.current.image_handle.x, e.current.image_handle.y);
 				//Add the particle image quad to the renderer for the next render pass at the particle position/rotation/scale
-				render_layer->DrawSprite(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), 
-					tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
+				render_layer.DrawSprite(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
 			}
 			else {
 				//Multiple frames of animation
@@ -112,18 +105,12 @@ void TfxExample::RenderParticles(float tween) {
 				uint32_t frame = uint32_t(p.image_frame);
 				//frame must be within the bounds of the animation
 				assert(frame >= 0 && frame < e.properties.image->animation_frames);
-				//Cast the image->ptr to the appropriate type for the renderer to get at the 
-				//animation frames. In this case it's an AnimationFrames struct which contains a list of indexes
-				//where to lookup each texture representing each frame of animation
-				qulkan::AnimationFrames* af = static_cast<qulkan::AnimationFrames*>(e.properties.image->ptr);
-				//Get the image of the current frame of animation
-				qulkan::QulkanImage &image = particle_textures->GetImage(af->images[frame]);
 
-				//Set the image handle
-				SetImageHandle(image, p.handle.x, p.handle.y);
-				//Add the particle frame of animation quad to the renderer for the next render pass 
-				//at the particle position/rotation/scale
-				render_layer->DrawSprite(image, tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
+				//Set the image handle. It will differ from renderer to renderer how you access the right frame of animation. Here the pointer always points to the first frame, and then 
+				//we can just add the current frame to the pointer to get the correct frame
+				SetImageHandle(*(static_cast<QulkanImage*>(e.properties.image->ptr) + frame), e.current.image_handle.x, e.current.image_handle.y);
+				//Add the particle frame of animation quad to the renderer for the next render pass at the particle position/rotation/scale
+				render_layer.DrawSprite(*(static_cast<QulkanImage*>(e.properties.image->ptr) + frame), tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
 			}
 		}
 	}
