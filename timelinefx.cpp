@@ -2454,6 +2454,11 @@ namespace tfx {
 		return effect_paths.At(path);
 	}
 
+	EffectEmitter* EffectLibrary::GetEffect(const char *path) {
+		assert(effect_paths.ValidName(path));
+		return effect_paths.At(path);
+	}
+
 	EffectEmitter* EffectLibrary::GetEffect(tfxKey key) {
 		assert(effect_paths.ValidKey(key));
 		return effect_paths.At(key);
@@ -5045,6 +5050,8 @@ namespace tfx {
 			return error;
 		}
 
+		int first_shape_index = -1;
+
 		while (!data->data.EoF()) {
 			tfxText line = data->data.ReadLine();
 			bool context_set = false;
@@ -5155,6 +5162,8 @@ namespace tfx {
 							}
 
 							lib.particle_shapes.InsertByInt(s.shape_index, image_data);
+							if (first_shape_index == -1)
+								first_shape_index = s.shape_index;
 						}
 						else {
 							//Maybe don't actually need to break here, just means for some a reason a shaped couldn't be loaded, but no reason not to load the effects anyway
@@ -5201,7 +5210,7 @@ namespace tfx {
 		if (uid >= 0) {
 			lib.CompileAllGraphs();
 			lib.ReIndex();
-			//lib.UpdateParticleShapeReferences(lib.effects, 1);
+			lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
 			lib.UpdateEffectPaths();
 			lib.UpdateAllNodes();
 			lib.SetMinMaxData();
