@@ -2101,6 +2101,174 @@ TFX_CUSTOM_EMITTER
 		void DisableAllEmittersExcept(EffectEmitter &emitter);
 	};
 
+	//ComputeEmitter is a readonly struct used to upload emitter data to a compute shader so that the particle effects can be run on a GPU
+	struct ComputeEmitter {
+		//Position, scale and rotation values
+		FormState local;
+		FormState world;
+		FormState captured;
+		//2d matrix for transformations
+		Matrix2 matrix;
+
+		//----Particle image data
+		//The size of one frame of the image in pixels
+		tfxVec2 image_size;
+		//uv coords of the image
+		tfxVec4 uv;
+		//An index you can use to reference what you need to access the texture data, like an array index
+		//The particle sprites will be drawn with a specific pipeline that will bind to a texture, so image_index and uv coords should be enough to 
+		//draw the correct image
+		unsigned int image_index;
+		//The number of frames in the image, can be one or more
+		float animation_frames;
+		//Maximum distance to the nearest transparent edge of the image from the center
+		float image_max_radius;
+		//-----Particle image data end
+
+		//-----Emitter Properties
+
+		//Assigns either alpha or additive blend to particles that are spawned
+		//BlendMode blend_mode;
+		//Currently there are 4 types of emission, point, line, area and ellipse
+		//EmissionType emission_type;
+		//Should particles emit towards the center of the emitter or away, or in a specific direction
+		//EmissionDirection emission_direction;
+		//How particles should behave when they reach the end of the line
+		//LineTraversalEndBehaviour end_behaviour;
+		//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
+		//AngleSetting angle_setting = AngleSetting::tfxRandom;
+
+		//Packed blend_mode, emission_type, emission_direction, end_behaviour, angle_setting
+		unsigned int property_settings;
+
+		//Bit field of various boolean flags
+		tfxEmitterPropertyFlags flags;
+
+		//Offset to draw particles at
+		tfxVec2 image_handle;
+		//Offset of emitters
+		tfxVec2 emitter_handle;
+		//When single or one shot flags are set, spawn this amount of particles in one go
+		unsigned int spawn_amount;
+		//Layer of the particle manager that the particle is added to
+		unsigned int layer;
+		//The shape being used for all particles spawned from the emitter
+		unsigned int shape_index;
+
+		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
+		float angle_offset;
+		//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
+		tfxVec2 grid_points;
+		//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
+		float loop_length;
+		//The start frame index of the animation
+		float start_frame;
+		//The final frame index of the animation
+		float end_frame;
+		//-----End Emitter Properties
+
+		//The current state of the effect/emitter
+		//EffectEmitterState current;
+
+		//-----EffectEmitterState
+		//Base particle size
+		tfxVec2 size;
+		//Particle size variation
+		tfxVec2 size_variation;
+		//Particle color and opacity
+		tfxRGBA color;
+		//Size of the emitter area that particles can spawn in. X will be used for line length for line effects
+		tfxVec2 emitter_size;
+		//Emitter handle - the offset at which the emitter is positioned
+		tfxVec2 current_emitter_handle;
+		//Offset to draw particles at
+		tfxVec2 current_image_handle;
+		//Current base life that particles will be spawned with (milliseconds)
+		float life;
+		//Current number of particles that will be spawned per second
+		float amount;
+		//variance of the number of particles that will be spawned per second
+		float amount_variation;
+		//The amount of variation of life that particles are spawned with (milliseconds)
+		float life_variation;
+		//The base velocity of particles (pixels per second)
+		float velocity;
+		//The amount that velocity will vary
+		float velocity_variation;
+		//Global multiplier for all currently spawned particles of this emitter.
+		float velocity_adjuster;
+		//Base spine that a particle will rotate (radians per second)
+		float spin;
+		//Amount in radians that the spin will vary
+		float spin_variation;
+		//Direction of travel that the particles go when spawned (radians)
+		float emission_angle;
+		//Amount the emission angle will vary (radians)
+		float emission_angle_variation;
+		//Amount that particles will randomly offset from the spawn point (radius in pixels)
+		float splatter;
+		//For Ellipse type emitters, you can set the arc_size to only spawn a segment of the ellipse (radians)
+		float arc_size;
+		//Starting point in radians for the arc segment
+		float arc_offset;
+		//Scales all particles uniformly so that you can make the effect bigger or smaller overal
+		float overal_scale;
+		//Amount that particles will stretch base on their current velocity
+		float stretch;
+		//The base weight of spawned particles (downward accelleration in pixels per second)
+		float weight;
+		//The amount the the weight will vary
+		float weight_variation;
+		//The more motion randomness the more particles will move about erratically
+		float motion_randomness;
+		//The current age of the emitter.
+		float age;
+		//The current frame of the effect/emitter as calculated by age / update_frequency
+		float frame;
+		//internal use variables
+		float amount_remainder;
+
+		//bool emission_alternator;
+		//bool single_shot_done;
+		//Packed emission_alternator, single_shot_done
+		unsigned int state_flags;
+
+		tfxVec2 grid_coords;
+		tfxVec2 grid_direction;
+		tfxVec2 grid_segment_size;
+		//EffectEmitterState End
+
+		//Is this a tfxEffect or tfxEmitter
+		unsigned int type;
+		//A pointer the the particle manager that this has been added
+		unsigned int pm_index;
+		//The number of sub_effects still in use
+		unsigned int active_children;
+		//The number of particles active within this emitter
+		unsigned int particle_count;
+		//The number of frames before this is removed from the particle manager after particle count is 0
+		unsigned int timeout;
+		//Internal, keep track of idle frames
+		unsigned int timeout_counter;
+		//Every effect and emitter in the library gets a unique id
+		unsigned int uid;
+		//The max_radius of the emitter, taking into account all the particles that have spawned and active
+		float max_radius;
+
+		//Experitment: index into the lookup index data in the effect library
+		unsigned int lookup_node_index;
+		unsigned int lookup_value_index;
+		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
+		float max_life;
+		//Index to the immediate parent
+		unsigned int parent;
+		//Index to the next pointer in the particle manager buffer. 
+		unsigned int next_ptr;
+		//Index to the sub effect's particle that spawned it
+		unsigned int parent_particle;
+
+	};
+
 	struct EffectEmitterTemplate {
 		tfxStorageMap<EffectEmitter*> paths;
 		EffectEmitter effect_template;
@@ -2340,7 +2508,16 @@ TFX_CUSTOM_EMITTER
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
 
-		ParticleManager() : force_capture(false), disable_spawing(false), lookup_mode(tfxFast), max_effects(10000), max_particles_per_layer(50000), update_base_values(false) { }
+		ParticleManager() : 
+			force_capture(false), 
+			disable_spawing(false), 
+			lookup_mode(tfxFast), 
+			max_effects(10000), 
+			max_particles_per_layer(50000), 
+			update_base_values(false),
+			current_ebuff(0),
+			current_pbuff(0)
+		{ }
 		~ParticleManager();
 		EffectEmitter &operator[] (unsigned int index);
 
