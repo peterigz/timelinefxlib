@@ -2205,6 +2205,25 @@ namespace tfx {
 		}
 	}
 
+	void EffectEmitter::CloneToCompute(ComputeEmitterSimple &compute_emitter) {
+		compute_emitter.magic_number_a = 1111;
+		compute_emitter.magic_number_b = 2222;
+		compute_emitter.magic_number_c = 3333;
+		compute_emitter.magic_number_begin = 4444;
+		/*compute_emitter.local = local;
+		compute_emitter.world = world;
+		compute_emitter.captured = captured;
+		compute_emitter.matrix = matrix;
+		compute_emitter.type = (unsigned int)type;
+		if (type == tfxEmitter) {
+			compute_emitter.image_size = properties.image->image_size;
+			compute_emitter.uv = properties.image->uv;
+			compute_emitter.image_index = properties.image->image_index;
+			compute_emitter.image_max_radius = properties.image->max_radius;
+			compute_emitter.animation_frames = properties.image->animation_frames;
+		}*/
+	}
+
 	void EffectEmitter::EnableAllEmitters() {
 		for (auto &e : sub_effectors) {
 			e.flags |= tfxEmitterStateFlags_enabled;
@@ -4588,8 +4607,22 @@ namespace tfx {
 		effects[buffer][parent_index].NoTweenNextUpdate();
 	}
 
-	 void ParticleManager::AddEffect(EffectEmitterTemplate &effect, unsigned int buffer) {
+	void ParticleManager::AddEffect(EffectEmitterTemplate &effect, unsigned int buffer) {
 		AddEffect(effect.effect_template, current_ebuff);
+	}
+
+	void ParticleManager::AddComputeEffect(EffectEmitter &effect, unsigned int frame_in_flight) {
+		compute_emitters[frame_in_flight].clear();
+		ComputeEmitterSimple cef;
+		effect.CloneToCompute(cef);
+		compute_emitters[frame_in_flight].push_back(cef);
+		for (auto &e : effect.sub_effectors) {
+			if (e.flags & tfxEmitterStateFlags_enabled) {
+				ComputeEmitterSimple cem;
+				e.CloneToCompute(cem);
+				compute_emitters[frame_in_flight].push_back(cem);
+			}
+		}
 	}
 
 	uint32_t ParticleManager::AddParticle(unsigned int layer, Particle &p) {
@@ -5242,7 +5275,12 @@ namespace tfx {
 		pm.AddEffect(effect, pm.current_ebuff);
 	}
 
-	 void EffectEmitterTemplate::SetUserDataAll(void *data) {
+	void AddComputeEffect(ParticleManager &pm, EffectEmitter &effect, float x, float y, unsigned int frame_in_flight) {
+		effect.Position(x, y);
+		pm.AddComputeEffect(effect, frame_in_flight);
+	}
+
+	void EffectEmitterTemplate::SetUserDataAll(void *data) {
 		tfxvec<EffectEmitter*> stack;
 		stack.push_back(&effect_template);
 		while (stack.size()) {
