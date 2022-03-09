@@ -683,6 +683,7 @@ typedef long long s64;
 
 		tfxVec4() { x = y = z = w = 0.f; }
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
+		tfxVec4(tfxVec2 vec1, tfxVec2 vec2) : x(vec1.x), y(vec1.y), z(vec2.x), w(vec2.y) {}
 
 		inline tfxVec4 operator+(tfxVec4 v) { return tfxVec4(x + v.x, y + v.y, z + v.z, w + v.w); }
 		inline tfxVec4 operator+=(tfxVec4 v) { return tfxVec4(x + v.x, y + v.y, z + v.z, w + v.w); }
@@ -1890,57 +1891,56 @@ typedef long long s64;
 	};
 
 	struct ComputeEmitterSimple {
-		unsigned int magic_number_begin = 1234;
-		unsigned int magic_number_a = 1234;
-		unsigned int magic_number_b = 1234;
-		unsigned int magic_number_c = 1234;
-		//Position, scale and rotation values
-		/*FormState local;
-		FormState world;
-		FormState captured;
-		//2d matrix for transformations
 		Matrix2 matrix;
-		unsigned int type;
-
+		//unsigned int magic_number_begin = 1234;
+		//Position, scale and rotation values
+		tfxVec4 local_position;
+		tfxVec4 world_position;
+		tfxVec4 captured_position;
+		tfxVec4 rotations;
+		//2d matrix for transformations
 		//----Particle image data
 		//The size of one frame of the image in pixels
-		tfxVec2 image_size;
+		tfxVec4 image_size2;
 		//uv coords of the image
 		tfxVec4 uv;
 		//An index you can use to reference what you need to access the texture data, like an array index
 		//The particle sprites will be drawn with a specific pipeline that will bind to a texture, so image_index and uv coords should be enough to 
 		//draw the correct image
-		unsigned int image_index;
+		float image_index;
+		float type;
 		//The number of frames in the image, can be one or more
 		float animation_frames;
 		//Maximum distance to the nearest transparent edge of the image from the center
 		float image_max_radius;
+
 		//-----Particle image data end
-		unsigned int magic_number_end = 1234;*/
+		//unsigned int magic_number_end = 1234;
 	};
 
 	//ComputeEmitter is a readonly struct used to upload emitter data to a compute shader so that the particle effects can be run on a GPU
-	struct ComputeEmitter {
-		//Position, scale and rotation values
-		FormState local;
-		FormState world;
-		FormState captured;
-		//2d matrix for transformations
+	struct alignas(16) ComputeEmitter {
 		Matrix2 matrix;
-
+		//unsigned int magic_number_begin = 1234;
+		//Position, scale and rotation values
+		tfxVec4 local_position;
+		tfxVec4 world_position;
+		tfxVec4 captured_position;
+		tfxVec4 rotations;
+		//2d matrix for transformations
 		//----Particle image data
 		//The size of one frame of the image in pixels
 		tfxVec2 image_size;
+		//The number of frames in the image, can be one or more
+		float animation_frames;
+		//Maximum distance to the nearest transparent edge of the image from the center
+		float image_max_radius;
 		//uv coords of the image
 		tfxVec4 uv;
 		//An index you can use to reference what you need to access the texture data, like an array index
 		//The particle sprites will be drawn with a specific pipeline that will bind to a texture, so image_index and uv coords should be enough to 
 		//draw the correct image
 		unsigned int image_index;
-		//The number of frames in the image, can be one or more
-		float animation_frames;
-		//Maximum distance to the nearest transparent edge of the image from the center
-		float image_max_radius;
 		//-----Particle image data end
 
 		//-----Emitter Properties
@@ -1961,6 +1961,7 @@ typedef long long s64;
 
 		//Bit field of various boolean flags
 		tfxEmitterPropertyFlags flags;
+		float padding3;
 
 		//Offset to draw particles at
 		tfxVec2 image_handle;
@@ -1984,6 +1985,7 @@ typedef long long s64;
 		//The final frame index of the animation
 		float end_frame;
 		//-----End Emitter Properties
+		float padding1;
 
 		//The current state of the effect/emitter
 		//EffectEmitterState current;
@@ -1993,6 +1995,9 @@ typedef long long s64;
 		tfxVec2 size;
 		//Particle size variation
 		tfxVec2 size_variation;
+
+		float padding2;
+		float padding4;
 		//Particle color and opacity
 		tfxRGBA color;
 		//Size of the emitter area that particles can spawn in. X will be used for line length for line effects
@@ -2002,6 +2007,7 @@ typedef long long s64;
 		//Offset to draw particles at
 		tfxVec2 current_image_handle;
 		//Current base life that particles will be spawned with (milliseconds)
+
 		float life;
 		//Current number of particles that will be spawned per second
 		float amount;
@@ -2050,6 +2056,7 @@ typedef long long s64;
 		//bool single_shot_done;
 		//Packed emission_alternator, single_shot_done
 		unsigned int state_flags;
+		float padding5;
 
 		tfxVec2 grid_coords;
 		tfxVec2 grid_direction;
@@ -2079,11 +2086,14 @@ typedef long long s64;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 		float max_life;
 		//Index to the immediate parent
-		unsigned int parent;
+		int parent = -1;
 		//Index to the next pointer in the particle manager buffer. 
-		unsigned int next_ptr;
+		int next_ptr = -1;
 		//Index to the sub effect's particle that spawned it
-		unsigned int parent_particle;
+		int parent_particle = -1;
+
+		float padding6;
+		float padding7;
 
 	};
 
@@ -2297,7 +2307,7 @@ TFX_CUSTOM_EMITTER
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
 		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data = false);
-		void CloneToCompute(ComputeEmitterSimple &compute_emitter);
+		void CloneToCompute(ComputeEmitter &compute_emitter);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -2337,12 +2347,16 @@ TFX_CUSTOM_EMITTER
 		bool is_current_revision = false;
 		void SetDescription(const char *format, ...);
 	};
+	
+	struct EmitterMessage {
+		Matrix2 new_transform;
+	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
 	//Particles are stored in the particle manager particle buffer.
 	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
-	//180 bytes
+	//176 bytes
 	struct Particle {
 		FormState local;				//The local position of the particle, relative to the emitter.
 		FormState world;				//The world position of the particle relative to the screen.
@@ -2396,6 +2410,45 @@ TFX_CUSTOM_EMITTER
 		inline void OverrideBaseSpin(float s) { base.spin = s; }
 		inline void OverrideBaseSpinDegrees(float d) { base.spin = tfxDegrees(d); }
 
+	};
+
+	//x = instructions, y, z, w = parameters;
+	struct ComputeInstruction {
+		tfxVec4 instruction;
+		tfxVec4 parameters;
+	};
+
+	struct ComputeParticle {
+		Matrix2 matrix;
+		//unsigned int magic_number_begin = 1234;
+		//Position, scale and rotation values
+		tfxVec4 local_position;
+		tfxVec4 world_position;
+		tfxVec4 captured_position;
+		tfxVec4 rotations;
+
+		tfxVec2 base_size;
+		tfxVec2 base_random_size;
+		float base_velocity;
+		float base_height;
+		float base_spin;
+		float base_weight;
+
+		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
+		float max_age;					//max age before the particle expires
+		float image_frame_rate;			//current frame rate of the image if it's an animation
+		float velocity_scale;			//Current velocity overtime
+		float emission_angle;			//Emission angle of the particle at spawn time
+		float image_frame;				//Current frame of the image if it's an animation
+		float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
+		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
+		float motion_randomness;		//The random velocity added each frame
+		float motion_randomness_speed;
+		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
+		unsigned int color;				//Colour of the particle
+		unsigned int flags; 			//flags for different states
+		unsigned int parent_index;		//pointer to the emitter that emitted the particle.
+		unsigned int next_index;
 	};
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation
@@ -2523,7 +2576,7 @@ TFX_CUSTOM_EMITTER
 		tfxvec<EffectEmitter> effects[2];
 		//When using a compute shader to manage updating emitters and particles, compute_emitters stores any new emitters that you want to upload to the GPU this frame. The reason why this is an array of 3
 		//lists is because some renderers may use more then 1 frame in flight.
-		tfxvec<ComputeEmitterSimple> compute_emitters[3];
+		tfxvec<ComputeEmitter> compute_emitters[3];
 		//The maximum number of effects that can be updated per frame in the particle manager. If you're running effects with particles that have sub effects then this number might need 
 		//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
 		unsigned int max_effects;
@@ -2572,8 +2625,8 @@ TFX_CUSTOM_EMITTER
 		void AddEffect(EffectEmitter &effect, unsigned int buffer);
 		void AddEffect(EffectEmitterTemplate &effect, unsigned int buffer);
 		void AddComputeEffect(EffectEmitter &effect, unsigned int frame_in_flight = 0);
-		inline tfxvec<ComputeEmitterSimple> &GetComputeEmittersForUpload(unsigned int frame_in_flight = 0) { return compute_emitters[frame_in_flight]; }
-		inline unsigned int GetComputeEmittersByteSize(unsigned int frame_in_flight = 0) { return compute_emitters[frame_in_flight].size() * sizeof(ComputeEmitterSimple); }
+		inline tfxvec<ComputeEmitter> &GetComputeEmittersForUpload(unsigned int frame_in_flight = 0) { return compute_emitters[frame_in_flight]; }
+		inline unsigned int GetComputeEmittersByteSize(unsigned int frame_in_flight = 0) { return compute_emitters[frame_in_flight].size() * sizeof(ComputeEmitter); }
 		//Clear all effects and particles in the particle manager
 		void ClearAll();
 		//Soft expire all the effects so that the particles complete their animation first

@@ -477,30 +477,38 @@ namespace tfx {
 	void EffectEmitter::Rotate(float r) {
 		local.rotation += r;
 	}
+
 	void EffectEmitter::SetAngle(float a) {
 		local.rotation = a;
 	}
+
 	void EffectEmitter::Scale(const tfxVec2& s) {
 		local.scale = s;
 	}
+
 	void EffectEmitter::Scale(float x, float y) {
 		local.scale.x = x;
 		local.scale.y = y;
 	}
+
 	void EffectEmitter::Move(const tfxVec2& m) {
 		local.position += m;
 	}
+
 	void EffectEmitter::Move(float x, float y) {
 		local.position.x += x;
 		local.position.y += y;
 	}
+
 	void EffectEmitter::Position(const tfxVec2& p) {
 		local.position = p;
 	}
+
 	void EffectEmitter::Position(float x, float y) {
 		local.position.x = x;
 		local.position.y = y;
 	}
+
 	void EffectEmitter::UpdateMaxLife() {
 		max_life = GetMaxLife(*this);
 		GetGraphByType(tfxOvertime_red)->lookup.life = max_life;
@@ -2205,23 +2213,98 @@ namespace tfx {
 		}
 	}
 
-	void EffectEmitter::CloneToCompute(ComputeEmitterSimple &compute_emitter) {
-		compute_emitter.magic_number_a = 1111;
-		compute_emitter.magic_number_b = 2222;
-		compute_emitter.magic_number_c = 3333;
-		compute_emitter.magic_number_begin = 4444;
-		/*compute_emitter.local = local;
-		compute_emitter.world = world;
-		compute_emitter.captured = captured;
+	void EffectEmitter::CloneToCompute(ComputeEmitter &compute_emitter) {
+		compute_emitter.local_position = tfxVec4(local.position, local.scale);
+		compute_emitter.world_position = tfxVec4(world.position, world.scale);
+		compute_emitter.captured_position = tfxVec4(captured.position, captured.scale);
+		compute_emitter.rotations = tfxVec4(local.rotation, world.rotation, captured.rotation, 0.f);
 		compute_emitter.matrix = matrix;
 		compute_emitter.type = (unsigned int)type;
+
+		compute_emitter.flags = properties.flags;
+		compute_emitter.image_handle = properties.image_handle;
+		compute_emitter.image_handle = tfxVec2(10.f, 20.f);
+		compute_emitter.emitter_handle = properties.emitter_handle;
+		compute_emitter.spawn_amount = properties.spawn_amount;
+		compute_emitter.layer = properties.layer;
+		compute_emitter.shape_index = properties.shape_index;
+		compute_emitter.angle_offset = properties.angle_offset;
+		compute_emitter.grid_points = properties.grid_points;
+		compute_emitter.loop_length = properties.loop_length;
+		compute_emitter.start_frame = properties.start_frame;
+		compute_emitter.end_frame = properties.end_frame;
+
+/*		compute_emitter.size = tfxVec2(10.f, 20.f);
+		compute_emitter.size_variation = tfxVec2(30.f, 40.f);
+		compute_emitter.current_emitter_handle = tfxVec2(50.f, 60.f);
+		compute_emitter.current_image_handle = tfxVec2(50.f, 60.f);
+		compute_emitter.emitter_size = tfxVec2(70.f, 80.f);
+		compute_emitter.start_frame = 100.f;
+		compute_emitter.end_frame = 101.f;
+		compute_emitter.grid_coords = tfxVec2(1000.f, 1001.f);
+		compute_emitter.grid_direction = tfxVec2(2000.f, 2001.f);
+		compute_emitter.amount_remainder = 0.f;
+
+		compute_emitter.life = 10.f;
+		//Current number of particles that will be spawned per second
+		compute_emitter.amount = 11.f;
+		//variance of the number of particles that will be spawned per second
+		compute_emitter.amount_variation = 12.f;
+		//The amount of variation of life that particles are spawned with (milliseconds)
+		compute_emitter.life_variation = 13.f;
+		//The base velocity of particles (pixels per second)
+		compute_emitter.velocity = 14.f;
+		//The amount that velocity will vary
+		compute_emitter.velocity_variation = 15.f;
+		//Global multiplier for all currently spawned particles of this emitter.
+		compute_emitter.velocity_adjuster = 16.f;
+		//Base spine that a particle will rotate (radians per second)
+		compute_emitter.spin = 17.f;
+		//Amount in radians that the spin will vary
+		compute_emitter.spin_variation = 18.f;
+		//Direction of travel that the particles go when spawned (radians)
+		compute_emitter.emission_angle = 19.f;
+		//Amount the emission angle will vary (radians)
+		compute_emitter.emission_angle_variation = 20.f;
+		//Amount that particles will randomly offset from the spawn point (radius in pixels)
+		compute_emitter.splatter = 21.f;
+		//For Ellipse type emitters, you can set the arc_size to only spawn a segment of the ellipse (radians)
+		compute_emitter.arc_size = 22.f;
+		//Starting point in radians for the arc segment
+		compute_emitter.arc_offset = 23.f;
+		//Scales all particles uniformly so that you can make the effect bigger or smaller overal
+		compute_emitter.overal_scale = 24.f;
+		//Amount that particles will stretch base on their current velocity
+		compute_emitter.stretch = 25.f;
+		//The base weight of spawned particles (downward accelleration in pixels per second)
+		compute_emitter.weight = 26.f;
+		//The amount the the weight will vary
+		compute_emitter.weight_variation = 27.f;
+		compute_emitter.motion_randomness = 888.f;*/
+
+		compute_emitter.age = 0;
+		compute_emitter.state_flags = flags;
+		compute_emitter.active_children = 0;
+		compute_emitter.particle_count = 0;
+		compute_emitter.timeout = timeout;
+		compute_emitter.timeout_counter = 0;
+		compute_emitter.uid = 0;
+		compute_emitter.max_radius = 0;
+
+		compute_emitter.lookup_node_index = lookup_node_index;
+		compute_emitter.lookup_value_index = lookup_value_index;
+		compute_emitter.max_life = max_life;
+		compute_emitter.parent = -1;
+		compute_emitter.next_ptr = -1;
+		compute_emitter.parent_particle = -1;
+
 		if (type == tfxEmitter) {
 			compute_emitter.image_size = properties.image->image_size;
 			compute_emitter.uv = properties.image->uv;
 			compute_emitter.image_index = properties.image->image_index;
 			compute_emitter.image_max_radius = properties.image->max_radius;
 			compute_emitter.animation_frames = properties.image->animation_frames;
-		}*/
+		}
 	}
 
 	void EffectEmitter::EnableAllEmitters() {
@@ -4612,13 +4695,12 @@ namespace tfx {
 	}
 
 	void ParticleManager::AddComputeEffect(EffectEmitter &effect, unsigned int frame_in_flight) {
-		compute_emitters[frame_in_flight].clear();
-		ComputeEmitterSimple cef;
+		ComputeEmitter cef;
 		effect.CloneToCompute(cef);
 		compute_emitters[frame_in_flight].push_back(cef);
 		for (auto &e : effect.sub_effectors) {
 			if (e.flags & tfxEmitterStateFlags_enabled) {
-				ComputeEmitterSimple cem;
+				ComputeEmitter cem;
 				e.CloneToCompute(cem);
 				compute_emitters[frame_in_flight].push_back(cem);
 			}
@@ -5010,6 +5092,8 @@ namespace tfx {
 	}
 
 	//API Functions
+	//Get the number of shapes that are stored in an effects library saved on disk. This can be useful if you need to reserve the space in 
+	//a list to store them in your custom ShapeLoader function.
 	int GetShapesInPackage(const char *filename) {
 		int context = 0;
 		int error = 0;
