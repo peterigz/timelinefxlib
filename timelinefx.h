@@ -373,34 +373,33 @@ typedef long long s64;
 	typedef unsigned int tfxVectorFieldFlags;
 	typedef unsigned char tfxParticleFlags;
 	typedef unsigned char tfxEmitterStateFlags;
-	typedef unsigned char tfxParticleControlFlags;
+	typedef unsigned int tfxParticleControlFlags;
 
 	//All the flags needed by the ControlParticle function put into one enum to save space
 	enum tfxParticleControlFlags_ {
 		tfxParticleControlFlags_none = 0,
-		tfxParticleControlFlags_point = 1 << 0,
-		tfxParticleControlFlags_area = 1 << 1,
-		tfxParticleControlFlags_line = 1 << 2,
-		tfxParticleControlFlags_ellipse = 1 << 3,
-		tfxParticleControlFlags_loop = 1 << 4,
-		tfxParticleControlFlags_kill = 1 << 5,
-		tfxParticleControlFlags_letFree = 1 << 6,
-		tfxParticleControlFlags_align = 1 << 7,
-		tfxParticleControlFlags_random = 1 << 8,
-		tfxParticleControlFlags_specify = 1 << 9,
-		tfxParticleControlFlags_graph = 1 << 10,
-		tfxParticleControlFlags_alpha = 1 << 11,
-		tfxParticleControlFlags_additive = 1 << 12,
-		tfxParticleControlFlags_remove = 1 << 13,
-		tfxParticleControlFlags_edge_traversal = 1 << 14,
-		tfxParticleControlFlags_relative_angle = 1 << 15,
-		tfxParticleControlFlags_relative_position = 1 << 16,
-		tfxParticleControlFlags_random_color = 1 << 17,
-		tfxParticleControlFlags_lifetime_uniform_size = 1 << 18,
-		tfxParticleControlFlags_base_uniform_size = 1 << 19,
-		tfxParticleControlFlags_animate = 1 << 20,
-		tfxParticleControlFlags_reverse_animatio = 1 << 21,
-		tfxParticleControlFlags_play_once = 1 << 22,
+		tfxParticleControlFlags_random_color = 1 << 0,
+		tfxParticleControlFlags_relative_position = 1 << 1,
+		tfxParticleControlFlags_relative_angle = 1 << 2,
+		tfxParticleControlFlags_point = 1 << 3,
+		tfxParticleControlFlags_area = 1 << 4,
+		tfxParticleControlFlags_line = 1 << 5,
+		tfxParticleControlFlags_ellipse = 1 << 6,
+		tfxParticleControlFlags_loop = 1 << 7,
+		tfxParticleControlFlags_kill = 1 << 8,
+		tfxParticleControlFlags_letFree = 1 << 9,
+		tfxParticleControlFlags_edge_traversal = 1 << 10,
+		tfxParticleControlFlags_remove = 1 << 11,
+		tfxParticleControlFlags_base_uniform_size = 1 << 12,
+		tfxParticleControlFlags_lifetime_uniform_size = 1 << 13,
+		tfxParticleControlFlags_animate = 1 << 14,
+		tfxParticleControlFlags_reverse_animation = 1 << 15,
+		tfxParticleControlFlags_play_once = 1 << 16,
+		tfxParticleControlFlags_align = 1 << 17,
+		tfxParticleControlFlags_random = 1 << 18,
+		tfxParticleControlFlags_specify = 1 << 19,
+		tfxParticleControlFlags_alpha = 1 << 20,
+		tfxParticleControlFlags_additive = 1 << 21,
 	};
 
 	enum tfxEmitterPropertyFlags_ {
@@ -425,7 +424,8 @@ typedef long long s64;
 		tfxEmitterPropertyFlags_random_start_frame = 1 << 17,				//Start the animation of the image from a random frame
 		tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
 		tfxEmitterPropertyFlags_use_vector_field = 1 << 19,					//Enable the use of a vector field to apply forces to the particles
-		tfxEmitterPropertyFlags_is_in_folder = 1 << 20						//This effect is located inside a folder
+		tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
+		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21					//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -1923,213 +1923,6 @@ typedef long long s64;
 		EffectEmitterState() : grid_coords(tfxVec2()), single_shot_done(false), age(0.f), amount_remainder(0.f) {}
 	};
 
-	struct ComputeEmitterSimple {
-		Matrix2 matrix;
-		//unsigned int magic_number_begin = 1234;
-		//Position, scale and rotation values
-		tfxVec4 local_position;
-		tfxVec4 world_position;
-		tfxVec4 captured_position;
-		tfxVec4 rotations;
-		//2d matrix for transformations
-		//----Particle image data
-		//The size of one frame of the image in pixels
-		tfxVec4 image_size2;
-		//uv coords of the image
-		tfxVec4 uv;
-		//An index you can use to reference what you need to access the texture data, like an array index
-		//The particle sprites will be drawn with a specific pipeline that will bind to a texture, so image_index and uv coords should be enough to 
-		//draw the correct image
-		float image_index;
-		float type;
-		//The number of frames in the image, can be one or more
-		float animation_frames;
-		//Maximum distance to the nearest transparent edge of the image from the center
-		float image_max_radius;
-
-		//-----Particle image data end
-		//unsigned int magic_number_end = 1234;
-	};
-
-	//ComputeEmitter is a readonly struct used to upload emitter data to a compute shader so that the particle effects can be run on a GPU
-	struct alignas(16) ComputeEmitter {
-		Matrix2 matrix;
-		//unsigned int magic_number_begin = 1234;
-		//Position, scale and rotation values
-		tfxVec4 local_position;
-		tfxVec4 world_position;
-		tfxVec4 captured_position;
-		tfxVec4 rotations;
-		//2d matrix for transformations
-		//----Particle image data
-		//The size of one frame of the image in pixels
-		tfxVec2 image_size;
-		//The number of frames in the image, can be one or more
-		float animation_frames;
-		//Maximum distance to the nearest transparent edge of the image from the center
-		float image_max_radius;
-		//uv coords of the image
-		tfxVec4 uv;
-		//An index you can use to reference what you need to access the texture data, like an array index
-		//The particle sprites will be drawn with a specific pipeline that will bind to a texture, so image_index and uv coords should be enough to 
-		//draw the correct image
-		unsigned int image_index;
-		//-----Particle image data end
-
-		//-----Emitter Properties
-
-		//Assigns either alpha or additive blend to particles that are spawned
-		//BlendMode blend_mode;
-		//Currently there are 4 types of emission, point, line, area and ellipse
-		//EmissionType emission_type;
-		//Should particles emit towards the center of the emitter or away, or in a specific direction
-		//EmissionDirection emission_direction;
-		//How particles should behave when they reach the end of the line
-		//LineTraversalEndBehaviour end_behaviour;
-		//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
-		//AngleSetting angle_setting = AngleSetting::tfxRandom;
-
-		//Packed blend_mode, emission_type, emission_direction, end_behaviour, angle_setting
-		unsigned int property_settings;
-
-		//Bit field of various boolean flags
-		tfxEmitterPropertyFlags flags;
-		float padding3;
-
-		//Offset to draw particles at
-		tfxVec2 image_handle;
-		//Offset of emitters
-		tfxVec2 emitter_handle;
-		//When single or one shot flags are set, spawn this amount of particles in one go
-		unsigned int spawn_amount;
-		//Layer of the particle manager that the particle is added to
-		unsigned int layer;
-		//The shape being used for all particles spawned from the emitter
-		unsigned int shape_index;
-
-		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
-		float angle_offset;
-		//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
-		tfxVec2 grid_points;
-		//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
-		float loop_length;
-		//The start frame index of the animation
-		float start_frame;
-		//The final frame index of the animation
-		float end_frame;
-		//-----End Emitter Properties
-		float padding1;
-
-		//The current state of the effect/emitter
-		//EffectEmitterState current;
-
-		//-----EffectEmitterState
-		//Base particle size
-		tfxVec2 size;
-		//Particle size variation
-		tfxVec2 size_variation;
-
-		float padding2;
-		float padding4;
-		//Particle color and opacity
-		tfxRGBA color;
-		//Size of the emitter area that particles can spawn in. X will be used for line length for line effects
-		tfxVec2 emitter_size;
-		//Emitter handle - the offset at which the emitter is positioned
-		tfxVec2 current_emitter_handle;
-		//Offset to draw particles at
-		tfxVec2 current_image_handle;
-		//Current base life that particles will be spawned with (milliseconds)
-
-		float life;
-		//Current number of particles that will be spawned per second
-		float amount;
-		//variance of the number of particles that will be spawned per second
-		float amount_variation;
-		//The amount of variation of life that particles are spawned with (milliseconds)
-		float life_variation;
-		//The base velocity of particles (pixels per second)
-		float velocity;
-		//The amount that velocity will vary
-		float velocity_variation;
-		//Global multiplier for all currently spawned particles of this emitter.
-		float velocity_adjuster;
-		//Base spine that a particle will rotate (radians per second)
-		float spin;
-		//Amount in radians that the spin will vary
-		float spin_variation;
-		//Direction of travel that the particles go when spawned (radians)
-		float emission_angle;
-		//Amount the emission angle will vary (radians)
-		float emission_angle_variation;
-		//Amount that particles will randomly offset from the spawn point (radius in pixels)
-		float splatter;
-		//For Ellipse type emitters, you can set the arc_size to only spawn a segment of the ellipse (radians)
-		float arc_size;
-		//Starting point in radians for the arc segment
-		float arc_offset;
-		//Scales all particles uniformly so that you can make the effect bigger or smaller overal
-		float overal_scale;
-		//Amount that particles will stretch base on their current velocity
-		float stretch;
-		//The base weight of spawned particles (downward accelleration in pixels per second)
-		float weight;
-		//The amount the the weight will vary
-		float weight_variation;
-		//The more motion randomness the more particles will move about erratically
-		float motion_randomness;
-		//The current age of the emitter.
-		float age;
-		//The current frame of the effect/emitter as calculated by age / update_frequency
-		float frame;
-		//internal use variables
-		float amount_remainder;
-
-		//bool emission_alternator;
-		//bool single_shot_done;
-		//Packed emission_alternator, single_shot_done
-		unsigned int state_flags;
-		float padding5;
-
-		tfxVec2 grid_coords;
-		tfxVec2 grid_direction;
-		tfxVec2 grid_segment_size;
-		//EffectEmitterState End
-
-		//Is this a tfxEffect or tfxEmitter
-		unsigned int type;
-		//A pointer the the particle manager that this has been added
-		unsigned int pm_index;
-		//The number of sub_effects still in use
-		unsigned int active_children;
-		//The number of particles active within this emitter
-		unsigned int particle_count;
-		//The number of frames before this is removed from the particle manager after particle count is 0
-		unsigned int timeout;
-		//Internal, keep track of idle frames
-		unsigned int timeout_counter;
-		//Every effect and emitter in the library gets a unique id
-		unsigned int uid;
-		//The max_radius of the emitter, taking into account all the particles that have spawned and active
-		float max_radius;
-
-		//Experitment: index into the lookup index data in the effect library
-		unsigned int lookup_node_index;
-		unsigned int lookup_value_index;
-		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
-		float max_life;
-		//Index to the immediate parent
-		int parent = -1;
-		//Index to the next pointer in the particle manager buffer. 
-		int next_ptr = -1;
-		//Index to the sub effect's particle that spawned it
-		int parent_particle = -1;
-
-		float padding6;
-		float padding7;
-
-	};
-
 	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
 	struct EffectEmitter {
@@ -2168,6 +1961,8 @@ typedef long long s64;
 		unsigned int timeout_counter;
 		//Every effect and emitter in the library gets a unique id
 		unsigned int uid;
+		//compute slot id if a compute shader is being used. Only applied to bottom emitters (emitters with no child effects)
+		unsigned int compute_slot_id;
 		//The max_radius of the emitter, taking into account all the particles that have spawned and active
 		float max_radius;
 		//List of sub_effects ( effects contain emitters, emitters contain sub effects )
@@ -2327,6 +2122,7 @@ TFX_CUSTOM_EMITTER
 		void TransformEffector(Particle &parent, bool relative_position = true, bool relative_angle = false);
 		void Update();
 		void SpawnParticles();
+		void UpdateComputeController();
 		void UpdateEmitterState();
 		void UpdateEffectState();
 		float GetEmissionDirection(Particle& p);
@@ -2340,7 +2136,6 @@ TFX_CUSTOM_EMITTER
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
 		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data = false);
-		void CloneToCompute(ComputeEmitter &compute_emitter);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -2389,7 +2184,7 @@ TFX_CUSTOM_EMITTER
 	//These are spawned by effector emitter types
 	//Particles are stored in the particle manager particle buffer.
 	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
-	//176 bytes
+	//168 bytes
 	struct Particle {
 		FormState local;				//The local position of the particle, relative to the emitter.
 		FormState world;				//The world position of the particle relative to the screen.
@@ -2398,11 +2193,11 @@ TFX_CUSTOM_EMITTER
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
 		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;					//max age before the particle expires
-		float image_frame_rate;			//current frame rate of the image if it's an animation
+		//float image_frame_rate;		//current frame rate of the image if it's an animation
 		//float velocity_scale;			//Current velocity overtime
 		float emission_angle;			//Emission angle of the particle at spawn time
 		float image_frame;				//Current frame of the image if it's an animation
-		float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
+		//float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float motion_randomness;		//The random velocity added each frame
 		float motion_randomness_speed;
@@ -2426,7 +2221,7 @@ TFX_CUSTOM_EMITTER
 		//inline void OverrideSpin(float r) { direction = r; }
 		//inline void OverrideSpinDegrees(float d) { spin = tfxDegrees(d); }
 		inline void OverrideAge(float a) { age = a; }
-		inline void OverrideImageFrameRate(float fr) { image_frame_rate = fr; }
+		//inline void OverrideImageFrameRate(float fr) { image_frame_rate = fr; }
 		inline void OverrideImageFrame(float f) { image_frame = f; }
 		inline void OverrideWeight(float w) { weight_acceleration = w; }
 		inline void OverrideIntensity(float i) { intensity = i; }
@@ -2438,20 +2233,19 @@ TFX_CUSTOM_EMITTER
 
 	};
 
-	struct ParticleController {
-		FormState transform;
-		Matrix2 matrix;
-		tfxVec2 emitter_size;
-		float velocity_adjuster;
-		float opacity;
+	struct ComputeController {
+		tfxVec2 position;
+		tfxVec4 scale_rotation;				//Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
+		float line_length;
 		float angle_offset;
 		float end_frame;
+		unsigned int normalised_values;		//Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, opacity
 		tfxParticleControlFlags flags;
 	};
 
 	struct ComputeParticle {
 		FormState local;				//The local position of the particle, relative to the emitter.
-		FormState world;				//The world position of the particle relative to the screen.
+		FormState world;				//The world position of the particle relative to the screen or world coordinate system.
 
 		tfxVec2 size;
 		tfxVec2 random_size;
@@ -2460,13 +2254,10 @@ TFX_CUSTOM_EMITTER
 		float spin;
 		float weight;
 
+		float dob;						//The age of the emitter at the time that the particle was spawned
 		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;					//max age before the particle expires
-		float image_frame_rate;			//current frame rate of the image if it's an animation
-		float velocity_scale;			//Current velocity overtime
 		float emission_angle;			//Emission angle of the particle at spawn time
-		float image_frame;				//Current frame of the image if it's an animation
-		float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float motion_randomness;		//The random velocity added each frame
 		float motion_randomness_speed;
@@ -2474,12 +2265,6 @@ TFX_CUSTOM_EMITTER
 		tfxRGBA8 color;					//Colour of the particle
 
 		unsigned int control_slot;
-	};
-
-	//x = instructions, y, z, w = parameters;
-	struct ComputeInstruction {
-		tfxVec4 instruction;
-		tfxVec4 parameters;
 	};
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation
@@ -2602,12 +2387,11 @@ TFX_CUSTOM_EMITTER
 		//lifetimes and can expire at anytime, this seemed like the easiest way to do this, although I dare say that there's faster ways of doing it, multi-threading it might be a good start there.
 		tfxvec<Particle> particles[tfxLAYERS][2];
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
-		//store the effect yourself and manually update it. You just need to assign a particle manager to the effect so that it knows which particle manager to use to update particles and any sub effects
-		//You can still apply changes to effect before you actually add it to the particle manager though
+		//you can use an EffectEmitterTemplate and use callback funcitons. 
 		tfxvec<EffectEmitter> effects[2];
-		//When using a compute shader to manage updating emitters and particles, compute_emitters stores any new emitters that you want to upload to the GPU this frame. The reason why this is an array of 3
-		//lists is because some renderers may use more then 1 frame in flight.
-		tfxvec<ComputeEmitter> compute_emitters[3];
+		//todo:document compute controllers once we've established this is how we'll be doing it.
+		tfxvec<ComputeController> compute_controllers;
+		tfxvec<unsigned int> free_compute_controllers;
 		//The maximum number of effects that can be updated per frame in the particle manager. If you're running effects with particles that have sub effects then this number might need 
 		//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
 		unsigned int max_effects;
@@ -2619,10 +2403,13 @@ TFX_CUSTOM_EMITTER
 		unsigned int current_ebuff;
 		//The current number of particles in each buffer
 		unsigned int particle_count;
+
+		unsigned int highest_compute_index;
 		//Callback to the render function that renders all the particles - is this not actually useful now, just use GetParticleBuffer() in your own render function
 		void(*render_func)(float, void*, void*);
 		bool disable_spawing;
 		bool force_capture;
+		bool use_compute_shader;
 		//Used if the emitter changed attributes and spawned particles need updating their base values. Primarily used by the editor
 		bool update_base_values;	
 		LookupMode lookup_mode;
@@ -2638,7 +2425,9 @@ TFX_CUSTOM_EMITTER
 			max_particles_per_layer(50000), 
 			update_base_values(false),
 			current_ebuff(0),
-			current_pbuff(0)
+			current_pbuff(0),
+			use_compute_shader(false),
+			highest_compute_index(0)
 		{ }
 		~ParticleManager();
 		EffectEmitter &operator[] (unsigned int index);
@@ -2655,9 +2444,8 @@ TFX_CUSTOM_EMITTER
 		//have access to the effect if you need it.
 		void AddEffect(EffectEmitter &effect, unsigned int buffer);
 		void AddEffect(EffectEmitterTemplate &effect, unsigned int buffer);
-		void AddComputeEffect(EffectEmitter &effect, unsigned int frame_in_flight = 0);
-		inline tfxvec<ComputeEmitter> &GetComputeEmittersForUpload(unsigned int frame_in_flight = 0) { return compute_emitters[frame_in_flight]; }
-		inline unsigned int GetComputeEmittersByteSize(unsigned int frame_in_flight = 0) { return compute_emitters[frame_in_flight].size() * sizeof(ComputeEmitter); }
+		inline tfxvec<ComputeController> &GetComputeControllersForUpload() { return compute_controllers; }
+		inline unsigned int GetComputeControllersByteSize(unsigned int frame_in_flight = 0) { return compute_controllers.size() * sizeof(ComputeController); }
 		//Clear all effects and particles in the particle manager
 		void ClearAll();
 		//Soft expire all the effects so that the particles complete their animation first
@@ -2668,6 +2456,10 @@ TFX_CUSTOM_EMITTER
 		void SetRenderCallback(void func(float, void*, void*));
 
 		//Internal use only
+		int AddComputeController();
+		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
+		void EnableCompute() { use_compute_shader = true; }
+		void DisableCompute() { use_compute_shader = false; }
 		Particle &GrabParticle(unsigned int layer);
 		unsigned int AddParticle(unsigned int layer, Particle &p);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
@@ -2679,12 +2471,8 @@ TFX_CUSTOM_EMITTER
 		tfxvec<EffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(LookupMode mode);
 
-		inline bool FreeCapacity(unsigned int layer) { 
-			return particles[layer][current_pbuff].current_size < max_particles_per_layer;
-		}
-		inline bool FreeEffectCapacity() {
-			return effects[0].current_size + effects[1].current_size < max_effects;
-		}
+		inline bool FreeCapacity(unsigned int layer) { return particles[layer][current_pbuff].current_size < max_particles_per_layer; }
+		inline bool FreeEffectCapacity() { return effects[0].current_size + effects[1].current_size < max_effects; }
 	};
 
 	struct DataEntry {
@@ -2768,7 +2556,6 @@ TFX_CUSTOM_EMITTER
 	void InitParticleManager(ParticleManager &pm, unsigned int effects_limit, unsigned int particle_limit_per_layer);
 	void AddEffect(ParticleManager &pm, EffectEmitter &effect, float x = 0.f, float y = 0.f);
 	void AddEffect(ParticleManager &pm, EffectEmitterTemplate &effect, float x = 0.f, float y = 0.f);
-	void AddComputeEffect(ParticleManager &pm, EffectEmitter &effect, float x = 0.f, float y = 0.f, unsigned int frame_in_flight = 0);
 
 }
 
