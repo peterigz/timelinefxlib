@@ -373,6 +373,35 @@ typedef long long s64;
 	typedef unsigned int tfxVectorFieldFlags;
 	typedef unsigned char tfxParticleFlags;
 	typedef unsigned char tfxEmitterStateFlags;
+	typedef unsigned char tfxParticleControlFlags;
+
+	//All the flags needed by the ControlParticle function put into one enum to save space
+	enum tfxParticleControlFlags_ {
+		tfxParticleControlFlags_none = 0,
+		tfxParticleControlFlags_point = 1 << 0,
+		tfxParticleControlFlags_area = 1 << 1,
+		tfxParticleControlFlags_line = 1 << 2,
+		tfxParticleControlFlags_ellipse = 1 << 3,
+		tfxParticleControlFlags_loop = 1 << 4,
+		tfxParticleControlFlags_kill = 1 << 5,
+		tfxParticleControlFlags_letFree = 1 << 6,
+		tfxParticleControlFlags_align = 1 << 7,
+		tfxParticleControlFlags_random = 1 << 8,
+		tfxParticleControlFlags_specify = 1 << 9,
+		tfxParticleControlFlags_graph = 1 << 10,
+		tfxParticleControlFlags_alpha = 1 << 11,
+		tfxParticleControlFlags_additive = 1 << 12,
+		tfxParticleControlFlags_remove = 1 << 13,
+		tfxParticleControlFlags_edge_traversal = 1 << 14,
+		tfxParticleControlFlags_relative_angle = 1 << 15,
+		tfxParticleControlFlags_relative_position = 1 << 16,
+		tfxParticleControlFlags_random_color = 1 << 17,
+		tfxParticleControlFlags_lifetime_uniform_size = 1 << 18,
+		tfxParticleControlFlags_base_uniform_size = 1 << 19,
+		tfxParticleControlFlags_animate = 1 << 20,
+		tfxParticleControlFlags_reverse_animatio = 1 << 21,
+		tfxParticleControlFlags_play_once = 1 << 22,
+	};
 
 	enum tfxEmitterPropertyFlags_ {
 		tfxEmitterPropertyFlags_none = 0,
@@ -1356,6 +1385,10 @@ typedef long long s64;
 	//------------------------------------------------------------
 
 	typedef tfxVec2 Point;
+
+	struct NodePairs {
+		tfxVec2 frame_value;
+	};
 
 	struct AttributeNode {
 		float frame;
@@ -2361,25 +2394,18 @@ TFX_CUSTOM_EMITTER
 		FormState local;				//The local position of the particle, relative to the emitter.
 		FormState world;				//The world position of the particle relative to the screen.
 		FormState captured;				//The captured world coords for tweening
-		Matrix2 matrix;					//Simple 2d matrix for transforms
+		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
-		//tfxVec2 velocity_normal;		//stores the current direction of travel for the particle
-		//tfxVec2 velocity;				//=velocity_normal * base.velocity * velocity_scale (velocity overtime) Gets added to the particle coords each frame
-		//tfxVec2 handle;				//The image handle
 		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;					//max age before the particle expires
 		float image_frame_rate;			//current frame rate of the image if it's an animation
-		float velocity_scale;			//Current velocity overtime
-		//float direction;				//Current direction of travel in radians
+		//float velocity_scale;			//Current velocity overtime
 		float emission_angle;			//Emission angle of the particle at spawn time
-		//float spin;					//Current spin overtime
 		float image_frame;				//Current frame of the image if it's an animation
 		float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float motion_randomness;		//The random velocity added each frame
 		float motion_randomness_speed;
-		//float motion_randomness_direction;
-		//float motion_tracker;
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
 		tfxRGBA8 color;					//Colour of the particle
 		tfxParticleFlags flags;			//flags for different states
@@ -2392,7 +2418,7 @@ TFX_CUSTOM_EMITTER
 		inline void OverridePosition(float x, float y) { local.position.x = x; local.position.y = y; }
 		inline void OverrideSize(float x, float y) { local.scale.x = x; local.scale.y = y; }
 		//inline void OverrideVelocity(float x, float y) { velocity.x = x; velocity.y = y; }
-		inline void OverrideVelocityScale(float v) { velocity_scale = v; }
+		//inline void OverrideVelocityScale(float v) { velocity_scale = v; }
 		inline void OverrideRotation(float r) { local.rotation = r; }
 		inline void OverrideRotationDegrees(float d) { local.rotation = tfxDegrees(d); }
 		//inline void OverrideDirection(float r) { direction = r; }
@@ -2412,27 +2438,27 @@ TFX_CUSTOM_EMITTER
 
 	};
 
-	//x = instructions, y, z, w = parameters;
-	struct ComputeInstruction {
-		tfxVec4 instruction;
-		tfxVec4 parameters;
+	struct ParticleController {
+		FormState transform;
+		Matrix2 matrix;
+		tfxVec2 emitter_size;
+		float velocity_adjuster;
+		float opacity;
+		float angle_offset;
+		float end_frame;
+		tfxParticleControlFlags flags;
 	};
 
 	struct ComputeParticle {
-		Matrix2 matrix;
-		//unsigned int magic_number_begin = 1234;
-		//Position, scale and rotation values
-		tfxVec4 local_position;
-		tfxVec4 world_position;
-		tfxVec4 captured_position;
-		tfxVec4 rotations;
+		FormState local;				//The local position of the particle, relative to the emitter.
+		FormState world;				//The world position of the particle relative to the screen.
 
-		tfxVec2 base_size;
-		tfxVec2 base_random_size;
-		float base_velocity;
-		float base_height;
-		float base_spin;
-		float base_weight;
+		tfxVec2 size;
+		tfxVec2 random_size;
+		float velocity;
+		float height;
+		float spin;
+		float weight;
 
 		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;					//max age before the particle expires
@@ -2445,10 +2471,15 @@ TFX_CUSTOM_EMITTER
 		float motion_randomness;		//The random velocity added each frame
 		float motion_randomness_speed;
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
-		unsigned int color;				//Colour of the particle
-		unsigned int flags; 			//flags for different states
-		unsigned int parent_index;		//pointer to the emitter that emitted the particle.
-		unsigned int next_index;
+		tfxRGBA8 color;					//Colour of the particle
+
+		unsigned int control_slot;
+	};
+
+	//x = instructions, y, z, w = parameters;
+	struct ComputeInstruction {
+		tfxVec4 instruction;
+		tfxVec4 parameters;
 	};
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation

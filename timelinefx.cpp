@@ -949,7 +949,7 @@ namespace tfx {
 			p.weight_acceleration = p.base.weight * library->overtime_graphs[overtime].weight.GetFirstValue() * UPDATE_TIME;
 
 			//----Velocity
-			p.velocity_scale = library->overtime_graphs[overtime].velocity.GetFirstValue() * current.velocity_adjuster;
+			float velocity_scale = library->overtime_graphs[overtime].velocity.GetFirstValue() * current.velocity_adjuster;
 			p.base.velocity = current.velocity + random_generation.Range(-current.velocity_variation, current.velocity_variation);
 
 			//----Size
@@ -963,7 +963,7 @@ namespace tfx {
 				p.local.scale.x = p.base.size.x * library->overtime_graphs[overtime].width.GetFirstValue();
 
 				if (library->overtime_graphs[overtime].stretch.GetFirstValue()) {
-					float velocity = std::fabsf(p.velocity_scale * p.base.velocity) * UPDATE_TIME;
+					float velocity = std::fabsf(velocity_scale * p.base.velocity) * UPDATE_TIME;
 					velocity += p.weight_acceleration * UPDATE_TIME;
 					p.local.scale.y = (library->overtime_graphs[overtime].height.GetFirstValue() * parent->current.size.y * (p.base.height + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
 				}
@@ -986,7 +986,7 @@ namespace tfx {
 				p.local.scale.x = p.base.size.x * library->overtime_graphs[overtime].width.GetFirstValue();
 
 				if (library->overtime_graphs[overtime].stretch.GetFirstValue()) {
-					float velocity = std::fabsf(p.velocity_scale * p.base.velocity) * UPDATE_TIME;
+					float velocity = std::fabsf(velocity_scale * p.base.velocity) * UPDATE_TIME;
 					velocity += p.weight_acceleration * UPDATE_TIME;
 					p.local.scale.y = (library->overtime_graphs[overtime].width.GetFirstValue() * parent->current.size.y * (p.base.height + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
 				}
@@ -1202,109 +1202,62 @@ namespace tfx {
 	}
 
 	void EffectEmitter::UpdateEmitterState() {
-		//todo: tidy this up, and not all of this needs to be called every frame
-		if (parent == nullptr) {
-			//is this even valid now? Every emitter should have an effect as a parent
-			current.life = lookup_callback(library->base_graphs[base].life, current.frame);
-			current.life_variation = lookup_callback(library->variation_graphs[variation].life, current.frame);
-			if (!(properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-				current.size.x = lookup_callback(library->base_graphs[base].width, current.frame);
-				current.size.y = lookup_callback(library->base_graphs[base].height, current.frame);
-			}
-			else {
-				current.size.x = lookup_callback(library->base_graphs[base].width, current.frame);
-				current.size.y = current.size.x;
-			}
-			current.size_variation.x = lookup_callback(library->variation_graphs[variation].width, current.frame);
-			current.size_variation.y = lookup_callback(library->variation_graphs[variation].height, current.frame);
-			current.velocity = lookup_callback(library->base_graphs[base].velocity, current.frame);
-			current.velocity_variation = lookup_callback(library->variation_graphs[variation].velocity, current.frame);
-			current.velocity_adjuster = lookup_callback(library->overtime_graphs[overtime].velocity_adjuster, current.frame);
-			current.spin = lookup_callback(library->base_graphs[base].spin, current.frame);
-			current.spin_variation = lookup_callback(library->variation_graphs[variation].spin, current.frame);
-			local.rotation = lookup_callback(library->property_graphs[property].emitter_angle, current.frame);
-			current.emission_angle = lookup_callback(library->property_graphs[property].emission_angle, current.frame);
-			current.emission_angle_variation = lookup_callback(library->property_graphs[property].emission_range, current.frame);
-			current.color.r = library->overtime_graphs[overtime].red.GetFirstValue();
-			current.color.g = library->overtime_graphs[overtime].green.GetFirstValue();
-			current.color.b = library->overtime_graphs[overtime].blue.GetFirstValue();
-			current.color.a = library->overtime_graphs[overtime].opacity.GetFirstValue();
-			current.splatter = lookup_callback(library->property_graphs[property].splatter, current.frame);
-			current.emitter_size.x = lookup_callback(library->property_graphs[property].emitter_width, current.frame);
-			current.weight = lookup_callback(library->base_graphs[base].weight, current.frame);
-			current.weight_variation = lookup_callback(library->variation_graphs[variation].weight, current.frame);
-			current.motion_randomness = lookup_callback(library->variation_graphs[variation].motion_randomness, current.frame);
-
-			if (properties.emission_type == EmissionType::tfxArea || properties.emission_type == EmissionType::tfxEllipse)
-				current.emitter_size.y = lookup_callback(library->property_graphs[property].emitter_width, current.frame);
-			else
-				current.emitter_size.y = 0.f;
-
-			if (properties.emission_type == EmissionType::tfxEllipse) {
-				current.arc_size = lookup_callback(library->property_graphs[property].arc_size, current.frame);
-				current.arc_offset = lookup_callback(library->property_graphs[property].arc_offset, current.frame);
-			}
-
+		EffectEmitter &e = *parent;
+		current.amount = lookup_callback(library->base_graphs[base].amount, current.frame);
+		current.amount_variation = lookup_callback(library->variation_graphs[base].amount, current.frame);
+		current.life = lookup_callback(library->base_graphs[base].life, current.frame) * e.current.life;
+		current.life_variation = lookup_callback(library->variation_graphs[variation].life, current.frame) * e.current.life;
+		if (!(properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
+			current.size.x = lookup_callback(library->base_graphs[base].width, current.frame) * e.current.size.x;
+			current.size.y = lookup_callback(library->base_graphs[base].height, current.frame) * e.current.size.y;
 		}
 		else {
-			EffectEmitter &e = *parent;
-			current.amount = lookup_callback(library->base_graphs[base].amount, current.frame);
-			current.amount_variation = lookup_callback(library->variation_graphs[base].amount, current.frame);
-			current.life = lookup_callback(library->base_graphs[base].life, current.frame) * e.current.life;
-			current.life_variation = lookup_callback(library->variation_graphs[variation].life, current.frame) * e.current.life;
-			if (!(properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-				current.size.x = lookup_callback(library->base_graphs[base].width, current.frame) * e.current.size.x;
-				current.size.y = lookup_callback(library->base_graphs[base].height, current.frame) * e.current.size.y;
-			}
-			else {
-				current.size.x = lookup_callback(library->base_graphs[base].width, current.frame);
-				if (e.properties.flags & tfxEmitterPropertyFlags_global_uniform_size)
-					current.size.y = current.size.x * e.current.size.x;
-				else
-					current.size.y = current.size.x * e.current.size.y;
-				current.size.x *= e.current.size.x;
-			}
-			current.size_variation.x = lookup_callback(library->variation_graphs[variation].width, current.frame) * e.current.size.x;
-			current.size_variation.y = lookup_callback(library->variation_graphs[variation].height, current.frame) * e.current.size.y;
-			current.velocity = lookup_callback(library->base_graphs[base].velocity, current.frame) * e.current.velocity;
-			current.velocity_variation = lookup_callback(library->variation_graphs[variation].velocity, current.frame) * e.current.velocity;
-			current.velocity_adjuster = lookup_callback(library->overtime_graphs[overtime].velocity_adjuster, current.frame);
-			current.spin = lookup_callback(library->base_graphs[base].spin, current.frame) * e.current.spin;
-			current.spin_variation = lookup_callback(library->variation_graphs[variation].spin, current.frame) * e.current.spin;
-			local.rotation = lookup_callback(library->property_graphs[property].emitter_angle, current.frame);
-			current.emission_angle = lookup_callback(library->property_graphs[property].emission_angle, current.frame);
-			current.emission_angle_variation = lookup_callback(library->property_graphs[property].emission_range, current.frame);
-			current.color.r = library->overtime_graphs[overtime].red.GetFirstValue();
-			current.color.g = library->overtime_graphs[overtime].green.GetFirstValue();
-			current.color.b = library->overtime_graphs[overtime].blue.GetFirstValue();
-			current.color.a = e.current.color.a;
-			current.splatter = lookup_callback(library->property_graphs[property].splatter, current.frame) * e.current.splatter;
-			current.emitter_size.y = lookup_callback(library->property_graphs[property].emitter_height, current.frame);
-			current.weight = lookup_callback(library->base_graphs[base].weight, current.frame) * e.current.weight;
-			current.weight_variation = lookup_callback(library->variation_graphs[variation].weight, current.frame) * e.current.weight;
-			current.motion_randomness = lookup_callback(library->variation_graphs[variation].motion_randomness, current.frame);
-			current.stretch = e.current.stretch;
-			local.scale = e.local.scale;
-
-			//----Handle
-			if (properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
-				current.image_handle = tfxVec2(0.5f, 0.5f);
-			}
-			else {
-				current.image_handle = properties.image_handle;
-			}
-
-			if (properties.emission_type == EmissionType::tfxArea || properties.emission_type == EmissionType::tfxEllipse) {
-				current.emitter_size.x = lookup_callback(library->property_graphs[property].emitter_width, current.frame);
-			}
+			current.size.x = lookup_callback(library->base_graphs[base].width, current.frame);
+			if (e.properties.flags & tfxEmitterPropertyFlags_global_uniform_size)
+				current.size.y = current.size.x * e.current.size.x;
 			else
-				current.emitter_size.x = 0.f;
+				current.size.y = current.size.x * e.current.size.y;
+			current.size.x *= e.current.size.x;
+		}
+		current.size_variation.x = lookup_callback(library->variation_graphs[variation].width, current.frame) * e.current.size.x;
+		current.size_variation.y = lookup_callback(library->variation_graphs[variation].height, current.frame) * e.current.size.y;
+		current.velocity = lookup_callback(library->base_graphs[base].velocity, current.frame) * e.current.velocity;
+		current.velocity_variation = lookup_callback(library->variation_graphs[variation].velocity, current.frame) * e.current.velocity;
+		current.velocity_adjuster = lookup_callback(library->overtime_graphs[overtime].velocity_adjuster, current.frame);
+		current.spin = lookup_callback(library->base_graphs[base].spin, current.frame) * e.current.spin;
+		current.spin_variation = lookup_callback(library->variation_graphs[variation].spin, current.frame) * e.current.spin;
+		local.rotation = lookup_callback(library->property_graphs[property].emitter_angle, current.frame);
+		current.emission_angle = lookup_callback(library->property_graphs[property].emission_angle, current.frame);
+		current.emission_angle_variation = lookup_callback(library->property_graphs[property].emission_range, current.frame);
+		current.color.r = library->overtime_graphs[overtime].red.GetFirstValue();
+		current.color.g = library->overtime_graphs[overtime].green.GetFirstValue();
+		current.color.b = library->overtime_graphs[overtime].blue.GetFirstValue();
+		current.color.a = e.current.color.a;
+		current.splatter = lookup_callback(library->property_graphs[property].splatter, current.frame) * e.current.splatter;
+		current.emitter_size.y = lookup_callback(library->property_graphs[property].emitter_height, current.frame);
+		current.weight = lookup_callback(library->base_graphs[base].weight, current.frame) * e.current.weight;
+		current.weight_variation = lookup_callback(library->variation_graphs[variation].weight, current.frame) * e.current.weight;
+		current.motion_randomness = lookup_callback(library->variation_graphs[variation].motion_randomness, current.frame);
+		current.stretch = e.current.stretch;
+		local.scale = e.local.scale;
 
-			if (properties.emission_type == EmissionType::tfxEllipse) {
-				current.arc_size = lookup_callback(library->property_graphs[property].arc_size, current.frame);
-				current.arc_offset = lookup_callback(library->property_graphs[property].arc_offset, current.frame);
-			}
+		//----Handle
+		if (properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
+			current.image_handle = tfxVec2(0.5f, 0.5f);
+		}
+		else {
+			current.image_handle = properties.image_handle;
+		}
 
+		if (properties.emission_type == EmissionType::tfxArea || properties.emission_type == EmissionType::tfxEllipse) {
+			current.emitter_size.x = lookup_callback(library->property_graphs[property].emitter_width, current.frame);
+		}
+		else
+			current.emitter_size.x = 0.f;
+
+		if (properties.emission_type == EmissionType::tfxEllipse) {
+			current.arc_size = lookup_callback(library->property_graphs[property].arc_size, current.frame);
+			current.arc_offset = lookup_callback(library->property_graphs[property].arc_offset, current.frame);
 		}
 
 		if (properties.flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != EmissionType::tfxPoint) {
@@ -1389,6 +1342,7 @@ namespace tfx {
 			//random_velocity = std::uniform_real_distribution<float>(e.current.velocity_variation, 0);
 		//p.velocity_scale = e.library->overtime_graphs[e.overtime].velocity.GetFirstValue() * e.current.velocity_adjuster;
 		//p.base.velocity = e.current.velocity + random_velocity(random_generation.engine);
+		float velocity_scale = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity, p.age, p.max_age) * e.current.velocity_adjuster;
 
 		//----Size
 		if (!(e.properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
@@ -1402,7 +1356,7 @@ namespace tfx {
 			//p.local.scale.x = p.base.size.x * e.library->overtime_graphs[e.overtime].width.GetFirstValue();
 
 			if (e.library->overtime_graphs[e.overtime].stretch.GetFirstValue()) {
-				float velocity = std::fabsf(p.velocity_scale * p.base.velocity);
+				float velocity = std::fabsf(velocity_scale * p.base.velocity);
 				//p.local.scale.y = (e.library->overtime_graphs[e.overtime].height.GetFirstValue() * e.parent->current.size.y * (p.base.height + (velocity * e.library->overtime_graphs[e.overtime].stretch.GetFirstValue() * e.parent->current.stretch))) / e.properties.image.image_size.y;
 			}
 			else {
@@ -1424,7 +1378,7 @@ namespace tfx {
 			//p.local.scale.x = p.base.size.x * e.library->overtime_graphs[e.overtime].width.GetFirstValue();
 
 			if (e.library->overtime_graphs[e.overtime].stretch.GetFirstValue()) {
-				float velocity = std::fabsf(p.velocity_scale * p.base.velocity);
+				float velocity = std::fabsf(velocity_scale * p.base.velocity);
 				//p.local.scale.y = (e.library->overtime_graphs[e.overtime].height.GetFirstValue() * e.parent->current.size.y * (p.base.height + (velocity * e.library->overtime_graphs[e.overtime].stretch.GetFirstValue() * e.parent->current.stretch))) / e.properties.image.image_size.y;
 			}
 			else {
@@ -1570,17 +1524,17 @@ namespace tfx {
 		tfxVec2 velocity_normal;
 		velocity_normal.x = std::sinf(direction);
 		velocity_normal.y = -std::cosf(direction);
-		p.velocity_scale = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity, p.age, p.max_age) * e.current.velocity_adjuster;
+		float velocity_scale = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity, p.age, p.max_age) * e.current.velocity_adjuster;
 
 		//----Velocity
 		tfxVec2 current_velocity;
-		if (p.velocity_scale) {
+		if (velocity_scale) {
 			if (e.properties.flags & tfxEmitterPropertyFlags_relative_position) {
-				current_velocity = ((p.base.velocity * p.velocity_scale) + p.motion_randomness_speed) * velocity_normal * UPDATE_TIME;
+				current_velocity = ((p.base.velocity * velocity_scale) + p.motion_randomness_speed) * velocity_normal * UPDATE_TIME;
 				current_velocity.y += p.weight_acceleration * UPDATE_TIME;
 			}
 			else {
-				current_velocity = ((p.base.velocity * p.velocity_scale) + p.motion_randomness_speed) * velocity_normal * UPDATE_TIME * e.world.scale;
+				current_velocity = ((p.base.velocity * velocity_scale) + p.motion_randomness_speed) * velocity_normal * UPDATE_TIME * e.world.scale;
 				current_velocity.y += p.weight_acceleration * UPDATE_TIME * e.world.scale.y;
 			}
 		}
@@ -1632,7 +1586,7 @@ namespace tfx {
 		//----Stretch Changes
 		float stretch = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].stretch, p.age, p.max_age);
 		if (stretch) {
-			float velocity = std::fabsf(p.velocity_scale * p.base.velocity + p.motion_randomness_speed + p.weight_acceleration);
+			float velocity = std::fabsf(velocity_scale * p.base.velocity + p.motion_randomness_speed + p.weight_acceleration);
 			if (e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size)
 				p.local.scale.y = (lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age) *
 				(p.base.height + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
@@ -3193,9 +3147,9 @@ namespace tfx {
 	float EffectLibrary::LookupFastValueList(GraphType graph_type, int lookup_node_index, float frame) {
 		GraphLookupIndex &lookup_data = ((GraphLookupIndex*)&compiled_lookup_indexes[lookup_node_index])[graph_type];
 		frame += lookup_data.start_index;
-		if ((unsigned int)frame < lookup_data.start_index + lookup_data.length - 1)
-			return compiled_lookup_values[(unsigned int)frame];
-		return compiled_lookup_values[lookup_data.start_index + lookup_data.length - 1];
+		unsigned int end_frame = lookup_data.start_index + lookup_data.length - 1;
+		frame = frame > end_frame ? end_frame : frame;
+		return compiled_lookup_values[(unsigned int)frame];
 	}
 
 	float EffectLibrary::LookupFastOvertimeValueList(GraphType graph_type, int lookup_value_index, float age, float lifetime) {
