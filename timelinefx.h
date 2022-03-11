@@ -125,6 +125,7 @@ namespace tfx {
 	struct ParticleManager;
 	struct EffectorStore;
 	struct Particle;
+	struct ComputeParticle;
 	struct AnimationSettings;
 	struct EffectLibrary;
 	struct tfxText;
@@ -2122,10 +2123,12 @@ TFX_CUSTOM_EMITTER
 		void TransformEffector(Particle &parent, bool relative_position = true, bool relative_angle = false);
 		void Update();
 		void SpawnParticles();
+		void InitCPUParticle(Particle &p, float tween);
+		void InitComputeParticle(ComputeParticle &p, float tween);
 		void UpdateComputeController();
 		void UpdateEmitterState();
 		void UpdateEffectState();
-		float GetEmissionDirection(Particle& p);
+		float GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position);
 		void ReSeed(uint64_t seed = 0);
 		bool HasSingle();
 		bool RenameSubEffector(EffectEmitter &effect, const char *new_name);
@@ -2186,6 +2189,7 @@ TFX_CUSTOM_EMITTER
 	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
 	//168 bytes
 	struct Particle {
+		//todo: can optimise this, particles don't need to transform scale
 		FormState local;				//The local position of the particle, relative to the emitter.
 		FormState world;				//The world position of the particle relative to the screen.
 		FormState captured;				//The captured world coords for tweening
@@ -2244,15 +2248,16 @@ TFX_CUSTOM_EMITTER
 	};
 
 	struct ComputeParticle {
-		FormState local;				//The local position of the particle, relative to the emitter.
-		FormState world;				//The world position of the particle relative to the screen or world coordinate system.
+		tfxVec2 local_position;
+		tfxVec4 scale_rotation;			//xy = scale, zw = local rotation, world rotation
+		tfxVec2 world_position;
 
-		tfxVec2 size;
-		tfxVec2 random_size;
-		float velocity;
-		float height;
-		float spin;
-		float weight;
+		tfxVec2 base_size;
+		tfxVec2 base_random_size;
+		float base_velocity;
+		float base_height;
+		float base_spin;
+		float base_weight;
 
 		float dob;						//The age of the emitter at the time that the particle was spawned
 		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
@@ -2262,9 +2267,10 @@ TFX_CUSTOM_EMITTER
 		float motion_randomness;		//The random velocity added each frame
 		float motion_randomness_speed;
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
+		float image_frame;
 		tfxRGBA8 color;					//Colour of the particle
 
-		unsigned int control_slot;
+		unsigned int control_slot_and_layer;	//index to the controller, and also stores the layer in the particle manager that the particle is on (layer << 3)
 	};
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation
@@ -2392,11 +2398,15 @@ TFX_CUSTOM_EMITTER
 		//todo:document compute controllers once we've established this is how we'll be doing it.
 		tfxvec<ComputeController> compute_controllers;
 		tfxvec<unsigned int> free_compute_controllers;
+		unsigned int new_compute_particle_index;
+		void *new_compute_particle_ptr;
 		//The maximum number of effects that can be updated per frame in the particle manager. If you're running effects with particles that have sub effects then this number might need 
 		//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
 		unsigned int max_effects;
 		//The maximum number of particles that can be updated per frame per layer. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
-		unsigned int max_particles_per_layer;
+		unsigned int max_cpu_particles_per_layer;
+		//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
+		unsigned int max_new_compute_particles;
 		//The current particle buffer in use, can be either 0 or 1
 		unsigned int current_pbuff;
 		//The current effect buffer in use, can be either 0 or 1
@@ -2404,7 +2414,7 @@ TFX_CUSTOM_EMITTER
 		//The current number of particles in each buffer
 		unsigned int particle_count;
 
-		unsigned int highest_compute_index;
+		unsigned int highest_compute_controller_index;
 		//Callback to the render function that renders all the particles - is this not actually useful now, just use GetParticleBuffer() in your own render function
 		void(*render_func)(float, void*, void*);
 		bool disable_spawing;
@@ -2422,12 +2432,13 @@ TFX_CUSTOM_EMITTER
 			disable_spawing(false), 
 			lookup_mode(tfxFast), 
 			max_effects(10000), 
-			max_particles_per_layer(50000), 
+			max_cpu_particles_per_layer(50000), 
 			update_base_values(false),
 			current_ebuff(0),
 			current_pbuff(0),
 			use_compute_shader(false),
-			highest_compute_index(0)
+			highest_compute_controller_index(0),
+			new_compute_particle_ptr(nullptr)
 		{ }
 		~ParticleManager();
 		EffectEmitter &operator[] (unsigned int index);
@@ -2460,7 +2471,9 @@ TFX_CUSTOM_EMITTER
 		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
 		void EnableCompute() { use_compute_shader = true; }
 		void DisableCompute() { use_compute_shader = false; }
-		Particle &GrabParticle(unsigned int layer);
+		Particle &GrabCPUParticle(unsigned int layer);
+		ComputeParticle &GrabComputeParticle(unsigned int layer);
+		void ResetComputePtr(void *compute_ptr);
 		unsigned int AddParticle(unsigned int layer, Particle &p);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
 		unsigned int ParticleCount();
@@ -2471,7 +2484,12 @@ TFX_CUSTOM_EMITTER
 		tfxvec<EffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(LookupMode mode);
 
-		inline bool FreeCapacity(unsigned int layer) { return particles[layer][current_pbuff].current_size < max_particles_per_layer; }
+		inline bool FreeCapacity(unsigned int layer, bool compute) { 
+			if (!compute)
+				return particles[layer][current_pbuff].current_size < max_cpu_particles_per_layer;
+			else
+				return new_compute_particle_index < max_new_compute_particles;
+		}
 		inline bool FreeEffectCapacity() { return effects[0].current_size + effects[1].current_size < max_effects; }
 	};
 
@@ -2532,8 +2550,6 @@ TFX_CUSTOM_EMITTER
 
 	//Get a graph by GraphID
 	Graph &GetGraph(EffectLibrary &library, GraphID &graph_id);
-	//Get a node by GraphID
-	Graph &GetGraphNode(EffectLibrary &library, GraphID &graph_id);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	inline void SetUpdateFrequency(float fps) {
