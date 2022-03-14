@@ -707,6 +707,7 @@ namespace tfx {
 			if (properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader) {
 				ComputeParticle &p = pm->GrabComputeParticle(properties.layer);
 				InitComputeParticle(p, tween);
+				pm->new_particles_count++;
 			}
 			else {
 				Particle &p = pm->GrabCPUParticle(properties.layer);
@@ -1139,6 +1140,7 @@ namespace tfx {
 	}
 
 	void EffectEmitter::InitComputeParticle(ComputeParticle &p, float tween) {
+		p.next_offset = 0;
 
 		if (properties.flags & (tfxEmitterPropertyFlags_single | tfxEmitterPropertyFlags_one_shot))
 			current.single_shot_done = true;
@@ -1514,7 +1516,7 @@ namespace tfx {
 			p.color.b = unsigned char(255.f * library->overtime_graphs[overtime].blue.GetFirstValue());
 		}
 
-		p.control_slot_and_layer = (properties.layer << 3) + compute_slot_id;
+		p.control_slot_and_layer = (properties.layer << 24) + compute_slot_id;
 
 	}
 
@@ -1688,7 +1690,7 @@ namespace tfx {
 	}
 
 	void EffectEmitter::UpdateComputeController() {
-		ComputeController &c = pm->compute_controllers[compute_slot_id];
+		ComputeController &c = *(static_cast<ComputeController*>(pm->compute_controller_ptr) + compute_slot_id);
 		c.position = world.position;
 		c.scale_rotation.x = world.scale.x;
 		c.scale_rotation.y = world.scale.y;
@@ -1701,6 +1703,7 @@ namespace tfx {
 		int line_negator = (properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine) ? 0 << 2 : 1 << 2;
 		int spin_negator = (properties.angle_setting == AngleSetting::tfxAlign || properties.flags & tfxEmitterPropertyFlags_relative_angle) ? 0 << 1 : 1 << 1;
 		c.normalised_values = (age_rate << 3) + (line_negator << 2) + (spin_negator << 1) + (int)(current.color.a * 255.f);
+		c.flags = properties.compute_flags;
 	}
 
 	void EffectEmitter::UpdateEffectState() {
@@ -4912,7 +4915,7 @@ namespace tfx {
 	void ParticleManager::AddEffect(EffectEmitter &effect, unsigned int buffer) {
 		if (effects[buffer].current_size == effects[buffer].capacity)
 			return;
-		if (use_compute_shader && highest_compute_controller_index != compute_controllers.size() && free_compute_controllers.empty())
+		if (use_compute_shader && highest_compute_controller_index >= max_compute_controllers && free_compute_controllers.empty())
 			return;
 		unsigned int parent_index = effects[buffer].current_size++;
 		effects[buffer][parent_index] = effect;
@@ -4938,7 +4941,7 @@ namespace tfx {
 					if (free_slot != -1) {
 						emitter.compute_slot_id = free_slot;
 						emitter.properties.flags |= tfxEmitterPropertyFlags_is_bottom_emitter;
-						ComputeController &c = compute_controllers[free_slot];
+						ComputeController &c = *(static_cast<ComputeController*>(compute_controller_ptr) + free_slot);
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_random_color;
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_relative_position;
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_relative_angle;
@@ -4951,8 +4954,8 @@ namespace tfx {
 						c.flags |= (emitter.properties.end_behaviour << 7);
 						c.flags |= (emitter.properties.angle_setting << 17);
 						c.flags |= (emitter.properties.blend_mode << 20);
+						emitter.properties.compute_flags = c.flags;
 					}
-
 				}
 			}
 		}
@@ -4972,14 +4975,18 @@ namespace tfx {
 		else {
 			free_slot = highest_compute_controller_index++;
 		}
-		if (free_slot == compute_controllers.size())
+		if (free_slot >= max_compute_controllers)
 			return -1;
 		return free_slot;
 	}
 
-	void ParticleManager::ResetComputePtr(void *compute_ptr) {
-		new_compute_particle_ptr = compute_ptr;
-		new_compute_particle_index;
+	void ParticleManager::ResetParticlePtr(void *ptr) {
+		new_compute_particle_ptr = ptr;
+		new_compute_particle_index = 0;
+	}
+
+	void ParticleManager::ResetControllerPtr(void *ptr) {
+		compute_controller_ptr = ptr;
 	}
 
 	uint32_t ParticleManager::AddParticle(unsigned int layer, Particle &p) {
@@ -4998,10 +5005,11 @@ namespace tfx {
 
 	ComputeParticle& ParticleManager::GrabComputeParticle(unsigned int layer) {
 		assert(new_compute_particle_ptr);		//Use must assign the compute ptr to point to an area in memory where you can stage new particles for uploading to the GPU - See ResetComputePtr
-		return *(static_cast<ComputeParticle*>(new_compute_particle_ptr) + new_compute_particle_index);
+		return *(static_cast<ComputeParticle*>(new_compute_particle_ptr) + new_compute_particle_index++);
 	}
 
 	void ParticleManager::Update() {
+		new_compute_particle_index = 0;
 		unsigned int index = 0;
 
 		unsigned int next_buffer = !current_ebuff;
@@ -5119,8 +5127,6 @@ namespace tfx {
 		effects[1].create_pool(max_effects);
 		effects[0].clear();
 		effects[1].clear();
-		compute_controllers.create_pool(max_effects);
-		compute_controllers.clear();
 	}
 
 	uint32_t ParticleManager::ParticleCount() {

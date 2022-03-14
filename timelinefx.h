@@ -1813,6 +1813,7 @@ typedef long long s64;
 
 		//Bit field of various boolean flags
 		tfxEmitterPropertyFlags flags;
+		tfxParticleControlFlags compute_flags;
 
 		//Offset to draw particles at
 		tfxVec2 image_handle;
@@ -2239,38 +2240,41 @@ TFX_CUSTOM_EMITTER
 
 	struct ComputeController {
 		tfxVec2 position;
-		tfxVec4 scale_rotation;				//Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
 		float line_length;
 		float angle_offset;
+		tfxVec4 scale_rotation;				//Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
 		float end_frame;
 		unsigned int normalised_values;		//Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, opacity
 		tfxParticleControlFlags flags;
+		float padding1;
+		float padding2;
+		float padding3;
 	};
 
 	struct ComputeParticle {
-		tfxVec2 local_position;
-		tfxVec4 scale_rotation;			//xy = scale, zw = local rotation, world rotation
+		tfxVec4 scale_rotation;					//xy = scale, zw = local rotation, world rotation
 		tfxVec2 world_position;
-
+		tfxVec2 local_position;
 		tfxVec2 base_size;
 		tfxVec2 base_random_size;
-		float base_velocity;
-		float base_height;
-		float base_spin;
-		float base_weight;
 
-		float dob;						//The age of the emitter at the time that the particle was spawned
-		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
-		float max_age;					//max age before the particle expires
-		float emission_angle;			//Emission angle of the particle at spawn time
-		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
-		float motion_randomness;		//The random velocity added each frame
-		float motion_randomness_speed;
-		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
-		float image_frame;
-		tfxRGBA8 color;					//Colour of the particle
+		float base_velocity = 1;
+		float base_height = 1;
+		float base_spin = 1;
+		float base_weight = 1;
 
+		float age = 1;							//The age of the particle, used by the controller to look up the current state on the graphs
+		float max_age = 1;						//max age before the particle expires
+		float emission_angle = 1;				//Emission angle of the particle at spawn time
+		float weight_acceleration = 1;			//The current amount of gravity applied to the y axis of the particle each frame
+		float motion_randomness = 1;			//The random velocity added each frame
+		float motion_randomness_speed = 1;
+		float intensity = 1;					//Color is multiplied by this value in the shader to increase the brightness of the particles
+		float image_frame = 1;
+		tfxRGBA8 color = tfxRGBA8(9, 9, 9, 9);	//Colour of the particle
 		unsigned int control_slot_and_layer;	//index to the controller, and also stores the layer in the particle manager that the particle is on (layer << 3)
+		int next_offset;						//-1 if the particle has expired
+		float padding1;
 	};
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation
@@ -2396,9 +2400,10 @@ TFX_CUSTOM_EMITTER
 		//you can use an EffectEmitterTemplate and use callback funcitons. 
 		tfxvec<EffectEmitter> effects[2];
 		//todo:document compute controllers once we've established this is how we'll be doing it.
-		tfxvec<ComputeController> compute_controllers;
+		void *compute_controller_ptr;
 		tfxvec<unsigned int> free_compute_controllers;
 		unsigned int new_compute_particle_index;
+		unsigned int new_particles_count;
 		void *new_compute_particle_ptr;
 		//The maximum number of effects that can be updated per frame in the particle manager. If you're running effects with particles that have sub effects then this number might need 
 		//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
@@ -2414,6 +2419,7 @@ TFX_CUSTOM_EMITTER
 		//The current number of particles in each buffer
 		unsigned int particle_count;
 
+		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
 		//Callback to the render function that renders all the particles - is this not actually useful now, just use GetParticleBuffer() in your own render function
 		void(*render_func)(float, void*, void*);
@@ -2427,18 +2433,23 @@ TFX_CUSTOM_EMITTER
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
 
-		ParticleManager() : 
-			force_capture(false), 
-			disable_spawing(false), 
-			lookup_mode(tfxFast), 
-			max_effects(10000), 
-			max_cpu_particles_per_layer(50000), 
+		ParticleManager() :
+			force_capture(false),
+			disable_spawing(false),
+			lookup_mode(tfxFast),
+			max_effects(10000),
+			max_cpu_particles_per_layer(50000),
 			update_base_values(false),
 			current_ebuff(0),
 			current_pbuff(0),
 			use_compute_shader(false),
 			highest_compute_controller_index(0),
-			new_compute_particle_ptr(nullptr)
+			new_compute_particle_ptr(nullptr),
+			compute_controller_ptr(nullptr),
+			max_compute_controllers(1000),
+			max_new_compute_particles(1000),
+			new_compute_particle_index(0),
+			new_particles_count(0)
 		{ }
 		~ParticleManager();
 		EffectEmitter &operator[] (unsigned int index);
@@ -2455,8 +2466,6 @@ TFX_CUSTOM_EMITTER
 		//have access to the effect if you need it.
 		void AddEffect(EffectEmitter &effect, unsigned int buffer);
 		void AddEffect(EffectEmitterTemplate &effect, unsigned int buffer);
-		inline tfxvec<ComputeController> &GetComputeControllersForUpload() { return compute_controllers; }
-		inline unsigned int GetComputeControllersByteSize(unsigned int frame_in_flight = 0) { return compute_controllers.size() * sizeof(ComputeController); }
 		//Clear all effects and particles in the particle manager
 		void ClearAll();
 		//Soft expire all the effects so that the particles complete their animation first
@@ -2473,7 +2482,10 @@ TFX_CUSTOM_EMITTER
 		void DisableCompute() { use_compute_shader = false; }
 		Particle &GrabCPUParticle(unsigned int layer);
 		ComputeParticle &GrabComputeParticle(unsigned int layer);
-		void ResetComputePtr(void *compute_ptr);
+		void ResetParticlePtr(void *ptr);
+		void ResetControllerPtr(void *ptr);
+		inline unsigned int GetControllerMemoryUsage() { return highest_compute_controller_index * sizeof(ComputeController); }
+		inline unsigned int GetParticleMemoryUsage() { return new_compute_particle_index * sizeof(ComputeParticle); }
 		unsigned int AddParticle(unsigned int layer, Particle &p);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
 		unsigned int ParticleCount();
