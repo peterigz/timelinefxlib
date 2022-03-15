@@ -2902,6 +2902,37 @@ namespace tfx {
 		return nullptr;
 	}
 
+	void EffectLibrary::CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, int offset)) {
+		assert(dst);	//must be a valid pointer to a space in memory
+		assert(particle_shapes.Size());		//There are no shapes to copy!
+		tfxvec<ComputeImageData> shapes;
+		for (auto &shape : particle_shapes.data) {
+			if (shape.animation_frames == 1) {
+				ComputeImageData cs;
+				cs.animation_frames = shape.animation_frames;
+				cs.image_index = shape.image_index;
+				cs.image_size = shape.image_size;
+				cs.uv = uv_lookup(shape.ptr, 0);
+				shapes.push_back(cs);
+			}
+			else {
+				for (int f = 0; f != shape.animation_frames; ++f) {
+					ComputeImageData cs;
+					cs.animation_frames = shape.animation_frames;
+					cs.image_index = shape.image_index;
+					cs.image_size = shape.image_size;
+					cs.uv = uv_lookup(shape.ptr, f);
+					shapes.push_back(cs);
+				}
+			}
+		}
+		memcpy(dst, shapes.data, shapes.size() * sizeof(ComputeImageData));
+	}
+
+	u32 EffectLibrary::GetShapeDataSizeInBytes() {
+		return particle_shapes.Size() * sizeof(ComputeImageData);
+	}
+
 	void EffectLibrary::RemoveShape(unsigned int shape_index) {
 		particle_shapes.RemoveInt(shape_index);
 		for (auto &m : particle_shapes.map) {

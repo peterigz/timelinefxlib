@@ -1772,8 +1772,6 @@ typedef long long s64;
 		unsigned int shape_index;
 		//The size of one frame of the image
 		tfxVec2 image_size;
-		//The uv coords of the image. This is only needed for running effects in a compute shader
-		tfxVec4 uv;
 		//Image index refers to any index that helps you look up the correct image to use. this could be an index in a texture array for example.
 		unsigned int image_index;
 		//The number of frames in the image, can be one or more
@@ -2282,6 +2280,14 @@ TFX_CUSTOM_EMITTER
 		float padding;
 	};
 
+	struct ComputeImageData {
+		tfxVec4 uv;
+		tfxVec2 image_size;
+		unsigned int image_index;
+		float animation_frames;
+		//float max_radius;
+	};
+
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation
 	struct ParticleFrame {
 		tfxVec2 position;
@@ -2342,6 +2348,9 @@ TFX_CUSTOM_EMITTER
 		//Get an effect by it's path hash key
 		EffectEmitter *GetEffect(tfxKey key);
 		void PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect);
+		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
+		void CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, int offset));
+		u32 GetShapeDataSizeInBytes();
 
 		//Mainly internal functions
 		void RemoveShape(unsigned int shape_index);
