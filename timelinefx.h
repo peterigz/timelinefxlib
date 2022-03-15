@@ -1768,12 +1768,6 @@ typedef long long s64;
 		//This can be a ptr to the image texture for rendering. You must assign this in your ShapeLoader function
 		void *ptr;
 
-		//use this definition if you need more spefic data to point to the image texture in whatever renderer you're using
-		//Just define tfxCUSTOM_IMAGE_DATA before you include timelinefx.h
-#ifdef tfxCUSTOM_IMAGE_DATA
-		tfxCUSTOM_IMAGE_DATA
-#endif // tfxCUSTOM_IMAGE_DATA
-
 		//Each particle shape saved in an effect library has a unique index
 		unsigned int shape_index;
 		//The size of one frame of the image
@@ -1787,6 +1781,12 @@ typedef long long s64;
 		//Maximum distance to the nearest transparent edge of the image
 		float max_radius;
 		int import_filter;
+
+		//use this definition if you need more spefic data to point to the image texture in whatever renderer you're using
+		//Just define tfxCUSTOM_IMAGE_DATA before you include timelinefx.h
+#ifdef tfxCUSTOM_IMAGE_DATA
+		tfxCUSTOM_IMAGE_DATA
+#endif // tfxCUSTOM_IMAGE_DATA
 
 		ImageData() :
 			ptr(nullptr),
@@ -2246,14 +2246,19 @@ TFX_CUSTOM_EMITTER
 		float end_frame;
 		unsigned int normalised_values;		//Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, opacity
 		tfxParticleControlFlags flags;
-		float padding1;
-		float padding2;
-		float padding3;
+		unsigned int image_data_index;
+	};
+
+	struct ParticleSprite {
+		tfxVec4 bounds;				//the min/max x,y coordinates of the image being drawn
+		tfxVec2 position;			//The position of the sprite
+		tfxVec4 uv;					//The UV coords of the image in the texture
+		tfxVec4 scale_rotation;		//Scale and rotation (x, y = scale, z = rotation, w = multiply blend factor)
+		tfxRGBA8 color;				//The color tint of the sprite
+		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, image layer index, shader function index, blend type
 	};
 
 	struct ComputeParticle {
-		tfxVec4 scale_rotation;					//xy = scale, zw = local rotation, world rotation
-		tfxVec2 world_position;
 		tfxVec2 local_position;
 		tfxVec2 base_size;
 		tfxVec2 base_random_size;
@@ -2267,14 +2272,14 @@ TFX_CUSTOM_EMITTER
 		float max_age = 1;						//max age before the particle expires
 		float emission_angle = 1;				//Emission angle of the particle at spawn time
 		float weight_acceleration = 1;			//The current amount of gravity applied to the y axis of the particle each frame
+
 		float motion_randomness = 1;			//The random velocity added each frame
 		float motion_randomness_speed = 1;
-		float intensity = 1;					//Color is multiplied by this value in the shader to increase the brightness of the particles
 		float image_frame = 1;
-		tfxRGBA8 color = tfxRGBA8(9, 9, 9, 9);	//Colour of the particle
 		unsigned int control_slot_and_layer;	//index to the controller, and also stores the layer in the particle manager that the particle is on (layer << 3)
-		int next_offset;						//-1 if the particle has expired
-		float padding1;
+
+		float local_rotation;
+		float padding;
 	};
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation
@@ -2550,6 +2555,7 @@ TFX_CUSTOM_EMITTER
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
 	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
 	void TransformParticle(Particle &p, EffectEmitter &e);
+	void Transform(FormState &local, FormState &world, EffectEmitter &e);
 	void TransformParticlePrevious(Particle &p, EffectEmitter &e);
 	bool ControlParticle(Particle &p, EffectEmitter &e);
 	FormState Tween(float tween, FormState &world, FormState &captured);

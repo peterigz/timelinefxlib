@@ -1140,8 +1140,6 @@ namespace tfx {
 	}
 
 	void EffectEmitter::InitComputeParticle(ComputeParticle &p, float tween) {
-		p.next_offset = 0;
-
 		if (properties.flags & (tfxEmitterPropertyFlags_single | tfxEmitterPropertyFlags_one_shot))
 			current.single_shot_done = true;
 
@@ -1394,19 +1392,19 @@ namespace tfx {
 			p.base_size.x = (p.base_random_size.x + current.size.x) / properties.image->image_size.x;
 			p.base_size.y = p.base_height / properties.image->image_size.y;
 
-			p.scale_rotation.x = p.base_size.x * library->overtime_graphs[overtime].width.GetFirstValue();
+			//p.scale_rotation.x = p.base_size.x * library->overtime_graphs[overtime].width.GetFirstValue();
 
 			if (library->overtime_graphs[overtime].stretch.GetFirstValue()) {
 				float velocity = std::fabsf(velocity_scale * p.base_velocity) * UPDATE_TIME;
 				velocity += p.weight_acceleration * UPDATE_TIME;
-				p.scale_rotation.y = (library->overtime_graphs[overtime].height.GetFirstValue() * parent->current.size.y * (p.base_height + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
+				//p.scale_rotation.y = (library->overtime_graphs[overtime].height.GetFirstValue() * parent->current.size.y * (p.base_height + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
 			}
 			else {
 				if (properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-					p.scale_rotation.y = p.base_size.y * library->overtime_graphs[overtime].width.GetFirstValue();
+					//p.scale_rotation.y = p.base_size.y * library->overtime_graphs[overtime].width.GetFirstValue();
 				}
 				else {
-					p.scale_rotation.y = p.base_size.y * library->overtime_graphs[overtime].height.GetFirstValue();
+					//p.scale_rotation.y = p.base_size.y * library->overtime_graphs[overtime].height.GetFirstValue();
 				}
 			}
 		}
@@ -1417,15 +1415,15 @@ namespace tfx {
 			p.base_size.x = (p.base_random_size.x + current.size.x) / properties.image->image_size.x;
 			p.base_size.y = p.base_height / properties.image->image_size.y;
 
-			p.scale_rotation.x = p.base_size.x * library->overtime_graphs[overtime].width.GetFirstValue();
+			//p.scale_rotation.x = p.base_size.x * library->overtime_graphs[overtime].width.GetFirstValue();
 
 			if (library->overtime_graphs[overtime].stretch.GetFirstValue()) {
 				float velocity = std::fabsf(velocity_scale * p.base_velocity) * UPDATE_TIME;
 				velocity += p.weight_acceleration * UPDATE_TIME;
-				p.scale_rotation.y = (library->overtime_graphs[overtime].width.GetFirstValue() * parent->current.size.y * (p.base_height + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
+				//p.scale_rotation.y = (library->overtime_graphs[overtime].width.GetFirstValue() * parent->current.size.y * (p.base_height + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
 			}
 			else {
-				p.scale_rotation.y = p.scale_rotation.x;
+				//p.scale_rotation.y = p.scale_rotation.x;
 			}
 		}
 
@@ -1456,9 +1454,15 @@ namespace tfx {
 		float direction = 0;
 
 		if (properties.angle_setting == AngleSetting::tfxAlign && properties.flags & tfxEmitterPropertyFlags_edge_traversal)
-			p.scale_rotation.w = p.scale_rotation.z = direction + properties.angle_offset;
+			//p.scale_rotation.w = p.scale_rotation.z = direction + properties.angle_offset;
 
 		bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
+
+		FormState local;
+		local.position = p.local_position;
+		local.rotation = p.local_rotation;
+		FormState world;
+		Transform(local, world, *this);
 
 		//----Motion randomness
 		p.motion_randomness = current.motion_randomness;
@@ -1467,7 +1471,7 @@ namespace tfx {
 		p.motion_randomness_speed = 30.f * random_generation.Range(-mr, mr);
 
 		if (!(properties.flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != EmissionType::tfxLine) {
-			direction = p.emission_angle = GetEmissionDirection(p.local_position, p.world_position) + motion_randomness_direction + library->overtime_graphs[overtime].direction.GetFirstValue();
+			direction = p.emission_angle = GetEmissionDirection(p.local_position, world.position) + motion_randomness_direction + library->overtime_graphs[overtime].direction.GetFirstValue();
 		}
 
 		//----Normalize Velocity to direction
@@ -1477,11 +1481,11 @@ namespace tfx {
 
 		//p.velocity = p.velocity_normal * p.base_velocity * p.velocity_scale * UPDATE_TIME;
 
-		if (properties.angle_setting == AngleSetting::tfxAlign && !line) {
-			p.scale_rotation.w = p.scale_rotation.z = GetVectorAngle(velocity_normal.x, velocity_normal.y) + properties.angle_offset;
-			if (properties.flags & tfxEmitterPropertyFlags_relative_angle)
-				p.scale_rotation.w += world.rotation;
-		}
+		//if (properties.angle_setting == AngleSetting::tfxAlign && !line) {
+			//p.scale_rotation.w = p.scale_rotation.z = GetVectorAngle(velocity_normal.x, velocity_normal.y) + properties.angle_offset;
+			//if (properties.flags & tfxEmitterPropertyFlags_relative_angle)
+				//p.scale_rotation.w += world.rotation;
+		//}
 
 		//----Handle
 		/*if (properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
@@ -1502,7 +1506,7 @@ namespace tfx {
 		//p.image_frame_rate = library->overtime_graphs[overtime].frame_rate.GetFirstValue();
 
 		//----Color
-		p.color.a = unsigned char(255.f * library->overtime_graphs[overtime].opacity.GetFirstValue() * parent->current.color.a);
+		/*p.color.a = unsigned char(255.f * library->overtime_graphs[overtime].opacity.GetFirstValue() * parent->current.color.a);
 		p.intensity = library->overtime_graphs[overtime].opacity.GetFirstValue();
 		if (properties.flags & tfxEmitterPropertyFlags_random_color) {
 			float age = random_generation.Range(p.max_age);
@@ -1514,7 +1518,7 @@ namespace tfx {
 			p.color.r = unsigned char(255.f * library->overtime_graphs[overtime].red.GetFirstValue());
 			p.color.g = unsigned char(255.f * library->overtime_graphs[overtime].green.GetFirstValue());
 			p.color.b = unsigned char(255.f * library->overtime_graphs[overtime].blue.GetFirstValue());
-		}
+		}*/
 
 		p.control_slot_and_layer = (properties.layer << 24) + compute_slot_id;
 
@@ -2133,6 +2137,33 @@ namespace tfx {
 				p.world.rotation = p.local.rotation;
 		}
 
+	}
+
+	void Transform(FormState &local, FormState &world, EffectEmitter &e) {
+		//The Particle matrix is only needed for sub effect transformations
+		bool line = (e.properties.flags & tfxEmitterPropertyFlags_edge_traversal && e.properties.emission_type == tfxLine);
+
+		if (e.properties.flags & tfxEmitterPropertyFlags_relative_position || line) {
+			world.scale = local.scale;
+
+			if (e.properties.flags & tfxEmitterPropertyFlags_relative_angle || line)
+				world.rotation = e.world.rotation + local.rotation;
+			else
+				world.rotation = local.rotation;
+
+			tfxVec2 rotatevec = e.matrix.TransformVector(tfxVec2(local.position.x, local.position.y));
+
+			world.position = e.world.position + rotatevec * e.world.scale;
+
+		}
+		else {
+			world.position = local.position;
+			world.scale = local.scale;
+			if (e.properties.flags & tfxEmitterPropertyFlags_relative_angle)
+				world.rotation = e.world.rotation + local.rotation;
+			else
+				world.rotation = local.rotation;
+		}
 	}
 
 	void TransformParticlePrevious(Particle &p, EffectEmitter &e) {
