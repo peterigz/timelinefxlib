@@ -591,7 +591,6 @@ namespace tfx {
 		}
 
 		if (type == EffectEmitterType::tfxEffect) {
-			particle_count = 0;
 			UpdateEffectState();
 		}
 
@@ -610,7 +609,7 @@ namespace tfx {
 			bool is_compute = properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader;
 			if (!pm->disable_spawing && pm->FreeCapacity(properties.layer, is_compute))
 				SpawnParticles();
-			parent->particle_count += particle_count;
+			parent->highest_particle_age = highest_particle_age;
 		}
 		else if (parent_particle) {
 			flags |= parent_particle->flags & tfxParticleFlags_remove;
@@ -646,11 +645,12 @@ namespace tfx {
 		}
 
 		current.age += FRAME_LENGTH;
+		highest_particle_age -= FRAME_LENGTH;
 
 		if (properties.loop_length && current.age > properties.loop_length)
 			current.age = 0;
 
-		if (particle_count == 0) {
+		if (highest_particle_age <= 0) {
 			timeout_counter++;
 			if (parent && parent->type != tfxFolder && timeout_counter >= timeout)
 				parent->active_children--;
@@ -708,13 +708,13 @@ namespace tfx {
 				ComputeParticle &p = pm->GrabComputeParticle(properties.layer);
 				InitComputeParticle(p, tween);
 				pm->new_particles_count++;
+				highest_particle_age = std::fmaxf(highest_particle_age, p.max_age);
 			}
 			else {
 				Particle &p = pm->GrabCPUParticle(properties.layer);
 				InitCPUParticle(p, tween);
+				highest_particle_age = std::fmaxf(highest_particle_age, p.max_age);
 			}
-
-			particle_count++;
 		}
 
 		current.amount_remainder = qty;
@@ -1130,7 +1130,7 @@ namespace tfx {
 					break;
 				e.parent = nullptr;
 				e.parent_particle = &p;
-				e.particle_count = 0;
+				e.highest_particle_age = p.max_age;
 				pm->AddEffect(e, !pm->current_ebuff);
 			}
 		}
@@ -1703,11 +1703,15 @@ namespace tfx {
 		c.line_length = current.emitter_size.y;
 		c.angle_offset = properties.angle_offset;
 		c.end_frame = properties.end_frame;
-		int age_rate = (properties.flags & tfxEmitterPropertyFlags_single && !(properties.flags & tfxEmitterPropertyFlags_one_shot)) ? 0 << 3 : 1 << 3;
-		int line_negator = (properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine) ? 0 << 2 : 1 << 2;
-		int spin_negator = (properties.angle_setting == AngleSetting::tfxAlign || properties.flags & tfxEmitterPropertyFlags_relative_angle) ? 0 << 1 : 1 << 1;
-		c.normalised_values = (age_rate << 3) + (line_negator << 2) + (spin_negator << 1) + (int)(current.color.a * 255.f);
+		int age_rate = (properties.flags & tfxEmitterPropertyFlags_single && !(properties.flags & tfxEmitterPropertyFlags_one_shot)) ? 0 : 1;
+		int line_negator = (properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine) ? 0 : 1;
+		int spin_negator = (properties.angle_setting == AngleSetting::tfxAlign || properties.flags & tfxEmitterPropertyFlags_relative_angle) ? 0 : 1;
+		int position_negator = (properties.flags & tfxEmitterPropertyFlags_relative_position) ? 1 : 0;
+		c.normalised_values = (age_rate << 31) + (line_negator << 30) + (spin_negator << 29) + (position_negator << 28) + int(current.color.a * 255);
 		c.flags = properties.compute_flags;
+		c.image_handle = current.image_handle;
+		c.stretch = current.stretch;
+		c.parameters = (properties.blend_mode << 24) + (properties.layer << 16) + (unsigned short)lookup_value_index;
 	}
 
 	void EffectEmitter::UpdateEffectState() {
@@ -1956,7 +1960,6 @@ namespace tfx {
 		//}
 
 		//Direction
-
 		if (e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal) {
 			tfxVec2 offset = velocity_normal * e.current.emitter_size.y;
 			float length = std::fabsf(p.local.position.y);
@@ -2906,6 +2909,7 @@ namespace tfx {
 		assert(dst);	//must be a valid pointer to a space in memory
 		assert(particle_shapes.Size());		//There are no shapes to copy!
 		tfxvec<ComputeImageData> shapes;
+		unsigned int index = 0;
 		for (auto &shape : particle_shapes.data) {
 			if (shape.animation_frames == 1) {
 				ComputeImageData cs;
@@ -2914,8 +2918,10 @@ namespace tfx {
 				cs.image_size = shape.image_size;
 				cs.uv = uv_lookup(shape.ptr, 0);
 				shapes.push_back(cs);
+				shape.compute_shape_index = index++;
 			}
 			else {
+				shape.compute_shape_index = index;
 				for (int f = 0; f != shape.animation_frames; ++f) {
 					ComputeImageData cs;
 					cs.animation_frames = shape.animation_frames;
@@ -2923,14 +2929,43 @@ namespace tfx {
 					cs.image_size = shape.image_size;
 					cs.uv = uv_lookup(shape.ptr, f);
 					shapes.push_back(cs);
+					index++;
 				}
 			}
 		}
 		memcpy(dst, shapes.data, shapes.size() * sizeof(ComputeImageData));
 	}
 
+	void EffectLibrary::CopyLookupIndexesData(void* dst) {
+		assert(dst);	//must be a valid pointer to a space in memory
+		assert(compiled_lookup_indexes.size());		//There is no data to copy, make sure a library has been loaded properly and it contains effects with emitters
+		memcpy(dst, compiled_lookup_indexes.data, GetLookupIndexesSizeInBytes());
+	}
+
+	void EffectLibrary::CopyLookupValuesData(void* dst) {
+		assert(dst);	//must be a valid pointer to a space in memory
+		assert(compiled_lookup_indexes.size());		//There is no data to copy, make sure a library has been loaded properly and it contains effects with emitters
+		memcpy(dst, compiled_lookup_values.data, GetLookupValuesSizeInBytes());
+	}
+
 	u32 EffectLibrary::GetShapeDataSizeInBytes() {
 		return particle_shapes.Size() * sizeof(ComputeImageData);
+	}
+
+	u32 EffectLibrary::GetLookupIndexCount() {
+		return compiled_lookup_indexes.size() * tfxOvertimeCount;
+	}
+
+	u32 EffectLibrary::GetLookupValueCount() {
+		return compiled_lookup_values.size();
+	}
+
+	u32 EffectLibrary::GetLookupIndexesSizeInBytes() {
+		return sizeof(GraphLookupIndex) * tfxOvertimeCount * compiled_lookup_indexes.size();
+	}
+
+	u32 EffectLibrary::GetLookupValuesSizeInBytes() {
+		return sizeof(float) * compiled_lookup_values.size();
 	}
 
 	void EffectLibrary::RemoveShape(unsigned int shape_index) {
@@ -3094,7 +3129,7 @@ namespace tfx {
 		uid = 0;
 	}
 
-	void EffectLibrary::UpdateAllNodes() {
+	void EffectLibrary::UpdateComputeNodes() {
 		unsigned int running_node_index = 0;
 		unsigned int running_value_index = 0;
 		tfxvec<EffectEmitter*> stack;
@@ -3116,10 +3151,13 @@ namespace tfx {
 				EffectLookUpData value_lookup_data;
 				memset(&lookup_data, 0, sizeof(EffectLookUpData));
 				memset(&value_lookup_data, 0, sizeof(EffectLookUpData));
-				if (current->type == tfxEffect) {
-					for (int i = 0; i != tfxGlobalCount; ++i) {
+				if (current->type == tfxEmitter) {
 
-						Graph &graph = ((Graph*)(&global_graphs[current->global]))[i];
+					int offset = tfxGlobalCount + tfxPropertyCount + tfxBaseCount + tfxVariationCount;
+
+					current->lookup_value_index = compiled_lookup_indexes.size();
+					for (int i = 0; i != tfxOvertimeCount; ++i) {
+						Graph &graph = ((Graph*)(&overtime_graphs[current->overtime]))[i];
 						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i];
 						index.start_index = running_node_index;
 						index.length = graph.nodes.size();
@@ -3129,117 +3167,22 @@ namespace tfx {
 							running_node_index++;
 						}
 
-						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i];
+						GraphLookupIndex value_index;
 						value_index.start_index = running_value_index;
 						value_index.length = graph.lookup.values.size();
 						value_index.max_life = graph.lookup.life;
-						for (auto value : graph.lookup.values) {
-							compiled_lookup_values.push_back(value);
-							running_value_index++;
-						}
-
-					}
-				}
-				else if (current->type == tfxEmitter) {
-
-					int offset = tfxGlobalCount;
-
-					for (int i = 0; i != tfxPropertyCount; ++i) {
-						Graph &graph = ((Graph*)(&property_graphs[current->property]))[i];
-						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i + offset];
-						index.start_index = running_node_index;
-						index.length = graph.nodes.size();
-						index.max_life = graph.lookup.life;
-						for (auto &node : graph.nodes) {
-							all_nodes.push_back(node);
-							running_node_index++;
-						}
-
-						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i + offset];
-						value_index.start_index = running_value_index;
-						value_index.length = graph.lookup.values.size();
-						value_index.max_life = graph.lookup.life;
+						compiled_lookup_indexes.push_back(value_index);
 						for (auto value : graph.lookup.values) {
 							compiled_lookup_values.push_back(value);
 							running_value_index++;
 						}
 					}
 
-					offset += tfxPropertyCount;
-
-					for (int i = 0; i != tfxBaseCount; ++i) {
-						Graph &graph = ((Graph*)(&base_graphs[current->base]))[i];
-						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i + offset];
-						index.start_index = running_node_index;
-						index.length = graph.nodes.size();
-						index.max_life = graph.lookup.life;
-						for (auto &node : graph.nodes) {
-							all_nodes.push_back(node);
-							running_node_index++;
-						}
-
-						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i + offset];
-						value_index.start_index = running_value_index;
-						value_index.length = graph.lookup.values.size();
-						value_index.max_life = graph.lookup.life;
-						for (auto value : graph.lookup.values) {
-							compiled_lookup_values.push_back(value);
-							running_value_index++;
-						}
-					}
-
-					offset += tfxBaseCount;
-
-					for (int i = 0; i != tfxVariationCount; ++i) {
-						Graph &graph = ((Graph*)(&variation_graphs[current->variation]))[i];
-						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i + offset];
-						index.start_index = running_node_index;
-						index.length = graph.nodes.size();
-						index.max_life = graph.lookup.life;
-						for (auto &node : graph.nodes) {
-							all_nodes.push_back(node);
-							running_node_index++;
-						}
-
-						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i + offset];
-						value_index.start_index = running_value_index;
-						value_index.length = graph.lookup.values.size();
-						value_index.max_life = graph.lookup.life;
-						for (auto value : graph.lookup.values) {
-							compiled_lookup_values.push_back(value);
-							running_value_index++;
-						}
-					}
-
-					offset += tfxVariationCount;
-
-					for (int i = 0; i != tfxOvertimeCount; ++i) {
-						Graph &graph = ((Graph*)(&overtime_graphs[current->overtime]))[i];
-						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i + offset];
-						index.start_index = running_node_index;
-						index.length = graph.nodes.size();
-						index.max_life = graph.lookup.life;
-						for (auto &node : graph.nodes) {
-							all_nodes.push_back(node);
-							running_node_index++;
-						}
-
-						GraphLookupIndex &value_index = ((GraphLookupIndex*)&value_lookup_data)[i + offset];
-						value_index.start_index = running_value_index;
-						value_index.length = graph.lookup.values.size();
-						value_index.max_life = graph.lookup.life;
-						for (auto value : graph.lookup.values) {
-							compiled_lookup_values.push_back(value);
-							running_value_index++;
-						}
-					}
+					node_lookup_indexes.push_back(lookup_data);
+					current->lookup_node_index = node_lookup_indexes.size() - 1;
 
 				}
 
-				node_lookup_indexes.push_back(lookup_data);
-				compiled_lookup_indexes.push_back(value_lookup_data);
-				current->lookup_node_index = node_lookup_indexes.size() - 1;
-				current->lookup_value_index = compiled_lookup_indexes.size() - 1;
 				for (auto &sub : current->sub_effectors) {
 					stack.push_back(&sub);
 				}
@@ -3510,7 +3453,7 @@ namespace tfx {
 	}
 
 	float EffectLibrary::LookupFastOvertimeValueList(GraphType graph_type, int lookup_value_index, float age, float lifetime) {
-		GraphLookupIndex &lookup_data = ((GraphLookupIndex*)&compiled_lookup_indexes[lookup_value_index])[graph_type];
+		GraphLookupIndex &lookup_data = ((GraphLookupIndex*)&compiled_lookup_indexes[lookup_value_index])[graph_type - tfxOvertime_velocity];
 		float frame = (float)lookup_data.start_index;
 		if (lifetime)
 			frame += (age / lifetime * lookup_data.max_life) / tfxLOOKUP_FREQUENCY_OVERTIME;
@@ -4825,9 +4768,9 @@ namespace tfx {
 	}
 
 	void CompileGraphOvertime(Graph &graph) {
-		graph.lookup.last_frame = unsigned int(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
 		graph.lookup.values.clear();
-		if (graph.lookup.last_frame) {
+		if (graph.nodes.size() > 1) {
+			graph.lookup.last_frame = unsigned int(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
 			graph.lookup.values.resize(graph.lookup.last_frame + 1);
 			for (unsigned int f = 0; f != graph.lookup.last_frame + 1; ++f) {
 				graph.lookup.values[f] = graph.GetValue((float)f * tfxLOOKUP_FREQUENCY_OVERTIME, graph.lookup.life);
@@ -4835,6 +4778,7 @@ namespace tfx {
 			graph.lookup.values[graph.lookup.last_frame] = graph.GetLastValue();
 		}
 		else {
+			graph.lookup.last_frame = 0;
 			graph.lookup.values.push_back(graph.GetFirstValue());
 		}
 	}
@@ -5000,6 +4944,7 @@ namespace tfx {
 				effects[buffer][parent_index].active_children++;
 				if (use_compute_shader && e.sub_effectors.empty()) {
 					int free_slot = AddComputeController();
+					printf("%i\n", free_slot);
 					if (free_slot != -1) {
 						emitter.compute_slot_id = free_slot;
 						emitter.properties.flags |= tfxEmitterPropertyFlags_is_bottom_emitter;
@@ -5012,11 +4957,26 @@ namespace tfx {
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_lifetime_uniform_size;
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_reverse_animation;
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_play_once;
-						c.flags |= (emitter.properties.emission_type << 3);
-						c.flags |= (emitter.properties.end_behaviour << 7);
-						c.flags |= (emitter.properties.angle_setting << 17);
-						c.flags |= (emitter.properties.blend_mode << 20);
+						c.flags |= ((emitter.properties.emission_type == tfxPoint) << 3);
+						c.flags |= ((emitter.properties.emission_type == tfxArea) << 4);
+						c.flags |= ((emitter.properties.emission_type == tfxLine) << 5);
+						c.flags |= ((emitter.properties.emission_type == tfxEllipse) << 6);
+						c.flags |= ((emitter.properties.end_behaviour == tfxLoop) << 7);
+						c.flags |= ((emitter.properties.end_behaviour == tfxKill) << 8);
+						c.flags |= ((emitter.properties.end_behaviour == tfxLetFree) << 9);
+						c.flags |= ((emitter.properties.angle_setting == tfxAlign) << 17);
+						c.flags |= ((emitter.properties.angle_setting == tfxRandom) << 18);
+						c.flags |= ((emitter.properties.angle_setting == tfxSpecify) << 19);
+						c.flags |= ((emitter.properties.blend_mode == tfxAlpha) << 20);
+						c.flags |= ((emitter.properties.blend_mode == tfxAdditive) << 21);
 						emitter.properties.compute_flags = c.flags;
+						if (emitter.properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
+							c.image_handle = tfxVec2(0.5f, 0.5f);
+						}
+						else {
+							c.image_handle = emitter.properties.image_handle;
+						}
+						c.image_handle = emitter.properties.image_handle;
 					}
 				}
 			}
@@ -5049,6 +5009,22 @@ namespace tfx {
 
 	void ParticleManager::ResetControllerPtr(void *ptr) {
 		compute_controller_ptr = ptr;
+	}
+
+	void ParticleManager::UpdateCompute(void *sampled_particles, unsigned int sample_size) {
+		for (int i = 0; i != sample_size; ++i) {
+			if (compute_global_state.current_length == 0)
+				break;
+			ComputeParticle *sample = static_cast<ComputeParticle*>(sampled_particles) + i;
+			if (sample->age > sample->max_age) {
+				compute_global_state.start_index++;
+				compute_global_state.start_index %= compute_global_state.end_index;
+				compute_global_state.current_length--;
+			}
+			else {
+				break;
+			}
+		}
 	}
 
 	uint32_t ParticleManager::AddParticle(unsigned int layer, Particle &p) {
@@ -5123,7 +5099,6 @@ namespace tfx {
 						p.next_ptr = SetNextParticle(layer, p, next_buffer);
 					}
 					else {
-						p.parent->particle_count--;
 						p.next_ptr = nullptr;
 					}
 				}
@@ -5680,7 +5655,7 @@ namespace tfx {
 			lib.ReIndex();
 			lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
 			lib.UpdateEffectPaths();
-			lib.UpdateAllNodes();
+			lib.UpdateComputeNodes();
 			lib.SetMinMaxData();
 		}
 

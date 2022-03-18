@@ -541,7 +541,7 @@ typedef long long s64;
 	const float kMAX_VELOCITY_VARIATION = 30.f;
 	const int kMOTION_VARIATION_INTERVAL = 30;
 	
-	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per secon d.
+	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
 	static float UPDATE_FREQUENCY = 60.f;
 	static float UPDATE_TIME = 1.f / UPDATE_FREQUENCY;
 	static float FRAME_LENGTH = 1000.f / UPDATE_FREQUENCY;
@@ -1493,13 +1493,14 @@ typedef long long s64;
 		unsigned int start_index;
 		unsigned int length;
 		float max_life;
+		float padding1;
 	};
 	
 	//This struct is used to store indexing data in order to index into large lists containing either the node data of graphs
 	//or the lookup data of compiled graphs. This is so that we can upload that data into a buffer on the GPU to get the particles
 	//updating in a compute shader.
 	struct EffectLookUpData {
-		GraphLookupIndex global_life;
+		/*GraphLookupIndex global_life;
 		GraphLookupIndex global_amount;
 		GraphLookupIndex global_velocity;
 		GraphLookupIndex global_width;
@@ -1537,7 +1538,7 @@ typedef long long s64;
 		GraphLookupIndex variation_height;
 		GraphLookupIndex variation_weight;
 		GraphLookupIndex variation_spin;
-		GraphLookupIndex variation_motion_randomness;
+		GraphLookupIndex variation_motion_randomness;*/
 
 		GraphLookupIndex overtime_velocity;
 		GraphLookupIndex overtime_width;
@@ -1779,6 +1780,7 @@ typedef long long s64;
 		//Maximum distance to the nearest transparent edge of the image
 		float max_radius;
 		int import_filter;
+		unsigned int compute_shape_index;
 
 		//use this definition if you need more spefic data to point to the image texture in whatever renderer you're using
 		//Just define tfxCUSTOM_IMAGE_DATA before you include timelinefx.h
@@ -1953,8 +1955,10 @@ typedef long long s64;
 		unsigned int library_index;
 		//The number of sub_effects still in use
 		unsigned int active_children;
-		//The number of particles active within this emitter
-		unsigned int particle_count;
+		//The current highest particle age. When using a compute buffer we don't have any reliable way of keeping track of particle counts of individual emitters, so how do we know when to remove an emitter
+		//after all it's particles have expired? We set this variable to the highest particle age each time it spawns a particle and then counts it down each frame. When it's 0 then we know that there are no
+		//more particles being controlled by this emitter and can therefore time it out.
+		float highest_particle_age;
 		//The number of frames before this is removed from the particle manager after particle count is 0
 		unsigned int timeout;
 		//Internal, keep track of idle frames
@@ -2004,12 +2008,13 @@ TFX_CUSTOM_EMITTER
 
 		tfxEmitterStateFlags flags;
 
-		EffectEmitter() : particle_count(0),
+		EffectEmitter() : 
+			highest_particle_age(0),
 			parent(nullptr),
 			parent_particle(nullptr),
 			user_data(nullptr),
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
-			timeout(5000),
+			timeout(100),
 			timeout_counter(0),
 			animation_settings(0),
 			library(nullptr),
@@ -2236,22 +2241,33 @@ TFX_CUSTOM_EMITTER
 
 	};
 
+	struct ComputeFXGlobalState {
+		u32 current_particle_count = 0;
+		u32 start_index = 0;
+		u32 current_length = 0;
+		u32 end_index = 0;
+		u32 max_index = 0;
+	};
+
 	struct ComputeController {
 		tfxVec2 position;
 		float line_length;
 		float angle_offset;
 		tfxVec4 scale_rotation;				//Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
 		float end_frame;
-		unsigned int normalised_values;		//Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, opacity
+		unsigned int normalised_values;		//Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, position_negator, opacity
 		tfxParticleControlFlags flags;
-		unsigned int image_data_index;
+		unsigned int image_data_index;		//index into the shape buffer on the gpu. CopyComputeShapeData must be called to prepare the data.
+		tfxVec2 image_handle;
+		unsigned int parameters;
+		float stretch;
 	};
 
 	struct ParticleSprite {
 		tfxVec4 bounds;				//the min/max x,y coordinates of the image being drawn
-		tfxVec2 position;			//The position of the sprite
 		tfxVec4 uv;					//The UV coords of the image in the texture
 		tfxVec4 scale_rotation;		//Scale and rotation (x, y = scale, z = rotation, w = multiply blend factor)
+		tfxVec2 position;			//The position of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, image layer index, shader function index, blend type
 	};
@@ -2277,7 +2293,7 @@ TFX_CUSTOM_EMITTER
 		unsigned int control_slot_and_layer;	//index to the controller, and also stores the layer in the particle manager that the particle is on (layer << 3)
 
 		float local_rotation;
-		float padding;
+		float padding;				
 	};
 
 	struct ComputeImageData {
@@ -2320,7 +2336,7 @@ TFX_CUSTOM_EMITTER
 		tfxvec<AttributeNode> all_nodes;
 		tfxvec<EffectLookUpData> node_lookup_indexes;
 		tfxvec<float> compiled_lookup_values;
-		tfxvec<EffectLookUpData> compiled_lookup_indexes;
+		tfxvec<GraphLookupIndex> compiled_lookup_indexes;
 		//This could probably be stored globally
 		tfxvec<tfxVec4> graph_min_max;
 
@@ -2350,7 +2366,13 @@ TFX_CUSTOM_EMITTER
 		void PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
 		void CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, int offset));
+		void CopyLookupIndexesData(void* dst);
+		void CopyLookupValuesData(void* dst);
 		u32 GetShapeDataSizeInBytes();
+		u32 GetLookupIndexCount();
+		u32 GetLookupValueCount();
+		u32 GetLookupIndexesSizeInBytes();
+		u32 GetLookupValuesSizeInBytes();
 
 		//Mainly internal functions
 		void RemoveShape(unsigned int shape_index);
@@ -2385,7 +2407,7 @@ TFX_CUSTOM_EMITTER
 		void AddEmitterGraphs(EffectEmitter& effect);
 		void AddEffectGraphs(EffectEmitter& effect);
 		unsigned int AddAnimationSettings(EffectEmitter& effect);
-		void UpdateAllNodes();
+		void UpdateComputeNodes();
 		void CompileAllGraphs();
 		void CompileGlobalGraph(unsigned int index);
 		void CompilePropertyGraph(unsigned int index);
@@ -2435,6 +2457,7 @@ TFX_CUSTOM_EMITTER
 
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
+		ComputeFXGlobalState compute_global_state;
 		//Callback to the render function that renders all the particles - is this not actually useful now, just use GetParticleBuffer() in your own render function
 		void(*render_func)(float, void*, void*);
 		bool disable_spawing;
@@ -2500,6 +2523,7 @@ TFX_CUSTOM_EMITTER
 		void ResetControllerPtr(void *ptr);
 		inline unsigned int GetControllerMemoryUsage() { return highest_compute_controller_index * sizeof(ComputeController); }
 		inline unsigned int GetParticleMemoryUsage() { return new_compute_particle_index * sizeof(ComputeParticle); }
+		void UpdateCompute(void *sampled_particles, unsigned int sample_size = 100);
 		unsigned int AddParticle(unsigned int layer, Particle &p);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
 		unsigned int ParticleCount();
