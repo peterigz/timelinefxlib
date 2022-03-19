@@ -4944,7 +4944,6 @@ namespace tfx {
 				effects[buffer][parent_index].active_children++;
 				if (use_compute_shader && e.sub_effectors.empty()) {
 					int free_slot = AddComputeController();
-					printf("%i\n", free_slot);
 					if (free_slot != -1) {
 						emitter.compute_slot_id = free_slot;
 						emitter.properties.flags |= tfxEmitterPropertyFlags_is_bottom_emitter;
@@ -5020,6 +5019,7 @@ namespace tfx {
 				compute_global_state.start_index++;
 				compute_global_state.start_index %= compute_global_state.end_index;
 				compute_global_state.current_length--;
+				sample->age = 0;
 			}
 			else {
 				break;

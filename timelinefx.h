@@ -2242,11 +2242,10 @@ TFX_CUSTOM_EMITTER
 	};
 
 	struct ComputeFXGlobalState {
-		u32 current_particle_count = 0;
 		u32 start_index = 0;
 		u32 current_length = 0;
-		u32 end_index = 0;
 		u32 max_index = 0;
+		u32 end_index = 0;
 	};
 
 	struct ComputeController {
@@ -2538,7 +2537,7 @@ TFX_CUSTOM_EMITTER
 			if (!compute)
 				return particles[layer][current_pbuff].current_size < max_cpu_particles_per_layer;
 			else
-				return new_compute_particle_index < max_new_compute_particles;
+				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
 		}
 		inline bool FreeEffectCapacity() { return effects[0].current_size + effects[1].current_size < max_effects; }
 	};
