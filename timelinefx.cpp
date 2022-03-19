@@ -5600,13 +5600,13 @@ namespace tfx {
 							shape_loader(s.name, image_data, shape_entry->data.data, (u32)shape_entry->file_size, user_data);
 
 							if (!image_data.ptr) {
-								uid = -6;
-								break;
+								//uid = -6;
 							}
-
-							lib.particle_shapes.InsertByInt(s.shape_index, image_data);
-							if (first_shape_index == -1)
-								first_shape_index = s.shape_index;
+							else {
+								lib.particle_shapes.InsertByInt(s.shape_index, image_data);
+								if (first_shape_index == -1)
+									first_shape_index = s.shape_index;
+							}
 						}
 						else {
 							//Maybe don't actually need to break here, just means for some a reason a shaped couldn't be loaded, but no reason not to load the effects anyway
@@ -5653,7 +5653,8 @@ namespace tfx {
 		if (uid >= 0) {
 			lib.CompileAllGraphs();
 			lib.ReIndex();
-			lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
+			if(first_shape_index != -1)
+				lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
 			lib.UpdateEffectPaths();
 			lib.UpdateComputeNodes();
 			lib.SetMinMaxData();
