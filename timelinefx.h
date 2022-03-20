@@ -113,6 +113,61 @@
 #include <assert.h>
 #include <iostream>					//temp for std::cout
 
+/**
+ * @file    SimplexNoise.h
+ * @brief   A Perlin Simplex Noise C++ Implementation (1D, 2D, 3D).
+ *
+ * Copyright (c) 2014-2018 Sebastien Rombauts (sebastien.rombauts@gmail.com)
+ *
+ * Distributed under the MIT License (MIT) (See accompanying file LICENSE.txt
+ * or copy at http://opensource.org/licenses/MIT)
+ */
+
+ /**
+  * @brief A Perlin Simplex Noise C++ Implementation (1D, 2D, 3D, 4D).
+  */
+class SimplexNoise {
+public:
+	// 1D Perlin simplex noise
+	static float noise(float x);
+	// 2D Perlin simplex noise
+	static float noise(float x, float y);
+	// 3D Perlin simplex noise
+	static float noise(float x, float y, float z);
+
+	// Fractal/Fractional Brownian Motion (fBm) noise summation
+	float fractal(size_t octaves, float x) const;
+	float fractal(size_t octaves, float x, float y) const;
+	float fractal(size_t octaves, float x, float y, float z) const;
+
+	/**
+	 * Constructor of to initialize a fractal noise summation
+	 *
+	 * @param[in] frequency    Frequency ("width") of the first octave of noise (default to 1.0)
+	 * @param[in] amplitude    Amplitude ("height") of the first octave of noise (default to 1.0)
+	 * @param[in] lacunarity   Lacunarity specifies the frequency multiplier between successive octaves (default to 2.0).
+	 * @param[in] persistence  Persistence is the loss of amplitude between successive octaves (usually 1/lacunarity)
+	 */
+	explicit SimplexNoise(float frequency = 1.0f,
+		float amplitude = 1.0f,
+		float lacunarity = 2.0f,
+		float persistence = 0.5f) :
+		mFrequency(frequency),
+		mAmplitude(amplitude),
+		mLacunarity(lacunarity),
+		mPersistence(persistence) {
+	}
+
+private:
+	// Parameters of Fractional Brownian Motion (fBm) : sum of N "octaves" of noise
+	float mFrequency;   ///< Frequency ("width") of the first octave of noise (default to 1.0)
+	float mAmplitude;   ///< Amplitude ("height") of the first octave of noise (default to 1.0)
+	float mLacunarity;  ///< Lacunarity specifies the frequency multiplier between successive octaves (default to 2.0).
+	float mPersistence; ///< Persistence is the loss of amplitude between successive octaves (usually 1/lacunarity)
+};
+
+
+
 namespace tfx {
 
 #define TWO63 0x8000000000000000u 
@@ -1836,6 +1891,8 @@ typedef long long s64;
 		float start_frame;
 		//The final frame index of the animation
 		float end_frame;
+		//Random movement offset, higher numbers means less uniform
+		float noise_offset;
 
 		EmitterProperties() :
 			angle_offset(360),
@@ -1854,7 +1911,8 @@ typedef long long s64;
 			shape_index(1),
 			start_frame(0),
 			end_frame(0),
-			angle_setting(AngleSetting::tfxRandom)
+			angle_setting(AngleSetting::tfxRandom),
+			noise_offset(0)
 		{ }
 	};
 
@@ -2207,7 +2265,7 @@ TFX_CUSTOM_EMITTER
 		float image_frame;				//Current frame of the image if it's an animation
 		//float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
-		float motion_randomness;		//The random velocity added each frame
+		float noise_offset;				//Higer numbers means random movement is less uniform
 		float motion_randomness_speed;
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
 		tfxRGBA8 color;					//Colour of the particle
