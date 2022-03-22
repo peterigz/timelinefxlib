@@ -335,8 +335,8 @@ typedef long long s64;
 		tfxOvertime_green,
 		tfxOvertime_blue,
 		tfxOvertime_opacity,
-		tfxOvertime_frame_rate,
-		tfxOvertime_motion_randomness,
+		tfxOvertime_velocity_turbulance,
+		tfxOvertime_direction_turbulance,
 		tfxOvertime_velocity_adjuster,
 		tfxOvertime_intensity,
 		tfxOvertime_direction,
@@ -604,7 +604,7 @@ typedef long long s64;
 	//Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 	static float tfxLOOKUP_FREQUENCY = 10.f;
 	//Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
-	static float tfxLOOKUP_FREQUENCY_OVERTIME = 5.f;
+	static float tfxLOOKUP_FREQUENCY_OVERTIME = 1.f;
 
 	//-----------------------------------------------------------
 	//Utility things:
@@ -1757,8 +1757,8 @@ typedef long long s64;
 		Graph green;
 		Graph blue;
 		Graph opacity;
-		Graph frame_rate;
-		Graph motion_randomness;
+		Graph velocity_turbulance;
+		Graph direction_turbulance;
 		Graph velocity_adjuster;
 		Graph intensity;
 		Graph direction;
@@ -1872,6 +1872,8 @@ typedef long long s64;
 
 		//Offset to draw particles at
 		tfxVec2 image_handle;
+		//Animation frame rate
+		float frame_rate;
 		//Offset of emitters
 		tfxVec2 emitter_handle;
 		//When single or one shot flags are set, spawn this amount of particles in one go
@@ -1911,6 +1913,7 @@ typedef long long s64;
 			shape_index(1),
 			start_frame(0),
 			end_frame(0),
+			frame_rate(30.f),
 			angle_setting(AngleSetting::tfxRandom),
 			noise_offset(0)
 		{ }
@@ -1967,7 +1970,7 @@ typedef long long s64;
 		//The amount the the weight will vary
 		float weight_variation;
 		//The more motion randomness the more particles will move about erratically
-		float motion_randomness;
+		float noise_offset;
 		//The current age of the emitter.
 		float age;
 		//The current frame of the effect/emitter as calculated by age / update_frequency
@@ -2149,7 +2152,7 @@ TFX_CUSTOM_EMITTER
 		inline void OverrideVariationHeight(float value) { current.size_variation.y = value; }
 		inline void OverrideVariationWeight(float value) { current.weight_variation = value; }
 		inline void OverrideVariationSpin(float value) { current.spin_variation = value; }
-		inline void OverrideVariationMotionRandomness(float value) { current.motion_randomness = value; }
+		inline void OverrideVariationNoiseOffset(float value) { current.noise_offset = value; }
 
 		//Property Flags
 		inline void OverridePropertyFlag(tfxEmitterPropertyFlags flag, bool value) { if (value) properties.flags |= flag; else properties.flags &= ~flag; }
