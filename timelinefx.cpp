@@ -1514,8 +1514,6 @@ namespace tfx {
 
 		bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
 
-		//TransformParticlePrevious(p, *this);
-		//p.captured = p.world;
 		TransformParticle(p, *this);
 		p.captured = p.world;
 		p.captured.scale = p.world.scale;
@@ -2287,8 +2285,6 @@ namespace tfx {
 			p.base.weight = 0;
 		}
 
-		//TransformParticlePrevious(p, e);
-		//p.captured = p.world;
 		//TransformParticle(p, e);
 
 		//----Motion randomness
@@ -2613,44 +2609,6 @@ namespace tfx {
 			else
 				world.rotation = local.rotation;
 		}
-	}
-
-	void TransformParticlePrevious(Particle &p, EffectEmitter &e) {
-		//todo: remove at some point, we don't need this anymore.
-		//The point of this function is so that newly spawned particles can be spawned at the correct tween point
-		//p.matrix.Set(std::cosf(p.local.rotation), std::sinf(p.local.rotation), -std::sinf(p.local.rotation), std::cosf(p.local.rotation));
-		bool line = (e.properties.flags & tfxEmitterPropertyFlags_edge_traversal && e.properties.emission_type == tfxLine);
-
-		if (e.properties.flags & tfxEmitterPropertyFlags_relative_position || line) {
-			p.world.scale = p.local.scale * e.captured.scale;
-
-			if (e.properties.flags & tfxEmitterPropertyFlags_relative_angle || line || e.properties.angle_setting == AngleSetting::tfxAlign)
-				p.world.rotation = e.captured.rotation + p.local.rotation;
-			else
-				p.world.rotation = p.local.rotation;
-
-			Matrix2 mat;
-			float s = sin(e.captured.rotation);
-			float c = cos(e.captured.rotation);
-			mat.Set(c, s, -s, c);
-			//mat = mat.Transform(e.matrix);
-
-			//p.matrix = p.matrix.Transform(mat);
-
-			tfxVec2 rotatevec = mat.TransformVector(tfxVec2(p.local.position.x, p.local.position.y));
-
-			p.world.position = e.captured.position + rotatevec * e.captured.scale;
-
-		}
-		else {
-			p.world.position = p.local.position;
-			p.world.scale = p.local.scale;
-			if (e.properties.flags & tfxEmitterPropertyFlags_relative_angle || e.properties.angle_setting == AngleSetting::tfxAlign)
-				p.world.rotation = e.world.rotation + p.local.rotation;
-			else
-				p.world.rotation = p.local.rotation;
-		}
-
 	}
 
 	void EffectEmitter::ResetGlobalGraphs(bool add_node) {

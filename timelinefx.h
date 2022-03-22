@@ -2649,7 +2649,6 @@ TFX_CUSTOM_EMITTER
 	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
 	void TransformParticle(Particle &p, EffectEmitter &e);
 	void Transform(FormState &local, FormState &world, EffectEmitter &e);
-	void TransformParticlePrevious(Particle &p, EffectEmitter &e);
 	bool ControlParticle(Particle &p, EffectEmitter &e);
 	FormState Tween(float tween, FormState &world, FormState &captured);
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
