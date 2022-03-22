@@ -2156,11 +2156,14 @@ namespace tfx {
 		int line_negator = (properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine) ? 0 : 1;
 		int spin_negator = (properties.angle_setting == AngleSetting::tfxAlign || properties.flags & tfxEmitterPropertyFlags_relative_angle) ? 0 : 1;
 		int position_negator = (properties.flags & tfxEmitterPropertyFlags_relative_position) ? 1 : 0;
-		c.normalised_values = (age_rate << 31) + (line_negator << 30) + (spin_negator << 29) + (position_negator << 28) + int(current.color.a * 255);
+		int additive = (properties.blend_mode == tfxAdditive ? 1 : 0);
+		c.normalised_values = (age_rate << 31) + (line_negator << 30) + (spin_negator << 29) + (position_negator << 28) + (additive << 27) + (properties.layer << 24) + (int(current.color.a * 255) << 16) + (unsigned short)lookup_value_index;
+		//std::cout << ((c.normalised_values & 0x00FF0000) >> 16) << std::endl;
+		//std::cout << lookup_value_index << std::endl;
 		c.flags = properties.compute_flags;
 		c.image_handle = current.image_handle;
 		c.stretch = current.stretch;
-		c.parameters = (properties.blend_mode == tfxAdditive ? 1 << 24 : 0 << 24) + (properties.layer << 16) + (unsigned short)lookup_value_index;
+		c.noise_offset = current.noise_offset;
 		c.image_data_index = properties.image->compute_shape_index;
 	}
 

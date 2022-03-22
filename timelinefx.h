@@ -1606,8 +1606,8 @@ typedef long long s64;
 		GraphLookupIndex overtime_green;
 		GraphLookupIndex overtime_blue;
 		GraphLookupIndex overtime_opacity;
-		GraphLookupIndex overtime_frame_rate;
-		GraphLookupIndex overtime_motion_randomness;
+		GraphLookupIndex overtime_velocity_turbulance;
+		GraphLookupIndex overtime_direction_turbulance;
 		GraphLookupIndex overtime_velocity_adjuster;
 		GraphLookupIndex overtime_intensity;
 		GraphLookupIndex overtime_direction;
@@ -2320,7 +2320,7 @@ TFX_CUSTOM_EMITTER
 		tfxParticleControlFlags flags;
 		unsigned int image_data_index;		//index into the shape buffer on the gpu. CopyComputeShapeData must be called to prepare the data.
 		tfxVec2 image_handle;
-		unsigned int parameters;
+		float noise_offset;
 		float stretch;
 	};
 
