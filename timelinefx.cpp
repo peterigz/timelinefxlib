@@ -2659,7 +2659,7 @@ namespace tfx {
 		library->variation_graphs[variation].height.Reset(0.f, tfxDimensionsPreset, add_node); library->variation_graphs[variation].height.type = tfxVariation_height;
 		library->variation_graphs[variation].weight.Reset(0.f, tfxWeightVariationPreset, add_node); library->variation_graphs[variation].weight.type = tfxVariation_weight;
 		library->variation_graphs[variation].spin.Reset(0.f, tfxSpinVariationPreset, add_node); library->variation_graphs[variation].spin.type = tfxVariation_spin;
-		library->variation_graphs[variation].motion_randomness.Reset(0.f, tfxGlobalPercentPreset, add_node); library->variation_graphs[variation].motion_randomness.type = tfxVariation_motion_randomness;
+		library->variation_graphs[variation].motion_randomness.Reset(0.f, tfxMotionVariationPreset, add_node); library->variation_graphs[variation].motion_randomness.type = tfxVariation_motion_randomness;
 		library->CompileVariationGraph(variation);
 	}
 
@@ -4891,6 +4891,9 @@ namespace tfx {
 			break;
 		case GraphPreset::tfxWeightVariationPreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 2500.f };
+			break;
+		case GraphPreset::tfxMotionVariationPreset:
+			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 1000.f };
 			break;
 		case GraphPreset::tfxSpinPreset:
 			min = { 0.f, -2000.f }; max = { tfxMAX_FRAME, 2000.f };

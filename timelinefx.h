@@ -249,6 +249,7 @@ typedef long long s64;
 		tfxVelocityOvertimePreset,
 		tfxWeightPreset,
 		tfxWeightVariationPreset,
+		tfxMotionVariationPreset,
 		tfxWeightOvertimePreset,
 		tfxSpinPreset,
 		tfxSpinVariationPreset,
