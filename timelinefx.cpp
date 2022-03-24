@@ -1532,7 +1532,7 @@ namespace tfx {
 
 		//p.velocity = p.velocity_normal * p.base.velocity * p.velocity_scale * UPDATE_TIME;
 
-		if (properties.angle_setting == AngleSetting::tfxAlign && !line) {
+		if ((properties.angle_setting == AngleSetting::tfxAlign || properties.angle_setting == tfxAlignWithEmission) && !line) {
 			p.world.rotation = p.local.rotation = GetVectorAngle(velocity_normal.x, velocity_normal.y) + properties.angle_offset;
 			if (properties.flags & tfxEmitterPropertyFlags_relative_angle)
 				p.world.rotation += world.rotation;
@@ -1839,10 +1839,10 @@ namespace tfx {
 
 		//----Size
 		if (!(properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-			p.base_random_size.x = random_generation.Range(current.size_variation.x);
-			p.base_random_size.y = random_generation.Range(current.size_variation.y);
-			p.base_height = p.base_random_size.y + current.size.y;
-			p.base_size.x = (p.base_random_size.x + current.size.x) / properties.image->image_size.x;
+			float base_random_size_x = random_generation.Range(current.size_variation.x);
+			float base_random_size_y = random_generation.Range(current.size_variation.y);
+			p.base_height = base_random_size_y + current.size.y;
+			p.base_size.x = (base_random_size_x + current.size.x) / properties.image->image_size.x;
 			p.base_size.y = p.base_height / properties.image->image_size.y;
 
 			//p.scale_rotation.x = p.base_size.x * library->overtime_graphs[overtime].width.GetFirstValue();
@@ -1862,10 +1862,10 @@ namespace tfx {
 			}
 		}
 		else {
-			p.base_random_size.x = random_generation.Range(current.size_variation.x);
-			p.base_random_size.y = p.base_random_size.x;
-			p.base_height = p.base_random_size.y + current.size.y;
-			p.base_size.x = (p.base_random_size.x + current.size.x) / properties.image->image_size.x;
+			float base_random_size_x = random_generation.Range(current.size_variation.x);
+			float base_random_size_y = base_random_size_x;
+			p.base_height = base_random_size_y + current.size.y;
+			p.base_size.x = (base_random_size_x + current.size.x) / properties.image->image_size.x;
 			p.base_size.y = p.base_height / properties.image->image_size.y;
 
 			//p.scale_rotation.x = p.base_size.x * library->overtime_graphs[overtime].width.GetFirstValue();
@@ -1906,7 +1906,7 @@ namespace tfx {
 
 		float direction = 0;
 
-		if (properties.angle_setting == AngleSetting::tfxAlign && properties.flags & tfxEmitterPropertyFlags_edge_traversal)
+		//if (properties.angle_setting == AngleSetting::tfxAlign && properties.flags & tfxEmitterPropertyFlags_edge_traversal)
 			//p.scale_rotation.w = p.scale_rotation.z = direction + properties.angle_offset;
 
 		bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
@@ -1918,7 +1918,7 @@ namespace tfx {
 		Transform(local, world, *this);
 
 		//----Motion randomness
-		p.motion_randomness = current.noise_offset;
+		p.noise_offset = random_generation.Range(current.noise_offset);
 
 		if (!(properties.flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != EmissionType::tfxLine) {
 			direction = p.emission_angle = GetEmissionDirection(p.local_position, world.position) + library->overtime_graphs[overtime].direction.GetFirstValue();
@@ -1931,11 +1931,11 @@ namespace tfx {
 
 		//p.velocity = p.velocity_normal * p.base_velocity * p.velocity_scale * UPDATE_TIME;
 
-		//if (properties.angle_setting == AngleSetting::tfxAlign && !line) {
-			//p.scale_rotation.w = p.scale_rotation.z = GetVectorAngle(velocity_normal.x, velocity_normal.y) + properties.angle_offset;
+		if ((properties.angle_setting == AngleSetting::tfxAlign || properties.angle_setting == tfxAlignWithEmission) && !line) {
+			p.local_rotation = GetVectorAngle(velocity_normal.x, velocity_normal.y) + properties.angle_offset;
 			//if (properties.flags & tfxEmitterPropertyFlags_relative_angle)
 				//p.scale_rotation.w += world.rotation;
-		//}
+		}
 
 		//----Handle
 		/*if (properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
@@ -2158,13 +2158,15 @@ namespace tfx {
 		int position_negator = (properties.flags & tfxEmitterPropertyFlags_relative_position) ? 1 : 0;
 		int additive = (properties.blend_mode == tfxAdditive ? 1 : 0);
 		c.normalised_values = (age_rate << 31) + (line_negator << 30) + (spin_negator << 29) + (position_negator << 28) + (additive << 27) + (properties.layer << 24) + (int(current.color.a * 255) << 16) + (unsigned short)lookup_value_index;
-		//std::cout << ((c.normalised_values & 0x00FF0000) >> 16) << std::endl;
-		//std::cout << lookup_value_index << std::endl;
+		//std::cout << ((((c.normalised_values & (u32(0x08000000)) >> 27 ) + 1) << 24) + 2) << std::endl;
+		//std::cout << (((c.normalised_values & (u32(0x08000000))) >> 27) + 1) << std::endl;
 		c.flags = properties.compute_flags;
 		c.image_handle = current.image_handle;
+		c.emitter_handle = current.emitter_handle;
 		c.stretch = current.stretch;
 		c.noise_offset = current.noise_offset;
 		c.image_data_index = properties.image->compute_shape_index;
+		c.frame_rate = properties.image->animation_frames == 1 ? 0.f : properties.frame_rate;
 	}
 
 	void EffectEmitter::UpdateEffectState() {
@@ -2408,21 +2410,19 @@ namespace tfx {
 		current_velocity.y += p.weight_acceleration * UPDATE_TIME;
 
 		//Direction
-		if (e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal) {
-			tfxVec2 offset = velocity_normal * e.current.emitter_size.y;
-			float length = std::fabsf(p.local.position.y);
-
-			float emitter_length = e.current.emitter_size.y;
-			if (length > emitter_length) {
-				if (e.properties.end_behaviour == LineTraversalEndBehaviour::tfxLoop) {
-					p.local.position.y -= offset.y;
-					TransformParticle(p, e);
-					p.captured.position = p.world.position;
-				}
-				else if (e.properties.end_behaviour == LineTraversalEndBehaviour::tfxKill) {
-					return false;
-				}
-			}
+		tfxVec2 offset = velocity_normal * e.current.emitter_size.y;
+		float length = std::fabsf(p.local.position.y - e.current.emitter_handle.y);
+		float emitter_length = e.current.emitter_size.y;
+		bool is_line = e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal;
+		bool line_and_loop = is_line && e.properties.end_behaviour == tfxLoop && length > emitter_length;
+		bool line_and_kill = is_line && e.properties.end_behaviour == tfxKill && length > emitter_length;
+		if (line_and_loop) {
+			p.local.position.y -= offset.y;
+			p.flags |= tfxParticleFlags_capture_after_transform;
+			p.capture_count = 2;
+		}
+		else if (line_and_kill) {
+			return false;
 		}
 
 		//----Color changes
@@ -3312,7 +3312,7 @@ namespace tfx {
 		return nullptr;
 	}
 
-	void EffectLibrary::CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, int offset)) {
+	void EffectLibrary::CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, ComputeImageData &image_data, int offset)) {
 		assert(dst);	//must be a valid pointer to a space in memory
 		assert(particle_shapes.Size());		//There are no shapes to copy!
 		tfxvec<ComputeImageData> shapes;
@@ -3321,9 +3321,8 @@ namespace tfx {
 			if (shape.animation_frames == 1) {
 				ComputeImageData cs;
 				cs.animation_frames = shape.animation_frames;
-				cs.image_index = shape.image_index;
 				cs.image_size = shape.image_size;
-				cs.uv = uv_lookup(shape.ptr, 0);
+				cs.uv = uv_lookup(shape.ptr, cs, 0);
 				shapes.push_back(cs);
 				shape.compute_shape_index = index++;
 			}
@@ -3332,9 +3331,8 @@ namespace tfx {
 				for (int f = 0; f != shape.animation_frames; ++f) {
 					ComputeImageData cs;
 					cs.animation_frames = shape.animation_frames;
-					cs.image_index = shape.image_index;
 					cs.image_size = shape.image_size;
-					cs.uv = uv_lookup(shape.ptr, f);
+					cs.uv = uv_lookup(shape.ptr, cs, f);
 					shapes.push_back(cs);
 					index++;
 				}
@@ -3346,6 +3344,7 @@ namespace tfx {
 	void EffectLibrary::CopyLookupIndexesData(void* dst) {
 		assert(dst);	//must be a valid pointer to a space in memory
 		assert(compiled_lookup_indexes.size());		//There is no data to copy, make sure a library has been loaded properly and it contains effects with emitters
+		GraphLookupIndex *test = static_cast<GraphLookupIndex*>(dst);
 		memcpy(dst, compiled_lookup_indexes.data, GetLookupIndexesSizeInBytes());
 	}
 
@@ -3355,8 +3354,20 @@ namespace tfx {
 		memcpy(dst, compiled_lookup_values.data, GetLookupValuesSizeInBytes());
 	}
 
-	u32 EffectLibrary::GetShapeDataSizeInBytes() {
-		return particle_shapes.Size() * sizeof(ComputeImageData);
+	u32 EffectLibrary::GetComputeShapeDataSizeInBytes() {
+		unsigned int frame_count = 0;
+		for (auto &shape : particle_shapes.data) {
+			frame_count += (unsigned int)shape.animation_frames;
+		}
+		return frame_count * sizeof(ComputeImageData);
+	}
+
+	u32 EffectLibrary::GetComputeShapeCount() {
+		unsigned int frame_count = 0;
+		for (auto &shape : particle_shapes.data) {
+			frame_count += (unsigned int)shape.animation_frames;
+		}
+		return frame_count;
 	}
 
 	u32 EffectLibrary::GetLookupIndexCount() {
@@ -5362,6 +5373,7 @@ namespace tfx {
 						emitter.compute_slot_id = free_slot;
 						emitter.properties.flags |= tfxEmitterPropertyFlags_is_bottom_emitter;
 						ComputeController &c = *(static_cast<ComputeController*>(compute_controller_ptr) + free_slot);
+						c.flags = 0;
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_random_color;
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_relative_position;
 						c.flags |= emitter.properties.flags & tfxParticleControlFlags_relative_angle;
@@ -5378,10 +5390,11 @@ namespace tfx {
 						c.flags |= ((emitter.properties.end_behaviour == tfxKill) << 8);
 						c.flags |= ((emitter.properties.end_behaviour == tfxLetFree) << 9);
 						c.flags |= ((emitter.properties.angle_setting == tfxAlign) << 17);
-						c.flags |= ((emitter.properties.angle_setting == tfxRandom) << 18);
-						c.flags |= ((emitter.properties.angle_setting == tfxSpecify) << 19);
-						c.flags |= ((emitter.properties.blend_mode == tfxAlpha) << 20);
-						c.flags |= ((emitter.properties.blend_mode == tfxAdditive) << 21);
+						c.flags |= ((emitter.properties.angle_setting == tfxAlignWithEmission) << 18);
+						c.flags |= ((emitter.properties.angle_setting == tfxRandom) << 19);
+						c.flags |= ((emitter.properties.angle_setting == tfxSpecify) << 20);
+						c.flags |= ((emitter.properties.blend_mode == tfxAlpha) << 21);
+						c.flags |= ((emitter.properties.blend_mode == tfxAdditive) << 22);
 						emitter.properties.compute_flags = c.flags;
 						if (emitter.properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 							c.image_handle = tfxVec2(0.5f, 0.5f);
@@ -5509,6 +5522,11 @@ namespace tfx {
 
 					if (ControlParticle(p, *p.parent)) {
 						TransformParticle(p, *p.parent);
+						if (p.flags & tfxParticleFlags_capture_after_transform || p.capture_count > 0) {
+							p.captured.position = p.world.position;
+							p.flags &= ~tfxParticleFlags_capture_after_transform;
+							p.capture_count--;
+						}
 
 						p.next_ptr = SetNextParticle(layer, p, next_buffer);
 					}

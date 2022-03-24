@@ -223,6 +223,7 @@ typedef long long s64;
 		tfxAlign,												//Align the particle with it's direction of travel
 		tfxRandom,												//Chose a random angle at spawn time/flags
 		tfxSpecify,												//Specify the angle at spawn time
+		tfxAlignWithEmission,									//Align the particle with the emission direction only
 		tfxGraph												//Unused, but the idea was to allow the angle to be changed overtime using a graph
 	};
 
@@ -453,10 +454,11 @@ typedef long long s64;
 		tfxParticleControlFlags_reverse_animation = 1 << 15,
 		tfxParticleControlFlags_play_once = 1 << 16,
 		tfxParticleControlFlags_align = 1 << 17,
-		tfxParticleControlFlags_random = 1 << 18,
-		tfxParticleControlFlags_specify = 1 << 19,
-		tfxParticleControlFlags_alpha = 1 << 20,
-		tfxParticleControlFlags_additive = 1 << 21,
+		tfxParticleControlFlags_emission = 1 << 18,
+		tfxParticleControlFlags_random = 1 << 19,
+		tfxParticleControlFlags_specify = 1 << 20,
+		tfxParticleControlFlags_alpha = 1 << 21,
+		tfxParticleControlFlags_additive = 1 << 22,
 	};
 
 	enum tfxEmitterPropertyFlags_ {
@@ -489,6 +491,7 @@ typedef long long s64;
 		tfxParticleFlags_none = 0,
 		tfxParticleFlags_fresh = 1 << 0,									//Particle has just spawned this frame	
 		tfxParticleFlags_remove = 1 << 1,									//Particle will be removed this or next frame
+		tfxParticleFlags_capture_after_transform = 1 << 2,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
 	};
 
 	enum tfxEmitterStateFlags_ : unsigned char {
@@ -2275,6 +2278,7 @@ TFX_CUSTOM_EMITTER
 		tfxRGBA8 color;					//Colour of the particle
 		tfxParticleFlags flags;			//flags for different states
 		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
+		unsigned int capture_count = 0;	//Ugly hack to make sure particles loop on a line properly
 
 		//Internal use variables
 		Particle *next_ptr;
@@ -2320,8 +2324,11 @@ TFX_CUSTOM_EMITTER
 		tfxParticleControlFlags flags;
 		unsigned int image_data_index;		//index into the shape buffer on the gpu. CopyComputeShapeData must be called to prepare the data.
 		tfxVec2 image_handle;
+		tfxVec2 emitter_handle;
 		float noise_offset;
 		float stretch;
+		float frame_rate;
+		float padding2;
 	};
 
 	struct ParticleSprite {
@@ -2336,7 +2343,6 @@ TFX_CUSTOM_EMITTER
 	struct ComputeParticle {
 		tfxVec2 local_position;
 		tfxVec2 base_size;
-		tfxVec2 base_random_size;
 
 		float base_velocity = 1;
 		float base_height = 1;
@@ -2348,13 +2354,11 @@ TFX_CUSTOM_EMITTER
 		float emission_angle = 1;				//Emission angle of the particle at spawn time
 		float weight_acceleration = 1;			//The current amount of gravity applied to the y axis of the particle each frame
 
-		float motion_randomness = 1;			//The random velocity added each frame
-		float motion_randomness_speed = 1;
+		float noise_offset = 1;					//The random velocity added each frame
 		float image_frame = 1;
 		unsigned int control_slot_and_layer;	//index to the controller, and also stores the layer in the particle manager that the particle is on (layer << 3)
 
 		float local_rotation;
-		float padding;				
 	};
 
 	struct ComputeImageData {
@@ -2426,10 +2430,11 @@ TFX_CUSTOM_EMITTER
 		EffectEmitter *GetEffect(tfxKey key);
 		void PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
-		void CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, int offset));
+		void CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, ComputeImageData &image_data, int offset));
 		void CopyLookupIndexesData(void* dst);
 		void CopyLookupValuesData(void* dst);
-		u32 GetShapeDataSizeInBytes();
+		u32 GetComputeShapeDataSizeInBytes();
+		u32 GetComputeShapeCount();
 		u32 GetLookupIndexCount();
 		u32 GetLookupValueCount();
 		u32 GetLookupIndexesSizeInBytes();
