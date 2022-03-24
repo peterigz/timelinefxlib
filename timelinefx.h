@@ -484,7 +484,7 @@ typedef long long s64;
 		tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
 		tfxEmitterPropertyFlags_use_vector_field = 1 << 19,					//Enable the use of a vector field to apply forces to the particles
 		tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
-		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21					//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
+		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	};
 
 	enum tfxParticleFlags_ : unsigned char {

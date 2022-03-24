@@ -1104,7 +1104,8 @@ namespace tfx {
 		}
 
 		current.age += FRAME_LENGTH;
-		highest_particle_age -= FRAME_LENGTH;
+		if(!(properties.flags & tfxEmitterPropertyFlags_single))
+			highest_particle_age -= FRAME_LENGTH;
 
 		if (properties.loop_length && current.age > properties.loop_length)
 			current.age = 0;
@@ -1142,8 +1143,6 @@ namespace tfx {
 			qty = current.amount;
 			qty += random_generation.Range(current.amount_variation);
 			qty *= lookup_callback(parent->library->global_graphs[parent->global].amount, current.frame);
-			//qty *= parent->library->LookupPreciseNodeList(tfxGlobal_amount, parent->lookup_node_index, current.frame);
-			//qty *= parent->library->LookupFastValueList(tfxGlobal_amount, parent->lookup_value_index, current.frame);
 			qty *= UPDATE_TIME;
 			qty += current.amount_remainder;
 		}
@@ -1163,7 +1162,7 @@ namespace tfx {
 			count++;
 			qty -= 1.f;
 
-			if (properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader) {
+			if (properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader && !(properties.flags & tfxEmitterPropertyFlags_single)) {
 				ComputeParticle &p = pm->GrabComputeParticle(properties.layer);
 				InitComputeParticle(p, tween);
 				pm->new_particles_count++;
@@ -1912,6 +1911,7 @@ namespace tfx {
 		bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
 
 		FormState local;
+		p.local_rotation = 0.f;
 		local.position = p.local_position;
 		local.rotation = p.local_rotation;
 		FormState world;
