@@ -2428,6 +2428,7 @@ TFX_CUSTOM_EMITTER
 		EffectEmitter *GetEffect(const char *path);
 		//Get an effect by it's path hash key
 		EffectEmitter *GetEffect(tfxKey key);
+		//Get and effect by it's index
 		void PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
 		void CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, ComputeImageData &image_data, int offset));

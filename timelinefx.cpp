@@ -1882,6 +1882,18 @@ namespace tfx {
 		//----Spin
 		p.base_spin = random_generation.Range(-current.spin_variation, std::abs(current.spin_variation)) + current.spin;
 
+		switch (properties.angle_setting) {
+		case AngleSetting::tfxRandom:
+			p.local_rotation = random_generation.Range(properties.angle_offset);
+			break;
+		case AngleSetting::tfxSpecify:
+			p.local_rotation = properties.angle_offset;
+			break;
+		default:
+			p.local_rotation = 0;
+			break;
+		}
+
 		//----Splatter
 		if (current.splatter) {
 			float splattertemp = current.splatter;
@@ -1911,7 +1923,6 @@ namespace tfx {
 		bool line = properties.flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == EmissionType::tfxLine;
 
 		FormState local;
-		p.local_rotation = 0.f;
 		local.position = p.local_position;
 		local.rotation = p.local_rotation;
 		FormState world;
@@ -2166,7 +2177,7 @@ namespace tfx {
 		c.stretch = current.stretch;
 		c.noise_offset = current.noise_offset;
 		c.image_data_index = properties.image->compute_shape_index;
-		c.frame_rate = properties.image->animation_frames == 1 ? 0.f : properties.frame_rate;
+		c.frame_rate = properties.image->animation_frames > 1 && properties.flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate : 0.f;
 	}
 
 	void EffectEmitter::UpdateEffectState() {
