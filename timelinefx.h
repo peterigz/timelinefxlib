@@ -2550,8 +2550,8 @@ TFX_CUSTOM_EMITTER
 			highest_compute_controller_index(0),
 			new_compute_particle_ptr(nullptr),
 			compute_controller_ptr(nullptr),
-			max_compute_controllers(1000),
-			max_new_compute_particles(1000),
+			max_compute_controllers(10000),
+			max_new_compute_particles(10000),
 			new_compute_particle_index(0),
 			new_particles_count(0)
 		{ }

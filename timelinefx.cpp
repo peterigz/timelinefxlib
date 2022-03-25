@@ -1162,7 +1162,9 @@ namespace tfx {
 			count++;
 			qty -= 1.f;
 
-			if (properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader && !(properties.flags & tfxEmitterPropertyFlags_single)) {
+			bool is_single = properties.flags & tfxEmitterPropertyFlags_single && !(properties.flags & tfxEmitterPropertyFlags_one_shot);
+
+			if (properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader && !is_single){
 				ComputeParticle &p = pm->GrabComputeParticle(properties.layer);
 				InitComputeParticle(p, tween);
 				pm->new_particles_count++;
