@@ -250,7 +250,8 @@ typedef long long s64;
 		tfxVelocityOvertimePreset,
 		tfxWeightPreset,
 		tfxWeightVariationPreset,
-		tfxMotionVariationPreset,
+		tfxNoiseOffsetVariationPreset,
+		tfxNoiseResolutionPreset,
 		tfxWeightOvertimePreset,
 		tfxSpinPreset,
 		tfxSpinVariationPreset,
@@ -275,9 +276,9 @@ typedef long long s64;
 
 #define tfxGlobalCount  13
 #define	tfxPropertyCount  8
-#define	tfxBaseCount  7
-#define	tfxVariationCount  8
-#define	tfxOvertimeCount  15
+#define	tfxBaseCount  8
+#define	tfxVariationCount  9
+#define	tfxOvertimeCount  16
 
 #define tfxGlobalStart 0
 #define	tfxPropertyStart tfxGlobalCount
@@ -317,6 +318,7 @@ typedef long long s64;
 		tfxBase_height,
 		tfxBase_weight,
 		tfxBase_spin,
+		tfxBase_noise_offset,
 
 		tfxVariation_life,
 		tfxVariation_amount,
@@ -325,7 +327,8 @@ typedef long long s64;
 		tfxVariation_height,
 		tfxVariation_weight,
 		tfxVariation_spin,
-		tfxVariation_motion_randomness,
+		tfxVariation_noise_offset,
+		tfxVariation_noise_resolution,
 
 		tfxOvertime_velocity,
 		tfxOvertime_width,
@@ -342,6 +345,7 @@ typedef long long s64;
 		tfxOvertime_velocity_adjuster,
 		tfxOvertime_intensity,
 		tfxOvertime_direction,
+		tfxOvertime_noise_resolution,
 		tfxGraphMaxIndex,
 	};
 
@@ -1559,46 +1563,6 @@ typedef long long s64;
 	//or the lookup data of compiled graphs. This is so that we can upload that data into a buffer on the GPU to get the particles
 	//updating in a compute shader.
 	struct EffectLookUpData {
-		/*GraphLookupIndex global_life;
-		GraphLookupIndex global_amount;
-		GraphLookupIndex global_velocity;
-		GraphLookupIndex global_width;
-		GraphLookupIndex global_height;
-		GraphLookupIndex global_weight;
-		GraphLookupIndex global_spin;
-		GraphLookupIndex global_stretch;
-		GraphLookupIndex global_overal_scale;
-		GraphLookupIndex global_opacity;
-		GraphLookupIndex global_frame_rate;
-		GraphLookupIndex global_splatter;
-		GraphLookupIndex global_effect_angle;
-
-		GraphLookupIndex property_emission_angle;
-		GraphLookupIndex property_emission_range;
-		GraphLookupIndex property_emitter_angle;
-		GraphLookupIndex property_splatter;
-		GraphLookupIndex property_emitter_width;
-		GraphLookupIndex property_emitter_height;
-		GraphLookupIndex property_arc_size;
-		GraphLookupIndex property_arc_offset;
-
-		GraphLookupIndex base_life;
-		GraphLookupIndex base_amount;
-		GraphLookupIndex base_velocity;
-		GraphLookupIndex base_width;
-		GraphLookupIndex base_height;
-		GraphLookupIndex base_weight;
-		GraphLookupIndex base_spin;
-
-		GraphLookupIndex variation_life;
-		GraphLookupIndex variation_amount;
-		GraphLookupIndex variation_velocity;
-		GraphLookupIndex variation_width;
-		GraphLookupIndex variation_height;
-		GraphLookupIndex variation_weight;
-		GraphLookupIndex variation_spin;
-		GraphLookupIndex variation_motion_randomness;*/
-
 		GraphLookupIndex overtime_velocity;
 		GraphLookupIndex overtime_width;
 		GraphLookupIndex overtime_height;
@@ -1614,6 +1578,7 @@ typedef long long s64;
 		GraphLookupIndex overtime_velocity_adjuster;
 		GraphLookupIndex overtime_intensity;
 		GraphLookupIndex overtime_direction;
+		GraphLookupIndex overtime_noise_resolution;
 	};
 
 	struct Graph {
@@ -1737,6 +1702,7 @@ typedef long long s64;
 		Graph height;
 		Graph weight;
 		Graph spin;
+		Graph noise_offset;
 	};
 
 	struct VariationAttributes {
@@ -1747,7 +1713,8 @@ typedef long long s64;
 		Graph height;
 		Graph weight;
 		Graph spin;
-		Graph motion_randomness;
+		Graph noise_offset;
+		Graph noise_resolution;
 	};
 
 	struct OvertimeAttributes {
@@ -1766,6 +1733,7 @@ typedef long long s64;
 		Graph velocity_adjuster;
 		Graph intensity;
 		Graph direction;
+		Graph noise_resolution;
 	};
 
 	static float(*lookup_overtime_callback)(Graph &graph, float age, float lifetime) = LookupFastOvertime;
@@ -1974,7 +1942,10 @@ typedef long long s64;
 		//The amount the the weight will vary
 		float weight_variation;
 		//The more motion randomness the more particles will move about erratically
+		float noise_offset_variation;
 		float noise_offset;
+		//The more motion randomness the more particles will move about erratically
+		float noise_resolution;
 		//The current age of the emitter.
 		float age;
 		//The current frame of the effect/emitter as calculated by age / update_frequency
@@ -2266,14 +2237,11 @@ TFX_CUSTOM_EMITTER
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
 		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;					//max age before the particle expires
-		//float image_frame_rate;		//current frame rate of the image if it's an animation
-		//float velocity_scale;			//Current velocity overtime
 		float emission_angle;			//Emission angle of the particle at spawn time
 		float image_frame;				//Current frame of the image if it's an animation
-		//float distance_travelled;		//Used in edge traversal and kLoop to make the particle start back at the beginning of the line again
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float noise_offset;				//Higer numbers means random movement is less uniform
-		float motion_randomness_speed;
+		float noise_resolution;			//Higer numbers means random movement is more uniform
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
 		tfxRGBA8 color;					//Colour of the particle
 		tfxParticleFlags flags;			//flags for different states
@@ -2328,7 +2296,7 @@ TFX_CUSTOM_EMITTER
 		float noise_offset;
 		float stretch;
 		float frame_rate;
-		float padding2;
+		float noise_resolution;
 	};
 
 	struct ParticleSprite {

@@ -1520,7 +1520,8 @@ namespace tfx {
 		p.captured.scale = p.world.scale;
 
 		//----Motion randomness
-		p.noise_offset = random_generation.Range(current.noise_offset);
+		p.noise_offset = random_generation.Range(current.noise_offset_variation) + current.noise_offset;
+		p.noise_resolution = current.noise_resolution;
 
 		if (!(properties.flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != EmissionType::tfxLine) {
 			direction = p.emission_angle = GetEmissionDirection(p.local.position, p.world.position) + library->overtime_graphs[overtime].direction.GetFirstValue();
@@ -1931,7 +1932,8 @@ namespace tfx {
 		Transform(local, world, *this);
 
 		//----Motion randomness
-		p.noise_offset = random_generation.Range(current.noise_offset);
+		p.noise_offset = random_generation.Range(current.noise_offset_variation) + current.noise_offset;
+		//p.noise_resolution = current.noise_resolution;
 
 		if (!(properties.flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != EmissionType::tfxLine) {
 			direction = p.emission_angle = GetEmissionDirection(p.local_position, world.position) + library->overtime_graphs[overtime].direction.GetFirstValue();
@@ -2096,7 +2098,9 @@ namespace tfx {
 		current.emitter_size.y = lookup_callback(library->property_graphs[property].emitter_height, current.frame);
 		current.weight = lookup_callback(library->base_graphs[base].weight, current.frame) * e.current.weight;
 		current.weight_variation = lookup_callback(library->variation_graphs[variation].weight, current.frame) * e.current.weight;
-		current.noise_offset = lookup_callback(library->variation_graphs[variation].motion_randomness, current.frame);
+		current.noise_offset_variation = lookup_callback(library->variation_graphs[variation].noise_offset, current.frame);
+		current.noise_offset = lookup_callback(library->base_graphs[variation].noise_offset, current.frame);
+		current.noise_resolution = lookup_callback(library->variation_graphs[variation].noise_resolution, current.frame);
 		current.stretch = e.current.stretch;
 		local.scale = e.local.scale;
 
@@ -2178,6 +2182,7 @@ namespace tfx {
 		c.emitter_handle = current.emitter_handle;
 		c.stretch = current.stretch;
 		c.noise_offset = current.noise_offset;
+		c.noise_resolution = current.noise_resolution;
 		c.image_data_index = properties.image->compute_shape_index;
 		c.frame_rate = properties.image->animation_frames > 1 && properties.flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate : 0.f;
 	}
@@ -2306,7 +2311,7 @@ namespace tfx {
 		//TransformParticle(p, e);
 
 		//----Motion randomness
-		//p.motion_randomness = e.current.motion_randomness;
+		//p.noise_offset = e.current.noise_offset;
 		//float mr = tfxRadians(p.direction_turbulance * e.library->overtime_graphs[e.overtime].direction_turbulance.GetFirstValue());
 		//std::uniform_real_distribution<float> random_motion(-mr, mr);
 		//p.motion_randomness_direction = tfxRadians(22.5f * random_motion(random_generation.engine));
@@ -2398,8 +2403,10 @@ namespace tfx {
 			//----Motion randomness
 			float o_mr = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].direction_turbulance, p.age, p.max_age);
 			float v_mr = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity_turbulance, p.age, p.max_age);
-			if (o_mr) {
-				float noise = SimplexNoise::noise(p.local.position.x / 400.f + p.noise_offset, p.local.position.y / 400.f + p.noise_offset, float(random_generation.Millisecs()) * 0.0001f);
+			if (o_mr + v_mr) {
+				float noise_resolution = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].noise_resolution, p.age, p.max_age) * p.noise_resolution;
+				float rate_of_change = float(random_generation.Millisecs()) * 0.000f;
+				float noise = SimplexNoise::noise(p.local.position.x / noise_resolution + p.noise_offset + rate_of_change, p.local.position.y / noise_resolution + p.noise_offset + rate_of_change);
 				mr_speed = (noise + 2.f) * v_mr;
 				mr_angle = noise * 3.14159265f * 2 * o_mr;
 				mr_vec.x = std::sinf(mr_angle) * mr_speed;
@@ -2488,7 +2495,7 @@ namespace tfx {
 		//----Rotation
 		p.local.rotation += spin * UPDATE_TIME;
 		if (e.properties.angle_setting == AngleSetting::tfxAlign) {
-			p.local.rotation = GetVectorAngle(current_velocity.x + velocity_normal.x, current_velocity.y + velocity_normal.y) + e.properties.angle_offset;
+			p.local.rotation = GetVectorAngle(current_velocity.x, current_velocity.y) + e.properties.angle_offset;
 		}
 
 		//----Position
@@ -2652,6 +2659,7 @@ namespace tfx {
 		library->base_graphs[base].height.Reset(128.f, tfxDimensionsPreset, add_node); library->base_graphs[base].height.type = tfxBase_height;
 		library->base_graphs[base].weight.Reset(0.f, tfxWeightPreset, add_node); library->base_graphs[base].weight.type = tfxBase_weight;
 		library->base_graphs[base].spin.Reset(0.f, tfxSpinPreset, add_node); library->base_graphs[base].spin.type = tfxBase_spin;
+		library->base_graphs[base].noise_offset.Reset(0.f, tfxGlobalPercentPreset, add_node); library->base_graphs[base].noise_offset.type = tfxBase_noise_offset;
 		library->CompileBaseGraph(base);
 	}
 
@@ -2675,7 +2683,8 @@ namespace tfx {
 		library->variation_graphs[variation].height.Reset(0.f, tfxDimensionsPreset, add_node); library->variation_graphs[variation].height.type = tfxVariation_height;
 		library->variation_graphs[variation].weight.Reset(0.f, tfxWeightVariationPreset, add_node); library->variation_graphs[variation].weight.type = tfxVariation_weight;
 		library->variation_graphs[variation].spin.Reset(0.f, tfxSpinVariationPreset, add_node); library->variation_graphs[variation].spin.type = tfxVariation_spin;
-		library->variation_graphs[variation].motion_randomness.Reset(0.f, tfxMotionVariationPreset, add_node); library->variation_graphs[variation].motion_randomness.type = tfxVariation_motion_randomness;
+		library->variation_graphs[variation].noise_offset.Reset(0.f, tfxNoiseOffsetVariationPreset, add_node); library->variation_graphs[variation].noise_offset.type = tfxVariation_noise_offset;
+		library->variation_graphs[variation].noise_resolution.Reset(0.f, tfxNoiseResolutionPreset, add_node); library->variation_graphs[variation].noise_resolution.type = tfxVariation_noise_resolution;
 		library->CompileVariationGraph(variation);
 	}
 
@@ -2696,6 +2705,7 @@ namespace tfx {
 		library->overtime_graphs[overtime].stretch.Reset(0.f, tfxPercentOvertime, add_node); library->overtime_graphs[overtime].stretch.type = tfxOvertime_stretch;
 		library->overtime_graphs[overtime].direction_turbulance.Reset(0.f, tfxPercentOvertime, add_node); library->overtime_graphs[overtime].direction_turbulance.type = tfxOvertime_direction_turbulance;
 		library->overtime_graphs[overtime].direction.Reset(0.f, tfxDirectionOvertimePreset, add_node); library->overtime_graphs[overtime].direction.type = tfxOvertime_direction;
+		library->overtime_graphs[overtime].noise_resolution.Reset(1.f, tfxPercentOvertime, add_node); library->overtime_graphs[overtime].noise_resolution.type = tfxOvertime_noise_resolution;
 		library->CompileOvertimeGraph(overtime);
 	}
 
@@ -2736,6 +2746,7 @@ namespace tfx {
 			if (library->base_graphs[base].height.nodes.size() == 0) library->base_graphs[base].height.Reset(128.f, tfxDimensionsPreset);
 			if (library->base_graphs[base].weight.nodes.size() == 0) library->base_graphs[base].weight.Reset(0.f, tfxWeightPreset);
 			if (library->base_graphs[base].spin.nodes.size() == 0) library->base_graphs[base].spin.Reset(0.f, tfxSpinPreset);
+			if (library->base_graphs[base].noise_offset.nodes.size() == 0) library->base_graphs[base].noise_offset.Reset(0.f, tfxGlobalPercentPreset);
 
 			if (library->property_graphs[property].emitter_angle.nodes.size() == 0) library->property_graphs[property].emitter_angle.Reset(0.f, tfxAnglePreset);
 			if (library->property_graphs[property].emission_angle.nodes.size() == 0) library->property_graphs[property].emission_angle.Reset(0.f, tfxAnglePreset);
@@ -2754,7 +2765,8 @@ namespace tfx {
 			if (library->variation_graphs[variation].height.nodes.size() == 0) library->variation_graphs[variation].height.Reset(0.f, tfxDimensionsPreset);
 			if (library->variation_graphs[variation].weight.nodes.size() == 0) library->variation_graphs[variation].weight.Reset(0.f, tfxWeightVariationPreset);
 			if (library->variation_graphs[variation].spin.nodes.size() == 0) library->variation_graphs[variation].spin.Reset(0.f, tfxSpinVariationPreset);
-			if (library->variation_graphs[variation].motion_randomness.nodes.size() == 0) library->variation_graphs[variation].motion_randomness.Reset(0.f, tfxGlobalPercentPreset);
+			if (library->variation_graphs[variation].noise_offset.nodes.size() == 0) library->variation_graphs[variation].noise_offset.Reset(0.f, tfxNoiseOffsetVariationPreset);
+			if (library->variation_graphs[variation].noise_resolution.nodes.size() == 0) library->variation_graphs[variation].noise_resolution.Reset(0.f, tfxNoiseResolutionPreset);
 
 			if (library->overtime_graphs[overtime].velocity.nodes.size() == 0) library->overtime_graphs[overtime].velocity.Reset(1.f, tfxVelocityOvertimePreset);
 			if (library->overtime_graphs[overtime].width.nodes.size() == 0) library->overtime_graphs[overtime].width.Reset(1.f, tfxPercentOvertime);
@@ -2771,6 +2783,7 @@ namespace tfx {
 			if (library->overtime_graphs[overtime].direction_turbulance.nodes.size() == 0) library->overtime_graphs[overtime].direction_turbulance.Reset(0.f, tfxPercentOvertime);
 			if (library->overtime_graphs[overtime].velocity_adjuster.nodes.size() == 0) library->overtime_graphs[overtime].velocity_adjuster.Reset(1.f, tfxGlobalPercentPreset);
 			if (library->overtime_graphs[overtime].direction.nodes.size() == 0) library->overtime_graphs[overtime].direction.Reset(0.f, tfxDirectionOvertimePreset);
+			if (library->overtime_graphs[overtime].noise_resolution.nodes.size() == 0) library->overtime_graphs[overtime].noise_resolution.Reset(0.f, tfxPercentOvertime);
 		}
 	}
 
@@ -3121,6 +3134,7 @@ namespace tfx {
 			library->base_graphs[base].height.Free();
 			library->base_graphs[base].weight.Free();
 			library->base_graphs[base].spin.Free();
+			library->base_graphs[base].noise_offset.Free();
 
 			library->variation_graphs[variation].life.Free();
 			library->variation_graphs[variation].amount.Free();
@@ -3129,7 +3143,8 @@ namespace tfx {
 			library->variation_graphs[variation].height.Free();
 			library->variation_graphs[variation].weight.Free();
 			library->variation_graphs[variation].spin.Free();
-			library->variation_graphs[variation].motion_randomness.Free();
+			library->variation_graphs[variation].noise_offset.Free();
+			library->variation_graphs[variation].noise_resolution.Free();
 
 			library->overtime_graphs[overtime].velocity.Free();
 			library->overtime_graphs[overtime].width.Free();
@@ -3146,6 +3161,7 @@ namespace tfx {
 			library->overtime_graphs[overtime].direction_turbulance.Free();
 			library->overtime_graphs[overtime].velocity_adjuster.Free();
 			library->overtime_graphs[overtime].direction.Free();
+			library->overtime_graphs[overtime].noise_resolution.Free();
 		}
 	}
 
@@ -3653,6 +3669,7 @@ namespace tfx {
 			CompileGraph(g.height);
 			CompileGraph(g.life);
 			CompileGraph(g.spin);
+			CompileGraph(g.noise_offset);
 			CompileGraph(g.velocity);
 			CompileGraph(g.weight);
 		}
@@ -3661,7 +3678,8 @@ namespace tfx {
 			CompileGraph(g.width);
 			CompileGraph(g.height);
 			CompileGraph(g.life);
-			CompileGraph(g.motion_randomness);
+			CompileGraph(g.noise_offset);
+			CompileGraph(g.noise_resolution);
 			CompileGraph(g.spin);
 			CompileGraph(g.velocity);
 			CompileGraph(g.weight);
@@ -3682,6 +3700,7 @@ namespace tfx {
 			CompileGraph(g.velocity_adjuster);
 			CompileGraphOvertime(g.weight);
 			CompileGraphOvertime(g.direction);
+			CompileGraphOvertime(g.noise_resolution);
 		}
 	}
 
@@ -3719,6 +3738,7 @@ namespace tfx {
 		CompileGraph(g.height);
 		CompileGraph(g.life);
 		CompileGraph(g.spin);
+		CompileGraph(g.noise_offset);
 		CompileGraph(g.velocity);
 		CompileGraph(g.weight);
 	}
@@ -3728,7 +3748,8 @@ namespace tfx {
 		CompileGraph(g.width);
 		CompileGraph(g.height);
 		CompileGraph(g.life);
-		CompileGraph(g.motion_randomness);
+		CompileGraph(g.noise_offset);
+		CompileGraph(g.noise_resolution);
 		CompileGraph(g.spin);
 		CompileGraph(g.velocity);
 		CompileGraph(g.weight);
@@ -3750,6 +3771,7 @@ namespace tfx {
 		CompileGraph(g.velocity_adjuster);
 		CompileGraphOvertime(g.weight);
 		CompileGraphOvertime(g.direction);
+		CompileGraphOvertime(g.noise_resolution);
 	}
 	void EffectLibrary::CompileColorGraphs(unsigned int index) {
 		OvertimeAttributes &g = overtime_graphs[index];
@@ -3792,6 +3814,7 @@ namespace tfx {
 		graph_min_max[tfxBase_height] = GetMinMaxGraphValues(tfxDimensionsPreset);
 		graph_min_max[tfxBase_weight] = GetMinMaxGraphValues(tfxWeightPreset);
 		graph_min_max[tfxBase_spin] = GetMinMaxGraphValues(tfxSpinPreset);
+		graph_min_max[tfxBase_noise_offset] = GetMinMaxGraphValues(tfxDimensionsPreset);
 
 		graph_min_max[tfxVariation_life] = GetMinMaxGraphValues(tfxLifePreset);
 		graph_min_max[tfxVariation_amount] = GetMinMaxGraphValues(tfxAmountPreset);
@@ -3800,7 +3823,7 @@ namespace tfx {
 		graph_min_max[tfxVariation_height] = GetMinMaxGraphValues(tfxDimensionsPreset);
 		graph_min_max[tfxVariation_weight] = GetMinMaxGraphValues(tfxWeightVariationPreset);
 		graph_min_max[tfxVariation_spin] = GetMinMaxGraphValues(tfxSpinVariationPreset);
-		graph_min_max[tfxVariation_motion_randomness] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxVariation_noise_offset] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 
 		graph_min_max[tfxOvertime_velocity] = GetMinMaxGraphValues(tfxVelocityOvertimePreset);
 		graph_min_max[tfxOvertime_width] = GetMinMaxGraphValues(tfxPercentOvertime);
@@ -4044,6 +4067,7 @@ namespace tfx {
 			if (values[0] == "base_height") { AttributeNode n; AssignNodeData(n, values); effect.library->base_graphs[effect.base].height.AddNode(n); }
 			if (values[0] == "base_width") { AttributeNode n; AssignNodeData(n, values); effect.library->base_graphs[effect.base].width.AddNode(n); }
 			if (values[0] == "base_spin") { AttributeNode n; AssignNodeData(n, values); effect.library->base_graphs[effect.base].spin.AddNode(n); }
+			if (values[0] == "base_noise_offset") { AttributeNode n; AssignNodeData(n, values); effect.library->base_graphs[effect.base].noise_offset.AddNode(n); }
 			if (values[0] == "base_velocity") { AttributeNode n; AssignNodeData(n, values); effect.library->base_graphs[effect.base].velocity.AddNode(n); }
 			if (values[0] == "base_weight") { AttributeNode n; AssignNodeData(n, values); effect.library->base_graphs[effect.base].weight.AddNode(n); }
 
@@ -4054,7 +4078,9 @@ namespace tfx {
 			if (values[0] == "variation_velocity") { AttributeNode n; AssignNodeData(n, values); effect.library->variation_graphs[effect.variation].velocity.AddNode(n); }
 			if (values[0] == "variation_weight") { AttributeNode n; AssignNodeData(n, values); effect.library->variation_graphs[effect.variation].weight.AddNode(n); }
 			if (values[0] == "variation_spin") { AttributeNode n; AssignNodeData(n, values); effect.library->variation_graphs[effect.variation].spin.AddNode(n); }
-			if (values[0] == "variation_motion_randomness") { AttributeNode n; AssignNodeData(n, values); effect.library->variation_graphs[effect.variation].motion_randomness.AddNode(n); }
+			if (values[0] == "variation_motion_randomness") { AttributeNode n; AssignNodeData(n, values); effect.library->variation_graphs[effect.variation].noise_offset.AddNode(n); }
+			if (values[0] == "variation_noise_offset") { AttributeNode n; AssignNodeData(n, values); effect.library->variation_graphs[effect.variation].noise_offset.AddNode(n); }
+			if (values[0] == "variation_noise_resolution") { AttributeNode n; AssignNodeData(n, values); effect.library->variation_graphs[effect.variation].noise_resolution.AddNode(n); }
 
 			if (values[0] == "overtime_red") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].red.AddNode(n); }
 			if (values[0] == "overtime_green") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].green.AddNode(n); }
@@ -4071,6 +4097,7 @@ namespace tfx {
 			if (values[0] == "overtime_direction_turbulance") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].direction_turbulance.AddNode(n); }
 			if (values[0] == "overtime_direction") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].direction.AddNode(n); }
 			if (values[0] == "overtime_velocity_adjuster") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].velocity_adjuster.AddNode(n); }
+			if (values[0] == "overtime_noise_resolution") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].noise_resolution.AddNode(n); }
 		}
 	}
 
@@ -4919,8 +4946,15 @@ namespace tfx {
 		case GraphPreset::tfxWeightVariationPreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 2500.f };
 			break;
-		case GraphPreset::tfxMotionVariationPreset:
+		case GraphPreset::tfxNoiseOffsetVariationPreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 1000.f };
+			break;
+		case GraphPreset::tfxNoiseResolutionPreset:
+			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 10000.f };
+			if (add_node) {
+				nodes.clear();
+				AddNode(256.f, 0.f);
+			}
 			break;
 		case GraphPreset::tfxSpinPreset:
 			min = { 0.f, -2000.f }; max = { tfxMAX_FRAME, 2000.f };
