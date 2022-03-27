@@ -605,9 +605,9 @@ typedef long long s64;
 	const int kMOTION_VARIATION_INTERVAL = 30;
 	
 	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
-	static float UPDATE_FREQUENCY = 60.f;
-	static float UPDATE_TIME = 1.f / UPDATE_FREQUENCY;
-	static float FRAME_LENGTH = 1000.f / UPDATE_FREQUENCY;
+	extern float UPDATE_FREQUENCY;
+	extern float UPDATE_TIME;
+	extern float FRAME_LENGTH;
 
 	//Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 	static float tfxLOOKUP_FREQUENCY = 10.f;
@@ -2637,11 +2637,11 @@ TFX_CUSTOM_EMITTER
 	Graph &GetGraph(EffectLibrary &library, GraphID &graph_id);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
-	inline void SetUpdateFrequency(float fps) {
-		UPDATE_FREQUENCY = fps;
-		UPDATE_TIME = 1.f / UPDATE_FREQUENCY;
-		FRAME_LENGTH = 1000.f / UPDATE_FREQUENCY;
-	}
+	void SetUpdateFrequency(float fps);
+
+	inline float GetUpdateFrequency() { return UPDATE_FREQUENCY; }
+	inline float GetUpdateTime() { return UPDATE_TIME; }
+	inline float GetFrameLength() { return FRAME_LENGTH; }
 	inline void SetLookUpFrequency(float frequency) {
 		tfxLOOKUP_FREQUENCY = frequency;
 	}

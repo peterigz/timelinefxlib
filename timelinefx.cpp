@@ -460,6 +460,19 @@ float SimplexNoise::fractal(size_t octaves, float x, float y, float z) const {
 }
 
 namespace tfx {
+	
+	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
+	float UPDATE_FREQUENCY = 60.f;
+	float UPDATE_TIME = 1.f / UPDATE_FREQUENCY;
+	float FRAME_LENGTH = 1000.f / UPDATE_FREQUENCY;
+
+	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
+	void SetUpdateFrequency(float fps) {
+		UPDATE_FREQUENCY = fps;
+		UPDATE_TIME = 1.f / UPDATE_FREQUENCY;
+		FRAME_LENGTH = 1000.f / UPDATE_FREQUENCY;
+	}
+
 	int FormatString(char* buf, size_t buf_size, const char* fmt, va_list args) {
 		int w = vsnprintf(buf, buf_size, fmt, args);
 		if (buf == NULL)
