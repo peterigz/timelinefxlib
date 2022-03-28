@@ -1088,7 +1088,7 @@ namespace tfx {
 			if (parent_particle->next_ptr) {
 				parent_particle = parent_particle->next_ptr;
 				TransformEffector(*parent_particle, true, properties.flags & tfxEmitterPropertyFlags_relative_angle);
-				world.position += properties.emitter_handle;
+				world.position += properties.emitter_handle * current.overal_scale;
 
 				if (flags & tfxEmitterStateFlags_no_tween_this_update) {
 					captured = world;
@@ -1105,7 +1105,7 @@ namespace tfx {
 		else {
 			if (!(flags & tfxEmitterStateFlags_retain_matrix)) {
 				world = local;
-				world.position += properties.emitter_handle;
+				world.position += properties.emitter_handle * current.overal_scale;
 				float s = sin(local.rotation);
 				float c = cos(local.rotation);
 				matrix.Set(c, s, -s, c);
@@ -1599,6 +1599,7 @@ namespace tfx {
 				e.parent = nullptr;
 				e.parent_particle = &p;
 				e.highest_particle_age = p.max_age;
+				e.current.overal_scale = current.overal_scale;
 				pm->AddEffect(e, !pm->current_ebuff);
 			}
 		}
@@ -2115,6 +2116,7 @@ namespace tfx {
 		current.noise_offset = lookup_callback(library->base_graphs[variation].noise_offset, current.frame);
 		current.noise_resolution = lookup_callback(library->variation_graphs[variation].noise_resolution, current.frame);
 		current.stretch = e.current.stretch;
+		current.overal_scale = e.current.overal_scale;
 		local.scale = e.local.scale;
 
 		//----Handle
@@ -2217,14 +2219,15 @@ namespace tfx {
 		current.color.a = lookup_callback(library->global_graphs[global].opacity, current.frame);
 		current.splatter = lookup_callback(library->global_graphs[global].splatter, current.frame);
 		//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
+		current.overal_scale = lookup_callback(library->global_graphs[global].overal_scale, current.frame);
 		if (!parent_particle) {
-			local.scale.x = lookup_callback(library->global_graphs[global].overal_scale, current.frame);
-			local.scale.y = local.scale.x;
+			local.scale.x = current.overal_scale;
+			local.scale.y = current.overal_scale;
 			local.rotation = lookup_callback(library->global_graphs[global].effect_angle, current.frame);
 		}
 		else {
-			local.scale.x = 1.f;
-			local.scale.y = 1.f;
+			local.scale.x = current.overal_scale;
+			local.scale.y = current.overal_scale;
 			local.rotation = 0.f;
 		}
 		current.stretch = lookup_callback(library->global_graphs[global].stretch, current.frame);
@@ -2512,7 +2515,7 @@ namespace tfx {
 		}
 
 		//----Position
-		p.local.position += current_velocity;
+		p.local.position += current_velocity * e.current.overal_scale;
 
 		//----Image animation
 		if (e.properties.flags & tfxEmitterPropertyFlags_animate) {
