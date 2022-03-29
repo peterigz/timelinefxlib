@@ -188,7 +188,7 @@ namespace tfx {
 	//--------------------------------------------------------------
 	//macros
 #define TFX_VERSION "Alpha"
-#define TFX_VERSION_NUMBER 1.22.0208
+#define TFX_VERSION_NUMBER 3.29.2022
 
 #define tfxMAX_FRAME 20000.f
 #define tfxNullParent 0xFFFFFFFF
