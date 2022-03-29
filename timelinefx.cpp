@@ -5181,28 +5181,28 @@ namespace tfx {
 		case GraphPreset::tfxOpacityOvertimePreset:
 			return tfxVec2(.0017f, 0.00275f);
 		case GraphPreset::tfxGlobalPercentPreset:
-			return tfxVec2(3.5f, 0.005f);
+			return tfxVec2(10.f, 0.005f);
 			break;
 		case GraphPreset::tfxGlobalPercentPresetSigned:
-			return tfxVec2(3.5f, 0.006f);
+			return tfxVec2(10.f, 0.006f);
 			break;
 		case GraphPreset::tfxGlobalOpacityPreset:
-			return tfxVec2(3.5f, 0.003f);
+			return tfxVec2(10.f, 0.003f);
 			break;
 		case GraphPreset::tfxLifePreset:
-			return tfxVec2(3.5f, 3.5f);
+			return tfxVec2(10.f, 3.5f);
 			break;
 		case GraphPreset::tfxAnglePreset:
-			return tfxVec2(3.5f, 1.f);
+			return tfxVec2(10.f, 1.f);
 			break;
 		case GraphPreset::tfxArcPreset:
-			return tfxVec2(3.5f, 1.f);
+			return tfxVec2(10.f, 1.f);
 			break;
 		case GraphPreset::tfxEmissionRangePreset:
-			return tfxVec2(3.5f, .5f);
+			return tfxVec2(10.f, .5f);
 			break;
 		case GraphPreset::tfxAmountPreset:
-			return tfxVec2(3.5f, 1.25f);
+			return tfxVec2(10.f, 1.25f);
 			break;
 		case GraphPreset::tfxFrameratePreset:
 			return tfxVec2(0.0017f, .5f);
@@ -5213,7 +5213,13 @@ namespace tfx {
 		case GraphPreset::tfxWeightVariationPreset:
 		case GraphPreset::tfxSpinPreset:
 		case GraphPreset::tfxSpinVariationPreset:
-			return tfxVec2(3.5f, 2.5f);
+			return tfxVec2(10.f, 2.5f);
+			break;
+		case GraphPreset::tfxNoiseResolutionPreset:
+			return tfxVec2(10.f, 1.f);
+			break;
+		case GraphPreset::tfxNoiseOffsetVariationPreset:
+			return tfxVec2(10.f, .01f);
 			break;
 		case GraphPreset::tfxDirectionOvertimePreset:
 			return tfxVec2(0.0017f, 1.f);
