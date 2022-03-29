@@ -1760,7 +1760,6 @@ typedef long long s64;
 		tfxVec2 size;
 		tfxVec2 random_size;
 		float velocity;
-		float height;
 		float spin;
 		float weight;
 	};
@@ -2313,7 +2312,6 @@ TFX_CUSTOM_EMITTER
 		tfxVec2 base_size;
 
 		float base_velocity = 1;
-		float base_height = 1;
 		float base_spin = 1;
 		float base_weight = 1;
 
@@ -2323,9 +2321,9 @@ TFX_CUSTOM_EMITTER
 		float weight_acceleration = 1;			//The current amount of gravity applied to the y axis of the particle each frame
 
 		float noise_offset = 1;					//The random velocity added each frame
-		float image_frame = 1;
+		float noise_resolution = 1;				//The random velocity added each frame
+		float image_frame = 0;
 		unsigned int control_slot_and_layer;	//index to the controller, and also stores the layer in the particle manager that the particle is on (layer << 3)
-
 		float local_rotation;
 	};
 

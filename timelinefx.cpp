@@ -1446,39 +1446,39 @@ namespace tfx {
 		if (!(properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
 			p.base.random_size.x = random_generation.Range(current.size_variation.x);
 			p.base.random_size.y = random_generation.Range(current.size_variation.y);
-			p.base.height = p.base.random_size.y + current.size.y;
+			p.base.size.y = p.base.random_size.y + current.size.y;
 			p.base.size.x = (p.base.random_size.x + current.size.x) / properties.image->image_size.x;
-			p.base.size.y = p.base.height / properties.image->image_size.y;
+			float height = p.base.size.y / properties.image->image_size.y;
 
 			p.local.scale.x = p.base.size.x * library->overtime_graphs[overtime].width.GetFirstValue();
 
 			if (library->overtime_graphs[overtime].stretch.GetFirstValue()) {
 				float velocity = std::fabsf(velocity_scale * p.base.velocity) * UPDATE_TIME;
 				velocity += p.weight_acceleration * UPDATE_TIME;
-				p.local.scale.y = (library->overtime_graphs[overtime].height.GetFirstValue() * parent->current.size.y * (p.base.height + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
+				p.local.scale.y = (library->overtime_graphs[overtime].height.GetFirstValue() * parent->current.size.y * (p.base.size.y + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
 			}
 			else {
 				if (properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-					p.local.scale.y = p.base.size.y * library->overtime_graphs[overtime].width.GetFirstValue();
+					p.local.scale.y = p.local.scale.x;
 				}
 				else {
-					p.local.scale.y = p.base.size.y * library->overtime_graphs[overtime].height.GetFirstValue();
+					p.local.scale.y = height * library->overtime_graphs[overtime].height.GetFirstValue();
 				}
 			}
 		}
 		else {
 			p.base.random_size.x = random_generation.Range(current.size_variation.x);
 			p.base.random_size.y = p.base.random_size.x;
-			p.base.height = p.base.random_size.y + current.size.y;
+			p.base.size.y = p.base.random_size.y + current.size.y;
 			p.base.size.x = (p.base.random_size.x + current.size.x) / properties.image->image_size.x;
-			p.base.size.y = p.base.height / properties.image->image_size.y;
+			float height = p.base.size.y / properties.image->image_size.y;
 
 			p.local.scale.x = p.base.size.x * library->overtime_graphs[overtime].width.GetFirstValue();
 
 			if (library->overtime_graphs[overtime].stretch.GetFirstValue()) {
 				float velocity = std::fabsf(velocity_scale * p.base.velocity) * UPDATE_TIME;
 				velocity += p.weight_acceleration * UPDATE_TIME;
-				p.local.scale.y = (library->overtime_graphs[overtime].width.GetFirstValue() * parent->current.size.y * (p.base.height + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
+				p.local.scale.y = (library->overtime_graphs[overtime].width.GetFirstValue() * parent->current.size.y * (p.base.size.y + (velocity * library->overtime_graphs[overtime].stretch.GetFirstValue() * parent->current.stretch))) / properties.image->image_size.y;
 			}
 			else {
 				p.local.scale.y = p.local.scale.x;
@@ -1857,9 +1857,9 @@ namespace tfx {
 		if (!(properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
 			float base_random_size_x = random_generation.Range(current.size_variation.x);
 			float base_random_size_y = random_generation.Range(current.size_variation.y);
-			p.base_height = base_random_size_y + current.size.y;
+			p.base_size.y = base_random_size_y + current.size.y;
 			p.base_size.x = (base_random_size_x + current.size.x) / properties.image->image_size.x;
-			p.base_size.y = p.base_height / properties.image->image_size.y;
+			//p.base_size.y = p.base_height / properties.image->image_size.y;
 
 			//p.scale_rotation.x = p.base_size.x * library->overtime_graphs[overtime].width.GetFirstValue();
 
@@ -1880,9 +1880,9 @@ namespace tfx {
 		else {
 			float base_random_size_x = random_generation.Range(current.size_variation.x);
 			float base_random_size_y = base_random_size_x;
-			p.base_height = base_random_size_y + current.size.y;
+			p.base_size.y = base_random_size_y + current.size.y;
 			p.base_size.x = (base_random_size_x + current.size.x) / properties.image->image_size.x;
-			p.base_size.y = p.base_height / properties.image->image_size.y;
+			//p.base_size.y = p.base_height / properties.image->image_size.y;
 
 			//p.scale_rotation.x = p.base_size.x * library->overtime_graphs[overtime].width.GetFirstValue();
 
@@ -1947,7 +1947,7 @@ namespace tfx {
 
 		//----Motion randomness
 		p.noise_offset = random_generation.Range(current.noise_offset_variation) + current.noise_offset;
-		//p.noise_resolution = current.noise_resolution;
+		p.noise_resolution = current.noise_resolution;
 
 		if (!(properties.flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != EmissionType::tfxLine) {
 			direction = p.emission_angle = GetEmissionDirection(p.local_position, world.position) + library->overtime_graphs[overtime].direction.GetFirstValue();
@@ -2257,9 +2257,9 @@ namespace tfx {
 			//std::uniform_real_distribution<float> random_width(0, e.current.size_variation.x);
 			//std::uniform_real_distribution<float> random_height(0, e.current.size_variation.y);
 
-			p.base.height = p.base.random_size.y + e.current.size.y;
+			p.base.size.y = p.base.random_size.y + e.current.size.y;
 			p.base.size.x = (p.base.random_size.x + e.current.size.x) / e.properties.image->image_size.x;
-			p.base.size.y = p.base.height / e.properties.image->image_size.y;
+			//p.base.size.y = p.base.height / e.properties.image->image_size.y;
 
 			//p.local.scale.x = p.base.size.x * e.library->overtime_graphs[e.overtime].width.GetFirstValue();
 
@@ -2279,9 +2279,9 @@ namespace tfx {
 		else {
 			//std::uniform_real_distribution<float> random_width(0, e.current.size_variation.x);
 
-			p.base.height = p.base.random_size.y + e.current.size.x;
+			p.base.size.y = p.base.random_size.y + e.current.size.x;
 			p.base.size.x = (p.base.random_size.x + e.current.size.x) / e.properties.image->image_size.x;
-			p.base.size.y = p.base.height / e.properties.image->image_size.y;
+			//p.base.size.y = p.base.height / e.properties.image->image_size.y;
 
 			//p.local.scale.x = p.base.size.x * e.library->overtime_graphs[e.overtime].width.GetFirstValue();
 
@@ -2485,13 +2485,13 @@ namespace tfx {
 		float velocity = std::fabsf(velocity_scale * p.base.velocity + mr_speed + p.weight_acceleration);
 		if (e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
 			p.local.scale.y = (lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age) *
-				(p.base.height + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
+				(p.base.size.y + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
 			if (p.local.scale.y < p.local.scale.x)
 				p.local.scale.y = p.local.scale.x;
 		}
 		else
 			p.local.scale.y = (lookup_overtime_callback(e.library->overtime_graphs[e.overtime].height, p.age, p.max_age) *
-			(p.base.height + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
+			(p.base.size.y + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
 
 		//----Spin and angle Changes
 		float spin = 0;
