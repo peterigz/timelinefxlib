@@ -2510,7 +2510,8 @@ namespace tfx {
 		//----Rotation
 		p.local.rotation += spin * UPDATE_TIME;
 		if (e.properties.angle_setting == AngleSetting::tfxAlign) {
-			p.local.rotation = GetVectorAngle(current_velocity.x, current_velocity.y) + e.properties.angle_offset;
+			tfxVec2 vd = current_velocity.IsNill() ? velocity_normal : current_velocity;
+			p.local.rotation = GetVectorAngle(vd.x, vd.y) + e.properties.angle_offset;
 		}
 
 		//----Position

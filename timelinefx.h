@@ -766,8 +766,10 @@ typedef long long s64;
 		inline tfxVec2 operator-(float v) { return tfxVec2(x - v, y - v); }
 		inline tfxVec2 operator*(float v) { return tfxVec2(x * v, y * v); }
 		inline void operator*=(float v) { x *= v; y *= v; }
+		inline bool operator>(tfxVec2 &v) { return x + y > v.x + v.y; }
 		inline tfxVec2 operator/(float v) { return tfxVec2(x / v, y / v); }
 		inline float Squared() { return x * x + y * y; }
+		inline bool IsNill() { return !x && !y; }
 	};
 	inline tfxVec2 operator*(float ls, tfxVec2 rs) { return tfxVec2(rs.x * ls, rs.y * ls); }
 
