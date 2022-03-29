@@ -2420,9 +2420,8 @@ namespace tfx {
 			float o_mr = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].direction_turbulance, p.age, p.max_age);
 			float v_mr = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity_turbulance, p.age, p.max_age);
 			if (o_mr + v_mr) {
-				float noise_resolution = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].noise_resolution, p.age, p.max_age) * p.noise_resolution;
-				float rate_of_change = float(random_generation.Millisecs()) * 0.000f;
-				float noise = SimplexNoise::noise(p.local.position.x / noise_resolution + p.noise_offset + rate_of_change, p.local.position.y / noise_resolution + p.noise_offset + rate_of_change);
+				float noise_resolution = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].noise_resolution, p.age, p.max_age) * p.noise_resolution + 0.01f;
+				float noise = SimplexNoise::noise(p.local.position.x / noise_resolution + p.noise_offset, p.local.position.y / noise_resolution + p.noise_offset);
 				mr_speed = (noise + 2.f) * v_mr;
 				mr_angle = noise * 3.14159265f * 2 * o_mr;
 				mr_vec.x = std::sinf(mr_angle) * mr_speed;
