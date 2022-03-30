@@ -489,6 +489,7 @@ typedef long long s64;
 		tfxEmitterPropertyFlags_use_vector_field = 1 << 19,					//Enable the use of a vector field to apply forces to the particles
 		tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
 		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
+		tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -1866,8 +1867,8 @@ typedef long long s64;
 		float start_frame;
 		//The final frame index of the animation
 		float end_frame;
-		//Random movement offset, higher numbers means less uniform
-		float noise_offset;
+		//Amount to spawn ratio per area squared - for area type emitters you can use this to factor the amount to spawn based on the size of the area
+		//float spawn_ratio_per_pixel_squared;
 
 		EmitterProperties() :
 			angle_offset(360),
@@ -1887,8 +1888,8 @@ typedef long long s64;
 			start_frame(0),
 			end_frame(0),
 			frame_rate(30.f),
-			angle_setting(AngleSetting::tfxRandom),
-			noise_offset(0)
+			angle_setting(AngleSetting::tfxRandom)
+			//spawn_ratio_per_pixel_squared(10000.f)
 		{ }
 	};
 

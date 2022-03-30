@@ -1155,6 +1155,15 @@ namespace tfx {
 		if (!(properties.flags & tfxEmitterPropertyFlags_single) && !(properties.flags & tfxEmitterPropertyFlags_one_shot)) {
 			qty = current.amount;
 			qty += random_generation.Range(current.amount_variation);
+
+			if (properties.flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
+				float area = current.emitter_size.x * current.emitter_size.y;
+				qty = (qty / 10000.f) * area;
+			}
+			else if (properties.flags & tfxEmitterPropertyFlags_use_spawn_ratio && properties.emission_type == tfxLine) {
+				qty = (qty / 100.f) * current.emitter_size.y;
+			}
+
 			qty *= lookup_callback(parent->library->global_graphs[parent->global].amount, current.frame);
 			qty *= UPDATE_TIME;
 			qty += current.amount_remainder;
@@ -1169,8 +1178,10 @@ namespace tfx {
 
 		while (qty >= 1.f) {
 			bool is_compute = properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader;
-			if (!pm->FreeCapacity(properties.layer, is_compute))
+			if (!pm->FreeCapacity(properties.layer, is_compute)) {
+				current.amount_remainder = 0;
 				break;
+			}
 			tween = count / interpolate;
 			count++;
 			qty -= 1.f;
