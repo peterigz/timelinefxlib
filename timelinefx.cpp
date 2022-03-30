@@ -3992,6 +3992,7 @@ namespace tfx {
 		eff.Insert("global_uniform_size", tfxBool);
 		eff.Insert("base_uniform_size", tfxBool);
 		eff.Insert("lifetime_uniform_size", tfxBool);
+		eff.Insert("use_spawn_ratio", tfxBool);
 
 		eff.Insert("frames", tfxUint);
 		eff.Insert("current_frame", tfxUint);
@@ -4253,6 +4254,8 @@ namespace tfx {
 			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_base_uniform_size; else effect.properties.flags &= ~tfxEmitterPropertyFlags_base_uniform_size;
 		if (field == "lifetime_uniform_size")
 			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; else effect.properties.flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size;
+		if (field == "use_spawn_ratio")
+			if (value) effect.properties.flags |= tfxEmitterPropertyFlags_use_spawn_ratio; else effect.properties.flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;
 	}
 
 	void StreamProperties(EmitterProperties &property, tfxText &file) {
@@ -4293,6 +4296,7 @@ namespace tfx {
 		file.AddLine("global_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_global_uniform_size));
 		file.AddLine("base_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_base_uniform_size));
 		file.AddLine("lifetime_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
+		file.AddLine("use_spawn_ratio=%i", (property.flags & tfxEmitterPropertyFlags_use_spawn_ratio));
 		file.AddLine("layer=%i", property.layer);
 
 	}
