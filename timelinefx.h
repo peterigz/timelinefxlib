@@ -2248,7 +2248,6 @@ TFX_CUSTOM_EMITTER
 		tfxRGBA8 color;					//Colour of the particle
 		tfxParticleFlags flags;			//flags for different states
 		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
-		unsigned int capture_count = 0;	//Ugly hack to make sure particles loop on a line properly
 
 		//Internal use variables
 		Particle *next_ptr;

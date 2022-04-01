@@ -2455,22 +2455,6 @@ namespace tfx {
 		current_velocity += mr_vec * UPDATE_TIME;
 		current_velocity.y += p.weight_acceleration * UPDATE_TIME;
 
-		//Direction
-		tfxVec2 offset = velocity_normal * e.current.emitter_size.y;
-		float length = std::fabsf(p.local.position.y - e.current.emitter_handle.y);
-		float emitter_length = e.current.emitter_size.y;
-		bool is_line = e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal;
-		bool line_and_loop = is_line && e.properties.end_behaviour == tfxLoop && length > emitter_length;
-		bool line_and_kill = is_line && e.properties.end_behaviour == tfxKill && length > emitter_length;
-		if (line_and_loop) {
-			p.local.position.y -= offset.y;
-			p.flags |= tfxParticleFlags_capture_after_transform;
-			p.capture_count = 2;
-		}
-		else if (line_and_kill) {
-			return false;
-		}
-
 		//----Color changes
 		p.color.a = unsigned char(255.f * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].opacity, p.age, p.max_age) * e.parent->current.color.a);
 		p.intensity = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].intensity, p.age, p.max_age);
@@ -2483,24 +2467,25 @@ namespace tfx {
 		p.color = tfxRGBA8(p.color.r, p.color.g, p.color.b, p.color.a);
 
 		//----Size Changes
-		p.local.scale.x = p.base.size.x * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age);
+		tfxVec2 scale;
+		scale.x = p.base.size.x * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age);
 		//Just here to test:
 		//float test1 = p.base.size.x * e.library->LookupPreciseOvertimeNodeList(tfxOvertime_width, e.lookup_node_index, p.age, p.max_age);
 		//p.local.scale.x = p.base.size.x * e.library->LookupFastOvertimeValueList(tfxOvertime_width, e.lookup_value_index, p.age, p.max_age);
-		if (p.local.scale.x < 0.f)
-			p.local.scale.x = p.local.scale.x;
+		if (scale.x < 0.f)
+			scale.x = scale.x;
 
 		//----Stretch Changes
 		float stretch = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].stretch, p.age, p.max_age);
 		float velocity = std::fabsf(velocity_scale * p.base.velocity + mr_speed + p.weight_acceleration);
 		if (e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-			p.local.scale.y = (lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age) *
+			scale.y = (lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age) *
 				(p.base.size.y + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
-			if (p.local.scale.y < p.local.scale.x)
-				p.local.scale.y = p.local.scale.x;
+			if (scale.y < scale.x)
+				scale.y = scale.x;
 		}
 		else
-			p.local.scale.y = (lookup_overtime_callback(e.library->overtime_graphs[e.overtime].height, p.age, p.max_age) *
+			scale.y = (lookup_overtime_callback(e.library->overtime_graphs[e.overtime].height, p.age, p.max_age) *
 			(p.base.size.y + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
 
 		//----Spin and angle Changes
@@ -2527,6 +2512,24 @@ namespace tfx {
 
 		//----Position
 		p.local.position += current_velocity * e.current.overal_scale;
+
+		//----Scale
+		p.local.scale = scale;
+
+		//Lines - reposition if the particle is travelling along a line
+		tfxVec2 offset = velocity_normal * e.current.emitter_size.y;
+		float length = std::fabsf(p.local.position.y - e.current.emitter_handle.y);
+		float emitter_length = e.current.emitter_size.y;
+		bool is_line = e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal;
+		bool line_and_loop = is_line && e.properties.end_behaviour == tfxLoop && length > emitter_length;
+		bool line_and_kill = is_line && e.properties.end_behaviour == tfxKill && length > emitter_length;
+		if (line_and_loop) {
+			p.local.position.y -= offset.y;
+			p.flags |= tfxParticleFlags_capture_after_transform;
+		}
+		else if (line_and_kill) {
+			return false;
+		}
 
 		//----Image animation
 		if (e.properties.flags & tfxEmitterPropertyFlags_animate) {
@@ -5602,10 +5605,9 @@ namespace tfx {
 
 					if (ControlParticle(p, *p.parent)) {
 						TransformParticle(p, *p.parent);
-						if (p.flags & tfxParticleFlags_capture_after_transform || p.capture_count > 0) {
+						if (p.flags & tfxParticleFlags_capture_after_transform) {
 							p.captured.position = p.world.position;
 							p.flags &= ~tfxParticleFlags_capture_after_transform;
-							p.capture_count--;
 						}
 
 						p.next_ptr = SetNextParticle(layer, p, next_buffer);
