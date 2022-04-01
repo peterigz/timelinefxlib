@@ -2397,6 +2397,38 @@ namespace tfx {
 
 	}
 
+	/*
+		float direction = 0;
+		float mr_angle = 0;
+		float mr_speed = 0;
+		tfxVec2 mr_vec;
+
+			float o_mr = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].direction_turbulance, p.age, p.max_age);
+			float v_mr = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity_turbulance, p.age, p.max_age);
+
+				float noise_resolution = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].noise_resolution, p.age, p.max_age) * p.noise_resolution + 0.01f;
+				float noise = SimplexNoise::noise(p.local.position.x / noise_resolution + p.noise_offset, p.local.position.y / noise_resolution + p.noise_offset);
+
+		tfxVec2 velocity_normal;
+		float velocity_scale = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity, p.age, p.max_age) * e.current.velocity_adjuster;
+		tfxVec2 current_velocity = ((p.base.velocity * velocity_scale)) * velocity_normal * UPDATE_TIME;
+
+		tfxVec2 scale;
+
+		float stretch = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].stretch, p.age, p.max_age);
+		float velocity = std::fabsf(velocity_scale * p.base.velocity + mr_speed + p.weight_acceleration);
+
+		float spin = 0;
+
+		tfxVec2 offset = velocity_normal * e.current.emitter_size.y;
+		float length = std::fabsf(p.local.position.y - e.current.emitter_handle.y);
+		float emitter_length = e.current.emitter_size.y;
+		bool is_line = e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal;
+		bool line_and_loop = is_line && e.properties.end_behaviour == tfxLoop && length > emitter_length;
+		bool line_and_kill = is_line && e.properties.end_behaviour == tfxKill && length > emitter_length;
+
+	*/
+
 	bool ControlParticle(Particle &p, EffectEmitter &e) {
 		if (e.pm->update_base_values)
 			ReloadBaseValues(p, e);
@@ -2468,7 +2500,8 @@ namespace tfx {
 
 		//----Size Changes
 		tfxVec2 scale;
-		scale.x = p.base.size.x * lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age);
+		float width_overtime = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age);
+		scale.x = p.base.size.x * width_overtime;
 		//Just here to test:
 		//float test1 = p.base.size.x * e.library->LookupPreciseOvertimeNodeList(tfxOvertime_width, e.lookup_node_index, p.age, p.max_age);
 		//p.local.scale.x = p.base.size.x * e.library->LookupFastOvertimeValueList(tfxOvertime_width, e.lookup_value_index, p.age, p.max_age);
@@ -2479,8 +2512,7 @@ namespace tfx {
 		float stretch = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].stretch, p.age, p.max_age);
 		float velocity = std::fabsf(velocity_scale * p.base.velocity + mr_speed + p.weight_acceleration);
 		if (e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-			scale.y = (lookup_overtime_callback(e.library->overtime_graphs[e.overtime].width, p.age, p.max_age) *
-				(p.base.size.y + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
+			scale.y = (width_overtime * (p.base.size.y + (velocity * stretch * e.current.stretch))) / e.properties.image->image_size.y;
 			if (scale.y < scale.x)
 				scale.y = scale.x;
 		}
@@ -5292,12 +5324,9 @@ namespace tfx {
 	}
 
 	float LookupFastOvertime(Graph &graph, float age, float lifetime) {
-		float frame = 0;
-		if (lifetime)
-			frame = (age / lifetime * graph.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME;
-		if (frame < graph.lookup.last_frame)
-			return graph.lookup.values[(unsigned int)frame];
-		return graph.lookup.values[graph.lookup.last_frame];
+		u32 frame = static_cast<u32>((age / lifetime * graph.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+		frame = std::min<u32>(frame, graph.lookup.last_frame);
+		return graph.lookup.values[frame];
 	}
 
 	float LookupFast(Graph &graph, float frame) {
