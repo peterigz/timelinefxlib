@@ -688,6 +688,30 @@ typedef long long s64;
 
 	};
 
+	template<typename T>
+	struct tfxring {
+		unsigned int current_size;
+		unsigned int capacity;
+		unsigned int start_index;
+		T* data;
+		inline tfxvec(unsigned int qty) { current_size = capacity = 0; data = NULL; reserve(qty); }
+
+		// Provide standard typedefs but we don't use them ourselves.
+		typedef T                   value_type;
+		typedef value_type*         iterator;
+		typedef const value_type*   const_iterator;
+
+		inline bool			empty() { return current_size == 0; start_index = 0; }
+		inline unsigned int			size() { return current_size; }
+		inline const unsigned int	size() const { return current_size; }
+		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
+		inline const T&     operator[](unsigned int i) const { return data[(i + start_index) % capacity]; }
+
+		inline bool	        push_back(const T& v) { if (current_size == capacity) return false; new((void*)(data + start_index + current_size) % capacity) T(v); current_size++; return true; }
+		inline void         reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; T* new_data = (T*)malloc((size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); free(data); } data = new_data; capacity = new_capacity; }
+		inline void			bump() { start_index++; start_index %= capacity; }
+	};
+
 	//A char buffer you can use to load a file into and read from
 	//Has no deconstructor so make sure you call FreeAll() when done
 	//This is meant for limited usage in timeline fx only and not recommended for use outside!
@@ -2009,6 +2033,8 @@ typedef long long s64;
 		float max_radius;
 		//List of sub_effects ( effects contain emitters, emitters contain sub effects )
 		tfxvec<EffectEmitter> sub_effectors;
+		//Experiment with emitters maintaining their own list of particles. Buffer info contains info for fetching the area in the buffer stored in the particle manager
+		//BufferInfo particle_buffer;
 
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
@@ -2031,6 +2057,8 @@ TFX_CUSTOM_EMITTER
 		unsigned int animation_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 		float max_life;
+		//The maximum amount of particles that this effect can spawn (root effects only)
+		u32 max_particles;
 		//Pointer to the immediate parent
 		EffectEmitter *parent;
 		//Pointer to the next pointer in the particle manager buffer. 
@@ -2165,6 +2193,7 @@ TFX_CUSTOM_EMITTER
 		void TransformEffector(Particle &parent, bool relative_position = true, bool relative_angle = false);
 		void Update();
 		void SpawnParticles();
+		unsigned int CalculateMaxParticles();
 		void InitCPUParticle(Particle &p, float tween);
 		void InitComputeParticle(ComputeParticle &p, float tween);
 		void UpdateComputeController();
@@ -2220,9 +2249,44 @@ TFX_CUSTOM_EMITTER
 		bool is_current_revision = false;
 		void SetDescription(const char *format, ...);
 	};
-	
-	struct EmitterMessage {
-		Matrix2 new_transform;
+
+	struct ParticleStateData {
+		//Updated everyframe
+		FormState local;				//The local position of the particle, relative to the emitter.
+		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
+		float max_age;					//max age before the particle expires
+		float image_frame;				//Current frame of the image if it's an animation
+		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
+		tfxRGBA8 color;					//Colour of the particle
+	};
+
+	struct ParticleLocationState {
+		float base_velocity;
+		float base_weight;
+		float emission_angle;			//Emission angle of the particle at spawn time
+		float noise_offset;				//Higer numbers means random movement is less uniform
+		float noise_resolution;			//Higer numbers means random movement is more uniform
+		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
+		FormState local;				//The local position of the particle, relative to the emitter.
+	};
+
+	struct ParticleLocation {
+	};
+
+	struct ParticleSpawnData {
+		//Read only when ControlParticle is called, only written to at spawn time
+		tfxVec2 base_size;
+		float base_spin;
+		tfxParticleFlags flags;			//flags for different states
+	};
+
+	struct ParticleSprite {	//64 bytes
+		tfxVec4 bounds;				//the min/max x,y coordinates of the image being drawn
+		tfxVec4 uv;					//The UV coords of the image in the texture
+		tfxVec4 scale_rotation;		//Scale and rotation (x, y = scale, z = rotation, w = multiply blend factor)
+		tfxVec2 position;			//The position of the sprite
+		tfxRGBA8 color;				//The color tint of the sprite
+		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, image layer index, shader function index, blend type
 	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
@@ -2231,24 +2295,27 @@ TFX_CUSTOM_EMITTER
 	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
 	//168 bytes
 	struct Particle {
-		//todo: can optimise this, particles don't need to transform scale
 		FormState local;				//The local position of the particle, relative to the emitter.
 		FormState world;				//The world position of the particle relative to the screen.
 		FormState captured;				//The captured world coords for tweening
 		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
+
+		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
-		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
-		float max_age;					//max age before the particle expires
 		float emission_angle;			//Emission angle of the particle at spawn time
-		float image_frame;				//Current frame of the image if it's an animation
-		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float noise_offset;				//Higer numbers means random movement is less uniform
 		float noise_resolution;			//Higer numbers means random movement is more uniform
+		tfxParticleFlags flags;			//flags for different states
+
+		//Updated everyframe
+		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
+		float max_age;					//max age before the particle expires
+		float image_frame;				//Current frame of the image if it's an animation
+		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
 		tfxRGBA8 color;					//Colour of the particle
-		tfxParticleFlags flags;			//flags for different states
-		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
 
+		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
 
@@ -2298,15 +2365,6 @@ TFX_CUSTOM_EMITTER
 		float stretch;
 		float frame_rate;
 		float noise_resolution;
-	};
-
-	struct ParticleSprite {
-		tfxVec4 bounds;				//the min/max x,y coordinates of the image being drawn
-		tfxVec4 uv;					//The UV coords of the image in the texture
-		tfxVec4 scale_rotation;		//Scale and rotation (x, y = scale, z = rotation, w = multiply blend factor)
-		tfxVec2 position;			//The position of the sprite
-		tfxRGBA8 color;				//The color tint of the sprite
-		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, image layer index, shader function index, blend type
 	};
 
 	struct ComputeParticle {
@@ -2461,12 +2519,23 @@ TFX_CUSTOM_EMITTER
 		unsigned int CountOfFreeGraphs();
 	};
 
+	struct BufferInfo {
+		u32 start_index;
+		u32 end_index;
+		u32 length;
+	};
+
 	//Use the particle manager to add effects to your scene
 	struct ParticleManager {
 
 		//Particles are stored using double buffering, every update the particle is moved to the next list, so particle deletion happens by not adding to the next list. Given that particles can have varying
 		//lifetimes and can expire at anytime, this seemed like the easiest way to do this, although I dare say that there's faster ways of doing it, multi-threading it might be a good start there.
 		tfxvec<Particle> particles[tfxLAYERS][2];
+		//Testing more data oriented approach
+		tfxvec<ParticleStateData> particle_states[tfxLAYERS][2];
+		tfxvec<ParticleSpawnData> particle_spawns[tfxLAYERS][2];
+		tfxvec<ParticleSprite> particle_sprites[tfxLAYERS][2];
+		tfxvec<Matrix2> particle_martixes[tfxLAYERS][2];
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
 		//you can use an EffectEmitterTemplate and use callback funcitons. 
 		tfxvec<EffectEmitter> effects[2];
@@ -2625,6 +2694,7 @@ TFX_CUSTOM_EMITTER
 	void TransformParticle(Particle &p, EffectEmitter &e);
 	void Transform(FormState &local, FormState &world, EffectEmitter &e);
 	bool ControlParticle(Particle &p, EffectEmitter &e);
+	bool ControlParticleFast(Particle &p, EffectEmitter &e);
 	FormState Tween(float tween, FormState &world, FormState &captured);
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
