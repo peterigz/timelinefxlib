@@ -2654,16 +2654,18 @@ namespace tfx {
 		float mr_speed = 0;
 
 		tfxVec2 mr_vec;
-		if (lookup_velocity_turbulance + lookup_velocity_turbulance && (e.properties.emission_type != tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal))
+		if ((e.properties.emission_type != tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal))
 			|| e.properties.emission_type == tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal)) {
 
+			direction = lookup_direction;
+		}
+			
+		if (lookup_velocity_turbulance + lookup_velocity_turbulance) {
 			float noise = SimplexNoise::noise(p.local.position.x / lookup_noise_resolution + p.noise_offset, p.local.position.y / lookup_noise_resolution + p.noise_offset);
 			mr_speed = noise * lookup_velocity_turbulance;
 			mr_angle = noise * 3.14159265f * 2 * lookup_direction_turbulance;
 			mr_vec.x = std::sinf(mr_angle) * mr_speed;
 			mr_vec.y = -std::cosf(mr_angle) * mr_speed;
-
-			direction = lookup_direction;
 		}
 
 		//----Weight Changes
@@ -2751,7 +2753,8 @@ namespace tfx {
 		}
 
 		//----Image animation
-		p.image_frame += e.properties.frame_rate * UPDATE_TIME;
+		float frame_rate = e.properties.image->animation_frames > 1 && e.properties.flags & tfxEmitterPropertyFlags_animate ? e.properties.frame_rate : 0.f;
+		p.image_frame += frame_rate * UPDATE_TIME;
 		p.image_frame = (e.properties.flags & tfxEmitterPropertyFlags_play_once) && p.image_frame > e.properties.end_frame ? p.image_frame = e.properties.end_frame : p.image_frame;
 		p.image_frame = (e.properties.flags & tfxParticleControlFlags_play_once) && p.image_frame < 0 ? p.image_frame = 0 : p.image_frame;
 		p.image_frame = std::fmodf(p.image_frame, e.properties.end_frame + 1);
@@ -4340,13 +4343,13 @@ namespace tfx {
 	void AssignNodeData(AttributeNode &n, tfxvec<tfxText> &values) {
 		n.frame = (float)atof(values[1].c_str());
 		n.value = (float)atof(values[2].c_str());
-		n.is_curve = (bool)atoi(values[3].c_str());
+		n.flags = (bool)atoi(values[3].c_str()) ? tfxAttributeNodeFlags_is_curve : 0;
 		n.left.x = (float)atof(values[4].c_str());
 		n.left.y = (float)atof(values[5].c_str());
 		n.right.x = (float)atof(values[6].c_str());
 		n.right.y = (float)atof(values[7].c_str());
-		if (n.is_curve)
-			n.curves_initialised = true;
+		if (n.flags & tfxAttributeNodeFlags_is_curve)
+			n.flags |= tfxAttributeNodeFlags_curves_initialised;
 	}
 
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, uint32_t value) {
@@ -4512,7 +4515,7 @@ namespace tfx {
 	void StreamGraph(const char * name, Graph &graph, tfxText &file) {
 
 		for (auto &n : graph.nodes) {
-			file.AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, n.frame, n.value, n.is_curve, n.left.x, n.left.y, n.right.x, n.right.y);
+			file.AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, n.frame, n.value, (n.flags & tfxAttributeNodeFlags_is_curve), n.left.x, n.left.y, n.right.x, n.right.y);
 		}
 
 	}
@@ -4561,10 +4564,10 @@ namespace tfx {
 		return value;
 	}
 
-	bool SetNode(Graph &graph, AttributeNode &node, float _frame, float _value, bool _is_curve, float _c0x, float _c0y, float _c1x, float _c1y) {
+	bool SetNode(Graph &graph, AttributeNode &node, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
 		node.frame = _frame;
 		node.value = _value;
-		node.is_curve = _is_curve;
+		node.flags = flags;
 		node.left.x = _c0x;
 		node.left.y = _c0y;
 		node.right.x = _c1x;
@@ -4628,7 +4631,7 @@ namespace tfx {
 			ClampNode(graph, node);
 		}
 
-		if (node.curves_initialised) {
+		if (node.flags & tfxAttributeNodeFlags_curves_initialised) {
 			node.left.y += node.value - old_value;
 			node.left.x += node.frame - old_frame;
 			node.right.y += node.value - old_value;
@@ -4684,7 +4687,7 @@ namespace tfx {
 			ClampNode(graph, node);
 		}
 
-		if (node.curves_initialised) {
+		if (node.flags & tfxAttributeNodeFlags_curves_initialised) {
 			node.left.y += node.value - old_value;
 			node.left.x += node.frame - old_frame;
 			node.right.y += node.value - old_value;
@@ -4711,7 +4714,7 @@ namespace tfx {
 	void ClampGraph(Graph &graph) {
 		for (auto &node : graph.nodes) {
 			ClampNode(graph, node);
-			if (node.is_curve) {
+			if (node.flags & tfxAttributeNodeFlags_is_curve) {
 				ClampCurve(graph, node.left, node);
 				ClampCurve(graph, node.right, node);
 			}
@@ -4791,8 +4794,8 @@ namespace tfx {
 
 	float GetBezierValue(const AttributeNode *lastec, const AttributeNode &a, float t, float ymin, float ymax) {
 		if (lastec) {
-			if (a.is_curve) {
-				if (lastec->is_curve) {
+			if (a.flags & tfxAttributeNodeFlags_is_curve) {
+				if (lastec->flags & tfxAttributeNodeFlags_is_curve) {
 					Point p0(lastec->frame, lastec->value);
 					Point p1(lastec->right.x, lastec->right.y);
 					Point p2(a.left.x, a.left.y);
@@ -4808,7 +4811,7 @@ namespace tfx {
 					return value.y;
 				}
 			}
-			else if (lastec->is_curve) {
+			else if (lastec->flags & tfxAttributeNodeFlags_is_curve) {
 				Point p0(lastec->frame, lastec->value);
 				Point p1(lastec->right.x, lastec->right.y);
 				Point p2(a.frame, a.value);
@@ -4823,7 +4826,7 @@ namespace tfx {
 		return 0;
 	}
 
-	AttributeNode* Graph::AddNode(float _frame, float _value, bool _is_curve, float _c0x, float _c0y, float _c1x, float _c1y) {
+	AttributeNode* Graph::AddNode(float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
 		AttributeNode node;
 
 		if (nodes.size())
@@ -4832,7 +4835,7 @@ namespace tfx {
 			node.frame = 0.f;
 
 		node.value = _value;
-		node.is_curve = _is_curve;
+		node.flags = flags;
 		node.left.x = _c0x;
 		node.left.y = _c0y;
 		node.right.x = _c1x;
@@ -4864,7 +4867,7 @@ namespace tfx {
 			node.frame = 0.f;
 
 		node.value = _value;
-		node.is_curve = false;
+		node.flags = 0;
 		node.left.x = 0.f;
 		node.left.y = 0.f;
 		node.right.x = 0.f;
@@ -4889,7 +4892,7 @@ namespace tfx {
 			node.frame = 0.f;
 
 		node.value = _value;
-		node.is_curve = false;
+		node.flags = 0;
 		node.left.x = 0.f;
 		node.left.y = 0.f;
 		node.right.x = 0.f;
@@ -4926,7 +4929,7 @@ namespace tfx {
 			node.frame = 0.f;
 
 		node.value = _value;
-		node.is_curve = false;
+		node.flags = 0;
 		node.left.x = 0.f;
 		node.left.y = 0.f;
 		node.right.x = 0.f;
@@ -4954,11 +4957,11 @@ namespace tfx {
 		return r_value;
 	}
 
-	void Graph::SetNode(uint32_t i, float _frame, float _value, bool _is_curve, float _c0x, float _c0y, float _c1x, float _c1y) {
+	void Graph::SetNode(uint32_t i, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
 		if (!nodes.empty() && i < nodes.size()) {
 			nodes[i].frame = _frame;
 			nodes[i].value = _value;
-			nodes[i].is_curve = _is_curve;
+			nodes[i].flags = flags;
 			nodes[i].left.x = _c0x;
 			nodes[i].left.y = _c0y;
 			nodes[i].right.x = _c1x;
@@ -5122,7 +5125,7 @@ namespace tfx {
 		unsigned int index = 0;
 		unsigned int last_index = nodes.size() - 1;
 		for(auto &n : nodes) {
-			if (n.is_curve) {
+			if (n.flags & tfxAttributeNodeFlags_is_curve) {
 				if (index < last_index) {
 					if (nodes[index + 1].frame < n.right.x)
 						n.right.x = nodes[index + 1].frame;

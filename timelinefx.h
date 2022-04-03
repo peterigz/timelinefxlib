@@ -436,6 +436,7 @@ typedef long long s64;
 	typedef unsigned char tfxParticleFlags;
 	typedef unsigned char tfxEmitterStateFlags;
 	typedef unsigned int tfxParticleControlFlags;
+	typedef unsigned int tfxAttributeNodeFlags;
 
 	//All the flags needed by the ControlParticle function put into one enum to save space
 	enum tfxParticleControlFlags_ {
@@ -521,6 +522,14 @@ typedef long long s64;
 		tfxPackageErrorCode_invalid_format,
 		tfxPackageErrorCode_no_inventory,
 		tfxPackageErrorCode_invalid_inventory,
+	};
+
+	enum tfxAttributeNodeFlags_ {
+		tfxAttributeNodeFlags_none = 0,
+		tfxAttributeNodeFlags_is_curve = 1 << 0,
+		tfxAttributeNodeFlags_is_left_curve = 2 << 1,
+		tfxAttributeNodeFlags_is_right_curve = 3 << 2,
+		tfxAttributeNodeFlags_curves_initialised = 4 << 3
 	};
 
 	//-----------------------------------------------------------
@@ -694,7 +703,7 @@ typedef long long s64;
 		unsigned int capacity;
 		unsigned int start_index;
 		T* data;
-		inline tfxvec(unsigned int qty) { current_size = capacity = 0; data = NULL; reserve(qty); }
+		inline tfxring(unsigned int qty) { current_size = capacity = 0; data = NULL; reserve(qty); }
 
 		// Provide standard typedefs but we don't use them ourselves.
 		typedef T                   value_type;
@@ -1477,23 +1486,25 @@ typedef long long s64;
 
 	typedef tfxVec2 Point;
 
-	struct NodePairs {
-		tfxVec2 frame_value;
+	struct NodePair {
+		Point left;
+		Point right;
+		Point left_curve;
+		Point right_curve;
+		tfxAttributeNodeFlags flags;
 	};
 
 	struct AttributeNode {
 		float frame;
 		float value;
 
-		bool is_curve;
-		bool curves_initialised;
-
 		Point left;
 		Point right;
 
+		tfxAttributeNodeFlags flags;
 		unsigned int index;
 
-		AttributeNode() : frame(0.f), value(0.f), is_curve(false), curves_initialised(false) { }
+		AttributeNode() : frame(0.f), value(0.f), flags(0) { }
 		inline bool operator==(const AttributeNode& n) { return n.frame == frame && n.value == value; }
 
 		/*
@@ -1506,14 +1517,26 @@ typedef long long s64;
 			left.y = y0;
 			right.x = x1;
 			right.y = y1;
-			is_curve = true;
+			flags |= tfxAttributeNodeFlags_is_curve;
 		}
 
 		/*
 			Toggle whether this attribute node is curved or linear
 		*/
 		void ToggleCurve() {
-			is_curve = !is_curve;
+			flags  =~ tfxAttributeNodeFlags_is_curve;
+		}
+
+		bool IsCurve() {
+			return flags & tfxAttributeNodeFlags_is_curve;
+		}
+
+		bool CurvesAreInitialised() {
+			return flags & tfxAttributeNodeFlags_curves_initialised;
+		}
+
+		bool SetCurveInitialised() {
+			return flags |= tfxAttributeNodeFlags_curves_initialised;
 		}
 
 		float GetX();
@@ -1622,9 +1645,9 @@ typedef long long s64;
 		Graph();
 		~Graph();
 
-		AttributeNode* AddNode(float frame, float value, bool is_curve = false, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+		AttributeNode* AddNode(float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 		void AddNode(AttributeNode &node);
-		void SetNode(uint32_t index, float frame, float value, bool is_curve = false, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+		void SetNode(uint32_t index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 		float GetValue(float age);
 		float GetRandomValue(float age);
 		float GetValue(float age, float life);
@@ -1677,7 +1700,7 @@ typedef long long s64;
 	float GetRandomPrecise(Graph &graph, float frame);
 
 	//Node Manipluation
-	bool SetNode(Graph &graph, AttributeNode &node, float, float, bool, float = 0, float = 0, float = 0, float = 0);
+	bool SetNode(Graph &graph, AttributeNode &node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
 	bool SetNode(Graph &graph, AttributeNode &node, float &frame, float &value);
 	void SetCurve(Graph &graph, AttributeNode &node, bool is_left_curve, float &frame, float &value);
 	bool MoveNode(Graph &graph, AttributeNode &node, float frame, float value, bool sort = true);
