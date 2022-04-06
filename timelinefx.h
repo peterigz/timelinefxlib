@@ -697,28 +697,58 @@ typedef long long s64;
 
 	};
 
+	//Fixed size ring buffer, you must reserve the amount of memory you need ahead of time with reserve or just use the constructor specifying the number of elements you need
+	//Calling reserve on a buffer that already contains data will erase that data.
+	//Iterate over the ring with:
+	/*
+	ring.reset();
+	while(!ring.eob()) {
+		auto &item = ring.next();
+	}
+	*/
 	template<typename T>
 	struct tfxring {
 		unsigned int current_size;
 		unsigned int capacity;
 		unsigned int start_index;
+		unsigned int pos;
 		T* data;
-		inline tfxring(unsigned int qty) { current_size = capacity = 0; data = NULL; reserve(qty); }
+		inline tfxring() { pos = start_index = current_size = capacity = 0; data = NULL; }
+		inline tfxring(unsigned int qty) { pos = start_index = current_size = capacity = 0; data = NULL; reserve(qty); }
 
 		// Provide standard typedefs but we don't use them ourselves.
 		typedef T                   value_type;
 		typedef value_type*         iterator;
 		typedef const value_type*   const_iterator;
 
-		inline bool			empty() { return current_size == 0; start_index = 0; }
+		inline bool			empty() { return current_size == 0; }
+		inline void         free_all() { if (data) { start_index = current_size = capacity = 0; free(data); data = NULL; } }
+		inline void         clear() { if (data) { current_size = 0; } }
 		inline unsigned int			size() { return current_size; }
 		inline const unsigned int	size() const { return current_size; }
 		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
 		inline const T&     operator[](unsigned int i) const { return data[(i + start_index) % capacity]; }
 
-		inline bool	        push_back(const T& v) { if (current_size == capacity) return false; new((void*)(data + start_index + current_size) % capacity) T(v); current_size++; return true; }
-		inline void         reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; T* new_data = (T*)malloc((size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); free(data); } data = new_data; capacity = new_capacity; }
-		inline void			bump() { start_index++; start_index %= capacity; }
+		inline unsigned int end_index() { return (start_index + current_size) % capacity; }
+		inline unsigned int before_start_index() { return start_index == 0 ? capacity - 1 : start_index - 1; }
+		inline unsigned int last_index() { return (start_index + current_size - 1) % capacity; }
+		inline T*			eob_ptr() { return data + (start_index + current_size) % capacity; }
+		inline T&           front() { assert(current_size > 0); return data[start_index]; }
+		inline const T&     front() const { assert(current_size > 0); return data[start_index]; }
+		inline T&           back() { assert(current_size > 0); return data[last_index()]; }
+		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
+
+		inline void         pop() { assert(current_size > 0); current_size--; }
+		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
+		inline bool	        push_back(const T& v) { if (current_size == capacity) return false; new((void*)(data + end_index())) T(v); current_size++; return true; }
+		inline bool	        push_front(const T& v) { if (current_size == capacity) return false; new((void*)(data + before_start_index())) T(v); current_size++; start_index = before_start_index(); return true; }
+		inline void         reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; free(data); data = (T*)malloc((size_t)new_capacity * sizeof(T)); capacity = new_capacity; start_index = current_size = 0; }
+		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
+
+		inline void			reset() { pos = 0; }
+		inline T&			next() { assert(current_size > 0); unsigned int current_pos = (start_index + pos) % capacity; pos++; return data[current_pos]; }
+		inline T&			current() { assert(current_size > 0 && pos < current_size); return data[pos]; }
+		inline bool			eob() { return pos == current_size; }
 	};
 
 	//A char buffer you can use to load a file into and read from
@@ -1489,8 +1519,10 @@ typedef long long s64;
 	struct NodePair {
 		Point left;
 		Point right;
-		Point left_curve;
-		Point right_curve;
+		Point left_curve_left;
+		Point left_curve_right;
+		Point right_curve_left;
+		Point right_curve_right;
 		tfxAttributeNodeFlags flags;
 	};
 
