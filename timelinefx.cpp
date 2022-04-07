@@ -460,7 +460,7 @@ float SimplexNoise::fractal(size_t octaves, float x, float y, float z) const {
 }
 
 namespace tfx {
-	
+
 	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
 	float UPDATE_FREQUENCY = 60.f;
 	float UPDATE_TIME = 1.f / UPDATE_FREQUENCY;
@@ -548,7 +548,7 @@ namespace tfx {
 		u32 l = Length();
 		if (fwrite(string.data, 1, Length(), file) != Length())
 			return false;
-		
+
 		fclose(file);
 		return true;
 	}
@@ -611,7 +611,7 @@ namespace tfx {
 	tfxText tfxstream::ReadLine() {
 		tfxText line;
 		if (EoF()) return line;
-		
+
 		while (!EoF()) {
 			char current = *(data + position);
 			if (current == '\n') {
@@ -656,7 +656,7 @@ namespace tfx {
 			fclose(file);
 			return false;
 		}
-		
+
 		if (length != package.file_size) return false;							//The file on disk is no longer the same size as the package file size since it was loaded
 
 		//Everything seems ok
@@ -731,7 +731,7 @@ namespace tfx {
 			return buffer;
 		}
 
-		if(terminate)
+		if (terminate)
 			buffer.Resize(length + 1);
 		else
 			buffer.Resize(length);
@@ -740,7 +740,7 @@ namespace tfx {
 			fclose(file);
 			return buffer;
 		}
-		if(terminate)
+		if (terminate)
 			buffer.NullTerminate();
 
 		fclose(file);
@@ -859,11 +859,11 @@ namespace tfx {
 	int LoadPackage(const char *file_name, tfxPackage &package) {
 
 		package.file_data = ReadEntireFile(file_name);
-		if(package.file_data.Size() == 0)
+		if (package.file_data.Size() == 0)
 			return tfxPackageErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
 
 		package.file_size = package.file_data.Size();
-	
+
 		if (package.file_size < sizeof(tfxHeader))
 			return tfxPackageErrorCode_wrong_file_size;				//the file size is smaller then the expected header size
 
@@ -940,6 +940,7 @@ namespace tfx {
 
 	EffectEmitter::~EffectEmitter() {
 		sub_effectors.free_all();
+		particles.free_all();
 	}
 
 	void EffectEmitter::SoftExpire() {
@@ -999,6 +1000,29 @@ namespace tfx {
 		GetGraphByType(tfxOvertime_direction_turbulance)->lookup.life = max_life;
 		GetGraphByType(tfxOvertime_velocity_adjuster)->lookup.life = max_life;
 		GetGraphByType(tfxOvertime_direction)->lookup.life = max_life;
+	}
+
+	unsigned int EffectEmitter::UpdateAllBufferSizes() {
+		unsigned int total = 0;
+		if (type == tfxEmitter) {
+			total += UpdateBufferSize();
+		}
+		else {
+			for (auto &emitter : sub_effectors) {
+				total += emitter.UpdateAllBufferSizes();
+			}
+		}
+		if (!parent)
+			max_particles = total;
+		return max_particles;
+	}
+
+	unsigned int EffectEmitter::UpdateBufferSize() {
+		max_particles = unsigned int(GetMaxAmount(*this)) + 1;
+		if (max_particles > particles.size()) {
+			particles.reserve(max_particles);
+		}
+		return max_particles;
 	}
 
 	EffectEmitter& EffectEmitter::AddEmitter(EffectEmitter &e) {
@@ -1079,8 +1103,13 @@ namespace tfx {
 			}
 
 			bool is_compute = properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader;
+
+			if (!is_compute && pm->contain_particles_in_emitters)
+				UpdateParticles();
+
 			if (!pm->disable_spawing && pm->FreeCapacity(properties.layer, is_compute))
 				SpawnParticles();
+
 			parent->highest_particle_age = highest_particle_age;
 		}
 		else if (parent_particle) {
@@ -1135,6 +1164,31 @@ namespace tfx {
 		flags &= ~tfxEmitterStateFlags_no_tween_this_update;
 	}
 
+	void EffectEmitter::UpdateParticles() {
+		bool can_bump = true;
+		particles.reset();
+		while(!particles.eob()) {
+			Particle &p = particles.next();
+			if (!(p.flags & tfxParticleFlags_fresh)) {
+				p.captured = p.world;
+
+				if (ControlParticleFast(p, *this)) {
+					TransformParticle(p, *this);
+					if (p.flags & tfxParticleFlags_capture_after_transform) {
+						p.captured.position = p.world.position;
+						p.flags &= ~tfxParticleFlags_capture_after_transform;
+					}
+				}
+				else if (can_bump) {
+					particles.bump();
+				}
+			}
+			else {
+				p.flags &= ~tfxParticleFlags_fresh;
+			}
+		}
+	}
+
 	void EffectEmitter::NoTweenNextUpdate() {
 		tfxvec<EffectEmitter*> stack;
 		stack.push_back(this);
@@ -1179,10 +1233,14 @@ namespace tfx {
 		float tween = 0.f;
 		float interpolate = (float)(int)qty;
 		float count = 0;
+		bool is_compute = properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader;
 
 		while (qty >= 1.f) {
-			bool is_compute = properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader;
-			if (!pm->FreeCapacity(properties.layer, is_compute)) {
+			if (!pm->contain_particles_in_emitters && !pm->FreeCapacity(properties.layer, is_compute)) {
+				current.amount_remainder = 0;
+				break;
+			}
+			else if (pm->contain_particles_in_emitters && !FreeCapacity()) {
 				current.amount_remainder = 0;
 				break;
 			}
@@ -1199,13 +1257,23 @@ namespace tfx {
 				highest_particle_age = std::fmaxf(highest_particle_age, p.max_age);
 			}
 			else {
-				Particle &p = pm->GrabCPUParticle(properties.layer);
+				Particle &p = pm->contain_particles_in_emitters ? GrabParticle() : pm->GrabCPUParticle(properties.layer);
 				InitCPUParticle(p, tween);
 				highest_particle_age = std::fmaxf(highest_particle_age, p.max_age);
 			}
 		}
 
 		current.amount_remainder = qty;
+	}
+
+	bool EffectEmitter::FreeCapacity() {
+		return particles.current_size < particles.capacity;
+	}
+	
+	Particle &EffectEmitter::GrabParticle() {
+		Particle p;
+		particles.push_back(p);
+		return particles.back();
 	}
 
 	void EffectEmitter::InitCPUParticle(Particle &p, float tween) {
@@ -3814,6 +3882,12 @@ namespace tfx {
 		uid = 0;
 	}
 
+	void EffectLibrary::UpdateEffectParticleStorage() {
+		for (auto &e : effects) {
+			e.UpdateAllBufferSizes();
+		}
+	}
+
 	void EffectLibrary::UpdateComputeNodes() {
 		unsigned int running_node_index = 0;
 		unsigned int running_value_index = 0;
@@ -5595,6 +5669,31 @@ namespace tfx {
 		return max_life;
 	}
 
+	float GetMaxAmount(EffectEmitter &e) {
+		Graph &amount = *e.GetGraphByType(tfxBase_amount);
+		Graph &amount_variation = *e.GetGraphByType(tfxVariation_amount);
+		float tempamount = 0;
+		float max_amount = 0;
+		float amount_last_frame = amount.GetLastFrame();
+		float amount_variation_last_frame = amount_variation.GetLastFrame();
+		float global_adjust = 1.f;
+		if (amount_last_frame + amount_variation_last_frame > 0) {
+			for (float f = 0; f < std::fmaxf(amount_last_frame, amount_variation_last_frame); ++f) {
+				if (e.parent)
+					global_adjust = e.parent->GetGraphByType(tfxGlobal_amount)->GetMaxValue();
+				tempamount = amount.GetValue(f) + amount_variation.GetValue(f);
+				tempamount *= global_adjust;
+				if (max_amount < tempamount)
+					max_amount = tempamount;
+			}
+		}
+		else {
+			max_amount = amount.GetFirstValue() + amount_variation.GetFirstValue();
+		}
+
+		return max_amount;
+	}
+
 	bool IsOvertimeGraph(GraphType type) {
 		return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster;
 	}
@@ -5655,6 +5754,9 @@ namespace tfx {
 				emitter.active_children = 0;
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
 				effects[buffer][parent_index].active_children++;
+				if (contain_particles_in_emitters) {
+					emitter.particles.prep_for_new();
+				}
 				if (use_compute_shader && e.sub_effectors.empty()) {
 					int free_slot = AddComputeController();
 					if (free_slot != -1) {
@@ -5786,6 +5888,7 @@ namespace tfx {
 				else {
 					e.next_ptr = nullptr;
 					e.sub_effectors.free_all();
+					e.particles.free_all();
 					if (use_compute_shader && e.properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter)
 						FreeComputeSlot(e.compute_slot_id);
 				}
@@ -6376,6 +6479,7 @@ namespace tfx {
 				lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
 			lib.UpdateEffectPaths();
 			lib.UpdateComputeNodes();
+			lib.UpdateEffectParticleStorage();
 			lib.SetMinMaxData();
 		}
 

@@ -706,6 +706,7 @@ typedef long long s64;
 		auto &item = ring.next();
 	}
 	*/
+	//You must call free_all when done with the buffer, there's no deconstructor
 	template<typename T>
 	struct tfxring {
 		unsigned int current_size;
@@ -722,7 +723,8 @@ typedef long long s64;
 		typedef const value_type*   const_iterator;
 
 		inline bool			empty() { return current_size == 0; }
-		inline void         free_all() { if (data) { start_index = current_size = capacity = 0; free(data); data = NULL; } }
+		inline void         free_all() { if (data) { pos = start_index = current_size = capacity = 0; free(data); data = NULL; } }
+		inline void			prep_for_new() { start_index = current_size = pos = 0; data = NULL; data = (T*)malloc((size_t)capacity * sizeof(T)); }
 		inline void         clear() { if (data) { current_size = 0; } }
 		inline unsigned int			size() { return current_size; }
 		inline const unsigned int	size() const { return current_size; }
@@ -748,7 +750,7 @@ typedef long long s64;
 		inline void			reset() { pos = 0; }
 		inline T&			next() { assert(current_size > 0); unsigned int current_pos = (start_index + pos) % capacity; pos++; return data[current_pos]; }
 		inline T&			current() { assert(current_size > 0 && pos < current_size); return data[pos]; }
-		inline bool			eob() { return pos == current_size; }
+		inline bool			eob() { return pos >= current_size; }
 	};
 
 	//A char buffer you can use to load a file into and read from
@@ -1724,6 +1726,7 @@ typedef long long s64;
 	void CompileGraph(Graph &graph);
 	void CompileGraphOvertime(Graph &graph);
 	float GetMaxLife(EffectEmitter &e);
+	float GetMaxAmount(EffectEmitter &e);
 	float LookupFastOvertime(Graph &graph, float age, float lifetime);
 	float LookupFast(Graph &graph, float frame);
 	float LookupPreciseOvertime(Graph &graph, float age, float lifetime);
@@ -2090,6 +2093,7 @@ typedef long long s64;
 		tfxvec<EffectEmitter> sub_effectors;
 		//Experiment with emitters maintaining their own list of particles. Buffer info contains info for fetching the area in the buffer stored in the particle manager
 		//BufferInfo particle_buffer;
+		tfxring<Particle> particles;
 
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
@@ -2112,7 +2116,7 @@ TFX_CUSTOM_EMITTER
 		unsigned int animation_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 		float max_life;
-		//The maximum amount of particles that this effect can spawn (root effects only)
+		//The maximum amount of particles that this effect can spawn (root effects and emitters only)
 		u32 max_particles;
 		//Pointer to the immediate parent
 		EffectEmitter *parent;
@@ -2238,6 +2242,8 @@ TFX_CUSTOM_EMITTER
 		void ResetEffectGraphs(bool add_node = true);
 		void ResetEmitterGraphs(bool add_node = true);
 		void UpdateMaxLife();
+		unsigned int UpdateAllBufferSizes();
+		unsigned int UpdateBufferSize();
 		Graph* GetGraphByType(GraphType type);
 		unsigned int GetGraphIndexByType(GraphType type);
 		void CompileGraphs();
@@ -2247,7 +2253,10 @@ TFX_CUSTOM_EMITTER
 		void TransformEffector(EffectEmitter &parent, bool relative_position = true, bool relative_angle = false);
 		void TransformEffector(Particle &parent, bool relative_position = true, bool relative_angle = false);
 		void Update();
+		void UpdateParticles();
 		void SpawnParticles();
+		bool FreeCapacity();
+		Particle &GrabParticle();
 		unsigned int CalculateMaxParticles();
 		void InitCPUParticle(Particle &p, float tween);
 		void InitComputeParticle(ComputeParticle &p, float tween);
@@ -2555,6 +2564,7 @@ TFX_CUSTOM_EMITTER
 		void AddEmitterGraphs(EffectEmitter& effect);
 		void AddEffectGraphs(EffectEmitter& effect);
 		unsigned int AddAnimationSettings(EffectEmitter& effect);
+		void UpdateEffectParticleStorage();
 		void UpdateComputeNodes();
 		void CompileAllGraphs();
 		void CompileGlobalGraph(unsigned int index);
@@ -2619,9 +2629,11 @@ TFX_CUSTOM_EMITTER
 		ComputeFXGlobalState compute_global_state;
 		//Callback to the render function that renders all the particles - is this not actually useful now, just use GetParticleBuffer() in your own render function
 		void(*render_func)(float, void*, void*);
+		//todo: make these flags
 		bool disable_spawing;
 		bool force_capture;
 		bool use_compute_shader;
+		bool contain_particles_in_emitters;
 		//Used if the emitter changed attributes and spawned particles need updating their base values. Primarily used by the editor
 		bool update_base_values;	
 		LookupMode lookup_mode;
@@ -2639,6 +2651,7 @@ TFX_CUSTOM_EMITTER
 			current_ebuff(0),
 			current_pbuff(0),
 			use_compute_shader(false),
+			contain_particles_in_emitters(false),
 			highest_compute_controller_index(0),
 			new_compute_particle_ptr(nullptr),
 			compute_controller_ptr(nullptr),
