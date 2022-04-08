@@ -1018,7 +1018,7 @@ namespace tfx {
 	}
 
 	unsigned int EffectEmitter::UpdateBufferSize() {
-		max_particles = unsigned int(GetMaxAmount(*this)) + 1;
+		max_particles = unsigned int(GetMaxAmount(*this) * (GetMaxLife(*this) / 1000.f)) + 1;
 		if (max_particles > particles.size()) {
 			particles.reserve(max_particles);
 		}
@@ -1105,7 +1105,7 @@ namespace tfx {
 			bool is_compute = properties.flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->use_compute_shader;
 
 			if (!is_compute && pm->contain_particles_in_emitters)
-				UpdateParticles();
+				ControlParticles(*this);
 
 			if (!pm->disable_spawing && pm->FreeCapacity(properties.layer, is_compute))
 				SpawnParticles();
@@ -1178,6 +1178,7 @@ namespace tfx {
 						p.captured.position = p.world.position;
 						p.flags &= ~tfxParticleFlags_capture_after_transform;
 					}
+					can_bump = false;
 				}
 				else if (can_bump) {
 					particles.bump();
@@ -2671,6 +2672,200 @@ namespace tfx {
 	bool line_and_kill = is_line && e.properties.end_behaviour == tfxKill && length > emitter_length;
 
 */
+	void ControlParticles(EffectEmitter &e) {
+		bool can_bump = true;
+		bool is_single = e.properties.flags & tfxEmitterPropertyFlags_single && !(e.properties.flags & tfxEmitterPropertyFlags_one_shot) && !e.pm->disable_spawing;
+		bool not_line = (e.properties.emission_type != tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal)) || e.properties.emission_type == tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal);
+		bool random_color = e.properties.flags & tfxEmitterPropertyFlags_random_color;
+		bool uniform_size = e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
+		bool can_spin = e.properties.angle_setting != AngleSetting::tfxAlign && !(e.properties.flags & tfxEmitterPropertyFlags_relative_angle);
+		bool align = e.properties.angle_setting == AngleSetting::tfxAlign;
+		bool is_line = e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal;
+		bool play_once = e.properties.flags & tfxEmitterPropertyFlags_play_once;
+		bool loop = e.properties.end_behaviour == tfxLoop;
+		bool kill = e.properties.end_behaviour == tfxKill;
+		unsigned int remove = e.flags & tfxParticleFlags_remove;
+		float velocity_adjuster = e.current.velocity_adjuster;
+		float global_opacity = e.parent->current.color.a;
+		float image_size_y = e.properties.image->image_size.y;
+		float frame_rate = e.properties.image->animation_frames > 1 && e.properties.flags & tfxEmitterPropertyFlags_animate ? e.properties.frame_rate : 0.f;
+		float end_frame = e.properties.end_frame;
+		float stretch = e.current.stretch;
+		float emitter_size_y = e.current.emitter_size.y;
+		float emitter_handle_y = e.current.emitter_handle.y;
+		float angle_offset = e.properties.angle_offset;
+		float overal_scale = e.current.overal_scale;
+		OvertimeAttributes &graphs = e.library->overtime_graphs[e.overtime];
+
+		e.particles.reset();
+		while (!e.particles.eob()) {
+			auto &p = e.particles.next();
+
+			if (!(p.flags & tfxParticleFlags_fresh)) {
+				p.captured = p.world;
+			}
+
+			p.age += FRAME_LENGTH;
+
+			//-------------------------------------------------------
+			//Controll what the particle does over the course of
+			//it's lifetime
+			//-------------------------------------------------------
+
+			//Before we do anything, see if the particle should be removed/end of life
+			p.flags |= remove;
+			if (p.flags & tfxParticleFlags_remove) {
+				if(can_bump) e.particles.bump();
+				continue;
+			}
+
+			if (p.age >= p.max_age && is_single)
+				p.age = 0.f;
+			else if (p.age >= p.max_age) {
+				if(can_bump) e.particles.bump();
+				continue;
+			}
+			else {
+				can_bump = false;
+			}
+
+			u32 lookup_frame = static_cast<u32>((p.age / p.max_age * graphs.velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+
+			float lookup_velocity = graphs.velocity.lookup.values[std::min<u32>(lookup_frame, graphs.velocity.lookup.last_frame)] * velocity_adjuster;
+			float lookup_velocity_turbulance = graphs.velocity_turbulance.lookup.values[std::min<u32>(lookup_frame, graphs.velocity_turbulance.lookup.last_frame)];
+			float lookup_direction_turbulance = graphs.direction_turbulance.lookup.values[std::min<u32>(lookup_frame, graphs.direction_turbulance.lookup.last_frame)];
+			float lookup_direction = graphs.direction.lookup.values[std::min<u32>(lookup_frame, graphs.direction.lookup.last_frame)] + p.emission_angle;
+			float lookup_noise_resolution = graphs.noise_resolution.lookup.values[std::min<u32>(lookup_frame, graphs.noise_resolution.lookup.last_frame)] * p.noise_resolution;
+			float lookup_weight = graphs.weight.lookup.values[std::min<u32>(lookup_frame, graphs.weight.lookup.last_frame)];
+
+			float lookup_width = graphs.width.lookup.values[std::min<u32>(lookup_frame, graphs.width.lookup.last_frame)];
+			float lookup_height = graphs.height.lookup.values[std::min<u32>(lookup_frame, graphs.height.lookup.last_frame)];
+			float lookup_stretch = graphs.stretch.lookup.values[std::min<u32>(lookup_frame, graphs.stretch.lookup.last_frame)];
+
+			float lookup_spin = graphs.spin.lookup.values[std::min<u32>(lookup_frame, graphs.spin.lookup.last_frame)] * p.base.spin;
+
+			float lookup_red = graphs.red.lookup.values[std::min<u32>(lookup_frame, graphs.red.lookup.last_frame)];
+			float lookup_green = graphs.green.lookup.values[std::min<u32>(lookup_frame, graphs.green.lookup.last_frame)];
+			float lookup_blue = graphs.blue.lookup.values[std::min<u32>(lookup_frame, graphs.blue.lookup.last_frame)];
+			float lookup_opacity = graphs.opacity.lookup.values[std::min<u32>(lookup_frame, graphs.opacity.lookup.last_frame)];
+			float lookup_intensity = graphs.intensity.lookup.values[std::min<u32>(lookup_frame, graphs.intensity.lookup.last_frame)];
+
+			float direction = 0;
+			float mr_angle = 0;
+			float mr_speed = 0;
+
+			tfxVec2 mr_vec;
+			if (not_line) {
+				direction = lookup_direction;
+			}
+
+			if (lookup_velocity_turbulance + lookup_velocity_turbulance) {
+				float noise = SimplexNoise::noise(p.local.position.x / lookup_noise_resolution + p.noise_offset, p.local.position.y / lookup_noise_resolution + p.noise_offset);
+				mr_speed = noise * lookup_velocity_turbulance;
+				mr_angle = noise * 3.14159265f * 2 * lookup_direction_turbulance;
+				mr_vec.x = std::sinf(mr_angle) * mr_speed;
+				mr_vec.y = -std::cosf(mr_angle) * mr_speed;
+			}
+
+			//----Weight Changes
+			p.weight_acceleration += p.base.weight * lookup_weight * UPDATE_TIME;
+
+			//----Velocity Changes
+			tfxVec2 velocity_normal;
+			velocity_normal.x = std::sinf(direction);
+			velocity_normal.y = -std::cosf(direction);
+
+			tfxVec2 current_velocity = (p.base.velocity * lookup_velocity) * velocity_normal;
+			current_velocity += mr_vec;
+			current_velocity.y += p.weight_acceleration;
+			current_velocity *= UPDATE_TIME;
+
+			//----Color changes
+			p.color.a = unsigned char(255.f * lookup_opacity * global_opacity);
+			p.intensity = lookup_intensity;
+			if (!random_color) {
+				p.color.r = unsigned char(255.f * lookup_red);
+				p.color.g = unsigned char(255.f * lookup_green);
+				p.color.b = unsigned char(255.f * lookup_blue);
+			}
+
+			p.color = tfxRGBA8(p.color.r, p.color.g, p.color.b, p.color.a);
+
+			//----Size Changes
+			tfxVec2 scale;
+			scale.x = p.base.size.x * lookup_width;
+			if (scale.x < 0.f)
+				scale.x = scale.x;
+
+			//----Stretch Changes
+			float velocity = std::fabsf(lookup_velocity * p.base.velocity + mr_speed + p.weight_acceleration);
+			if (uniform_size) {
+				scale.y = (lookup_width * (p.base.size.y + (velocity * lookup_stretch * stretch))) / image_size_y;
+				if (scale.y < scale.x)
+					scale.y = scale.x;
+			}
+			else
+				scale.y = (lookup_height * (p.base.size.y + (velocity * lookup_stretch * stretch))) / image_size_y;
+
+			//----Spin and angle Changes
+			float spin = 0;
+			if (can_spin) {
+				spin = lookup_spin;
+			}
+
+			//---------------
+			//Now that the latest changes are applied, affect the particle state
+			//---------------
+
+			//----Rotation
+			if (align) {
+				tfxVec2 vd = current_velocity.IsNill() ? velocity_normal : current_velocity;
+				p.local.rotation = GetVectorAngle(vd.x, vd.y) + angle_offset;
+			}
+			else {
+				p.local.rotation += spin * UPDATE_TIME;
+			}
+
+			//----Position
+			p.local.position += current_velocity * overal_scale;
+
+			//----Scale
+			p.local.scale = scale;
+
+			//Lines - Reposition if the particle is travelling along a line
+			tfxVec2 offset = velocity_normal * emitter_size_y;
+			float length = std::fabsf(p.local.position.y - emitter_handle_y);
+			float emitter_length = emitter_size_y;
+			bool line_and_loop = is_line && loop && length > emitter_length;
+			bool line_and_kill = is_line && kill && length > emitter_length;
+			if (line_and_loop) {
+				p.local.position.y -= offset.y;
+				p.flags |= tfxParticleFlags_capture_after_transform;
+			}
+			else if (line_and_kill) {
+				if(can_bump) e.particles.bump();
+				continue;
+			}
+
+			//----Image animation
+			p.image_frame += frame_rate * UPDATE_TIME;
+			p.image_frame = play_once && p.image_frame > end_frame ? p.image_frame = end_frame : p.image_frame;
+			p.image_frame = play_once && p.image_frame < 0 ? p.image_frame = 0 : p.image_frame;
+			p.image_frame = std::fmodf(p.image_frame, end_frame + 1);
+
+			if (!(p.flags & tfxParticleFlags_fresh)) {
+				TransformParticle(p, e);
+				if (p.flags & tfxParticleFlags_capture_after_transform) {
+					p.captured.position = p.world.position;
+					p.flags &= ~tfxParticleFlags_capture_after_transform;
+				}
+			}
+			else {
+				p.flags &= ~tfxParticleFlags_fresh;
+			}
+
+		}
+	}
 
 	bool ControlParticleFast(Particle &p, EffectEmitter &e) {
 		if (e.pm->update_base_values)

@@ -2099,7 +2099,7 @@ typedef long long s64;
 		void *user_data;
 
 		//Idea for adding you're own user define struct members
-#ifdef TFX_EMITTER_STRUCT_EXTRA
+#ifdef TFX_CUSTOM_EMITTER
 TFX_CUSTOM_EMITTER
 #endif
 
@@ -2763,6 +2763,7 @@ TFX_CUSTOM_EMITTER
 	void Transform(FormState &local, FormState &world, EffectEmitter &e);
 	bool ControlParticle(Particle &p, EffectEmitter &e);
 	bool ControlParticleFast(Particle &p, EffectEmitter &e);
+	void ControlParticles(EffectEmitter &e);
 	FormState Tween(float tween, FormState &world, FormState &captured);
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
