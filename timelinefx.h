@@ -180,6 +180,7 @@ namespace tfx {
 	struct ParticleManager;
 	struct EffectorStore;
 	struct Particle;
+	struct ParticleSprite;
 	struct ComputeParticle;
 	struct AnimationSettings;
 	struct EffectLibrary;
@@ -695,62 +696,6 @@ typedef long long s64;
 		inline void			create_pool(unsigned int amount) { assert(current_size == 0); T base; reserve(amount); for (unsigned int i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 		inline void			create_pool_with(unsigned int amount, const T &base) { assert(current_size == 0);  reserve(amount); for (unsigned int i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 
-	};
-
-	//Fixed size ring buffer, you must reserve the amount of memory you need ahead of time with reserve or just use the constructor specifying the number of elements you need
-	//Calling reserve on a buffer that already contains data will erase that data.
-	//Iterate over the ring with:
-	/*
-	ring.reset();
-	while(!ring.eob()) {
-		auto &item = ring.next();
-	}
-	*/
-	//You must call free_all when done with the buffer, there's no deconstructor
-	template<typename T>
-	struct tfxring {
-		unsigned int current_size;
-		unsigned int capacity;
-		unsigned int start_index;
-		unsigned int pos;
-		T* data;
-		inline tfxring() { pos = start_index = current_size = capacity = 0; data = NULL; }
-		inline tfxring(unsigned int qty) { pos = start_index = current_size = capacity = 0; data = NULL; reserve(qty); }
-
-		// Provide standard typedefs but we don't use them ourselves.
-		typedef T                   value_type;
-		typedef value_type*         iterator;
-		typedef const value_type*   const_iterator;
-
-		inline bool			empty() { return current_size == 0; }
-		inline void         free_all() { if (data) { pos = start_index = current_size = capacity = 0; free(data); data = NULL; } }
-		inline void			prep_for_new() { start_index = current_size = pos = 0; data = NULL; data = (T*)malloc((size_t)capacity * sizeof(T)); }
-		inline void         clear() { if (data) { current_size = 0; } }
-		inline unsigned int			size() { return current_size; }
-		inline const unsigned int	size() const { return current_size; }
-		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
-		inline const T&     operator[](unsigned int i) const { return data[(i + start_index) % capacity]; }
-
-		inline unsigned int end_index() { return (start_index + current_size) % capacity; }
-		inline unsigned int before_start_index() { return start_index == 0 ? capacity - 1 : start_index - 1; }
-		inline unsigned int last_index() { return (start_index + current_size - 1) % capacity; }
-		inline T*			eob_ptr() { return data + (start_index + current_size) % capacity; }
-		inline T&           front() { assert(current_size > 0); return data[start_index]; }
-		inline const T&     front() const { assert(current_size > 0); return data[start_index]; }
-		inline T&           back() { assert(current_size > 0); return data[last_index()]; }
-		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
-
-		inline void         pop() { assert(current_size > 0); current_size--; }
-		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
-		inline bool	        push_back(const T& v) { if (current_size == capacity) return false; new((void*)(data + end_index())) T(v); current_size++; return true; }
-		inline bool	        push_front(const T& v) { if (current_size == capacity) return false; new((void*)(data + before_start_index())) T(v); current_size++; start_index = before_start_index(); return true; }
-		inline void         reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; free(data); data = (T*)malloc((size_t)new_capacity * sizeof(T)); capacity = new_capacity; start_index = current_size = 0; }
-		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
-
-		inline void			reset() { pos = 0; }
-		inline T&			next() { assert(current_size > 0); unsigned int current_pos = (start_index + pos) % capacity; pos++; return data[current_pos]; }
-		inline T&			current() { assert(current_size > 0 && pos < current_size); return data[pos]; }
-		inline bool			eob() { return pos >= current_size; }
 	};
 
 	//A char buffer you can use to load a file into and read from
@@ -1452,6 +1397,139 @@ typedef long long s64;
 
 	};
 
+	struct tfxrange {
+		unsigned int capacity;
+		unsigned int offset_into_memory;
+	};
+
+	struct tfxmemory {
+		unsigned int current_size;
+		unsigned int capacity;
+		void* data;
+		tfxvec<tfxrange> ranges;
+		tfxStorageMap<tfxvec<unsigned int>> free_ranges;
+
+		inline tfxmemory() { current_size = capacity = 0; data = NULL; }
+		inline tfxmemory(unsigned int qty) { current_size = capacity = 0; data = NULL; resize(qty); }
+		inline ~tfxmemory() { if (data) free(data); data = NULL; current_size = capacity = 0; }
+
+		inline bool					empty() { return current_size == 0; }
+		inline unsigned int			size() { return current_size; }
+		inline const unsigned int	size() const { return current_size; }
+
+		inline void					free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
+		inline void					clear() { if (data) { current_size = 0; } }
+
+		inline unsigned int			_grow_capacity(unsigned int sz) const { unsigned int new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline void					resize(unsigned int new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
+		inline void					shrink(unsigned int new_size) { assert(new_size <= current_size); current_size = new_size; }
+		inline void					reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; char* new_data = (char*)malloc((size_t)new_capacity * sizeof(char)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(char)); free(data); } data = new_data; capacity = new_capacity; }
+
+		inline unsigned int			get_range(unsigned int bytes) { 
+			if (current_size == capacity) reserve(_grow_capacity(current_size + bytes)); 
+			tfxrange range;
+			range.offset_into_memory = current_size;
+			range.capacity = bytes;
+			if (free_ranges.ValidKey(tfxKey(bytes))) {
+				tfxvec<unsigned int> &free = free_ranges.At(tfxKey(bytes));
+				if (!free.empty()) {
+					return free.pop_back();
+				}
+			}
+			ranges.push_back(range);
+			current_size += bytes;
+			return ranges.current_size - 1;
+		}
+		inline void					free_range(unsigned int index) {
+			assert(index < ranges.size());		//Index to free must be within size of ranges list
+			int capacity = ranges[index].capacity;
+			if (!free_ranges.ValidKey(tfxKey(ranges[index].capacity))) {
+				tfxvec<unsigned int> new_free_ranges;
+				free_ranges.Insert((tfxKey)ranges[index].capacity, new_free_ranges);
+				free_ranges.At((tfxKey)ranges[index].capacity).push_back(index);
+			}
+			else {
+				free_ranges.At((tfxKey)ranges[index].capacity).push_back(index);
+			}
+		}
+
+	};
+
+	//Fixed size ring buffer, you must reserve the amount of memory you need ahead of time with reserve or just use the constructor specifying the number of elements you need
+	//Calling reserve on a buffer that already contains data will erase that data.
+	//Iterate over the ring with:
+	/*
+	ring.reset();
+	while(!ring.eob()) {
+		auto &item = ring.next();
+	}
+	*/
+	//You must call free_all when done with the buffer, there's no deconstructor
+	//You can also use this in combination with tfxmemory, assign_memory to grab a range of memory from there instead of allocating some. In this case do not call free_all or you will delete
+	//the memory in tfxmem instead! Basically this is only for use in TimelineFX internally.
+#define tfxINVALID_RANGE 0xFFFFFFFF
+	template<typename T>
+	struct tfxring {
+		unsigned int current_size;
+		unsigned int capacity;
+		unsigned int start_index;
+		unsigned int pos;
+		unsigned int range_index;
+		T* data;
+		inline tfxring() { pos = start_index = current_size = capacity = 0; data = NULL; range_index = tfxINVALID_RANGE; }
+		inline tfxring(unsigned int qty) { pos = start_index = current_size = capacity = 0; data = NULL; reserve(qty); }
+		inline tfxring(tfxmemory &mem, unsigned int index, unsigned int size) { pos = start_index = current_size = 0; capacity = size; data = mem.data + mem.ranges[index].offset_into_memory; range_index = index; }
+
+		// Provide standard typedefs but we don't use them ourselves.
+		typedef T                   value_type;
+		typedef value_type*         iterator;
+		typedef const value_type*   const_iterator;
+
+		inline bool			empty() { return current_size == 0; }
+		inline void         free_all() { assert(range_index == tfxINVALID_RANGE); /*Call free_range instead if using tfxmemory*/ if (data) { pos = start_index = current_size = capacity = 0; free(data); data = NULL; } }
+		inline void         free_range(tfxmemory &mem) { 
+		if (range_index == tfxINVALID_RANGE) return; 
+			if (data) { 
+				pos = start_index = current_size = capacity = 0; 
+				mem.free_range(range_index); 
+				range_index = tfxINVALID_RANGE; 
+				data = NULL; 
+			} 
+		}
+		inline void			prep_for_new() { start_index = current_size = pos = 0; data = NULL; data = (T*)malloc((size_t)capacity * sizeof(T)); }
+		inline void         clear() { if (data) { current_size = 0; } }
+		inline unsigned int			size() { return current_size; }
+		inline const unsigned int	size() const { return current_size; }
+		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
+		inline const T&     operator[](unsigned int i) const { return data[(i + start_index) % capacity]; }
+
+		inline unsigned int end_index() { return (start_index + current_size) % capacity; }
+		inline unsigned int before_start_index() { return start_index == 0 ? capacity - 1 : start_index - 1; }
+		inline unsigned int last_index() { return (start_index + current_size - 1) % capacity; }
+		inline T*			eob_ptr() { return data + (start_index + current_size) % capacity; }
+		inline T&           front() { assert(current_size > 0); return data[start_index]; }
+		inline const T&     front() const { assert(current_size > 0); return data[start_index]; }
+		inline T&           back() { assert(current_size > 0); return data[last_index()]; }
+		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
+
+		inline void         pop() { assert(current_size > 0); current_size--; }
+		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
+		inline bool	        push_back(const T& v) { if (current_size == capacity) return false; new((void*)(data + end_index())) T(v); current_size++; return true; }
+		inline bool	        push_front(const T& v) { if (current_size == capacity) return false; new((void*)(data + before_start_index())) T(v); current_size++; start_index = before_start_index(); return true; }
+		inline void         reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; free(data); data = (T*)malloc((size_t)new_capacity * sizeof(T)); capacity = new_capacity; start_index = current_size = 0; }
+		inline void			assign_memory(tfxmemory &mem, unsigned int element_size, unsigned int element_count) { 
+			assert(range_index == tfxINVALID_RANGE);	//call refresh instead if a range has already been assigned, or free_all and then assign another range;
+			int index = mem.get_range(element_size * element_count);
+			pos = start_index = current_size = 0; range_index = index; capacity = element_count; void *ptr = (char*)mem.data + mem.ranges[index].offset_into_memory; data = static_cast<T*>(ptr); }
+		inline void			refresh(tfxmemory &mem) { void *ptr = (char*)mem.data + mem.ranges[range_index].offset_into_memory; data = static_cast<T*>(ptr); }
+		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
+
+		inline void			reset() { assert(data); pos = 0; }
+		inline T&			next() { assert(current_size > 0); unsigned int current_pos = (start_index + pos) % capacity; pos++; return data[current_pos]; }
+		inline T&			current() { assert(current_size > 0 && pos < current_size); return data[pos]; }
+		inline bool			eob() { return pos >= current_size; }
+	};
+
 	const u32 tfxMAGIC_NUMBER = '!XFT';
 	const u32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
 	const u32 tfxFILE_VERSION = 1;	//Not doing anything with this yet
@@ -1473,7 +1551,7 @@ typedef long long s64;
 	struct tfxEntryInfo {
 		tfxText file_name;						//The file name of the name stored in the package
 		u64 offset_from_start_of_file;			//Offset from the start of the file to where the file is located
-		u64 file_size;							//The size of the filej
+		u64 file_size;							//The size of the file
 		tfxstream data;							//The file data
 		
 		void FreeData();
@@ -1976,7 +2054,7 @@ typedef long long s64;
 	};
 
 	//Store the current state of the Effect/Emitter. All these values can change over the lifetime of the effect/emitter.
-	struct EffectEmitterState {
+	struct EmitterState {
 		//Base particle size
 		tfxVec2 size;
 		//Particle size variation
@@ -2038,11 +2116,26 @@ typedef long long s64;
 		float amount_remainder;
 		bool emission_alternator;
 		bool single_shot_done;
+
 		tfxVec2 grid_coords;
 		tfxVec2 grid_direction;
 		tfxVec2 grid_segment_size;
 
-		EffectEmitterState() : grid_coords(tfxVec2()), single_shot_done(false), age(0.f), amount_remainder(0.f) {}
+		EmitterState() : grid_coords(tfxVec2()), single_shot_done(false), age(0.f), amount_remainder(0.f) {}
+	};
+
+	struct tfxEffectState {
+		//All of these values are global values that affect overal relative effects of sub emitters and effects
+		float life;
+		float amount;
+		tfxVec2 size;
+		float velocity;
+		float spin;
+		float opacity;
+		float splatter;
+		float overal_scale;
+		float stretch;
+		float weight;
 	};
 
 	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
@@ -2057,7 +2150,7 @@ typedef long long s64;
 		Matrix2 matrix;
 
 		//The current state of the effect/emitter
-		EffectEmitterState current;
+		EmitterState current;
 		//All of the properties of the effect/emitter
 		EmitterProperties properties;
 
@@ -2094,7 +2187,7 @@ typedef long long s64;
 		//Experiment with emitters maintaining their own list of particles. Buffer info contains info for fetching the area in the buffer stored in the particle manager
 		//BufferInfo particle_buffer;
 		tfxring<Particle> particles;
-
+		tfxring<ParticleSprite> sprites;
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
@@ -2112,6 +2205,8 @@ TFX_CUSTOM_EMITTER
 		//Experitment: index into the lookup index data in the effect library
 		unsigned int lookup_node_index;
 		unsigned int lookup_value_index;
+		//effect sprite offset
+		unsigned int sprite_offset;
 		//Index to animation settings stored in the effect library. Would like to move this at some point
 		unsigned int animation_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
@@ -2257,6 +2352,7 @@ TFX_CUSTOM_EMITTER
 		void SpawnParticles();
 		bool FreeCapacity();
 		Particle &GrabParticle();
+		ParticleSprite &GrabSprite();
 		unsigned int CalculateMaxParticles();
 		void InitCPUParticle(Particle &p, float tween);
 		void InitComputeParticle(ComputeParticle &p, float tween);
@@ -2382,6 +2478,7 @@ TFX_CUSTOM_EMITTER
 		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
+		unsigned int sprite_index;		//index of the sprite stored in the effect
 
 		//Override functions, you can use these inside an update_callback if you want to modify the particle's behaviour
 		inline void OverridePosition(float x, float y) { local.position.x = x; local.position.y = y; }
@@ -2492,6 +2589,7 @@ TFX_CUSTOM_EMITTER
 		tfxvec<EffectLookUpData> node_lookup_indexes;
 		tfxvec<float> compiled_lookup_values;
 		tfxvec<GraphLookupIndex> compiled_lookup_indexes;
+		tfxvec<ComputeImageData> shape_data;
 		//This could probably be stored globally
 		tfxvec<tfxVec4> graph_min_max;
 
@@ -2521,7 +2619,8 @@ TFX_CUSTOM_EMITTER
 		//Get and effect by it's index
 		void PrepareEffectTemplate(tfxText path, EffectEmitterTemplate &effect);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
-		void CopyComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, ComputeImageData &image_data, int offset));
+		void BuildComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, ComputeImageData &image_data, int offset));
+		void CopyComputeShapeData(void* dst);
 		void CopyLookupIndexesData(void* dst);
 		void CopyLookupValuesData(void* dst);
 		u32 GetComputeShapeDataSizeInBytes();
@@ -2599,7 +2698,8 @@ TFX_CUSTOM_EMITTER
 		//Testing more data oriented approach
 		tfxvec<ParticleStateData> particle_states[tfxLAYERS][2];
 		tfxvec<ParticleSpawnData> particle_spawns[tfxLAYERS][2];
-		tfxvec<ParticleSprite> particle_sprites[tfxLAYERS][2];
+		tfxmemory sprite_memory;
+		tfxmemory particle_memory;
 		tfxvec<Matrix2> particle_martixes[tfxLAYERS][2];
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
 		//you can use an EffectEmitterTemplate and use callback funcitons. 
