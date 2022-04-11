@@ -1002,24 +1002,25 @@ namespace tfx {
 		GetGraphByType(tfxOvertime_direction)->lookup.life = max_life;
 	}
 
-	unsigned int EffectEmitter::UpdateAllBufferSizes() {
-		unsigned int total = 0;
+	void EffectEmitter::UpdateAllBufferSizes(unsigned int totals[tfxLAYERS]) {
 		if (type == tfxEmitter) {
-			total += UpdateBufferSize();
+			UpdateBufferSize(totals);
 		}
 		else {
 			for (auto &emitter : sub_effectors) {
-				total += emitter.UpdateAllBufferSizes();
+				emitter.UpdateAllBufferSizes(totals);
 			}
 		}
-		if (!parent)
-			max_particles = total;
-		return max_particles;
+		if (!parent) {
+			for (int i = 0; i != tfxLAYERS; ++i) {
+				max_particles[i] = totals[i];
+			}
+		}
 	}
 
-	unsigned int EffectEmitter::UpdateBufferSize() {
-		max_particles = unsigned int(GetMaxAmount(*this) * (GetMaxLife(*this) / 1000.f)) + 1;
-		return max_particles;
+	void EffectEmitter::UpdateBufferSize(unsigned int totals[tfxLAYERS]) {
+		max_particles[properties.layer] += unsigned int(GetMaxAmount(*this) * (GetMaxLife(*this) / 1000.f)) + 1;
+		totals[properties.layer] += max_particles[properties.layer];
 	}
 
 	EffectEmitter& EffectEmitter::AddEmitter(EffectEmitter &e) {
@@ -1103,6 +1104,8 @@ namespace tfx {
 
 			if (!is_compute && pm->contain_particles_in_emitters)
 				ControlParticles(*this);
+
+			GetRootEffect()->BumpSprites();
 
 			if (!pm->disable_spawing && pm->FreeCapacity(properties.layer, is_compute))
 				SpawnParticles();
@@ -1259,19 +1262,21 @@ namespace tfx {
 				Particle &p = pm->contain_particles_in_emitters ? GrabParticle() : pm->GrabCPUParticle(properties.layer);
 				InitCPUParticle(p, tween);
 
-				ParticleSprite &s = root_effect.GrabSprite();
-				ComputeImageData &shape = library->shape_data[properties.image->compute_shape_index + (int)p.image_frame];
-				tfxVec2 image_size = shape.image_size;
-				s.bounds = tfxVec4(image_size.x * (0 - properties.image_handle.x), image_size.y * (0 - properties.image_handle.y), image_size.x * (1 - properties.image_handle.x), image_size.y * (1 - properties.image_handle.y));
-				s.uv = shape.uv;
-				s.parameters = (properties.blend_mode << 24) + (shape.image_index << 16) + 2;
-				s.color = p.color;
-				s.position = p.world.position;
-				s.scale_rotation.x = p.world.scale.x;
-				s.scale_rotation.y = p.world.scale.y;
-				s.scale_rotation.z = p.world.rotation;
-				s.scale_rotation.w = p.intensity;
-				p.sprite_index = root_effect.sprites.last_index();
+				if (pm->contain_particles_in_emitters) {
+					if (root_effect.GrabSprite(properties.layer)) {
+						ParticleSprite &s = root_effect.sprites[properties.layer].back();
+						if ((unsigned int)s.parameters == 1142776228)
+							int debug = 1;
+						s.parameters = (properties.blend_mode << 28) + (unsigned int)p.image_frame;
+						s.color = p.color;
+						s.world = p.world;
+						s.captured = p.captured;
+						s.ptr = properties.image->ptr;
+						s.intensity = p.intensity;
+						s.handle = current.image_handle;
+						p.sprite_index = root_effect.sprites[properties.layer].last_index();
+					}
+				}
 
 				highest_particle_age = std::fmaxf(highest_particle_age, p.max_age);
 			}
@@ -1281,7 +1286,7 @@ namespace tfx {
 	}
 
 	bool EffectEmitter::FreeCapacity() {
-		return particles.current_size < particles.capacity;
+		return !particles.full() && !GetRootEffect()->sprites[properties.layer].full();
 	}
 	
 	Particle &EffectEmitter::GrabParticle() {
@@ -1290,10 +1295,26 @@ namespace tfx {
 		return particles.back();
 	}
 	
-	ParticleSprite &EffectEmitter::GrabSprite() {
+	bool EffectEmitter::GrabSprite(unsigned int layer) {
 		ParticleSprite p;
-		sprites.push_back(p);
-		return sprites.back();
+		if (sprites[layer].push_back(p))
+			return true;
+
+		return false;
+	}
+
+	void EffectEmitter::BumpSprites() {
+		for (int i = 0; i != tfxLAYERS; ++i) {
+			if(!sprites[i].reset()) continue;
+			int start_index = sprites[i].start_index;
+			while (!sprites[i].eob()) {
+				ParticleSprite &s = sprites[i].next(start_index);
+				if (s.parameters == tfxINVALID)
+					sprites[i].bump();
+				else
+					return;
+			}
+		}
 	}
 
 	void EffectEmitter::InitCPUParticle(Particle &p, float tween) {
@@ -2704,6 +2725,7 @@ namespace tfx {
 		bool loop = e.properties.end_behaviour == tfxLoop;
 		bool kill = e.properties.end_behaviour == tfxKill;
 		unsigned int remove = e.flags & tfxParticleFlags_remove;
+		unsigned int layer = e.properties.layer;
 		float velocity_adjuster = e.current.velocity_adjuster;
 		float global_opacity = e.parent->current.color.a;
 		float image_size_y = e.properties.image->image_size.y;
@@ -2718,6 +2740,7 @@ namespace tfx {
 		EffectEmitter &root_effect = *e.GetRootEffect();
 
 		e.particles.reset();
+		unsigned int bump_amount = 0;
 		while (!e.particles.eob()) {
 			auto &p = e.particles.next();
 
@@ -2735,14 +2758,28 @@ namespace tfx {
 			//Before we do anything, see if the particle should be removed/end of life
 			p.flags |= remove;
 			if (p.flags & tfxParticleFlags_remove) {
-				if(can_bump) e.particles.bump();
+				if(can_bump) bump_amount++;
+
+				ParticleSprite &s = root_effect.sprites[layer].AtAbs(p.sprite_index);
+				s.world.scale = s.captured.scale = tfxVec2();
+				s.parameters = tfxINVALID;
+
 				continue;
 			}
 
 			if (p.age >= p.max_age && is_single)
 				p.age = 0.f;
 			else if (p.age >= p.max_age) {
-				if(can_bump) e.particles.bump();
+				if (can_bump) {
+					bump_amount++;
+
+					if (p.sprite_index == 0)
+						int debug = 1;
+					ParticleSprite &s = root_effect.sprites[layer].AtAbs(p.sprite_index);
+					s.world.scale = s.captured.scale = tfxVec2();
+					s.parameters = tfxINVALID;
+				}
+
 				continue;
 			}
 			else {
@@ -2863,7 +2900,12 @@ namespace tfx {
 				p.flags |= tfxParticleFlags_capture_after_transform;
 			}
 			else if (line_and_kill) {
-				if(can_bump) e.particles.bump();
+				if(can_bump) bump_amount++;
+
+				ParticleSprite &s = root_effect.sprites[layer].AtAbs(p.sprite_index);
+				s.world.scale = s.captured.scale = tfxVec2();
+				s.parameters |= (1 << 24);
+				
 				continue;
 			}
 
@@ -2879,20 +2921,21 @@ namespace tfx {
 					p.captured.position = p.world.position;
 					p.flags &= ~tfxParticleFlags_capture_after_transform;
 				}
+
+				ParticleSprite &s = root_effect.sprites[layer].AtAbs(p.sprite_index);
+				s.intensity = p.intensity;
+				s.color = p.color;
+				s.world = p.world;
+				s.captured = p.captured;
+				if ((unsigned int)s.parameters == 1142776228)
+					int debug = 1;
+				s.parameters = (e.properties.blend_mode << 28) + (unsigned int)p.image_frame;
 			}
 			else {
 				p.flags &= ~tfxParticleFlags_fresh;
 			}
-
-			ParticleSprite &s = root_effect.sprites[p.sprite_index];
-			s.color = p.color;
-			s.position = p.world.position;
-			s.scale_rotation.x = p.world.scale.x;
-			s.scale_rotation.y = p.world.scale.y;
-			s.scale_rotation.z = p.world.rotation;
-			s.scale_rotation.w = p.intensity;
-
 		}
+		if (bump_amount) e.particles.bump(bump_amount);
 	}
 
 	bool ControlParticleFast(Particle &p, EffectEmitter &e) {
@@ -4110,7 +4153,8 @@ namespace tfx {
 
 	void EffectLibrary::UpdateEffectParticleStorage() {
 		for (auto &e : effects) {
-			e.UpdateAllBufferSizes();
+			if(e.type != tfxFolder)
+				e.UpdateAllBufferSizes(e.max_particles);
 		}
 	}
 
@@ -5967,7 +6011,10 @@ namespace tfx {
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].pm = this;
 		effects[buffer][parent_index].ResetParents();
-		effects[buffer][parent_index].sprites.assign_memory(sprite_memory, sizeof(ParticleSprite), effects[buffer][parent_index].max_particles);
+		for (int i = 0; i != tfxLAYERS; ++i) {
+			EffectEmitter &effect = effects[buffer][parent_index];
+			effects[buffer][parent_index].sprites[i].assign_memory(sprite_memory, sizeof(ParticleSprite), effects[buffer][parent_index].max_particles[i]);
+		}
 		for (auto &e : effect.sub_effectors) {
 			if (!FreeEffectCapacity())
 				break;
@@ -5982,7 +6029,7 @@ namespace tfx {
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
 				effects[buffer][parent_index].active_children++;
 				if (contain_particles_in_emitters) {
-					emitter.particles.assign_memory(particle_memory, sizeof(Particle), emitter.max_particles);
+					emitter.particles.assign_memory(particle_memory, sizeof(Particle), emitter.max_particles[emitter.properties.layer]);
 				}
 				if (use_compute_shader && e.sub_effectors.empty()) {
 					int free_slot = AddComputeController();
@@ -6206,7 +6253,7 @@ namespace tfx {
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 			particles[layer][0].resize(max_cpu_particles_per_layer);
 			particles[layer][1].resize(max_cpu_particles_per_layer);
-			sprite_memory.reserve(max_cpu_particles_per_layer * sizeof(ParticleSprite));
+			sprite_memory.reserve(max_cpu_particles_per_layer * sizeof(ComputeSprite));
 			particles[layer][0].clear();
 			particles[layer][1].clear();
 		}

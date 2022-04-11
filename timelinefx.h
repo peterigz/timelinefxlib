@@ -180,6 +180,7 @@ namespace tfx {
 	struct ParticleManager;
 	struct EffectorStore;
 	struct Particle;
+	struct ComputeSprite;
 	struct ParticleSprite;
 	struct ComputeParticle;
 	struct AnimationSettings;
@@ -1467,7 +1468,7 @@ typedef long long s64;
 	//You must call free_all when done with the buffer, there's no deconstructor
 	//You can also use this in combination with tfxmemory, assign_memory to grab a range of memory from there instead of allocating some. In this case do not call free_all or you will delete
 	//the memory in tfxmem instead! Basically this is only for use in TimelineFX internally.
-#define tfxINVALID_RANGE 0xFFFFFFFF
+#define tfxINVALID 0xFFFFFFFF
 	template<typename T>
 	struct tfxring {
 		unsigned int current_size;
@@ -1476,7 +1477,7 @@ typedef long long s64;
 		unsigned int pos;
 		unsigned int range_index;
 		T* data;
-		inline tfxring() { pos = start_index = current_size = capacity = 0; data = NULL; range_index = tfxINVALID_RANGE; }
+		inline tfxring() { pos = start_index = current_size = capacity = 0; data = NULL; range_index = tfxINVALID; }
 		inline tfxring(unsigned int qty) { pos = start_index = current_size = capacity = 0; data = NULL; reserve(qty); }
 		inline tfxring(tfxmemory &mem, unsigned int index, unsigned int size) { pos = start_index = current_size = 0; capacity = size; data = mem.data + mem.ranges[index].offset_into_memory; range_index = index; }
 
@@ -1486,13 +1487,14 @@ typedef long long s64;
 		typedef const value_type*   const_iterator;
 
 		inline bool			empty() { return current_size == 0; }
-		inline void         free_all() { assert(range_index == tfxINVALID_RANGE); /*Call free_range instead if using tfxmemory*/ if (data) { pos = start_index = current_size = capacity = 0; free(data); data = NULL; } }
+		inline bool			full() { return current_size == capacity; }
+		inline void         free_all() { assert(range_index == tfxINVALID); /*Call free_range instead if using tfxmemory*/ if (data) { pos = start_index = current_size = capacity = 0; free(data); data = NULL; } }
 		inline void         free_range(tfxmemory &mem) { 
-		if (range_index == tfxINVALID_RANGE) return; 
+		if (range_index == tfxINVALID) return; 
 			if (data) { 
 				pos = start_index = current_size = capacity = 0; 
 				mem.free_range(range_index); 
-				range_index = tfxINVALID_RANGE; 
+				range_index = tfxINVALID; 
 				data = NULL; 
 			} 
 		}
@@ -1502,6 +1504,8 @@ typedef long long s64;
 		inline const unsigned int	size() const { return current_size; }
 		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
 		inline const T&     operator[](unsigned int i) const { return data[(i + start_index) % capacity]; }
+		inline T&           AtAbs(unsigned int i) { return data[i]; }
+		inline const T&     AtAbs(unsigned int i) const { return data[i]; }
 
 		inline unsigned int end_index() { return (start_index + current_size) % capacity; }
 		inline unsigned int before_start_index() { return start_index == 0 ? capacity - 1 : start_index - 1; }
@@ -1518,15 +1522,17 @@ typedef long long s64;
 		inline bool	        push_front(const T& v) { if (current_size == capacity) return false; new((void*)(data + before_start_index())) T(v); current_size++; start_index = before_start_index(); return true; }
 		inline void         reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; free(data); data = (T*)malloc((size_t)new_capacity * sizeof(T)); capacity = new_capacity; start_index = current_size = 0; }
 		inline void			assign_memory(tfxmemory &mem, unsigned int element_size, unsigned int element_count) { 
-			assert(range_index == tfxINVALID_RANGE);	//call refresh instead if a range has already been assigned, or free_all and then assign another range;
+			assert(range_index == tfxINVALID);	//call refresh instead if a range has already been assigned, or free_all and then assign another range;
+			if (!element_count) return;
 			int index = mem.get_range(element_size * element_count);
 			pos = start_index = current_size = 0; range_index = index; capacity = element_count; void *ptr = (char*)mem.data + mem.ranges[index].offset_into_memory; data = static_cast<T*>(ptr); }
 		inline void			refresh(tfxmemory &mem) { void *ptr = (char*)mem.data + mem.ranges[range_index].offset_into_memory; data = static_cast<T*>(ptr); }
 		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
+		inline void			bump(unsigned int amount) { if (current_size == 0) return; if (amount > current_size) amount = current_size; start_index += amount; start_index %= capacity; current_size -= amount; }
 
-		inline void			reset() { assert(data); pos = 0; }
+		inline bool			reset() { if (current_size == 0) return false; assert(data); pos = 0; return true; }
 		inline T&			next() { assert(current_size > 0); unsigned int current_pos = (start_index + pos) % capacity; pos++; return data[current_pos]; }
-		inline T&			current() { assert(current_size > 0 && pos < current_size); return data[pos]; }
+		inline T&			next(int start) { assert(current_size > 0); unsigned int current_pos = (start + pos) % capacity; pos++; return data[current_pos]; }
 		inline bool			eob() { return pos >= current_size; }
 	};
 
@@ -2054,6 +2060,7 @@ typedef long long s64;
 	};
 
 	//Store the current state of the Effect/Emitter. All these values can change over the lifetime of the effect/emitter.
+	//It's questionable that we actually need to store these, rather then just use local variables during the ControlParticles function
 	struct EmitterState {
 		//Base particle size
 		tfxVec2 size;
@@ -2140,6 +2147,7 @@ typedef long long s64;
 
 	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
+	//Todo: split this into separate effect and emitter structs as their's too many differences between the 2 so it doesn't make sense anymore
 	struct EffectEmitter {
 
 		//Position, scale and rotation values
@@ -2187,7 +2195,7 @@ typedef long long s64;
 		//Experiment with emitters maintaining their own list of particles. Buffer info contains info for fetching the area in the buffer stored in the particle manager
 		//BufferInfo particle_buffer;
 		tfxring<Particle> particles;
-		tfxring<ParticleSprite> sprites;
+		tfxring<ParticleSprite> sprites[tfxLAYERS];
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
@@ -2212,7 +2220,7 @@ TFX_CUSTOM_EMITTER
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 		float max_life;
 		//The maximum amount of particles that this effect can spawn (root effects and emitters only)
-		u32 max_particles;
+		u32 max_particles[tfxLAYERS];
 		//Pointer to the immediate parent
 		EffectEmitter *parent;
 		//Pointer to the next pointer in the particle manager buffer. 
@@ -2228,7 +2236,7 @@ TFX_CUSTOM_EMITTER
 
 		tfxEmitterStateFlags flags;
 
-		EffectEmitter() : 
+		EffectEmitter() :
 			highest_particle_age(0),
 			parent(nullptr),
 			parent_particle(nullptr),
@@ -2242,6 +2250,9 @@ TFX_CUSTOM_EMITTER
 			particle_update_callback(nullptr),
 			particle_onspawn_callback(nullptr)
 		{
+			for (int i = 0; i != tfxLAYERS; ++i) {
+				max_particles[i] = 0;
+			}
 		}
 		~EffectEmitter();
 		bool operator < (const EffectEmitter& e) const
@@ -2337,8 +2348,8 @@ TFX_CUSTOM_EMITTER
 		void ResetEffectGraphs(bool add_node = true);
 		void ResetEmitterGraphs(bool add_node = true);
 		void UpdateMaxLife();
-		unsigned int UpdateAllBufferSizes();
-		unsigned int UpdateBufferSize();
+		void UpdateAllBufferSizes(unsigned int totals[tfxLAYERS]);
+		void UpdateBufferSize(unsigned int totals[tfxLAYERS]);
 		Graph* GetGraphByType(GraphType type);
 		unsigned int GetGraphIndexByType(GraphType type);
 		void CompileGraphs();
@@ -2350,9 +2361,10 @@ TFX_CUSTOM_EMITTER
 		void Update();
 		void UpdateParticles();
 		void SpawnParticles();
+		void BumpSprites();
 		bool FreeCapacity();
 		Particle &GrabParticle();
-		ParticleSprite &GrabSprite();
+		bool GrabSprite(unsigned int layer);
 		unsigned int CalculateMaxParticles();
 		void InitCPUParticle(Particle &p, float tween);
 		void InitComputeParticle(ComputeParticle &p, float tween);
@@ -2440,13 +2452,23 @@ TFX_CUSTOM_EMITTER
 		tfxParticleFlags flags;			//flags for different states
 	};
 
-	struct ParticleSprite {	//64 bytes
+	struct ComputeSprite {	//64 bytes
 		tfxVec4 bounds;				//the min/max x,y coordinates of the image being drawn
 		tfxVec4 uv;					//The UV coords of the image in the texture
 		tfxVec4 scale_rotation;		//Scale and rotation (x, y = scale, z = rotation, w = multiply blend factor)
 		tfxVec2 position;			//The position of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, image layer index, shader function index, blend type
+	};
+
+	struct ParticleSprite {	//68 bytes
+		void *ptr;					//Pointer to the image data
+		FormState world;
+		FormState captured;
+		tfxVec2 handle;
+		tfxRGBA8 color;				//The color tint of the sprite
+		float intensity;			
+		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, expired flag, frame
 	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
