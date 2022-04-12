@@ -436,7 +436,7 @@ typedef long long s64;
 	typedef unsigned int tfxEmitterPropertyFlags;
 	typedef unsigned int tfxVectorFieldFlags;
 	typedef unsigned char tfxParticleFlags;
-	typedef unsigned char tfxEmitterStateFlags;
+	typedef unsigned int tfxEmitterStateFlags;
 	typedef unsigned int tfxParticleControlFlags;
 	typedef unsigned int tfxAttributeNodeFlags;
 
@@ -498,17 +498,29 @@ typedef long long s64;
 	enum tfxParticleFlags_ : unsigned char {
 		tfxParticleFlags_none = 0,
 		tfxParticleFlags_fresh = 1 << 0,									//Particle has just spawned this frame	
-		tfxParticleFlags_remove = 1 << 1,									//Particle will be removed this or next frame
-		tfxParticleFlags_capture_after_transform = 1 << 2,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
+		tfxParticleFlags_capture_after_transform = 1 << 3,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
+		tfxParticleFlags_remove = 1 << 4,									//Particle will be removed this or next frame
 	};
 
-	enum tfxEmitterStateFlags_ : unsigned char {
+	enum tfxEmitterStateFlags_ : unsigned int {
 		tfxEmitterStateFlags_none = 0,
-		tfxEmitterStateFlags_stop_spawning = 1 << 0,							//Tells the emitter to stop spawning
-		tfxEmitterStateFlags_remove = 1 << 1,									//Tells the effect/emitter to remove itself from the particle manager immediately
-		tfxEmitterStateFlags_enabled = 1 << 2,									//the emitter is enabled. If flag is not set then it will not be added to the particle manager with AddEffect
-		tfxEmitterStateFlags_retain_matrix = 1 << 3,							//Internal flag about matrix usage
-		tfxEmitterStateFlags_no_tween_this_update = 1 << 4						//Internal flag generally, but you could use it if you want to teleport the effect to another location
+		tfxEmitterStateFlags_random_color = 1 << 0,
+		tfxEmitterStateFlags_relative_position = 1 << 1,					//Keep the particles position relative to the current position of the emitter
+		tfxEmitterStateFlags_relative_angle = 1 << 2,						//Keep the angle of the particles relative to the current angle of the emitter
+		tfxEmitterStateFlags_stop_spawning = 1 << 3,						//Tells the emitter to stop spawning
+		tfxEmitterStateFlags_remove = 1 << 4,								//Tells the effect/emitter to remove itself from the particle manager immediately
+		tfxEmitterStateFlags_enabled = 1 << 5,								//the emitter is enabled. If flag is not set then it will not be added to the particle manager with AddEffect
+		tfxEmitterStateFlags_retain_matrix = 1 << 6,						//Internal flag about matrix usage
+		tfxEmitterStateFlags_no_tween_this_update = 1 << 7,					//Internal flag generally, but you could use it if you want to teleport the effect to another location
+		tfxEmitterStateFlags_is_single = 1 << 8,
+		tfxEmitterStateFlags_not_line = 1 << 9,
+		tfxEmitterStateFlags_is_line = 1 << 10,
+		tfxEmitterStateFlags_can_spin = 1 << 11,
+		tfxEmitterStateFlags_align_with_velocity = 1 << 12,
+		tfxEmitterStateFlags_lifetime_uniform_size = 1 << 13,			//Keep the size over lifetime of the particle uniform
+		tfxEmitterStateFlags_loop = 1 << 14,
+		tfxEmitterStateFlags_kill = 1 << 15,
+		tfxEmitterStateFlags_play_once = 1 << 16,						//Play the animation once only
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
@@ -1529,6 +1541,7 @@ typedef long long s64;
 		inline void			refresh(tfxmemory &mem) { void *ptr = (char*)mem.data + mem.ranges[range_index].offset_into_memory; data = static_cast<T*>(ptr); }
 		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
 		inline void			bump(unsigned int amount) { if (current_size == 0) return; if (amount > current_size) amount = current_size; start_index += amount; start_index %= capacity; current_size -= amount; }
+		inline void			shrink(unsigned int amount) { if (amount > current_size) current_size = 0; else current_size -= amount; }
 
 		inline bool			reset() { if (current_size == 0) return false; assert(data); pos = 0; return true; }
 		inline T&			next() { assert(current_size > 0); unsigned int current_pos = (start_index + pos) % capacity; pos++; return data[current_pos]; }
@@ -2145,6 +2158,9 @@ typedef long long s64;
 		float weight;
 	};
 
+	struct tfxEffect {
+	};
+
 	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
 	//Todo: split this into separate effect and emitter structs as their's too many differences between the 2 so it doesn't make sense anymore
@@ -2196,6 +2212,7 @@ typedef long long s64;
 		//BufferInfo particle_buffer;
 		tfxring<Particle> particles;
 		tfxring<ParticleSprite> sprites[tfxLAYERS];
+		tfxvec<unsigned int> invalid_sprite_indexes;
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
@@ -2362,10 +2379,10 @@ TFX_CUSTOM_EMITTER
 		void UpdateParticles();
 		void SpawnParticles();
 		void BumpSprites();
+		void ShrinkSprites();
 		bool FreeCapacity();
 		Particle &GrabParticle();
 		bool GrabSprite(unsigned int layer);
-		unsigned int CalculateMaxParticles();
 		void InitCPUParticle(Particle &p, float tween);
 		void InitComputeParticle(ComputeParticle &p, float tween);
 		void UpdateComputeController();

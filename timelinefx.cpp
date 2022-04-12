@@ -1202,10 +1202,6 @@ namespace tfx {
 		}
 	}
 
-	unsigned int EffectEmitter::CalculateMaxParticles() {
-		return 0;
-	}
-
 	void EffectEmitter::SpawnParticles() {
 		if (current.single_shot_done || parent->flags & tfxEmitterStateFlags_stop_spawning)
 			return;
@@ -1265,8 +1261,6 @@ namespace tfx {
 				if (pm->contain_particles_in_emitters) {
 					if (root_effect.GrabSprite(properties.layer)) {
 						ParticleSprite &s = root_effect.sprites[properties.layer].back();
-						if ((unsigned int)s.parameters == 1142776228)
-							int debug = 1;
 						s.parameters = (properties.blend_mode << 28) + (unsigned int)p.image_frame;
 						s.color = p.color;
 						s.world = p.world;
@@ -2714,18 +2708,10 @@ namespace tfx {
 */
 	void ControlParticles(EffectEmitter &e) {
 		bool can_bump = true;
-		bool is_single = e.properties.flags & tfxEmitterPropertyFlags_single && !(e.properties.flags & tfxEmitterPropertyFlags_one_shot) && !e.pm->disable_spawing;
-		bool not_line = (e.properties.emission_type != tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal)) || e.properties.emission_type == tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal);
-		bool random_color = e.properties.flags & tfxEmitterPropertyFlags_random_color;
-		bool uniform_size = e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-		bool can_spin = e.properties.angle_setting != AngleSetting::tfxAlign && !(e.properties.flags & tfxEmitterPropertyFlags_relative_angle);
-		bool align = e.properties.angle_setting == AngleSetting::tfxAlign;
-		bool is_line = e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal;
-		bool play_once = e.properties.flags & tfxEmitterPropertyFlags_play_once;
-		bool loop = e.properties.end_behaviour == tfxLoop;
-		bool kill = e.properties.end_behaviour == tfxKill;
-		unsigned int remove = e.flags & tfxParticleFlags_remove;
+
+		unsigned int flags = e.flags;
 		unsigned int layer = e.properties.layer;
+		unsigned int blend_mode = e.properties.blend_mode;
 		float velocity_adjuster = e.current.velocity_adjuster;
 		float global_opacity = e.parent->current.color.a;
 		float image_size_y = e.properties.image->image_size.y;
@@ -2736,6 +2722,8 @@ namespace tfx {
 		float emitter_handle_y = e.current.emitter_handle.y;
 		float angle_offset = e.properties.angle_offset;
 		float overal_scale = e.current.overal_scale;
+		void *image_ptr = e.properties.image->ptr;
+		tfxVec2 image_handle = e.current.image_handle;
 		OvertimeAttributes &graphs = e.library->overtime_graphs[e.overtime];
 		EffectEmitter &root_effect = *e.GetRootEffect();
 
@@ -2756,8 +2744,7 @@ namespace tfx {
 			//-------------------------------------------------------
 
 			//Before we do anything, see if the particle should be removed/end of life
-			p.flags |= remove;
-			if (p.flags & tfxParticleFlags_remove) {
+			if (flags & tfxEmitterStateFlags_remove) {
 				if(can_bump) bump_amount++;
 
 				ParticleSprite &s = root_effect.sprites[layer].AtAbs(p.sprite_index);
@@ -2767,14 +2754,12 @@ namespace tfx {
 				continue;
 			}
 
-			if (p.age >= p.max_age && is_single)
+			if (p.age >= p.max_age && flags & tfxEmitterStateFlags_is_single)
 				p.age = 0.f;
 			else if (p.age >= p.max_age) {
 				if (can_bump) {
 					bump_amount++;
 
-					if (p.sprite_index == 0)
-						int debug = 1;
 					ParticleSprite &s = root_effect.sprites[layer].AtAbs(p.sprite_index);
 					s.world.scale = s.captured.scale = tfxVec2();
 					s.parameters = tfxINVALID;
@@ -2812,7 +2797,7 @@ namespace tfx {
 			float mr_speed = 0;
 
 			tfxVec2 mr_vec;
-			if (not_line) {
+			if (flags & tfxEmitterStateFlags_not_line) {
 				direction = lookup_direction;
 			}
 
@@ -2840,7 +2825,7 @@ namespace tfx {
 			//----Color changes
 			p.color.a = unsigned char(255.f * lookup_opacity * global_opacity);
 			p.intensity = lookup_intensity;
-			if (!random_color) {
+			if (!(flags & tfxEmitterStateFlags_random_color)) {
 				p.color.r = unsigned char(255.f * lookup_red);
 				p.color.g = unsigned char(255.f * lookup_green);
 				p.color.b = unsigned char(255.f * lookup_blue);
@@ -2856,7 +2841,7 @@ namespace tfx {
 
 			//----Stretch Changes
 			float velocity = std::fabsf(lookup_velocity * p.base.velocity + mr_speed + p.weight_acceleration);
-			if (uniform_size) {
+			if (flags & tfxEmitterStateFlags_lifetime_uniform_size) {
 				scale.y = (lookup_width * (p.base.size.y + (velocity * lookup_stretch * stretch))) / image_size_y;
 				if (scale.y < scale.x)
 					scale.y = scale.x;
@@ -2866,7 +2851,7 @@ namespace tfx {
 
 			//----Spin and angle Changes
 			float spin = 0;
-			if (can_spin) {
+			if (flags & tfxEmitterStateFlags_can_spin) {
 				spin = lookup_spin;
 			}
 
@@ -2875,7 +2860,7 @@ namespace tfx {
 			//---------------
 
 			//----Rotation
-			if (align) {
+			if (flags & tfxEmitterStateFlags_align_with_velocity) {
 				tfxVec2 vd = current_velocity.IsNill() ? velocity_normal : current_velocity;
 				p.local.rotation = GetVectorAngle(vd.x, vd.y) + angle_offset;
 			}
@@ -2893,8 +2878,8 @@ namespace tfx {
 			tfxVec2 offset = velocity_normal * emitter_size_y;
 			float length = std::fabsf(p.local.position.y - emitter_handle_y);
 			float emitter_length = emitter_size_y;
-			bool line_and_loop = is_line && loop && length > emitter_length;
-			bool line_and_kill = is_line && kill && length > emitter_length;
+			bool line_and_loop = (flags & tfxEmitterStateFlags_is_line) && (flags & tfxEmitterStateFlags_kill) && length > emitter_length;
+			bool line_and_kill = (flags & tfxEmitterStateFlags_is_line) && (flags & tfxEmitterStateFlags_loop) && length > emitter_length;
 			if (line_and_loop) {
 				p.local.position.y -= offset.y;
 				p.flags |= tfxParticleFlags_capture_after_transform;
@@ -2904,15 +2889,15 @@ namespace tfx {
 
 				ParticleSprite &s = root_effect.sprites[layer].AtAbs(p.sprite_index);
 				s.world.scale = s.captured.scale = tfxVec2();
-				s.parameters |= (1 << 24);
+				s.parameters = tfxINVALID;
 				
 				continue;
 			}
 
 			//----Image animation
 			p.image_frame += frame_rate * UPDATE_TIME;
-			p.image_frame = play_once && p.image_frame > end_frame ? p.image_frame = end_frame : p.image_frame;
-			p.image_frame = play_once && p.image_frame < 0 ? p.image_frame = 0 : p.image_frame;
+			p.image_frame = (flags & tfxEmitterStateFlags_play_once) && p.image_frame > end_frame ? p.image_frame = end_frame : p.image_frame;
+			p.image_frame = (flags & tfxEmitterStateFlags_play_once) && p.image_frame < 0 ? p.image_frame = 0 : p.image_frame;
 			p.image_frame = std::fmodf(p.image_frame, end_frame + 1);
 
 			if (!(p.flags & tfxParticleFlags_fresh)) {
@@ -2922,14 +2907,21 @@ namespace tfx {
 					p.flags &= ~tfxParticleFlags_capture_after_transform;
 				}
 
+				unsigned int index = p.sprite_index;
+				if (index > 0) index--;
+				ParticleSprite &prev = root_effect.sprites[layer].AtAbs(index);
+				if (prev.parameters == tfxINVALID) {
+					root_effect.sprites[layer].AtAbs(p.sprite_index).parameters = tfxINVALID;
+					p.sprite_index--;
+				}
 				ParticleSprite &s = root_effect.sprites[layer].AtAbs(p.sprite_index);
 				s.intensity = p.intensity;
 				s.color = p.color;
 				s.world = p.world;
 				s.captured = p.captured;
-				if ((unsigned int)s.parameters == 1142776228)
-					int debug = 1;
-				s.parameters = (e.properties.blend_mode << 28) + (unsigned int)p.image_frame;
+				s.ptr = image_ptr;
+				s.handle = image_handle;
+				s.parameters = (blend_mode << 28) + (unsigned int)p.image_frame;
 			}
 			else {
 				p.flags &= ~tfxParticleFlags_fresh;
@@ -6027,6 +6019,18 @@ namespace tfx {
 				emitter.pm = this;
 				emitter.active_children = 0;
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
+
+				emitter.flags |= e.properties.flags & tfxEmitterPropertyFlags_single && !(e.properties.flags & tfxEmitterPropertyFlags_one_shot) && !e.pm->disable_spawing ? tfxEmitterStateFlags_is_single : 0;
+				emitter.flags |= (e.properties.emission_type != tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal)) || e.properties.emission_type == tfxLine && !(e.properties.flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
+				emitter.flags |= e.properties.flags & tfxEmitterPropertyFlags_random_color;
+				emitter.flags |= e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
+				emitter.flags |= e.properties.angle_setting != AngleSetting::tfxAlign && !(e.properties.flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+				emitter.flags |= e.properties.angle_setting == AngleSetting::tfxAlign ? tfxEmitterStateFlags_align_with_velocity : 0;
+				emitter.flags |= e.properties.emission_type == tfxLine && e.properties.flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line : 0;
+				emitter.flags |= e.properties.flags & tfxEmitterPropertyFlags_play_once;
+				emitter.flags |= e.properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
+				emitter.flags |= e.properties.end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
+
 				effects[buffer][parent_index].active_children++;
 				if (contain_particles_in_emitters) {
 					emitter.particles.assign_memory(particle_memory, sizeof(Particle), emitter.max_particles[emitter.properties.layer]);
