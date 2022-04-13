@@ -186,6 +186,9 @@ namespace tfx {
 	struct AnimationSettings;
 	struct EffectLibrary;
 	struct tfxText;
+	struct tfxEffect;
+	struct tfxEmitter;
+	struct tfxEffectStorage;
 
 	//--------------------------------------------------------------
 	//macros
@@ -216,6 +219,7 @@ typedef unsigned int u32;
 typedef int s32;
 typedef unsigned long long u64;
 typedef long long s64;
+typedef unsigned int tfxEffectID;
 
 	//----------------------------------------------------------
 	//enums/flags
@@ -353,8 +357,8 @@ typedef long long s64;
 
 	//EffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 	enum EffectEmitterType : unsigned char {
-		tfxEffect,
-		tfxEmitter,
+		tfxEffectType,
+		tfxEmitterType,
 		tfxStage,
 		tfxFolder
 	};
@@ -514,13 +518,16 @@ typedef long long s64;
 		tfxEmitterStateFlags_no_tween_this_update = 1 << 7,					//Internal flag generally, but you could use it if you want to teleport the effect to another location
 		tfxEmitterStateFlags_is_single = 1 << 8,
 		tfxEmitterStateFlags_not_line = 1 << 9,
-		tfxEmitterStateFlags_is_line = 1 << 10,
+		tfxEmitterStateFlags_is_line_traversal = 1 << 10,
 		tfxEmitterStateFlags_can_spin = 1 << 11,
 		tfxEmitterStateFlags_align_with_velocity = 1 << 12,
 		tfxEmitterStateFlags_lifetime_uniform_size = 1 << 13,			//Keep the size over lifetime of the particle uniform
 		tfxEmitterStateFlags_loop = 1 << 14,
 		tfxEmitterStateFlags_kill = 1 << 15,
 		tfxEmitterStateFlags_play_once = 1 << 16,						//Play the animation once only
+		tfxEmitterStateFlags_single_shot_done = 1 << 17,
+		tfxEmitterStateFlags_is_line = 1 << 18,
+		tfxEmitterStateFlags_is_area = 1 << 19,
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
@@ -1437,6 +1444,7 @@ typedef long long s64;
 		inline void					resize(unsigned int new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void					shrink(unsigned int new_size) { assert(new_size <= current_size); current_size = new_size; }
 		inline void					reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; char* new_data = (char*)malloc((size_t)new_capacity * sizeof(char)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(char)); free(data); } data = new_data; capacity = new_capacity; }
+		inline unsigned int			free_unused_space() { return capacity - current_size; }
 
 		inline unsigned int			get_range(unsigned int bytes) { 
 			if (current_size == capacity) reserve(_grow_capacity(current_size + bytes)); 
@@ -1938,6 +1946,12 @@ typedef long long s64;
 		float rotation;
 	};
 
+	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
+	struct LocalFormState {
+		tfxVec2 position;
+		float rotation;
+	};
+
 	struct Base {
 		tfxVec2 size;
 		tfxVec2 random_size;
@@ -2158,20 +2172,125 @@ typedef long long s64;
 		float weight;
 	};
 
-	struct tfxEffect {
-	};
-
-	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
-	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
-	//Todo: split this into separate effect and emitter structs as their's too many differences between the 2 so it doesn't make sense anymore
-	struct EffectEmitter {
+	struct tfxTransform {
 
 		//Position, scale and rotation values
-		FormState local;
+		LocalFormState local;
 		FormState world;
 		FormState captured;
 		//2d matrix for transformations
 		Matrix2 matrix;
+
+	};
+
+	struct tfxCommon {
+
+		float frame;
+		float age;
+		float highest_particle_age;
+		float loop_length;
+		unsigned int active_children;
+		unsigned int timeout_counter;
+		unsigned int timeout;
+		unsigned int max_particles[tfxLAYERS];
+		tfxVec2 handle;
+		LookupMode lookup_mode;
+		tfxEmitterStateFlags state_flags;
+		tfxEmitterPropertyFlags property_flags;
+		EffectLibrary *library;
+		tfxEffect *root_effect;
+
+		tfxCommon() :
+			frame(0.f),
+			age(0.f),
+			highest_particle_age(0.f),
+			timeout_counter(0),
+			timeout(500),
+			active_children(0),
+			state_flags(0),
+			property_flags(0),
+			root_effect(nullptr),
+			lookup_mode(tfxPrecise)
+		{ }
+
+	};
+
+	struct tfxEmitterState {
+		float velocity_adjuster;
+		float global_opacity;
+		float frame_rate;
+		float stretch;
+		float emitter_size_y;
+		float emitter_handle_y;
+		float overal_scale;
+		float amount_remainder;
+		float emission_alternator;
+
+		tfxEmitterState() :
+			amount_remainder(0.f)
+		{}
+	};
+
+	struct tfxEmitter {
+		tfxTransform transform;
+		tfxEffect *parent_effect;
+		tfxCommon common;
+		tfxEmitterState current;
+		unsigned int property;
+		unsigned int base;
+		unsigned int variation;
+		unsigned int overtime;
+		unsigned int layer;
+		unsigned int blend_mode;
+		unsigned int spawn_amount;
+		EmissionType emission_type;
+		AngleSetting angle_setting;
+		EmissionDirection emission_direction;
+		float start_frame;
+		float animation_frames;
+		float end_frame;
+		void *image_ptr;
+		float angle_offset;
+		tfxVec2 image_size;
+		tfxVec2 image_handle;
+		tfxVec2 grid_points;
+		tfxVec2 grid_coords;
+		tfxVec2 grid_direction;
+		tfxring<tfxEffect> sub_effects;
+		tfxring<Particle> particles;
+
+		void Reset();
+		void UpdateEmitter();
+		void SpawnParticles();
+		float GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
+		void InitCPUParticle(Particle &p, float tween);
+		bool FreeCapacity();
+		Particle &GrabParticle();
+	};
+
+	struct tfxEffect {
+
+		tfxTransform transform;
+		unsigned int global;
+		Particle *parent_particle;
+		tfxCommon common;
+		tfxKey path_hash;
+		tfxEffectState current;
+		tfxring<tfxEmitter> sub_emitters;
+		tfxring<ParticleSprite> sprites[tfxLAYERS];
+
+		tfxEffect() : parent_particle(nullptr) {}
+		void Reset();
+		bool GrabSprite(unsigned int layer);
+	};
+
+
+	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
+	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
+	//This is only for library storage, when using to update each frame this is copied to tfxEffectType and tfxEmitterType, much more compact versions more
+	//suited for realtime use.
+	struct EffectEmitter {
+		tfxTransform transform;
 
 		//The current state of the effect/emitter
 		EmitterState current;
@@ -2182,7 +2301,7 @@ typedef long long s64;
 		tfxText name;						//Todo: Do we need this here?
 		//A hash of the directory path to the effect ie Flare/spark
 		tfxKey path_hash;
-		//Is this a tfxEffect or tfxEmitter
+		//Is this a tfxEffectType or tfxEmitterType
 		EffectEmitterType type;
 		//A pointer to the library this effect belongs
 		EffectLibrary *library;
@@ -2304,7 +2423,7 @@ TFX_CUSTOM_EMITTER
 		inline void OverrideGlobalWidth(float value) { current.size.x = value; }
 		inline void OverrideGlobalHeight(float value) { current.size.y = value; }
 		inline void OverrideGlobalSpin(float value) { current.spin = value; }
-		inline void OverrideGlobalEffectAngle(float value) { local.rotation = value; }
+		inline void OverrideGlobalEffectAngle(float value) { transform.local.rotation = value; }
 		inline void OverrideGlobalStretch(float value) { current.stretch = value; }
 		inline void OverrideGlobalOveralScale(float value) { current.overal_scale = value; }
 		inline void OverrideGlobalOpacity(float value) { current.color.a = value; }
@@ -2315,7 +2434,7 @@ TFX_CUSTOM_EMITTER
 		//Property Emitter Overrides
 		inline void OverridePropertyEmissionAngle(float value) { current.emission_angle = value; }
 		inline void OverridePropertyEmissionRange(float value) { current.emission_angle_variation = value; }
-		inline void OverridePropertyEmitterAngle(float value) { local.rotation = value; }
+		inline void OverridePropertyEmitterAngle(float value) { transform.local.rotation = value; }
 		inline void OverridePropertySplatter(float value) { current.splatter = value; }
 		inline void OverridePropertyEmitterWidth(float value) { current.emitter_size.x = value; }
 		inline void OverridePropertyEmitterHeight(float value) { current.emitter_size.y = value; }
@@ -2348,9 +2467,10 @@ TFX_CUSTOM_EMITTER
 		EffectEmitter& AddEmitter(EffectEmitter &e);
 		EffectEmitter& AddEffect(EffectEmitter &e);
 		EffectEmitter& AddEffect();
-		EffectEmitter& AddEffector(EffectEmitterType type = tfxEmitter);
+		EffectEmitter& AddEffector(EffectEmitterType type = tfxEmitterType);
 		EffectEmitter* GetRootEffect();
 		void ReIndex();
+		void CountChildren(int &emitters, int &effects);
 		void ResetParents();
 		EffectEmitter* MoveUp(EffectEmitter &effect);
 		EffectEmitter* MoveDown(EffectEmitter &effect);
@@ -2379,7 +2499,6 @@ TFX_CUSTOM_EMITTER
 		void UpdateParticles();
 		void SpawnParticles();
 		void BumpSprites();
-		void ShrinkSprites();
 		bool FreeCapacity();
 		Particle &GrabParticle();
 		bool GrabSprite(unsigned int layer);
@@ -2399,6 +2518,9 @@ TFX_CUSTOM_EMITTER
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
 		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data = false);
+		void CopyToEffect(tfxEffect &effect, tfxEffectStorage &storage);
+		void CopyToEmitter(tfxEmitter &emitter, tfxEffectStorage &storage);
+		void CopyToSubEffect(tfxEffect &effect, tfxEffectStorage &storage);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -2494,8 +2616,8 @@ TFX_CUSTOM_EMITTER
 	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
 	//168 bytes
 	struct Particle {
-		FormState local;				//The local position of the particle, relative to the emitter.
-		FormState world;				//The world position of the particle relative to the screen.
+		LocalFormState local;			//The local position of the particle, relative to the emitter.
+		FormState world;				//The world position of the particle relative to the world/screen.
 		FormState captured;				//The captured world coords for tweening
 		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
 
@@ -2521,7 +2643,7 @@ TFX_CUSTOM_EMITTER
 
 		//Override functions, you can use these inside an update_callback if you want to modify the particle's behaviour
 		inline void OverridePosition(float x, float y) { local.position.x = x; local.position.y = y; }
-		inline void OverrideSize(float x, float y) { local.scale.x = x; local.scale.y = y; }
+		inline void OverrideSize(float x, float y) { world.scale.x = x; world.scale.y = y; }
 		//inline void OverrideVelocity(float x, float y) { velocity.x = x; velocity.y = y; }
 		//inline void OverrideVelocityScale(float v) { velocity_scale = v; }
 		inline void OverrideRotation(float r) { local.rotation = r; }
@@ -2728,6 +2850,30 @@ TFX_CUSTOM_EMITTER
 		u32 length;
 	};
 
+	struct tfxEffectStorage {
+		tfxmemory effect_memory;
+		tfxmemory emitter_memory;
+		tfxmemory particle_memory;
+		tfxmemory sprite_memory;
+		
+		tfxStorageMap <tfxvec<tfxEffect>> effect_cache;
+
+		tfxEffectStorage() {}
+		~tfxEffectStorage() {
+			effect_memory.free_all();
+			emitter_memory.free_all();
+			particle_memory.free_all();
+			sprite_memory.free_all();
+		};
+
+		void Init(unsigned int max_effects = 1000, unsigned int max_emitters = 10000, unsigned int max_particles = 100000);
+		void FreeEffect(tfxEffect &effect);
+		bool EffectInCache(tfxKey path_hash);
+		bool GetEffectFromCache(tfxKey path_hash, tfxEffect &effect);
+		tfxEffectID InsertEffect();
+		tfxEffect &GetEffect(tfxEffectID id);
+	};
+
 	//Use the particle manager to add effects to your scene
 	struct ParticleManager {
 
@@ -2735,8 +2881,6 @@ TFX_CUSTOM_EMITTER
 		//lifetimes and can expire at anytime, this seemed like the easiest way to do this, although I dare say that there's faster ways of doing it, multi-threading it might be a good start there.
 		tfxvec<Particle> particles[tfxLAYERS][2];
 		//Testing more data oriented approach
-		tfxvec<ParticleStateData> particle_states[tfxLAYERS][2];
-		tfxvec<ParticleSpawnData> particle_spawns[tfxLAYERS][2];
 		tfxmemory sprite_memory;
 		tfxmemory particle_memory;
 		tfxvec<Matrix2> particle_martixes[tfxLAYERS][2];
@@ -2899,6 +3043,9 @@ TFX_CUSTOM_EMITTER
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
 	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
 	void TransformParticle(Particle &p, EffectEmitter &e);
+	void TransformParticle(Particle &p, tfxEmitter &e);
+	void Transform(tfxEffect &effect, Particle &parent);
+	void Transform(tfxEmitter &emitter, tfxEffect &parent);
 	void Transform(FormState &local, FormState &world, EffectEmitter &e);
 	bool ControlParticle(Particle &p, EffectEmitter &e);
 	bool ControlParticleFast(Particle &p, EffectEmitter &e);
@@ -2935,6 +3082,9 @@ TFX_CUSTOM_EMITTER
 	void InitParticleManager(ParticleManager &pm, unsigned int effects_limit, unsigned int particle_limit_per_layer);
 	void AddEffect(ParticleManager &pm, EffectEmitter &effect, float x = 0.f, float y = 0.f);
 	void AddEffect(ParticleManager &pm, EffectEmitterTemplate &effect, float x = 0.f, float y = 0.f);
+	bool GetEffect(EffectLibrary &library, tfxEffectStorage &storage, const char *name, tfxEffect &out);
+	bool Copy(tfxEffectStorage &storage, EffectEmitter &in, tfxEffect &out);
+	void UpdateEffect(tfxEffect &effect);
 
 }
 
