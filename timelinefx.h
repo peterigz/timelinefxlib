@@ -2216,11 +2216,13 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxEmitterState {
+		tfxVec2 emitter_size;
+		tfxVec2 grid_coords;
+		tfxVec2 grid_direction;
 		float velocity_adjuster;
 		float global_opacity;
 		float frame_rate;
 		float stretch;
-		float emitter_size_y;
 		float emitter_handle_y;
 		float overal_scale;
 		float amount_remainder;
@@ -2253,9 +2255,8 @@ typedef unsigned int tfxEffectID;
 		float angle_offset;
 		tfxVec2 image_size;
 		tfxVec2 image_handle;
+		tfxVec2 emitter_handle;
 		tfxVec2 grid_points;
-		tfxVec2 grid_coords;
-		tfxVec2 grid_direction;
 		tfxring<tfxEffect> sub_effects;
 		tfxring<Particle> particles;
 
@@ -2279,7 +2280,7 @@ typedef unsigned int tfxEffectID;
 		tfxring<tfxEmitter> sub_emitters;
 		tfxring<ParticleSprite> sprites[tfxLAYERS];
 
-		tfxEffect() : parent_particle(nullptr) {}
+		tfxEffect() : parent_particle(nullptr), path_hash(0) {}
 		void Reset();
 		bool GrabSprite(unsigned int layer);
 	};
@@ -2870,6 +2871,7 @@ TFX_CUSTOM_EMITTER
 		void FreeEffect(tfxEffect &effect);
 		bool EffectInCache(tfxKey path_hash);
 		bool GetEffectFromCache(tfxKey path_hash, tfxEffect &effect);
+		void PutEffectInCache(tfxEffect &effect);
 		tfxEffectID InsertEffect();
 		tfxEffect &GetEffect(tfxEffectID id);
 	};
@@ -3050,6 +3052,8 @@ TFX_CUSTOM_EMITTER
 	bool ControlParticle(Particle &p, EffectEmitter &e);
 	bool ControlParticleFast(Particle &p, EffectEmitter &e);
 	void ControlParticles(EffectEmitter &e);
+	void ControlParticles(tfxEmitter &e);
+	void BumpSprites(tfxEffect &effect);
 	FormState Tween(float tween, FormState &world, FormState &captured);
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
@@ -3083,6 +3087,7 @@ TFX_CUSTOM_EMITTER
 	void AddEffect(ParticleManager &pm, EffectEmitter &effect, float x = 0.f, float y = 0.f);
 	void AddEffect(ParticleManager &pm, EffectEmitterTemplate &effect, float x = 0.f, float y = 0.f);
 	bool GetEffect(EffectLibrary &library, tfxEffectStorage &storage, const char *name, tfxEffect &out);
+	bool GetEffect(EffectLibrary &library, tfxEffectStorage &storage, unsigned int, tfxEffect &out);
 	bool Copy(tfxEffectStorage &storage, EffectEmitter &in, tfxEffect &out);
 	void UpdateEffect(tfxEffect &effect);
 
