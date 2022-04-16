@@ -666,7 +666,7 @@ typedef unsigned int tfxEffectID;
 		inline tfxvec(T* from, T* to) { current_size = capacity = 0; data = NULL; auto current = from; while (current != to + 1) { push_back(*current); ++current; } }
 		inline tfxvec(std::initializer_list<T> t) { current_size = capacity = 0; data = NULL; for (T element : t) { push_back(element); } }
 		inline tfxvec(const tfxvec<T> &src) { current_size = capacity = 0; data = NULL; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
-		inline tfxvec<T>& operator=(const tfxvec<T>& src) { free_all(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
+		inline tfxvec<T>& operator=(const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
 		inline ~tfxvec() { if (data) free(data); data = NULL; current_size = capacity = 0; }
 
 		inline bool			empty() { return current_size == 0; }
@@ -1519,7 +1519,7 @@ typedef unsigned int tfxEffectID;
 			} 
 		}
 		inline void			prep_for_new() { start_index = current_size = pos = 0; data = NULL; data = (T*)malloc((size_t)capacity * sizeof(T)); }
-		inline void         clear() { if (data) { current_size = 0; } }
+		inline void         clear() { if (data) { start_index = pos = current_size = 0; } }
 		inline unsigned int			size() { return current_size; }
 		inline const unsigned int	size() const { return current_size; }
 		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
@@ -2221,7 +2221,6 @@ typedef unsigned int tfxEffectID;
 		tfxVec2 grid_direction;
 		float velocity_adjuster;
 		float global_opacity;
-		float frame_rate;
 		float stretch;
 		float emitter_handle_y;
 		float overal_scale;
@@ -2251,6 +2250,7 @@ typedef unsigned int tfxEffectID;
 		float start_frame;
 		float animation_frames;
 		float end_frame;
+		float frame_rate;
 		void *image_ptr;
 		float angle_offset;
 		tfxVec2 image_size;
@@ -2258,31 +2258,35 @@ typedef unsigned int tfxEffectID;
 		tfxVec2 emitter_handle;
 		tfxVec2 grid_points;
 		tfxring<tfxEffect> sub_effects;
-		tfxring<Particle> particles;
 
 		void Reset();
 		void UpdateEmitter();
 		void SpawnParticles();
 		float GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
 		void InitCPUParticle(Particle &p, float tween);
-		bool FreeCapacity();
-		Particle &GrabParticle();
 	};
 
 	struct tfxEffect {
 
 		tfxTransform transform;
 		unsigned int global;
+		unsigned int current_buffer;
 		Particle *parent_particle;
 		tfxCommon common;
 		tfxKey path_hash;
 		tfxEffectState current;
 		tfxring<tfxEmitter> sub_emitters;
-		tfxring<ParticleSprite> sprites[tfxLAYERS];
+		tfxring<Particle> particles[tfxLAYERS][2];
+		tfxring<ParticleSprite> sprites[tfxLAYERS][2];
+		tfxvec<unsigned int> sprite_offsets;
 
-		tfxEffect() : parent_particle(nullptr), path_hash(0) {}
+		tfxEffect() : parent_particle(nullptr), path_hash(0), current_buffer(0) {}
 		void Reset();
-		bool GrabSprite(unsigned int layer);
+		void ClearParticles();
+		Particle &GrabParticle(unsigned int layer);
+		bool FreeCapacity(unsigned int layer);
+		void ControlParticles(unsigned int layer);
+		
 	};
 
 
@@ -2638,6 +2642,7 @@ TFX_CUSTOM_EMITTER
 		tfxRGBA8 color;					//Colour of the particle
 
 		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
+		tfxEmitter *emitter;			//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
 		unsigned int sprite_index;		//index of the sprite stored in the effect
@@ -3052,8 +3057,6 @@ TFX_CUSTOM_EMITTER
 	bool ControlParticle(Particle &p, EffectEmitter &e);
 	bool ControlParticleFast(Particle &p, EffectEmitter &e);
 	void ControlParticles(EffectEmitter &e);
-	void ControlParticles(tfxEmitter &e);
-	void BumpSprites(tfxEffect &effect);
 	FormState Tween(float tween, FormState &world, FormState &captured);
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
