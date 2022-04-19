@@ -187,6 +187,7 @@ namespace tfx {
 	struct EffectLibrary;
 	struct tfxText;
 	struct tfxEffect;
+	struct tfxSubEffect;
 	struct tfxEmitter;
 	struct tfxEffectStorage;
 
@@ -2187,14 +2188,11 @@ typedef unsigned int tfxEffectID;
 
 		float frame;
 		float age;
-		float highest_particle_age;
 		float loop_length;
-		unsigned int active_children;
+		float highest_particle_age;
 		unsigned int timeout_counter;
 		unsigned int timeout;
-		unsigned int max_particles[tfxLAYERS];
 		tfxVec2 handle;
-		LookupMode lookup_mode;
 		tfxEmitterStateFlags state_flags;
 		tfxEmitterPropertyFlags property_flags;
 		EffectLibrary *library;
@@ -2203,14 +2201,11 @@ typedef unsigned int tfxEffectID;
 		tfxCommon() :
 			frame(0.f),
 			age(0.f),
-			highest_particle_age(0.f),
-			timeout_counter(0),
-			timeout(500),
-			active_children(0),
 			state_flags(0),
 			property_flags(0),
-			root_effect(nullptr),
-			lookup_mode(tfxPrecise)
+			timeout_counter(0),
+			timeout(500),
+			root_effect(nullptr)
 		{ }
 
 	};
@@ -2234,13 +2229,17 @@ typedef unsigned int tfxEffectID;
 
 	struct tfxEmitter {
 		tfxTransform transform;
-		tfxEffect *parent_effect;
+		tfxSubEffect *parent;
+		Particle *parent_particle;
 		tfxCommon common;
 		tfxEmitterState current;
+
+		LookupMode lookup_mode;
 		unsigned int property;
 		unsigned int base;
 		unsigned int variation;
 		unsigned int overtime;
+
 		unsigned int layer;
 		unsigned int blend_mode;
 		unsigned int spawn_amount;
@@ -2257,7 +2256,7 @@ typedef unsigned int tfxEffectID;
 		tfxVec2 image_handle;
 		tfxVec2 emitter_handle;
 		tfxVec2 grid_points;
-		tfxring<tfxEffect> sub_effects;
+		tfxring<tfxEmitter> sub_emitters;
 
 		void Reset();
 		void UpdateEmitter();
@@ -2269,18 +2268,26 @@ typedef unsigned int tfxEffectID;
 	struct tfxEffect {
 
 		tfxTransform transform;
+		LookupMode lookup_mode;
 		unsigned int global;
 		unsigned int current_buffer;
 		Particle *parent_particle;
 		tfxCommon common;
 		tfxKey path_hash;
 		tfxEffectState current;
+		unsigned int max_particles[tfxLAYERS];
+		unsigned int max_sub_emitters;
 		tfxring<tfxEmitter> sub_emitters;
-		tfxring<Particle> particles[tfxLAYERS][2];
-		tfxring<ParticleSprite> sprites[tfxLAYERS][2];
+		tfxring<Particle> particles[tfxLAYERS];
+		tfxring<ParticleSprite> sprites[tfxLAYERS];
 		tfxvec<unsigned int> sprite_offsets;
 
-		tfxEffect() : parent_particle(nullptr), path_hash(0), current_buffer(0) {}
+		tfxEffect() :
+			parent_particle(nullptr),
+			path_hash(0),
+			current_buffer(0),
+			max_sub_emitters(0)
+		{}
 		void Reset();
 		void ClearParticles();
 		Particle &GrabParticle(unsigned int layer);
@@ -2289,6 +2296,11 @@ typedef unsigned int tfxEffectID;
 		
 	};
 
+	struct tfxSubEffect {
+		tfxTransform transform;
+		tfxVec2 handle;
+		tfxring<tfxEmitter> sub_emitters;
+	};
 
 	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
@@ -2314,8 +2326,6 @@ typedef unsigned int tfxEffectID;
 		ParticleManager *pm;
 		//The index within the library that this exists at
 		unsigned int library_index;
-		//The number of sub_effects still in use
-		unsigned int active_children;
 		//The current highest particle age. When using a compute buffer we don't have any reliable way of keeping track of particle counts of individual emitters, so how do we know when to remove an emitter
 		//after all it's particles have expired? We set this variable to the highest particle age each time it spawns a particle and then counts it down each frame. When it's 0 then we know that there are no
 		//more particles being controlled by this emitter and can therefore time it out.
@@ -2333,10 +2343,6 @@ typedef unsigned int tfxEffectID;
 		//List of sub_effects ( effects contain emitters, emitters contain sub effects )
 		tfxvec<EffectEmitter> sub_effectors;
 		//Experiment with emitters maintaining their own list of particles. Buffer info contains info for fetching the area in the buffer stored in the particle manager
-		//BufferInfo particle_buffer;
-		tfxring<Particle> particles;
-		tfxring<ParticleSprite> sprites[tfxLAYERS];
-		tfxvec<unsigned int> invalid_sprite_indexes;
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
@@ -2362,8 +2368,10 @@ TFX_CUSTOM_EMITTER
 		float max_life;
 		//The maximum amount of particles that this effect can spawn (root effects and emitters only)
 		u32 max_particles[tfxLAYERS];
+		u32 max_sub_emitters;
 		//Pointer to the immediate parent
 		EffectEmitter *parent;
+		EffectEmitter *root_effect;
 		//Pointer to the next pointer in the particle manager buffer. 
 		EffectEmitter *next_ptr;
 		//Pointer to the sub effect's particle that spawned it
@@ -2381,6 +2389,7 @@ TFX_CUSTOM_EMITTER
 			highest_particle_age(0),
 			parent(nullptr),
 			parent_particle(nullptr),
+			root_effect(nullptr),
 			user_data(nullptr),
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
 			timeout(100),
@@ -2389,7 +2398,8 @@ TFX_CUSTOM_EMITTER
 			library(nullptr),
 			update_callback(nullptr),
 			particle_update_callback(nullptr),
-			particle_onspawn_callback(nullptr)
+			particle_onspawn_callback(nullptr),
+			max_sub_emitters(0)
 		{
 			for (int i = 0; i != tfxLAYERS; ++i) {
 				max_particles[i] = 0;
@@ -2490,8 +2500,7 @@ TFX_CUSTOM_EMITTER
 		void ResetEffectGraphs(bool add_node = true);
 		void ResetEmitterGraphs(bool add_node = true);
 		void UpdateMaxLife();
-		void UpdateAllBufferSizes(unsigned int totals[tfxLAYERS]);
-		void UpdateBufferSize(unsigned int totals[tfxLAYERS]);
+		void UpdateAllBufferSizes();
 		Graph* GetGraphByType(GraphType type);
 		unsigned int GetGraphIndexByType(GraphType type);
 		void CompileGraphs();
@@ -2501,12 +2510,7 @@ TFX_CUSTOM_EMITTER
 		void TransformEffector(EffectEmitter &parent, bool relative_position = true, bool relative_angle = false);
 		void TransformEffector(Particle &parent, bool relative_position = true, bool relative_angle = false);
 		void Update();
-		void UpdateParticles();
 		void SpawnParticles();
-		void BumpSprites();
-		bool FreeCapacity();
-		Particle &GrabParticle();
-		bool GrabSprite(unsigned int layer);
 		void InitCPUParticle(Particle &p, float tween);
 		void InitComputeParticle(ComputeParticle &p, float tween);
 		void UpdateComputeController();
@@ -2525,7 +2529,6 @@ TFX_CUSTOM_EMITTER
 		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data = false);
 		void CopyToEffect(tfxEffect &effect, tfxEffectStorage &storage);
 		void CopyToEmitter(tfxEmitter &emitter, tfxEffectStorage &storage);
-		void CopyToSubEffect(tfxEffect &effect, tfxEffectStorage &storage);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -2645,7 +2648,6 @@ TFX_CUSTOM_EMITTER
 		tfxEmitter *emitter;			//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
-		unsigned int sprite_index;		//index of the sprite stored in the effect
 
 		//Override functions, you can use these inside an update_callback if you want to modify the particle's behaviour
 		inline void OverridePosition(float x, float y) { local.position.x = x; local.position.y = y; }
@@ -2861,8 +2863,11 @@ TFX_CUSTOM_EMITTER
 		tfxmemory emitter_memory;
 		tfxmemory particle_memory;
 		tfxmemory sprite_memory;
+		tfxvec<tfxSubEffect> sub_effects;
+		tfxvec<unsigned int> free_sub_effects;
 		
 		tfxStorageMap <tfxvec<tfxEffect>> effect_cache;
+		tfxStorageMap <tfxvec<tfxEmitter>> sub_emitters;
 
 		tfxEffectStorage() {}
 		~tfxEffectStorage() {
@@ -2881,6 +2886,10 @@ TFX_CUSTOM_EMITTER
 		tfxEffect &GetEffect(tfxEffectID id);
 	};
 
+	struct tfxEffectSprites {
+		tfxring<ParticleSprite> sprites;
+	};
+
 	//Use the particle manager to add effects to your scene
 	struct ParticleManager {
 
@@ -2889,11 +2898,11 @@ TFX_CUSTOM_EMITTER
 		tfxvec<Particle> particles[tfxLAYERS][2];
 		//Testing more data oriented approach
 		tfxmemory sprite_memory;
-		tfxmemory particle_memory;
-		tfxvec<Matrix2> particle_martixes[tfxLAYERS][2];
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
 		//you can use an EffectEmitterTemplate and use callback funcitons. 
 		tfxvec<EffectEmitter> effects[2];
+		tfxvec<EffectEmitter> root_effects;
+		tfxvec<unsigned int> free_root_effects;
 		//todo:document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
 		tfxvec<unsigned int> free_compute_controllers;
@@ -2923,7 +2932,6 @@ TFX_CUSTOM_EMITTER
 		bool disable_spawing;
 		bool force_capture;
 		bool use_compute_shader;
-		bool contain_particles_in_emitters;
 		//Used if the emitter changed attributes and spawned particles need updating their base values. Primarily used by the editor
 		bool update_base_values;	
 		LookupMode lookup_mode;
@@ -2941,7 +2949,6 @@ TFX_CUSTOM_EMITTER
 			current_ebuff(0),
 			current_pbuff(0),
 			use_compute_shader(false),
-			contain_particles_in_emitters(false),
 			highest_compute_controller_index(0),
 			new_compute_particle_ptr(nullptr),
 			compute_controller_ptr(nullptr),
@@ -2964,7 +2971,10 @@ TFX_CUSTOM_EMITTER
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
 		void AddEffect(EffectEmitter &effect, unsigned int buffer);
+		void AddSubEffect(EffectEmitter &effect, unsigned int buffer);
 		void AddEffect(EffectEmitterTemplate &effect, unsigned int buffer);
+		unsigned int GetFreeRootEffect();
+		bool FreeRootEffectCapacity();
 		//Clear all effects and particles in the particle manager
 		void ClearAll();
 		//Soft expire all the effects so that the particles complete their animation first
@@ -3051,12 +3061,11 @@ TFX_CUSTOM_EMITTER
 	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
 	void TransformParticle(Particle &p, EffectEmitter &e);
 	void TransformParticle(Particle &p, tfxEmitter &e);
-	void Transform(tfxEffect &effect, Particle &parent);
+	void Transform(tfxEmitter &emitter, Particle &parent);
 	void Transform(tfxEmitter &emitter, tfxEffect &parent);
 	void Transform(FormState &local, FormState &world, EffectEmitter &e);
 	bool ControlParticle(Particle &p, EffectEmitter &e);
 	bool ControlParticleFast(Particle &p, EffectEmitter &e);
-	void ControlParticles(EffectEmitter &e);
 	FormState Tween(float tween, FormState &world, FormState &captured);
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
