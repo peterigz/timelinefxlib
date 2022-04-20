@@ -2227,18 +2227,7 @@ typedef unsigned int tfxEffectID;
 		{}
 	};
 
-	struct tfxEmitter {
-		tfxTransform transform;
-		tfxSubEffect *parent;
-		Particle *parent_particle;
-		tfxCommon common;
-		tfxEmitterState current;
-
-		LookupMode lookup_mode;
-		unsigned int property;
-		unsigned int base;
-		unsigned int variation;
-		unsigned int overtime;
+	struct tfxEmitterSpawnProperties {
 
 		unsigned int layer;
 		unsigned int blend_mode;
@@ -2256,13 +2245,33 @@ typedef unsigned int tfxEffectID;
 		tfxVec2 image_handle;
 		tfxVec2 emitter_handle;
 		tfxVec2 grid_points;
+		
+	};
+
+	struct tfxEmitterControlProperties {
+
+	};
+
+	struct tfxEmitter {
+		EffectEmitter *library_link;
+		tfxTransform transform;
+		Particle *parent_particle;
+		tfxCommon common;
+		tfxEmitterState current;
+		LookupMode lookup_mode;
+		tfxVec2 image_handle;
+
 		tfxring<tfxEmitter> sub_emitters;
+		tfxring<Particle> particles;
 
 		void Reset();
 		void UpdateEmitter();
 		void SpawnParticles();
 		float GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
 		void InitCPUParticle(Particle &p, float tween);
+		void ControlParticles();
+		bool FreeCapacity();
+		Particle &GrabParticle();
 	};
 
 	struct tfxEffect {
@@ -2278,9 +2287,8 @@ typedef unsigned int tfxEffectID;
 		unsigned int max_particles[tfxLAYERS];
 		unsigned int max_sub_emitters;
 		tfxring<tfxEmitter> sub_emitters;
-		tfxring<Particle> particles[tfxLAYERS];
 		tfxring<ParticleSprite> sprites[tfxLAYERS];
-		tfxvec<unsigned int> sprite_offsets;
+		tfxvec<unsigned int> sprite_offsets[tfxLAYERS];
 
 		tfxEffect() :
 			parent_particle(nullptr),
@@ -2289,10 +2297,10 @@ typedef unsigned int tfxEffectID;
 			max_sub_emitters(0)
 		{}
 		void Reset();
-		void ClearParticles();
-		Particle &GrabParticle(unsigned int layer);
-		bool FreeCapacity(unsigned int layer);
-		void ControlParticles(unsigned int layer);
+		void ClearSprites();
+		void ClearSpriteOffsets();
+		void CompressSprites();
+		ParticleSprite &GrabSprite(unsigned int layer);
 		
 	};
 
@@ -2311,6 +2319,7 @@ typedef unsigned int tfxEffectID;
 
 		//The current state of the effect/emitter
 		EmitterState current;
+		unsigned int emitter_state_index;
 		//All of the properties of the effect/emitter
 		EmitterProperties properties;
 
@@ -2371,14 +2380,14 @@ TFX_CUSTOM_EMITTER
 		u32 max_sub_emitters;
 		//Pointer to the immediate parent
 		EffectEmitter *parent;
-		EffectEmitter *root_effect;
 		//Pointer to the next pointer in the particle manager buffer. 
 		EffectEmitter *next_ptr;
 		//Pointer to the sub effect's particle that spawned it
 		Particle *parent_particle;
 
 		//Custom fuction pointers that you can use to override attributes and affect the effect/emitters behaviour in realtime
-		//See EffectEmitterTemplate for applying this callbacks
+		//See EffectEmitterTemplate for applying these callbacks
+		//tfxEffectSprites *sprites_container;
 		void(*update_callback)(EffectEmitter &effectemitter);		//Called after the state has been udpated
 		void(*particle_update_callback)(Particle &particle);		//Called for each particle that has been udpated, but before it's state is updated (so you can override behaviour first)
 		void(*particle_onspawn_callback)(Particle &particle);		//Called as each particle is spawned.
@@ -2389,7 +2398,7 @@ TFX_CUSTOM_EMITTER
 			highest_particle_age(0),
 			parent(nullptr),
 			parent_particle(nullptr),
-			root_effect(nullptr),
+//			sprites_container(nullptr),
 			user_data(nullptr),
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
 			timeout(100),
@@ -2610,6 +2619,7 @@ TFX_CUSTOM_EMITTER
 
 	struct ParticleSprite {	//68 bytes
 		void *ptr;					//Pointer to the image data
+		Particle *particle;
 		FormState world;
 		FormState captured;
 		tfxVec2 handle;
@@ -2648,6 +2658,7 @@ TFX_CUSTOM_EMITTER
 		tfxEmitter *emitter;			//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
+		unsigned int sprite_index;
 
 		//Override functions, you can use these inside an update_callback if you want to modify the particle's behaviour
 		inline void OverridePosition(float x, float y) { local.position.x = x; local.position.y = y; }
@@ -2890,19 +2901,42 @@ TFX_CUSTOM_EMITTER
 		tfxring<ParticleSprite> sprites;
 	};
 
+	/*
+	Notes on updating effects emitters and particles:
+
+	We're presented with a number of constraints when updating and drawing particles based on the asthetics that we want for the particles:
+	1) Draw order of particles is important, especially when emitters emit alpha blended particles
+	2) Effects can have sub effects, presenting a problem from a memory management point of view especially as particles with sub effects will be expiring at different times leaving holes in memory.
+	3) You may want to draw effects in different orders, grouping together the sprites generated from effects so that they can be drawn in specific orders or not at all if not on screen etc.
+	4) Particles need to be updated as quickly as possible so memory layout is very important.
+
+	In an ideal world emitters maintain their own list of particles and update them in turn. This means that all the base values can be accessed and held in local variables. 
+	The problem is that other emitters in the same effect would be spawning particles too so the draw order becomes important, you want the particles from each emitter to be mixed together when drawn
+	so updating them by emitter means you lose that order.
+
+	Sub effects start to complicate things from a memory management point of view. With each particle having it's own sub effect that need thir own place in memory.
+
+	The particle manager solves a lot of these issues by having 2 lists, an effects list and a particle list. First the effects list is updated and then the particle list is updated. When the particle
+	list is updated the particles need to reference their parent emitters/effects and each particle may be referencing different emitters so I'm not sure how good that is from a caching point of view.
+	Not great I would assume. 
+	Another problem with the particle manager is that all the particles are in one list and so you can't separate out individual effects when drawing which would pose a problem when drawing the effects
+	in different orders with other non particle related drawing.
+	But the particle manager does make managing the memory a lot easier as you only need the effects and particle lists.
+	*/
+
 	//Use the particle manager to add effects to your scene
 	struct ParticleManager {
 
 		//Particles are stored using double buffering, every update the particle is moved to the next list, so particle deletion happens by not adding to the next list. Given that particles can have varying
 		//lifetimes and can expire at anytime, this seemed like the easiest way to do this, although I dare say that there's faster ways of doing it, multi-threading it might be a good start there.
 		tfxvec<Particle> particles[tfxLAYERS][2];
+		tfxvec<ParticleSprite> sprites[tfxLAYERS];
 		//Testing more data oriented approach
 		tfxmemory sprite_memory;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
 		//you can use an EffectEmitterTemplate and use callback funcitons. 
 		tfxvec<EffectEmitter> effects[2];
-		tfxvec<EffectEmitter> root_effects;
-		tfxvec<unsigned int> free_root_effects;
+		tfxvec<EmitterState> emitter_states[2];
 		//todo:document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
 		tfxvec<unsigned int> free_compute_controllers;
@@ -2971,10 +3005,7 @@ TFX_CUSTOM_EMITTER
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
 		void AddEffect(EffectEmitter &effect, unsigned int buffer);
-		void AddSubEffect(EffectEmitter &effect, unsigned int buffer);
 		void AddEffect(EffectEmitterTemplate &effect, unsigned int buffer);
-		unsigned int GetFreeRootEffect();
-		bool FreeRootEffectCapacity();
 		//Clear all effects and particles in the particle manager
 		void ClearAll();
 		//Soft expire all the effects so that the particles complete their animation first
