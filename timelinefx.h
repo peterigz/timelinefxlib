@@ -187,7 +187,6 @@ namespace tfx {
 	struct EffectLibrary;
 	struct tfxText;
 	struct tfxEffect;
-	struct tfxSubEffect;
 	struct tfxEmitter;
 	struct tfxEffectStorage;
 
@@ -528,7 +527,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterStateFlags_play_once = 1 << 16,						//Play the animation once only
 		tfxEmitterStateFlags_single_shot_done = 1 << 17,
 		tfxEmitterStateFlags_is_line = 1 << 18,
-		tfxEmitterStateFlags_is_area = 1 << 19,
+		tfxEmitterStateFlags_is_area = 1 << 19
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
@@ -1502,11 +1501,6 @@ typedef unsigned int tfxEffectID;
 		inline tfxring(unsigned int qty) { pos = start_index = current_size = capacity = 0; data = NULL; reserve(qty); }
 		inline tfxring(tfxmemory &mem, unsigned int index, unsigned int size) { pos = start_index = current_size = 0; capacity = size; data = mem.data + mem.ranges[index].offset_into_memory; range_index = index; }
 
-		// Provide standard typedefs but we don't use them ourselves.
-		typedef T                   value_type;
-		typedef value_type*         iterator;
-		typedef const value_type*   const_iterator;
-
 		inline bool			empty() { return current_size == 0; }
 		inline bool			full() { return current_size == capacity; }
 		inline void         free_all() { assert(range_index == tfxINVALID); /*Call free_range instead if using tfxmemory*/ if (data) { pos = start_index = current_size = capacity = 0; free(data); data = NULL; } }
@@ -1548,6 +1542,7 @@ typedef unsigned int tfxEffectID;
 			int index = mem.get_range(element_size * element_count);
 			pos = start_index = current_size = 0; range_index = index; capacity = element_count; void *ptr = (char*)mem.data + mem.ranges[index].offset_into_memory; data = static_cast<T*>(ptr); }
 		inline void			refresh(tfxmemory &mem) { void *ptr = (char*)mem.data + mem.ranges[range_index].offset_into_memory; data = static_cast<T*>(ptr); }
+		inline void			reset_to_null() { pos = start_index = current_size = 0; range_index = tfxINVALID; data = NULL; }
 		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
 		inline void			bump(unsigned int amount) { if (current_size == 0) return; if (amount > current_size) amount = current_size; start_index += amount; start_index %= capacity; current_size -= amount; }
 		inline void			shrink(unsigned int amount) { if (amount > current_size) current_size = 0; else current_size -= amount; }
@@ -1556,6 +1551,62 @@ typedef unsigned int tfxEffectID;
 		inline T&			next() { assert(current_size > 0); unsigned int current_pos = (start_index + pos) % capacity; pos++; return data[current_pos]; }
 		inline T&			next(int start) { assert(current_size > 0); unsigned int current_pos = (start + pos) % capacity; pos++; return data[current_pos]; }
 		inline bool			eob() { return pos >= current_size; }
+	};
+
+	//A version of tfxvec that has a fixed capacity
+	template<typename T>
+	struct tfxfixedvec {
+		unsigned int current_size;
+		unsigned int capacity;
+		unsigned int range_index;
+		T* data;
+		inline tfxfixedvec() { current_size = capacity = 0; data = NULL; range_index = tfxINVALID; }
+		inline tfxfixedvec(tfxmemory &mem, unsigned int index, unsigned int size) { current_size = 0; capacity = size; data = mem.data + mem.ranges[index].offset_into_memory; range_index = index; }
+
+		inline bool			empty() { return current_size == 0; }
+		inline bool			full() { return current_size == capacity; }
+		inline void         free_range(tfxmemory &mem) {
+			if (range_index == tfxINVALID) return;
+			if (data) {
+				current_size = capacity = 0;
+				mem.free_range(range_index);
+				range_index = tfxINVALID;
+				data = NULL;
+			}
+		}
+		inline void         clear() { if (data) { current_size = 0; } }
+		inline unsigned int			size() { return current_size; }
+		inline const unsigned int	size() const { return current_size; }
+		inline T&           operator[](unsigned int i) { return data[i]; }
+		inline const T&     operator[](unsigned int i) const { return data[i]; }
+
+		inline unsigned int end_index() { return current_size; }
+		inline unsigned int last_index() { return current_size - 1; }
+		inline T*           begin() { return data; }
+		inline const T*     begin() const { return data; }
+		inline T*           end() { return data + current_size; }
+		inline const T*     end() const { return data + current_size; }
+		inline T*           rend() { return data; }
+		inline const T*     rend() const { return data; }
+		inline T*           rbegin() { return data + current_size; }
+		inline const T*     rbegin() const { return data + current_size; }
+		inline T&           front() { assert(current_size > 0); return data[0]; }
+		inline const T&     front() const { assert(current_size > 0); return data[0]; }
+		inline T&           back() { assert(current_size > 0); return data[last_index()]; }
+		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
+
+		inline void         pop() { assert(current_size > 0); current_size--; }
+		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
+		inline bool	        push_back(const T& v) { if (current_size == capacity) return false; new((void*)(data + end_index())) T(v); current_size++; return true; }
+		inline void			assign_memory(tfxmemory &mem, unsigned int element_size, unsigned int element_count) {
+			assert(range_index == tfxINVALID);	//call refresh instead if a range has already been assigned, or free_all and then assign another range;
+			if (!element_count) return;
+			int index = mem.get_range(element_size * element_count);
+			current_size = 0; range_index = index; capacity = element_count; void *ptr = (char*)mem.data + mem.ranges[index].offset_into_memory; data = static_cast<T*>(ptr);
+		}
+		inline void			refresh(tfxmemory &mem) { void *ptr = (char*)mem.data + mem.ranges[range_index].offset_into_memory; data = static_cast<T*>(ptr); }
+		inline void			reset_to_null() { current_size = 0; range_index = tfxINVALID; data = NULL; }
+		inline void			shrink(unsigned int amount) { if (amount > current_size) current_size = 0; else current_size -= amount; }
 	};
 
 	const u32 tfxMAGIC_NUMBER = '!XFT';
@@ -2190,8 +2241,9 @@ typedef unsigned int tfxEffectID;
 		float age;
 		float loop_length;
 		float highest_particle_age;
-		unsigned int timeout_counter;
-		unsigned int timeout;
+		float timeout_counter;
+		float timeout;
+		unsigned int active_children;
 		tfxVec2 handle;
 		tfxEmitterStateFlags state_flags;
 		tfxEmitterPropertyFlags property_flags;
@@ -2204,7 +2256,8 @@ typedef unsigned int tfxEffectID;
 			state_flags(0),
 			property_flags(0),
 			timeout_counter(0),
-			timeout(500),
+			timeout(1000.f),
+			active_children(0),
 			root_effect(nullptr)
 		{ }
 
@@ -2221,6 +2274,7 @@ typedef unsigned int tfxEffectID;
 		float overal_scale;
 		float amount_remainder;
 		float emission_alternator;
+		float qty;
 
 		tfxEmitterState() :
 			amount_remainder(0.f)
@@ -2253,19 +2307,25 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxEmitter {
-		EffectEmitter *library_link;
 		tfxTransform transform;
+		EffectEmitter *library_link;
+		EffectEmitterType type;
 		Particle *parent_particle;
+		tfxEmitter *parent;
 		tfxCommon common;
 		tfxEmitterState current;
 		LookupMode lookup_mode;
 		tfxVec2 image_handle;
+		unsigned int offset;
+		tfxEmitter *next_emitter;
 
-		tfxring<tfxEmitter> sub_emitters;
-		tfxring<Particle> particles;
+		tfxfixedvec<tfxEmitter> sub_emitters;
+		tfxfixedvec<Particle> particles;
 
+		tfxEmitter() : parent(nullptr), parent_particle(nullptr) {}
 		void Reset();
 		void UpdateEmitter();
+		void UpdateAsSubEffect();
 		void SpawnParticles();
 		float GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
 		void InitCPUParticle(Particle &p, float tween);
@@ -2275,6 +2335,7 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxEffect {
+		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
 
 		tfxTransform transform;
 		LookupMode lookup_mode;
@@ -2286,9 +2347,10 @@ typedef unsigned int tfxEffectID;
 		tfxEffectState current;
 		unsigned int max_particles[tfxLAYERS];
 		unsigned int max_sub_emitters;
-		tfxring<tfxEmitter> sub_emitters;
-		tfxring<ParticleSprite> sprites[tfxLAYERS];
-		tfxvec<unsigned int> sprite_offsets[tfxLAYERS];
+		tfxEffectStorage *storage;
+		tfxfixedvec<tfxEmitter> sub_emitters;
+		tfxfixedvec<tfxEmitter> sub_effects;
+		tfxfixedvec<ParticleSprite> sprites[tfxLAYERS];
 
 		tfxEffect() :
 			parent_particle(nullptr),
@@ -2298,16 +2360,11 @@ typedef unsigned int tfxEffectID;
 		{}
 		void Reset();
 		void ClearSprites();
-		void ClearSpriteOffsets();
 		void CompressSprites();
 		ParticleSprite &GrabSprite(unsigned int layer);
+		tfxEmitter &GrabSubEffect();
+		tfxEmitter& AddSubEffect(tfxEmitter &sub_effect);
 		
-	};
-
-	struct tfxSubEffect {
-		tfxTransform transform;
-		tfxVec2 handle;
-		tfxring<tfxEmitter> sub_emitters;
 	};
 
 	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
@@ -2375,6 +2432,8 @@ TFX_CUSTOM_EMITTER
 		unsigned int animation_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 		float max_life;
+		//The estimated maximum time that the sub emitter might last for, taking into account the parent particle lifetime
+		float max_sub_emitter_life;
 		//The maximum amount of particles that this effect can spawn (root effects and emitters only)
 		u32 max_particles[tfxLAYERS];
 		u32 max_sub_emitters;
@@ -2408,7 +2467,8 @@ TFX_CUSTOM_EMITTER
 			update_callback(nullptr),
 			particle_update_callback(nullptr),
 			particle_onspawn_callback(nullptr),
-			max_sub_emitters(0)
+			max_sub_emitters(0),
+			max_sub_emitter_life(0.f)
 		{
 			for (int i = 0; i != tfxLAYERS; ++i) {
 				max_particles[i] = 0;
@@ -2493,6 +2553,7 @@ TFX_CUSTOM_EMITTER
 		EffectEmitter& AddEffect();
 		EffectEmitter& AddEffector(EffectEmitterType type = tfxEmitterType);
 		EffectEmitter* GetRootEffect();
+		bool IsRootEffect();
 		void ReIndex();
 		void CountChildren(int &emitters, int &effects);
 		void ResetParents();
@@ -2510,6 +2571,10 @@ TFX_CUSTOM_EMITTER
 		void ResetEmitterGraphs(bool add_node = true);
 		void UpdateMaxLife();
 		void UpdateAllBufferSizes();
+		void UpdateAllSpriteAmounts();
+		unsigned int GetSubEffectSpriteCounts(unsigned int layer, unsigned int multiplier);
+		float GetSubEffectLength();
+		unsigned int GetHighestQty(float parent_age);
 		Graph* GetGraphByType(GraphType type);
 		unsigned int GetGraphIndexByType(GraphType type);
 		void CompileGraphs();
@@ -2537,7 +2602,7 @@ TFX_CUSTOM_EMITTER
 		void AddColorOvertime(float frame, tfxRGB color);
 		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data = false);
 		void CopyToEffect(tfxEffect &effect, tfxEffectStorage &storage);
-		void CopyToEmitter(tfxEmitter &emitter, tfxEffectStorage &storage);
+		void CopyToEmitter(tfxEmitter &emitter, tfxEffectStorage &storage, bool assign_memory);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -2659,6 +2724,7 @@ TFX_CUSTOM_EMITTER
 		//Internal use variables
 		Particle *next_ptr;
 		unsigned int sprite_index;
+		unsigned int offset;
 
 		//Override functions, you can use these inside an update_callback if you want to modify the particle's behaviour
 		inline void OverridePosition(float x, float y) { local.position.x = x; local.position.y = y; }
@@ -2874,11 +2940,9 @@ TFX_CUSTOM_EMITTER
 		tfxmemory emitter_memory;
 		tfxmemory particle_memory;
 		tfxmemory sprite_memory;
-		tfxvec<tfxSubEffect> sub_effects;
 		tfxvec<unsigned int> free_sub_effects;
 		
 		tfxStorageMap <tfxvec<tfxEffect>> effect_cache;
-		tfxStorageMap <tfxvec<tfxEmitter>> sub_emitters;
 
 		tfxEffectStorage() {}
 		~tfxEffectStorage() {
@@ -2914,7 +2978,7 @@ TFX_CUSTOM_EMITTER
 	The problem is that other emitters in the same effect would be spawning particles too so the draw order becomes important, you want the particles from each emitter to be mixed together when drawn
 	so updating them by emitter means you lose that order.
 
-	Sub effects start to complicate things from a memory management point of view. With each particle having it's own sub effect that need thir own place in memory.
+	Sub effects start to complicate things from a memory management point of view. With each particle having it's own sub effect that need their own place in memory.
 
 	The particle manager solves a lot of these issues by having 2 lists, an effects list and a particle list. First the effects list is updated and then the particle list is updated. When the particle
 	list is updated the particles need to reference their parent emitters/effects and each particle may be referencing different emitters so I'm not sure how good that is from a caching point of view.
@@ -3046,6 +3110,44 @@ TFX_CUSTOM_EMITTER
 		inline bool FreeEffectCapacity() { return effects[0].current_size + effects[1].current_size < max_effects; }
 	};
 
+	struct tfxMockEffect {
+		unsigned int timeout = 5;
+		unsigned int timeout_counter = 0;
+		unsigned int emitter_count = 0;
+		float highest_particle_age = 0;
+		float frame = 0.f;
+		float age = 0.f;
+		float amount_remainder = 0;
+		float qty = 0.f;
+		EffectEmitter *library_link;
+		EffectLibrary *library;
+		bool single_shot_done = false;
+		bool started_spawning = false;
+	};
+
+	//This is used to figure out how much memory each effect and emitter needs to draw particles so that the correct amount of memory can be assigned as each effect is used.
+	struct tfxParticleMemoryTools {
+		unsigned int sprite_count[4];
+		unsigned int sub_effect_count;
+		unsigned int initial_effect_size = 0;
+		unsigned int emitters_removed = 0;
+		float max_frames;
+		float max_last_life;
+		unsigned int current_buffer;
+		tfxvec<float> particles[tfxLAYERS][2];
+		tfxvec<tfxMockEffect> effects[2];
+		EffectEmitter current_effect;
+
+		tfxParticleMemoryTools() : current_buffer(0), sub_effect_count(0) {}
+
+		void AddEffect(EffectEmitter &effect);
+		void GetEffectMaxFrames(EffectEmitter &effect);
+		void ProcessEffect(EffectEmitter &effect);
+		void Process();
+		void MockUpdateEmitter(tfxMockEffect &emitter);
+		void MockUpdateParticles();
+	};
+
 	struct DataEntry {
 		DataType type;
 		tfxText key;
@@ -3094,6 +3196,7 @@ TFX_CUSTOM_EMITTER
 	void TransformParticle(Particle &p, tfxEmitter &e);
 	void Transform(tfxEmitter &emitter, Particle &parent);
 	void Transform(tfxEmitter &emitter, tfxEffect &parent);
+	void Transform(tfxEmitter &emitter, tfxEmitter &parent);
 	void Transform(FormState &local, FormState &world, EffectEmitter &e);
 	bool ControlParticle(Particle &p, EffectEmitter &e);
 	bool ControlParticleFast(Particle &p, EffectEmitter &e);
@@ -3130,6 +3233,7 @@ TFX_CUSTOM_EMITTER
 	void AddEffect(ParticleManager &pm, EffectEmitter &effect, float x = 0.f, float y = 0.f);
 	void AddEffect(ParticleManager &pm, EffectEmitterTemplate &effect, float x = 0.f, float y = 0.f);
 	bool GetEffect(EffectLibrary &library, tfxEffectStorage &storage, const char *name, tfxEffect &out);
+	bool GetEffect(EffectLibrary &library, tfxEffectStorage &storage, tfxKey path_hash, tfxEffect &out);
 	bool GetEffect(EffectLibrary &library, tfxEffectStorage &storage, unsigned int, tfxEffect &out);
 	bool Copy(tfxEffectStorage &storage, EffectEmitter &in, tfxEffect &out);
 	void UpdateEffect(tfxEffect &effect);
