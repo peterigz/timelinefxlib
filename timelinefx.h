@@ -212,6 +212,7 @@ typedef std::chrono::high_resolution_clock Clock;
 //Override this for more layers, although currently the editor is fixed at 4
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
+#define EachLayer int layer = 0; layer !=tfxLAYERS; ++layer
 #endif 
 
 //type defs
@@ -1438,7 +1439,7 @@ typedef unsigned int tfxEffectID;
 		inline const unsigned int	size() const { return current_size; }
 
 		inline void					free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
-		inline void					clear() { if (data) { current_size = 0; } }
+		inline void					clear() { if (data) { current_size = 0; ranges.clear(); free_ranges.Clear(); } }
 
 		inline unsigned int			_grow_capacity(unsigned int sz) const { unsigned int new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void					resize(unsigned int new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
@@ -2675,36 +2676,6 @@ TFX_CUSTOM_EMITTER
 		void SetDescription(const char *format, ...);
 	};
 
-	struct ParticleStateData {
-		//Updated everyframe
-		FormState local;				//The local position of the particle, relative to the emitter.
-		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
-		float max_age;					//max age before the particle expires
-		float image_frame;				//Current frame of the image if it's an animation
-		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
-		tfxRGBA8 color;					//Colour of the particle
-	};
-
-	struct ParticleLocationState {
-		float base_velocity;
-		float base_weight;
-		float emission_angle;			//Emission angle of the particle at spawn time
-		float noise_offset;				//Higer numbers means random movement is less uniform
-		float noise_resolution;			//Higer numbers means random movement is more uniform
-		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
-		FormState local;				//The local position of the particle, relative to the emitter.
-	};
-
-	struct ParticleLocation {
-	};
-
-	struct ParticleSpawnData {
-		//Read only when ControlParticle is called, only written to at spawn time
-		tfxVec2 base_size;
-		float base_spin;
-		tfxParticleFlags flags;			//flags for different states
-	};
-
 	struct ComputeSprite {	//64 bytes
 		tfxVec4 bounds;				//the min/max x,y coordinates of the image being drawn
 		tfxVec4 uv;					//The UV coords of the image in the texture
@@ -2714,9 +2685,9 @@ TFX_CUSTOM_EMITTER
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, image layer index, shader function index, blend type
 	};
 
-	struct ParticleSprite {	//68 bytes
+	struct ParticleSprite {	//80 bytes
 		void *ptr;					//Pointer to the image data
-		Particle *particle;
+		Particle *particle;			//We need to point to the particle in order to update it's sprite index
 		FormState world;
 		FormState captured;
 		tfxVec2 handle;
@@ -3013,7 +2984,9 @@ TFX_CUSTOM_EMITTER
 	But the particle manager does make managing the memory a lot easier as you only need the effects and particle lists.
 	*/
 
-	//Use the particle manager to add compute effects to your scene
+	//Use the particle manager to add compute effects to your scene 
+	//This will likely be deprecated, but might be kept if compute shader is easier to manager using this rather then using the new tfxEffect and tfxEffectPool.
+	//Keeping for now as it's a useful reference
 	struct ParticleManager {
 		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
 		tfxvec<Particle> particles[tfxLAYERS][2];
@@ -3225,6 +3198,7 @@ TFX_CUSTOM_EMITTER
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
+	bool Copy(tfxEffectPool &storage, EffectEmitter &in, tfxEffectID &out);
 
 	//Helper functions
 
@@ -3246,21 +3220,45 @@ TFX_CUSTOM_EMITTER
 	int GetShapesInPackage(const char *filename);
 	int LoadEffectLibraryPackage(const char *filename, EffectLibrary &lib, void(*shape_loader)(const char *filename, ImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
-	//Particle manager functions
+	//Particle manager functions - Will be deprecated soon
 	void StopSpawning(ParticleManager &pm);
 	void RemoveAllEffects(ParticleManager &pm);
 	void InitParticleManager(ParticleManager &pm, unsigned int effects_limit, unsigned int particle_limit_per_layer);
 	void AddEffect(ParticleManager &pm, EffectEmitter &effect, float x = 0.f, float y = 0.f);
 	void AddEffect(ParticleManager &pm, tfxEffectTemplate &effect, float x = 0.f, float y = 0.f);
-	void AddComputeEffect(ParticleManager &pm, tfxEffectTemplate &effect, float x = 0.f, float y = 0.f);
-	bool GetEffect(EffectLibrary &library, tfxEffectPool &storage, const char *name, tfxEffectID &out);
-	bool GetEffect(EffectLibrary &library, tfxEffectPool &storage, tfxKey path_hash, tfxEffectID &out);
-	bool GetEffect(EffectLibrary &library, tfxEffectPool &storage, unsigned int, tfxEffectID &out);
+	//---
+	//Effect Pool functions for managing and playing effects
+	//Add an effect to an effect pool from a library by it's name. Returns true on success. the Effect ID in stored in the tfxEffectID that you pass to the function which
+	//you can then use to access the effect in the pool later.
+	//Overloaded functions are for retrieving effects from the library by its hash and by index
+	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, const char *name, tfxEffectID &out);
+	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, tfxKey path_hash, tfxEffectID &out);
+	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, unsigned int, tfxEffectID &out);
+	//Prepare an effect template for setting up function call backs to customise the behaviour of the effect in realtime
+	//Returns true on success.
 	bool PrepareEffectTemplate(EffectLibrary &library, const char *name, tfxEffectTemplate &effect_template);
-	bool GetEffect(tfxEffectPool &effect_pool, tfxEffectTemplate &effect_template, tfxEffectID &effect_id);
+	//Add an effect to an effect pool using a template you created with PrepareEffectTemplate. Returns true on success. the Effect ID in stored in the tfxEffectID that you pass to the function which
+	//you can then use to access the effect in the pool later.
+	bool PoolEffectFromTemplate(tfxEffectPool &effect_pool, tfxEffectTemplate &effect_template, tfxEffectID &effect_id);
+	//Retrieve an effect from an effect pool
 	tfxEffect &GetEffect(tfxEffectPool &effect_pool, tfxEffectID &effect_id);
-	bool ValidEffect(tfxEffectPool &effect_pool, tfxEffectID &effect_id);
-	bool Copy(tfxEffectPool &storage, EffectEmitter &in, tfxEffectID &out);
+	//Check to see if an effect id is a ID that's currently in use in the effect pool
+	bool ValidEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
+	//Update an effect in the effect pool. This is necessary to do on each frame update.
 	void UpdateEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
+	//Initialise an effect pool to allocate all the necessary memory to hold the effects, emitters, particles and sprites
+	void InitEffectPool(tfxEffectPool &effect_pool, unsigned int max_effects = 1000, unsigned int max_emitters = 10000, unsigned int max_particles = 100000);
+	//Instantly stop an effect from spawning particles and remove all currently active particles
+	void HardStopEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
+	//Make an effect stop spawning but let the current particles play out to the end of life.
+	void SoftStopEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
+	//Restart an effect that has been stopped
+	void StartEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
+	//Clear the effect pool of all effects. Any effect ids that you're currently using will not longer be valid. 
+	//This function will completely start the effect pool from scratch, removing all cached memory ranges. Can be useful to defrag the memory and start it from fresh again.
+	void ClearEffectPool(tfxEffectPool &effect_pool);
+	//Free all the memory used in the effect pool. You would have to initialise it but trying to use it again. all Effect ids that used this effect pool
+	//will no longer be valid after calling this function
+	void FreeEffectPool(tfxEffectPool &effect_pool);
 }
 

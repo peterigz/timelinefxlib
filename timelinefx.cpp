@@ -1386,13 +1386,78 @@ namespace tfx {
 		return effect_pool.GetEffect(effect_id);
 	}
 
-	bool ValidEffect(tfxEffectPool &effect_pool, tfxEffectID &effect_id) {
+	bool ValidEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id) {
 		if (effect_pool.effect_memory.ranges.current_size <= effect_id)
 			return false;
 		tfxEffect &effect = effect_pool.GetEffect(effect_id);
 		if (effect.id == effect_id)
 			return true;
 		return false;
+	}
+
+	void HardStopEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id) {
+		if (!ValidEffect(effect_pool, effect_id))
+			return;
+		tfxEffect &effect = GetEffect(effect_pool, effect_id);
+		for (auto &emitter : effect.sub_emitters) {
+			emitter.common.state_flags |= tfxEmitterStateFlags_stop_spawning;
+			emitter.particles.clear();
+		}
+		for (auto &emitter : effect.sub_effects) {
+			emitter.common.state_flags |= tfxEmitterStateFlags_stop_spawning;
+			emitter.particles.clear();
+		}
+		effect.sub_effects.clear();
+		for (EachLayer) {
+			effect.sprites[layer].clear();
+		}
+	}
+
+	void SoftStopEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id) {
+		if (!ValidEffect(effect_pool, effect_id))
+			return;
+		tfxEffect &effect = GetEffect(effect_pool, effect_id);
+		for (auto &emitter : effect.sub_emitters) {
+			emitter.common.state_flags |= tfxEmitterStateFlags_stop_spawning;
+			emitter.common.state_flags |= tfxEmitterStateFlags_single_shot_done;
+		}
+		for (auto &emitter : effect.sub_effects) {
+			emitter.common.state_flags |= tfxEmitterStateFlags_stop_spawning;
+			emitter.common.state_flags |= tfxEmitterStateFlags_single_shot_done;
+		}
+	}
+
+	void StartEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id) {
+		if (!ValidEffect(effect_pool, effect_id))
+			return;
+		HardStopEffect(effect_pool, effect_id);
+		tfxEffect &effect = GetEffect(effect_pool, effect_id);
+		for (auto &emitter : effect.sub_emitters) {
+			emitter.common.state_flags &= ~tfxEmitterStateFlags_stop_spawning;
+			emitter.common.state_flags &= ~tfxEmitterStateFlags_single_shot_done;
+			emitter.common.age = 0.f;
+			emitter.common.frame = 0.f;
+			emitter.common.timeout_counter = 0.f;
+		}
+		effect.common.age = 0.f;
+		effect.common.frame = 0.f;
+		effect.common.timeout_counter = 0.f;
+	}
+
+	void ClearEffectPool(tfxEffectPool &effect_pool) {
+		effect_pool.effect_memory.clear();
+		effect_pool.emitter_memory.clear();
+		effect_pool.sprite_memory.clear();
+		effect_pool.particle_memory.clear();
+		memset(effect_pool.effect_memory.data, tfxINVALID, effect_pool.effect_memory.capacity);
+	}
+
+	void FreeEffectPool(tfxEffectPool &effect_pool) {
+		ClearEffectPool(effect_pool);
+		effect_pool.effect_memory.free_all();
+		effect_pool.emitter_memory.free_all();
+		effect_pool.sprite_memory.free_all();
+		effect_pool.particle_memory.free_all();
 	}
 
 	void UpdateEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id) {
@@ -1562,7 +1627,7 @@ namespace tfx {
 			common.frame = common.age / tfxLOOKUP_FREQUENCY;
 		}
 		common.age += FRAME_LENGTH;
-		if (!(common.property_flags & tfxEmitterPropertyFlags_single) || common.property_flags & tfxEmitterPropertyFlags_one_shot)
+		if (!(common.property_flags & tfxEmitterPropertyFlags_single) || common.property_flags & tfxEmitterPropertyFlags_one_shot || common.state_flags & tfxEmitterStateFlags_stop_spawning)
 			common.highest_particle_age -= FRAME_LENGTH;
 
 		if (common.loop_length && common.age > common.loop_length)
@@ -3841,7 +3906,7 @@ namespace tfx {
 				p.next_ptr = nullptr;
 				continue;
 			}
-			if (p.age >= p.max_age && common.state_flags & tfxEmitterStateFlags_is_single) {
+			if (!(common.state_flags & tfxEmitterStateFlags_stop_spawning) && p.age >= p.max_age && common.state_flags & tfxEmitterStateFlags_is_single) {
 				p.age = 0;
 			}
 			else if (p.age >= p.max_age) {
@@ -4786,7 +4851,11 @@ namespace tfx {
 		}
 	}
 
-	bool GetEffect(EffectLibrary &library, tfxEffectPool &storage, const char *name, tfxEffectID &out) {
+	void InitEffectPool(tfxEffectPool &effect_pool, unsigned int max_effects, unsigned int max_emitters, unsigned int max_particles) {
+		effect_pool.Init(max_effects, max_emitters, max_particles);
+	}
+
+	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, const char *name, tfxEffectID &out) {
 		assert(library.effect_paths.ValidName(name));
 		EffectEmitter *effect = library.GetEffect(name);
 		if (!Copy(storage, *effect, out))
@@ -4794,7 +4863,7 @@ namespace tfx {
 		return true;
 	}
 
-	bool GetEffect(EffectLibrary &library, tfxEffectPool &storage, tfxKey path_hash, tfxEffectID &out) {
+	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, tfxKey path_hash, tfxEffectID &out) {
 		assert(library.effect_paths.ValidKey(path_hash));
 		EffectEmitter *effect = library.GetEffect(path_hash);
 		if (!Copy(storage, *effect, out))
@@ -4802,7 +4871,7 @@ namespace tfx {
 		return true;
 	}
 
-	bool GetEffect(EffectLibrary &library, tfxEffectPool &storage, unsigned int index, tfxEffectID &out) {
+	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, unsigned int index, tfxEffectID &out) {
 		assert(library.effects.size() > index);
 		//if overwriting an effect that is already in storage, we need to add it to the cache
 		if (!Copy(storage, library.effects[index], out))
@@ -4818,7 +4887,7 @@ namespace tfx {
 		return false;
 	}
 
-	bool GetEffect(tfxEffectPool &effect_pool, tfxEffectTemplate &effect_template, tfxEffectID &effect_id) {
+	bool PoolEffectFromTemplate(tfxEffectPool &effect_pool, tfxEffectTemplate &effect_template, tfxEffectID &effect_id) {
 		if (!Copy(effect_pool, effect_template.effect_template, effect_id))
 			return false;
 		return true;
@@ -4899,31 +4968,41 @@ namespace tfx {
 	}
 
 	bool Copy(tfxEffectPool &storage, EffectEmitter &in, tfxEffectID &out) {
-		int emitters = 0;
-		int effects = 0;
-		int particles = 0;
-		for (int layer = 0; layer != tfxLAYERS; ++layer) {
-			particles += in.max_particles[layer];
+		//If it's an effect that's in use then we need to check if there's enough memory to store it, otherwise
+		//we can just overwrite it.
+		if (!ValidEffect(storage, out)) {
+			int emitters = 0;
+			int effects = 0;
+			int particles = 0;
+			for (int layer = 0; layer != tfxLAYERS; ++layer) {
+				particles += in.max_particles[layer];
+			}
+			unsigned int emitter_mem_req = emitters * in.max_sub_emitters * sizeof(tfxEmitter);
+			unsigned int effect_mem_req = sizeof(tfxEffect);
+			unsigned int particle_mem_req = particles * sizeof(Particle);
+			unsigned int sprite_mem_req = particles * sizeof(ParticleSprite);
+			if (storage.emitter_memory.free_unused_space() < emitter_mem_req)
+				return false;
+			if (storage.effect_memory.free_unused_space() < effect_mem_req)
+				return false;
+			if (storage.particle_memory.free_unused_space() < particle_mem_req)
+				return false;
+			if (storage.sprite_memory.free_unused_space() < sprite_mem_req)
+				return false;
 		}
-		unsigned int emitter_mem_req = emitters * in.max_sub_emitters * sizeof(tfxEmitter);
-		unsigned int effect_mem_req = sizeof(tfxEffect);
-		unsigned int particle_mem_req = particles * sizeof(Particle);
-		unsigned int sprite_mem_req = particles * sizeof(ParticleSprite);
-		if (storage.emitter_memory.free_unused_space() < emitter_mem_req)
-			return false;
-		if (storage.effect_memory.free_unused_space() < effect_mem_req) 
-			return false;
-		if (storage.particle_memory.free_unused_space() < particle_mem_req)
-			return false;
-		if (storage.sprite_memory.free_unused_space() < sprite_mem_req)
-			return false;
 		in.CopyToEffect(out, storage);
 		return true;
 	}
 
 	void EffectEmitter::CopyToEffect(tfxEffectID &effect_id, tfxEffectPool &storage) {
 		assert(type == tfxEffectType);		//Must be called on an effect type only
-		effect_id = storage.InsertEffect();
+		if (ValidEffect(storage, effect_id)) {
+			tfxEffect &tmp_effect = storage.GetEffect(effect_id);
+			tmp_effect.ReleaseMemory();
+		}
+		else {
+			effect_id = storage.InsertEffect();
+		}
 		tfxEffect &effect = storage.GetEffect(effect_id);
 		effect.id = effect_id;
 		effect.common.property_flags = properties.flags;
