@@ -1001,6 +1001,21 @@ namespace tfx {
 		GetGraphByType(tfxOvertime_direction)->lookup.life = max_life;
 	}
 
+	void EffectEmitter::ResetAllBufferSizes() {
+		tfxvec<EffectEmitter*> stack;
+		stack.push_back(this);
+		while (!stack.empty()) {
+			EffectEmitter &current = *stack.pop_back();
+			current.max_sub_emitters = 0;
+			for (EachLayer) {
+				current.max_particles[layer] = 0;
+			}
+			for (auto &sub : current.sub_effectors) {
+				stack.push_back(&sub);
+			}
+		}
+	}
+
 	void EffectEmitter::UpdateAllBufferSizes() {
 		tfxvec<EffectEmitter*> stack;
 		stack.push_back(this);
@@ -1010,11 +1025,7 @@ namespace tfx {
 		max_sub_emitters = 0;
 		while (!stack.empty()) {
 			EffectEmitter &current = *stack.pop_back();
-			if (current.type == tfxEffectType) {
-				if (current.parent) {
-				}
-			}
-			else if (current.type == tfxEmitterType) {
+			if (current.type == tfxEmitterType) {
 				unsigned int particle_count = 0;
 				if (current.parent->parent && current.parent->parent->type != tfxFolder) {
 					particle_count = current.GetHighestQty(current.parent->parent->max_life);
@@ -1203,6 +1214,10 @@ namespace tfx {
 		AddEffect(effect);
 		initial_effect_size = effect.sub_effectors.size() + 1;
 		Process();
+		for (EachLayer) {
+			effect.max_particles[layer] = sprite_count[layer];
+			effect.max_sub_emitters = sub_effect_count;
+		}
 	}
 
 	void tfxParticleMemoryTools::Process() {
@@ -1225,7 +1240,7 @@ namespace tfx {
 				}
 			}
 			MockUpdateParticles();
-			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+			for (EachLayer) {
 				sprite_count[layer] = (unsigned int)std::fmaxf((float)sprite_count[layer], (float)particles[layer][!current_buffer].current_size);
 			}
 			sub_effect_count = (unsigned int)std::fmaxf((float)effects[!current_buffer].current_size, (float)sub_effect_count);
@@ -1238,6 +1253,14 @@ namespace tfx {
 
 	void tfxParticleMemoryTools::MockUpdateEmitter(tfxMockEffect &emitter) {
 		if (emitter.library_link->type == tfxEmitterType) {
+
+			for (auto p : emitter.particles[current_buffer]) {
+				p -= FRAME_LENGTH;
+				if (p > 0) emitter.particles[!current_buffer].push_back(p);
+			}
+			emitter.library_link->max_particles[emitter.library_link->properties.layer] = (unsigned int)std::fmaxf((float)emitter.library_link->max_particles[emitter.library_link->properties.layer], (float)emitter.particles[current_buffer].current_size);
+			emitter.particles[current_buffer].clear();
+
 			float life = LookupFast(emitter.library->base_graphs[emitter.library_link->base].life, emitter.frame) + lookup_callback(emitter.library->variation_graphs[emitter.library_link->variation].life, emitter.frame) * 0.75f;
 			if (!(emitter.library_link->properties.flags & tfxEmitterPropertyFlags_single) && !(emitter.library_link->properties.flags & tfxEmitterPropertyFlags_one_shot)) {
 				emitter.qty = LookupFast(emitter.library->base_graphs[emitter.library_link->base].amount, emitter.frame);
@@ -1255,10 +1278,14 @@ namespace tfx {
 				emitter.qty *= UPDATE_TIME;
 				emitter.qty += emitter.amount_remainder;
 
+				if (!emitter.started_spawning && emitter.qty < 1)
+					emitter.qty = 1.f;
+
 				if (emitter.qty >= 1) {
 					while (emitter.qty > 1) {
 						emitter.qty -= 1.f;
 						particles[emitter.library_link->properties.layer][!current_buffer].push_back(life + FRAME_LENGTH);
+						emitter.particles[!current_buffer].push_back(life + FRAME_LENGTH);
 						for (auto &sub : emitter.library_link->sub_effectors) {
 							AddEffect(sub);
 						}
@@ -1272,11 +1299,16 @@ namespace tfx {
 			}
 			else if(!emitter.single_shot_done) {
 				emitter.started_spawning = true;
+				emitter.library_link->max_particles[emitter.library_link->properties.layer] = emitter.library_link->properties.spawn_amount;
 				for (int q = 0; q != emitter.library_link->properties.spawn_amount; ++q) {
-					if (emitter.library_link->properties.flags & tfxEmitterPropertyFlags_single && !(emitter.library_link->properties.flags & tfxEmitterPropertyFlags_one_shot)) 
+					if (emitter.library_link->properties.flags & tfxEmitterPropertyFlags_single && !(emitter.library_link->properties.flags & tfxEmitterPropertyFlags_one_shot)) {
 						particles[emitter.library_link->properties.layer][!current_buffer].push_back(max_frames + max_last_life);
-					else
+						emitter.particles[!current_buffer].push_back(max_frames + max_last_life);
+					}
+					else {
 						particles[emitter.library_link->properties.layer][!current_buffer].push_back(life + FRAME_LENGTH);
+						emitter.particles[!current_buffer].push_back(life + FRAME_LENGTH);
+					}
 					emitter.highest_particle_age = std::fmaxf(emitter.highest_particle_age, life);
 					for (auto &sub : emitter.library_link->sub_effectors) {
 						AddEffect(sub);
@@ -1477,34 +1509,34 @@ namespace tfx {
 		}
 
 		//Update the effect state
-		e.current.life = lookup_callback(e.common.library->global_graphs[e.global].life, e.common.frame);
-		e.current.amount = lookup_callback(e.common.library->global_graphs[e.global].amount, e.common.frame);
+		e.current.life = lookup_callback(e.common.library->global_graphs[e.library_link->global].life, e.common.frame);
+		e.current.amount = lookup_callback(e.common.library->global_graphs[e.library_link->global].amount, e.common.frame);
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_global_uniform_size)) {
-			e.current.size.x = lookup_callback(e.common.library->global_graphs[e.global].width, e.common.frame);
-			e.current.size.y = lookup_callback(e.common.library->global_graphs[e.global].height, e.common.frame);
+			e.current.size.x = lookup_callback(e.common.library->global_graphs[e.library_link->global].width, e.common.frame);
+			e.current.size.y = lookup_callback(e.common.library->global_graphs[e.library_link->global].height, e.common.frame);
 		}
 		else {
-			e.current.size.x = lookup_callback(e.common.library->global_graphs[e.global].width, e.common.frame);
+			e.current.size.x = lookup_callback(e.common.library->global_graphs[e.library_link->global].width, e.common.frame);
 			e.current.size.y = e.current.size.x;
 		}
-		e.current.velocity = lookup_callback(e.common.library->global_graphs[e.global].velocity, e.common.frame);
-		e.current.spin = lookup_callback(e.common.library->global_graphs[e.global].spin, e.common.frame);
-		e.current.opacity = lookup_callback(e.common.library->global_graphs[e.global].opacity, e.common.frame);
-		e.current.splatter = lookup_callback(e.common.library->global_graphs[e.global].splatter, e.common.frame);
+		e.current.velocity = lookup_callback(e.common.library->global_graphs[e.library_link->global].velocity, e.common.frame);
+		e.current.spin = lookup_callback(e.common.library->global_graphs[e.library_link->global].spin, e.common.frame);
+		e.current.opacity = lookup_callback(e.common.library->global_graphs[e.library_link->global].opacity, e.common.frame);
+		e.current.splatter = lookup_callback(e.common.library->global_graphs[e.library_link->global].splatter, e.common.frame);
 		//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
-		e.current.overal_scale = lookup_callback(e.common.library->global_graphs[e.global].overal_scale, e.common.frame);
+		e.current.overal_scale = lookup_callback(e.common.library->global_graphs[e.library_link->global].overal_scale, e.common.frame);
 		if (!e.parent_particle) {
 			e.transform.world.scale.x = e.current.overal_scale;
 			e.transform.world.scale.y = e.current.overal_scale;
-			e.transform.local.rotation = lookup_callback(e.common.library->global_graphs[e.global].effect_angle, e.common.frame);
+			e.transform.local.rotation = lookup_callback(e.common.library->global_graphs[e.library_link->global].effect_angle, e.common.frame);
 		}
 		else {
 			e.transform.world.scale.x = e.current.overal_scale;
 			e.transform.world.scale.y = e.current.overal_scale;
 			e.transform.local.rotation = 0.f;
 		}
-		e.current.stretch = lookup_callback(e.common.library->global_graphs[e.global].stretch, e.common.frame);
-		e.current.weight = lookup_callback(e.common.library->global_graphs[e.global].weight, e.common.frame);
+		e.current.stretch = lookup_callback(e.common.library->global_graphs[e.library_link->global].stretch, e.common.frame);
+		e.current.weight = lookup_callback(e.common.library->global_graphs[e.library_link->global].weight, e.common.frame);
 
 		if (!(e.common.state_flags & tfxEmitterStateFlags_retain_matrix)) {
 			e.transform.world.position = e.transform.local.position;
@@ -1574,9 +1606,6 @@ namespace tfx {
 		}
 
 		e.CompressSprites();
-
-		e.current_buffer = !e.current_buffer;
-
 	}
 
 	void tfxEmitter::UpdateAsSubEffect() {
@@ -1627,6 +1656,8 @@ namespace tfx {
 			common.frame = common.age / tfxLOOKUP_FREQUENCY;
 		}
 		common.age += FRAME_LENGTH;
+
+		common.property_flags = library_link->properties.flags;
 		if (!(common.property_flags & tfxEmitterPropertyFlags_single) || common.property_flags & tfxEmitterPropertyFlags_one_shot || common.state_flags & tfxEmitterStateFlags_stop_spawning)
 			common.highest_particle_age -= FRAME_LENGTH;
 
@@ -1683,6 +1714,107 @@ namespace tfx {
 
 	}
 
+	void tfxEmitter::RefreshFromLibrary() {
+		tfxEmitterStateFlags single_done = common.state_flags & tfxEmitterStateFlags_single_shot_done;
+		tfxEmitterStateFlags spawn_done = common.state_flags & tfxEmitterStateFlags_stop_spawning;
+		common.property_flags = library_link->properties.flags;
+		common.state_flags = library_link->flags;
+		common.loop_length = library_link->properties.loop_length;
+		common.handle = library_link->properties.emitter_handle;
+		if (library_link->properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
+			image_handle = tfxVec2(0.5f, 0.5f);
+		}
+		else {
+			image_handle = library_link->properties.image_handle;
+		}
+		common.state_flags &= ~tfxEmitterStateFlags_retain_matrix;
+
+		common.state_flags |= library_link->properties.flags & tfxEmitterPropertyFlags_single && !(library_link->properties.flags & tfxEmitterPropertyFlags_one_shot) ? tfxEmitterStateFlags_is_single : 0;
+		common.state_flags |= (library_link->properties.emission_type != tfxLine && !(library_link->properties.flags & tfxEmitterPropertyFlags_edge_traversal)) || library_link->properties.emission_type == tfxLine && !(library_link->properties.flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
+		common.state_flags |= library_link->properties.flags & tfxEmitterPropertyFlags_random_color;
+		common.state_flags |= library_link->properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
+		common.state_flags |= library_link->properties.angle_setting != AngleSetting::tfxAlign && !(library_link->properties.flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+		common.state_flags |= library_link->properties.angle_setting == AngleSetting::tfxAlign ? tfxEmitterStateFlags_align_with_velocity : 0;
+		common.state_flags |= library_link->properties.emission_type == tfxLine && library_link->properties.flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
+		common.state_flags |= library_link->properties.flags & tfxEmitterPropertyFlags_play_once;
+		common.state_flags |= library_link->properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
+		common.state_flags |= library_link->properties.end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
+		common.state_flags |= library_link->properties.emission_type == tfxArea || library_link->properties.emission_type == tfxEllipse ? tfxEmitterStateFlags_is_area : 0;
+		common.state_flags |= library_link->properties.emission_type == tfxLine ? tfxEmitterStateFlags_is_line : 0;
+		common.state_flags |= single_done;
+		common.state_flags |= spawn_done;
+	}
+
+	void tfxEffect::RefreshFromLibrary() {
+		common.property_flags = library_link->properties.flags;
+		common.state_flags = library_link->flags;
+		common.loop_length = library_link->properties.loop_length;
+		common.handle = library_link->properties.emitter_handle;
+		for (auto &e : sub_emitters) {
+			e.RefreshFromLibrary();
+		}
+		for (auto &e : sub_effects) {
+			if (e.type == tfxEmitterType) {
+				e.RefreshFromLibrary();
+			}
+			else {
+				e.common.property_flags = e.library_link->properties.flags;
+				e.common.state_flags = e.library_link->flags;
+				e.common.loop_length = e.library_link->properties.loop_length;
+				e.common.handle = e.library_link->properties.emitter_handle;
+			}
+		}
+	}
+
+	void tfxEffect::UpdateSpritePointers() {
+		for (auto &emitter : sub_emitters) {
+			for (auto &p : emitter.particles) {
+				auto &s = emitter.common.root_effect->sprites[emitter.library_link->properties.layer][p.sprite_index];
+				s.particle = &p;
+			}
+		}
+		for (auto &emitter : sub_effects) {
+			if (emitter.type == tfxEmitterType) {
+				for (auto &p : emitter.particles) {
+					auto &s = emitter.common.root_effect->sprites[emitter.library_link->properties.layer][p.sprite_index];
+					s.particle = &p;
+				}
+			}
+		}
+	}
+		
+	bool tfxEmitter::GrowParticles(unsigned int min_amount) {
+		auto &sprites = common.root_effect->sprites[library_link->properties.layer];
+		unsigned int req_particle_size = particles.capacity + particles.capacity / 2;
+		unsigned int req_sprite_size = sprites.capacity + sprites.capacity / 2;
+		req_particle_size = req_particle_size < min_amount ? min_amount : req_particle_size;
+		req_sprite_size = req_sprite_size < min_amount ? min_amount : req_sprite_size;
+		unsigned int req_particle_mem = req_particle_size * sizeof(Particle);
+		unsigned int req_sprite_mem = req_sprite_size * sizeof(ParticleSprite);
+		if (!common.root_effect->storage->particle_memory.has_free_range_available(req_particle_mem) && common.root_effect->storage->particle_memory.free_unused_space() < req_particle_mem)
+			return false;
+		if (!common.root_effect->storage->sprite_memory.has_free_range_available(req_sprite_mem) && common.root_effect->storage->sprite_memory.free_unused_space() < req_sprite_mem)
+			return false;
+
+		tfxfixedvec<Particle> new_particle_memory;
+		tfxfixedvec<ParticleSprite> new_sprite_memory;
+		new_particle_memory.assign_memory(common.root_effect->storage->particle_memory, sizeof(Particle), req_particle_size);
+		new_sprite_memory.assign_memory(common.root_effect->storage->sprite_memory, sizeof(ParticleSprite), req_sprite_size);
+
+		if (particles.data && particles.capacity) {
+			particles.copyto(common.root_effect->storage->particle_memory, new_particle_memory);
+			particles.free_range(common.root_effect->storage->particle_memory);
+		}
+		particles = new_particle_memory;
+		if (sprites.data && common.root_effect->sprites[library_link->properties.layer].capacity) {
+			sprites.copyto(common.root_effect->storage->sprite_memory, new_sprite_memory);
+			sprites.free_range(common.root_effect->storage->sprite_memory);
+		}
+		sprites = new_sprite_memory;
+		common.root_effect->UpdateSpritePointers();
+		return true;
+	}
+
 	void tfxEmitter::SpawnParticles() {
 		if (common.state_flags & tfxEmitterStateFlags_single_shot_done || common.root_effect->common.state_flags & tfxEmitterStateFlags_stop_spawning ||
 			(parent && parent->common.state_flags & tfxEmitterStateFlags_stop_spawning) ) {
@@ -1713,8 +1845,6 @@ namespace tfx {
 		float tween = 0.f;
 		float interpolate = (float)(int)current.qty;
 		float count = 0;
-
-		unsigned int current_buffer = common.root_effect->current_buffer;
 
 		tfxEmitterSpawnControls spawn_values;
 		if (current.qty >= 1) {
@@ -1775,8 +1905,18 @@ namespace tfx {
 
 		while (current.qty >= 1.f) {
 			if (!FreeCapacity()) {
-				current.amount_remainder = 0;
-				break;
+				if (common.root_effect->common.property_flags & tfxEmitterPropertyFlags_can_grow_particle_memory) {
+					if (!GrowParticles(particles.current_size + (unsigned int)current.qty)) {
+						current.amount_remainder = 0;
+						break;
+					}
+				}
+				else {
+					current.amount_remainder = 0;
+					break;
+				}
+			}
+			else if (common.root_effect->common.property_flags & tfxEmitterPropertyFlags_can_grow_particle_memory) {
 			}
 			tween = count / interpolate;
 			count++;
@@ -4879,6 +5019,12 @@ namespace tfx {
 		return true;
 	}
 
+	bool PoolEffect(tfxEffectPool &storage, EffectEmitter &effect, tfxEffectID &out) {
+		if (!Copy(storage, effect, out))
+			return false;
+		return true;
+	}
+
 	bool PrepareEffectTemplate(EffectLibrary &library, const char *name, tfxEffectTemplate &effect_template) {
 		if (library.effect_paths.ValidName(name)) {
 			library.PrepareEffectTemplate(name, effect_template);
@@ -4898,7 +5044,6 @@ namespace tfx {
 		common.highest_particle_age = 0.f;
 		common.timeout_counter = 0;
 		ClearSprites();
-		current_buffer = 0;
 		for (auto &e : sub_effects) {
 			if (e.type == tfxEmitterType) {
 				e.particles.clear();
@@ -4918,18 +5063,18 @@ namespace tfx {
 	}
 
 	void tfxEffect::CompressSprites() {
-		for (int i = 0; i != tfxLAYERS; ++i) {
+		for (EachLayer) {
 			unsigned int offset = 0;
-			for (int si = 0; si != sprites[i].current_size;++si) {
-				if (sprites[i][si].parameters == tfxINVALID) {
+			for (int si = 0; si != sprites[layer].current_size;++si) {
+				if (sprites[layer][si].parameters == tfxINVALID) {
 					offset++;
 				}
 				else if(offset > 0) {
-					sprites[i][si].particle->sprite_index -= offset;
-					sprites[i][si - offset] = sprites[i][si];
+					sprites[layer][si].particle->sprite_index -= offset;
+					sprites[layer][si - offset] = sprites[layer][si];
 				}
 			}
-			sprites[i].current_size -= offset;
+			sprites[layer].current_size -= offset;
 		}
 	}
 
@@ -4981,7 +5126,7 @@ namespace tfx {
 			unsigned int effect_mem_req = sizeof(tfxEffect);
 			unsigned int particle_mem_req = particles * sizeof(Particle);
 			unsigned int sprite_mem_req = particles * sizeof(ParticleSprite);
-			if (storage.emitter_memory.free_unused_space() < emitter_mem_req)
+			if (storage.emitter_memory.free_unused_space() < emitter_mem_req) 
 				return false;
 			if (storage.effect_memory.free_unused_space() < effect_mem_req)
 				return false;
@@ -5005,11 +5150,11 @@ namespace tfx {
 		}
 		tfxEffect &effect = storage.GetEffect(effect_id);
 		effect.id = effect_id;
+		effect.library_link = this;
 		effect.common.property_flags = properties.flags;
 		effect.common.state_flags = flags;
 		effect.common.library = library;
 		effect.path_hash = path_hash;
-		effect.global = global;
 		effect.common.loop_length = properties.loop_length;
 		effect.common.handle = properties.emitter_handle;
 		effect.lookup_mode = tfxFast;
@@ -5629,21 +5774,13 @@ namespace tfx {
 		tfxParticleMemoryTools tools;
 		for (auto &e : effects) {
 			if (e.type != tfxFolder) {
-				e.UpdateAllBufferSizes();
+				e.ResetAllBufferSizes();
 				tools.ProcessEffect(e);
-				for (int layer = 0; layer != tfxLAYERS; ++layer) {
-					e.max_particles[layer] = tools.sprite_count[layer];
-				}
-				e.max_sub_emitters = tools.sub_effect_count;
 			}
 			else {
 				for (auto &sub : e.sub_effectors) {
-					sub.UpdateAllBufferSizes();
+					sub.ResetAllBufferSizes();
 					tools.ProcessEffect(e);
-					for (int layer = 0; layer != tfxLAYERS; ++layer) {
-						e.max_particles[layer] = tools.sprite_count[layer];
-					}
-					e.max_sub_emitters = tools.sub_effect_count;
 				}
 			}
 		}
@@ -7795,14 +7932,6 @@ namespace tfx {
 		effects[buffer][index] = e;
 		return &effects[buffer][index];
 	}
-
-	void ParticleManager::Render(float tween, void *data) {
-		if (!render_func)
-			return;
-		for (auto &p : particles[current_pbuff]) {
-			render_func(tween, &p, data);
-		}
-	}
 	
 	tfxvec<Particle> *ParticleManager::GetParticleBuffer(unsigned int layer) {
 		return &particles[layer][current_pbuff];
@@ -7810,10 +7939,6 @@ namespace tfx {
 	
 	tfxvec<EffectEmitter> *ParticleManager::GetEffectBuffer() {
 		return &effects[current_ebuff];
-	}
-
-	void ParticleManager::SetRenderCallback(void func(float, void*, void*)) {
-		render_func = func;
 	}
 	
 	void tfxEffectPool::Init(unsigned int max_effects, unsigned int max_emitters, unsigned int max_particles) {

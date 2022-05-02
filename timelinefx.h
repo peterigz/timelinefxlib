@@ -498,6 +498,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
 		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 		tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
+		tfxEmitterPropertyFlags_can_grow_particle_memory = 1 << 23,			//Allows for expanding the memory used for particle emitters if the amount spawned is changed dynamically
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -1447,8 +1448,11 @@ typedef unsigned int tfxEffectID;
 		inline void					reserve(unsigned int new_capacity) { if (new_capacity <= capacity) return; char* new_data = (char*)malloc((size_t)new_capacity * sizeof(char)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(char)); free(data); } data = new_data; capacity = new_capacity; }
 		inline unsigned int			free_unused_space() { return capacity - current_size; }
 
+		inline bool has_free_range_available(unsigned int bytes) {
+			return free_ranges.ValidKey(tfxKey(bytes));
+		}
 		inline unsigned int			get_range(unsigned int bytes) { 
-			if (current_size == capacity) reserve(_grow_capacity(current_size + bytes)); 
+			if (current_size + bytes >= capacity) reserve(_grow_capacity(current_size + bytes)); 
 			tfxrange range;
 			range.offset_into_memory = current_size;
 			range.capacity = bytes;
@@ -1608,6 +1612,12 @@ typedef unsigned int tfxEffectID;
 		inline void			refresh(tfxmemory &mem) { void *ptr = (char*)mem.data + mem.ranges[range_index].offset_into_memory; data = static_cast<T*>(ptr); }
 		inline void			reset_to_null() { current_size = 0; range_index = tfxINVALID; data = NULL; }
 		inline void			shrink(unsigned int amount) { if (amount > current_size) current_size = 0; else current_size -= amount; }
+
+		inline void			copyto(tfxmemory &mem, tfxfixedvec &dst) { 
+			assert(dst.capacity > capacity); 
+			memcpy(dst.data, data, mem.ranges[range_index].capacity); 
+			dst.current_size = current_size;
+		}
 	};
 
 	const u32 tfxMAGIC_NUMBER = '!XFT';
@@ -2283,7 +2293,6 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxEmitterSpawnProperties {
-
 		unsigned int layer;
 		unsigned int blend_mode;
 		unsigned int spawn_amount;
@@ -2300,7 +2309,6 @@ typedef unsigned int tfxEffectID;
 		tfxVec2 image_handle;
 		tfxVec2 emitter_handle;
 		tfxVec2 grid_points;
-		
 	};
 
 	struct tfxEmitterSpawnControls {
@@ -2342,6 +2350,8 @@ typedef unsigned int tfxEffectID;
 		void Reset();
 		void UpdateEmitter();
 		void UpdateAsSubEffect();
+		bool GrowParticles(unsigned int min_amount);
+		void RefreshFromLibrary();
 		void SpawnParticles();
 		float GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
 		void InitCPUParticle(Particle &p, tfxEmitterSpawnControls &spawn_values, float tween);
@@ -2355,10 +2365,9 @@ typedef unsigned int tfxEffectID;
 		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
 
 		tfxTransform transform;
+		EffectEmitter *library_link;
 		tfxEffectID id;
 		LookupMode lookup_mode;
-		unsigned int global;
-		unsigned int current_buffer;
 		Particle *parent_particle;
 		tfxCommon common;
 		tfxKey path_hash;
@@ -2375,18 +2384,22 @@ typedef unsigned int tfxEffectID;
 		tfxEffect() :
 			parent_particle(nullptr),
 			path_hash(0),
-			current_buffer(0),
 			max_sub_emitters(0)
 		{}
 		void Reset();
 		void ReleaseMemory();
 		void ClearSprites();
 		void CompressSprites();
+		void UpdateSpritePointers();
+		void RefreshFromLibrary();
+		inline unsigned int ParticleCount() { unsigned int count = 0; for (EachLayer) { count += sprites[layer].current_size; } return count; }
 		ParticleSprite &GrabSprite(unsigned int layer);
 		tfxEmitter &GrabSubEffect();
 		tfxEmitter& AddSubEffect(tfxEmitter &sub_effect);
+		inline void AllowMoreParticles() { common.property_flags |= tfxEmitterPropertyFlags_can_grow_particle_memory; }
 		inline void Move(float x, float y) { transform.local.position.x += x; transform.local.position.y += y; }
 		inline void Position(float x, float y, bool capture = true) { transform.local.position.x = x; transform.local.position.y = y; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
+		inline void Position(tfxVec2 pos, bool capture = true) { transform.local.position = pos; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
 		
 	};
 
@@ -2600,6 +2613,7 @@ TFX_CUSTOM_EMITTER
 		void ResetEffectGraphs(bool add_node = true);
 		void ResetEmitterGraphs(bool add_node = true);
 		void UpdateMaxLife();
+		void ResetAllBufferSizes();
 		void UpdateAllBufferSizes();
 		void UpdateAllSpriteAmounts();
 		unsigned int GetSubEffectSpriteCounts(unsigned int layer, unsigned int multiplier);
@@ -2982,6 +2996,13 @@ TFX_CUSTOM_EMITTER
 	Another problem with the particle manager is that all the particles are in one list and so you can't separate out individual effects when drawing which would pose a problem when drawing the effects
 	in different orders with other non particle related drawing.
 	But the particle manager does make managing the memory a lot easier as you only need the effects and particle lists.
+
+	My current conclusion is that for use in a game where you have already defined your particle effects in the editor you can use the tfxEffect approach where draw order of effects is more flexible and
+	memory access is more efficient. The draw back is you can't really make an emitter spawn more particles, but the easy work around here is to create the effect with the most amount of particles spawning
+	as you need and then scale them back dynamically as you need.
+
+	But there is still a strong enough case for the particle manager for use in the editor where it's very useful to be able to dynamically grow the number of particles and sub effects as you work on new 
+	effects. Use of compute shaders is also easier at this point with the particle manager. So at this point I think it's best to keep both methods even though it's more code to maintain.
 	*/
 
 	//Use the particle manager to add compute effects to your scene 
@@ -3016,8 +3037,6 @@ TFX_CUSTOM_EMITTER
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
 		ComputeFXGlobalState compute_global_state;
-		//Callback to the render function that renders all the particles - is this not actually useful now, just use GetParticleBuffer() in your own render function
-		void(*render_func)(float, void*, void*);
 		//todo: make these flags
 		bool disable_spawing;
 		bool force_capture;
@@ -3068,10 +3087,6 @@ TFX_CUSTOM_EMITTER
 		//Soft expire all the effects so that the particles complete their animation first
 		void SoftExpireAll();
 
-		//This can be removed soon, don't think there's much need for it, use GetParticleBuffer and render that instead in your own function
-		void Render(float tween, void *data);
-		void SetRenderCallback(void func(float, void*, void*));
-
 		//Internal use only
 		int AddComputeController();
 		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
@@ -3111,11 +3126,12 @@ TFX_CUSTOM_EMITTER
 		float frame = 0.f;
 		float age = 0.f;
 		float amount_remainder = 0;
-		float qty = 0.f;
+		float qty = 1.f;
 		EffectEmitter *library_link;
 		EffectLibrary *library;
 		bool single_shot_done = false;
 		bool started_spawning = false;
+		tfxvec<float> particles[2];
 	};
 
 	//This is used to figure out how much memory each effect and emitter needs to draw particles so that the correct amount of memory can be assigned as each effect is used.
@@ -3234,6 +3250,7 @@ TFX_CUSTOM_EMITTER
 	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, const char *name, tfxEffectID &out);
 	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, tfxKey path_hash, tfxEffectID &out);
 	bool PoolEffectFromLibrary(EffectLibrary &library, tfxEffectPool &storage, unsigned int, tfxEffectID &out);
+	bool PoolEffect(tfxEffectPool &storage, EffectEmitter &effect, tfxEffectID &out);
 	//Prepare an effect template for setting up function call backs to customise the behaviour of the effect in realtime
 	//Returns true on success.
 	bool PrepareEffectTemplate(EffectLibrary &library, const char *name, tfxEffectTemplate &effect_template);
