@@ -70,64 +70,48 @@ void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_da
 ### Creating a render function to render the particles
 Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using.
 ```cpp
-void TfxExample::RenderParticles(float tween) {
+//Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using
+void TfxExample::RenderEffect(tfx::tfxEffect &effect, float tween) {
 	//Renderer specific, get the layer that we will draw on (there's only one layer in this example)
 	QulkanLayer &render_layer = GetLayer();
 
-	//Loop through all the draw layers - particles can be assigned to a specific draw layer so you can draw them in a specific order if necessary. The layer is set in the editor on the properties tab.
-	for (int layer = 0; layer != tfxLAYERS; ++layer) {
-		//Use GetParticleBuffer(layer) to get all of the particles in the current layer
-		for (auto p : *pm.GetParticleBuffer(layer)) {
+	for (EachLayer) {
+		for (auto &s : effect.sprites[layer]) {
 			//In order to set the correct blendmode we need to get the property from the parent emitter that emitted the particle
 			//A pointer to the parent emitter is stored in the parent member
-			tfx::EffectEmitter &e = *p.parent;
-
 			//Set the correct blendmode, see timelinefx::BlendMode. You may have to map the blendmodes depending on the renderer you use
-			render_layer.SetBlendMode(qulkan::BlendMode(e.properties.blend_mode));
+			render_layer.SetBlendMode(qulkan::BlendMode((s.parameters & 0xF0000000) >> 28));
 			//Set the color for the quad
-			render_layer.SetColor(p.color.r, p.color.g, p.color.b, p.color.a);
+			render_layer.SetColor(s.color.r, s.color.g, s.color.b, s.color.a);
 			//Set the value that the color will be multiplied by, this happens in your fragment shader. You can always omit this if you're not using intensity
-			render_layer.SetMultiplyFactor(p.intensity);
+			render_layer.SetMultiplyFactor(s.intensity);
 			//You can use render tweening to smooth particle movement from frame to frame by interpolating between captured and world states
-			tfx::FormState tweened = tfx::Tween(tween, p.world, p.captured);
+			tfx::FormState tweened = tfx::Tween(tween, s.world, s.captured);
 			//Is the particle using an image with more than one frame of animation?
-			if (e.properties.image->animation_frames == 1 && e.properties.start_frame == 0) {
-				//One frame of animation
-				//Set the image handle, this the offset that the particle is drawn at.
-				//This is where you can make use of the image->ptr from the ShapeLoader function, cast it into the appropriate type for the renderer
-				qulkan::SetImageHandle(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), e.current.image_handle.x, e.current.image_handle.y);
-				//Add the particle image quad to the renderer for the next render pass at the particle position/rotation/scale
-				render_layer.DrawSprite(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
-			}
-			else {
-				//Multiple frames of animation
-				//Get the current frame of animation that the particle is using
-				uint32_t frame = uint32_t(p.image_frame);
-				//frame must be within the bounds of the animation
-				assert(frame >= 0 && frame < e.properties.image->animation_frames);
-
-				//Set the image handle. It will differ from renderer to renderer how you access the right frame of animation. Here the pointer always points to the first frame, and then 
-				//we can just add the current frame to the pointer to get the correct frame
-				SetImageHandle(*(static_cast<QulkanImage*>(e.properties.image->ptr) + frame), e.current.image_handle.x, e.current.image_handle.y);
-				//Add the particle frame of animation quad to the renderer for the next render pass at the particle position/rotation/scale
-				render_layer.DrawSprite(*(static_cast<QulkanImage*>(e.properties.image->ptr) + frame), tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
-			}
+			//Get the current frame of animation that the particle is using
+			uint32_t frame = s.parameters & 0x00FFFFFF;
+			//Set the image handle. It will differ from renderer to renderer how you access the right frame of animation. Here the pointer always points to the first frame, and then 
+			//we can just add the current frame to the pointer to get the correct frame
+			SetImageHandle(*(static_cast<QulkanImage*>(s.ptr) + frame), s.handle.x, s.handle.y);
+			//Add the particle frame of animation quad to the renderer for the next render pass at the particle position/rotation/scale
+			render_layer.DrawSprite(*(static_cast<QulkanImage*>(s.ptr) + frame), tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
 		}
 	}
 }
 ```
 
 ### Adding and updating effects
-Effects and particles are updated using a `ParticleManager`. Every particle manager must be initialised before use to create the effect and particle pools. Set the maximum amount of effects and particles that you think you'll need for each manager. The default is 1000 effects and 50000 particles.
+The memory for effects, emitters and particles are managed using a tfxEffectPool. You must call Init on the effect pool before use.
 
-	tfx::ParticleManager pm;
-	pm.Init();
+	tfx::tfxEffectPool effect_pool;
+	effect_pool.Init();
 
-You can have as many particle managers as you want if needed. The simplest way to add effects is straight from the library:
+You can have as many effect pools as you want if needed. The simplest way to add effects is straight from the library:
 
-	tfx::AddEffect(pm, *library.GetEffect("Explosion 1"), MouseX(), MouseY());
+	tfx::tfxEffectID effect_id;
+	tfx::PoolEffect(effect_pool, *library.GetEffect("Explosion 1"), effect_id);
 
-This would be a simple "fire and forget" method and you would have no way of actually controlling the effect after it's added to the particle manager. In order to do that you need to create a template effect and then add that to the manager. Template effects allow you to set up different callbacks that you can use to make changes to the effect and emitters of the effect in realtime. Even individual particles can use a callback as well.
+The id for the effect will be stored in effect_id in this case and you can use that with GetEffect to retrieve the effect later to move it or render it etc.
 
 ```cpp
 	//In order to set update callbacks in your effects so that you can udpate them in realtime, 
@@ -141,38 +125,24 @@ This would be a simple "fire and forget" method and you would have no way of act
 	torch.SetUpdateCallback(UpdateTorchEffect);
 	//Set a callback for a specific emitter in the effect
 	torch.SetUpdateCallback("Torch/Embers", UpdateTorchFlames);
-	//Set a callback for any particle spawned by a specific emitter
-	torch.SetParticleUpdateCallback("Torch/Embers", UpdateEmbers);
-	//Finally add the effect template to the particle manager
-	tfx::AddEffect(pm, torch); 
+	//Finally add the effect template to the effect pool
+	tfx::PoolEffectFromTemplate(effect_pool, torch, effect_id); 
 ```
 
 Your callbacks need to pass in either an EffectEmitter object reference for effect/emitter callbacks or a Particle reference for a particle callback:
 
 ```cpp
-//This one uses a callback to set the position of the effect to the current location of the mouse pointer
-void UpdateTorchEffect(tfx::EffectEmitter &effect) {
-	effect.Position(MouseX(), MouseY());
+//This one uses a callback to set the opacity of the effect to something else
+void UpdateTorchEffect(tfx::tfxEffect &effect) {
+	effect.current.opacity(0.5f);
 }
 
-//This callback is for a specific emitter in the effect, and changes the amount of particles that are 
-//spawned based on the location of the mouse pointer
-void UpdateTorchFlames(tfx::EffectEmitter &emitter) {
-	emitter.OverrideBaseAmount(MouseX());
+//This callback is for a specific emitter in the effect, and changes the angle of the emitter
+//based on the location of the mouse pointer
+void UpdateTorchFlames(tfx::tfxEmitter &emitter) {
+	emitter.(fMouseX() *0.01f);
 }
 
-//This callback gets called by every particle spawned by the Embers emitter in the torch effect and 
-//changes the color of the particles based on the location of the mouse pointer
-void UpdateEmbers(tfx::Particle &particle) {
-	float x = (float)particle.world.position.x / ScreenWidth();
-	float y = (float)particle.world.position.y / ScreenHeight();
-	particle.color.r = uint8_t(x * 255.f);
-	particle.color.g = uint8_t(y * 255.f);
-	particle.color.b = uint8_t(x * 255.f);
-
-	//You could also access the parent emitters user data with particle->parent->user_data if 
-	//you needed to pull in more data to update the particle with
-}
 ```
 
 ### Update/Render loop
@@ -188,8 +158,10 @@ An update loop might look something like:
 
 	while (timer->DoUpdate()) {
 
-		//Inside your update loop, you will need to call the particle manager's update function
-		pm.Update();
+		//You can get an effect from the pool with GetEffect, which you might do to position the effect
+		GetEffect(effect_pool, torch_effect_id).Position(fMouseX(), fMouseY());
+		//In order to update the effects each frame you'll need to call UpdateEffect on each Effect you're using
+		UpdateEffect(effect_pool, torch_effect_id);
 
 		timer->UnAccumulate();
 	}
@@ -197,7 +169,7 @@ An update loop might look something like:
 	timer->Set();
 
 	//Call your renderer function to render all the particles
-	RenderParticles(timer->Tween());
+	RenderParticles(GetEffect(effect_pool, torch_effect_id), timer->Tween());
 ```
 
 See the files in the examples folder for a full example.
