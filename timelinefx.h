@@ -2383,7 +2383,8 @@ typedef unsigned int tfxEffectID;
 		tfxEffect() :
 			parent_particle(nullptr),
 			path_hash(0),
-			max_sub_emitters(0)
+			max_sub_emitters(0),
+			lookup_mode(tfxFast)
 		{}
 		void Reset();
 		void ReleaseMemory();
@@ -2399,6 +2400,7 @@ typedef unsigned int tfxEffectID;
 		inline void Move(float x, float y) { transform.local.position.x += x; transform.local.position.y += y; }
 		inline void Position(float x, float y, bool capture = true) { transform.local.position.x = x; transform.local.position.y = y; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
 		inline void Position(tfxVec2 pos, bool capture = true) { transform.local.position = pos; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
+		inline void SetLookupMode(LookupMode mode) { lookup_mode = mode; }
 		
 	};
 

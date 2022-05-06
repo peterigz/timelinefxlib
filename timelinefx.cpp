@@ -1473,35 +1473,38 @@ namespace tfx {
 			e.common.frame = e.common.age / tfxLOOKUP_FREQUENCY;
 		}
 
+
+		float (*effect_lookup_callback)(Graph &graph, float age) = e.lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
+
 		//Update the effect state
-		e.current.life = lookup_callback(e.common.library->global_graphs[e.library_link->global].life, e.common.frame);
-		e.current.amount = lookup_callback(e.common.library->global_graphs[e.library_link->global].amount, e.common.frame);
+		e.current.life = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].life, e.common.frame);
+		e.current.amount = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].amount, e.common.frame);
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_global_uniform_size)) {
-			e.current.size.x = lookup_callback(e.common.library->global_graphs[e.library_link->global].width, e.common.frame);
-			e.current.size.y = lookup_callback(e.common.library->global_graphs[e.library_link->global].height, e.common.frame);
+			e.current.size.x = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].width, e.common.frame);
+			e.current.size.y = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].height, e.common.frame);
 		}
 		else {
-			e.current.size.x = lookup_callback(e.common.library->global_graphs[e.library_link->global].width, e.common.frame);
+			e.current.size.x = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].width, e.common.frame);
 			e.current.size.y = e.current.size.x;
 		}
-		e.current.velocity = lookup_callback(e.common.library->global_graphs[e.library_link->global].velocity, e.common.frame);
-		e.current.spin = lookup_callback(e.common.library->global_graphs[e.library_link->global].spin, e.common.frame);
-		e.current.opacity = lookup_callback(e.common.library->global_graphs[e.library_link->global].opacity, e.common.frame);
-		e.current.splatter = lookup_callback(e.common.library->global_graphs[e.library_link->global].splatter, e.common.frame);
+		e.current.velocity = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].velocity, e.common.frame);
+		e.current.spin = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].spin, e.common.frame);
+		e.current.opacity = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].opacity, e.common.frame);
+		e.current.splatter = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].splatter, e.common.frame);
 		//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
-		e.current.overal_scale = lookup_callback(e.common.library->global_graphs[e.library_link->global].overal_scale, e.common.frame);
+		e.current.overal_scale = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].overal_scale, e.common.frame);
 		if (!e.parent_particle) {
 			e.transform.world.scale.x = e.current.overal_scale;
 			e.transform.world.scale.y = e.current.overal_scale;
-			e.transform.local.rotation = lookup_callback(e.common.library->global_graphs[e.library_link->global].effect_angle, e.common.frame);
+			e.transform.local.rotation = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].effect_angle, e.common.frame);
 		}
 		else {
 			e.transform.world.scale.x = e.current.overal_scale;
 			e.transform.world.scale.y = e.current.overal_scale;
 			e.transform.local.rotation = 0.f;
 		}
-		e.current.stretch = lookup_callback(e.common.library->global_graphs[e.library_link->global].stretch, e.common.frame);
-		e.current.weight = lookup_callback(e.common.library->global_graphs[e.library_link->global].weight, e.common.frame);
+		e.current.stretch = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].stretch, e.common.frame);
+		e.current.weight = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].weight, e.common.frame);
 
 		if (!(e.common.state_flags & tfxEmitterStateFlags_retain_matrix)) {
 			e.transform.world.position = e.transform.local.position;
@@ -1636,15 +1639,17 @@ namespace tfx {
 			common.timeout_counter = 0.f;
 		}
 
+		float (*effect_lookup_callback)(Graph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
+
 		common.state_flags |= (common.root_effect->common.state_flags & tfxEmitterStateFlags_remove);
-		transform.local.rotation = lookup_callback(common.library->property_graphs[library_link->property].emitter_angle, common.frame);
-		current.velocity_adjuster = lookup_callback(common.library->overtime_graphs[library_link->overtime].velocity_adjuster, common.frame);
+		transform.local.rotation = effect_lookup_callback(common.library->property_graphs[library_link->property].emitter_angle, common.frame);
+		current.velocity_adjuster = effect_lookup_callback(common.library->overtime_graphs[library_link->overtime].velocity_adjuster, common.frame);
 		current.overal_scale = common.root_effect->current.overal_scale;
 		current.stretch = common.root_effect->current.stretch;
 
-		current.emitter_size.y = lookup_callback(common.library->property_graphs[library_link->property].emitter_height, common.frame);
+		current.emitter_size.y = effect_lookup_callback(common.library->property_graphs[library_link->property].emitter_height, common.frame);
 		if (library_link->properties.emission_type == EmissionType::tfxArea || library_link->properties.emission_type == EmissionType::tfxEllipse) {
-			current.emitter_size.x = lookup_callback(common.library->property_graphs[library_link->property].emitter_width, common.frame);
+			current.emitter_size.x = effect_lookup_callback(common.library->property_graphs[library_link->property].emitter_width, common.frame);
 		}
 		else
 			current.emitter_size.x = 0.f;
@@ -1787,9 +1792,10 @@ namespace tfx {
 			return;
 		}
 
+		float (*effect_lookup_callback)(Graph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
 		if (!(common.property_flags & tfxEmitterPropertyFlags_single) && !(common.property_flags & tfxEmitterPropertyFlags_one_shot)) {
-			current.qty = lookup_callback(common.library->base_graphs[library_link->base].amount, common.frame);
-			current.qty += random_generation.Range(lookup_callback(common.library->variation_graphs[library_link->variation].amount, common.frame));
+			current.qty = effect_lookup_callback(common.library->base_graphs[library_link->base].amount, common.frame);
+			current.qty += random_generation.Range(effect_lookup_callback(common.library->variation_graphs[library_link->variation].amount, common.frame));
 
 			if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (common.state_flags & tfxEmitterStateFlags_is_area)) {
 				float area = current.emitter_size.x * current.emitter_size.y;
@@ -1813,39 +1819,39 @@ namespace tfx {
 
 		tfxEmitterSpawnControls spawn_values;
 		if (current.qty >= 1) {
-			spawn_values.life = lookup_callback(common.library->base_graphs[library_link->base].life, common.frame) * common.root_effect->current.life;
-			spawn_values.life_variation = lookup_callback(common.library->variation_graphs[library_link->variation].life, common.frame) * common.root_effect->current.life;
+			spawn_values.life = effect_lookup_callback(common.library->base_graphs[library_link->base].life, common.frame) * common.root_effect->current.life;
+			spawn_values.life_variation = effect_lookup_callback(common.library->variation_graphs[library_link->variation].life, common.frame) * common.root_effect->current.life;
 
 			spawn_values.arc_size = 0.f;
 			spawn_values.arc_offset = 0.f;
 			if (library_link->properties.emission_type == EmissionType::tfxEllipse) {
-				spawn_values.arc_size = lookup_callback(common.library->property_graphs[library_link->property].arc_size, common.frame);
-				spawn_values.arc_offset = lookup_callback(common.library->property_graphs[library_link->property].arc_offset, common.frame);
+				spawn_values.arc_size = effect_lookup_callback(common.library->property_graphs[library_link->property].arc_size, common.frame);
+				spawn_values.arc_offset = effect_lookup_callback(common.library->property_graphs[library_link->property].arc_offset, common.frame);
 			}
-			spawn_values.weight = lookup_callback(common.library->base_graphs[library_link->base].weight, common.frame) * common.root_effect->current.weight;
-			spawn_values.weight_variation = lookup_callback(common.library->variation_graphs[library_link->variation].weight, common.frame) * common.root_effect->current.weight;
-			spawn_values.velocity = lookup_callback(common.library->base_graphs[library_link->base].velocity, common.frame) * common.root_effect->current.velocity;
-			spawn_values.velocity_variation = lookup_callback(common.library->variation_graphs[library_link->variation].velocity, common.frame) * common.root_effect->current.velocity;
+			spawn_values.weight = effect_lookup_callback(common.library->base_graphs[library_link->base].weight, common.frame) * common.root_effect->current.weight;
+			spawn_values.weight_variation = effect_lookup_callback(common.library->variation_graphs[library_link->variation].weight, common.frame) * common.root_effect->current.weight;
+			spawn_values.velocity = effect_lookup_callback(common.library->base_graphs[library_link->base].velocity, common.frame) * common.root_effect->current.velocity;
+			spawn_values.velocity_variation = effect_lookup_callback(common.library->variation_graphs[library_link->variation].velocity, common.frame) * common.root_effect->current.velocity;
 			if (!(common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-				spawn_values.size.x = lookup_callback(common.library->base_graphs[library_link->base].width, common.frame) * common.root_effect->current.size.x;
-				spawn_values.size.y = lookup_callback(common.library->base_graphs[library_link->base].height, common.frame) * common.root_effect->current.size.y;
+				spawn_values.size.x = effect_lookup_callback(common.library->base_graphs[library_link->base].width, common.frame) * common.root_effect->current.size.x;
+				spawn_values.size.y = effect_lookup_callback(common.library->base_graphs[library_link->base].height, common.frame) * common.root_effect->current.size.y;
 			}
 			else {
-				spawn_values.size.x = lookup_callback(common.library->base_graphs[library_link->base].width, common.frame);
+				spawn_values.size.x = effect_lookup_callback(common.library->base_graphs[library_link->base].width, common.frame);
 				if (common.root_effect->common.property_flags & tfxEmitterPropertyFlags_global_uniform_size)
 					spawn_values.size.y = spawn_values.size.x * common.root_effect->current.size.x;
 				else
 					spawn_values.size.y = spawn_values.size.x * common.root_effect->current.size.y;
 				spawn_values.size.x *= common.root_effect->current.size.x;
 			}
-			spawn_values.size_variation.x = lookup_callback(common.library->variation_graphs[library_link->variation].width, common.frame) * common.root_effect->current.size.x;
-			spawn_values.size_variation.y = lookup_callback(common.library->variation_graphs[library_link->variation].height, common.frame) * common.root_effect->current.size.y;
-			spawn_values.spin = lookup_callback(common.library->base_graphs[library_link->base].spin, common.frame) * common.root_effect->current.spin;
-			spawn_values.spin_variation = lookup_callback(common.library->variation_graphs[library_link->variation].spin, common.frame) * common.root_effect->current.spin;
-			spawn_values.splatter = lookup_callback(common.library->property_graphs[library_link->property].splatter, common.frame) * common.root_effect->current.splatter;
-			spawn_values.noise_offset_variation = lookup_callback(common.library->variation_graphs[library_link->variation].noise_offset, common.frame);
-			spawn_values.noise_offset = lookup_callback(common.library->base_graphs[library_link->variation].noise_offset, common.frame);
-			spawn_values.noise_resolution = lookup_callback(common.library->variation_graphs[library_link->variation].noise_resolution, common.frame);
+			spawn_values.size_variation.x = effect_lookup_callback(common.library->variation_graphs[library_link->variation].width, common.frame) * common.root_effect->current.size.x;
+			spawn_values.size_variation.y = effect_lookup_callback(common.library->variation_graphs[library_link->variation].height, common.frame) * common.root_effect->current.size.y;
+			spawn_values.spin = effect_lookup_callback(common.library->base_graphs[library_link->base].spin, common.frame) * common.root_effect->current.spin;
+			spawn_values.spin_variation = effect_lookup_callback(common.library->variation_graphs[library_link->variation].spin, common.frame) * common.root_effect->current.spin;
+			spawn_values.splatter = effect_lookup_callback(common.library->property_graphs[library_link->property].splatter, common.frame) * common.root_effect->current.splatter;
+			spawn_values.noise_offset_variation = effect_lookup_callback(common.library->variation_graphs[library_link->variation].noise_offset, common.frame);
+			spawn_values.noise_offset = effect_lookup_callback(common.library->base_graphs[library_link->variation].noise_offset, common.frame);
+			spawn_values.noise_resolution = effect_lookup_callback(common.library->variation_graphs[library_link->variation].noise_resolution, common.frame);
 
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 				if (library_link->properties.emission_type == EmissionType::tfxArea) {
@@ -1925,8 +1931,9 @@ namespace tfx {
 
 
 	float tfxEmitter::GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size) {
-		float emission_angle = lookup_callback(common.library->property_graphs[library_link->property].emission_angle, common.frame);
-		float emission_angle_variation = lookup_callback(common.library->property_graphs[library_link->property].emission_range, common.frame);
+		float (*effect_lookup_callback)(Graph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
+		float emission_angle = effect_lookup_callback(common.library->property_graphs[library_link->property].emission_angle, common.frame);
+		float emission_angle_variation = effect_lookup_callback(common.library->property_graphs[library_link->property].emission_range, common.frame);
 		//----Emission
 		float range = emission_angle_variation *.5f;
 		float direction = 0;
@@ -2462,8 +2469,8 @@ namespace tfx {
 			new_sub_effect.parent_particle = &p;
 		}
 
-		//if (particle_onspawn_callback)
-			//particle_onspawn_callback(p);
+		if (library_link->particle_onspawn_callback)
+			library_link->particle_onspawn_callback(p);
 	}
 
 	void ReloadBaseValues(Particle &p, EffectEmitter &e) {
