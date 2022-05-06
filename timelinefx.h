@@ -2572,7 +2572,7 @@ TFX_CUSTOM_EMITTER
 
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
-		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data = false);
+		void Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data = false, bool force_clone_global = false);
 		void CopyToEffect(tfxEffectID &effect_id, tfxEffectPool &storage);
 		void CopyToEmitter(tfxEmitter &emitter, tfxEffectPool &storage, bool assign_memory);
 		void EnableAllEmitters();

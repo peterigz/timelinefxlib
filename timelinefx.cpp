@@ -3340,7 +3340,7 @@ namespace tfx {
 		ReIndex();
 	}
 
-	void EffectEmitter::Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data) {
+	void EffectEmitter::Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data, bool force_clone_global) {
 		clone = *this;
 		clone.sub_effectors.clear();
 		clone.flags |= tfxEmitterStateFlags_enabled;
@@ -3354,7 +3354,13 @@ namespace tfx {
 				clone.library->CompileGlobalGraph(clone.global);
 			}
 			else {
-				clone.global = root_parent->global;
+				if (!force_clone_global) {
+					clone.global = root_parent->global;
+				}
+				else {
+					clone.global = library->CloneGlobal(root_parent->global, destination_library);
+					clone.library->CompileGlobalGraph(clone.global);
+				}
 			}
 		}
 		else if(type == tfxEmitterType) {
