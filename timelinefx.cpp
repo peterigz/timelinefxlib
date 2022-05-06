@@ -2419,7 +2419,7 @@ namespace tfx {
 
 		//----Color
 		p.color.a = unsigned char(255.f * common.library->overtime_graphs[library_link->overtime].opacity.GetFirstValue() * common.root_effect->current.opacity);
-		p.intensity = common.library->overtime_graphs[library_link->overtime].opacity.GetFirstValue();
+		p.intensity = common.library->overtime_graphs[library_link->overtime].intensity.GetFirstValue();
 		if (common.property_flags & tfxEmitterPropertyFlags_random_color) {
 			float age = random_generation.Range(p.max_age);
 			p.color.r = unsigned char(255.f * lookup_overtime_callback(common.library->overtime_graphs[library_link->overtime].red, age, p.max_age));
@@ -4736,6 +4736,8 @@ namespace tfx {
 			effect.library->animation_settings[effect.animation_settings].seed = value;
 		if (field == "layer")
 			effect.properties.layer = value;
+		if (field == "frame_offset")
+			effect.library->animation_settings[effect.animation_settings].frame_offset = value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, int value) {
 		if (field == "emission_type")
@@ -4752,6 +4754,8 @@ namespace tfx {
 			effect.library->animation_settings[effect.animation_settings].export_option = (ExportOptions)value;
 		if (field == "end_behaviour")
 			effect.properties.end_behaviour = (LineTraversalEndBehaviour)value;
+		if (field == "frame_offset")
+			effect.library->animation_settings[effect.animation_settings].frame_offset = value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value) {
 		if (field == "name")
