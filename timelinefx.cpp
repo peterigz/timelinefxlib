@@ -951,7 +951,7 @@ namespace tfx {
 		GetGraphByType(tfxOvertime_red)->lookup.life = max_life;
 		GetGraphByType(tfxOvertime_green)->lookup.life = max_life;
 		GetGraphByType(tfxOvertime_blue)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_opacity)->lookup.life = max_life;
+		GetGraphByType(tfxOvertime_blendfactor)->lookup.life = max_life;
 		GetGraphByType(tfxOvertime_intensity)->lookup.life = max_life;
 		GetGraphByType(tfxOvertime_velocity)->lookup.life = max_life;
 		GetGraphByType(tfxOvertime_width)->lookup.life = max_life;
@@ -1489,7 +1489,7 @@ namespace tfx {
 		}
 		e.current.velocity = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].velocity, e.common.frame);
 		e.current.spin = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].spin, e.common.frame);
-		e.current.opacity = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].opacity, e.common.frame);
+		e.current.intensity = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].intensity, e.common.frame);
 		e.current.splatter = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].splatter, e.common.frame);
 		//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
 		e.current.overal_scale = effect_lookup_callback(e.common.library->global_graphs[e.library_link->global].overal_scale, e.common.frame);
@@ -1900,7 +1900,7 @@ namespace tfx {
 			InitCPUParticle(p, spawn_values, tween);
 
 			ParticleSprite &s = common.root_effect->GrabSprite(library_link->properties.layer);
-			s.parameters = (library_link->properties.blend_mode << 28) + (unsigned int)p.image_frame;
+			s.parameters = (unsigned int)p.image_frame;
 			s.color = p.color;
 			s.world = p.world;
 			s.captured = p.captured;
@@ -2418,8 +2418,8 @@ namespace tfx {
 		}
 
 		//----Color
-		p.color.a = unsigned char(255.f * common.library->overtime_graphs[library_link->overtime].opacity.GetFirstValue() * common.root_effect->current.opacity);
-		p.intensity = common.library->overtime_graphs[library_link->overtime].intensity.GetFirstValue();
+		p.color.a = unsigned char(255.f * common.library->overtime_graphs[library_link->overtime].blendfactor.GetFirstValue());
+		p.intensity = common.library->overtime_graphs[library_link->overtime].intensity.GetFirstValue() * common.root_effect->current.intensity;
 		if (common.property_flags & tfxEmitterPropertyFlags_random_color) {
 			float age = random_generation.Range(p.max_age);
 			p.color.r = unsigned char(255.f * lookup_overtime_callback(common.library->overtime_graphs[library_link->overtime].red, age, p.max_age));
@@ -2630,7 +2630,7 @@ namespace tfx {
 		tfxEffect &root_effect = *common.root_effect;
 		unsigned int flags = common.state_flags;
 		float velocity_adjuster = current.velocity_adjuster;
-		float global_opacity = root_effect.current.opacity;
+		float global_intensity = root_effect.current.intensity;
 		float image_size_y = library_link->properties.image->image_size.y;
 		float image_frame_rate = library_link->properties.image->animation_frames > 1 && common.property_flags & tfxEmitterPropertyFlags_animate ? library_link->properties.frame_rate : 0.f;
 		float stretch = current.stretch;
@@ -2692,7 +2692,7 @@ namespace tfx {
 			float lookup_red = graphs.red.lookup.values[std::min<u32>(lookup_frame, graphs.red.lookup.last_frame)];
 			float lookup_green = graphs.green.lookup.values[std::min<u32>(lookup_frame, graphs.green.lookup.last_frame)];
 			float lookup_blue = graphs.blue.lookup.values[std::min<u32>(lookup_frame, graphs.blue.lookup.last_frame)];
-			float lookup_opacity = graphs.opacity.lookup.values[std::min<u32>(lookup_frame, graphs.opacity.lookup.last_frame)];
+			float lookup_opacity = graphs.blendfactor.lookup.values[std::min<u32>(lookup_frame, graphs.blendfactor.lookup.last_frame)];
 			float lookup_intensity = graphs.intensity.lookup.values[std::min<u32>(lookup_frame, graphs.intensity.lookup.last_frame)];
 
 			float direction = 0;
@@ -2726,7 +2726,7 @@ namespace tfx {
 			current_velocity *= UPDATE_TIME;
 
 			//----Color changes
-			p.color.a = unsigned char(255.f * lookup_opacity * global_opacity);
+			p.color.a = unsigned char(255.f * lookup_opacity * global_intensity);
 			p.intensity = lookup_intensity;
 			if (!(flags & tfxEmitterStateFlags_random_color)) {
 				p.color.r = unsigned char(255.f * lookup_red);
@@ -2812,7 +2812,7 @@ namespace tfx {
 				s.ptr = library_link->properties.image->ptr;
 				s.handle = image_handle;
 				s.particle = &particles[i - index_offset];
-				s.parameters = (library_link->properties.blend_mode << 28) + (unsigned int)p.image_frame;
+				s.parameters = (unsigned int)p.image_frame;
 			}
 			else {
 				ParticleSprite &s = root_effect.sprites[library_link->properties.layer][p.sprite_index];
@@ -2991,7 +2991,7 @@ namespace tfx {
 		library->global_graphs[global].spin.Reset(1.f, tfxGlobalPercentPresetSigned, add_node); library->global_graphs[global].spin.type = tfxGlobal_spin;
 		library->global_graphs[global].stretch.Reset(1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].stretch.type = tfxGlobal_stretch;
 		library->global_graphs[global].overal_scale.Reset(1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].overal_scale.type = tfxGlobal_overal_scale;
-		library->global_graphs[global].opacity.Reset(1.f, tfxGlobalOpacityPreset, add_node); library->global_graphs[global].opacity.type = tfxGlobal_opacity;
+		library->global_graphs[global].intensity.Reset(1.f, tfxGlobalOpacityPreset, add_node); library->global_graphs[global].intensity.type = tfxGlobal_intensity;
 		library->global_graphs[global].frame_rate.Reset(1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].frame_rate.type = tfxGlobal_frame_rate;
 		library->global_graphs[global].splatter.Reset(1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].splatter.type = tfxGlobal_splatter;
 		library->global_graphs[global].effect_angle.Reset(0.f, tfxAnglePreset, add_node); library->global_graphs[global].effect_angle.type = tfxGlobal_effect_angle;
@@ -3046,7 +3046,7 @@ namespace tfx {
 		library->overtime_graphs[overtime].red.Reset(1.f, tfxColorPreset, add_node); library->overtime_graphs[overtime].red.type = tfxOvertime_red;
 		library->overtime_graphs[overtime].green.Reset(1.f, tfxColorPreset, add_node); library->overtime_graphs[overtime].green.type = tfxOvertime_green;
 		library->overtime_graphs[overtime].blue.Reset(1.f, tfxColorPreset, add_node); library->overtime_graphs[overtime].blue.type = tfxOvertime_blue;
-		library->overtime_graphs[overtime].opacity.Reset(1.f, tfxOpacityOvertimePreset, add_node); library->overtime_graphs[overtime].opacity.type = tfxOvertime_opacity;
+		library->overtime_graphs[overtime].blendfactor.Reset(1.f, tfxOpacityOvertimePreset, add_node); library->overtime_graphs[overtime].blendfactor.type = tfxOvertime_blendfactor;
 		library->overtime_graphs[overtime].intensity.Reset(1.f, tfxIntensityOvertimePreset, add_node); library->overtime_graphs[overtime].intensity.type = tfxOvertime_intensity;
 		library->overtime_graphs[overtime].velocity_turbulance.Reset(30.f, tfxFrameratePreset, add_node); library->overtime_graphs[overtime].velocity_turbulance.type = tfxOvertime_velocity_turbulance;
 		library->overtime_graphs[overtime].stretch.Reset(0.f, tfxPercentOvertime, add_node); library->overtime_graphs[overtime].stretch.type = tfxOvertime_stretch;
@@ -3080,7 +3080,7 @@ namespace tfx {
 			if (library->global_graphs[global].effect_angle.nodes.size() == 0) library->global_graphs[global].effect_angle.Reset(0.f, tfxAnglePreset);
 			if (library->global_graphs[global].stretch.nodes.size() == 0) library->global_graphs[global].stretch.Reset(1.f, tfxGlobalPercentPreset);
 			if (library->global_graphs[global].overal_scale.nodes.size() == 0) library->global_graphs[global].overal_scale.Reset(1.f, tfxGlobalPercentPreset);
-			if (library->global_graphs[global].opacity.nodes.size() == 0) library->global_graphs[global].opacity.Reset(1.f, tfxOpacityOvertimePreset);
+			if (library->global_graphs[global].intensity.nodes.size() == 0) library->global_graphs[global].intensity.Reset(1.f, tfxOpacityOvertimePreset);
 			if (library->global_graphs[global].frame_rate.nodes.size() == 0) library->global_graphs[global].frame_rate.Reset(1.f, tfxGlobalPercentPreset);
 			if (library->global_graphs[global].splatter.nodes.size() == 0) library->global_graphs[global].splatter.Reset(1.f, tfxGlobalPercentPreset);
 		}
@@ -3124,7 +3124,7 @@ namespace tfx {
 			if (library->overtime_graphs[overtime].red.nodes.size() == 0) library->overtime_graphs[overtime].red.Reset(1.f, tfxColorPreset);
 			if (library->overtime_graphs[overtime].green.nodes.size() == 0) library->overtime_graphs[overtime].green.Reset(1.f, tfxColorPreset);
 			if (library->overtime_graphs[overtime].blue.nodes.size() == 0) library->overtime_graphs[overtime].blue.Reset(1.f, tfxColorPreset);
-			if (library->overtime_graphs[overtime].opacity.nodes.size() == 0) library->overtime_graphs[overtime].opacity.Reset(1.f, tfxOpacityOvertimePreset);
+			if (library->overtime_graphs[overtime].blendfactor.nodes.size() == 0) library->overtime_graphs[overtime].blendfactor.Reset(1.f, tfxOpacityOvertimePreset);
 			if (library->overtime_graphs[overtime].intensity.nodes.size() == 0) library->overtime_graphs[overtime].intensity.Reset(1.f, tfxIntensityOvertimePreset);
 			if (library->overtime_graphs[overtime].velocity_turbulance.nodes.size() == 0) library->overtime_graphs[overtime].velocity_turbulance.Reset(0.f, tfxFrameratePreset);
 			if (library->overtime_graphs[overtime].direction_turbulance.nodes.size() == 0) library->overtime_graphs[overtime].direction_turbulance.Reset(0.f, tfxPercentOvertime);
@@ -3708,7 +3708,7 @@ namespace tfx {
 			library->global_graphs[global].effect_angle.Free();
 			library->global_graphs[global].stretch.Free();
 			library->global_graphs[global].overal_scale.Free();
-			library->global_graphs[global].opacity.Free();
+			library->global_graphs[global].intensity.Free();
 			library->global_graphs[global].frame_rate.Free();
 			library->global_graphs[global].splatter.Free();
 		}
@@ -3751,7 +3751,7 @@ namespace tfx {
 			library->overtime_graphs[overtime].red.Free();
 			library->overtime_graphs[overtime].green.Free();
 			library->overtime_graphs[overtime].blue.Free();
-			library->overtime_graphs[overtime].opacity.Free();
+			library->overtime_graphs[overtime].blendfactor.Free();
 			library->overtime_graphs[overtime].intensity.Free();
 			library->overtime_graphs[overtime].velocity_turbulance.Free();
 			library->overtime_graphs[overtime].direction_turbulance.Free();
@@ -4260,7 +4260,7 @@ namespace tfx {
 			CompileGraph(g.height);
 			CompileGraph(g.width);
 			CompileGraph(g.life);
-			CompileGraph(g.opacity);
+			CompileGraph(g.intensity);
 			CompileGraph(g.overal_scale);
 			CompileGraph(g.spin);
 			CompileGraph(g.splatter);
@@ -4303,7 +4303,7 @@ namespace tfx {
 			CompileGraphOvertime(g.red);
 			CompileGraphOvertime(g.green);
 			CompileGraphOvertime(g.blue);
-			CompileGraphOvertime(g.opacity);
+			CompileGraphOvertime(g.blendfactor);
 			CompileGraphOvertime(g.intensity);
 			CompileGraphOvertime(g.velocity_turbulance);
 			CompileGraphOvertime(g.width);
@@ -4327,7 +4327,7 @@ namespace tfx {
 		CompileGraph(g.height);
 		CompileGraph(g.width);
 		CompileGraph(g.life);
-		CompileGraph(g.opacity);
+		CompileGraph(g.intensity);
 		CompileGraph(g.overal_scale);
 		CompileGraph(g.spin);
 		CompileGraph(g.splatter);
@@ -4374,7 +4374,7 @@ namespace tfx {
 		CompileGraphOvertime(g.red);
 		CompileGraphOvertime(g.green);
 		CompileGraphOvertime(g.blue);
-		CompileGraphOvertime(g.opacity);
+		CompileGraphOvertime(g.blendfactor);
 		CompileGraphOvertime(g.intensity);
 		CompileGraphOvertime(g.velocity_turbulance);
 		CompileGraphOvertime(g.width);
@@ -4408,7 +4408,7 @@ namespace tfx {
 		graph_min_max[tfxGlobal_spin] = GetMinMaxGraphValues(tfxGlobalPercentPresetSigned);
 		graph_min_max[tfxGlobal_stretch] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 		graph_min_max[tfxGlobal_overal_scale] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
-		graph_min_max[tfxGlobal_opacity] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
+		graph_min_max[tfxGlobal_intensity] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
 		graph_min_max[tfxGlobal_frame_rate] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 		graph_min_max[tfxGlobal_splatter] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 		graph_min_max[tfxGlobal_effect_angle] = GetMinMaxGraphValues(tfxAnglePreset);
@@ -4449,7 +4449,7 @@ namespace tfx {
 		graph_min_max[tfxOvertime_red] = GetMinMaxGraphValues(tfxColorPreset);
 		graph_min_max[tfxOvertime_green] = GetMinMaxGraphValues(tfxColorPreset);
 		graph_min_max[tfxOvertime_blue] = GetMinMaxGraphValues(tfxColorPreset);
-		graph_min_max[tfxOvertime_opacity] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
+		graph_min_max[tfxOvertime_blendfactor] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
 		graph_min_max[tfxOvertime_intensity] = GetMinMaxGraphValues(tfxIntensityOvertimePreset);
 		graph_min_max[tfxOvertime_velocity_turbulance] = GetMinMaxGraphValues(tfxFrameratePreset);
 		graph_min_max[tfxOvertime_direction_turbulance] = GetMinMaxGraphValues(tfxPercentOvertime);
@@ -4653,7 +4653,7 @@ namespace tfx {
 			if (values[0] == "global_height") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].height.AddNode(n); }
 			if (values[0] == "global_width") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].width.AddNode(n); }
 			if (values[0] == "global_life") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].life.AddNode(n); }
-			if (values[0] == "global_opacity") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].opacity.AddNode(n); }
+			if (values[0] == "global_opacity") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].intensity.AddNode(n); }
 			if (values[0] == "global_spin") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].spin.AddNode(n); }
 			if (values[0] == "global_splatter") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].splatter.AddNode(n); }
 			if (values[0] == "global_stretch") { AttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].stretch.AddNode(n); }
@@ -4701,7 +4701,7 @@ namespace tfx {
 			if (values[0] == "overtime_red") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].red.AddNode(n); }
 			if (values[0] == "overtime_green") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].green.AddNode(n); }
 			if (values[0] == "overtime_blue") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].blue.AddNode(n); }
-			if (values[0] == "overtime_opacity") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].opacity.AddNode(n); }
+			if (values[0] == "overtime_opacity") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].blendfactor.AddNode(n); }
 			if (values[0] == "overtime_intensity") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].intensity.AddNode(n); }
 			if (values[0] == "overtime_velocity_turbulance") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].velocity_turbulance.AddNode(n); }
 			if (values[0] == "overtime_spin") { AttributeNode n; AssignNodeData(n, values); effect.library->overtime_graphs[effect.overtime].spin.AddNode(n); }
@@ -4750,8 +4750,6 @@ namespace tfx {
 			effect.properties.emission_type = (EmissionType)value;
 		if (field == "emission_direction")
 			effect.properties.emission_direction = (EmissionDirection)value;
-		if (field == "blend_mode")
-			effect.properties.blend_mode = (BlendMode)value;
 		if (field == "angle_setting")
 			effect.properties.angle_setting = (AngleSetting)value;
 		if (field == "color_option")
@@ -4863,7 +4861,6 @@ namespace tfx {
 		file.AddLine("image_animate=%i", (property.flags & tfxEmitterPropertyFlags_animate));
 		file.AddLine("image_random_start_frame=%i", (property.flags & tfxEmitterPropertyFlags_random_start_frame));
 		file.AddLine("spawn_amount=%i", property.spawn_amount);
-		file.AddLine("blend_mode=%i", property.blend_mode);
 		file.AddLine("emission_type=%i", property.emission_type);
 		file.AddLine("emission_direction=%i", property.emission_direction);
 		file.AddLine("grid_rows=%f", property.grid_points.x);

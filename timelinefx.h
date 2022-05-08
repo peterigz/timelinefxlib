@@ -303,7 +303,7 @@ typedef unsigned int tfxEffectID;
 		tfxGlobal_spin,
 		tfxGlobal_stretch,
 		tfxGlobal_overal_scale,
-		tfxGlobal_opacity,
+		tfxGlobal_intensity,
 		tfxGlobal_frame_rate,
 		tfxGlobal_splatter,
 		tfxGlobal_effect_angle,
@@ -345,7 +345,7 @@ typedef unsigned int tfxEffectID;
 		tfxOvertime_red,
 		tfxOvertime_green,
 		tfxOvertime_blue,
-		tfxOvertime_opacity,
+		tfxOvertime_blendfactor,
 		tfxOvertime_velocity_turbulance,
 		tfxOvertime_direction_turbulance,
 		tfxOvertime_velocity_adjuster,
@@ -1929,7 +1929,7 @@ typedef unsigned int tfxEffectID;
 		Graph spin;
 		Graph stretch;
 		Graph overal_scale;
-		Graph opacity;
+		Graph intensity;
 		Graph frame_rate;
 		Graph splatter;
 		Graph effect_angle;
@@ -1979,7 +1979,7 @@ typedef unsigned int tfxEffectID;
 		Graph red;
 		Graph green;
 		Graph blue;
-		Graph opacity;
+		Graph blendfactor;
 		Graph velocity_turbulance;
 		Graph direction_turbulance;
 		Graph velocity_adjuster;
@@ -2085,8 +2085,6 @@ typedef unsigned int tfxEffectID;
 		//Pointer to the ImageData in the EffectLibary. 
 		ImageData *image;
 		//Assigns either alpha or additive blend to particles that are spawned
-		BlendMode blend_mode;
-		//Currently there are 4 types of emission, point, line, area and ellipse
 		EmissionType emission_type;
 		//Should particles emit towards the center of the emitter or away, or in a specific direction
 		EmissionDirection emission_direction;
@@ -2131,7 +2129,6 @@ typedef unsigned int tfxEffectID;
 			image(nullptr),
 			image_handle(tfxVec2()),
 			spawn_amount(1),
-			blend_mode(BlendMode::tfxAlpha),
 			emission_type(EmissionType::tfxPoint),
 			emission_direction(EmissionDirection::tfxOutwards),
 			grid_points({ 10.f, 10.f }),
@@ -2227,7 +2224,7 @@ typedef unsigned int tfxEffectID;
 		tfxVec2 size;
 		float velocity;
 		float spin;
-		float opacity;
+		float intensity;
 		float splatter;
 		float overal_scale;
 		float stretch;
@@ -2753,7 +2750,6 @@ TFX_CUSTOM_EMITTER
 		float start_frame;
 		void *image_ptr;
 		tfxRGBA8 color;
-		BlendMode blend_mode;
 		float intensity;
 		bool has_frames;
 	};
