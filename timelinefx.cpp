@@ -4137,6 +4137,7 @@ namespace tfx {
 		a.frames = 32;
 		a.current_frame = 1;
 		a.frame_offset = 0;
+		a.extra_frames_count = 0;
 		a.position = tfxVec2(0.f, 0.f);
 		a.frame_size = tfxVec2(256.f, 256.f);
 		a.loop = false;
@@ -4585,6 +4586,7 @@ namespace tfx {
 		eff.Insert("frames", tfxUint);
 		eff.Insert("current_frame", tfxUint);
 		eff.Insert("frame_offset", tfxUint);
+		eff.Insert("extra_frames_count", tfxSInt);
 		eff.Insert("layer", tfxUint);
 		eff.Insert("position_x", tfxFloat);
 		eff.Insert("position_y", tfxFloat);
@@ -4760,6 +4762,8 @@ namespace tfx {
 			effect.properties.end_behaviour = (LineTraversalEndBehaviour)value;
 		if (field == "frame_offset")
 			effect.library->animation_settings[effect.animation_settings].frame_offset = value;
+		if (field == "extra_frames_count")
+			effect.library->animation_settings[effect.animation_settings].extra_frames_count = value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value) {
 		if (field == "name")

@@ -2032,6 +2032,7 @@ typedef unsigned int tfxEffectID;
 		int frames;
 		int current_frame;
 		int frame_offset;
+		int extra_frames_count;
 		unsigned int seed;
 		bool seamless;
 		bool loop;
