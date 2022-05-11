@@ -2040,6 +2040,7 @@ typedef unsigned int tfxEffectID;
 		unsigned int needs_exporting;
 		float max_radius;
 		unsigned int largest_frame;
+		float playback_speed;
 		ExportColorOptions color_option;
 		ExportOptions export_option;
 		bool export_with_transparency;
@@ -2577,6 +2578,7 @@ TFX_CUSTOM_EMITTER
 		void EnableEmitter();
 		void DisableAllEmitters();
 		void DisableAllEmittersExcept(EffectEmitter &emitter);
+		bool IsFiniteEffect();
 	};
 
 	struct tfxEffectTemplate {

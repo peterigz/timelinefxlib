@@ -981,6 +981,17 @@ namespace tfx {
 		}
 	}
 
+	bool EffectEmitter::IsFiniteEffect() {
+		for (auto &e : sub_effectors) {
+			if (e.properties.flags & tfxEmitterPropertyFlags_single || e.properties.flags & tfxEmitterPropertyFlags_one_shot)
+				return true;
+			float qty = e.library->base_graphs[e.base].amount.GetLastValue() + e.library->variation_graphs[e.variation].amount.GetLastValue();
+			if (!(e.properties.flags & tfxEmitterPropertyFlags_single) && qty > 0)
+				return false;
+		}
+		return true;
+	}
+
 	void EffectEmitter::UpdateAllBufferSizes() {
 		tfxvec<EffectEmitter*> stack;
 		stack.push_back(this);
@@ -4140,6 +4151,7 @@ namespace tfx {
 		a.extra_frames_count = 0;
 		a.position = tfxVec2(0.f, 0.f);
 		a.frame_size = tfxVec2(256.f, 256.f);
+		a.playback_speed = 1.f;
 		a.loop = false;
 		a.seamless = false;
 		a.seed = 0;
@@ -4550,6 +4562,7 @@ namespace tfx {
 		eff.Insert("image_start_frame", tfxFloat);
 		eff.Insert("image_end_frame", tfxFloat);
 		eff.Insert("image_frame_rate", tfxFloat);
+		eff.Insert("playback_speed", tfxFloat);
 
 		eff.Insert("emission_type", tfxSInt);
 		eff.Insert("emission_direction", tfxSInt);
@@ -4782,6 +4795,8 @@ namespace tfx {
 			effect.library->animation_settings[effect.animation_settings].zoom = value;
 		if (field == "scale")
 			effect.library->animation_settings[effect.animation_settings].scale = value;
+		if (field == "playback_speed")
+			effect.library->animation_settings[effect.animation_settings].playback_speed = value;
 		if (field == "image_handle_x")
 			effect.properties.image_handle.x = value;
 		if (field == "image_handle_y")
