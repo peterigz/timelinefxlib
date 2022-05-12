@@ -1581,7 +1581,10 @@ namespace tfx {
 
 		//Update sub emitters
 		for (auto &emitter : e.sub_emitters) {
-			emitter.UpdateEmitter();
+			if (emitter.library_link->properties.delay_spawning >= e.common.age)
+				emitter.UpdateEmitter();
+			else
+				e.common.timeout_counter = 0;
 		}
 
 		e.CompressSprites();
@@ -4566,6 +4569,7 @@ namespace tfx {
 
 		eff.Insert("emission_type", tfxSInt);
 		eff.Insert("emission_direction", tfxSInt);
+		eff.Insert("delay_spawning", tfxFloat);
 		eff.Insert("grid_rows", tfxFloat);
 		eff.Insert("grid_columns", tfxFloat);
 		eff.Insert("loop_length", tfxFloat);
@@ -4801,6 +4805,8 @@ namespace tfx {
 			effect.properties.image_handle.x = value;
 		if (field == "image_handle_y")
 			effect.properties.image_handle.y = value;
+		if (field == "delay_spawning")
+			effect.properties.delay_spawning = value;
 		if (field == "grid_rows")
 			effect.properties.grid_points.x = value;
 		if (field == "grid_columns")
@@ -4884,6 +4890,7 @@ namespace tfx {
 		file.AddLine("emission_direction=%i", property.emission_direction);
 		file.AddLine("grid_rows=%f", property.grid_points.x);
 		file.AddLine("grid_columns=%f", property.grid_points.y);
+		file.AddLine("delay_spawning=%f", property.delay_spawning);
 		file.AddLine("loop_length=%f", property.loop_length);
 		file.AddLine("emitter_handle_x=%f", property.emitter_handle.x);
 		file.AddLine("emitter_handle_y=%f", property.emitter_handle.y);

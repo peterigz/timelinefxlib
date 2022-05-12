@@ -2122,8 +2122,8 @@ typedef unsigned int tfxEffectID;
 		float start_frame;
 		//The final frame index of the animation
 		float end_frame;
-		//Amount to spawn ratio per area squared - for area type emitters you can use this to factor the amount to spawn based on the size of the area
-		//float spawn_ratio_per_pixel_squared;
+		//Milliseconds to delay spawing
+		float delay_spawning;
 
 		EmitterProperties() :
 			angle_offset(360),
@@ -2142,8 +2142,8 @@ typedef unsigned int tfxEffectID;
 			start_frame(0),
 			end_frame(0),
 			frame_rate(30.f),
-			angle_setting(AngleSetting::tfxRandom)
-			//spawn_ratio_per_pixel_squared(10000.f)
+			angle_setting(AngleSetting::tfxRandom),
+			delay_spawning(0.f)
 		{ }
 	};
 
