@@ -4599,6 +4599,7 @@ namespace tfx {
 		eff.Insert("base_uniform_size", tfxBool);
 		eff.Insert("lifetime_uniform_size", tfxBool);
 		eff.Insert("use_spawn_ratio", tfxBool);
+		eff.Insert("animation_magenta_mask", tfxBool);
 
 		eff.Insert("frames", tfxUint);
 		eff.Insert("current_frame", tfxUint);
