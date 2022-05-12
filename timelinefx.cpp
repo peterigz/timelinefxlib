@@ -2757,7 +2757,7 @@ namespace tfx {
 			float velocity = std::fabsf(lookup_velocity * p.base.velocity + mr_speed + p.weight_acceleration);
 			if (flags & tfxEmitterStateFlags_lifetime_uniform_size) {
 				scale.y = (lookup_width * (p.base.size.y + (velocity * lookup_stretch * stretch))) / image_size_y;
-				if (scale.y < scale.x)
+				if (flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
 					scale.y = scale.x;
 			}
 			else
