@@ -805,6 +805,30 @@ typedef unsigned int tfxEffectID;
 	};
 	inline tfxVec2 operator*(float ls, tfxVec2 rs) { return tfxVec2(rs.x * ls, rs.y * ls); }
 
+	struct tfxVec3 {
+		float x, y, z;
+
+		tfxVec3() { x = y = z = 0.f; }
+		tfxVec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+
+		inline tfxVec3 operator+(tfxVec3 v) { return tfxVec3(x + v.x, y + v.y, z + v.z); }
+		inline tfxVec3 operator+=(tfxVec3 v) { return tfxVec3(x + v.x, y + v.y, z + v.z); }
+		inline tfxVec3 operator-(tfxVec3 v) { return tfxVec3(x - v.x, y - v.y, z - v.z); }
+		inline tfxVec3 operator-() { return tfxVec3(-x, -y, -z); }
+		inline tfxVec3 operator-=(tfxVec3 v) { return tfxVec3(-x, -y, -z); }
+		inline tfxVec3 operator*(tfxVec3 v) { return tfxVec3(x * v.x, y * v.y, z * v.z); }
+		inline tfxVec3 operator*=(tfxVec3 v) { return tfxVec3(x * v.x, y * v.y, z * v.z); }
+		inline tfxVec3 operator/(tfxVec3 v) { return tfxVec3(x / v.x, y / v.y, z / v.z); }
+		inline tfxVec3 operator/=(tfxVec3 v) { return tfxVec3(x / v.x, y / v.y, z / v.z); }
+		inline tfxVec3 operator+(float v) { return tfxVec3(x + v, y + v, z + v); }
+		inline tfxVec3 operator-(float v) { return tfxVec3(x - v, y - v, z - v); }
+		inline tfxVec3 operator*(float v) { return tfxVec3(x * v, y * v, z * v); }
+		inline tfxVec3 operator/(float v) { return tfxVec3(x / v, y / v, z / v); }
+		inline void operator*=(float v) { x *= v; y *= v; z *= v; }
+		inline float Squared() { return x * x + y * y + z * z; }
+		inline bool IsNill() { return !x && !y && !z; }
+	};
+
 	struct tfxVec4 {
 		float x, y, z, w;
 
