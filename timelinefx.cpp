@@ -1581,7 +1581,7 @@ namespace tfx {
 
 		//Update sub emitters
 		for (auto &emitter : e.sub_emitters) {
-			if (emitter.library_link->properties.delay_spawning >= e.common.age)
+			if (e.common.age >= e.library_link->properties.delay_spawning)
 				emitter.UpdateEmitter();
 			else
 				e.common.timeout_counter = 0;
