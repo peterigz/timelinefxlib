@@ -179,6 +179,7 @@ namespace tfx {
 	struct EffectEmitter;
 	struct EffectorStore;
 	struct Particle;
+	struct tfxParticle;
 	struct ComputeSprite;
 	struct ParticleSprite;
 	struct ComputeParticle;
@@ -2038,6 +2039,23 @@ typedef unsigned int tfxEffectID;
 		float rotation;
 	};
 
+	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
+	struct LocalFormState3D {
+		tfxVec4 position;
+	};
+
+	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
+	struct ChangeState3D {
+		tfxVec4 velocity;	//rotation change in w
+		tfxVec2 scale;
+	};
+
+	//Store the current state of the object in 2d space
+	struct FormState3D {
+		tfxVec4 position;	//Contains rotation in w
+		tfxVec2 scale;
+	};
+
 	struct Base {
 		tfxVec2 size;
 		tfxVec2 random_size;
@@ -2258,14 +2276,21 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxTransform {
-
 		//Position, scale and rotation values
 		LocalFormState local;
 		FormState world;
 		FormState captured;
 		//2d matrix for transformations
 		Matrix2 matrix;
+	};
 
+	struct tfxTransform3D {
+		//Position, scale and rotation values
+		LocalFormState local;
+		FormState world;
+		FormState captured;
+		//2d matrix for transformations
+		Matrix2 matrix;
 	};
 
 	struct tfxCommon {
@@ -2357,7 +2382,7 @@ typedef unsigned int tfxEffectID;
 		tfxTransform transform;
 		EffectEmitter *library_link;
 		EffectEmitterType type;
-		Particle *parent_particle;
+		tfxParticle *parent_particle;
 		tfxEmitter *parent;
 		tfxCommon common;
 		tfxEmitterState current;
@@ -2366,7 +2391,7 @@ typedef unsigned int tfxEffectID;
 		unsigned int offset;
 		tfxEmitter *next_emitter;
 
-		tfxfixedvec<Particle> particles;
+		tfxfixedvec<tfxParticle> particles;
 
 		tfxEmitter() : parent(nullptr), parent_particle(nullptr) {}
 		void Reset();
@@ -2376,11 +2401,11 @@ typedef unsigned int tfxEffectID;
 		void RefreshFromLibrary();
 		void SpawnParticles();
 		float GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
-		void InitCPUParticle(Particle &p, tfxEmitterSpawnControls &spawn_values, float tween);
+		void InitCPUParticle(tfxParticle &p, tfxEmitterSpawnControls &spawn_values, float tween);
 		void ControlParticles();
 		bool FreeCapacity();
 		void *UserData();
-		Particle &GrabParticle();
+		tfxParticle &GrabParticle();
 	};
 
 	struct tfxEffect {
@@ -2509,7 +2534,7 @@ TFX_CUSTOM_EMITTER
 		void(*root_effect_update_callback)(tfxEffect &effect);						//Called after the root effect state has been udpated
 		void(*emitter_update_callback)(tfxEmitter &emitter);						//Called after the emitter state has been udpated
 		void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter);				//Called before the emitter spawns particles
-		void(*particle_onspawn_callback)(Particle &particle);						//Called as each particle is spawned.
+		void(*particle_onspawn_callback)(tfxParticle &particle);						//Called as each particle is spawned.
 
 		tfxEmitterStateFlags flags;
 
@@ -2626,7 +2651,7 @@ TFX_CUSTOM_EMITTER
 		inline void SetUpdateCallback(tfxText path, void(*root_effect_update_callback)(tfxEffect &effect)) { if (paths.ValidName(path)) paths.At(path)->root_effect_update_callback = root_effect_update_callback; }
 		inline void SetUpdateCallback(tfxText path, void(*emitter_update_callback)(tfxEmitter &emitter)) { if (paths.ValidName(path)) paths.At(path)->emitter_update_callback = emitter_update_callback; }
 		inline void SetUpdateCallback(tfxText path, void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter)) { if (paths.ValidName(path)) paths.At(path)->spawn_update_callback = spawn_update_callback; }
-		void SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(Particle &particle));
+		void SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(tfxParticle &particle));
 	};
 
 	struct EffectEmitterSnapShot {
@@ -2649,13 +2674,24 @@ TFX_CUSTOM_EMITTER
 
 	struct ParticleSprite {	//80 bytes
 		void *ptr;					//Pointer to the image data
-		Particle *particle;			//We need to point to the particle in order to update it's sprite index
+		tfxParticle *particle;		//We need to point to the particle in order to update it's sprite index
 		FormState world;
 		FormState captured;
 		tfxVec2 handle;
 		tfxRGBA8 color;				//The color tint of the sprite
 		float intensity;			
-		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, expired flag, frame
+		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode (not needed anymore), expired flag, frame
+	};
+
+	struct ParticleSprite3D {	//88 bytes
+		void *ptr;					//Pointer to the image data
+		tfxParticle *particle;		//We need to point to the particle in order to update it's sprite index
+		FormState3D world;
+		FormState3D captured;
+		tfxVec2 handle;
+		tfxRGBA8 color;				//The color tint of the sprite
+		float intensity;			
+		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode (not needed anymore), expired flag, frame
 	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
@@ -2663,19 +2699,18 @@ TFX_CUSTOM_EMITTER
 	//Particles are stored in the particle manager particle buffer.
 	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
 	//168 bytes
+	//This struct is now only used in the Editor
 	struct Particle {
 		LocalFormState local;			//The local position of the particle, relative to the emitter.
 		FormState world;				//The world position of the particle relative to the world/screen.
 		FormState captured;				//The captured world coords for tweening
 		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
-
 		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
 		float emission_angle;			//Emission angle of the particle at spawn time
 		float noise_offset;				//Higer numbers means random movement is less uniform
 		float noise_resolution;			//Higer numbers means random movement is more uniform
 		tfxParticleFlags flags;			//flags for different states
-
 		//Updated everyframe
 		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;					//max age before the particle expires
@@ -2683,36 +2718,35 @@ TFX_CUSTOM_EMITTER
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
 		tfxRGBA8 color;					//Colour of the particle
-
 		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
-		tfxEmitter *emitter;			//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
 		unsigned int sprite_index;
 		unsigned int offset;
+	};
 
-		//Override functions, you can use these inside an update_callback if you want to modify the particle's behaviour
-		inline void OverridePosition(float x, float y) { local.position.x = x; local.position.y = y; }
-		inline void OverrideSize(float x, float y) { world.scale.x = x; world.scale.y = y; }
-		//inline void OverrideVelocity(float x, float y) { velocity.x = x; velocity.y = y; }
-		//inline void OverrideVelocityScale(float v) { velocity_scale = v; }
-		inline void OverrideRotation(float r) { local.rotation = r; }
-		inline void OverrideRotationDegrees(float d) { local.rotation = tfxDegrees(d); }
-		//inline void OverrideDirection(float r) { direction = r; }
-		//inline void OverrideDirectionDegrees(float d) { direction = tfxDegrees(d); }
-		//inline void OverrideSpin(float r) { direction = r; }
-		//inline void OverrideSpinDegrees(float d) { spin = tfxDegrees(d); }
-		inline void OverrideAge(float a) { age = a; }
-		//inline void OverrideImageFrameRate(float fr) { image_frame_rate = fr; }
-		inline void OverrideImageFrame(float f) { image_frame = f; }
-		inline void OverrideWeight(float w) { weight_acceleration = w; }
-		inline void OverrideIntensity(float i) { intensity = i; }
-		inline void OverrideBaseSize(float width, float height) { base.size.x = width; base.size.y = height; }
-		inline void OverrideBaseVelocity(float v) { base.velocity = v; }
-		inline void OverrideBaseWeight(float w) { base.weight = w; }
-		inline void OverrideBaseSpin(float s) { base.spin = s; }
-		inline void OverrideBaseSpinDegrees(float d) { base.spin = tfxDegrees(d); }
-
+	struct tfxParticle {
+		LocalFormState local;			//The local position of the particle, relative to the emitter.
+		FormState world;				//The world position of the particle relative to the world/screen.
+		FormState captured;				//The captured world coords for tweening
+		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
+		//Read only when ControlParticle is called, only written to at spawn time
+		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
+		float emission_angle;			//Emission angle of the particle at spawn time
+		float noise_offset;				//Higer numbers means random movement is less uniform
+		float noise_resolution;			//Higer numbers means random movement is more uniform
+		tfxParticleFlags flags;			//flags for different states
+		//Updated everyframe
+		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
+		float max_age;					//max age before the particle expires
+		float image_frame;				//Current frame of the image if it's an animation
+		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
+		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
+		tfxRGBA8 color;					//Colour of the particle
+		//Internal use variables
+		tfxParticle *next_ptr;
+		unsigned int sprite_index;
+		unsigned int offset;
 	};
 
 	struct ComputeFXGlobalState {
@@ -3035,12 +3069,9 @@ TFX_CUSTOM_EMITTER
 	void AssignGraphData(EffectEmitter &effect, tfxvec<tfxText> &values);
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
 	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
-	void TransformParticle(Particle &p, EffectEmitter &e);
-	void TransformParticle(Particle &p, tfxEmitter &e);
-	void Transform(tfxEmitter &emitter, Particle &parent);
-	void Transform(tfxEmitter &emitter, tfxEffect &parent);
-	void Transform(tfxEmitter &emitter, tfxEmitter &parent);
-	void Transform(FormState &local, FormState &world, EffectEmitter &e);
+	void TransformParticle(tfxParticle &p, tfxEmitter &e);
+	void Transform(tfxEmitter &emitter, tfxParticle &parent);
+	void Transform(tfxTransform &out, tfxTransform &in);
 	FormState Tween(float tween, FormState &world, FormState &captured);
 	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);

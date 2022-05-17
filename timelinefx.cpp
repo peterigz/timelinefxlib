@@ -1581,7 +1581,7 @@ namespace tfx {
 
 		//Update sub emitters
 		for (auto &emitter : e.sub_emitters) {
-			if (emitter.library_link->properties.delay_spawning >= e.common.age)
+			if (e.common.age >= e.library_link->properties.delay_spawning)
 				emitter.UpdateEmitter();
 			else
 				e.common.timeout_counter = 0;
@@ -1682,9 +1682,9 @@ namespace tfx {
 	
 		if (parent) {
 			parent = parent->next_emitter;
-			Transform(*this, *parent);
+			Transform(transform, parent->transform);
 		} else
-			Transform(*this, *common.root_effect);
+			Transform(transform, common.root_effect->transform);
 
 		if (common.state_flags & tfxEmitterStateFlags_no_tween_this_update) {
 			transform.captured = transform.world;
@@ -1780,7 +1780,7 @@ namespace tfx {
 		if (!common.root_effect->storage->sprite_memory.has_free_range_available(req_sprite_mem) && common.root_effect->storage->sprite_memory.free_unused_space() < req_sprite_mem)
 			return false;
 
-		tfxfixedvec<Particle> new_particle_memory;
+		tfxfixedvec<tfxParticle> new_particle_memory;
 		tfxfixedvec<ParticleSprite> new_sprite_memory;
 		new_particle_memory.assign_memory(common.root_effect->storage->particle_memory, sizeof(Particle), req_particle_size);
 		new_sprite_memory.assign_memory(common.root_effect->storage->sprite_memory, sizeof(ParticleSprite), req_sprite_size);
@@ -1910,7 +1910,7 @@ namespace tfx {
 
 			bool is_single = common.property_flags & tfxEmitterPropertyFlags_single && !(common.property_flags & tfxEmitterPropertyFlags_one_shot);
 
-			Particle &p = GrabParticle();
+			tfxParticle &p = GrabParticle();
 			InitCPUParticle(p, spawn_values, tween);
 
 			ParticleSprite &s = common.root_effect->GrabSprite(library_link->properties.layer);
@@ -2020,7 +2020,7 @@ namespace tfx {
 		return direction + emission_angle + random_generation.Range(-range, range);
 	}
 
-	Particle& tfxEmitter::GrabParticle() {
+	tfxParticle& tfxEmitter::GrabParticle() {
 		//Must check for free capacity before calling this function. Internal use only
 		assert(particles.current_size != particles.capacity);
 		return particles[particles.current_size++];
@@ -2052,7 +2052,7 @@ namespace tfx {
 		return common.root_effect->user_data; 
 	}
 
-	void tfxEmitter::InitCPUParticle(Particle &p, tfxEmitterSpawnControls &spawn_values, float tween) {
+	void tfxEmitter::InitCPUParticle(tfxParticle &p, tfxEmitterSpawnControls &spawn_values, float tween) {
 		p.flags = tfxParticleFlags_fresh;
 		p.next_ptr = &p;
 
@@ -2836,7 +2836,7 @@ namespace tfx {
 
 			if (index_offset) {
 				unsigned int tmp_offset = particles[i - index_offset].offset;
-				Particle *tmp_particle = particles[i - index_offset].next_ptr;
+				tfxParticle *tmp_particle = particles[i - index_offset].next_ptr;
 				p.offset = index_offset;
 				p.next_ptr = &particles[i - index_offset];
 				particles[i - index_offset] = p;
@@ -2857,7 +2857,7 @@ namespace tfx {
 		return effector;
 	}
 
-	void Transform(tfxEmitter &e, Particle &parent) {
+	void Transform(tfxEmitter &e, tfxParticle &parent) {
 		float s = sin(e.transform.local.rotation);
 		float c = cos(e.transform.local.rotation);
 
@@ -2872,71 +2872,23 @@ namespace tfx {
 
 	}
 
-	void Transform(tfxEmitter &e, tfxEffect &parent) {
-		float s = sin(e.transform.local.rotation);
-		float c = cos(e.transform.local.rotation);
+	void Transform(tfxTransform &out, tfxTransform &in) {
+		float s = sin(out.local.rotation);
+		float c = cos(out.local.rotation);
 
-		e.transform.matrix.Set(c, s, -s, c);
-		e.transform.world.scale = parent.transform.world.scale;
+		out.matrix.Set(c, s, -s, c);
+		out.world.scale = in.world.scale;
 
-		e.transform.world.rotation = parent.transform.world.rotation + e.transform.local.rotation;
+		out.world.rotation = in.world.rotation + out.local.rotation;
 
-		e.transform.matrix = e.transform.matrix.Transform(parent.transform.matrix);
-		tfxVec2 rotatevec = parent.transform.matrix.TransformVector(tfxVec2(e.transform.local.position.x, e.transform.local.position.y));
+		out.matrix = out.matrix.Transform(in.matrix);
+		tfxVec2 rotatevec = in.matrix.TransformVector(tfxVec2(out.local.position.x, out.local.position.y));
 
-		e.transform.world.position = parent.transform.world.position + rotatevec * parent.transform.world.scale;
-
-	}
-
-	void Transform(tfxEmitter &e, tfxEmitter &parent) {
-		float s = sin(e.transform.local.rotation);
-		float c = cos(e.transform.local.rotation);
-
-		e.transform.matrix.Set(c, s, -s, c);
-		e.transform.world.scale = parent.transform.world.scale;
-
-		e.transform.world.rotation = parent.transform.world.rotation + e.transform.local.rotation;
-
-		e.transform.matrix = e.transform.matrix.Transform(parent.transform.matrix);
-		tfxVec2 rotatevec = parent.transform.matrix.TransformVector(tfxVec2(e.transform.local.position.x, e.transform.local.position.y));
-
-		e.transform.world.position = parent.transform.world.position + rotatevec * parent.transform.world.scale;
+		out.world.position = in.world.position + rotatevec * in.world.scale;
 
 	}
 
-	void TransformParticle(Particle &p, EffectEmitter &e) {
-		//The Particle matrix is only needed for sub effect transformations
-		float s = sin(p.local.rotation);
-		float c = cos(p.local.rotation);
-		p.matrix.Set(c, s, -s, c);
-		bool line = (e.properties.flags & tfxEmitterPropertyFlags_edge_traversal && e.properties.emission_type == tfxLine);
-
-		if (e.properties.flags & tfxEmitterPropertyFlags_relative_position || line) {
-			p.world.scale = p.world.scale;
-
-			if (e.properties.flags & tfxEmitterPropertyFlags_relative_angle || line)
-				p.world.rotation = e.transform.world.rotation + p.local.rotation;
-			else
-				p.world.rotation = p.local.rotation;
-
-			p.matrix = p.matrix.Transform(e.transform.matrix);
-			tfxVec2 rotatevec = e.transform.matrix.TransformVector(tfxVec2(p.local.position.x, p.local.position.y));
-
-			p.world.position = e.transform.world.position + rotatevec * e.transform.world.scale;
-
-		}
-		else {
-			p.world.position = p.local.position;
-			p.world.scale = p.world.scale;
-			if (e.properties.flags & tfxEmitterPropertyFlags_relative_angle)
-				p.world.rotation = e.transform.world.rotation + p.local.rotation;
-			else
-				p.world.rotation = p.local.rotation;
-		}
-
-	}
-
-	void TransformParticle(Particle &p, tfxEmitter &e) {
+	void TransformParticle(tfxParticle &p, tfxEmitter &e) {
 		//The Particle matrix is only needed for sub effect transformations
 		float s = sin(p.local.rotation);
 		float c = cos(p.local.rotation);
@@ -2966,33 +2918,6 @@ namespace tfx {
 				p.world.rotation = p.local.rotation;
 		}
 
-	}
-
-	void Transform(FormState &local, FormState &world, EffectEmitter &e) {
-		//The Particle matrix is only needed for sub effect transformations
-		bool line = (e.properties.flags & tfxEmitterPropertyFlags_edge_traversal && e.properties.emission_type == tfxLine);
-
-		if (e.properties.flags & tfxEmitterPropertyFlags_relative_position || line) {
-			world.scale = local.scale;
-
-			if (e.properties.flags & tfxEmitterPropertyFlags_relative_angle || line)
-				world.rotation = e.transform.world.rotation + local.rotation;
-			else
-				world.rotation = local.rotation;
-
-			tfxVec2 rotatevec = e.transform.matrix.TransformVector(tfxVec2(local.position.x, local.position.y));
-
-			world.position = e.transform.world.position + rotatevec * e.transform.world.scale;
-
-		}
-		else {
-			world.position = local.position;
-			world.scale = local.scale;
-			if (e.properties.flags & tfxEmitterPropertyFlags_relative_angle)
-				world.rotation = e.transform.world.rotation + local.rotation;
-			else
-				world.rotation = local.rotation;
-		}
 	}
 
 	void EffectEmitter::ResetGlobalGraphs(bool add_node) {
@@ -6537,7 +6462,7 @@ namespace tfx {
 		}
 	}
 
-	void tfxEffectTemplate::SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(Particle &particle)) {
+	void tfxEffectTemplate::SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(tfxParticle &particle)) {
 		assert(paths.ValidName(path));
 		EffectEmitter &e = *paths.At(path);
 		assert(e.type == tfxEmitterType);
