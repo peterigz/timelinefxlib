@@ -112,6 +112,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <iostream>					//temp for std::cout
+#include <immintrin.h>
 
 /**
  * @file    SimplexNoise.h
@@ -812,20 +813,30 @@ typedef unsigned int tfxEffectID;
 		tfxVec3() { x = y = z = 0.f; }
 		tfxVec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
 
-		inline tfxVec3 operator+(tfxVec3 v) { return tfxVec3(x + v.x, y + v.y, z + v.z); }
-		inline tfxVec3 operator+=(tfxVec3 v) { return tfxVec3(x + v.x, y + v.y, z + v.z); }
-		inline tfxVec3 operator-(tfxVec3 v) { return tfxVec3(x - v.x, y - v.y, z - v.z); }
-		inline tfxVec3 operator-() { return tfxVec3(-x, -y, -z); }
-		inline tfxVec3 operator-=(tfxVec3 v) { return tfxVec3(-x, -y, -z); }
-		inline tfxVec3 operator*(tfxVec3 v) { return tfxVec3(x * v.x, y * v.y, z * v.z); }
-		inline tfxVec3 operator*=(tfxVec3 v) { return tfxVec3(x * v.x, y * v.y, z * v.z); }
-		inline tfxVec3 operator/(tfxVec3 v) { return tfxVec3(x / v.x, y / v.y, z / v.z); }
-		inline tfxVec3 operator/=(tfxVec3 v) { return tfxVec3(x / v.x, y / v.y, z / v.z); }
-		inline tfxVec3 operator+(float v) { return tfxVec3(x + v, y + v, z + v); }
-		inline tfxVec3 operator-(float v) { return tfxVec3(x - v, y - v, z - v); }
-		inline tfxVec3 operator*(float v) { return tfxVec3(x * v, y * v, z * v); }
-		inline tfxVec3 operator/(float v) { return tfxVec3(x / v, y / v, z / v); }
+		inline bool operator==(const tfxVec3 &v) const { return x == v.x && y == v.y && z == v.z; }
+
+		inline tfxVec3 operator+(const tfxVec3 &v) const { return tfxVec3(x + v.x, y + v.y, z + v.z); }
+		inline tfxVec3 operator-(const tfxVec3 &v) const { return tfxVec3(x - v.x, y - v.y, z - v.z); }
+		inline tfxVec3 operator*(const tfxVec3 &v) const { return tfxVec3(x * v.x, y * v.y, z * v.z); }
+		inline tfxVec3 operator/(const tfxVec3 &v) const { return tfxVec3(x / v.x, y / v.y, z / v.z); }
+
+		inline tfxVec3 operator-() const { return tfxVec3(-x, -y, -z); }
+
+		inline void operator-=(const tfxVec3 &v) { x -= v.x; y -= v.y; z -= v.z; }
+		inline void operator+=(const tfxVec3 &v) { x += v.x; y += v.y; z += v.z; }
+		inline void operator*=(const tfxVec3 &v) { x *= v.x; y *= v.y; z *= v.z; }
+		inline void operator/=(const tfxVec3 &v) { x /= v.x; y /= v.y; z /= v.z; }
+
+		inline tfxVec3 operator+(float v) const { return tfxVec3(x + v, y + v, z + v); }
+		inline tfxVec3 operator-(float v) const { return tfxVec3(x - v, y - v, z - v); }
+		inline tfxVec3 operator*(float v) const { return tfxVec3(x * v, y * v, z * v); }
+		inline tfxVec3 operator/(float v) const { return tfxVec3(x / v, y / v, z / v); }
+
 		inline void operator*=(float v) { x *= v; y *= v; z *= v; }
+		inline void operator/=(float v) { x /= v; y /= v; z /= v; }
+		inline void operator+=(float v) { x += v; y += v; z += v; }
+		inline void operator-=(float v) { x -= v; y -= v; z -= v; }
+
 		inline float Squared() { return x * x + y * y + z * z; }
 		inline bool IsNill() { return !x && !y && !z; }
 	};
@@ -837,19 +848,26 @@ typedef unsigned int tfxEffectID;
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
 		tfxVec4(tfxVec2 vec1, tfxVec2 vec2) : x(vec1.x), y(vec1.y), z(vec2.x), w(vec2.y) {}
 
-		inline tfxVec4 operator+(tfxVec4 v) { return tfxVec4(x + v.x, y + v.y, z + v.z, w + v.w); }
-		inline tfxVec4 operator+=(tfxVec4 v) { return tfxVec4(x + v.x, y + v.y, z + v.z, w + v.w); }
-		inline tfxVec4 operator-(tfxVec4 v) { return tfxVec4(x - v.x, y - v.y, z - v.z, w - v.w); }
+		inline tfxVec4 operator+(const tfxVec4 &v) { return tfxVec4(x + v.x, y + v.y, z + v.z, w + v.w); }
+		inline tfxVec4 operator-(const tfxVec4 &v) { return tfxVec4(x - v.x, y - v.y, z - v.z, w - v.w); }
 		inline tfxVec4 operator-() { return tfxVec4(-x, -y, -z, -w); }
-		inline tfxVec4 operator-=(tfxVec4 v) { return tfxVec4(-x, -y, -z, -w); }
-		inline tfxVec4 operator*(tfxVec4 v) { return tfxVec4(x * v.x, y * v.y, z * v.z, w * v.w); }
-		inline tfxVec4 operator*=(tfxVec4 v) { return tfxVec4(x * v.x, y * v.y, z * v.z, w * v.w); }
-		inline tfxVec4 operator/(tfxVec4 v) { return tfxVec4(x / v.x, y / v.y, z / v.z, w / v.w); }
-		inline tfxVec4 operator/=(tfxVec4 v) { return tfxVec4(x / v.x, y / v.y, z / v.z, w / v.w); }
-		inline tfxVec4 operator+(float v) { return tfxVec4(x + v, y + v, z + v, w + v); }
-		inline tfxVec4 operator-(float v) { return tfxVec4(x - v, y - v, z - v, w - v); }
-		inline tfxVec4 operator*(float v) { return tfxVec4(x * v, y * v, z * v, w * v); }
-		inline tfxVec4 operator/(float v) { return tfxVec4(x / v, y / v, z / v, w / v); }
+		inline tfxVec4 operator*(const tfxVec4 &v) { return tfxVec4(x * v.x, y * v.y, z * v.z, w * v.w); }
+		inline tfxVec4 operator/(const tfxVec4 &v) { return tfxVec4(x / v.x, y / v.y, z / v.z, w / v.w); }
+
+		inline void operator-=(const tfxVec4 &v) { x -= v.x; y -= v.y; z -= v.z; w -= v.w; }
+		inline void operator+=(const tfxVec4 &v) { x += v.x; y += v.y; z += v.z; w += v.w; }
+		inline void operator*=(const tfxVec4 &v) { x *= v.x; y *= v.y; z *= v.z; w *= v.w; }
+		inline void operator/=(const tfxVec4 &v) { x /= v.x; y /= v.y; z /= v.z; w /= v.w; }
+
+		inline tfxVec4 operator+(float v) const { return tfxVec4(x + v, y + v, z + v, w + v); }
+		inline tfxVec4 operator-(float v) const { return tfxVec4(x - v, y - v, z - v, w - v); }
+		inline tfxVec4 operator*(float v) const { return tfxVec4(x * v, y * v, z * v, w * v); }
+		inline tfxVec4 operator/(float v) const { return tfxVec4(x / v, y / v, z / v, w / v); }
+
+		inline void operator*=(float v) { x *= v; y *= v; z *= v; w *= v; }
+		inline void operator/=(float v) { x /= v; y /= v; z /= v; w /= v; }
+		inline void operator+=(float v) { x += v; y += v; z += v; w += v; }
+		inline void operator-=(float v) { x -= v; y -= v; z -= v; w -= v; }
 	};
 
 	struct tfxRGBA8 {
@@ -880,6 +898,19 @@ typedef unsigned int tfxEffectID;
 	inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
 	inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
 	inline void tfxBound(tfxVec2 &s, tfxVec2 &b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1; if (s.y >= b.y) s.y = b.y - 1; }
+
+	static inline float LengthVec2(tfxVec3 const &v) {
+		return v.x * v.x + v.y * v.y + v.z * v.z;
+	}
+
+	static inline float LengthVec(tfxVec3 const &v) {
+		return sqrtf(LengthVec2(v));
+	}
+
+	static inline tfxVec3 NormalizeVec(tfxVec3 const &v) {
+		float length = LengthVec(v);
+		return tfxVec3(v.x / length, v.y / length, v.z / length);
+	}
 
 	//Very simple 2D Matix
 	struct Matrix2 {
@@ -923,6 +954,115 @@ typedef unsigned int tfxEffectID;
 		}
 
 	};
+
+	struct Matrix4 {
+
+		tfxVec4 v[4];
+
+	};
+
+	inline Matrix4 M4(float v = 1.f) {
+		Matrix4 R =
+		{ {
+			{v, 0, 0, 0},
+			{0, v, 0, 0},
+			{0, 0, v, 0},
+			{0, 0, 0, v}},
+		};
+		return(R);
+	}
+
+	inline Matrix4 M4(tfxVec4 a, tfxVec4 b, tfxVec4 c, tfxVec4 d) {
+		Matrix4 R =
+		{ {
+			{a.x, a.y, a.z, a.w},
+			{b.x, b.y, b.z, b.w},
+			{c.x, c.y, c.z, c.w},
+			{d.x, d.y, d.z, d.w}},
+		};
+		return(R);
+	}
+
+	static inline Matrix4 mmRotate(Matrix4 const &m, float r, tfxVec3 const &v) {
+		float const a = r;
+		float const c = cosf(a);
+		float const s = sinf(a);
+
+		tfxVec3 axis = NormalizeVec(v);
+		tfxVec3 temp = axis * (1.f - c);
+
+		Matrix4 rotate;
+		rotate.v[0].x = c + temp.x * axis.x;
+		rotate.v[0].y = temp.x * axis.y + s * axis.z;
+		rotate.v[0].z = temp.x * axis.z - s * axis.y;
+
+		rotate.v[1].x = temp.y * axis.x - s * axis.z;
+		rotate.v[1].y = c + temp.y * axis.y;
+		rotate.v[1].z = temp.y * axis.z + s * axis.x;
+
+		rotate.v[2].x = temp.z * axis.x + s * axis.y;
+		rotate.v[2].y = temp.z * axis.y - s * axis.x;
+		rotate.v[2].z = c + temp.z * axis.z;
+
+		Matrix4 result;
+		result.v[0] = m.v[0] * rotate.v[0].x + m.v[1] * rotate.v[0].y + m.v[2] * rotate.v[0].z;
+		result.v[1] = m.v[0] * rotate.v[1].x + m.v[1] * rotate.v[1].y + m.v[2] * rotate.v[1].z;
+		result.v[2] = m.v[0] * rotate.v[2].x + m.v[1] * rotate.v[2].y + m.v[2] * rotate.v[2].z;
+		result.v[3] = m.v[3];
+		return result;
+	}
+
+	static inline Matrix4 mmTranslate(Matrix4 const &m, tfxVec3 const &v) {
+		Matrix4 result;
+		result.v[3] = m.v[0] * v.x + m.v[1] * v.y + m.v[2] * v.z + m.v[3];
+		return result;
+	}
+
+	static inline Matrix4 mmScale(Matrix4 const &m, tfxVec3 const &v) {
+		Matrix4 result;
+		result.v[0] = m.v[0] * v.x;
+		result.v[1] = m.v[1] * v.y;
+		result.v[2] = m.v[2] * v.z;
+		result.v[3] = m.v[3];
+		return result;
+	}
+
+	static inline Matrix4 Transpose(Matrix4 &mat) {
+		return M4(
+			tfxVec4(mat.v[0].x, mat.v[1].x, mat.v[2].x, mat.v[3].x),
+			tfxVec4(mat.v[0].y, mat.v[1].y, mat.v[2].y, mat.v[3].y),
+			tfxVec4(mat.v[0].z, mat.v[1].z, mat.v[2].z, mat.v[3].z),
+			tfxVec4(mat.v[0].w, mat.v[1].w, mat.v[2].w, mat.v[3].w)
+		);
+	}
+
+	static inline tfxVec4 mmTransformVector(const Matrix4 &mat, tfxVec4 &vec) {
+		tfxVec4 v;
+
+		__m128 v4 = _mm_set_ps(vec.x, vec.y, vec.z, vec.w);
+
+		__m128 mrow1 = _mm_load_ps(&mat.v[0].x);
+		__m128 mrow2 = _mm_load_ps(&mat.v[1].x);
+		__m128 mrow3 = _mm_load_ps(&mat.v[2].x);
+		__m128 mrow4 = _mm_load_ps(&mat.v[3].x);
+
+		__m128 row1result = _mm_mul_ps(v4, mrow1);
+		__m128 row2result = _mm_mul_ps(v4, mrow2);
+		__m128 row3result = _mm_mul_ps(v4, mrow3);
+		__m128 row4result = _mm_mul_ps(v4, mrow4);
+
+		float tmp[4];
+		_mm_store_ps(tmp, row1result);
+		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row2result);
+		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row3result);
+		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row4result);
+		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+		return v;
+	}
 
 	inline float Clamp(float lower, float upper, float value) {
 		if (value < lower) return lower;
@@ -2683,12 +2823,11 @@ TFX_CUSTOM_EMITTER
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode (not needed anymore), expired flag, frame
 	};
 
-	struct ParticleSprite3D {	//88 bytes
+	struct ParticleSprite3D {	//80 bytes
 		void *ptr;					//Pointer to the image data
 		tfxParticle *particle;		//We need to point to the particle in order to update it's sprite index
 		FormState3D world;
 		FormState3D captured;
-		tfxVec2 handle;
 		tfxRGBA8 color;				//The color tint of the sprite
 		float intensity;			
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode (not needed anymore), expired flag, frame
