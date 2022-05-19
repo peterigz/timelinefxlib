@@ -500,6 +500,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 		tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
 		tfxEmitterPropertyFlags_can_grow_particle_memory = 1 << 23,			//Allows for expanding the memory used for particle emitters if the amount spawned is changed dynamically
+		tfxEmitterPropertyFlags_is_3d = 1 << 24,							//Makes the effect run in 3d mode for 3d effects
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -2768,6 +2769,7 @@ TFX_CUSTOM_EMITTER
 		void DisableAllEmitters();
 		void DisableAllEmittersExcept(EffectEmitter &emitter);
 		bool IsFiniteEffect();
+		bool Is3DEffect();
 	};
 
 	struct tfxEffectTemplate {

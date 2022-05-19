@@ -992,6 +992,10 @@ namespace tfx {
 		return true;
 	}
 
+	bool EffectEmitter::Is3DEffect() {
+		return properties.flags & tfxEmitterPropertyFlags_is_3d;
+	}
+
 	void EffectEmitter::UpdateAllBufferSizes() {
 		tfxvec<EffectEmitter*> stack;
 		stack.push_back(this);
