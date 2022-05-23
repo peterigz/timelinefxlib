@@ -501,6 +501,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
 		tfxEmitterPropertyFlags_can_grow_particle_memory = 1 << 23,			//Allows for expanding the memory used for particle emitters if the amount spawned is changed dynamically
 		tfxEmitterPropertyFlags_is_3d = 1 << 24,							//Makes the effect run in 3d mode for 3d effects
+		tfxEmitterPropertyFlags_use_dynamic = 1 << 25,						//Use a dynamic particle storage rather then a fixed one
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -1584,6 +1585,8 @@ typedef unsigned int tfxEffectID;
 
 	};
 
+#define tfxINVALID 0xFFFFFFFF
+
 	struct tfxrange {
 		unsigned int capacity;
 		unsigned int offset_into_memory;
@@ -1658,7 +1661,6 @@ typedef unsigned int tfxEffectID;
 	//You must call free_all when done with the buffer, there's no deconstructor
 	//You can also use this in combination with tfxmemory, assign_memory to grab a range of memory from there instead of allocating some. In this case do not call free_all or you will delete
 	//the memory in tfxmem instead! Basically this is only for use in TimelineFX internally.
-#define tfxINVALID 0xFFFFFFFF
 	template<typename T>
 	struct tfxring {
 		unsigned int current_size;
@@ -2480,25 +2482,6 @@ typedef unsigned int tfxEffectID;
 		{}
 	};
 
-	struct tfxEmitterSpawnProperties {
-		unsigned int layer;
-		unsigned int blend_mode;
-		unsigned int spawn_amount;
-		EmissionType emission_type;
-		AngleSetting angle_setting;
-		EmissionDirection emission_direction;
-		float start_frame;
-		float animation_frames;
-		float end_frame;
-		float frame_rate;
-		void *image_ptr;
-		float angle_offset;
-		tfxVec2 image_size;
-		tfxVec2 image_handle;
-		tfxVec2 emitter_handle;
-		tfxVec2 grid_points;
-	};
-
 	struct tfxEmitterSpawnControls {
 		float life;
 		float life_variation;
@@ -2516,6 +2499,8 @@ typedef unsigned int tfxEffectID;
 		float noise_offset_variation;
 		float noise_offset;
 		float noise_resolution;
+		float intensity;
+		tfxVec2 image_handle;
 		tfxVec2 grid_segment_size;
 	};
 
@@ -2528,7 +2513,6 @@ typedef unsigned int tfxEffectID;
 		tfxCommon common;
 		tfxEmitterState current;
 		LookupMode lookup_mode;
-		tfxVec2 image_handle;
 		unsigned int offset;
 		tfxEmitter *next_emitter;
 
@@ -2568,6 +2552,7 @@ typedef unsigned int tfxEffectID;
 		tfxfixedvec<ParticleSprite> sprites[tfxLAYERS];
 		void *user_data;
 		void(*update_callback)(tfxEffect &effect);		//Called after the state has been udpated
+		void(*initialise_particle_callback)(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values, float tween);
 
 		tfxEffect() :
 			parent_particle(nullptr),
@@ -2600,8 +2585,10 @@ typedef unsigned int tfxEffectID;
 	struct EffectEmitter {
 		tfxTransform transform;
 
-		//The current state of the effect/emitter
-		EmitterState current;
+		//The current state of the effect/emitter used in the editor only at this point
+		tfxEmitterState current;
+		tfxEmitterSpawnControls spawn_controls;
+		tfxCommon common;
 		unsigned int emitter_state_index;
 		//All of the properties of the effect/emitter
 		EmitterProperties properties;
@@ -3219,6 +3206,10 @@ TFX_CUSTOM_EMITTER
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
 	bool Copy(tfxEffectPool &storage, EffectEmitter &in, tfxEffectID &out);
+
+	//Particle initialisation functions, one for 2d one for 3d effects
+	void InitialiseParticle2d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values, float tween);
+	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
 
 	//Helper functions
 
