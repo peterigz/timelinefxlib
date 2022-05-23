@@ -2515,13 +2515,14 @@ typedef unsigned int tfxEffectID;
 		bool GrowParticles(unsigned int min_amount);
 		void RefreshFromLibrary();
 		void SpawnParticles();
-		float GetEmissionDirection(tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
 		void InitCPUParticle(tfxParticle &p, tfxEmitterSpawnControls &spawn_values, float tween);
 		void ControlParticles();
 		bool FreeCapacity();
 		void *UserData();
 		tfxParticle &GrabParticle();
 	};
+
+	float GetEmissionDirection(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
 
 	struct tfxEffect {
 		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
@@ -2584,8 +2585,6 @@ typedef unsigned int tfxEffectID;
 		tfxKey path_hash;
 		//Is this a tfxEffectType or tfxEmitterType
 		EffectEmitterType type;
-		//A pointer to the library this effect belongs
-		EffectLibrary *library;
 		//The index within the library that this exists at
 		unsigned int library_index;
 		//The current highest particle age. When using a compute buffer we don't have any reliable way of keeping track of particle counts of individual emitters, so how do we know when to remove an emitter
@@ -2660,7 +2659,6 @@ TFX_CUSTOM_EMITTER
 			timeout(100),
 			timeout_counter(0),
 			animation_settings(0),
-			library(nullptr),
 			root_effect_update_callback(nullptr),
 			emitter_update_callback(nullptr),
 			spawn_update_callback(nullptr),
@@ -3171,7 +3169,7 @@ TFX_CUSTOM_EMITTER
 	void AssignGraphData(EffectEmitter &effect, tfxvec<tfxText> &values);
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
 	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
-	void TransformParticle(tfxParticle &p, tfxEmitter &e);
+	void TransformParticle(tfxParticleData &p, tfxCommon &common, bool is_line);
 	void Transform(tfxEmitter &emitter, tfxParticle &parent);
 	void Transform(tfxTransform &out, tfxTransform &in);
 	FormState Tween(float tween, FormState &world, FormState &captured);
