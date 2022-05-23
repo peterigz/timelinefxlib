@@ -2282,7 +2282,6 @@ typedef unsigned int tfxEffectID;
 		AngleSetting angle_setting = AngleSetting::tfxRandom;
 
 		//Bit field of various boolean flags
-		tfxEmitterPropertyFlags flags;
 		tfxParticleControlFlags compute_flags;
 
 		//Offset to draw particles at
@@ -2313,7 +2312,6 @@ typedef unsigned int tfxEffectID;
 
 		EmitterProperties() :
 			angle_offset(360),
-			flags(tfxEmitterPropertyFlags_image_handle_auto_center | tfxEmitterPropertyFlags_grid_spawn_clockwise | tfxEmitterPropertyFlags_emitter_handle_auto_center | tfxEmitterPropertyFlags_global_uniform_size | tfxEmitterPropertyFlags_base_uniform_size | tfxEmitterPropertyFlags_lifetime_uniform_size),
 			image(nullptr),
 			image_handle(tfxVec2()),
 			spawn_amount(1),
@@ -2445,10 +2443,10 @@ typedef unsigned int tfxEffectID;
 		tfxEffect *root_effect;
 
 		tfxCommon() :
+			property_flags(tfxEmitterPropertyFlags_image_handle_auto_center | tfxEmitterPropertyFlags_grid_spawn_clockwise | tfxEmitterPropertyFlags_emitter_handle_auto_center | tfxEmitterPropertyFlags_global_uniform_size | tfxEmitterPropertyFlags_base_uniform_size | tfxEmitterPropertyFlags_lifetime_uniform_size),
 			frame(0.f),
 			age(0.f),
 			state_flags(0),
-			property_flags(0),
 			timeout_counter(0),
 			timeout(1000.f),
 			active_children(0),
@@ -3160,7 +3158,7 @@ TFX_CUSTOM_EMITTER
 	float& GetDataFloatValue(tfxStorageMap<DataEntry> &config, const char* key);
 	bool SaveDataFile(tfxStorageMap<DataEntry> &config, const char* path = "");
 	bool LoadDataFile(tfxStorageMap<DataEntry> &config, const char* path);
-	void StreamProperties(EmitterProperties &property, tfxText &file);
+	void StreamProperties(EmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file);
 	void StreamGraph(const char * name, Graph &graph, tfxText &file);
 	tfxvec<tfxText> SplitString(const tfxText &s, char delim = 61);
 	bool StringIsUInt(const tfxText &s);

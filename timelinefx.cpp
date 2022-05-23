@@ -983,17 +983,17 @@ namespace tfx {
 
 	bool EffectEmitter::IsFiniteEffect() {
 		for (auto &e : sub_effectors) {
-			if (e.properties.flags & tfxEmitterPropertyFlags_single || e.properties.flags & tfxEmitterPropertyFlags_one_shot)
+			if (e.common.property_flags & tfxEmitterPropertyFlags_single || e.common.property_flags & tfxEmitterPropertyFlags_one_shot)
 				return true;
 			float qty = e.library->base_graphs[e.base].amount.GetLastValue() + e.library->variation_graphs[e.variation].amount.GetLastValue();
-			if (!(e.properties.flags & tfxEmitterPropertyFlags_single) && qty > 0)
+			if (!(e.common.property_flags & tfxEmitterPropertyFlags_single) && qty > 0)
 				return false;
 		}
 		return true;
 	}
 
 	bool EffectEmitter::Is3DEffect() {
-		return properties.flags & tfxEmitterPropertyFlags_is_3d;
+		return common.property_flags & tfxEmitterPropertyFlags_is_3d;
 	}
 
 	void EffectEmitter::UpdateAllBufferSizes() {
@@ -1041,12 +1041,12 @@ namespace tfx {
 		float total = 0;
 		for (auto &effect : sub_effectors) {
 			for (auto &emitter : effect.sub_effectors) {
-				if (properties.flags & tfxEmitterPropertyFlags_single && !(properties.flags & tfxEmitterPropertyFlags_one_shot))
+				if (common.property_flags & tfxEmitterPropertyFlags_single && !(common.property_flags & tfxEmitterPropertyFlags_one_shot))
 					total += emitter.max_particles[layer] * multiplier;
 				else
 					total += emitter.max_particles[layer] * multiplier * (max_sub_emitter_life / 1000.f);
 				if (emitter.sub_effectors.size()) {
-					if (properties.flags & tfxEmitterPropertyFlags_single && !(properties.flags & tfxEmitterPropertyFlags_one_shot))
+					if (common.property_flags & tfxEmitterPropertyFlags_single && !(common.property_flags & tfxEmitterPropertyFlags_one_shot))
 						total += emitter.GetSubEffectSpriteCounts(layer, emitter.max_particles[emitter.properties.layer] * multiplier);
 					else
 						total += emitter.GetSubEffectSpriteCounts(layer, emitter.max_particles[emitter.properties.layer] * multiplier * int(max_sub_emitter_life / 1000.f));
@@ -1068,7 +1068,7 @@ namespace tfx {
 
 	unsigned int EffectEmitter::GetHighestQty(float parent_age) {
 		max_sub_emitter_life = 0.f;
-		if (!(properties.flags & tfxEmitterPropertyFlags_single) && !(properties.flags & tfxEmitterPropertyFlags_one_shot)) {
+		if (!(common.property_flags & tfxEmitterPropertyFlags_single) && !(common.property_flags & tfxEmitterPropertyFlags_one_shot)) {
 			float max_qty = 0.f;
 			float amount_remainder = 0.f;
 			float highest_age = 0.f;
@@ -1092,11 +1092,11 @@ namespace tfx {
 					qty += LookupFast(library->variation_graphs[variation].amount, current_frame);
 					float life = LookupFast(library->base_graphs[base].life, current_frame) + lookup_callback(library->variation_graphs[variation].life, current_frame);
 
-					if (properties.flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
+					if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
 						float area = LookupFast(library->property_graphs[property].emitter_width, current_frame) * LookupFast(library->property_graphs[property].emitter_height, current_frame);
 						qty = (qty / 10000.f) * area;
 					}
-					else if (properties.flags & tfxEmitterPropertyFlags_use_spawn_ratio && properties.emission_type == tfxLine) {
+					else if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && properties.emission_type == tfxLine) {
 						qty = (qty / 100.f) * LookupFast(library->property_graphs[property].emitter_height, current_frame);
 					}
 
@@ -1143,11 +1143,11 @@ namespace tfx {
 				float max_life = GetMaxLife(*this);
 				max_sub_emitter_life = max_life + parent_age;
 				float qty = (library->base_graphs[base].amount.GetFirstValue() + library->variation_graphs[variation].amount.GetFirstValue()) * (max_life / 1000.f) + 1.f;
-				if (properties.flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
+				if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
 					float area = library->property_graphs[property].emitter_width.GetFirstValue() * library->property_graphs[property].emitter_height.GetFirstValue();
 					qty = (qty / 10000.f) * area;
 				}
-				else if (properties.flags & tfxEmitterPropertyFlags_use_spawn_ratio && properties.emission_type == tfxLine) {
+				else if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && properties.emission_type == tfxLine) {
 					qty = (qty / 100.f) * library->property_graphs[property].emitter_height.GetFirstValue();
 				}
 				return unsigned int(qty);
@@ -1242,15 +1242,15 @@ namespace tfx {
 			emitter.particles[current_buffer].clear();
 
 			float life = LookupFast(emitter.library->base_graphs[emitter.library_link->base].life, emitter.frame) + lookup_callback(emitter.library->variation_graphs[emitter.library_link->variation].life, emitter.frame) * 0.75f;
-			if (!(emitter.library_link->properties.flags & tfxEmitterPropertyFlags_single) && !(emitter.library_link->properties.flags & tfxEmitterPropertyFlags_one_shot)) {
+			if (!(emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_single) && !(emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_one_shot)) {
 				emitter.qty = LookupFast(emitter.library->base_graphs[emitter.library_link->base].amount, emitter.frame);
 				emitter.qty += LookupFast(emitter.library->variation_graphs[emitter.library_link->variation].amount, emitter.frame);
 
-				if (emitter.library_link->properties.flags & tfxEmitterPropertyFlags_use_spawn_ratio && (emitter.library_link->properties.emission_type == tfxArea || emitter.library_link->properties.emission_type == tfxEllipse)) {
+				if (emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (emitter.library_link->properties.emission_type == tfxArea || emitter.library_link->properties.emission_type == tfxEllipse)) {
 					float area = LookupFast(emitter.library->property_graphs[emitter.library_link->property].emitter_width, emitter.frame) * LookupFast(emitter.library->property_graphs[emitter.library_link->property].emitter_height, emitter.frame);
 					emitter.qty = (emitter.qty / 10000.f) * area;
 				}
-				else if (emitter.library_link->properties.flags & tfxEmitterPropertyFlags_use_spawn_ratio && emitter.library_link->properties.emission_type == tfxLine) {
+				else if (emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && emitter.library_link->properties.emission_type == tfxLine) {
 					emitter.qty = (emitter.qty / 100.f) * LookupFast(emitter.library->property_graphs[emitter.library_link->property].emitter_height, emitter.frame);
 				}
 
@@ -1281,7 +1281,7 @@ namespace tfx {
 				emitter.started_spawning = true;
 				emitter.library_link->max_particles[emitter.library_link->properties.layer] = emitter.library_link->properties.spawn_amount;
 				for (int q = 0; q != emitter.library_link->properties.spawn_amount; ++q) {
-					if (emitter.library_link->properties.flags & tfxEmitterPropertyFlags_single && !(emitter.library_link->properties.flags & tfxEmitterPropertyFlags_one_shot)) {
+					if (emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_single && !(emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_one_shot)) {
 						particles[emitter.library_link->properties.layer][!current_buffer].push_back(max_frames + max_last_life);
 						emitter.particles[!current_buffer].push_back(max_frames + max_last_life);
 					}
@@ -1636,7 +1636,7 @@ namespace tfx {
 		}
 		common.age += FRAME_LENGTH;
 
-		common.property_flags = library_link->properties.flags;
+		common.property_flags = library_link->common.property_flags;
 		if (!(common.property_flags & tfxEmitterPropertyFlags_single) || common.property_flags & tfxEmitterPropertyFlags_one_shot || common.state_flags & tfxEmitterStateFlags_stop_spawning)
 			common.highest_particle_age -= FRAME_LENGTH;
 
@@ -1698,21 +1698,21 @@ namespace tfx {
 	void tfxEmitter::RefreshFromLibrary() {
 		tfxEmitterStateFlags single_done = common.state_flags & tfxEmitterStateFlags_single_shot_done;
 		tfxEmitterStateFlags spawn_done = common.state_flags & tfxEmitterStateFlags_stop_spawning;
-		common.property_flags = library_link->properties.flags;
+		common.property_flags = library_link->common.property_flags;
 		common.state_flags = library_link->flags;
 		common.loop_length = library_link->properties.loop_length;
 		common.handle = library_link->properties.emitter_handle;
 
 		common.state_flags &= ~tfxEmitterStateFlags_retain_matrix;
 
-		common.state_flags |= library_link->properties.flags & tfxEmitterPropertyFlags_single && !(library_link->properties.flags & tfxEmitterPropertyFlags_one_shot) ? tfxEmitterStateFlags_is_single : 0;
-		common.state_flags |= (library_link->properties.emission_type != tfxLine && !(library_link->properties.flags & tfxEmitterPropertyFlags_edge_traversal)) || library_link->properties.emission_type == tfxLine && !(library_link->properties.flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
-		common.state_flags |= library_link->properties.flags & tfxEmitterPropertyFlags_random_color;
-		common.state_flags |= library_link->properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-		common.state_flags |= library_link->properties.angle_setting != AngleSetting::tfxAlign && !(library_link->properties.flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_single && !(library_link->common.property_flags & tfxEmitterPropertyFlags_one_shot) ? tfxEmitterStateFlags_is_single : 0;
+		common.state_flags |= (library_link->properties.emission_type != tfxLine && !(library_link->common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || library_link->properties.emission_type == tfxLine && !(library_link->common.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
+		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_random_color;
+		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
+		common.state_flags |= library_link->properties.angle_setting != AngleSetting::tfxAlign && !(library_link->common.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
 		common.state_flags |= library_link->properties.angle_setting == AngleSetting::tfxAlign ? tfxEmitterStateFlags_align_with_velocity : 0;
-		common.state_flags |= library_link->properties.emission_type == tfxLine && library_link->properties.flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
-		common.state_flags |= library_link->properties.flags & tfxEmitterPropertyFlags_play_once;
+		common.state_flags |= library_link->properties.emission_type == tfxLine && library_link->common.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
+		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_play_once;
 		common.state_flags |= library_link->properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
 		common.state_flags |= library_link->properties.end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
 		common.state_flags |= library_link->properties.emission_type == tfxArea || library_link->properties.emission_type == tfxEllipse ? tfxEmitterStateFlags_is_area : 0;
@@ -1722,7 +1722,7 @@ namespace tfx {
 	}
 
 	void tfxEffect::RefreshFromLibrary() {
-		common.property_flags = library_link->properties.flags;
+		common.property_flags = library_link->common.property_flags;
 		common.state_flags = library_link->flags;
 		common.loop_length = library_link->properties.loop_length;
 		common.handle = library_link->properties.emitter_handle;
@@ -1734,7 +1734,7 @@ namespace tfx {
 				e.RefreshFromLibrary();
 			}
 			else {
-				e.common.property_flags = e.library_link->properties.flags;
+				e.common.property_flags = e.library_link->common.property_flags;
 				e.common.state_flags = e.library_link->flags;
 				e.common.loop_length = e.library_link->properties.loop_length;
 				e.common.handle = e.library_link->properties.emitter_handle;
@@ -1858,7 +1858,7 @@ namespace tfx {
 			spawn_values.noise_offset_variation = effect_lookup_callback(common.library->variation_graphs[library_link->variation].noise_offset, common.frame);
 			spawn_values.noise_offset = effect_lookup_callback(common.library->base_graphs[library_link->variation].noise_offset, common.frame);
 			spawn_values.noise_resolution = effect_lookup_callback(common.library->variation_graphs[library_link->variation].noise_resolution, common.frame);
-			if (library_link->properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
+			if (library_link->common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 				spawn_values.image_handle = tfxVec2(0.5f, 0.5f);
 			}
 			else {
@@ -2505,7 +2505,7 @@ namespace tfx {
 		float velocity_scale = lookup_overtime_callback(e.library->overtime_graphs[e.overtime].velocity, p.data.age, p.data.max_age) * e.current.velocity_adjuster;
 
 		//----Size
-		if (!(e.properties.flags & tfxEmitterPropertyFlags_base_uniform_size)) {
+		if (!(e.common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
 			//std::uniform_real_distribution<float> random_width(0, e.current.size_variation.x);
 			//std::uniform_real_distribution<float> random_height(0, e.current.size_variation.y);
 
@@ -2520,7 +2520,7 @@ namespace tfx {
 				//p.data.local.scale.y = (e.library->overtime_graphs[e.overtime].height.GetFirstValue() * e.parent->current.size.y * (p.data.base.height + (velocity * e.library->overtime_graphs[e.overtime].stretch.GetFirstValue() * e.parent->current.stretch))) / e.properties.image.image_size.y;
 			}
 			else {
-				if (e.properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
+				if (e.common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
 					//p.data.local.scale.y = p.data.base.size.y * e.library->overtime_graphs[e.overtime].width.GetFirstValue();
 				}
 				else {
@@ -2603,7 +2603,7 @@ namespace tfx {
 		//}
 
 		//----Handle
-		//if (e.properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
+		//if (e.common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 			//p.data.handle = tfxVec2(0.5f, 0.5f);
 		//}
 		//else {
@@ -2656,7 +2656,7 @@ namespace tfx {
 		float angle_offset = library_link->properties.angle_offset;
 		OvertimeAttributes &graphs = common.library->overtime_graphs[library_link->overtime];
 		tfxVec2 image_handle;
-		if (library_link->properties.flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
+		if (library_link->common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 			image_handle = tfxVec2(0.5f, 0.5f);
 		}
 		else {
@@ -3133,7 +3133,7 @@ namespace tfx {
 
 	bool EffectEmitter::HasSingle() {
 		for (auto &e : sub_effectors) {
-			if (e.properties.flags & (tfxEmitterPropertyFlags_single | tfxEmitterPropertyFlags_one_shot))
+			if (e.common.property_flags & (tfxEmitterPropertyFlags_single | tfxEmitterPropertyFlags_one_shot))
 				return true;
 		}
 		return false;
@@ -3504,7 +3504,7 @@ namespace tfx {
 		tfxEffect &effect = storage.GetEffect(effect_id);
 		effect.id = effect_id;
 		effect.library_link = this;
-		effect.common.property_flags = properties.flags;
+		effect.common.property_flags = common.property_flags;
 		effect.common.state_flags = flags;
 		effect.common.library = library;
 		effect.path_hash = path_hash;
@@ -3534,7 +3534,7 @@ namespace tfx {
 		//Internal use only, CopyToEffect must be called first
 		e.library_link = this;
 		e.type = tfxEmitterType;
-		e.common.property_flags = properties.flags;
+		e.common.property_flags = common.property_flags;
 		e.common.state_flags = flags;
 		e.common.loop_length = properties.loop_length;	
 		e.common.library = library;
@@ -3547,14 +3547,14 @@ namespace tfx {
 
 		e.common.state_flags &= ~tfxEmitterStateFlags_retain_matrix;
 
-		e.common.state_flags |= properties.flags & tfxEmitterPropertyFlags_single && !(properties.flags & tfxEmitterPropertyFlags_one_shot) ? tfxEmitterStateFlags_is_single : 0;
-		e.common.state_flags |= (properties.emission_type != tfxLine && !(properties.flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type == tfxLine && !(properties.flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
-		e.common.state_flags |= properties.flags & tfxEmitterPropertyFlags_random_color;
-		e.common.state_flags |= properties.flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-		e.common.state_flags |= properties.angle_setting != AngleSetting::tfxAlign && !(properties.flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+		e.common.state_flags |= common.property_flags & tfxEmitterPropertyFlags_single && !(common.property_flags & tfxEmitterPropertyFlags_one_shot) ? tfxEmitterStateFlags_is_single : 0;
+		e.common.state_flags |= (properties.emission_type != tfxLine && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type == tfxLine && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
+		e.common.state_flags |= common.property_flags & tfxEmitterPropertyFlags_random_color;
+		e.common.state_flags |= common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
+		e.common.state_flags |= properties.angle_setting != AngleSetting::tfxAlign && !(common.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
 		e.common.state_flags |= properties.angle_setting == AngleSetting::tfxAlign ? tfxEmitterStateFlags_align_with_velocity : 0;
-		e.common.state_flags |= properties.emission_type == tfxLine && properties.flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
-		e.common.state_flags |= properties.flags & tfxEmitterPropertyFlags_play_once;
+		e.common.state_flags |= properties.emission_type == tfxLine && common.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
+		e.common.state_flags |= common.property_flags & tfxEmitterPropertyFlags_play_once;
 		e.common.state_flags |= properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
 		e.common.state_flags |= properties.end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
 		e.common.state_flags |= properties.emission_type == tfxArea || properties.emission_type == tfxEllipse ? tfxEmitterStateFlags_is_area : 0;
@@ -4765,46 +4765,46 @@ namespace tfx {
 		if (field == "export_with_transparency")
 			effect.library->animation_settings[effect.animation_settings].export_with_transparency = value;
 		if (field == "random_color")
-			if (value) effect.properties.flags |= tfxEmitterPropertyFlags_random_color; else effect.properties.flags &= ~tfxEmitterPropertyFlags_random_color;
+			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_random_color; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_random_color;
 		if (field == "relative_position")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_relative_position; else effect.properties.flags &= ~tfxEmitterPropertyFlags_relative_position;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_relative_position; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_relative_position;
 		if (field == "relative_angle")
-			if (value) effect.properties.flags |= tfxEmitterPropertyFlags_relative_angle; else effect.properties.flags &= ~tfxEmitterPropertyFlags_relative_angle;
+			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_relative_angle; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_relative_angle;
 		if (field == "image_handle_auto_center")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_image_handle_auto_center; else effect.properties.flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center;
 		if (field == "single")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_single; else effect.properties.flags &= ~tfxEmitterPropertyFlags_single;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_single; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_single;
 		if (field == "one_shot")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_one_shot; else effect.properties.flags &= ~tfxEmitterPropertyFlags_one_shot;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_one_shot; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_one_shot;
 		if (field == "spawn_on_grid")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_spawn_on_grid; else effect.properties.flags &= ~tfxEmitterPropertyFlags_spawn_on_grid;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_spawn_on_grid; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_spawn_on_grid;
 		if (field == "grid_spawn_clockwise")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_grid_spawn_clockwise; else effect.properties.flags &= ~tfxEmitterPropertyFlags_grid_spawn_clockwise;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_grid_spawn_clockwise; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_grid_spawn_clockwise;
 		if (field == "fill_area")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_fill_area; else effect.properties.flags &= ~tfxEmitterPropertyFlags_fill_area;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_fill_area; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_fill_area;
 		if (field == "emitter_handle_auto_center")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_emitter_handle_auto_center; else effect.properties.flags &= ~tfxEmitterPropertyFlags_emitter_handle_auto_center;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_emitter_handle_auto_center; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_emitter_handle_auto_center;
 		if (field == "edge_traversal")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_edge_traversal; else effect.properties.flags &= ~tfxEmitterPropertyFlags_edge_traversal;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_edge_traversal; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_edge_traversal;
 		if (field == "image_reverse_animation")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_reverse_animation; else effect.properties.flags &= ~tfxEmitterPropertyFlags_reverse_animation;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_reverse_animation; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_reverse_animation;
 		if (field == "image_play_once")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_play_once; else effect.properties.flags &= ~tfxEmitterPropertyFlags_play_once;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_play_once; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_play_once;
 		if (field == "image_animate")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_animate; else effect.properties.flags &= ~tfxEmitterPropertyFlags_animate;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_animate; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_animate;
 		if (field == "image_random_start_frame")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_random_start_frame; else effect.properties.flags &= ~tfxEmitterPropertyFlags_random_start_frame;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_random_start_frame; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_random_start_frame;
 		if (field == "global_uniform_size")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_global_uniform_size; else effect.properties.flags &= ~tfxEmitterPropertyFlags_global_uniform_size;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_global_uniform_size; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_global_uniform_size;
 		if (field == "base_uniform_size")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_base_uniform_size; else effect.properties.flags &= ~tfxEmitterPropertyFlags_base_uniform_size;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_base_uniform_size; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_base_uniform_size;
 		if (field == "lifetime_uniform_size")
-			if(value) effect.properties.flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; else effect.properties.flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size;
+			if(value) effect.common.property_flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size;
 		if (field == "use_spawn_ratio")
-			if (value) effect.properties.flags |= tfxEmitterPropertyFlags_use_spawn_ratio; else effect.properties.flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;
+			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;
 	}
 
-	void StreamProperties(EmitterProperties &property, tfxText &file) {
+	void StreamProperties(EmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file) {
 
 		file.AddLine("image_index=%i", property.shape_index);
 		file.AddLine("image_handle_x=%f", property.image_handle.x);
@@ -4812,10 +4812,10 @@ namespace tfx {
 		file.AddLine("image_start_frame=%f", property.start_frame);
 		file.AddLine("image_end_frame=%f", property.end_frame);
 		file.AddLine("image_frame_rate=%f", property.frame_rate);
-		file.AddLine("image_play_once=%i", (property.flags & tfxEmitterPropertyFlags_play_once));
-		file.AddLine("image_reverse_animation=%i", (property.flags & tfxEmitterPropertyFlags_reverse_animation));
-		file.AddLine("image_animate=%i", (property.flags & tfxEmitterPropertyFlags_animate));
-		file.AddLine("image_random_start_frame=%i", (property.flags & tfxEmitterPropertyFlags_random_start_frame));
+		file.AddLine("image_play_once=%i", (flags & tfxEmitterPropertyFlags_play_once));
+		file.AddLine("image_reverse_animation=%i", (flags & tfxEmitterPropertyFlags_reverse_animation));
+		file.AddLine("image_animate=%i", (flags & tfxEmitterPropertyFlags_animate));
+		file.AddLine("image_random_start_frame=%i", (flags & tfxEmitterPropertyFlags_random_start_frame));
 		file.AddLine("spawn_amount=%i", property.spawn_amount);
 		file.AddLine("emission_type=%i", property.emission_type);
 		file.AddLine("emission_direction=%i", property.emission_direction);
@@ -4826,23 +4826,23 @@ namespace tfx {
 		file.AddLine("emitter_handle_x=%f", property.emitter_handle.x);
 		file.AddLine("emitter_handle_y=%f", property.emitter_handle.y);
 		file.AddLine("end_behaviour=%i", property.end_behaviour);
-		file.AddLine("random_color=%i", (property.flags & tfxEmitterPropertyFlags_random_color));
-		file.AddLine("relative_position=%i", (property.flags & tfxEmitterPropertyFlags_relative_position));
-		file.AddLine("relative_angle=%i", (property.flags & tfxEmitterPropertyFlags_relative_angle));
-		file.AddLine("image_handle_auto_center=%i", (property.flags & tfxEmitterPropertyFlags_image_handle_auto_center));
-		file.AddLine("single=%i", (property.flags & tfxEmitterPropertyFlags_single));
-		file.AddLine("one_shot=%i", (property.flags & tfxEmitterPropertyFlags_one_shot));
-		file.AddLine("spawn_on_grid=%i", (property.flags & tfxEmitterPropertyFlags_spawn_on_grid));
-		file.AddLine("grid_spawn_clockwise=%i", (property.flags & tfxEmitterPropertyFlags_grid_spawn_clockwise));
-		file.AddLine("fill_area=%i", (property.flags & tfxEmitterPropertyFlags_fill_area));
-		file.AddLine("emitter_handle_auto_center=%i", (property.flags & tfxEmitterPropertyFlags_emitter_handle_auto_center));
-		file.AddLine("edge_traversal=%i", (property.flags & tfxEmitterPropertyFlags_edge_traversal));
+		file.AddLine("random_color=%i", (flags & tfxEmitterPropertyFlags_random_color));
+		file.AddLine("relative_position=%i", (flags & tfxEmitterPropertyFlags_relative_position));
+		file.AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
+		file.AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
+		file.AddLine("single=%i", (flags & tfxEmitterPropertyFlags_single));
+		file.AddLine("one_shot=%i", (flags & tfxEmitterPropertyFlags_one_shot));
+		file.AddLine("spawn_on_grid=%i", (flags & tfxEmitterPropertyFlags_spawn_on_grid));
+		file.AddLine("grid_spawn_clockwise=%i", (flags & tfxEmitterPropertyFlags_grid_spawn_clockwise));
+		file.AddLine("fill_area=%i", (flags & tfxEmitterPropertyFlags_fill_area));
+		file.AddLine("emitter_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_emitter_handle_auto_center));
+		file.AddLine("edge_traversal=%i", (flags & tfxEmitterPropertyFlags_edge_traversal));
 		file.AddLine("angle_setting=%i", property.angle_setting);
 		file.AddLine("angle_offset=%f", property.angle_offset);
-		file.AddLine("global_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_global_uniform_size));
-		file.AddLine("base_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_base_uniform_size));
-		file.AddLine("lifetime_uniform_size=%i", (property.flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
-		file.AddLine("use_spawn_ratio=%i", (property.flags & tfxEmitterPropertyFlags_use_spawn_ratio));
+		file.AddLine("global_uniform_size=%i", (flags & tfxEmitterPropertyFlags_global_uniform_size));
+		file.AddLine("base_uniform_size=%i", (flags & tfxEmitterPropertyFlags_base_uniform_size));
+		file.AddLine("lifetime_uniform_size=%i", (flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
+		file.AddLine("use_spawn_ratio=%i", (flags & tfxEmitterPropertyFlags_use_spawn_ratio));
 		file.AddLine("layer=%i", property.layer);
 
 	}
@@ -5931,7 +5931,7 @@ namespace tfx {
 	}
 
 	float GetMaxAmount(EffectEmitter &e) {
-		if (e.properties.flags & tfxEmitterPropertyFlags_single || e.properties.flags & tfxEmitterPropertyFlags_one_shot)
+		if (e.common.property_flags & tfxEmitterPropertyFlags_single || e.common.property_flags & tfxEmitterPropertyFlags_one_shot)
 			return (float)e.properties.spawn_amount;
 		Graph &amount = *e.GetGraphByType(tfxBase_amount);
 		Graph &amount_variation = *e.GetGraphByType(tfxVariation_amount);
