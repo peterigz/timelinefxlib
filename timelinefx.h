@@ -181,6 +181,7 @@ namespace tfx {
 	struct EffectorStore;
 	struct Particle;
 	struct tfxParticle;
+	struct tfxParticleData;
 	struct ComputeSprite;
 	struct ParticleSprite;
 	struct ComputeParticle;
@@ -2427,17 +2428,9 @@ typedef unsigned int tfxEffectID;
 		Matrix2 matrix;
 	};
 
-	struct tfxTransform3D {
-		//Position, scale and rotation values
-		LocalFormState local;
-		FormState world;
-		FormState captured;
-		//2d matrix for transformations
-		Matrix2 matrix;
-	};
-
 	struct tfxCommon {
 
+		tfxTransform transform;
 		float frame;
 		float age;
 		float loop_length;
@@ -2505,7 +2498,6 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxEmitter {
-		tfxTransform transform;
 		EffectEmitter *library_link;
 		EffectEmitterType type;
 		tfxParticle *parent_particle;
@@ -2536,11 +2528,9 @@ typedef unsigned int tfxEffectID;
 	struct tfxEffect {
 		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
 
-		tfxTransform transform;
 		EffectEmitter *library_link;
 		tfxEffectID id;
 		LookupMode lookup_mode;
-		Particle *parent_particle;
 		tfxCommon common;
 		tfxKey path_hash;
 		tfxEffectState current;
@@ -2552,10 +2542,9 @@ typedef unsigned int tfxEffectID;
 		tfxfixedvec<ParticleSprite> sprites[tfxLAYERS];
 		void *user_data;
 		void(*update_callback)(tfxEffect &effect);		//Called after the state has been udpated
-		void(*initialise_particle_callback)(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values, float tween);
+		void(*initialise_particle_callback)(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
 
 		tfxEffect() :
-			parent_particle(nullptr),
 			path_hash(0),
 			max_sub_emitters(0),
 			lookup_mode(tfxFast)
@@ -2571,9 +2560,9 @@ typedef unsigned int tfxEffectID;
 		tfxEmitter &GrabSubEffect();
 		tfxEmitter& AddSubEffect(tfxEmitter &sub_effect);
 		inline void AllowMoreParticles() { common.property_flags |= tfxEmitterPropertyFlags_can_grow_particle_memory; }
-		inline void Move(float x, float y) { transform.local.position.x += x; transform.local.position.y += y; }
-		inline void Position(float x, float y, bool capture = true) { transform.local.position.x = x; transform.local.position.y = y; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
-		inline void Position(tfxVec2 pos, bool capture = true) { transform.local.position = pos; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
+		inline void Move(float x, float y) { common.transform.local.position.x += x; common.transform.local.position.y += y; }
+		inline void Position(float x, float y, bool capture = true) { common.transform.local.position.x = x; common.transform.local.position.y = y; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
+		inline void Position(tfxVec2 pos, bool capture = true) { common.transform.local.position = pos; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
 		inline void SetLookupMode(LookupMode mode) { lookup_mode = mode; }
 		
 	};
@@ -2583,8 +2572,6 @@ typedef unsigned int tfxEffectID;
 	//This is only for library storage, when using to update each frame this is copied to tfxEffectType and tfxEmitterType, much more compact versions more
 	//suited for realtime use.
 	struct EffectEmitter {
-		tfxTransform transform;
-
 		//The current state of the effect/emitter used in the editor only at this point
 		tfxEmitterState current;
 		tfxEmitterSpawnControls spawn_controls;
@@ -2828,7 +2815,7 @@ TFX_CUSTOM_EMITTER
 	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
 	//168 bytes
 	//This struct is now only used in the Editor
-	struct Particle {
+	struct tfxParticleData {
 		LocalFormState local;			//The local position of the particle, relative to the emitter.
 		FormState world;				//The world position of the particle relative to the world/screen.
 		FormState captured;				//The captured world coords for tweening
@@ -2846,6 +2833,11 @@ TFX_CUSTOM_EMITTER
 		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
 		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
 		tfxRGBA8 color;					//Colour of the particle
+	};
+
+	struct Particle {
+		tfxParticleData data;
+
 		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
@@ -2854,23 +2846,7 @@ TFX_CUSTOM_EMITTER
 	};
 
 	struct tfxParticle {
-		LocalFormState local;			//The local position of the particle, relative to the emitter.
-		FormState world;				//The world position of the particle relative to the world/screen.
-		FormState captured;				//The captured world coords for tweening
-		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
-		//Read only when ControlParticle is called, only written to at spawn time
-		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
-		float emission_angle;			//Emission angle of the particle at spawn time
-		float noise_offset;				//Higer numbers means random movement is less uniform
-		float noise_resolution;			//Higer numbers means random movement is more uniform
-		tfxParticleFlags flags;			//flags for different states
-		//Updated everyframe
-		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
-		float max_age;					//max age before the particle expires
-		float image_frame;				//Current frame of the image if it's an animation
-		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
-		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
-		tfxRGBA8 color;					//Colour of the particle
+		tfxParticleData data;
 		//Internal use variables
 		tfxParticle *next_ptr;
 		unsigned int sprite_index;
@@ -3208,7 +3184,7 @@ TFX_CUSTOM_EMITTER
 	bool Copy(tfxEffectPool &storage, EffectEmitter &in, tfxEffectID &out);
 
 	//Particle initialisation functions, one for 2d one for 3d effects
-	void InitialiseParticle2d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values, float tween);
+	void InitialiseParticle2d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
 
 	//Helper functions
