@@ -2805,6 +2805,21 @@ TFX_CUSTOM_EMITTER
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode (not needed anymore), expired flag, frame
 	};
 
+	struct tfxControlData {
+		unsigned int flags;
+		float velocity_adjuster;
+		float global_intensity;
+		float image_size_y;
+		float image_frame_rate;
+		float stretch;
+		float emitter_size_y;
+		float emitter_handle_y;
+		float overal_scale;
+		float angle_offset;
+		OvertimeAttributes *graphs;
+		tfxVec2 image_handle;
+	};
+
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
 	//Particles are stored in the particle manager particle buffer.
@@ -3182,6 +3197,7 @@ TFX_CUSTOM_EMITTER
 	//Particle initialisation functions, one for 2d one for 3d effects
 	void InitialiseParticle2d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
+	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, EffectEmitter *library_link);
 
 	//Helper functions
 
