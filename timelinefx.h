@@ -851,6 +851,12 @@ typedef unsigned int tfxEffectID;
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
 		tfxVec4(tfxVec2 vec1, tfxVec2 vec2) : x(vec1.x), y(vec1.y), z(vec2.x), w(vec2.y) {}
 
+		inline tfxVec2 xy() { return tfxVec2(x, y); }
+		inline tfxVec3 xyz() { return tfxVec3(x, y, z); }
+
+		inline void operator=(const tfxVec2 &v) { x = v.x; y = v.y; }
+		inline void operator=(const tfxVec3 &v) { x = v.x; y = v.y; z = v.z; }
+
 		inline tfxVec4 operator+(const tfxVec4 &v) { return tfxVec4(x + v.x, y + v.y, z + v.z, w + v.w); }
 		inline tfxVec4 operator-(const tfxVec4 &v) { return tfxVec4(x - v.x, y - v.y, z - v.z, w - v.w); }
 		inline tfxVec4 operator-() { return tfxVec4(-x, -y, -z, -w); }
@@ -861,6 +867,16 @@ typedef unsigned int tfxEffectID;
 		inline void operator+=(const tfxVec4 &v) { x += v.x; y += v.y; z += v.z; w += v.w; }
 		inline void operator*=(const tfxVec4 &v) { x *= v.x; y *= v.y; z *= v.z; w *= v.w; }
 		inline void operator/=(const tfxVec4 &v) { x /= v.x; y /= v.y; z /= v.z; w /= v.w; }
+
+		inline void operator-=(const tfxVec3 &v) { x -= v.x; y -= v.y; z -= v.z; }
+		inline void operator+=(const tfxVec3 &v) { x += v.x; y += v.y; z += v.z; }
+		inline void operator*=(const tfxVec3 &v) { x *= v.x; y *= v.y; z *= v.z; }
+		inline void operator/=(const tfxVec3 &v) { x /= v.x; y /= v.y; z /= v.z; }
+
+		inline void operator-=(const tfxVec2 &v) { x -= v.x; y -= v.y; }
+		inline void operator+=(const tfxVec2 &v) { x += v.x; y += v.y; }
+		inline void operator*=(const tfxVec2 &v) { x *= v.x; y *= v.y; }
+		inline void operator/=(const tfxVec2 &v) { x /= v.x; y /= v.y; }
 
 		inline tfxVec4 operator+(float v) const { return tfxVec4(x + v, y + v, z + v, w + v); }
 		inline tfxVec4 operator-(float v) const { return tfxVec4(x - v, y - v, z - v, w - v); }
@@ -1082,7 +1098,7 @@ typedef unsigned int tfxEffectID;
 
 	}
 
-	inline tfxVec2 InterpolateVec2(float tween, tfxVec2 &from, tfxVec2 &to) {
+	inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
 		return from * tween + to * (1.f - tween);
 	}
 
@@ -2172,32 +2188,13 @@ typedef unsigned int tfxEffectID;
 
 	//Store the current state of the object in 2d space
 	struct FormState {
-		tfxVec2 position;
+		tfxVec4 position;	//Rotation is in w
 		tfxVec2 scale;
-		float rotation;
 	};
 
 	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
 	struct LocalFormState {
-		tfxVec2 position;
-		float rotation;
-	};
-
-	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
-	struct LocalFormState3D {
-		tfxVec4 position;
-	};
-
-	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
-	struct ChangeState3D {
-		tfxVec4 velocity;	//rotation change in w
-		tfxVec2 scale;
-	};
-
-	//Store the current state of the object in 2d space
-	struct FormState3D {
-		tfxVec4 position;	//Contains rotation in w
-		tfxVec2 scale;
+		tfxVec4 position;	//Rotation is in w
 	};
 
 	struct Base {
@@ -2522,7 +2519,7 @@ typedef unsigned int tfxEffectID;
 		tfxParticle &GrabParticle();
 	};
 
-	float GetEmissionDirection(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec2 &local_position, tfxVec2 &world_position, tfxVec2 &emitter_size);
+	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 &emitter_size);
 
 	struct tfxEffect {
 		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
@@ -2784,22 +2781,12 @@ TFX_CUSTOM_EMITTER
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, image layer index, shader function index, blend type
 	};
 
-	struct ParticleSprite {	//80 bytes
+	struct ParticleSprite {	//88 bytes
 		void *ptr;					//Pointer to the image data
 		tfxParticle *particle;		//We need to point to the particle in order to update it's sprite index
 		FormState world;
 		FormState captured;
 		tfxVec2 handle;
-		tfxRGBA8 color;				//The color tint of the sprite
-		float intensity;			
-		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode (not needed anymore), expired flag, frame
-	};
-
-	struct ParticleSprite3D {	//80 bytes
-		void *ptr;					//Pointer to the image data
-		tfxParticle *particle;		//We need to point to the particle in order to update it's sprite index
-		FormState3D world;
-		FormState3D captured;
 		tfxRGBA8 color;				//The color tint of the sprite
 		float intensity;			
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode (not needed anymore), expired flag, frame
@@ -3188,7 +3175,6 @@ TFX_CUSTOM_EMITTER
 	void Transform(tfxEmitter &emitter, tfxParticle &parent);
 	void Transform(tfxTransform &out, tfxTransform &in);
 	FormState Tween(float tween, FormState &world, FormState &captured);
-	tfxVec2 InterpolateVec2(float, const tfxVec2&, const tfxVec2&);
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
