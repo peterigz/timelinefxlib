@@ -816,6 +816,8 @@ typedef unsigned int tfxEffectID;
 		tfxVec3() { x = y = z = 0.f; }
 		tfxVec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
 
+		inline tfxVec2 xy() { return tfxVec2(x, y); }
+
 		inline bool operator==(const tfxVec3 &v) const { return x == v.x && y == v.y && z == v.z; }
 
 		inline tfxVec3 operator+(const tfxVec3 &v) const { return tfxVec3(x + v.x, y + v.y, z + v.z); }
@@ -916,7 +918,7 @@ typedef unsigned int tfxEffectID;
 
 	inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
 	inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
-	inline void tfxBound(tfxVec2 &s, tfxVec2 &b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1; if (s.y >= b.y) s.y = b.y - 1; }
+	inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1; if (s.y >= b.y) s.y = b.y - 1; }
 
 	static inline float LengthVec2(tfxVec3 const &v) {
 		return v.x * v.x + v.y * v.y + v.z * v.z;
@@ -930,6 +932,17 @@ typedef unsigned int tfxEffectID;
 		float length = LengthVec(v);
 		return tfxVec3(v.x / length, v.y / length, v.z / length);
 	}
+
+	struct Matrix4 {
+
+		tfxVec4 v[4];
+
+		inline void Set2(float aa, float ab, float ba, float bb) {
+			v[0].x = aa; v[0].y = ab;
+			v[1].x = ba; v[1].y = bb;
+		}
+
+	};
 
 	//Very simple 2D Matix
 	struct Matrix2 {
@@ -958,10 +971,17 @@ typedef unsigned int tfxEffectID;
 			bb *= s;
 		}
 
-		Matrix2 Transform(Matrix2 m) {
+		Matrix2 Transform(Matrix2 &m) {
 			Matrix2 r;
 			r.aa = aa * m.aa + ab * m.ba; r.ab = aa * m.ab + ab * m.bb;
 			r.ba = ba * m.aa + bb * m.ba; r.bb = ba * m.ab + bb * m.bb;
+			return r;
+		}
+
+		Matrix2 Transform(Matrix4 &m) {
+			Matrix2 r;
+			r.aa = aa * m.v[0].x + ab * m.v[1].x; r.ab = aa * m.v[0].y + ab * m.v[1].y;
+			r.ba = ba * m.v[0].x + bb * m.v[1].x; r.bb = ba * m.v[0].y + bb * m.v[1].y;
 			return r;
 		}
 
@@ -974,11 +994,12 @@ typedef unsigned int tfxEffectID;
 
 	};
 
-	struct Matrix4 {
-
-		tfxVec4 v[4];
-
-	};
+	static inline tfxVec2 mmTransformVector(const Matrix4 &mat, tfxVec2 v) {
+		tfxVec2 tv = tfxVec2(0.f, 0.f);
+		tv.x = v.x * mat.v[0].x + v.y * mat.v[1].x;
+		tv.y = v.x * mat.v[0].y + v.y * mat.v[1].y;
+		return tv;
+	}
 
 	inline Matrix4 M4(float v = 1.f) {
 		Matrix4 R =
@@ -1055,6 +1076,20 @@ typedef unsigned int tfxEffectID;
 		);
 	}
 
+	static inline Matrix4 mmTransform2(const Matrix4 &in, Matrix4 &m) {
+		Matrix4 r;
+		r.v[0].x = in.v[0].x * m.v[0].x + in.v[0].y * m.v[1].x; r.v[0].y = in.v[0].x * m.v[0].y + in.v[0].y * m.v[1].y;
+		r.v[1].x = in.v[1].x * m.v[0].x + in.v[1].y * m.v[1].x; r.v[1].y = in.v[1].x * m.v[0].y + in.v[1].y * m.v[1].y;
+		return r;
+	}
+
+	static inline Matrix4 mmTransform2(const Matrix4 &in, Matrix2 &m) {
+		Matrix4 r;
+		r.v[0].x = in.v[0].x * m.aa + in.v[0].y * m.ba; r.v[0].y = in.v[0].x * m.ab + in.v[0].y * m.bb;
+		r.v[1].x = in.v[1].x * m.aa + in.v[1].y * m.ba; r.v[1].y = in.v[1].x * m.ab + in.v[1].y * m.bb;
+		return r;
+	}
+
 	static inline tfxVec4 mmTransformVector(const Matrix4 &mat, tfxVec4 &vec) {
 		tfxVec4 v;
 
@@ -1100,6 +1135,20 @@ typedef unsigned int tfxEffectID;
 
 	inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
 		return from * tween + to * (1.f - tween);
+	}
+
+	inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &to) {
+		__m128 l4 = _mm_set_ps1(tween);
+		__m128 l4minus1 = _mm_set_ps1(1.f - tween);
+		__m128 f4 = _mm_set_ps(from.x, from.y, from.z, from.w);
+		__m128 t4 = _mm_set_ps(to.x, to.y, to.z, to.w);
+		__m128 from_lerp = _mm_mul_ps(f4, l4);
+		__m128 to_lerp = _mm_mul_ps(f4, l4minus1);
+		__m128 result = _mm_add_ps(from_lerp, to_lerp);
+		tfxVec4 vec;
+		_mm_store_ps(&vec.x, result);
+
+		return vec;
 	}
 
 	inline float Interpolatef(float tween, float from, float to) {
@@ -2286,7 +2335,7 @@ typedef unsigned int tfxEffectID;
 		//Animation frame rate
 		float frame_rate;
 		//Offset of emitters
-		tfxVec2 emitter_handle;
+		tfxVec3 emitter_handle;
 		//When single or one shot flags are set, spawn this amount of particles in one go
 		unsigned int spawn_amount;
 		//Layer of the particle manager that the particle is added to
@@ -2297,7 +2346,7 @@ typedef unsigned int tfxEffectID;
 		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
 		float angle_offset;
 		//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
-		tfxVec2 grid_points;
+		tfxVec3 grid_points;
 		//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
 		float loop_length;
 		//The start frame index of the animation
@@ -2314,8 +2363,8 @@ typedef unsigned int tfxEffectID;
 			spawn_amount(1),
 			emission_type(EmissionType::tfxPoint),
 			emission_direction(EmissionDirection::tfxOutwards),
-			grid_points({ 10.f, 10.f }),
-			emitter_handle(tfxVec2()),
+			grid_points({ 10.f, 10.f, 10.f }),
+			emitter_handle(),
 			end_behaviour(LineTraversalEndBehaviour::tfxLoop),
 			loop_length(0.f),
 			layer(0),
@@ -2420,7 +2469,11 @@ typedef unsigned int tfxEffectID;
 		FormState world;
 		FormState captured;
 		//2d matrix for transformations
-		Matrix2 matrix;
+		Matrix4 matrix;
+
+		tfxTransform() :
+			matrix(M4())
+		{}
 	};
 
 	struct tfxCommon {
@@ -2433,7 +2486,7 @@ typedef unsigned int tfxEffectID;
 		float timeout_counter;
 		float timeout;
 		unsigned int active_children;
-		tfxVec2 handle;
+		tfxVec3 handle;
 		tfxEmitterStateFlags state_flags;
 		tfxEmitterPropertyFlags property_flags;
 		EffectLibrary *library;
@@ -2453,9 +2506,9 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxEmitterState {
-		tfxVec2 emitter_size;
-		tfxVec2 grid_coords;
-		tfxVec2 grid_direction;
+		tfxVec3 emitter_size;
+		tfxVec3 grid_coords;
+		tfxVec3 grid_direction;
 		float velocity_adjuster;
 		float global_opacity;
 		float stretch;
@@ -2489,7 +2542,7 @@ typedef unsigned int tfxEffectID;
 		float noise_resolution;
 		float intensity;
 		tfxVec2 image_handle;
-		tfxVec2 grid_segment_size;
+		tfxVec3 grid_segment_size;
 	};
 
 	struct tfxEmitter {
@@ -2519,7 +2572,7 @@ typedef unsigned int tfxEffectID;
 		tfxParticle &GrabParticle();
 	};
 
-	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 &emitter_size);
+	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
 
 	struct tfxEffect {
 		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
@@ -3182,6 +3235,7 @@ TFX_CUSTOM_EMITTER
 
 	//Particle initialisation functions, one for 2d one for 3d effects
 	void InitialiseParticle2d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
+	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
 	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, EffectEmitter *library_link);
 
