@@ -284,7 +284,7 @@ typedef unsigned int tfxEffectID;
 
 
 #define tfxGlobalCount  13
-#define	tfxPropertyCount  8
+#define	tfxPropertyCount  9
 #define	tfxBaseCount  8
 #define	tfxVariationCount  9
 #define	tfxOvertimeCount  16
@@ -317,6 +317,7 @@ typedef unsigned int tfxEffectID;
 		tfxProperty_splatter,
 		tfxProperty_emitter_width,
 		tfxProperty_emitter_height,
+		tfxProperty_emitter_depth,
 		tfxProperty_arc_size,
 		tfxProperty_arc_offset,
 
@@ -847,7 +848,11 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxVec4 {
-		float x, y, z, w;
+		union {
+			struct { float x, y, z, w; };
+			struct { float r, g, b, a; };
+			struct { float c1, c2, c3, c4; };
+		};
 
 		tfxVec4() { x = y = z = w = 0.f; }
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
@@ -938,8 +943,8 @@ typedef unsigned int tfxEffectID;
 		tfxVec4 v[4];
 
 		inline void Set2(float aa, float ab, float ba, float bb) {
-			v[0].x = aa; v[0].y = ab;
-			v[1].x = ba; v[1].y = bb;
+			v[0].c1 = aa; v[0].c2 = ab;
+			v[1].c1 = ba; v[1].c2 = bb;
 		}
 
 	};
@@ -1023,33 +1028,19 @@ typedef unsigned int tfxEffectID;
 		return(R);
 	}
 
-	static inline Matrix4 mmRotate(Matrix4 const &m, float r, tfxVec3 const &v) {
-		float const a = r;
-		float const c = cosf(a);
-		float const s = sinf(a);
+	static inline Matrix4 mmXRotate(float angle) {
+		float c = std::cos(angle);
+		float s = std::sin(angle);
 
-		tfxVec3 axis = NormalizeVec(v);
-		tfxVec3 temp = axis * (1.f - c);
+		Matrix4 r =
+		{ {
+			{1, 0, 0, 0},
+			{0, c,-s, 0},
+			{0, s, c, 0},
+			{0, 0, 0, 1}}, 
+		};
 
-		Matrix4 rotate;
-		rotate.v[0].x = c + temp.x * axis.x;
-		rotate.v[0].y = temp.x * axis.y + s * axis.z;
-		rotate.v[0].z = temp.x * axis.z - s * axis.y;
-
-		rotate.v[1].x = temp.y * axis.x - s * axis.z;
-		rotate.v[1].y = c + temp.y * axis.y;
-		rotate.v[1].z = temp.y * axis.z + s * axis.x;
-
-		rotate.v[2].x = temp.z * axis.x + s * axis.y;
-		rotate.v[2].y = temp.z * axis.y - s * axis.x;
-		rotate.v[2].z = c + temp.z * axis.z;
-
-		Matrix4 result;
-		result.v[0] = m.v[0] * rotate.v[0].x + m.v[1] * rotate.v[0].y + m.v[2] * rotate.v[0].z;
-		result.v[1] = m.v[0] * rotate.v[1].x + m.v[1] * rotate.v[1].y + m.v[2] * rotate.v[1].z;
-		result.v[2] = m.v[0] * rotate.v[2].x + m.v[1] * rotate.v[2].y + m.v[2] * rotate.v[2].z;
-		result.v[3] = m.v[3];
-		return result;
+		return r;
 	}
 
 	static inline Matrix4 mmTranslate(Matrix4 const &m, tfxVec3 const &v) {
@@ -1090,10 +1081,46 @@ typedef unsigned int tfxEffectID;
 		return r;
 	}
 
+	static inline Matrix4 mmTransform(const Matrix4 &in, Matrix4 &m) {
+		Matrix4 res = M4(0.f);
+
+		__m128 in_row[4];
+		in_row[0] = _mm_load_ps(&in.v[0].x);
+		in_row[1] = _mm_load_ps(&in.v[1].x);
+		in_row[2] = _mm_load_ps(&in.v[2].x);
+		in_row[3] = _mm_load_ps(&in.v[3].x);
+
+		__m128 m_row1 = _mm_set_ps(m.v[3].c1, m.v[2].c1, m.v[1].c1, m.v[0].c1);
+		__m128 m_row2 = _mm_set_ps(m.v[3].c2, m.v[2].c2, m.v[1].c2, m.v[0].c2);
+		__m128 m_row3 = _mm_set_ps(m.v[3].c3, m.v[2].c3, m.v[1].c3, m.v[0].c3);
+		__m128 m_row4 = _mm_set_ps(m.v[3].c4, m.v[2].c4, m.v[1].c4, m.v[0].c4);
+
+		for (int r = 0; r <= 3; ++r)
+		{
+
+			__m128 row1result = _mm_mul_ps(in_row[r], m_row1);
+			__m128 row2result = _mm_mul_ps(in_row[r], m_row2);
+			__m128 row3result = _mm_mul_ps(in_row[r], m_row3);
+			__m128 row4result = _mm_mul_ps(in_row[r], m_row4);
+
+			float tmp[4];
+			_mm_store_ps(tmp, row1result);
+			res.v[r].c1 = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			_mm_store_ps(tmp, row2result);
+			res.v[r].c2 = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			_mm_store_ps(tmp, row3result);
+			res.v[r].c3 = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			_mm_store_ps(tmp, row4result);
+			res.v[r].c4 = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+		}
+		return res;
+	}
+
 	static inline tfxVec4 mmTransformVector(const Matrix4 &mat, tfxVec4 &vec) {
 		tfxVec4 v;
 
-		__m128 v4 = _mm_set_ps(vec.x, vec.y, vec.z, vec.w);
+		__m128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
 		__m128 mrow1 = _mm_load_ps(&mat.v[0].x);
 		__m128 mrow2 = _mm_load_ps(&mat.v[1].x);
@@ -2176,6 +2203,7 @@ typedef unsigned int tfxEffectID;
 		Graph splatter;
 		Graph emitter_width;
 		Graph emitter_height;
+		Graph emitter_depth;
 		Graph arc_size;
 		Graph arc_offset;
 	};
@@ -2789,6 +2817,7 @@ TFX_CUSTOM_EMITTER
 		void DisableAllEmitters();
 		void DisableAllEmittersExcept(EffectEmitter &emitter);
 		bool IsFiniteEffect();
+		void FlagAs3D(bool flag);
 		bool Is3DEffect();
 	};
 
@@ -3225,6 +3254,7 @@ TFX_CUSTOM_EMITTER
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
 	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
 	void TransformParticle(tfxParticleData &p, tfxCommon &common, bool is_line);
+	void TransformParticle3d(tfxParticleData &p, tfxCommon &common, bool is_line);
 	void Transform(tfxEmitter &emitter, tfxParticle &parent);
 	void Transform(tfxTransform &out, tfxTransform &in);
 	FormState Tween(float tween, FormState &world, FormState &captured);
@@ -3238,6 +3268,7 @@ TFX_CUSTOM_EMITTER
 	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
 	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, EffectEmitter *library_link);
+	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, EffectEmitter *library_link);
 
 	//Helper functions
 
