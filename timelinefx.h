@@ -173,6 +173,7 @@ namespace tfx {
 
 #define TWO63 0x8000000000000000u 
 #define TWO64f (TWO63*2.0)
+#define tfxPI 3.14159265359
 
 	//----------------------------------------------------------
 	//Forward declarations
@@ -283,8 +284,8 @@ typedef unsigned int tfxEffectID;
 	};
 
 
-#define tfxGlobalCount  13
-#define	tfxPropertyCount  9
+#define tfxGlobalCount  15
+#define	tfxPropertyCount  11
 #define	tfxBaseCount  8
 #define	tfxVariationCount  9
 #define	tfxOvertimeCount  16
@@ -309,11 +310,15 @@ typedef unsigned int tfxEffectID;
 		tfxGlobal_intensity,
 		tfxGlobal_frame_rate,
 		tfxGlobal_splatter,
-		tfxGlobal_effect_angle,
+		tfxGlobal_effect_roll,
+		tfxGlobal_effect_pitch,
+		tfxGlobal_effect_yaw,
 
 		tfxProperty_emission_angle,
 		tfxProperty_emission_range,
-		tfxProperty_emitter_angle,
+		tfxProperty_emitter_roll,
+		tfxProperty_emitter_pitch,
+		tfxProperty_emitter_yaw,
 		tfxProperty_splatter,
 		tfxProperty_emitter_width,
 		tfxProperty_emitter_height,
@@ -486,7 +491,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterPropertyFlags_one_shot = 1 << 5,							//Only spawn a single particle (or number of particles specified by spawn_amount) in one go
 		tfxEmitterPropertyFlags_spawn_on_grid = 1 << 6,						//When using an area, line or ellipse emitter, spawn along a grid
 		tfxEmitterPropertyFlags_grid_spawn_clockwise = 1 << 7,				//Spawn clockwise/left to right around the area
-		tfxEmitterPropertyFlags_fill_area = 1 << 8,							//Fill the area *not implemented yet*
+		tfxEmitterPropertyFlags_fill_area = 1 << 8,							//Fill the area
 		tfxEmitterPropertyFlags_emitter_handle_auto_center = 1 << 9,		//Center the handle of the emitter
 		tfxEmitterPropertyFlags_edge_traversal = 1 << 10,					//Line emitters only: make particles traverse the line
 		tfxEmitterPropertyFlags_global_uniform_size = 1 << 11,				//Keep the global particle size uniform
@@ -812,10 +817,15 @@ typedef unsigned int tfxEffectID;
 	inline tfxVec2 operator*(float ls, tfxVec2 rs) { return tfxVec2(rs.x * ls, rs.y * ls); }
 
 	struct tfxVec3 {
-		float x, y, z;
+		union {
+			struct { float x, y, z; };
+			struct { float pitch, yaw, roll; };
+		};
 
 		tfxVec3() { x = y = z = 0.f; }
+		tfxVec3(float v) : x(v), y(v), z(v) {}
 		tfxVec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+		inline void operator=(const tfxVec2 &v) { x = v.x; y = v.y; }
 
 		inline tfxVec2 xy() { return tfxVec2(x, y); }
 
@@ -857,6 +867,7 @@ typedef unsigned int tfxEffectID;
 		tfxVec4() { x = y = z = w = 0.f; }
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
 		tfxVec4(tfxVec2 vec1, tfxVec2 vec2) : x(vec1.x), y(vec1.y), z(vec2.x), w(vec2.y) {}
+		tfxVec4(tfxVec3 vec) : x(vec.x), y(vec.y), z(vec.x), w(0.f) {}
 
 		inline tfxVec2 xy() { return tfxVec2(x, y); }
 		inline tfxVec3 xyz() { return tfxVec3(x, y, z); }
@@ -923,7 +934,8 @@ typedef unsigned int tfxEffectID;
 
 	inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
 	inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
-	inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1; if (s.y >= b.y) s.y = b.y - 1; }
+	inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
+	inline void tfxBound3d(tfxVec3 s, tfxVec3 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
 
 	static inline float LengthVec2(tfxVec3 const &v) {
 		return v.x * v.x + v.y * v.y + v.z * v.z;
@@ -935,6 +947,11 @@ typedef unsigned int tfxEffectID;
 
 	static inline tfxVec3 NormalizeVec(tfxVec3 const &v) {
 		float length = LengthVec(v);
+		return tfxVec3(v.x / length, v.y / length, v.z / length);
+	}
+
+	static inline tfxVec3 NormalizeVec(tfxVec3 const &v, float &length) {
+		if (length == 0) return tfxVec3();
 		return tfxVec3(v.x / length, v.y / length, v.z / length);
 	}
 
@@ -1031,7 +1048,6 @@ typedef unsigned int tfxEffectID;
 	static inline Matrix4 mmXRotate(float angle) {
 		float c = std::cos(angle);
 		float s = std::sin(angle);
-
 		Matrix4 r =
 		{ {
 			{1, 0, 0, 0},
@@ -1039,7 +1055,32 @@ typedef unsigned int tfxEffectID;
 			{0, s, c, 0},
 			{0, 0, 0, 1}}, 
 		};
+		return r;
+	}
 
+	static inline Matrix4 mmYRotate(float angle) {
+		float c = std::cos(angle);
+		float s = std::sin(angle);
+		Matrix4 r =
+		{ {
+			{ c, 0, s, 0},
+			{ 0, 1, 0, 0},
+			{-s, 0, c, 0},
+			{ 0, 0, 0, 1}}, 
+		};
+		return r;
+	}
+
+	static inline Matrix4 mmZRotate(float angle) {
+		float c = std::cos(angle);
+		float s = std::sin(angle);
+		Matrix4 r =
+		{ {
+			{c, -s, 0, 0},
+			{s,  c, 0, 0},
+			{0,  0, 1, 0},
+			{0,  0, 0, 1}}, 
+		};
 		return r;
 	}
 
@@ -1085,10 +1126,10 @@ typedef unsigned int tfxEffectID;
 		Matrix4 res = M4(0.f);
 
 		__m128 in_row[4];
-		in_row[0] = _mm_load_ps(&in.v[0].x);
-		in_row[1] = _mm_load_ps(&in.v[1].x);
-		in_row[2] = _mm_load_ps(&in.v[2].x);
-		in_row[3] = _mm_load_ps(&in.v[3].x);
+		in_row[0] = _mm_load_ps(&in.v[0].c1);
+		in_row[1] = _mm_load_ps(&in.v[1].c1);
+		in_row[2] = _mm_load_ps(&in.v[2].c1);
+		in_row[3] = _mm_load_ps(&in.v[3].c1);
 
 		__m128 m_row1 = _mm_set_ps(m.v[3].c1, m.v[2].c1, m.v[1].c1, m.v[0].c1);
 		__m128 m_row2 = _mm_set_ps(m.v[3].c2, m.v[2].c2, m.v[1].c2, m.v[0].c2);
@@ -1117,7 +1158,7 @@ typedef unsigned int tfxEffectID;
 		return res;
 	}
 
-	static inline tfxVec4 mmTransformVector(const Matrix4 &mat, tfxVec4 &vec) {
+	static inline tfxVec4 mmTransformVector(const Matrix4 &mat, const tfxVec4 vec) {
 		tfxVec4 v;
 
 		__m128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
@@ -1161,6 +1202,10 @@ typedef unsigned int tfxEffectID;
 	}
 
 	inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
+		return from * tween + to * (1.f - tween);
+	}
+
+	inline tfxVec3 InterpolateVec3(float tween, tfxVec3 from, tfxVec3 to) {
 		return from * tween + to * (1.f - tween);
 	}
 
@@ -2193,13 +2238,17 @@ typedef unsigned int tfxEffectID;
 		Graph intensity;
 		Graph frame_rate;
 		Graph splatter;
-		Graph effect_angle;
+		Graph roll;
+		Graph pitch;
+		Graph yaw;
 	};
 
 	struct PropertyAttributes {
 		Graph emission_angle;
 		Graph emission_range;
-		Graph emitter_angle;
+		Graph roll;
+		Graph pitch;
+		Graph yaw;
 		Graph splatter;
 		Graph emitter_width;
 		Graph emitter_height;
@@ -2264,14 +2313,26 @@ typedef unsigned int tfxEffectID;
 	};
 
 	//Store the current state of the object in 2d space
-	struct FormState {
+	struct tfxEmitterFormState {
+		tfxVec3 position;
+		tfxVec3 scale;
+		tfxVec3 rotations;
+	};
+
+	struct tfxParticleFormState {
 		tfxVec4 position;	//Rotation is in w
 		tfxVec2 scale;
 	};
 
 	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
-	struct LocalFormState {
+	struct tfxLocalParticleFormState {
 		tfxVec4 position;	//Rotation is in w
+	};
+
+	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
+	struct tfxLocalEmitterFormState {
+		tfxVec3 position;
+		tfxVec3 rotations;
 	};
 
 	struct Base {
@@ -2491,22 +2552,21 @@ typedef unsigned int tfxEffectID;
 		float weight;
 	};
 
-	struct tfxTransform {
+	struct tfxEmitterTransform {
 		//Position, scale and rotation values
-		LocalFormState local;
-		FormState world;
-		FormState captured;
+		tfxLocalEmitterFormState local;
+		tfxEmitterFormState world;
+		tfxEmitterFormState captured;
 		//2d matrix for transformations
 		Matrix4 matrix;
-
-		tfxTransform() :
+		tfxEmitterTransform() :
 			matrix(M4())
 		{}
 	};
 
 	struct tfxCommon {
 
-		tfxTransform transform;
+		tfxEmitterTransform transform;
 		float frame;
 		float age;
 		float loop_length;
@@ -2601,6 +2661,7 @@ typedef unsigned int tfxEffectID;
 	};
 
 	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
+	tfxVec3 GetEmissionDirection3d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffect {
 		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
@@ -2866,8 +2927,8 @@ TFX_CUSTOM_EMITTER
 	struct ParticleSprite {	//88 bytes
 		void *ptr;					//Pointer to the image data
 		tfxParticle *particle;		//We need to point to the particle in order to update it's sprite index
-		FormState world;
-		FormState captured;
+		tfxParticleFormState world;
+		tfxParticleFormState captured;
 		tfxVec2 handle;
 		tfxRGBA8 color;				//The color tint of the sprite
 		float intensity;			
@@ -2892,16 +2953,14 @@ TFX_CUSTOM_EMITTER
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
 	//Particles are stored in the particle manager particle buffer.
-	//I really think that tweened frames should be ditched in favour of delta time so captured can be ditched
-	//168 bytes
-	//This struct is now only used in the Editor
 	struct tfxParticleData {
-		LocalFormState local;			//The local position of the particle, relative to the emitter.
-		FormState world;				//The world position of the particle relative to the world/screen.
-		FormState captured;				//The captured world coords for tweening
+		tfxLocalParticleFormState local;	//The local position of the particle, relative to the emitter.
+		tfxParticleFormState world;		//The world position of the particle relative to the world/screen.
+		tfxParticleFormState captured;	//The captured world coords for tweening
 		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
 		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
+		tfxVec3 velocity_normal;
 		float emission_angle;			//Emission angle of the particle at spawn time
 		float noise_offset;				//Higer numbers means random movement is less uniform
 		float noise_resolution;			//Higer numbers means random movement is more uniform
@@ -3252,12 +3311,12 @@ TFX_CUSTOM_EMITTER
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value);
 	void AssignGraphData(EffectEmitter &effect, tfxvec<tfxText> &values);
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
-	EffectEmitter CreateEffector(float x = 0.f, float y = 0.f);
 	void TransformParticle(tfxParticleData &p, tfxCommon &common, bool is_line);
 	void TransformParticle3d(tfxParticleData &p, tfxCommon &common, bool is_line);
 	void Transform(tfxEmitter &emitter, tfxParticle &parent);
-	void Transform(tfxTransform &out, tfxTransform &in);
-	FormState Tween(float tween, FormState &world, FormState &captured);
+	void Transform(tfxEmitterTransform &out, tfxEmitterTransform &in);
+	void Transform3d(tfxEmitterTransform &out, tfxEmitterTransform &in);
+	tfxParticleFormState Tween(float tween, tfxParticleFormState &world, tfxParticleFormState &captured);
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
