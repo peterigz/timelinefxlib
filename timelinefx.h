@@ -956,6 +956,21 @@ typedef unsigned int tfxEffectID;
 		return tfxVec3(v.x / length, v.y / length, v.z / length);
 	}
 
+	static inline tfxVec3 Cross(tfxVec3 a, tfxVec3 b) {
+		tfxVec3 result;
+
+		result.x = a.y*b.z - a.z*b.y;
+		result.y = a.z*b.x - a.x*b.z;
+		result.z = a.x*b.y - a.y*b.x;
+
+		return(result);
+	}
+
+	static inline float DotProduct(const tfxVec3 &a, const tfxVec3 &b)
+	{
+		return (a.x * b.x + a.y * b.y + a.z * b.z);
+	}
+
 	struct Matrix4 {
 
 		tfxVec4 v[4];
@@ -1185,6 +1200,35 @@ typedef unsigned int tfxEffectID;
 		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 
 		return v;
+	}
+
+	static inline Matrix4 mmRotate(Matrix4 const &m, float r, tfxVec3 const &v) {
+		float const a = r;
+		float const c = cosf(a);
+		float const s = sinf(a);
+
+		tfxVec3 axis = NormalizeVec(v);
+		tfxVec3 temp = axis * (1.f - c);
+
+		Matrix4 rotate;
+		rotate.v[0].x = c + temp.x * axis.x;
+		rotate.v[0].y = temp.x * axis.y + s * axis.z;
+		rotate.v[0].z = temp.x * axis.z - s * axis.y;
+
+		rotate.v[1].x = temp.y * axis.x - s * axis.z;
+		rotate.v[1].y = c + temp.y * axis.y;
+		rotate.v[1].z = temp.y * axis.z + s * axis.x;
+
+		rotate.v[2].x = temp.z * axis.x + s * axis.y;
+		rotate.v[2].y = temp.z * axis.y - s * axis.x;
+		rotate.v[2].z = c + temp.z * axis.z;
+
+		Matrix4 result = M4(1.f);
+		result.v[0] = m.v[0] * rotate.v[0].x + m.v[1] * rotate.v[0].y + m.v[2] * rotate.v[0].z;
+		result.v[1] = m.v[0] * rotate.v[1].x + m.v[1] * rotate.v[1].y + m.v[2] * rotate.v[1].z;
+		result.v[2] = m.v[0] * rotate.v[2].x + m.v[1] * rotate.v[2].y + m.v[2] * rotate.v[2].z;
+		result.v[3] = m.v[3];
+		return result;
 	}
 
 	inline float Clamp(float lower, float upper, float value) {

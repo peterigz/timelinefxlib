@@ -2072,89 +2072,86 @@ namespace tfx {
 		float emission_angle_variation = lookup_callback(common.library->property_graphs[library_link->property].emission_range, common.frame);
 		//----Emission
 		float range = emission_angle_variation * .5f;
-		float direction = 0;
 
-		if (library_link->properties.emission_type == EmissionType::tfxPoint) {
-			tfxVec3 result;
-			result.z = random_generation.Range(-1.f, 1.f) * (1.f - cos(range)) + cos(range);
-			float phi = random_generation.Range(-1.f, 1.f) * 2.f * tfxPI;
-			result.x = sqrt(1.f - (result.z * result.z)) * cos(phi);
-			result.y = sqrt(1.f - (result.z * result.z)) * sin(phi);
-			
-			if (emission_yaw + emission_pitch != 0.f) {
-				Matrix4 pitch = mmXRotate(emission_pitch);
-				Matrix4 yaw = mmYRotate(emission_yaw);
-				Matrix4 rotated = mmTransform(pitch, yaw);
-				tfxVec4 v = mmTransformVector(rotated, result);
-				return v.xyz();
-			}
-
-			return result;
-		}
-
+		tfxVec3 result;
 		tfxVec3 tmp_position;
 		if (local_position.x == 0 && local_position.y == 0)
 			tmp_position = emitter_size;
 		else
 			tmp_position = local_position;
 
-		if (library_link->properties.emission_direction == EmissionDirection::tfxOutwards) {
-
-			tfxVec3 to_handle;
-
-			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-				to_handle = (tmp_position);
-			else
-				to_handle = (world_position - common.transform.world.position);
-
-			direction = GetVectorAngle(to_handle.x, to_handle.y);
-
-		}
-		else if (library_link->properties.emission_direction == EmissionDirection::tfxInwards) {
-
-			tfxVec3 to_handle;
-
-			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-				to_handle = (-tmp_position);
-			else
-				to_handle = (common.transform.world.position - world_position);
-
-			direction = GetVectorAngle(to_handle.x, to_handle.y);
-
-		}
-		else if (library_link->properties.emission_direction == EmissionDirection::tfxBothways) {
-
-			if (current.emission_alternator) {
-
-				tfxVec3 to_handle;
+		tfxVec3 to_handle(0.f, 1.f, 0.f);
+		if (library_link->properties.emission_type != EmissionType::tfxPoint) {
+			if (library_link->properties.emission_direction == EmissionDirection::tfxOutwards) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 					to_handle = (tmp_position);
 				else
 					to_handle = (world_position - common.transform.world.position);
 
-				direction = GetVectorAngle(to_handle.x, to_handle.y);
+				to_handle = NormalizeVec(to_handle);
 
 			}
-			else {
-
-				tfxVec3 to_handle;
+			else if (library_link->properties.emission_direction == EmissionDirection::tfxInwards) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 					to_handle = (-tmp_position);
 				else
 					to_handle = (common.transform.world.position - world_position);
 
-				direction = GetVectorAngle(to_handle.x, to_handle.y);
+				to_handle = NormalizeVec(to_handle);
 
 			}
+			else if (library_link->properties.emission_direction == EmissionDirection::tfxBothways) {
 
-			current.emission_alternator = !current.emission_alternator;
+				if (current.emission_alternator) {
+
+					if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
+						to_handle = (tmp_position);
+					else
+						to_handle = (world_position - common.transform.world.position);
+				}
+				else {
+
+					if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
+						to_handle = (-tmp_position);
+					else
+						to_handle = (common.transform.world.position - world_position);
+				}
+
+				current.emission_alternator = !current.emission_alternator;
+				to_handle = NormalizeVec(to_handle);
+			}
 		}
 
-		if (std::isnan(direction))
-			direction = 0.f;
-		return direction + emission_pitch + random_generation.Range(-range, range);
+		tfxVec4 v = to_handle;
+		if (range != 0) {
+			result.y = random_generation.Range(-1.f, 1.f) * (1.f - cos(range)) + cos(range);
+			float phi = random_generation.Range(-1.f, 1.f) * 2.f * tfxPI;
+			result.x = sqrt(1.f - (result.y * result.y)) * cos(phi);
+			result.z = sqrt(1.f - (result.y * result.y)) * sin(phi);
+
+			v = result;
+
+			if (to_handle.y != 1.f && to_handle.x != 0.f && to_handle.z != 0.f) {
+				tfxVec3 u = Cross(tfxVec3(0.f, 1.f, 0.f), to_handle);
+				float rot = acosf(DotProduct(to_handle, tfxVec3(0.f, 1.f, 0.f)));
+				Matrix4 handle_mat = M4();
+				handle_mat = mmRotate(handle_mat, rot, u);
+				v = mmTransformVector(handle_mat, result);
+				v.x = -v.x;
+				v.z = -v.z;
+			}
+		}
+
+		if (emission_yaw + emission_pitch != 0.f) {
+			Matrix4 pitch = mmXRotate(emission_pitch);
+			Matrix4 yaw = mmZRotate(emission_yaw);
+			Matrix4 rotated = mmTransform(pitch, yaw);
+			v = mmTransformVector(rotated, v.xyz());
+		}
+
+		return v.xyz();
 	}
 
 	tfxParticle& tfxEmitter::GrabParticle() {
