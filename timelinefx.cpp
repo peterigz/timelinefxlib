@@ -2067,8 +2067,8 @@ namespace tfx {
 
 	tfxVec3 GetEmissionDirection3d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size) {
 		//float (*effect_lookup_callback)(Graph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
+		float emission_yaw = lookup_callback(common.library->property_graphs[library_link->property].emission_yaw, common.frame);
 		float emission_pitch = lookup_callback(common.library->property_graphs[library_link->property].emission_pitch, common.frame);
-		float emission_yaw = lookup_callback(common.library->property_graphs[library_link->property].emission_pitch, common.frame);
 		float emission_angle_variation = lookup_callback(common.library->property_graphs[library_link->property].emission_range, common.frame);
 		//----Emission
 		float range = emission_angle_variation * .5f;
@@ -2080,6 +2080,14 @@ namespace tfx {
 			float phi = random_generation.Range(-1.f, 1.f) * 2.f * tfxPI;
 			result.x = sqrt(1.f - (result.z * result.z)) * cos(phi);
 			result.y = sqrt(1.f - (result.z * result.z)) * sin(phi);
+			
+			if (emission_yaw + emission_pitch != 0.f) {
+				Matrix4 pitch = mmXRotate(emission_pitch);
+				Matrix4 yaw = mmYRotate(emission_yaw);
+				Matrix4 rotated = mmTransform(pitch, yaw);
+				tfxVec4 v = mmTransformVector(rotated, result);
+				return v.xyz();
+			}
 
 			return result;
 		}

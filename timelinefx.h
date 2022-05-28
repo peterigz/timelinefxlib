@@ -868,7 +868,7 @@ typedef unsigned int tfxEffectID;
 		tfxVec4() { x = y = z = w = 0.f; }
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
 		tfxVec4(tfxVec2 vec1, tfxVec2 vec2) : x(vec1.x), y(vec1.y), z(vec2.x), w(vec2.y) {}
-		tfxVec4(tfxVec3 vec) : x(vec.x), y(vec.y), z(vec.x), w(0.f) {}
+		tfxVec4(tfxVec3 vec) : x(vec.x), y(vec.y), z(vec.z), w(0.f) {}
 
 		inline tfxVec2 xy() { return tfxVec2(x, y); }
 		inline tfxVec3 xyz() { return tfxVec3(x, y, z); }
