@@ -285,7 +285,7 @@ typedef unsigned int tfxEffectID;
 
 
 #define tfxGlobalCount  15
-#define	tfxPropertyCount  11
+#define	tfxPropertyCount  12
 #define	tfxBaseCount  8
 #define	tfxVariationCount  9
 #define	tfxOvertimeCount  16
@@ -314,7 +314,8 @@ typedef unsigned int tfxEffectID;
 		tfxGlobal_effect_pitch,
 		tfxGlobal_effect_yaw,
 
-		tfxProperty_emission_angle,
+		tfxProperty_emission_pitch,
+		tfxProperty_emission_yaw,
 		tfxProperty_emission_range,
 		tfxProperty_emitter_roll,
 		tfxProperty_emitter_pitch,
@@ -2244,7 +2245,8 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct PropertyAttributes {
-		Graph emission_angle;
+		Graph emission_pitch;
+		Graph emission_yaw;
 		Graph emission_range;
 		Graph roll;
 		Graph pitch;
@@ -2499,10 +2501,6 @@ typedef unsigned int tfxEffectID;
 		float spin;
 		//Amount in radians that the spin will vary
 		float spin_variation;
-		//Direction of travel that the particles go when spawned (radians)
-		float emission_angle;
-		//Amount the emission angle will vary (radians)
-		float emission_angle_variation;
 		//Amount that particles will randomly offset from the spawn point (radius in pixels)
 		float splatter;
 		//For Ellipse type emitters, you can set the arc_size to only spawn a segment of the ellipse (radians)

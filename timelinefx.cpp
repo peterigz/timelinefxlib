@@ -1991,7 +1991,7 @@ namespace tfx {
 
 	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size) {
 		//float (*effect_lookup_callback)(Graph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
-		float emission_angle = lookup_callback(common.library->property_graphs[library_link->property].emission_angle, common.frame);
+		float emission_angle = lookup_callback(common.library->property_graphs[library_link->property].emission_pitch, common.frame);
 		float emission_angle_variation = lookup_callback(common.library->property_graphs[library_link->property].emission_range, common.frame);
 		//----Emission
 		float range = emission_angle_variation *.5f;
@@ -2067,20 +2067,17 @@ namespace tfx {
 
 	tfxVec3 GetEmissionDirection3d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size) {
 		//float (*effect_lookup_callback)(Graph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
-		float emission_angle = lookup_callback(common.library->property_graphs[library_link->property].emission_angle, common.frame);
+		float emission_pitch = lookup_callback(common.library->property_graphs[library_link->property].emission_pitch, common.frame);
+		float emission_yaw = lookup_callback(common.library->property_graphs[library_link->property].emission_pitch, common.frame);
 		float emission_angle_variation = lookup_callback(common.library->property_graphs[library_link->property].emission_range, common.frame);
 		//----Emission
 		float range = emission_angle_variation * .5f;
 		float direction = 0;
 
 		if (library_link->properties.emission_type == EmissionType::tfxPoint) {
-			tfxVec3 cone_dir(0.f, 0.f, 1.f);
-			float N = 1.f;
-			float cone_angle = range;
-
 			tfxVec3 result;
-			result.z = random_generation.Range(-1.f, N) * (1 - cos(cone_angle)) + cos(cone_angle);
-			float phi = random_generation.Range(-1.f, N) * 2 * tfxPI;
+			result.z = random_generation.Range(-1.f, 1.f) * (1.f - cos(range)) + cos(range);
+			float phi = random_generation.Range(-1.f, 1.f) * 2.f * tfxPI;
 			result.x = sqrt(1.f - (result.z * result.z)) * cos(phi);
 			result.y = sqrt(1.f - (result.z * result.z)) * sin(phi);
 
@@ -2149,7 +2146,7 @@ namespace tfx {
 
 		if (std::isnan(direction))
 			direction = 0.f;
-		return direction + emission_angle + random_generation.Range(-range, range);
+		return direction + emission_pitch + random_generation.Range(-range, range);
 	}
 
 	tfxParticle& tfxEmitter::GrabParticle() {
@@ -3420,7 +3417,6 @@ namespace tfx {
 		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
 		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
 		float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
-		float lookup_direction = c.graphs->direction.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction.lookup.last_frame)] + data.emission_angle;
 		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<u32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution;
 		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<u32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
 		float lookup_weight = c.graphs->weight.lookup.values[std::min<u32>(lookup_frame, c.graphs->weight.lookup.last_frame)];
@@ -3439,9 +3435,6 @@ namespace tfx {
 		float mr_speed = 0;
 
 		tfxVec3 mr_vec;
-		if (c.flags & tfxEmitterStateFlags_not_line) {
-			direction = lookup_direction;
-		}
 
 		if (lookup_velocity_turbulance + lookup_direction_turbulance) {
 			float noise = SimplexNoise::noise(data.local.position.x / lookup_noise_resolution + data.noise_offset, data.local.position.y / lookup_noise_resolution + data.noise_offset);
@@ -3786,7 +3779,8 @@ namespace tfx {
 	}
 
 	void EffectEmitter::ResetPropertyGraphs(bool add_node) {
-		common.library->property_graphs[property].emission_angle.Reset(0.f, tfxAnglePreset, add_node); common.library->property_graphs[property].emission_angle.type = tfxProperty_emission_angle;
+		common.library->property_graphs[property].emission_pitch.Reset(0.f, tfxAnglePreset, add_node); common.library->property_graphs[property].emission_pitch.type = tfxProperty_emission_pitch;
+		common.library->property_graphs[property].emission_yaw.Reset(0.f, tfxAnglePreset, add_node); common.library->property_graphs[property].emission_yaw.type = tfxProperty_emission_yaw;
 		common.library->property_graphs[property].emission_range.Reset(0.f, tfxEmissionRangePreset, add_node); common.library->property_graphs[property].emission_range.type = tfxProperty_emission_range;
 		common.library->property_graphs[property].roll.Reset(0.f, tfxAnglePreset, add_node); common.library->property_graphs[property].roll.type = tfxProperty_emitter_roll;
 		common.library->property_graphs[property].pitch.Reset(0.f, tfxAnglePreset, add_node); common.library->property_graphs[property].pitch.type = tfxProperty_emitter_roll;
@@ -3878,7 +3872,8 @@ namespace tfx {
 			if (common.library->property_graphs[property].roll.nodes.size() == 0) common.library->property_graphs[property].roll.Reset(0.f, tfxAnglePreset);
 			if (common.library->property_graphs[property].pitch.nodes.size() == 0) common.library->property_graphs[property].pitch.Reset(0.f, tfxAnglePreset);
 			if (common.library->property_graphs[property].yaw.nodes.size() == 0) common.library->property_graphs[property].yaw.Reset(0.f, tfxAnglePreset);
-			if (common.library->property_graphs[property].emission_angle.nodes.size() == 0) common.library->property_graphs[property].emission_angle.Reset(0.f, tfxAnglePreset);
+			if (common.library->property_graphs[property].emission_pitch.nodes.size() == 0) common.library->property_graphs[property].emission_pitch.Reset(0.f, tfxAnglePreset);
+			if (common.library->property_graphs[property].emission_yaw.nodes.size() == 0) common.library->property_graphs[property].emission_yaw.Reset(0.f, tfxAnglePreset);
 			if (common.library->property_graphs[property].emission_range.nodes.size() == 0) common.library->property_graphs[property].emission_range.Reset(0.f, tfxEmissionRangePreset);
 			if (common.library->property_graphs[property].splatter.nodes.size() == 0) common.library->property_graphs[property].splatter.Reset(0.f, tfxDimensionsPreset);
 			if (common.library->property_graphs[property].emitter_width.nodes.size() == 0) common.library->property_graphs[property].emitter_width.Reset(0.f, tfxDimensionsPreset);
@@ -4495,7 +4490,8 @@ namespace tfx {
 		}
 
 		if (type == tfxEmitterType) {
-			common.library->property_graphs[property].emission_angle.Free();
+			common.library->property_graphs[property].emission_pitch.Free();
+			common.library->property_graphs[property].emission_yaw.Free();
 			common.library->property_graphs[property].emission_range.Free();
 			common.library->property_graphs[property].roll.Free();
 			common.library->property_graphs[property].pitch.Free();
@@ -4547,12 +4543,12 @@ namespace tfx {
 
 	void EffectEmitter::CompileGraphs() {
 		if (type == tfxEffectType) {
-			for (unsigned int t = (unsigned int)tfxGlobal_life; t != (unsigned int)tfxProperty_emission_angle; ++t) {
+			for (unsigned int t = (unsigned int)tfxGlobal_life; t != (unsigned int)tfxProperty_emission_pitch; ++t) {
 				CompileGraph(*GetGraphByType(GraphType(t)));
 			}
 
 			for (auto &emitter : sub_effectors) {
-				for (unsigned int t = (unsigned int)tfxProperty_emission_angle; t != (unsigned int)tfxOvertime_velocity; ++t) {
+				for (unsigned int t = (unsigned int)tfxProperty_emission_pitch; t != (unsigned int)tfxOvertime_velocity; ++t) {
 					CompileGraph(*GetGraphByType((GraphType)t));
 				}
 
@@ -5059,7 +5055,8 @@ namespace tfx {
 		for (auto &g : property_graphs) {
 			CompileGraph(g.arc_offset);
 			CompileGraph(g.arc_size);
-			CompileGraph(g.emission_angle);
+			CompileGraph(g.emission_pitch);
+			CompileGraph(g.emission_yaw);
 			CompileGraph(g.emission_range);
 			CompileGraph(g.roll);
 			CompileGraph(g.pitch);
@@ -5132,7 +5129,8 @@ namespace tfx {
 		PropertyAttributes &g = property_graphs[index];
 		CompileGraph(g.arc_offset);
 		CompileGraph(g.arc_size);
-		CompileGraph(g.emission_angle);
+		CompileGraph(g.emission_pitch);
+		CompileGraph(g.emission_yaw);
 		CompileGraph(g.emission_range);
 		CompileGraph(g.roll);
 		CompileGraph(g.pitch);
@@ -5211,7 +5209,8 @@ namespace tfx {
 		graph_min_max[tfxGlobal_effect_yaw] = GetMinMaxGraphValues(tfxAnglePreset);
 
 		graph_min_max[tfxProperty_emitter_roll] = GetMinMaxGraphValues(tfxAnglePreset);
-		graph_min_max[tfxProperty_emission_angle] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxProperty_emission_pitch] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxProperty_emission_yaw] = GetMinMaxGraphValues(tfxAnglePreset);
 		graph_min_max[tfxProperty_emission_range] = GetMinMaxGraphValues(tfxEmissionRangePreset);
 		graph_min_max[tfxProperty_splatter] = GetMinMaxGraphValues(tfxDimensionsPreset);
 		graph_min_max[tfxProperty_emitter_width] = GetMinMaxGraphValues(tfxDimensionsPreset);
@@ -5471,7 +5470,7 @@ namespace tfx {
 
 			if (values[0] == "base_arc_offset") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].arc_offset.AddNode(n); }
 			if (values[0] == "base_arc_size") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].arc_size.AddNode(n); }
-			if (values[0] == "base_emission_angle") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emission_angle.AddNode(n); }
+			if (values[0] == "base_emission_angle") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emission_pitch.AddNode(n); }
 			if (values[0] == "base_emission_range") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emission_range.AddNode(n); }
 			if (values[0] == "base_emitter_height") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emitter_height.AddNode(n); }
 			if (values[0] == "base_emitter_width") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emitter_width.AddNode(n); }
@@ -5483,7 +5482,9 @@ namespace tfx {
 			if (values[0] == "property_emitter_roll") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].roll.AddNode(n); }
 			if (values[0] == "property_emitter_pitch") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].pitch.AddNode(n); }
 			if (values[0] == "property_emitter_yaw") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].yaw.AddNode(n); }
-			if (values[0] == "property_emission_angle") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emission_angle.AddNode(n); }
+			if (values[0] == "property_emission_angle") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emission_pitch.AddNode(n); }
+			if (values[0] == "property_emission_pitch") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emission_pitch.AddNode(n); }
+			if (values[0] == "property_emission_yaw") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emission_yaw.AddNode(n); }
 			if (values[0] == "property_emission_range") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emission_range.AddNode(n); }
 			if (values[0] == "property_emitter_height") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emitter_height.AddNode(n); }
 			if (values[0] == "property_emitter_width") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].emitter_width.AddNode(n); }
@@ -5759,7 +5760,7 @@ namespace tfx {
 	}
 
 	bool Graph::IsAngleGraph() {
-		return (type == tfxGlobal_effect_roll || type == tfxGlobal_effect_pitch || type == tfxGlobal_effect_yaw || type == tfxProperty_emission_angle || type == tfxProperty_emission_range || 
+		return (type == tfxGlobal_effect_roll || type == tfxGlobal_effect_pitch || type == tfxGlobal_effect_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw || type == tfxProperty_emission_range ||
 			type == tfxProperty_emitter_roll || type == tfxProperty_emitter_pitch || type == tfxProperty_emitter_yaw || type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin || type == tfxOvertime_direction);
 	}
 
@@ -6845,7 +6846,7 @@ namespace tfx {
 	}
 
 	bool IsAngleGraph(GraphType type) {
-		return (type == tfxGlobal_effect_roll || type == tfxGlobal_effect_pitch || type == tfxGlobal_effect_yaw || type == tfxProperty_emission_angle || type == tfxProperty_emission_range || 
+		return (type == tfxGlobal_effect_roll || type == tfxGlobal_effect_pitch || type == tfxGlobal_effect_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw || type == tfxProperty_emission_range ||
 			type == tfxProperty_emitter_roll || type == tfxProperty_emitter_pitch || type == tfxProperty_emitter_yaw || type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin);
 	}
 
