@@ -173,7 +173,7 @@ namespace tfx {
 
 #define TWO63 0x8000000000000000u 
 #define TWO64f (TWO63*2.0)
-#define tfxPI 3.14159265359
+#define tfxPI 3.14159265359f
 
 	//----------------------------------------------------------
 	//Forward declarations

@@ -2126,10 +2126,11 @@ namespace tfx {
 
 		tfxVec4 v = to_handle;
 		if (range != 0) {
-			result.y = random_generation.Range(-1.f, 1.f) * (1.f - cos(range)) + cos(range);
-			float phi = random_generation.Range(-1.f, 1.f) * 2.f * tfxPI;
-			result.x = sqrt(1.f - (result.y * result.y)) * cos(phi);
-			result.z = sqrt(1.f - (result.y * result.y)) * sin(phi);
+			result.y = random_generation.Range(1.f) * (1.f - cos(range)) + cos(range);
+			float phi = random_generation.Range(1.f) * 2.f * tfxPI;
+			float s = sqrt(1.f - (result.y * result.y));
+			result.x = s * cos(phi);
+			result.z = s * sin(phi);
 
 			v = result;
 
@@ -3002,22 +3003,25 @@ namespace tfx {
 
 		//----Splatter
 		if (spawn_values.splatter) {
-			float splattertemp = spawn_values.splatter;
 			float splatx = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
 			float splaty = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
+			float splatz = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
 
-			while (GetDistance(0, 0, splatx, splaty) >= splattertemp && splattertemp > 0) {
+			while (std::powf(splatx / spawn_values.splatter, 2.f) + std::powf(splaty / spawn_values.splatter, 2.f) + std::powf(splatz / spawn_values.splatter, 2.f) > 1.f) {
 				splatx = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
 				splaty = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
+				splatz = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
 			}
 
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				data.local.position.x += splatx * common.transform.world.scale.x;
 				data.local.position.y += splaty * common.transform.world.scale.y;
+				data.local.position.z += splatz * common.transform.world.scale.z;
 			}
 			else {
 				data.local.position.x += splatx;
 				data.local.position.y += splaty;
+				data.local.position.z += splatz;
 			}
 		}
 
@@ -3435,18 +3439,31 @@ namespace tfx {
 		float lookup_opacity = c.graphs->blendfactor.lookup.values[std::min<u32>(lookup_frame, c.graphs->blendfactor.lookup.last_frame)];
 		float lookup_intensity = c.graphs->intensity.lookup.values[std::min<u32>(lookup_frame, c.graphs->intensity.lookup.last_frame)];
 
-		float direction = 0;
-		float mr_angle = 0;
-		float mr_speed = 0;
+		float direction = 0.f;
+		float mr_angle = 0.f;
+		float mr_speed = 0.f;
 
 		tfxVec3 mr_vec;
 
 		if (lookup_velocity_turbulance + lookup_direction_turbulance) {
-			float noise = SimplexNoise::noise(data.local.position.x / lookup_noise_resolution + data.noise_offset, data.local.position.y / lookup_noise_resolution + data.noise_offset);
+			float noise = SimplexNoise::noise(	data.local.position.x / lookup_noise_resolution + data.noise_offset,
+												data.local.position.y / lookup_noise_resolution + data.noise_offset,
+												data.local.position.z / lookup_noise_resolution + data.noise_offset);
 			mr_speed = noise * lookup_velocity_turbulance;
-			mr_angle = noise * 3.14159265f * 2 * lookup_direction_turbulance;
-			mr_vec.x = std::sinf(mr_angle) * mr_speed;
-			mr_vec.y = -std::cosf(mr_angle) * mr_speed;
+			noise += 1.f;
+			noise *= 0.5f;
+			mr_angle = noise * tfxPI * 2.f * lookup_direction_turbulance;
+			mr_vec.y = noise * (1.f - cos(mr_angle)) + cos(mr_angle);
+			float s = sqrt(1.f - (mr_vec.y * mr_vec.y));
+			mr_vec.x = s * cos(mr_angle);
+			mr_vec.z = s * sin(mr_angle);
+			mr_vec *= mr_speed;
+
+		/*	result.y = random_generation.Range(-1.f, 1.f) * (1.f - cos(range)) + cos(range);
+			float phi = random_generation.Range(-1.f, 1.f) * 2.f * tfxPI;
+			result.x = sqrt(1.f - (result.y * result.y)) * cos(phi);
+			result.z = sqrt(1.f - (result.y * result.y)) * sin(phi);		*/
+
 		}
 
 		//----Weight Changes
