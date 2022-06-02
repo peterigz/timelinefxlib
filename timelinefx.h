@@ -946,7 +946,12 @@ typedef unsigned int tfxEffectID;
 		return sqrtf(LengthVec2(v));
 	}
 
+	static inline float HasLength(tfxVec3 const &v) {
+		return (v.x == 0 && v.y == 0 && v.z == 0) ? 0.f : 1.f;
+	}
+
 	static inline tfxVec3 NormalizeVec(tfxVec3 const &v) {
+		if (v.x == 0 && v.y == 0 && v.z == 0) return tfxVec3(1.f, 0.f, 0.f);
 		float length = LengthVec(v);
 		return tfxVec3(v.x / length, v.y / length, v.z / length);
 	}
@@ -2361,13 +2366,11 @@ typedef unsigned int tfxEffectID;
 	//Store the current state of the object in 2d space
 	struct tfxEmitterFormState {
 		tfxVec3 position;
-		tfxVec3 scale;
 		tfxVec3 rotations;
 	};
 
 	struct tfxParticleFormState {
 		tfxVec4 position;	//Rotation is in w
-		tfxVec2 scale;
 	};
 
 	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
@@ -2599,6 +2602,7 @@ typedef unsigned int tfxEffectID;
 		tfxLocalEmitterFormState local;
 		tfxEmitterFormState world;
 		tfxEmitterFormState captured;
+		tfxVec3 scale;
 		//2d matrix for transformations
 		Matrix4 matrix;
 		tfxEmitterTransform() :
@@ -2999,10 +3003,11 @@ TFX_CUSTOM_EMITTER
 		tfxLocalParticleFormState local;	//The local position of the particle, relative to the emitter.
 		tfxParticleFormState world;		//The world position of the particle relative to the world/screen.
 		tfxParticleFormState captured;	//The captured world coords for tweening
+		tfxVec2 scale;
 		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
 		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
-		tfxVec3 velocity_normal;
+		tfxVec4 velocity_normal;
 		float emission_angle;			//Emission angle of the particle at spawn time
 		float noise_offset;				//Higer numbers means random movement is less uniform
 		float noise_resolution;			//Higer numbers means random movement is more uniform
