@@ -2529,12 +2529,6 @@ namespace tfx {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_angle)
 				data.world.position.w += common.transform.world.rotations.roll;
 			data.captured.position.w = data.world.position.w;
-			//Reset the matrix again so that any child particles spawn in the correct place
-			if (library_link->sub_effectors.size()) {
-				float s = sin(data.local.position.w);
-				float c = cos(data.local.position.w);
-				data.matrix.Set(c, s, -s, c);
-			}
 		}
 
 		//----Handle
@@ -3040,12 +3034,6 @@ namespace tfx {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_angle)
 				data.world.position.w += common.transform.world.rotations.roll;
 			data.captured.position.w = data.world.position.w;
-			//Reset the matrix again so that any child particles spawn in the correct place
-			if (library_link->sub_effectors.size()) {
-				float s = sin(data.local.position.w);
-				float c = cos(data.local.position.w);
-				data.matrix.Set(c, s, -s, c);
-			}
 		}
 
 		//----Handle
@@ -3649,10 +3637,7 @@ namespace tfx {
 
 		e.common.transform.world.rotations.roll = parent.data.world.position.w + e.common.transform.local.rotations.roll;
 
-		e.common.transform.matrix = mmTransform2(e.common.transform.matrix, parent.data.matrix);
-		tfxVec2 rotatevec = parent.data.matrix.TransformVector(tfxVec2(e.common.transform.local.position.x, e.common.transform.local.position.y));
-
-		e.common.transform.world.position = parent.data.world.position.xy() + rotatevec * parent.data.scale;
+		e.common.transform.world.position = parent.data.world.position.xy() + parent.data.scale;
 
 	}
 
@@ -3690,9 +3675,6 @@ namespace tfx {
 
 	void TransformParticle(tfxParticleData &data, tfxCommon &common, bool is_line) {
 		//The Particle matrix is only needed for sub effect transformations
-		float s = sin(data.local.position.w);
-		float c = cos(data.local.position.w);
-		data.matrix.Set(c, s, -s, c);
 		bool line = (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && is_line);
 
 		if (common.property_flags & tfxEmitterPropertyFlags_relative_position || line) {
@@ -3703,7 +3685,11 @@ namespace tfx {
 			else
 				data.world.position.w = data.local.position.w;
 
-			data.matrix = data.matrix.Transform(common.transform.matrix);
+			float s = sin(data.local.position.w);
+			float c = cos(data.local.position.w);
+			Matrix2 pmat;
+			pmat.Set(c, s, -s, c);
+			pmat = pmat.Transform(common.transform.matrix);
 			tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local.position.x, data.local.position.y));
 
 			data.world.position = common.transform.world.position.xy() + rotatevec * common.transform.scale.xy();
@@ -3722,9 +3708,6 @@ namespace tfx {
 
 	void TransformParticle3d(tfxParticleData &data, tfxCommon &common, bool is_line) {
 		//The Particle matrix is only needed for sub effect transformations
-		float s = sin(data.local.position.w);
-		float c = cos(data.local.position.w);
-		data.matrix.Set(c, s, -s, c);
 		bool line = (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && is_line);
 
 		if (common.property_flags & tfxEmitterPropertyFlags_relative_position || line) {
@@ -3735,7 +3718,11 @@ namespace tfx {
 			else
 				data.world.position.w = data.local.position.w;
 
-			data.matrix = data.matrix.Transform(common.transform.matrix);
+			float s = sin(data.local.position.w);
+			float c = cos(data.local.position.w);
+			Matrix2 pmat;
+			pmat.Set(c, s, -s, c);
+			pmat = pmat.Transform(common.transform.matrix);
 			tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local.position);
 
 			data.world.position = common.transform.world.position + rotatevec.xyz();

@@ -3004,7 +3004,6 @@ TFX_CUSTOM_EMITTER
 		tfxParticleFormState world;		//The world position of the particle relative to the world/screen.
 		tfxParticleFormState captured;	//The captured world coords for tweening
 		tfxVec2 scale;
-		Matrix2 matrix;					//Simple 2d matrix for transforms (only needed for sub effects)
 		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
 		tfxVec4 velocity_normal;
