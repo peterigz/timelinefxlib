@@ -436,30 +436,16 @@ namespace tfx {
 	}
 
 	//A Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfxVec4 SimplexNoise::noise4(const tfxVec3 v1, const tfxVec3 v2, const tfxVec3 v3, const tfxVec3 v4) {
+	tfxVec4 SimplexNoise::noise4(const __m128 &x4, const __m128 &y4, const __m128 &z4) {
 		// Skewing/Unskewing factors for 3D
-		static const __m128 F3_4 = _mm_set_ps1(1.0f / 3.0f);
-		static const __m128 G3_4 = _mm_set_ps1(1.0f / 6.0f);
-		static const __m128 G32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
-		static const __m128 G33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
-		static const __m128i one = _mm_set1_epi32(1);
-		static const __m128 onef = _mm_set1_ps(1.f);
-		static const __m128 zero = _mm_set1_ps(0.f);
-		static const __m128 thirtytwo = _mm_set1_ps(32.f);
-		static const __m128i ff = _mm_set1_epi32(0xFF);
-		static const __m128 psix = _mm_set_ps1(0.6f);
 
 		// Skew the input space to determine which simplex cell we're in
 		//float s = (v1.x + v1.y + v1.z) * F3; // Very nice and simple skew factor for 3D
-		__m128 s4 = _mm_set_ps((v4.x + v4.y + v4.z), (v3.x + v3.y + v3.z), (v2.x + v2.y + v2.z), (v1.x + v1.y + v1.z));
-		__m128 x4 = _mm_set_ps(v4.x, v3.x, v2.x, v1.x);
-		__m128 y4 = _mm_set_ps(v4.y, v3.y, v2.y, v1.y);
-		__m128 z4 = _mm_set_ps(v4.z, v3.z, v2.z, v1.z);
-		s4 = _mm_mul_ps(s4, F3_4);
+		__m128 s4 = _mm_mul_ps(_mm_add_ps(x4, _mm_add_ps(y4, z4)), F3_4);
 		__m128 x4_s4 = _mm_add_ps(x4, s4);
 		__m128 y4_s4 = _mm_add_ps(y4, s4);
 		__m128 z4_s4 = _mm_add_ps(z4, s4);
-		__m128 i =  _mm_floor_ps2(x4_s4);
+		__m128 i = _mm_floor_ps2(x4_s4);
 		__m128 j = _mm_floor_ps2(y4_s4);
 		__m128 k = _mm_floor_ps2(z4_s4);
 		__m128 t = _mm_add_ps(i, j);
@@ -497,11 +483,6 @@ namespace tfx {
 		j2.m = _mm_and_si128(one, _mm_or_si128(j1.m, _mm_or_si128(xy_yz, zy_yx)));
 		k2.m = _mm_and_si128(one, _mm_or_si128(k1.m, _mm_or_si128(yz_zx, xz_zy)));
 
-		// A step of (1,0,0) in (i,j,k) means a step of (1-c,-c,-c) in (v1.x,v1.y,v1.z),
-		// a step of (0,1,0) in (i,j,k) means a step of (-c,1-c,-c) in (v1.x,v1.y,v1.z), and
-		// a step of (0,0,1) in (i,j,k) means a step of (-c,-c,1-c) in (v1.x,v1.y,v1.z), where
-		// c = 1/6.
-
 		__m128 x1 = _mm_add_ps(_mm_sub_ps(x0, _mm_cvtepi32_ps(i1.m)), G3_4);
 		__m128 y1 = _mm_add_ps(_mm_sub_ps(y0, _mm_cvtepi32_ps(j1.m)), G3_4);
 		__m128 z1 = _mm_add_ps(_mm_sub_ps(z0, _mm_cvtepi32_ps(k1.m)), G3_4);
@@ -534,7 +515,6 @@ namespace tfx {
 		__m128 t2 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(psix, _mm_mul_ps(x2, x2)), _mm_mul_ps(y2, y2)), _mm_mul_ps(z2, z2));
 		__m128 t3 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(psix, _mm_mul_ps(x3, x3)), _mm_mul_ps(y3, y3)), _mm_mul_ps(z3, z3));
 
-		//ti*ti*ti*ti
 		__m128 t0q = _mm_mul_ps(t0, t0);
 		t0q = _mm_mul_ps(t0q, t0q);
 		__m128 t1q = _mm_mul_ps(t1, t1);
@@ -571,7 +551,6 @@ namespace tfx {
 		__m128 n2 = _mm_mul_ps(t2q, DotProductSIMD(gi2x.m, gi2y.m, gi2z.m, x2, y2, z2));
 		__m128 n3 = _mm_mul_ps(t3q, DotProductSIMD(gi3x.m, gi3y.m, gi3z.m, x3, y3, z3));
 
-		//if ti < 0 then 0 else ni
 		__m128 cond;
 
 		cond = _mm_cmplt_ps(t0, zero);
@@ -3744,8 +3723,20 @@ namespace tfx {
 			float y = data.local.position.y / lookup_noise_resolution + data.noise_offset;
 			float z = data.local.position.z / lookup_noise_resolution + data.noise_offset;
 
+			__m128 x4 = _mm_set1_ps(x);
+			__m128 y4 = _mm_set1_ps(y);
+			__m128 z4 = _mm_set1_ps(z);
+
+			__m128 xeps4 = _mm_set_ps(x - eps, x + eps, x, x);
+			__m128 xeps4r = _mm_set_ps(x, x, x - eps, x + eps);
+			__m128 yeps4 = _mm_set_ps(y, y, y - eps, y + eps);
+			__m128 yeps4r = _mm_set_ps(y - eps, y + eps, y, y);
+			__m128 zeps4 = _mm_set_ps(z - eps, z + eps, z, z);
+			__m128 zeps4r = _mm_set_ps(z, z, z - eps, z + eps);
+
 			//Find rate of change in YZ plane
-			tfxVec4 yz = SimplexNoise::noise4(tfxVec3(x, y + eps, z), tfxVec3(x, y - eps, z), tfxVec3(x, y, z + eps), tfxVec3(x, y, z - eps));
+			//tfxVec4 yz = SimplexNoise::noise4(tfxVec3(x, y + eps, z), tfxVec3(x, y - eps, z), tfxVec3(x, y, z + eps), tfxVec3(x, y, z - eps));
+			tfxVec4 yz = SimplexNoise::noise4(x4, yeps4, zeps4);
 			//Average to find approximate derivative
 			float a = (yz.x - yz.y) / eps2;
 			//Average to find approximate derivative
@@ -3754,17 +3745,21 @@ namespace tfx {
 
 			y += 100.f;
 			//Find rate of change in XZ plane
-			tfxVec4 xz = SimplexNoise::noise4(tfxVec3(x, y, z + eps), tfxVec3(x, y, z - eps), tfxVec3(x + eps, y, z), tfxVec3(x - eps, y, z));
+			//tfxVec4 xz = SimplexNoise::noise4(tfxVec3(x, y, z + eps), tfxVec3(x, y, z - eps), tfxVec3(x + eps, y, z), tfxVec3(x - eps, y, z));
+			tfxVec4 xz = SimplexNoise::noise4(xeps4, y4, zeps4r);
 			a = (xz.x - xz.y) / eps2;
 			b = (xz.z - xz.w) / eps2;
 			mr_vec.y = a - b;
 
 			z += 100.f;
 			//Find rate of change in XY plane
-			tfxVec4 xy = SimplexNoise::noise4(tfxVec3(x + eps, y, z), tfxVec3(x - eps, y, z), tfxVec3(x, y + eps, z), tfxVec3(x, y - eps, z));
+			//tfxVec4 xy = SimplexNoise::noise4(tfxVec3(x + eps, y, z), tfxVec3(x - eps, y, z), tfxVec3(x, y + eps, z), tfxVec3(x, y - eps, z));
+			tfxVec4 xy = SimplexNoise::noise4(xeps4r, yeps4r, z4);
 			a = (xy.x - xy.y) / eps2;
 			b = (xy.z - xy.w) / eps2;
 			mr_vec.z = a - b;
+
+			mr_vec *= lookup_velocity_turbulance;
 
 			/*if (xy.x < -1.f || xy.x > 1.f || xy.y < -1.f || xy.y > 1.f || xy.z < -1 || xy.z > 1.f) {
 				float tx = -0.127964914f;
@@ -3777,10 +3772,9 @@ namespace tfx {
 				printf("Out of bounds");
 			}*/
 
-			mr_vec *= lookup_velocity_turbulance;
 
-
-			/*float n1 = simplex3d(x, y + eps, z);
+			/*
+			float n1 = simplex3d(x, y + eps, z);
 			float n2 = simplex3d(x, y - eps, z);
 			//Average to find approximate derivative
 			float a = (n1 - n2) / eps2;
@@ -3809,7 +3803,8 @@ namespace tfx {
 			n2 = simplex3d(x, y - eps, z);
 			b = (n1 - n2) / eps2;
 			mr_vec.z = a - b;
-			mr_vec *= lookup_velocity_turbulance;	*/
+			mr_vec *= lookup_velocity_turbulance;
+			*/
 		}
 
 		//----Weight Changes
