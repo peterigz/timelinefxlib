@@ -1269,6 +1269,11 @@ typedef unsigned int tfxEffectID;
 		return x1 * x2 + y1 * y2 + z1 * z2;
 	}
 
+	static inline float dot(float x1, float y1, float x2, float y2)
+	{
+		return x1 * x2 + y1 * y2;
+	}
+
 	static inline __m128 DotProductSIMD(const __m128 &x1, const __m128 &y1, const __m128 &z1, const __m128 &x2, const __m128 &y2, const __m128 &z2)
 	{
 		__m128 xx = _mm_mul_ps(x1, x2);

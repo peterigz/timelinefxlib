@@ -281,9 +281,11 @@ namespace tfx {
 		const float y2 = y0 - 1.0f + 2.0f * G2;
 
 		// Work out the hashed gradient indices of the three simplex corners
-		const int gi0 = hash(i + hash(j));
-		const int gi1 = hash(i + i1 + hash(j + j1));
-		const int gi2 = hash(i + 1 + hash(j + 1));
+		unsigned int ii = i & 255;
+		unsigned int jj = j & 255;
+		const int gi0 = permMOD12[perm[ii + perm[jj]]];
+		const int gi1 = permMOD12[perm[ii + i1 + perm[jj + j1]]];
+		const int gi2 = permMOD12[perm[ii + 1 + perm[jj + 1]]];
 
 		// Calculate the contribution from the first corner
 		float t0 = 0.5f - x0 * x0 - y0 * y0;
@@ -292,7 +294,7 @@ namespace tfx {
 		}
 		else {
 			t0 *= t0;
-			n0 = t0 * t0 * grad(gi0, x0, y0);
+			n0 = t0 * t0 * dot(gradX[gi0], gradY[gi0], x0, y0);
 		}
 
 		// Calculate the contribution from the second corner
@@ -302,7 +304,7 @@ namespace tfx {
 		}
 		else {
 			t1 *= t1;
-			n1 = t1 * t1 * grad(gi1, x1, y1);
+			n1 = t1 * t1 * dot(gradX[gi1], gradY[gi1],  x1, y1);
 		}
 
 		// Calculate the contribution from the third corner
@@ -312,7 +314,7 @@ namespace tfx {
 		}
 		else {
 			t2 *= t2;
-			n2 = t2 * t2 * grad(gi2, x2, y2);
+			n2 = t2 * t2 * dot(gradX[gi2], gradY[gi2], x2, y2);
 		}
 
 		// Add contributions from each corner to get the final noise value.
