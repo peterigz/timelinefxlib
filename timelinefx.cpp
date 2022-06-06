@@ -5616,7 +5616,6 @@ namespace tfx {
 		graph_min_max[tfxOvertime_direction_turbulance] = GetMinMaxGraphValues(tfxPercentOvertime);
 		graph_min_max[tfxOvertime_velocity_adjuster] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 		graph_min_max[tfxOvertime_direction] = GetMinMaxGraphValues(tfxDirectionOvertimePreset);
-
 	}
 
 	float EffectLibrary::LookupPreciseOvertimeNodeList(GraphType graph_type, int lookup_node_index, float age, float life) {
@@ -5711,6 +5710,15 @@ namespace tfx {
 		eff.Insert("image_end_frame", tfxFloat);
 		eff.Insert("image_frame_rate", tfxFloat);
 		eff.Insert("playback_speed", tfxFloat);
+		eff.Insert("camera_position_x", tfxFloat);
+		eff.Insert("camera_position_y", tfxFloat);
+		eff.Insert("camera_position_z", tfxFloat);
+		eff.Insert("camera_pitch", tfxFloat);
+		eff.Insert("camera_yaw", tfxFloat);
+		eff.Insert("camera_fov", tfxFloat);
+		eff.Insert("camera_floor_height", tfxFloat);
+		eff.Insert("camera_isometric", tfxBool);
+		eff.Insert("camera_isometric_scale", tfxFloat);
 
 		eff.Insert("emission_type", tfxSInt);
 		eff.Insert("emission_direction", tfxSInt);
