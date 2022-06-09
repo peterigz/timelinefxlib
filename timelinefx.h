@@ -214,6 +214,7 @@ typedef unsigned int tfxEffectID;
 		tfxDirectionOvertimePreset,
 		tfxDirectionVariationPreset,
 		tfxFrameratePreset,
+		tfxVelocityTurbulancePreset,
 		tfxOpacityOvertimePreset,
 		tfxColorPreset,
 		tfxPercentOvertime,
@@ -434,7 +435,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterPropertyFlags_relative_angle = 1 << 2,					//Keep the angle of the particles relative to the current angle of the emitter
 		tfxEmitterPropertyFlags_image_handle_auto_center = 1 << 3,			//Set the offset of the particle to the center of the image
 		tfxEmitterPropertyFlags_single = 1 << 4,							//Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
-		tfxEmitterPropertyFlags_one_shot = 1 << 5,							//Only spawn a single particle (or number of particles specified by spawn_amount) in one go
+		tfxEmitterPropertyFlags_free_slot = 1 << 5,							//Currently un used
 		tfxEmitterPropertyFlags_spawn_on_grid = 1 << 6,						//When using an area, line or ellipse emitter, spawn along a grid
 		tfxEmitterPropertyFlags_grid_spawn_clockwise = 1 << 7,				//Spawn clockwise/left to right around the area
 		tfxEmitterPropertyFlags_fill_area = 1 << 8,							//Fill the area
@@ -602,6 +603,8 @@ typedef unsigned int tfxEffectID;
 	static float tfxLOOKUP_FREQUENCY = 10.f;
 	//Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
 	static float tfxLOOKUP_FREQUENCY_OVERTIME = 1.f;
+
+	const float scale_factor_3d = 1.f;
 
 	//-----------------------------------------------------------
 	//Utility things:
@@ -2432,6 +2435,7 @@ typedef unsigned int tfxEffectID;
 		bool Sort();
 		void ReIndex();
 		tfxVec2 GetInitialZoom();
+		tfxVec2 GetInitialZoom3d();
 		bool IsOvertimeGraph();
 		bool IsGlobalGraph();
 		bool IsAngleGraph();
@@ -2674,8 +2678,10 @@ typedef unsigned int tfxEffectID;
 		float frame_rate;
 		//Offset of emitters
 		tfxVec3 emitter_handle;
-		//When single or one shot flags are set, spawn this amount of particles in one go
+		//When single flag is set, spawn this amount of particles in one go
 		unsigned int spawn_amount;
+		//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
+		unsigned int single_shot_limit;
 		//Layer of the particle manager that the particle is added to
 		unsigned int layer;
 		//The shape being used for all particles spawned from the emitter
@@ -2699,6 +2705,7 @@ typedef unsigned int tfxEffectID;
 			image(nullptr),
 			image_handle(tfxVec2()),
 			spawn_amount(1),
+			single_shot_limit(0),
 			emission_type(EmissionType::tfxPoint),
 			emission_direction(EmissionDirection::tfxOutwards),
 			grid_points({ 10.f, 10.f, 10.f }),
@@ -3201,29 +3208,29 @@ TFX_CUSTOM_EMITTER
 	//Particles are stored in the particle manager particle buffer.
 	struct tfxParticleData {
 		tfxLocalParticleFormState local;	//The local position of the particle, relative to the emitter.
-		tfxParticleFormState world;		//The world position of the particle relative to the world/screen.
-		tfxParticleFormState captured;	//The captured world coords for tweening
+		tfxParticleFormState world;			//The world position of the particle relative to the world/screen.
+		tfxParticleFormState captured;		//The captured world coords for tweening
 		tfxVec2 scale;
 		//Read only when ControlParticle is called, only written to at spawn time
-		Base base;						//Base values created when the particle is spawned. They can be different per particle due to variations
+		Base base;							//Base values created when the particle is spawned. They can be different per particle due to variations
 		tfxVec4 velocity_normal;
-		float emission_angle;			//Emission angle of the particle at spawn time
-		float noise_offset;				//Higer numbers means random movement is less uniform
-		float noise_resolution;			//Higer numbers means random movement is more uniform
-		tfxParticleFlags flags;			//flags for different states
+		float emission_angle;				//Emission angle of the particle at spawn time
+		float noise_offset;					//Higer numbers means random movement is less uniform
+		float noise_resolution;				//Higer numbers means random movement is more uniform
+		tfxParticleFlags flags;				//flags for different states
 		//Updated everyframe
-		float age;						//The age of the particle, used by the controller to look up the current state on the graphs
-		float max_age;					//max age before the particle expires
-		float image_frame;				//Current frame of the image if it's an animation
-		float weight_acceleration;		//The current amount of gravity applied to the y axis of the particle each frame
-		float intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
-		tfxRGBA8 color;					//Colour of the particle
+		float age;							//The age of the particle, used by the controller to look up the current state on the graphs
+		float max_age;						//max age before the particle expires
+		unsigned int single_loop_count;		//The number of times a single particle has looped over
+		float image_frame;					//Current frame of the image if it's an animation
+		float weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
+		float intensity;					//Color is multiplied by this value in the shader to increase the brightness of the particles
+		tfxRGBA8 color;						//Colour of the particle
 	};
 
 	struct Particle {
 		tfxParticleData data;
-
-		EffectEmitter *parent;			//pointer to the emitter that emitted the particle.
+		EffectEmitter *parent;				//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
 		unsigned int sprite_index;
