@@ -7117,13 +7117,13 @@ namespace tfx {
 			break;
 		case GraphPreset::tfxDimensionsPreset:
 		case GraphPreset::tfxVelocityPreset:
+		case GraphPreset::tfxWeightPreset:
+		case GraphPreset::tfxWeightVariationPreset:
 			return tfxVec2(10.f, 0.01f);
 			break;
 		case GraphPreset::tfxVelocityTurbulancePreset:
 			return tfxVec2(0.0017f, .01f);
 			break;
-		case GraphPreset::tfxWeightPreset:
-		case GraphPreset::tfxWeightVariationPreset:
 		case GraphPreset::tfxSpinPreset:
 		case GraphPreset::tfxSpinVariationPreset:
 			return tfxVec2(10.f, 2.5f);
