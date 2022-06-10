@@ -3321,6 +3321,17 @@ namespace tfx {
 			data.captured.position.w = data.world.position.w;
 		}
 
+		//Do a micro update
+		float micro_time = UPDATE_TIME * tween;
+		data.weight_acceleration += data.base.weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
+		//----Velocity Changes
+		tfxVec3 current_velocity = data.velocity_normal.xyz() * (data.base.velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
+		current_velocity.y += data.weight_acceleration;
+		current_velocity *= micro_time;
+		data.local.position += current_velocity;
+		data.world.position += current_velocity;
+		//end micro update
+
 		//----Handle
 		/*if (common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 			data.handle = tfxVec2(0.5f, 0.5f);
