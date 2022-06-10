@@ -5742,6 +5742,7 @@ namespace tfx {
 		eff.Insert("camera_floor_height", tfxFloat);
 		eff.Insert("camera_isometric", tfxBool);
 		eff.Insert("camera_isometric_scale", tfxFloat);
+		eff.Insert("camera_free_speed", tfxFloat);
 
 		eff.Insert("emission_type", tfxSInt);
 		eff.Insert("emission_direction", tfxSInt);
