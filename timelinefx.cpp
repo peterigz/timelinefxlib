@@ -3326,7 +3326,7 @@ namespace tfx {
 		data.weight_acceleration += data.base.weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
 		//----Velocity Changes
 		tfxVec3 current_velocity = data.velocity_normal.xyz() * (data.base.velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
-		current_velocity.y += data.weight_acceleration;
+		current_velocity.y -= data.weight_acceleration;
 		current_velocity *= micro_time;
 		data.local.position += current_velocity;
 		data.world.position += current_velocity;
@@ -3830,7 +3830,7 @@ namespace tfx {
 		float velocity_scalar = data.base.velocity * lookup_velocity;
 		tfxVec3 current_velocity = data.velocity_normal.xyz() * velocity_scalar;
 		current_velocity += mr_vec;
-		current_velocity.y += data.weight_acceleration;
+		current_velocity.y -= data.weight_acceleration;
 		current_velocity *= UPDATE_TIME;
 		data.velocity_normal.w = lookup_stretch;
 
