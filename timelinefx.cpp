@@ -1917,7 +1917,7 @@ namespace tfx {
 			Transform(*this, *parent_particle);
 			common.transform.world.position += common.handle * current.overal_scale;
 
-			if (common.state_flags & tfxEmitterStateFlags_no_tween_this_update) {
+			if (common.state_flags & tfxEmitterStateFlags_no_tween_this_update || common.state_flags & tfxEmitterStateFlags_no_tween) {
 				common.transform.captured = common.transform.world;
 			}
 
@@ -2011,7 +2011,7 @@ namespace tfx {
 				Transform(common.transform, common.root_effect->common.transform);
 		}
 
-		if (common.state_flags & tfxEmitterStateFlags_no_tween_this_update) {
+		if (common.state_flags & tfxEmitterStateFlags_no_tween_this_update || common.state_flags & tfxEmitterStateFlags_no_tween) {
 			common.transform.captured = common.transform.world;
 		}
 
@@ -3777,18 +3777,6 @@ namespace tfx {
 
 			mr_vec *= lookup_velocity_turbulance;
 
-			/*if (xy.x < -1.f || xy.x > 1.f || xy.y < -1.f || xy.y > 1.f || xy.z < -1 || xy.z > 1.f) {
-				float tx = -0.127964914f;
-				float ty = 101.578949f;
-				float tz = 100.578949f;
-				//float test1 = simplex3d(tx, ty - eps, tz);
-				float test2 = simplex3d(tx - eps, ty, tz);
-				//tfxVec4 tn41 = SimplexNoise::noise4(tfxVec3(tx, ty - eps, tz), tfxVec3(tx, ty - eps, tz), tfxVec3(tx, ty - eps, tz), tfxVec3(tx, ty - eps, tz));
-				tfxVec4 tn42 = SimplexNoise::noise4(tfxVec3(tx - eps, ty, tz), tfxVec3(tx - eps, ty, tz), tfxVec3(tx - eps, ty, tz), tfxVec3(tx - eps, ty, tz));
-				printf("Out of bounds");
-			}*/
-
-
 			/*
 			float n1 = simplex3d(x, y + eps, z);
 			float n2 = simplex3d(x, y - eps, z);
@@ -3821,6 +3809,7 @@ namespace tfx {
 			mr_vec.z = a - b;
 			mr_vec *= lookup_velocity_turbulance;
 			*/
+
 		}
 
 		//----Weight Changes
@@ -3904,6 +3893,8 @@ namespace tfx {
 		data.image_frame = (c.flags & tfxEmitterStateFlags_play_once) && data.image_frame > library_link->properties.end_frame ? data.image_frame = library_link->properties.end_frame : data.image_frame;
 		data.image_frame = (c.flags & tfxEmitterStateFlags_play_once) && data.image_frame < 0 ? data.image_frame = 0 : data.image_frame;
 		data.image_frame = std::fmodf(data.image_frame, library_link->properties.end_frame + 1);
+
+		data.flags = current_velocity.IsNill() ? data.flags &= ~tfxParticleFlags_has_velocity : data.flags |= tfxParticleFlags_has_velocity;
 	}
 
 	void tfxEmitter::ControlParticles() {

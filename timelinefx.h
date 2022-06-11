@@ -463,6 +463,7 @@ typedef unsigned int tfxEffectID;
 		tfxParticleFlags_fresh = 1 << 0,									//Particle has just spawned this frame	
 		tfxParticleFlags_capture_after_transform = 1 << 3,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
 		tfxParticleFlags_remove = 1 << 4,									//Particle will be removed this or next frame
+		tfxParticleFlags_has_velocity = 1 << 5,								//Flagged if the particle is currently moving
 	};
 
 	enum tfxEmitterStateFlags_ : unsigned int {
@@ -486,7 +487,8 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterStateFlags_play_once = 1 << 16,						//Play the animation once only
 		tfxEmitterStateFlags_single_shot_done = 1 << 17,
 		tfxEmitterStateFlags_is_line = 1 << 18,
-		tfxEmitterStateFlags_is_area = 1 << 19
+		tfxEmitterStateFlags_is_area = 1 << 19,
+		tfxEmitterStateFlags_no_tween = 1 << 20
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
