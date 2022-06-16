@@ -449,7 +449,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterPropertyFlags_play_once = 1 << 16,						//Play the animation once only
 		tfxEmitterPropertyFlags_random_start_frame = 1 << 17,				//Start the animation of the image from a random frame
 		tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
-		tfxEmitterPropertyFlags_use_vector_field = 1 << 19,					//Enable the use of a vector field to apply forces to the particles
+		tfxEmitterPropertyFlags_disable_billboard = 1 << 19,						//For 3D effects, billboard particles will always face the camera
 		tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
 		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 		tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
@@ -924,6 +924,31 @@ typedef unsigned int tfxEffectID;
 	static inline float DotProduct(const tfxVec3 &a, const tfxVec3 &b)
 	{
 		return (a.x * b.x + a.y * b.y + a.z * b.z);
+	}
+
+	//Quake 3 inverse square root
+	static inline float tfxSqrt(float number)
+	{
+		long i;
+		float x2, y;
+		const float threehalfs = 1.5F;
+
+		x2 = number * 0.5F;
+		y = number;
+		i = *(long *)&y;                       // evil floating point bit level hacking
+		i = 0x5f3759df - (i >> 1);               // what the fuck? 
+		y = *(float *)&i;
+		y = y * (threehalfs - (x2 * y * y));   // 1st iteration
+
+		return y;
+	}
+
+	static inline float FastLength(tfxVec3 const &v) {
+		return 1.f / tfxSqrt(DotProduct(v, v));
+	}
+
+	static inline tfxVec3 FastNormalizeVec(tfxVec3 const &v) {
+		return v * tfxSqrt(DotProduct(v, v));
 	}
 
 	struct Matrix4 {
@@ -2836,7 +2861,12 @@ typedef unsigned int tfxEffectID;
 		tfxEffect *root_effect;
 
 		tfxCommon() :
-			property_flags(tfxEmitterPropertyFlags_image_handle_auto_center | tfxEmitterPropertyFlags_grid_spawn_clockwise | tfxEmitterPropertyFlags_emitter_handle_auto_center | tfxEmitterPropertyFlags_global_uniform_size | tfxEmitterPropertyFlags_base_uniform_size | tfxEmitterPropertyFlags_lifetime_uniform_size),
+			property_flags(tfxEmitterPropertyFlags_image_handle_auto_center | 
+							tfxEmitterPropertyFlags_grid_spawn_clockwise | 
+							tfxEmitterPropertyFlags_emitter_handle_auto_center | 
+							tfxEmitterPropertyFlags_global_uniform_size | 
+							tfxEmitterPropertyFlags_base_uniform_size | 
+							tfxEmitterPropertyFlags_lifetime_uniform_size),
 			frame(0.f),
 			age(0.f),
 			state_flags(0),
@@ -3216,6 +3246,7 @@ TFX_CUSTOM_EMITTER
 		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;							//Base values created when the particle is spawned. They can be different per particle due to variations
 		tfxVec4 velocity_normal;
+		//todo should merge emission_angle with velocity_normal
 		float emission_angle;				//Emission angle of the particle at spawn time
 		float noise_offset;					//Higer numbers means random movement is less uniform
 		float noise_resolution;				//Higer numbers means random movement is more uniform

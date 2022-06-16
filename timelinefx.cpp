@@ -2716,7 +2716,7 @@ namespace tfx {
 			data.scale.x = data.base.size.x * common.library->overtime_graphs[library_link->overtime].width.GetFirstValue();
 
 			if (common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-				data.scale.y = data.scale.x;
+				data.scale.y = height * common.library->overtime_graphs[library_link->overtime].width.GetFirstValue();
 			}
 			else {
 				data.scale.y = height * common.library->overtime_graphs[library_link->overtime].height.GetFirstValue();
@@ -3820,8 +3820,8 @@ namespace tfx {
 		tfxVec3 current_velocity = data.velocity_normal.xyz() * velocity_scalar;
 		current_velocity += mr_vec;
 		current_velocity.y -= data.weight_acceleration;
-		current_velocity *= UPDATE_TIME;
 		data.velocity_normal.w = lookup_stretch;
+		current_velocity *= UPDATE_TIME;
 
 		//----Color changes
 		data.color.a = unsigned char(255.f * lookup_opacity * c.global_intensity);
@@ -4396,7 +4396,7 @@ namespace tfx {
 
 	EffectEmitter* EffectEmitter::GetRootEffect() {
 		if (!parent || parent->type == tfxFolder)
-			return nullptr;
+			return this;
 		EffectEmitter *p = parent;
 		unsigned int timeout = 0;
 		while (p || ++timeout < 100) {
@@ -5282,7 +5282,7 @@ namespace tfx {
 
 	void EffectLibrary::AddEffectGraphs(EffectEmitter& effect) {
 		EffectEmitter *root_effect = effect.GetRootEffect();
-		if (!root_effect)
+		if (root_effect == &effect)
 			effect.global = AddGlobal();
 		else
 			effect.global = root_effect->global;
@@ -5734,6 +5734,7 @@ namespace tfx {
 		eff.Insert("camera_isometric", tfxBool);
 		eff.Insert("camera_isometric_scale", tfxFloat);
 		eff.Insert("camera_free_speed", tfxFloat);
+		eff.Insert("camera_ray_offset", tfxFloat);
 
 		eff.Insert("emission_type", tfxSInt);
 		eff.Insert("emission_direction", tfxSInt);
@@ -5748,6 +5749,7 @@ namespace tfx {
 		eff.Insert("end_behaviour", tfxSInt);
 		eff.Insert("angle_setting", tfxSInt);
 		eff.Insert("angle_offset", tfxFloat);
+		eff.Insert("disable_billboard", tfxBool);
 		eff.Insert("multiply_blend_factor", tfxFloat);
 
 		eff.Insert("random_color", tfxBool);
@@ -6060,6 +6062,8 @@ namespace tfx {
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;
 		if (field == "is_3d")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_is_3d; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_is_3d;
+		if (field == "disable_billboard")
+			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_disable_billboard; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_disable_billboard;
 	}
 
 	void StreamProperties(EmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file) {
@@ -6104,6 +6108,7 @@ namespace tfx {
 		file.AddLine("lifetime_uniform_size=%i", (flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
 		file.AddLine("use_spawn_ratio=%i", (flags & tfxEmitterPropertyFlags_use_spawn_ratio));
 		file.AddLine("is_3d=%i", (flags & tfxEmitterPropertyFlags_is_3d));
+		file.AddLine("disable_billboard=%i", (flags & tfxEmitterPropertyFlags_disable_billboard));
 		file.AddLine("layer=%i", property.layer);
 
 	}
@@ -6988,6 +6993,7 @@ namespace tfx {
 		to.nodes.reserve(nodes.size());
 		std::copy(nodes.begin(), nodes.end(), to.nodes.begin());
 		to.nodes.current_size = nodes.current_size;
+		CompileGraph(to);
 	}
 
 	bool Graph::Sort() {
