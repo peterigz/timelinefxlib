@@ -794,6 +794,11 @@ typedef unsigned int tfxEffectID;
 		inline void operator*=(const tfxVec3 &v) { x *= v.x; y *= v.y; z *= v.z; }
 		inline void operator/=(const tfxVec3 &v) { x /= v.x; y /= v.y; z /= v.z; }
 
+		inline void operator-=(const tfxVec2 &v) { x -= v.x; y -= v.y; }
+		inline void operator+=(const tfxVec2 &v) { x += v.x; y += v.y; }
+		inline void operator*=(const tfxVec2 &v) { x *= v.x; y *= v.y; }
+		inline void operator/=(const tfxVec2 &v) { x /= v.x; y /= v.y; }
+
 		inline tfxVec3 operator+(float v) const { return tfxVec3(x + v, y + v, z + v); }
 		inline tfxVec3 operator-(float v) const { return tfxVec3(x - v, y - v, z - v); }
 		inline tfxVec3 operator*(float v) const { return tfxVec3(x * v, y * v, z * v); }
@@ -1178,6 +1183,32 @@ typedef unsigned int tfxEffectID;
 		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 		_mm_store_ps(tmp, row4result);
 		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+		return v;
+	}
+
+	static inline tfxVec3 mmTransformVector3(const Matrix4 &mat, const tfxVec4 vec) {
+		tfxVec3 v;
+
+		__m128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+		__m128 mrow1 = _mm_load_ps(&mat.v[0].x);
+		__m128 mrow2 = _mm_load_ps(&mat.v[1].x);
+		__m128 mrow3 = _mm_load_ps(&mat.v[2].x);
+		__m128 mrow4 = _mm_load_ps(&mat.v[3].x);
+
+		__m128 row1result = _mm_mul_ps(v4, mrow1);
+		__m128 row2result = _mm_mul_ps(v4, mrow2);
+		__m128 row3result = _mm_mul_ps(v4, mrow3);
+		__m128 row4result = _mm_mul_ps(v4, mrow4);
+
+		float tmp[4];
+		_mm_store_ps(tmp, row1result);
+		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row2result);
+		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row3result);
+		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 
 		return v;
 	}
@@ -2594,27 +2625,6 @@ typedef unsigned int tfxEffectID;
 		int import_filter = 0;
 	};
 
-	//Store the current state of the object in 2d space
-	struct tfxEmitterFormState {
-		tfxVec3 position;
-		tfxVec3 rotations;
-	};
-
-	struct tfxParticleFormState {
-		tfxVec4 position;	//Rotation is in w
-	};
-
-	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
-	struct tfxLocalParticleFormState {
-		tfxVec4 position;	//Rotation is in w
-	};
-
-	//Store the current local state of the object in 2d space (doesn't require scale here so can save the 8 bytes)
-	struct tfxLocalEmitterFormState {
-		tfxVec3 position;
-		tfxVec3 rotations;
-	};
-
 	struct Base {
 		tfxVec2 size;
 		tfxVec2 random_size;
@@ -2715,7 +2725,7 @@ typedef unsigned int tfxEffectID;
 		unsigned int shape_index;
 
 		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
-		float angle_offset;
+		tfxVec3 angle_offsets;
 		//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
 		tfxVec3 grid_points;
 		//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
@@ -2728,7 +2738,7 @@ typedef unsigned int tfxEffectID;
 		float delay_spawning;
 
 		EmitterProperties() :
-			angle_offset(360),
+			angle_offsets(360.f),
 			image(nullptr),
 			image_handle(tfxVec2()),
 			spawn_amount(1),
@@ -2833,9 +2843,11 @@ typedef unsigned int tfxEffectID;
 
 	struct tfxEmitterTransform {
 		//Position, scale and rotation values
-		tfxLocalEmitterFormState local;
-		tfxEmitterFormState world;
-		tfxEmitterFormState captured;
+		tfxVec3 local_position;
+		tfxVec3 world_position;
+		tfxVec3 captured_position;
+		tfxVec3 local_rotations;
+		tfxVec3 world_rotations;
 		tfxVec3 scale;
 		//2d matrix for transformations
 		Matrix4 matrix;
@@ -2946,7 +2958,7 @@ typedef unsigned int tfxEffectID;
 	};
 
 	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
-	tfxVec3 GetEmissionDirection3d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
+	tfxVec3 GetEmissionDirection3d(tfxCommon &common, tfxEmitterState &current, EffectEmitter *library_link, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffect {
 		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
@@ -2983,9 +2995,9 @@ typedef unsigned int tfxEffectID;
 		tfxEmitter &GrabSubEffect();
 		tfxEmitter& AddSubEffect(tfxEmitter &sub_effect);
 		inline void AllowMoreParticles() { common.property_flags |= tfxEmitterPropertyFlags_can_grow_particle_memory; }
-		inline void Move(float x, float y) { common.transform.local.position.x += x; common.transform.local.position.y += y; }
-		inline void Position(float x, float y, bool capture = true) { common.transform.local.position.x = x; common.transform.local.position.y = y; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
-		inline void Position(tfxVec2 pos, bool capture = true) { common.transform.local.position = pos; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
+		inline void Move(float x, float y) { common.transform.local_position.x += x; common.transform.local_position.y += y; }
+		inline void Position(float x, float y, bool capture = true) { common.transform.local_position.x = x; common.transform.local_position.y = y; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
+		inline void Position(tfxVec2 pos, bool capture = true) { common.transform.local_position = pos; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
 		inline void SetLookupMode(LookupMode mode) { lookup_mode = mode; }
 		
 	};
@@ -3212,8 +3224,9 @@ TFX_CUSTOM_EMITTER
 	struct ParticleSprite {	//88 bytes
 		void *ptr;					//Pointer to the image data
 		tfxParticle *particle;		//We need to point to the particle in order to update it's sprite index
-		tfxParticleFormState world;
-		tfxParticleFormState captured;
+		tfxVec3 world_position;
+		tfxVec3 captured_position;
+		float rotation;
 		tfxVec2 handle;
 		tfxRGBA8 color;				//The color tint of the sprite
 		float intensity;			
@@ -3239,9 +3252,11 @@ TFX_CUSTOM_EMITTER
 	//These are spawned by effector emitter types
 	//Particles are stored in the particle manager particle buffer.
 	struct tfxParticleData {
-		tfxLocalParticleFormState local;	//The local position of the particle, relative to the emitter.
-		tfxParticleFormState world;			//The world position of the particle relative to the world/screen.
-		tfxParticleFormState captured;		//The captured world coords for tweening
+		tfxVec3 local_position;			//The local position of the particle, relative to the emitter.
+		tfxVec3 world_position;			//The world position of the particle relative to the world/screen.
+		tfxVec3 captured_position;		//The captured world coords for tweening
+		tfxVec3 local_rotations;
+		tfxVec3 world_rotations;
 		tfxVec2 scale;
 		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;							//Base values created when the particle is spawned. They can be different per particle due to variations
@@ -3602,7 +3617,7 @@ TFX_CUSTOM_EMITTER
 	void Transform(tfxEmitter &emitter, tfxParticle &parent);
 	void Transform(tfxEmitterTransform &out, tfxEmitterTransform &in);
 	void Transform3d(tfxEmitterTransform &out, tfxEmitterTransform &in);
-	tfxParticleFormState Tween(float tween, tfxParticleFormState &world, tfxParticleFormState &captured);
+	tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured);
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(Particle &p, EffectEmitter &e);
