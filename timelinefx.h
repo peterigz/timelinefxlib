@@ -119,6 +119,9 @@ namespace tfx {
 #define TWO63 0x8000000000000000u 
 #define TWO64f (TWO63*2.0)
 #define tfxPI 3.14159265359f
+#define tfx360Radians 6.28319f
+#define tfx180Radians 3.14159f
+#define tfx90Radians 1.5708f
 
 	//----------------------------------------------------------
 	//Forward declarations
@@ -172,15 +175,6 @@ typedef unsigned int tfxEffectID;
 
 	//----------------------------------------------------------
 	//enums/flags
-
-	//Particle property that defines how a particle will rotate
-	enum AngleSetting : unsigned char {
-		tfxAlign,												//Align the particle with it's direction of travel
-		tfxRandom,												//Chose a random angle at spawn time/flags
-		tfxSpecify,												//Specify the angle at spawn time
-		tfxAlignWithEmission,									//Align the particle with the emission direction only
-		tfxGraph												//Unused, but the idea was to allow the angle to be changed overtime using a graph
-	};
 
 	//Blend mode property of the emitter
 	//It's up to whoever is implementing this library to provide a render function for the particles and make use of these blend modes
@@ -399,6 +393,26 @@ typedef unsigned int tfxEffectID;
 	typedef unsigned int tfxEmitterStateFlags;
 	typedef unsigned int tfxParticleControlFlags;
 	typedef unsigned int tfxAttributeNodeFlags;
+	typedef unsigned int tfxAngleSettingFlags;
+
+	enum tfxBillboardingOptions {
+		tfxBillboarding = 0,
+		tfxBillboarding_disabled = 1,
+		tfxBillboarding_disabled_align = 2,
+		tfxBillboarding_align = 1 << 2 
+	};
+
+	//Particle property that defines how a particle will rotate
+	enum tfxAngleSettingFlags_ {
+		tfxAngleSettingFlags_align_roll = 0,												//Align the particle with it's direction of travel in 2d
+		tfxAngleSettingFlags_random_roll = 1 << 0,											//Chose a random angle at spawn time/flags
+		tfxAngleSettingFlags_specify_roll = 1 << 1,											//Specify the angle at spawn time
+		tfxAngleSettingFlags_align_with_emission = 1 << 2,									//Align the particle with the emission direction only
+		tfxAngleSettingFlags_random_pitch = 1 << 3,											//3d mode allows for rotating pitch and yaw when not using billboarding (when particle always faces the camera)
+		tfxAngleSettingFlags_random_yaw = 1 << 4,
+		tfxAngleSettingFlags_specify_pitch = 1 << 5,
+		tfxAngleSettingFlags_specify_yaw = 1 << 6
+	};
 
 	//All the flags needed by the ControlParticle function put into one enum to save space
 	enum tfxParticleControlFlags_ {
@@ -422,10 +436,12 @@ typedef unsigned int tfxEffectID;
 		tfxParticleControlFlags_play_once = 1 << 16,
 		tfxParticleControlFlags_align = 1 << 17,
 		tfxParticleControlFlags_emission = 1 << 18,
-		tfxParticleControlFlags_random = 1 << 19,
-		tfxParticleControlFlags_specify = 1 << 20,
-		tfxParticleControlFlags_alpha = 1 << 21,
-		tfxParticleControlFlags_additive = 1 << 22,
+		tfxParticleControlFlags_random_roll = 1 << 19,
+		tfxParticleControlFlags_specify_roll = 1 << 20,
+		tfxParticleControlFlags_random_pitch = 1 << 21,
+		tfxParticleControlFlags_specify_pitch = 1 << 22,
+		tfxParticleControlFlags_random_yaw = 1 << 23,
+		tfxParticleControlFlags_specify_yaw = 1 << 24,
 	};
 
 	enum tfxEmitterPropertyFlags_ {
@@ -449,7 +465,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterPropertyFlags_play_once = 1 << 16,						//Play the animation once only
 		tfxEmitterPropertyFlags_random_start_frame = 1 << 17,				//Start the animation of the image from a random frame
 		tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
-		tfxEmitterPropertyFlags_disable_billboard = 1 << 19,						//For 3D effects, billboard particles will always face the camera
+		tfxEmitterPropertyFlags_unused = 1 << 19,							//Unused
 		tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
 		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 		tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
@@ -862,6 +878,12 @@ typedef unsigned int tfxEffectID;
 		inline void operator+=(float v) { x += v; y += v; z += v; w += v; }
 		inline void operator-=(float v) { x -= v; y -= v; z -= v; w -= v; }
 	};
+
+	static inline void ScaleVec4xyz(tfxVec4 &v, float scalar) {
+		v.x *= scalar;
+		v.y *= scalar;
+		v.z *= scalar;
+	}
 
 	struct tfxRGBA8 {
 		unsigned char r, g, b, a;
@@ -2704,7 +2726,9 @@ typedef unsigned int tfxEffectID;
 		//How particles should behave when they reach the end of the line
 		LineTraversalEndBehaviour end_behaviour;
 		//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
-		AngleSetting angle_setting = AngleSetting::tfxRandom;
+		tfxAngleSettingFlags angle_settings;
+		//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
+		tfxBillboardingOptions billboard_option;
 
 		//Bit field of various boolean flags
 		tfxParticleControlFlags compute_flags;
@@ -2738,12 +2762,13 @@ typedef unsigned int tfxEffectID;
 		float delay_spawning;
 
 		EmitterProperties() :
-			angle_offsets(360.f),
+			angle_offsets(tfx360Radians),
 			image(nullptr),
 			image_handle(tfxVec2()),
 			spawn_amount(1),
 			single_shot_limit(0),
 			emission_type(EmissionType::tfxPoint),
+			billboard_option(tfxBillboarding),
 			emission_direction(EmissionDirection::tfxOutwards),
 			grid_points({ 10.f, 10.f, 10.f }),
 			emitter_handle(),
@@ -2754,7 +2779,7 @@ typedef unsigned int tfxEffectID;
 			start_frame(0),
 			end_frame(0),
 			frame_rate(30.f),
-			angle_setting(AngleSetting::tfxRandom),
+			angle_settings(tfxAngleSettingFlags_random_roll),
 			delay_spawning(0.f)
 		{ }
 	};
@@ -3254,13 +3279,14 @@ TFX_CUSTOM_EMITTER
 	struct tfxParticleData {
 		tfxVec3 local_position;			//The local position of the particle, relative to the emitter.
 		tfxVec3 world_position;			//The world position of the particle relative to the world/screen.
-		tfxVec3 captured_position;		//The captured world coords for tweening
+		tfxVec3 captured_position;		//The captured world coords for interpolating frames
 		tfxVec3 local_rotations;
 		tfxVec3 world_rotations;
 		tfxVec2 scale;
 		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;							//Base values created when the particle is spawned. They can be different per particle due to variations
 		tfxVec4 velocity_normal;
+		tfxVec3 alignment_vector;
 		//todo should merge emission_angle with velocity_normal
 		float emission_angle;				//Emission angle of the particle at spawn time
 		float noise_offset;					//Higer numbers means random movement is less uniform

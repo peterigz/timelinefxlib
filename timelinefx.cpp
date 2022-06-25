@@ -2036,8 +2036,8 @@ namespace tfx {
 		common.state_flags |= (library_link->properties.emission_type != tfxLine && !(library_link->common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || library_link->properties.emission_type == tfxLine && !(library_link->common.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
 		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_random_color;
 		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-		common.state_flags |= library_link->properties.angle_setting != AngleSetting::tfxAlign && !(library_link->common.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
-		common.state_flags |= library_link->properties.angle_setting == AngleSetting::tfxAlign ? tfxEmitterStateFlags_align_with_velocity : 0;
+		common.state_flags |= library_link->properties.angle_settings != tfxAngleSettingFlags_align_roll && !(library_link->common.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+		common.state_flags |= library_link->properties.angle_settings == tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
 		common.state_flags |= library_link->properties.emission_type == tfxLine && library_link->common.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
 		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_play_once;
 		common.state_flags |= library_link->properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
@@ -2427,8 +2427,8 @@ namespace tfx {
 		}
 
 		if (emission_yaw + emission_pitch != 0.f) {
-			Matrix4 pitch = mmXRotate(emission_pitch);
-			Matrix4 yaw = mmZRotate(emission_yaw);
+			Matrix4 pitch = mmYRotate(emission_pitch);
+			Matrix4 yaw = mmXRotate(emission_yaw);
 			Matrix4 rotated = mmTransform(pitch, yaw);
 			v = mmTransformVector(rotated, v.xyz());
 		}
@@ -2733,11 +2733,11 @@ namespace tfx {
 		//----Spin
 		data.base.spin = random_generation.Range(-spawn_values.spin_variation, std::abs(spawn_values.spin_variation)) + spawn_values.spin;
 
-		switch (library_link->properties.angle_setting) {
-		case AngleSetting::tfxRandom:
+		switch (library_link->properties.angle_settings) {
+		case tfxAngleSettingFlags_random_roll:
 			data.world_rotations.roll = data.local_rotations.roll = random_generation.Range(library_link->properties.angle_offsets.roll);
 			break;
-		case AngleSetting::tfxSpecify:
+		case tfxAngleSettingFlags_specify_roll:
 			data.world_rotations.roll = data.local_rotations.roll = library_link->properties.angle_offsets.roll;
 			break;
 		default:
@@ -2768,7 +2768,7 @@ namespace tfx {
 
 		float direction = 0;
 
-		if (library_link->properties.angle_setting == AngleSetting::tfxAlign && common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
+		if (library_link->properties.angle_settings & tfxAngleSettingFlags_align_roll && common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
 			data.world_rotations.roll = data.local_rotations.roll = direction + library_link->properties.angle_offsets.roll;
 
 		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine;
@@ -2797,7 +2797,7 @@ namespace tfx {
 
 		//data.velocity = data.velocity_normal * data.base.velocity * data.velocity_scale * UPDATE_TIME;
 
-		if ((library_link->properties.angle_setting == AngleSetting::tfxAlign || library_link->properties.angle_setting == tfxAlignWithEmission) && !line) {
+		if ((library_link->properties.angle_settings & tfxAngleSettingFlags_align_roll || library_link->properties.angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
 			//----Normalize Velocity to direction
 			tfxVec2 velocity_normal;
 			velocity_normal.x = std::sinf(direction);
@@ -3250,17 +3250,21 @@ namespace tfx {
 		//----Spin
 		data.base.spin = random_generation.Range(-spawn_values.spin_variation, std::abs(spawn_values.spin_variation)) + spawn_values.spin;
 
-		switch (library_link->properties.angle_setting) {
-		case AngleSetting::tfxRandom:
-			data.world_rotations.roll = data.local_rotations.roll = random_generation.Range(library_link->properties.angle_offsets.roll);
-			break;
-		case AngleSetting::tfxSpecify:
+		data.world_rotations.roll = data.local_rotations.pitch = 0;
+		data.world_rotations.roll = data.local_rotations.yaw = 0;
+		data.world_rotations.roll = data.local_rotations.roll = 0;
+		if(library_link->properties.angle_settings & tfxAngleSettingFlags_specify_roll)
 			data.world_rotations.roll = data.local_rotations.roll = library_link->properties.angle_offsets.roll;
-			break;
-		default:
-			data.world_rotations.roll = data.local_rotations.roll = 0;
-			break;
-		}
+		if(library_link->properties.angle_settings & tfxAngleSettingFlags_specify_pitch)
+			data.world_rotations.pitch = data.local_rotations.pitch = library_link->properties.angle_offsets.pitch;
+		if(library_link->properties.angle_settings & tfxAngleSettingFlags_specify_yaw)
+			data.world_rotations.yaw = data.local_rotations.yaw = library_link->properties.angle_offsets.yaw;
+		if(library_link->properties.angle_settings & tfxAngleSettingFlags_random_pitch)
+			data.world_rotations.pitch = data.local_rotations.pitch = random_generation.Range(library_link->properties.angle_offsets.pitch);
+		if(library_link->properties.angle_settings & tfxAngleSettingFlags_random_yaw)
+			data.world_rotations.yaw = data.local_rotations.yaw = random_generation.Range(library_link->properties.angle_offsets.yaw);
+		if(library_link->properties.angle_settings & tfxAngleSettingFlags_random_roll)
+			data.world_rotations.roll = data.local_rotations.roll = random_generation.Range(library_link->properties.angle_offsets.roll);
 
 		//----Splatter
 		if (spawn_values.splatter) {
@@ -3288,9 +3292,6 @@ namespace tfx {
 
 		float direction = 0;
 
-		if (library_link->properties.angle_setting == AngleSetting::tfxAlign && common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
-			data.world_rotations.roll = data.world_rotations.roll = direction + library_link->properties.angle_offsets.roll;
-
 		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine;
 
 		TransformParticle3d(data, common, library_link->properties.emission_type == tfxLine);
@@ -3313,14 +3314,10 @@ namespace tfx {
 
 		//data.velocity = data.velocity_normal * data.base.velocity * data.velocity_scale * UPDATE_TIME;
 
-		if ((library_link->properties.angle_setting == AngleSetting::tfxAlign || library_link->properties.angle_setting == tfxAlignWithEmission) && !line) {
-			data.world_rotations.roll = data.local_rotations.roll = GetVectorAngle(data.velocity_normal.x, data.velocity_normal.y) + library_link->properties.angle_offsets.roll;
-			if (common.property_flags & tfxEmitterPropertyFlags_relative_angle)
-				data.world_rotations.roll += common.transform.local_rotations.roll;
-		}
-
 		//Do a micro update
-		float micro_time = UPDATE_TIME * tween;
+		//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
+		//the alignment on the first frame can be calculated
+		float micro_time = UPDATE_TIME * tween + 0.001f;
 		data.weight_acceleration += data.base.weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
 		//----Velocity Changes
 		tfxVec3 current_velocity = data.velocity_normal.xyz() * (data.base.velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
@@ -4753,8 +4750,8 @@ namespace tfx {
 		e.common.state_flags |= (properties.emission_type != tfxLine && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type == tfxLine && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
 		e.common.state_flags |= common.property_flags & tfxEmitterPropertyFlags_random_color;
 		e.common.state_flags |= common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-		e.common.state_flags |= properties.angle_setting != AngleSetting::tfxAlign && !(common.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
-		e.common.state_flags |= properties.angle_setting == AngleSetting::tfxAlign ? tfxEmitterStateFlags_align_with_velocity : 0;
+		e.common.state_flags |= properties.angle_settings != tfxAngleSettingFlags_align_roll && !(common.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+		e.common.state_flags |= properties.angle_settings == tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
 		e.common.state_flags |= properties.emission_type == tfxLine && common.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
 		e.common.state_flags |= common.property_flags & tfxEmitterPropertyFlags_play_once;
 		e.common.state_flags |= properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
@@ -5731,9 +5728,12 @@ namespace tfx {
 		eff.Insert("emitter_handle_y", tfxFloat);
 		eff.Insert("emitter_handle_z", tfxFloat);
 		eff.Insert("end_behaviour", tfxSInt);
-		eff.Insert("angle_setting", tfxSInt);
+		eff.Insert("angle_setting", tfxUint);
 		eff.Insert("angle_offset", tfxFloat);
+		eff.Insert("angle_offset_pitch", tfxFloat);
+		eff.Insert("angle_offset_yaw", tfxFloat);
 		eff.Insert("disable_billboard", tfxBool);
+		eff.Insert("billboard_option", tfxUint);
 		eff.Insert("multiply_blend_factor", tfxFloat);
 
 		eff.Insert("random_color", tfxBool);
@@ -5944,14 +5944,16 @@ namespace tfx {
 			effect.common.library->animation_settings[effect.animation_settings].frame_offset = value;
 		if (field == "single_shot_limit")
 			effect.properties.single_shot_limit = value;
+		if (field == "billboard_option")
+			effect.properties.billboard_option = (tfxBillboardingOptions)value;
+		if (field == "angle_setting")
+			effect.properties.angle_settings = (tfxAngleSettingFlags)value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, int value) {
 		if (field == "emission_type")
 			effect.properties.emission_type = (EmissionType)value;
 		if (field == "emission_direction")
 			effect.properties.emission_direction = (EmissionDirection)value;
-		if (field == "angle_setting")
-			effect.properties.angle_setting = (AngleSetting)value;
 		if (field == "color_option")
 			effect.common.library->animation_settings[effect.animation_settings].color_option = (ExportColorOptions)value;
 		if (field == "export_option")
@@ -6010,6 +6012,10 @@ namespace tfx {
 			effect.properties.frame_rate = value;
 		if (field == "angle_offset")
 			effect.properties.angle_offsets.roll = value;
+		if (field == "angle_offset_pitch")
+			effect.properties.angle_offsets.pitch = value;
+		if (field == "angle_offset_yaw")
+			effect.properties.angle_offsets.yaw = value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, bool value) {
 		if (field == "loop")
@@ -6058,8 +6064,6 @@ namespace tfx {
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;
 		if (field == "is_3d")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_is_3d; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_is_3d;
-		if (field == "disable_billboard")
-			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_disable_billboard; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_disable_billboard;
 	}
 
 	void StreamProperties(EmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file) {
@@ -6097,14 +6101,16 @@ namespace tfx {
 		file.AddLine("fill_area=%i", (flags & tfxEmitterPropertyFlags_fill_area));
 		file.AddLine("emitter_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_emitter_handle_auto_center));
 		file.AddLine("edge_traversal=%i", (flags & tfxEmitterPropertyFlags_edge_traversal));
-		file.AddLine("angle_setting=%i", property.angle_setting);
+		file.AddLine("angle_setting=%i", property.angle_settings);
 		file.AddLine("angle_offset=%f", property.angle_offsets.roll);
+		file.AddLine("angle_offset_pitch=%f", property.angle_offsets.pitch);
+		file.AddLine("angle_offset_yaw=%f", property.angle_offsets.yaw);
 		file.AddLine("global_uniform_size=%i", (flags & tfxEmitterPropertyFlags_global_uniform_size));
 		file.AddLine("base_uniform_size=%i", (flags & tfxEmitterPropertyFlags_base_uniform_size));
 		file.AddLine("lifetime_uniform_size=%i", (flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
 		file.AddLine("use_spawn_ratio=%i", (flags & tfxEmitterPropertyFlags_use_spawn_ratio));
 		file.AddLine("is_3d=%i", (flags & tfxEmitterPropertyFlags_is_3d));
-		file.AddLine("disable_billboard=%i", (flags & tfxEmitterPropertyFlags_disable_billboard));
+		file.AddLine("billboard_option=%i", property.billboard_option);
 		file.AddLine("layer=%i", property.layer);
 
 	}
