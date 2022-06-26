@@ -6160,6 +6160,12 @@ namespace tfx {
 			type == tfxProperty_emitter_roll || type == tfxProperty_emitter_pitch || type == tfxProperty_emitter_yaw || type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin || type == tfxOvertime_direction);
 	}
 
+	void Graph::MultiplyAllValues(float scalar) {
+		for (auto &node : nodes) {
+			node.value *= scalar;
+		}
+	}
+
 	float AttributeNode::GetX() {
 		return frame;
 	}

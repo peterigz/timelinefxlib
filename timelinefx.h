@@ -2519,6 +2519,7 @@ typedef unsigned int tfxEffectID;
 		bool IsOvertimeGraph();
 		bool IsGlobalGraph();
 		bool IsAngleGraph();
+		void MultiplyAllValues(float scalar);
 
 	};
 
