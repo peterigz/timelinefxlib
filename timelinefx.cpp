@@ -3308,6 +3308,9 @@ namespace tfx {
 		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || library_link->properties.emission_type != EmissionType::tfxLine) {
 			data.velocity_normal = GetEmissionDirection3d(common, current, library_link, emission_yaw, emission_pitch, data.local_position, data.world_position, current.emitter_size);
 		}
+		else if(common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine) {
+			data.velocity_normal = tfxVec4(0, 1.f, 0.f, 0.f);
+		}
 		data.base.velocity = spawn_values.velocity + random_generation.Range(-spawn_values.velocity_variation, spawn_values.velocity_variation);
 		float velocity_scale = common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue() * current.velocity_adjuster * data.base.velocity;
 		data.velocity_normal.w = common.library->overtime_graphs[library_link->overtime].stretch.GetFirstValue();
