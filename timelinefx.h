@@ -402,6 +402,13 @@ typedef unsigned int tfxEffectID;
 		tfxBillboarding_align = 1 << 2 
 	};
 
+	enum tfxVectorAlignType {
+		tfxVectorAlignType_motion,
+		tfxVectorAlignType_emission,
+		tfxVectorAlignType_emitter,
+		tfxVectorAlignType_max
+	};
+
 	//Particle property that defines how a particle will rotate
 	enum tfxAngleSettingFlags_ {
 		tfxAngleSettingFlags_align_roll = 0,												//Align the particle with it's direction of travel in 2d
@@ -2730,6 +2737,8 @@ typedef unsigned int tfxEffectID;
 		tfxAngleSettingFlags angle_settings;
 		//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
 		tfxBillboardingOptions billboard_option;
+		//When aligning the billboard along a vector, you can set the type of vector that it aligns with
+		tfxVectorAlignType vector_align_type;
 
 		//Bit field of various boolean flags
 		tfxParticleControlFlags compute_flags;
@@ -2770,6 +2779,7 @@ typedef unsigned int tfxEffectID;
 			single_shot_limit(0),
 			emission_type(EmissionType::tfxPoint),
 			billboard_option(tfxBillboarding),
+			vector_align_type(tfxVectorAlignType_motion),
 			emission_direction(EmissionDirection::tfxOutwards),
 			grid_points({ 10.f, 10.f, 10.f }),
 			emitter_handle(),

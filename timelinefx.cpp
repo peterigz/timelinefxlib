@@ -3188,7 +3188,7 @@ namespace tfx {
 			}
 			else {
 				data.local_position.x = 0.f;
-				data.local_position.y = random_generation.Range(-current.emitter_size.y, 0.f);
+				data.local_position.y = random_generation.Range(0.f, current.emitter_size.y);
 				data.local_position.z = 0.f;
 
 				data.local_position += common.handle;
@@ -5734,6 +5734,7 @@ namespace tfx {
 		eff.Insert("angle_offset_yaw", tfxFloat);
 		eff.Insert("disable_billboard", tfxBool);
 		eff.Insert("billboard_option", tfxUint);
+		eff.Insert("vector_align_type", tfxUint);
 		eff.Insert("multiply_blend_factor", tfxFloat);
 
 		eff.Insert("random_color", tfxBool);
@@ -5946,6 +5947,8 @@ namespace tfx {
 			effect.properties.single_shot_limit = value;
 		if (field == "billboard_option")
 			effect.properties.billboard_option = (tfxBillboardingOptions)value;
+		if (field == "vector_align_type")
+			effect.properties.vector_align_type = (tfxVectorAlignType)value;
 		if (field == "angle_setting")
 			effect.properties.angle_settings = (tfxAngleSettingFlags)value;
 	}
@@ -6111,6 +6114,7 @@ namespace tfx {
 		file.AddLine("use_spawn_ratio=%i", (flags & tfxEmitterPropertyFlags_use_spawn_ratio));
 		file.AddLine("is_3d=%i", (flags & tfxEmitterPropertyFlags_is_3d));
 		file.AddLine("billboard_option=%i", property.billboard_option);
+		file.AddLine("vector_align_type=%i", property.vector_align_type);
 		file.AddLine("layer=%i", property.layer);
 
 	}
