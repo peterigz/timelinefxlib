@@ -3175,7 +3175,7 @@ namespace tfx {
 					}
 				}
 
-				data.local_position = current.grid_coords * -spawn_values.grid_segment_size;
+				data.local_position = current.grid_coords * spawn_values.grid_segment_size;
 				data.local_position += common.handle;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
