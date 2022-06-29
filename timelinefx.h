@@ -2657,7 +2657,6 @@ typedef unsigned int tfxEffectID;
 
 	struct Base {
 		tfxVec2 size;
-		tfxVec2 random_size;
 		float velocity;
 		float spin;
 		float weight;

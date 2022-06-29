@@ -2704,10 +2704,10 @@ namespace tfx {
 
 		//----Size
 		if (!(common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-			data.base.random_size.x = random_generation.Range(spawn_values.size_variation.x);
-			data.base.random_size.y = random_generation.Range(spawn_values.size_variation.y);
-			data.base.size.y = data.base.random_size.y + spawn_values.size.y;
-			data.base.size.x = (data.base.random_size.x + spawn_values.size.x) / library_link->properties.image->image_size.x;
+			float random_size_x = random_generation.Range(spawn_values.size_variation.x);
+			float random_size_y = random_generation.Range(spawn_values.size_variation.y);
+			data.base.size.y = random_size_y + spawn_values.size.y;
+			data.base.size.x = (random_size_x + spawn_values.size.x) / library_link->properties.image->image_size.x;
 			float height = data.base.size.y / library_link->properties.image->image_size.y;
 
 			data.scale.x = data.base.size.x * common.library->overtime_graphs[library_link->overtime].width.GetFirstValue();
@@ -2720,10 +2720,10 @@ namespace tfx {
 			}
 		}
 		else {
-			data.base.random_size.x = random_generation.Range(spawn_values.size_variation.x);
-			data.base.random_size.y = data.base.random_size.x;
-			data.base.size.y = data.base.random_size.y + spawn_values.size.y;
-			data.base.size.x = (data.base.random_size.x + spawn_values.size.x) / library_link->properties.image->image_size.x;
+			float random_size_x = random_generation.Range(spawn_values.size_variation.x);
+			float random_size_y = random_size_x;
+			data.base.size.y = random_size_y + spawn_values.size.y;
+			data.base.size.x = (random_size_x + spawn_values.size.x) / library_link->properties.image->image_size.x;
 			float height = data.base.size.y / library_link->properties.image->image_size.y;
 
 			data.scale.x = data.base.size.x * common.library->overtime_graphs[library_link->overtime].width.GetFirstValue();
@@ -3215,10 +3215,10 @@ namespace tfx {
 
 		//----Size
 		if (!(common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-			data.base.random_size.x = random_generation.Range(spawn_values.size_variation.x);
-			data.base.random_size.y = random_generation.Range(spawn_values.size_variation.y);
-			data.base.size.y = data.base.random_size.y + spawn_values.size.y;
-			data.base.size.x = data.base.random_size.x + spawn_values.size.x;
+			float random_size_x = random_generation.Range(spawn_values.size_variation.x);
+			float random_size_y = random_generation.Range(spawn_values.size_variation.y);
+			data.base.size.y = random_size_y + spawn_values.size.y;
+			data.base.size.x = random_size_x + spawn_values.size.x;
 			float height = data.base.size.y;
 
 			data.scale.x = data.base.size.x * common.library->overtime_graphs[library_link->overtime].width.GetFirstValue();
@@ -3231,10 +3231,10 @@ namespace tfx {
 			}
 		}
 		else {
-			data.base.random_size.x = random_generation.Range(spawn_values.size_variation.x);
-			data.base.random_size.y = data.base.random_size.x;
-			data.base.size.y = data.base.random_size.y + spawn_values.size.y;
-			data.base.size.x = data.base.random_size.x + spawn_values.size.x;
+			float random_size_x = random_generation.Range(spawn_values.size_variation.x);
+			float random_size_y = random_size_x;
+			data.base.size.y = random_size_y + spawn_values.size.y;
+			data.base.size.x = random_size_x + spawn_values.size.x;
 			float height = data.base.size.y;
 
 			data.scale.x = data.base.size.x * common.library->overtime_graphs[library_link->overtime].width.GetFirstValue();
@@ -3313,7 +3313,7 @@ namespace tfx {
 		}
 		data.base.velocity = spawn_values.velocity + random_generation.Range(-spawn_values.velocity_variation, spawn_values.velocity_variation);
 		float velocity_scale = common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue() * current.velocity_adjuster * data.base.velocity;
-		data.velocity_normal.w = common.library->overtime_graphs[library_link->overtime].stretch.GetFirstValue();
+		data.velocity_normal.w = common.library->overtime_graphs[library_link->overtime].stretch.GetFirstValue() * 10.f;
 
 		//data.velocity = data.velocity_normal * data.base.velocity * data.velocity_scale * UPDATE_TIME;
 
@@ -3325,9 +3325,9 @@ namespace tfx {
 		//----Velocity Changes
 		tfxVec3 current_velocity = data.velocity_normal.xyz() * (data.base.velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
 		current_velocity.y -= data.weight_acceleration;
-		current_velocity *= micro_time;
-		data.local_position += current_velocity;
-		data.world_position += current_velocity;
+		data.local_position += current_velocity * micro_time;
+		data.world_position += current_velocity * micro_time;
+		data.captured_position = data.world_position - current_velocity * UPDATE_TIME;
 		//end micro update
 
 		//----Handle
