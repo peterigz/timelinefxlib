@@ -2665,7 +2665,7 @@ typedef unsigned int tfxEffectID;
 	//this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
 	struct AnimationSettings {
 		tfxVec4 bb;
-		tfxVec2 position;
+		tfxVec3 position;
 		tfxVec2 frame_size;
 		float scale;
 		float zoom;
@@ -2684,6 +2684,13 @@ typedef unsigned int tfxEffectID;
 		ExportColorOptions color_option;
 		ExportOptions export_option;
 		bool export_with_transparency;
+		tfxVec3 camera_position;
+		float camera_pitch;
+		float camera_yaw;
+		float camera_fov;
+		float camera_floor_height;
+		bool camera_isometric;
+		float camera_isometric_scale;
 	};
 
 	//------------------------------------------------------------
@@ -3381,17 +3388,20 @@ TFX_CUSTOM_EMITTER
 		//float max_radius;
 	};
 
-	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation
+	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation so probably not needed here really!
 	struct ParticleFrame {
-		tfxVec2 position;
+		tfxVec3 position;
 		tfxVec2 scale;
 		tfxVec2 handle;
-		float rotation;
+		tfxVec3 rotations;
+		tfxVec3 alignment;
+		float stretch;
 		float image_frame;
 		float start_frame;
 		void *image_ptr;
 		tfxRGBA8 color;
 		float intensity;
+		unsigned int alignment_type;
 		bool has_frames;
 	};
 

@@ -5303,6 +5303,13 @@ namespace tfx {
 		a.color_option = ExportColorOptions::tfxFullColor;
 		a.export_option = ExportOptions::tfxSpriteSheet;
 		a.export_with_transparency = true;
+		a.camera_floor_height = -10.f;
+		a.camera_fov = tfxRadians(60);
+		a.camera_pitch = tfxRadians(-30.f);
+		a.camera_yaw = tfxRadians(-90.f);
+		a.camera_position = tfxVec3(0.f, 3.5f, 7.5f);
+		a.camera_isometric = false;
+		a.camera_isometric_scale = 5.f;
 		animation_settings.push_back(a);
 		effect.animation_settings = animation_settings.size() - 1;
 		return effect.animation_settings;
@@ -5760,8 +5767,9 @@ namespace tfx {
 		eff.Insert("lifetime_uniform_size", tfxBool);
 		eff.Insert("use_spawn_ratio", tfxBool);
 		eff.Insert("is_3d", tfxBool);
-		eff.Insert("animation_magenta_mask", tfxBool);
 
+		//Animation settings
+		eff.Insert("animation_magenta_mask", tfxBool);
 		eff.Insert("frames", tfxUint);
 		eff.Insert("current_frame", tfxUint);
 		eff.Insert("frame_offset", tfxUint);
@@ -5779,6 +5787,15 @@ namespace tfx {
 		eff.Insert("color_option", tfxSInt);
 		eff.Insert("export_option", tfxSInt);
 		eff.Insert("export_with_transparency", tfxBool);
+		eff.Insert("camera_position_x", tfxFloat);
+		eff.Insert("camera_position_y", tfxFloat);
+		eff.Insert("camera_position_z", tfxFloat);
+		eff.Insert("camera_pitch", tfxFloat);
+		eff.Insert("camera_yaw", tfxFloat);
+		eff.Insert("camera_fov", tfxFloat);
+		eff.Insert("camera_floor_height", tfxFloat);
+		eff.Insert("camera_isometric", tfxFloat);
+		eff.Insert("camera_isometric_scale", tfxFloat);
 
 		//Editor config, move this to the editor
 		eff.Insert("only_play_selected_emitter", tfxBool);
@@ -5990,6 +6007,22 @@ namespace tfx {
 			effect.common.library->animation_settings[effect.animation_settings].scale = value;
 		if (field == "playback_speed")
 			effect.common.library->animation_settings[effect.animation_settings].playback_speed = value;
+		if (field == "camera_position_x")
+			effect.common.library->animation_settings[effect.animation_settings].camera_position.x = value;
+		if (field == "camera_position_y")
+			effect.common.library->animation_settings[effect.animation_settings].camera_position.y = value;
+		if (field == "camera_position_z")
+			effect.common.library->animation_settings[effect.animation_settings].camera_position.z = value;
+		if (field == "camera_pitch")
+			effect.common.library->animation_settings[effect.animation_settings].camera_pitch = value;
+		if (field == "camera_yaw")
+			effect.common.library->animation_settings[effect.animation_settings].camera_yaw = value;
+		if (field == "camera_fov")
+			effect.common.library->animation_settings[effect.animation_settings].camera_fov = value;
+		if (field == "camera_floor_height")
+			effect.common.library->animation_settings[effect.animation_settings].camera_floor_height = value;
+		if (field == "camera_isometric_scale")
+			effect.common.library->animation_settings[effect.animation_settings].camera_isometric_scale = value;
 		if (field == "image_handle_x")
 			effect.properties.image_handle.x = value;
 		if (field == "image_handle_y")
@@ -6030,6 +6063,8 @@ namespace tfx {
 			effect.common.library->animation_settings[effect.animation_settings].seamless = value;
 		if (field == "export_with_transparency")
 			effect.common.library->animation_settings[effect.animation_settings].export_with_transparency = value;
+		if (field == "camera_isometric")
+			effect.common.library->animation_settings[effect.animation_settings].camera_isometric = value;
 		if (field == "random_color")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_random_color; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_random_color;
 		if (field == "relative_position")
