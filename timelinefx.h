@@ -2689,8 +2689,9 @@ typedef unsigned int tfxEffectID;
 		float camera_yaw;
 		float camera_fov;
 		float camera_floor_height;
-		bool camera_isometric;
 		float camera_isometric_scale;
+		bool camera_isometric;
+		bool camera_hide_floor;
 	};
 
 	//------------------------------------------------------------

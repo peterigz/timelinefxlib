@@ -5310,6 +5310,7 @@ namespace tfx {
 		a.camera_position = tfxVec3(0.f, 3.5f, 7.5f);
 		a.camera_isometric = false;
 		a.camera_isometric_scale = 5.f;
+		a.camera_hide_floor = false;
 		animation_settings.push_back(a);
 		effect.animation_settings = animation_settings.size() - 1;
 		return effect.animation_settings;
@@ -5796,6 +5797,9 @@ namespace tfx {
 		eff.Insert("camera_floor_height", tfxFloat);
 		eff.Insert("camera_isometric", tfxFloat);
 		eff.Insert("camera_isometric_scale", tfxFloat);
+		eff.Insert("camera_hide_floor", tfxBool);
+		eff.Insert("camera_free_speed", tfxFloat);
+		eff.Insert("camera_ray_offset", tfxFloat);
 
 		//Editor config, move this to the editor
 		eff.Insert("only_play_selected_emitter", tfxBool);
@@ -5830,17 +5834,6 @@ namespace tfx {
 		eff.Insert("preview_trail_mode", tfxBool);
 		eff.Insert("try_autorecover", tfxBool);
 		eff.Insert("autorecovery_file", tfxString);
-		eff.Insert("camera_position_x", tfxFloat);
-		eff.Insert("camera_position_y", tfxFloat);
-		eff.Insert("camera_position_z", tfxFloat);
-		eff.Insert("camera_pitch", tfxFloat);
-		eff.Insert("camera_yaw", tfxFloat);
-		eff.Insert("camera_fov", tfxFloat);
-		eff.Insert("camera_floor_height", tfxFloat);
-		eff.Insert("camera_isometric", tfxBool);
-		eff.Insert("camera_isometric_scale", tfxFloat);
-		eff.Insert("camera_free_speed", tfxFloat);
-		eff.Insert("camera_ray_offset", tfxFloat);
 		eff.Insert("draw_outlines", tfxBool);
 	}
 
@@ -6065,6 +6058,8 @@ namespace tfx {
 			effect.common.library->animation_settings[effect.animation_settings].export_with_transparency = value;
 		if (field == "camera_isometric")
 			effect.common.library->animation_settings[effect.animation_settings].camera_isometric = value;
+		if (field == "camera_hide_floor")
+			effect.common.library->animation_settings[effect.animation_settings].camera_hide_floor = value;
 		if (field == "random_color")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_random_color; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_random_color;
 		if (field == "relative_position")
