@@ -2662,6 +2662,17 @@ typedef unsigned int tfxEffectID;
 		float weight;
 	};
 
+	struct tfxAnimationCameraSettings {
+		tfxVec3 camera_position;
+		float camera_pitch;
+		float camera_yaw;
+		float camera_fov;
+		float camera_floor_height;
+		float camera_isometric_scale;
+		bool camera_isometric;
+		bool camera_hide_floor;
+	};
+
 	//this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
 	struct AnimationSettings {
 		tfxVec4 bb;
@@ -2684,14 +2695,7 @@ typedef unsigned int tfxEffectID;
 		ExportColorOptions color_option;
 		ExportOptions export_option;
 		bool export_with_transparency;
-		tfxVec3 camera_position;
-		float camera_pitch;
-		float camera_yaw;
-		float camera_fov;
-		float camera_floor_height;
-		float camera_isometric_scale;
-		bool camera_isometric;
-		bool camera_hide_floor;
+		tfxAnimationCameraSettings camera_settings;
 	};
 
 	//------------------------------------------------------------
