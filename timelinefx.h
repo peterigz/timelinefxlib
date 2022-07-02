@@ -785,6 +785,17 @@ typedef unsigned int tfxEffectID;
 		inline void operator*=(float v) { x *= v; y *= v; }
 		inline bool operator>(tfxVec2 &v) { return x + y > v.x + v.y; }
 		inline tfxVec2 operator/(float v) { return tfxVec2(x / v, y / v); }
+
+		inline tfxVec2 operator+(float v) const { return tfxVec2(x + v, y + v); }
+		inline tfxVec2 operator-(float v) const { return tfxVec2(x - v, y - v); }
+		inline tfxVec2 operator*(float v) const { return tfxVec2(x * v, y * v); }
+		inline tfxVec2 operator/(float v) const { return tfxVec2(x / v, y / v); }
+
+		inline tfxVec2 operator+(const tfxVec2 &v) const { return tfxVec2(x + v.x, y + v.y); }
+		inline tfxVec2 operator-(const tfxVec2 &v) const { return tfxVec2(x - v.x, y - v.y); }
+		inline tfxVec2 operator*(const tfxVec2 &v) const { return tfxVec2(x * v.x, y * v.y); }
+		inline tfxVec2 operator/(const tfxVec2 &v) const { return tfxVec2(x / v.x, y / v.y); }
+
 		inline float Squared() { return x * x + y * y; }
 		inline bool IsNill() { return !x && !y; }
 	};
