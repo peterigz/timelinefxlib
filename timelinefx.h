@@ -917,10 +917,10 @@ typedef unsigned int tfxEffectID;
 		tfxRGBA(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) { }
 	};
 
-	inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
-	inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
-	inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
-	inline void tfxBound3d(tfxVec3 s, tfxVec3 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
+	static inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
+	static inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
+	static inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
+	static inline void tfxBound3d(tfxVec3 s, tfxVec3 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
 
 	static inline float LengthVec2(tfxVec3 const &v) {
 		return v.x * v.x + v.y * v.y + v.z * v.z;
