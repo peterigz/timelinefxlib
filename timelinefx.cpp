@@ -2773,7 +2773,7 @@ namespace tfx {
 
 		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine;
 
-		TransformParticle(data, common, library_link->properties.emission_type == tfxLine);
+		current.transform_particle_callback(data, common);
 		data.scale = data.scale;
 		data.captured_position = data.world_position;
 
@@ -3139,6 +3139,12 @@ namespace tfx {
 				data.local_position.x = emitter_size.x * sin_phi * cos_theta;
 				data.local_position.y = emitter_size.y * sin_phi * sin_theta;
 				data.local_position.z = emitter_size.z * cos_phi;
+				if (library_link->properties.vector_align_type == tfxVectorAlignType_surface_normal) {
+					data.alignment_vector = tfxVec3(data.local_position.x / (emitter_size.x * emitter_size.x),
+											data.local_position.y / (emitter_size.y * emitter_size.y),
+											data.local_position.z / (emitter_size.z * emitter_size.z));
+					data.alignment_vector *= 2.f;
+				}
 			}
 			else {
 				position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
@@ -3160,6 +3166,7 @@ namespace tfx {
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position);
 				data.local_position = common.transform.world_position + data.local_position * common.transform.scale;
+				data.alignment_vector = mmTransformVector3(common.transform.matrix, data.alignment_vector);
 			}
 		}
 		else if (library_link->properties.emission_type == EmissionType::tfxLine) {
@@ -3294,7 +3301,7 @@ namespace tfx {
 
 		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine;
 
-		TransformParticle3d(data, common, library_link->properties.emission_type == tfxLine);
+		current.transform_particle_callback(data, common);
 		data.captured_position = data.world_position;
 
 		//----Motion randomness
@@ -3975,7 +3982,7 @@ namespace tfx {
 			}
 
 			if (!(p.data.flags & tfxParticleFlags_fresh)) {
-				TransformParticle(p.data, common, library_link->properties.emission_type == tfxLine);
+				current.transform_particle_callback(p.data, common);
 				if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 					p.data.captured_position = p.data.world_position;
 					p.data.flags &= ~tfxParticleFlags_capture_after_transform;
@@ -4055,72 +4062,6 @@ namespace tfx {
 		tfxVec3 rotatevec = mmTransformVector3(in.matrix, out.local_position);
 
 		out.world_position = in.world_position + rotatevec;
-	}
-
-	void TransformParticle(tfxParticleData &data, tfxCommon &common, bool is_line) {
-		bool line = (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && is_line);
-
-		if (common.property_flags & tfxEmitterPropertyFlags_relative_position || line) {
-			data.scale = data.scale;
-
-			if (common.property_flags & tfxEmitterPropertyFlags_relative_angle || line)
-				data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
-			else
-				data.world_rotations.roll = data.local_rotations.roll;
-
-			float s = sin(data.local_rotations.roll);
-			float c = cos(data.local_rotations.roll);
-			Matrix2 pmat;
-			pmat.Set(c, s, -s, c);
-			pmat = pmat.Transform(common.transform.matrix);
-			tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y));
-
-			data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
-
-		}
-		else {
-			data.world_position = data.local_position;
-			data.scale = data.scale;
-			if (common.property_flags & tfxEmitterPropertyFlags_relative_angle)
-				data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
-			else
-				data.world_rotations.roll = data.local_rotations.roll;
-		}
-
-	}
-
-	void TransformParticle3d(tfxParticleData &data, tfxCommon &common, bool is_line) {
-		//The Particle matrix is only needed for sub effect transformations
-		bool line = (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && is_line);
-
-		if (common.property_flags & tfxEmitterPropertyFlags_relative_position || line) {
-			data.scale = data.scale;
-
-			if (common.property_flags & tfxEmitterPropertyFlags_relative_angle || line)
-				data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
-			else
-				data.world_rotations.roll = data.local_rotations.roll;
-
-			float s = sin(data.local_rotations.roll);
-			float c = cos(data.local_rotations.roll);
-			Matrix2 pmat;
-			pmat.Set(c, s, -s, c);
-			pmat = pmat.Transform(common.transform.matrix);
-			tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position);
-
-			data.world_position = common.transform.world_position + rotatevec.xyz();
-				//* common.transform.world_position.scale;
-
-		}
-		else {
-			data.world_position = data.local_position;
-			data.scale = data.scale;
-			if (common.property_flags & tfxEmitterPropertyFlags_relative_angle)
-				data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
-			else
-				data.world_rotations.roll = data.local_rotations.roll;
-		}
-
 	}
 
 	void EffectEmitter::ResetGlobalGraphs(bool add_node) {

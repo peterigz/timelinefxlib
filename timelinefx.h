@@ -406,7 +406,9 @@ typedef unsigned int tfxEffectID;
 		tfxVectorAlignType_motion,
 		tfxVectorAlignType_emission,
 		tfxVectorAlignType_emitter,
-		tfxVectorAlignType_max
+		tfxVectorAlignType_max,
+		//Not in yet, need to think about methods of implementing
+		tfxVectorAlignType_surface_normal,
 	};
 
 	//Particle property that defines how a particle will rotate
@@ -2960,6 +2962,8 @@ typedef unsigned int tfxEffectID;
 		float amount_remainder;
 		float emission_alternator;
 		float qty;
+		//The callback to transform the particles each update. This will change based on the properties of the emitter
+		void(*transform_particle_callback)(tfxParticleData &data, tfxCommon &common);
 
 		tfxEmitterState() :
 			amount_remainder(0.f)
@@ -3674,8 +3678,70 @@ TFX_CUSTOM_EMITTER
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value);
 	void AssignGraphData(EffectEmitter &effect, tfxvec<tfxText> &values);
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
-	void TransformParticle(tfxParticleData &p, tfxCommon &common, bool is_line);
-	void TransformParticle3d(tfxParticleData &p, tfxCommon &common, bool is_line);
+	static inline void TransformParticle(tfxParticleData &data, tfxCommon &common) {
+		data.world_position = data.local_position;
+		data.scale = data.scale;
+		data.world_rotations.roll = data.local_rotations.roll;
+	}
+	static inline void TransformParticleAngle(tfxParticleData &data, tfxCommon &common) {
+			data.world_position = data.local_position;
+			data.scale = data.scale;
+			data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+	}
+	static inline void TransformParticleRelative(tfxParticleData &data, tfxCommon &common) {
+		data.scale = data.scale;
+		data.world_rotations.roll = data.local_rotations.roll;
+		float s = sin(data.local_rotations.roll);
+		float c = cos(data.local_rotations.roll);
+		Matrix2 pmat;
+		pmat.Set(c, s, -s, c);
+		pmat = pmat.Transform(common.transform.matrix);
+		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y));
+		data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
+	}
+	static inline void TransformParticleRelativeLine(tfxParticleData &data, tfxCommon &common) {
+		data.scale = data.scale;
+		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+		float s = sin(data.local_rotations.roll);
+		float c = cos(data.local_rotations.roll);
+		Matrix2 pmat;
+		pmat.Set(c, s, -s, c);
+		pmat = pmat.Transform(common.transform.matrix);
+		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y));
+		data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
+	}
+	static inline void TransformParticle3d(tfxParticleData &data, tfxCommon &common) {
+		data.world_position = data.local_position;
+		data.scale = data.scale;
+		data.world_rotations.roll = data.local_rotations.roll;
+	}
+	static inline void TransformParticle3dAngle(tfxParticleData &data, tfxCommon &common) {
+		data.world_position = data.local_position;
+		data.scale = data.scale;
+		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+	}
+	static inline void TransformParticle3dRelative(tfxParticleData &data, tfxCommon &common) {
+		data.scale = data.scale;
+		data.world_rotations.roll = data.local_rotations.roll;
+		float s = sin(data.local_rotations.roll);
+		float c = cos(data.local_rotations.roll);
+		Matrix2 pmat;
+		pmat.Set(c, s, -s, c);
+		pmat = pmat.Transform(common.transform.matrix);
+		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position);
+		data.world_position = common.transform.world_position + rotatevec.xyz();
+	}
+	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, tfxCommon &common) {
+		data.scale = data.scale;
+		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+		float s = sin(data.local_rotations.roll);
+		float c = cos(data.local_rotations.roll);
+		Matrix2 pmat;
+		pmat.Set(c, s, -s, c);
+		pmat = pmat.Transform(common.transform.matrix);
+		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position);
+		data.world_position = common.transform.world_position + rotatevec.xyz();
+	}
 	void Transform(tfxEmitter &emitter, tfxParticle &parent);
 	void Transform(tfxEmitterTransform &out, tfxEmitterTransform &in);
 	void Transform3d(tfxEmitterTransform &out, tfxEmitterTransform &in);
