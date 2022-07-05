@@ -3640,8 +3640,8 @@ namespace tfx {
 		current_velocity *= UPDATE_TIME;
 
 		//----Color changes
-		data.color.a = unsigned char(255.f * lookup_opacity * c.global_intensity);
-		data.intensity = lookup_intensity;
+		data.color.a = unsigned char(255.f * lookup_opacity);
+		data.intensity = lookup_intensity * c.global_intensity;
 		if (!(c.flags & tfxEmitterStateFlags_random_color)) {
 			data.color.r = unsigned char(255.f * lookup_red);
 			data.color.g = unsigned char(255.f * lookup_green);
@@ -3829,8 +3829,8 @@ namespace tfx {
 		current_velocity *= UPDATE_TIME;
 
 		//----Color changes
-		data.color.a = unsigned char(255.f * lookup_opacity * c.global_intensity);
-		data.intensity = lookup_intensity;
+		data.color.a = unsigned char(255.f * lookup_opacity);
+		data.intensity = lookup_intensity * c.global_intensity;
 		if (!(c.flags & tfxEmitterStateFlags_random_color)) {
 			data.color.r = unsigned char(255.f * lookup_red);
 			data.color.g = unsigned char(255.f * lookup_green);
