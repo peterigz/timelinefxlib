@@ -2688,9 +2688,9 @@ namespace tfx {
 
 		//----Weight
 		if (spawn_values.weight) {
-			data.base.weight = spawn_values.weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue();
+			data.base.weight = spawn_values.weight;
 			if (spawn_values.weight_variation > 0) {
-				data.base.weight += random_generation.Range(-spawn_values.weight_variation, spawn_values.weight_variation) * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue();
+				data.base.weight += random_generation.Range(-spawn_values.weight_variation, spawn_values.weight_variation);
 			}
 		}
 		else {
@@ -3210,9 +3210,9 @@ namespace tfx {
 
 		//----Weight
 		if (spawn_values.weight) {
-			data.base.weight = spawn_values.weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue();
+			data.base.weight = spawn_values.weight;
 			if (spawn_values.weight_variation > 0) {
-				data.base.weight += random_generation.Range(-spawn_values.weight_variation, spawn_values.weight_variation) * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue();
+				data.base.weight += random_generation.Range(-spawn_values.weight_variation, spawn_values.weight_variation);
 			}
 		}
 		else {
@@ -5768,6 +5768,8 @@ namespace tfx {
 		eff.Insert("window_maximised", tfxBool);
 		eff.Insert("window_width", tfxSInt);
 		eff.Insert("window_height", tfxSInt);
+		eff.Insert("window_x", tfxSInt);
+		eff.Insert("window_y", tfxSInt);
 		eff.Insert("show_emitter_positions", tfxBool);
 		eff.Insert("dpi_factor", tfxFloat);
 		eff.Insert("graph_lookup_mode", tfxSInt);
