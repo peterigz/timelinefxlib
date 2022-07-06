@@ -3765,6 +3765,8 @@ namespace tfx {
 			mr_vec.x = a - b;
 
 			y += 100.f;
+			yeps4 = _mm_set_ps(y, y, y - eps, y + eps);
+			yeps4r = _mm_set_ps(y - eps, y + eps, y, y);
 			//Find rate of change in XZ plane
 			//tfxVec4 xz = SimplexNoise::noise4(tfxVec3(x, y, z + eps), tfxVec3(x, y, z - eps), tfxVec3(x + eps, y, z), tfxVec3(x - eps, y, z));
 			tfxVec4 xz = SimplexNoise::noise4(xeps4, y4, zeps4r);
@@ -3773,6 +3775,8 @@ namespace tfx {
 			mr_vec.y = a - b;
 
 			z += 100.f;
+			zeps4 = _mm_set_ps(z - eps, z + eps, z, z);
+			zeps4r = _mm_set_ps(z, z, z - eps, z + eps);
 			//Find rate of change in XY plane
 			//tfxVec4 xy = SimplexNoise::noise4(tfxVec3(x + eps, y, z), tfxVec3(x - eps, y, z), tfxVec3(x, y + eps, z), tfxVec3(x, y - eps, z));
 			tfxVec4 xy = SimplexNoise::noise4(xeps4r, yeps4r, z4);
