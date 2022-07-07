@@ -413,14 +413,15 @@ typedef unsigned int tfxEffectID;
 
 	//Particle property that defines how a particle will rotate
 	enum tfxAngleSettingFlags_ {
-		tfxAngleSettingFlags_align_roll = 0,												//Align the particle with it's direction of travel in 2d
-		tfxAngleSettingFlags_random_roll = 1 << 0,											//Chose a random angle at spawn time/flags
-		tfxAngleSettingFlags_specify_roll = 1 << 1,											//Specify the angle at spawn time
-		tfxAngleSettingFlags_align_with_emission = 1 << 2,									//Align the particle with the emission direction only
-		tfxAngleSettingFlags_random_pitch = 1 << 3,											//3d mode allows for rotating pitch and yaw when not using billboarding (when particle always faces the camera)
-		tfxAngleSettingFlags_random_yaw = 1 << 4,
-		tfxAngleSettingFlags_specify_pitch = 1 << 5,
-		tfxAngleSettingFlags_specify_yaw = 1 << 6
+		tfxAngleSettingFlags_none = 0,														//No flag
+		tfxAngleSettingFlags_align_roll = 1 << 0,											//Align the particle with it's direction of travel in 2d
+		tfxAngleSettingFlags_random_roll = 1 << 1,											//Chose a random angle at spawn time/flags
+		tfxAngleSettingFlags_specify_roll = 1 << 2,											//Specify the angle at spawn time
+		tfxAngleSettingFlags_align_with_emission = 1 << 3,									//Align the particle with the emission direction only
+		tfxAngleSettingFlags_random_pitch = 1 << 4,											//3d mode allows for rotating pitch and yaw when not using billboarding (when particle always faces the camera)
+		tfxAngleSettingFlags_random_yaw = 1 << 5,
+		tfxAngleSettingFlags_specify_pitch = 1 << 6,
+		tfxAngleSettingFlags_specify_yaw = 1 << 7
 	};
 
 	//All the flags needed by the ControlParticle function put into one enum to save space
