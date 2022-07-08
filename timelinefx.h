@@ -2797,7 +2797,7 @@ typedef unsigned int tfxEffectID;
 		float delay_spawning;
 
 		EmitterProperties() :
-			angle_offsets(tfx360Radians),
+			angle_offsets(0.f, 0.f, tfx360Radians),
 			image(nullptr),
 			image_handle(tfxVec2()),
 			spawn_amount(1),
@@ -2815,7 +2815,7 @@ typedef unsigned int tfxEffectID;
 			start_frame(0),
 			end_frame(0),
 			frame_rate(30.f),
-			angle_settings(tfxAngleSettingFlags_random_roll),
+			angle_settings(tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw),
 			delay_spawning(0.f)
 		{ }
 	};
