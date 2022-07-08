@@ -2362,6 +2362,8 @@ namespace tfx {
 			tmp_position = local_position;
 
 		tfxVec3 to_handle(0.f, 1.f, 0.f);
+		float parent_pitch = 0.f;
+		float parent_yaw = 0.f;
 		if (library_link->properties.emission_type != EmissionType::tfxPoint) {
 			if (library_link->properties.emission_direction == EmissionDirection::tfxOutwards) {
 
@@ -2370,7 +2372,7 @@ namespace tfx {
 				else
 					to_handle = (world_position - common.transform.world_position);
 
-				to_handle = NormalizeVec(to_handle);
+				to_handle = FastNormalizeVec(to_handle);
 
 			}
 			else if (library_link->properties.emission_direction == EmissionDirection::tfxInwards) {
@@ -2380,7 +2382,7 @@ namespace tfx {
 				else
 					to_handle = (common.transform.world_position - world_position);
 
-				to_handle = NormalizeVec(to_handle);
+				to_handle = FastNormalizeVec(to_handle);
 
 			}
 			else if (library_link->properties.emission_direction == EmissionDirection::tfxBothways) {
@@ -2401,11 +2403,28 @@ namespace tfx {
 				}
 
 				current.emission_alternator = !current.emission_alternator;
-				to_handle = NormalizeVec(to_handle);
+				to_handle = FastNormalizeVec(to_handle);
+			}
+			else {
+				parent_pitch = common.transform.world_rotations.pitch;
+				parent_yaw = common.transform.world_rotations.yaw;
 			}
 		}
+		else {
+			parent_pitch = common.transform.world_rotations.pitch;
+			parent_yaw = common.transform.world_rotations.yaw;
+		}
 
-		tfxVec4 v = to_handle;
+		float pitch = asinf(-to_handle.y);
+		float yaw = atan2(to_handle.x, to_handle.z);
+		tfxVec3 direction;
+		direction.z = cos(emission_yaw + yaw + parent_yaw) * cos(emission_pitch + pitch + parent_pitch);
+		direction.y = -sin(emission_pitch + pitch + parent_pitch);
+		direction.x = sin(emission_yaw + yaw + parent_yaw) * cos(emission_pitch + pitch + parent_pitch);
+		//direction.z = cos(yaw) * cos(pitch);
+		//direction.y = -sin(pitch);
+		//direction.x = sin(yaw) * cos(pitch);
+		tfxVec3 v = direction;
 		if (range != 0) {
 			result.y = random_generation.Range(1.f) * (1.f - cos(range)) + cos(range);
 			float phi = random_generation.Range(1.f) * 2.f * tfxPI;
@@ -2415,25 +2434,25 @@ namespace tfx {
 
 			v = result;
 
-			if (to_handle.y != 1.f && to_handle.x != 0.f && to_handle.z != 0.f) {
-				tfxVec3 u = Cross(tfxVec3(0.f, 1.f, 0.f), to_handle);
-				float rot = acosf(DotProduct(to_handle, tfxVec3(0.f, 1.f, 0.f)));
+			//if (direction.y != 1.f && direction.x != 0.f && direction.z != 0.f) {
+				tfxVec3 u = Cross(tfxVec3(0.f, 1.f, 0.f), direction);
+				float rot = acosf(DotProduct(direction, tfxVec3(0.f, 1.f, 0.f)));
 				Matrix4 handle_mat = M4();
 				handle_mat = mmRotate(handle_mat, rot, u);
-				v = mmTransformVector(handle_mat, result);
+				v = mmTransformVector(handle_mat, result).xyz();
 				v.x = -v.x;
 				v.z = -v.z;
-			}
+			//}
 		}
 
-		if (emission_yaw + emission_pitch != 0.f) {
-			Matrix4 pitch = mmYRotate(emission_pitch);
-			Matrix4 yaw = mmXRotate(emission_yaw);
-			Matrix4 rotated = mmTransform(pitch, yaw);
-			v = mmTransformVector(rotated, v.xyz());
+		if (emission_yaw + emission_pitch + common.transform.world_rotations.pitch + common.transform.world_rotations.yaw != 0.f) {
+			//Matrix4 pitch = mmXRotate(emission_pitch + common.transform.world_rotations.pitch);
+			//Matrix4 yaw = mmYRotate(emission_yaw + common.transform.world_rotations.yaw);
+			//Matrix4 rotated = mmTransform(pitch, yaw);
+			//v = FastNormalizeVec(v.xyz() - direction);
 		}
 
-		return v.xyz();
+		return v;
 	}
 
 	tfxParticle& tfxEmitter::GrabParticle() {
@@ -3231,7 +3250,7 @@ namespace tfx {
 			data.scale.x = data.base.size.x * common.library->overtime_graphs[library_link->overtime].width.GetFirstValue();
 
 			if (common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-				data.scale.y = data.scale.x;
+				data.scale.y = height * common.library->overtime_graphs[library_link->overtime].width.GetFirstValue();
 			}
 			else {
 				data.scale.y = height * common.library->overtime_graphs[library_link->overtime].height.GetFirstValue();
@@ -3313,7 +3332,7 @@ namespace tfx {
 		float emission_yaw = lookup_callback(common.library->property_graphs[library_link->property].emission_yaw, common.frame);
 
 		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || library_link->properties.emission_type != EmissionType::tfxLine) {
-			data.velocity_normal = GetEmissionDirection3d(common, current, library_link, emission_yaw, emission_pitch, data.local_position, data.world_position, current.emitter_size);
+			data.velocity_normal = GetEmissionDirection3d(common, current, library_link, emission_pitch, emission_yaw, data.local_position, data.world_position, current.emitter_size);
 		}
 		else if(common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine) {
 			data.velocity_normal = tfxVec4(0, 1.f, 0.f, 0.f);
@@ -4053,11 +4072,11 @@ namespace tfx {
 		Matrix4 roll = mmZRotate(out.local_rotations.roll);
 		Matrix4 pitch = mmXRotate(out.local_rotations.pitch);
 		Matrix4 yaw = mmYRotate(out.local_rotations.yaw);
-		out.matrix = mmTransform(pitch, yaw);
+		out.matrix = mmTransform(yaw, pitch);
 		out.matrix = mmTransform(out.matrix, roll);
 		out.scale = in.scale;
 
-		out.world_rotations.roll = in.world_rotations.roll + out.local_rotations.roll;
+		out.world_rotations = in.world_rotations + out.local_rotations;
 
 		out.matrix = mmTransform(out.matrix, in.matrix);
 		tfxVec3 rotatevec = mmTransformVector3(in.matrix, out.local_position);

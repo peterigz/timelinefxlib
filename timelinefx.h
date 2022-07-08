@@ -3714,16 +3714,16 @@ TFX_CUSTOM_EMITTER
 	static inline void TransformParticle3d(tfxParticleData &data, tfxCommon &common) {
 		data.world_position = data.local_position;
 		data.scale = data.scale;
-		data.world_rotations.roll = data.local_rotations.roll;
+		data.world_rotations = data.local_rotations;
 	}
 	static inline void TransformParticle3dAngle(tfxParticleData &data, tfxCommon &common) {
 		data.world_position = data.local_position;
 		data.scale = data.scale;
-		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+		data.world_rotations = common.transform.world_rotations + data.local_rotations;
 	}
 	static inline void TransformParticle3dRelative(tfxParticleData &data, tfxCommon &common) {
 		data.scale = data.scale;
-		data.world_rotations.roll = data.local_rotations.roll;
+		data.world_rotations = data.local_rotations;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
 		Matrix2 pmat;
@@ -3734,7 +3734,7 @@ TFX_CUSTOM_EMITTER
 	}
 	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, tfxCommon &common) {
 		data.scale = data.scale;
-		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+		data.world_rotations = data.local_rotations;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
 		Matrix2 pmat;
