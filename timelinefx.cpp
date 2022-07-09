@@ -2284,19 +2284,19 @@ namespace tfx {
 			return direction + emission_angle + random_generation.Range(-range, range);
 
 		tfxVec2 tmp_position;
-		if (local_position.x == 0 && local_position.y == 0)
+		if (common.handle.x + local_position.x == 0 && common.handle.y + local_position.y == 0)
 			tmp_position = emitter_size;
 		else
-			tmp_position = local_position;
+			tmp_position = local_position + common.handle.xy();
 
 		if (library_link->properties.emission_direction == EmissionDirection::tfxOutwards) {
 
 			tfxVec2 to_handle;
 
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-				to_handle = (tmp_position);
+				to_handle = tmp_position;
 			else
-				to_handle = (world_position - common.transform.world_position.xy());
+				to_handle = world_position - common.transform.world_position.xy();
 
 			direction = GetVectorAngle(to_handle.x, to_handle.y);
 
@@ -2308,7 +2308,7 @@ namespace tfx {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 				to_handle = (-tmp_position);
 			else
-				to_handle = (common.transform.world_position.xy() - world_position);
+				to_handle = (common.transform.world_position.xy() - world_position - common.handle.xy());
 
 			direction = GetVectorAngle(to_handle.x, to_handle.y);
 
@@ -2322,7 +2322,7 @@ namespace tfx {
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 					to_handle = (tmp_position);
 				else
-					to_handle = (world_position - common.transform.world_position.xy());
+					to_handle = (world_position - common.transform.world_position.xy() - common.handle.xy());
 
 				direction = GetVectorAngle(to_handle.x, to_handle.y);
 
@@ -2359,7 +2359,7 @@ namespace tfx {
 		if (local_position.x == 0 && local_position.y == 0)
 			tmp_position = emitter_size;
 		else
-			tmp_position = local_position;
+			tmp_position = common.handle;
 
 		tfxVec3 to_handle(0.f, 1.f, 0.f);
 		float parent_pitch = 0.f;
@@ -2368,9 +2368,9 @@ namespace tfx {
 			if (library_link->properties.emission_direction == EmissionDirection::tfxOutwards) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-					to_handle = (tmp_position);
+					to_handle = tmp_position;
 				else
-					to_handle = (world_position - common.transform.world_position);
+					to_handle = world_position - common.transform.world_position;
 
 				to_handle = FastNormalizeVec(to_handle);
 
@@ -2378,9 +2378,9 @@ namespace tfx {
 			else if (library_link->properties.emission_direction == EmissionDirection::tfxInwards) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-					to_handle = (-tmp_position);
+					to_handle = -tmp_position;
 				else
-					to_handle = (common.transform.world_position - world_position);
+					to_handle = common.transform.world_position - world_position;
 
 				to_handle = FastNormalizeVec(to_handle);
 
@@ -2390,16 +2390,16 @@ namespace tfx {
 				if (current.emission_alternator) {
 
 					if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-						to_handle = (tmp_position);
+						to_handle = tmp_position;
 					else
-						to_handle = (world_position - common.transform.world_position);
+						to_handle = world_position - common.transform.world_position;
 				}
 				else {
 
 					if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-						to_handle = (-tmp_position);
+						to_handle = -tmp_position;
 					else
-						to_handle = (common.transform.world_position - world_position);
+						to_handle = common.transform.world_position - world_position;
 				}
 
 				current.emission_alternator = !current.emission_alternator;
@@ -2421,9 +2421,6 @@ namespace tfx {
 		direction.z = cos(emission_yaw + yaw + parent_yaw) * cos(emission_pitch + pitch + parent_pitch);
 		direction.y = -sin(emission_pitch + pitch + parent_pitch);
 		direction.x = sin(emission_yaw + yaw + parent_yaw) * cos(emission_pitch + pitch + parent_pitch);
-		//direction.z = cos(yaw) * cos(pitch);
-		//direction.y = -sin(pitch);
-		//direction.x = sin(yaw) * cos(pitch);
 		tfxVec3 v = direction;
 		if (range != 0) {
 			result.y = random_generation.Range(1.f) * (1.f - cos(range)) + cos(range);
@@ -2443,13 +2440,6 @@ namespace tfx {
 				v.x = -v.x;
 				v.z = -v.z;
 			//}
-		}
-
-		if (emission_yaw + emission_pitch + common.transform.world_rotations.pitch + common.transform.world_rotations.yaw != 0.f) {
-			//Matrix4 pitch = mmXRotate(emission_pitch + common.transform.world_rotations.pitch);
-			//Matrix4 yaw = mmYRotate(emission_yaw + common.transform.world_rotations.yaw);
-			//Matrix4 rotated = mmTransform(pitch, yaw);
-			//v = FastNormalizeVec(v.xyz() - direction);
 		}
 
 		return v;
@@ -2492,7 +2482,7 @@ namespace tfx {
 		tfxVec2 lerp_position = InterpolateVec2(tween, common.transform.captured_position.xy(), common.transform.world_position.xy());
 		if (library_link->properties.emission_type == EmissionType::tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-				data.local_position = -common.handle;
+				data.local_position = 0;
 			else {
 				if (common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
 					data.local_position = lerp_position;
@@ -2520,7 +2510,7 @@ namespace tfx {
 						}
 					}
 
-					data.local_position = position + (current.grid_coords.xy() * spawn_values.grid_segment_size.xy()) + common.handle.xy();
+					data.local_position = position + (current.grid_coords.xy() * spawn_values.grid_segment_size.xy());
 
 					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						current.grid_coords.x++;
@@ -2573,7 +2563,7 @@ namespace tfx {
 
 					current.grid_coords += current.grid_direction;
 					tfxBound(current.grid_coords.xy(), library_link->properties.grid_points.xy());
-					data.local_position = position + (current.grid_coords.xy() * spawn_values.grid_segment_size.xy()) + common.handle.xy();
+					data.local_position = position + (current.grid_coords.xy() * spawn_values.grid_segment_size.xy());
 				}
 			}
 			else {
@@ -2606,12 +2596,12 @@ namespace tfx {
 					}
 				}
 
-				data.local_position = position + common.handle.xy();
+				data.local_position = position;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				data.local_position = mmTransformVector(common.transform.matrix, data.local_position.xy());
+				data.local_position = mmTransformVector(common.transform.matrix, data.local_position.xy() + common.handle.xy());
 				data.local_position = lerp_position + data.local_position.xy() * common.transform.scale.xy();
 			}
 
@@ -2632,8 +2622,7 @@ namespace tfx {
 				}
 
 				float th = current.grid_coords.x * spawn_values.grid_segment_size.x + spawn_values.arc_offset;
-				data.local_position = tfxVec2(std::cosf(th) * emitter_size.x + common.handle.x + emitter_size.x,
-					-std::sinf(th) * emitter_size.y + common.handle.y + emitter_size.y);
+				data.local_position = tfxVec2(std::cosf(th) * emitter_size.x + emitter_size.x, -std::sinf(th) * emitter_size.y + emitter_size.y);
 
 				if (!(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 					current.grid_coords.x++;
@@ -2646,23 +2635,22 @@ namespace tfx {
 			else if (!(common.property_flags & tfxEmitterPropertyFlags_fill_area)) {
 				float th = random_generation.Range(spawn_values.arc_size) + spawn_values.arc_offset;
 
-				data.local_position = tfxVec2(std::cosf(th) * emitter_size.x + common.handle.x + emitter_size.x,
-					-std::sinf(th) * emitter_size.y + common.handle.y + emitter_size.y);
+				data.local_position = tfxVec2(std::cosf(th) * emitter_size.x + emitter_size.x, -std::sinf(th) * emitter_size.y + emitter_size.y);
 
 			}
 			else {
-				data.local_position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
-				data.local_position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
+				data.local_position.x = random_generation.Range(0, current.emitter_size.x);
+				data.local_position.y = random_generation.Range(0, current.emitter_size.y);
 
-				while ((std::pow(data.local_position.x, 2) / std::pow(emitter_size.x, 2)) + (std::pow(data.local_position.y, 2) / std::pow(emitter_size.y, 2)) > 1) {
-					data.local_position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
-					data.local_position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
+				while ((std::pow(data.local_position.x - emitter_size.x, 2) / std::pow(emitter_size.x, 2)) + (std::pow(data.local_position.y - emitter_size.y, 2) / std::pow(emitter_size.y, 2)) > 1) {
+					data.local_position.x = random_generation.Range(0, current.emitter_size.x);
+					data.local_position.y = random_generation.Range(0, current.emitter_size.y);
 				}
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				data.local_position = mmTransformVector(common.transform.matrix, data.local_position.xy());
+				data.local_position = mmTransformVector(common.transform.matrix, data.local_position.xy() + common.handle.xy());
 				data.local_position = lerp_position + data.local_position.xy() * common.transform.scale.xy();
 			}
 
@@ -2680,7 +2668,6 @@ namespace tfx {
 				}
 
 				data.local_position = tfxVec2(current.grid_coords.xy() * -spawn_values.grid_segment_size.xy());
-				data.local_position += common.handle;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 					current.grid_coords.y++;
@@ -2694,13 +2681,11 @@ namespace tfx {
 				data.local_position.x = 0.f;
 				data.local_position.y = random_generation.Range(-current.emitter_size.y, 0.f);
 
-				data.local_position += common.handle;
-
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-				data.local_position = mmTransformVector(common.transform.matrix, data.local_position.xy());
+				data.local_position = mmTransformVector(common.transform.matrix, data.local_position.xy() + common.handle.xy());
 				data.local_position = lerp_position + data.local_position.xy() * common.transform.scale.xy();
 			}
 		}

@@ -3697,7 +3697,7 @@ TFX_CUSTOM_EMITTER
 		Matrix2 pmat;
 		pmat.Set(c, s, -s, c);
 		pmat = pmat.Transform(common.transform.matrix);
-		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y));
+		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
 	}
 	static inline void TransformParticleRelativeLine(tfxParticleData &data, tfxCommon &common) {
@@ -3708,7 +3708,7 @@ TFX_CUSTOM_EMITTER
 		Matrix2 pmat;
 		pmat.Set(c, s, -s, c);
 		pmat = pmat.Transform(common.transform.matrix);
-		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y));
+		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
 	}
 	static inline void TransformParticle3d(tfxParticleData &data, tfxCommon &common) {
