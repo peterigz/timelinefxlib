@@ -4080,6 +4080,9 @@ namespace tfx {
 		common.library->global_graphs[global].roll.Reset(0.f, tfxAnglePreset, add_node); common.library->global_graphs[global].roll.type = tfxGlobal_effect_roll;
 		common.library->global_graphs[global].pitch.Reset(0.f, tfxAnglePreset, add_node); common.library->global_graphs[global].pitch.type = tfxGlobal_effect_pitch;
 		common.library->global_graphs[global].yaw.Reset(0.f, tfxAnglePreset, add_node); common.library->global_graphs[global].yaw.type = tfxGlobal_effect_yaw;
+		common.library->global_graphs[global].emitter_width.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_width.type = tfxGlobal_emitter_width;
+		common.library->global_graphs[global].emitter_height.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_height.type = tfxGlobal_emitter_height;
+		common.library->global_graphs[global].emitter_depth.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_depth.type = tfxGlobal_emitter_depth;
 		common.library->CompileGlobalGraph(global);
 	}
 
@@ -4174,6 +4177,9 @@ namespace tfx {
 			if (common.library->global_graphs[global].intensity.nodes.size() == 0) common.library->global_graphs[global].intensity.Reset(1.f, tfxGlobalPercentPreset);
 			if (common.library->global_graphs[global].frame_rate.nodes.size() == 0) common.library->global_graphs[global].frame_rate.Reset(1.f, tfxGlobalPercentPreset);
 			if (common.library->global_graphs[global].splatter.nodes.size() == 0) common.library->global_graphs[global].splatter.Reset(1.f, tfxGlobalPercentPreset);
+			if (common.library->global_graphs[global].emitter_width.nodes.size() == 0) common.library->global_graphs[global].emitter_width.Reset(1.f, tfxGlobalPercentPreset);
+			if (common.library->global_graphs[global].emitter_height.nodes.size() == 0) common.library->global_graphs[global].emitter_height.Reset(1.f, tfxGlobalPercentPreset);
+			if (common.library->global_graphs[global].emitter_depth.nodes.size() == 0) common.library->global_graphs[global].emitter_depth.Reset(1.f, tfxGlobalPercentPreset);
 		}
 
 		if (type == tfxEmitterType) {
@@ -4800,6 +4806,9 @@ namespace tfx {
 			common.library->global_graphs[global].intensity.Free();
 			common.library->global_graphs[global].frame_rate.Free();
 			common.library->global_graphs[global].splatter.Free();
+			common.library->global_graphs[global].emitter_width.Free();
+			common.library->global_graphs[global].emitter_height.Free();
+			common.library->global_graphs[global].emitter_depth.Free();
 		}
 
 		if (type == tfxEmitterType) {
@@ -5372,6 +5381,9 @@ namespace tfx {
 			CompileGraph(g.stretch);
 			CompileGraph(g.velocity);
 			CompileGraph(g.weight);
+			CompileGraph(g.emitter_width);
+			CompileGraph(g.emitter_height);
+			CompileGraph(g.emitter_depth);
 		}
 		for (auto &g : property_graphs) {
 			CompileGraph(g.arc_offset);
@@ -5445,6 +5457,9 @@ namespace tfx {
 		CompileGraph(g.stretch);
 		CompileGraph(g.velocity);
 		CompileGraph(g.weight);
+		CompileGraph(g.emitter_width);
+		CompileGraph(g.emitter_height);
+		CompileGraph(g.emitter_depth);
 	}
 	void EffectLibrary::CompilePropertyGraph(unsigned int index) {
 		PropertyAttributes &g = property_graphs[index];
@@ -5528,6 +5543,9 @@ namespace tfx {
 		graph_min_max[tfxGlobal_effect_roll] = GetMinMaxGraphValues(tfxAnglePreset);
 		graph_min_max[tfxGlobal_effect_pitch] = GetMinMaxGraphValues(tfxAnglePreset);
 		graph_min_max[tfxGlobal_effect_yaw] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxGlobal_emitter_width] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_emitter_height] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+		graph_min_max[tfxGlobal_emitter_depth] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 
 		graph_min_max[tfxProperty_emitter_roll] = GetMinMaxGraphValues(tfxAnglePreset);
 		graph_min_max[tfxProperty_emission_pitch] = GetMinMaxGraphValues(tfxAnglePreset);
@@ -5809,6 +5827,9 @@ namespace tfx {
 			if (values[0] == "global_overal_scale") { AttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].overal_scale.AddNode(n); }
 			if (values[0] == "global_weight") { AttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].weight.AddNode(n); }
 			if (values[0] == "global_velocity") { AttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].velocity.AddNode(n); }
+			if (values[0] == "global_emitter_width") { AttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].emitter_width.AddNode(n); }
+			if (values[0] == "global_emitter_height") { AttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].emitter_height.AddNode(n); }
+			if (values[0] == "global_emitter_depth") { AttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].emitter_depth.AddNode(n); }
 
 			if (values[0] == "base_arc_offset") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].arc_offset.AddNode(n); }
 			if (values[0] == "base_arc_size") { AttributeNode n; AssignNodeData(n, values); effect.common.library->property_graphs[effect.property].arc_size.AddNode(n); }

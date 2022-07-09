@@ -224,7 +224,7 @@ typedef unsigned int tfxEffectID;
 	};
 
 
-#define tfxGlobalCount  15
+#define tfxGlobalCount  18
 #define	tfxPropertyCount  12
 #define	tfxBaseCount  8
 #define	tfxVariationCount  9
@@ -253,6 +253,9 @@ typedef unsigned int tfxEffectID;
 		tfxGlobal_effect_roll,
 		tfxGlobal_effect_pitch,
 		tfxGlobal_effect_yaw,
+		tfxGlobal_emitter_width,
+		tfxGlobal_emitter_height,
+		tfxGlobal_emitter_depth,
 
 		tfxProperty_emission_pitch,
 		tfxProperty_emission_yaw,
@@ -2597,6 +2600,9 @@ typedef unsigned int tfxEffectID;
 		Graph roll;
 		Graph pitch;
 		Graph yaw;
+		Graph emitter_width;
+		Graph emitter_height;
+		Graph emitter_depth;
 	};
 
 	struct PropertyAttributes {
