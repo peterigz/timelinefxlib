@@ -2356,10 +2356,10 @@ namespace tfx {
 
 		tfxVec3 result;
 		tfxVec3 tmp_position;
-		if (local_position.x == 0 && local_position.y == 0)
+		if (common.handle.x + local_position.x == 0 && common.handle.y + local_position.y == 0)
 			tmp_position = emitter_size;
 		else
-			tmp_position = common.handle;
+			tmp_position = local_position + common.handle;
 
 		tfxVec3 to_handle(0.f, 1.f, 0.f);
 		float parent_pitch = 0.f;
@@ -2853,7 +2853,7 @@ namespace tfx {
 		//----Position
 		if (library_link->properties.emission_type == EmissionType::tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-				data.local_position = -common.handle;
+				data.local_position = 0;
 			else {
 				if (common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
 					data.local_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position);
@@ -2885,7 +2885,7 @@ namespace tfx {
 						}
 					}
 
-					data.local_position = position + (current.grid_coords * spawn_values.grid_segment_size) + common.handle;
+					data.local_position = position + (current.grid_coords * spawn_values.grid_segment_size);
 
 					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						current.grid_coords.x++;
@@ -3067,7 +3067,7 @@ namespace tfx {
 					}
 
 					tfxBound3d(current.grid_coords, library_link->properties.grid_points);
-					data.local_position = position + (current.grid_coords * spawn_values.grid_segment_size) + common.handle;
+					data.local_position = position + (current.grid_coords * spawn_values.grid_segment_size);
 				}
 			}
 			else {
@@ -3117,12 +3117,12 @@ namespace tfx {
 					}
 				}
 
-				data.local_position = position + common.handle;
+				data.local_position = position;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position);
+				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
 				data.local_position = common.transform.world_position + data.local_position * common.transform.scale;
 			}
 
@@ -3151,24 +3151,22 @@ namespace tfx {
 				}
 			}
 			else {
-				position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
-				position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
-				position.z = random_generation.Range(-emitter_size.z, emitter_size.z);
+				position.x = random_generation.Range(emitter_size.x);
+				position.y = random_generation.Range(emitter_size.y);
+				position.z = random_generation.Range(emitter_size.z);
 
-				while (std::powf(position.x / emitter_size.x, 2.f) + std::powf(position.y / emitter_size.y, 2.f) + std::powf(position.z / emitter_size.z, 2.f) > 1.f) {
-					position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
-					position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
-					position.z = random_generation.Range(-emitter_size.z, emitter_size.z);
+				while (std::powf((position.x - emitter_size.x) / emitter_size.x, 2.f) + std::powf((position.y - emitter_size.y) / emitter_size.y, 2.f) + std::powf((position.z - emitter_size.z) / emitter_size.z, 2.f) > 1.f) {
+					position.x = random_generation.Range(emitter_size.x);
+					position.y = random_generation.Range(emitter_size.y);
+					position.z = random_generation.Range(emitter_size.z);
 				}
 
 				data.local_position = position;
 			}
 
-			data.local_position += common.handle;
-
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position);
+				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
 				data.local_position = common.transform.world_position + data.local_position * common.transform.scale;
 				data.alignment_vector = mmTransformVector3(common.transform.matrix, data.alignment_vector);
 			}
@@ -3187,7 +3185,6 @@ namespace tfx {
 				}
 
 				data.local_position = current.grid_coords * spawn_values.grid_segment_size;
-				data.local_position += common.handle;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 					current.grid_coords.y++;
@@ -3201,13 +3198,11 @@ namespace tfx {
 				data.local_position.x = 0.f;
 				data.local_position.y = random_generation.Range(0.f, current.emitter_size.y);
 				data.local_position.z = 0.f;
-
-				data.local_position += common.handle;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position);
+				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
 				data.local_position = common.transform.world_position + data.local_position * common.transform.scale;
 			}
 		}
