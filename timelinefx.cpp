@@ -2431,7 +2431,7 @@ namespace tfx {
 
 			v = result;
 
-			//if (direction.y != 1.f && direction.x != 0.f && direction.z != 0.f) {
+			if (direction.y != 1.f) {
 				tfxVec3 u = Cross(tfxVec3(0.f, 1.f, 0.f), direction);
 				float rot = acosf(DotProduct(direction, tfxVec3(0.f, 1.f, 0.f)));
 				Matrix4 handle_mat = M4();
@@ -2439,7 +2439,7 @@ namespace tfx {
 				v = mmTransformVector(handle_mat, result).xyz();
 				v.x = -v.x;
 				v.z = -v.z;
-			//}
+			}
 		}
 
 		return v;
