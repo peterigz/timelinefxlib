@@ -3692,7 +3692,7 @@ namespace tfx {
 
 		//Lines - Reposition if the particle is travelling along a line
 		tfxVec2 offset = velocity_normal * c.emitter_size_y;
-		float length = std::fabsf(data.local_position.y - c.emitter_handle_y);
+		float length = std::fabsf(data.local_position.y);
 		float emitter_length = c.emitter_size_y;
 		bool line_and_kill = (c.flags & tfxEmitterStateFlags_is_line_traversal) && (c.flags & tfxEmitterStateFlags_kill) && length > emitter_length;
 		bool line_and_loop = (c.flags & tfxEmitterStateFlags_is_line_traversal) && (c.flags & tfxEmitterStateFlags_loop) && length > emitter_length;
@@ -3881,7 +3881,7 @@ namespace tfx {
 
 		//Lines - Reposition if the particle is travelling along a line
 		tfxVec3 offset = data.velocity_normal.xyz() * c.emitter_size_y;
-		float length = std::fabsf(data.local_position.y - c.emitter_handle_y);
+		float length = std::fabsf(data.local_position.y);
 		float emitter_length = c.emitter_size_y;
 		bool line_and_kill = (c.flags & tfxEmitterStateFlags_is_line_traversal) && (c.flags & tfxEmitterStateFlags_kill) && length > emitter_length;
 		bool line_and_loop = (c.flags & tfxEmitterStateFlags_is_line_traversal) && (c.flags & tfxEmitterStateFlags_loop) && length > emitter_length;
