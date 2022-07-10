@@ -2031,7 +2031,14 @@ namespace tfx {
 		common.handle = library_link->properties.emitter_handle;
 
 		common.state_flags &= ~tfxEmitterStateFlags_retain_matrix;
-
+		common.state_flags &= ~tfxEmitterStateFlags_can_spin;
+		common.state_flags &= ~tfxEmitterStateFlags_random_color;
+		common.state_flags &= ~tfxEmitterStateFlags_lifetime_uniform_size;
+		common.state_flags &= ~tfxEmitterStateFlags_align_with_velocity;
+		common.state_flags &= ~tfxEmitterStateFlags_is_line_traversal;
+		common.state_flags &= ~tfxEmitterStateFlags_play_once;
+		common.state_flags &= ~tfxEmitterStateFlags_loop;
+		common.state_flags &= ~tfxEmitterStateFlags_kill;
 		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_single ? tfxEmitterStateFlags_is_single : 0;
 		common.state_flags |= (library_link->properties.emission_type != tfxLine && !(library_link->common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || library_link->properties.emission_type == tfxLine && !(library_link->common.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
 		common.state_flags |= library_link->common.property_flags & tfxEmitterPropertyFlags_random_color;
