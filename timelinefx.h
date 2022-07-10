@@ -464,7 +464,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterPropertyFlags_relative_angle = 1 << 2,					//Keep the angle of the particles relative to the current angle of the emitter
 		tfxEmitterPropertyFlags_image_handle_auto_center = 1 << 3,			//Set the offset of the particle to the center of the image
 		tfxEmitterPropertyFlags_single = 1 << 4,							//Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
-		tfxEmitterPropertyFlags_free_slot = 1 << 5,							//Currently un used
+		tfxEmitterPropertyFlags_specific_emission_direction = 1 << 5,		//Uses a normal vector (3d) or direction (2d) to determine emission direction
 		tfxEmitterPropertyFlags_spawn_on_grid = 1 << 6,						//When using an area, line or ellipse emitter, spawn along a grid
 		tfxEmitterPropertyFlags_grid_spawn_clockwise = 1 << 7,				//Spawn clockwise/left to right around the area
 		tfxEmitterPropertyFlags_fill_area = 1 << 8,							//Fill the area
@@ -2961,6 +2961,7 @@ typedef unsigned int tfxEffectID;
 		tfxVec3 emitter_size;
 		tfxVec3 grid_coords;
 		tfxVec3 grid_direction;
+		tfxVec3 emission_direction_normal;	//for 2d effects, x contains the direction - not in use yet
 		float velocity_adjuster;
 		float global_opacity;
 		float stretch;
@@ -2973,7 +2974,8 @@ typedef unsigned int tfxEffectID;
 		void(*transform_particle_callback)(tfxParticleData &data, tfxCommon &common);
 
 		tfxEmitterState() :
-			amount_remainder(0.f)
+			amount_remainder(0.f),
+			emission_direction_normal(0.f, 1.f, 0.f)
 		{}
 	};
 
@@ -3148,10 +3150,10 @@ TFX_CUSTOM_EMITTER
 		//See tfxEffectTemplate for applying these callbacks
 		//tfxEffectSprites *sprites_container;
 		//Callbacks for effect pool effects only:
-		void(*root_effect_update_callback)(tfxEffect &effect);						//Called after the root effect state has been udpated
-		void(*emitter_update_callback)(tfxEmitter &emitter);						//Called after the emitter state has been udpated
-		void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter);				//Called before the emitter spawns particles
-		void(*particle_onspawn_callback)(tfxParticle &particle);						//Called as each particle is spawned.
+		void(*root_effect_update_callback)(tfxEffect &effect);										//Called after the root effect state has been udpated
+		void(*emitter_update_callback)(tfxEmitter &emitter);										//Called after the emitter state has been udpated
+		void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter);	//Called before the emitter spawns particles
+		void(*particle_onspawn_callback)(tfxParticle &particle);									//Called as each particle is spawned.
 
 		tfxEmitterStateFlags flags;
 

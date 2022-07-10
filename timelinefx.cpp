@@ -7778,8 +7778,10 @@ namespace tfx {
 
 			if (context == tfxEndEffect) {
 				effect_stack.back().ReIndex();
-				if (effect_stack.size() > 1)
+				if (effect_stack.size() > 1) {
 					effect_stack.parent().sub_effectors.push_back(effect_stack.back());
+					effect_stack.back().InitialiseUninitialisedGraphs();
+				}
 				else {
 					lib.effects.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
