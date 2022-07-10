@@ -2858,16 +2858,17 @@ namespace tfx {
 
 	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween) {
 		//----Position
+		tfxVec3 lerp_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position);
 		if (library_link->properties.emission_type == EmissionType::tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 				data.local_position = 0;
 			else {
 				if (common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
-					data.local_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position);
+					data.local_position = lerp_position;
 				}
 				else {
 					tfxVec3 rotvec = mmTransformVector3(common.transform.matrix, -common.handle);
-					tfxVec3 spawn_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position) * common.transform.scale;
+					tfxVec3 spawn_position = lerp_position * common.transform.scale;
 					data.local_position = rotvec + spawn_position;
 				}
 			}
@@ -3130,7 +3131,7 @@ namespace tfx {
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
-				data.local_position = common.transform.world_position + data.local_position * common.transform.scale;
+				data.local_position = lerp_position + data.local_position * common.transform.scale;
 			}
 
 		}
@@ -3174,7 +3175,7 @@ namespace tfx {
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
-				data.local_position = common.transform.world_position + data.local_position * common.transform.scale;
+				data.local_position = lerp_position + data.local_position * common.transform.scale;
 				data.alignment_vector = mmTransformVector3(common.transform.matrix, data.alignment_vector);
 			}
 		}
@@ -3210,7 +3211,7 @@ namespace tfx {
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
 				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
-				data.local_position = common.transform.world_position + data.local_position * common.transform.scale;
+				data.local_position = lerp_position + data.local_position * common.transform.scale;
 			}
 		}
 
