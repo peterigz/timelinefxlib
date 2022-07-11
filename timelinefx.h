@@ -509,7 +509,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterStateFlags_not_line = 1 << 9,
 		tfxEmitterStateFlags_is_line_traversal = 1 << 10,
 		tfxEmitterStateFlags_can_spin = 1 << 11,
-		tfxEmitterStateFlags_align_with_velocity = 1 << 12,
+		tfxEmitterStateFlags_base_uniform_size = 1 << 12,
 		tfxEmitterStateFlags_lifetime_uniform_size = 1 << 13,			//Keep the size over lifetime of the particle uniform
 		tfxEmitterStateFlags_loop = 1 << 14,
 		tfxEmitterStateFlags_kill = 1 << 15,
@@ -517,7 +517,8 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterStateFlags_single_shot_done = 1 << 17,
 		tfxEmitterStateFlags_is_line = 1 << 18,
 		tfxEmitterStateFlags_is_area = 1 << 19,
-		tfxEmitterStateFlags_no_tween = 1 << 20
+		tfxEmitterStateFlags_no_tween = 1 << 20,
+		tfxEmitterStateFlags_align_with_velocity = 1 << 21,
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
