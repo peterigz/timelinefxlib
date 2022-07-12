@@ -819,7 +819,7 @@ typedef unsigned int tfxEffectID;
 		tfxVec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
 		inline void operator=(const tfxVec2 &v) { x = v.x; y = v.y; }
 
-		inline tfxVec2 xy() { return tfxVec2(x, y); }
+		inline tfxVec2 xy() const { return tfxVec2(x, y); }
 
 		inline bool operator==(const tfxVec3 &v) const { return x == v.x && y == v.y && z == v.z; }
 
@@ -855,11 +855,7 @@ typedef unsigned int tfxEffectID;
 	};
 
 	struct tfxVec4 {
-		union {
-			struct { float x, y, z, w; };
-			struct { float r, g, b, a; };
-			struct { float c1, c2, c3, c4; };
-		};
+		float x, y, z, w;
 
 		tfxVec4() { x = y = z = w = 0.f; }
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
@@ -1008,8 +1004,8 @@ typedef unsigned int tfxEffectID;
 		tfxVec4 v[4];
 
 		inline void Set2(float aa, float ab, float ba, float bb) {
-			v[0].c1 = aa; v[0].c2 = ab;
-			v[1].c1 = ba; v[1].c2 = bb;
+			v[0].x = aa; v[0].y = ab;
+			v[1].x = ba; v[1].y = bb;
 		}
 
 	};
@@ -1041,21 +1037,21 @@ typedef unsigned int tfxEffectID;
 			bb *= s;
 		}
 
-		Matrix2 Transform(Matrix2 &m) {
+		Matrix2 Transform(const Matrix2 &m) {
 			Matrix2 r;
 			r.aa = aa * m.aa + ab * m.ba; r.ab = aa * m.ab + ab * m.bb;
 			r.ba = ba * m.aa + bb * m.ba; r.bb = ba * m.ab + bb * m.bb;
 			return r;
 		}
 
-		Matrix2 Transform(Matrix4 &m) {
+		Matrix2 Transform(const Matrix4 &m) {
 			Matrix2 r;
 			r.aa = aa * m.v[0].x + ab * m.v[1].x; r.ab = aa * m.v[0].y + ab * m.v[1].y;
 			r.ba = ba * m.v[0].x + bb * m.v[1].x; r.bb = ba * m.v[0].y + bb * m.v[1].y;
 			return r;
 		}
 
-		tfxVec2 TransformVector(tfxVec2 v) {
+		tfxVec2 TransformVector(const tfxVec2 v) {
 			tfxVec2 tv = tfxVec2(0.f, 0.f);
 			tv.x = v.x * aa + v.y * ba;
 			tv.y = v.x * ab + v.y * bb;
@@ -1064,7 +1060,7 @@ typedef unsigned int tfxEffectID;
 
 	};
 
-	static inline tfxVec2 mmTransformVector(const Matrix4 &mat, tfxVec2 v) {
+	static inline tfxVec2 mmTransformVector(const Matrix4 &mat, const tfxVec2 v) {
 		tfxVec2 tv = tfxVec2(0.f, 0.f);
 		tv.x = v.x * mat.v[0].x + v.y * mat.v[1].x;
 		tv.y = v.x * mat.v[0].y + v.y * mat.v[1].y;
@@ -1174,15 +1170,15 @@ typedef unsigned int tfxEffectID;
 		Matrix4 res = M4(0.f);
 
 		__m128 in_row[4];
-		in_row[0] = _mm_load_ps(&in.v[0].c1);
-		in_row[1] = _mm_load_ps(&in.v[1].c1);
-		in_row[2] = _mm_load_ps(&in.v[2].c1);
-		in_row[3] = _mm_load_ps(&in.v[3].c1);
+		in_row[0] = _mm_load_ps(&in.v[0].x);
+		in_row[1] = _mm_load_ps(&in.v[1].x);
+		in_row[2] = _mm_load_ps(&in.v[2].x);
+		in_row[3] = _mm_load_ps(&in.v[3].x);
 
-		__m128 m_row1 = _mm_set_ps(m.v[3].c1, m.v[2].c1, m.v[1].c1, m.v[0].c1);
-		__m128 m_row2 = _mm_set_ps(m.v[3].c2, m.v[2].c2, m.v[1].c2, m.v[0].c2);
-		__m128 m_row3 = _mm_set_ps(m.v[3].c3, m.v[2].c3, m.v[1].c3, m.v[0].c3);
-		__m128 m_row4 = _mm_set_ps(m.v[3].c4, m.v[2].c4, m.v[1].c4, m.v[0].c4);
+		__m128 m_row1 = _mm_set_ps(m.v[3].x, m.v[2].x, m.v[1].x, m.v[0].x);
+		__m128 m_row2 = _mm_set_ps(m.v[3].y, m.v[2].y, m.v[1].y, m.v[0].y);
+		__m128 m_row3 = _mm_set_ps(m.v[3].z, m.v[2].z, m.v[1].z, m.v[0].z);
+		__m128 m_row4 = _mm_set_ps(m.v[3].w, m.v[2].w, m.v[1].w, m.v[0].w);
 
 		for (int r = 0; r <= 3; ++r)
 		{
@@ -1194,13 +1190,13 @@ typedef unsigned int tfxEffectID;
 
 			float tmp[4];
 			_mm_store_ps(tmp, row1result);
-			res.v[r].c1 = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 			_mm_store_ps(tmp, row2result);
-			res.v[r].c2 = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 			_mm_store_ps(tmp, row3result);
-			res.v[r].c3 = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 			_mm_store_ps(tmp, row4result);
-			res.v[r].c4 = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 
 		}
 		return res;
@@ -1220,6 +1216,29 @@ typedef unsigned int tfxEffectID;
 		__m128 row2result = _mm_mul_ps(v4, mrow2);
 		__m128 row3result = _mm_mul_ps(v4, mrow3);
 		__m128 row4result = _mm_mul_ps(v4, mrow4);
+
+		float tmp[4];
+		_mm_store_ps(tmp, row1result);
+		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row2result);
+		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row3result);
+		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row4result);
+		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+		return v;
+	}
+
+	static inline tfxVec4 mmTransformVector(const __m128 &row1, const __m128 &row2, const __m128 &row3, const __m128 &row4, const tfxVec4 vec) {
+		tfxVec4 v;
+
+		__m128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+		__m128 row1result = _mm_mul_ps(v4, row1);
+		__m128 row2result = _mm_mul_ps(v4, row2);
+		__m128 row3result = _mm_mul_ps(v4, row3);
+		__m128 row4result = _mm_mul_ps(v4, row4);
 
 		float tmp[4];
 		_mm_store_ps(tmp, row1result);
@@ -2917,7 +2936,6 @@ typedef unsigned int tfxEffectID;
 		tfxVec3 local_rotations;
 		tfxVec3 world_rotations;
 		tfxVec3 scale;
-		//2d matrix for transformations
 		Matrix4 matrix;
 		tfxEmitterTransform() :
 			matrix(M4())
@@ -2972,7 +2990,7 @@ typedef unsigned int tfxEffectID;
 		float emission_alternator;
 		float qty;
 		//The callback to transform the particles each update. This will change based on the properties of the emitter
-		void(*transform_particle_callback)(tfxParticleData &data, tfxCommon &common);
+		void(*transform_particle_callback)(tfxParticleData &data, const tfxCommon &common);
 
 		tfxEmitterState() :
 			amount_remainder(0.f),
@@ -3688,17 +3706,17 @@ TFX_CUSTOM_EMITTER
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value);
 	void AssignGraphData(EffectEmitter &effect, tfxvec<tfxText> &values);
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
-	static inline void TransformParticle(tfxParticleData &data, tfxCommon &common) {
+	static inline void TransformParticle(tfxParticleData &data, const tfxCommon &common) {
 		data.world_position = data.local_position;
 		data.scale = data.scale;
 		data.world_rotations.roll = data.local_rotations.roll;
 	}
-	static inline void TransformParticleAngle(tfxParticleData &data, tfxCommon &common) {
+	static inline void TransformParticleAngle(tfxParticleData &data, const tfxCommon &common) {
 			data.world_position = data.local_position;
 			data.scale = data.scale;
 			data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
 	}
-	static inline void TransformParticleRelative(tfxParticleData &data, tfxCommon &common) {
+	static inline void TransformParticleRelative(tfxParticleData &data, const tfxCommon &common) {
 		data.scale = data.scale;
 		data.world_rotations.roll = data.local_rotations.roll;
 		float s = sin(data.local_rotations.roll);
@@ -3709,7 +3727,7 @@ TFX_CUSTOM_EMITTER
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
 	}
-	static inline void TransformParticleRelativeLine(tfxParticleData &data, tfxCommon &common) {
+	static inline void TransformParticleRelativeLine(tfxParticleData &data, const tfxCommon &common) {
 		data.scale = data.scale;
 		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
 		float s = sin(data.local_rotations.roll);
@@ -3720,17 +3738,17 @@ TFX_CUSTOM_EMITTER
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
 	}
-	static inline void TransformParticle3d(tfxParticleData &data, tfxCommon &common) {
+	static inline void TransformParticle3d(tfxParticleData &data, const tfxCommon &common) {
 		data.world_position = data.local_position;
 		data.scale = data.scale;
 		data.world_rotations = data.local_rotations;
 	}
-	static inline void TransformParticle3dAngle(tfxParticleData &data, tfxCommon &common) {
+	static inline void TransformParticle3dAngle(tfxParticleData &data, const tfxCommon &common) {
 		data.world_position = data.local_position;
 		data.scale = data.scale;
 		data.world_rotations = common.transform.world_rotations + data.local_rotations;
 	}
-	static inline void TransformParticle3dRelative(tfxParticleData &data, tfxCommon &common) {
+	static inline void TransformParticle3dRelative(tfxParticleData &data, const tfxCommon &common) {
 		data.scale = data.scale;
 		data.world_rotations = data.local_rotations;
 		float s = sin(data.local_rotations.roll);
@@ -3741,7 +3759,7 @@ TFX_CUSTOM_EMITTER
 		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
 		data.world_position = common.transform.world_position + rotatevec.xyz();
 	}
-	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, tfxCommon &common) {
+	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, const tfxCommon &common) {
 		data.scale = data.scale;
 		data.world_rotations = data.local_rotations;
 		float s = sin(data.local_rotations.roll);
