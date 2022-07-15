@@ -3159,14 +3159,14 @@ namespace tfx {
 				}
 			}
 			else {
-				position.x = random_generation.Range(emitter_size.x);
-				position.y = random_generation.Range(emitter_size.y);
-				position.z = random_generation.Range(emitter_size.z);
+				position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
+				position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
+				position.z = random_generation.Range(-emitter_size.z, emitter_size.z);
 
-				while (std::powf((position.x - emitter_size.x) / emitter_size.x, 2.f) + std::powf((position.y - emitter_size.y) / emitter_size.y, 2.f) + std::powf((position.z - emitter_size.z) / emitter_size.z, 2.f) > 1.f) {
-					position.x = random_generation.Range(emitter_size.x);
-					position.y = random_generation.Range(emitter_size.y);
-					position.z = random_generation.Range(emitter_size.z);
+				while (std::powf(position.x / emitter_size.x, 2.f) + std::powf(position.y / emitter_size.y, 2.f) + std::powf(position.z / emitter_size.z, 2.f) > 1.f) {
+					position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
+					position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
+					position.z = random_generation.Range(-emitter_size.z, emitter_size.z);
 				}
 
 				data.local_position = position;
