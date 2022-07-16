@@ -7010,7 +7010,10 @@ namespace tfx {
 		to.nodes.reserve(nodes.size());
 		std::copy(nodes.begin(), nodes.end(), to.nodes.begin());
 		to.nodes.current_size = nodes.current_size;
-		CompileGraph(to);
+		if(IsOvertimeGraph())
+			CompileGraphOvertime(to);
+		else
+			CompileGraph(to);
 	}
 
 	bool Graph::Sort() {
