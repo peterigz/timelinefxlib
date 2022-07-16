@@ -6172,6 +6172,8 @@ namespace tfx {
 	void Graph::MultiplyAllValues(float scalar) {
 		for (auto &node : nodes) {
 			node.value *= scalar;
+			node.left.y *= scalar;
+			node.right.y *= scalar;
 		}
 	}
 
