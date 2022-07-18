@@ -391,6 +391,7 @@ typedef unsigned int tfxEffectID;
 	};
 
 	typedef unsigned int tfxEmitterPropertyFlags;
+	typedef unsigned int tfxEffectPropertyFlags;
 	typedef unsigned int tfxVectorFieldFlags;
 	typedef unsigned char tfxParticleFlags;
 	typedef unsigned int tfxEmitterStateFlags;
@@ -457,6 +458,12 @@ typedef unsigned int tfxEffectID;
 		tfxParticleControlFlags_specify_yaw = 1 << 24,
 	};
 
+	enum tfxEffectPropertyFlags_ {
+		tfxEffectPropertyFlags_none = 0,
+		tfxEffectPropertyFlags_is_3d = 1 << 0,
+		tfxEffectPropertyFlags_depth_draw_order = 1 << 1
+	};
+
 	enum tfxEmitterPropertyFlags_ {
 		tfxEmitterPropertyFlags_none = 0,
 		tfxEmitterPropertyFlags_random_color = 1 << 0,						//Pick a random color from the color overtime gradient rather then change the color over the lifetime of the particle
@@ -510,10 +517,10 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterStateFlags_is_line_traversal = 1 << 10,
 		tfxEmitterStateFlags_can_spin = 1 << 11,
 		tfxEmitterStateFlags_base_uniform_size = 1 << 12,
-		tfxEmitterStateFlags_lifetime_uniform_size = 1 << 13,			//Keep the size over lifetime of the particle uniform
+		tfxEmitterStateFlags_lifetime_uniform_size = 1 << 13,				//Keep the size over lifetime of the particle uniform
 		tfxEmitterStateFlags_loop = 1 << 14,
 		tfxEmitterStateFlags_kill = 1 << 15,
-		tfxEmitterStateFlags_play_once = 1 << 16,						//Play the animation once only
+		tfxEmitterStateFlags_play_once = 1 << 16,							//Play the animation once only
 		tfxEmitterStateFlags_single_shot_done = 1 << 17,
 		tfxEmitterStateFlags_is_line = 1 << 18,
 		tfxEmitterStateFlags_is_area = 1 << 19,
@@ -523,8 +530,8 @@ typedef unsigned int tfxEffectID;
 
 	enum tfxVectorFieldFlags_: unsigned char {
 		tfxVectorFieldFlags_none = 0,
-		tfxVectorFieldFlags_repeat_horizontal = 1 << 0,							//Field will repeat horizontally
-		tfxVectorFieldFlags_repeat_vertical = 1 << 1								//Field will repeat vertically
+		tfxVectorFieldFlags_repeat_horizontal = 1 << 0,						//Field will repeat horizontally
+		tfxVectorFieldFlags_repeat_vertical = 1 << 1						//Field will repeat vertically
 	};
 
 	enum tfxPackageErrorCode : unsigned int {
@@ -3061,6 +3068,7 @@ typedef unsigned int tfxEffectID;
 		tfxEffectState current;
 		unsigned int max_particles[tfxLAYERS];
 		unsigned int max_sub_emitters;
+		tfxEffectPropertyFlags flags;
 		tfxEffectPool *storage;
 		tfxfixedvec<tfxEmitter> sub_emitters;
 		tfxfixedvec<tfxEmitter> sub_effects;
@@ -3336,6 +3344,12 @@ TFX_CUSTOM_EMITTER
 		float angle_offset;
 		OvertimeAttributes *graphs;
 		tfxVec2 image_handle;
+	};
+
+	//This struct is only used for 3d. It's used to get the particle's spawn position which we can then use to order by depth to the camera.
+	//We can then initialise the rest of the particle data with that position knowing that it will be in order.
+	struct tfxPositionSpawnPosition {
+		tfxVec3 position;
 	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
@@ -3781,7 +3795,8 @@ TFX_CUSTOM_EMITTER
 
 	//Particle initialisation functions, one for 2d one for 3d effects
 	void InitialiseParticle2d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
-	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
+	tfxVec3 InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
+	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
 	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, EffectEmitter *library_link);
 	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, EffectEmitter *library_link);

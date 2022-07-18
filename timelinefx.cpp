@@ -2856,20 +2856,21 @@ namespace tfx {
 
 	}
 
-	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween) {
+	tfxVec3 InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween) {
 		//----Position
+		tfxVec3 out_position;
 		tfxVec3 lerp_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position);
 		if (library_link->properties.emission_type == EmissionType::tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-				data.local_position = 0;
+				out_position = 0;
 			else {
 				if (common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
-					data.local_position = lerp_position;
+					out_position = lerp_position;
 				}
 				else {
 					tfxVec3 rotvec = mmTransformVector3(common.transform.matrix, -common.handle);
 					tfxVec3 spawn_position = lerp_position * common.transform.scale;
-					data.local_position = rotvec + spawn_position;
+					out_position = rotvec + spawn_position;
 				}
 			}
 		}
@@ -2893,7 +2894,7 @@ namespace tfx {
 						}
 					}
 
-					data.local_position = position + (current.grid_coords * spawn_values.grid_segment_size);
+					out_position = position + (current.grid_coords * spawn_values.grid_segment_size);
 
 					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						current.grid_coords.x++;
@@ -2970,7 +2971,7 @@ namespace tfx {
 							if (current.grid_coords.x < 0.f) {
 								current.grid_coords.y--;
 								current.grid_coords.x = library_link->properties.grid_points.x - 1;
-								if (current.grid_coords.y < 0.f) { 
+								if (current.grid_coords.y < 0.f) {
 									current.grid_coords.y = library_link->properties.grid_points.y - 1;
 									current.grid_direction.z++;
 								}
@@ -3075,7 +3076,7 @@ namespace tfx {
 					}
 
 					tfxBound3d(current.grid_coords, library_link->properties.grid_points);
-					data.local_position = position + (current.grid_coords * spawn_values.grid_segment_size);
+					out_position = position + (current.grid_coords * spawn_values.grid_segment_size);
 				}
 			}
 			else {
@@ -3125,13 +3126,13 @@ namespace tfx {
 					}
 				}
 
-				data.local_position = position;
+				out_position = position;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
-				data.local_position = lerp_position + data.local_position * common.transform.scale;
+				out_position = mmTransformVector3(common.transform.matrix, out_position + common.handle);
+				out_position = lerp_position + out_position * common.transform.scale;
 			}
 
 		}
@@ -3148,15 +3149,9 @@ namespace tfx {
 				float cos_theta = std::cosf(theta);
 				float sin_phi = std::sinf(phi);
 				float cos_phi = std::cosf(phi);
-				data.local_position.x = emitter_size.x * sin_phi * cos_theta;
-				data.local_position.y = emitter_size.y * sin_phi * sin_theta;
-				data.local_position.z = emitter_size.z * cos_phi;
-				if (library_link->properties.vector_align_type == tfxVectorAlignType_surface_normal) {
-					data.alignment_vector = tfxVec3(data.local_position.x / (emitter_size.x * emitter_size.x),
-											data.local_position.y / (emitter_size.y * emitter_size.y),
-											data.local_position.z / (emitter_size.z * emitter_size.z));
-					data.alignment_vector *= 2.f;
-				}
+				out_position.x = emitter_size.x * sin_phi * cos_theta;
+				out_position.y = emitter_size.y * sin_phi * sin_theta;
+				out_position.z = emitter_size.z * cos_phi;
 			}
 			else {
 				position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
@@ -3169,14 +3164,13 @@ namespace tfx {
 					position.z = random_generation.Range(-emitter_size.z, emitter_size.z);
 				}
 
-				data.local_position = position;
+				out_position = position;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
-				data.local_position = lerp_position + data.local_position * common.transform.scale;
-				data.alignment_vector = mmTransformVector3(common.transform.matrix, data.alignment_vector);
+				out_position = mmTransformVector3(common.transform.matrix, out_position + common.handle);
+				out_position = lerp_position + out_position * common.transform.scale;
 			}
 		}
 		else if (library_link->properties.emission_type == EmissionType::tfxLine) {
@@ -3192,7 +3186,7 @@ namespace tfx {
 					}
 				}
 
-				data.local_position = current.grid_coords * spawn_values.grid_segment_size;
+				out_position = current.grid_coords * spawn_values.grid_segment_size;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 					current.grid_coords.y++;
@@ -3203,16 +3197,38 @@ namespace tfx {
 
 			}
 			else {
-				data.local_position.x = 0.f;
-				data.local_position.y = random_generation.Range(0.f, current.emitter_size.y);
-				data.local_position.z = 0.f;
+				out_position.x = 0.f;
+				out_position.y = random_generation.Range(0.f, current.emitter_size.y);
+				out_position.z = 0.f;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-				data.local_position = mmTransformVector3(common.transform.matrix, data.local_position + common.handle);
-				data.local_position = lerp_position + data.local_position * common.transform.scale;
+				out_position = mmTransformVector3(common.transform.matrix, out_position + common.handle);
+				out_position = lerp_position + out_position * common.transform.scale;
 			}
+		}
+		return out_position;
+	}
+
+	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween) {
+		//----Position
+		if (library_link->properties.emission_type == EmissionType::tfxEllipse) {
+			tfxVec3 emitter_size = current.emitter_size * .5f;
+
+			if (!(common.property_flags & tfxEmitterPropertyFlags_fill_area)) {
+				if (library_link->properties.vector_align_type == tfxVectorAlignType_surface_normal) {
+					data.alignment_vector = tfxVec3(data.local_position.x / (emitter_size.x * emitter_size.x),
+						data.local_position.y / (emitter_size.y * emitter_size.y),
+						data.local_position.z / (emitter_size.z * emitter_size.z));
+					data.alignment_vector *= 2.f;
+				}
+			}
+
+			//----TForm and Emission
+			//if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			//	data.alignment_vector = mmTransformVector3(common.transform.matrix, data.alignment_vector);
+			//}
 		}
 
 		//----Weight
