@@ -2856,21 +2856,21 @@ namespace tfx {
 
 	}
 
-	tfxVec3 InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween) {
+	tfxSpawnPosition InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween) {
 		//----Position
-		tfxVec3 out_position;
+		tfxSpawnPosition out;
 		tfxVec3 lerp_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position);
 		if (library_link->properties.emission_type == EmissionType::tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-				out_position = 0;
+				out.local_position = 0;
 			else {
 				if (common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
-					out_position = lerp_position;
+					out.local_position = lerp_position;
 				}
 				else {
 					tfxVec3 rotvec = mmTransformVector3(common.transform.matrix, -common.handle);
 					tfxVec3 spawn_position = lerp_position * common.transform.scale;
-					out_position = rotvec + spawn_position;
+					out.local_position = rotvec + spawn_position;
 				}
 			}
 		}
@@ -2894,7 +2894,7 @@ namespace tfx {
 						}
 					}
 
-					out_position = position + (current.grid_coords * spawn_values.grid_segment_size);
+					out.local_position = position + (current.grid_coords * spawn_values.grid_segment_size);
 
 					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						current.grid_coords.x++;
@@ -3076,7 +3076,7 @@ namespace tfx {
 					}
 
 					tfxBound3d(current.grid_coords, library_link->properties.grid_points);
-					out_position = position + (current.grid_coords * spawn_values.grid_segment_size);
+					out.local_position = position + (current.grid_coords * spawn_values.grid_segment_size);
 				}
 			}
 			else {
@@ -3126,13 +3126,13 @@ namespace tfx {
 					}
 				}
 
-				out_position = position;
+				out.local_position = position;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				out_position = mmTransformVector3(common.transform.matrix, out_position + common.handle);
-				out_position = lerp_position + out_position * common.transform.scale;
+				out.local_position = mmTransformVector3(common.transform.matrix, out.local_position + common.handle);
+				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 
 		}
@@ -3149,9 +3149,9 @@ namespace tfx {
 				float cos_theta = std::cosf(theta);
 				float sin_phi = std::sinf(phi);
 				float cos_phi = std::cosf(phi);
-				out_position.x = emitter_size.x * sin_phi * cos_theta;
-				out_position.y = emitter_size.y * sin_phi * sin_theta;
-				out_position.z = emitter_size.z * cos_phi;
+				out.local_position.x = emitter_size.x * sin_phi * cos_theta;
+				out.local_position.y = emitter_size.y * sin_phi * sin_theta;
+				out.local_position.z = emitter_size.z * cos_phi;
 			}
 			else {
 				position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
@@ -3164,13 +3164,13 @@ namespace tfx {
 					position.z = random_generation.Range(-emitter_size.z, emitter_size.z);
 				}
 
-				out_position = position;
+				out.local_position = position;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				out_position = mmTransformVector3(common.transform.matrix, out_position + common.handle);
-				out_position = lerp_position + out_position * common.transform.scale;
+				out.local_position = mmTransformVector3(common.transform.matrix, out.local_position + common.handle);
+				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 		}
 		else if (library_link->properties.emission_type == EmissionType::tfxLine) {
@@ -3186,7 +3186,7 @@ namespace tfx {
 					}
 				}
 
-				out_position = current.grid_coords * spawn_values.grid_segment_size;
+				out.local_position = current.grid_coords * spawn_values.grid_segment_size;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 					current.grid_coords.y++;
@@ -3197,18 +3197,51 @@ namespace tfx {
 
 			}
 			else {
-				out_position.x = 0.f;
-				out_position.y = random_generation.Range(0.f, current.emitter_size.y);
-				out_position.z = 0.f;
+				out.local_position.x = 0.f;
+				out.local_position.y = random_generation.Range(0.f, current.emitter_size.y);
+				out.local_position.z = 0.f;
 			}
 
 			//----TForm and Emission
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-				out_position = mmTransformVector3(common.transform.matrix, out_position + common.handle);
-				out_position = lerp_position + out_position * common.transform.scale;
+				out.local_position = mmTransformVector3(common.transform.matrix, out.local_position + common.handle);
+				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 		}
-		return out_position;
+
+		//----Splatter
+		if (spawn_values.splatter) {
+			float splatx = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
+			float splaty = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
+			float splatz = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
+
+			while (std::powf(splatx / spawn_values.splatter, 2.f) + std::powf(splaty / spawn_values.splatter, 2.f) + std::powf(splatz / spawn_values.splatter, 2.f) > 1.f) {
+				splatx = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
+				splaty = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
+				splatz = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
+			}
+
+			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+				out.local_position.x += splatx * common.transform.scale.x;
+				out.local_position.y += splaty * common.transform.scale.y;
+				out.local_position.z += splatz * common.transform.scale.z;
+			}
+			else {
+				out.local_position.x += splatx;
+				out.local_position.y += splaty;
+				out.local_position.z += splatz;
+			}
+		}
+
+		if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
+			out.world_position = out.local_position;
+		}
+		else {
+			tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, out.local_position + common.handle);
+			out.world_position = common.transform.world_position + rotatevec.xyz();
+		}
+
+		return out;
 	}
 
 	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween) {
@@ -3230,6 +3263,47 @@ namespace tfx {
 			//	data.alignment_vector = mmTransformVector3(common.transform.matrix, data.alignment_vector);
 			//}
 		}
+
+		//----Spin
+		data.base.spin = random_generation.Range(-spawn_values.spin_variation, std::abs(spawn_values.spin_variation)) + spawn_values.spin;
+
+		data.world_rotations.roll = data.local_rotations.pitch = 0;
+		data.world_rotations.roll = data.local_rotations.yaw = 0;
+		data.world_rotations.roll = data.local_rotations.roll = 0;
+		if (library_link->properties.angle_settings & tfxAngleSettingFlags_specify_roll)
+			data.world_rotations.roll = data.local_rotations.roll = library_link->properties.angle_offsets.roll;
+		if (library_link->properties.angle_settings & tfxAngleSettingFlags_specify_pitch)
+			data.world_rotations.pitch = data.local_rotations.pitch = library_link->properties.angle_offsets.pitch;
+		if (library_link->properties.angle_settings & tfxAngleSettingFlags_specify_yaw)
+			data.world_rotations.yaw = data.local_rotations.yaw = library_link->properties.angle_offsets.yaw;
+		if (library_link->properties.angle_settings & tfxAngleSettingFlags_random_pitch)
+			data.world_rotations.pitch = data.local_rotations.pitch = random_generation.Range(library_link->properties.angle_offsets.pitch);
+		if (library_link->properties.angle_settings & tfxAngleSettingFlags_random_yaw)
+			data.world_rotations.yaw = data.local_rotations.yaw = random_generation.Range(library_link->properties.angle_offsets.yaw);
+		if (library_link->properties.angle_settings & tfxAngleSettingFlags_random_roll)
+			data.world_rotations.roll = data.local_rotations.roll = random_generation.Range(library_link->properties.angle_offsets.roll);
+
+		if (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == tfxLine) {
+			data.world_rotations = data.local_rotations;
+			float s = sin(data.local_rotations.roll);
+			float c = cos(data.local_rotations.roll);
+			Matrix2 pmat;
+			pmat.Set(c, s, -s, c);
+			pmat = pmat.Transform(common.transform.matrix);
+		}
+		else if (common.property_flags & tfxEmitterPropertyFlags_relative_position) {
+			data.world_rotations = data.local_rotations;
+			float s = sin(data.local_rotations.roll);
+			float c = cos(data.local_rotations.roll);
+			Matrix2 pmat;
+			pmat.Set(c, s, -s, c);
+			pmat = pmat.Transform(common.transform.matrix);
+		}
+		else if (common.property_flags & tfxEmitterPropertyFlags_relative_angle) {
+			data.world_rotations = common.transform.world_rotations + data.local_rotations;
+		}
+
+		data.captured_position = data.world_position;
 
 		//----Weight
 		if (spawn_values.weight) {
@@ -3276,56 +3350,6 @@ namespace tfx {
 				data.scale.y = height * common.library->overtime_graphs[library_link->overtime].height.GetFirstValue();
 			}
 		}
-
-		//----Spin
-		data.base.spin = random_generation.Range(-spawn_values.spin_variation, std::abs(spawn_values.spin_variation)) + spawn_values.spin;
-
-		data.world_rotations.roll = data.local_rotations.pitch = 0;
-		data.world_rotations.roll = data.local_rotations.yaw = 0;
-		data.world_rotations.roll = data.local_rotations.roll = 0;
-		if(library_link->properties.angle_settings & tfxAngleSettingFlags_specify_roll)
-			data.world_rotations.roll = data.local_rotations.roll = library_link->properties.angle_offsets.roll;
-		if(library_link->properties.angle_settings & tfxAngleSettingFlags_specify_pitch)
-			data.world_rotations.pitch = data.local_rotations.pitch = library_link->properties.angle_offsets.pitch;
-		if(library_link->properties.angle_settings & tfxAngleSettingFlags_specify_yaw)
-			data.world_rotations.yaw = data.local_rotations.yaw = library_link->properties.angle_offsets.yaw;
-		if(library_link->properties.angle_settings & tfxAngleSettingFlags_random_pitch)
-			data.world_rotations.pitch = data.local_rotations.pitch = random_generation.Range(library_link->properties.angle_offsets.pitch);
-		if(library_link->properties.angle_settings & tfxAngleSettingFlags_random_yaw)
-			data.world_rotations.yaw = data.local_rotations.yaw = random_generation.Range(library_link->properties.angle_offsets.yaw);
-		if(library_link->properties.angle_settings & tfxAngleSettingFlags_random_roll)
-			data.world_rotations.roll = data.local_rotations.roll = random_generation.Range(library_link->properties.angle_offsets.roll);
-
-		//----Splatter
-		if (spawn_values.splatter) {
-			float splatx = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
-			float splaty = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
-			float splatz = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
-
-			while (std::powf(splatx / spawn_values.splatter, 2.f) + std::powf(splaty / spawn_values.splatter, 2.f) + std::powf(splatz / spawn_values.splatter, 2.f) > 1.f) {
-				splatx = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
-				splaty = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
-				splatz = random_generation.Range(-spawn_values.splatter, spawn_values.splatter);
-			}
-
-			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				data.local_position.x += splatx * common.transform.scale.x;
-				data.local_position.y += splaty * common.transform.scale.y;
-				data.local_position.z += splatz * common.transform.scale.z;
-			}
-			else {
-				data.local_position.x += splatx;
-				data.local_position.y += splaty;
-				data.local_position.z += splatz;
-			}
-		}
-
-		float direction = 0;
-
-		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine;
-
-		current.transform_particle_callback(data, common);
-		data.captured_position = data.world_position;
 
 		//----Motion randomness
 		data.noise_offset = random_generation.Range(spawn_values.noise_offset_variation) + spawn_values.noise_offset;

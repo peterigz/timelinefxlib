@@ -3348,8 +3348,10 @@ TFX_CUSTOM_EMITTER
 
 	//This struct is only used for 3d. It's used to get the particle's spawn position which we can then use to order by depth to the camera.
 	//We can then initialise the rest of the particle data with that position knowing that it will be in order.
-	struct tfxPositionSpawnPosition {
-		tfxVec3 position;
+	struct tfxSpawnPosition {
+		tfxVec3 local_position;
+		tfxVec3 world_position;
+		tfxVec3 distance_to_camera;
 	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
@@ -3722,16 +3724,13 @@ TFX_CUSTOM_EMITTER
 	void AssignNodeData(AttributeNode &node, tfxvec<tfxText> &values);
 	static inline void TransformParticle(tfxParticleData &data, const tfxCommon &common) {
 		data.world_position = data.local_position;
-		data.scale = data.scale;
 		data.world_rotations.roll = data.local_rotations.roll;
 	}
 	static inline void TransformParticleAngle(tfxParticleData &data, const tfxCommon &common) {
-			data.world_position = data.local_position;
-			data.scale = data.scale;
-			data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+		data.world_position = data.local_position;
+		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
 	}
 	static inline void TransformParticleRelative(tfxParticleData &data, const tfxCommon &common) {
-		data.scale = data.scale;
 		data.world_rotations.roll = data.local_rotations.roll;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
@@ -3742,7 +3741,6 @@ TFX_CUSTOM_EMITTER
 		data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
 	}
 	static inline void TransformParticleRelativeLine(tfxParticleData &data, const tfxCommon &common) {
-		data.scale = data.scale;
 		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
@@ -3752,18 +3750,22 @@ TFX_CUSTOM_EMITTER
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		data.world_position = common.transform.world_position.xy() + rotatevec * common.transform.scale.xy();
 	}
+	static inline void TransformParticle3dPositions(tfxParticleData &data, const tfxCommon &common) {
+		data.world_position = data.local_position;
+	}
+	static inline void TransformParticle3dPositionsRelative(tfxParticleData &data, const tfxCommon &common) {
+		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
+		data.world_position = common.transform.world_position + rotatevec.xyz();
+	}
 	static inline void TransformParticle3d(tfxParticleData &data, const tfxCommon &common) {
 		data.world_position = data.local_position;
-		data.scale = data.scale;
 		data.world_rotations = data.local_rotations;
 	}
 	static inline void TransformParticle3dAngle(tfxParticleData &data, const tfxCommon &common) {
 		data.world_position = data.local_position;
-		data.scale = data.scale;
 		data.world_rotations = common.transform.world_rotations + data.local_rotations;
 	}
 	static inline void TransformParticle3dRelative(tfxParticleData &data, const tfxCommon &common) {
-		data.scale = data.scale;
 		data.world_rotations = data.local_rotations;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
@@ -3774,7 +3776,6 @@ TFX_CUSTOM_EMITTER
 		data.world_position = common.transform.world_position + rotatevec.xyz();
 	}
 	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, const tfxCommon &common) {
-		data.scale = data.scale;
 		data.world_rotations = data.local_rotations;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
@@ -3787,6 +3788,9 @@ TFX_CUSTOM_EMITTER
 	void Transform(tfxEmitter &emitter, tfxParticle &parent);
 	void Transform(tfxEmitterTransform &out, tfxEmitterTransform &in);
 	void Transform3d(tfxEmitterTransform &out, tfxEmitterTransform &in);
+	static inline int SortParticles(tfxVec3 *left, tfxVec3 *right) {
+
+	}
 	tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured);
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
@@ -3795,7 +3799,7 @@ TFX_CUSTOM_EMITTER
 
 	//Particle initialisation functions, one for 2d one for 3d effects
 	void InitialiseParticle2d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
-	tfxVec3 InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
+	tfxSpawnPosition InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
 	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
 	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, EffectEmitter *library_link);
