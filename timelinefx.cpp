@@ -5775,6 +5775,7 @@ namespace tfx {
 		eff.Insert("lifetime_uniform_size", tfxBool);
 		eff.Insert("use_spawn_ratio", tfxBool);
 		eff.Insert("is_3d", tfxBool);
+		eff.Insert("draw_order_by_depth", tfxBool);
 
 		//Animation settings
 		eff.Insert("animation_magenta_mask", tfxBool);
@@ -6112,6 +6113,8 @@ namespace tfx {
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;
 		if (field == "is_3d")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_is_3d; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_is_3d;
+		if (field == "draw_order_by_depth")
+			if (value) effect.effect_flags |= tfxEffectPropertyFlags_depth_draw_order; else effect.effect_flags &= tfxEffectPropertyFlags_depth_draw_order;
 	}
 
 	void StreamProperties(EmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file) {
@@ -6162,6 +6165,10 @@ namespace tfx {
 		file.AddLine("vector_align_type=%i", property.vector_align_type);
 		file.AddLine("layer=%i", property.layer);
 
+	}
+
+	void StreamProperties(tfxEffectPropertyFlags &flags, tfxText &file) {
+		file.AddLine("draw_order_by_depth=%i", flags & tfxEffectPropertyFlags_depth_draw_order);
 	}
 
 	void StreamGraph(const char * name, Graph &graph, tfxText &file) {

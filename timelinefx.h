@@ -556,6 +556,7 @@ typedef unsigned int tfxEffectID;
 
 	const float tfxMIN_FLOAT = -2147483648.f;
 	const float tfxMAX_FLOAT = 2147483647.f;
+	const unsigned int tfxMAX_UINT = 4294967295;
 
 	const float kLIFE_MIN = 0.f;
 	const float kLIFE_MAX = 100000.f;
@@ -3183,6 +3184,7 @@ TFX_CUSTOM_EMITTER
 		void(*particle_onspawn_callback)(tfxParticle &particle);									//Called as each particle is spawned.
 
 		tfxEmitterStateFlags flags;
+		tfxEffectPropertyFlags effect_flags;
 
 		EffectEmitter() :
 			highest_particle_age(0),
@@ -3351,7 +3353,7 @@ TFX_CUSTOM_EMITTER
 	struct tfxSpawnPosition {
 		tfxVec3 local_position;
 		tfxVec3 world_position;
-		tfxVec3 distance_to_camera;
+		float distance_to_camera;
 	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
@@ -3711,6 +3713,7 @@ TFX_CUSTOM_EMITTER
 	bool SaveDataFile(tfxStorageMap<DataEntry> &config, const char* path = "");
 	bool LoadDataFile(tfxStorageMap<DataEntry> &config, const char* path);
 	void StreamProperties(EmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file);
+	void StreamProperties(tfxEffectPropertyFlags &flags, tfxText &file);
 	void StreamGraph(const char * name, Graph &graph, tfxText &file);
 	tfxvec<tfxText> SplitString(const tfxText &s, char delim = 61);
 	bool StringIsUInt(const tfxText &s);
@@ -3788,8 +3791,10 @@ TFX_CUSTOM_EMITTER
 	void Transform(tfxEmitter &emitter, tfxParticle &parent);
 	void Transform(tfxEmitterTransform &out, tfxEmitterTransform &in);
 	void Transform3d(tfxEmitterTransform &out, tfxEmitterTransform &in);
-	static inline int SortParticles(tfxVec3 *left, tfxVec3 *right) {
-
+	static inline int SortParticles(void const *left, void const *right) {
+		float d1 = static_cast<const tfxSpawnPosition*>(left)->distance_to_camera;
+		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
+		return (d2 > d1) - (d2 < d1);
 	}
 	tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured);
 	float Interpolatef(float tween, float, float);
