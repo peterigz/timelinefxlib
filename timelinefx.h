@@ -461,7 +461,8 @@ typedef unsigned int tfxEffectID;
 	enum tfxEffectPropertyFlags_ {
 		tfxEffectPropertyFlags_none = 0,
 		tfxEffectPropertyFlags_is_3d = 1 << 0,
-		tfxEffectPropertyFlags_depth_draw_order = 1 << 1
+		tfxEffectPropertyFlags_depth_draw_order = 1 << 1,
+		tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
 	};
 
 	enum tfxEmitterPropertyFlags_ {
@@ -3165,8 +3166,8 @@ TFX_CUSTOM_EMITTER
 		//The estimated maximum time that the sub emitter might last for, taking into account the parent particle lifetime
 		float max_sub_emitter_life;
 		//The maximum amount of particles that this effect can spawn (root effects and emitters only)
-		u32 max_particles[tfxLAYERS];
-		u32 max_sub_emitters;
+		unsigned int max_particles[tfxLAYERS];
+		unsigned int max_sub_emitters;
 		//Pointer to the immediate parent
 		EffectEmitter *parent;
 		//Pointer to the next pointer in the particle manager buffer. 
@@ -3185,6 +3186,9 @@ TFX_CUSTOM_EMITTER
 
 		tfxEmitterStateFlags flags;
 		tfxEffectPropertyFlags effect_flags;
+		//When not using insert sort to guarantee particle order, sort passes offers a more lax way of ordering particles over a number of frames.
+		//The more passes the more quickly ordered the particles will be but at a higher cost
+		unsigned int sort_passes;
 
 		EffectEmitter() :
 			highest_particle_age(0),
@@ -3192,6 +3196,8 @@ TFX_CUSTOM_EMITTER
 			parent_particle(nullptr),
 			user_data(nullptr),
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
+			effect_flags(tfxEffectPropertyFlags_none),
+			sort_passes(1),
 			timeout(100),
 			timeout_counter(0),
 			animation_settings(0),
@@ -3354,6 +3360,10 @@ TFX_CUSTOM_EMITTER
 		tfxVec3 local_position;
 		tfxVec3 world_position;
 		float distance_to_camera;
+		float base_weight;
+		float base_velocity;
+		float weight_acceleration;
+		tfxVec3 velocity_normal;
 	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
@@ -3368,10 +3378,9 @@ TFX_CUSTOM_EMITTER
 		tfxVec2 scale;
 		//Read only when ControlParticle is called, only written to at spawn time
 		Base base;							//Base values created when the particle is spawned. They can be different per particle due to variations
-		tfxVec4 velocity_normal;
-		tfxVec3 alignment_vector;
-		//todo should merge emission_angle with velocity_normal
-		float emission_angle;				//Emission angle of the particle at spawn time
+		tfxVec4 velocity_normal;			//Current velocity direction, with stretch factor in w
+		tfxVec3 alignment_vector;			//Current Vector of alignment
+		float depth;						//Distance to camera and can also be used for other things too, but generally a distance to something. Not necessarily actual distance, just a relative number (to avoid needing to square root)
 		float noise_offset;					//Higer numbers means random movement is less uniform
 		float noise_resolution;				//Higer numbers means random movement is more uniform
 		tfxParticleFlags flags;				//flags for different states
@@ -3385,6 +3394,7 @@ TFX_CUSTOM_EMITTER
 		tfxRGBA8 color;						//Colour of the particle
 	};
 
+	//At the moment this struct is used in the editor only, looking to unify at some point
 	struct Particle {
 		tfxParticleData data;
 		EffectEmitter *parent;				//pointer to the emitter that emitted the particle.
@@ -3713,7 +3723,7 @@ TFX_CUSTOM_EMITTER
 	bool SaveDataFile(tfxStorageMap<DataEntry> &config, const char* path = "");
 	bool LoadDataFile(tfxStorageMap<DataEntry> &config, const char* path);
 	void StreamProperties(EmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file);
-	void StreamProperties(tfxEffectPropertyFlags &flags, tfxText &file);
+	void StreamProperties(EffectEmitter &effect, tfxText &file);
 	void StreamGraph(const char * name, Graph &graph, tfxText &file);
 	tfxvec<tfxText> SplitString(const tfxText &s, char delim = 61);
 	bool StringIsUInt(const tfxText &s);
@@ -3795,6 +3805,18 @@ TFX_CUSTOM_EMITTER
 		float d1 = static_cast<const tfxSpawnPosition*>(left)->distance_to_camera;
 		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
 		return (d2 > d1) - (d2 < d1);
+	}
+	static inline void InsertionSortParticles(tfxvec<Particle> &particles) {
+		for (unsigned int i = 1; i < particles.current_size; ++i) {
+			Particle key = particles[i];
+			int j = i - 1;
+
+			while (j >= 0 && key.data.depth > particles[j].data.depth) {
+				particles[j + 1] = particles[j];
+				--j;
+			}
+			particles[j + 1] = key;
+		}
 	}
 	tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured);
 	float Interpolatef(float tween, float, float);

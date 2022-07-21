@@ -2789,7 +2789,7 @@ namespace tfx {
 		data.captured_position = data.world_position;
 
 		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || library_link->properties.emission_type != EmissionType::tfxLine) {
-			direction = data.emission_angle = GetEmissionDirection2d(common, current, library_link, data.local_position.xy(), data.world_position.xy(), current.emitter_size.xy()) + common.library->overtime_graphs[library_link->overtime].direction.GetFirstValue();
+			direction = data.velocity_normal.x = GetEmissionDirection2d(common, current, library_link, data.local_position.xy(), data.world_position.xy(), current.emitter_size.xy()) + common.library->overtime_graphs[library_link->overtime].direction.GetFirstValue();
 		}
 
 		//Do a micro update
@@ -3241,6 +3241,44 @@ namespace tfx {
 			out.world_position = common.transform.world_position + rotatevec.xyz();
 		}
 
+		//----Weight
+		if (spawn_values.weight) {
+			out.base_weight = spawn_values.weight;
+			if (spawn_values.weight_variation > 0) {
+				out.base_weight += random_generation.Range(-spawn_values.weight_variation, spawn_values.weight_variation);
+			}
+		}
+		else {
+			out.base_weight = 0;
+		}
+		out.weight_acceleration = out.base_weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * UPDATE_TIME;
+
+		//----Velocity
+		float emission_pitch = lookup_callback(common.library->property_graphs[library_link->property].emission_pitch, common.frame);
+		float emission_yaw = lookup_callback(common.library->property_graphs[library_link->property].emission_yaw, common.frame);
+
+		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || library_link->properties.emission_type != EmissionType::tfxLine) {
+			out.velocity_normal = GetEmissionDirection3d(common, current, library_link, emission_pitch, emission_yaw, out.local_position, out.world_position, current.emitter_size);
+		}
+		else if (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine) {
+			out.velocity_normal = tfxVec3(0, 1.f, 0.f);
+		}
+		out.base_velocity = spawn_values.velocity + random_generation.Range(-spawn_values.velocity_variation, spawn_values.velocity_variation);
+		float velocity_scale = common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue() * current.velocity_adjuster * out.base_velocity;
+
+		//data.velocity = data.velocity_normal * data.base.velocity * data.velocity_scale * UPDATE_TIME;
+
+		//Do a micro update
+		//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
+		//the alignment on the first frame can be calculated
+		float micro_time = UPDATE_TIME * tween + 0.001f;
+		out.weight_acceleration += out.base_weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
+		//----Velocity Changes
+		tfxVec3 current_velocity = out.velocity_normal * (out.base_velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
+		current_velocity.y -= out.weight_acceleration;
+		out.local_position += current_velocity * micro_time;
+		out.world_position += current_velocity * micro_time;
+
 		return out;
 	}
 
@@ -3305,18 +3343,6 @@ namespace tfx {
 
 		data.captured_position = data.world_position;
 
-		//----Weight
-		if (spawn_values.weight) {
-			data.base.weight = spawn_values.weight;
-			if (spawn_values.weight_variation > 0) {
-				data.base.weight += random_generation.Range(-spawn_values.weight_variation, spawn_values.weight_variation);
-			}
-		}
-		else {
-			data.base.weight = 0;
-		}
-		data.weight_acceleration = data.base.weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * UPDATE_TIME;
-
 		//----Size
 		if (!(common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
 			float random_size_x = random_generation.Range(spawn_values.size_variation.x);
@@ -3355,33 +3381,7 @@ namespace tfx {
 		data.noise_offset = random_generation.Range(spawn_values.noise_offset_variation) + spawn_values.noise_offset;
 		data.noise_resolution = spawn_values.noise_resolution + 0.01f;
 
-		//----Velocity
-		float emission_pitch = lookup_callback(common.library->property_graphs[library_link->property].emission_pitch, common.frame);
-		float emission_yaw = lookup_callback(common.library->property_graphs[library_link->property].emission_yaw, common.frame);
-
-		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || library_link->properties.emission_type != EmissionType::tfxLine) {
-			data.velocity_normal = GetEmissionDirection3d(common, current, library_link, emission_pitch, emission_yaw, data.local_position, data.world_position, current.emitter_size);
-		}
-		else if(common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine) {
-			data.velocity_normal = tfxVec4(0, 1.f, 0.f, 0.f);
-		}
-		data.base.velocity = spawn_values.velocity + random_generation.Range(-spawn_values.velocity_variation, spawn_values.velocity_variation);
-		float velocity_scale = common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue() * current.velocity_adjuster * data.base.velocity;
 		data.velocity_normal.w = common.library->overtime_graphs[library_link->overtime].stretch.GetFirstValue();
-
-		//data.velocity = data.velocity_normal * data.base.velocity * data.velocity_scale * UPDATE_TIME;
-
-		//Do a micro update
-		//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
-		//the alignment on the first frame can be calculated
-		float micro_time = UPDATE_TIME * tween + 0.001f;
-		data.weight_acceleration += data.base.weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
-		//----Velocity Changes
-		tfxVec3 current_velocity = data.velocity_normal.xyz() * (data.base.velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
-		current_velocity.y -= data.weight_acceleration;
-		data.local_position += current_velocity * micro_time;
-		data.world_position += current_velocity * micro_time;
-		data.captured_position = data.world_position - current_velocity * UPDATE_TIME;
 		//end micro update
 
 		//----Handle
@@ -3623,7 +3623,7 @@ namespace tfx {
 		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
 		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
 		//float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
-		float lookup_direction = c.graphs->direction.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction.lookup.last_frame)] + data.emission_angle;
+		float lookup_direction = c.graphs->direction.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction.lookup.last_frame)] + data.velocity_normal.x;
 		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<u32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution;
 		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<u32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
 		float lookup_weight = c.graphs->weight.lookup.values[std::min<u32>(lookup_frame, c.graphs->weight.lookup.last_frame)];
@@ -5754,6 +5754,7 @@ namespace tfx {
 		eff.Insert("billboard_option", tfxUint);
 		eff.Insert("vector_align_type", tfxUint);
 		eff.Insert("multiply_blend_factor", tfxFloat);
+		eff.Insert("sort_passes", tfxUint);
 
 		eff.Insert("random_color", tfxBool);
 		eff.Insert("relative_position", tfxBool);
@@ -5776,6 +5777,7 @@ namespace tfx {
 		eff.Insert("use_spawn_ratio", tfxBool);
 		eff.Insert("is_3d", tfxBool);
 		eff.Insert("draw_order_by_depth", tfxBool);
+		eff.Insert("guaranteed_draw_order", tfxBool);
 
 		//Animation settings
 		eff.Insert("animation_magenta_mask", tfxBool);
@@ -5977,6 +5979,8 @@ namespace tfx {
 			effect.properties.vector_align_type = (tfxVectorAlignType)value;
 		if (field == "angle_setting")
 			effect.properties.angle_settings = (tfxAngleSettingFlags)value;
+		if (field == "sort_passes")
+			effect.sort_passes = value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, int value) {
 		if (field == "emission_type")
@@ -6114,7 +6118,9 @@ namespace tfx {
 		if (field == "is_3d")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_is_3d; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_is_3d;
 		if (field == "draw_order_by_depth")
-			if (value) effect.effect_flags |= tfxEffectPropertyFlags_depth_draw_order; else effect.effect_flags &= tfxEffectPropertyFlags_depth_draw_order;
+			if (value) effect.effect_flags |= tfxEffectPropertyFlags_depth_draw_order; else effect.effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order;
+		if (field == "guaranteed_draw_order")
+			if (value) effect.effect_flags |= tfxEffectPropertyFlags_guaranteed_order; else effect.effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order;
 	}
 
 	void StreamProperties(EmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file) {
@@ -6167,8 +6173,10 @@ namespace tfx {
 
 	}
 
-	void StreamProperties(tfxEffectPropertyFlags &flags, tfxText &file) {
-		file.AddLine("draw_order_by_depth=%i", flags & tfxEffectPropertyFlags_depth_draw_order);
+	void StreamProperties(EffectEmitter &effect, tfxText &file) {
+		file.AddLine("draw_order_by_depth=%i", effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order);
+		file.AddLine("guaranteed_draw_order=%i", effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order);
+		file.AddLine("sort_passes=%i", effect.sort_passes);
 	}
 
 	void StreamGraph(const char * name, Graph &graph, tfxText &file) {
