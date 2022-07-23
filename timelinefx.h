@@ -945,12 +945,12 @@ typedef unsigned int tfxEffectID;
 	static inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
 	static inline void tfxBound3d(tfxVec3 s, tfxVec3 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
 
-	static inline float LengthVec2(tfxVec3 const &v) {
+	static inline float LengthVec3NoSqR(tfxVec3 const &v) {
 		return v.x * v.x + v.y * v.y + v.z * v.z;
 	}
 
 	static inline float LengthVec(tfxVec3 const &v) {
-		return sqrtf(LengthVec2(v));
+		return sqrtf(LengthVec3NoSqR(v));
 	}
 
 	static inline float HasLength(tfxVec3 const &v) {
@@ -3363,6 +3363,7 @@ TFX_CUSTOM_EMITTER
 		float base_weight;
 		float base_velocity;
 		float weight_acceleration;
+		float micro_time;
 		tfxVec3 velocity_normal;
 	};
 
@@ -3474,12 +3475,31 @@ TFX_CUSTOM_EMITTER
 		float stretch;
 		float image_frame;
 		float start_frame;
+		float depth;
 		void *image_ptr;
 		tfxRGBA8 color;
 		float intensity;
 		unsigned int alignment_type;
 		bool has_frames;
 	};
+
+	static inline ParticleFrame ConvertToParticleFrame(const Particle &p) {
+		ParticleFrame pf;
+		pf.position = p.data.world_position;
+		pf.scale = p.data.scale;
+		pf.alignment = p.data.alignment_vector;
+		pf.stretch = p.data.velocity_normal.w;
+		pf.rotations = p.data.world_rotations;
+		pf.alignment_type = p.parent->properties.billboard_option;
+		pf.handle = p.parent->spawn_controls.image_handle;
+		pf.color = p.data.color;
+		pf.intensity = p.data.intensity;
+		pf.start_frame = p.parent->properties.start_frame;
+		pf.image_ptr = p.parent->properties.image->ptr;
+		pf.image_frame = p.data.image_frame;
+		pf.has_frames = p.parent->properties.image->animation_frames > 1;
+		return pf;
+	}
 
 	struct EffectLibrary {
 		tfxStorageMap<EffectEmitter*> effect_paths;
@@ -3812,6 +3832,18 @@ TFX_CUSTOM_EMITTER
 			int j = i - 1;
 
 			while (j >= 0 && key.data.depth > particles[j].data.depth) {
+				particles[j + 1] = particles[j];
+				--j;
+			}
+			particles[j + 1] = key;
+		}
+	}
+	static inline void InsertionSortParticleFrame(tfxvec<ParticleFrame> &particles) {
+		for (unsigned int i = 1; i < particles.current_size; ++i) {
+			ParticleFrame key = particles[i];
+			int j = i - 1;
+
+			while (j >= 0 && key.depth > particles[j].depth) {
 				particles[j + 1] = particles[j];
 				--j;
 			}

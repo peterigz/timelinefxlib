@@ -3271,13 +3271,13 @@ namespace tfx {
 		//Do a micro update
 		//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
 		//the alignment on the first frame can be calculated
-		float micro_time = UPDATE_TIME * tween + 0.001f;
-		out.weight_acceleration += out.base_weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
+		out.micro_time = UPDATE_TIME * tween + 0.001f;
+		out.weight_acceleration += out.base_weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * out.micro_time;
 		//----Velocity Changes
 		tfxVec3 current_velocity = out.velocity_normal * (out.base_velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
 		current_velocity.y -= out.weight_acceleration;
-		out.local_position += current_velocity * micro_time;
-		out.world_position += current_velocity * micro_time;
+		out.local_position += current_velocity * out.micro_time;
+		out.world_position += current_velocity * out.micro_time;
 
 		return out;
 	}
@@ -3340,8 +3340,6 @@ namespace tfx {
 		else if (common.property_flags & tfxEmitterPropertyFlags_relative_angle) {
 			data.world_rotations = common.transform.world_rotations + data.local_rotations;
 		}
-
-		data.captured_position = data.world_position;
 
 		//----Size
 		if (!(common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
