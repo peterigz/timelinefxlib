@@ -527,6 +527,7 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterStateFlags_is_area = 1 << 19,
 		tfxEmitterStateFlags_no_tween = 1 << 20,
 		tfxEmitterStateFlags_align_with_velocity = 1 << 21,
+		tfxEmitterStateFlags_is_sub_emitter = 1 << 28,
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
@@ -1333,11 +1334,11 @@ typedef unsigned int tfxEffectID;
 	}
 
 	inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
-		return from * tween + to * (1.f - tween);
+		return to * tween + from * (1.f - tween);
 	}
 
 	inline tfxVec3 InterpolateVec3(float tween, tfxVec3 from, tfxVec3 to) {
-		return from * tween + to * (1.f - tween);
+		return to * tween + from * (1.f - tween);
 	}
 
 	inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &to) {
@@ -2998,6 +2999,7 @@ typedef unsigned int tfxEffectID;
 		float amount_remainder;
 		float emission_alternator;
 		float qty;
+		float qty_step_size;
 		//The callback to transform the particles each update. This will change based on the properties of the emitter
 		void(*transform_particle_callback)(tfxParticleData &data, const tfxCommon &common);
 
@@ -3358,13 +3360,13 @@ TFX_CUSTOM_EMITTER
 	//We can then initialise the rest of the particle data with that position knowing that it will be in order.
 	struct tfxSpawnPosition {
 		tfxVec3 local_position;
+		tfxVec3 captured_position;
 		tfxVec3 world_position;
+		tfxVec3 velocity_normal;
 		float distance_to_camera;
 		float base_weight;
 		float base_velocity;
 		float weight_acceleration;
-		float micro_time;
-		tfxVec3 velocity_normal;
 	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
