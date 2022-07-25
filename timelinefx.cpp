@@ -2784,16 +2784,16 @@ namespace tfx {
 
 		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine;
 
-		current.transform_particle_callback(data, common);
-		data.scale = data.scale;
-		data.captured_position = data.world_position;
-
-		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || library_link->properties.emission_type != EmissionType::tfxLine) {
-			direction = data.velocity_normal.x = GetEmissionDirection2d(common, current, library_link, data.local_position.xy(), data.world_position.xy(), current.emitter_size.xy()) + common.library->overtime_graphs[library_link->overtime].direction.GetFirstValue();
+		if (!line && !(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			current.transform_particle_callback(data, common, common.transform.world_position);
+			data.captured_position = data.world_position;
 		}
 
+		if (!line) {
+			direction = data.velocity_normal.x = GetEmissionDirection2d(common, current, library_link, data.local_position.xy(), data.world_position.xy(), current.emitter_size.xy()) + common.library->overtime_graphs[library_link->overtime].direction.GetFirstValue();
+		}
 		//Do a micro update
-		float micro_time = UPDATE_TIME * tween;
+		float micro_time = UPDATE_TIME * (1.f - tween);
 		data.weight_acceleration += data.base.weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
 		//----Velocity Changes
 		tfxVec2 velocity_normal;
@@ -2803,7 +2803,14 @@ namespace tfx {
 		current_velocity.y += data.weight_acceleration;
 		current_velocity *= micro_time;
 		data.local_position += current_velocity;
-		data.world_position += current_velocity;
+		if (line || common.property_flags & tfxEmitterPropertyFlags_relative_position) {
+			tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
+			data.captured_position = common.transform.captured_position.xy() + rotatevec * common.transform.scale.xy();
+			current.transform_particle_callback(data, common, tfxVec3(common.transform.world_position.x, common.transform.world_position.y, 0.f));
+		}
+		else {
+			data.world_position += current_velocity;
+		}
 		//end micro update
 
 		//data.velocity = data.velocity_normal * data.base.velocity * data.velocity_scale * UPDATE_TIME;
@@ -3233,12 +3240,17 @@ namespace tfx {
 			}
 		}
 
-		if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-			out.world_position = out.local_position;
-		}
-		else {
-			tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, out.local_position + common.handle);
-			out.world_position = common.transform.world_position + rotatevec.xyz();
+		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && library_link->properties.emission_type == EmissionType::tfxLine;
+
+		if (!line && !(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
+				out.world_position = out.local_position;
+			}
+			else {
+				tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, out.local_position + common.handle);
+				out.world_position = common.transform.world_position + rotatevec.xyz();
+			}
+			out.captured_position = out.world_position;
 		}
 
 		//----Weight
@@ -3271,15 +3283,26 @@ namespace tfx {
 		//Do a micro update
 		//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
 		//the alignment on the first frame can be calculated
-		float micro_time = UPDATE_TIME * tween + 0.001f;
+		float micro_time = UPDATE_TIME * (1 - tween + 0.001f);
 		out.weight_acceleration += out.base_weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
 		//----Velocity Changes
 		tfxVec3 current_velocity = out.velocity_normal * (out.base_velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
 		current_velocity.y -= out.weight_acceleration;
 		current_velocity *= micro_time;
 		out.local_position += current_velocity;
-		out.captured_position = out.world_position;
-		out.world_position += current_velocity;
+		if (line || common.property_flags & tfxEmitterPropertyFlags_relative_position) {
+			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
+				out.world_position = out.local_position;
+			}
+			else {
+				tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, out.local_position + common.handle);
+				out.captured_position = common.transform.captured_position + rotatevec.xyz();
+				out.world_position = common.transform.world_position + rotatevec.xyz();
+			}
+		}
+		else {
+			out.world_position += current_velocity;
+		}
 
 		return out;
 	}
@@ -4030,7 +4053,7 @@ namespace tfx {
 			}
 
 			if (!(p.data.flags & tfxParticleFlags_fresh)) {
-				current.transform_particle_callback(p.data, common);
+				current.transform_particle_callback(p.data, common, common.transform.world_position);
 				if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 					p.data.captured_position = p.data.world_position;
 					p.data.flags &= ~tfxParticleFlags_capture_after_transform;
