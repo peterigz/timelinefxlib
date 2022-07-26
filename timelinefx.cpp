@@ -2496,8 +2496,7 @@ namespace tfx {
 				}
 				else {
 					tfxVec2 rotvec = mmTransformVector(common.transform.matrix, -common.handle.xy());
-					tfxVec2 spawn_position = lerp_position * common.transform.scale.xy();
-					data.local_position = rotvec + spawn_position;
+					data.local_position = rotvec + lerp_position;
 				}
 			}
 		}
@@ -2876,8 +2875,7 @@ namespace tfx {
 				}
 				else {
 					tfxVec3 rotvec = mmTransformVector3(common.transform.matrix, -common.handle);
-					tfxVec3 spawn_position = lerp_position * common.transform.scale;
-					out.local_position = rotvec + spawn_position;
+					out.local_position = rotvec + lerp_position;
 				}
 			}
 		}
@@ -3248,7 +3246,7 @@ namespace tfx {
 			}
 			else {
 				tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, out.local_position + common.handle);
-				out.world_position = common.transform.world_position + rotatevec.xyz();
+				out.world_position = common.transform.world_position + rotatevec.xyz() * common.transform.scale;
 			}
 			out.captured_position = out.world_position;
 		}
@@ -3297,7 +3295,7 @@ namespace tfx {
 			else {
 				tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, out.local_position + common.handle);
 				out.captured_position = common.transform.captured_position + rotatevec.xyz();
-				out.world_position = common.transform.world_position + rotatevec.xyz();
+				out.world_position = common.transform.world_position + rotatevec.xyz() * common.transform.scale;
 			}
 		}
 		else {
