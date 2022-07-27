@@ -3786,7 +3786,7 @@ namespace tfx {
 		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
 		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
 		//float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
-		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<u32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution;
+		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<u32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution * c.overal_scale;
 		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<u32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
 		float lookup_weight = c.graphs->weight.lookup.values[std::min<u32>(lookup_frame, c.graphs->weight.lookup.last_frame)];
 
@@ -3808,9 +3808,11 @@ namespace tfx {
 			float eps = 0.001f;
 			float eps2 = 0.001f * 2.f;
 
-			float x = data.local_position.x / lookup_noise_resolution + data.noise_offset;
-			float y = data.local_position.y / lookup_noise_resolution + data.noise_offset;
-			float z = data.local_position.z / lookup_noise_resolution + data.noise_offset;
+			float noise_offset = data.noise_offset * c.overal_scale;
+
+			float x = data.local_position.x / lookup_noise_resolution + noise_offset;
+			float y = data.local_position.y / lookup_noise_resolution + noise_offset;
+			float z = data.local_position.z / lookup_noise_resolution + noise_offset;
 
 			__m128 x4 = _mm_set1_ps(x);
 			__m128 y4 = _mm_set1_ps(y);
@@ -3894,7 +3896,7 @@ namespace tfx {
 		tfxVec3 current_velocity = data.velocity_normal.xyz() * velocity_scalar;
 		current_velocity += mr_vec;
 		current_velocity.y -= data.weight_acceleration;
-		data.velocity_normal.w = lookup_stretch;
+		data.velocity_normal.w = lookup_stretch * c.stretch;
 		current_velocity *= UPDATE_TIME;
 
 		//----Color changes
