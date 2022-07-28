@@ -3005,7 +3005,8 @@ typedef unsigned int tfxEffectID;
 
 		tfxEmitterState() :
 			amount_remainder(0.f),
-			emission_direction_normal(0.f, 1.f, 0.f)
+			emission_direction_normal(0.f, 1.f, 0.f),
+			qty_step_size(0.f)
 		{}
 	};
 
@@ -3129,10 +3130,6 @@ typedef unsigned int tfxEffectID;
 		//after all it's particles have expired? We set this variable to the highest particle age each time it spawns a particle and then counts it down each frame. When it's 0 then we know that there are no
 		//more particles being controlled by this emitter and can therefore time it out.
 		float highest_particle_age;
-		//The number of frames before this is removed from the particle manager after particle count is 0
-		unsigned int timeout;
-		//Internal, keep track of idle frames
-		unsigned int timeout_counter;
 		//Every effect and emitter in the library gets a unique id
 		unsigned int uid;
 		//compute slot id if a compute shader is being used. Only applied to bottom emitters (emitters with no child effects)
@@ -3200,8 +3197,6 @@ TFX_CUSTOM_EMITTER
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
 			effect_flags(tfxEffectPropertyFlags_none),
 			sort_passes(1),
-			timeout(100),
-			timeout_counter(0),
 			animation_settings(0),
 			root_effect_update_callback(nullptr),
 			emitter_update_callback(nullptr),

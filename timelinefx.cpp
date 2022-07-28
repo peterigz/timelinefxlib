@@ -4345,7 +4345,7 @@ namespace tfx {
 	}
 
 	void EffectEmitter::SetTimeout(unsigned int frames) {
-		timeout = frames;
+		common.timeout = frames;
 		for (auto &sub : sub_effectors) {
 			sub.SetTimeout(frames);
 		}
