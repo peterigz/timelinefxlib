@@ -3398,8 +3398,7 @@ TFX_CUSTOM_EMITTER
 		EffectEmitter *parent;				//pointer to the emitter that emitted the particle.
 		//Internal use variables
 		Particle *next_ptr;
-		unsigned int sprite_index;
-		unsigned int offset;
+		unsigned int prev_index;
 	};
 
 	struct tfxParticle {
@@ -3823,16 +3822,19 @@ TFX_CUSTOM_EMITTER
 		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
 		return (d2 > d1) - (d2 < d1);
 	}
-	static inline void InsertionSortParticles(tfxvec<Particle> &particles) {
+	static inline void InsertionSortParticles(tfxvec<Particle> &particles, tfxvec<Particle> &current_buffer) {
 		for (unsigned int i = 1; i < particles.current_size; ++i) {
 			Particle key = particles[i];
 			int j = i - 1;
 
 			while (j >= 0 && key.data.depth > particles[j].data.depth) {
 				particles[j + 1] = particles[j];
+				current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
+				current_buffer[particles[  j  ].prev_index].next_ptr = &particles[  j  ];
 				--j;
 			}
 			particles[j + 1] = key;
+			current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
 		}
 	}
 	static inline void InsertionSortParticleFrame(tfxvec<ParticleFrame> &particles) {

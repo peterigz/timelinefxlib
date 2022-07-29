@@ -2486,6 +2486,9 @@ namespace tfx {
 
 	void InitialiseParticle2d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, EffectEmitter *library_link, float tween) {
 		//----Position
+		data.local_position = 0;
+		data.world_position = 0;
+		data.captured_position = 0;
 		tfxVec2 lerp_position = InterpolateVec2(tween, common.transform.captured_position.xy(), common.transform.world_position.xy());
 		if (library_link->properties.emission_type == EmissionType::tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
@@ -2743,16 +2746,15 @@ namespace tfx {
 		//----Spin
 		data.base.spin = random_generation.Range(-spawn_values.spin_variation, std::abs(spawn_values.spin_variation)) + spawn_values.spin;
 
-		switch (library_link->properties.angle_settings) {
-		case tfxAngleSettingFlags_random_roll:
+		data.world_rotations = 0;
+		data.local_rotations = 0;
+		if (library_link->properties.angle_settings & tfxAngleSettingFlags_random_roll) {
 			data.world_rotations.roll = data.local_rotations.roll = random_generation.Range(library_link->properties.angle_offsets.roll);
-			break;
-		case tfxAngleSettingFlags_specify_roll:
+		}
+		else if (library_link->properties.angle_settings & tfxAngleSettingFlags_specify_roll) {
 			data.world_rotations.roll = data.local_rotations.roll = library_link->properties.angle_offsets.roll;
-			break;
-		default:
+		}else{
 			data.world_rotations.roll = data.local_rotations.roll = 0;
-			break;
 		}
 
 		//----Splatter
