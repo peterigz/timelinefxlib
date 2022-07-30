@@ -5339,6 +5339,42 @@ namespace tfx {
 		return effect.animation_settings;
 	}
 
+	unsigned int EffectLibrary::AddPreviewCameraSettings(EffectEmitter& effect) {
+		assert(effect.type == tfxEffectType);
+		tfxPreviewCameraSettings a;
+		a.camera_settings.camera_floor_height = -10.f;
+		a.camera_settings.camera_fov = tfxRadians(60);
+		a.camera_settings.camera_pitch = tfxRadians(-30.f);
+		a.camera_settings.camera_yaw = tfxRadians(-90.f);
+		a.camera_settings.camera_position = tfxVec3(0.f, 3.5f, 7.5f);
+		a.camera_settings.camera_isometric = false;
+		a.camera_settings.camera_isometric_scale = 5.f;
+		a.camera_settings.camera_hide_floor = false;
+		a.effect_z_offset = 5.f;
+		a.camera_speed = 6.f;
+		a.attach_effect_to_camera = false;
+		preview_camera_settings.push_back(a);
+		effect.preview_camera_settings = preview_camera_settings.size() - 1;
+		return effect.preview_camera_settings;
+	}
+
+	unsigned int EffectLibrary::AddPreviewCameraSettings() {
+		tfxPreviewCameraSettings a;
+		a.camera_settings.camera_floor_height = -10.f;
+		a.camera_settings.camera_fov = tfxRadians(60);
+		a.camera_settings.camera_pitch = tfxRadians(-30.f);
+		a.camera_settings.camera_yaw = tfxRadians(-90.f);
+		a.camera_settings.camera_position = tfxVec3(0.f, 3.5f, 7.5f);
+		a.camera_settings.camera_isometric = false;
+		a.camera_settings.camera_isometric_scale = 5.f;
+		a.camera_settings.camera_hide_floor = false;
+		a.effect_z_offset = 5.f;
+		a.camera_speed = 6.f;
+		a.attach_effect_to_camera = false;
+		preview_camera_settings.push_back(a);
+		return preview_camera_settings.size() - 1;
+	}
+
 	void EffectLibrary::Clear() {
 		for (auto &e : effects) {
 			e.FreeGraphs();
@@ -5351,12 +5387,18 @@ namespace tfx {
 		base_graphs.free_all();
 		variation_graphs.free_all();
 		overtime_graphs.free_all();
+		animation_settings.free_all();
+		preview_camera_settings.free_all();
+		AddPreviewCameraSettings();
 
 		free_global_graphs.free_all();
 		free_property_graphs.free_all();
 		free_base_graphs.free_all();
 		free_variation_graphs.free_all();
 		free_overtime_graphs.free_all();
+		free_animation_settings.free_all();
+		free_preview_camera_settings.free_all();
+
 		uid = 0;
 	}
 
@@ -5748,130 +5790,143 @@ namespace tfx {
 	}
 
 	DataTypesDictionary::DataTypesDictionary() {
-		eff.Insert("name", tfxString);
-		eff.Insert("image_index", tfxUint);
-		eff.Insert("image_handle_x", tfxFloat);
-		eff.Insert("image_handle_y", tfxFloat);
-		eff.Insert("spawn_amount", tfxUint);
-		eff.Insert("single_shot_limit", tfxUint);
-		eff.Insert("blend_mode", tfxSInt);
-		eff.Insert("image_start_frame", tfxFloat);
-		eff.Insert("image_end_frame", tfxFloat);
-		eff.Insert("image_frame_rate", tfxFloat);
-		eff.Insert("playback_speed", tfxFloat);
+		names_and_types.Insert("name", tfxString);
+		names_and_types.Insert("image_index", tfxUint);
+		names_and_types.Insert("image_handle_x", tfxFloat);
+		names_and_types.Insert("image_handle_y", tfxFloat);
+		names_and_types.Insert("spawn_amount", tfxUint);
+		names_and_types.Insert("single_shot_limit", tfxUint);
+		names_and_types.Insert("blend_mode", tfxSInt);
+		names_and_types.Insert("image_start_frame", tfxFloat);
+		names_and_types.Insert("image_end_frame", tfxFloat);
+		names_and_types.Insert("image_frame_rate", tfxFloat);
+		names_and_types.Insert("playback_speed", tfxFloat);
 
-		eff.Insert("emission_type", tfxSInt);
-		eff.Insert("emission_direction", tfxSInt);
-		eff.Insert("delay_spawning", tfxFloat);
-		eff.Insert("grid_rows", tfxFloat);
-		eff.Insert("grid_columns", tfxFloat);
-		eff.Insert("grid_depth", tfxFloat);
-		eff.Insert("loop_length", tfxFloat);
-		eff.Insert("emitter_handle_x", tfxFloat);
-		eff.Insert("emitter_handle_y", tfxFloat);
-		eff.Insert("emitter_handle_z", tfxFloat);
-		eff.Insert("end_behaviour", tfxSInt);
-		eff.Insert("angle_setting", tfxUint);
-		eff.Insert("angle_offset", tfxFloat);
-		eff.Insert("angle_offset_pitch", tfxFloat);
-		eff.Insert("angle_offset_yaw", tfxFloat);
-		eff.Insert("disable_billboard", tfxBool);
-		eff.Insert("billboard_option", tfxUint);
-		eff.Insert("vector_align_type", tfxUint);
-		eff.Insert("multiply_blend_factor", tfxFloat);
-		eff.Insert("sort_passes", tfxUint);
+		names_and_types.Insert("emission_type", tfxSInt);
+		names_and_types.Insert("emission_direction", tfxSInt);
+		names_and_types.Insert("delay_spawning", tfxFloat);
+		names_and_types.Insert("grid_rows", tfxFloat);
+		names_and_types.Insert("grid_columns", tfxFloat);
+		names_and_types.Insert("grid_depth", tfxFloat);
+		names_and_types.Insert("loop_length", tfxFloat);
+		names_and_types.Insert("emitter_handle_x", tfxFloat);
+		names_and_types.Insert("emitter_handle_y", tfxFloat);
+		names_and_types.Insert("emitter_handle_z", tfxFloat);
+		names_and_types.Insert("end_behaviour", tfxSInt);
+		names_and_types.Insert("angle_setting", tfxUint);
+		names_and_types.Insert("angle_offset", tfxFloat);
+		names_and_types.Insert("angle_offset_pitch", tfxFloat);
+		names_and_types.Insert("angle_offset_yaw", tfxFloat);
+		names_and_types.Insert("disable_billboard", tfxBool);
+		names_and_types.Insert("billboard_option", tfxUint);
+		names_and_types.Insert("vector_align_type", tfxUint);
+		names_and_types.Insert("multiply_blend_factor", tfxFloat);
+		names_and_types.Insert("sort_passes", tfxUint);
 
-		eff.Insert("random_color", tfxBool);
-		eff.Insert("relative_position", tfxBool);
-		eff.Insert("relative_angle", tfxBool);
-		eff.Insert("image_handle_auto_center", tfxBool);
-		eff.Insert("single", tfxBool);
-		eff.Insert("one_shot", tfxBool);
-		eff.Insert("spawn_on_grid", tfxBool);
-		eff.Insert("grid_spawn_clockwise", tfxBool);
-		eff.Insert("fill_area", tfxBool);
-		eff.Insert("emitter_handle_auto_center", tfxBool);
-		eff.Insert("edge_traversal", tfxBool);
-		eff.Insert("image_reverse_animation", tfxBool);
-		eff.Insert("image_play_once", tfxBool);
-		eff.Insert("image_animate", tfxBool);
-		eff.Insert("image_random_start_frame", tfxBool);
-		eff.Insert("global_uniform_size", tfxBool);
-		eff.Insert("base_uniform_size", tfxBool);
-		eff.Insert("lifetime_uniform_size", tfxBool);
-		eff.Insert("use_spawn_ratio", tfxBool);
-		eff.Insert("is_3d", tfxBool);
-		eff.Insert("draw_order_by_depth", tfxBool);
-		eff.Insert("guaranteed_draw_order", tfxBool);
+		names_and_types.Insert("random_color", tfxBool);
+		names_and_types.Insert("relative_position", tfxBool);
+		names_and_types.Insert("relative_angle", tfxBool);
+		names_and_types.Insert("image_handle_auto_center", tfxBool);
+		names_and_types.Insert("single", tfxBool);
+		names_and_types.Insert("one_shot", tfxBool);
+		names_and_types.Insert("spawn_on_grid", tfxBool);
+		names_and_types.Insert("grid_spawn_clockwise", tfxBool);
+		names_and_types.Insert("fill_area", tfxBool);
+		names_and_types.Insert("emitter_handle_auto_center", tfxBool);
+		names_and_types.Insert("edge_traversal", tfxBool);
+		names_and_types.Insert("image_reverse_animation", tfxBool);
+		names_and_types.Insert("image_play_once", tfxBool);
+		names_and_types.Insert("image_animate", tfxBool);
+		names_and_types.Insert("image_random_start_frame", tfxBool);
+		names_and_types.Insert("global_uniform_size", tfxBool);
+		names_and_types.Insert("base_uniform_size", tfxBool);
+		names_and_types.Insert("lifetime_uniform_size", tfxBool);
+		names_and_types.Insert("use_spawn_ratio", tfxBool);
+		names_and_types.Insert("is_3d", tfxBool);
+		names_and_types.Insert("draw_order_by_depth", tfxBool);
+		names_and_types.Insert("guaranteed_draw_order", tfxBool);
 
 		//Animation settings
-		eff.Insert("animation_magenta_mask", tfxBool);
-		eff.Insert("frames", tfxUint);
-		eff.Insert("current_frame", tfxUint);
-		eff.Insert("frame_offset", tfxUint);
-		eff.Insert("extra_frames_count", tfxSInt);
-		eff.Insert("layer", tfxUint);
-		eff.Insert("position_x", tfxFloat);
-		eff.Insert("position_y", tfxFloat);
-		eff.Insert("frame_width", tfxFloat);
-		eff.Insert("frame_height", tfxFloat);
-		eff.Insert("loop", tfxBool);
-		eff.Insert("seamless", tfxBool);
-		eff.Insert("seed", tfxUint);
-		eff.Insert("zoom", tfxFloat);
-		eff.Insert("scale", tfxFloat);
-		eff.Insert("color_option", tfxSInt);
-		eff.Insert("export_option", tfxSInt);
-		eff.Insert("export_with_transparency", tfxBool);
-		eff.Insert("camera_position_x", tfxFloat);
-		eff.Insert("camera_position_y", tfxFloat);
-		eff.Insert("camera_position_z", tfxFloat);
-		eff.Insert("camera_pitch", tfxFloat);
-		eff.Insert("camera_yaw", tfxFloat);
-		eff.Insert("camera_fov", tfxFloat);
-		eff.Insert("camera_floor_height", tfxFloat);
-		eff.Insert("camera_isometric", tfxFloat);
-		eff.Insert("camera_isometric_scale", tfxFloat);
-		eff.Insert("camera_hide_floor", tfxBool);
-		eff.Insert("camera_free_speed", tfxFloat);
-		eff.Insert("camera_ray_offset", tfxFloat);
+		names_and_types.Insert("animation_magenta_mask", tfxBool);
+		names_and_types.Insert("frames", tfxUint);
+		names_and_types.Insert("current_frame", tfxUint);
+		names_and_types.Insert("frame_offset", tfxUint);
+		names_and_types.Insert("extra_frames_count", tfxSInt);
+		names_and_types.Insert("layer", tfxUint);
+		names_and_types.Insert("position_x", tfxFloat);
+		names_and_types.Insert("position_y", tfxFloat);
+		names_and_types.Insert("frame_width", tfxFloat);
+		names_and_types.Insert("frame_height", tfxFloat);
+		names_and_types.Insert("loop", tfxBool);
+		names_and_types.Insert("seamless", tfxBool);
+		names_and_types.Insert("seed", tfxUint);
+		names_and_types.Insert("zoom", tfxFloat);
+		names_and_types.Insert("scale", tfxFloat);
+		names_and_types.Insert("color_option", tfxSInt);
+		names_and_types.Insert("export_option", tfxSInt);
+		names_and_types.Insert("export_with_transparency", tfxBool);
+		names_and_types.Insert("camera_position_x", tfxFloat);
+		names_and_types.Insert("camera_position_y", tfxFloat);
+		names_and_types.Insert("camera_position_z", tfxFloat);
+		names_and_types.Insert("camera_pitch", tfxFloat);
+		names_and_types.Insert("camera_yaw", tfxFloat);
+		names_and_types.Insert("camera_fov", tfxFloat);
+		names_and_types.Insert("camera_floor_height", tfxFloat);
+		names_and_types.Insert("camera_isometric", tfxFloat);
+		names_and_types.Insert("camera_isometric_scale", tfxFloat);
+		names_and_types.Insert("camera_hide_floor", tfxBool);
+		names_and_types.Insert("camera_free_speed", tfxFloat);
+		names_and_types.Insert("camera_ray_offset", tfxFloat);
+		names_and_types.Insert("preview_camera_position_x", tfxFloat);
+		names_and_types.Insert("preview_camera_position_y", tfxFloat);
+		names_and_types.Insert("preview_camera_position_z", tfxFloat);
+		names_and_types.Insert("preview_camera_pitch", tfxFloat);
+		names_and_types.Insert("preview_camera_yaw", tfxFloat);
+		names_and_types.Insert("preview_camera_fov", tfxFloat);
+		names_and_types.Insert("preview_camera_floor_height", tfxFloat);
+		names_and_types.Insert("preview_camera_isometric", tfxBool);
+		names_and_types.Insert("preview_camera_isometric_scale", tfxFloat);
+		names_and_types.Insert("preview_camera_speed", tfxFloat);
+		names_and_types.Insert("preview_effect_z_offset", tfxFloat);
+		names_and_types.Insert("preview_camera_hide_floor", tfxBool);
+		names_and_types.Insert("preview_attach_effect_to_camera", tfxBool);
 
 		//Editor config, move this to the editor
-		eff.Insert("only_play_selected_emitter", tfxBool);
-		eff.Insert("load_examples", tfxBool);
-		eff.Insert("load_last_file", tfxBool);
-		eff.Insert("load_last_file_path", tfxString);
-		eff.Insert("recent1", tfxString);
-		eff.Insert("recent2", tfxString);
-		eff.Insert("recent3", tfxString);
-		eff.Insert("recent4", tfxString);
-		eff.Insert("background_color_red", tfxFloat);
-		eff.Insert("background_color_green", tfxFloat);
-		eff.Insert("background_color_blue", tfxFloat);
-		eff.Insert("use_checker_background", tfxBool);
-		eff.Insert("preview_zoom", tfxFloat);
-		eff.Insert("updates_per_second", tfxFloat);
-		eff.Insert("background_image", tfxString);
-		eff.Insert("use_background_image", tfxBool);
-		eff.Insert("background_image_scale_x", tfxFloat);
-		eff.Insert("background_image_scale_y", tfxFloat);
-		eff.Insert("background_image_offset_x", tfxFloat);
-		eff.Insert("background_image_offset_y", tfxFloat);
-		eff.Insert("autoplay_effect", tfxSInt);
-		eff.Insert("sync_refresh_rate", tfxBool);
-		eff.Insert("window_maximised", tfxBool);
-		eff.Insert("window_width", tfxSInt);
-		eff.Insert("window_height", tfxSInt);
-		eff.Insert("window_x", tfxSInt);
-		eff.Insert("window_y", tfxSInt);
-		eff.Insert("show_emitter_positions", tfxBool);
-		eff.Insert("dpi_factor", tfxFloat);
-		eff.Insert("graph_lookup_mode", tfxSInt);
-		eff.Insert("show_tool_tips", tfxBool);
-		eff.Insert("preview_trail_mode", tfxBool);
-		eff.Insert("try_autorecover", tfxBool);
-		eff.Insert("autorecovery_file", tfxString);
-		eff.Insert("draw_outlines", tfxBool);
+		names_and_types.Insert("only_play_selected_emitter", tfxBool);
+		names_and_types.Insert("load_examples", tfxBool);
+		names_and_types.Insert("load_last_file", tfxBool);
+		names_and_types.Insert("load_last_file_path", tfxString);
+		names_and_types.Insert("recent1", tfxString);
+		names_and_types.Insert("recent2", tfxString);
+		names_and_types.Insert("recent3", tfxString);
+		names_and_types.Insert("recent4", tfxString);
+		names_and_types.Insert("background_color_red", tfxFloat);
+		names_and_types.Insert("background_color_green", tfxFloat);
+		names_and_types.Insert("background_color_blue", tfxFloat);
+		names_and_types.Insert("use_checker_background", tfxBool);
+		names_and_types.Insert("preview_zoom", tfxFloat);
+		names_and_types.Insert("updates_per_second", tfxFloat);
+		names_and_types.Insert("background_image", tfxString);
+		names_and_types.Insert("use_background_image", tfxBool);
+		names_and_types.Insert("background_image_scale_x", tfxFloat);
+		names_and_types.Insert("background_image_scale_y", tfxFloat);
+		names_and_types.Insert("background_image_offset_x", tfxFloat);
+		names_and_types.Insert("background_image_offset_y", tfxFloat);
+		names_and_types.Insert("autoplay_effect", tfxSInt);
+		names_and_types.Insert("sync_refresh_rate", tfxBool);
+		names_and_types.Insert("window_maximised", tfxBool);
+		names_and_types.Insert("window_width", tfxSInt);
+		names_and_types.Insert("window_height", tfxSInt);
+		names_and_types.Insert("window_x", tfxSInt);
+		names_and_types.Insert("window_y", tfxSInt);
+		names_and_types.Insert("show_emitter_positions", tfxBool);
+		names_and_types.Insert("dpi_factor", tfxFloat);
+		names_and_types.Insert("graph_lookup_mode", tfxSInt);
+		names_and_types.Insert("show_tool_tips", tfxBool);
+		names_and_types.Insert("preview_trail_mode", tfxBool);
+		names_and_types.Insert("try_autorecover", tfxBool);
+		names_and_types.Insert("autorecovery_file", tfxString);
+		names_and_types.Insert("draw_outlines", tfxBool);
 	}
 
 	int ValidateEffectPackage(const char *filename) {
@@ -6058,6 +6113,26 @@ namespace tfx {
 			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_floor_height = value;
 		if (field == "camera_isometric_scale")
 			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_isometric_scale = value;
+		if (field == "preview_camera_position_x")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_position.x = value;
+		if (field == "preview_camera_position_y")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_position.y = value;
+		if (field == "preview_camera_position_z")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_position.z = value;
+		if (field == "preview_camera_pitch")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_pitch = value;
+		if (field == "preview_camera_yaw")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_yaw = value;
+		if (field == "preview_camera_fov")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_fov = value;
+		if (field == "preview_camera_floor_height")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_floor_height = value;
+		if (field == "preview_camera_isometric_scale")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_isometric_scale = value;
+		if (field == "preview_effect_z_offset")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].effect_z_offset = value;
+		if (field == "preview_camera_speed")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_speed = value;
 		if (field == "image_handle_x")
 			effect.properties.image_handle.x = value;
 		if (field == "image_handle_y")
@@ -6102,6 +6177,12 @@ namespace tfx {
 			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_isometric = value;
 		if (field == "camera_hide_floor")
 			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_hide_floor = value;
+		if (field == "preview_attach_effect_to_camera")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_isometric_scale = value;
+		if (field == "preview_camera_hide_floor")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_isometric_scale = value;
+		if (field == "preview_camera_isometric")
+			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_isometric = value;
 		if (field == "random_color")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_random_color; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_random_color;
 		if (field == "relative_position")
@@ -7567,7 +7648,7 @@ namespace tfx {
 			tfxvec<tfxText> pair = SplitString(str, 61);
 			if (pair.size() == 2) {
 				tfxText key = pair[0];
-				DataType t = data_types.eff.At(pair[0]);
+				DataType t = data_types.names_and_types.At(pair[0]);
 				if (t == tfxBool) {
 					AddDataValue(map, key, (bool)atoi(pair[1].c_str()));
 				}
@@ -7771,6 +7852,8 @@ namespace tfx {
 					effect.type = EffectEmitterType::tfxEffectType;
 					effect_stack.push_back(effect);
 					lib.AddAnimationSettings(effect_stack.back());
+					lib.AddPreviewCameraSettings(effect_stack.back());
+
 				}
 				if (context == tfxStartEmitter) {
 					EffectEmitter emitter;
@@ -7793,8 +7876,8 @@ namespace tfx {
 					}
 				}
 
-				if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder) {
-					switch (data_types.eff.At(pair[0])) {
+				if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
+					switch (data_types.names_and_types.At(pair[0])) {
 					case tfxUint:
 						AssignEffectorProperty(effect_stack.back(), pair[0], (unsigned int)atoi(pair[1].c_str()));
 						break;

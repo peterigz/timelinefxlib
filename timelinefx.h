@@ -387,7 +387,9 @@ typedef unsigned int tfxEffectID;
 		tfxStartEffectData,
 		tfxEndOfFile,
 		tfxStartFolder,
-		tfxEndFolder
+		tfxEndFolder,
+		tfxStartPreviewCameraSettings,
+		tfxEndPreviewCameraSettings,
 	};
 
 	typedef unsigned int tfxEmitterPropertyFlags;
@@ -2722,6 +2724,13 @@ typedef unsigned int tfxEffectID;
 		bool camera_isometric;
 		bool camera_hide_floor;
 	};
+	
+	struct tfxPreviewCameraSettings {
+		tfxAnimationCameraSettings camera_settings;
+		float effect_z_offset;
+		float camera_speed;
+		bool attach_effect_to_camera;
+	};
 
 	//this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
 	struct AnimationSettings {
@@ -3160,6 +3169,8 @@ TFX_CUSTOM_EMITTER
 		unsigned int sprite_offset;
 		//Index to animation settings stored in the effect library. Would like to move this at some point
 		unsigned int animation_settings;
+		//Index to preview camera settings stored in the effect library. Would like to move this at some point
+		unsigned int preview_camera_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 		float max_life;
 		//The estimated maximum time that the sub emitter might last for, taking into account the parent particle lifetime
@@ -3198,6 +3209,7 @@ TFX_CUSTOM_EMITTER
 			effect_flags(tfxEffectPropertyFlags_none),
 			sort_passes(1),
 			animation_settings(0),
+			preview_camera_settings(0),
 			root_effect_update_callback(nullptr),
 			emitter_update_callback(nullptr),
 			spawn_update_callback(nullptr),
@@ -3508,9 +3520,7 @@ TFX_CUSTOM_EMITTER
 		tfxvec<VariationAttributes> variation_graphs;
 		tfxvec<OvertimeAttributes> overtime_graphs;
 		tfxvec<AnimationSettings> animation_settings;
-		//Experiment, all nodes from graphs can get added to this one list to keep them in one place in memory, this is where data is read from when
-		//when updating particles and emitters. I'm starting to think towards getting this running in a compute shader, so will need data to be stored
-		//in buffers in one block as much as possible
+		tfxvec<tfxPreviewCameraSettings> preview_camera_settings;
 		tfxvec<AttributeNode> all_nodes;
 		tfxvec<EffectLookUpData> node_lookup_indexes;
 		tfxvec<float> compiled_lookup_values;
@@ -3525,6 +3535,7 @@ TFX_CUSTOM_EMITTER
 		tfxvec<unsigned int> free_variation_graphs;
 		tfxvec<unsigned int> free_overtime_graphs;
 		tfxvec<unsigned int> free_animation_settings;
+		tfxvec<unsigned int> free_preview_camera_settings;
 
 		//Get an effect from the library by index
 		EffectEmitter& operator[] (uint32_t index);
@@ -3589,6 +3600,8 @@ TFX_CUSTOM_EMITTER
 		void AddEmitterGraphs(EffectEmitter& effect);
 		void AddEffectGraphs(EffectEmitter& effect);
 		unsigned int AddAnimationSettings(EffectEmitter& effect);
+		unsigned int AddPreviewCameraSettings(EffectEmitter& effect);
+		unsigned int AddPreviewCameraSettings();
 		void UpdateEffectParticleStorage();
 		void UpdateComputeNodes();
 		void CompileAllGraphs();
@@ -3718,7 +3731,7 @@ TFX_CUSTOM_EMITTER
 	};
 
 	struct DataTypesDictionary {
-		tfxStorageMap<DataType> eff;
+		tfxStorageMap<DataType> names_and_types;
 
 		DataTypesDictionary();
 	};
