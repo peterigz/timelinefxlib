@@ -3286,8 +3286,12 @@ namespace tfx {
 		float micro_time = UPDATE_TIME * (1 - tween + 0.001f);
 		out.weight_acceleration += out.base_weight * common.library->overtime_graphs[library_link->overtime].weight.GetFirstValue() * micro_time;
 		//----Velocity Changes
-		tfxVec3 current_velocity = out.velocity_normal * (out.base_velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
+		tfxVec3 current_velocity = out.velocity_normal.xyz() * (out.base_velocity * common.library->overtime_graphs[library_link->overtime].velocity.GetFirstValue());
 		current_velocity.y -= out.weight_acceleration;
+		if (library_link->properties.vector_align_type == tfxVectorAlignType_motion) {
+			float l = FastLength(current_velocity * UPDATE_TIME);
+			out.velocity_normal.w = common.library->overtime_graphs[library_link->overtime].stretch.GetFirstValue() * l * 10.f;
+		}
 		current_velocity *= micro_time;
 		out.local_position += current_velocity;
 		if (line || common.property_flags & tfxEmitterPropertyFlags_relative_position) {
@@ -3404,7 +3408,6 @@ namespace tfx {
 		data.noise_offset = random_generation.Range(spawn_values.noise_offset_variation) + spawn_values.noise_offset;
 		data.noise_resolution = spawn_values.noise_resolution + 0.01f;
 
-		data.velocity_normal.w = common.library->overtime_graphs[library_link->overtime].stretch.GetFirstValue();
 		//end micro update
 
 		//----Handle

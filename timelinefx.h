@@ -3369,7 +3369,7 @@ TFX_CUSTOM_EMITTER
 		tfxVec3 local_position;
 		tfxVec3 captured_position;
 		tfxVec3 world_position;
-		tfxVec3 velocity_normal;
+		tfxVec4 velocity_normal;
 		float distance_to_camera;
 		float base_weight;
 		float base_velocity;
