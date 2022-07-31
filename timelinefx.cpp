@@ -5872,7 +5872,7 @@ namespace tfx {
 		names_and_types.Insert("camera_yaw", tfxFloat);
 		names_and_types.Insert("camera_fov", tfxFloat);
 		names_and_types.Insert("camera_floor_height", tfxFloat);
-		names_and_types.Insert("camera_isometric", tfxFloat);
+		names_and_types.Insert("camera_isometric", tfxBool);
 		names_and_types.Insert("camera_isometric_scale", tfxFloat);
 		names_and_types.Insert("camera_hide_floor", tfxBool);
 		names_and_types.Insert("camera_free_speed", tfxFloat);
