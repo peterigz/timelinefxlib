@@ -4349,7 +4349,7 @@ namespace tfx {
 		return user_data;
 	}
 
-	void EffectEmitter::SetTimeout(unsigned int frames) {
+	void EffectEmitter::SetTimeout(float frames) {
 		common.timeout = frames;
 		for (auto &sub : sub_effectors) {
 			sub.SetTimeout(frames);
