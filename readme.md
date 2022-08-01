@@ -1,5 +1,7 @@
 # Timeline FX C++ library
 
+**Quick note to say that currently this library is out of date with the latest addition of 3d in the editor. Development is on the 3d branch which is what I'm working on next so watch this space!**
+
 This is an early alpha version of the TimelineFX library that you can use to incorporate 2D particle effects directly into your games and applications. You can use the [TimelineFX Particle Editor](https://www.rigzsoft.co.uk/timelinefx-alpha-version/) to design your effects.
 
 **This is still very much a work in progress but feel free to use it and give some feedback on how to improve the interface and make it easier to use and implement.**
