@@ -1222,7 +1222,7 @@ namespace tfx {
 	}
 
 	EffectEmitter::~EffectEmitter() {
-		sub_effectors.free_all();
+		info.sub_effectors.free_all();
 	}
 
 	void EffectEmitter::SoftExpire() {
@@ -1230,23 +1230,23 @@ namespace tfx {
 	}
 
 	void EffectEmitter::UpdateMaxLife() {
-		max_life = GetMaxLife(*this);
-		GetGraphByType(tfxOvertime_red)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_green)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_blue)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_blendfactor)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_intensity)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_velocity)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_width)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_height)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_weight)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_spin)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_stretch)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_spin)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_velocity_turbulance)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_direction_turbulance)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_velocity_adjuster)->lookup.life = max_life;
-		GetGraphByType(tfxOvertime_direction)->lookup.life = max_life;
+		info.max_life = GetMaxLife(*this);
+		GetGraphByType(tfxOvertime_red)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_green)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_blue)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_blendfactor)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_intensity)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_velocity)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_width)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_height)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_weight)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_spin)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_stretch)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_spin)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_velocity_turbulance)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_direction_turbulance)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_velocity_adjuster)->lookup.life = info.max_life;
+		GetGraphByType(tfxOvertime_direction)->lookup.life = info.max_life;
 	}
 
 	void EffectEmitter::ResetAllBufferSizes() {
@@ -1254,18 +1254,18 @@ namespace tfx {
 		stack.push_back(this);
 		while (!stack.empty()) {
 			EffectEmitter &current = *stack.pop_back();
-			current.max_sub_emitters = 0;
+			current.info.max_sub_emitters = 0;
 			for (EachLayer) {
-				current.max_particles[layer] = 0;
+				current.info.max_particles[layer] = 0;
 			}
-			for (auto &sub : current.sub_effectors) {
+			for (auto &sub : current.info.sub_effectors) {
 				stack.push_back(&sub);
 			}
 		}
 	}
 
 	bool EffectEmitter::IsFiniteEffect() {
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			if (e.common.property_flags & tfxEmitterPropertyFlags_single)
 				return true;
 			float qty = e.common.library->base_graphs[e.base].amount.GetLastValue() + e.common.library->variation_graphs[e.variation].amount.GetLastValue();
@@ -1280,7 +1280,7 @@ namespace tfx {
 			common.property_flags |= tfxEmitterPropertyFlags_is_3d;
 		else
 			common.property_flags &= ~tfxEmitterPropertyFlags_is_3d;
-		for (auto &sub : sub_effectors) {
+		for (auto &sub : info.sub_effectors) {
 			sub.FlagAs3D(flag);
 		}
 	}
@@ -1293,26 +1293,26 @@ namespace tfx {
 		tfxvec<EffectEmitter*> stack;
 		stack.push_back(this);
 		for (int l = 0; l != tfxLAYERS; ++l) {
-			max_particles[l] = 0;
+			info.max_particles[l] = 0;
 		}
-		max_sub_emitters = 0;
+		info.max_sub_emitters = 0;
 		while (!stack.empty()) {
 			EffectEmitter &current = *stack.pop_back();
 			if (current.type == tfxEmitterType) {
 				unsigned int particle_count = 0;
 				if (current.parent->parent && current.parent->parent->type != tfxFolder) {
-					particle_count = current.GetHighestQty(current.parent->parent->max_life);
-					max_sub_emitters += (current.parent->parent->max_particles[current.parent->parent->properties.layer] * (current.sub_effectors.size() + 1) + (current.sub_effectors.size() + 1)) * unsigned int(current.max_sub_emitter_life / 1000.f);
-					if (max_sub_emitters > 10000) {
+					particle_count = current.GetHighestQty(current.parent->parent->info.max_life);
+					info.max_sub_emitters += (current.parent->parent->info.max_particles[current.parent->parent->properties.layer] * (current.info.sub_effectors.size() + 1) + (current.info.sub_effectors.size() + 1)) * unsigned int(current.info.max_sub_emitter_life / 1000.f);
+					if (info.max_sub_emitters > 10000) {
 						int debug = 0;
 					}
 				}
 				else {
 					particle_count = current.GetHighestQty(0.f);
 				}
-				current.max_particles[current.properties.layer] = particle_count;
+				current.info.max_particles[current.properties.layer] = particle_count;
 			}
-			for (auto &sub : current.sub_effectors) {
+			for (auto &sub : current.info.sub_effectors) {
 				stack.push_back(&sub);
 			}
 		}
@@ -1321,10 +1321,10 @@ namespace tfx {
 
 	void EffectEmitter::UpdateAllSpriteAmounts() {
 		for (int layer = 0; layer != tfxLAYERS; ++layer) {
-			for (auto &emitter : sub_effectors) {
-				max_particles[layer] += emitter.max_particles[layer];
-				if (emitter.sub_effectors.size()) {
-					max_particles[layer] += emitter.GetSubEffectSpriteCounts(layer, emitter.max_particles[emitter.properties.layer]);
+			for (auto &emitter : info.sub_effectors) {
+				info.max_particles[layer] += emitter.info.max_particles[layer];
+				if (emitter.info.sub_effectors.size()) {
+					info.max_particles[layer] += emitter.GetSubEffectSpriteCounts(layer, emitter.info.max_particles[emitter.properties.layer]);
 				}
 			}
 		}
@@ -1332,17 +1332,17 @@ namespace tfx {
 
 	unsigned int EffectEmitter::GetSubEffectSpriteCounts(unsigned int layer, unsigned int multiplier) {
 		float total = 0;
-		for (auto &effect : sub_effectors) {
-			for (auto &emitter : effect.sub_effectors) {
+		for (auto &effect : info.sub_effectors) {
+			for (auto &emitter : effect.info.sub_effectors) {
 				if (common.property_flags & tfxEmitterPropertyFlags_single)
-					total += emitter.max_particles[layer] * multiplier;
+					total += emitter.info.max_particles[layer] * multiplier;
 				else
-					total += emitter.max_particles[layer] * multiplier * (max_sub_emitter_life / 1000.f);
-				if (emitter.sub_effectors.size()) {
+					total += emitter.info.max_particles[layer] * multiplier * (info.max_sub_emitter_life / 1000.f);
+				if (emitter.info.sub_effectors.size()) {
 					if (common.property_flags & tfxEmitterPropertyFlags_single)
-						total += emitter.GetSubEffectSpriteCounts(layer, emitter.max_particles[emitter.properties.layer] * multiplier);
+						total += emitter.GetSubEffectSpriteCounts(layer, emitter.info.max_particles[emitter.properties.layer] * multiplier);
 					else
-						total += emitter.GetSubEffectSpriteCounts(layer, emitter.max_particles[emitter.properties.layer] * multiplier * int(max_sub_emitter_life / 1000.f));
+						total += emitter.GetSubEffectSpriteCounts(layer, emitter.info.max_particles[emitter.properties.layer] * multiplier * int(info.max_sub_emitter_life / 1000.f));
 				}
 			}
 		}
@@ -1352,7 +1352,7 @@ namespace tfx {
 	float EffectEmitter::GetSubEffectLength() {
 		if (!parent) return 0.f;
 		float max_life = 0.f;
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			max_life = std::fmaxf(GetMaxLife(e), max_life);
 		}
 		max_life += GetMaxLife(*parent);
@@ -1360,7 +1360,7 @@ namespace tfx {
 	}
 
 	unsigned int EffectEmitter::GetHighestQty(float parent_age) {
-		max_sub_emitter_life = 0.f;
+		info.max_sub_emitter_life = 0.f;
 		if (!(common.property_flags & tfxEmitterPropertyFlags_single)) {
 			float max_qty = 0.f;
 			float amount_remainder = 0.f;
@@ -1428,13 +1428,13 @@ namespace tfx {
 					total_qty += p.x;
 				}
 				max_qty = std::fmaxf(max_qty, total_qty);
-				max_sub_emitter_life = highest_age + current_frame;
+				info.max_sub_emitter_life = highest_age + current_frame;
 
 				return (unsigned int)max_qty;
 			}
 			else {
 				float max_life = GetMaxLife(*this);
-				max_sub_emitter_life = max_life + parent_age;
+				info.max_sub_emitter_life = max_life + parent_age;
 				float qty = (common.library->base_graphs[base].amount.GetFirstValue() + common.library->variation_graphs[variation].amount.GetFirstValue()) * (max_life / 1000.f) + 1.f;
 				if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
 					float area = common.library->property_graphs[property].emitter_width.GetFirstValue() * common.library->property_graphs[property].emitter_height.GetFirstValue();
@@ -1447,7 +1447,7 @@ namespace tfx {
 			}
 		}
 		else {
-			max_sub_emitter_life = max_life + parent_age;
+			info.max_sub_emitter_life = info.max_life + parent_age;
 			return (unsigned int)properties.spawn_amount;
 		}
 	}
@@ -1466,7 +1466,7 @@ namespace tfx {
 			max_frames = std::fmaxf(max_frames, effect.properties.loop_length);
 			max_last_life = std::fmaxf(max_last_life, effect.common.library->base_graphs[effect.base].life.GetLastValue() + effect.common.library->variation_graphs[effect.variation].life.GetLastValue());
 		}
-		for (auto &sub : effect.sub_effectors) {
+		for (auto &sub : effect.info.sub_effectors) {
 			GetEffectMaxFrames(sub);
 		}
 	}
@@ -1485,11 +1485,11 @@ namespace tfx {
 		emitters_removed = 0;
 		GetEffectMaxFrames(effect);
 		AddEffect(effect);
-		initial_effect_size = effect.sub_effectors.size() + 1;
+		initial_effect_size = effect.info.sub_effectors.size() + 1;
 		Process();
 		for (EachLayer) {
-			effect.max_particles[layer] = sprite_count[layer];
-			effect.max_sub_emitters = sub_effect_count;
+			effect.info.max_particles[layer] = sprite_count[layer];
+			effect.info.max_sub_emitters = sub_effect_count;
 		}
 	}
 
@@ -1531,7 +1531,7 @@ namespace tfx {
 				p -= FRAME_LENGTH;
 				if (p > 0) emitter.particles[!current_buffer].push_back(p);
 			}
-			emitter.library_link->max_particles[emitter.library_link->properties.layer] = (unsigned int)std::fmaxf((float)emitter.library_link->max_particles[emitter.library_link->properties.layer], (float)emitter.particles[current_buffer].current_size);
+			emitter.library_link->info.max_particles[emitter.library_link->properties.layer] = (unsigned int)std::fmaxf((float)emitter.library_link->info.max_particles[emitter.library_link->properties.layer], (float)emitter.particles[current_buffer].current_size);
 			emitter.particles[current_buffer].clear();
 
 			float life = LookupFast(emitter.library->base_graphs[emitter.library_link->base].life, emitter.frame) + lookup_callback(emitter.library->variation_graphs[emitter.library_link->variation].life, emitter.frame) * 0.75f;
@@ -1559,7 +1559,7 @@ namespace tfx {
 						emitter.qty -= 1.f;
 						particles[emitter.library_link->properties.layer][!current_buffer].push_back(life + FRAME_LENGTH);
 						emitter.particles[!current_buffer].push_back(life + FRAME_LENGTH);
-						for (auto &sub : emitter.library_link->sub_effectors) {
+						for (auto &sub : emitter.library_link->info.sub_effectors) {
 							AddEffect(sub);
 						}
 					}
@@ -1572,7 +1572,7 @@ namespace tfx {
 			}
 			else if(!emitter.single_shot_done) {
 				emitter.started_spawning = true;
-				emitter.library_link->max_particles[emitter.library_link->properties.layer] = emitter.library_link->properties.spawn_amount;
+				emitter.library_link->info.max_particles[emitter.library_link->properties.layer] = emitter.library_link->properties.spawn_amount;
 				for (int q = 0; q != emitter.library_link->properties.spawn_amount; ++q) {
 					if (emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_single) {
 						particles[emitter.library_link->properties.layer][!current_buffer].push_back(max_frames + max_last_life);
@@ -1583,7 +1583,7 @@ namespace tfx {
 						emitter.particles[!current_buffer].push_back(life + FRAME_LENGTH);
 					}
 					emitter.highest_particle_age = std::fmaxf(emitter.highest_particle_age, life);
-					for (auto &sub : emitter.library_link->sub_effectors) {
+					for (auto &sub : emitter.library_link->info.sub_effectors) {
 						AddEffect(sub);
 					}
 				}
@@ -1624,51 +1624,51 @@ namespace tfx {
 
 	void tfxParticleMemoryTools::AddEffect(EffectEmitter &effect) {
 		tfxMockEffect new_effect;
-		new_effect.library_link = effect.common.library->GetEffect(effect.path_hash);
+		new_effect.library_link = effect.common.library->GetEffect(effect.info.path_hash);
 		new_effect.library = effect.common.library;
-		new_effect.emitter_count = effect.sub_effectors.size();
+		new_effect.emitter_count = effect.info.sub_effectors.size();
 		effects[!current_buffer].push_back(new_effect);
-		for (auto &emitter : effect.sub_effectors) {
+		for (auto &emitter : effect.info.sub_effectors) {
 			tfxMockEffect new_emitter;
-			new_emitter.library_link = effect.common.library->GetEffect(emitter.path_hash);
+			new_emitter.library_link = effect.common.library->GetEffect(emitter.info.path_hash);
 			new_emitter.library = effect.common.library;
 			effects[!current_buffer].push_back(new_emitter);
 		}
 	}
 
 	EffectEmitter& EffectEmitter::AddEmitter(EffectEmitter &e) {
-		assert(e.name.Length());				//Emitter must have a name so that a hash can be generated
+		assert(e.info.name.Length());				//Emitter must have a name so that a hash can be generated
 		e.type = EffectEmitterType::tfxEmitterType;
 		e.common.library = common.library;
-		e.uid = ++common.library->uid;
-		sub_effectors.push_back(e);
+		e.info.uid = ++common.library->uid;
+		info.sub_effectors.push_back(e);
 		common.library->UpdateEffectPaths();
 		ReIndex();
-		return sub_effectors.back();
+		return info.sub_effectors.back();
 	}
 
 	EffectEmitter& EffectEmitter::AddEffect(EffectEmitter &e) {
-		assert(e.name.Length());				//Effect must have a name so that a hash can be generated
+		assert(e.info.name.Length());				//Effect must have a name so that a hash can be generated
 		e.type = EffectEmitterType::tfxEffectType;
 		e.common.library = common.library;
 		e.parent = this;
-		e.uid = ++common.library->uid;
-		sub_effectors.push_back(e);
+		e.info.uid = ++common.library->uid;
+		info.sub_effectors.push_back(e);
 		common.library->UpdateEffectPaths();
 		ReIndex();
-		return sub_effectors.back();
+		return info.sub_effectors.back();
 	}
 
 	EffectEmitter& EffectEmitter::AddEffect() {
 		EffectEmitter e;
 		e.common.library = common.library;
-		e.uid = ++common.library->uid;
+		e.info.uid = ++common.library->uid;
 		e.type = EffectEmitterType::tfxEffectType;
-		e.name = "New Effect";
-		sub_effectors.push_back(e);
+		e.info.name = "New Effect";
+		info.sub_effectors.push_back(e);
 		common.library->UpdateEffectPaths();
 		ReIndex();
-		return sub_effectors.back();
+		return info.sub_effectors.back();
 	}
 
 	EffectEmitter &EffectEmitter::AddEffector(EffectEmitterType type) {
@@ -1676,15 +1676,15 @@ namespace tfx {
 		//e.parent_effect = this;
 		e.type = type;
 		e.common.library = common.library;
-		e.uid = ++common.library->uid;
+		e.info.uid = ++common.library->uid;
 		if(e.type == tfxEffectType)
-			e.name = "New Effect";
+			e.info.name = "New Effect";
 		else
-			e.name = "New Emitter";
-		sub_effectors.push_back(e);
+			e.info.name = "New Emitter";
+		info.sub_effectors.push_back(e);
 		common.library->UpdateEffectPaths();
 		ReIndex();
-		return sub_effectors.back();
+		return info.sub_effectors.back();
 	}
 
 	tfxEffect &GetEffect(tfxEffectPool &effect_pool, tfxEffectID &effect_id) {
@@ -2272,7 +2272,7 @@ namespace tfx {
 		while (!stack.empty()) {
 			auto &current = stack.pop_back();
 			current->flags |= tfxEmitterStateFlags_no_tween_this_update;
-			for (auto &sub : current->sub_effectors) {
+			for (auto &sub : current->info.sub_effectors) {
 				stack.push_back(&sub);
 			}
 		}
@@ -3457,7 +3457,7 @@ namespace tfx {
 
 		InitialiseParticle2d(p.data, current, common, spawn_values, library_link, tween);
 
-		for(auto &sub_effect : library_link->sub_effectors) {
+		for(auto &sub_effect : library_link->info.sub_effectors) {
 			tfxEmitter &new_sub_effect = common.root_effect->GrabSubEffect();
 			new_sub_effect.type = tfxEffectType;
 			new_sub_effect.common.root_effect = common.root_effect;
@@ -3471,7 +3471,7 @@ namespace tfx {
 			new_sub_effect.next_emitter = &new_sub_effect;
 			new_sub_effect.library_link = &sub_effect;
 			new_sub_effect.offset = 0;
-			for (auto &sub_emitter : sub_effect.sub_effectors) {
+			for (auto &sub_emitter : sub_effect.info.sub_effectors) {
 				tfxEmitter &new_emitter = common.root_effect->GrabSubEffect();
 				new_emitter.type = tfxEmitterType;
 				new_emitter.particles.reset_to_null();
@@ -4312,7 +4312,7 @@ namespace tfx {
 	}
 
 	void EffectEmitter::SetName(const char *n) {
-		name = n;
+		info.name = n;
 	}
 
 	tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured) {
@@ -4351,13 +4351,13 @@ namespace tfx {
 
 	void EffectEmitter::SetTimeout(float frames) {
 		common.timeout = frames;
-		for (auto &sub : sub_effectors) {
+		for (auto &sub : info.sub_effectors) {
 			sub.SetTimeout(frames);
 		}
 	}
 
 	bool EffectEmitter::HasSingle() {
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			if (e.common.property_flags & tfxEmitterPropertyFlags_single)
 				return true;
 		}
@@ -4375,9 +4375,9 @@ namespace tfx {
 	}
 
 	bool EffectEmitter::NameExists(EffectEmitter &emitter, const char *name) {
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			if (&emitter != &e) {
-				if (e.name == name) {
+				if (e.info.name == name) {
 					return true;
 				}
 			}
@@ -4388,7 +4388,7 @@ namespace tfx {
 
 	void EffectEmitter::ReIndex() {
 		unsigned int index = 0;
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			e.library_index = index++;
 			e.parent = this;
 			e.ReIndex();
@@ -4406,7 +4406,7 @@ namespace tfx {
 				effects++;
 			else if (current->type == tfxEmitterType)
 				emitters++;
-			for (auto &sub : current->sub_effectors) {
+			for (auto &sub : current->info.sub_effectors) {
 				stack.push_back(&sub);
 			}
 		}
@@ -4434,7 +4434,7 @@ namespace tfx {
 
 	void EffectEmitter::ResetParents() {
 		parent = nullptr;
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			e.ResetParents();
 		}
 	}
@@ -4442,22 +4442,22 @@ namespace tfx {
 	EffectEmitter* EffectEmitter::MoveUp(EffectEmitter &emitter) {
 		if (emitter.library_index > 0) {
 			unsigned int new_index = emitter.library_index - 1;
-			std::swap(sub_effectors[emitter.library_index], sub_effectors[new_index]);
+			std::swap(info.sub_effectors[emitter.library_index], info.sub_effectors[new_index]);
 			ReIndex();
 			emitter.common.library->UpdateEffectPaths();
-			return &sub_effectors[new_index];
+			return &info.sub_effectors[new_index];
 		}
 
 		return nullptr;
 	}
 
 	EffectEmitter* EffectEmitter::MoveDown(EffectEmitter &emitter) {
-		if (emitter.library_index < sub_effectors.size() - 1) {
+		if (emitter.library_index < info.sub_effectors.size() - 1) {
 			unsigned int new_index = emitter.library_index + 1;
-			std::swap(sub_effectors[emitter.library_index], sub_effectors[new_index]);
+			std::swap(info.sub_effectors[emitter.library_index], info.sub_effectors[new_index]);
 			ReIndex();
 			emitter.common.library->UpdateEffectPaths();
-			return &sub_effectors[new_index];
+			return &info.sub_effectors[new_index];
 		}
 		return nullptr;
 	}
@@ -4477,11 +4477,11 @@ namespace tfx {
 				library->FreeVariation(current.variation);
 				library->FreeOvertime(current.overtime);
 			}
-			for (auto &sub : current.sub_effectors) {
+			for (auto &sub : current.info.sub_effectors) {
 				stack.push_back(sub);
 			}
 		}
-		sub_effectors.erase(emitter);
+		info.sub_effectors.erase(emitter);
 
 		ReIndex();
 		if(library)
@@ -4489,7 +4489,7 @@ namespace tfx {
 	}
 
 	void EffectEmitter::CleanUp() {
-		if (sub_effectors.size()) {
+		if (info.sub_effectors.size()) {
 			tfxvec<EffectEmitter> stack;
 			stack.push_back(*this);
 			while (stack.size()) {
@@ -4503,10 +4503,10 @@ namespace tfx {
 					common.library->FreeVariation(current.variation);
 					common.library->FreeOvertime(current.overtime);
 				}
-				for (auto &sub : current.sub_effectors) {
+				for (auto &sub : current.info.sub_effectors) {
 					stack.push_back(sub);
 				}
-				current.sub_effectors.clear();
+				current.info.sub_effectors.clear();
 			}
 		}
 
@@ -4515,7 +4515,7 @@ namespace tfx {
 
 	void EffectEmitter::Clone(EffectEmitter &clone, EffectEmitter *root_parent, EffectLibrary *destination_library, bool keep_user_data, bool force_clone_global) {
 		clone = *this;
-		clone.sub_effectors.clear();
+		clone.info.sub_effectors.clear();
 		clone.flags |= tfxEmitterStateFlags_enabled;
 		if(!keep_user_data)
 			clone.user_data = nullptr;
@@ -4548,7 +4548,7 @@ namespace tfx {
 			clone.common.library->CompileOvertimeGraph(clone.overtime);
 		}
 
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			if (e.type == tfxEmitterType) {
 				EffectEmitter emitter_copy;
 				e.Clone(emitter_copy, root_parent, destination_library);
@@ -4698,9 +4698,9 @@ namespace tfx {
 			int effects = 0;
 			int particles = 0;
 			for (int layer = 0; layer != tfxLAYERS; ++layer) {
-				particles += in.max_particles[layer];
+				particles += in.info.max_particles[layer];
 			}
-			unsigned int emitter_mem_req = emitters * in.max_sub_emitters * sizeof(tfxEmitter);
+			unsigned int emitter_mem_req = emitters * in.info.max_sub_emitters * sizeof(tfxEmitter);
 			unsigned int effect_mem_req = sizeof(tfxEffect);
 			unsigned int particle_mem_req = particles * sizeof(Particle);
 			unsigned int sprite_mem_req = particles * sizeof(ParticleSprite);
@@ -4732,7 +4732,7 @@ namespace tfx {
 		effect.common.property_flags = common.property_flags;
 		effect.common.state_flags = flags;
 		effect.common.library = common.library;
-		effect.path_hash = path_hash;
+		effect.path_hash = info.path_hash;
 		effect.common.loop_length = properties.loop_length;
 		effect.common.handle = properties.emitter_handle;
 		effect.lookup_mode = tfxFast;
@@ -4741,12 +4741,12 @@ namespace tfx {
 		effect.update_callback = root_effect_update_callback;
 		effect.initialise_particle_callback = InitialiseParticle2d;
 		for (int i = 0; i != tfxLAYERS; ++i) {
-			effect.max_particles[i] = max_particles[i];
+			effect.max_particles[i] = info.max_particles[i];
 			effect.sprites[i].assign_memory(storage.sprite_memory, sizeof(ParticleSprite), effect.max_particles[i]);
 		}
-		effect.sub_emitters.assign_memory(storage.emitter_memory, sizeof(tfxEmitter), sub_effectors.size());
-		effect.sub_effects.assign_memory(storage.emitter_memory, sizeof(tfxEmitter), max_sub_emitters);
-		for (auto &emitter : sub_effectors) {
+		effect.sub_emitters.assign_memory(storage.emitter_memory, sizeof(tfxEmitter), info.sub_effectors.size());
+		effect.sub_effects.assign_memory(storage.emitter_memory, sizeof(tfxEmitter), info.max_sub_emitters);
+		for (auto &emitter : info.sub_effectors) {
 			tfxEmitter new_emitter;
 			new_emitter.common.root_effect = &effect;
 			emitter.CopyToEmitter(new_emitter, storage, true);
@@ -4766,7 +4766,7 @@ namespace tfx {
 		e.common.handle = properties.emitter_handle;
 		e.common.age = 0.f;
 		if(assign_memory)
-			e.particles.assign_memory(storage.particle_memory, sizeof(Particle), max_particles[properties.layer]);
+			e.particles.assign_memory(storage.particle_memory, sizeof(Particle), info.max_particles[properties.layer]);
 		
 		e.lookup_mode = tfxFast;
 
@@ -4789,7 +4789,7 @@ namespace tfx {
 	}
 
 	void EffectEmitter::EnableAllEmitters() {
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			e.flags |= tfxEmitterStateFlags_enabled;
 			e.EnableAllEmitters();
 		}
@@ -4800,14 +4800,14 @@ namespace tfx {
 	}
 
 	void EffectEmitter::DisableAllEmitters() {
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			e.flags &= ~tfxEmitterStateFlags_enabled;
 			e.DisableAllEmitters();
 		}
 	}
 
 	void EffectEmitter::DisableAllEmittersExcept(EffectEmitter &emitter) {
-		for (auto &e : sub_effectors) {
+		for (auto &e : info.sub_effectors) {
 			if (e.library_index == emitter.library_index)
 				e.flags |= tfxEmitterStateFlags_enabled;
 			else
@@ -4945,7 +4945,7 @@ namespace tfx {
 				CompileGraph(*GetGraphByType(GraphType(t)));
 			}
 
-			for (auto &emitter : sub_effectors) {
+			for (auto &emitter : info.sub_effectors) {
 				for (unsigned int t = (unsigned int)tfxProperty_emission_pitch; t != (unsigned int)tfxOvertime_velocity; ++t) {
 					CompileGraph(*GetGraphByType((GraphType)t));
 				}
@@ -4974,7 +4974,7 @@ namespace tfx {
 	bool EffectLibrary::NameExists(EffectEmitter& effect, const char *name) {
 		for (auto &e : effects) {
 			if (effect.library_index != e.library_index) {
-				if (e.name == name) {
+				if (e.info.name == name) {
 					return true;
 				}
 			}
@@ -4985,7 +4985,7 @@ namespace tfx {
 
 	bool EffectLibrary::NameExists2(EffectEmitter& effect, const char *name) {
 		for (auto &e : effects) {
-			if (e.name == name) {
+			if (e.info.name == name) {
 				return true;
 			}
 		}
@@ -4995,18 +4995,18 @@ namespace tfx {
 	void EffectLibrary::UpdateEffectPaths() {
 		effect_paths.Clear();
 		for (auto &e : effects) {
-			tfxText path = e.name;
-			e.path_hash = XXHash64::hash(path.c_str(), path.Length(), 0);
+			tfxText path = e.info.name;
+			e.info.path_hash = XXHash64::hash(path.c_str(), path.Length(), 0);
 			AddPath(e, path);
 		}
 	}
 
 	void EffectLibrary::AddPath(EffectEmitter &effectemitter, tfxText path) {
 		effect_paths.Insert(path, &effectemitter);
-		for (auto &sub : effectemitter.sub_effectors) {
+		for (auto &sub : effectemitter.info.sub_effectors) {
 			tfxText sub_path = path;
-			sub_path.Appendf("/%s", sub.name.c_str());
-			sub.path_hash = XXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
+			sub_path.Appendf("/%s", sub.info.name.c_str());
+			sub.info.path_hash = XXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
 			AddPath(sub, sub_path);
 		}
 	}
@@ -5014,7 +5014,7 @@ namespace tfx {
 	EffectEmitter &EffectLibrary::AddEffect(EffectEmitter &effect) {
 		effect.library_index = effects.current_size;
 		effect.type = tfxEffectType;
-		effect.uid = ++uid;
+		effect.info.uid = ++uid;
 		effect.common.library = this;
 		effects.push_back(effect);
 		ReIndex();
@@ -5024,10 +5024,10 @@ namespace tfx {
 
 	EffectEmitter &EffectLibrary::AddFolder(tfxText name) {
 		EffectEmitter folder;
-		folder.name = name;
+		folder.info.name = name;
 		folder.type = tfxFolder;
 		folder.common.library = this;
-		folder.uid = ++uid;
+		folder.info.uid = ++uid;
 		effects.push_back(folder);
 		ReIndex();
 		UpdateEffectPaths();
@@ -5037,7 +5037,7 @@ namespace tfx {
 	EffectEmitter &EffectLibrary::AddFolder(EffectEmitter &folder) {
 		assert(folder.type == tfxFolder);			//Must be type tfxFolder if adding a folder
 		folder.common.library = this;
-		folder.uid = ++uid;
+		folder.info.uid = ++uid;
 		effects.push_back(folder);
 		ReIndex();
 		UpdateEffectPaths();
@@ -5064,7 +5064,7 @@ namespace tfx {
 		assert(effect);
 		assert(effect->type == tfxEffectType);
 		effect->Clone(effect_template.effect_template, &effect_template.effect_template, this);
-		effect_template.AddPath(effect_template.effect_template, effect_template.effect_template.name);
+		effect_template.AddPath(effect_template.effect_template, effect_template.effect_template.info.name);
 	}
 
 	void EffectLibrary::ReIndex() {
@@ -5079,15 +5079,15 @@ namespace tfx {
 	void EffectLibrary::UpdateParticleShapeReferences(tfxvec<EffectEmitter> &effects, unsigned int default_index) {
 		for (auto &effect : effects) {
 			if (effect.type == tfxFolder) {
-				UpdateParticleShapeReferences(effect.sub_effectors, default_index);
+				UpdateParticleShapeReferences(effect.info.sub_effectors, default_index);
 			}
 			else {
-				for (auto &emitter : effect.sub_effectors) {
+				for (auto &emitter : effect.info.sub_effectors) {
 					if (particle_shapes.ValidIntName(emitter.properties.shape_index))
 						emitter.properties.image = &particle_shapes.AtInt(emitter.properties.shape_index);
 					else
 						emitter.properties.image = &particle_shapes.AtInt(default_index);
-					UpdateParticleShapeReferences(emitter.sub_effectors, default_index);
+					UpdateParticleShapeReferences(emitter.info.sub_effectors, default_index);
 				}
 			}
 		}
@@ -5338,8 +5338,8 @@ namespace tfx {
 		a.camera_settings.camera_isometric_scale = 5.f;
 		a.camera_settings.camera_hide_floor = false;
 		animation_settings.push_back(a);
-		effect.animation_settings = animation_settings.size() - 1;
-		return effect.animation_settings;
+		effect.info.animation_settings = animation_settings.size() - 1;
+		return effect.info.animation_settings;
 	}
 
 	unsigned int EffectLibrary::AddPreviewCameraSettings(EffectEmitter& effect) {
@@ -5357,8 +5357,8 @@ namespace tfx {
 		a.camera_speed = 6.f;
 		a.attach_effect_to_camera = false;
 		preview_camera_settings.push_back(a);
-		effect.preview_camera_settings = preview_camera_settings.size() - 1;
-		return effect.preview_camera_settings;
+		effect.info.preview_camera_settings = preview_camera_settings.size() - 1;
+		return effect.info.preview_camera_settings;
 	}
 
 	unsigned int EffectLibrary::AddPreviewCameraSettings() {
@@ -5413,7 +5413,7 @@ namespace tfx {
 				tools.ProcessEffect(e);
 			}
 			else {
-				for (auto &sub : e.sub_effectors) {
+				for (auto &sub : e.info.sub_effectors) {
 					sub.ResetAllBufferSizes();
 					tools.ProcessEffect(e);
 				}
@@ -5434,7 +5434,7 @@ namespace tfx {
 			while(!stack.empty()) {
 				EffectEmitter *current = stack.pop_back();
 				if (current->type == tfxFolder) {
-					for (auto &sub : current->sub_effectors) {
+					for (auto &sub : current->info.sub_effectors) {
 						stack.push_back(&sub);
 					}
 					continue;
@@ -5447,7 +5447,7 @@ namespace tfx {
 
 					int offset = tfxGlobalCount + tfxPropertyCount + tfxBaseCount + tfxVariationCount;
 
-					current->lookup_value_index = compiled_lookup_indexes.size();
+					current->info.lookup_value_index = compiled_lookup_indexes.size();
 					for (int i = 0; i != tfxOvertimeCount; ++i) {
 						Graph &graph = ((Graph*)(&overtime_graphs[current->overtime]))[i];
 						GraphLookupIndex &index = ((GraphLookupIndex*)&lookup_data)[i];
@@ -5471,11 +5471,11 @@ namespace tfx {
 					}
 
 					node_lookup_indexes.push_back(lookup_data);
-					current->lookup_node_index = node_lookup_indexes.size() - 1;
+					current->info.lookup_node_index = node_lookup_indexes.size() - 1;
 
 				}
 
-				for (auto &sub : current->sub_effectors) {
+				for (auto &sub : current->info.sub_effectors) {
 					stack.push_back(&sub);
 				}
 			}
@@ -6045,15 +6045,15 @@ namespace tfx {
 		if (field == "spawn_amount")
 			effect.properties.spawn_amount = value;
 		if (field == "frames")
-			effect.common.library->animation_settings[effect.animation_settings].frames = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].frames = value;
 		if (field == "current_frame")
-			effect.common.library->animation_settings[effect.animation_settings].current_frame = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].current_frame = value;
 		if (field == "seed")
-			effect.common.library->animation_settings[effect.animation_settings].seed = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].seed = value;
 		if (field == "layer")
 			effect.properties.layer = value;
 		if (field == "frame_offset")
-			effect.common.library->animation_settings[effect.animation_settings].frame_offset = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].frame_offset = value;
 		if (field == "single_shot_limit")
 			effect.properties.single_shot_limit = value;
 		if (field == "billboard_option")
@@ -6071,71 +6071,71 @@ namespace tfx {
 		if (field == "emission_direction")
 			effect.properties.emission_direction = (EmissionDirection)value;
 		if (field == "color_option")
-			effect.common.library->animation_settings[effect.animation_settings].color_option = (ExportColorOptions)value;
+			effect.common.library->animation_settings[effect.info.animation_settings].color_option = (ExportColorOptions)value;
 		if (field == "export_option")
-			effect.common.library->animation_settings[effect.animation_settings].export_option = (ExportOptions)value;
+			effect.common.library->animation_settings[effect.info.animation_settings].export_option = (ExportOptions)value;
 		if (field == "end_behaviour")
 			effect.properties.end_behaviour = (LineTraversalEndBehaviour)value;
 		if (field == "frame_offset")
-			effect.common.library->animation_settings[effect.animation_settings].frame_offset = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].frame_offset = value;
 		if (field == "extra_frames_count")
-			effect.common.library->animation_settings[effect.animation_settings].extra_frames_count = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].extra_frames_count = value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, tfxText &value) {
 		if (field == "name")
-			effect.name = value;
+			effect.info.name = value;
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, float value) {
 		if (field == "position_x")
-			effect.common.library->animation_settings[effect.animation_settings].position.x = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].position.x = value;
 		if (field == "position_y")
-			effect.common.library->animation_settings[effect.animation_settings].position.y = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].position.y = value;
 		if (field == "frame_width")
-			effect.common.library->animation_settings[effect.animation_settings].frame_size.x = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].frame_size.x = value;
 		if (field == "frame_height")
-			effect.common.library->animation_settings[effect.animation_settings].frame_size.y = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].frame_size.y = value;
 		if (field == "zoom")
-			effect.common.library->animation_settings[effect.animation_settings].zoom = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].zoom = value;
 		if (field == "scale")
-			effect.common.library->animation_settings[effect.animation_settings].scale = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].scale = value;
 		if (field == "playback_speed")
-			effect.common.library->animation_settings[effect.animation_settings].playback_speed = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].playback_speed = value;
 		if (field == "camera_position_x")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_position.x = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_position.x = value;
 		if (field == "camera_position_y")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_position.y = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_position.y = value;
 		if (field == "camera_position_z")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_position.z = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_position.z = value;
 		if (field == "camera_pitch")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_pitch = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_pitch = value;
 		if (field == "camera_yaw")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_yaw = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_yaw = value;
 		if (field == "camera_fov")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_fov = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_fov = value;
 		if (field == "camera_floor_height")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_floor_height = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_floor_height = value;
 		if (field == "camera_isometric_scale")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_isometric_scale = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_isometric_scale = value;
 		if (field == "preview_camera_position_x")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_position.x = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_position.x = value;
 		if (field == "preview_camera_position_y")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_position.y = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_position.y = value;
 		if (field == "preview_camera_position_z")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_position.z = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_position.z = value;
 		if (field == "preview_camera_pitch")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_pitch = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_pitch = value;
 		if (field == "preview_camera_yaw")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_yaw = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_yaw = value;
 		if (field == "preview_camera_fov")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_fov = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_fov = value;
 		if (field == "preview_camera_floor_height")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_floor_height = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_floor_height = value;
 		if (field == "preview_camera_isometric_scale")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_isometric_scale = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_isometric_scale = value;
 		if (field == "preview_effect_z_offset")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].effect_z_offset = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].effect_z_offset = value;
 		if (field == "preview_camera_speed")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_speed = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_speed = value;
 		if (field == "image_handle_x")
 			effect.properties.image_handle.x = value;
 		if (field == "image_handle_y")
@@ -6171,21 +6171,21 @@ namespace tfx {
 	}
 	void AssignEffectorProperty(EffectEmitter &effect, tfxText &field, bool value) {
 		if (field == "loop")
-			effect.common.library->animation_settings[effect.animation_settings].loop = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].loop = value;
 		if (field == "seamless")
-			effect.common.library->animation_settings[effect.animation_settings].seamless = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].seamless = value;
 		if (field == "export_with_transparency")
-			effect.common.library->animation_settings[effect.animation_settings].export_with_transparency = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].export_with_transparency = value;
 		if (field == "camera_isometric")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_isometric = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_isometric = value;
 		if (field == "camera_hide_floor")
-			effect.common.library->animation_settings[effect.animation_settings].camera_settings.camera_hide_floor = value;
+			effect.common.library->animation_settings[effect.info.animation_settings].camera_settings.camera_hide_floor = value;
 		if (field == "preview_attach_effect_to_camera")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_isometric_scale = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_isometric_scale = value;
 		if (field == "preview_camera_hide_floor")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_isometric_scale = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_isometric_scale = value;
 		if (field == "preview_camera_isometric")
-			effect.common.library->preview_camera_settings[effect.preview_camera_settings].camera_settings.camera_isometric = value;
+			effect.common.library->preview_camera_settings[effect.info.preview_camera_settings].camera_settings.camera_isometric = value;
 		if (field == "random_color")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_random_color; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_random_color;
 		if (field == "relative_position")
@@ -7837,7 +7837,7 @@ namespace tfx {
 				if (context == tfxStartFolder) {
 					EffectEmitter effect;
 					effect.common.library = &lib;
-					effect.uid = uid++;
+					effect.info.uid = uid++;
 					effect.properties = EmitterProperties();
 					effect.type = EffectEmitterType::tfxFolder;
 					effect_stack.push_back(effect);
@@ -7850,7 +7850,7 @@ namespace tfx {
 						effect.ResetEffectGraphs(false);
 						current_global_graph = effect.global;
 					}
-					effect.uid = uid++;
+					effect.info.uid = uid++;
 					effect.properties = EmitterProperties();
 					effect.type = EffectEmitterType::tfxEffectType;
 					effect_stack.push_back(effect);
@@ -7862,7 +7862,7 @@ namespace tfx {
 					EffectEmitter emitter;
 					emitter.common.library = &lib;
 					lib.AddEmitterGraphs(emitter);
-					emitter.uid = uid++;
+					emitter.info.uid = uid++;
 					emitter.type = EffectEmitterType::tfxEmitterType;
 					emitter.ResetEmitterGraphs(false);
 					effect_stack.push_back(emitter);
@@ -7951,14 +7951,14 @@ namespace tfx {
 			if (context == tfxEndEmitter) {
 				effect_stack.back().InitialiseUninitialisedGraphs();
 				effect_stack.back().UpdateMaxLife();
-				effect_stack.parent().sub_effectors.push_back(effect_stack.back());
+				effect_stack.parent().info.sub_effectors.push_back(effect_stack.back());
 				effect_stack.pop();
 			}
 
 			if (context == tfxEndEffect) {
 				effect_stack.back().ReIndex();
 				if (effect_stack.size() > 1) {
-					effect_stack.parent().sub_effectors.push_back(effect_stack.back());
+					effect_stack.parent().info.sub_effectors.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
 				}
 				else {
@@ -8004,7 +8004,7 @@ namespace tfx {
 		while (stack.size()) {
 			EffectEmitter *current = stack.pop_back();
 			current->user_data = data;
-			for (auto &sub : current->sub_effectors) {
+			for (auto &sub : current->info.sub_effectors) {
 				stack.push_back(&sub);
 			}
 		}

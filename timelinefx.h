@@ -3114,6 +3114,45 @@ typedef unsigned int tfxEffectID;
 		
 	};
 
+	struct tfxEffectEmitterInfo{
+		//Not required for frame by frame updating - should be moved into an info lookup in library
+		//Name of the effect
+		tfxText name;						//Todo: Do we need this here?
+		//A hash of the directory path to the effect ie Flare/spark
+		tfxKey path_hash;
+		//Every effect and emitter in the library gets a unique id
+		unsigned int uid;
+		//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
+		float max_radius;
+		//List of sub_effects ( effects contain emitters, emitters contain sub effects )
+		tfxvec<EffectEmitter> sub_effectors;
+		//Experiment: index into the lookup index data in the effect library
+		unsigned int lookup_node_index;
+		unsigned int lookup_value_index;
+		//Index to animation settings stored in the effect library. Would like to move this at some point
+		unsigned int animation_settings;
+		//Index to preview camera settings stored in the effect library. Would like to move this at some point
+		unsigned int preview_camera_settings;
+		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
+		float max_life;
+		//The estimated maximum time that the sub emitter might last for, taking into account the parent particle lifetime
+		float max_sub_emitter_life;
+		//The maximum amount of particles that this effect can spawn (root effects and emitters only)
+		unsigned int max_particles[tfxLAYERS];
+		unsigned int max_sub_emitters;
+
+		tfxEffectEmitterInfo() :
+			animation_settings(0),
+			preview_camera_settings(0),
+			max_sub_emitters(0),
+			max_sub_emitter_life(0.f)
+		{
+			for (int i = 0; i != tfxLAYERS; ++i) {
+				max_particles[i] = 0;
+			}
+		}
+	};
+
 	//An EffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
 	//This is only for library storage, when using to update each frame this is copied to tfxEffectType and tfxEmitterType, much more compact versions more
@@ -3142,10 +3181,11 @@ typedef unsigned int tfxEffectID;
 		//Required for frame by frame updating
 		//The current state of the effect/emitter used in the editor only at this point
 		tfxEmitterState current;
+		//Temporary storage of spawn values each frame to be applied to newly spawned particles
 		tfxEmitterSpawnControls spawn_controls;
 		//Common variables needed to update the effect/emitter
 		tfxCommon common;
-		//All of the properties of the effect/emitter
+		//All of the properties of the effect/emitter - readonly and be moved into the library in an info lookup?
 		EmitterProperties properties;
 		//Is this an tfxEffectType or tfxEmitterType
 		EffectEmitterType type;
@@ -3175,40 +3215,10 @@ typedef unsigned int tfxEffectID;
 		//When not using insert sort to guarantee particle order, sort passes offers a more lax way of ordering particles over a number of frames.
 		//The more passes the more quickly ordered the particles will be but at a higher cost
 		unsigned int sort_passes;
-
-		//Not required for frame by frame updating - should be moved into an info lookup in library
-		//Name of the effect
-		tfxText name;						//Todo: Do we need this here?
-		//A hash of the directory path to the effect ie Flare/spark
-		tfxKey path_hash;
-		//Every effect and emitter in the library gets a unique id
-		unsigned int uid;
-		//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
-		float max_radius;
-		//List of sub_effects ( effects contain emitters, emitters contain sub effects )
-		tfxvec<EffectEmitter> sub_effectors;
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
-		//Idea for adding you're own user define struct members - just use a void* to extend the struct?
-#ifdef TFX_CUSTOM_EMITTER
-TFX_CUSTOM_EMITTER
-#endif
-
-		//Experiment: index into the lookup index data in the effect library
-		unsigned int lookup_node_index;
-		unsigned int lookup_value_index;
-		//Index to animation settings stored in the effect library. Would like to move this at some point
-		unsigned int animation_settings;
-		//Index to preview camera settings stored in the effect library. Would like to move this at some point
-		unsigned int preview_camera_settings;
-		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
-		float max_life;
-		//The estimated maximum time that the sub emitter might last for, taking into account the parent particle lifetime
-		float max_sub_emitter_life;
-		//The maximum amount of particles that this effect can spawn (root effects and emitters only)
-		unsigned int max_particles[tfxLAYERS];
-		unsigned int max_sub_emitters;
+		tfxEffectEmitterInfo info;
 
 		//Custom fuction pointers that you can use to override attributes and affect the effect/emitters behaviour in realtime
 		//See tfxEffectTemplate for applying these callbacks
@@ -3227,19 +3237,11 @@ TFX_CUSTOM_EMITTER
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
 			effect_flags(tfxEffectPropertyFlags_none),
 			sort_passes(1),
-			animation_settings(0),
-			preview_camera_settings(0),
 			root_effect_update_callback(nullptr),
 			emitter_update_callback(nullptr),
 			spawn_update_callback(nullptr),
-			particle_onspawn_callback(nullptr),
-			max_sub_emitters(0),
-			max_sub_emitter_life(0.f)
-		{
-			for (int i = 0; i != tfxLAYERS; ++i) {
-				max_particles[i] = 0;
-			}
-		}
+			particle_onspawn_callback(nullptr)
+		{ }
 		~EffectEmitter();
 		bool operator < (const EffectEmitter& e) const
 		{
@@ -3319,9 +3321,9 @@ TFX_CUSTOM_EMITTER
 
 		void AddPath(EffectEmitter &effectemitter, tfxText path) {
 			paths.Insert(path, &effectemitter);
-			for (auto &sub : effectemitter.sub_effectors) {
+			for (auto &sub : effectemitter.info.sub_effectors) {
 				tfxText sub_path = path;
-				sub_path.Appendf("/%s", sub.name.c_str());
+				sub_path.Appendf("/%s", sub.info.name.c_str());
 				AddPath(sub, sub_path);
 			}
 		}
