@@ -3118,20 +3118,36 @@ typedef unsigned int tfxEffectID;
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
 	//This is only for library storage, when using to update each frame this is copied to tfxEffectType and tfxEmitterType, much more compact versions more
 	//suited for realtime use.
+	/*
+	Effect Emitter realtime fields:
+	common
+	type
+	parent
+	parent_particle
+	next_ptr
+	properties
+	flags
+	current
+	highest_particle_age
+	spawn_controls
+	global
+	property
+	base
+	variation
+	overtime
+	sub_effectors
+	compute_slot_id
+	*/
 	struct EffectEmitter {
+		//Required for frame by frame updating
 		//The current state of the effect/emitter used in the editor only at this point
 		tfxEmitterState current;
 		tfxEmitterSpawnControls spawn_controls;
+		//Common variables needed to update the effect/emitter
 		tfxCommon common;
-		unsigned int emitter_state_index;
 		//All of the properties of the effect/emitter
 		EmitterProperties properties;
-
-		//Name of the effect
-		tfxText name;						//Todo: Do we need this here?
-		//A hash of the directory path to the effect ie Flare/spark
-		tfxKey path_hash;
-		//Is this a tfxEffectType or tfxEmitterType
+		//Is this an tfxEffectType or tfxEmitterType
 		EffectEmitterType type;
 		//The index within the library that this exists at
 		unsigned int library_index;
@@ -3139,34 +3155,49 @@ typedef unsigned int tfxEffectID;
 		//after all it's particles have expired? We set this variable to the highest particle age each time it spawns a particle and then counts it down each frame. When it's 0 then we know that there are no
 		//more particles being controlled by this emitter and can therefore time it out.
 		float highest_particle_age;
-		//Every effect and emitter in the library gets a unique id
-		unsigned int uid;
 		//compute slot id if a compute shader is being used. Only applied to bottom emitters (emitters with no child effects)
 		unsigned int compute_slot_id;
-		//The max_radius of the emitter, taking into account all the particles that have spawned and active
-		float max_radius;
-		//List of sub_effects ( effects contain emitters, emitters contain sub effects )
-		tfxvec<EffectEmitter> sub_effectors;
-		//Experiment with emitters maintaining their own list of particles. Buffer info contains info for fetching the area in the buffer stored in the particle manager
-		//Custom user data, can be accessed in callback functions
-		void *user_data;
-
-		//Idea for adding you're own user define struct members
-#ifdef TFX_CUSTOM_EMITTER
-TFX_CUSTOM_EMITTER
-#endif
-
 		//All graphs that the effect uses to lookup attribute values are stored in the library. These variables here are indexes to the array where they're stored
 		unsigned int global;
 		unsigned int property;
 		unsigned int base;
 		unsigned int variation;
 		unsigned int overtime;
-		//Experitment: index into the lookup index data in the effect library
+		//Pointer to the immediate parent
+		EffectEmitter *parent;
+		//Pointer to the next pointer in the particle manager buffer. 
+		EffectEmitter *next_ptr;
+		//Pointer to the sub effect's particle that spawned it
+		Particle *parent_particle;
+		//State flags for emitters and effects
+		tfxEmitterStateFlags flags;
+		tfxEffectPropertyFlags effect_flags;
+		//When not using insert sort to guarantee particle order, sort passes offers a more lax way of ordering particles over a number of frames.
+		//The more passes the more quickly ordered the particles will be but at a higher cost
+		unsigned int sort_passes;
+
+		//Not required for frame by frame updating - should be moved into an info lookup in library
+		//Name of the effect
+		tfxText name;						//Todo: Do we need this here?
+		//A hash of the directory path to the effect ie Flare/spark
+		tfxKey path_hash;
+		//Every effect and emitter in the library gets a unique id
+		unsigned int uid;
+		//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
+		float max_radius;
+		//List of sub_effects ( effects contain emitters, emitters contain sub effects )
+		tfxvec<EffectEmitter> sub_effectors;
+		//Custom user data, can be accessed in callback functions
+		void *user_data;
+
+		//Idea for adding you're own user define struct members - just use a void* to extend the struct?
+#ifdef TFX_CUSTOM_EMITTER
+TFX_CUSTOM_EMITTER
+#endif
+
+		//Experiment: index into the lookup index data in the effect library
 		unsigned int lookup_node_index;
 		unsigned int lookup_value_index;
-		//effect sprite offset
-		unsigned int sprite_offset;
 		//Index to animation settings stored in the effect library. Would like to move this at some point
 		unsigned int animation_settings;
 		//Index to preview camera settings stored in the effect library. Would like to move this at some point
@@ -3178,12 +3209,6 @@ TFX_CUSTOM_EMITTER
 		//The maximum amount of particles that this effect can spawn (root effects and emitters only)
 		unsigned int max_particles[tfxLAYERS];
 		unsigned int max_sub_emitters;
-		//Pointer to the immediate parent
-		EffectEmitter *parent;
-		//Pointer to the next pointer in the particle manager buffer. 
-		EffectEmitter *next_ptr;
-		//Pointer to the sub effect's particle that spawned it
-		Particle *parent_particle;
 
 		//Custom fuction pointers that you can use to override attributes and affect the effect/emitters behaviour in realtime
 		//See tfxEffectTemplate for applying these callbacks
@@ -3193,12 +3218,6 @@ TFX_CUSTOM_EMITTER
 		void(*emitter_update_callback)(tfxEmitter &emitter);										//Called after the emitter state has been udpated
 		void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter);	//Called before the emitter spawns particles
 		void(*particle_onspawn_callback)(tfxParticle &particle);									//Called as each particle is spawned.
-
-		tfxEmitterStateFlags flags;
-		tfxEffectPropertyFlags effect_flags;
-		//When not using insert sort to guarantee particle order, sort passes offers a more lax way of ordering particles over a number of frames.
-		//The more passes the more quickly ordered the particles will be but at a higher cost
-		unsigned int sort_passes;
 
 		EffectEmitter() :
 			highest_particle_age(0),
