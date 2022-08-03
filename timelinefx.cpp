@@ -2192,10 +2192,10 @@ namespace tfx {
 			spawn_values.noise_offset = effect_lookup_callback(common.library->base_graphs[library_link->variation].noise_offset, common.frame);
 			spawn_values.noise_resolution = effect_lookup_callback(common.library->variation_graphs[library_link->variation].noise_resolution, common.frame);
 			if (library_link->common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
-				spawn_values.image_handle = tfxVec2(0.5f, 0.5f);
+				current.image_handle = tfxVec2(0.5f, 0.5f);
 			}
 			else {
-				spawn_values.image_handle = library_link->GetProperties().image_handle;
+				current.image_handle = library_link->GetProperties().image_handle;
 			}
 
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
@@ -2254,7 +2254,7 @@ namespace tfx {
 			s.captured_position = p.data.captured_position;
 			s.ptr = library_link->GetProperties().image->ptr;
 			s.intensity = p.data.intensity;
-			s.handle = spawn_values.image_handle;
+			s.handle = current.image_handle;
 			s.particle = &p;
 			p.sprite_index = common.root_effect->sprites[library_link->GetProperties().layer].last_index();
 
@@ -2848,7 +2848,7 @@ namespace tfx {
 
 		//----Color
 		data.color.a = unsigned char(255.f * common.library->overtime_graphs[library_link->overtime].blendfactor.GetFirstValue());
-		data.intensity = common.library->overtime_graphs[library_link->overtime].intensity.GetFirstValue() * spawn_values.intensity;
+		data.intensity = common.library->overtime_graphs[library_link->overtime].intensity.GetFirstValue() * current.intensity;
 		if (common.property_flags & tfxEmitterPropertyFlags_random_color) {
 			float age = random_generation.Range(data.max_age);
 			data.color.r = unsigned char(255.f * lookup_overtime_callback(common.library->overtime_graphs[library_link->overtime].red, age, data.max_age));
@@ -3428,7 +3428,7 @@ namespace tfx {
 
 		//----Color
 		data.color.a = unsigned char(255.f * common.library->overtime_graphs[library_link->overtime].blendfactor.GetFirstValue());
-		data.intensity = common.library->overtime_graphs[library_link->overtime].intensity.GetFirstValue() * spawn_values.intensity;
+		data.intensity = common.library->overtime_graphs[library_link->overtime].intensity.GetFirstValue() * current.intensity;
 		if (common.property_flags & tfxEmitterPropertyFlags_random_color) {
 			float age = random_generation.Range(data.max_age);
 			data.color.r = unsigned char(255.f * lookup_overtime_callback(common.library->overtime_graphs[library_link->overtime].red, age, data.max_age));
@@ -8006,7 +8006,6 @@ namespace tfx {
 			if (context == tfxEndEmitter) {
 				effect_stack.back().InitialiseUninitialisedGraphs();
 				effect_stack.back().UpdateMaxLife();
-				printf("4) Info index: %i\n", effect_stack.back().info_index);
 				effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
 				effect_stack.pop();
 			}
@@ -8014,12 +8013,10 @@ namespace tfx {
 			if (context == tfxEndEffect) {
 				effect_stack.back().ReIndex();
 				if (effect_stack.size() > 1) {
-					printf("3) Info index: %i\n", effect_stack.back().info_index);
 					effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
 				}
 				else {
-					printf("1) Info index: %i\n", effect_stack.back().info_index);
 					lib.effects.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
 				}
@@ -8028,7 +8025,6 @@ namespace tfx {
 
 			if (context == tfxEndFolder) {
 				assert(effect_stack.size() == 1);			//Folders should not be contained within anything
-				printf("2) Info index: %i\n", effect_stack.back().info_index);
 				lib.effects.push_back(effect_stack.back());
 				effect_stack.pop();
 			}

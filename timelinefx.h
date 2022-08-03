@@ -2956,6 +2956,7 @@ typedef unsigned int tfxEffectID;
 		tfxVec3 local_rotations;
 		tfxVec3 world_rotations;
 		tfxVec3 scale;
+		//Todo: save space and use a quaternion here
 		Matrix4 matrix;
 		tfxEmitterTransform() :
 			matrix(M4())
@@ -3001,6 +3002,8 @@ typedef unsigned int tfxEffectID;
 		tfxVec3 grid_coords;
 		tfxVec3 grid_direction;
 		tfxVec3 emission_direction_normal;	//for 2d effects, x contains the direction - not in use yet
+		tfxVec2 image_handle;
+		float intensity;
 		float velocity_adjuster;
 		float global_opacity;
 		float stretch;
@@ -3037,8 +3040,6 @@ typedef unsigned int tfxEffectID;
 		float noise_offset_variation;
 		float noise_offset;
 		float noise_resolution;
-		float intensity;
-		tfxVec2 image_handle;
 		tfxVec3 grid_segment_size;
 	};
 
@@ -3182,8 +3183,6 @@ typedef unsigned int tfxEffectID;
 		//Required for frame by frame updating
 		//The current state of the effect/emitter used in the editor only at this point
 		tfxEmitterState current;
-		//Temporary storage of spawn values each frame to be applied to newly spawned particles
-		tfxEmitterSpawnControls spawn_controls;
 		//Common variables needed to update the effect/emitter
 		tfxCommon common;
 		//Is this an tfxEffectType or tfxEmitterType
@@ -3496,7 +3495,7 @@ typedef unsigned int tfxEffectID;
 		pf.stretch = p.data.velocity_normal.w;
 		pf.rotations = p.data.world_rotations;
 		pf.alignment_type = p.parent->GetProperties().billboard_option;
-		pf.handle = p.parent->spawn_controls.image_handle;
+		pf.handle = p.parent->current.image_handle;
 		pf.color = p.data.color;
 		pf.intensity = p.data.intensity;
 		pf.start_frame = p.parent->GetProperties().start_frame;
