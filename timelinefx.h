@@ -140,6 +140,7 @@ namespace tfx {
 	struct tfxEffect;
 	struct tfxEmitter;
 	struct tfxEffectPool;
+	struct tfxEffectTemplate;
 
 	//--------------------------------------------------------------
 	//macros
@@ -3114,7 +3115,7 @@ typedef unsigned int tfxEffectID;
 		
 	};
 
-	struct tfxEffectEmitterInfo{
+	struct tfxEffectEmitterInfo {
 		//Not required for frame by frame updating - should be moved into an info lookup in library
 		//Name of the effect
 		tfxText name;						//Todo: Do we need this here?
@@ -3185,8 +3186,6 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterSpawnControls spawn_controls;
 		//Common variables needed to update the effect/emitter
 		tfxCommon common;
-		//All of the properties of the effect/emitter - readonly and be moved into the library in an info lookup?
-		EmitterProperties properties;
 		//Is this an tfxEffectType or tfxEmitterType
 		EffectEmitterType type;
 		//The index within the library that this exists at
@@ -3218,7 +3217,8 @@ typedef unsigned int tfxEffectID;
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
-		tfxEffectEmitterInfo info;
+		unsigned int info_index;
+		unsigned int property_index;
 
 		//Custom fuction pointers that you can use to override attributes and affect the effect/emitters behaviour in realtime
 		//See tfxEffectTemplate for applying these callbacks
@@ -3243,10 +3243,6 @@ typedef unsigned int tfxEffectID;
 			particle_onspawn_callback(nullptr)
 		{ }
 		~EffectEmitter();
-		bool operator < (const EffectEmitter& e) const
-		{
-			return (properties.layer < e.properties.layer);
-		}
 
 		//API functions
 		//Tell the effect to stop spawning so that eventually particles will expire and the effect will be removed from the particle manager
@@ -3255,6 +3251,9 @@ typedef unsigned int tfxEffectID;
 		void SetUserData(void *data);
 		void *GetUserData();
 		void SetTimeout(float frames);
+
+		tfxEffectEmitterInfo &GetInfo();
+		EmitterProperties &GetProperties();
 
 		//Override graph functions for use in update_callback
 		//Some of these change the same state and property values, but they're named differently just to make it clearer as to whether you're overriding kEffect or a kEmitter.
@@ -3313,30 +3312,7 @@ typedef unsigned int tfxEffectID;
 		bool IsFiniteEffect();
 		void FlagAs3D(bool flag);
 		bool Is3DEffect();
-	};
 
-	struct tfxEffectTemplate {
-		tfxStorageMap<EffectEmitter*> paths;
-		EffectEmitter effect_template;
-
-		void AddPath(EffectEmitter &effectemitter, tfxText path) {
-			paths.Insert(path, &effectemitter);
-			for (auto &sub : effectemitter.info.sub_effectors) {
-				tfxText sub_path = path;
-				sub_path.Appendf("/%s", sub.info.name.c_str());
-				AddPath(sub, sub_path);
-			}
-		}
-
-		inline EffectEmitter &Effect() { return effect_template; }
-		inline EffectEmitter *Get(tfxText path) { if (paths.ValidName(path)) return paths.At(path); return nullptr; }
-		inline void SetUserData(tfxText path, void *data) { if(paths.ValidName(path)) paths.At(path)->user_data = data; }
-		inline void SetUserData(void *data) { effect_template.user_data = data; }
-		void SetUserDataAll(void *data);
-		inline void SetUpdateCallback(tfxText path, void(*root_effect_update_callback)(tfxEffect &effect)) { if (paths.ValidName(path)) paths.At(path)->root_effect_update_callback = root_effect_update_callback; }
-		inline void SetUpdateCallback(tfxText path, void(*emitter_update_callback)(tfxEmitter &emitter)) { if (paths.ValidName(path)) paths.At(path)->emitter_update_callback = emitter_update_callback; }
-		inline void SetUpdateCallback(tfxText path, void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter)) { if (paths.ValidName(path)) paths.At(path)->spawn_update_callback = spawn_update_callback; }
-		void SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(tfxParticle &particle));
 	};
 
 	struct EffectEmitterSnapShot {
@@ -3519,14 +3495,14 @@ typedef unsigned int tfxEffectID;
 		pf.alignment = p.data.alignment_vector;
 		pf.stretch = p.data.velocity_normal.w;
 		pf.rotations = p.data.world_rotations;
-		pf.alignment_type = p.parent->properties.billboard_option;
+		pf.alignment_type = p.parent->GetProperties().billboard_option;
 		pf.handle = p.parent->spawn_controls.image_handle;
 		pf.color = p.data.color;
 		pf.intensity = p.data.intensity;
-		pf.start_frame = p.parent->properties.start_frame;
-		pf.image_ptr = p.parent->properties.image->ptr;
+		pf.start_frame = p.parent->GetProperties().start_frame;
+		pf.image_ptr = p.parent->GetProperties().image->ptr;
 		pf.image_frame = p.data.image_frame;
-		pf.has_frames = p.parent->properties.image->animation_frames > 1;
+		pf.has_frames = p.parent->GetProperties().image->animation_frames > 1;
 		return pf;
 	}
 
@@ -3534,6 +3510,8 @@ typedef unsigned int tfxEffectID;
 		tfxStorageMap<EffectEmitter*> effect_paths;
 		tfxvec<EffectEmitter> effects;
 		tfxStorageMap<ImageData> particle_shapes;
+		tfxvec<tfxEffectEmitterInfo> effect_infos;
+		tfxvec<EmitterProperties> emitter_properties;
 
 		tfxvec<GlobalAttributes> global_graphs;
 		tfxvec<PropertyAttributes> property_graphs;
@@ -3557,6 +3535,8 @@ typedef unsigned int tfxEffectID;
 		tfxvec<unsigned int> free_overtime_graphs;
 		tfxvec<unsigned int> free_animation_settings;
 		tfxvec<unsigned int> free_preview_camera_settings;
+		tfxvec<unsigned int> free_properties;
+		tfxvec<unsigned int> free_infos;
 
 		//Get an effect from the library by index
 		EffectEmitter& operator[] (uint32_t index);
@@ -3566,6 +3546,7 @@ typedef unsigned int tfxEffectID;
 		tfxText library_file_path;
 		unsigned int uid = 0;
 
+		//Todo: Inline a lot of these
 		//Free everything in the library
 		void Clear();
 		//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
@@ -3587,6 +3568,21 @@ typedef unsigned int tfxEffectID;
 		u32 GetLookupValueCount();
 		u32 GetLookupIndexesSizeInBytes();
 		u32 GetLookupValuesSizeInBytes();
+
+		inline EmitterProperties &GetProperties(unsigned int index) {
+			assert(emitter_properties.size() > index);
+			return emitter_properties[index];
+		}
+
+		inline tfxEffectEmitterInfo &GetInfo(EffectEmitter &e) {
+			assert(effect_infos.size() > e.info_index);
+			return effect_infos[e.info_index];
+		}
+
+		inline const tfxEffectEmitterInfo &GetInfo(const EffectEmitter &e) {
+			assert(effect_infos.size() > e.info_index);
+			return effect_infos[e.info_index];
+		}
 
 		//Mainly internal functions
 		void RemoveShape(unsigned int shape_index);
@@ -3613,16 +3609,22 @@ typedef unsigned int tfxEffectID;
 		void FreeBase(unsigned int index);
 		void FreeVariation(unsigned int index);
 		void FreeOvertime(unsigned int index);
+		void FreeProperties(unsigned int index);
+		void FreeInfos(EffectEmitter &e);
 		unsigned int CloneGlobal(unsigned int source_index, EffectLibrary *destination_library);
 		unsigned int CloneProperty(unsigned int source_index, EffectLibrary *destination_library);
 		unsigned int CloneBase(unsigned int source_index, EffectLibrary *destination_library);
 		unsigned int CloneVariation(unsigned int source_index, EffectLibrary *destination_library);
 		unsigned int CloneOvertime(unsigned int source_index, EffectLibrary *destination_library);
+		unsigned int CloneInfo(unsigned int source_index, EffectLibrary *destination_library);
+		unsigned int CloneProperties(unsigned int source_index, EffectLibrary *destination_library);
 		void AddEmitterGraphs(EffectEmitter& effect);
 		void AddEffectGraphs(EffectEmitter& effect);
 		unsigned int AddAnimationSettings(EffectEmitter& effect);
 		unsigned int AddPreviewCameraSettings(EffectEmitter& effect);
 		unsigned int AddPreviewCameraSettings();
+		unsigned int AddEffectEmitterInfo();
+		unsigned int AddEmitterProperties();
 		void UpdateEffectParticleStorage();
 		void UpdateComputeNodes();
 		void CompileAllGraphs();
@@ -3641,6 +3643,30 @@ typedef unsigned int tfxEffectID;
 		//Debug stuff, used to check graphs are being properly recycled
 		unsigned int CountOfGraphsInUse();
 		unsigned int CountOfFreeGraphs();
+	};
+
+	struct tfxEffectTemplate {
+		tfxStorageMap<EffectEmitter*> paths;
+		EffectEmitter effect_template;
+
+		void AddPath(EffectEmitter &effectemitter, tfxText path) {
+			paths.Insert(path, &effectemitter);
+			for (auto &sub : effectemitter.common.library->GetInfo(effectemitter).sub_effectors) {
+				tfxText sub_path = path;
+				sub_path.Appendf("/%s", sub.common.library->GetInfo(sub).name.c_str());
+				AddPath(sub, sub_path);
+			}
+		}
+
+		inline EffectEmitter &Effect() { return effect_template; }
+		inline EffectEmitter *Get(tfxText path) { if (paths.ValidName(path)) return paths.At(path); return nullptr; }
+		inline void SetUserData(tfxText path, void *data) { if (paths.ValidName(path)) paths.At(path)->user_data = data; }
+		inline void SetUserData(void *data) { effect_template.user_data = data; }
+		void SetUserDataAll(void *data);
+		inline void SetUpdateCallback(tfxText path, void(*root_effect_update_callback)(tfxEffect &effect)) { if (paths.ValidName(path)) paths.At(path)->root_effect_update_callback = root_effect_update_callback; }
+		inline void SetUpdateCallback(tfxText path, void(*emitter_update_callback)(tfxEmitter &emitter)) { if (paths.ValidName(path)) paths.At(path)->emitter_update_callback = emitter_update_callback; }
+		inline void SetUpdateCallback(tfxText path, void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter)) { if (paths.ValidName(path)) paths.At(path)->spawn_update_callback = spawn_update_callback; }
+		void SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(tfxParticle &particle));
 	};
 
 	struct BufferInfo {
