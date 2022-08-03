@@ -4524,11 +4524,11 @@ namespace tfx {
 		clone = *this;
 		clone.info_index = clone.common.library->CloneInfo(info_index, destination_library);
 		clone.property_index = clone.common.library->CloneProperties(property_index, destination_library);
-		clone.GetInfo().sub_effectors.clear();
 		clone.flags |= tfxEmitterStateFlags_enabled;
 		if(!keep_user_data)
 			clone.user_data = nullptr;
 		clone.common.library = destination_library;
+		clone.GetInfo().sub_effectors.clear();
 
 		if (type == tfxEffectType) {
 			if (root_parent == &clone) {
@@ -5319,7 +5319,7 @@ namespace tfx {
 
 	unsigned int EffectLibrary::CloneProperties(unsigned int source_index, EffectLibrary *destination_library) {
 		unsigned int index = destination_library->AddEmitterProperties();
-		destination_library->effect_infos[index] = effect_infos[source_index];
+		destination_library->emitter_properties[index] = emitter_properties[source_index];
 		return index;
 	}
 

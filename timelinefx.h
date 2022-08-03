@@ -401,12 +401,23 @@ typedef unsigned int tfxEffectID;
 	typedef unsigned int tfxParticleControlFlags;
 	typedef unsigned int tfxAttributeNodeFlags;
 	typedef unsigned int tfxAngleSettingFlags;
+	typedef unsigned int tfxEffectManagerFlags;
 
 	enum tfxBillboardingOptions {
 		tfxBillboarding = 0,
 		tfxBillboarding_disabled = 1,
 		tfxBillboarding_disabled_align = 2,
 		tfxBillboarding_align = 1 << 2 
+	};
+
+	enum tfxEffectManagerFlags_ {
+		tfxEffectManagerFlags_none = 0,
+		tfxEffectManagerFlags_disable_spawning = 1,
+		tfxEffectManagerFlags_force_capture = 2,
+		tfxEffectManagerFlags_use_compute_shader = 1 << 3,
+		tfxEffectManagerFlags_order_by_depth = 1 << 4,
+		tfxEffectManagerFlags_guarantee_order = 1 << 5,
+		tfxEffectManagerFlags_update_base_values = 1 << 6
 	};
 
 	enum tfxVectorAlignType {
