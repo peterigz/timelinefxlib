@@ -3826,7 +3826,6 @@ typedef unsigned int tfxEffectID;
 			while (j >= 0 && key.data.depth > particles[j].data.depth) {
 				particles[j + 1] = particles[j];
 				current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
-				current_buffer[particles[  j  ].prev_index].next_ptr = &particles[  j  ];
 				--j;
 			}
 			particles[j + 1] = key;
