@@ -3499,6 +3499,18 @@ typedef unsigned int tfxEffectID;
 		u32 GetLookupIndexesSizeInBytes();
 		u32 GetLookupValuesSizeInBytes();
 
+		inline void MaybeGrowProperties() {
+			if (emitter_properties.current_size >= emitter_properties.capacity - 1) {
+				emitter_properties.reserve(emitter_properties._grow_capacity(emitter_properties.capacity + 1));
+			}
+		}
+
+		inline void MaybeGrowInfos() {
+			if (effect_infos.current_size == effect_infos.capacity) {
+				effect_infos.reserve(effect_infos._grow_capacity(effect_infos.current_size + 1));
+			}
+		}
+
 		inline tfxEmitterProperties &GetProperties(unsigned int index) {
 			assert(emitter_properties.size() > index);
 			return emitter_properties[index];
