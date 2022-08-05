@@ -1324,13 +1324,17 @@ typedef tfxU32 tfxEffectID;
 		return result;
 	}
 
-	inline float Clamp(float lower, float upper, float value) {
+	static inline float Clamp(float lower, float upper, float value) {
 		if (value < lower) return lower;
 		if (value > upper) return upper;
 		return value;
 	}
 
-	inline float Distance(float fromx, float fromy, float tox, float toy) {
+	static inline size_t ClampStringSize(size_t compare, size_t string_size) {
+		return compare < string_size ? compare : string_size;
+	}
+
+	static inline float Distance(float fromx, float fromy, float tox, float toy) {
 
 		float w = tox - fromx;
 		float h = toy - fromy;
@@ -2116,10 +2120,45 @@ typedef tfxU32 tfxEffectID;
 
 	};
 
+	static inline uint32_t Millisecs() {
+		auto now = tfxClock::now().time_since_epoch();
+		auto m = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+		return (uint32_t)m;
+	}
+	static inline uint64_t Microsecs() {
+		auto now = tfxClock::now().time_since_epoch();
+		auto m = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
+		return m;
+	}
+
 	struct tfxProfile {
-		char name[32];
-		tfxU64 start_time;
+		const char *name;
+		tfxU32 hit_count;
+		tfxU64 run_time;
 	};
+
+	tfxProfile tfxPROFILE_ARRAY[];
+
+	struct tfxProfileTag {
+		tfxProfile *profile;
+
+		tfxProfileTag(tfxU32 id, const char *name) {
+			profile = tfxPROFILE_ARRAY + id;
+			profile->name = name;
+			profile->run_time -= Microsecs();
+			profile->hit_count++;
+		}
+
+		~tfxProfileTag() {
+			profile->run_time += Microsecs();
+		}
+
+	};
+
+#define tfxPROFILE tfxProfileTag tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
+
+	bool EndOfProfiles();
+	tfxProfile* NextProfile();
 
 #define tfxINVALID 0xFFFFFFFF
 
@@ -2375,18 +2414,6 @@ typedef tfxU32 tfxEffectID;
 
 
 	};
-
-	static inline uint32_t Millisecs() {
-		auto now = tfxClock::now().time_since_epoch();
-		auto m = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-		return (uint32_t)m;
-	}
-
-	static inline uint64_t Microsecs() {
-		auto now = tfxClock::now().time_since_epoch();
-		auto m = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
-		return m;
-	}
 
 	struct tfxRandom {
 		uint64_t seeds[2];
@@ -3262,6 +3289,200 @@ typedef tfxU32 tfxEffectID;
 		pf.image_frame = p.data.image_frame;
 		pf.has_frames = p.parent->GetProperties().image->animation_frames > 1;
 		return pf;
+	}
+
+	//Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
+	struct tfxParentSpawnControls {
+		float life;
+		float size_x;
+		float size_y;
+		float velocity;
+		float spin;
+		float intensity;
+		float splatter;
+		float weight;
+	};
+
+	//Use the particle manager to add compute effects to your scene 
+	struct tfxParticleManager {
+		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
+		tfxvec<tfxParticle> particles[tfxLAYERS][2];
+		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
+		tfxvec<tfxSpawnPosition> new_positions;
+		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
+		//you can use an tfxEffectTemplate and use callback funcitons. 
+		tfxvec<tfxEffectEmitter> effects[2];
+		//Set when an effect is updated and used to pass on global attributes to child emitters
+		tfxParentSpawnControls parent_spawn_controls;
+
+		//todo: document compute controllers once we've established this is how we'll be doing it.
+		void *compute_controller_ptr;
+		tfxvec<unsigned int> free_compute_controllers;
+		unsigned int new_compute_particle_index;
+		unsigned int new_particles_count;
+		void *new_compute_particle_ptr;
+		//The maximum number of effects that can be updated per frame in the particle manager. If you're running effects with particles that have sub effects then this number might need 
+		//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
+		unsigned int max_effects;
+		//The maximum number of particles that can be updated per frame per layer. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
+		unsigned int max_cpu_particles_per_layer;
+		//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
+		unsigned int max_new_compute_particles;
+		//The current particle buffer in use, can be either 0 or 1
+		unsigned int current_pbuff;
+		//The current effect buffer in use, can be either 0 or 1
+		unsigned int current_ebuff;
+		//The current number of particles in each buffer
+		unsigned int particle_count;
+
+		unsigned int max_compute_controllers;
+		unsigned int highest_compute_controller_index;
+		tfxComputeFXGlobalState compute_global_state;
+		tfxU32 sort_passes;
+		tfxU32 new_particles_index_start[tfxLAYERS];
+		tfxLookupMode lookup_mode;
+		//For when particles are ordered by distance from camera (3d effects)
+		tfxVec3 camera_front;
+		tfxVec3 camera_position;
+
+		//These can possibly be removed at some point, they're debugging variables
+		unsigned int particle_id;
+		tfxEffectManagerFlags flags;
+
+		tfxParticleManager() :
+			flags(0),
+			lookup_mode(tfxFast),
+			max_effects(10000),
+			max_cpu_particles_per_layer(50000),
+			current_ebuff(0),
+			current_pbuff(0),
+			highest_compute_controller_index(0),
+			new_compute_particle_ptr(nullptr),
+			compute_controller_ptr(nullptr),
+			max_compute_controllers(10000),
+			max_new_compute_particles(10000),
+			new_compute_particle_index(0),
+			new_particles_count(0)
+		{ }
+		~tfxParticleManager();
+		tfxEffectEmitter &operator[] (unsigned int index);
+
+		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
+		void Init(unsigned int effects_limit = 10000, unsigned int particle_limit_per_layer = 50000);
+		//Update the particle manager. Call this once per frame in your logic udpate.
+		void Update();
+		//When paused you still might want to keep the particles in order:
+		void UpdateParticleOrderOnly();
+		//Get the current particle buffer that contains all particles currently active. The particle manager can have layers in order to control draw order of particles.
+		//Pass the layer that you want to get.
+		tfxvec<tfxParticle> *GetParticleBuffer(unsigned int layer);
+		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
+		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
+		//have access to the effect if you need it.
+		void AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false);
+		void AddEffect(tfxEffectTemplate &effect, unsigned int buffer);
+		//Clear all effects and particles in the particle manager
+		void ClearAll();
+		//Soft expire all the effects so that the particles complete their animation first
+		inline void SetCamera(float front_x, float	front_y, float front_z, float pos_x, float pos_y, float pos_z) {
+			camera_front.x = front_x;
+			camera_front.y = front_y;
+			camera_front.z = front_z;
+			camera_position.x = pos_x;
+			camera_position.y = pos_y;
+			camera_position.z = pos_z;
+		}
+		inline void ResetFlags() { flags = 0; }
+
+		inline void ForceCapture(bool state) {
+			if (state)
+				flags |= tfxEffectManagerFlags_force_capture;
+			else
+				flags &= ~tfxEffectManagerFlags_force_capture;
+		}
+
+		inline void DisableSpawning(bool state) {
+			if (state)
+				flags |= tfxEffectManagerFlags_disable_spawning;
+			else
+				flags &= ~tfxEffectManagerFlags_disable_spawning;
+		}
+		void SoftExpireAll();
+
+		//Internal use only
+		int AddComputeController();
+		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
+		void EnableCompute() { flags |= tfxEffectManagerFlags_use_compute_shader; }
+		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
+		tfxParticle &GrabCPUParticle(unsigned int layer);
+		tfxComputeParticle &GrabComputeParticle(unsigned int layer);
+		void ResetParticlePtr(void *ptr);
+		void ResetControllerPtr(void *ptr);
+		inline unsigned int GetControllerMemoryUsage() { return highest_compute_controller_index * sizeof(tfxComputeController); }
+		inline unsigned int GetParticleMemoryUsage() { return new_compute_particle_index * sizeof(tfxComputeParticle); }
+		void UpdateCompute(void *sampled_particles, unsigned int sample_size = 100);
+		unsigned int AddParticle(unsigned int layer, tfxParticle &p);
+		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
+		unsigned int ParticleCount();
+		inline tfxParticle* SetNextParticle(unsigned int layer, tfxParticle &p, unsigned int buffer);
+		inline tfxEffectEmitter* SetNextEffect(tfxEffectEmitter &e, unsigned int buffer);
+		void UpdateBaseValues();
+		tfxvec<tfxEffectEmitter> *GetEffectBuffer();
+		void SetLookUpMode(tfxLookupMode mode);
+
+		inline bool FreeCapacity(unsigned int layer, bool compute) {
+			if (!compute)
+				return particles[layer][current_pbuff].current_size < max_cpu_particles_per_layer;
+			else
+				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
+		}
+		inline bool FreeEffectCapacity() {
+			return effects[0].current_size + effects[1].current_size < max_effects;
+		}
+	};
+
+	void StopSpawning(tfxParticleManager &pm);
+	void RemoveAllEffects(tfxParticleManager &pm);
+	void InitParticleManager(tfxParticleManager &pm, unsigned int effects_limit, unsigned int particle_limit_per_layer);
+	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, float x = 0.f, float y = 0.f);
+	void AddEffect(tfxParticleManager &pm, tfxEffectTemplate &effect, float x = 0.f, float y = 0.f);
+
+	void Rotate(tfxEffectEmitter &e, float r);
+	void SetAngle(tfxEffectEmitter &e, float a);
+	void Scale(tfxEffectEmitter &e, const tfxVec3& s);
+	void Scale(tfxEffectEmitter &e, float x, float y, float z = 1.f);
+	void Position(tfxEffectEmitter &e, const tfxVec2& p);
+	void Position(tfxEffectEmitter &e, const tfxVec3& p);
+	void TransformEffector(tfxEffectEmitter &e, tfxParticle &parent, bool relative_position = true, bool relative_angle = false);
+	void TransformEffector3d(tfxEffectEmitter &e, tfxParticle &parent, bool relative_position = true, bool relative_angle = false);
+	void UpdatePMEmitter(tfxParticleManager &pm, tfxEffectEmitter &e);
+	void SpawnParticles(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls);
+	void SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls);
+	void InitCPUParticle(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxEmitterSpawnControls &spawn_controls, float tween);
+	tfxEmitterSpawnControls UpdateEmitterState(tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls);
+	tfxParentSpawnControls UpdateEffectState(tfxEffectEmitter &e);
+	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxEffectEmitter &e);
+	static inline void SetParticleAlignment(tfxParticle &p, tfxEmitterProperties &properties) {
+		bool line = p.parent->common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
+		if (p.data.flags & tfxParticleFlags_fresh && properties.vector_align_type == tfxVectorAlignType_motion) {
+			p.data.alignment_vector = p.data.velocity_normal.xyz();
+			p.data.alignment_vector = FastNormalizeVec(p.data.alignment_vector);
+		}
+		else if (properties.vector_align_type == tfxVectorAlignType_motion) {
+			p.data.alignment_vector = p.data.world_position - p.data.captured_position;
+			float l = FastLength(p.data.alignment_vector);
+			p.data.velocity_normal.w *= l * 10.f;
+			p.data.alignment_vector = FastNormalizeVec(p.data.alignment_vector);
+		}
+		else if (properties.vector_align_type == tfxVectorAlignType_emission) {
+			p.data.alignment_vector = p.data.velocity_normal.xyz();
+		}
+		else if (properties.vector_align_type == tfxVectorAlignType_emitter) {
+			p.data.alignment_vector = mmTransformVector(p.parent->common.transform.matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
+		}
+		else {
+			//Set at spawn time
+		}
 	}
 
 	struct tfxEffectLibrary {
