@@ -127,19 +127,13 @@ namespace tfx {
 	//Forward declarations
 
 	struct tfxEffectEmitter;
-	struct EffectorStore;
-	struct Particle;
 	struct tfxParticle;
 	struct tfxParticleData;
 	struct tfxComputeSprite;
-	struct tfxParticleSprite;
 	struct tfxComputeParticle;
 	struct tfxAnimationSettings;
 	struct tfxEffectLibrary;
 	struct tfxText;
-	struct tfxEffect;
-	struct tfxEmitter;
-	struct tfxEffectPool;
 	struct tfxEffectTemplate;
 
 //--------------------------------------------------------------
@@ -1174,21 +1168,21 @@ typedef unsigned int tfxEffectID;
 		);
 	}
 
-	static inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, tfxMatrix4 &m) {
+	static inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, const tfxMatrix4 &m) {
 		tfxMatrix4 r;
 		r.v[0].x = in.v[0].x * m.v[0].x + in.v[0].y * m.v[1].x; r.v[0].y = in.v[0].x * m.v[0].y + in.v[0].y * m.v[1].y;
 		r.v[1].x = in.v[1].x * m.v[0].x + in.v[1].y * m.v[1].x; r.v[1].y = in.v[1].x * m.v[0].y + in.v[1].y * m.v[1].y;
 		return r;
 	}
 
-	static inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, tfxMatrix2 &m) {
+	static inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, const tfxMatrix2 &m) {
 		tfxMatrix4 r;
 		r.v[0].x = in.v[0].x * m.aa + in.v[0].y * m.ba; r.v[0].y = in.v[0].x * m.ab + in.v[0].y * m.bb;
 		r.v[1].x = in.v[1].x * m.aa + in.v[1].y * m.ba; r.v[1].y = in.v[1].x * m.ab + in.v[1].y * m.bb;
 		return r;
 	}
 
-	static inline tfxMatrix4 mmTransform(const tfxMatrix4 &in, tfxMatrix4 &m) {
+	static inline tfxMatrix4 mmTransform(const tfxMatrix4 &in, const tfxMatrix4 &m) {
 		tfxMatrix4 res = M4(0.f);
 
 		__m128 in_row[4];
@@ -2262,68 +2256,6 @@ typedef unsigned int tfxEffectID;
 		inline bool			eob() { return pos >= current_size; }
 	};
 
-	//A version of tfxvec that has a fixed capacity where you assign memory from a tfxmemory object
-	template<typename T>
-	struct tfxfixedvec {
-		unsigned int current_size;
-		unsigned int capacity;
-		unsigned int range_index;
-		T* data;
-		inline tfxfixedvec() { current_size = capacity = 0; data = NULL; range_index = tfxINVALID; }
-		inline tfxfixedvec(tfxmemory &mem, unsigned int index, unsigned int size) { current_size = 0; capacity = size; data = mem.data + mem.ranges[index].offset_into_memory; range_index = index; }
-
-		inline bool			empty() { return current_size == 0; }
-		inline bool			full() { return current_size == capacity; }
-		inline void         free_range(tfxmemory &mem) {
-			if (range_index == tfxINVALID) return;
-			if (data) {
-				current_size = capacity = 0;
-				mem.free_range(range_index);
-				range_index = tfxINVALID;
-				data = NULL;
-			}
-		}
-		inline void         clear() { if (data) { current_size = 0; } }
-		inline unsigned int			size() { return current_size; }
-		inline const unsigned int	size() const { return current_size; }
-		inline T&           operator[](unsigned int i) { return data[i]; }
-		inline const T&     operator[](unsigned int i) const { return data[i]; }
-
-		inline unsigned int end_index() { return current_size; }
-		inline unsigned int last_index() { return current_size - 1; }
-		inline T*           begin() { return data; }
-		inline const T*     begin() const { return data; }
-		inline T*           end() { return data + current_size; }
-		inline const T*     end() const { return data + current_size; }
-		inline T*           rend() { return data; }
-		inline const T*     rend() const { return data; }
-		inline T*           rbegin() { return data + current_size; }
-		inline const T*     rbegin() const { return data + current_size; }
-		inline T&           front() { assert(current_size > 0); return data[0]; }
-		inline const T&     front() const { assert(current_size > 0); return data[0]; }
-		inline T&           back() { assert(current_size > 0); return data[last_index()]; }
-		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
-
-		inline void         pop() { assert(current_size > 0); current_size--; }
-		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
-		inline bool	        push_back(const T& v) { if (current_size == capacity) return false; new((void*)(data + end_index())) T(v); current_size++; return true; }
-		inline void			assign_memory(tfxmemory &mem, unsigned int element_size, unsigned int element_count) {
-			assert(range_index == tfxINVALID);	//call refresh instead if a range has already been assigned, or free_all and then assign another range;
-			if (!element_count) return;
-			int index = mem.get_range(element_size * element_count);
-			current_size = 0; range_index = index; capacity = element_count; void *ptr = (char*)mem.data + mem.ranges[index].offset_into_memory; data = static_cast<T*>(ptr);
-		}
-		inline void			refresh(tfxmemory &mem) { void *ptr = (char*)mem.data + mem.ranges[range_index].offset_into_memory; data = static_cast<T*>(ptr); }
-		inline void			reset_to_null() { current_size = 0; range_index = tfxINVALID; data = NULL; }
-		inline void			shrink(unsigned int amount) { if (amount > current_size) current_size = 0; else current_size -= amount; }
-
-		inline void			copyto(tfxmemory &mem, tfxfixedvec &dst) { 
-			assert(dst.capacity > capacity); 
-			memcpy(dst.data, data, mem.ranges[range_index].capacity); 
-			dst.current_size = current_size;
-		}
-	};
-
 	const u32 tfxMAGIC_NUMBER = '!XFT';
 	const u32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
 	const u32 tfxFILE_VERSION = 1;	//Not doing anything with this yet
@@ -2388,14 +2320,12 @@ typedef unsigned int tfxEffectID;
 	//These are mainly internal structs
 	//------------------------------------------------------------
 
-	typedef tfxVec2 Point;
-
 	struct tfxAttributeNode {
 		float frame;
 		float value;
 
-		Point left;
-		Point right;
+		tfxVec2 left;
+		tfxVec2 right;
 
 		tfxAttributeNodeFlags flags;
 		unsigned int index;
@@ -2441,13 +2371,24 @@ typedef unsigned int tfxEffectID;
 
 	};
 
+	static inline uint32_t Millisecs() {
+		auto now = tfxClock::now().time_since_epoch();
+		auto m = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+		return (uint32_t)m;
+	}
+
+	static inline uint64_t Microsecs() {
+		auto now = tfxClock::now().time_since_epoch();
+		auto m = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
+		return m;
+	}
+
 	struct tfxRandom {
 		uint64_t seeds[2];
 		tfxRandom();
 
 		void ReSeed();
 		void ReSeed(uint64_t seed1, uint64_t seed2);
-		double Millisecs();
 
 		inline float Generate() {
 			uint64_t s1 = seeds[0];
@@ -2529,8 +2470,8 @@ typedef unsigned int tfxEffectID;
 
 	struct tfxGraph {
 		//The ratio to transalte graph frame/value to grid x/y coords on a graph editor
-		Point min;
-		Point max;
+		tfxVec2 min;
+		tfxVec2 max;
 		tfxGraphPreset graph_preset;
 		tfxGraphType type;
 		tfxEffectEmitter *effector;
@@ -2581,8 +2522,8 @@ typedef unsigned int tfxEffectID;
 
 	tfxVec4 GetMinMaxGraphValues(tfxGraphPreset preset);
 
-	Point GetQuadBezier(Point p0, Point p1, Point p2, float t, float ymin, float ymax, bool clamp = true);
-	Point GetCubicBezier(Point p0, Point p1, Point p2, Point p3, float t, float ymin, float ymax, bool clamp = true);
+	tfxVec2 GetQuadBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, float t, float ymin, float ymax, bool clamp = true);
+	tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
 	float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
 	float GetDistance(float fromx, float fromy, float tox, float toy);
 	float GetVectorAngle(float, float);
@@ -2606,7 +2547,7 @@ typedef unsigned int tfxEffectID;
 	bool SetNodeFrame(tfxGraph &graph, tfxAttributeNode &node, float &frame);
 	bool SetNodeValue(tfxGraph &graph, tfxAttributeNode &node, float &value);
 	void ClampNode(tfxGraph &graph, tfxAttributeNode &node);
-	void ClampCurve(tfxGraph &graph, Point &curve, tfxAttributeNode &node);
+	void ClampCurve(tfxGraph &graph, tfxVec2 &curve, tfxAttributeNode &node);
 	void ClampGraph(tfxGraph &graph);
 	bool IsOvertimeGraph(tfxGraphType type);
 	bool IsOvertimePercentageGraph(tfxGraphType type);
@@ -2865,20 +2806,6 @@ typedef unsigned int tfxEffectID;
 		{ }
 	};
 
-	struct tfxEffectState {
-		//All of these values are global values that affect overal relative effects of sub emitters and effects
-		float life;
-		float amount;
-		tfxVec2 size;
-		float velocity;
-		float spin;
-		float intensity;
-		float splatter;
-		float overal_scale;
-		float stretch;
-		float weight;
-	};
-
 	struct tfxEmitterTransform {
 		//Position, scale and rotation values
 		tfxVec3 local_position;
@@ -2908,7 +2835,6 @@ typedef unsigned int tfxEffectID;
 		tfxEmitterStateFlags state_flags;
 		tfxEmitterPropertyFlags property_flags;
 		tfxEffectLibrary *library;
-		tfxEffect *root_effect;
 
 		tfxCommon() :
 			property_flags(tfxEmitterPropertyFlags_image_handle_auto_center | 
@@ -2922,8 +2848,7 @@ typedef unsigned int tfxEffectID;
 			state_flags(0),
 			timeout_counter(0),
 			timeout(1000.f),
-			active_children(0),
-			root_effect(nullptr)
+			active_children(0)
 		{ }
 
 	};
@@ -2974,78 +2899,8 @@ typedef unsigned int tfxEffectID;
 		tfxVec3 grid_segment_size;
 	};
 
-	struct tfxEmitter {
-		tfxEffectEmitter *library_link;
-		tfxEffectEmitterType type;
-		tfxParticle *parent_particle;
-		tfxEmitter *parent;
-		tfxCommon common;
-		tfxEmitterState current;
-		tfxLookupMode lookup_mode;
-		unsigned int offset;
-		tfxEmitter *next_emitter;
-
-		tfxfixedvec<tfxParticle> particles;
-
-		tfxEmitter() : parent(nullptr), parent_particle(nullptr) {}
-		void Reset();
-		void UpdateEmitter();
-		void UpdateAsSubEffect();
-		bool GrowParticles(unsigned int min_amount);
-		void RefreshFromLibrary();
-		void SpawnParticles();
-		void InitCPUParticle(tfxParticle &p, tfxEmitterSpawnControls &spawn_values, float tween);
-		void ControlParticles();
-		bool FreeCapacity();
-		void *UserData();
-		tfxParticle &GrabParticle();
-	};
-
 	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, tfxEffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
 	tfxVec3 GetEmissionDirection3d(tfxCommon &common, tfxEmitterState &current, tfxEffectEmitter *library_link, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
-
-	struct tfxEffect {
-		//todo: Put an operator overload for = with an assert, these shouldn't be copied in that way
-
-		tfxEffectEmitter *library_link;
-		tfxEffectID id;
-		tfxLookupMode lookup_mode;
-		tfxCommon common;
-		tfxKey path_hash;
-		tfxEffectState current;
-		unsigned int max_particles[tfxLAYERS];
-		unsigned int max_sub_emitters;
-		tfxEffectPropertyFlags flags;
-		tfxEffectPool *storage;
-		tfxfixedvec<tfxEmitter> sub_emitters;
-		tfxfixedvec<tfxEmitter> sub_effects;
-		tfxfixedvec<tfxParticleSprite> sprites[tfxLAYERS];
-		void *user_data;
-		void(*update_callback)(tfxEffect &effect);		//Called after the state has been udpated
-		void(*initialise_particle_callback)(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
-
-		tfxEffect() :
-			path_hash(0),
-			max_sub_emitters(0),
-			lookup_mode(tfxFast)
-		{}
-		void Reset();
-		void ReleaseMemory();
-		void ClearSprites();
-		void CompressSprites();
-		void UpdateSpritePointers();
-		void RefreshFromLibrary();
-		inline unsigned int ParticleCount() { unsigned int count = 0; for (tfxEachLayer) { count += sprites[layer].current_size; } return count; }
-		tfxParticleSprite &GrabSprite(unsigned int layer);
-		tfxEmitter &GrabSubEffect();
-		tfxEmitter& AddSubEffect(tfxEmitter &sub_effect);
-		inline void AllowMoreParticles() { common.property_flags |= tfxEmitterPropertyFlags_can_grow_particle_memory; }
-		inline void Move(float x, float y) { common.transform.local_position.x += x; common.transform.local_position.y += y; }
-		inline void Position(float x, float y, bool capture = true) { common.transform.local_position.x = x; common.transform.local_position.y = y; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
-		inline void Position(tfxVec2 pos, bool capture = true) { common.transform.local_position = pos; common.state_flags |= tfxEmitterStateFlags_no_tween_this_update; }
-		inline void SetLookupMode(tfxLookupMode mode) { lookup_mode = mode; }
-		
-	};
 
 	struct tfxEffectEmitterInfo {
 		//Not required for frame by frame updating - should be moved into an info lookup in library
@@ -3137,7 +2992,7 @@ typedef unsigned int tfxEffectID;
 		//Pointer to the next pointer in the particle manager buffer. 
 		tfxEffectEmitter *next_ptr;
 		//Pointer to the sub effect's particle that spawned it
-		Particle *parent_particle;
+		tfxParticle *parent_particle;
 		//State flags for emitters and effects
 		tfxEmitterStateFlags flags;
 		tfxEffectPropertyFlags effect_flags;
@@ -3152,12 +3007,6 @@ typedef unsigned int tfxEffectID;
 
 		//Custom fuction pointers that you can use to override attributes and affect the effect/emitters behaviour in realtime
 		//See tfxEffectTemplate for applying these callbacks
-		//tfxEffectSprites *sprites_container;
-		//Callbacks for effect pool effects only:
-		void(*root_effect_update_callback)(tfxEffect &effect);										//Called after the root effect state has been udpated
-		void(*emitter_update_callback)(tfxEmitter &emitter);										//Called after the emitter state has been udpated
-		void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter);	//Called before the emitter spawns particles
-		void(*particle_onspawn_callback)(tfxParticle &particle);									//Called as each particle is spawned.
 
 		tfxEffectEmitter() :
 			highest_particle_age(0),
@@ -3166,11 +3015,7 @@ typedef unsigned int tfxEffectID;
 			user_data(nullptr),
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
 			effect_flags(tfxEffectPropertyFlags_none),
-			sort_passes(1),
-			root_effect_update_callback(nullptr),
-			emitter_update_callback(nullptr),
-			spawn_update_callback(nullptr),
-			particle_onspawn_callback(nullptr)
+			sort_passes(1)
 		{ }
 		~tfxEffectEmitter();
 
@@ -3233,8 +3078,6 @@ typedef unsigned int tfxEffectID;
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
 		void Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxEffectLibrary *destination_library, bool keep_user_data = false, bool force_clone_global = false);
-		void CopyToEffect(tfxEffectID &effect_id, tfxEffectPool &storage);
-		void CopyToEmitter(tfxEmitter &emitter, tfxEffectPool &storage, bool assign_memory);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -3261,18 +3104,6 @@ typedef unsigned int tfxEffectID;
 		tfxVec2 position;			//The position of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite
 		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode, image layer index, shader function index, blend type
-	};
-
-	struct tfxParticleSprite {	//88 bytes
-		void *ptr;					//Pointer to the image data
-		tfxParticle *particle;		//We need to point to the particle in order to update it's sprite index
-		tfxVec3 world_position;
-		tfxVec3 captured_position;
-		float rotation;
-		tfxVec2 handle;
-		tfxRGBA8 color;				//The color tint of the sprite
-		float intensity;			
-		unsigned int parameters;	//4 extra parameters packed into a u32: blend_mode (not needed anymore), expired flag, frame
 	};
 
 	struct tfxControlData {
@@ -3332,20 +3163,12 @@ typedef unsigned int tfxEffectID;
 	};
 
 	//At the moment this struct is used in the editor only, looking to unify at some point
-	struct Particle {
+	struct tfxParticle {
 		tfxParticleData data;
 		tfxEffectEmitter *parent;				//pointer to the emitter that emitted the particle.
 		//Internal use variables
-		Particle *next_ptr;
-		unsigned int prev_index;
-	};
-
-	struct tfxParticle {
-		tfxParticleData data;
-		//Internal use variables
 		tfxParticle *next_ptr;
-		unsigned int sprite_index;
-		unsigned int offset;
+		unsigned int prev_index;
 	};
 
 	struct tfxComputeFXGlobalState {
@@ -3418,7 +3241,7 @@ typedef unsigned int tfxEffectID;
 		bool has_frames;
 	};
 
-	static inline tfxParticleFrame ConvertToParticleFrame(const Particle &p) {
+	static inline tfxParticleFrame ConvertToParticleFrame(const tfxParticle &p) {
 		tfxParticleFrame pf;
 		pf.position = p.data.world_position;
 		pf.scale = p.data.scale;
@@ -3605,33 +3428,6 @@ typedef unsigned int tfxEffectID;
 		inline void SetUserData(tfxText path, void *data) { if (paths.ValidName(path)) paths.At(path)->user_data = data; }
 		inline void SetUserData(void *data) { effect_template.user_data = data; }
 		void SetUserDataAll(void *data);
-		inline void SetUpdateCallback(tfxText path, void(*root_effect_update_callback)(tfxEffect &effect)) { if (paths.ValidName(path)) paths.At(path)->root_effect_update_callback = root_effect_update_callback; }
-		inline void SetUpdateCallback(tfxText path, void(*emitter_update_callback)(tfxEmitter &emitter)) { if (paths.ValidName(path)) paths.At(path)->emitter_update_callback = emitter_update_callback; }
-		inline void SetUpdateCallback(tfxText path, void(*spawn_update_callback)(tfxEmitterSpawnControls &spawn_controls, tfxEmitter &emitter)) { if (paths.ValidName(path)) paths.At(path)->spawn_update_callback = spawn_update_callback; }
-		void SetParticleOnSpawnCallback(tfxText path, void(*particle_onspawn_callback)(tfxParticle &particle));
-	};
-
-	struct tfxEffectPool {
-		tfxmemory effect_memory;
-		tfxmemory emitter_memory;
-		tfxmemory particle_memory;
-		tfxmemory sprite_memory;
-		
-		tfxEffectPool() {}
-		~tfxEffectPool() {
-			effect_memory.free_all();
-			emitter_memory.free_all();
-			particle_memory.free_all();
-			sprite_memory.free_all();
-		};
-
-		void Init(unsigned int max_effects = 1000, unsigned int max_emitters = 10000, unsigned int max_particles = 100000);
-		tfxEffectID InsertEffect();
-		tfxEffect &GetEffect(tfxEffectID id);
-	};
-
-	struct tfxEffectSprites {
-		tfxring<tfxParticleSprite> sprites;
 	};
 
 	/*
@@ -3747,6 +3543,35 @@ typedef unsigned int tfxEffectID;
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxText &field, tfxText &value);
 	void AssignGraphData(tfxEffectEmitter &effect, tfxvec<tfxText> &values);
 	void AssignNodeData(tfxAttributeNode &node, tfxvec<tfxText> &values);
+	static inline void Transform(tfxEmitterTransform &out, const tfxEmitterTransform &in) {
+		float s = sin(out.local_rotations.roll);
+		float c = cos(out.local_rotations.roll);
+
+		out.matrix.Set2(c, s, -s, c);
+		out.scale = in.scale;
+
+		out.world_rotations.roll = in.world_rotations.roll + out.local_rotations.roll;
+
+		out.matrix = mmTransform2(out.matrix, in.matrix);
+		tfxVec2 rotatevec = mmTransformVector(in.matrix, tfxVec2(out.local_position.x, out.local_position.y));
+
+		out.world_position = in.world_position.xy() + rotatevec * in.scale.xy();
+	}
+	static inline void Transform3d(tfxEmitterTransform &out, const tfxEmitterTransform &in) {
+		tfxMatrix4 roll = mmZRotate(out.local_rotations.roll);
+		tfxMatrix4 pitch = mmXRotate(out.local_rotations.pitch);
+		tfxMatrix4 yaw = mmYRotate(out.local_rotations.yaw);
+		out.matrix = mmTransform(yaw, pitch);
+		out.matrix = mmTransform(out.matrix, roll);
+		out.scale = in.scale;
+
+		out.world_rotations = in.world_rotations + out.local_rotations;
+
+		out.matrix = mmTransform(out.matrix, in.matrix);
+		tfxVec3 rotatevec = mmTransformVector3(in.matrix, out.local_position);
+
+		out.world_position = in.world_position + rotatevec;
+	}
 	static inline void TransformParticle(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
 		data.world_position = data.local_position;
 		data.world_rotations.roll = data.local_rotations.roll;
@@ -3810,17 +3635,14 @@ typedef unsigned int tfxEffectID;
 		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
 		data.world_position = from_position + rotatevec.xyz() * common.transform.scale;
 	}
-	void Transform(tfxEmitter &emitter, tfxParticle &parent);
-	void Transform(tfxEmitterTransform &out, tfxEmitterTransform &in);
-	void Transform3d(tfxEmitterTransform &out, tfxEmitterTransform &in);
 	static inline int SortParticles(void const *left, void const *right) {
 		float d1 = static_cast<const tfxSpawnPosition*>(left)->distance_to_camera;
 		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
 		return (d2 > d1) - (d2 < d1);
 	}
-	static inline void InsertionSortParticles(tfxvec<Particle> &particles, tfxvec<Particle> &current_buffer) {
+	static inline void InsertionSortParticles(tfxvec<tfxParticle> &particles, tfxvec<tfxParticle> &current_buffer) {
 		for (unsigned int i = 1; i < particles.current_size; ++i) {
-			Particle key = particles[i];
+			tfxParticle key = particles[i];
 			int j = i - 1;
 
 			while (j >= 0 && key.data.depth > particles[j].data.depth) {
@@ -3847,8 +3669,7 @@ typedef unsigned int tfxEffectID;
 	tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured);
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
-	void ReloadBaseValues(Particle &p, tfxEffectEmitter &e);
-	bool Copy(tfxEffectPool &storage, tfxEffectEmitter &in, tfxEffectID &out);
+	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
 
 	//Particle initialisation functions, one for 2d one for 3d effects
 	void InitialiseParticle2d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
@@ -3879,39 +3700,8 @@ typedef unsigned int tfxEffectID;
 	int LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
 	//---
-	//Effect Pool functions for managing and playing effects
-	//Add an effect to an effect pool from a library by it's name. Returns true on success. the Effect ID in stored in the tfxEffectID that you pass to the function which
-	//you can then use to access the effect in the pool later.
-	//Overloaded functions are for retrieving effects from the library by its hash and by index
-	bool PoolEffectFromLibrary(tfxEffectLibrary &library, tfxEffectPool &storage, const char *name, tfxEffectID &out);
-	bool PoolEffectFromLibrary(tfxEffectLibrary &library, tfxEffectPool &storage, tfxKey path_hash, tfxEffectID &out);
-	bool PoolEffectFromLibrary(tfxEffectLibrary &library, tfxEffectPool &storage, unsigned int, tfxEffectID &out);
-	bool PoolEffect(tfxEffectPool &storage, tfxEffectEmitter &effect, tfxEffectID &out);
 	//Prepare an effect template for setting up function call backs to customise the behaviour of the effect in realtime
 	//Returns true on success.
 	bool PrepareEffectTemplate(tfxEffectLibrary &library, const char *name, tfxEffectTemplate &effect_template);
-	//Add an effect to an effect pool using a template you created with PrepareEffectTemplate. Returns true on success. the Effect ID in stored in the tfxEffectID that you pass to the function which
-	//you can then use to access the effect in the pool later.
-	bool PoolEffectFromTemplate(tfxEffectPool &effect_pool, tfxEffectTemplate &effect_template, tfxEffectID &effect_id);
-	//Retrieve an effect from an effect pool
-	tfxEffect &GetEffect(tfxEffectPool &effect_pool, tfxEffectID &effect_id);
-	//Check to see if an effect id is a ID that's currently in use in the effect pool
-	bool ValidEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
-	//Update an effect in the effect pool. This is necessary to do on each frame update.
-	void UpdateEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
-	//Initialise an effect pool to allocate all the necessary memory to hold the effects, emitters, particles and sprites
-	void InitEffectPool(tfxEffectPool &effect_pool, unsigned int max_effects = 1000, unsigned int max_emitters = 10000, unsigned int max_particles = 100000);
-	//Instantly stop an effect from spawning particles and remove all currently active particles
-	void HardStopEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
-	//Make an effect stop spawning but let the current particles play out to the end of life.
-	void SoftStopEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
-	//Restart an effect that has been stopped
-	void StartEffect(tfxEffectPool &effect_pool, tfxEffectID effect_id);
-	//Clear the effect pool of all effects. Any effect ids that you're currently using will not longer be valid. 
-	//This function will completely start the effect pool from scratch, removing all cached memory ranges. Can be useful to defrag the memory and start it from fresh again.
-	void ClearEffectPool(tfxEffectPool &effect_pool);
-	//Free all the memory used in the effect pool. You would have to initialise it but trying to use it again. all Effect ids that used this effect pool
-	//will no longer be valid after calling this function
-	void FreeEffectPool(tfxEffectPool &effect_pool);
 }
 
