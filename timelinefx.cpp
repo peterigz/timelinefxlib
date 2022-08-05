@@ -281,8 +281,8 @@ namespace tfx {
 		const float y2 = y0 - 1.0f + 2.0f * G2;
 
 		// Work out the hashed gradient indices of the three simplex corners
-		unsigned int ii = i & 255;
-		unsigned int jj = j & 255;
+		tfxU32 ii = i & 255;
+		tfxU32 jj = j & 255;
 		const int gi0 = permMOD12[perm[ii + perm[jj]]];
 		const int gi1 = permMOD12[perm[ii + i1 + perm[jj + j1]]];
 		const int gi2 = permMOD12[perm[ii + 1 + perm[jj + 1]]];
@@ -779,7 +779,7 @@ namespace tfx {
 
 		const int write_off = (string.size() != 0) ? string.size() : 1;
 		const int needed_sz = write_off + len;
-		if (write_off + (unsigned int)len >= string.capacity)
+		if (write_off + (tfxU32)len >= string.capacity)
 		{
 			int new_capacity = string.capacity * 2;
 			string.reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
@@ -796,7 +796,7 @@ namespace tfx {
 		tfxText lower = Lower();
 		compare = compare.Lower();
 		if (compare.Length() > Length()) return -1;
-		u32 pos = 0;
+		tfxU32 pos = 0;
 		int found = 0;
 		while (compare.Length() + pos <= Length()) {
 			if (strncmp(lower.string.data + pos, compare.string.data, compare.Length()) == 0) {
@@ -828,7 +828,7 @@ namespace tfx {
 		if (!file)
 			return false;
 
-		u32 l = Length();
+		tfxU32 l = Length();
 		if (fwrite(string.data, 1, Length(), file) != Length())
 			return false;
 
@@ -878,7 +878,7 @@ namespace tfx {
 
 		const int write_off = (string.size() != 0) ? string.size() : 1;
 		const int needed_sz = write_off + len;
-		if (write_off + (unsigned int)len >= string.capacity)
+		if (write_off + (tfxU32)len >= string.capacity)
 		{
 			int new_capacity = string.capacity * 2;
 			string.reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
@@ -933,7 +933,7 @@ namespace tfx {
 			return false;
 		}
 
-		u64 length = _ftelli64(file);
+		tfxU64 length = _ftelli64(file);
 		rewind(file);
 		if (length == -1 || length >= SIZE_MAX) {
 			fclose(file);
@@ -1040,7 +1040,7 @@ namespace tfx {
 			return false;
 
 		//Calculate the offset to the inventory which is stored at the end of the file after the contents
-		u64 inventory_offset = sizeof(tfxHeader);
+		tfxU64 inventory_offset = sizeof(tfxHeader);
 		for (auto &entry : package.inventory.entries.data) {
 			entry.offset_from_start_of_file = inventory_offset;
 			entry.file_size = entry.data.Size();
@@ -1060,13 +1060,13 @@ namespace tfx {
 		}
 
 		//Write the inventory
-		fwrite((char*)&package.inventory.magic_number, 1, sizeof(u32), file);
-		fwrite((char*)&package.inventory.entry_count, 1, sizeof(u32), file);
+		fwrite((char*)&package.inventory.magic_number, 1, sizeof(tfxU32), file);
+		fwrite((char*)&package.inventory.entry_count, 1, sizeof(tfxU32), file);
 		for (auto &entry : package.inventory.entries.data) {
-			fwrite((char*)&entry.file_name.string.current_size, 1, sizeof(u32), file);
+			fwrite((char*)&entry.file_name.string.current_size, 1, sizeof(tfxU32), file);
 			fwrite(entry.file_name.c_str(), 1, entry.file_name.string.current_size, file);
-			fwrite((char*)&entry.file_size, 1, sizeof(u64), file);
-			fwrite((char*)&entry.offset_from_start_of_file, 1, sizeof(u64), file);
+			fwrite((char*)&entry.file_size, 1, sizeof(tfxU64), file);
+			fwrite((char*)&entry.offset_from_start_of_file, 1, sizeof(tfxU64), file);
 		}
 
 		fclose(file);
@@ -1084,7 +1084,7 @@ namespace tfx {
 			return file;
 
 		//Calculate the offset to the inventory which is stored at the end of the file after the contents
-		u64 inventory_offset = sizeof(tfxHeader);
+		tfxU64 inventory_offset = sizeof(tfxHeader);
 		for (auto &entry : package.inventory.entries.data) {
 			entry.offset_from_start_of_file = inventory_offset;
 			entry.file_size = entry.data.Size();
@@ -1105,20 +1105,20 @@ namespace tfx {
 		}
 
 		//Write the inventory
-		file.Write(&package.inventory.magic_number, sizeof(u32));
-		file.Write(&package.inventory.entry_count, sizeof(u32));
+		file.Write(&package.inventory.magic_number, sizeof(tfxU32));
+		file.Write(&package.inventory.entry_count, sizeof(tfxU32));
 		for (auto &entry : package.inventory.entries.data) {
-			file.Write(&entry.file_name.string.current_size, sizeof(u32));
+			file.Write(&entry.file_name.string.current_size, sizeof(tfxU32));
 			file.Write(entry.file_name.string.data, entry.file_name.string.current_size);
-			file.Write(&entry.file_size, sizeof(u64));
-			file.Write(&entry.offset_from_start_of_file, sizeof(u64));
+			file.Write(&entry.file_size, sizeof(tfxU64));
+			file.Write(&entry.offset_from_start_of_file, sizeof(tfxU64));
 		}
 
 		return file;
 	}
 
-	u64 GetPackageSize(tfxPackage &package) {
-		u64 space = 0;
+	tfxU64 GetPackageSize(tfxPackage &package) {
+		tfxU64 space = 0;
 		space += sizeof(tfxHeader);
 
 		//Write the file contents
@@ -1127,13 +1127,13 @@ namespace tfx {
 		}
 
 		//Write the inventory
-		space += sizeof(u32);
-		space += sizeof(u32);
+		space += sizeof(tfxU32);
+		space += sizeof(tfxU32);
 		for (auto &entry : package.inventory.entries.data) {
-			space += sizeof(u32);
+			space += sizeof(tfxU32);
 			space += entry.file_name.string.current_size;
-			space += sizeof(u64);
-			space += sizeof(u64);
+			space += sizeof(tfxU64);
+			space += sizeof(tfxU64);
 		}
 
 		return space;
@@ -1159,20 +1159,20 @@ namespace tfx {
 			return tfxPackageErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
 
 		package.file_data.Seek(package.header.offset_to_inventory);
-		package.file_data.Read((char*)&package.inventory.magic_number, sizeof(u32));
+		package.file_data.Read((char*)&package.inventory.magic_number, sizeof(tfxU32));
 
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
 			return tfxPackageErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
 
-		package.file_data.Read((char*)&package.inventory.entry_count, sizeof(u32));
+		package.file_data.Read((char*)&package.inventory.entry_count, sizeof(tfxU32));
 		for (int i = 0; i != package.inventory.entry_count; ++i) {
 			tfxEntryInfo entry;
-			u32 file_name_size;
-			package.file_data.Read((char*)&file_name_size, sizeof(u32));
+			tfxU32 file_name_size;
+			package.file_data.Read((char*)&file_name_size, sizeof(tfxU32));
 			entry.file_name.string.resize(file_name_size);
 			package.file_data.Read(entry.file_name.string.data, file_name_size);
-			package.file_data.Read((char*)&entry.file_size, sizeof(u64));
-			package.file_data.Read((char*)&entry.offset_from_start_of_file, sizeof(u64));
+			package.file_data.Read((char*)&entry.file_size, sizeof(tfxU64));
+			package.file_data.Read((char*)&entry.offset_from_start_of_file, sizeof(tfxU64));
 			package.inventory.entries.Insert(entry.file_name, entry);
 		}
 
@@ -1201,20 +1201,20 @@ namespace tfx {
 			return tfxPackageErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
 
 		package.file_data.Seek(package.header.offset_to_inventory);
-		package.file_data.Read((char*)&package.inventory.magic_number, sizeof(u32));
+		package.file_data.Read((char*)&package.inventory.magic_number, sizeof(tfxU32));
 
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
 			return tfxPackageErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
 
-		package.file_data.Read((char*)&package.inventory.entry_count, sizeof(u32));
+		package.file_data.Read((char*)&package.inventory.entry_count, sizeof(tfxU32));
 		for (int i = 0; i != package.inventory.entry_count; ++i) {
 			tfxEntryInfo entry;
-			u32 file_name_size;
-			package.file_data.Read((char*)&file_name_size, sizeof(u32));
+			tfxU32 file_name_size;
+			package.file_data.Read((char*)&file_name_size, sizeof(tfxU32));
 			entry.file_name.string.resize(file_name_size);
 			package.file_data.Read(entry.file_name.string.data, file_name_size);
-			package.file_data.Read((char*)&entry.file_size, sizeof(u64));
-			package.file_data.Read((char*)&entry.offset_from_start_of_file, sizeof(u64));
+			package.file_data.Read((char*)&entry.file_size, sizeof(tfxU64));
+			package.file_data.Read((char*)&entry.offset_from_start_of_file, sizeof(tfxU64));
 			package.inventory.entries.Insert(entry.file_name, entry);
 		}
 
@@ -1298,10 +1298,10 @@ namespace tfx {
 		while (!stack.empty()) {
 			tfxEffectEmitter &current = *stack.pop_back();
 			if (current.type == tfxEmitterType) {
-				unsigned int particle_count = 0;
+				tfxU32 particle_count = 0;
 				if (current.parent->parent && current.parent->parent->type != tfxFolder) {
 					particle_count = current.GetHighestQty(current.parent->parent->GetInfo().max_life);
-					GetInfo().max_sub_emitters += (current.parent->parent->GetInfo().max_particles[current.parent->parent->GetProperties().layer] * (current.GetInfo().sub_effectors.size() + 1) + (current.GetInfo().sub_effectors.size() + 1)) * unsigned int(current.GetInfo().max_sub_emitter_life / 1000.f);
+					GetInfo().max_sub_emitters += (current.parent->parent->GetInfo().max_particles[current.parent->parent->GetProperties().layer] * (current.GetInfo().sub_effectors.size() + 1) + (current.GetInfo().sub_effectors.size() + 1)) * tfxU32(current.GetInfo().max_sub_emitter_life / 1000.f);
 					if (GetInfo().max_sub_emitters > 10000) {
 						int debug = 0;
 					}
@@ -1329,7 +1329,7 @@ namespace tfx {
 		}
 	}
 
-	unsigned int tfxEffectEmitter::GetSubEffectSpriteCounts(unsigned int layer, unsigned int multiplier) {
+	tfxU32 tfxEffectEmitter::GetSubEffectSpriteCounts(tfxU32 layer, tfxU32 multiplier) {
 		float total = 0;
 		for (auto &effect :GetInfo().sub_effectors) {
 			for (auto &emitter : effect.GetInfo().sub_effectors) {
@@ -1345,7 +1345,7 @@ namespace tfx {
 				}
 			}
 		}
-		return (unsigned int)total;
+		return (tfxU32)total;
 	}
 
 	float tfxEffectEmitter::GetSubEffectLength() {
@@ -1358,7 +1358,7 @@ namespace tfx {
 		return max_life;
 	}
 
-	unsigned int tfxEffectEmitter::GetHighestQty(float parent_age) {
+	tfxU32 tfxEffectEmitter::GetHighestQty(float parent_age) {
 		GetInfo().max_sub_emitter_life = 0.f;
 		if (!(common.property_flags & tfxEmitterPropertyFlags_single)) {
 			float max_qty = 0.f;
@@ -1429,7 +1429,7 @@ namespace tfx {
 				max_qty = std::fmaxf(max_qty, total_qty);
 				GetInfo().max_sub_emitter_life = highest_age + current_frame;
 
-				return (unsigned int)max_qty;
+				return (tfxU32)max_qty;
 			}
 			else {
 				float max_life = GetMaxLife(*this);
@@ -1442,12 +1442,12 @@ namespace tfx {
 				else if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && GetProperties().emission_type == tfxLine) {
 					qty = (qty / 100.f) * common.library->property_graphs[property].emitter_height.GetFirstValue();
 				}
-				return unsigned int(qty);
+				return tfxU32(qty);
 			}
 		}
 		else {
 			GetInfo().max_sub_emitter_life = GetInfo().max_life + parent_age;
-			return (unsigned int)GetProperties().spawn_amount;
+			return (tfxU32)GetProperties().spawn_amount;
 		}
 	}
 
@@ -1475,7 +1475,7 @@ namespace tfx {
 		effects[1].reserve(10000);
 		effects[0].clear();
 		effects[1].clear();
-		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 			particles[layer][0].clear();
 			particles[layer][1].clear();
 			sprite_count[layer] = 0;
@@ -1493,7 +1493,7 @@ namespace tfx {
 	}
 
 	void tfxParticleMemoryTools::Process() {
-		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 			sprite_count[layer] = 0;
 		}
 		for (float frame = 0; frame <= max_frames + max_last_life; frame += tfxFRAME_LENGTH) {
@@ -1513,9 +1513,9 @@ namespace tfx {
 			}
 			MockUpdateParticles();
 			for (tfxEachLayer) {
-				sprite_count[layer] = (unsigned int)std::fmaxf((float)sprite_count[layer], (float)particles[layer][!current_buffer].current_size);
+				sprite_count[layer] = (tfxU32)std::fmaxf((float)sprite_count[layer], (float)particles[layer][!current_buffer].current_size);
 			}
-			sub_effect_count = (unsigned int)std::fmaxf((float)effects[!current_buffer].current_size, (float)sub_effect_count);
+			sub_effect_count = (tfxU32)std::fmaxf((float)effects[!current_buffer].current_size, (float)sub_effect_count);
 
 			effects[current_buffer].clear();
 			current_buffer = !current_buffer;
@@ -1530,7 +1530,7 @@ namespace tfx {
 				p -= tfxFRAME_LENGTH;
 				if (p > 0) emitter.particles[!current_buffer].push_back(p);
 			}
-			emitter.library_link->GetInfo().max_particles[emitter.library_link->GetProperties().layer] = (unsigned int)std::fmaxf((float)emitter.library_link->GetInfo().max_particles[emitter.library_link->GetProperties().layer], (float)emitter.particles[current_buffer].current_size);
+			emitter.library_link->GetInfo().max_particles[emitter.library_link->GetProperties().layer] = (tfxU32)std::fmaxf((float)emitter.library_link->GetInfo().max_particles[emitter.library_link->GetProperties().layer], (float)emitter.particles[current_buffer].current_size);
 			emitter.particles[current_buffer].clear();
 
 			float life = LookupFast(emitter.library->base_graphs[emitter.library_link->base].life, emitter.frame) + lookup_callback(emitter.library->variation_graphs[emitter.library_link->variation].life, emitter.frame) * 0.75f;
@@ -1612,7 +1612,7 @@ namespace tfx {
 	}
 
 	void tfxParticleMemoryTools::MockUpdateParticles() {
-		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 			for (auto p : particles[layer][current_buffer]) {
 				p -= tfxFRAME_LENGTH;
 				if (p > 0) particles[layer][!current_buffer].push_back(p);
@@ -1970,7 +1970,7 @@ namespace tfx {
 				}
 				else {
 					//Spawn on one of 4 edges of the area
-					unsigned int side = random_generation.RangeUInt(4);
+					tfxU32 side = random_generation.RangeUInt(4);
 					if (side == 0) {
 						//left side
 						position.x = 0.f;
@@ -2482,7 +2482,7 @@ namespace tfx {
 				}
 				else {
 					//Spawn on one of 6 edges of the cuboid
-					unsigned int side = random_generation.RangeUInt(6);
+					tfxU32 side = random_generation.RangeUInt(6);
 					if (side == 0) {
 						//left side
 						position.x = 0.f;
@@ -2981,24 +2981,24 @@ namespace tfx {
 	}
 
 	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter *library_link) {
-		u32 lookup_frame = static_cast<u32>((data.age / data.max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+		tfxU32 lookup_frame = static_cast<tfxU32>((data.age / data.max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
-		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
-		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
-		//float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
-		float lookup_direction = c.graphs->direction.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction.lookup.last_frame)] + data.velocity_normal.x;
-		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<u32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution;
-		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<u32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
-		float lookup_weight = c.graphs->weight.lookup.values[std::min<u32>(lookup_frame, c.graphs->weight.lookup.last_frame)];
+		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
+		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
+		//float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
+		float lookup_direction = c.graphs->direction.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->direction.lookup.last_frame)] + data.velocity_normal.x;
+		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution;
+		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
+		float lookup_weight = c.graphs->weight.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->weight.lookup.last_frame)];
 
-		float lookup_width = c.graphs->width.lookup.values[std::min<u32>(lookup_frame, c.graphs->width.lookup.last_frame)];
-		float lookup_height = c.graphs->height.lookup.values[std::min<u32>(lookup_frame, c.graphs->height.lookup.last_frame)];
-		float lookup_spin = c.graphs->spin.lookup.values[std::min<u32>(lookup_frame, c.graphs->spin.lookup.last_frame)] * data.base.spin;
-		float lookup_red = c.graphs->red.lookup.values[std::min<u32>(lookup_frame, c.graphs->red.lookup.last_frame)];
-		float lookup_green = c.graphs->green.lookup.values[std::min<u32>(lookup_frame, c.graphs->green.lookup.last_frame)];
-		float lookup_blue = c.graphs->blue.lookup.values[std::min<u32>(lookup_frame, c.graphs->blue.lookup.last_frame)];
-		float lookup_opacity = c.graphs->blendfactor.lookup.values[std::min<u32>(lookup_frame, c.graphs->blendfactor.lookup.last_frame)];
-		float lookup_intensity = c.graphs->intensity.lookup.values[std::min<u32>(lookup_frame, c.graphs->intensity.lookup.last_frame)];
+		float lookup_width = c.graphs->width.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->width.lookup.last_frame)];
+		float lookup_height = c.graphs->height.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->height.lookup.last_frame)];
+		float lookup_spin = c.graphs->spin.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->spin.lookup.last_frame)] * data.base.spin;
+		float lookup_red = c.graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->red.lookup.last_frame)];
+		float lookup_green = c.graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->green.lookup.last_frame)];
+		float lookup_blue = c.graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->blue.lookup.last_frame)];
+		float lookup_opacity = c.graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->blendfactor.lookup.last_frame)];
+		float lookup_intensity = c.graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->intensity.lookup.last_frame)];
 
 		float direction = 0;
 
@@ -3123,23 +3123,23 @@ namespace tfx {
 	}
 
 	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter *library_link) {
-		u32 lookup_frame = static_cast<u32>((data.age / data.max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+		tfxU32 lookup_frame = static_cast<tfxU32>((data.age / data.max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
-		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
-		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
-		//float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<u32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
-		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<u32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution * c.overal_scale;
-		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<u32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
-		float lookup_weight = c.graphs->weight.lookup.values[std::min<u32>(lookup_frame, c.graphs->weight.lookup.last_frame)];
+		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
+		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
+		//float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
+		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution * c.overal_scale;
+		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
+		float lookup_weight = c.graphs->weight.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->weight.lookup.last_frame)];
 
-		float lookup_width = c.graphs->width.lookup.values[std::min<u32>(lookup_frame, c.graphs->width.lookup.last_frame)];
-		float lookup_height = c.graphs->height.lookup.values[std::min<u32>(lookup_frame, c.graphs->height.lookup.last_frame)];
-		float lookup_spin = c.graphs->spin.lookup.values[std::min<u32>(lookup_frame, c.graphs->spin.lookup.last_frame)] * data.base.spin;
-		float lookup_red = c.graphs->red.lookup.values[std::min<u32>(lookup_frame, c.graphs->red.lookup.last_frame)];
-		float lookup_green = c.graphs->green.lookup.values[std::min<u32>(lookup_frame, c.graphs->green.lookup.last_frame)];
-		float lookup_blue = c.graphs->blue.lookup.values[std::min<u32>(lookup_frame, c.graphs->blue.lookup.last_frame)];
-		float lookup_opacity = c.graphs->blendfactor.lookup.values[std::min<u32>(lookup_frame, c.graphs->blendfactor.lookup.last_frame)];
-		float lookup_intensity = c.graphs->intensity.lookup.values[std::min<u32>(lookup_frame, c.graphs->intensity.lookup.last_frame)];
+		float lookup_width = c.graphs->width.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->width.lookup.last_frame)];
+		float lookup_height = c.graphs->height.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->height.lookup.last_frame)];
+		float lookup_spin = c.graphs->spin.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->spin.lookup.last_frame)] * data.base.spin;
+		float lookup_red = c.graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->red.lookup.last_frame)];
+		float lookup_green = c.graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->green.lookup.last_frame)];
+		float lookup_blue = c.graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->blue.lookup.last_frame)];
+		float lookup_opacity = c.graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->blendfactor.lookup.last_frame)];
+		float lookup_intensity = c.graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->intensity.lookup.last_frame)];
 
 		float direction = 0.f;
 		float mr_angle = 0.f;
@@ -3537,7 +3537,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::ReIndex() {
-		unsigned int index = 0;
+		tfxU32 index = 0;
 		for (auto &e : GetInfo().sub_effectors) {
 			e.library_index = index++;
 			e.parent = this;
@@ -3566,7 +3566,7 @@ namespace tfx {
 		if (!parent || parent->type == tfxFolder)
 			return this;
 		tfxEffectEmitter *p = parent;
-		unsigned int timeout = 0;
+		tfxU32 timeout = 0;
 		while (p || ++timeout < 100) {
 			if (!p->parent)
 				return p;
@@ -3591,7 +3591,7 @@ namespace tfx {
 
 	tfxEffectEmitter* tfxEffectEmitter::MoveUp(tfxEffectEmitter &emitter) {
 		if (emitter.library_index > 0) {
-			unsigned int new_index = emitter.library_index - 1;
+			tfxU32 new_index = emitter.library_index - 1;
 			std::swap(GetInfo().sub_effectors[emitter.library_index], GetInfo().sub_effectors[new_index]);
 			ReIndex();
 			emitter.common.library->UpdateEffectPaths();
@@ -3603,7 +3603,7 @@ namespace tfx {
 
 	tfxEffectEmitter* tfxEffectEmitter::MoveDown(tfxEffectEmitter &emitter) {
 		if (emitter.library_index < GetInfo().sub_effectors.size() - 1) {
-			unsigned int new_index = emitter.library_index + 1;
+			tfxU32 new_index = emitter.library_index + 1;
 			std::swap(GetInfo().sub_effectors[emitter.library_index], GetInfo().sub_effectors[new_index]);
 			ReIndex();
 			emitter.common.library->UpdateEffectPaths();
@@ -3782,7 +3782,7 @@ namespace tfx {
 
 	}
 
-	unsigned int tfxEffectEmitter::GetGraphIndexByType(tfxGraphType type) {
+	tfxU32 tfxEffectEmitter::GetGraphIndexByType(tfxGraphType type) {
 
 		if (type < tfxGlobalCount) {
 			return global;
@@ -3882,16 +3882,16 @@ namespace tfx {
 
 	void tfxEffectEmitter::CompileGraphs() {
 		if (type == tfxEffectType) {
-			for (unsigned int t = (unsigned int)tfxGlobal_life; t != (unsigned int)tfxProperty_emission_pitch; ++t) {
+			for (tfxU32 t = (tfxU32)tfxGlobal_life; t != (tfxU32)tfxProperty_emission_pitch; ++t) {
 				CompileGraph(*GetGraphByType(tfxGraphType(t)));
 			}
 
 			for (auto &emitter : GetInfo().sub_effectors) {
-				for (unsigned int t = (unsigned int)tfxProperty_emission_pitch; t != (unsigned int)tfxOvertime_velocity; ++t) {
+				for (tfxU32 t = (tfxU32)tfxProperty_emission_pitch; t != (tfxU32)tfxOvertime_velocity; ++t) {
 					CompileGraph(*GetGraphByType((tfxGraphType)t));
 				}
 
-				for (unsigned int t = (unsigned int)tfxOvertime_velocity; t != (unsigned int)tfxGraphMaxIndex; ++t) {
+				for (tfxU32 t = (tfxU32)tfxOvertime_velocity; t != (tfxU32)tfxGraphMaxIndex; ++t) {
 					CompileGraphOvertime(*emitter.GetGraphByType((tfxGraphType)t));
 				}
 			}
@@ -4009,7 +4009,7 @@ namespace tfx {
 	}
 
 	void tfxEffectLibrary::ReIndex() {
-		unsigned int index = 0;
+		tfxU32 index = 0;
 		for (auto &e : effects) {
 			e.library_index = index++;
 			e.parent = nullptr;
@@ -4017,7 +4017,7 @@ namespace tfx {
 		}
 	}
 
-	void tfxEffectLibrary::UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, unsigned int default_index) {
+	void tfxEffectLibrary::UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, tfxU32 default_index) {
 		for (auto &effect : effects) {
 			if (effect.type == tfxFolder) {
 				UpdateParticleShapeReferences(effect.GetInfo().sub_effectors, default_index);
@@ -4036,7 +4036,7 @@ namespace tfx {
 
 	tfxEffectEmitter* tfxEffectLibrary::MoveUp(tfxEffectEmitter &effect) {
 		if (effect.library_index > 0) {
-			unsigned int new_index = effect.library_index - 1;
+			tfxU32 new_index = effect.library_index - 1;
 			std::swap(effects[effect.library_index], effects[new_index]);
 			UpdateEffectPaths();
 			ReIndex();
@@ -4047,7 +4047,7 @@ namespace tfx {
 
 	tfxEffectEmitter* tfxEffectLibrary::MoveDown(tfxEffectEmitter &effect) {
 		if (effect.library_index < effects.size() - 1) {
-			unsigned int new_index = effect.library_index + 1;
+			tfxU32 new_index = effect.library_index + 1;
 			std::swap(effects[effect.library_index], effects[new_index]);
 			UpdateEffectPaths();
 			ReIndex();
@@ -4059,7 +4059,7 @@ namespace tfx {
 	void tfxEffectLibrary::BuildComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData &image_data, int offset)) {
 		assert(dst);	//must be a valid pointer to a space in memory
 		assert(particle_shapes.Size());		//There are no shapes to copy!
-		unsigned int index = 0;
+		tfxU32 index = 0;
 		for (auto &shape : particle_shapes.data) {
 			if (shape.animation_frames == 1) {
 				tfxComputeImageData cs;
@@ -4101,42 +4101,42 @@ namespace tfx {
 		memcpy(dst, compiled_lookup_values.data, GetLookupValuesSizeInBytes());
 	}
 
-	u32 tfxEffectLibrary::GetComputeShapeDataSizeInBytes() {
-		unsigned int frame_count = 0;
+	tfxU32 tfxEffectLibrary::GetComputeShapeDataSizeInBytes() {
+		tfxU32 frame_count = 0;
 		for (auto &shape : particle_shapes.data) {
-			frame_count += (unsigned int)shape.animation_frames;
+			frame_count += (tfxU32)shape.animation_frames;
 		}
 		return frame_count * sizeof(tfxComputeImageData);
 	}
 
-	u32 tfxEffectLibrary::GetComputeShapeCount() {
-		unsigned int frame_count = 0;
+	tfxU32 tfxEffectLibrary::GetComputeShapeCount() {
+		tfxU32 frame_count = 0;
 		for (auto &shape : particle_shapes.data) {
-			frame_count += (unsigned int)shape.animation_frames;
+			frame_count += (tfxU32)shape.animation_frames;
 		}
 		return frame_count;
 	}
 
-	u32 tfxEffectLibrary::GetLookupIndexCount() {
+	tfxU32 tfxEffectLibrary::GetLookupIndexCount() {
 		return compiled_lookup_indexes.size() * tfxOvertimeCount;
 	}
 
-	u32 tfxEffectLibrary::GetLookupValueCount() {
+	tfxU32 tfxEffectLibrary::GetLookupValueCount() {
 		return compiled_lookup_values.size();
 	}
 
-	u32 tfxEffectLibrary::GetLookupIndexesSizeInBytes() {
+	tfxU32 tfxEffectLibrary::GetLookupIndexesSizeInBytes() {
 		return sizeof(tfxGraphLookupIndex) * tfxOvertimeCount * compiled_lookup_indexes.size();
 	}
 
-	u32 tfxEffectLibrary::GetLookupValuesSizeInBytes() {
+	tfxU32 tfxEffectLibrary::GetLookupValuesSizeInBytes() {
 		return sizeof(float) * compiled_lookup_values.size();
 	}
 
-	void tfxEffectLibrary::RemoveShape(unsigned int shape_index) {
+	void tfxEffectLibrary::RemoveShape(tfxU32 shape_index) {
 		particle_shapes.RemoveInt(shape_index);
 		for (auto &m : particle_shapes.map) {
-			particle_shapes[m.index].shape_index = (unsigned int)m.key;
+			particle_shapes[m.index].shape_index = (tfxU32)m.key;
 		}
 	}
 
@@ -4148,35 +4148,35 @@ namespace tfx {
 		ReIndex();
 	}
 
-	unsigned int tfxEffectLibrary::AddGlobal() {
+	tfxU32 tfxEffectLibrary::AddGlobal() {
 		if (free_global_graphs.size())
 			return free_global_graphs.pop_back();
 		tfxGlobalAttributes global;
 		global_graphs.push_back(global);
 		return global_graphs.size() - 1;
 	}
-	unsigned int tfxEffectLibrary::AddProperty() {
+	tfxU32 tfxEffectLibrary::AddProperty() {
 		if (free_property_graphs.size())
 			return free_property_graphs.pop_back();
 		tfxPropertyAttributes property;
 		property_graphs.push_back(property);
 		return property_graphs.size() - 1;
 	}
-	unsigned int tfxEffectLibrary::AddBase() {
+	tfxU32 tfxEffectLibrary::AddBase() {
 		if (free_base_graphs.size())
 			return free_base_graphs.pop_back();
 		tfxBaseAttributes base;
 		base_graphs.push_back(base);
 		return base_graphs.size() - 1;
 	}
-	unsigned int tfxEffectLibrary::AddVariation() {
+	tfxU32 tfxEffectLibrary::AddVariation() {
 		if (free_variation_graphs.size())
 			return free_variation_graphs.pop_back();
 		tfxVariationAttributes variation;
 		variation_graphs.push_back(variation);
 		return variation_graphs.size() - 1;
 	}
-	unsigned int tfxEffectLibrary::AddOvertime() {
+	tfxU32 tfxEffectLibrary::AddOvertime() {
 		if (free_overtime_graphs.size())
 			return free_overtime_graphs.pop_back();
 		tfxOvertimeAttributes overtime;
@@ -4184,27 +4184,27 @@ namespace tfx {
 		return overtime_graphs.size() - 1;
 	}
 
-	void tfxEffectLibrary::FreeGlobal(unsigned int index) {
+	void tfxEffectLibrary::FreeGlobal(tfxU32 index) {
 		assert(index < global_graphs.size());
 		free_global_graphs.push_back(index);
 	}
-	void tfxEffectLibrary::FreeProperty(unsigned int index) {
+	void tfxEffectLibrary::FreeProperty(tfxU32 index) {
 		assert(index < property_graphs.size());
 		free_property_graphs.push_back(index);
 	}
-	void tfxEffectLibrary::FreeBase(unsigned int index) {
+	void tfxEffectLibrary::FreeBase(tfxU32 index) {
 		assert(index < base_graphs.size());
 		free_base_graphs.push_back(index);
 	}
-	void tfxEffectLibrary::FreeVariation(unsigned int index) {
+	void tfxEffectLibrary::FreeVariation(tfxU32 index) {
 		assert(index < variation_graphs.size());
 		free_variation_graphs.push_back(index);
 	}
-	void tfxEffectLibrary::FreeOvertime(unsigned int index) {
+	void tfxEffectLibrary::FreeOvertime(tfxU32 index) {
 		assert(index < overtime_graphs.size());
 		free_overtime_graphs.push_back(index);
 	}
-	void tfxEffectLibrary::FreeProperties(unsigned int index) {
+	void tfxEffectLibrary::FreeProperties(tfxU32 index) {
 		assert(index < free_properties.size());
 		free_properties.push_back(index);
 	}
@@ -4213,44 +4213,44 @@ namespace tfx {
 		free_infos.push_back(e.info_index);
 	}
 
-	unsigned int tfxEffectLibrary::CloneGlobal(unsigned int source_index, tfxEffectLibrary *destination_library) {
-		unsigned int index = destination_library->AddGlobal();
+	tfxU32 tfxEffectLibrary::CloneGlobal(tfxU32 source_index, tfxEffectLibrary *destination_library) {
+		tfxU32 index = destination_library->AddGlobal();
 		destination_library->global_graphs[index] = global_graphs[source_index];
 		return index;
 	}
 
-	unsigned int tfxEffectLibrary::CloneProperty(unsigned int source_index, tfxEffectLibrary *destination_library) {
-		unsigned int index = destination_library->AddProperty();
+	tfxU32 tfxEffectLibrary::CloneProperty(tfxU32 source_index, tfxEffectLibrary *destination_library) {
+		tfxU32 index = destination_library->AddProperty();
 		destination_library->property_graphs[index] = property_graphs[source_index];
 		return index;
 	}
 
-	unsigned int tfxEffectLibrary::CloneBase(unsigned int source_index, tfxEffectLibrary *destination_library) {
-		unsigned int index = destination_library->AddBase();
+	tfxU32 tfxEffectLibrary::CloneBase(tfxU32 source_index, tfxEffectLibrary *destination_library) {
+		tfxU32 index = destination_library->AddBase();
 		destination_library->base_graphs[index] = base_graphs[source_index];
 		return index;
 	}
 
-	unsigned int tfxEffectLibrary::CloneVariation(unsigned int source_index, tfxEffectLibrary *destination_library) {
-		unsigned int index = destination_library->AddVariation();
+	tfxU32 tfxEffectLibrary::CloneVariation(tfxU32 source_index, tfxEffectLibrary *destination_library) {
+		tfxU32 index = destination_library->AddVariation();
 		destination_library->variation_graphs[index] = variation_graphs[source_index];
 		return index;
 	}
 
-	unsigned int tfxEffectLibrary::CloneOvertime(unsigned int source_index, tfxEffectLibrary *destination_library) {
-		unsigned int index = destination_library->AddOvertime();
+	tfxU32 tfxEffectLibrary::CloneOvertime(tfxU32 source_index, tfxEffectLibrary *destination_library) {
+		tfxU32 index = destination_library->AddOvertime();
 		destination_library->overtime_graphs[index] = overtime_graphs[source_index];
 		return index;
 	}
 
-	unsigned int tfxEffectLibrary::CloneInfo(unsigned int source_index, tfxEffectLibrary *destination_library) {
-		unsigned int index = destination_library->AddEffectEmitterInfo();
+	tfxU32 tfxEffectLibrary::CloneInfo(tfxU32 source_index, tfxEffectLibrary *destination_library) {
+		tfxU32 index = destination_library->AddEffectEmitterInfo();
 		destination_library->effect_infos[index] = effect_infos[source_index];
 		return index;
 	}
 
-	unsigned int tfxEffectLibrary::CloneProperties(unsigned int source_index, tfxEffectLibrary *destination_library) {
-		unsigned int index = destination_library->AddEmitterProperties();
+	tfxU32 tfxEffectLibrary::CloneProperties(tfxU32 source_index, tfxEffectLibrary *destination_library) {
+		tfxU32 index = destination_library->AddEmitterProperties();
 		destination_library->emitter_properties[index] = emitter_properties[source_index];
 		return index;
 	}
@@ -4270,7 +4270,7 @@ namespace tfx {
 			effect.global = root_effect->global;
 	}
 
-	unsigned int tfxEffectLibrary::AddAnimationSettings(tfxEffectEmitter& effect) {
+	tfxU32 tfxEffectLibrary::AddAnimationSettings(tfxEffectEmitter& effect) {
 		assert(effect.type == tfxEffectType);
 		tfxAnimationSettings a;
 		a.frames = 32;
@@ -4303,7 +4303,7 @@ namespace tfx {
 		return effect.GetInfo().animation_settings;
 	}
 
-	unsigned int tfxEffectLibrary::AddPreviewCameraSettings(tfxEffectEmitter& effect) {
+	tfxU32 tfxEffectLibrary::AddPreviewCameraSettings(tfxEffectEmitter& effect) {
 		assert(effect.type == tfxEffectType);
 		tfxPreviewCameraSettings a;
 		a.camera_settings.camera_floor_height = -10.f;
@@ -4322,7 +4322,7 @@ namespace tfx {
 		return effect.GetInfo().preview_camera_settings;
 	}
 
-	unsigned int tfxEffectLibrary::AddPreviewCameraSettings() {
+	tfxU32 tfxEffectLibrary::AddPreviewCameraSettings() {
 		tfxPreviewCameraSettings a;
 		a.camera_settings.camera_floor_height = -10.f;
 		a.camera_settings.camera_fov = tfxRadians(60);
@@ -4339,7 +4339,7 @@ namespace tfx {
 		return preview_camera_settings.size() - 1;
 	}
 
-	unsigned int tfxEffectLibrary::AddEffectEmitterInfo() {
+	tfxU32 tfxEffectLibrary::AddEffectEmitterInfo() {
 		tfxEffectEmitterInfo info;
 		if (free_infos.size()) {
 			return free_infos.pop_back();
@@ -4348,7 +4348,7 @@ namespace tfx {
 		return effect_infos.size() - 1;
 	}
 
-	unsigned int tfxEffectLibrary::AddEmitterProperties() {
+	tfxU32 tfxEffectLibrary::AddEmitterProperties() {
 		tfxEmitterProperties properties;
 		if (free_properties.size()) {
 			return free_properties.pop_back();
@@ -4405,8 +4405,8 @@ namespace tfx {
 	}
 
 	void tfxEffectLibrary::UpdateComputeNodes() {
-		unsigned int running_node_index = 0;
-		unsigned int running_value_index = 0;
+		tfxU32 running_node_index = 0;
+		tfxU32 running_value_index = 0;
 		tfxvec<tfxEffectEmitter*> stack;
 		all_nodes.clear();
 		node_lookup_indexes.clear();
@@ -4541,7 +4541,7 @@ namespace tfx {
 		}
 	}
 
-	void tfxEffectLibrary::CompileGlobalGraph(unsigned int index) {
+	void tfxEffectLibrary::CompileGlobalGraph(tfxU32 index) {
 		tfxGlobalAttributes &g = global_graphs[index];
 		CompileGraph(g.amount);
 		CompileGraph(g.roll);
@@ -4562,7 +4562,7 @@ namespace tfx {
 		CompileGraph(g.emitter_height);
 		CompileGraph(g.emitter_depth);
 	}
-	void tfxEffectLibrary::CompilePropertyGraph(unsigned int index) {
+	void tfxEffectLibrary::CompilePropertyGraph(tfxU32 index) {
 		tfxPropertyAttributes &g = property_graphs[index];
 		CompileGraph(g.arc_offset);
 		CompileGraph(g.arc_size);
@@ -4576,7 +4576,7 @@ namespace tfx {
 		CompileGraph(g.emitter_height);
 		CompileGraph(g.splatter);
 	}
-	void tfxEffectLibrary::CompileBaseGraph(unsigned int index) {
+	void tfxEffectLibrary::CompileBaseGraph(tfxU32 index) {
 		tfxBaseAttributes &g = base_graphs[index];
 		CompileGraph(g.amount);
 		CompileGraph(g.width);
@@ -4587,7 +4587,7 @@ namespace tfx {
 		CompileGraph(g.velocity);
 		CompileGraph(g.weight);
 	}
-	void tfxEffectLibrary::CompileVariationGraph(unsigned int index) {
+	void tfxEffectLibrary::CompileVariationGraph(tfxU32 index) {
 		tfxVariationAttributes &g = variation_graphs[index];
 		CompileGraph(g.amount);
 		CompileGraph(g.width);
@@ -4599,7 +4599,7 @@ namespace tfx {
 		CompileGraph(g.velocity);
 		CompileGraph(g.weight);
 	}
-	void tfxEffectLibrary::CompileOvertimeGraph(unsigned int index) {
+	void tfxEffectLibrary::CompileOvertimeGraph(tfxU32 index) {
 		tfxOvertimeAttributes &g = overtime_graphs[index];
 		CompileGraphOvertime(g.red);
 		CompileGraphOvertime(g.green);
@@ -4618,7 +4618,7 @@ namespace tfx {
 		CompileGraphOvertime(g.direction);
 		CompileGraphOvertime(g.noise_resolution);
 	}
-	void tfxEffectLibrary::CompileColorGraphs(unsigned int index) {
+	void tfxEffectLibrary::CompileColorGraphs(tfxU32 index) {
 		tfxOvertimeAttributes &g = overtime_graphs[index];
 		CompileGraphOvertime(g.red);
 		CompileGraphOvertime(g.green);
@@ -4752,9 +4752,9 @@ namespace tfx {
 	float tfxEffectLibrary::LookupFastValueList(tfxGraphType graph_type, int lookup_node_index, float frame) {
 		tfxGraphLookupIndex &lookup_data = ((tfxGraphLookupIndex*)&compiled_lookup_indexes[lookup_node_index])[graph_type];
 		frame += lookup_data.start_index;
-		unsigned int end_frame = lookup_data.start_index + lookup_data.length - 1;
+		tfxU32 end_frame = lookup_data.start_index + lookup_data.length - 1;
 		frame = frame > end_frame ? end_frame : frame;
-		return compiled_lookup_values[(unsigned int)frame];
+		return compiled_lookup_values[(tfxU32)frame];
 	}
 
 	float tfxEffectLibrary::LookupFastOvertimeValueList(tfxGraphType graph_type, int lookup_value_index, float age, float lifetime) {
@@ -4763,15 +4763,15 @@ namespace tfx {
 		if (lifetime)
 			frame += (age / lifetime * lookup_data.max_life) / tfxLOOKUP_FREQUENCY_OVERTIME;
 		if (frame < lookup_data.start_index + lookup_data.length - 1)
-			return compiled_lookup_values[(unsigned int)frame];
+			return compiled_lookup_values[(tfxU32)frame];
 		return compiled_lookup_values[lookup_data.start_index + lookup_data.length - 1];
 	}
 
-	unsigned int tfxEffectLibrary::CountOfGraphsInUse() {
+	tfxU32 tfxEffectLibrary::CountOfGraphsInUse() {
 		return global_graphs.size() + property_graphs.size() + base_graphs.size() + variation_graphs.size() + overtime_graphs.size() - CountOfFreeGraphs();
 	}
 
-	unsigned int tfxEffectLibrary::CountOfFreeGraphs() {
+	tfxU32 tfxEffectLibrary::CountOfFreeGraphs() {
 		return free_global_graphs.size() + free_property_graphs.size() + free_base_graphs.size() + free_variation_graphs.size() + free_overtime_graphs.size();
 	}
 
@@ -5883,8 +5883,8 @@ namespace tfx {
 	}
 
 	void tfxGraph::ValidateCurves() {
-		unsigned int index = 0;
-		unsigned int last_index = nodes.size() - 1;
+		tfxU32 index = 0;
+		tfxU32 last_index = nodes.size() - 1;
 		for(auto &n : nodes) {
 			if (n.flags & tfxAttributeNodeFlags_is_curve) {
 				if (index < last_index) {
@@ -6168,7 +6168,7 @@ namespace tfx {
 	}
 
 	void tfxGraph::ReIndex() {
-		unsigned int i = 0;
+		tfxU32 i = 0;
 		for (auto &a : nodes) {
 			a.index = i++;
 		}
@@ -6320,11 +6320,11 @@ namespace tfx {
 
 	void CompileGraph(tfxGraph &graph) {
 		float last_frame = graph.GetLastFrame();
-		graph.lookup.last_frame = unsigned int(last_frame / tfxLOOKUP_FREQUENCY);
+		graph.lookup.last_frame = tfxU32(last_frame / tfxLOOKUP_FREQUENCY);
 		graph.lookup.values.clear();
 		if (graph.lookup.last_frame) {
 			graph.lookup.values.resize(graph.lookup.last_frame + 1);
-			for (unsigned int f = 0; f != graph.lookup.last_frame + 1; ++f) {
+			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
 				graph.lookup.values[f] = graph.GetValue((float)f * tfxLOOKUP_FREQUENCY);
 			}
 			graph.lookup.values[graph.lookup.last_frame] = graph.GetLastValue();
@@ -6337,9 +6337,9 @@ namespace tfx {
 	void CompileGraphOvertime(tfxGraph &graph) {
 		graph.lookup.values.clear();
 		if (graph.nodes.size() > 1) {
-			graph.lookup.last_frame = unsigned int(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
+			graph.lookup.last_frame = tfxU32(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
 			graph.lookup.values.resize(graph.lookup.last_frame + 1);
-			for (unsigned int f = 0; f != graph.lookup.last_frame + 1; ++f) {
+			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
 				graph.lookup.values[f] = graph.GetValue((float)f * tfxLOOKUP_FREQUENCY_OVERTIME, graph.lookup.life);
 			}
 			graph.lookup.values[graph.lookup.last_frame] = graph.GetLastValue();
@@ -6351,14 +6351,14 @@ namespace tfx {
 	}
 
 	float LookupFastOvertime(tfxGraph &graph, float age, float lifetime) {
-		u32 frame = static_cast<u32>((age / lifetime * graph.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
-		frame = std::min<u32>(frame, graph.lookup.last_frame);
+		tfxU32 frame = static_cast<tfxU32>((age / lifetime * graph.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+		frame = std::min<tfxU32>(frame, graph.lookup.last_frame);
 		return graph.lookup.values[frame];
 	}
 
 	float LookupFast(tfxGraph &graph, float frame) {
-		if ((unsigned int)frame < graph.lookup.last_frame)
-			return graph.lookup.values[(unsigned int)frame];
+		if ((tfxU32)frame < graph.lookup.last_frame)
+			return graph.lookup.values[(tfxU32)frame];
 		return graph.lookup.values[graph.lookup.last_frame];
 	}
 
@@ -6411,8 +6411,8 @@ namespace tfx {
 
 	float GetRandomFast(tfxGraph &graph, float frame) {
 		float value = 0;
-		if ((unsigned int)frame < graph.lookup.last_frame)
-			value = graph.lookup.values[(unsigned int)frame];
+		if ((tfxU32)frame < graph.lookup.last_frame)
+			value = graph.lookup.values[(tfxU32)frame];
 		value = graph.lookup.values[graph.lookup.last_frame];
 		return random_generation.Range(value);
 	}
@@ -6764,7 +6764,7 @@ namespace tfx {
 		int context = 0;
 		int error = 0;
 		int uid = 0;
-		unsigned int current_global_graph = 0;
+		tfxU32 current_global_graph = 0;
 
 		tfxPackage package;
 		error = LoadPackage(filename, package);
@@ -6843,7 +6843,7 @@ namespace tfx {
 				if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
 					switch (data_types.names_and_types.At(pair[0])) {
 					case tfxUint:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (unsigned int)atoi(pair[1].c_str()));
+						AssignEffectorProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()));
 						break;
 					case tfxFloat:
 						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
@@ -6889,7 +6889,7 @@ namespace tfx {
 							image_data.shape_index = s.shape_index;
 							image_data.import_filter = s.import_filter;
 
-							shape_loader(s.name, image_data, shape_entry->data.data, (u32)shape_entry->file_size, user_data);
+							shape_loader(s.name, image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
 							if (!image_data.ptr) {
 								//uid = -6;
