@@ -2986,7 +2986,6 @@ namespace tfx {
 
 		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
 		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
-		//float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
 		float lookup_direction = c.graphs->direction.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->direction.lookup.last_frame)] + data.velocity_normal.x;
 		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution;
 		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
@@ -3128,7 +3127,6 @@ namespace tfx {
 
 		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
 		float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
-		//float lookup_direction_turbulance = c.graphs->direction_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->direction_turbulance.lookup.last_frame)];
 		float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * data.noise_resolution * c.overal_scale;
 		float lookup_stretch = c.graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
 		float lookup_weight = c.graphs->weight.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->weight.lookup.last_frame)];

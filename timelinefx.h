@@ -113,6 +113,7 @@
 #include <assert.h>
 #include <iostream>					//temp for std::cout
 #include <immintrin.h>
+#include <intrin.h>
 
 namespace tfx {
 
@@ -781,10 +782,6 @@ typedef tfxU32 tfxEffectID;
 		inline void			NullTerminate() { *(data + size) = NULL; }
 
 	};
-
-	template <typename T> int sgn(T val) {
-		return (T(0) < val) - (val < T(0));
-	}
 
 	//Just the very basic vector types that we need
 	struct tfxVec2 {
@@ -2135,6 +2132,7 @@ typedef tfxU32 tfxEffectID;
 		const char *name;
 		tfxU32 hit_count;
 		tfxU64 run_time;
+		tfxU64 cycle_count;
 	};
 
 	tfxProfile tfxPROFILE_ARRAY[];
@@ -2146,11 +2144,13 @@ typedef tfxU32 tfxEffectID;
 			profile = tfxPROFILE_ARRAY + id;
 			profile->name = name;
 			profile->run_time -= Microsecs();
+			profile->cycle_count -= __rdtsc();
 			profile->hit_count++;
 		}
 
 		~tfxProfileTag() {
 			profile->run_time += Microsecs();
+			profile->cycle_count += __rdtsc();
 		}
 
 	};
@@ -3163,6 +3163,13 @@ typedef tfxU32 tfxEffectID;
 		float distance_to_camera;
 		float base_weight;
 		float base_velocity;
+		float weight_acceleration;
+	};
+
+	struct tfxParticleVelocityData {
+		tfxVec3 current_velocity;
+		float base_velocity;
+		tfxVec4 velocity_normal;
 		float weight_acceleration;
 	};
 
