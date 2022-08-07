@@ -702,7 +702,7 @@ typedef tfxU32 tfxEffectID;
 		inline T&           parent() { assert(current_size > 1); return data[current_size - 2]; }
 		inline const T&     parent() const { assert(current_size > 1); return data[current_size - 2]; }
 
-		inline tfxU32          _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 		inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
@@ -772,7 +772,7 @@ typedef tfxU32 tfxEffectID;
 		}
 
 		inline bool			Empty() { return size == 0; }
-		inline tfxU64			Size() { return size; }
+		inline tfxU64		Size() { return size; }
 		inline const tfxU64	Size() const { return size; }
 
 		inline void			FreeAll() { if (data) { size = size = 0; free(data); data = NULL; } }
@@ -782,6 +782,273 @@ typedef tfxU32 tfxEffectID;
 		inline void			NullTerminate() { *(data + size) = NULL; }
 
 	};
+
+	template <typename T>
+	struct tfxMemoryRange {
+		T *data = NULL;
+		tfxS32 next_index = -1;
+		tfxU32 capacity = 0;
+		tfxU32 current_size = 0;
+
+		inline T*           begin() { return data; }
+		inline const T*     begin() const { return data; }
+		inline T*           end() { return data + current_size; }
+		inline const T*     end() const { return data + current_size; }
+		inline T&           back() { return data[current_size - 1]; }
+		inline const T&     back() const { return data[current_size - 1]; }
+	};
+
+	template <typename T>
+	struct tfxRangeAllocator {
+		T *data;					//big allocation for splitting up into smaller ranges
+		T *end_of_allocated;
+		tfxU32 memory_remaining;
+		tfxU32 total_memory;
+		tfxU32 size_diff_threshold;
+		tfxU32 current_buffer;
+
+		tfxvec<tfxMemoryRange<T>> ranges;
+		tfxvec<tfxU32> free_ranges;
+
+		tfxRangeAllocator() { data = end_of_allocated = NULL; memory_remaining = size_diff_threshold = current_buffer = 0; }
+
+		inline void FreeAll() {
+			if (data) free(data);
+			data = end_of_allocated = NULL;
+			memory_remaining = 0;
+			ranges.free_all();
+			free_ranges.free_all();
+		}
+
+		inline void Reset() {
+			memory_remaining = total_memory;
+			ranges.clear();
+			free_ranges.clear();
+		}
+
+		inline bool Allocate(tfxU32 size, tfxS32 &range_index) {
+			if (size == 0) return false;
+			if (free_ranges.size() > 0) {
+				tfxU32 size_diff = tfxMAX_UINT;
+				tfxS32 best_fit_index = -1;
+				tfxS32 index = 0;
+				for (auto range_index : free_ranges) {
+					if (size_diff > ranges[range_index].capacity && ranges[range_index].capacity > size) {
+						size_diff = ranges[range_index].capacity;
+						best_fit_index = index;
+					}
+					index++;
+				}
+				if (size_diff != tfxMAX_UINT && (size_diff <= size_diff_threshold || size_diff > memory_remaining)) {
+					free_ranges[best_fit_index] = free_ranges.back();
+					free_ranges.pop();
+					range_index = best_fit_index;
+					return true;
+				}
+			}
+			else if (memory_remaining >= size) {
+				tfxMemoryRange<T> range;
+				range.data = end_of_allocated;
+				range.capacity = size;
+				ranges.push_back(range);
+				end_of_allocated = end_of_allocated + size;
+				memory_remaining -= size;
+				range_index = ranges.size() - 1;
+				return true;
+			}
+			return false;
+		}
+
+		inline tfxU32 AllocateMore(tfxU32 size, tfxS32 range_index) {
+			tfxS32 new_range;
+			tfxU32 allocatable_size = size > memory_remaining ? memory_remaining : size;
+			if (Allocate(allocatable_size, new_range)) {
+				ranges[FindLastRangeIndex(range_index)].next_index = new_range;
+				return allocatable_size;
+			} 
+			return 0;
+		}
+
+		inline tfxMemoryRange<T> &FindLastRange(tfxS32 starting_range) {
+			assert(starting_range >= 0 && (tfxU32)starting_range < ranges.size());
+			tfxS32 found_range = starting_range;
+			while (ranges[found_range].next_index != -1) {
+				found_range = ranges[found_range].next_index;
+			}
+			return ranges[found_range];
+		}
+
+		inline tfxU32 FindLastRangeIndex(tfxS32 starting_range) {
+			assert(starting_range >= 0 && (tfxU32)starting_range < ranges.size());
+			tfxS32 found_range = starting_range;
+			while (ranges[found_range].next_index != -1) {
+				found_range = ranges[found_range].next_index;
+			}
+			return found_range;
+		}
+
+		inline T *FindLastRangeBegin(tfxS32 starting_range) {
+			assert(starting_range >= 0 && (tfxU32)starting_range < ranges.size());
+			tfxS32 found_range = starting_range;
+			while (ranges[found_range].next_index != -1) {
+				found_range = ranges[found_range].next_index;
+			}
+			return ranges[found_range].data;
+		}
+
+		inline T &FindValueByIndex(tfxU32 i, tfxS32 range_index) {
+			while (ranges[range_index].next_index != -1) {
+				i -= ranges[range_index].current_size;
+				range_index = ranges[range_index].next_index;
+			}
+			return ranges[range_index].data[i];
+		}
+
+		inline T &Back(tfxS32 range_index) {
+			while (ranges[range_index].next_index != -1) {
+				range_index = ranges[range_index].next_index;
+			}
+			return ranges[range_index].back();
+		}
+
+		inline T &End(tfxS32 range_index) {
+			while (ranges[range_index].next_index != -1) {
+				range_index = ranges[range_index].next_index;
+			}
+			return ranges[range_index].end();
+		}
+
+		inline void FreeRanges(tfxS32 range_index) {
+			free_ranges.push_back(range_index);
+			while (ranges[range_index].next_index != -1) {
+				range_index = ranges[range_index].next_index;
+				free_ranges.push_back(range_index);
+			}
+		}
+
+		inline void ClearRanges(tfxS32 range_index) {
+			free_ranges.push_back(range_index);
+			while (ranges[range_index].next_index != -1) {
+				ranges[range_index].current_size = 0;
+				range_index = ranges[range_index].next_index;
+			}
+		}
+
+	};
+
+	template <typename T>
+	static inline tfxRangeAllocator<T> CreateRangeAllocator(tfxU32 size, tfxU32 size_diff_threshold = 8) {
+		tfxRangeAllocator<T> allocator;
+		T* new_data = (T*)malloc(size * sizeof(T));
+		allocator.data = new_data;
+		allocator.end_of_allocated = allocator.data;
+		allocator.memory_remaining = size;
+		allocator.size_diff_threshold = size_diff_threshold;
+		allocator.total_memory = size;
+		return allocator;
+	}
+
+	template <typename T>
+	struct tfxRangeVec {
+		tfxRangeAllocator<T> *allocator;	//Pointer to the allocator that manages the memory and ranges of that memory
+		tfxS32 range_index;				//The first range in the allocator
+		tfxU32 current_size;			//Current size of the range vec. This will be the total of all ranges if there are more then one
+		tfxU32 capacity;				//The total capacity of the range vec
+		tfxU32 current_range_index;		//the current range index for iterating all ranges
+
+		tfxRangeVec() : allocator(NULL) { range_index = -1; current_size = capacity = current_range_index = 0; }
+		tfxRangeVec(tfxRangeAllocator<T> *allocator_init) : allocator(allocator_init) { range_index = -1; current_size = capacity = current_range_index = 0; }
+
+		inline bool			empty() { return current_size == 0; }
+		inline tfxU32		size() { return current_size; }
+		inline const tfxU32	size() const { return current_size; }
+		inline T&           operator[](tfxU32 i) { return allocator->FindValueByIndex(i, range_index); }
+		inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return allocator->FindValueByIndex(); }
+
+		inline void         free_all() { if (range_index > -1) { current_size = capacity = 0; allocator->FreeRanges(range_index); range_index = -1; } }
+		inline T*           begin() { return allocator->ranges[range_index].data; }
+		inline const T*     begin() const { return allocator->ranges[range_index].data; }
+		inline T*           end() { return &allocator->End(range_index); }
+		inline const T*     end() const { return &allocator->End(range_index); }
+		inline T&           front() { assert(current_size > 0); return allocator->ranges[range_index].data[0]; }
+		inline const T&     front() const { assert(current_size > 0); return allocator->ranges[range_index].data[0]; }
+		inline T&           back() { assert(current_size > 0); return allocator->Back(range_index); }
+		inline const T&     back() const { assert(current_size > 0); return allocator->Back(range_index); }
+		inline void         clear() { 
+			current_size = 0; 
+			allocator->ClearRanges(range_index);
+		}
+
+		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline bool			reserve(tfxU32 size) {
+			assert(allocator);	//Must assign and allocator before doing anything with a tfxRangeVec
+			if (capacity == 0) {
+				if (!allocator->Allocate(size, range_index)) {
+					return false;
+				}
+			}
+			else {
+				tfxU32 reserved_amount = allocator->AllocateMore(size, range_index);
+				if(!reserved_amount) {
+					return false;
+				}
+				capacity += reserved_amount;
+			}
+			return true;
+		}
+		inline bool	        push_back(const T& v) { 
+			assert(allocator);	//Must assign and allocator before doing anything with a tfxRangeVec
+			if (capacity == 0) {
+				capacity = _grow_capacity(current_size + 1);
+				if (!allocator->Allocate(capacity, range_index)) {
+					return false;
+				}
+				current_range_index = range_index;
+			}
+			else if (current_size == capacity) {
+				tfxU32 new_capacity = _grow_capacity(current_size + 1);
+				tfxU32 reserved_amount = allocator->AllocateMore(new_capacity, range_index);
+				if (!reserved_amount) {
+					return false;
+				}
+				capacity += reserved_amount;
+			}
+			tfxMemoryRange<T> &last_range = allocator->FindLastRange(range_index);
+			new((void*)(last_range.data + last_range.current_size++)) T(v); 
+			current_size++; 
+			return true;
+		}
+		inline void ResetIteratorIndex() { 
+			current_range_index = range_index; 
+		}
+		inline bool EndOfRanges() { 
+			current_range_index = allocator->ranges[current_range_index].next_index;
+			if (current_range_index == -1) { 
+				current_range_index = range_index; 
+				return true; 
+			} 
+			return false;
+		}
+		inline tfxMemoryRange<T> &NextRange() {
+			assert(allocator);	//Must assign and allocator before doing anything with a tfxRangeVec
+			return allocator->ranges[current_range_index];
+		}
+	};
+
+	template <typename T>
+	static inline bool MergeRangeVecs(tfxRangeVec<T> &range_vec_from, tfxRangeVec<T> &range_vec_to) {
+		range_vec_to.current_size = 0;
+		range_vec_to.capacity = range_vec_from.current_size;
+		if (range_vec_to.capacity == 0) {
+			range_vec_to.range_index = -1;
+			return false;
+		}
+		if (!range_vec_to.allocator->Allocate(range_vec_to.capacity, range_vec_to.range_index)) {
+			return false;
+		}
+		range_vec_to.current_range_index = range_vec_to.range_index;
+		return true;
+	}
 
 	//Just the very basic vector types that we need
 	struct tfxVec2 {
@@ -3025,6 +3292,8 @@ typedef tfxU32 tfxEffectID;
 		tfxEffectEmitter *next_ptr;
 		//Pointer to the sub effect's particle that spawned it
 		tfxParticle *parent_particle;
+		//Container for all the particles that this emitter will spawn. The memory allocator for this is in the ParticleManager
+		tfxRangeVec<tfxParticle> particles;
 		//State flags for emitters and effects
 		tfxEmitterStateFlags flags;
 		tfxEffectPropertyFlags effect_flags;
@@ -3314,6 +3583,7 @@ typedef tfxU32 tfxEffectID;
 	struct tfxParticleManager {
 		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
 		tfxvec<tfxParticle> particles[tfxLAYERS][2];
+		tfxRangeAllocator<tfxParticle> particle_allocators[tfxLAYERS][2];
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
