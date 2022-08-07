@@ -6755,8 +6755,70 @@ namespace tfx {
 		return shape_count;
 	}
 
+	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats) {
+		int context = 0;
+		int error = 0;
+
+		tfxPackage package;
+		error = LoadPackage(filename, package);
+
+		tfxEntryInfo *data = package.GetFile("data.txt");
+
+		if (!data)
+			error = -5;
+
+
+		if (error < 0) {
+			package.Free();
+			return error;
+		}
+
+		memset(&stats, 0, sizeof(tfxEffectLibraryStats));
+		bool inside_emitter = false;
+
+		while (!data->data.EoF()) {
+			tfxText line = data->data.ReadLine();
+			bool context_set = false;
+			if (StringIsUInt(line.c_str())) {
+				context_set = true;
+				if (context == tfxEndEmitter) {
+					inside_emitter = false;
+				}
+			}
+			if (context_set == false) {
+				tfxvec<tfxText> pair = SplitString(line.c_str());
+				if (pair.size() != 2) {
+					pair = SplitString(line.c_str(), 44);
+					if (pair.size() < 2) {
+						error = 1;
+						break;
+					}
+				}
+				if (context == tfxStartShapes) {
+					if (pair.size() >= 5) {
+						int frame_count = atoi(pair[2].c_str());
+						stats.total_shapes += frame_count;
+					}
+				}
+				else if (context == tfxStartEmitter) {
+					inside_emitter = true;
+					stats.total_emitters++;
+				}
+				else if (context == tfxStartEffect) {
+					if (inside_emitter)
+						stats.total_sub_effects++;
+					else
+						stats.total_effects++;
+				}
+			}
+		}
+
+		return error;
+	}
+
 	int LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		assert(shape_loader);
+		assert(tfxMEMORY.initialised);		//use must call InitialiseTimelineFX before useing timelinefx functions
 		lib.Clear();
 
 		tfxvec<tfxEffectEmitter> effect_stack;
@@ -6982,8 +7044,9 @@ namespace tfx {
 			return;
 		if (flags & tfxEffectManagerFlags_use_compute_shader && highest_compute_controller_index >= max_compute_controllers && free_compute_controllers.empty())
 			return;
-		unsigned int parent_index = effects[buffer].current_size++;
+		unsigned int parent_index = effects[buffer].bump_single_range();
 		effects[buffer][parent_index] = effect;
+		effects[buffer][parent_index].Init();
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].ResetParents();
 		if (!is_sub_emitter && effect.Is3DEffect()) {
@@ -7001,9 +7064,10 @@ namespace tfx {
 			if (!FreeEffectCapacity())
 				break;
 			if (e.flags & tfxEmitterStateFlags_enabled) {
-				unsigned int index = effects[buffer].current_size++;
+				unsigned int index = effects[buffer].bump_single_range();
 				effects[buffer][index] = e;
 				tfxEffectEmitter &emitter = effects[buffer].back();
+				emitter.Init();
 				tfxEmitterProperties &properties = emitter.GetProperties();
 				emitter.parent = &effects[buffer][parent_index];
 				emitter.next_ptr = emitter.parent;
@@ -7133,17 +7197,11 @@ namespace tfx {
 		}
 	}
 
-	uint32_t tfxParticleManager::AddParticle(unsigned int layer, tfxParticle &p) {
-		assert(particles[layer][current_pbuff].current_size != particles[layer][current_pbuff].capacity);
-		particles[layer][current_pbuff][particles[layer][current_pbuff].current_size] = p;
-		particles[layer][current_pbuff].current_size++;
-		return (uint32_t)particles[layer][current_pbuff].current_size - 1;
-	}
-
 	tfxParticle& tfxParticleManager::GrabCPUParticle(unsigned int layer) {
 		assert(particles[layer][current_pbuff].current_size != particles[layer][current_pbuff].capacity);
 		particles[layer][current_pbuff].current_size++;
-		return particles[layer][current_pbuff][particles[layer][current_pbuff].current_size - 1];
+		particles[layer][current_pbuff].GetFirstRange().current_size++;
+		return particles[layer][current_pbuff].GetFirstRange().back();
 	}
 
 	tfxComputeParticle& tfxParticleManager::GrabComputeParticle(unsigned int layer) {
@@ -7352,42 +7410,45 @@ namespace tfx {
 	}
 
 	inline tfxParticle* tfxParticleManager::SetNextParticle(unsigned int layer, tfxParticle &p, unsigned int buffer) {
-		unsigned int index = particles[layer][buffer].current_size++;
+		unsigned int index = particles[layer][buffer].bump_single_range();
 		assert(index < particles[layer][buffer].capacity);
 		particles[layer][buffer][index] = p;
 		return &particles[layer][buffer][index];
 	}
 
 	inline tfxEffectEmitter* tfxParticleManager::SetNextEffect(tfxEffectEmitter &e, unsigned int buffer) {
-		unsigned int index = effects[buffer].current_size++;
+		unsigned int index = effects[buffer].bump_single_range();
 		assert(index < effects[buffer].capacity);
 		effects[buffer][index] = e;
 		return &effects[buffer][index];
 	}
 
-	tfxvec<tfxParticle> *tfxParticleManager::GetParticleBuffer(unsigned int layer) {
-		return &particles[layer][current_pbuff];
+	tfxMemoryRange<tfxParticle> *tfxParticleManager::GetParticleBuffer(unsigned int layer) {
+		return &particles[layer][current_pbuff].GetFirstRange();
 	}
 
-	tfxvec<tfxEffectEmitter> *tfxParticleManager::GetEffectBuffer() {
-		return &effects[current_ebuff];
+	tfxMemoryRange<tfxEffectEmitter> *tfxParticleManager::GetEffectBuffer() {
+		return &effects[current_ebuff].GetFirstRange();
 	}
 
-	void tfxParticleManager::Init(unsigned int effects_limit, unsigned int particle_limit_per_layer) {
+	bool tfxParticleManager::Init(unsigned int effects_limit, unsigned int particle_limit_per_layer) {
+		assert(tfxMEMORY.initialised);				//You must call InitialiseTimelineFX to allocate all memory first
 		max_cpu_particles_per_layer = particle_limit_per_layer;
 		max_effects = effects_limit;
+		int success = 0;
 
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			particles[layer][0].resize(max_cpu_particles_per_layer);
-			particles[layer][1].resize(max_cpu_particles_per_layer);
-			particles[layer][0].clear();
-			particles[layer][1].clear();
+			particles[layer][0].allocator = &tfxMEMORY.pm_particles;
+			particles[layer][1].allocator = &tfxMEMORY.pm_particles;
+			success += particles[layer][0].reserve(particle_limit_per_layer);	
+			success += particles[layer][1].reserve(particle_limit_per_layer);
 		}
-		effects[0].create_pool(max_effects);
-		effects[1].create_pool(max_effects);
-		effects[0].clear();
-		effects[1].clear();
+		effects[0].allocator = &tfxMEMORY.pm_effects_and_emitters;
+		effects[1].allocator = &tfxMEMORY.pm_effects_and_emitters;
+		effects[0].reserve(effects_limit);
+		effects[1].reserve(effects_limit);
 
+		return (bool)success;
 	}
 
 	uint32_t tfxParticleManager::ParticleCount() {
@@ -8035,6 +8096,26 @@ namespace tfx {
 		assert(tfxPROFILE_COUNT && tfxCURRENT_PROFILE_OFFSET < tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code
 		tfxProfile *profile = tfxPROFILE_ARRAY + tfxCURRENT_PROFILE_OFFSET++;
 		return profile;
+	}
+
+	tfxMemoryAllocation tfxMEMORY;
+
+	bool InitialiseTimelineFX(
+		tfxU32 max_pm_particles,	
+		tfxU32 max_pm_effects_and_emitters,
+		tfxU32 max_library_effects_and_emitters
+	) {
+		tfxMEMORY.pm_particles = CreateRangeAllocator<tfxParticle>(max_pm_particles);
+		tfxMEMORY.pm_effects_and_emitters = CreateRangeAllocator<tfxEffectEmitter>(max_pm_effects_and_emitters);
+		tfxMEMORY.max_library_effects_and_emitters = CreateRangeAllocator<tfxEffectEmitter>(max_library_effects_and_emitters);
+		tfxMEMORY.initialised = true;
+		return true;
+	}
+
+	void DestroyTimelineFX() {
+		tfxMEMORY.pm_particles.FreeAll();
+		tfxMEMORY.pm_effects_and_emitters.FreeAll();
+		tfxMEMORY.initialised = false;
 	}
 
 }

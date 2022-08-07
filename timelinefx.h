@@ -790,6 +790,8 @@ typedef tfxU32 tfxEffectID;
 		tfxU32 capacity = 0;
 		tfxU32 current_size = 0;
 
+		inline T&           operator[](tfxU32 i) { assert(i < current_size); return data[i]; }
+		inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 		inline T*           begin() { return data; }
 		inline const T*     begin() const { return data; }
 		inline T*           end() { return data + current_size; }
@@ -805,23 +807,25 @@ typedef tfxU32 tfxEffectID;
 		tfxU32 memory_remaining;
 		tfxU32 total_memory;
 		tfxU32 size_diff_threshold;
-		tfxU32 current_buffer;
 
 		tfxvec<tfxMemoryRange<T>> ranges;
 		tfxvec<tfxU32> free_ranges;
 
-		tfxRangeAllocator() { data = end_of_allocated = NULL; memory_remaining = size_diff_threshold = current_buffer = 0; }
+		tfxRangeAllocator() { data = end_of_allocated = NULL; memory_remaining = size_diff_threshold = 0; }
 
 		inline void FreeAll() {
-			if (data) free(data);
-			data = end_of_allocated = NULL;
-			memory_remaining = 0;
-			ranges.free_all();
-			free_ranges.free_all();
+			if (data) {
+				memory_remaining = 0;
+				ranges.free_all();
+				free_ranges.free_all();
+				free(data);
+				data = NULL;
+			}
 		}
 
 		inline void Reset() {
 			memory_remaining = total_memory;
+			end_of_allocated = data;
 			ranges.clear();
 			free_ranges.clear();
 		}
@@ -851,7 +855,7 @@ typedef tfxU32 tfxEffectID;
 				range.data = end_of_allocated;
 				range.capacity = size;
 				ranges.push_back(range);
-				end_of_allocated = end_of_allocated + size;
+				end_of_allocated += size;
 				memory_remaining -= size;
 				range_index = ranges.size() - 1;
 				return true;
@@ -915,7 +919,7 @@ typedef tfxU32 tfxEffectID;
 			while (ranges[range_index].next_index != -1) {
 				range_index = ranges[range_index].next_index;
 			}
-			return ranges[range_index].end();
+			return *ranges[range_index].end();
 		}
 
 		inline void FreeRanges(tfxS32 range_index) {
@@ -927,10 +931,10 @@ typedef tfxU32 tfxEffectID;
 		}
 
 		inline void ClearRanges(tfxS32 range_index) {
-			free_ranges.push_back(range_index);
+			ranges[range_index].current_size = 0;
 			while (ranges[range_index].next_index != -1) {
-				ranges[range_index].current_size = 0;
 				range_index = ranges[range_index].next_index;
+				ranges[range_index].current_size = 0;
 			}
 		}
 
@@ -978,6 +982,11 @@ typedef tfxU32 tfxEffectID;
 			current_size = 0; 
 			allocator->ClearRanges(range_index);
 		}
+		inline tfxU32 bump_single_range() { 
+			assert(current_size != capacity); 
+			allocator->ranges[range_index].current_size++; 
+			return current_size++;
+		}
 
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline bool			reserve(tfxU32 size) {
@@ -986,6 +995,7 @@ typedef tfxU32 tfxEffectID;
 				if (!allocator->Allocate(size, range_index)) {
 					return false;
 				}
+				capacity = size;
 			}
 			else {
 				tfxU32 reserved_amount = allocator->AllocateMore(size, range_index);
@@ -1033,6 +1043,10 @@ typedef tfxU32 tfxEffectID;
 			assert(allocator);	//Must assign and allocator before doing anything with a tfxRangeVec
 			return allocator->ranges[current_range_index];
 		}
+		inline tfxMemoryRange<T> &GetFirstRange() {
+			assert(allocator);	//Must assign and allocator before doing anything with a tfxRangeVec
+			return allocator->ranges[range_index];
+		}
 	};
 
 	template <typename T>
@@ -1049,6 +1063,23 @@ typedef tfxU32 tfxEffectID;
 		range_vec_to.current_range_index = range_vec_to.range_index;
 		return true;
 	}
+
+	struct tfxMemoryConfiguration {
+		tfxU32 max_particles = 50000;
+		tfxU32 max_emitters = 2500;
+	};
+
+	struct tfxMemoryAllocation {
+		bool initialised = false;
+		//All tfxParticle memory for use by Particle Managers
+		tfxRangeAllocator<tfxParticle> pm_particles;
+		//All tfxEffectEmitter memory for use by Particle Managers
+		tfxRangeAllocator<tfxEffectEmitter> pm_effects_and_emitters;
+		//All tfxEffectEmitter memory for use by Effect Librarys loaded with LoadEffectLibraryPackage
+		tfxRangeAllocator<tfxEffectEmitter> max_library_effects_and_emitters;
+	};
+
+	extern tfxMemoryAllocation tfxMEMORY;
 
 	//Just the very basic vector types that we need
 	struct tfxVec2 {
@@ -3292,8 +3323,6 @@ typedef tfxU32 tfxEffectID;
 		tfxEffectEmitter *next_ptr;
 		//Pointer to the sub effect's particle that spawned it
 		tfxParticle *parent_particle;
-		//Index to the container for all the particles that this emitter will spawn. This is stored in the ParticleManager
-		tfxU32 particle_store_index;
 		//State flags for emitters and effects
 		tfxEmitterStateFlags flags;
 		tfxEffectPropertyFlags effect_flags;
@@ -3319,6 +3348,9 @@ typedef tfxU32 tfxEffectID;
 			sort_passes(1)
 		{ }
 		~tfxEffectEmitter();
+		inline void Init() {
+			highest_particle_age = 0;
+		}
 
 		//API functions
 		//Tell the effect to stop spawning so that eventually particles will expire and the effect will be removed from the particle manager
@@ -3582,15 +3614,12 @@ typedef tfxU32 tfxEffectID;
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
 		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
-		tfxvec<tfxParticle> particles[tfxLAYERS][2];
-		tfxRangeAllocator<tfxParticle> particle_allocators[tfxLAYERS][2];
-		tfxvec<tfxRangeVec<tfxParticle>> particle_store[tfxLAYERS][2];
-		tfxvec<tfxU32> free_particle_stores[tfxLAYERS][2];
+		tfxRangeVec<tfxParticle> particles[tfxLAYERS][2];
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
 		//you can use an tfxEffectTemplate and use callback funcitons. 
-		tfxvec<tfxEffectEmitter> effects[2];
+		tfxRangeVec<tfxEffectEmitter> effects[2];
 		//Set when an effect is updated and used to pass on global attributes to child emitters
 		tfxParentSpawnControls parent_spawn_controls;
 
@@ -3647,14 +3676,14 @@ typedef tfxU32 tfxEffectID;
 		tfxEffectEmitter &operator[] (unsigned int index);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
-		void Init(unsigned int effects_limit = 10000, unsigned int particle_limit_per_layer = 50000);
+		bool Init(unsigned int effects_limit = 2500, unsigned int particle_limit_per_layer = 50000);
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
 		//When paused you still might want to keep the particles in order:
 		void UpdateParticleOrderOnly();
 		//Get the current particle buffer that contains all particles currently active. The particle manager can have layers in order to control draw order of particles.
 		//Pass the layer that you want to get.
-		tfxvec<tfxParticle> *GetParticleBuffer(unsigned int layer);
+		tfxMemoryRange<tfxParticle> *GetParticleBuffer(unsigned int layer);
 		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
@@ -3700,13 +3729,12 @@ typedef tfxU32 tfxEffectID;
 		inline unsigned int GetControllerMemoryUsage() { return highest_compute_controller_index * sizeof(tfxComputeController); }
 		inline unsigned int GetParticleMemoryUsage() { return new_compute_particle_index * sizeof(tfxComputeParticle); }
 		void UpdateCompute(void *sampled_particles, unsigned int sample_size = 100);
-		unsigned int AddParticle(unsigned int layer, tfxParticle &p);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
 		unsigned int ParticleCount();
 		inline tfxParticle* SetNextParticle(unsigned int layer, tfxParticle &p, unsigned int buffer);
 		inline tfxEffectEmitter* SetNextEffect(tfxEffectEmitter &e, unsigned int buffer);
 		void UpdateBaseValues();
-		tfxvec<tfxEffectEmitter> *GetEffectBuffer();
+		tfxMemoryRange<tfxEffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
 
 		inline bool FreeCapacity(unsigned int layer, bool compute) {
@@ -3764,10 +3792,19 @@ typedef tfxU32 tfxEffectID;
 		}
 	}
 
+	struct tfxEffectLibraryStats {
+		tfxU32 total_effects;
+		tfxU32 total_sub_effects;
+		tfxU32 total_emitters;
+		tfxU32 total_attribute_nodes;
+		tfxU32 total_node_lookup_indexes;
+		tfxU32 total_shapes;
+	};
+
 	struct tfxEffectLibrary {
 		tfxStorageMap<tfxEffectEmitter*> effect_paths;
-		tfxvec<tfxEffectEmitter> effects;
 		tfxStorageMap<tfxImageData> particle_shapes;
+		tfxvec<tfxEffectEmitter> effects;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxvec<tfxEmitterProperties> emitter_properties;
 
@@ -4145,7 +4182,8 @@ typedef tfxU32 tfxEffectID;
 		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
 		return (d2 > d1) - (d2 < d1);
 	}
-	static inline void InsertionSortParticles(tfxvec<tfxParticle> &particles, tfxvec<tfxParticle> &current_buffer) {
+	static inline void InsertionSortParticles(tfxRangeVec<tfxParticle> &particle_range, tfxRangeVec<tfxParticle> &current_buffer) {
+		tfxMemoryRange<tfxParticle> &particles = particle_range.GetFirstRange();
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticle key = particles[i];
 			int j = i - 1;
@@ -4202,11 +4240,19 @@ typedef tfxU32 tfxEffectID;
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
 	int GetShapesInPackage(const char *filename);
+	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
 	int LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
 	//---
 	//Prepare an effect template for setting up function call backs to customise the behaviour of the effect in realtime
 	//Returns true on success.
 	bool PrepareEffectTemplate(tfxEffectLibrary &library, const char *name, tfxEffectTemplate &effect_template);
+
+	bool InitialiseTimelineFX(
+		tfxU32 max_pm_particles = 50000,	
+		tfxU32 max_pm_effects_and_emitters = 2500,
+		tfxU32 max_library_effects_and_emitters = 1000
+	);
+	void DestroyTimelineFX();
 }
 
