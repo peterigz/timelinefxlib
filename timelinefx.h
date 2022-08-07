@@ -3292,8 +3292,8 @@ typedef tfxU32 tfxEffectID;
 		tfxEffectEmitter *next_ptr;
 		//Pointer to the sub effect's particle that spawned it
 		tfxParticle *parent_particle;
-		//Container for all the particles that this emitter will spawn. The memory allocator for this is in the ParticleManager
-		tfxRangeVec<tfxParticle> particles;
+		//Index to the container for all the particles that this emitter will spawn. This is stored in the ParticleManager
+		tfxU32 particle_store_index;
 		//State flags for emitters and effects
 		tfxEmitterStateFlags flags;
 		tfxEffectPropertyFlags effect_flags;
@@ -3584,6 +3584,8 @@ typedef tfxU32 tfxEffectID;
 		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
 		tfxvec<tfxParticle> particles[tfxLAYERS][2];
 		tfxRangeAllocator<tfxParticle> particle_allocators[tfxLAYERS][2];
+		tfxvec<tfxRangeVec<tfxParticle>> particle_store[tfxLAYERS][2];
+		tfxvec<tfxU32> free_particle_stores[tfxLAYERS][2];
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
