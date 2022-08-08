@@ -7066,7 +7066,7 @@ namespace tfx {
 			if (e.flags & tfxEmitterStateFlags_enabled) {
 				unsigned int index = effects[buffer].bump_single_range();
 				effects[buffer][index] = e;
-				tfxEffectEmitter &emitter = effects[buffer].back();
+				tfxEffectEmitter &emitter = RangeBack<tfxEffectEmitter>(effects[buffer].GetFirstRange());
 				emitter.Init();
 				tfxEmitterProperties &properties = emitter.GetProperties();
 				emitter.parent = &effects[buffer][parent_index];
@@ -7201,7 +7201,7 @@ namespace tfx {
 		assert(particles[layer][current_pbuff].current_size != particles[layer][current_pbuff].capacity);
 		particles[layer][current_pbuff].current_size++;
 		particles[layer][current_pbuff].GetFirstRange().current_size++;
-		return particles[layer][current_pbuff].GetFirstRange().back();
+		return RangeBack<tfxParticle>(particles[layer][current_pbuff].GetFirstRange());
 	}
 
 	tfxComputeParticle& tfxParticleManager::GrabComputeParticle(unsigned int layer) {
@@ -7423,12 +7423,12 @@ namespace tfx {
 		return &effects[buffer][index];
 	}
 
-	tfxMemoryRange<tfxParticle> *tfxParticleManager::GetParticleBuffer(unsigned int layer) {
-		return &particles[layer][current_pbuff].GetFirstRange();
+	tfxRangeVec<tfxParticle> *tfxParticleManager::GetParticleBuffer(unsigned int layer) {
+		return &particles[layer][current_pbuff];
 	}
 
-	tfxMemoryRange<tfxEffectEmitter> *tfxParticleManager::GetEffectBuffer() {
-		return &effects[current_ebuff].GetFirstRange();
+	tfxRangeVec<tfxEffectEmitter> *tfxParticleManager::GetEffectBuffer() {
+		return &effects[current_ebuff];
 	}
 
 	bool tfxParticleManager::Init(unsigned int effects_limit, unsigned int particle_limit_per_layer) {
@@ -7452,11 +7452,11 @@ namespace tfx {
 	}
 
 	uint32_t tfxParticleManager::ParticleCount() {
-		unsigned int count = 0;
+		size_t count = 0;
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 			count += particles[layer][current_pbuff].size();
 		}
-		return count;
+		return (tfxU32)count;
 	}
 
 	void tfxParticleManager::ClearAll() {
@@ -7767,7 +7767,7 @@ namespace tfx {
 
 		e.current.amount_remainder = tween - 1.f;
 
-		pm.new_particles_index_start[properties.layer] = std::min(pm.new_particles_index_start[properties.layer], pm.particles[properties.layer][pm.current_pbuff].current_size);
+		pm.new_particles_index_start[properties.layer] = std::min(pm.new_particles_index_start[properties.layer], (tfxU32)pm.particles[properties.layer][pm.current_pbuff].current_size);
 
 		for (auto &position : pm.new_positions) {
 			if (!pm.FreeCapacity(properties.layer, is_compute)) {
@@ -8105,9 +8105,9 @@ namespace tfx {
 		tfxU32 max_pm_effects_and_emitters,
 		tfxU32 max_library_effects_and_emitters
 	) {
-		tfxMEMORY.pm_particles = CreateRangeAllocator<tfxParticle>(max_pm_particles);
-		tfxMEMORY.pm_effects_and_emitters = CreateRangeAllocator<tfxEffectEmitter>(max_pm_effects_and_emitters);
-		tfxMEMORY.max_library_effects_and_emitters = CreateRangeAllocator<tfxEffectEmitter>(max_library_effects_and_emitters);
+		tfxMEMORY.pm_particles = CreateRangeAllocator(max_pm_particles * sizeof(tfxParticle));
+		tfxMEMORY.pm_effects_and_emitters = CreateRangeAllocator(max_pm_effects_and_emitters * sizeof(tfxEffectEmitter));
+		tfxMEMORY.max_library_effects_and_emitters = CreateRangeAllocator(max_library_effects_and_emitters * sizeof(tfxEffectEmitter));
 		tfxMEMORY.initialised = true;
 		return true;
 	}
