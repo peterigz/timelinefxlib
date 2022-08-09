@@ -7199,8 +7199,7 @@ namespace tfx {
 
 	tfxParticle& tfxParticleManager::GrabCPUParticle(unsigned int layer) {
 		assert(particles[layer][current_pbuff].current_size != particles[layer][current_pbuff].capacity);
-		particles[layer][current_pbuff].current_size++;
-		particles[layer][current_pbuff].GetFirstRange().current_size++;
+		particles[layer][current_pbuff].bump_single_range();
 		return RangeBack<tfxParticle>(particles[layer][current_pbuff].GetFirstRange());
 	}
 

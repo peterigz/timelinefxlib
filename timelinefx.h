@@ -828,7 +828,7 @@ typedef tfxU32 tfxEffectID;
 
 	template <typename T>
 	inline size_t BumpRange(tfxMemoryRange &range) {
-		if (range.current_size == range.capacity) return range.current_size;
+		assert(range.current_size != range.capacity);	//Should not be bumping the range when there's no space
 		range.current_size++;
 		range.end_ptr = (T*)range.data + range.current_size;
 		return range.current_size;
@@ -1035,6 +1035,7 @@ typedef tfxU32 tfxEffectID;
 					return false;
 				}
 				capacity = size;
+				ResetIteratorIndex();
 			}
 			else {
 				size_t reserved_amount = AllocateMore<T>(*allocator, size, range_index);
@@ -1052,7 +1053,7 @@ typedef tfxU32 tfxEffectID;
 				if (!Allocate<T>(*allocator, capacity, range_index)) {
 					return false;
 				}
-				current_range_index = range_index;
+				ResetIteratorIndex();
 			}
 			else if (current_size == capacity) {
 				size_t new_capacity = _grow_capacity(current_size + 1);
