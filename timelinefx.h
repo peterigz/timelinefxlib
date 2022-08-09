@@ -4210,7 +4210,7 @@ typedef tfxU32 tfxEffectID;
 	}
 	static inline void InsertionSortParticles(tfxRangeVec<tfxParticle> &particle_range, tfxRangeVec<tfxParticle> &current_buffer) {
 		tfxMemoryRange &particles = particle_range.GetFirstRange();
-		tfxMemoryRange &current_buffer_range = particle_range.GetFirstRange();
+		tfxMemoryRange &current_buffer_range = current_buffer.GetFirstRange();
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticle key = ValueAt<tfxParticle>(particles, i);
 			int j = i - 1;

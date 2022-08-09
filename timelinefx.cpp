@@ -7299,6 +7299,8 @@ namespace tfx {
 				for (auto &p : particles[layer][current_pbuff]) {
 					p.parent = p.parent->next_ptr;
 					p.prev_index = index;
+					if (p.prev_index == particles[layer][current_pbuff].GetFirstRange().current_size)
+						int debug = 1;
 					tfxEmitterProperties &properties = p.parent->GetProperties();
 
 					if (!(p.data.flags & tfxParticleFlags_fresh)) {
@@ -7321,6 +7323,8 @@ namespace tfx {
 								tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
 								SetParticleAlignment(*new_particle, new_properties);
 								new_particle->prev_index = new_index;
+								if (new_particle->prev_index == particles[layer][current_pbuff].GetFirstRange().current_size)
+									int debug = 1;
 								new_particle->data.flags &= ~tfxParticleFlags_fresh;
 								new_particle->parent = new_particle->parent->next_ptr;
 								new_particle->next_ptr = SetNextParticle(layer, *new_particle, next_buffer);
@@ -7362,6 +7366,8 @@ namespace tfx {
 						tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
 						SetParticleAlignment(*new_particle, new_properties);
 						new_particle->prev_index = new_index;
+						if (new_particle->prev_index == particles[layer][current_pbuff].GetFirstRange().current_size)
+							int debug = 1;
 						new_particle->data.flags &= ~tfxParticleFlags_fresh;
 						new_particle->parent = new_particle->parent->next_ptr;
 						new_particle->next_ptr = SetNextParticle(layer, *new_particle, next_buffer);
