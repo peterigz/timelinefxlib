@@ -7066,7 +7066,7 @@ namespace tfx {
 			if (e.flags & tfxEmitterStateFlags_enabled) {
 				unsigned int index = effects[buffer].bump_single_range();
 				effects[buffer][index] = e;
-				tfxEffectEmitter &emitter = RangeBack<tfxEffectEmitter>(effects[buffer].GetFirstRange());
+				tfxEffectEmitter &emitter = BlockBack<tfxEffectEmitter>(effects[buffer].GetFirstBucket());
 				emitter.Init();
 				tfxEmitterProperties &properties = emitter.GetProperties();
 				emitter.parent = &effects[buffer][parent_index];
@@ -7200,7 +7200,7 @@ namespace tfx {
 	tfxParticle& tfxParticleManager::GrabCPUParticle(unsigned int layer) {
 		assert(particles[layer][current_pbuff].current_size != particles[layer][current_pbuff].capacity);
 		particles[layer][current_pbuff].bump_single_range();
-		return RangeBack<tfxParticle>(particles[layer][current_pbuff].GetFirstRange());
+		return BlockBack<tfxParticle>(particles[layer][current_pbuff].GetFirstBucket());
 	}
 
 	tfxComputeParticle& tfxParticleManager::GrabComputeParticle(unsigned int layer) {
@@ -7299,8 +7299,6 @@ namespace tfx {
 				for (auto &p : particles[layer][current_pbuff]) {
 					p.parent = p.parent->next_ptr;
 					p.prev_index = index;
-					if (p.prev_index == particles[layer][current_pbuff].GetFirstRange().current_size)
-						int debug = 1;
 					tfxEmitterProperties &properties = p.parent->GetProperties();
 
 					if (!(p.data.flags & tfxParticleFlags_fresh)) {
@@ -7323,8 +7321,6 @@ namespace tfx {
 								tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
 								SetParticleAlignment(*new_particle, new_properties);
 								new_particle->prev_index = new_index;
-								if (new_particle->prev_index == particles[layer][current_pbuff].GetFirstRange().current_size)
-									int debug = 1;
 								new_particle->data.flags &= ~tfxParticleFlags_fresh;
 								new_particle->parent = new_particle->parent->next_ptr;
 								new_particle->next_ptr = SetNextParticle(layer, *new_particle, next_buffer);
@@ -7366,8 +7362,6 @@ namespace tfx {
 						tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
 						SetParticleAlignment(*new_particle, new_properties);
 						new_particle->prev_index = new_index;
-						if (new_particle->prev_index == particles[layer][current_pbuff].GetFirstRange().current_size)
-							int debug = 1;
 						new_particle->data.flags &= ~tfxParticleFlags_fresh;
 						new_particle->parent = new_particle->parent->next_ptr;
 						new_particle->next_ptr = SetNextParticle(layer, *new_particle, next_buffer);
@@ -7428,11 +7422,11 @@ namespace tfx {
 		return &effects[buffer][index];
 	}
 
-	tfxRangeVec<tfxParticle> *tfxParticleManager::GetParticleBuffer(unsigned int layer) {
+	tfxBucketArray<tfxParticle> *tfxParticleManager::GetParticleBuffer(unsigned int layer) {
 		return &particles[layer][current_pbuff];
 	}
 
-	tfxRangeVec<tfxEffectEmitter> *tfxParticleManager::GetEffectBuffer() {
+	tfxBucketArray<tfxEffectEmitter> *tfxParticleManager::GetEffectBuffer() {
 		return &effects[current_ebuff];
 	}
 
@@ -8110,9 +8104,9 @@ namespace tfx {
 		tfxU32 max_pm_effects_and_emitters,
 		tfxU32 max_library_effects_and_emitters
 	) {
-		tfxMEMORY.pm_particles = CreateRangeAllocator(max_pm_particles * sizeof(tfxParticle));
-		tfxMEMORY.pm_effects_and_emitters = CreateRangeAllocator(max_pm_effects_and_emitters * sizeof(tfxEffectEmitter));
-		tfxMEMORY.max_library_effects_and_emitters = CreateRangeAllocator(max_library_effects_and_emitters * sizeof(tfxEffectEmitter));
+		tfxMEMORY.pm_particles = CreateBlockAllocator(max_pm_particles * sizeof(tfxParticle));
+		tfxMEMORY.pm_effects_and_emitters = CreateBlockAllocator(max_pm_effects_and_emitters * sizeof(tfxEffectEmitter));
+		tfxMEMORY.max_library_effects_and_emitters = CreateBlockAllocator(max_library_effects_and_emitters * sizeof(tfxEffectEmitter));
 		tfxMEMORY.initialised = true;
 		return true;
 	}
