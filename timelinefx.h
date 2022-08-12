@@ -3492,6 +3492,15 @@ typedef tfxU32 tfxEffectID;
 		}
 	}
 
+	struct tfxEffectLibraryStats {
+		tfxU32 total_effects;
+		tfxU32 total_sub_effects;
+		tfxU32 total_emitters;
+		tfxU32 total_attribute_nodes;
+		tfxU32 total_node_lookup_indexes;
+		tfxU32 total_shapes;
+	};
+
 	struct tfxEffectLibrary {
 		tfxStorageMap<tfxEffectEmitter*> effect_paths;
 		tfxvec<tfxEffectEmitter> effects;
@@ -3930,6 +3939,7 @@ typedef tfxU32 tfxEffectID;
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
 	int GetShapesInPackage(const char *filename);
+	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
 	int LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
 	//---

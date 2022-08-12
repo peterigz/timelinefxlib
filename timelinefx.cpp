@@ -6755,6 +6755,68 @@ namespace tfx {
 		return shape_count;
 	}
 
+	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats) {
+		int context = 0;
+		int error = 0;
+
+		tfxPackage package;
+		error = LoadPackage(filename, package);
+
+		tfxEntryInfo *data = package.GetFile("data.txt");
+
+		if (!data)
+			error = -5;
+
+
+		if (error < 0) {
+			package.Free();
+			return error;
+		}
+
+		memset(&stats, 0, sizeof(tfxEffectLibraryStats));
+		bool inside_emitter = false;
+
+		while (!data->data.EoF()) {
+			tfxText line = data->data.ReadLine();
+			bool context_set = false;
+			if (StringIsUInt(line.c_str())) {
+				context_set = true;
+				if (context == tfxEndEmitter) {
+					inside_emitter = false;
+				}
+			}
+			if (context_set == false) {
+				tfxvec<tfxText> pair = SplitString(line.c_str());
+				if (pair.size() != 2) {
+					pair = SplitString(line.c_str(), 44);
+					if (pair.size() < 2) {
+						error = 1;
+						break;
+					}
+				}
+				if (context == tfxStartShapes) {
+					if (pair.size() >= 5) {
+						int frame_count = atoi(pair[2].c_str());
+						stats.total_shapes += frame_count;
+					}
+				}
+				else if (context == tfxStartEmitter) {
+					inside_emitter = true;
+					stats.total_emitters++;
+				}
+				else if (context == tfxStartEffect) {
+					if (inside_emitter)
+						stats.total_sub_effects++;
+					else
+						stats.total_effects++;
+				}
+			}
+		}
+
+		return error;
+	}
+
+
 	int LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		assert(shape_loader);
 		lib.Clear();
