@@ -114,6 +114,7 @@
 #include <iostream>					//temp for std::cout
 #include <immintrin.h>
 #include <intrin.h>
+#include <mutex>
 
 namespace tfx {
 
@@ -168,6 +169,8 @@ typedef int tfxS32;
 typedef unsigned long long tfxU64;
 typedef long long tfxS64;
 typedef tfxU32 tfxEffectID;
+typedef unsigned long long tfxKey;
+
 
 	//----------------------------------------------------------
 	//enums/flags
@@ -657,6 +660,110 @@ typedef tfxU32 tfxEffectID;
 
 	//-----------------------------------------------------------
 	//Utility things:
+	struct tfxMemoryTrackerEntry {
+		const char *name;
+		tfxU64 amount_allocated;
+		void *address;
+		bool is_alive;
+	};
+
+	struct tfxMemoryTrackerPair {
+		tfxKey key;
+		tfxMemoryTrackerEntry log;
+		tfxMemoryTrackerPair(tfxKey k, tfxMemoryTrackerEntry l) : key(k), log(l) {}
+	};
+
+	struct tfxLogList {
+		tfxU32 current_size;
+		tfxU32 capacity;
+		tfxMemoryTrackerPair* data;
+
+		inline tfxLogList() { current_size = capacity = 0; data = NULL; }
+		inline ~tfxLogList() { if (data) free(data); data = NULL; current_size = capacity = 0; }
+
+		inline bool			empty() { return current_size == 0; }
+		inline tfxMemoryTrackerPair&           operator[](tfxU32 i) { return data[i]; }
+		inline const tfxMemoryTrackerPair&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
+
+		inline void         free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
+		inline void         clear() { if (data) { current_size = 0; } }
+		inline tfxMemoryTrackerPair*           begin() { return data; }
+		inline const tfxMemoryTrackerPair*     begin() const { return data; }
+		inline tfxMemoryTrackerPair*           end() { return data + current_size; }
+		inline const tfxMemoryTrackerPair*     end() const { return data + current_size; }
+
+		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
+		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; tfxMemoryTrackerPair* new_data = (tfxMemoryTrackerPair*)malloc((size_t)new_capacity * sizeof(tfxMemoryTrackerPair)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(tfxMemoryTrackerPair)); free(data); } data = new_data; capacity = new_capacity; }
+
+		inline tfxMemoryTrackerPair*           erase(const tfxMemoryTrackerPair* it) { assert(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(tfxMemoryTrackerPair)); current_size--; return data + off; }
+		inline tfxMemoryTrackerPair*           erase(const tfxMemoryTrackerPair* it, const tfxMemoryTrackerPair* it_last) { assert(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove(data + off, data + off + count, ((size_t)current_size - (size_t)off - count) * sizeof(tfxMemoryTrackerPair)); current_size -= (tfxU32)count; return data + off; }
+		inline tfxMemoryTrackerPair*           insert(const tfxMemoryTrackerPair* it, const tfxMemoryTrackerPair& v) { assert(it >= data && it <= data + current_size); const ptrdiff_t off = it - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(tfxMemoryTrackerPair)); new((void*)(data + off)) tfxMemoryTrackerPair(v); current_size++; return data + off; }
+
+	};
+
+	struct tfxMemoryTrackerLog{
+
+		tfxLogList log;
+		std::mutex insert_mutex;
+
+		//Insert a new T value into the storage
+		void Insert(tfxKey key, const tfxMemoryTrackerEntry &value) {
+			SetIndex(key, value);
+		}
+
+		void SetIndex(tfxKey key, const tfxMemoryTrackerEntry &value) {
+			tfxMemoryTrackerPair* it = LowerBound(key);
+			if (it == log.end() || it->key != key)
+			{
+				std::lock_guard<std::mutex> lock(insert_mutex);
+				log.insert(it, tfxMemoryTrackerPair(key, value));
+				return;
+			}
+		}
+
+		inline tfxMemoryTrackerEntry *At(tfxKey key) {
+			return GetIndex(key);
+		}
+
+		tfxMemoryTrackerEntry *GetIndex(tfxKey key) {
+			tfxMemoryTrackerPair* it = LowerBound(key);
+			if (it == log.end() || it->key != key)
+				return NULL;
+			return &it->log;
+		}
+
+		tfxMemoryTrackerPair* LowerBound(tfxKey key)
+		{
+			tfxMemoryTrackerPair* first = log.data;
+			tfxMemoryTrackerPair* last = log.data + log.current_size;
+			size_t count = (size_t)(last - first);
+			while (count > 0)
+			{
+				size_t count2 = count >> 1;
+				tfxMemoryTrackerPair* mid = first + count2;
+				if (mid->key < key)
+				{
+					first = ++mid;
+					count -= count2 + 1;
+				}
+				else
+				{
+					count = count2;
+				}
+			}
+			return first;
+		}
+
+		inline bool ValidKey(tfxKey key) {
+			return GetIndex(key) != NULL;
+		}
+	};
+
+	extern tfxMemoryTrackerLog tfxMEMORY_TRACKER;
+
+#define tfxALLOCATE(tracker_name, dst, size) malloc(size); tfxMemoryTrackerEntry tracker; tracker.name = tracker_name; tracker.amount_allocated = size; tracker.address = dst; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker); 
+#define tfxFREE(dst) free(dst); assert(tfxMEMORY_TRACKER.ValidKey((tfxKey)dst)); tfxMEMORY_TRACKER.At((tfxKey)dst).is_alive = false;
 
 	//Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut
 	//std::vector replacement with some extra stuff and tweaks specific to Qulkan/TimelineFX
@@ -680,7 +787,7 @@ typedef tfxU32 tfxEffectID;
 		inline ~tfxvec() { if (data) free(data); data = NULL; current_size = capacity = 0; }
 
 		inline bool			empty() { return current_size == 0; }
-		inline tfxU32			size() { return current_size; }
+		inline tfxU32		size() { return current_size; }
 		inline const tfxU32	size() const { return current_size; }
 		inline T&           operator[](tfxU32 i) { return data[i]; }
 		inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
@@ -706,7 +813,8 @@ typedef tfxU32 tfxEffectID;
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 		inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
-		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; T* new_data = (T*)malloc((size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); free(data); } data = new_data; capacity = new_capacity; }
+		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; 
+			T* new_data = (T*)tfxALLOCATE("Test", new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); free(data); } data = new_data; capacity = new_capacity; }
 
 		inline T&	        push_back(const T& v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void*)(data + current_size)) T(v); current_size++; return data[current_size - 1]; }
 		inline void         pop() { assert(current_size > 0); current_size--; }
@@ -1891,8 +1999,6 @@ typedef tfxU32 tfxEffectID;
 		const bool IsFloat() const;
 	};
 
-	typedef unsigned long long tfxKey;
-
 	//Simple storage map for storing things by key/pair. The data will be in order that you add items, but the map will be in key order so just do a foreach on the data
 	//and use At() to retrieve data items by name use [] overload to fetch by index if you have that.
 	//Should not be used to constantly insert/remove things every frame, it's designed for setting up lists and fetching values in loops (by index preferably), and modifying based on user interaction or setting up new situation.
@@ -1924,7 +2030,7 @@ typedef tfxU32 tfxEffectID;
 		}
 
 		//Insert a new T value into the storage
-		inline void Insert(tfxKey key, const T &value) {
+		void Insert(tfxKey key, const T &value) {
 			SetIndex(key, value);
 		}
 
@@ -2155,150 +2261,13 @@ typedef tfxU32 tfxEffectID;
 
 	};
 
+
 #define tfxPROFILE tfxProfileTag tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
 
 	bool EndOfProfiles();
 	tfxProfile* NextProfile();
 
 #define tfxINVALID 0xFFFFFFFF
-
-	struct tfxrange {
-		tfxU32 capacity;
-		tfxU32 offset_into_memory;
-	};
-
-	struct tfxmemory {
-		tfxU32 current_size;
-		tfxU32 capacity;
-		void* data;
-		tfxvec<tfxrange> ranges;
-		tfxStorageMap<tfxvec<tfxU32>> free_ranges;
-
-		inline tfxmemory() { current_size = capacity = 0; data = NULL; }
-		inline tfxmemory(tfxU32 qty) { current_size = capacity = 0; data = NULL; resize(qty); }
-		inline ~tfxmemory() { if (data) free(data); data = NULL; current_size = capacity = 0; }
-
-		inline bool					empty() { return current_size == 0; }
-		inline tfxU32			size() { return current_size; }
-		inline const tfxU32	size() const { return current_size; }
-
-		inline void					free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
-		inline void					clear() { if (data) { current_size = 0; ranges.clear(); free_ranges.Clear(); } }
-
-		inline tfxU32			_grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
-		inline void					resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
-		inline void					shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
-		inline void					reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; char* new_data = (char*)malloc((size_t)new_capacity * sizeof(char)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(char)); free(data); } data = new_data; capacity = new_capacity; }
-		inline tfxU32			free_unused_space() { return capacity - current_size; }
-
-		inline bool has_free_range_available(tfxU32 bytes) {
-			return free_ranges.ValidKey(tfxKey(bytes));
-		}
-		inline tfxU32			get_range(tfxU32 bytes) { 
-			if (current_size + bytes >= capacity) reserve(_grow_capacity(current_size + bytes)); 
-			tfxrange range;
-			range.offset_into_memory = current_size;
-			range.capacity = bytes;
-			if (free_ranges.ValidKey(tfxKey(bytes))) {
-				tfxvec<tfxU32> &free = free_ranges.At(tfxKey(bytes));
-				if (!free.empty()) {
-					return free.pop_back();
-				}
-			}
-			ranges.push_back(range);
-			current_size += bytes;
-			return ranges.current_size - 1;
-		}
-		inline void					free_range(tfxU32 index) {
-			assert(index < ranges.size());		//Index to free must be within size of ranges list
-			int capacity = ranges[index].capacity;
-			if (!free_ranges.ValidKey(tfxKey(ranges[index].capacity))) {
-				tfxvec<tfxU32> new_free_ranges;
-				free_ranges.Insert((tfxKey)ranges[index].capacity, new_free_ranges);
-				free_ranges.At((tfxKey)ranges[index].capacity).push_back(index);
-			}
-			else {
-				free_ranges.At((tfxKey)ranges[index].capacity).push_back(index);
-			}
-		}
-
-	};
-
-	//Fixed size ring buffer, you must reserve the amount of memory you need ahead of time with reserve or just use the constructor specifying the number of elements you need
-	//Calling reserve on a buffer that already contains data will erase that data.
-	//Iterate over the ring with:
-	/*
-	ring.reset();
-	while(!ring.eob()) {
-		auto &item = ring.next();
-	}
-	*/
-	//You must call free_all when done with the buffer, there's no deconstructor
-	//You can also use this in combination with tfxmemory, assign_memory to grab a range of memory from there instead of allocating some. In this case do not call free_all or you will delete
-	//the memory in tfxmem instead! Basically this is only for use in TimelineFX internally.
-	template<typename T>
-	struct tfxring {
-		tfxU32 current_size;
-		tfxU32 capacity;
-		tfxU32 start_index;
-		tfxU32 pos;
-		tfxU32 range_index;
-		T* data;
-		inline tfxring() { pos = start_index = current_size = capacity = 0; data = NULL; range_index = tfxINVALID; }
-		inline tfxring(tfxU32 qty) { pos = start_index = current_size = capacity = 0; data = NULL; reserve(qty); }
-		inline tfxring(tfxmemory &mem, tfxU32 index, tfxU32 size) { pos = start_index = current_size = 0; capacity = size; data = mem.data + mem.ranges[index].offset_into_memory; range_index = index; }
-
-		inline bool			empty() { return current_size == 0; }
-		inline bool			full() { return current_size == capacity; }
-		inline void         free_all() { assert(range_index == tfxINVALID); /*Call free_range instead if using tfxmemory*/ if (data) { pos = start_index = current_size = capacity = 0; free(data); data = NULL; } }
-		inline void         free_range(tfxmemory &mem) { 
-		if (range_index == tfxINVALID) return; 
-			if (data) { 
-				pos = start_index = current_size = capacity = 0; 
-				mem.free_range(range_index); 
-				range_index = tfxINVALID; 
-				data = NULL; 
-			} 
-		}
-		inline void			prep_for_new() { start_index = current_size = pos = 0; data = NULL; data = (T*)malloc((size_t)capacity * sizeof(T)); }
-		inline void         clear() { if (data) { start_index = pos = current_size = 0; } }
-		inline tfxU32			size() { return current_size; }
-		inline const tfxU32	size() const { return current_size; }
-		inline T&           operator[](tfxU32 i) { return data[(i + start_index) % capacity]; }
-		inline const T&     operator[](tfxU32 i) const { return data[(i + start_index) % capacity]; }
-		inline T&           AtAbs(tfxU32 i) { return data[i]; }
-		inline const T&     AtAbs(tfxU32 i) const { return data[i]; }
-
-		inline tfxU32 end_index() { return (start_index + current_size) % capacity; }
-		inline tfxU32 before_start_index() { return start_index == 0 ? capacity - 1 : start_index - 1; }
-		inline tfxU32 last_index() { return (start_index + current_size - 1) % capacity; }
-		inline T*			eob_ptr() { return data + (start_index + current_size) % capacity; }
-		inline T&           front() { assert(current_size > 0); return data[start_index]; }
-		inline const T&     front() const { assert(current_size > 0); return data[start_index]; }
-		inline T&           back() { assert(current_size > 0); return data[last_index()]; }
-		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
-
-		inline void         pop() { assert(current_size > 0); current_size--; }
-		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
-		inline bool	        push_back(const T& v) { if (current_size == capacity) return false; new((void*)(data + end_index())) T(v); current_size++; return true; }
-		inline bool	        push_front(const T& v) { if (current_size == capacity) return false; new((void*)(data + before_start_index())) T(v); current_size++; start_index = before_start_index(); return true; }
-		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; free(data); data = (T*)malloc((size_t)new_capacity * sizeof(T)); capacity = new_capacity; start_index = current_size = 0; }
-		inline void			assign_memory(tfxmemory &mem, tfxU32 element_size, tfxU32 element_count) { 
-			assert(range_index == tfxINVALID);	//call refresh instead if a range has already been assigned, or free_all and then assign another range;
-			if (!element_count) return;
-			int index = mem.get_range(element_size * element_count);
-			pos = start_index = current_size = 0; range_index = index; capacity = element_count; void *ptr = (char*)mem.data + mem.ranges[index].offset_into_memory; data = static_cast<T*>(ptr); }
-		inline void			refresh(tfxmemory &mem) { void *ptr = (char*)mem.data + mem.ranges[range_index].offset_into_memory; data = static_cast<T*>(ptr); }
-		inline void			reset_to_null() { pos = start_index = current_size = 0; range_index = tfxINVALID; data = NULL; }
-		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
-		inline void			bump(tfxU32 amount) { if (current_size == 0) return; if (amount > current_size) amount = current_size; start_index += amount; start_index %= capacity; current_size -= amount; }
-		inline void			shrink(tfxU32 amount) { if (amount > current_size) current_size = 0; else current_size -= amount; }
-
-		inline bool			reset() { if (current_size == 0) return false; assert(data); pos = 0; return true; }
-		inline T&			next() { assert(current_size > 0); tfxU32 current_pos = (start_index + pos) % capacity; pos++; return data[current_pos]; }
-		inline T&			next(int start) { assert(current_size > 0); tfxU32 current_pos = (start + pos) % capacity; pos++; return data[current_pos]; }
-		inline bool			eob() { return pos >= current_size; }
-	};
 
 	const tfxU32 tfxMAGIC_NUMBER = '!XFT';
 	const tfxU32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
@@ -2310,7 +2279,7 @@ typedef tfxU32 tfxEffectID;
 		tfxU32 file_version;						//The version of the file
 		tfxU32 flags;								//Any flags for the file
 		tfxU32 reserved0;							//Reserved for future if needed
-		tfxU64 offset_to_inventory;				//Memory offset for the inventory of files
+		tfxU64 offset_to_inventory;					//Memory offset for the inventory of files
 		tfxU64 reserved1;							//More reserved space
 		tfxU64 reserved2;							//More reserved space
 		tfxU64 reserved3;							//More reserved space
@@ -2319,18 +2288,18 @@ typedef tfxU32 tfxEffectID;
 	};
 
 	struct tfxEntryInfo {
-		tfxText file_name;						//The file name of the name stored in the package
+		tfxText file_name;							//The file name of the name stored in the package
 		tfxU64 offset_from_start_of_file;			//Offset from the start of the file to where the file is located
 		tfxU64 file_size;							//The size of the file
-		tfxstream data;							//The file data
+		tfxstream data;								//The file data
 		
 		void FreeData();
 	};
 
 	struct tfxInventory {
 		tfxU32 magic_number;						//Magic number to confirm format of the Inventory
-		tfxU32 entry_count;						//Number of files in the inventory
-		tfxStorageMap<tfxEntryInfo> entries;	//The inventory list
+		tfxU32 entry_count;							//Number of files in the inventory
+		tfxStorageMap<tfxEntryInfo> entries;		//The inventory list
 	};
 
 	struct tfxPackage {
@@ -2338,7 +2307,7 @@ typedef tfxU32 tfxEffectID;
 		tfxHeader header;
 		tfxInventory inventory;
 		tfxU64 file_size;							//The total file size of the package, should match file size on disk
-		tfxstream file_data;					//Dump of the data from the package file on disk
+		tfxstream file_data;						//Dump of the data from the package file on disk
 
 		~tfxPackage();
 
@@ -3752,12 +3721,13 @@ typedef tfxU32 tfxEffectID;
 	};
 
 	struct tfxDataTypesDictionary {
+		bool initialised = false;
 		tfxStorageMap<tfxDataType> names_and_types;
 
-		tfxDataTypesDictionary();
+		void Init();
 	};
 
-	static tfxDataTypesDictionary data_types;
+	extern tfxDataTypesDictionary data_types;
 
 	//Internal functions
 	//Some file IO functions

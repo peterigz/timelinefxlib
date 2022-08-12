@@ -4774,7 +4774,7 @@ namespace tfx {
 		return free_global_graphs.size() + free_property_graphs.size() + free_base_graphs.size() + free_variation_graphs.size() + free_overtime_graphs.size();
 	}
 
-	tfxDataTypesDictionary::tfxDataTypesDictionary() {
+	void tfxDataTypesDictionary::Init() {
 		names_and_types.Insert("name", tfxString);
 		names_and_types.Insert("image_index", tfxUint);
 		names_and_types.Insert("image_handle_x", tfxFloat);
@@ -4912,6 +4912,7 @@ namespace tfx {
 		names_and_types.Insert("try_autorecover", tfxBool);
 		names_and_types.Insert("autorecovery_file", tfxString);
 		names_and_types.Insert("draw_outlines", tfxBool);
+		initialised = true;
 	}
 
 	int ValidateEffectPackage(const char *filename) {
@@ -6592,6 +6593,7 @@ namespace tfx {
 	}
 
 	bool LoadDataFile(tfxStorageMap<tfxDataEntry> &map, const char* path) {
+		if (!data_types.initialised) data_types.Init();
 		FILE* fp;
 		fp = fopen(path, "r");
 		if (fp == NULL) {
@@ -6819,6 +6821,7 @@ namespace tfx {
 
 	int LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		assert(shape_loader);
+		if (!data_types.initialised) data_types.Init();
 		lib.Clear();
 
 		tfxvec<tfxEffectEmitter> effect_stack;
@@ -8083,6 +8086,8 @@ namespace tfx {
 	tfxU32 tfxCURRENT_PROFILE_OFFSET = 0;
 	const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
 	tfxProfile tfxPROFILE_ARRAY[tfxPROFILE_COUNT];
+	tfxMemoryTrackerLog tfxMEMORY_TRACKER;
+	tfxDataTypesDictionary data_types;
 
 	bool EndOfProfiles() {
 		assert(tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code
