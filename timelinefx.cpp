@@ -7438,7 +7438,7 @@ namespace tfx {
 					}
 				}
 				if (flags & tfxEffectManagerFlags_guarantee_order) {
-					InsertionSortParticles(particle_blocks[layer][next_buffer], particle_blocks[layer][next_buffer], particles[layer][next_buffer], particles[layer][current_pbuff]);
+					InsertionSortParticles(particle_blocks[layer][next_buffer], particle_blocks[layer][current_pbuff], particles[layer][next_buffer]);
 				}
 			}
 		}
@@ -7456,7 +7456,7 @@ namespace tfx {
 			for (auto &p : particles[layer][current_pbuff]) {
 				p.data.depth = LengthVec3NoSqR(p.data.world_position - camera_position);
 			}
-			InsertionSortParticles(particle_blocks[layer][current_pbuff], particle_blocks[layer][!current_pbuff], particles[layer][current_pbuff], particles[layer][!current_pbuff]);
+			InsertionSortParticles(particle_blocks[layer][current_pbuff], particle_blocks[layer][!current_pbuff], particles[layer][current_pbuff]);
 		}
 	}
 

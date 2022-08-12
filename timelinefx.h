@@ -4594,18 +4594,18 @@ static inline tfxLocalStr##size_to name(const tfxLocalStr##size_from &from_text,
 		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
 		return (d2 > d1) - (d2 < d1);
 	}
-	static inline void InsertionSortParticles(tfxArray<tfxMemoryBlock*> blocks, tfxArray<tfxMemoryBlock*> current_blocks, tfxBucketArray<tfxParticle> &particles, tfxBucketArray<tfxParticle> &current_buffer) {
+	static inline void InsertionSortParticles(tfxArray<tfxMemoryBlock*> blocks, tfxArray<tfxMemoryBlock*> current_blocks, tfxBucketArray<tfxParticle> &particles) {
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticle key = ValueAt<tfxParticle>(*blocks[i / particles.size_of_each_bucket], i % particles.size_of_each_bucket);
 			int j = i - 1;
 
 			while (j >= 0 && key.data.depth > ValueAt<tfxParticle>(*blocks[j / particles.size_of_each_bucket], j % particles.size_of_each_bucket).data.depth) {
-				ValueAt<tfxParticle>(*blocks[(j +1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket) = ValueAt<tfxParticle>(*blocks[j / particles.size_of_each_bucket], j % particles.size_of_each_bucket);
-				ValueAt<tfxParticle>(*current_blocks[(j + 1) / particles.size_of_each_bucket], ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket).prev_index).next_ptr = &ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket);
+				ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket) = ValueAt<tfxParticle>(*blocks[j / particles.size_of_each_bucket], j % particles.size_of_each_bucket);
+				ValueAt<tfxParticle>(*current_blocks[(j + 1) / particles.size_of_each_bucket], ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket).prev_index % particles.size_of_each_bucket).next_ptr = &ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket);
 				--j;
 			}
 			ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket) = key;
-			ValueAt<tfxParticle>(*current_blocks[(j + 1) / particles.size_of_each_bucket], ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket).prev_index).next_ptr = &ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket);
+			ValueAt<tfxParticle>(*current_blocks[(j + 1) / particles.size_of_each_bucket], ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket).prev_index % particles.size_of_each_bucket).next_ptr = &ValueAt<tfxParticle>(*blocks[(j + 1) / particles.size_of_each_bucket], (j + 1) % particles.size_of_each_bucket);
 		}
 	}
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
