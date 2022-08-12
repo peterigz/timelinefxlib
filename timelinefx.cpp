@@ -777,16 +777,16 @@ namespace tfx {
 			return;
 		}
 
-		const int write_off = (string.size() != 0) ? string.size() : 1;
+		const int write_off = (current_size != 0) ? current_size : 1;
 		const int needed_sz = write_off + len;
-		if (write_off + (tfxU32)len >= string.capacity)
+		if (write_off + (tfxU32)len >= capacity)
 		{
-			int new_capacity = string.capacity * 2;
-			string.reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
+			int new_capacity = capacity * 2;
+			reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
 		}
 
-		string.resize(needed_sz);
-		FormatString(&string[write_off - 1], (size_t)len + 1, format, args);
+		resize(needed_sz);
+		FormatString(&data[write_off - 1], (size_t)len + 1, format, args);
 		va_end(args_copy);
 
 	}
@@ -799,7 +799,7 @@ namespace tfx {
 		tfxU32 pos = 0;
 		int found = 0;
 		while (compare.Length() + pos <= Length()) {
-			if (strncmp(lower.string.data + pos, compare.string.data, compare.Length()) == 0) {
+			if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) {
 				return pos;
 			}
 			++pos;
@@ -809,7 +809,7 @@ namespace tfx {
 
 	tfxText tfxText::Lower() {
 		tfxText convert = *this;
-		for (auto &c : convert.string) {
+		for (auto &c : convert) {
 			c = tolower(c);
 		}
 		return convert;
@@ -829,7 +829,7 @@ namespace tfx {
 			return false;
 
 		tfxU32 l = Length();
-		if (fwrite(string.data, 1, Length(), file) != Length())
+		if (fwrite(data, 1, Length(), file) != Length())
 			return false;
 
 		fclose(file);
@@ -838,7 +838,7 @@ namespace tfx {
 
 	const bool tfxText::IsInt() const {
 		if (!Length()) return false;
-		for (auto c : string) {
+		for (auto c : *this) {
 			if (c >= '0' && c <= '9');
 			else {
 				return false;
@@ -850,7 +850,7 @@ namespace tfx {
 	const bool tfxText::IsFloat() const {
 		if (!Length()) return false;
 		int dot_count = 0;
-		for (auto c : string) {
+		for (auto c : *this) {
 			if (c >= '0' && c <= '9');
 			else if (c == '.' && dot_count == 0) {
 				dot_count++;
@@ -876,16 +876,16 @@ namespace tfx {
 			return;
 		}
 
-		const int write_off = (string.size() != 0) ? string.size() : 1;
+		const int write_off = (current_size != 0) ? current_size : 1;
 		const int needed_sz = write_off + len;
-		if (write_off + (tfxU32)len >= string.capacity)
+		if (write_off + (tfxU32)len >= capacity)
 		{
-			int new_capacity = string.capacity * 2;
-			string.reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
+			int new_capacity = capacity * 2;
+			reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
 		}
 
-		string.resize(needed_sz);
-		FormatString(&string[write_off - 1], (size_t)len + 1, format, args_copy);
+		resize(needed_sz);
+		FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
 		va_end(args_copy);
 
 		va_end(args);
@@ -1063,8 +1063,8 @@ namespace tfx {
 		fwrite((char*)&package.inventory.magic_number, 1, sizeof(tfxU32), file);
 		fwrite((char*)&package.inventory.entry_count, 1, sizeof(tfxU32), file);
 		for (auto &entry : package.inventory.entries.data) {
-			fwrite((char*)&entry.file_name.string.current_size, 1, sizeof(tfxU32), file);
-			fwrite(entry.file_name.c_str(), 1, entry.file_name.string.current_size, file);
+			fwrite((char*)&entry.file_name.current_size, 1, sizeof(tfxU32), file);
+			fwrite(entry.file_name.c_str(), 1, entry.file_name.current_size, file);
 			fwrite((char*)&entry.file_size, 1, sizeof(tfxU64), file);
 			fwrite((char*)&entry.offset_from_start_of_file, 1, sizeof(tfxU64), file);
 		}
@@ -1108,8 +1108,8 @@ namespace tfx {
 		file.Write(&package.inventory.magic_number, sizeof(tfxU32));
 		file.Write(&package.inventory.entry_count, sizeof(tfxU32));
 		for (auto &entry : package.inventory.entries.data) {
-			file.Write(&entry.file_name.string.current_size, sizeof(tfxU32));
-			file.Write(entry.file_name.string.data, entry.file_name.string.current_size);
+			file.Write(&entry.file_name.current_size, sizeof(tfxU32));
+			file.Write(entry.file_name.data, entry.file_name.current_size);
 			file.Write(&entry.file_size, sizeof(tfxU64));
 			file.Write(&entry.offset_from_start_of_file, sizeof(tfxU64));
 		}
@@ -1131,7 +1131,7 @@ namespace tfx {
 		space += sizeof(tfxU32);
 		for (auto &entry : package.inventory.entries.data) {
 			space += sizeof(tfxU32);
-			space += entry.file_name.string.current_size;
+			space += entry.file_name.current_size;
 			space += sizeof(tfxU64);
 			space += sizeof(tfxU64);
 		}
@@ -1169,8 +1169,8 @@ namespace tfx {
 			tfxEntryInfo entry;
 			tfxU32 file_name_size;
 			package.file_data.Read((char*)&file_name_size, sizeof(tfxU32));
-			entry.file_name.string.resize(file_name_size);
-			package.file_data.Read(entry.file_name.string.data, file_name_size);
+			entry.file_name.resize(file_name_size);
+			package.file_data.Read(entry.file_name.data, file_name_size);
 			package.file_data.Read((char*)&entry.file_size, sizeof(tfxU64));
 			package.file_data.Read((char*)&entry.offset_from_start_of_file, sizeof(tfxU64));
 			package.inventory.entries.Insert(entry.file_name, entry);
@@ -1211,8 +1211,8 @@ namespace tfx {
 			tfxEntryInfo entry;
 			tfxU32 file_name_size;
 			package.file_data.Read((char*)&file_name_size, sizeof(tfxU32));
-			entry.file_name.string.resize(file_name_size);
-			package.file_data.Read(entry.file_name.string.data, file_name_size);
+			entry.file_name.resize(file_name_size);
+			package.file_data.Read(entry.file_name.data, file_name_size);
 			package.file_data.Read((char*)&entry.file_size, sizeof(tfxU64));
 			package.file_data.Read((char*)&entry.offset_from_start_of_file, sizeof(tfxU64));
 			package.inventory.entries.Insert(entry.file_name, entry);
@@ -6634,7 +6634,7 @@ namespace tfx {
 		tfxvec<tfxText> ret;
 
 		tfxText line;
-		for (char c : str.string) {
+		for (char c : str) {
 			if (c == delim && line.Length() && c != NULL) {
 				ret.push_back(line);
 				line.Clear();
@@ -6653,7 +6653,7 @@ namespace tfx {
 
 	bool StringIsUInt(const tfxText &s) {
 
-		for (auto c : s.string) {
+		for (auto c : s) {
 			if (!std::isdigit(c) && c != 0)
 				return false;
 		}

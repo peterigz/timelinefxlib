@@ -809,7 +809,7 @@ typedef unsigned long long tfxKey;
 		inline T&           parent() { assert(current_size > 1); return data[current_size - 2]; }
 		inline const T&     parent() const { assert(current_size > 1); return data[current_size - 2]; }
 
-		inline tfxU32          _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 		inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
@@ -829,7 +829,7 @@ typedef unsigned long long tfxKey;
 		inline const T*     find(const T& v) const { const T* _data = data;  const T* data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
 		inline bool         find_erase(const T& v) { const T* it = find(v); if (it < data + current_size) { erase(it); return true; } return false; }
 		inline bool         find_erase_unsorted(const T& v) { const T* it = find(v); if (it < data + current_size) { erase_unsorted(it); return true; } return false; }
-		inline tfxU32          index_from_ptr(const T* it) const { assert(it >= data && it < data + current_size); const ptrdiff_t off = it - data; return (tfxU32)off; }
+		inline tfxU32       index_from_ptr(const T* it) const { assert(it >= data && it < data + current_size); const ptrdiff_t off = it - data; return (tfxU32)off; }
 
 		inline void			create_pool(tfxU32 amount) { assert(current_size == 0); T base; reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 		inline void			create_pool_with(tfxU32 amount, const T &base) { assert(current_size == 0);  reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
@@ -880,7 +880,7 @@ typedef unsigned long long tfxKey;
 		}
 
 		inline bool			Empty() { return size == 0; }
-		inline tfxU64			Size() { return size; }
+		inline tfxU64		Size() { return size; }
 		inline const tfxU64	Size() const { return size; }
 
 		inline void			FreeAll() { if (data) { size = size = 0; free(data); data = NULL; } }
@@ -1948,56 +1948,170 @@ typedef unsigned long long tfxKey;
 
 	//Very simple string builder
 	struct tfxText {
-		tfxvec<char> string;
+		char *data;
+		tfxU32 current_size;
+		tfxU32 capacity;
+		bool is_local_buffer;
 
-		tfxText() {}
-		tfxText(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (string.capacity < length) string.reserve((tfxU32)length); memcpy(string.data, text, length); string.current_size = (tfxU32)length; NullTerminate(); }
-		inline char operator[](tfxU32 i) const { assert(i < string.current_size); return string[i]; }
-		inline char operator[](tfxU32 i) { assert(i < string.current_size); return string[i]; }
-		inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (string.capacity < length) string.reserve((tfxU32)length); memcpy(string.data, text, length); string.current_size = (tfxU32)length; NullTerminate(); }
-		inline void operator=(const tfxText &label) { string = label.string; }
+		inline tfxText() { current_size = capacity = 0; data = NULL; is_local_buffer = false; }
+		inline ~tfxText() { if (data) free(data); data = NULL; current_size = capacity = 0; }
+
+		inline bool			empty() { return current_size == 0; }
+		inline char&           operator[](tfxU32 i) { return data[i]; }
+		inline const char&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
+
+		inline void         free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
+		inline void         Clear() { if (data) { current_size = 0; } }
+		inline char*           begin() { return data; }
+		inline const char*     begin() const { return data; }
+		inline char*           end() { return data + current_size; }
+		inline const char*     end() const { return data + current_size; }
+		inline char&           back() { assert(current_size > 0); return data[current_size - 1]; }
+		inline const char&     back() const { assert(current_size > 0); return data[current_size - 1]; }
+		inline void         pop() { assert(current_size > 0); current_size--; }
+		inline void	        push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void*)(data + current_size)) char(v); current_size++; }
+
+		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
+		inline void         reserve(tfxU32 new_capacity) { 
+			if (new_capacity <= capacity) return; 
+			char* new_data = (char*)malloc((size_t)new_capacity * sizeof(char)); 
+			if (data && !is_local_buffer) { 
+				memcpy(new_data, data, (size_t)current_size * sizeof(char)); 
+				free(data); 
+			}
+			else if (is_local_buffer) {
+				memcpy(new_data, data, (size_t)current_size * sizeof(char)); 
+			}
+			data = new_data; 
+			is_local_buffer = false;
+			capacity = new_capacity; 
+		}
+
+		tfxText(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+		tfxText(const tfxText &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
+		inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+		inline void operator=(const tfxText& src) { Clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(char)); }
 		inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
 		inline bool operator==(const tfxText string) { return !strcmp(c_str(), string.c_str()); }
 		inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
 		inline bool operator!=(const tfxText string) { return strcmp(c_str(), string.c_str()); }
-		const char* begin() const { return string.data ? &string.front() : NULL; }
-		const char* end() const { return string.data ? &string.back() : NULL; }  
-		inline const char *c_str() const { return string.current_size ? string.data : ""; }
-		inline void Clear() { string.clear(); }
+		inline const char *c_str() const { return current_size ? data : ""; }
 		int Find(const char *needle);
 		tfxText Lower();
-		inline tfxU32 Length() const { return string.current_size ? string.current_size - 1 : 0; }
+		inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
 		void AddLine(const char *format, ...);
 		void Appendf(const char *format, ...);
 		void Appendv(const char *format, va_list args);
 		inline void Append(char c) { 
-			if (string.current_size) {
-				string.pop();
+			if (current_size) {
+				pop();
 			}
-			string.push_back(c); 
+			push_back(c); 
 			NullTerminate();
 		}
 		inline void Pop() {
 			if (!Length()) return;
-			if(string.back() == NULL)
-				string.pop();
-			string.pop();
+			if(back() == NULL)
+				pop();
+			pop();
 			NullTerminate();
 		}
 		inline void Trim(char c = 32) {
 			if (!Length()) return;
-			if(string.back() == NULL)
-				string.pop();
-			while (string.back() == c && string.current_size) {
-				string.pop();
+			if(back() == NULL)
+				pop();
+			while (back() == c && current_size) {
+				pop();
 			}
 			NullTerminate();
 		}
-		void NullTerminate() { string.push_back(NULL); }
+		void NullTerminate() { push_back(NULL); }
 		bool SaveToFile(const char *file_name);
 		const bool IsInt() const;
 		const bool IsFloat() const;
 	};
+
+#define tfxTextType(type, size)		\
+	struct type : public tfxText {\
+		char buffer[size];\
+		type() { data = buffer; capacity = size; current_size = 0; is_local_buffer = true; NullTerminate(); }\
+		type(const char *text) { data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }\
+		type(const tfxText &src) { data = buffer; is_local_buffer = true; capacity = size; size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) { memcpy(data, src.data, capacity - 1); } else { memcpy(data, src.data, length); } current_size = (tfxU32)length; NullTerminate(); }\
+		int Find(const char *needle) { type compare = needle; type lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; }\
+		type Lower() { type convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; }\
+	};
+
+	tfxTextType(tfxText512, 512);
+	tfxTextType(tfxText256, 256);
+	tfxTextType(tfxText128, 128);
+	tfxTextType(tfxText64, 64);
+	tfxTextType(tfxText32, 32);
+	tfxTextType(tfxText16, 16);
+
+	/*struct teststr : public tfxText {
+
+		char buffer[64];
+		teststr() { data = buffer; capacity = 64; current_size = 0; is_local_buffer = true; NullTerminate(); }
+		teststr(const char *text) {
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 64;
+			size_t length = strnlen_s(text, 64);
+			if (!length) {
+				Clear();
+				return;
+			}
+			memcpy(data, text, length);
+			current_size = (tfxU32)length;
+			NullTerminate();
+		}
+		teststr(const tfxText &src) { 
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 64;
+			size_t length = src.Length(); 
+			if (!length) { 
+				Clear(); 
+				return; 
+			}; 
+			if (capacity < length) {
+				memcpy(data, src.data, capacity - 1);
+			}
+			else {
+				memcpy(data, src.data, length);
+			}
+			current_size = (tfxU32)length; 
+			NullTerminate(); 
+		}
+		int Find(const char *needle) {
+
+			teststr compare = needle;
+			teststr lower = Lower();
+			compare = compare.Lower();
+			if (compare.Length() > Length()) return -1;
+			tfxU32 pos = 0;
+			int found = 0;
+			while (compare.Length() + pos <= Length()) {
+
+				if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) {
+
+					return pos;
+				}
+				++pos;
+			}
+			return -1;
+		}
+		teststr Lower() {
+
+			teststr convert = *this;
+			for (auto &c : convert) {
+
+				c = tolower(c);
+			}
+			return convert;
+		}
+	};*/
 
 	//Simple storage map for storing things by key/pair. The data will be in order that you add items, but the map will be in key order so just do a foreach on the data
 	//and use At() to retrieve data items by name use [] overload to fetch by index if you have that.
