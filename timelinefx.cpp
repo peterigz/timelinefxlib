@@ -766,7 +766,7 @@ namespace tfx {
 		return w;
 	}
 
-	void tfxText::Appendv(const char *format, va_list args) {
+	void tfxStr::Appendv(const char *format, va_list args) {
 		va_list args_copy;
 		va_copy(args_copy, args);
 
@@ -791,9 +791,9 @@ namespace tfx {
 
 	}
 
-	int tfxText::Find(const char *needle) {
-		tfxText compare = needle;
-		tfxText lower = Lower();
+	int tfxStr::Find(const char *needle) {
+		tfxStr compare = needle;
+		tfxStr lower = Lower();
 		compare = compare.Lower();
 		if (compare.Length() > Length()) return -1;
 		tfxU32 pos = 0;
@@ -807,15 +807,15 @@ namespace tfx {
 		return -1;
 	}
 
-	tfxText tfxText::Lower() {
-		tfxText convert = *this;
+	tfxStr tfxStr::Lower() {
+		tfxStr convert = *this;
 		for (auto &c : convert) {
 			c = tolower(c);
 		}
 		return convert;
 	}
 
-	void tfxText::AddLine(const char *format, ...) {
+	void tfxStr::AddLine(const char *format, ...) {
 		va_list args;
 		va_start(args, format);
 		Appendv(format, args);
@@ -823,7 +823,7 @@ namespace tfx {
 		Append('\n');
 	}
 
-	bool tfxText::SaveToFile(const char *file_name) {
+	bool tfxStr::SaveToFile(const char *file_name) {
 		FILE *file = fopen(file_name, "wb");
 		if (!file)
 			return false;
@@ -836,7 +836,7 @@ namespace tfx {
 		return true;
 	}
 
-	const bool tfxText::IsInt() const {
+	const bool tfxStr::IsInt() const {
 		if (!Length()) return false;
 		for (auto c : *this) {
 			if (c >= '0' && c <= '9');
@@ -847,7 +847,7 @@ namespace tfx {
 		return true;
 	}
 
-	const bool tfxText::IsFloat() const {
+	const bool tfxStr::IsFloat() const {
 		if (!Length()) return false;
 		int dot_count = 0;
 		for (auto c : *this) {
@@ -862,7 +862,7 @@ namespace tfx {
 		return dot_count == 1;
 	}
 
-	void tfxText::Appendf(const char *format, ...) {
+	void tfxStr::Appendf(const char *format, ...) {
 		va_list args;
 		va_start(args, format);
 
@@ -891,8 +891,8 @@ namespace tfx {
 		va_end(args);
 	}
 
-	tfxText tfxstream::ReadLine() {
-		tfxText line;
+	tfxStr512 tfxstream::ReadLine() {
+		tfxStr512 line;
 		if (EoF()) return line;
 
 		while (!EoF()) {
@@ -3300,7 +3300,7 @@ namespace tfx {
 		common.library->global_graphs[global].emitter_width.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_width.type = tfxGlobal_emitter_width;
 		common.library->global_graphs[global].emitter_height.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_height.type = tfxGlobal_emitter_height;
 		common.library->global_graphs[global].emitter_depth.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_depth.type = tfxGlobal_emitter_depth;
-		common.library->CompileGlobalGraph(global);
+		//common.library->CompileGlobalGraph(global);
 	}
 
 	void tfxEffectEmitter::ResetBaseGraphs(bool add_node) {
@@ -3312,7 +3312,7 @@ namespace tfx {
 		common.library->base_graphs[base].weight.Reset(0.f, tfxWeightPreset, add_node); common.library->base_graphs[base].weight.type = tfxBase_weight;
 		common.library->base_graphs[base].spin.Reset(0.f, tfxSpinPreset, add_node); common.library->base_graphs[base].spin.type = tfxBase_spin;
 		common.library->base_graphs[base].noise_offset.Reset(0.f, tfxGlobalPercentPreset, add_node); common.library->base_graphs[base].noise_offset.type = tfxBase_noise_offset;
-		common.library->CompileBaseGraph(base);
+		//common.library->CompileBaseGraph(base);
 	}
 
 	void tfxEffectEmitter::ResetPropertyGraphs(bool add_node) {
@@ -3328,7 +3328,7 @@ namespace tfx {
 		common.library->property_graphs[property].emitter_depth.Reset(0.f, tfxDimensionsPreset, add_node); common.library->property_graphs[property].emitter_depth.type = tfxProperty_emitter_depth;
 		common.library->property_graphs[property].arc_size.Reset(tfxRadians(360.f), tfxArcPreset, add_node); common.library->property_graphs[property].arc_size.type = tfxProperty_arc_size;
 		common.library->property_graphs[property].arc_offset.Reset(0.f, tfxArcPreset, add_node); common.library->property_graphs[property].arc_offset.type = tfxProperty_arc_offset;
-		common.library->CompilePropertyGraph(property);
+		//common.library->CompilePropertyGraph(property);
 	}
 
 	void tfxEffectEmitter::ResetVariationGraphs(bool add_node) {
@@ -3341,7 +3341,7 @@ namespace tfx {
 		common.library->variation_graphs[variation].spin.Reset(0.f, tfxSpinVariationPreset, add_node); common.library->variation_graphs[variation].spin.type = tfxVariation_spin;
 		common.library->variation_graphs[variation].noise_offset.Reset(0.f, tfxNoiseOffsetVariationPreset, add_node); common.library->variation_graphs[variation].noise_offset.type = tfxVariation_noise_offset;
 		common.library->variation_graphs[variation].noise_resolution.Reset(300.f, tfxNoiseResolutionPreset, add_node); common.library->variation_graphs[variation].noise_resolution.type = tfxVariation_noise_resolution;
-		common.library->CompileVariationGraph(variation);
+		//common.library->CompileVariationGraph(variation);
 	}
 
 	void tfxEffectEmitter::ResetOvertimeGraphs(bool add_node) {
@@ -3362,7 +3362,7 @@ namespace tfx {
 		common.library->overtime_graphs[overtime].direction_turbulance.Reset(0.f, tfxPercentOvertime, add_node); common.library->overtime_graphs[overtime].direction_turbulance.type = tfxOvertime_direction_turbulance;
 		common.library->overtime_graphs[overtime].direction.Reset(0.f, tfxDirectionOvertimePreset, add_node); common.library->overtime_graphs[overtime].direction.type = tfxOvertime_direction;
 		common.library->overtime_graphs[overtime].noise_resolution.Reset(1.f, tfxPercentOvertime, add_node); common.library->overtime_graphs[overtime].noise_resolution.type = tfxOvertime_noise_resolution;
-		common.library->CompileOvertimeGraph(overtime);
+		//common.library->CompileOvertimeGraph(overtime);
 	}
 
 	void tfxEffectEmitter::ResetEffectGraphs(bool add_node) {
@@ -3663,6 +3663,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxEffectLibrary *destination_library, bool keep_user_data, bool force_clone_global) {
+		tfxU32 *size = &common.library->global_graphs[0].amount.lookup.values.block->current_size;
 		clone = *this;
 		clone.info_index = clone.common.library->CloneInfo(info_index, destination_library);
 		clone.property_index = clone.common.library->CloneProperties(property_index, destination_library);
@@ -3935,16 +3936,16 @@ namespace tfx {
 	void tfxEffectLibrary::UpdateEffectPaths() {
 		effect_paths.Clear();
 		for (auto &e : effects) {
-			tfxText path = e.GetInfo().name;
+			tfxStr256 path = e.GetInfo().name;
 			e.GetInfo().path_hash = tfxXXHash64::hash(path.c_str(), path.Length(), 0);
 			AddPath(e, path);
 		}
 	}
 
-	void tfxEffectLibrary::AddPath(tfxEffectEmitter &effectemitter, tfxText path) {
+	void tfxEffectLibrary::AddPath(tfxEffectEmitter &effectemitter, tfxStr256 &path) {
 		effect_paths.Insert(path, &effectemitter);
 		for (auto &sub : effectemitter.GetInfo().sub_effectors) {
-			tfxText sub_path = path;
+			tfxStr256 sub_path = path;
 			sub_path.Appendf("/%s", sub.GetInfo().name.c_str());
 			sub.GetInfo().path_hash = tfxXXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
 			AddPath(sub, sub_path);
@@ -3962,7 +3963,7 @@ namespace tfx {
 		return effects.back();
 	}
 
-	tfxEffectEmitter &tfxEffectLibrary::AddFolder(tfxText name) {
+	tfxEffectEmitter &tfxEffectLibrary::AddFolder(tfxStr64 &name) {
 		tfxEffectEmitter folder;
 		folder.GetInfo().name = name;
 		folder.type = tfxFolder;
@@ -3984,7 +3985,7 @@ namespace tfx {
 		return effects.back();
 	}
 
-	tfxEffectEmitter* tfxEffectLibrary::GetEffect(tfxText &path) {
+	tfxEffectEmitter* tfxEffectLibrary::GetEffect(tfxStr256 &path) {
 		assert(effect_paths.ValidName(path));		//Effect was not found by that name
 		return effect_paths.At(path);
 	}
@@ -3999,12 +4000,12 @@ namespace tfx {
 		return effect_paths.At(key);
 	}
 
-	void tfxEffectLibrary::PrepareEffectTemplate(tfxText path, tfxEffectTemplate &effect_template) {
+	void tfxEffectLibrary::PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect_template) {
 		tfxEffectEmitter *effect = GetEffect(path);
 		assert(effect);
 		assert(effect->type == tfxEffectType);
 		effect->Clone(effect_template.effect_template, &effect_template.effect_template, this);
-		effect_template.AddPath(effect_template.effect_template, effect_template.effect_template.GetInfo().name);
+		effect_template.AddPath(effect_template.effect_template, effect_template.effect_template.GetInfo().name.c_str());
 	}
 
 	void tfxEffectLibrary::ReIndex() {
@@ -4151,6 +4152,7 @@ namespace tfx {
 		if (free_global_graphs.size())
 			return free_global_graphs.pop_back();
 		tfxGlobalAttributes global;
+		global.Initialise(&graph_node_allocator, &graph_lookup_allocator);
 		global_graphs.push_back(global);
 		return global_graphs.size() - 1;
 	}
@@ -4158,6 +4160,7 @@ namespace tfx {
 		if (free_property_graphs.size())
 			return free_property_graphs.pop_back();
 		tfxPropertyAttributes property;
+		property.Initialise(&graph_node_allocator, &graph_lookup_allocator);
 		property_graphs.push_back(property);
 		return property_graphs.size() - 1;
 	}
@@ -4165,6 +4168,7 @@ namespace tfx {
 		if (free_base_graphs.size())
 			return free_base_graphs.pop_back();
 		tfxBaseAttributes base;
+		base.Initialise(&graph_node_allocator, &graph_lookup_allocator);
 		base_graphs.push_back(base);
 		return base_graphs.size() - 1;
 	}
@@ -4172,6 +4176,7 @@ namespace tfx {
 		if (free_variation_graphs.size())
 			return free_variation_graphs.pop_back();
 		tfxVariationAttributes variation;
+		variation.Initialise(&graph_node_allocator, &graph_lookup_allocator);
 		variation_graphs.push_back(variation);
 		return variation_graphs.size() - 1;
 	}
@@ -4179,6 +4184,7 @@ namespace tfx {
 		if (free_overtime_graphs.size())
 			return free_overtime_graphs.pop_back();
 		tfxOvertimeAttributes overtime;
+		overtime.Initialise(&graph_node_allocator, &graph_lookup_allocator);
 		overtime_graphs.push_back(overtime);
 		return overtime_graphs.size() - 1;
 	}
@@ -4926,7 +4932,7 @@ namespace tfx {
 		return 0;
 	}
 
-	void AssignGraphData(tfxEffectEmitter &effect, tfxvec<tfxText> &values) {
+	void AssignGraphData(tfxEffectEmitter &effect, tfxvec<tfxStr64> &values) {
 		if (values.size() > 0) {
 			if (values[0] == "global_amount") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].amount.AddNode(n); }
 			if (values[0] == "global_effect_angle") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].roll.AddNode(n); }
@@ -5010,7 +5016,7 @@ namespace tfx {
 		}
 	}
 
-	void AssignNodeData(tfxAttributeNode &n, tfxvec<tfxText> &values) {
+	void AssignNodeData(tfxAttributeNode &n, tfxvec<tfxStr64> &values) {
 		n.frame = (float)atof(values[1].c_str());
 		n.value = (float)atof(values[2].c_str());
 		n.flags = (bool)atoi(values[3].c_str()) ? tfxAttributeNodeFlags_is_curve : 0;
@@ -5022,7 +5028,7 @@ namespace tfx {
 			n.flags |= tfxAttributeNodeFlags_curves_initialised;
 	}
 
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxText &field, uint32_t value) {
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value) {
 		if (field == "image_index")
 			effect.GetProperties().shape_index = value;
 		if (field == "spawn_amount")
@@ -5048,7 +5054,7 @@ namespace tfx {
 		if (field == "sort_passes")
 			effect.sort_passes = value;
 	}
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxText &field, int value) {
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value) {
 		if (field == "emission_type")
 			effect.GetProperties().emission_type = (tfxEmissionType)value;
 		if (field == "emission_direction")
@@ -5064,11 +5070,11 @@ namespace tfx {
 		if (field == "extra_frames_count")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].extra_frames_count = value;
 	}
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxText &field, tfxText &value) {
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value) {
 		if (field == "name")
 			effect.GetInfo().name = value;
 	}
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxText &field, float value) {
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value) {
 		if (field == "position_x")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].position.x = value;
 		if (field == "position_y")
@@ -5152,7 +5158,7 @@ namespace tfx {
 		if (field == "angle_offset_yaw")
 			effect.GetProperties().angle_offsets.yaw = value;
 	}
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxText &field, bool value) {
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value) {
 		if (field == "loop")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].loop = value;
 		if (field == "seamless")
@@ -5215,7 +5221,7 @@ namespace tfx {
 			if (value) effect.effect_flags |= tfxEffectPropertyFlags_guaranteed_order; else effect.effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order;
 	}
 
-	void StreamProperties(tfxEmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxText &file) {
+	void StreamProperties(tfxEmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxStr &file) {
 
 		file.AddLine("image_index=%i", property.shape_index);
 		file.AddLine("image_handle_x=%f", property.image_handle.x);
@@ -5265,13 +5271,13 @@ namespace tfx {
 
 	}
 
-	void StreamProperties(tfxEffectEmitter &effect, tfxText &file) {
+	void StreamProperties(tfxEffectEmitter &effect, tfxStr &file) {
 		file.AddLine("draw_order_by_depth=%i", effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order);
 		file.AddLine("guaranteed_draw_order=%i", effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order);
 		file.AddLine("sort_passes=%i", effect.sort_passes);
 	}
 
-	void StreamGraph(const char * name, tfxGraph &graph, tfxText &file) {
+	void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file) {
 
 		for (auto &n : graph.nodes) {
 			file.AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, n.frame, n.value, (n.flags & tfxAttributeNodeFlags_is_curve), n.left.x, n.left.y, n.right.x, n.right.y);
@@ -5504,8 +5510,17 @@ namespace tfx {
 		min.y = 0.f;
 		max.x = 1000.f;
 		max.y = 1000.f;
-
 		effector = nullptr;
+	}
+
+	tfxGraph::tfxGraph(tfxBucketAllocator *node_allocator, tfxU32 bucket_size) { 
+		min.x = 0.f;
+		min.y = 0.f;
+		max.x = 1000.f;
+		max.y = 1000.f;
+		effector = nullptr;
+		nodes.allocator = node_allocator; 
+		nodes.size_of_each_bucket = bucket_size; 
 	}
 
 	tfxGraph::~tfxGraph() {
@@ -5732,7 +5747,7 @@ namespace tfx {
 		}
 	}
 
-	tfxvec<tfxAttributeNode>& tfxGraph::Nodes() {
+	tfxBucketArray<tfxAttributeNode>& tfxGraph::Nodes() {
 		return nodes;
 	}
 
@@ -6150,9 +6165,11 @@ namespace tfx {
 	}
 
 	void tfxGraph::Copy(tfxGraph &to) {
-		to.nodes.reserve(nodes.size());
-		std::copy(nodes.begin(), nodes.end(), to.nodes.begin());
-		to.nodes.current_size = nodes.current_size;
+		do {
+			for (auto &n : nodes) {
+				to.nodes.push_back(n);
+			}
+		} while (!nodes.EndOfBuckets());
 		if(IsOvertimeGraph())
 			CompileGraphOvertime(to);
 		else
@@ -6160,11 +6177,18 @@ namespace tfx {
 	}
 
 	bool tfxGraph::Sort() {
-		if (!std::is_sorted(nodes.begin(), nodes.end(), CompareNodes)) {
-			std::sort(nodes.begin(), nodes.end(), CompareNodes);
-			return true;
+		bool needed_sorting = false;
+		for (tfxU32 i = 1; i < nodes.current_size; ++i) {
+			tfxAttributeNode key = nodes[i];
+			int j = i - 1;
+			while (j >= 0 && key.frame < nodes[j].frame) {
+				nodes[j + 1] = nodes[j];
+				--j;
+				needed_sorting = true;
+			}
+			nodes[j + 1] = key;
 		}
-		return false;
+		return needed_sorting;
 	}
 
 	void tfxGraph::ReIndex() {
@@ -6321,7 +6345,6 @@ namespace tfx {
 	void CompileGraph(tfxGraph &graph) {
 		float last_frame = graph.GetLastFrame();
 		graph.lookup.last_frame = tfxU32(last_frame / tfxLOOKUP_FREQUENCY);
-		graph.lookup.values.clear();
 		if (graph.lookup.last_frame) {
 			graph.lookup.values.resize(graph.lookup.last_frame + 1);
 			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
@@ -6330,12 +6353,12 @@ namespace tfx {
 			graph.lookup.values[graph.lookup.last_frame] = graph.GetLastValue();
 		}
 		else {
-			graph.lookup.values.push_back(graph.GetFirstValue());
+			graph.lookup.values.resize(1);
+			graph.lookup.values[0] = graph.GetFirstValue();
 		}
 	}
 
 	void CompileGraphOvertime(tfxGraph &graph) {
-		graph.lookup.values.clear();
 		if (graph.nodes.size() > 1) {
 			graph.lookup.last_frame = tfxU32(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
 			graph.lookup.values.resize(graph.lookup.last_frame + 1);
@@ -6346,7 +6369,8 @@ namespace tfx {
 		}
 		else {
 			graph.lookup.last_frame = 0;
-			graph.lookup.values.push_back(graph.GetFirstValue());
+			graph.lookup.values.resize(1);
+			graph.lookup.values[0] = graph.GetFirstValue();
 		}
 	}
 
@@ -6502,11 +6526,11 @@ namespace tfx {
 		return !IsOvertimeGraph(type) && !IsOvertimePercentageGraph(type) && !IsGlobalGraph(type) && !IsAngleGraph(type) && !IsOvertimeGraph(type);
 	}
 
-	bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxText key) {
+	bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key) {
 		return config.ValidName(key);
 	}
 
-	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxText key, const char *value) {
+	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxStr32 key, const char *value) {
 		tfxDataEntry entry;
 		entry.type = tfxString;
 		entry.key = key;
@@ -6514,7 +6538,7 @@ namespace tfx {
 		map.Insert(key, entry);
 	}
 
-	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxText key, int value) {
+	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxStr32 key, int value) {
 		tfxDataEntry entry;
 		entry.type = tfxSInt;
 		entry.key = key;
@@ -6523,7 +6547,7 @@ namespace tfx {
 		map.Insert(key, entry);
 	}
 
-	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxText key, bool value) {
+	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxStr32 key, bool value) {
 		tfxDataEntry entry;
 		entry.type = tfxBool;
 		entry.key = key;
@@ -6532,7 +6556,7 @@ namespace tfx {
 		map.Insert(key, entry);
 	}
 
-	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxText key, double value) {
+	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxStr32 key, double value) {
 		tfxDataEntry entry;
 		entry.type = tfxDouble;
 		entry.key = key;
@@ -6540,7 +6564,7 @@ namespace tfx {
 		map.Insert(key, entry);
 	}
 
-	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxText key, float value) {
+	void AddDataValue(tfxStorageMap<tfxDataEntry> &map, tfxStr32 key, float value) {
 		tfxDataEntry entry;
 		entry.type = tfxFloat;
 		entry.key = key;
@@ -6548,7 +6572,7 @@ namespace tfx {
 		map.Insert(key, entry);
 	}
 
-	tfxText &GetDataStrValue(tfxStorageMap<tfxDataEntry> &map, const char* key) {
+	tfxStr &GetDataStrValue(tfxStorageMap<tfxDataEntry> &map, const char* key) {
 		return map.At(key).str_value;
 	}
 	int& GetDataIntValue(tfxStorageMap<tfxDataEntry> &map, const char* key) {
@@ -6566,7 +6590,7 @@ namespace tfx {
 
 		if (map.Size()) {
 			for (auto &entry : map.data) {
-				tfxText ini_line = entry.key;
+				tfxStr ini_line = entry.key;
 				ini_line.Appendf("=");
 				switch (entry.type) {
 				case tfxString:
@@ -6605,10 +6629,10 @@ namespace tfx {
 
 		while (fgets(buffer, max_line_length, fp)) {
 			buffer[strcspn(buffer, "\n")] = 0;
-			tfxText str = buffer;
-			tfxvec<tfxText> pair = SplitString(str, 61);
+			tfxStr str = buffer;
+			tfxvec<tfxStr64> pair = SplitString(str, 61);
 			if (pair.size() == 2) {
-				tfxText key = pair[0];
+				tfxStr64 key = pair[0];
 				tfxDataType t = data_types.names_and_types.At(pair[0]);
 				if (t == tfxBool) {
 					AddDataValue(map, key, (bool)atoi(pair[1].c_str()));
@@ -6630,10 +6654,10 @@ namespace tfx {
 
 	}
 
-	tfxvec<tfxText> SplitString(const tfx::tfxText &str, char delim) {
-		tfxvec<tfxText> ret;
+	tfxvec<tfxStr64> SplitString(const tfxStr &str, char delim) {
+		tfxvec<tfxStr64> ret;
 
-		tfxText line;
+		tfxStr64 line;
 		for (char c : str) {
 			if (c == delim && line.Length() && c != NULL) {
 				ret.push_back(line);
@@ -6651,7 +6675,26 @@ namespace tfx {
 		return ret;
 	}
 
-	bool StringIsUInt(const tfxText &s) {
+	void SplitString(const tfxStr &str, tfxvec<tfxStr64> &pair, char delim) {
+		tfxStr64 line;
+		for (char c : str) {
+			if (c == delim && line.Length() && c != NULL) {
+				pair.push_back_copy(line);
+				pair.back().data = pair.back().buffer;
+				line.Clear();
+			}
+			else if (c != NULL) {
+				line.Append(c);
+			}
+		}
+
+		if (line.Length()) {
+			pair.push_back_copy(line);
+			pair.back().data = pair.back().buffer;
+		}
+	}
+
+	bool StringIsUInt(const tfxStr &s) {
 
 		for (auto c : s) {
 			if (!std::isdigit(c) && c != 0)
@@ -6661,7 +6704,7 @@ namespace tfx {
 		return true;
 	}
 
-	int GetDataType(const tfxText &s) {
+	int GetDataType(const tfxStr &s) {
 		if (s.Length() == 0)
 			return tfxString;
 
@@ -6728,7 +6771,7 @@ namespace tfx {
 		int shape_count = 0;
 
 		while (!data->data.EoF()) {
-			tfxText line = data->data.ReadLine();
+			tfxStr128 line = data->data.ReadLine();
 			bool context_set = false;
 			if (StringIsUInt(line.c_str())) {
 				context = atoi(line.c_str());
@@ -6737,7 +6780,7 @@ namespace tfx {
 				context_set = true;
 			}
 			if (context_set == false) {
-				tfxvec<tfxText> pair = SplitString(line.c_str());
+				tfxvec<tfxStr64> pair = SplitString(line.c_str());
 				if (pair.size() != 2) {
 					pair = SplitString(line.c_str(), 44);
 					if (pair.size() < 2) {
@@ -6779,7 +6822,7 @@ namespace tfx {
 		bool inside_emitter = false;
 
 		while (!data->data.EoF()) {
-			tfxText line = data->data.ReadLine();
+			tfxStr128 line = data->data.ReadLine();
 			bool context_set = false;
 			if (StringIsUInt(line.c_str())) {
 				context_set = true;
@@ -6788,7 +6831,7 @@ namespace tfx {
 				}
 			}
 			if (context_set == false) {
-				tfxvec<tfxText> pair = SplitString(line.c_str());
+				tfxvec<tfxStr64> pair = SplitString(line.c_str());
 				if (pair.size() != 2) {
 					pair = SplitString(line.c_str(), 44);
 					if (pair.size() < 2) {
@@ -6823,6 +6866,8 @@ namespace tfx {
 		assert(shape_loader);
 		if (!data_types.initialised) data_types.Init();
 		lib.Clear();
+		lib.graph_node_allocator = CreateBlockAllocator(tfxMegabyte(10), 8, 256);
+		lib.graph_lookup_allocator = CreateBlockAllocator(tfxMegabyte(10), 8, 256);
 
 		tfxvec<tfxEffectEmitter> effect_stack;
 		int context = 0;
@@ -6844,9 +6889,10 @@ namespace tfx {
 		}
 
 		int first_shape_index = -1;
+		tfxvec<tfxStr64> pair;
 
 		while (!data->data.EoF()) {
-			tfxText line = data->data.ReadLine();
+			tfxStr512 line = data->data.ReadLine();
 			bool context_set = false;
 
 			if (StringIsUInt(line.c_str())) {
@@ -6895,9 +6941,11 @@ namespace tfx {
 			}
 
 			if (context_set == false) {
-				tfxvec<tfxText> pair = SplitString(line.c_str());
+				pair.clear();
+				SplitString(line.c_str(), pair);
 				if (pair.size() != 2) {
-					pair = SplitString(line.c_str(), 44);
+					pair.clear();
+					SplitString(line.c_str(), pair, 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
@@ -7015,7 +7063,7 @@ namespace tfx {
 				lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
 			lib.UpdateEffectPaths();
 			lib.UpdateComputeNodes();
-			lib.UpdateEffectParticleStorage();
+			//lib.UpdateEffectParticleStorage();
 			lib.SetMinMaxData();
 		}
 
