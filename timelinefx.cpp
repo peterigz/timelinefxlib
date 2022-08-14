@@ -3281,7 +3281,7 @@ namespace tfx {
 		data.flags = current_velocity.IsNill() ? data.flags &= ~tfxParticleFlags_has_velocity : data.flags |= tfxParticleFlags_has_velocity;
 	}
 
-	void tfxEffectEmitter::ResetGlobalGraphs(bool add_node) {
+	void tfxEffectEmitter::ResetGlobalGraphs(bool add_node, bool compile) {
 		common.library->global_graphs[global].life.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].life.type = tfxGlobal_life;
 		common.library->global_graphs[global].amount.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].amount.type = tfxGlobal_amount;
 		common.library->global_graphs[global].velocity.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].velocity.type = tfxGlobal_velocity;
@@ -3300,10 +3300,11 @@ namespace tfx {
 		common.library->global_graphs[global].emitter_width.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_width.type = tfxGlobal_emitter_width;
 		common.library->global_graphs[global].emitter_height.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_height.type = tfxGlobal_emitter_height;
 		common.library->global_graphs[global].emitter_depth.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_depth.type = tfxGlobal_emitter_depth;
-		//common.library->CompileGlobalGraph(global);
+		if(compile)
+			common.library->CompileGlobalGraph(global);
 	}
 
-	void tfxEffectEmitter::ResetBaseGraphs(bool add_node) {
+	void tfxEffectEmitter::ResetBaseGraphs(bool add_node, bool compile) {
 		common.library->base_graphs[base].life.Reset(1000.f, tfxLifePreset, add_node); common.library->base_graphs[base].life.type = tfxBase_life;
 		common.library->base_graphs[base].amount.Reset(1.f, tfxAmountPreset, add_node); common.library->base_graphs[base].amount.type = tfxBase_amount;
 		common.library->base_graphs[base].velocity.Reset(0.f, tfxVelocityPreset, add_node); common.library->base_graphs[base].velocity.type = tfxBase_velocity;
@@ -3312,10 +3313,11 @@ namespace tfx {
 		common.library->base_graphs[base].weight.Reset(0.f, tfxWeightPreset, add_node); common.library->base_graphs[base].weight.type = tfxBase_weight;
 		common.library->base_graphs[base].spin.Reset(0.f, tfxSpinPreset, add_node); common.library->base_graphs[base].spin.type = tfxBase_spin;
 		common.library->base_graphs[base].noise_offset.Reset(0.f, tfxGlobalPercentPreset, add_node); common.library->base_graphs[base].noise_offset.type = tfxBase_noise_offset;
-		//common.library->CompileBaseGraph(base);
+		if(compile)
+			common.library->CompileBaseGraph(base);
 	}
 
-	void tfxEffectEmitter::ResetPropertyGraphs(bool add_node) {
+	void tfxEffectEmitter::ResetPropertyGraphs(bool add_node, bool compile) {
 		common.library->property_graphs[property].emission_pitch.Reset(0.f, tfxAnglePreset, add_node); common.library->property_graphs[property].emission_pitch.type = tfxProperty_emission_pitch;
 		common.library->property_graphs[property].emission_yaw.Reset(0.f, tfxAnglePreset, add_node); common.library->property_graphs[property].emission_yaw.type = tfxProperty_emission_yaw;
 		common.library->property_graphs[property].emission_range.Reset(0.f, tfxEmissionRangePreset, add_node); common.library->property_graphs[property].emission_range.type = tfxProperty_emission_range;
@@ -3328,10 +3330,11 @@ namespace tfx {
 		common.library->property_graphs[property].emitter_depth.Reset(0.f, tfxDimensionsPreset, add_node); common.library->property_graphs[property].emitter_depth.type = tfxProperty_emitter_depth;
 		common.library->property_graphs[property].arc_size.Reset(tfxRadians(360.f), tfxArcPreset, add_node); common.library->property_graphs[property].arc_size.type = tfxProperty_arc_size;
 		common.library->property_graphs[property].arc_offset.Reset(0.f, tfxArcPreset, add_node); common.library->property_graphs[property].arc_offset.type = tfxProperty_arc_offset;
-		//common.library->CompilePropertyGraph(property);
+		if(compile)
+			common.library->CompilePropertyGraph(property);
 	}
 
-	void tfxEffectEmitter::ResetVariationGraphs(bool add_node) {
+	void tfxEffectEmitter::ResetVariationGraphs(bool add_node, bool compile) {
 		common.library->variation_graphs[variation].life.Reset(0.f, tfxLifePreset, add_node); common.library->variation_graphs[variation].life.type = tfxVariation_life;
 		common.library->variation_graphs[variation].amount.Reset(0.f, tfxAmountPreset, add_node); common.library->variation_graphs[variation].amount.type = tfxVariation_amount;
 		common.library->variation_graphs[variation].velocity.Reset(0.f, tfxVelocityPreset, add_node); common.library->variation_graphs[variation].velocity.type = tfxVariation_velocity;
@@ -3341,10 +3344,11 @@ namespace tfx {
 		common.library->variation_graphs[variation].spin.Reset(0.f, tfxSpinVariationPreset, add_node); common.library->variation_graphs[variation].spin.type = tfxVariation_spin;
 		common.library->variation_graphs[variation].noise_offset.Reset(0.f, tfxNoiseOffsetVariationPreset, add_node); common.library->variation_graphs[variation].noise_offset.type = tfxVariation_noise_offset;
 		common.library->variation_graphs[variation].noise_resolution.Reset(300.f, tfxNoiseResolutionPreset, add_node); common.library->variation_graphs[variation].noise_resolution.type = tfxVariation_noise_resolution;
-		//common.library->CompileVariationGraph(variation);
+		if(compile)
+			common.library->CompileVariationGraph(variation);
 	}
 
-	void tfxEffectEmitter::ResetOvertimeGraphs(bool add_node) {
+	void tfxEffectEmitter::ResetOvertimeGraphs(bool add_node, bool compile) {
 		common.library->overtime_graphs[overtime].velocity.Reset(1.f, tfxVelocityOvertimePreset, add_node); common.library->overtime_graphs[overtime].velocity.type = tfxOvertime_velocity;
 		common.library->overtime_graphs[overtime].velocity_adjuster.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->overtime_graphs[overtime].velocity_adjuster.type = tfxOvertime_velocity_adjuster;
 		common.library->overtime_graphs[overtime].width.Reset(1.f, tfxPercentOvertime, add_node); common.library->overtime_graphs[overtime].width.type = tfxOvertime_width;
@@ -3362,19 +3366,20 @@ namespace tfx {
 		common.library->overtime_graphs[overtime].direction_turbulance.Reset(0.f, tfxPercentOvertime, add_node); common.library->overtime_graphs[overtime].direction_turbulance.type = tfxOvertime_direction_turbulance;
 		common.library->overtime_graphs[overtime].direction.Reset(0.f, tfxDirectionOvertimePreset, add_node); common.library->overtime_graphs[overtime].direction.type = tfxOvertime_direction;
 		common.library->overtime_graphs[overtime].noise_resolution.Reset(1.f, tfxPercentOvertime, add_node); common.library->overtime_graphs[overtime].noise_resolution.type = tfxOvertime_noise_resolution;
-		//common.library->CompileOvertimeGraph(overtime);
+		if(compile)
+			common.library->CompileOvertimeGraph(overtime);
 	}
 
-	void tfxEffectEmitter::ResetEffectGraphs(bool add_node) {
-		ResetGlobalGraphs(add_node);
+	void tfxEffectEmitter::ResetEffectGraphs(bool add_node, bool compile) {
+		ResetGlobalGraphs(add_node, compile);
 	}
 
-	void tfxEffectEmitter::ResetEmitterGraphs(bool add_node) {
-		ResetBaseGraphs(add_node);
-		ResetPropertyGraphs(add_node);
-		ResetVariationGraphs(add_node);
+	void tfxEffectEmitter::ResetEmitterGraphs(bool add_node, bool compile) {
+		ResetBaseGraphs(add_node, compile);
+		ResetPropertyGraphs(add_node, compile);
+		ResetVariationGraphs(add_node, compile);
 		UpdateMaxLife();
-		ResetOvertimeGraphs(add_node);
+		ResetOvertimeGraphs(add_node, compile);
 	}
 
 	void tfxEffectEmitter::InitialiseUninitialisedGraphs() {
@@ -4379,6 +4384,9 @@ namespace tfx {
 		emitter_properties.free_all();
 		effect_infos.free_all();
 		AddPreviewCameraSettings();
+
+		graph_node_allocator.Reset();
+		graph_lookup_allocator.Reset();
 
 		free_global_graphs.free_all();
 		free_property_graphs.free_all();
@@ -5524,7 +5532,7 @@ namespace tfx {
 	}
 
 	tfxGraph::~tfxGraph() {
-		Free();
+		//Free();
 	}
 
 	const float BEZIER_ACCURACY = 0.01f;
@@ -6161,10 +6169,12 @@ namespace tfx {
 	}
 
 	void tfxGraph::Free() {
+		//Explicitly free the nodes
 		nodes.free_all();
 	}
 
 	void tfxGraph::Copy(tfxGraph &to) {
+		to.Clear();
 		do {
 			for (auto &n : nodes) {
 				to.nodes.push_back(n);
@@ -6917,7 +6927,7 @@ namespace tfx {
 					effect.property_index = lib.AddEmitterProperties();
 					if (effect_stack.size() <= 1) { //Only root effects get the global graphs
 						lib.AddEffectGraphs(effect);
-						effect.ResetEffectGraphs(false);
+						effect.ResetEffectGraphs(false, false);
 						current_global_graph = effect.global;
 					}
 					effect.type = tfxEffectEmitterType::tfxEffectType;
@@ -6934,7 +6944,7 @@ namespace tfx {
 					emitter.property_index = lib.AddEmitterProperties();
 					lib.AddEmitterGraphs(emitter);
 					emitter.type = tfxEffectEmitterType::tfxEmitterType;
-					emitter.ResetEmitterGraphs(false);
+					emitter.ResetEmitterGraphs(false, false);
 					lib.GetInfo(emitter).uid = uid++;
 					effect_stack.push_back(emitter);
 				}

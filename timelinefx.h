@@ -725,7 +725,8 @@ typedef unsigned long long tfxKey;
 				std::lock_guard<std::mutex> lock(insert_mutex);
 				log.insert(it, tfxMemoryTrackerPair(key, value));
 				return;
-			}
+			} 
+			it->log = value;
 		}
 
 		inline tfxMemoryTrackerEntry *At(tfxKey key) {
@@ -936,6 +937,7 @@ typedef unsigned long long tfxKey;
 		void *end_of_allocated;
 		size_t memory_remaining;
 		size_t total_memory;
+		size_t management_space;
 		size_t size_diff_threshold;
 		tfxU32 max_blocks;
 		tfxU32 block_count;
@@ -957,6 +959,11 @@ typedef unsigned long long tfxKey;
 		inline void Reset() {
 			memory_remaining = total_memory;
 			end_of_allocated = data;
+			free_block_count = 0;
+			block_count = 0;
+			blocks = (tfxMemoryBucket*)((char*)data + total_memory);
+			free_blocks = (tfxMemoryBucket**)(blocks + max_blocks);
+			memset((void*)data, 0, total_memory + management_space);
 		}
 
 		inline void *End(tfxMemoryBucket *block) {
@@ -1037,6 +1044,8 @@ typedef unsigned long long tfxKey;
 		inline void CopyBlockToBlock(tfxMemoryBucket *from, tfxMemoryBucket *to) {
 			assert(from->capacity && from->capacity <= to->capacity);		//must have valid capacities
 			memcpy(to->data, from->data, from->capacity * from->unit_size);
+			to->current_size = from->current_size;
+			to->end_ptr = (char*)to->data + (to->unit_size * to->current_size);
 		}
 
 	};
@@ -1149,12 +1158,12 @@ typedef unsigned long long tfxKey;
 		tfxBucketAllocator allocator;
 		void* new_data = malloc(size_in_bytes);
 		allocator.max_blocks = (tfxU32)(size_in_bytes / min_block_size);
-		size_t management_space = allocator.max_blocks * sizeof(tfxMemoryBucket) + allocator.max_blocks * 8;
-		allocator.blocks = (tfxMemoryBucket*)((char*)new_data + size_in_bytes - management_space);
+		allocator.management_space = allocator.max_blocks * sizeof(tfxMemoryBucket) + allocator.max_blocks * 8;
+		allocator.blocks = (tfxMemoryBucket*)((char*)new_data + size_in_bytes - allocator.management_space);
 		allocator.free_blocks = (tfxMemoryBucket**)(allocator.blocks + allocator.max_blocks);
 		allocator.data = new_data;
 		allocator.end_of_allocated = allocator.data;
-		allocator.memory_remaining = size_in_bytes - management_space;
+		allocator.memory_remaining = size_in_bytes - allocator.management_space;
 		allocator.size_diff_threshold = size_diff_threshold;
 		allocator.total_memory = allocator.memory_remaining;
 		memset((void*)allocator.data, 0, size_in_bytes);
@@ -1182,7 +1191,9 @@ typedef unsigned long long tfxKey;
 			return ValueAt<T>(*block, i);
 		}
 		inline tfxArray<T>&		operator=(const tfxArray<T>& src) {
-			allocator = src.allocator;
+			if(!allocator)
+				allocator = src.allocator;
+			if (!src.block) return *this;
 			assert(resize(src.capacity));
 			allocator->CopyBlockToBlock(src.block, block);
 			return *this;
@@ -1249,7 +1260,8 @@ typedef unsigned long long tfxKey;
 			return FindValueByIndex<T>(*allocator, i, block);
 		}
 		inline tfxBucketArray<T>&		operator=(const tfxBucketArray<T>& src) {
-			allocator = src.allocator;
+			if(!allocator)
+				allocator = src.allocator;
 			current_size = src.current_size;
 			size_of_each_bucket = src.size_of_each_bucket;
 			if (src.capacity == 0) {
@@ -3390,6 +3402,27 @@ typedef unsigned long long tfxKey;
 			emitter_depth.lookup.values.allocator = value_allocator;
 		}
 
+		void Free() {
+			life.Free();
+			amount.Free();
+			velocity.Free();
+			width.Free();
+			height.Free();
+			weight.Free();
+			spin.Free();
+			stretch.Free();
+			overal_scale.Free();
+			intensity.Free();
+			frame_rate.Free();
+			splatter.Free();
+			roll.Free();
+			pitch.Free();
+			yaw.Free();
+			emitter_width.Free();
+			emitter_height.Free();
+			emitter_depth.Free();
+		}
+
 	};
 
 	struct tfxPropertyAttributes {
@@ -3969,13 +4002,13 @@ typedef unsigned long long tfxKey;
 		void DeleteEmitter(tfxEffectEmitter *effect);
 		void CleanUp();
 
-		void ResetGlobalGraphs(bool add_node = true);
-		void ResetBaseGraphs(bool add_node = true);
-		void ResetPropertyGraphs(bool add_node = true);
-		void ResetVariationGraphs(bool add_node = true);
-		void ResetOvertimeGraphs(bool add_node = true);
-		void ResetEffectGraphs(bool add_node = true);
-		void ResetEmitterGraphs(bool add_node = true);
+		void ResetGlobalGraphs(bool add_node = true, bool compile = true);
+		void ResetBaseGraphs(bool add_node = true, bool compile = true);
+		void ResetPropertyGraphs(bool add_node = true, bool compile = true);
+		void ResetVariationGraphs(bool add_node = true, bool compile = true);
+		void ResetOvertimeGraphs(bool add_node = true, bool compile = true);
+		void ResetEffectGraphs(bool add_node = true, bool compile = true);
+		void ResetEmitterGraphs(bool add_node = true, bool compile = true);
 		void UpdateMaxLife();
 		void ResetAllBufferSizes();
 		void UpdateAllBufferSizes();
