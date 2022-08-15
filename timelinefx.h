@@ -666,10 +666,12 @@ typedef unsigned long long tfxKey;
 
 	//-----------------------------------------------------------
 	//Utility things:
+	
 	struct tfxMemoryTrackerEntry {
-		const char *name;
+		char name[64];
 		tfxU64 amount_allocated;
 		void *address;
+		tfxU32 allocations;
 		bool is_alive;
 	};
 
@@ -768,9 +770,16 @@ typedef unsigned long long tfxKey;
 	};
 
 	extern tfxMemoryTrackerLog tfxMEMORY_TRACKER;
+	extern char tfxMEMORY_CONTEXT[64];
 
-#define tfxALLOCATE(tracker_name, dst, size) malloc(size); tfxMemoryTrackerEntry tracker; tracker.name = tracker_name; tracker.amount_allocated = size; tracker.address = dst; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker); 
-#define tfxFREE(dst) free(dst); assert(tfxMEMORY_TRACKER.ValidKey((tfxKey)dst)); tfxMEMORY_TRACKER.At((tfxKey)dst).is_alive = false;
+#define tfxALLOCATE(tracker_name, dst, size) malloc(size); tfxMemoryTrackerEntry tracker; memset(&tracker, '\0', sizeof(tfxMemoryTrackerEntry)); memcpy(tracker.name, tracker_name, strlen(tracker_name)); tracker.amount_allocated = size; tracker.address = dst; tfxU32 allocations = 0; if (data &&tfxMEMORY_TRACKER.ValidKey((tfxKey)data)) { tfxMemoryTrackerEntry *entry = tfxMEMORY_TRACKER.At((tfxKey)data); if(entry->is_alive) allocations = tfxMEMORY_TRACKER.At((tfxKey)data)->allocations; } tracker.allocations = allocations + 1; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker);
+#define tfxFREE(dst) free(dst); assert(tfxMEMORY_TRACKER.ValidKey((tfxKey)dst)); tfxMEMORY_TRACKER.At((tfxKey)dst)->is_alive = false;
+#define tfxINIT_VEC_NAME memset(name, '\0', 64); name[0] = 'X' 
+#define tfxINIT_VEC_NAME_INIT memset(name, '\0', 64); memcpy(name, name_init, strlen(name_init));
+#define tfxINIT_VEC_NAME_SRC_COPY memset(name, '\0', 64); memcpy(name, src.name, strlen(src.name));
+#define tfxCONSTRUCTOR_VEC_DEF const char *name_init
+#define tfxCONSTRUCTOR_VEC_INIT(name) #name
+#define tfxCONSTRUCTOR_VEC_INIT2(name) name
 
 	//Intrinsics and multithreading
 
@@ -796,6 +805,7 @@ typedef unsigned long long tfxKey;
 	//std::vector replacement with some extra stuff and tweaks specific to Qulkan/TimelineFX
 	template<typename T>
 	struct tfxvec {
+		char name[64];
 		tfxU32 current_size;
 		tfxU32 capacity;
 		T* data;
@@ -805,13 +815,11 @@ typedef unsigned long long tfxKey;
 		typedef value_type*         iterator;
 		typedef const value_type*   const_iterator;
 
-		inline tfxvec() { current_size = capacity = 0; data = NULL; }
-		inline tfxvec(tfxU32 qty) { current_size = capacity = 0; data = NULL; resize(qty); }
-		inline tfxvec(T* from, T* to) { current_size = capacity = 0; data = NULL; auto current = from; while (current != to + 1) { push_back(*current); ++current; } }
-		inline tfxvec(std::initializer_list<T> t) { current_size = capacity = 0; data = NULL; for (T element : t) { push_back(element); } }
-		inline tfxvec(const tfxvec<T> &src) { current_size = capacity = 0; data = NULL; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
-		inline tfxvec<T>& operator=(const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
-		inline ~tfxvec() { if (data) free(data); data = NULL; current_size = capacity = 0; }
+		inline tfxvec() { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME;  }
+		inline tfxvec(const char *name_init) { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
+		inline tfxvec(const tfxvec<T> &src) { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
+		inline tfxvec<T>& operator=( const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); tfxINIT_VEC_NAME_SRC_COPY; return *this; }
+		inline ~tfxvec() { if (data) { tfxFREE(data) }; data = NULL; current_size = capacity = 0; }
 
 		inline bool			empty() { return current_size == 0; }
 		inline tfxU32		size() { return current_size; }
@@ -819,7 +827,7 @@ typedef unsigned long long tfxKey;
 		inline T&           operator[](tfxU32 i) { return data[i]; }
 		inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 
-		inline void         free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
+		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 		inline void         clear() { if (data) { current_size = 0; } }
 		inline T*           begin() { return data; }
 		inline const T*     begin() const { return data; }
@@ -841,7 +849,7 @@ typedef unsigned long long tfxKey;
 		inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 		inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
 		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; 
-			T* new_data = (T*)tfxALLOCATE("Test", new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); free(data); } data = new_data; capacity = new_capacity; }
+			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity; }
 
 		inline T&	        push_back(const T& v) { 
 			if (current_size == capacity) 
@@ -2818,7 +2826,8 @@ typedef unsigned long long tfxKey;
 		tfxvec<T> data;
 		void(*remove_callback)(T &item) = nullptr;
 
-		tfxStorageMap() {}
+		tfxStorageMap() : map(tfxCONSTRUCTOR_VEC_INIT("Storage Map map")), data(tfxCONSTRUCTOR_VEC_INIT("Storage Map data")) {}
+		tfxStorageMap(const char *map_tracker, const char *data_tracker) : map(tfxCONSTRUCTOR_VEC_INIT2(map_tracker)), data(tfxCONSTRUCTOR_VEC_INIT2(data_tracker)) {}
 
 		//Insert a new T value into the storage
 		inline void Insert(const char *name, const T &value) {
@@ -3104,6 +3113,10 @@ typedef unsigned long long tfxKey;
 		tfxU32 magic_number;						//Magic number to confirm format of the Inventory
 		tfxU32 entry_count;							//Number of files in the inventory
 		tfxStorageMap<tfxEntryInfo> entries;		//The inventory list
+
+		tfxInventory() :
+			entries("Inventory Map", "Inventory Data")
+		{}
 	};
 
 	struct tfxPackage {
@@ -3908,7 +3921,8 @@ typedef unsigned long long tfxKey;
 			animation_settings(0),
 			preview_camera_settings(0),
 			max_sub_emitters(0),
-			max_sub_emitter_life(0.f)
+			max_sub_emitter_life(0.f),
+			sub_effectors(tfxCONSTRUCTOR_VEC_INIT("sub_effectors"))
 		{
 			for (int i = 0; i != tfxLAYERS; ++i) {
 				max_particles[i] = 0;
@@ -4312,7 +4326,9 @@ typedef unsigned long long tfxKey;
 			max_compute_controllers(10000),
 			max_new_compute_particles(10000),
 			new_compute_particle_index(0),
-			new_particles_count(0)
+			new_particles_count(0),
+			new_positions(tfxCONSTRUCTOR_VEC_INIT("new_positions")),
+			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT("free_comput_controllers"))
 		{ }
 		~tfxParticleManager();
 		tfxEffectEmitter &operator[] (unsigned int index);
@@ -4486,6 +4502,36 @@ typedef unsigned long long tfxKey;
 		tfxStr library_file_path;
 		tfxU32 uid = 0;
 
+		tfxEffectLibrary() :
+			effect_paths("EffectLib effect paths map", "EffectLib effect paths data"),
+			particle_shapes("EffectLib shapes map", "EffectLib shapes data"),
+			effects(tfxCONSTRUCTOR_VEC_INIT("effects")),
+			effect_infos(tfxCONSTRUCTOR_VEC_INIT("effect_infos")),
+			emitter_properties(tfxCONSTRUCTOR_VEC_INIT("emitter_properties")),
+			global_graphs(tfxCONSTRUCTOR_VEC_INIT("global_graphs")),
+			property_graphs(tfxCONSTRUCTOR_VEC_INIT("property_graphs")),
+			base_graphs(tfxCONSTRUCTOR_VEC_INIT("base_graphs")),
+			variation_graphs(tfxCONSTRUCTOR_VEC_INIT("variation_graphs")),
+			overtime_graphs(tfxCONSTRUCTOR_VEC_INIT("overtime_graphs")),
+			animation_settings(tfxCONSTRUCTOR_VEC_INIT("animation_settings")),
+			preview_camera_settings(tfxCONSTRUCTOR_VEC_INIT("preview_camera_settings")),
+			all_nodes(tfxCONSTRUCTOR_VEC_INIT("all_nodes")),
+			node_lookup_indexes(tfxCONSTRUCTOR_VEC_INIT("nodes_lookup_indexes")),
+			compiled_lookup_values(tfxCONSTRUCTOR_VEC_INIT("compiled_lookup_values")),
+			compiled_lookup_indexes(tfxCONSTRUCTOR_VEC_INIT("compiled_lookup_indexes")),
+			shape_data(tfxCONSTRUCTOR_VEC_INIT("shape_data")),
+			graph_min_max(tfxCONSTRUCTOR_VEC_INIT("graph_min_max")),
+			free_global_graphs(tfxCONSTRUCTOR_VEC_INIT("free_global_graphs")),
+			free_property_graphs(tfxCONSTRUCTOR_VEC_INIT("free_property_graphs")),
+			free_base_graphs(tfxCONSTRUCTOR_VEC_INIT("free_base_graphs")),
+			free_variation_graphs(tfxCONSTRUCTOR_VEC_INIT("free_variation_graphs")),
+			free_overtime_graphs(tfxCONSTRUCTOR_VEC_INIT("free_overtime_graphs")),
+			free_animation_settings(tfxCONSTRUCTOR_VEC_INIT("free_animation_settings")),
+			free_preview_camera_settings(tfxCONSTRUCTOR_VEC_INIT("free_preview_camera_settings")),
+			free_properties(tfxCONSTRUCTOR_VEC_INIT("free_properties")),
+			free_infos(tfxCONSTRUCTOR_VEC_INIT("free_infos"))
+		{}
+
 		//Todo: Inline a lot of these
 		//Free everything in the library
 		void Clear();
@@ -4600,7 +4646,10 @@ typedef unsigned long long tfxKey;
 	struct tfxEffectTemplate {
 		tfxStorageMap<tfxEffectEmitter*> paths;
 		tfxEffectEmitter effect_template;
-
+ 
+		tfxEffectTemplate() :
+			paths("Effect template paths map", "Effect template paths data")
+		{}
 		void AddPath(tfxEffectEmitter &effectemitter, tfxStr256 path) {
 			paths.Insert(path, &effectemitter);
 			for (auto &sub : effectemitter.common.library->GetInfo(effectemitter).sub_effectors) {
@@ -4700,6 +4749,9 @@ typedef unsigned long long tfxKey;
 		bool initialised = false;
 		tfxStorageMap<tfxDataType> names_and_types;
 
+		tfxDataTypesDictionary() : 
+			names_and_types("Data Types Storage Map", "Data Types Storage Data")
+		{}
 		void Init();
 	};
 
@@ -4830,6 +4882,7 @@ typedef unsigned long long tfxKey;
 		return (d2 > d1) - (d2 < d1);
 	}
 	static inline void InsertionSortParticles(tfxvec<tfxParticle> &particles, tfxvec<tfxParticle> &current_buffer) {
+		tfxPROFILE;
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticle key = particles[i];
 			int j = i - 1;

@@ -239,6 +239,7 @@ namespace tfx {
 	 * @return Noise value in the range[-1; 1], value of 0 on all integer coordinates.
 	 */
 	float tfxSimplexNoise::noise(float x, float y) {
+		tfxPROFILE;
 		float n0, n1, n2;   // Noise contributions from the three corners
 
 		// Skewing/Unskewing factors for 2D
@@ -439,6 +440,7 @@ namespace tfx {
 
 	//A Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
 	tfxVec4 tfxSimplexNoise::noise4(const __m128 &x4, const __m128 &y4, const __m128 &z4) {
+		tfxPROFILE;
 		// Skewing/Unskewing factors for 3D
 
 		// Skew the input space to determine which simplex cell we're in
@@ -2253,6 +2255,7 @@ namespace tfx {
 	}
 
 	tfxSpawnPosition InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween) {
+		tfxPROFILE;
 		//----Position
 		tfxSpawnPosition out;
 		tfxVec3 lerp_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position);
@@ -2982,6 +2985,7 @@ namespace tfx {
 	}
 
 	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter *library_link) {
+		tfxPROFILE;
 		tfxU32 lookup_frame = static_cast<tfxU32>((data.age / data.max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
 		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
@@ -3123,6 +3127,7 @@ namespace tfx {
 	}
 
 	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter *library_link) {
+		tfxPROFILE;
 		tfxU32 lookup_frame = static_cast<tfxU32>((data.age / data.max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
 		float lookup_velocity = c.graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
@@ -4789,6 +4794,8 @@ namespace tfx {
 	}
 
 	void tfxDataTypesDictionary::Init() {
+		names_and_types.data.reserve(200);
+		names_and_types.map.reserve(200);
 		names_and_types.Insert("name", tfxString);
 		names_and_types.Insert("image_index", tfxUint);
 		names_and_types.Insert("image_handle_x", tfxFloat);
@@ -7101,6 +7108,7 @@ namespace tfx {
 	}
 
 	void tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter) {
+		tfxPROFILE;
 		if (effects[buffer].current_size == effects[buffer].capacity)
 			return;
 		if (flags & tfxEffectManagerFlags_use_compute_shader && highest_compute_controller_index >= max_compute_controllers && free_compute_controllers.empty())
@@ -7501,16 +7509,19 @@ namespace tfx {
 		max_effects = effects_limit;
 
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+			particles[layer][0] = tfxvec<tfxParticle>(tfxCONSTRUCTOR_VEC_INIT("PM Particles Buffer 0"));
+			particles[layer][1] = tfxvec<tfxParticle>(tfxCONSTRUCTOR_VEC_INIT("PM Particles Buffer 1"));
 			particles[layer][0].resize(max_cpu_particles_per_layer);
 			particles[layer][1].resize(max_cpu_particles_per_layer);
 			particles[layer][0].clear();
 			particles[layer][1].clear();
 		}
+		effects[0] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 0"));
+		effects[1] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 1"));
 		effects[0].create_pool(max_effects);
 		effects[1].create_pool(max_effects);
 		effects[0].clear();
 		effects[1].clear();
-
 	}
 
 	uint32_t tfxParticleManager::ParticleCount() {
@@ -7721,6 +7732,7 @@ namespace tfx {
 	}
 
 	void SpawnParticles(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls) {
+		tfxPROFILE;
 		if (e.flags & tfxEmitterStateFlags_single_shot_done || e.parent->flags & tfxEmitterStateFlags_stop_spawning)
 			return;
 
@@ -7777,6 +7789,7 @@ namespace tfx {
 	}
 
 	void SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls) {
+		tfxPROFILE;
 		if (e.flags & tfxEmitterStateFlags_single_shot_done || e.parent->flags & tfxEmitterStateFlags_stop_spawning)
 			return;
 
@@ -7859,6 +7872,7 @@ namespace tfx {
 	}
 
 	void InitCPUParticle(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxEmitterSpawnControls &spawn_controls, float tween) {
+		tfxPROFILE;
 		p.data.flags = tfxParticleFlags_fresh;
 		p.parent = &e;
 		p.next_ptr = &p;
@@ -7896,6 +7910,7 @@ namespace tfx {
 	}
 
 	tfxEmitterSpawnControls UpdateEmitterState(tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls) {
+		tfxPROFILE;
 		tfxEffectEmitter &parent = *e.parent;
 		tfxEmitterProperties &properties = e.GetProperties();
 		tfxEmitterSpawnControls spawn_controls;
@@ -8004,6 +8019,7 @@ namespace tfx {
 	}
 
 	tfxParentSpawnControls UpdateEffectState(tfxEffectEmitter &e) {
+		tfxPROFILE;
 		//If this effect is a sub effect then the graph index will reference the global graphs for the root parent effect
 		tfxParentSpawnControls spawn_controls;
 		spawn_controls.life = lookup_callback(e.common.library->global_graphs[e.global].life, e.common.frame);
@@ -8047,6 +8063,7 @@ namespace tfx {
 	}
 
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxEffectEmitter &e) {
+		tfxPROFILE;
 		if (pm.flags & tfxEffectManagerFlags_update_base_values)
 			ReloadBaseValues(p, e);
 
@@ -8145,6 +8162,7 @@ namespace tfx {
 	const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
 	tfxProfile tfxPROFILE_ARRAY[tfxPROFILE_COUNT];
 	tfxMemoryTrackerLog tfxMEMORY_TRACKER;
+	char tfxMEMORY_CONTEXT[64];
 	tfxDataTypesDictionary data_types;
 
 	bool EndOfProfiles() {
