@@ -772,6 +772,26 @@ typedef unsigned long long tfxKey;
 #define tfxALLOCATE(tracker_name, dst, size) malloc(size); tfxMemoryTrackerEntry tracker; tracker.name = tracker_name; tracker.amount_allocated = size; tracker.address = dst; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker); 
 #define tfxFREE(dst) free(dst); assert(tfxMEMORY_TRACKER.ValidKey((tfxKey)dst)); tfxMEMORY_TRACKER.At((tfxKey)dst).is_alive = false;
 
+	//Intrinsics and multithreading
+
+	inline tfxU64 AtomicExchange64(tfxU64 volatile *value, tfxU64 new_value) {
+		tfxU64 result = _InterlockedExchange64((__int64*)value, new_value);
+		return result;
+	}
+	inline tfxU64 AtomicAdd64(tfxU64 volatile *value, tfxU64 amount_to_add) {
+		tfxU64 result = _InterlockedExchangeAdd64((__int64*)value, amount_to_add);
+		return result;
+	}
+
+	inline tfxU32 AtomicExchange32(tfxU32 volatile *value, tfxU32 new_value) {
+		tfxU32 result = _InterlockedExchange((long*)value, new_value);
+		return result;
+	}
+	inline tfxU32 AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
+		tfxU32 result = _InterlockedExchangeAdd((long*)value, amount_to_add);
+		return result;
+	}
+
 	//Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut
 	//std::vector replacement with some extra stuff and tweaks specific to Qulkan/TimelineFX
 	template<typename T>
@@ -3028,18 +3048,19 @@ typedef unsigned long long tfxKey;
 
 	struct tfxProfileTag {
 		tfxProfile *profile;
+		tfxU64 start_cycles;
 
 		tfxProfileTag(tfxU32 id, const char *name) {
 			profile = tfxPROFILE_ARRAY + id;
 			profile->name = name;
 			profile->run_time -= Microsecs();
-			profile->cycle_count -= __rdtsc();
-			profile->hit_count++;
+			start_cycles = __rdtsc();
+			AtomicAdd32(&profile->hit_count, 1);
 		}
 
 		~tfxProfileTag() {
 			profile->run_time += Microsecs();
-			profile->cycle_count += __rdtsc();
+			AtomicAdd64(&profile->cycle_count, (__rdtsc() - start_cycles));
 		}
 
 	};
