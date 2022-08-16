@@ -3074,8 +3074,12 @@ typedef unsigned long long tfxKey;
 
 	};
 
-
+#define tfxENABLE_PROFILING
+#ifdef tfxENABLE_PROFILING 
 #define tfxPROFILE tfxProfileTag tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
+#else
+#define tfxPROFILE __COUNTER__
+#endif
 
 	bool EndOfProfiles();
 	tfxProfile* NextProfile();
@@ -4267,6 +4271,11 @@ typedef unsigned long long tfxKey;
 		float weight;
 	};
 
+
+	struct tfxEffect {
+		tfxEffectEmitter *effect_ptr;
+	};
+
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
 		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
@@ -4278,6 +4287,7 @@ typedef unsigned long long tfxKey;
 		tfxvec<tfxEffectEmitter> effects[2];
 		//Set when an effect is updated and used to pass on global attributes to child emitters
 		tfxParentSpawnControls parent_spawn_controls;
+		tfxvec<tfxEffectEmitter*> effect_ptrs;
 
 		//todo: document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
@@ -4334,7 +4344,7 @@ typedef unsigned long long tfxKey;
 		tfxEffectEmitter &operator[] (unsigned int index);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
-		void Init(unsigned int effects_limit = 10000, unsigned int particle_limit_per_layer = 50000);
+		void Init(unsigned int effects_limit = 1000, unsigned int particle_limit_per_layer = 50000);
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
 		//When paused you still might want to keep the particles in order:
@@ -4345,8 +4355,8 @@ typedef unsigned long long tfxKey;
 		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
-		void AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false);
-		void AddEffect(tfxEffectTemplate &effect, unsigned int buffer);
+		tfxEffectEmitter *AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false);
+		tfxEffectEmitter *AddEffect(tfxEffectTemplate &effect);
 		//Clear all effects and particles in the particle manager
 		void ClearAll();
 		//Soft expire all the effects so that the particles complete their animation first
@@ -4645,7 +4655,8 @@ typedef unsigned long long tfxKey;
 
 	struct tfxEffectTemplate {
 		tfxStorageMap<tfxEffectEmitter*> paths;
-		tfxEffectEmitter effect_template;
+		tfxEffectEmitter effect;
+		void(*spawn_data_override)(void *user_data, tfxEmitterSpawnControls *spawn_controls);
  
 		tfxEffectTemplate() :
 			paths("Effect template paths map", "Effect template paths data")
@@ -4659,10 +4670,10 @@ typedef unsigned long long tfxKey;
 			}
 		}
 
-		inline tfxEffectEmitter &Effect() { return effect_template; }
+		inline tfxEffectEmitter &Effect() { return effect; }
 		inline tfxEffectEmitter *Get(tfxStr256 &path) { if (paths.ValidName(path)) return paths.At(path); return nullptr; }
 		inline void SetUserData(tfxStr256 &path, void *data) { if (paths.ValidName(path)) paths.At(path)->user_data = data; }
-		inline void SetUserData(void *data) { effect_template.user_data = data; }
+		inline void SetUserData(void *data) { effect.user_data = data; }
 		void SetUserDataAll(void *data);
 	};
 

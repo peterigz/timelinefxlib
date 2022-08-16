@@ -4014,8 +4014,8 @@ namespace tfx {
 		tfxEffectEmitter *effect = GetEffect(path);
 		assert(effect);
 		assert(effect->type == tfxEffectType);
-		effect->Clone(effect_template.effect_template, &effect_template.effect_template, this);
-		effect_template.AddPath(effect_template.effect_template, effect_template.effect_template.GetInfo().name.c_str());
+		effect->Clone(effect_template.effect, &effect_template.effect, this);
+		effect_template.AddPath(effect_template.effect, effect_template.effect.GetInfo().name.c_str());
 	}
 
 	void tfxEffectLibrary::ReIndex() {
@@ -7090,7 +7090,7 @@ namespace tfx {
 
 	void tfxEffectTemplate::SetUserDataAll(void *data) {
 		tfxvec<tfxEffectEmitter*> stack;
-		stack.push_back(&effect_template);
+		stack.push_back(&effect);
 		while (stack.size()) {
 			tfxEffectEmitter *current = stack.pop_back();
 			current->user_data = data;
@@ -7107,7 +7107,7 @@ namespace tfx {
 		return effects[current_ebuff][index];
 	}
 
-	void tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter) {
+	tfxEffectEmitter* tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter) {
 		tfxPROFILE;
 		if (effects[buffer].current_size == effects[buffer].capacity)
 			return;
@@ -7115,6 +7115,7 @@ namespace tfx {
 			return;
 		unsigned int parent_index = effects[buffer].current_size++;
 		effects[buffer][parent_index] = effect;
+		effect_ptrs.push_back(&effects[buffer][parent_index]);
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].ResetParents();
 		if (!is_sub_emitter && effect.Is3DEffect()) {
@@ -7217,11 +7218,12 @@ namespace tfx {
 				}
 			}
 		}
-		effects[buffer][parent_index].NoTweenNextUpdate();
+		effects[buffer][parent_index].NoTweenNextUpdate(); 
+		return &effects[buffer][parent_index];
 	}
 
-	void tfxParticleManager::AddEffect(tfxEffectTemplate &effect, unsigned int buffer) {
-		AddEffect(effect.effect_template, current_ebuff);
+	tfxEffectEmitter* tfxParticleManager::AddEffect(tfxEffectTemplate &effect) {
+		return AddEffect(effect.effect, current_ebuff);
 	}
 
 	int tfxParticleManager::AddComputeController() {
@@ -7582,10 +7584,10 @@ namespace tfx {
 		pm.AddEffect(effect, pm.current_ebuff);
 	}
 
-	void AddEffect(tfxParticleManager &pm, tfxEffectTemplate &effect, float x, float y) {
-		effect.effect_template.common.transform.local_position.x = x;
-		effect.effect_template.common.transform.local_position.y = y;
-		pm.AddEffect(effect, pm.current_ebuff);
+	void AddEffect(tfxParticleManager &pm, tfxEffectTemplate &effect_template, float x, float y) {
+		effect_template.effect.common.transform.local_position.x = x;
+		effect_template.effect.common.transform.local_position.y = y;
+		pm.AddEffect(effect_template);
 	}
 
 	void Rotate(tfxEffectEmitter &e, float r) {
