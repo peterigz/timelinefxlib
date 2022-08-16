@@ -1,7 +1,5 @@
 # Timeline FX C++ library
 
-**Quick note to say that currently this library is out of date with the latest addition of 3d in the editor. Development is on the 3d branch which is what I'm working on next so watch this space!**
-
 This is an early alpha version of the TimelineFX library that you can use to incorporate 2D particle effects directly into your games and applications. You can use the [TimelineFX Particle Editor](https://www.rigzsoft.co.uk/timelinefx-alpha-version/) to design your effects.
 
 **This is still very much a work in progress but feel free to use it and give some feedback on how to improve the interface and make it easier to use and implement.**
@@ -34,7 +32,7 @@ The ShapeLoader function expects the following parameters to be passed to it:
 - `int image_memory_size`			*The size in bytes of the raw_image_data*
 - `void *custom_data`				*This allows you to pass through an object you can use to access whatever is necessary to load the image into graphics memory, depending on the renderer that you're using*
 ```cpp
-void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_data, int image_memory_size, void *custom_data) {
+void ShapeLoader(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_memory_size, void *custom_data) {
 	//Cast your custom data, this can be anything you want
 	TfxExample *example = static_cast<TfxExample*>(custom_data);
 
@@ -73,76 +71,87 @@ void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_da
 Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using.
 ```cpp
 //Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using
-void TfxExample::RenderEffect(tfx::tfxEffect &effect, float tween) {
+void TfxExample::RenderParticles(tfx::tfxParticleManager &pm, float tween) {
 	//Renderer specific, get the layer that we will draw on (there's only one layer in this example)
 	QulkanLayer &render_layer = GetLayer();
 
-	for (EachLayer) {
-		for (auto &s : effect.sprites[layer]) {
-			//In order to set the correct blendmode we need to get the property from the parent emitter that emitted the particle
-			//A pointer to the parent emitter is stored in the parent member
-			//Set the correct blendmode, see timelinefx::BlendMode. You may have to map the blendmodes depending on the renderer you use
-			render_layer.SetBlendMode(qulkan::BlendMode((s.parameters & 0xF0000000) >> 28));
-			//Set the color for the quad
-			render_layer.SetColor(s.color.r, s.color.g, s.color.b, s.color.a);
+	for (int i = 0; i != tfxLAYERS; ++i) {
+		for (auto &p : *pm.GetParticleBuffer(i)) {
+			//Get the parent emitter of the particle to access some if it's properties
+			tfxEffectEmitter &e = *p.parent;
+			tfxEmitterProperties &properties = e.GetProperties();
+
+			//Set the color for the quad. Note that the alpha value should dictate the blendfactor of the partciles, so 0 would be additive blend, 1 would be alpha blend.
+			//Any value in between would be a mix of the 2.
+			render_layer.SetColor(p.data.color.r, p.data.color.g, p.data.color.b, p.data.color.a);
 			//Set the value that the color will be multiplied by, this happens in your fragment shader. You can always omit this if you're not using intensity
-			render_layer.SetMultiplyFactor(s.intensity);
+			render_layer.SetMultiplyFactor(p.data.intensity);
 			//You can use render tweening to smooth particle movement from frame to frame by interpolating between captured and world states
-			tfx::FormState tweened = tfx::Tween(tween, s.world, s.captured);
-			//Is the particle using an image with more than one frame of animation?
-			//Get the current frame of animation that the particle is using
-			uint32_t frame = s.parameters & 0x00FFFFFF;
+			tfxVec3 tweened = Tween(tween, p.data.world_position, p.data.captured_position);
+			//Get the frame of animation if it's an animated particle
+			uint32_t frame = uint32_t(p.data.image_frame);
 			//Set the image handle. It will differ from renderer to renderer how you access the right frame of animation. Here the pointer always points to the first frame, and then 
 			//we can just add the current frame to the pointer to get the correct frame
-			SetImageHandle(*(static_cast<QulkanImage*>(s.ptr) + frame), s.handle.x, s.handle.y);
+			SetImageHandle(*(static_cast<QulkanImage*>(properties.image->ptr) + frame), e.current.image_handle.x, e.current.image_handle.y);
 			//Add the particle frame of animation quad to the renderer for the next render pass at the particle position/rotation/scale
-			render_layer.DrawSprite(*(static_cast<QulkanImage*>(s.ptr) + frame), tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
+			render_layer.DrawSprite(
+				*(static_cast<QulkanImage*>(properties.image->ptr) + frame),	//pointer to the image texture to use
+				tweened.x, tweened.y,											//location of the particle
+				p.data.world_rotations.roll,									//Rotation of the particle
+				p.data.scale.x, p.data.scale.y);								//Scale of the particle
 		}
 	}
 }
 ```
 
 ### Adding and updating effects
-The memory for effects, emitters and particles are managed using a tfxEffectPool. You must call Init on the effect pool before use.
-
-	tfx::tfxEffectPool effect_pool;
-	effect_pool.Init();
-
-You can have as many effect pools as you want if needed. The simplest way to add effects is straight from the library:
-
-	tfx::tfxEffectID effect_id;
-	tfx::PoolEffect(effect_pool, *library.GetEffect("Explosion 1"), effect_id);
-
-The id for the effect will be stored in effect_id in this case and you can use that with GetEffect to retrieve the effect later to move it or render it etc.
+Use a tfxParticleManager to update effects and particles. You can create multiple particle managers if needed.
 
 ```cpp
-	//In order to set update callbacks in your effects so that you can udpate them in realtime, 
-	//prepare an effect template first:
-	tfx::EffectEmitterTemplate torch;
-	library.PrepareEffectTemplate("Torch", torch);	//Torch is the name of the effect in the library.
-	//You can set some custom user data which you can cast in the callback if needed. (useful if 
-	//attaching the effect to an object in your game)
-	torch.SetUserData(this);
-	//Set the udpate callback for the effect
-	torch.SetUpdateCallback(UpdateTorchEffect);
-	//Set a callback for a specific emitter in the effect
-	torch.SetUpdateCallback("Torch/Embers", UpdateTorchFlames);
-	//Finally add the effect template to the effect pool
-	tfx::PoolEffectFromTemplate(effect_pool, torch, effect_id); 
+	//Make sure that timelinefx udates effects at the same frequency as your update loop.
+	tfx::SetUpdateFrequency(60);
+
+	//Initialise a particle manager. This manages effects, emitters and the particles that they spawn
+	//Depending on your needs you can use as many particle managers as you need.
+	pm.Init();
+
+	//Renderer specific
+	QulkanLayer &layer = GetLayer();
+	layer.SetBlendMode(Blendmode_alpha);
+	//Ideally your renderer can use premultiplied alpha, this allows for particles to be drawn in a single draw call
+	layer.SetBlendType(BlendType_pre_multiply);
+
+	//In order to set update callbacks in your effects so that you can udpate them in realtime, prepare an effect template first:
+	library.PrepareEffectTemplate("Torch", torch);
+	//Then set the udpate callbacks
+	torch.SetEffectUpdateCallback(UpdateTorchEffect);
+	torch.SetEmitterUpdateCallback("Torch/Embers", UpdateTorchEmbers);
+	torch.SetParticleUpdateCallback("Torch/Embers", UpdateEmberParticles);
+
+	//Add the effect to the effect pool, the id you can use to access the effect is stored in torch_effect_id
+	pm.AddEffect(torch);
 ```
 
 Your callbacks need to pass in either an EffectEmitter object reference for effect/emitter callbacks or a Particle reference for a particle callback:
 
 ```cpp
-//This one uses a callback to set the opacity of the effect to something else
-void UpdateTorchEffect(tfx::tfxEffect &effect) {
-	effect.current.opacity(0.5f);
+//Change the position of the effect each update
+void UpdateTorchEffect(tfx::tfxEffectEmitter &effect, tfxParentSpawnControls &spawn_controls) {
+	Position(effect, tfxVec2(fMouseX(), fMouseY()));
 }
 
-//This callback is for a specific emitter in the effect, and changes the angle of the emitter
-//based on the location of the mouse pointer
-void UpdateTorchFlames(tfx::tfxEmitter &emitter) {
-	emitter.(fMouseX() *0.01f);
+//This callback is for a specific emitter in the effect, and changes quantity of particles spawned depending on the mouse location
+void UpdateTorchEmbers(tfx::tfxEffectEmitter &emitter, tfxEmitterSpawnControls &spawn_controls) {
+	emitter.current.qty = fMouseX();
+}
+
+//This callback gets called by every particle spawned by the Embers emitter in the torch effect and changes the color of the particles based on the location of the mouse pointer
+void UpdateEmberParticles(tfx::tfxParticleData &particle_data, void *user_data) {
+	float x = (float)particle_data.world_position.x / ScreenWidth();
+	float y = (float)particle_data.world_position.y / ScreenHeight();
+	particle_data.color.r = uint8_t(x * 255.f);
+	particle_data.color.g = uint8_t(y * 255.f);
+	particle_data.color.b = uint8_t(x * 255.f);
 }
 
 ```
@@ -160,10 +169,8 @@ An update loop might look something like:
 
 	while (timer->DoUpdate()) {
 
-		//You can get an effect from the pool with GetEffect, which you might do to position the effect
-		GetEffect(effect_pool, torch_effect_id).Position(fMouseX(), fMouseY());
-		//In order to update the effects each frame you'll need to call UpdateEffect on each Effect you're using
-		UpdateEffect(effect_pool, torch_effect_id);
+		//Update the particle manager
+		pm.Update();
 
 		timer->UnAccumulate();
 	}
@@ -171,10 +178,10 @@ An update loop might look something like:
 	timer->Set();
 
 	//Call your renderer function to render all the particles
-	RenderParticles(GetEffect(effect_pool, torch_effect_id), timer->Tween());
+	RenderParticles(pm, timer->Tween());
 ```
 
 See the files in the examples folder for a full example.
 
-*More documentation to follow soon, but check out the header file and the Particle, EffectEmitter and ParticleManager structs for more insights into usage*
+*More documentation to follow soon, but check out the header file and the Particle, tfxEffectEmitter and tfxParticleManager structs for more insights into usage*
 
