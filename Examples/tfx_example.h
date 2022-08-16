@@ -8,9 +8,10 @@ class TfxExample {
 
 public:
 
-	tfx::EffectLibrary library;
-	tfx::ParticleManager pm;
-	tfx::EffectEmitterTemplate torch;
+	tfx::tfxEffectLibrary library;
+	tfx::tfxEffectTemplate torch;
+	tfx::tfxParticleManager pm;
+	tfx::tfxEffectID torch_effect_id;
 	qulkan::Timer *timer;
 	u32 render_layer;
 	u32 base_target;
@@ -19,10 +20,10 @@ public:
 
 	void Init();
 	void Update(float ellapsed);
-	void RenderParticles(float tween);
+	void RenderParticles(tfx::tfxParticleManager &pm, float tween);
 };
 
-void ShapeLoader(const char* filename, tfx::ImageData &image_data, void *raw_image_data, int image_memory_size, void *custom_data);
-void UpdateTorchEffect(tfx::EffectEmitter &effect);
-void UpdateTorchFlames(tfx::EffectEmitter &effect);
-void UpdateEmbers(tfx::Particle &particle);
+void ShapeLoader(const char* filename, tfx::tfxImageData &image_data, void *raw_image_data, int image_memory_size, void *custom_data);
+void UpdateTorchEffect(tfx::tfxEffectEmitter &effect, tfx::tfxParentSpawnControls &spawn_controls);
+void UpdateTorchEmbers(tfx::tfxEffectEmitter &emitter, tfx::tfxEmitterSpawnControls &spawn_controls);
+void UpdateEmberParticles(tfx::tfxParticleData &particle, void *user_data);

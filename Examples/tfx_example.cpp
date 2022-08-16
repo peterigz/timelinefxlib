@@ -2,7 +2,7 @@
 //The TimelineFX API is render agnostic, so you will have to implement your own:
 //1) ShapeLoader function to load each image in the library into the renderer texture buffer
 //2) Renderer function which renders each particle
-//Both functions are quite small and should be easy to implement
+//Both functions are quite small and should be easy to implement depending on the render library you're using
 
 #include "pch.h"
 #include "tfx_example.h"
@@ -16,7 +16,7 @@ using namespace tfx;
 //void *raw_image_data			- The raw data of the image which you can use to load the image into graphics memory
 //int image_memory_size			- The size in bytes of the raw_image_data
 //void *custom_data				- This allows you to pass through an object you can use to access whatever is necessary to load the image into graphics memory, depending on the renderer that you're using
-void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_data, int image_memory_size, void *custom_data) {
+void ShapeLoader(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_memory_size, void *custom_data) {
 	//Cast your custom data, this can be anything you want
 	TfxExample *example = static_cast<TfxExample*>(custom_data);
 
@@ -50,28 +50,6 @@ void ShapeLoader(const char* filename, ImageData &image_data, void *raw_image_da
 	}
 }
 
-//You can utilise callbacks in effects and emitters to change the behaviour of effects however you need
-//This one uses a callback to set the position of the effect to the current location of the mouse pointer
-void UpdateTorchEffect(tfx::EffectEmitter &effect) {
-	effect.Position((float)MouseX(), (float)MouseY());
-}
-
-//This callback is for a specific emitter in the effect, and changes the amount of particles that are spawned based on the location of the mouse pointer
-void UpdateTorchFlames(tfx::EffectEmitter &emitter) {
-	emitter.OverrideBaseAmount((float)MouseX());
-}
-
-//This callback gets called by every particle spawned by the Embers emitter in the torch effect and changes the color of the particles based on the location of the mouse pointer
-void UpdateEmbers(tfx::Particle &particle) {
-	float x = (float)particle.world.position.x / ScreenWidth();
-	float y = (float)particle.world.position.y / ScreenHeight();
-	particle.color.r = uint8_t(x * 255.f);
-	particle.color.g = uint8_t(y * 255.f);
-	particle.color.b = uint8_t(x * 255.f);
-
-	//You could also access the parent emitters user data with particle->parent->user_data if you needed to pull in more data to update the particle with
-}
-
 void TfxExample::Init() {
 	//Renderer specific - initialise the texture
 	particle_textures = qulkan::CreateTexture("Particle Textures");
@@ -92,28 +70,42 @@ void TfxExample::Init() {
 	//Make sure that timelinefx udates effects at the same frequency as your update loop.
 	tfx::SetUpdateFrequency(60);
 
+	//Initialise a particle manager. This manages effects, emitters and the particles that they spawn
+	//Depending on your needs you can use as many particle managers as you need.
+	pm.Init();
+
 	//Renderer specific
 	QulkanLayer &layer = GetLayer();
 	layer.SetBlendMode(Blendmode_alpha);
 	//Ideally your renderer can use premultiplied alpha, this allows for particles to be drawn in a single draw call
 	layer.SetBlendType(BlendType_pre_multiply);
 
-	//You must initialise the particle manager, and set the maximum amount of effects and particles that you're likely to be updating per frame
-	//You'll need a higher effects amount if you're using a lot of effects with sub effects
-	pm.Init();
-
 	//In order to set update callbacks in your effects so that you can udpate them in realtime, prepare an effect template first:
 	library.PrepareEffectTemplate("Torch", torch);
-	//You can set some custom user data which you can cast in the callback if needed. (useful if attaching the effect to an object in your game)
-	torch.SetUserData(this);
-	//Set the udpate callback for the effect
-	torch.SetUpdateCallback(UpdateTorchEffect);
-	//Set a callback for a specific emitter in the effect
-	torch.SetUpdateCallback("Torch/Embers", UpdateTorchFlames);
-	//Set a callback for any particle spawned by a specific emitter
-	torch.SetParticleUpdateCallback("Torch/Embers", UpdateEmbers);
-	//Finally add the effect to the particle manager
-	tfx::AddEffect(pm, torch);
+	//Then set the udpate callbacks
+	torch.SetEffectUpdateCallback(UpdateTorchEffect);
+	torch.SetEmitterUpdateCallback("Torch/Embers", UpdateTorchEmbers);
+	torch.SetParticleUpdateCallback("Torch/Embers", UpdateEmberParticles);
+
+	//Add the effect to the effect pool, the id you can use to access the effect is stored in torch_effect_id
+	pm.AddEffect(torch);
+}
+
+void UpdateTorchEffect(tfx::tfxEffectEmitter &effect, tfxParentSpawnControls &spawn_controls) {
+	Position(effect, tfxVec2(fMouseX(), fMouseY()));
+}
+
+void UpdateTorchEmbers(tfx::tfxEffectEmitter &emitter, tfxEmitterSpawnControls &spawn_controls) {
+	emitter.current.qty = fMouseX();
+}
+
+//This callback gets called by every particle spawned by the Embers emitter in the torch effect and changes the color of the particles based on the location of the mouse pointer
+void UpdateEmberParticles(tfx::tfxParticleData &particle_data, void *user_data) {
+	float x = (float)particle_data.world_position.x / ScreenWidth();
+	float y = (float)particle_data.world_position.y / ScreenHeight();
+	particle_data.color.r = uint8_t(x * 255.f);
+	particle_data.color.g = uint8_t(y * 255.f);
+	particle_data.color.b = uint8_t(x * 255.f);
 }
 
 void TfxExample::Update(float ellapsed) {
@@ -123,21 +115,14 @@ void TfxExample::Update(float ellapsed) {
 	//Renderer specific
 	SetActiveRenderQueue();
 
-	if (MouseHit(App.Mouse.LeftButton)) {
-		//You don't have to prepare a template effect before adding to the effect library. You can just add it to the particle manager and forget about it.
-		//Once the effect is added though, you won't be able to access it again to make any realtime changes, so use a template if you need to do that.
-		AddEffect(pm, *library.GetEffect("Explosion 1"), (float)MouseX(), (float)MouseY());
-	}
-
 	if (KeyHit(GLFW_KEY_SPACE)) {
 		paused = !paused;
 	}
 
 	while (timer->DoUpdate()) {
 
-		//Inside your update loop, you will need to call the particle manager's update function
-		if (!paused)
-			pm.Update();
+		//Update the particle manager
+		pm.Update();
 
 		timer->UnAccumulate();
 	}
@@ -145,53 +130,43 @@ void TfxExample::Update(float ellapsed) {
 	timer->Set();
 
 	//Call your renderer function to render all the particles
-	RenderParticles(timer->Tween());
+	RenderParticles(pm, timer->Tween());
+
+	tfxStr32 pcount = "Particles: ";
+	pcount.Appendf("%i", pm.ParticleCount());
+	GetLayer().SetColor(255, 255, 255, 255);
+	GetLayer().SetMultiplyFactor(1.f);
+	GetLayer().Text(pcount.c_str(), 20.f, 50.f);
 }
 
-//Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using
-//I should think that you could quite easily multi-thread this as well, as long as your renderer is happy with that
-void TfxExample::RenderParticles(float tween) {
+void TfxExample::RenderParticles(tfx::tfxParticleManager &pm, float tween) {
 	//Renderer specific, get the layer that we will draw on (there's only one layer in this example)
 	QulkanLayer &render_layer = GetLayer();
 
-	//Loop through all the draw layers - particles can be assigned to a specific draw layer so you can draw them in a specific order if necessary. The layer is set in the editor on the properties tab.
-	for (int layer = 0; layer != tfxLAYERS; ++layer) {
-		//Use GetParticleBuffer(layer) to get all of the particles in the current layer
-		for (auto p : *pm.GetParticleBuffer(layer)) {
-			//In order to set the correct blendmode we need to get the property from the parent emitter that emitted the particle
-			//A pointer to the parent emitter is stored in the parent member
-			tfx::EffectEmitter &e = *p.parent;
+	for (int i = 0; i != tfxLAYERS; ++i) {
+		for (auto &p : *pm.GetParticleBuffer(i)) {
+			//Get the parent emitter of the particle to access some if it's properties
+			tfxEffectEmitter &e = *p.parent;
+			tfxEmitterProperties &properties = e.GetProperties();
 
-			//Set the correct blendmode, see timelinefx::BlendMode. You may have to map the blendmodes depending on the renderer you use
-			render_layer.SetBlendMode(qulkan::BlendMode(e.properties.blend_mode));
-			//Set the color for the quad
-			render_layer.SetColor(p.color.r, p.color.g, p.color.b, p.color.a);
+			//Set the color for the quad. Note that the alpha value should dictate the blendfactor of the partciles, so 0 would be additive blend, 1 would be alpha blend.
+			//Any value in between would be a mix of the 2.
+			render_layer.SetColor(p.data.color.r, p.data.color.g, p.data.color.b, p.data.color.a);
 			//Set the value that the color will be multiplied by, this happens in your fragment shader. You can always omit this if you're not using intensity
-			render_layer.SetMultiplyFactor(p.intensity);
+			render_layer.SetMultiplyFactor(p.data.intensity);
 			//You can use render tweening to smooth particle movement from frame to frame by interpolating between captured and world states
-			tfx::FormState tweened = tfx::Tween(tween, p.world, p.captured);
-			//Is the particle using an image with more than one frame of animation?
-			if (e.properties.image->animation_frames == 1 && e.properties.start_frame == 0) {
-				//One frame of animation
-				//Set the image handle, this the offset that the particle is drawn at.
-				//This is where you can make use of the image->ptr from the ShapeLoader function, cast it into the appropriate type for the renderer
-				qulkan::SetImageHandle(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), e.current.image_handle.x, e.current.image_handle.y);
-				//Add the particle image quad to the renderer for the next render pass at the particle position/rotation/scale
-				render_layer.DrawSprite(*static_cast<qulkan::QulkanImage*>(e.properties.image->ptr), tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
-			}
-			else {
-				//Multiple frames of animation
-				//Get the current frame of animation that the particle is using
-				uint32_t frame = uint32_t(p.image_frame);
-				//frame must be within the bounds of the animation
-				assert(frame >= 0 && frame < e.properties.image->animation_frames);
-
-				//Set the image handle. It will differ from renderer to renderer how you access the right frame of animation. Here the pointer always points to the first frame, and then 
-				//we can just add the current frame to the pointer to get the correct frame
-				SetImageHandle(*(static_cast<QulkanImage*>(e.properties.image->ptr) + frame), e.current.image_handle.x, e.current.image_handle.y);
-				//Add the particle frame of animation quad to the renderer for the next render pass at the particle position/rotation/scale
-				render_layer.DrawSprite(*(static_cast<QulkanImage*>(e.properties.image->ptr) + frame), tweened.position.x, tweened.position.y, tweened.rotation, tweened.scale.x, tweened.scale.y);
-			}
+			tfxVec3 tweened = Tween(tween, p.data.world_position, p.data.captured_position);
+			//Get the frame of animation if it's an animated particle
+			uint32_t frame = uint32_t(p.data.image_frame);
+			//Set the image handle. It will differ from renderer to renderer how you access the right frame of animation. Here the pointer always points to the first frame, and then 
+			//we can just add the current frame to the pointer to get the correct frame
+			SetImageHandle(*(static_cast<QulkanImage*>(properties.image->ptr) + frame), e.current.image_handle.x, e.current.image_handle.y);
+			//Add the particle frame of animation quad to the renderer for the next render pass at the particle position/rotation/scale
+			render_layer.DrawSprite(
+				*(static_cast<QulkanImage*>(properties.image->ptr) + frame),	//pointer to the image texture to use
+				tweened.x, tweened.y,											//location of the particle
+				p.data.world_rotations.roll,									//Rotation of the particle
+				p.data.scale.x, p.data.scale.y);								//Scale of the particle
 		}
 	}
 }
@@ -211,7 +186,7 @@ int main(int argc, char** argv) {
 	info.maximised = true;
 	info.show_fps_in_title = true;
 
-	std::cout << sizeof(Particle) << std::endl;
+	std::cout << sizeof(tfxParticle) << std::endl;
 
 	Initialise(info);
 
