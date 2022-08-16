@@ -21,7 +21,7 @@ namespace tfx {
 		return (fp < i) ? (i - 1) : (i);
 	}
 
-	//simd floor function thanks to Stéphanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
+	//simd floor function thanks to Stï¿½phanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
 	inline __m128 _mm_floor_ps2(const __m128& x) {
 		__m128i v0 = _mm_setzero_si128();
 		__m128i v1 = _mm_cmpeq_epi32(v0, v0);
@@ -1736,6 +1736,7 @@ namespace tfx {
 
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 				to_handle = (-tmp_position);
+
 			else
 				to_handle = (common.transform.world_position.xy() - world_position - common.handle.xy());
 
