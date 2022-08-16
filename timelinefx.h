@@ -129,6 +129,7 @@ namespace tfx {
 	//Forward declarations
 
 	struct tfxEffectEmitter;
+	struct tfxEffectTemplate;
 	struct tfxParticle;
 	struct tfxParticleData;
 	struct tfxComputeSprite;
@@ -142,7 +143,6 @@ namespace tfx {
 	struct tfxStr128;
 	struct tfxStr256;
 	struct tfxStr512;
-	struct tfxEffectTemplate;
 
 //--------------------------------------------------------------
 //macros
@@ -3062,6 +3062,7 @@ typedef unsigned long long tfxKey;
 		tfxProfileTag(tfxU32 id, const char *name) {
 			profile = tfxPROFILE_ARRAY + id;
 			profile->name = name;
+			//It's surprisingly slow to use microsecs in debug mode, QueryPerformanceCounter counter is slightly faster but not enough to actually use. Release build seems fine.
 			profile->run_time -= Microsecs();
 			start_cycles = __rdtsc();
 			AtomicAdd32(&profile->hit_count, 1);
@@ -3891,6 +3892,19 @@ typedef unsigned long long tfxKey;
 		tfxVec3 grid_segment_size;
 	};
 
+	//Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
+	struct tfxParentSpawnControls {
+		float life;
+		float size_x;
+		float size_y;
+		float velocity;
+		float spin;
+		float intensity;
+		float splatter;
+		float weight;
+	};
+
+
 	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, tfxEffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
 	tfxVec3 GetEmissionDirection3d(tfxCommon &common, tfxEmitterState &current, tfxEffectEmitter *library_link, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
@@ -3998,8 +4012,11 @@ typedef unsigned long long tfxKey;
 		tfxU32 info_index;
 		tfxU32 property_index;
 
-		//Custom fuction pointers that you can use to override attributes and affect the effect/emitters behaviour in realtime
-		//See tfxEffectTemplate for applying these callbacks
+		//Update callbacks that are called as the effect is updated in the particle manager. See tfxEffectTemplate
+		void(*update_effect_callback)(tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls);		//Called after the effect state has been udpated
+		void(*update_emitter_callback)(tfxEffectEmitter &effect_emitter, tfxEmitterSpawnControls &spawn_controls);		//Called after the emitter state has been udpated
+		void(*particle_onspawn_callback)(tfxParticle &particle, void *user_data);
+		void(*particle_update_callback)(tfxParticleData &particle, void *user_data);		//Called for each particle that has been udpated, but before it's state is updated (so you can override behaviour first) 
 
 		tfxEffectEmitter() :
 			highest_particle_age(0),
@@ -4008,7 +4025,11 @@ typedef unsigned long long tfxKey;
 			user_data(nullptr),
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
 			effect_flags(tfxEffectPropertyFlags_none),
-			sort_passes(1)
+			sort_passes(1),
+			update_effect_callback(NULL),
+			update_emitter_callback(NULL),
+			particle_onspawn_callback(NULL),
+			particle_update_callback(NULL)
 		{ }
 		~tfxEffectEmitter();
 
@@ -4259,19 +4280,6 @@ typedef unsigned long long tfxKey;
 		return pf;
 	}
 
-	//Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
-	struct tfxParentSpawnControls {
-		float life;
-		float size_x;
-		float size_y;
-		float velocity;
-		float spin;
-		float intensity;
-		float splatter;
-		float weight;
-	};
-
-
 	struct tfxEffect {
 		tfxEffectEmitter *effect_ptr;
 	};
@@ -4355,8 +4363,8 @@ typedef unsigned long long tfxKey;
 		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
-		tfxEffectEmitter *AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false);
-		tfxEffectEmitter *AddEffect(tfxEffectTemplate &effect);
+		void AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false);
+		void AddEffect(tfxEffectTemplate &effect);
 		//Clear all effects and particles in the particle manager
 		void ClearAll();
 		//Soft expire all the effects so that the particles complete their animation first
@@ -4598,7 +4606,7 @@ typedef unsigned long long tfxKey;
 		tfxEffectEmitter &AddFolder(tfxStr64 &name);
 		tfxEffectEmitter &AddFolder(tfxEffectEmitter &effect);
 		void UpdateEffectPaths();
-		void AddPath(tfxEffectEmitter &effectemitter, tfxStr256 &path);
+		void AddPath(tfxEffectEmitter &effect_emitter, tfxStr256 &path);
 		void DeleteEffect(tfxEffectEmitter *effect);
 		bool RenameEffect(tfxEffectEmitter &effect, const char *new_name);
 		bool NameExists(tfxEffectEmitter &effect, const char *name);
@@ -4656,14 +4664,13 @@ typedef unsigned long long tfxKey;
 	struct tfxEffectTemplate {
 		tfxStorageMap<tfxEffectEmitter*> paths;
 		tfxEffectEmitter effect;
-		void(*spawn_data_override)(void *user_data, tfxEmitterSpawnControls *spawn_controls);
- 
+
 		tfxEffectTemplate() :
 			paths("Effect template paths map", "Effect template paths data")
 		{}
-		void AddPath(tfxEffectEmitter &effectemitter, tfxStr256 path) {
-			paths.Insert(path, &effectemitter);
-			for (auto &sub : effectemitter.common.library->GetInfo(effectemitter).sub_effectors) {
+		void AddPath(tfxEffectEmitter &effect_emitter, tfxStr256 path) {
+			paths.Insert(path, &effect_emitter);
+			for (auto &sub : effect_emitter.common.library->GetInfo(effect_emitter).sub_effectors) {
 				tfxStr256 sub_path = path;
 				sub_path.Appendf("/%s", sub.common.library->GetInfo(sub).name.c_str());
 				AddPath(sub, sub_path);
@@ -4675,6 +4682,18 @@ typedef unsigned long long tfxKey;
 		inline void SetUserData(tfxStr256 &path, void *data) { if (paths.ValidName(path)) paths.At(path)->user_data = data; }
 		inline void SetUserData(void *data) { effect.user_data = data; }
 		void SetUserDataAll(void *data);
+		inline void SetEffectUpdateCallback(tfxStr256 path, void(*update_callback)(tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls)) { 
+			assert(paths.ValidName(path));						//Path does not exist in library
+			assert(paths.At(path)->type == tfxEffectType);		//Path must be path to an effect type
+			paths.At(path)->update_effect_callback = update_callback;
+		}
+		inline void SetEmitterUpdateCallback(tfxStr256 path, void(*update_callback)(tfxEffectEmitter &effect_emitter, tfxEmitterSpawnControls &spawn_controls)) { 
+			assert(paths.ValidName(path));						//Path does not exist in library
+			assert(paths.At(path)->type == tfxEmitterType);		//Path must be a path to an emitter type
+			paths.At(path)->update_emitter_callback = update_callback; }
+		inline void SetEffectUpdateCallback(void(*update_callback)(tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls)) { effect.update_effect_callback = update_callback; }
+		void SetParticleUpdateCallback(tfxStr256 path, void(*particle_update_callback)(tfxParticleData &particle, void *user_data));
+		void SetParticleOnSpawnCallback(tfxStr256 path, void(*particle_onspawn_callback)(tfxParticle &particle, void *user_data));
 	};
 
 	/*
@@ -4929,8 +4948,8 @@ typedef unsigned long long tfxKey;
 	tfxSpawnPosition InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
 	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
-	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter *library_link);
-	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter *library_link);
+	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter &emitter);
+	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter &emitter);
 
 	//Helper functions
 

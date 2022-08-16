@@ -2984,7 +2984,7 @@ namespace tfx {
 
 	}
 
-	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter *library_link) {
+	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter &emitter) {
 		tfxPROFILE;
 		tfxU32 lookup_frame = static_cast<tfxU32>((data.age / data.max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
@@ -3090,6 +3090,10 @@ namespace tfx {
 		//Now that the latest changes are applied, affect the particle state
 		//---------------
 
+		//Before applying the behaviour to the particle position, scale and rotation, you have the chance to override them here
+		if (emitter.particle_update_callback)
+			emitter.particle_update_callback(data, emitter.user_data);
+
 		//----Rotation
 		if (c.flags & tfxEmitterStateFlags_align_with_velocity) {
 			tfxVec2 vd = current_velocity.IsNill() ? velocity_normal : current_velocity;
@@ -3121,12 +3125,12 @@ namespace tfx {
 
 		//----Image animation
 		data.image_frame += c.image_frame_rate * tfxUPDATE_TIME;
-		data.image_frame = (c.flags & tfxEmitterStateFlags_play_once) && data.image_frame > library_link->GetProperties().end_frame ? data.image_frame = library_link->GetProperties().end_frame : data.image_frame;
+		data.image_frame = (c.flags & tfxEmitterStateFlags_play_once) && data.image_frame > emitter.GetProperties().end_frame ? data.image_frame = emitter.GetProperties().end_frame : data.image_frame;
 		data.image_frame = (c.flags & tfxEmitterStateFlags_play_once) && data.image_frame < 0 ? data.image_frame = 0 : data.image_frame;
-		data.image_frame = std::fmodf(data.image_frame, library_link->GetProperties().end_frame + 1);
+		data.image_frame = std::fmodf(data.image_frame, emitter.GetProperties().end_frame + 1);
 	}
 
-	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter *library_link) {
+	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter &emitter) {
 		tfxPROFILE;
 		tfxU32 lookup_frame = static_cast<tfxU32>((data.age / data.max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
@@ -3248,6 +3252,10 @@ namespace tfx {
 		//Now that the latest changes are applied, affect the particle state
 		//---------------
 
+		//Before applying the behaviour to the particle position, scale and rotation, you have the chance to override them here
+		if (emitter.particle_update_callback)
+			emitter.particle_update_callback(data, emitter.user_data);
+
 		//----Rotation
 		if (c.flags & tfxEmitterStateFlags_align_with_velocity) {
 			tfxVec3 vd = current_velocity.IsNill() ? data.velocity_normal.xyz() : current_velocity;
@@ -3279,9 +3287,9 @@ namespace tfx {
 
 		//----Image animation
 		data.image_frame += c.image_frame_rate * tfxUPDATE_TIME;
-		data.image_frame = (c.flags & tfxEmitterStateFlags_play_once) && data.image_frame > library_link->GetProperties().end_frame ? data.image_frame = library_link->GetProperties().end_frame : data.image_frame;
+		data.image_frame = (c.flags & tfxEmitterStateFlags_play_once) && data.image_frame > emitter.GetProperties().end_frame ? data.image_frame = emitter.GetProperties().end_frame : data.image_frame;
 		data.image_frame = (c.flags & tfxEmitterStateFlags_play_once) && data.image_frame < 0 ? data.image_frame = 0 : data.image_frame;
-		data.image_frame = std::fmodf(data.image_frame, library_link->GetProperties().end_frame + 1);
+		data.image_frame = std::fmodf(data.image_frame, emitter.GetProperties().end_frame + 1);
 
 		data.flags = current_velocity.IsNill() ? data.flags &= ~tfxParticleFlags_has_velocity : data.flags |= tfxParticleFlags_has_velocity;
 	}
@@ -3952,9 +3960,9 @@ namespace tfx {
 		}
 	}
 
-	void tfxEffectLibrary::AddPath(tfxEffectEmitter &effectemitter, tfxStr256 &path) {
-		effect_paths.Insert(path, &effectemitter);
-		for (auto &sub : effectemitter.GetInfo().sub_effectors) {
+	void tfxEffectLibrary::AddPath(tfxEffectEmitter &effect_emitter, tfxStr256 &path) {
+		effect_paths.Insert(path, &effect_emitter);
+		for (auto &sub : effect_emitter.GetInfo().sub_effectors) {
 			tfxStr256 sub_path = path;
 			sub_path.Appendf("/%s", sub.GetInfo().name.c_str());
 			sub.GetInfo().path_hash = tfxXXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
@@ -7100,6 +7108,20 @@ namespace tfx {
 		}
 	}
 
+	void tfxEffectTemplate::SetParticleUpdateCallback(tfxStr256 path, void(*particle_update_callback)(tfxParticleData &particle, void *user_data)) {
+		assert(paths.ValidName(path));
+		tfxEffectEmitter &e = *paths.At(path);
+		assert(e.type == tfxEmitterType);
+		e.particle_update_callback = particle_update_callback;
+	}
+
+	void tfxEffectTemplate::SetParticleOnSpawnCallback(tfxStr256 path, void(*particle_onspawn_callback)(tfxParticle &particle, void *user_data)) {
+		assert(paths.ValidName(path));
+		tfxEffectEmitter &e = *paths.At(path);
+		assert(e.type == tfxEmitterType);
+		e.particle_onspawn_callback = particle_onspawn_callback;
+	}
+
 	tfxParticleManager::~tfxParticleManager() {
 	}
 
@@ -7107,7 +7129,7 @@ namespace tfx {
 		return effects[current_ebuff][index];
 	}
 
-	tfxEffectEmitter* tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter) {
+	void tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter) {
 		tfxPROFILE;
 		if (effects[buffer].current_size == effects[buffer].capacity)
 			return;
@@ -7219,11 +7241,10 @@ namespace tfx {
 			}
 		}
 		effects[buffer][parent_index].NoTweenNextUpdate(); 
-		return &effects[buffer][parent_index];
 	}
 
-	tfxEffectEmitter* tfxParticleManager::AddEffect(tfxEffectTemplate &effect) {
-		return AddEffect(effect.effect, current_ebuff);
+	void tfxParticleManager::AddEffect(tfxEffectTemplate &effect) {
+		AddEffect(effect.effect, current_ebuff);
 	}
 
 	int tfxParticleManager::AddComputeController() {
@@ -7738,16 +7759,12 @@ namespace tfx {
 		if (e.flags & tfxEmitterStateFlags_single_shot_done || e.parent->flags & tfxEmitterStateFlags_stop_spawning)
 			return;
 
+		if (e.current.qty == 0)
+			return;
+
 		tfxEmitterProperties &properties = e.GetProperties();
 
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single)) {
-			e.current.qty = lookup_callback(e.common.library->base_graphs[e.base].amount, e.common.frame);
-			float amount_variation = lookup_callback(e.common.library->variation_graphs[e.variation].amount, e.common.frame);
-			e.current.qty += amount_variation > 0.f ? random_generation.Range(1.f, amount_variation) : 0.f;
-
-			if (e.current.qty == 0)
-				return;
-
 			if (e.common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
 				float area = e.current.emitter_size.x * e.current.emitter_size.y;
 				e.current.qty = (e.current.qty / 10000.f) * area;
@@ -7756,17 +7773,14 @@ namespace tfx {
 				e.current.qty = (e.current.qty / 100.f) * e.current.emitter_size.y;
 			}
 
-			e.current.qty *= lookup_callback(e.parent->common.library->global_graphs[e.parent->global].amount, e.common.frame);
 			e.current.qty *= tfxUPDATE_TIME;
 			e.current.qty_step_size = 1.f / e.current.qty;
 		}
 		else {
-			e.current.qty = (float)properties.spawn_amount;
 			e.current.qty_step_size = 1.f / e.current.qty;
 		}
 
 		float tween = e.current.amount_remainder;
-		float interpolate = e.current.qty;
 		bool is_compute = e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 		tfxEffectEmitter &root_effect = *e.GetRootEffect();
 
@@ -7795,13 +7809,12 @@ namespace tfx {
 		if (e.flags & tfxEmitterStateFlags_single_shot_done || e.parent->flags & tfxEmitterStateFlags_stop_spawning)
 			return;
 
+		if (e.current.qty == 0)
+			return;
+
 		tfxEmitterProperties &properties = e.GetProperties();
 
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single)) {
-			e.current.qty = lookup_callback(e.common.library->base_graphs[e.base].amount, e.common.frame);
-			float amount_variation = lookup_callback(e.common.library->variation_graphs[e.variation].amount, e.common.frame);
-			e.current.qty += amount_variation > 0.f ? random_generation.Range(1.f, amount_variation) : 0.f;
-
 			if (e.current.qty == 0)
 				return;
 
@@ -7813,18 +7826,14 @@ namespace tfx {
 				e.current.qty = (e.current.qty / 10.f) * e.current.emitter_size.y;
 			}
 
-			e.current.qty *= lookup_callback(e.parent->common.library->global_graphs[e.parent->global].amount, e.common.frame);
 			e.current.qty *= tfxUPDATE_TIME;
 			e.current.qty_step_size = 1.f / e.current.qty;
-			//e.current.qty += e.current.amount_remainder;
 		}
 		else {
-			e.current.qty = (float)properties.spawn_amount;
 			e.current.qty_step_size = 1.f / e.current.qty;
 		}
 
 		float tween = e.current.amount_remainder;
-		float interpolate = e.current.qty;
 		bool is_compute = e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 		tfxEffectEmitter &root_effect = *e.GetRootEffect();
 		float positions_qty = e.current.qty;
@@ -7953,6 +7962,17 @@ namespace tfx {
 		e.current.overal_scale = parent.current.overal_scale;
 		e.common.transform.scale = parent.common.transform.scale;
 
+		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single)) {
+			e.current.qty = lookup_callback(e.common.library->base_graphs[e.base].amount, e.common.frame);
+			float amount_variation = lookup_callback(e.common.library->variation_graphs[e.variation].amount, e.common.frame);
+			e.current.qty += amount_variation > 0.f ? random_generation.Range(1.f, amount_variation) : 0.f;
+
+			e.current.qty *= lookup_callback(e.parent->common.library->global_graphs[e.parent->global].amount, e.common.frame);
+		}
+		else {
+			e.current.qty = (float)properties.spawn_amount;
+		}
+
 		//----Handle
 		if (e.common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 			e.current.image_handle = tfxVec2(0.5f, 0.5f);
@@ -8016,8 +8036,10 @@ namespace tfx {
 			}
 		}
 
-		return spawn_controls;
+		if (e.update_emitter_callback)
+			e.update_emitter_callback(e, spawn_controls);
 
+		return spawn_controls;
 	}
 
 	tfxParentSpawnControls UpdateEffectState(tfxEffectEmitter &e) {
@@ -8060,8 +8082,11 @@ namespace tfx {
 		}
 		e.current.stretch = lookup_callback(e.common.library->global_graphs[e.global].stretch, e.common.frame);
 		spawn_controls.weight = lookup_callback(e.common.library->global_graphs[e.global].weight, e.common.frame);
-		return spawn_controls;
 
+		if (e.update_effect_callback)
+			e.update_effect_callback(e, spawn_controls);
+
+		return spawn_controls;
 	}
 
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxEffectEmitter &e) {
@@ -8116,9 +8141,9 @@ namespace tfx {
 		}
 
 		if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
-			UpdateParticle3d(p.data, c, &e);
+			UpdateParticle3d(p.data, c, e);
 		else
-			UpdateParticle2d(p.data, c, &e);
+			UpdateParticle2d(p.data, c, e);
 
 		return p.data.flags & tfxParticleFlags_remove ? false : true;
 	}
