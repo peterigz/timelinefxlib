@@ -7138,7 +7138,6 @@ namespace tfx {
 			return;
 		unsigned int parent_index = effects[buffer].current_size++;
 		effects[buffer][parent_index] = effect;
-		effect_ptrs.push_back(&effects[buffer][parent_index]);
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].ResetParents();
 		if (!is_sub_emitter && effect.Is3DEffect()) {
@@ -7289,16 +7288,18 @@ namespace tfx {
 	}
 
 	uint32_t tfxParticleManager::AddParticle(unsigned int layer, tfxParticle &p) {
-		assert(particles[layer][current_pbuff].current_size != particles[layer][current_pbuff].capacity);
-		particles[layer][current_pbuff][particles[layer][current_pbuff].current_size] = p;
-		particles[layer][current_pbuff].current_size++;
-		return (uint32_t)particles[layer][current_pbuff].current_size - 1;
+		int layer_offset = layer * 2;
+		assert(particles[current_pbuff + layer_offset].current_size != particles[current_pbuff + layer_offset].capacity);
+		particles[current_pbuff + layer_offset][particles[current_pbuff + layer_offset].current_size] = p;
+		particles[current_pbuff + layer_offset].current_size++;
+		return (uint32_t)particles[current_pbuff + layer_offset].current_size - 1;
 	}
 
 	tfxParticle& tfxParticleManager::GrabCPUParticle(unsigned int layer) {
-		assert(particles[layer][current_pbuff].current_size != particles[layer][current_pbuff].capacity);
-		particles[layer][current_pbuff].current_size++;
-		return particles[layer][current_pbuff][particles[layer][current_pbuff].current_size - 1];
+		int layer_offset = current_pbuff + layer * 2;
+		assert(particles[layer_offset].current_size != particles[layer_offset].capacity);
+		particles[layer_offset].current_size++;
+		return particles[layer_offset][particles[layer_offset].current_size - 1];
 	}
 
 	tfxComputeParticle& tfxParticleManager::GrabComputeParticle(unsigned int layer) {
@@ -7344,10 +7345,14 @@ namespace tfx {
 
 		if (!(flags & tfxEffectManagerFlags_order_by_depth)) {
 			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-				particles[layer][next_buffer].clear();
+				int layer_offset = layer * 2;
+				int next_buffer_index = next_buffer + layer_offset;
+				int current_buffer_index = current_pbuff + layer_offset;
+
+				particles[next_buffer_index].clear();
 
 				index = 0;
-				for (auto &p : particles[layer][current_pbuff]) {
+				for (auto &p : particles[current_buffer_index]) {
 					p.parent = p.parent->next_ptr;
 					tfxEmitterProperties &properties = p.parent->GetProperties();
 
@@ -7368,18 +7373,18 @@ namespace tfx {
 								p.parent->current.transform_particle_callback(p.data, p.parent->common, p.parent->common.transform.world_position);
 							}
 							SetParticleAlignment(p, properties);
-							p.next_ptr = SetNextParticle(layer, p, next_buffer);
+							p.next_ptr = SetNextParticle(next_buffer_index, p);
 
 						}
 						else {
-							p.next_ptr = nullptr;
+							p.next_ptr = tfxINVALID;
 						}
 
 					}
 					else {
 						SetParticleAlignment(p, properties);
 						p.data.flags &= ~tfxParticleFlags_fresh;
-						p.next_ptr = SetNextParticle(layer, p, next_buffer);
+						p.next_ptr = SetNextParticle(next_buffer_index, p);
 					}
 
 					index++;
@@ -7388,15 +7393,18 @@ namespace tfx {
 		}
 		else {
 			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-				particles[layer][next_buffer].clear();
+				int layer_offset = layer * 2;
+				int next_buffer_index = next_buffer + layer_offset;
+				int current_buffer_index = current_pbuff + layer_offset;
+				particles[next_buffer_index].clear();
 				tfxU32 new_index = new_particles_index_start[layer];
 				tfxParticle *new_particle = nullptr;
-				if (new_index < particles[layer][current_pbuff].size())
-					new_particle = &particles[layer][current_pbuff][new_index];
+				if (new_index < particles[current_buffer_index].size())
+					new_particle = &particles[current_buffer_index][new_index];
 
 				index = 0;
 				tfxU32 next_index = 0;
-				for (auto &p : particles[layer][current_pbuff]) {
+				for (auto &p : particles[current_buffer_index]) {
 					p.parent = p.parent->next_ptr;
 					p.prev_index = index;
 					tfxEmitterProperties &properties = p.parent->GetProperties();
@@ -7423,33 +7431,33 @@ namespace tfx {
 								new_particle->prev_index = new_index;
 								new_particle->data.flags &= ~tfxParticleFlags_fresh;
 								new_particle->parent = new_particle->parent->next_ptr;
-								new_particle->next_ptr = SetNextParticle(layer, *new_particle, next_buffer);
+								new_particle->next_ptr = SetNextParticle(next_buffer_index, *new_particle);
 								next_index++;
 								new_particle = nullptr;
-								if (++new_index < particles[layer][current_pbuff].size())
-									new_particle = &particles[layer][current_pbuff][new_index];
+								if (++new_index < particles[current_buffer_index].size())
+									new_particle = &particles[current_buffer_index][new_index];
 							}
-							p.next_ptr = SetNextParticle(layer, p, next_buffer);
+							p.next_ptr = SetNextParticle(next_buffer_index, p);
 							next_index++;
 						}
 						else {
-							p.next_ptr = nullptr;
+							p.next_ptr = tfxINVALID;
 						}
 
 					}
 					else {
 						SetParticleAlignment(p, properties);
 						p.data.flags &= ~tfxParticleFlags_fresh;
-						p.next_ptr = SetNextParticle(layer, p, next_buffer);
+						p.next_ptr = SetNextParticle(next_buffer_index, p);
 						next_index++;
 					}
 
-					if (!(flags & tfxEffectManagerFlags_guarantee_order) && next_index > 1 && particles[layer][next_buffer][next_index - 2].data.depth < particles[layer][next_buffer][next_index - 1].data.depth) {
-						tfxParticle tmp = particles[layer][next_buffer][next_index - 2];
-						particles[layer][next_buffer][next_index - 2] = particles[layer][next_buffer][next_index - 1];
-						particles[layer][next_buffer][next_index - 1] = tmp;
-						particles[layer][current_pbuff][particles[layer][next_buffer][next_index - 2].prev_index].next_ptr = &particles[layer][next_buffer][next_index - 2];
-						particles[layer][current_pbuff][particles[layer][next_buffer][next_index - 1].prev_index].next_ptr = &particles[layer][next_buffer][next_index - 1];
+					if (!(flags & tfxEffectManagerFlags_guarantee_order) && next_index > 1 && particles[next_buffer_index][next_index - 2].data.depth < particles[next_buffer_index][next_index - 1].data.depth) {
+						tfxParticle tmp = particles[next_buffer_index][next_index - 2];
+						particles[next_buffer_index][next_index - 2] = particles[next_buffer_index][next_index - 1];
+						particles[next_buffer_index][next_index - 1] = tmp;
+						particles[current_buffer_index][particles[next_buffer_index][next_index - 2].prev_index].next_ptr = next_index - 2;
+						particles[current_buffer_index][particles[next_buffer_index][next_index - 1].prev_index].next_ptr = next_index - 1;
 					}
 
 					index++;
@@ -7457,36 +7465,36 @@ namespace tfx {
 						break;
 				}
 				if (new_particle && new_index != 0) {
-					while (new_index < particles[layer][current_pbuff].current_size) {
-						new_particle = &particles[layer][current_pbuff][new_index];
+					while (new_index < particles[current_buffer_index].current_size) {
+						new_particle = &particles[current_buffer_index][new_index];
 						tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
 						SetParticleAlignment(*new_particle, new_properties);
 						new_particle->prev_index = new_index;
 						new_particle->data.flags &= ~tfxParticleFlags_fresh;
 						new_particle->parent = new_particle->parent->next_ptr;
-						new_particle->next_ptr = SetNextParticle(layer, *new_particle, next_buffer);
+						new_particle->next_ptr = SetNextParticle(next_buffer_index, *new_particle);
 						new_index++;
 					}
 				}
 				if (!(flags & tfxEffectManagerFlags_guarantee_order) && sort_passes > 0) {
 					for (tfxU32 sorts = 0; sorts != sort_passes; ++sorts) {
-						for (tfxU32 i = 1; i < particles[layer][next_buffer].size(); ++i) {
-							tfxParticle *p1 = &particles[layer][next_buffer][i - 1];
-							tfxParticle *p2 = &particles[layer][next_buffer][i];
+						for (tfxU32 i = 1; i < particles[next_buffer_index].size(); ++i) {
+							tfxParticle *p1 = &particles[next_buffer_index][i - 1];
+							tfxParticle *p2 = &particles[next_buffer_index][i];
 							if (p1->data.depth < p2->data.depth) {
 								tfxParticle tmp = *p1;
 								*p1 = *p2;
 								*p2 = tmp;
 								if (p1->prev_index == 0 || p2->prev_index == 0)
 									int debug = 1;
-								particles[layer][current_pbuff][p1->prev_index].next_ptr = p1;
-								particles[layer][current_pbuff][p2->prev_index].next_ptr = p2;
+								particles[current_buffer_index][p1->prev_index].next_ptr = i - 1;
+								particles[current_buffer_index][p2->prev_index].next_ptr = i;
 							}
 						}
 					}
 				}
 				if (flags & tfxEffectManagerFlags_guarantee_order) {
-					InsertionSortParticles(particles[layer][next_buffer], particles[layer][current_pbuff]);
+					InsertionSortParticles(particles[next_buffer_index], particles[current_buffer_index]);
 				}
 			}
 		}
@@ -7501,18 +7509,19 @@ namespace tfx {
 		if (!(flags & tfxEffectManagerFlags_order_by_depth))
 			return;
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			for (auto &p : particles[layer][current_pbuff]) {
+			int current_buffer_index = layer * 2 + current_pbuff;
+			for (auto &p : particles[current_buffer_index]) {
 				p.data.depth = LengthVec3NoSqR(p.data.world_position - camera_position);
 			}
-			InsertionSortParticles(particles[layer][current_pbuff], particles[layer][!current_pbuff]);
+			InsertionSortParticles(particles[current_buffer_index], particles[layer * 2 + !current_pbuff]);
 		}
 	}
 
-	inline tfxParticle* tfxParticleManager::SetNextParticle(unsigned int layer, tfxParticle &p, unsigned int buffer) {
-		unsigned int index = particles[layer][buffer].current_size++;
-		assert(index < particles[layer][buffer].capacity);
-		particles[layer][buffer][index] = p;
-		return &particles[layer][buffer][index];
+	inline tfxU32 tfxParticleManager::SetNextParticle(unsigned int layer, tfxParticle &p) {
+		unsigned int index = particles[layer].current_size++;
+		assert(index < particles[layer].capacity);
+		particles[layer][index] = p;
+		return index;
 	}
 
 	inline tfxEffectEmitter* tfxParticleManager::SetNextEffect(tfxEffectEmitter &e, unsigned int buffer) {
@@ -7523,7 +7532,7 @@ namespace tfx {
 	}
 
 	tfxvec<tfxParticle> *tfxParticleManager::GetParticleBuffer(unsigned int layer) {
-		return &particles[layer][current_pbuff];
+		return &particles[current_pbuff + layer * 2];
 	}
 
 	tfxvec<tfxEffectEmitter> *tfxParticleManager::GetEffectBuffer() {
@@ -7534,13 +7543,10 @@ namespace tfx {
 		max_cpu_particles_per_layer = particle_limit_per_layer;
 		max_effects = effects_limit;
 
-		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			particles[layer][0] = tfxvec<tfxParticle>(tfxCONSTRUCTOR_VEC_INIT("PM Particles Buffer 0"));
-			particles[layer][1] = tfxvec<tfxParticle>(tfxCONSTRUCTOR_VEC_INIT("PM Particles Buffer 1"));
-			particles[layer][0].resize(max_cpu_particles_per_layer);
-			particles[layer][1].resize(max_cpu_particles_per_layer);
-			particles[layer][0].clear();
-			particles[layer][1].clear();
+		for (unsigned int layer = 0; layer != tfxLAYERS * 2; ++layer) {
+			particles[layer] = tfxvec<tfxParticle>(tfxCONSTRUCTOR_VEC_INIT("PM Particles Buffer"));
+			particles[layer].resize(max_cpu_particles_per_layer);
+			particles[layer].clear();
 		}
 		effects[0] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 0"));
 		effects[1] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 1"));
@@ -7553,15 +7559,14 @@ namespace tfx {
 	uint32_t tfxParticleManager::ParticleCount() {
 		unsigned int count = 0;
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			count += particles[layer][current_pbuff].size();
+			count += particles[current_pbuff + layer * 2].size();
 		}
 		return count;
 	}
 
 	void tfxParticleManager::ClearAll() {
-		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			particles[layer][0].clear();
-			particles[layer][1].clear();
+		for (unsigned int layer = 0; layer != tfxLAYERS * 2; ++layer) {
+			particles[layer].clear();
 		}
 		for (unsigned int i = 0; i != 2; ++i) {
 			effects[i].clear();
@@ -7694,8 +7699,8 @@ namespace tfx {
 		}
 		else if (e.parent_particle) {
 			e.flags |= e.parent_particle->data.flags & tfxParticleFlags_remove;
-			if (e.parent_particle->next_ptr) {
-				e.parent_particle = e.parent_particle->next_ptr;
+			if (e.parent_particle->next_ptr != tfxINVALID) {
+				e.parent_particle = &pm.particles[pm.current_pbuff + e.GetProperties().layer * 2][e.parent_particle->next_ptr];
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 					TransformEffector3d(e, *e.parent_particle, true, e.common.property_flags & tfxEmitterPropertyFlags_relative_angle);
 				else
@@ -7858,7 +7863,7 @@ namespace tfx {
 
 		e.current.amount_remainder = tween - 1.f;
 
-		pm.new_particles_index_start[properties.layer] = std::min(pm.new_particles_index_start[properties.layer], pm.particles[properties.layer][pm.current_pbuff].current_size);
+		pm.new_particles_index_start[properties.layer] = std::min(pm.new_particles_index_start[properties.layer], pm.particles[properties.layer * 2 + pm.current_pbuff].current_size);
 
 		for (auto &position : pm.new_positions) {
 			if (!pm.FreeCapacity(properties.layer, is_compute)) {
@@ -7891,7 +7896,7 @@ namespace tfx {
 		tfxPROFILE;
 		p.data.flags = tfxParticleFlags_fresh;
 		p.parent = &e;
-		p.next_ptr = &p;
+		p.next_ptr = pm.particles[e.GetProperties().layer * 2 + pm.current_pbuff].current_size - 1;
 
 		if (e.common.property_flags & tfxEmitterPropertyFlags_single)
 			e.flags |= tfxEmitterStateFlags_single_shot_done;
@@ -8136,12 +8141,6 @@ namespace tfx {
 		c.overal_scale = e.current.overal_scale;
 		c.angle_offset = properties.angle_offsets.roll;
 		c.graphs = &e.common.library->overtime_graphs[e.overtime];
-		if (e.common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
-			c.image_handle = tfxVec2(0.5f, 0.5f);
-		}
-		else {
-			c.image_handle = properties.image_handle;
-		}
 
 		if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 			UpdateParticle3d(p.data, c, e);

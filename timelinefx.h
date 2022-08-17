@@ -4129,7 +4129,6 @@ typedef unsigned long long tfxKey;
 		float overal_scale;
 		float angle_offset;
 		tfxOvertimeAttributes *graphs;
-		tfxVec2 image_handle;
 	};
 
 	//This struct is only used for 3d. It's used to get the particle's spawn position which we can then use to order by depth to the camera.
@@ -4145,12 +4144,24 @@ typedef unsigned long long tfxKey;
 		float weight_acceleration;
 	};
 
-	struct tfxParticleVelocityData {
-		tfxVec3 current_velocity;
-		float base_velocity;
-		tfxVec4 velocity_normal;
-		float weight_acceleration;
-	};
+	// ----------Stage 1-----------
+	//Attributes
+	//		--> Age	
+	//		-->	Noise		-->	Velocity	-->	Location
+	//		--> Spin		--> Rotation	
+	//		--> Size		--> Scale
+	//		--> Alignment 
+	//		--> Depth
+	//		--> Frame
+	//		--> Color
+
+	// ----------Stage 2-----------
+	//Transform
+
+	// ----------Stage 3-----------
+	//Output
+	//Discard expired and write to next buffer
+	//
 
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
@@ -4173,7 +4184,7 @@ typedef unsigned long long tfxKey;
 		//Updated everyframe
 		float age;							//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;						//max age before the particle expires
-		tfxU32 single_loop_count;		//The number of times a single particle has looped over
+		tfxU32 single_loop_count;			//The number of times a single particle has looped over
 		float image_frame;					//Current frame of the image if it's an animation
 		float weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
 		float intensity;					//Color is multiplied by this value in the shader to increase the brightness of the particles
@@ -4185,7 +4196,7 @@ typedef unsigned long long tfxKey;
 		tfxParticleData data;
 		tfxEffectEmitter *parent;				//pointer to the emitter that emitted the particle.
 		//Internal use variables
-		tfxParticle *next_ptr;
+		tfxU32 next_ptr;
 		tfxU32 prev_index;
 	};
 
@@ -4284,7 +4295,7 @@ typedef unsigned long long tfxKey;
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
 		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
-		tfxvec<tfxParticle> particles[tfxLAYERS][2];
+		tfxvec<tfxParticle> particles[tfxLAYERS * 2];
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
@@ -4292,7 +4303,6 @@ typedef unsigned long long tfxKey;
 		tfxvec<tfxEffectEmitter> effects[2];
 		//Set when an effect is updated and used to pass on global attributes to child emitters
 		tfxParentSpawnControls parent_spawn_controls;
-		tfxvec<tfxEffectEmitter*> effect_ptrs;
 
 		//todo: document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
@@ -4405,15 +4415,16 @@ typedef unsigned long long tfxKey;
 		unsigned int AddParticle(unsigned int layer, tfxParticle &p);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
 		unsigned int ParticleCount();
-		inline tfxParticle* SetNextParticle(unsigned int layer, tfxParticle &p, unsigned int buffer);
+		inline tfxU32 SetNextParticle(unsigned int layer, tfxParticle &p);
 		inline tfxEffectEmitter* SetNextEffect(tfxEffectEmitter &e, unsigned int buffer);
 		void UpdateBaseValues();
 		tfxvec<tfxEffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
 
 		inline bool FreeCapacity(unsigned int layer, bool compute) {
-			if (!compute)
-				return particles[layer][current_pbuff].current_size < max_cpu_particles_per_layer;
+			if (!compute) {
+				return particles[current_pbuff + (layer * 2)].current_size < max_cpu_particles_per_layer;
+			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
 		}
@@ -4904,11 +4915,11 @@ typedef unsigned long long tfxKey;
 
 			while (j >= 0 && key.data.depth > particles[j].data.depth) {
 				particles[j + 1] = particles[j];
-				current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
+				current_buffer[particles[j + 1].prev_index].next_ptr = j + 1;
 				--j;
 			}
 			particles[j + 1] = key;
-			current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
+			current_buffer[particles[j + 1].prev_index].next_ptr = j + 1;
 		}
 	}
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
