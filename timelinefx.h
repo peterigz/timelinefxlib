@@ -3861,14 +3861,12 @@ typedef unsigned long long tfxKey;
 		float amount_remainder;
 		float emission_alternator;
 		float qty;
-		float qty_step_size;
 		//The callback to transform the particles each update. This will change based on the properties of the emitter
 		void(*transform_particle_callback)(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position);
 
 		tfxEmitterState() :
 			amount_remainder(0.f),
-			emission_direction_normal(0.f, 1.f, 0.f),
-			qty_step_size(0.f)
+			emission_direction_normal(0.f, 1.f, 0.f)
 		{}
 	};
 

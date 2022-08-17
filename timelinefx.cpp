@@ -7351,6 +7351,8 @@ namespace tfx {
 					p.parent = p.parent->next_ptr;
 					tfxEmitterProperties &properties = p.parent->GetProperties();
 
+					//All of the new particles will be at the end of the buffer so might not need this condition
+					//and instead have 2 separate for loops? It is highly predictable though.
 					if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
 						p.data.captured_position = p.data.world_position;
@@ -7765,6 +7767,7 @@ namespace tfx {
 
 		tfxEmitterProperties &properties = e.GetProperties();
 
+		float qty_step_size = 0;
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single)) {
 			if (e.common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
 				float area = e.current.emitter_size.x * e.current.emitter_size.y;
@@ -7775,10 +7778,10 @@ namespace tfx {
 			}
 
 			e.current.qty *= tfxUPDATE_TIME;
-			e.current.qty_step_size = 1.f / e.current.qty;
+			qty_step_size = 1.f / e.current.qty;
 		}
 		else {
-			e.current.qty_step_size = 1.f / e.current.qty;
+			qty_step_size = 1.f / e.current.qty;
 		}
 
 		float tween = e.current.amount_remainder;
@@ -7799,7 +7802,7 @@ namespace tfx {
 			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p.data.max_age);
 			e.parent->highest_particle_age = e.highest_particle_age + tfxFRAME_LENGTH;
 
-			tween += e.current.qty_step_size;
+			tween += qty_step_size;
 		}
 
 		e.current.amount_remainder = tween - 1.f;
@@ -7815,6 +7818,7 @@ namespace tfx {
 
 		tfxEmitterProperties &properties = e.GetProperties();
 
+		float qty_step_size = 0;
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single)) {
 			if (e.current.qty == 0)
 				return;
@@ -7828,10 +7832,10 @@ namespace tfx {
 			}
 
 			e.current.qty *= tfxUPDATE_TIME;
-			e.current.qty_step_size = 1.f / e.current.qty;
+			qty_step_size = 1.f / e.current.qty;
 		}
 		else {
-			e.current.qty_step_size = 1.f / e.current.qty;
+			qty_step_size = 1.f / e.current.qty;
 		}
 
 		float tween = e.current.amount_remainder;
@@ -7845,7 +7849,7 @@ namespace tfx {
 				new_position.distance_to_camera = LengthVec3NoSqR(new_position.world_position - pm.camera_position);
 			}
 			pm.new_positions.push_back(new_position);
-			tween += e.current.qty_step_size;
+			tween += qty_step_size;
 		}
 
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
