@@ -8129,11 +8129,9 @@ namespace tfx {
 		c.image_frame_rate = properties.image->animation_frames > 1 && e.common.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate : 0.f;
 		c.stretch = e.current.stretch;
 		c.emitter_size_y = e.current.emitter_size.y;
-		c.emitter_handle_y = e.common.handle.y;
 		c.overal_scale = e.current.overal_scale;
 		c.angle_offset = properties.angle_offsets.roll;
 		c.graphs = &e.common.library->overtime_graphs[e.overtime];
-		c.image_handle;
 		if (e.common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 			c.image_handle = tfxVec2(0.5f, 0.5f);
 		}

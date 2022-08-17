@@ -4128,7 +4128,6 @@ typedef unsigned long long tfxKey;
 		float image_frame_rate;
 		float stretch;
 		float emitter_size_y;
-		float emitter_handle_y;
 		float overal_scale;
 		float angle_offset;
 		tfxOvertimeAttributes *graphs;
@@ -4855,9 +4854,6 @@ typedef unsigned long long tfxKey;
 		data.world_rotations.roll = data.local_rotations.roll;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
-		tfxMatrix2 pmat;
-		pmat.Set(c, s, -s, c);
-		pmat = pmat.Transform(common.transform.matrix);
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		data.world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
@@ -4865,9 +4861,6 @@ typedef unsigned long long tfxKey;
 		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
-		tfxMatrix2 pmat;
-		pmat.Set(c, s, -s, c);
-		pmat = pmat.Transform(common.transform.matrix);
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		data.world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
@@ -4890,9 +4883,6 @@ typedef unsigned long long tfxKey;
 		data.world_rotations = data.local_rotations;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
-		tfxMatrix2 pmat;
-		pmat.Set(c, s, -s, c);
-		pmat = pmat.Transform(common.transform.matrix);
 		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
 		data.world_position = from_position + rotatevec.xyz() * common.transform.scale;
 	}
@@ -4900,9 +4890,6 @@ typedef unsigned long long tfxKey;
 		data.world_rotations = data.local_rotations;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
-		tfxMatrix2 pmat;
-		pmat.Set(c, s, -s, c);
-		pmat = pmat.Transform(common.transform.matrix);
 		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
 		data.world_position = from_position + rotatevec.xyz() * common.transform.scale;
 	}
