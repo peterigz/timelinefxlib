@@ -5,3 +5,5 @@
 *.lib
 *.pdb
 *.lib
+*.lib
+Bin/Debug/TimelineFX.pdb
