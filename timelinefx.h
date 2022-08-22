@@ -1,3 +1,4 @@
+//#define tfxENABLE_PROFILING
 /*
 	Timeline FX C++ library
 
@@ -772,6 +773,7 @@ typedef unsigned long long tfxKey;
 	extern tfxMemoryTrackerLog tfxMEMORY_TRACKER;
 	extern char tfxMEMORY_CONTEXT[64];
 
+#ifdef tfxTRACK_MEMORY
 #define tfxALLOCATE(tracker_name, dst, size) malloc(size); tfxMemoryTrackerEntry tracker; memset(&tracker, '\0', sizeof(tfxMemoryTrackerEntry)); memcpy(tracker.name, tracker_name, strlen(tracker_name)); tracker.amount_allocated = size; tracker.address = dst; tfxU32 allocations = 0; if (data &&tfxMEMORY_TRACKER.ValidKey((tfxKey)data)) { tfxMemoryTrackerEntry *entry = tfxMEMORY_TRACKER.At((tfxKey)data); if(entry->is_alive) allocations = tfxMEMORY_TRACKER.At((tfxKey)data)->allocations; } tracker.allocations = allocations + 1; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker);
 #define tfxFREE(dst) free(dst); assert(tfxMEMORY_TRACKER.ValidKey((tfxKey)dst)); tfxMEMORY_TRACKER.At((tfxKey)dst)->is_alive = false;
 #define tfxINIT_VEC_NAME memset(name, '\0', 64); name[0] = 'X' 
@@ -780,6 +782,16 @@ typedef unsigned long long tfxKey;
 #define tfxCONSTRUCTOR_VEC_DEF const char *name_init
 #define tfxCONSTRUCTOR_VEC_INIT(name) #name
 #define tfxCONSTRUCTOR_VEC_INIT2(name) name
+#else
+#define tfxALLOCATE(tracker_name, dst, size) malloc(size);
+#define tfxFREE(dst) free(dst); 
+#define tfxINIT_VEC_NAME 
+#define tfxINIT_VEC_NAME_INIT 
+#define tfxINIT_VEC_NAME_SRC_COPY 
+#define tfxCONSTRUCTOR_VEC_DEF 
+#define tfxCONSTRUCTOR_VEC_INIT(name) 
+#define tfxCONSTRUCTOR_VEC_INIT2(name) 
+#endif
 
 	//Intrinsics and multithreading
 
@@ -805,7 +817,9 @@ typedef unsigned long long tfxKey;
 	//std::vector replacement with some extra stuff and tweaks specific to Qulkan/TimelineFX
 	template<typename T>
 	struct tfxvec {
+#ifdef tfxTRACK_MEMORY
 		char name[64];
+#endif
 		tfxU32 current_size;
 		tfxU32 capacity;
 		T* data;
@@ -851,6 +865,11 @@ typedef unsigned long long tfxKey;
 		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; 
 			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity; }
 
+		inline T&	        grab() {
+			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
+			current_size++;
+			return data[current_size - 1];
+		}
 		inline T&	        push_back(const T& v) { 
 			if (current_size == capacity) 
 				reserve(_grow_capacity(current_size + 1)); 
@@ -880,6 +899,81 @@ typedef unsigned long long tfxKey;
 		inline void			create_pool(tfxU32 amount) { assert(current_size == 0); T base; reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 		inline void			create_pool_with(tfxU32 amount, const T &base) { assert(current_size == 0);  reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 
+	};
+
+	//Ring/Circular buffer
+	template<typename T>
+	struct tfxring {
+		T* data;
+		unsigned int current_size;
+		unsigned int capacity;
+		unsigned int start_index;
+		int last_bump;
+
+		inline tfxring() { start_index = current_size = capacity = last_bump = 0; data = NULL; }
+		inline tfxring(unsigned int qty) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); }
+
+		inline bool			empty() { return current_size == 0; }
+		inline bool			full() { return current_size == capacity; }
+
+		inline void			prep_for_new() { start_index = current_size = 0; data = NULL; data = (T*)malloc((size_t)capacity * sizeof(T)); }
+		inline void         clear() { if (data) { start_index = current_size = 0; } }
+		inline unsigned int			size() { return current_size; }
+		inline const unsigned int	size() const { return current_size; }
+		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
+		inline const T&     operator[](unsigned int i) const { return data[(i + start_index) % capacity]; }
+		inline T&           AtAbs(unsigned int i) { return data[i]; }
+		inline const T&     AtAbs(unsigned int i) const { return data[i]; }
+
+		inline unsigned int end_index() { return (start_index + current_size) % capacity; }
+		inline unsigned int before_start_index() { return start_index == 0 ? capacity - 1 : start_index - 1; }
+		inline unsigned int last_index() { return (start_index + current_size - 1) % capacity; }
+		inline T*			eob_ptr() { return data + (start_index + current_size) % capacity; }
+		inline T&           front() { assert(current_size > 0); return data[start_index]; }
+		inline const T&     front() const { assert(current_size > 0); return data[start_index]; }
+		inline T&           back() { assert(current_size > 0); return data[last_index()]; }
+		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
+
+		inline void         pop() { assert(current_size > 0); current_size--; }
+		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
+
+		inline T&	        emplace_back(const T& v) {
+			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
+			new((void*)(data + end_index())) T(v);
+			current_size++; return data[current_size - 1];
+		}
+		inline T&	        push_back(const T& v) {
+			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
+			memcpy(&data[end_index()], &v, sizeof(v));
+			current_size++; return data[current_size - 1];
+		}
+		inline T&	        grab() {
+			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
+			return data[(++current_size - 1 + start_index) % capacity];
+		}
+
+		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline void         reserve(tfxU32 new_capacity) {
+			if (new_capacity <= capacity) return;
+			T* new_data = (T*)malloc((size_t)new_capacity * sizeof(T));
+			if (data) {
+				if (last_index() < start_index) {
+					memcpy(new_data, data + start_index, (size_t)(capacity - start_index) * sizeof(T));
+					memcpy(new_data + (capacity - start_index), data, (size_t)(start_index) * sizeof(T));
+				}
+				else {
+					memcpy(new_data, data + start_index, (size_t)current_size * sizeof(T));
+				}
+				free(data);
+			}
+			data = new_data;
+			capacity = new_capacity;
+			start_index = 0;
+		}
+
+		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
+		inline void			bump(unsigned int amount) { if (current_size == 0) return; if (amount > current_size) amount = current_size; start_index += amount; start_index %= capacity; current_size -= amount; last_bump = amount; }
+		inline void			shrink(unsigned int amount) { if (amount > current_size) current_size = 0; else current_size -= amount; }
 	};
 
 #define tfxKilobyte(Value) ((Value)*1024LL)
@@ -1655,6 +1749,7 @@ typedef unsigned long long tfxKey;
 		tfxVec4(tfxVec3 vec) : x(vec.x), y(vec.y), z(vec.z), w(0.f) {}
 
 		inline tfxVec2 xy() { return tfxVec2(x, y); }
+		inline tfxVec2 zw() { return tfxVec2(z, w); }
 		inline tfxVec3 xyz() { return tfxVec3(x, y, z); }
 
 		inline void operator=(const tfxVec2 &v) { x = v.x; y = v.y; }
@@ -3075,7 +3170,6 @@ typedef unsigned long long tfxKey;
 
 	};
 
-#define tfxENABLE_PROFILING
 #ifdef tfxENABLE_PROFILING 
 #define tfxPROFILE tfxProfileTag tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
 #else
@@ -3910,8 +4004,6 @@ typedef unsigned long long tfxKey;
 		//Not required for frame by frame updating - should be moved into an info lookup in library
 		//Name of the effect
 		tfxStr64 name;						//Todo: Do we need this here?
-		//A hash of the directory path to the effect ie Flare/spark
-		tfxKey path_hash;
 		//Every effect and emitter in the library gets a unique id
 		tfxU32 uid;
 		//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
@@ -3980,6 +4072,8 @@ typedef unsigned long long tfxKey;
 		tfxEffectEmitterType type;
 		//The index within the library that this exists at
 		tfxU32 library_index;
+		//A hash of the directory path to the effect ie Flare/spark, and also a UID for the effect/emitter
+		tfxKey path_hash;
 		//The current highest particle age. When using a compute buffer we don't have any reliable way of keeping track of particle counts of individual emitters, so how do we know when to remove an emitter
 		//after all it's particles have expired? We set this variable to the highest particle age each time it spawns a particle and then counts it down each frame. When it's 0 then we know that there are no
 		//more particles being controlled by this emitter and can therefore time it out.
@@ -4007,6 +4101,7 @@ typedef unsigned long long tfxKey;
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
+		tfxU32 particles_index;
 		tfxU32 info_index;
 		tfxU32 property_index;
 
@@ -4027,7 +4122,8 @@ typedef unsigned long long tfxKey;
 			update_effect_callback(NULL),
 			update_emitter_callback(NULL),
 			particle_onspawn_callback(NULL),
-			particle_update_callback(NULL)
+			particle_update_callback(NULL),
+			particles_index(tfxINVALID)
 		{ }
 		~tfxEffectEmitter();
 
@@ -4128,6 +4224,9 @@ typedef unsigned long long tfxKey;
 		float emitter_size_y;
 		float overal_scale;
 		float angle_offset;
+		float end_frame;
+		void(*particle_update_callback)(tfxParticleData &particle, void *user_data);
+		void *user_data;
 		tfxOvertimeAttributes *graphs;
 	};
 
@@ -4194,10 +4293,33 @@ typedef unsigned long long tfxKey;
 	//At the moment this struct is used in the editor only, looking to unify at some point
 	struct tfxParticle {
 		tfxParticleData data;
-		tfxEffectEmitter *parent;				//pointer to the emitter that emitted the particle.
 		//Internal use variables
-		tfxU32 next_ptr;
+		tfxParticle *next_ptr;
+		tfxU32 sprite_index;
 		tfxU32 prev_index;
+	};
+
+	struct tfxParticleSprite2d {	//64 bytes
+		tfxU32 particle;			//Index to the particle: 0xFFF00000 = the bank index, 0x000FFFFF the index within the bank
+		tfxU32 image_frame;			//The image image of animation index. Set to tfxINVALID when the particle expires
+		void *image_ptr;
+		tfxVec4 scale_plus;			//Scale and rotation (x, y = scale, z = rotation, w = intensity)
+		tfxVec4 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
+		tfxVec2 handle;				//Image handle offset of the sprite
+		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
+		float depth;				//Used for ordering of sprites if needed
+	};
+
+	struct tfxParticleSprite3d {	//80 bytes
+		tfxU32 particle;			//Index to the particle: 0xFFF00000 = the bank index, 0x000FFFFF the index within the bank
+		tfxU32 frame_depth_options;	//The image frame of animation index
+		void *image_ptr;
+		tfxVec4 scale_plus;			//Scale and rotation (x, y = scale, z = stretch, w = intensity)
+		tfxVec3 position;			//The position of the sprite
+		tfxVec3 captured;			//The captured position of the sprite for interpolation
+		tfxVec3 rotations;			//Rotations
+		tfxVec2 handle;				//Image handle offset of the sprite
+		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
 	};
 
 	struct tfxComputeFXGlobalState {
@@ -4270,21 +4392,21 @@ typedef unsigned long long tfxKey;
 		bool has_frames;
 	};
 
-	static inline tfxParticleFrame ConvertToParticleFrame(const tfxParticle &p) {
+	static inline tfxParticleFrame ConvertToParticleFrame(const tfxParticle &p, tfxEmitterProperties &properties, tfxVec2 &handle) {
 		tfxParticleFrame pf;
 		pf.position = p.data.world_position;
 		pf.scale = p.data.scale;
 		pf.alignment = p.data.alignment_vector;
 		pf.stretch = p.data.velocity_normal.w;
 		pf.rotations = p.data.world_rotations;
-		pf.alignment_type = p.parent->GetProperties().billboard_option;
-		pf.handle = p.parent->current.image_handle;
+		pf.alignment_type = properties.billboard_option;
+		pf.handle = handle;
 		pf.color = p.data.color;
 		pf.intensity = p.data.intensity;
-		pf.start_frame = p.parent->GetProperties().start_frame;
-		pf.image_ptr = p.parent->GetProperties().image->ptr;
+		pf.start_frame = properties.start_frame;
+		pf.image_ptr = properties.image->ptr;
 		pf.image_frame = p.data.image_frame;
-		pf.has_frames = p.parent->GetProperties().image->animation_frames > 1;
+		pf.has_frames = properties.image->animation_frames > 1;
 		return pf;
 	}
 
@@ -4292,10 +4414,15 @@ typedef unsigned long long tfxKey;
 		tfxEffectEmitter *effect_ptr;
 	};
 
+	struct tfxParticleBank {
+		tfxvec<tfxvec<tfxParticle>> particle_banks;
+	};
+
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
 		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
-		tfxvec<tfxParticle> particles[tfxLAYERS * 2];
+		tfxvec<tfxring<tfxParticle>> particle_banks;
+		tfxStorageMap<tfxvec<tfxEffectEmitter>> expired_emitters;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
@@ -4303,6 +4430,8 @@ typedef unsigned long long tfxKey;
 		tfxvec<tfxEffectEmitter> effects[2];
 		//Set when an effect is updated and used to pass on global attributes to child emitters
 		tfxParentSpawnControls parent_spawn_controls;
+		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
+		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
 
 		//todo: document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
@@ -4321,8 +4450,6 @@ typedef unsigned long long tfxKey;
 		unsigned int current_pbuff;
 		//The current effect buffer in use, can be either 0 or 1
 		unsigned int current_ebuff;
-		//The current number of particles in each buffer
-		unsigned int particle_count;
 
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
@@ -4364,9 +4491,6 @@ typedef unsigned long long tfxKey;
 		void Update();
 		//When paused you still might want to keep the particles in order:
 		void UpdateParticleOrderOnly();
-		//Get the current particle buffer that contains all particles currently active. The particle manager can have layers in order to control draw order of particles.
-		//Pass the layer that you want to get.
-		tfxvec<tfxParticle> *GetParticleBuffer(unsigned int layer);
 		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
@@ -4401,29 +4525,28 @@ typedef unsigned long long tfxKey;
 		void SoftExpireAll();
 
 		//Internal use only
+		void CompressSprites2d();
+		void CompressSprites3d();
 		int AddComputeController();
 		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
 		void EnableCompute() { flags |= tfxEffectManagerFlags_use_compute_shader; }
 		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
-		tfxParticle &GrabCPUParticle(unsigned int layer);
+		tfxParticle &GrabCPUParticle(unsigned int index);
 		tfxComputeParticle &GrabComputeParticle(unsigned int layer);
 		void ResetParticlePtr(void *ptr);
 		void ResetControllerPtr(void *ptr);
 		inline unsigned int GetControllerMemoryUsage() { return highest_compute_controller_index * sizeof(tfxComputeController); }
 		inline unsigned int GetParticleMemoryUsage() { return new_compute_particle_index * sizeof(tfxComputeParticle); }
 		void UpdateCompute(void *sampled_particles, unsigned int sample_size = 100);
-		unsigned int AddParticle(unsigned int layer, tfxParticle &p);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
-		unsigned int ParticleCount();
-		inline tfxU32 SetNextParticle(unsigned int layer, tfxParticle &p);
 		inline tfxEffectEmitter* SetNextEffect(tfxEffectEmitter &e, unsigned int buffer);
 		void UpdateBaseValues();
 		tfxvec<tfxEffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
 
-		inline bool FreeCapacity(unsigned int layer, bool compute) {
+		inline bool FreeCapacity(int index, bool compute) {
 			if (!compute) {
-				return particles[current_pbuff + (layer * 2)].current_size < max_cpu_particles_per_layer;
+				return particle_banks[index].current_size < max_cpu_particles_per_layer;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
@@ -4431,7 +4554,17 @@ typedef unsigned long long tfxKey;
 		inline bool FreeEffectCapacity() {
 			return effects[0].current_size + effects[1].current_size < max_effects;
 		}
+		inline tfxU32 ParticleCount() { 
+			tfxU32 count = 0;
+			for (tfxEachLayer) {
+				count += sprites2d[layer].current_size;
+				count += sprites3d[layer].current_size;
+			}
+			return count;
+		}
 	};
+
+	tfxU32 CreateParticleBank(tfxParticleManager &pm, tfxU32 reserve_amount = 100);
 
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);
@@ -4454,28 +4587,7 @@ typedef unsigned long long tfxKey;
 	tfxEmitterSpawnControls UpdateEmitterState(tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls);
 	tfxParentSpawnControls UpdateEffectState(tfxEffectEmitter &e);
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxEffectEmitter &e);
-	static inline void SetParticleAlignment(tfxParticle &p, tfxEmitterProperties &properties) {
-		bool line = p.parent->common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
-		if (p.data.flags & tfxParticleFlags_fresh && properties.vector_align_type == tfxVectorAlignType_motion) {
-			p.data.alignment_vector = p.data.velocity_normal.xyz();
-			p.data.alignment_vector = FastNormalizeVec(p.data.alignment_vector);
-		}
-		else if (properties.vector_align_type == tfxVectorAlignType_motion) {
-			p.data.alignment_vector = p.data.world_position - p.data.captured_position;
-			float l = FastLength(p.data.alignment_vector);
-			p.data.velocity_normal.w *= l * 10.f;
-			p.data.alignment_vector = FastNormalizeVec(p.data.alignment_vector);
-		}
-		else if (properties.vector_align_type == tfxVectorAlignType_emission) {
-			p.data.alignment_vector = p.data.velocity_normal.xyz();
-		}
-		else if (properties.vector_align_type == tfxVectorAlignType_emitter) {
-			p.data.alignment_vector = mmTransformVector(p.parent->common.transform.matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
-		}
-		else {
-			//Set at spawn time
-		}
-	}
+	void ControlParticles(tfxParticleManager &pm, tfxEffectEmitter &e);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -4909,7 +5021,7 @@ typedef unsigned long long tfxKey;
 	}
 	static inline void InsertionSortParticles(tfxvec<tfxParticle> &particles, tfxvec<tfxParticle> &current_buffer) {
 		tfxPROFILE;
-		for (tfxU32 i = 1; i < particles.current_size; ++i) {
+		/*for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticle key = particles[i];
 			int j = i - 1;
 
@@ -4920,7 +5032,7 @@ typedef unsigned long long tfxKey;
 			}
 			particles[j + 1] = key;
 			current_buffer[particles[j + 1].prev_index].next_ptr = j + 1;
-		}
+		}*/
 	}
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
@@ -4934,7 +5046,16 @@ typedef unsigned long long tfxKey;
 			particles[j + 1] = key;
 		}
 	}
-	tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured);
+	inline tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured) {
+		tfxVec3 tweened;
+		tweened = world * tween + captured * (1.f - tween);
+		return tweened;
+	}
+	inline tfxVec2 Tween2d(float tween, tfxVec4 &world) {
+		tfxVec2 tweened;
+		tweened = world.xy() * tween + world.zw() * (1.f - tween);
+		return tweened;
+	}
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
@@ -4944,8 +5065,8 @@ typedef unsigned long long tfxKey;
 	tfxSpawnPosition InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
 	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
-	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter &emitter);
-	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c, tfxEffectEmitter &emitter);
+	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c);
+	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c);
 
 	//Helper functions
 
