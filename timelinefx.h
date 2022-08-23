@@ -1,4 +1,4 @@
-//#define tfxENABLE_PROFILING
+#define tfxENABLE_PROFILING
 /*
 	Timeline FX C++ library
 
@@ -177,6 +177,17 @@ typedef unsigned long long tfxU64;
 typedef long long tfxS64;
 typedef tfxU32 tfxEffectID;
 typedef unsigned long long tfxKey;
+union tfxUInt10bit
+{
+	struct
+	{
+		int x : 10;
+		int y : 10;
+		int z : 10;
+		int w : 2;
+	} data;
+	tfxU32 pack;
+};
 
 
 	//----------------------------------------------------------
@@ -916,8 +927,7 @@ typedef unsigned long long tfxKey;
 		inline bool			empty() { return current_size == 0; }
 		inline bool			full() { return current_size == capacity; }
 
-		inline void			prep_for_new() { start_index = current_size = 0; data = NULL; data = (T*)malloc((size_t)capacity * sizeof(T)); }
-		inline void         clear() { if (data) { start_index = current_size = 0; } }
+		inline void         clear() { start_index = current_size = 0; }
 		inline unsigned int			size() { return current_size; }
 		inline const unsigned int	size() const { return current_size; }
 		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
@@ -2199,6 +2209,24 @@ typedef unsigned long long tfxKey;
 		if (value < lower) return lower;
 		if (value > upper) return upper;
 		return value;
+	}
+
+	inline tfxVec3 Clamp(float lower, float upper, tfxVec3 const &v) {
+		tfxVec3 result;
+		result.x = Clamp(lower, upper, v.x);
+		result.y = Clamp(lower, upper, v.y);
+		result.z = Clamp(lower, upper, v.z);
+		return result;
+	}
+
+	inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
+		tfxVec3 converted = Clamp(-1.f, 1.f, v) * 511.f;
+		tfxUInt10bit result;
+		result.data.x = (tfxU32)converted.z;
+		result.data.y = (tfxU32)converted.y;
+		result.data.z = (tfxU32)converted.x;
+		result.data.w = extra;
+		return result.pack;
 	}
 
 	static inline size_t ClampStringSize(size_t compare, size_t string_size) {
@@ -3757,7 +3785,7 @@ typedef unsigned long long tfxKey;
 		tfxAnimationCameraSettings camera_settings;
 		float effect_z_offset;
 		float camera_speed;
-		bool attach_effect_to_camera;
+		bool attach_effect_to_camera = false;
 	};
 
 	//this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
@@ -3934,7 +3962,7 @@ typedef unsigned long long tfxKey;
 			age(0.f),
 			state_flags(0),
 			timeout_counter(0),
-			timeout(1000.f),
+			timeout(100.f),
 			active_children(0)
 		{ }
 
@@ -4275,8 +4303,6 @@ typedef unsigned long long tfxKey;
 		//Read only when ControlParticle is called, only written to at spawn time
 		tfxBase base;							//Base values created when the particle is spawned. They can be different per particle due to variations
 		tfxVec4 velocity_normal;			//Current velocity direction, with stretch factor in w
-		tfxVec3 alignment_vector;			//Current Vector of alignment
-		float depth;						//Distance to camera and can also be used for other things too, but generally a distance to something. Not necessarily actual distance, just a relative number (to avoid needing to square root)
 		float noise_offset;					//Higer numbers means random movement is less uniform
 		float noise_resolution;				//Higer numbers means random movement is more uniform
 		tfxParticleFlags flags;				//flags for different states
@@ -4292,11 +4318,9 @@ typedef unsigned long long tfxKey;
 
 	//At the moment this struct is used in the editor only, looking to unify at some point
 	struct tfxParticle {
-		tfxParticleData data;
-		//Internal use variables
 		tfxParticle *next_ptr;
 		tfxU32 sprite_index;
-		tfxU32 prev_index;
+		tfxParticleData data;
 	};
 
 	struct tfxParticleSprite2d {	//64 bytes
@@ -4310,17 +4334,30 @@ typedef unsigned long long tfxKey;
 		float depth;				//Used for ordering of sprites if needed
 	};
 
-	struct tfxParticleSprite3d {	//80 bytes
+	struct tfxParticleSprite3d {	//88 bytes
 		tfxU32 particle;			//Index to the particle: 0xFFF00000 = the bank index, 0x000FFFFF the index within the bank
-		tfxU32 frame_depth_options;	//The image frame of animation index
+		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag
 		void *image_ptr;
 		tfxVec4 scale_plus;			//Scale and rotation (x, y = scale, z = stretch, w = intensity)
 		tfxVec3 position;			//The position of the sprite
 		tfxVec3 captured;			//The captured position of the sprite for interpolation
 		tfxVec3 rotations;			//Rotations
+		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 		tfxVec2 handle;				//Image handle offset of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
+		float depth;
 	};
+
+	/*struct BillboardInstance {
+		QVec4 uv;					//The UV coords of the image in the texture
+		QVec4 position;				//The position of the sprite with roll in w
+		QVec4 scale_pitch_yaw;		//The image scale of the billboard and pitch/yaw in z/w
+		QVec2 handle;				//The handle of the billboard
+		u32 alignment;				//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
+		QRGBA8 color;				//The color tint of the sprite
+		float stretch;				//Amount to stretch the billboard along it's alignment vector
+		u32 blend_texture_array;	//reference for the texture array (8bits) and blend factor (24bits)
+	};*/
 
 	struct tfxComputeFXGlobalState {
 		tfxU32 start_index = 0;
@@ -4396,7 +4433,7 @@ typedef unsigned long long tfxKey;
 		tfxParticleFrame pf;
 		pf.position = p.data.world_position;
 		pf.scale = p.data.scale;
-		pf.alignment = p.data.alignment_vector;
+		//pf.alignment = p.data.alignment_vector;
 		pf.stretch = p.data.velocity_normal.w;
 		pf.rotations = p.data.world_rotations;
 		pf.alignment_type = properties.billboard_option;
@@ -4430,6 +4467,8 @@ typedef unsigned long long tfxKey;
 		tfxvec<tfxEffectEmitter> effects[2];
 		//Set when an effect is updated and used to pass on global attributes to child emitters
 		tfxParentSpawnControls parent_spawn_controls;
+
+		//Banks of sprites for drawing
 		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
 
@@ -4544,13 +4583,22 @@ typedef unsigned long long tfxKey;
 		tfxvec<tfxEffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
 
-		inline bool FreeCapacity(int index, bool compute) {
+		inline bool FreeCapacity2d(int index, bool compute) {
 			if (!compute) {
-				return particle_banks[index].current_size < max_cpu_particles_per_layer;
+				return sprites2d[index].current_size < max_cpu_particles_per_layer;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
 		}
+
+		inline bool FreeCapacity3d(int index, bool compute) {
+			if (!compute) {
+				return sprites3d[index].current_size < max_cpu_particles_per_layer;
+			}
+			else
+				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
+		}
+
 		inline bool FreeEffectCapacity() {
 			return effects[0].current_size + effects[1].current_size < max_effects;
 		}
@@ -4581,13 +4629,14 @@ typedef unsigned long long tfxKey;
 	void TransformEffector(tfxEffectEmitter &e, tfxParticle &parent, bool relative_position = true, bool relative_angle = false);
 	void TransformEffector3d(tfxEffectEmitter &e, tfxParticle &parent, bool relative_position = true, bool relative_angle = false);
 	void UpdatePMEmitter(tfxParticleManager &pm, tfxEffectEmitter &e);
-	void SpawnParticles(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls);
-	void SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls);
+	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls);
+	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls);
 	void InitCPUParticle(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxEmitterSpawnControls &spawn_controls, float tween);
 	tfxEmitterSpawnControls UpdateEmitterState(tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls);
 	tfxParentSpawnControls UpdateEffectState(tfxEffectEmitter &e);
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxEffectEmitter &e);
-	void ControlParticles(tfxParticleManager &pm, tfxEffectEmitter &e);
+	void ControlParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
+	void ControlParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -4816,6 +4865,8 @@ typedef unsigned long long tfxKey;
 		void SetParticleOnSpawnCallback(tfxStr256 path, void(*particle_onspawn_callback)(tfxParticle &particle, void *user_data));
 	};
 
+	void SetTimeOut(tfxEffectTemplate &effect_template, float frames);
+
 	/*
 	Notes on updating effects emitters and particles:
 
@@ -5019,12 +5070,12 @@ typedef unsigned long long tfxKey;
 		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
 		return (d2 > d1) - (d2 < d1);
 	}
+
 	static inline void InsertionSortParticles(tfxvec<tfxParticle> &particles, tfxvec<tfxParticle> &current_buffer) {
 		tfxPROFILE;
 		/*for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticle key = particles[i];
 			int j = i - 1;
-
 			while (j >= 0 && key.data.depth > particles[j].data.depth) {
 				particles[j + 1] = particles[j];
 				current_buffer[particles[j + 1].prev_index].next_ptr = j + 1;
@@ -5034,6 +5085,22 @@ typedef unsigned long long tfxKey;
 			current_buffer[particles[j + 1].prev_index].next_ptr = j + 1;
 		}*/
 	}
+
+	static inline void InsertionSortSprites3d(tfxring<tfxParticleSprite3d> &sprites, tfxvec<tfxring<tfxParticle>> &particle_banks) {
+		tfxPROFILE;
+		for (tfxU32 i = 1; i < sprites.current_size; ++i) {
+			tfxParticleSprite3d key = sprites[i];
+			int j = i - 1;
+			while (j >= 0 && key.depth > sprites[j].depth) {
+				sprites[j + 1] = sprites[j];
+				particle_banks[(sprites[j + 1].particle & 0xFFF00000) >> 20][sprites[j + 1].particle & 0x000FFFFF].sprite_index = j + 1;
+				--j;
+			}
+			sprites[j + 1] = key;
+			particle_banks[(sprites[j + 1].particle & 0xFFF00000) >> 20][sprites[j + 1].particle & 0x000FFFFF].sprite_index = j + 1;
+		}
+	}
+
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticleFrame key = particles[i];
