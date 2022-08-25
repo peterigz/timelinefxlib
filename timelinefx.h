@@ -1,4 +1,4 @@
-#define tfxENABLE_PROFILING
+//#define tfxENABLE_PROFILING
 /*
 	Timeline FX C++ library
 
@@ -169,7 +169,9 @@ typedef std::chrono::high_resolution_clock tfxClock;
 #define tfxLAYERS 4
 #define tfxEachLayer int layer = 0; layer !=tfxLAYERS; ++layer
 #endif 
-
+#ifndef tfxDEFAULT_SPRITE_ALLOCATION
+#define tfxDEFAULT_SPRITE_ALLOCATION 25000
+#endif
 //type defs
 typedef unsigned int tfxU32;
 typedef int tfxS32;
@@ -433,7 +435,8 @@ union tfxUInt10bit
 		tfxEffectManagerFlags_use_compute_shader = 1 << 3,
 		tfxEffectManagerFlags_order_by_depth = 1 << 4,
 		tfxEffectManagerFlags_guarantee_order = 1 << 5,
-		tfxEffectManagerFlags_update_base_values = 1 << 6
+		tfxEffectManagerFlags_update_base_values = 1 << 6,
+		tfxEffectManagerFlags_dynamic_sprite_allocation = 1 << 7
 	};
 
 	enum tfxVectorAlignType {
@@ -557,7 +560,7 @@ union tfxUInt10bit
 		tfxEmitterStateFlags_is_area = 1 << 19,
 		tfxEmitterStateFlags_no_tween = 1 << 20,
 		tfxEmitterStateFlags_align_with_velocity = 1 << 21,
-		tfxEmitterStateFlags_is_sub_emitter = 1 << 28,
+		tfxEmitterStateFlags_is_sub_emitter = 1 << 28
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
@@ -926,6 +929,7 @@ union tfxUInt10bit
 
 		inline bool			empty() { return current_size == 0; }
 		inline bool			full() { return current_size == capacity; }
+		inline unsigned int	free_space() { return capacity - current_size; }
 
 		inline void         clear() { start_index = current_size = 0; }
 		inline unsigned int			size() { return current_size; }
@@ -4130,6 +4134,8 @@ union tfxUInt10bit
 		void *user_data;
 
 		tfxU32 particles_index;
+		tfxU32 sprites_count;
+		tfxU32 sprites_index;
 		tfxU32 info_index;
 		tfxU32 property_index;
 
@@ -4323,19 +4329,16 @@ union tfxUInt10bit
 		tfxParticleData data;
 	};
 
-	struct tfxParticleSprite2d {	//64 bytes
-		tfxU32 particle;			//Index to the particle: 0xFFF00000 = the bank index, 0x000FFFFF the index within the bank
+	struct tfxParticleSprite2d {	//56 bytes
 		tfxU32 image_frame;			//The image image of animation index. Set to tfxINVALID when the particle expires
 		void *image_ptr;
 		tfxVec4 scale_plus;			//Scale and rotation (x, y = scale, z = rotation, w = intensity)
 		tfxVec4 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
 		tfxVec2 handle;				//Image handle offset of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
-		float depth;				//Used for ordering of sprites if needed
 	};
 
 	struct tfxParticleSprite3d {	//88 bytes
-		tfxU32 particle;			//Index to the particle: 0xFFF00000 = the bank index, 0x000FFFFF the index within the bank
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag
 		void *image_ptr;
 		tfxVec4 scale_plus;			//Scale and rotation (x, y = scale, z = stretch, w = intensity)
@@ -4345,7 +4348,6 @@ union tfxUInt10bit
 		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 		tfxVec2 handle;				//Image handle offset of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
-		float depth;
 	};
 
 	/*struct BillboardInstance {
@@ -4457,7 +4459,7 @@ union tfxUInt10bit
 
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
-		//Particles that we can't send to the compute shader (because they have sub effects attached to them) are stored and processed here
+		//In ordered mode, emitters get their own list of particles to update
 		tfxvec<tfxring<tfxParticle>> particle_banks;
 		tfxStorageMap<tfxvec<tfxEffectEmitter>> expired_emitters;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
@@ -4468,7 +4470,7 @@ union tfxUInt10bit
 		//Set when an effect is updated and used to pass on global attributes to child emitters
 		tfxParentSpawnControls parent_spawn_controls;
 
-		//Banks of sprites for drawing
+		//Banks of sprites for drawing in unordered mode
 		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
 
@@ -4485,10 +4487,12 @@ union tfxUInt10bit
 		unsigned int max_cpu_particles_per_layer;
 		//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
 		unsigned int max_new_compute_particles;
-		//The current particle buffer in use, can be either 0 or 1
-		unsigned int current_pbuff;
+		//The current sprite buffer in use, can be either 0 or 1
+		unsigned int current_sbuff;
 		//The current effect buffer in use, can be either 0 or 1
 		unsigned int current_ebuff;
+
+		tfxU32 sprite_index_point[tfxLAYERS];
 
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
@@ -4510,7 +4514,7 @@ union tfxUInt10bit
 			max_effects(10000),
 			max_cpu_particles_per_layer(50000),
 			current_ebuff(0),
-			current_pbuff(0),
+			current_sbuff(0),
 			highest_compute_controller_index(0),
 			new_compute_particle_ptr(nullptr),
 			compute_controller_ptr(nullptr),
@@ -4525,7 +4529,7 @@ union tfxUInt10bit
 		tfxEffectEmitter &operator[] (unsigned int index);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
-		void Init(unsigned int effects_limit = 1000, unsigned int particle_limit_per_layer = 50000);
+		void Init(unsigned int effects_limit = 1000, tfxEffectManagerFlags flags = tfxEffectManagerFlags_dynamic_sprite_allocation);
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
 		//When paused you still might want to keep the particles in order:
@@ -4585,7 +4589,7 @@ union tfxUInt10bit
 
 		inline bool FreeCapacity2d(int index, bool compute) {
 			if (!compute) {
-				return sprites2d[index].current_size < max_cpu_particles_per_layer;
+				return sprites2d[index].current_size < max_cpu_particles_per_layer || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
@@ -4593,7 +4597,7 @@ union tfxUInt10bit
 
 		inline bool FreeCapacity3d(int index, bool compute) {
 			if (!compute) {
-				return sprites3d[index].current_size < max_cpu_particles_per_layer;
+				return sprites3d[index].current_size < max_cpu_particles_per_layer || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
@@ -4629,8 +4633,9 @@ union tfxUInt10bit
 	void TransformEffector(tfxEffectEmitter &e, tfxParticle &parent, bool relative_position = true, bool relative_angle = false);
 	void TransformEffector3d(tfxEffectEmitter &e, tfxParticle &parent, bool relative_position = true, bool relative_angle = false);
 	void UpdatePMEmitter(tfxParticleManager &pm, tfxEffectEmitter &e);
-	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls);
-	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls);
+	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxEffectEmitter &e);
+	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
+	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
 	void InitCPUParticle(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxEmitterSpawnControls &spawn_controls, float tween);
 	tfxEmitterSpawnControls UpdateEmitterState(tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls);
 	tfxParentSpawnControls UpdateEffectState(tfxEffectEmitter &e);
@@ -5086,7 +5091,7 @@ union tfxUInt10bit
 		}*/
 	}
 
-	static inline void InsertionSortSprites3d(tfxring<tfxParticleSprite3d> &sprites, tfxvec<tfxring<tfxParticle>> &particle_banks) {
+	/*static inline void InsertionSortSprites3d(tfxring<tfxParticleSprite3d> &sprites, tfxvec<tfxring<tfxParticle>> &particle_banks) {
 		tfxPROFILE;
 		for (tfxU32 i = 1; i < sprites.current_size; ++i) {
 			tfxParticleSprite3d key = sprites[i];
@@ -5099,7 +5104,7 @@ union tfxUInt10bit
 			sprites[j + 1] = key;
 			particle_banks[(sprites[j + 1].particle & 0xFFF00000) >> 20][sprites[j + 1].particle & 0x000FFFFF].sprite_index = j + 1;
 		}
-	}
+	}*/
 
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
