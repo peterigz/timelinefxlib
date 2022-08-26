@@ -7667,7 +7667,7 @@ namespace tfx {
 				tfxU32 max_spawn_count = NewSpritesNeeded(pm, e);
 				e.sprites_count = pm.particle_banks[e.particles_index].current_size;
 				if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && e.sprites_count + max_spawn_count > sprite_buffer.free_space()) {
-					sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (e.sprites_count + max_spawn_count - sprite_buffer.free_space()) + 200));
+					sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (e.sprites_count + max_spawn_count - sprite_buffer.free_space()) + 1));
 					sprite_buffer.current_size += e.sprites_count;
 				}
 				else if(!(pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation)) {
@@ -7900,14 +7900,21 @@ namespace tfx {
 		float tween = e.current.amount_remainder;
 		bool is_compute = e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 		float positions_qty = e.current.qty;
+		tfxU32 amount_spawned = 0;
 
 		while (tween < 1.f) {
+			if (amount_spawned >= max_spawn_amount) {
+				e.current.amount_remainder = 0;
+				break;
+			}
 			tfxSpawnPosition new_position = InitialisePosition3d(e.current, e.common, spawn_controls, &e, tween);
 			if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
 				new_position.distance_to_camera = LengthVec3NoSqR(new_position.world_position - pm.camera_position);
 			}
 			pm.new_positions.push_back(new_position);
 			tween += qty_step_size;
+
+			amount_spawned++;
 		}
 
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
@@ -7917,14 +7924,8 @@ namespace tfx {
 		e.current.amount_remainder = tween - 1.f;
 
 		pm.new_particles_index_start[properties.layer] = std::min(pm.new_particles_index_start[properties.layer], pm.particle_banks[e.particles_index].current_size);
-		tfxU32 amount_spawned = 0;
 
 		for (auto &position : pm.new_positions) {
-			if (amount_spawned >= max_spawn_amount) {
-				e.current.amount_remainder = 0;
-				break;
-			}
-
 			bool is_single = e.common.property_flags & tfxEmitterPropertyFlags_single;
 
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
@@ -7971,7 +7972,7 @@ namespace tfx {
 			}
 			p->data.flags &= ~tfxParticleFlags_fresh;
 
-			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
+			assert(e.sprites_index < pm.sprites3d[properties.layer].capacity);
 			tfxParticleSprite3d &s = pm.sprites3d[properties.layer][e.sprites_index++];
 			s.color = p->data.color;
 			s.image_frame_plus = ((tfxU32)p->data.image_frame << 24) + properties.billboard_option;
@@ -7985,7 +7986,8 @@ namespace tfx {
 			s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
 			s.image_ptr = properties.image->ptr;
 
-			amount_spawned++;
+			if (e.sprites_index == 1667)
+				int debug = 1;
 
 		}
 
@@ -8264,7 +8266,7 @@ namespace tfx {
 		int particles_index = e.particles_index;
 		tfxU32 amount_to_update = bank.current_size;
 		if (e.sprites_count < bank.current_size) {
-			 amount_to_update = e.sprites_count;
+			amount_to_update = e.sprites_count;
 		}
 		for (int i = amount_to_update - 1 - amount_spawned; i >= 0; --i) {
 			tfxParticle *p = &bank[i];
@@ -8396,11 +8398,11 @@ namespace tfx {
 			}
 			if (p->data.flags & tfxParticleFlags_remove) {
 				//Draw a blank sprite for one frame so there's no gaps with invalid data
-				tfxParticleSprite2d &s = pm.sprites2d[properties.layer][e.sprites_index++];
+				tfxParticleSprite3d &s = pm.sprites3d[properties.layer][e.sprites_index++];
 				s.scale_plus = 0;
 				s.color.a = 0;
 				s.image_ptr = properties.image->ptr;
-				s.image_frame = 0;
+				s.image_frame_plus = 0;
 				offset++;
 				continue;
 			}
@@ -8442,7 +8444,6 @@ namespace tfx {
 			}
 
 			tfxParticleSprite3d &s = pm.sprites3d[properties.layer][e.sprites_index++];
-			pm.sprites3d[properties.layer].current_size++;
 			s.color = p->data.color;
 			s.image_frame_plus = ((tfxU32)p->data.image_frame << 24) + properties.billboard_option;
 			s.position = p->data.world_position;
@@ -8455,6 +8456,8 @@ namespace tfx {
 			alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
 			s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
 			s.image_ptr = properties.image->ptr;
+			if (e.sprites_index == 1667)
+				int debug = 1;
 
 		}
 		bank.bump(offset);
