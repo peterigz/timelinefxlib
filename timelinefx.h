@@ -436,7 +436,9 @@ union tfxUInt10bit
 		tfxEffectManagerFlags_order_by_depth = 1 << 4,
 		tfxEffectManagerFlags_guarantee_order = 1 << 5,
 		tfxEffectManagerFlags_update_base_values = 1 << 6,
-		tfxEffectManagerFlags_dynamic_sprite_allocation = 1 << 7
+		tfxEffectManagerFlags_dynamic_sprite_allocation = 1 << 7,
+		tfxEffectManagerFlags_3d_effects = 1 << 8,
+		tfxEffectManagerFlags_unorderd = 1 << 9
 	};
 
 	enum tfxVectorAlignType {
@@ -1677,6 +1679,8 @@ union tfxUInt10bit
 		tfxVec2() { x = y = 0.f; }
 		tfxVec2(float _x, float _y) : x(_x), y(_y) {}
 
+		inline void operator=(float v) { x = v; y = v; }
+
 		inline tfxVec2 operator+(tfxVec2 v) { return tfxVec2(x + v.x, y + v.y); }
 		inline void operator+=(tfxVec2 v) { x += v.x; y += v.y; }
 		inline tfxVec2 operator-(tfxVec2 v) { return tfxVec2(x - v.x, y - v.y); }
@@ -1765,6 +1769,10 @@ union tfxUInt10bit
 		inline tfxVec2 xy() { return tfxVec2(x, y); }
 		inline tfxVec2 zw() { return tfxVec2(z, w); }
 		inline tfxVec3 xyz() { return tfxVec3(x, y, z); }
+
+		inline tfxVec2 xy() const{ return tfxVec2(x, y); }
+		inline tfxVec2 zw() const { return tfxVec2(z, w); }
+		inline tfxVec3 xyz() const { return tfxVec3(x, y, z); }
 
 		inline void operator=(const tfxVec2 &v) { x = v.x; y = v.y; }
 		inline void operator=(const tfxVec3 &v) { x = v.x; y = v.y; z = v.z; }
@@ -3988,7 +3996,8 @@ union tfxUInt10bit
 		float emission_alternator;
 		float qty;
 		//The callback to transform the particles each update. This will change based on the properties of the emitter
-		void(*transform_particle_callback)(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position);
+		void(*transform_particle_callback2d)(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position);
+		void(*transform_particle_callback3d)(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position);
 
 		tfxEmitterState() :
 			amount_remainder(0.f),
@@ -4301,13 +4310,10 @@ union tfxUInt10bit
 	//Particles are stored in the particle manager particle buffer.
 	struct tfxParticleData {
 		tfxVec3 local_position;			//The local position of the particle, relative to the emitter.
-		tfxVec3 world_position;			//The world position of the particle relative to the world/screen.
-		tfxVec3 captured_position;		//The captured world coords for interpolating frames
 		tfxVec3 local_rotations;
-		tfxVec3 world_rotations;
-		tfxVec2 scale;
+		tfxVec3 captured_position;
 		//Read only when ControlParticle is called, only written to at spawn time
-		tfxBase base;							//Base values created when the particle is spawned. They can be different per particle due to variations
+		tfxBase base;						//Base values created when the particle is spawned. They can be different per particle due to variations
 		tfxVec4 velocity_normal;			//Current velocity direction, with stretch factor in w
 		float noise_offset;					//Higer numbers means random movement is less uniform
 		float noise_resolution;				//Higer numbers means random movement is more uniform
@@ -4319,35 +4325,50 @@ union tfxUInt10bit
 		float image_frame;					//Current frame of the image if it's an animation
 		float weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
 		float intensity;					//Color is multiplied by this value in the shader to increase the brightness of the particles
+		float depth;
 		tfxRGBA8 color;						//Colour of the particle
 	};
 
-	//At the moment this struct is used in the editor only, looking to unify at some point
 	struct tfxParticle {
 		tfxParticle *next_ptr;
+		tfxEffectEmitter *parent;
 		tfxU32 sprite_index;
+		tfxU32 prev_index;
 		tfxParticleData data;
+	};
+
+	struct tfxSpriteTransform2d {
+		tfxVec2 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
+		tfxVec2 captured_position;
+		tfxVec2 scale;				//Scale
+		float rotation;
 	};
 
 	struct tfxParticleSprite2d {	//56 bytes
 		tfxU32 image_frame;			//The image image of animation index. Set to tfxINVALID when the particle expires
 		void *image_ptr;
-		tfxVec4 scale_plus;			//Scale and rotation (x, y = scale, z = rotation, w = intensity)
-		tfxVec4 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
+		tfxSpriteTransform2d transform;
 		tfxVec2 handle;				//Image handle offset of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
+		float intensity;
+	};
+
+	struct tfxSpriteTransform3d {
+		tfxVec3 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
+		tfxVec3 captured_position;	
+		tfxVec3 rotations;			//Scale and rotation (x, y = scale, z = rotation, w = intensity)
+		tfxVec2 scale;				//Scale, stretch and intensity (x, y = scale, z = stretch, w = intensity)
 	};
 
 	struct tfxParticleSprite3d {	//88 bytes
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag
 		void *image_ptr;
-		tfxVec4 scale_plus;			//Scale and rotation (x, y = scale, z = stretch, w = intensity)
-		tfxVec3 position;			//The position of the sprite
-		tfxVec3 captured;			//The captured position of the sprite for interpolation
-		tfxVec3 rotations;			//Rotations
+		tfxSpriteTransform3d transform;
 		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 		tfxVec2 handle;				//Image handle offset of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
+		float stretch;
+		float intensity;
 	};
 
 	/*struct BillboardInstance {
@@ -4433,11 +4454,11 @@ union tfxUInt10bit
 
 	static inline tfxParticleFrame ConvertToParticleFrame(const tfxParticle &p, tfxEmitterProperties &properties, tfxVec2 &handle) {
 		tfxParticleFrame pf;
-		pf.position = p.data.world_position;
-		pf.scale = p.data.scale;
+		//pf.position = p.data.world_position;
+		//pf.scale = p.data.scale;
 		//pf.alignment = p.data.alignment_vector;
 		pf.stretch = p.data.velocity_normal.w;
-		pf.rotations = p.data.world_rotations;
+		//pf.rotations = p.data.world_rotations;
 		pf.alignment_type = properties.billboard_option;
 		pf.handle = handle;
 		pf.color = p.data.color;
@@ -4484,11 +4505,11 @@ union tfxUInt10bit
 		//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
 		unsigned int max_effects;
 		//The maximum number of particles that can be updated per frame per layer. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
-		unsigned int max_cpu_particles_per_layer;
+		unsigned int max_cpu_particles_per_layer[tfxLAYERS];
 		//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
 		unsigned int max_new_compute_particles;
 		//The current sprite buffer in use, can be either 0 or 1
-		unsigned int current_sbuff;
+		unsigned int current_pbuff;
 		//The current effect buffer in use, can be either 0 or 1
 		unsigned int current_ebuff;
 
@@ -4512,9 +4533,8 @@ union tfxUInt10bit
 			flags(0),
 			lookup_mode(tfxFast),
 			max_effects(10000),
-			max_cpu_particles_per_layer(50000),
 			current_ebuff(0),
-			current_sbuff(0),
+			current_pbuff(0),
 			highest_compute_controller_index(0),
 			new_compute_particle_ptr(nullptr),
 			compute_controller_ptr(nullptr),
@@ -4529,7 +4549,9 @@ union tfxUInt10bit
 		tfxEffectEmitter &operator[] (unsigned int index);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
-		void Init(unsigned int effects_limit = 1000, tfxEffectManagerFlags flags = tfxEffectManagerFlags_dynamic_sprite_allocation);
+		void Init(unsigned int effects_limit = 1000, tfxEffectManagerFlags flags = tfxEffectManagerFlags_dynamic_sprite_allocation | tfxEffectManagerFlags_3d_effects);
+		void Init2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000);
+		void Init3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000);
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
 		//When paused you still might want to keep the particles in order:
@@ -4586,10 +4608,16 @@ union tfxUInt10bit
 		void UpdateBaseValues();
 		tfxvec<tfxEffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
+		inline tfxParticle* SetNextParticle(unsigned int buffer_index, tfxParticle &p) {
+			unsigned int index = particle_banks[buffer_index].current_size++;
+			assert(index < particle_banks[buffer_index].capacity);
+			particle_banks[buffer_index][index] = p;
+			return &particle_banks[buffer_index][index];
+		}
 
 		inline bool FreeCapacity2d(int index, bool compute) {
 			if (!compute) {
-				return sprites2d[index].current_size < max_cpu_particles_per_layer || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
+				return sprites2d[index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
@@ -4597,7 +4625,7 @@ union tfxUInt10bit
 
 		inline bool FreeCapacity3d(int index, bool compute) {
 			if (!compute) {
-				return sprites3d[index].current_size < max_cpu_particles_per_layer || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
+				return sprites3d[index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
@@ -4630,18 +4658,20 @@ union tfxUInt10bit
 	void Scale(tfxEffectEmitter &e, float x, float y, float z = 1.f);
 	void Position(tfxEffectEmitter &e, const tfxVec2& p);
 	void Position(tfxEffectEmitter &e, const tfxVec3& p);
-	void TransformEffector(tfxEffectEmitter &e, tfxParticle &parent, bool relative_position = true, bool relative_angle = false);
-	void TransformEffector3d(tfxEffectEmitter &e, tfxParticle &parent, bool relative_position = true, bool relative_angle = false);
+	void TransformEffector(tfxEffectEmitter &e, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
+	void TransformEffector3d(tfxEffectEmitter &e, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
 	void UpdatePMEmitter(tfxParticleManager &pm, tfxEffectEmitter &e);
 	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxEffectEmitter &e);
 	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
-	void InitCPUParticle(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxEmitterSpawnControls &spawn_controls, float tween);
+	void InitCPUParticle2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxSpriteTransform2d &sprite_transform, tfxEmitterSpawnControls &spawn_controls, float tween);
+	void InitCPUParticle3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxSpriteTransform3d &sprite_transform, tfxEmitterSpawnControls &spawn_controls, float tween);
 	tfxEmitterSpawnControls UpdateEmitterState(tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls);
 	tfxParentSpawnControls UpdateEffectState(tfxEffectEmitter &e);
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxEffectEmitter &e);
 	void ControlParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
 	void ControlParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
+	void ControlParticlesOrdered(tfxParticleManager &pm);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -5019,56 +5049,53 @@ union tfxUInt10bit
 
 		out.world_position = in.world_position + rotatevec;
 	}
-	static inline void TransformParticle(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_position = data.local_position;
-		data.world_rotations.roll = data.local_rotations.roll;
+	static inline void TransformParticle(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_position = data.local_position.xy();
+		world_rotations = data.local_rotations.roll;
 	}
-	static inline void TransformParticleAngle(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_position = data.local_position;
-		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+	static inline void TransformParticleAngle(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_position = data.local_position.xy();
+		world_rotations = common.transform.world_rotations.roll + data.local_rotations.roll;
 	}
-	static inline void TransformParticleRelative(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_rotations.roll = data.local_rotations.roll;
+	static inline void TransformParticleRelative(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_rotations = data.local_rotations.roll;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
-		data.world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
+		world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
-	static inline void TransformParticleRelativeLine(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_rotations.roll = common.transform.world_rotations.roll + data.local_rotations.roll;
+	static inline void TransformParticleRelativeLine(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_rotations = common.transform.world_rotations.roll + data.local_rotations.roll;
 		float s = sin(data.local_rotations.roll);
 		float c = cos(data.local_rotations.roll);
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
-		data.world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
+		world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
-	static inline void TransformParticle3dPositions(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_position = data.local_position;
+	static inline void TransformParticle3dPositions(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_position = data.local_position;
 	}
-	static inline void TransformParticle3dPositionsRelative(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
+	static inline void TransformParticle3dPositionsRelative(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
-		data.world_position = common.transform.world_position + rotatevec.xyz();
+		world_position = common.transform.world_position + rotatevec.xyz();
 	}
-	static inline void TransformParticle3d(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_position = data.local_position;
-		data.world_rotations = data.local_rotations;
+	static inline void TransformParticle3d(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_position = data.local_position;
+		world_rotations = data.local_rotations;
 	}
-	static inline void TransformParticle3dAngle(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_position = data.local_position;
-		data.world_rotations = common.transform.world_rotations + data.local_rotations;
+	static inline void TransformParticle3dAngle(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_position = data.local_position;
+		world_rotations = common.transform.world_rotations + data.local_rotations;
 	}
-	static inline void TransformParticle3dRelative(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_rotations = data.local_rotations;
-		float s = sin(data.local_rotations.roll);
-		float c = cos(data.local_rotations.roll);
+	static inline void TransformParticle3dRelative(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_rotations = data.local_rotations;
 		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
-		data.world_position = from_position + rotatevec.xyz() * common.transform.scale;
+		world_position = from_position + rotatevec.xyz() * common.transform.scale;
 	}
-	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, const tfxCommon &common, const tfxVec3 &from_position) {
-		data.world_rotations = data.local_rotations;
-		float s = sin(data.local_rotations.roll);
-		float c = cos(data.local_rotations.roll);
+	//todo: redundant function? Remove if so.
+	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_rotations = data.local_rotations;
 		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
-		data.world_position = from_position + rotatevec.xyz() * common.transform.scale;
+		world_position = from_position + rotatevec.xyz() * common.transform.scale;
 	}
 	static inline int SortParticles(void const *left, void const *right) {
 		float d1 = static_cast<const tfxSpawnPosition*>(left)->distance_to_camera;
@@ -5118,27 +5145,54 @@ union tfxUInt10bit
 			particles[j + 1] = key;
 		}
 	}
-	inline tfxVec3 Tween(float tween, tfxVec3 &world, tfxVec3 &captured) {
+	inline tfxVec3 Tween(float tween, const tfxVec3 &world, const tfxVec3 &captured) {
 		tfxVec3 tweened;
 		tweened = world * tween + captured * (1.f - tween);
 		return tweened;
 	}
-	inline tfxVec2 Tween2d(float tween, tfxVec4 &world) {
+	inline tfxVec2 Tween2d(float tween, const tfxVec4 &world) {
 		tfxVec2 tweened;
 		tweened = world.xy() * tween + world.zw() * (1.f - tween);
 		return tweened;
 	}
+	inline tfxVec2 Tween2d(float tween, const tfxVec2 &world, const tfxVec2 &captured) {
+		tfxVec2 tweened;
+		tweened = world * tween + captured * (1.f - tween);
+		return tweened;
+	}
+	/*static inline void SetParticleAlignment(tfxParticle &p, tfxEmitterProperties &properties) {
+		bool line = p.parent->common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
+		if (p.data.flags & tfxParticleFlags_fresh && properties.vector_align_type == tfxVectorAlignType_motion) {
+			p.data.alignment_vector = p.data.velocity_normal.xyz();
+			p.data.alignment_vector = FastNormalizeVec(p.data.alignment_vector);
+		}
+		else if (properties.vector_align_type == tfxVectorAlignType_motion) {
+			p.data.alignment_vector = p.data.world_position - p.data.captured_position;
+			float l = FastLength(p.data.alignment_vector);
+			p.data.velocity_normal.w *= l * 10.f;
+			p.data.alignment_vector = FastNormalizeVec(p.data.alignment_vector);
+		}
+		else if (properties.vector_align_type == tfxVectorAlignType_emission) {
+			p.data.alignment_vector = p.data.velocity_normal.xyz();
+		}
+		else if (properties.vector_align_type == tfxVectorAlignType_emitter) {
+			p.data.alignment_vector = mmTransformVector(p.parent->common.transform.matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
+		}
+		else {
+			//Set at spawn time
+		}
+	}*/
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
 
 	//Particle initialisation functions, one for 2d one for 3d effects
-	void InitialiseParticle2d(tfxParticleData &data, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
+	void InitialiseParticle2d(tfxParticleData &data, tfxSpriteTransform2d &sprite_transform, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
 	tfxSpawnPosition InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
-	void InitialiseParticle3d(tfxParticleData &data, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
+	void InitialiseParticle3d(tfxParticleData &data, tfxSpriteTransform3d &sprite_transform, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
 	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
-	void UpdateParticle2d(tfxParticleData &data, tfxControlData &c);
-	void UpdateParticle3d(tfxParticleData &data, tfxControlData &c);
+	void UpdateParticle2d(tfxParticleData &data, tfxVec2 &sprite_scale, tfxControlData &c);
+	void UpdateParticle3d(tfxParticleData &data, tfxVec2 &sprite_scale, tfxControlData &c);
 
 	//Helper functions
 
