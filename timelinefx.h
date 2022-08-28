@@ -421,6 +421,13 @@ union tfxUInt10bit
 	typedef tfxU32 tfxAngleSettingFlags;
 	typedef tfxU32 tfxEffectManagerFlags;
 
+	enum tfxParticleManagerModes {
+		tfxParticleManagerMode_unordered,
+		tfxParticleManagerMode_ordered_by_age,
+		tfxParticleManagerMode_ordered_by_depth,
+		tfxParticleManagerMode_ordered_by_depth_guaranteed
+	};
+
 	enum tfxBillboardingOptions {
 		tfxBillboarding = 0,
 		tfxBillboarding_disabled = 1,
@@ -4549,9 +4556,11 @@ union tfxUInt10bit
 		tfxEffectEmitter &operator[] (unsigned int index);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
-		void Init(unsigned int effects_limit = 1000, tfxEffectManagerFlags flags = tfxEffectManagerFlags_dynamic_sprite_allocation | tfxEffectManagerFlags_3d_effects);
-		void Init2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000);
-		void Init3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000);
+		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
 		//When paused you still might want to keep the particles in order:
@@ -4671,7 +4680,8 @@ union tfxUInt10bit
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxVec2 &sprite_scale , tfxEffectEmitter &e);
 	void ControlParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
 	void ControlParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
-	void ControlParticlesOrdered(tfxParticleManager &pm);
+	void ControlParticlesOrdered2d(tfxParticleManager &pm);
+	void ControlParticlesOrdered3d(tfxParticleManager &pm);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -5160,28 +5170,21 @@ union tfxUInt10bit
 		tweened = world * tween + captured * (1.f - tween);
 		return tweened;
 	}
-	/*static inline void SetParticleAlignment(tfxParticle &p, tfxEmitterProperties &properties) {
-		bool line = p.parent->common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
-		if (p.data.flags & tfxParticleFlags_fresh && properties.vector_align_type == tfxVectorAlignType_motion) {
-			p.data.alignment_vector = p.data.velocity_normal.xyz();
-			p.data.alignment_vector = FastNormalizeVec(p.data.alignment_vector);
-		}
-		else if (properties.vector_align_type == tfxVectorAlignType_motion) {
-			p.data.alignment_vector = p.data.world_position - p.data.captured_position;
-			float l = FastLength(p.data.alignment_vector);
+	static inline tfxVec3 SetParticleAlignment(tfxParticle &p, tfxVec3 &position, tfxEmitterProperties &properties) {
+		if (properties.vector_align_type == tfxVectorAlignType_motion) {
+			tfxVec3 alignment_vector = position - p.data.captured_position;
+			float l = FastLength(alignment_vector);
 			p.data.velocity_normal.w *= l * 10.f;
-			p.data.alignment_vector = FastNormalizeVec(p.data.alignment_vector);
+			return FastNormalizeVec(alignment_vector);
 		}
 		else if (properties.vector_align_type == tfxVectorAlignType_emission) {
-			p.data.alignment_vector = p.data.velocity_normal.xyz();
+			return p.data.velocity_normal.xyz();
 		}
 		else if (properties.vector_align_type == tfxVectorAlignType_emitter) {
-			p.data.alignment_vector = mmTransformVector(p.parent->common.transform.matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
+			return mmTransformVector(p.parent->common.transform.matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
 		}
-		else {
-			//Set at spawn time
-		}
-	}*/
+		return tfxVec3(0.f, 0.002f, 0.f);
+	}
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
@@ -5190,11 +5193,8 @@ union tfxUInt10bit
 	void InitialiseParticle2d(tfxParticleData &data, tfxSpriteTransform2d &sprite_transform, tfxEmitterState &emitter, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
 	tfxSpawnPosition InitialisePosition3d(tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
 	void InitialiseParticle3d(tfxParticleData &data, tfxSpriteTransform3d &sprite_transform, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween);
-	//void InitialisePostion3d(tfxParticle &p, tfxEmitter &emitter, tfxEmitterSpawnControls &spawn_values);
 	void UpdateParticle2d(tfxParticleData &data, tfxVec2 &sprite_scale, tfxControlData &c);
 	void UpdateParticle3d(tfxParticleData &data, tfxVec2 &sprite_scale, tfxControlData &c);
-
-	//Helper functions
 
 	//Get a graph by tfxGraphID
 	tfxGraph &GetGraph(tfxEffectLibrary &library, tfxGraphID &graph_id);
