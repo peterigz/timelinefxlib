@@ -7146,8 +7146,11 @@ namespace tfx {
 				tfxEmitterProperties &properties = emitter.GetProperties();
 				emitter.parent = &effects[buffer][parent_index];
 				emitter.next_ptr = emitter.parent;
-				if (emitter.particles_index == tfxINVALID) {
+				if (emitter.particles_index == tfxINVALID && flags & tfxEffectManagerFlags_unorderd) {
 					emitter.particles_index = CreateParticleBank(*this, 1000);
+				}
+				else {
+					emitter.particles_index = properties.layer * 2 + current_pbuff;
 				}
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
 				emitter.flags |= emitter.parent->flags & tfxEmitterStateFlags_no_tween;
@@ -7237,16 +7240,16 @@ namespace tfx {
 
 	int tfxParticleManager::AddComputeController() {
 		//Compute slots should only ever be added for the bottom emitter that has no sub effects
-		unsigned int free_slot;
-		if (!free_compute_controllers.empty()) {
-			free_slot = free_compute_controllers.pop_back();
-		}
-		else {
-			free_slot = highest_compute_controller_index++;
-		}
-		if (free_slot >= max_compute_controllers)
-			return -1;
-		return free_slot;
+unsigned int free_slot;
+if (!free_compute_controllers.empty()) {
+	free_slot = free_compute_controllers.pop_back();
+}
+else {
+	free_slot = highest_compute_controller_index++;
+}
+if (free_slot >= max_compute_controllers)
+return -1;
+return free_slot;
 	}
 
 	void tfxParticleManager::ResetParticlePtr(void *ptr) {
@@ -7293,16 +7296,14 @@ namespace tfx {
 		effects[next_buffer].clear();
 
 		memset(new_particles_index_start, tfxMAX_UINT, 4 * tfxLAYERS);
+		memset(sprite_index_point, 0, 4 * tfxLAYERS);
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
-			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+			for (tfxEachLayer) {
 				int layer_offset = layer * 2;
 				int current_buffer_index = current_pbuff + layer_offset;
 				sprite_index_point[layer] = particle_banks[current_buffer_index].current_size;
 			}
-		}
-		else {
-			memset(sprite_index_point, 0, 4 * tfxLAYERS);
 		}
 
 		for (tfxEachLayer) {
@@ -7333,8 +7334,29 @@ namespace tfx {
 			index++;
 		}
 
+		if (!(flags & tfxEffectManagerFlags_unorderd)) {
+			for (tfxEachLayer) {
+				int layer_offset = layer * 2;
+				int a_buffer = !current_pbuff + layer_offset;
+				int b_buffer = current_pbuff + layer_offset;
+				int a_cap = particle_banks[a_buffer].capacity;
+				int b_cap = particle_banks[b_buffer].capacity;
+				if (particle_banks[a_buffer].capacity != particle_banks[b_buffer].capacity) {
+					if(particle_banks[a_buffer].capacity > particle_banks[b_buffer].capacity) {
+						particle_banks[b_buffer].reserve(particle_banks[a_buffer].capacity);
+					}
+					else {
+						particle_banks[a_buffer].reserve(particle_banks[b_buffer].capacity);
+					}
+				}
+			}
+		}
+
 		current_ebuff = next_buffer;
-		next_buffer = !current_pbuff;
+
+		if (!(flags & tfxEffectManagerFlags_unorderd)) {
+			ControlParticlesOrdered(*this);
+		}
 
 		/*if (!(flags & tfxEffectManagerFlags_order_by_depth)) {
 			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
@@ -7492,8 +7514,6 @@ namespace tfx {
 
 		*/
 
-		current_pbuff = next_buffer;
-
 		flags &= ~tfxEffectManagerFlags_update_base_values;
 
 	}
@@ -7519,8 +7539,9 @@ namespace tfx {
 				if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
 					tfxParticleSprite2d &s = pm.sprites2d[properties.layer][index];
+
 					p.sprite_index = index;
-					if (p.parent && ControlParticle(pm, p, *p.parent)) {
+					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 							p.parent->current.transform_particle_callback2d(p.data, s.transform.position, s.transform.rotation, p.parent->common, p.parent->common.transform.captured_position);
 							p.data.captured_position = s.transform.position;
@@ -7538,11 +7559,10 @@ namespace tfx {
 						s.transform.captured_position = p.data.captured_position.xy();
 						s.intensity = p.data.intensity;
 						s.handle = p.parent->current.image_handle;
-						p.data.captured_position = s.transform.position;
+						p.next_ptr->data.captured_position = s.transform.position;
 
 					}
 					else {
-						p.sprite_index = pm.sprites2d[properties.layer].current_size;
 						s.transform.scale = 0;
 						s.intensity = 0;
 						s.image_frame = 0;
@@ -7551,6 +7571,7 @@ namespace tfx {
 
 				}
 				else {
+					p.sprite_index = index;
 					p.data.flags &= ~tfxParticleFlags_fresh;
 					p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 				}
@@ -7558,6 +7579,8 @@ namespace tfx {
 				index++;
 			}
 		}
+
+		pm.current_pbuff = next_buffer;
 
 		pm.flags &= ~tfxEffectManagerFlags_update_base_values;
 	}
@@ -7597,6 +7620,14 @@ namespace tfx {
 					sprites3d[layer].reserve(tfxDEFAULT_SPRITE_ALLOCATION);
 				else
 					sprites2d[layer].reserve(tfxDEFAULT_SPRITE_ALLOCATION);
+			}
+		}
+
+		if (!(flags & tfxEffectManagerFlags_unorderd)) {
+			tfxring<tfxParticle> particles;
+			for (tfxEachLayer) {
+				particle_banks.push_back(particles);
+				particle_banks.push_back(particles);
 			}
 		}
 
@@ -7766,16 +7797,16 @@ namespace tfx {
 			tfxU32 amount_spawned = 0;
 			tfxU32 max_spawn_count = NewSpritesNeeded(pm, e);
 
-			if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
-				e.common.transform.captured_position = e.common.transform.world_position;
-			}
-
 			if (pm.flags & tfxEffectManagerFlags_unorderd) {
 
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d) {
 					tfxring<tfxParticleSprite3d> &sprite_buffer = pm.sprites3d[properties.layer];
 
 					Transform3d(e.common.transform, e.parent->common.transform);
+
+					if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
+						e.common.transform.captured_position = e.common.transform.world_position;
+					}
 
 					e.sprites_count = pm.particle_banks[e.particles_index].current_size;
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && e.sprites_count + max_spawn_count > sprite_buffer.free_space()) {
@@ -7811,6 +7842,10 @@ namespace tfx {
 
 					Transform(e.common.transform, e.parent->common.transform);
 
+					if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
+						e.common.transform.captured_position = e.common.transform.world_position;
+					}
+
 					e.sprites_count = pm.particle_banks[e.particles_index].current_size;
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && e.sprites_count + max_spawn_count > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (e.sprites_count + max_spawn_count - sprite_buffer.free_space()) + 1));
@@ -7844,8 +7879,13 @@ namespace tfx {
 			else {
 				e.sprites_index = pm.sprite_index_point[properties.layer];
 				pm.sprite_index_point[properties.layer] += max_spawn_count;
+				e.particles_index = properties.layer * 2 + pm.current_pbuff;
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d) {
 					Transform3d(e.common.transform, e.parent->common.transform);
+
+					if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
+						e.common.transform.captured_position = e.common.transform.world_position;
+					}
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && e.common.property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
@@ -7859,27 +7899,27 @@ namespace tfx {
 				}
 				else {
 					Transform(e.common.transform, e.parent->common.transform);
+
+					if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
+						e.common.transform.captured_position = e.common.transform.world_position;
+					}
 					tfxring<tfxParticleSprite2d> &sprite_buffer = pm.sprites2d[properties.layer];
 
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
-						sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
 					}
 					else if (!(pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation)) {
 					}
-					else {
-						sprite_buffer.current_size += e.sprites_count;
-					}
+					sprite_buffer.current_size += pm.sprite_index_point[properties.layer];
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							SpawnParticles2d(pm, e, spawn_controls, max_spawn_count);
+							amount_spawned = SpawnParticles2d(pm, e, spawn_controls, max_spawn_count);
 					}
 					else {
 						if (!(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							SpawnParticles2d(pm, e, spawn_controls, max_spawn_count);
+							amount_spawned = SpawnParticles2d(pm, e, spawn_controls, max_spawn_count);
 					}
-
 				}
 			}
 
@@ -8149,6 +8189,7 @@ namespace tfx {
 		tfxPROFILE;
 		p.data.flags = tfxParticleFlags_fresh;
 		p.next_ptr = &p;
+		p.parent = &e;
 
 		if (e.common.property_flags & tfxEmitterPropertyFlags_single)
 			e.flags |= tfxEmitterStateFlags_single_shot_done;
@@ -8182,6 +8223,7 @@ namespace tfx {
 		tfxPROFILE;
 		p.data.flags = tfxParticleFlags_fresh;
 		p.next_ptr = &p;
+		p.parent = &e;
 
 		if (e.common.property_flags & tfxEmitterPropertyFlags_single)
 			e.flags |= tfxEmitterStateFlags_single_shot_done;
@@ -8634,7 +8676,7 @@ namespace tfx {
 		bank.bump(offset);
 	}
 
-	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxEffectEmitter &e) {
+	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxVec2 &sprite_scale, tfxEffectEmitter &e) {
 		tfxPROFILE;
 		if (pm.flags & tfxEffectManagerFlags_update_base_values)
 			ReloadBaseValues(p, e);
@@ -8676,11 +8718,13 @@ namespace tfx {
 		c.overal_scale = e.current.overal_scale;
 		c.angle_offset = properties.angle_offsets.roll;
 		c.graphs = &e.common.library->overtime_graphs[e.overtime];
+		c.particle_update_callback = e.particle_update_callback;
+		c.user_data = e.user_data;
 
-		//if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
-			//UpdateParticle3d(p.data, c);
-		//else
-			//UpdateParticle2d(p.data, c);
+		if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
+			UpdateParticle3d(p.data, sprite_scale, c);
+		else
+			UpdateParticle2d(p.data, sprite_scale, c);
 
 		return p.data.flags & tfxParticleFlags_remove ? false : true;
 	}
