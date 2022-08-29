@@ -7125,16 +7125,18 @@ namespace tfx {
 		effects[buffer][parent_index] = effect;
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].ResetParents();
-		if (!is_sub_emitter && effect.Is3DEffect()) {
-			flags |= tfxEffectManagerFlags_3d_effects;
-			if (effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
-				flags |= tfxEffectManagerFlags_order_by_depth;
-			}
-			if (effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order) {
-				flags |= tfxEffectManagerFlags_guarantee_order;
-			}
-			else {
-				sort_passes = effect.sort_passes;
+		if (effect.Is3DEffect()) {
+			if (!is_sub_emitter) {
+				flags |= tfxEffectManagerFlags_3d_effects;
+				if (effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
+					flags |= tfxEffectManagerFlags_order_by_depth;
+				}
+				if (effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order) {
+					flags |= tfxEffectManagerFlags_guarantee_order;
+				}
+				else {
+					sort_passes = effect.sort_passes;
+				}
 			}
 		}
 		else {
@@ -7573,6 +7575,7 @@ return free_slot;
 						s.transform.scale = 0;
 						s.intensity = 0;
 						s.image_frame = 0;
+						s.image_ptr = properties.image->ptr;
 						p.next_ptr = nullptr;
 					}
 
@@ -7639,11 +7642,14 @@ return free_slot;
 						s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
 						s.image_ptr = properties.image->ptr;
 
+						p.next_ptr->data.captured_position = s.transform.position;
+
 					}
 					else {
 						s.transform.scale = 0;
 						s.intensity = 0;
 						s.image_frame_plus = 0;
+						s.image_ptr = properties.image->ptr;
 						p.next_ptr = nullptr;
 					}
 
@@ -7822,8 +7828,6 @@ return free_slot;
 		for (unsigned int i = 0; i != 2; ++i) {
 			effects[i].clear();
 		}
-		tfxEffectManagerFlags f = flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
-		flags = f;
 		particle_id = 0;
 	}
 	void tfxParticleManager::SoftExpireAll() {
@@ -7968,6 +7972,8 @@ return free_slot;
 						if (!(pm.flags & tfxEffectManagerFlags_disable_spawning))
 							amount_spawned = SpawnParticles3d(pm, e, spawn_controls, max_spawn_count);
 					}
+					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
 
 					ControlParticles3d(pm, e, amount_spawned);
 				}
@@ -8006,6 +8012,8 @@ return free_slot;
 						if (!(pm.flags & tfxEffectManagerFlags_disable_spawning))
 							amount_spawned = SpawnParticles2d(pm, e, spawn_controls, max_spawn_count);
 					}
+					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
 
 					ControlParticles2d(pm, e, amount_spawned);
 				}
@@ -8029,13 +8037,14 @@ return free_slot;
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && e.common.property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							SpawnParticles3d(pm, e, spawn_controls, max_spawn_count);
+							amount_spawned = SpawnParticles3d(pm, e, spawn_controls, max_spawn_count);
 					}
 					else {
 						if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							SpawnParticles3d(pm, e, spawn_controls, max_spawn_count);
+							amount_spawned = SpawnParticles3d(pm, e, spawn_controls, max_spawn_count);
 					}
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
 				}
 				else {
 					Transform(e.common.transform, e.parent->common.transform);
@@ -8808,7 +8817,7 @@ return free_slot;
 			s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
 			s.image_ptr = properties.image->ptr;
 
-			p->data.captured_position = s.transform.captured_position;
+			p->data.captured_position = s.transform.position;
 		}
 		bank.bump(offset);
 	}
