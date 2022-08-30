@@ -940,7 +940,7 @@ union tfxUInt10bit
 		inline bool			full() { return current_size == capacity; }
 		inline unsigned int	free_space() { return capacity - current_size; }
 
-		inline void         clear() { start_index = current_size = 0; }
+		inline void         clear() { start_index = current_size = last_bump = 0; }
 		inline unsigned int			size() { return current_size; }
 		inline const unsigned int	size() const { return current_size; }
 		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }

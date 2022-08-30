@@ -7123,6 +7123,8 @@ namespace tfx {
 			return;
 		unsigned int parent_index = effects[buffer].current_size++;
 		effects[buffer][parent_index] = effect;
+		if(!is_sub_emitter)
+			effects[buffer][parent_index].parent_particle = nullptr;
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].ResetParents();
 		if (effect.Is3DEffect()) {
@@ -7549,7 +7551,7 @@ return free_slot;
 
 					tfxParticleSprite2d &s = pm.sprites2d[properties.layer][index];
 
-					p.sprite_index = index;
+					p.sprite_index = (properties.layer << 28) + index;
 					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 							p.parent->current.transform_particle_callback2d(p.data, s.transform.position, s.transform.rotation, p.parent->common, p.parent->common.transform.captured_position);
@@ -7581,7 +7583,7 @@ return free_slot;
 
 				}
 				else {
-					p.sprite_index = index;
+					p.sprite_index = (properties.layer << 28) + index;
 					p.data.flags &= ~tfxParticleFlags_fresh;
 					p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 				}
@@ -7617,7 +7619,7 @@ return free_slot;
 
 					tfxParticleSprite3d &s = pm.sprites3d[properties.layer][index];
 
-					p.sprite_index = index;
+					p.sprite_index = (properties.layer << 28) + index;
 					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
@@ -7655,7 +7657,7 @@ return free_slot;
 
 				}
 				else {
-					p.sprite_index = index;
+					p.sprite_index = (properties.layer << 28) + index;
 					p.data.flags &= ~tfxParticleFlags_fresh;
 					p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 				}
@@ -7815,6 +7817,7 @@ return free_slot;
 
 	void tfxParticleManager::ClearAll() {
 		if (flags & tfxEffectManagerFlags_unorderd) {
+			//Todo: isn't this a memory leak potentially? Maybe resuse
 			particle_banks.clear();
 		}
 		for (tfxEachLayer) {
@@ -7825,9 +7828,8 @@ return free_slot;
 				particle_banks[layer + 1].clear();
 			}
 		}
-		for (unsigned int i = 0; i != 2; ++i) {
-			effects[i].clear();
-		}
+		effects[0].clear();
+		effects[1].clear();
 		particle_id = 0;
 	}
 	void tfxParticleManager::SoftExpireAll() {
@@ -8082,11 +8084,12 @@ return free_slot;
 			//e.flags |= e.parent_particle->data.flags & tfxParticleFlags_remove;
 			if (e.parent_particle->next_ptr) {
 				e.parent_particle = e.parent_particle->next_ptr;
-				tfxU32 sprite_index = e.parent_particle->sprite_index;
+				tfxU32 sprite_layer = (e.parent_particle->sprite_index & 0xF0000000) >> 28;
+				tfxU32 sprite_index = e.parent_particle->sprite_index & 0x0FFFFFFF;
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
-					TransformEffector3d(e, pm.sprites3d[properties.layer][e.parent_particle->sprite_index].transform, true, e.common.property_flags & tfxEmitterPropertyFlags_relative_angle);
+					TransformEffector3d(e, pm.sprites3d[sprite_layer][sprite_index].transform, true, e.common.property_flags & tfxEmitterPropertyFlags_relative_angle);
 				else
-					TransformEffector(e, pm.sprites2d[properties.layer][e.parent_particle->sprite_index].transform, true, e.common.property_flags & tfxEmitterPropertyFlags_relative_angle);
+					TransformEffector(e, pm.sprites2d[properties.layer][sprite_index].transform, true, e.common.property_flags & tfxEmitterPropertyFlags_relative_angle);
 
 				if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
 					//e.common.transform.captured_position = e.common.transform.world_position;
@@ -8203,7 +8206,7 @@ return free_slot;
 
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
 			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
-			p->sprite_index = e.sprites_index;
+			p->sprite_index = (properties.layer << 28) + e.sprites_index;
 			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][e.sprites_index++];
 			InitCPUParticle2d(pm, e, *p, s.transform, spawn_controls, tween);
 
@@ -8270,7 +8273,7 @@ return free_slot;
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
 
 			assert(e.sprites_index < pm.sprites3d[properties.layer].capacity);
-			p->sprite_index = e.sprites_index;
+			p->sprite_index = (properties.layer << 28) + e.sprites_index;
 			tfxParticleSprite3d &s = pm.sprites3d[properties.layer][e.sprites_index++];
 
 			p->data.local_position = position.local_position;
@@ -8676,7 +8679,7 @@ return free_slot;
 			}
 
 			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
-			p->sprite_index = e.sprites_index;
+			p->sprite_index = (properties.layer << 28) + e.sprites_index;
 			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][e.sprites_index++];
 
 			UpdateParticle2d(p->data, s.transform.scale, c);
@@ -8777,7 +8780,7 @@ return free_slot;
 				p = &bank[i + offset];
 				p->next_ptr = next_ptr;
 			}
-			p->sprite_index = e.sprites_index;
+			p->sprite_index = (properties.layer << 28) + e.sprites_index;
 			tfxParticleSprite3d &s = pm.sprites3d[properties.layer][e.sprites_index++];
 
 			UpdateParticle3d(p->data, s.transform.scale, c);
