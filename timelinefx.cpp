@@ -7137,6 +7137,7 @@ namespace tfx {
 					flags |= tfxEffectManagerFlags_guarantee_order;
 				}
 				else {
+					flags &= ~tfxEffectManagerFlags_guarantee_order;
 					sort_passes = effect.sort_passes;
 				}
 			}
@@ -7153,7 +7154,7 @@ namespace tfx {
 				tfxEffectEmitter &emitter = effects[buffer].back();
 				tfxEmitterProperties &properties = emitter.GetProperties();
 				emitter.parent = &effects[buffer][parent_index];
-				emitter.next_ptr = emitter.parent;
+				emitter.next_ptr = &emitter;
 				if (emitter.particles_index == tfxINVALID && flags & tfxEffectManagerFlags_unorderd) {
 					emitter.particles_index = CreateParticleBank(*this, 1000);
 				}
@@ -7363,7 +7364,9 @@ return free_slot;
 		current_ebuff = next_buffer;
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
-			if(flags & tfxEffectManagerFlags_3d_effects)
+			if(flags & tfxEffectManagerFlags_3d_effects && tfxEffectManagerFlags_order_by_depth) 
+				ControlParticlesDepthOrdered3d(*this);
+			else if(flags & tfxEffectManagerFlags_3d_effects)
 				ControlParticlesOrdered3d(*this);
 			else
 				ControlParticlesOrdered2d(*this);
@@ -7618,8 +7621,8 @@ return free_slot;
 				if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
 					tfxParticleSprite3d &s = pm.sprites3d[properties.layer][index];
-
 					p.sprite_index = (properties.layer << 28) + index;
+
 					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
@@ -7663,6 +7666,163 @@ return free_slot;
 				}
 
 				index++;
+			}
+		}
+
+		pm.current_pbuff = next_buffer;
+
+		pm.flags &= ~tfxEffectManagerFlags_update_base_values;
+	}
+
+
+	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm) {
+		tfxU32 next_buffer = !pm.current_pbuff;
+
+		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+			int layer_offset = layer * 2;
+			int next_buffer_index = next_buffer + layer_offset;
+			int current_buffer_index = pm.current_pbuff + layer_offset;
+			pm.particle_banks[next_buffer_index].clear();
+			tfxU32 new_index = pm.new_particles_index_start[layer];
+			tfxParticle *new_particle = nullptr;
+			if (new_index < pm.particle_banks[current_buffer_index].size())
+				new_particle = &pm.particle_banks[current_buffer_index][new_index];
+
+			tfxU32 index = 0;
+			tfxU32 next_index = 0;
+			for (tfxU32 i = 0; i != pm.particle_banks[current_buffer_index].current_size; ++i) {
+				tfxParticle &p = pm.particle_banks[current_buffer_index][i];
+				p.parent = p.parent->next_ptr;
+				p.prev_index = index;
+				tfxEmitterProperties &properties = p.parent->GetProperties();
+
+				if (!(p.data.flags & tfxParticleFlags_fresh)) {
+
+					tfxParticleSprite3d s = pm.sprites3d[properties.layer][next_index];
+
+					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
+						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
+							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
+							p.data.captured_position = s.transform.position;
+							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
+							p.data.flags &= ~tfxParticleFlags_capture_after_transform;
+						}
+						else {
+							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
+						}
+						p.data.depth = LengthVec3NoSqR(s.transform.position - pm.camera_position);
+
+						tfxVec3 alignment_vector = SetParticleAlignment(p, s.transform.position, properties);
+						while (new_particle && new_particle->data.depth > p.data.depth) {
+							tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
+							tfxParticleSprite3d &ns = pm.sprites3d[new_properties.layer][new_particle->sprite_index & 0x0FFFFFFF];
+							pm.sprites3d[new_properties.layer][next_index] = ns;
+							new_particle->sprite_index = (properties.layer << 28) + next_index;
+							new_particle->prev_index = new_index;
+							new_particle->data.flags &= ~tfxParticleFlags_fresh;
+							new_particle->parent = new_particle->parent->next_ptr;
+							new_particle->next_ptr = pm.SetNextParticle(next_buffer_index, *new_particle);
+							next_index++;
+							new_particle = nullptr;
+							if (++new_index < pm.particle_banks[current_buffer_index].size())
+								new_particle = &pm.particle_banks[current_buffer_index][new_index];
+						}
+						p.sprite_index = (properties.layer << 28) + next_index;
+						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
+
+						s.color = p.data.color;
+						s.image_frame_plus = ((tfxU32)p.data.image_frame << 24) + properties.billboard_option;
+						s.transform.captured_position = p.data.captured_position;
+						s.stretch = p.data.velocity_normal.w;
+						s.intensity = p.data.intensity;
+						s.handle = p.parent->current.image_handle;
+						alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
+						s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
+						s.image_ptr = properties.image->ptr;
+						pm.sprites3d[properties.layer][next_index] = s;
+
+						p.next_ptr->data.captured_position = s.transform.position;
+						next_index++;
+					}
+					else {
+						s.transform.scale = 0;
+						s.intensity = 0;
+						s.image_frame_plus = 0;
+						s.image_ptr = properties.image->ptr;
+						//pm.sprites3d[properties.layer][next_index] = s;
+						p.next_ptr = nullptr;
+						//next_index++;
+					}
+
+				}
+				else {
+					p.data.flags &= ~tfxParticleFlags_fresh;
+					p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
+					next_index++;
+				}
+
+				if (!(pm.flags & tfxEffectManagerFlags_guarantee_order) && next_index > 1 && pm.particle_banks[next_buffer_index][next_index - 2].data.depth < pm.particle_banks[next_buffer_index][next_index - 1].data.depth) {
+					tfxParticle *p1 = &pm.particle_banks[next_buffer_index][next_index - 2];
+					tfxParticle *p2 = &pm.particle_banks[next_buffer_index][next_index - 1];
+					tfxParticle tmp = *p1;
+					//tfxParticleSprite3d *s1 = &pm.sprites3d[(p1->sprite_index & 0xF0000000) >> 28][p1->sprite_index & 0x0FFFFFFF];
+					//tfxParticleSprite3d *s2 = &pm.sprites3d[(p2->sprite_index & 0xF0000000) >> 28][p2->sprite_index & 0x0FFFFFFF];
+					//tfxParticleSprite3d sprite_tmp = *s1;
+					*p1 = *p2;
+					*p2 = tmp;
+					//*s1 = *s2;
+					//*s2 = sprite_tmp;
+					pm.particle_banks[current_buffer_index][pm.particle_banks[next_buffer_index][next_index - 2].prev_index].next_ptr = p1;
+					pm.particle_banks[current_buffer_index][pm.particle_banks[next_buffer_index][next_index - 1].prev_index].next_ptr = p2;
+
+					//tfxParticle tmp = pm.particle_banks[next_buffer_index][next_index - 2];
+					//pm.particle_banks[next_buffer_index][next_index - 2] = pm.particle_banks[next_buffer_index][next_index - 1];
+					//pm.particle_banks[next_buffer_index][next_index - 1] = tmp;
+					//particles[current_buffer_index][particles[next_buffer_index][next_index - 2].prev_index].next_ptr = next_index - 2;
+					//particles[current_buffer_index][particles[next_buffer_index][next_index - 1].prev_index].next_ptr = next_index - 1;
+				}
+
+				index++;
+				if (index == pm.new_particles_index_start[layer] && new_index != 0)
+					break;
+			}
+			if (new_particle && new_index != 0) {
+				while (new_index < pm.particle_banks[current_buffer_index].current_size) {
+					new_particle = &pm.particle_banks[current_buffer_index][new_index];
+					tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
+					tfxParticleSprite3d &ns = pm.sprites3d[new_properties.layer][new_particle->sprite_index & 0x0FFFFFFF];
+					pm.sprites3d[new_properties.layer][next_index] = ns;
+					new_particle->prev_index = new_index;
+					new_particle->data.flags &= ~tfxParticleFlags_fresh;
+					new_particle->parent = new_particle->parent->next_ptr;
+					new_particle->next_ptr = pm.SetNextParticle(next_buffer_index, *new_particle);
+					new_index++;
+				}
+			}
+			if (!(pm.flags & tfxEffectManagerFlags_guarantee_order) && pm.sort_passes > 0) {
+				for (tfxU32 sorts = 0; sorts != pm.sort_passes; ++sorts) {
+					for (tfxU32 i = 1; i < pm.particle_banks[next_buffer_index].size(); ++i) {
+						tfxParticle *p1 = &pm.particle_banks[next_buffer_index][i - 1];
+						tfxParticle *p2 = &pm.particle_banks[next_buffer_index][i];
+						if (p1->data.depth < p2->data.depth) {
+							//tfxParticleSprite3d *s1 = &pm.sprites3d[(p1->sprite_index & 0xF0000000) >> 28][i - 1];
+							//tfxParticleSprite3d *s2 = &pm.sprites3d[(p2->sprite_index & 0xF0000000) >> 28][i];
+							//tfxParticleSprite3d sprite_tmp = *s1;
+							tfxParticle tmp = *p1;
+							*p1 = *p2;
+							//*s1 = *s2;
+
+							*p2 = tmp;
+							//*s2 = sprite_tmp;
+
+							pm.particle_banks[current_buffer_index][p1->prev_index].next_ptr = p1;
+							pm.particle_banks[current_buffer_index][p2->prev_index].next_ptr = p2;
+						}
+					}
+				}
+			}
+			if (pm.flags & tfxEffectManagerFlags_guarantee_order) {
+				InsertionSortParticles(pm.particle_banks[next_buffer_index], pm.particle_banks[current_buffer_index]);
 			}
 		}
 
@@ -8317,7 +8477,7 @@ return free_slot;
 					}
 				}
 			}
-			p->data.flags &= ~tfxParticleFlags_fresh;
+			//p->data.flags &= ~tfxParticleFlags_fresh;
 
 			s.color = p->data.color;
 			s.image_frame_plus = ((tfxU32)p->data.image_frame << 24) + properties.billboard_option;

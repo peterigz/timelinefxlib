@@ -1907,6 +1907,19 @@ union tfxUInt10bit
 		return y;
 	}
 
+	inline tfxU32 GetLayerFromID(tfxU32 index) {
+		return (index & 0xF0000000) >> 28;
+	}
+
+	inline tfxU32 GetIndexFromID(tfxU32 index) {
+		return index & 0x0FFFFFFF;
+	}
+
+	inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
+		assert(nibble < 16);
+		return (nibble << 28) + index;
+	}
+
 	static inline float FastLength(tfxVec3 const &v) {
 		return 1.f / tfxSqrt(DotProduct(v, v));
 	}
@@ -4617,7 +4630,7 @@ union tfxUInt10bit
 		void UpdateBaseValues();
 		tfxvec<tfxEffectEmitter> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
-		inline tfxParticle* SetNextParticle(unsigned int buffer_index, tfxParticle &p) {
+		inline tfxParticle *SetNextParticle(unsigned int buffer_index, tfxParticle &p) {
 			unsigned int index = particle_banks[buffer_index].current_size++;
 			assert(index < particle_banks[buffer_index].capacity);
 			particle_banks[buffer_index][index] = p;
@@ -4682,6 +4695,7 @@ union tfxUInt10bit
 	void ControlParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
 	void ControlParticlesOrdered2d(tfxParticleManager &pm);
 	void ControlParticlesOrdered3d(tfxParticleManager &pm);
+	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -5113,7 +5127,7 @@ union tfxUInt10bit
 		return (d2 > d1) - (d2 < d1);
 	}
 
-	static inline void InsertionSortParticles(tfxvec<tfxParticle> &particles, tfxvec<tfxParticle> &current_buffer) {
+	static inline void InsertionSortParticles(tfxring<tfxParticle> &particles, tfxring<tfxParticle> &current_buffer) {
 		tfxPROFILE;
 		/*for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticle key = particles[i];
