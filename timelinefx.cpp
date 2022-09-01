@@ -4843,6 +4843,7 @@ namespace tfx {
 		names_and_types.Insert("lifetime_uniform_size", tfxBool);
 		names_and_types.Insert("use_spawn_ratio", tfxBool);
 		names_and_types.Insert("is_3d", tfxBool);
+		names_and_types.Insert("draw_order_by_age", tfxBool);
 		names_and_types.Insert("draw_order_by_depth", tfxBool);
 		names_and_types.Insert("guaranteed_draw_order", tfxBool);
 
@@ -5224,6 +5225,8 @@ namespace tfx {
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;
 		if (field == "is_3d")
 			if (value) effect.common.property_flags |= tfxEmitterPropertyFlags_is_3d; else effect.common.property_flags &= ~tfxEmitterPropertyFlags_is_3d;
+		if (field == "draw_order_by_age")
+			if (value) effect.effect_flags |= tfxEffectPropertyFlags_age_order; else effect.effect_flags &= ~tfxEffectPropertyFlags_age_order;
 		if (field == "draw_order_by_depth")
 			if (value) effect.effect_flags |= tfxEffectPropertyFlags_depth_draw_order; else effect.effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order;
 		if (field == "guaranteed_draw_order")
@@ -5281,6 +5284,7 @@ namespace tfx {
 	}
 
 	void StreamProperties(tfxEffectEmitter &effect, tfxStr &file) {
+		file.AddLine("draw_order_by_age=%i", effect.effect_flags & tfxEffectPropertyFlags_age_order);
 		file.AddLine("draw_order_by_depth=%i", effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order);
 		file.AddLine("guaranteed_draw_order=%i", effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order);
 		file.AddLine("sort_passes=%i", effect.sort_passes);
