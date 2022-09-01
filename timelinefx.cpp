@@ -5081,8 +5081,9 @@ namespace tfx {
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].extra_frames_count = value;
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value) {
-		if (field == "name")
+		if (field == "name") {
 			effect.GetInfo().name = value;
+		}
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value) {
 		if (field == "position_x")

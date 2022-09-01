@@ -2825,7 +2825,8 @@ union tfxUInt10bit
 		inline bool operator==(const tfxStr string) { return !strcmp(c_str(), string.c_str()); }
 		inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
 		inline bool operator!=(const tfxStr string) { return strcmp(c_str(), string.c_str()); }
-		inline const char *c_str() const { return current_size ? data : ""; }
+		inline const char *strbuffer() const { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
+		inline const char *c_str() const { return current_size ? strbuffer() : ""; }
 		int Find(const char *needle);
 		tfxStr Lower();
 		inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
@@ -2862,47 +2863,129 @@ union tfxUInt10bit
 	};
 
 #define tfxStrType(type, size)		\
-	struct type : public tfxStr {\
-		char buffer[size];\
-		type() { data = buffer; capacity = size; current_size = 0; is_local_buffer = true; NullTerminate(); }\
-		inline void operator=(const tfxStr& src) { Clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size); }\
-		type(const char *text) { data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }\
-		type(const tfxStr &src) { data = buffer; is_local_buffer = true; capacity = size; size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity > length) { memcpy(data, src.data, capacity - 1); } else { reserve(_grow_capacity((tfxU32)length + 1)); memcpy(data, src.data, length); } current_size = (tfxU32)length; NullTerminate(); }\
-		inline int Find(const char *needle) { type compare = needle; type lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; }\
-		inline type Lower() { type convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; }\
+	struct type : public tfxStr { \
+	char buffer[size]; \
+	type() { data = buffer; capacity = size; current_size = 0; is_local_buffer = true; NullTerminate(); } \
+	inline void operator=(const tfxStr& src) { \
+		data = buffer; \
+		is_local_buffer = true; \
+		capacity = size; size_t length = src.Length(); \
+		if (!length) { \
+			Clear(); return; \
+		}; \
+		resize(src.current_size); \
+		memcpy(data, src.strbuffer(), length); \
+		current_size = (tfxU32)length; \
+		NullTerminate(); \
+	} \
+	inline void operator=(const type& src) { \
+		data = buffer; \
+		is_local_buffer = true; \
+		capacity = size; size_t length = src.Length(); \
+		if (!length) { \
+			Clear(); return; \
+		}; \
+		resize(src.current_size); \
+		memcpy(data, src.strbuffer(), length); \
+		current_size = (tfxU32)length; \
+		NullTerminate(); \
+	} \
+	inline void operator=(const char *text) { data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
+	type(const char *text) { data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
+	type(const tfxStr &src) { \
+		data = buffer; \
+		is_local_buffer = true; \
+		capacity = size; size_t length = src.Length(); \
+		if (!length) { \
+			Clear(); return; \
+		}; \
+		resize(src.current_size); \
+		memcpy(data, src.strbuffer(), length); \
+		current_size = (tfxU32)length; \
+		NullTerminate(); \
+	} \
+	type(const type &src) { \
+		data = buffer; \
+		is_local_buffer = true; \
+		capacity = size; size_t length = src.Length(); \
+		if (!length) { \
+			Clear(); return; \
+		}; \
+		resize(src.current_size); \
+		memcpy(data, src.strbuffer(), length); \
+		current_size = (tfxU32)length; \
+		NullTerminate(); \
+	} \
+	inline int Find(const char *needle) { type compare = needle; type lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; } \
+	inline type Lower() { type convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; } \
 	};
 
 	tfxStrType(tfxStr512, 512);
 	tfxStrType(tfxStr256, 256);
 	tfxStrType(tfxStr128, 128);
-	//tfxStrType(tfxStr64, 64);
+	tfxStrType(tfxStr64, 64);
 	tfxStrType(tfxStr32, 32);
 	tfxStrType(tfxStr16, 16);
 
-	struct tfxStr64 : public tfxStr {
-		
-			char buffer[64]; 
-			tfxStr64() { data = buffer; capacity = 64; current_size = 0; is_local_buffer = true; NullTerminate(); }
-			inline void operator=(const tfxStr& src) { 
-				Clear(); 
-				resize(src.current_size); 
-				memcpy(data, src.data, (size_t)current_size * sizeof(char)); }
-			tfxStr64(const char *text) { data = buffer; is_local_buffer = true; capacity = 64; size_t length = strnlen_s(text, 64); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-			tfxStr64(const tfxStr &src) { 
-				data = buffer; 
-				is_local_buffer = true; 
-				capacity = 64; size_t length = src.Length(); 
-				if (!length) { 
-					Clear(); return; 
-				}; 
-				resize(src.current_size);
-				memcpy(data, src.data, length); 
-				current_size = (tfxU32)length; 
-				NullTerminate(); 
-			}
-			inline int Find(const char *needle) { tfxStr64 compare = needle; tfxStr64 lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; }
-			inline tfxStr64 Lower() { tfxStr64 convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; }
-	};
+	/*struct tfxStr64 : public tfxStr {
+		char buffer[64]; 
+		tfxStr64() { data = buffer; capacity = 64; current_size = 0; is_local_buffer = true; NullTerminate(); }
+		inline void operator=(const tfxStr& src) {
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 64; size_t length = src.Length();
+			if (!length) {
+				Clear(); return;
+			};
+			resize(src.current_size);
+			memcpy(data, src.strbuffer(), length);
+			current_size = (tfxU32)length;
+			NullTerminate();
+		}
+		inline void operator=(const tfxStr64& src) {
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 64; size_t length = src.Length();
+			if (!length) {
+				Clear(); return;
+			};
+			resize(src.current_size);
+			memcpy(data, src.strbuffer(), length);
+			current_size = (tfxU32)length;
+			NullTerminate();
+		}
+		inline void operator=(const char *text) { data = buffer; is_local_buffer = true; capacity = 64; size_t length = strnlen_s(text, 64); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+		tfxStr64(const char *text) { data = buffer; is_local_buffer = true; capacity = 64; size_t length = strnlen_s(text, 64); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+		tfxStr64(const tfxStr &src) { 
+			data = buffer; 
+			is_local_buffer = true; 
+			capacity = 64; size_t length = src.Length(); 
+			if (!length) { 
+				Clear(); return; 
+			}; 
+			resize(src.current_size);
+			memcpy(data, src.strbuffer(), length); 
+			current_size = (tfxU32)length; 
+			NullTerminate(); 
+		}
+		tfxStr64(const tfxStr64 &src) {
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 64; size_t length = src.Length();
+			if (!length) {
+				Clear(); return;
+			};
+			resize(src.current_size);
+			memcpy(data, src.strbuffer(), length);
+			current_size = (tfxU32)length;
+			NullTerminate();
+		}
+		inline int Find(const char *needle) { tfxStr64 compare = needle; tfxStr64 lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; }
+		inline tfxStr64 Lower() { tfxStr64 convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; }
+	};*/
+
+	//tfxStr64 StrToStr64(const tfxStr &string) {
+	//}
 
 	/*struct teststr : public tfxStr {
 
@@ -4066,9 +4149,8 @@ union tfxUInt10bit
 	tfxVec3 GetEmissionDirection3d(tfxCommon &common, tfxEmitterState &current, tfxEffectEmitter *library_link, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffectEmitterInfo {
-		//Not required for frame by frame updating - should be moved into an info lookup in library
 		//Name of the effect
-		tfxStr64 name;						//Todo: Do we need this here?
+		tfxStr64 name;				
 		//Every effect and emitter in the library gets a unique id
 		tfxU32 uid;
 		//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
