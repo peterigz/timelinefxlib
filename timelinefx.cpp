@@ -1290,6 +1290,19 @@ namespace tfx {
 		return common.property_flags & tfxEmitterPropertyFlags_is_3d;
 	}
 
+	tfxParticleManagerModes tfxEffectEmitter::GetRequiredParticleManagerMode() {
+		if (effect_flags & tfxEffectPropertyFlags_guaranteed_order && effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
+			return tfxParticleManagerMode_ordered_by_depth_guaranteed;
+		}
+		else if (effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
+			return tfxParticleManagerMode_ordered_by_depth;
+		}
+		else if (effect_flags & tfxEffectPropertyFlags_age_order) {
+			return tfxParticleManagerMode_ordered_by_age;
+		}
+		return tfxParticleManagerMode_unordered;
+	}
+
 	void tfxEffectEmitter::UpdateAllBufferSizes() {
 		tfxvec<tfxEffectEmitter*> stack;
 		stack.push_back(this);
@@ -6344,7 +6357,7 @@ namespace tfx {
 		float last_frame = graph.GetLastFrame();
 		graph.lookup.last_frame = tfxU32(last_frame / tfxLOOKUP_FREQUENCY);
 		if (graph.lookup.last_frame) {
-			graph.lookup.values.resize(graph.lookup.last_frame + 1);
+			assert(graph.lookup.values.resize(graph.lookup.last_frame + 1));
 			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
 				graph.lookup.values[f] = graph.GetValue((float)f * tfxLOOKUP_FREQUENCY);
 			}
@@ -6359,7 +6372,7 @@ namespace tfx {
 	void CompileGraphOvertime(tfxGraph &graph) {
 		if (graph.nodes.size() > 1) {
 			graph.lookup.last_frame = tfxU32(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
-			graph.lookup.values.resize(graph.lookup.last_frame + 1);
+			assert(graph.lookup.values.resize(graph.lookup.last_frame + 1));
 			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
 				graph.lookup.values[f] = graph.GetValue((float)f * tfxLOOKUP_FREQUENCY_OVERTIME, graph.lookup.life);
 			}
@@ -7127,22 +7140,7 @@ namespace tfx {
 			effects[buffer][parent_index].parent_particle = nullptr;
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].ResetParents();
-		if (effect.Is3DEffect()) {
-			if (!is_sub_emitter) {
-				flags |= tfxEffectManagerFlags_3d_effects;
-				if (effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
-					flags |= tfxEffectManagerFlags_order_by_depth;
-				}
-				if (effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order) {
-					flags |= tfxEffectManagerFlags_guarantee_order;
-				}
-				else {
-					flags &= ~tfxEffectManagerFlags_guarantee_order;
-					sort_passes = effect.sort_passes;
-				}
-			}
-		}
-		else {
+		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
 		}
 		for (auto &e : effect.GetInfo().sub_effectors) {
@@ -7689,6 +7687,7 @@ return free_slot;
 				new_particle = &pm.particle_banks[current_buffer_index][new_index];
 
 			tfxU32 index = 0;
+			tfxU32 sprite_index = 0;
 			tfxU32 next_index = 0;
 			for (tfxU32 i = 0; i != pm.particle_banks[current_buffer_index].current_size; ++i) {
 				tfxParticle &p = pm.particle_banks[current_buffer_index][i];
@@ -7698,7 +7697,7 @@ return free_slot;
 
 				if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
-					tfxParticleSprite3d s = pm.sprites3d[properties.layer][next_index];
+					tfxParticleSprite3d s;
 
 					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
@@ -7716,7 +7715,7 @@ return free_slot;
 						while (new_particle && new_particle->data.depth > p.data.depth) {
 							tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
 							tfxParticleSprite3d &ns = pm.sprites3d[new_properties.layer][new_particle->sprite_index & 0x0FFFFFFF];
-							pm.sprites3d[new_properties.layer][next_index] = ns;
+							pm.sprites3d[new_properties.layer][sprite_index++] = ns;
 							new_particle->sprite_index = (properties.layer << 28) + next_index;
 							new_particle->prev_index = new_index;
 							new_particle->data.flags &= ~tfxParticleFlags_fresh;
@@ -7727,9 +7726,8 @@ return free_slot;
 							if (++new_index < pm.particle_banks[current_buffer_index].size())
 								new_particle = &pm.particle_banks[current_buffer_index][new_index];
 						}
-						p.sprite_index = (properties.layer << 28) + next_index;
-						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 
+						p.sprite_index = (properties.layer << 28) + sprite_index;
 						s.color = p.data.color;
 						s.image_frame_plus = ((tfxU32)p.data.image_frame << 24) + properties.billboard_option;
 						s.transform.captured_position = p.data.captured_position;
@@ -7739,9 +7737,10 @@ return free_slot;
 						alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
 						s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
 						s.image_ptr = properties.image->ptr;
-						pm.sprites3d[properties.layer][next_index] = s;
+						pm.sprites3d[properties.layer][sprite_index++] = s;
 
-						p.next_ptr->data.captured_position = s.transform.position;
+						p.data.captured_position = s.transform.position;
+						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 						next_index++;
 					}
 					else {
@@ -7749,9 +7748,8 @@ return free_slot;
 						s.intensity = 0;
 						s.image_frame_plus = 0;
 						s.image_ptr = properties.image->ptr;
-						//pm.sprites3d[properties.layer][next_index] = s;
+						pm.sprites3d[properties.layer][sprite_index++] = s;
 						p.next_ptr = nullptr;
-						//next_index++;
 					}
 
 				}
@@ -7765,13 +7763,16 @@ return free_slot;
 					tfxParticle *p1 = &pm.particle_banks[next_buffer_index][next_index - 2];
 					tfxParticle *p2 = &pm.particle_banks[next_buffer_index][next_index - 1];
 					tfxParticle tmp = *p1;
-					//tfxParticleSprite3d *s1 = &pm.sprites3d[(p1->sprite_index & 0xF0000000) >> 28][p1->sprite_index & 0x0FFFFFFF];
-					//tfxParticleSprite3d *s2 = &pm.sprites3d[(p2->sprite_index & 0xF0000000) >> 28][p2->sprite_index & 0x0FFFFFFF];
-					//tfxParticleSprite3d sprite_tmp = *s1;
+					tfxParticleSprite3d *s1 = &pm.sprites3d[(p1->sprite_index & 0xF0000000) >> 28][p1->sprite_index & 0x0FFFFFFF];
+					tfxParticleSprite3d *s2 = &pm.sprites3d[(p2->sprite_index & 0xF0000000) >> 28][p2->sprite_index & 0x0FFFFFFF];
+					tfxParticleSprite3d sprite_tmp = *s1;
 					*p1 = *p2;
 					*p2 = tmp;
-					//*s1 = *s2;
-					//*s2 = sprite_tmp;
+					tfxU32 tmp_index = p1->sprite_index;
+					p1->sprite_index = p2->sprite_index;
+					p2->sprite_index = tmp_index;
+					*s1 = *s2;
+					*s2 = sprite_tmp;
 					pm.particle_banks[current_buffer_index][pm.particle_banks[next_buffer_index][next_index - 2].prev_index].next_ptr = p1;
 					pm.particle_banks[current_buffer_index][pm.particle_banks[next_buffer_index][next_index - 1].prev_index].next_ptr = p2;
 
@@ -7805,15 +7806,19 @@ return free_slot;
 						tfxParticle *p1 = &pm.particle_banks[next_buffer_index][i - 1];
 						tfxParticle *p2 = &pm.particle_banks[next_buffer_index][i];
 						if (p1->data.depth < p2->data.depth) {
-							//tfxParticleSprite3d *s1 = &pm.sprites3d[(p1->sprite_index & 0xF0000000) >> 28][i - 1];
-							//tfxParticleSprite3d *s2 = &pm.sprites3d[(p2->sprite_index & 0xF0000000) >> 28][i];
-							//tfxParticleSprite3d sprite_tmp = *s1;
+							tfxParticleSprite3d *s1 = &pm.sprites3d[(p1->sprite_index & 0xF0000000) >> 28][i - 1];
+							tfxParticleSprite3d *s2 = &pm.sprites3d[(p2->sprite_index & 0xF0000000) >> 28][i];
+							tfxParticleSprite3d sprite_tmp = *s1;
 							tfxParticle tmp = *p1;
 							*p1 = *p2;
-							//*s1 = *s2;
+							*s1 = *s2;
 
 							*p2 = tmp;
-							//*s2 = sprite_tmp;
+							*s2 = sprite_tmp;
+
+							tfxU32 tmp_index = p1->sprite_index;
+							p1->sprite_index = p2->sprite_index;
+							p2->sprite_index = tmp_index;
 
 							pm.particle_banks[current_buffer_index][p1->prev_index].next_ptr = p1;
 							pm.particle_banks[current_buffer_index][p2->prev_index].next_ptr = p2;
@@ -7938,6 +7943,40 @@ return free_slot;
 		flags |= tfxEffectManagerFlags_dynamic_sprite_allocation;
 	}
 
+	void tfxParticleManager::CreateParticleBanksForEachLayer() {
+		FreeParticleBanks();
+		for (tfxEachLayer) {
+			tfxring<tfxParticle> particles;
+			particle_banks.push_back(particles);
+			particle_banks.back().reserve(max_cpu_particles_per_layer[layer]);
+			particle_banks.push_back(particles);
+			particle_banks.back().reserve(max_cpu_particles_per_layer[layer]);
+		}
+	}
+
+	void tfxParticleManager::Reconfigure(tfxParticleManagerModes mode, bool is_3d) {
+		if (flags & tfxEffectManagerFlags_unorderd && mode != tfxParticleManagerMode_unordered) {
+			FreeParticleBanks();
+			CreateParticleBanksForEachLayer();
+		}
+		else if (!(flags & tfxEffectManagerFlags_unorderd) && mode == tfxParticleManagerMode_unordered) {
+			FreeParticleBanks();
+		}
+
+		if (mode == tfxParticleManagerMode_unordered)
+			flags = tfxEffectManagerFlags_unorderd;
+		else if (mode == tfxParticleManagerMode_ordered_by_depth)
+			flags = tfxEffectManagerFlags_order_by_depth;
+		else if (mode == tfxParticleManagerMode_ordered_by_depth_guaranteed)
+			flags = tfxEffectManagerFlags_order_by_depth | tfxEffectManagerFlags_guarantee_order;
+		else if (mode == tfxParticleManagerMode_ordered_by_age)
+			flags = tfxEffectManagerFlags_ordered_by_age;
+
+		if (is_3d)
+			flags |= tfxEffectManagerFlags_3d_effects;
+
+	}
+
 	void tfxParticleManager::InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode) {
 		max_effects = effects_limit;
 
@@ -7949,6 +7988,8 @@ return free_slot;
 			flags = tfxEffectManagerFlags_order_by_depth;
 		else if (mode == tfxParticleManagerMode_ordered_by_depth_guaranteed)
 			flags = tfxEffectManagerFlags_order_by_depth | tfxEffectManagerFlags_guarantee_order;
+		else if (mode == tfxParticleManagerMode_ordered_by_age)
+			flags = tfxEffectManagerFlags_ordered_by_age;
 
 		for (tfxEachLayer) {
 			max_cpu_particles_per_layer[layer] = layer_max_values[layer];
@@ -7957,13 +7998,7 @@ return free_slot;
 		}
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
-			for (tfxEachLayer) {
-				tfxring<tfxParticle> particles;
-				particle_banks.push_back(particles);
-				particle_banks.back().reserve(layer_max_values[layer]);
-				particle_banks.push_back(particles);
-				particle_banks.back().reserve(layer_max_values[layer]);
-			}
+			CreateParticleBanksForEachLayer();
 		}
 
 		effects[0] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 0"));
@@ -7975,11 +8010,7 @@ return free_slot;
 		flags |= tfxEffectManagerFlags_dynamic_sprite_allocation;
 	}
 
-	void tfxParticleManager::ClearAll() {
-		if (flags & tfxEffectManagerFlags_unorderd) {
-			//Todo: isn't this a memory leak potentially? Maybe resuse
-			particle_banks.clear();
-		}
+	void tfxParticleManager::ClearAll(bool free_memory) {
 		for (tfxEachLayer) {
 			sprites2d[layer].clear();
 			sprites3d[layer].clear();
@@ -7988,9 +8019,21 @@ return free_slot;
 				particle_banks[layer + 1].clear();
 			}
 		}
+		if (flags & tfxEffectManagerFlags_unorderd) {
+			//Todo: isn't this a memory leak potentially? Maybe resuse
+			if (free_memory)
+				FreeParticleBanks();
+			particle_banks.clear();
+		}
 		effects[0].clear();
 		effects[1].clear();
 		particle_id = 0;
+	}
+	void tfxParticleManager::FreeParticleBanks() {
+		for (auto &bank : particle_banks) {
+			bank.free_all();
+		}
+		particle_banks.clear();
 	}
 	void tfxParticleManager::SoftExpireAll() {
 		for (auto &e : effects[current_ebuff]) {
@@ -8443,6 +8486,7 @@ return free_slot;
 			p->data.base.weight = position.base_weight;
 			p->data.base.velocity = position.base_velocity;
 			p->data.velocity_normal = position.velocity_normal;
+			p->data.depth = position.distance_to_camera;
 			InitCPUParticle3d(pm, e, *p, s.transform, spawn_controls, tween);
 
 			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age);

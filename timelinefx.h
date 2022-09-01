@@ -445,7 +445,8 @@ union tfxUInt10bit
 		tfxEffectManagerFlags_update_base_values = 1 << 6,
 		tfxEffectManagerFlags_dynamic_sprite_allocation = 1 << 7,
 		tfxEffectManagerFlags_3d_effects = 1 << 8,
-		tfxEffectManagerFlags_unorderd = 1 << 9
+		tfxEffectManagerFlags_unorderd = 1 << 9,
+		tfxEffectManagerFlags_ordered_by_age = 1 << 10
 	};
 
 	enum tfxVectorAlignType {
@@ -505,6 +506,7 @@ union tfxUInt10bit
 		tfxEffectPropertyFlags_is_3d = 1 << 0,
 		tfxEffectPropertyFlags_depth_draw_order = 1 << 1,
 		tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
+		tfxEffectPropertyFlags_age_order = 1 << 3,
 	};
 
 	enum tfxEmitterPropertyFlags_ {
@@ -935,6 +937,7 @@ union tfxUInt10bit
 
 		inline tfxring() { start_index = current_size = capacity = last_bump = 0; data = NULL; }
 		inline tfxring(unsigned int qty) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); }
+		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 
 		inline bool			empty() { return current_size == 0; }
 		inline bool			full() { return current_size == capacity; }
@@ -3500,6 +3503,7 @@ union tfxUInt10bit
 
 	tfxVec4 GetMinMaxGraphValues(tfxGraphPreset preset);
 
+	//todo:: Inline a lot of these.
 	tfxVec2 GetQuadBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, float t, float ymin, float ymax, bool clamp = true);
 	tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
 	float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
@@ -4256,6 +4260,7 @@ union tfxUInt10bit
 		bool IsFiniteEffect();
 		void FlagAs3D(bool flag);
 		bool Is3DEffect();
+		tfxParticleManagerModes GetRequiredParticleManagerMode();
 
 	};
 
@@ -4569,11 +4574,13 @@ union tfxUInt10bit
 		tfxEffectEmitter &operator[] (unsigned int index);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
+		void Reconfigure(tfxParticleManagerModes mode, bool is_3d);
 		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void CreateParticleBanksForEachLayer();
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
 		//When paused you still might want to keep the particles in order:
@@ -4584,7 +4591,8 @@ union tfxUInt10bit
 		void AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false);
 		void AddEffect(tfxEffectTemplate &effect);
 		//Clear all effects and particles in the particle manager
-		void ClearAll();
+		void ClearAll(bool free_memory = false);
+		void FreeParticleBanks();
 		//Soft expire all the effects so that the particles complete their animation first
 		inline void SetCamera(float front_x, float	front_y, float front_z, float pos_x, float pos_y, float pos_z) {
 			camera_front.x = front_x;
@@ -4670,7 +4678,6 @@ union tfxUInt10bit
 
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);
-	void InitParticleManager(tfxParticleManager &pm, unsigned int effects_limit, unsigned int particle_limit_per_layer);
 	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, float x = 0.f, float y = 0.f);
 	void AddEffect(tfxParticleManager &pm, tfxEffectTemplate &effect, float x = 0.f, float y = 0.f);
 
@@ -5129,17 +5136,17 @@ union tfxUInt10bit
 
 	static inline void InsertionSortParticles(tfxring<tfxParticle> &particles, tfxring<tfxParticle> &current_buffer) {
 		tfxPROFILE;
-		/*for (tfxU32 i = 1; i < particles.current_size; ++i) {
+		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticle key = particles[i];
 			int j = i - 1;
 			while (j >= 0 && key.data.depth > particles[j].data.depth) {
 				particles[j + 1] = particles[j];
-				current_buffer[particles[j + 1].prev_index].next_ptr = j + 1;
+				current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
 				--j;
 			}
 			particles[j + 1] = key;
-			current_buffer[particles[j + 1].prev_index].next_ptr = j + 1;
-		}*/
+			current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
+		}
 	}
 
 	/*static inline void InsertionSortSprites3d(tfxring<tfxParticleSprite3d> &sprites, tfxvec<tfxring<tfxParticle>> &particle_banks) {
