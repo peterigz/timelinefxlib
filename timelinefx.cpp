@@ -7567,11 +7567,11 @@ return free_slot;
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 							p.parent->current.transform_particle_callback2d(p.data, s.transform.position, s.transform.rotation, p.parent->common, p.parent->common.transform.captured_position);
 							p.data.captured_position = s.transform.position;
-							p.parent->current.transform_particle_callback2d(p.data, s.transform.position, s.transform.rotation, p.parent->common, p.parent->common.transform.captured_position);
+							p.parent->current.transform_particle_callback2d(p.data, s.transform.position, s.transform.rotation, p.parent->common, p.parent->common.transform.world_position);
 							p.data.flags &= ~tfxParticleFlags_capture_after_transform;
 						}
 						else {
-							p.parent->current.transform_particle_callback2d(p.data, s.transform.position, s.transform.rotation, p.parent->common, p.parent->common.transform.captured_position);
+							p.parent->current.transform_particle_callback2d(p.data, s.transform.position, s.transform.rotation, p.parent->common, p.parent->common.transform.world_position);
 						}
 						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 
@@ -7635,11 +7635,11 @@ return free_slot;
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
 							p.data.captured_position = s.transform.position;
-							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
+							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.world_position);
 							p.data.flags &= ~tfxParticleFlags_capture_after_transform;
 						}
 						else {
-							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
+							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.world_position);
 						}
 
 						tfxVec3 alignment_vector = SetParticleAlignment(p, s.transform.position, properties);
@@ -7713,11 +7713,11 @@ return free_slot;
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
 							p.data.captured_position = s.transform.position;
-							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
+							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.world_position);
 							p.data.flags &= ~tfxParticleFlags_capture_after_transform;
 						}
 						else {
-							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.captured_position);
+							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.world_position);
 						}
 						p.data.depth = LengthVec3NoSqR(s.transform.position - pm.camera_position);
 
