@@ -1233,7 +1233,7 @@ union tfxUInt10bit
 			allocator.memory_remaining -= size_in_bytes;
 			*block = &allocator.blocks[allocator.block_count - 1];
 			return true;
-		}
+		} 
 		return false;
 	}
 
@@ -3970,51 +3970,50 @@ union tfxUInt10bit
 	};
 
 	struct tfxEmitterProperties {
-		//Pointer to the ImageData in the EffectLibary. 
-		tfxImageData *image;
-		//Assigns either alpha or additive blend to particles that are spawned
-		tfxEmissionType emission_type;
-		//Should particles emit towards the center of the emitter or away, or in a specific direction
-		tfxEmissionDirection emission_direction;
-		//How particles should behave when they reach the end of the line
-		tfxLineTraversalEndBehaviour end_behaviour;
-		//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
-		tfxAngleSettingFlags angle_settings;
-		//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
-		tfxBillboardingOptions billboard_option;
+		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
+		tfxVec3 angle_offsets;
 		//When aligning the billboard along a vector, you can set the type of vector that it aligns with
 		tfxVectorAlignType vector_align_type;
-
-		//Bit field of various boolean flags
-		tfxParticleControlFlags compute_flags;
-
-		//Offset to draw particles at
-		tfxVec2 image_handle;
+		//Point, area, ellipse emitter etc.
+		tfxEmissionType emission_type;
+		//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
+		tfxU32 single_shot_limit;
 		//Animation frame rate
 		float frame_rate;
+		//The final frame index of the animation
+		float end_frame;
+		//Pointer to the ImageData in the EffectLibary. 
+		tfxImageData *image;
+		//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
+		tfxBillboardingOptions billboard_option;
+
+		//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
+		tfxVec3 grid_points;
+		//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
+		tfxAngleSettingFlags angle_settings;
+		//Layer of the particle manager that the particle is added to
+		tfxU32 layer;
+		//Milliseconds to delay spawing
+		float delay_spawning;
+		//Should particles emit towards the center of the emitter or away, or in a specific direction
+		tfxEmissionDirection emission_direction;
+
+		//How particles should behave when they reach the end of the line
+		tfxLineTraversalEndBehaviour end_behaviour;
+		//Bit field of various boolean flags
+		tfxParticleControlFlags compute_flags;
+		//Offset to draw particles at
+		tfxVec2 image_handle;
 		//Offset of emitters
 		tfxVec3 emitter_handle;
 		//When single flag is set, spawn this amount of particles in one go
 		tfxU32 spawn_amount;
-		//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
-		tfxU32 single_shot_limit;
-		//Layer of the particle manager that the particle is added to
-		tfxU32 layer;
 		//The shape being used for all particles spawned from the emitter
 		tfxU32 shape_index;
-
-		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
-		tfxVec3 angle_offsets;
-		//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
-		tfxVec3 grid_points;
 		//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
 		float loop_length;
 		//The start frame index of the animation
 		float start_frame;
-		//The final frame index of the animation
-		float end_frame;
-		//Milliseconds to delay spawing
-		float delay_spawning;
 
 		tfxEmitterProperties() :
 			angle_offsets(0.f, 0.f, tfx360Radians),
