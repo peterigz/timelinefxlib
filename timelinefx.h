@@ -2820,7 +2820,7 @@ union tfxUInt10bit
 		tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 		tfxStr(const tfxStr &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
 		inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-		inline void operator=(const tfxStr& src) { Clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(char)); }
+		inline void operator=(const tfxStr& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 		inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
 		inline bool operator==(const tfxStr string) { return !strcmp(c_str(), string.c_str()); }
 		inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
