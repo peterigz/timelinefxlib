@@ -7302,7 +7302,6 @@ return free_slot;
 	void tfxParticleManager::Update() {
 		tfxPROFILE;
 		new_compute_particle_index = 0;
-		unsigned int index = 0;
 
 		unsigned int next_buffer = !current_ebuff;
 		effects[next_buffer].clear();
@@ -7323,6 +7322,7 @@ return free_slot;
 			sprites3d[layer].clear();
 		}
 
+		tfxU32 start_size = effects[current_ebuff].current_size;
 		for (auto &e : effects[current_ebuff]) {
 			UpdatePMEmitter(*this, e);
 			if (e.type == tfxEffectType) {
@@ -7343,7 +7343,12 @@ return free_slot;
 						FreeComputeSlot(e.compute_slot_id);
 				}
 			}
-			index++;
+		}
+
+		for (int i = start_size; i != effects[current_ebuff].current_size; ++i) {
+			tfxEffectEmitter &e = effects[current_ebuff][i];
+			UpdatePMEmitter(*this, e);
+			e.next_ptr = SetNextEffect(e, next_buffer);
 		}
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
@@ -8299,10 +8304,10 @@ return free_slot;
 				else
 					TransformEffector(e, pm.sprites2d[properties.layer][sprite_index].transform, true, e.common.property_flags & tfxEmitterPropertyFlags_relative_angle);
 
-				if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
-					//e.common.transform.captured_position = e.common.transform.world_position;
-				}
 				e.common.transform.world_position += properties.emitter_handle * e.current.overal_scale;
+				if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
+					e.common.transform.captured_position = e.common.transform.world_position;
+				}
 			}
 			else {
 				e.parent_particle = nullptr;
@@ -8572,7 +8577,7 @@ return free_slot;
 				sub.highest_particle_age = p.data.max_age;
 				sub.current.overal_scale = e.current.overal_scale;
 				sub.flags |= e.flags & tfxEmitterStateFlags_no_tween;
-				pm.AddEffect(sub, !pm.current_ebuff, true);
+				pm.AddEffect(sub, pm.current_ebuff, true);
 			}
 		}
 	}
@@ -8606,7 +8611,7 @@ return free_slot;
 				sub.highest_particle_age = p.data.max_age;
 				sub.current.overal_scale = e.current.overal_scale;
 				sub.flags |= e.flags & tfxEmitterStateFlags_no_tween;
-				pm.AddEffect(sub, !pm.current_ebuff, true);
+				pm.AddEffect(sub, pm.current_ebuff, true);
 			}
 		}
 	}
