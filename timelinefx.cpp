@@ -5139,7 +5139,7 @@ namespace tfx {
 		if (field == "preview_camera_floor_height")
 			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_settings.camera_floor_height = value;
 		if (field == "preview_camera_isometric_scale")
-			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_settings.camera_isometric_scale = value;
+			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_settings.camera_isometric_scale = value == 0 ? 5.f : value;
 		if (field == "preview_effect_z_offset")
 			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].effect_z_offset = value;
 		if (field == "preview_camera_speed")
@@ -5189,9 +5189,9 @@ namespace tfx {
 		if (field == "camera_hide_floor")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].camera_settings.camera_hide_floor = value;
 		if (field == "preview_attach_effect_to_camera")
-			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_settings.camera_isometric_scale = value;
+			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].attach_effect_to_camera = value;
 		if (field == "preview_camera_hide_floor")
-			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_settings.camera_isometric_scale = value;
+			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_settings.camera_hide_floor = value;
 		if (field == "preview_camera_isometric")
 			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_settings.camera_isometric = value;
 		if (field == "random_color")
