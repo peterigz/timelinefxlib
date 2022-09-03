@@ -1141,30 +1141,30 @@ namespace tfx {
 		return space;
 	}
 
-	int LoadPackage(const char *file_name, tfxPackage &package) {
+	tfxErrorFlags LoadPackage(const char *file_name, tfxPackage &package) {
 
 		package.file_data = ReadEntireFile(file_name);
 		if (package.file_data.Size() == 0)
-			return tfxPackageErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
+			return tfxErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
 
 		package.file_size = package.file_data.Size();
 
 		if (package.file_size < sizeof(tfxHeader))
-			return tfxPackageErrorCode_wrong_file_size;				//the file size is smaller then the expected header size
+			return tfxErrorCode_wrong_file_size;				//the file size is smaller then the expected header size
 
 		package.file_data.Read((char*)&package.header, sizeof(tfxHeader));
 
 		if (package.header.magic_number != tfxMAGIC_NUMBER)
-			return tfxPackageErrorCode_invalid_format;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
+			return tfxErrorCode_invalid_format;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
 
 		if (package.header.offset_to_inventory > package.file_size)
-			return tfxPackageErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
+			return tfxErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
 
 		package.file_data.Seek(package.header.offset_to_inventory);
 		package.file_data.Read((char*)&package.inventory.magic_number, sizeof(tfxU32));
 
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
-			return tfxPackageErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
+			return tfxErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
 
 		package.file_data.Read((char*)&package.inventory.entry_count, sizeof(tfxU32));
 		for (int i = 0; i != package.inventory.entry_count; ++i) {
@@ -1183,30 +1183,30 @@ namespace tfx {
 		return 0;
 	}
 
-	int LoadPackage(tfxstream &stream, tfxPackage &package) {
+	tfxErrorFlags LoadPackage(tfxstream &stream, tfxPackage &package) {
 		//Note: tfxstream does not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
 		package.file_data = stream;
 		if (package.file_data.Size() == 0)
-			return tfxPackageErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
+			return tfxErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
 
 		package.file_size = package.file_data.Size();
 
 		if (package.file_size < sizeof(tfxHeader))
-			return tfxPackageErrorCode_wrong_file_size;				//the file size is smaller then the expected header size
+			return tfxErrorCode_wrong_file_size;				//the file size is smaller then the expected header size
 
 		package.file_data.Read((char*)&package.header, sizeof(tfxHeader));
 
 		if (package.header.magic_number != tfxMAGIC_NUMBER)
-			return tfxPackageErrorCode_invalid_format;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
+			return tfxErrorCode_invalid_format;				//The header doesn't not contain the expected magic number "TFX!", incorrect file format;
 
 		if (package.header.offset_to_inventory > package.file_size)
-			return tfxPackageErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
+			return tfxErrorCode_no_inventory;				//The offset to the inventory is beyond the size of the file
 
 		package.file_data.Seek(package.header.offset_to_inventory);
 		package.file_data.Read((char*)&package.inventory.magic_number, sizeof(tfxU32));
 
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
-			return tfxPackageErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
+			return tfxErrorCode_invalid_inventory;			//The value at the inventory offset does not equal the expected magic number "INV!"
 
 		package.file_data.Read((char*)&package.inventory.entry_count, sizeof(tfxU32));
 		for (int i = 0; i != package.inventory.entry_count; ++i) {
@@ -4941,11 +4941,11 @@ namespace tfx {
 
 	int ValidateEffectPackage(const char *filename) {
 		tfxPackage package;
-		int status = LoadPackage(filename, package);
+		tfxErrorFlags status = LoadPackage(filename, package);
 		if (status) return status;					//returns 1 to 4 if it's an invalid package format
 
 		tfxEntryInfo *data_txt = package.GetFile("data.txt");
-		if (!data_txt) return -5;					//Unable to load the the data.txt file in the package
+		if (!data_txt) return tfxErrorCode_data_could_not_be_loaded;					//Unable to load the the data.txt file in the package
 
 		return 0;
 	}
@@ -6888,7 +6888,7 @@ namespace tfx {
 	}
 
 
-	int LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		assert(shape_loader);
 		if (!data_types.initialised) data_types.Init();
 		lib.Clear();
@@ -6897,7 +6897,7 @@ namespace tfx {
 
 		tfxvec<tfxEffectEmitter> effect_stack;
 		int context = 0;
-		int error = 0;
+		tfxErrorFlags error = 0;
 		int uid = 0;
 		tfxU32 current_global_graph = 0;
 
@@ -6907,9 +6907,9 @@ namespace tfx {
 		tfxEntryInfo *data = package.GetFile("data.txt");
 
 		if (!data)
-			error = -5;
+			error |= tfxErrorCode_data_could_not_be_loaded;
 
-		if (error < 0) {
+		if (error != 0) {
 			package.Free();
 			return error;
 		}
@@ -6973,28 +6973,33 @@ namespace tfx {
 					pair.clear();
 					SplitString(line.c_str(), pair, 44);
 					if (pair.size() < 2) {
-						error = 1;
+						error |= tfxErrorCode_some_data_not_loaded;
 						break;
 					}
 				}
 
 				if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
-					switch (data_types.names_and_types.At(pair[0])) {
-					case tfxUint:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()));
-						break;
-					case tfxFloat:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
-						break;
-					case tfxSInt:
-						AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
-						break;
-					case tfxBool:
-						AssignEffectorProperty(effect_stack.back(), pair[0], (bool)(atoi(pair[1].c_str())));
-						break;
-					case tfxString:
-						AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
-						break;
+					if (data_types.names_and_types.ValidName(pair[0])) {
+						switch (data_types.names_and_types.At(pair[0])) {
+						case tfxUint:
+							AssignEffectorProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()));
+							break;
+						case tfxFloat:
+							AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
+							break;
+						case tfxSInt:
+							AssignEffectorProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
+							break;
+						case tfxBool:
+							AssignEffectorProperty(effect_stack.back(), pair[0], (bool)(atoi(pair[1].c_str())));
+							break;
+						case tfxString:
+							AssignEffectorProperty(effect_stack.back(), pair[0], pair[1]);
+							break;
+						}
+					}
+					else {
+						error |= tfxErrorCode_some_data_not_loaded;
 					}
 				}
 
@@ -7076,13 +7081,9 @@ namespace tfx {
 		}
 
 		package.Free();
-		//Returning anything over 0 means that effects were loaded ok
-		//-1 to -4 = Package not in correct format
-		//-5 = Data in package could not be loaded
-		//-6 = ShapeLoader did not add a pointer into the image data
-		//-7 = A shape image could not be loaded from the package
 
 		if (uid >= 0) {
+			//Effects were loaded so let's compile them
 			lib.CompileAllGraphs();
 			lib.ReIndex();
 			if(first_shape_index != -1)
@@ -7092,8 +7093,9 @@ namespace tfx {
 			//lib.UpdateEffectParticleStorage();
 			lib.SetMinMaxData();
 		}
+		lib.uid = uid;
 
-		return uid - 1;
+		return error;
 
 	}
 

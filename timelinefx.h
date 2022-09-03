@@ -420,6 +420,28 @@ union tfxUInt10bit
 	typedef tfxU32 tfxAttributeNodeFlags;
 	typedef tfxU32 tfxAngleSettingFlags;
 	typedef tfxU32 tfxEffectManagerFlags;
+	typedef tfxU32 tfxErrorFlags;
+
+	//Returning anything over 0 means that effects were loaded ok
+	//-1 to -4 = Package not in correct format
+	//-5 = Data in package could not be loaded
+	//-6 = ShapeLoader did not add a pointer into the image data
+	//-7 = A shape image could not be loaded from the package
+	enum tfxErrorFlags_ {
+		tfxErrorCode_success = 0,
+		tfxErrorCode_incorrect_package_format = 1 << 0,
+		tfxErrorCode_data_could_not_be_loaded = 1 << 1,
+		tfxErrorCode_could_not_add_shape = 1 << 2,
+		tfxErrorCode_error_loading_shapes = 1 << 3,
+		tfxErrorCode_some_data_not_loaded = 1 << 4,
+		tfxErrorCode_unable_to_open_file = 1 << 5,
+		tfxErrorCode_unable_to_read_file = 1 << 6,
+		tfxErrorCode_wrong_file_size = 1 << 7,
+		tfxErrorCode_invalid_format = 1 << 8,
+		tfxErrorCode_no_inventory = 1 << 9,
+		tfxErrorCode_invalid_inventory = 1 << 10
+
+	};
 
 	enum tfxParticleManagerModes {
 		tfxParticleManagerMode_unordered,
@@ -578,15 +600,6 @@ union tfxUInt10bit
 		tfxVectorFieldFlags_none = 0,
 		tfxVectorFieldFlags_repeat_horizontal = 1 << 0,						//Field will repeat horizontally
 		tfxVectorFieldFlags_repeat_vertical = 1 << 1						//Field will repeat vertically
-	};
-
-	enum tfxPackageErrorCode : unsigned int {
-		tfxPackageErrorCode_unable_to_open_file = 1,
-		tfxPackageErrorCode_unable_to_read_file,
-		tfxPackageErrorCode_wrong_file_size,
-		tfxPackageErrorCode_invalid_format,
-		tfxPackageErrorCode_no_inventory,
-		tfxPackageErrorCode_invalid_inventory,
 	};
 
 	enum tfxAttributeNodeFlags_ {
@@ -3381,8 +3394,8 @@ union tfxUInt10bit
 	};
 	
 	tfxstream ReadEntireFile(const char *file_name, bool terminate = false);
-	int LoadPackage(const char *file_name, tfxPackage &package);
-	int LoadPackage(tfxstream &stream, tfxPackage &package);
+	tfxErrorFlags LoadPackage(const char *file_name, tfxPackage &package);
+	tfxErrorFlags LoadPackage(tfxstream &stream, tfxPackage &package);
 	tfxPackage CreatePackage(const char *file_path);
 	bool SavePackageDisk(tfxPackage &package);
 	tfxstream SavePackageMemory(tfxPackage &package);
@@ -5315,7 +5328,7 @@ union tfxUInt10bit
 	}
 	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
-	int LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
+	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
 
 	//---
 	//Prepare an effect template for setting up function call backs to customise the behaviour of the effect in realtime
