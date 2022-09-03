@@ -2149,6 +2149,8 @@ namespace tfx {
 			sprite_transform.scale.y = sprite_transform.scale.x;
 		}
 
+		sprite_transform.scale *= current.overal_scale;
+
 		//----Spin
 		data.base.spin = random_generation.Range(-spawn_values.spin_variation, std::abs(spawn_values.spin_variation)) + spawn_values.spin;
 
@@ -2708,7 +2710,7 @@ namespace tfx {
 			}
 			else {
 				tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, out.local_position + common.handle);
-				out.captured_position = common.transform.captured_position + rotatevec.xyz();
+				out.captured_position = common.transform.captured_position + rotatevec.xyz() * common.transform.scale;
 				out.world_position = common.transform.world_position + rotatevec.xyz() * common.transform.scale;
 			}
 		}
@@ -2795,6 +2797,8 @@ namespace tfx {
 				sprite_transform.scale.y = height * common.library->overtime_graphs[library_link->overtime].height.GetFirstValue();
 			}
 		}
+
+		sprite_transform.scale *= current.overal_scale;
 
 		//----Motion randomness
 		data.noise_offset = random_generation.Range(spawn_values.noise_offset_variation) + spawn_values.noise_offset;
@@ -3107,7 +3111,7 @@ namespace tfx {
 		data.local_position += current_velocity * c.overal_scale;
 
 		//----Scale
-		sprite_scale = scale;
+		sprite_scale = scale * c.overal_scale;
 
 		//Lines - Reposition if the particle is travelling along a line
 		tfxVec2 offset = velocity_normal * c.emitter_size_y;
@@ -3270,7 +3274,7 @@ namespace tfx {
 		data.local_position += current_velocity * c.overal_scale;
 
 		//----Scale
-		sprite_scale = scale;
+		sprite_scale = scale * c.overal_scale;
 
 		//Lines - Reposition if the particle is travelling along a line
 		tfxVec3 offset = data.velocity_normal.xyz() * c.emitter_size_y;
@@ -8634,6 +8638,7 @@ return free_slot;
 		tfxEmitterProperties &properties = e.GetProperties();
 		tfxEmitterSpawnControls spawn_controls;
 
+		e.current.overal_scale = parent.current.overal_scale;
 		spawn_controls.life = lookup_callback(e.common.library->base_graphs[e.base].life, e.common.frame) * parent_spawn_controls.life;
 		spawn_controls.life_variation = lookup_callback(e.common.library->variation_graphs[e.variation].life, e.common.frame) * parent_spawn_controls.life;
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
@@ -8667,7 +8672,6 @@ return free_slot;
 		spawn_controls.noise_offset = lookup_callback(e.common.library->base_graphs[e.variation].noise_offset, e.common.frame);
 		spawn_controls.noise_resolution = lookup_callback(e.common.library->variation_graphs[e.variation].noise_resolution, e.common.frame);
 		e.current.stretch = parent.current.stretch;
-		e.current.overal_scale = parent.current.overal_scale;
 		e.common.transform.scale = parent.common.transform.scale;
 
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single)) {
