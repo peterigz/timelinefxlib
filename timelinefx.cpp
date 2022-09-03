@@ -7506,7 +7506,7 @@ return free_slot;
 						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 
 						s.color = p.data.color;
-						s.image_frame_plus = ((tfxU32)p.data.image_frame << 24) + properties.billboard_option;
+						s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p.data.image_frame;
 						s.transform.captured_position = p.data.captured_position;
 						s.stretch = p.data.velocity_normal.w;
 						s.intensity = p.data.intensity;
@@ -7599,7 +7599,7 @@ return free_slot;
 
 						p.sprite_index = (properties.layer << 28) + sprite_index;
 						s.color = p.data.color;
-						s.image_frame_plus = ((tfxU32)p.data.image_frame << 24) + properties.billboard_option;
+						s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p.data.image_frame;
 						s.transform.captured_position = p.data.captured_position;
 						s.stretch = p.data.velocity_normal.w;
 						s.intensity = p.data.intensity;
@@ -8394,7 +8394,7 @@ return free_slot;
 			//p->data.flags &= ~tfxParticleFlags_fresh;
 
 			s.color = p->data.color;
-			s.image_frame_plus = ((tfxU32)p->data.image_frame << 24) + properties.billboard_option;
+			s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p->data.image_frame;
 			s.stretch = p->data.velocity_normal.w;
 			s.intensity = p->data.intensity;
 			s.handle = e.current.image_handle;
@@ -8854,7 +8854,7 @@ return free_slot;
 			}
 
 			s.color = p->data.color;
-			s.image_frame_plus = ((tfxU32)p->data.image_frame << 24) + properties.billboard_option;
+			s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p->data.image_frame;
 			s.transform.captured_position = p->data.captured_position;
 			s.stretch = p->data.velocity_normal.w;
 			s.intensity = p->data.intensity;

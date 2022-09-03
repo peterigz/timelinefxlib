@@ -4561,14 +4561,12 @@ union tfxUInt10bit
 		tfxVec3 rotations;
 		tfxU32 alignment;
 		float stretch;
-		float image_frame;
-		float start_frame;
+		tfxU32 image_frame;
 		float depth;
 		void *image_ptr;
 		tfxRGBA8 color;
 		float intensity;
 		tfxU32 alignment_type;
-		bool has_frames;
 	};
 
 	static inline tfxParticleFrame ConvertToParticleFrame(const tfxParticle &p, tfxEmitterProperties &properties, tfxVec2 &handle) {
@@ -4582,10 +4580,8 @@ union tfxUInt10bit
 		pf.handle = handle;
 		pf.color = p.data.color;
 		pf.intensity = p.data.intensity;
-		pf.start_frame = properties.start_frame;
 		pf.image_ptr = properties.image->ptr;
 		pf.image_frame = p.data.image_frame;
-		pf.has_frames = properties.image->animation_frames > 1;
 		return pf;
 	}
 
