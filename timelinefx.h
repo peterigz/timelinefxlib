@@ -4559,7 +4559,7 @@ union tfxUInt10bit
 		tfxVec2 scale;
 		tfxVec2 handle;
 		tfxVec3 rotations;
-		tfxVec3 alignment;
+		tfxU32 alignment;
 		float stretch;
 		float image_frame;
 		float start_frame;
@@ -4714,8 +4714,6 @@ union tfxUInt10bit
 		void SoftExpireAll();
 
 		//Internal use only
-		void CompressSprites2d();
-		void CompressSprites3d();
 		int AddComputeController();
 		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
 		void EnableCompute() { flags |= tfxEffectManagerFlags_use_compute_shader; }

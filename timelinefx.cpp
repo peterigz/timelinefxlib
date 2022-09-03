@@ -7396,162 +7396,6 @@ return free_slot;
 				ControlParticlesOrdered2d(*this);
 		}
 
-		/*if (!(flags & tfxEffectManagerFlags_order_by_depth)) {
-			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-				int layer_offset = layer * 2;
-				int next_buffer_index = next_buffer + layer_offset;
-				int current_buffer_index = current_pbuff + layer_offset;
-
-				particles[next_buffer_index].clear();
-
-				index = 0;
-				for (auto &p : particles[current_buffer_index]) {
-					p.parent = p.parent->next_ptr;
-					tfxEmitterProperties &properties = p.parent->GetProperties();
-
-					//All of the new particles will be at the end of the buffer so might not need this condition
-					//and instead have 2 separate for loops? It is highly predictable though.
-					if (!(p.data.flags & tfxParticleFlags_fresh)) {
-
-						p.data.captured_position = p.data.world_position;
-
-						if (p.parent && ControlParticle(*this, p, *p.parent)) {
-							if (p.data.flags & tfxParticleFlags_capture_after_transform) {
-								p.parent->current.transform_particle_callback(p.data, p.parent->common, p.parent->common.transform.captured_position);
-								p.data.captured_position = p.data.world_position;
-								p.parent->current.transform_particle_callback(p.data, p.parent->common, p.parent->common.transform.world_position);
-								p.data.flags &= ~tfxParticleFlags_capture_after_transform;
-							}
-							else {
-								p.parent->current.transform_particle_callback(p.data, p.parent->common, p.parent->common.transform.world_position);
-							}
-							SetParticleAlignment(p, properties);
-							p.next_ptr = SetNextParticle(next_buffer_index, p);
-
-						}
-						else {
-							p.next_ptr = tfxINVALID;
-						}
-
-					}
-					else {
-						SetParticleAlignment(p, properties);
-						p.data.flags &= ~tfxParticleFlags_fresh;
-						p.next_ptr = SetNextParticle(next_buffer_index, p);
-					}
-
-					index++;
-				}
-			}
-		}
-		else {
-			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-				int layer_offset = layer * 2;
-				int next_buffer_index = next_buffer + layer_offset;
-				int current_buffer_index = current_pbuff + layer_offset;
-				particles[next_buffer_index].clear();
-				tfxU32 new_index = new_particles_index_start[layer];
-				tfxParticle *new_particle = nullptr;
-				if (new_index < particles[current_buffer_index].size())
-					new_particle = &particles[current_buffer_index][new_index];
-
-				index = 0;
-				tfxU32 next_index = 0;
-				for (auto &p : particles[current_buffer_index]) {
-					p.parent = p.parent->next_ptr;
-					p.prev_index = index;
-					tfxEmitterProperties &properties = p.parent->GetProperties();
-
-					if (!(p.data.flags & tfxParticleFlags_fresh)) {
-
-						p.data.captured_position = p.data.world_position;
-						p.data.depth = LengthVec3NoSqR(p.data.world_position - camera_position);
-
-						if (p.parent && ControlParticle(*this, p, *p.parent)) {
-							if (p.data.flags & tfxParticleFlags_capture_after_transform) {
-								p.parent->current.transform_particle_callback(p.data, p.parent->common, p.parent->common.transform.captured_position);
-								p.data.captured_position = p.data.world_position;
-								p.parent->current.transform_particle_callback(p.data, p.parent->common, p.parent->common.transform.world_position);
-								p.data.flags &= ~tfxParticleFlags_capture_after_transform;
-							}
-							else {
-								p.parent->current.transform_particle_callback(p.data, p.parent->common, p.parent->common.transform.world_position);
-							}
-							SetParticleAlignment(p, properties);
-							while (new_particle && new_particle->data.depth > p.data.depth) {
-								tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
-								SetParticleAlignment(*new_particle, new_properties);
-								new_particle->prev_index = new_index;
-								new_particle->data.flags &= ~tfxParticleFlags_fresh;
-								new_particle->parent = new_particle->parent->next_ptr;
-								new_particle->next_ptr = SetNextParticle(next_buffer_index, *new_particle);
-								next_index++;
-								new_particle = nullptr;
-								if (++new_index < particles[current_buffer_index].size())
-									new_particle = &particles[current_buffer_index][new_index];
-							}
-							p.next_ptr = SetNextParticle(next_buffer_index, p);
-							next_index++;
-						}
-						else {
-							p.next_ptr = tfxINVALID;
-						}
-
-					}
-					else {
-						SetParticleAlignment(p, properties);
-						p.data.flags &= ~tfxParticleFlags_fresh;
-						p.next_ptr = SetNextParticle(next_buffer_index, p);
-						next_index++;
-					}
-
-					if (!(flags & tfxEffectManagerFlags_guarantee_order) && next_index > 1 && particles[next_buffer_index][next_index - 2].data.depth < particles[next_buffer_index][next_index - 1].data.depth) {
-						tfxParticle tmp = particles[next_buffer_index][next_index - 2];
-						particles[next_buffer_index][next_index - 2] = particles[next_buffer_index][next_index - 1];
-						particles[next_buffer_index][next_index - 1] = tmp;
-						particles[current_buffer_index][particles[next_buffer_index][next_index - 2].prev_index].next_ptr = next_index - 2;
-						particles[current_buffer_index][particles[next_buffer_index][next_index - 1].prev_index].next_ptr = next_index - 1;
-					}
-
-					index++;
-					if (index == new_particles_index_start[layer] && new_index != 0)
-						break;
-				}
-				if (new_particle && new_index != 0) {
-					while (new_index < particles[current_buffer_index].current_size) {
-						new_particle = &particles[current_buffer_index][new_index];
-						tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
-						SetParticleAlignment(*new_particle, new_properties);
-						new_particle->prev_index = new_index;
-						new_particle->data.flags &= ~tfxParticleFlags_fresh;
-						new_particle->parent = new_particle->parent->next_ptr;
-						new_particle->next_ptr = SetNextParticle(next_buffer_index, *new_particle);
-						new_index++;
-					}
-				}
-				if (!(flags & tfxEffectManagerFlags_guarantee_order) && sort_passes > 0) {
-					for (tfxU32 sorts = 0; sorts != sort_passes; ++sorts) {
-						for (tfxU32 i = 1; i < particles[next_buffer_index].size(); ++i) {
-							tfxParticle *p1 = &particles[next_buffer_index][i - 1];
-							tfxParticle *p2 = &particles[next_buffer_index][i];
-							if (p1->data.depth < p2->data.depth) {
-								tfxParticle tmp = *p1;
-								*p1 = *p2;
-								*p2 = tmp;
-								particles[current_buffer_index][p1->prev_index].next_ptr = i - 1;
-								particles[current_buffer_index][p2->prev_index].next_ptr = i;
-							}
-						}
-					}
-				}
-				if (flags & tfxEffectManagerFlags_guarantee_order) {
-					InsertionSortParticles(particles[next_buffer_index], particles[current_buffer_index]);
-				}
-			}
-		}
-
-		*/
-
 		flags &= ~tfxEffectManagerFlags_update_base_values;
 
 	}
@@ -8801,40 +8645,6 @@ return free_slot;
 		return spawn_controls;
 	}
 
-	void tfxParticleManager::CompressSprites2d() {
-		tfxPROFILE;
-		for (tfxEachLayer) {
-			tfxring<tfxParticleSprite2d> &bank = sprites2d[layer];
-			int offset = 0;
-			for (int i = bank.current_size - 1; i >= 0; --i) {
-				if (bank[i].image_frame == tfxINVALID) {
-					offset++;
-				}
-				else if (offset > 0) {
-					bank[i + offset] = bank[i];
-				}
-			}
-			bank.bump(offset);
-		}
-	}
-
-	void tfxParticleManager::CompressSprites3d() {
-		tfxPROFILE;
-		for (tfxEachLayer) {
-			tfxring<tfxParticleSprite3d> &bank = sprites3d[layer];
-			int offset = 0;
-			for (int i = bank.current_size - 1; i >= 0; --i) {
-				if (bank[i].image_frame_plus == tfxINVALID) {
-					offset++;
-				}
-				else if (offset > 0) {
-					bank[i + offset] = bank[i];
-				}
-			}
-			bank.bump(offset);
-		}
-	}
-
 	void ControlParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned) {
 		tfxPROFILE;
 
@@ -8936,7 +8746,10 @@ return free_slot;
 			p->data.captured_position = s.transform.position;
 
 		}
-		bank.bump(offset);
+		if (offset) {
+			bank.bump(offset);
+			pm.sprites2d->current_size -= offset;
+		}
 	}
 
 	void ControlParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned) {
@@ -9052,7 +8865,10 @@ return free_slot;
 
 			p->data.captured_position = s.transform.position;
 		}
-		bank.bump(offset);
+		if (offset) {
+			bank.bump(offset);
+			pm.sprites3d->current_size -= offset;
+		}
 	}
 
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxVec2 &sprite_scale, tfxEffectEmitter &e) {
