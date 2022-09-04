@@ -2823,7 +2823,7 @@ union tfxUInt10bit
 				free(data); 
 			}
 			else if (is_local_buffer) {
-				memcpy(new_data, data, (size_t)current_size * sizeof(char)); 
+				memcpy(new_data, strbuffer(), (size_t)current_size * sizeof(char)); 
 			}
 			data = new_data; 
 			is_local_buffer = false;
