@@ -3679,7 +3679,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxEffectLibrary *destination_library, bool keep_user_data, bool force_clone_global) {
-		tfxU32 *size = &common.library->global_graphs[0].amount.lookup.values.block->current_size;
+		//tfxU32 size = common.library->global_graphs[0].amount.lookup.values.capacity;
 		clone = *this;
 		clone.info_index = clone.common.library->CloneInfo(info_index, destination_library);
 		clone.property_index = clone.common.library->CloneProperties(property_index, destination_library);
@@ -4208,22 +4208,27 @@ namespace tfx {
 	void tfxEffectLibrary::FreeGlobal(tfxU32 index) {
 		assert(index < global_graphs.size());
 		free_global_graphs.push_back(index);
+		global_graphs[index].Free();
 	}
 	void tfxEffectLibrary::FreeProperty(tfxU32 index) {
 		assert(index < property_graphs.size());
 		free_property_graphs.push_back(index);
+		property_graphs[index].Free();
 	}
 	void tfxEffectLibrary::FreeBase(tfxU32 index) {
 		assert(index < base_graphs.size());
 		free_base_graphs.push_back(index);
+		base_graphs[index].Free();
 	}
 	void tfxEffectLibrary::FreeVariation(tfxU32 index) {
 		assert(index < variation_graphs.size());
 		free_variation_graphs.push_back(index);
+		variation_graphs[index].Free();
 	}
 	void tfxEffectLibrary::FreeOvertime(tfxU32 index) {
 		assert(index < overtime_graphs.size());
 		free_overtime_graphs.push_back(index);
+		overtime_graphs[index].Free();
 	}
 	void tfxEffectLibrary::FreeProperties(tfxU32 index) {
 		assert(index < free_properties.size());
@@ -4236,7 +4241,18 @@ namespace tfx {
 
 	tfxU32 tfxEffectLibrary::CloneGlobal(tfxU32 source_index, tfxEffectLibrary *destination_library) {
 		tfxU32 index = destination_library->AddGlobal();
+		if (destination_library->global_graphs[source_index].life.nodes.current_size == 9)
+			int debug = 1;
 		destination_library->global_graphs[index] = global_graphs[source_index];
+		auto &dst = destination_library->global_graphs[index].life.nodes;
+		auto &src = global_graphs[source_index].life.nodes;
+		auto &dst_block = global_graphs[index].life.nodes.allocator->blocks[global_graphs[index].life.nodes.block];
+		auto &src_block = global_graphs[source_index].life.nodes.allocator->blocks[global_graphs[source_index].life.nodes.block];
+		do {
+			for (auto &n : dst) {
+				int d = n.frame;
+			}
+		} while (!dst.EndOfBuckets());
 		return index;
 	}
 
@@ -5539,7 +5555,7 @@ namespace tfx {
 		effector = nullptr;
 	}
 
-	tfxGraph::tfxGraph(tfxBucketAllocator *node_allocator, tfxU32 bucket_size) { 
+	tfxGraph::tfxGraph(tfxMemoryArenaManager *node_allocator, tfxU32 bucket_size) { 
 		min.x = 0.f;
 		min.y = 0.f;
 		max.x = 1000.f;
@@ -6891,13 +6907,41 @@ namespace tfx {
 		return error;
 	}
 
+	tfxEffectLibraryStats CreateLibraryStats(tfxEffectLibrary &lib) {
+		tfxEffectLibraryStats stats;
+		memset(&stats, 0, sizeof(stats));
+		stats.total_effects = lib.effects.size();
+		stats.total_node_lookup_indexes = lib.node_lookup_indexes.size();
+		stats.total_attribute_nodes = lib.all_nodes.size();
+		tfxvec<tfxEffectEmitter> stack;
+		for (auto &effect : lib.effects) {
+			stack.push_back(effect);
+		}
+		while (!stack.empty()) {
+			tfxEffectEmitter &current = stack.pop_back();
+			if (current.parent) {
+				if (current.type == tfxEffectType) {
+					stats.total_sub_effects++;
+				}
+				else if(current.type == tfxEmitterType) {
+					stats.total_emitters++;
+				}
+			}
+			for (auto &sub : current.GetInfo().sub_effectors) {
+				stack.push_back(sub);
+			}
+		}
+		stats.total_shapes = lib.particle_shapes.data.size();
+		stats.required_graph_node_memory = lib.graph_node_allocator.TotalMemoryInUse();
+		stats.required_graph_lookup_memory = lib.graph_lookup_allocator.TotalMemoryInUse();
 
-	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+		return stats;
+	}
+
+	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 		assert(shape_loader);
 		if (!data_types.initialised) data_types.Init();
 		lib.Clear();
-		lib.graph_node_allocator = CreateBlockAllocator(tfxMegabyte(10), 8, 256);
-		lib.graph_lookup_allocator = CreateBlockAllocator(tfxMegabyte(32), 8, 256);
 
 		tfxvec<tfxEffectEmitter> effect_stack;
 		int context = 0;
@@ -6909,6 +6953,24 @@ namespace tfx {
 		error = LoadPackage(filename, package);
 
 		tfxEntryInfo *data = package.GetFile("data.txt");
+		tfxEntryInfo *stats_struct = package.GetFile("stats.struct");
+
+		if (!stats_struct) {
+			lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
+			lib.graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 8);
+		}
+		else {
+			tfxEffectLibraryStats stats;
+			memcpy(&stats, stats_struct->data.data, stats_struct->file_size);
+			if (read_only) {
+				lib.graph_node_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_node_memory, tfxMegabyte(2)), 8);
+				lib.graph_lookup_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_lookup_memory, tfxMegabyte(4)), 8);
+			}
+			else {
+				lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
+				lib.graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 8);
+			}
+		}
 
 		if (!data)
 			error |= tfxErrorCode_data_could_not_be_loaded;
@@ -8748,7 +8810,7 @@ return free_slot;
 		}
 		if (offset) {
 			bank.bump(offset);
-			pm.sprites2d->current_size -= offset;
+			//pm.sprites2d->current_size -= offset; //I put this in for a reason to fix another bug, but it causes current size to wrap around with some effects.
 		}
 	}
 
@@ -8867,7 +8929,7 @@ return free_slot;
 		}
 		if (offset) {
 			bank.bump(offset);
-			pm.sprites3d->current_size -= offset;
+			//pm.sprites3d->current_size -= offset; //I put this in for a reason to fix another bug, but it causes current size to wrap around with some effects.
 		}
 	}
 

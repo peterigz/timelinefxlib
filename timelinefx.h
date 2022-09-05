@@ -152,6 +152,7 @@ namespace tfx {
 
 #define tfxMAX_FRAME 20000.f
 #define tfxNullParent 0xFFFFFFFF
+#define tfxINVALID 0xFFFFFFFF
 #define tfxEmitterPropertiesCount 26
 
 #define tfxDel << "=" <<
@@ -1027,7 +1028,7 @@ union tfxUInt10bit
 	struct tfxMemoryBucket {
 		void *data = NULL;
 		void *end_ptr = NULL;
-		tfxMemoryBucket *next_block = NULL;
+		tfxU32 next_block = tfxINVALID;
 		tfxU32 unit_size;
 		tfxU32 capacity = 0;
 		tfxU32 current_size = 0;
@@ -1037,7 +1038,8 @@ union tfxUInt10bit
 		inline void*           end() { return end_ptr; }
 		inline const void*     end() const { return end_ptr; }
 		inline void			   clear() { current_size = 0; end_ptr = data; }
-		inline void			   reset() { current_size = 0; next_block = NULL; end_ptr = data; }
+		inline void			   reset() { current_size = 0; next_block = tfxINVALID; end_ptr = data; }
+		inline size_t		   capacity_in_bytes() { return (size_t)unit_size * (size_t)capacity; }
 
 	};
 
@@ -1093,21 +1095,13 @@ union tfxUInt10bit
 		return *((T*)block.data + index);
 	}
 
-	struct tfxBucketAllocator {
+	struct tfxMemoryArena {
 		void *data;					//big allocation for splitting up into smaller blocks
 		void *end_of_allocated;
 		size_t memory_remaining;
 		size_t total_memory;
-		size_t management_space;
-		size_t size_diff_threshold;
-		tfxU32 max_blocks;
-		tfxU32 block_count;
-		tfxU32 free_block_count;
 
-		tfxMemoryBucket *blocks;
-		tfxMemoryBucket **free_blocks;
-
-		tfxBucketAllocator() { data = end_of_allocated = NULL; memory_remaining = size_diff_threshold = block_count = free_block_count = max_blocks = 0; }
+		tfxMemoryArena() { data = end_of_allocated = NULL; memory_remaining = 0; }
 
 		inline void FreeAll() {
 			if (data) {
@@ -1120,86 +1114,174 @@ union tfxUInt10bit
 		inline void Reset() {
 			memory_remaining = total_memory;
 			end_of_allocated = data;
-			free_block_count = 0;
-			block_count = 0;
-			blocks = (tfxMemoryBucket*)((char*)data + total_memory);
-			free_blocks = (tfxMemoryBucket**)(blocks + max_blocks);
-			memset((void*)data, 0, total_memory + management_space);
+			memset((void*)data, 0, total_memory);
 		}
 
-		inline void *End(tfxMemoryBucket *block) {
-			while (block->next_block != NULL) {
-				block = block->next_block;
+	};
+
+	struct tfxMemoryArenaManager {
+		size_t arena_size;
+		size_t size_diff_threshold;
+		tfxvec<tfxMemoryArena> arenas;
+		tfxvec<tfxMemoryBucket> blocks;
+		tfxvec<tfxU32> free_blocks;
+
+		inline void FreeAll() {
+			for (auto &arena : arenas) {
+				arena.FreeAll();
 			}
-			return block->end();
+			arenas.free_all();
+			blocks.free_all();
+			free_blocks.free_all();
 		}
 
-		inline tfxMemoryBucket &LastBlock(tfxMemoryBucket *starting_block) {
-			assert(starting_block != NULL);
-			tfxMemoryBucket *found_block = starting_block;
-			while (found_block->next_block != NULL) {
-				found_block = found_block->next_block;
+		inline void FreeBlock(tfxMemoryBucket *block) {
+			tfxU32 index = blocks.index_from_ptr(block);
+			free_blocks.push_back(index);
+		}
+
+		inline tfxU32 FreeBlocks(tfxU32 block) {
+			if (block >= blocks.current_size) return 0;
+			free_blocks.push_back(block);
+			tfxU32 freed_count = 1;
+			while (blocks[block].next_block != tfxINVALID) {
+				tfxU32 prev_block = block;
+				block = blocks[block].next_block;
+				free_blocks.push_back(block);
+				freed_count++;
+				blocks[prev_block].reset();
 			}
-			return *found_block;
+			blocks[block].reset();
+			return freed_count;
 		}
 
-		inline tfxMemoryBucket &FirstBlockWithSpace(tfxMemoryBucket *starting_block) {
-			assert(starting_block);
-			tfxMemoryBucket *found_block = starting_block;
-			while (found_block->next_block != NULL && found_block->current_size == found_block->capacity) {
-				found_block = found_block->next_block;
+		inline void *End(tfxU32 block) {
+			while (blocks[block].next_block != tfxINVALID) {
+				block = blocks[block].next_block;
 			}
-			return *found_block;
+			return blocks[block].end();
 		}
 
-		inline tfxMemoryBucket &FirstBlockWithSpace(tfxU32 current_size, tfxMemoryBucket *block) {
-			assert(block);
-			tfxU32 block_index = current_size / block->capacity;
+		inline tfxMemoryBucket &LastBlock(tfxU32 starting_block) {
+			assert(starting_block != tfxINVALID);
+			tfxU32 found_block = starting_block;
+			while (blocks[found_block].next_block != tfxINVALID) {
+				found_block = blocks[found_block].next_block;
+			}
+			return blocks[found_block];
+		}
+
+		inline tfxMemoryBucket &FirstBlockWithSpace(tfxU32 starting_block) {
+			assert(starting_block != tfxINVALID);
+			tfxU32 found_block = starting_block;
+			while (blocks[found_block].next_block != tfxINVALID && blocks[found_block].current_size == blocks[found_block].capacity) {
+				found_block = blocks[found_block].next_block;
+			}
+			return blocks[found_block];
+		}
+
+		inline tfxU32 FirstBlockIndexWithSpace(tfxU32 starting_block) {
+			assert(starting_block != tfxINVALID);
+			tfxU32 found_block = starting_block;
+			while (blocks[found_block].next_block != tfxINVALID && blocks[found_block].current_size == blocks[found_block].capacity) {
+				found_block = blocks[found_block].next_block;
+			}
+			return found_block;
+		}
+
+		inline tfxU32 FirstEmptyBlockIndex(tfxU32 starting_block) {
+			assert(starting_block != tfxINVALID);
+			tfxU32 found_block = starting_block;
+			while (blocks[found_block].next_block != tfxINVALID) {
+				if (blocks[found_block].current_size == 0) {
+					return found_block;
+				}
+				found_block = blocks[found_block].next_block;
+			}
+			if (blocks[found_block].current_size == 0) {
+				return found_block;
+			}
+			return tfxINVALID;
+		}
+
+		inline void CutOffBlock(tfxU32 starting_block, tfxU32 block) {
+			assert(block != tfxINVALID);
+			tfxU32 found_block = starting_block;
+			while (blocks[found_block].next_block != tfxINVALID) {
+				if (blocks[found_block].next_block == block) {
+					blocks[found_block].next_block = tfxINVALID;
+					return;
+				}
+				found_block = blocks[found_block].next_block;
+			}
+		}
+
+		inline tfxMemoryBucket &FirstBlockWithSpace(tfxU32 current_size, tfxU32 block) {
+			assert(block != tfxINVALID);
+			tfxU32 block_index = current_size / blocks[block].capacity;
 			for (int i = 0; i != block_index; ++i) {
-				block = block->next_block;
+				block = blocks[block].next_block;
 			}
-			return *block;
+			return blocks[block];
 		}
 
-		inline tfxMemoryBucket &BlockByIndex(tfxU32 index, tfxMemoryBucket *starting_block) {
-			assert(starting_block);
-			tfxMemoryBucket *found_block = starting_block;
+		inline bool FirstArenaWithEnoughSpace(size_t required_space_in_bytes, tfxMemoryArena **found_arena) {
+			for (auto &arena : arenas) {
+				if (arena.memory_remaining >= required_space_in_bytes) {
+					*found_arena = &arena;
+					return true;
+				}
+			}
+			*found_arena = NULL;
+			return false;
+		}
+
+		inline tfxMemoryBucket &BlockByIndex(tfxU32 index, tfxU32 starting_block) {
+			assert(starting_block != tfxINVALID);
+			tfxU32 found_block = starting_block;
 			tfxU32 index_count = 0;
-			while (found_block->next_block != NULL && index_count++ != index) {
-				found_block = found_block->next_block;
+			while (blocks[found_block].next_block != tfxINVALID && index_count++ != index) {
+				found_block = blocks[found_block].next_block;
 			}
-			return *found_block;
+			return blocks[found_block];
 		}
 
-		inline void ClearBlocks(tfxMemoryBucket *block) {
-			if (!block) return;
-			block->clear();
-			while (block->next_block != NULL) {
-				block = block->next_block;
-				block->clear();
+		inline tfxU32 BlockIndexByIndex(tfxU32 index, tfxU32 starting_block) {
+			assert(starting_block != tfxINVALID);
+			tfxU32 found_block = starting_block;
+			tfxU32 index_count = 0;
+			while (blocks[found_block].next_block != tfxINVALID && index_count++ != index) {
+				found_block = blocks[found_block].next_block;
+			}
+			return found_block;
+		}
+
+		inline void ClearBlocks(tfxU32 block) {
+			if (block == tfxINVALID) return;
+			blocks[block].clear();
+			while (blocks[block].next_block != tfxINVALID) {
+				block = blocks[block].next_block;
+				blocks[block].clear();
 			}
 		}
 
-		inline void FreeBlocks(tfxMemoryBucket *block) {
-			if (!block) return;
-			free_blocks[free_block_count++] = block;
-			while (block->next_block != NULL) {
-				tfxMemoryBucket *prev_block = block;
-				block = block->next_block;
-				free_blocks[free_block_count++] = block;
-				prev_block->reset();
-			}
-			block->reset();
-		}
-
-		inline tfxU32 BlockCount(tfxMemoryBucket *block) {
-			if (block == NULL) return 0;
+		inline tfxU32 BlockCount(tfxU32 block) {
+			if (block == tfxINVALID) return 0;
 			tfxU32 count = 1;
-			while (block->next_block != NULL) {
-				block = block->next_block;
+			while (blocks[block].next_block != tfxINVALID) {
+				block = blocks[block].next_block;
 				count++;
 			}
 			return count;
+		}
+
+		inline void CopyBlockToBlock(tfxU32 from, tfxU32 to) {
+			assert(blocks[from].capacity && blocks[from].capacity <= blocks[to].capacity);		//must have valid capacities
+			memcpy(blocks[to].data, blocks[from].data, blocks[from].capacity * blocks[from].unit_size);
+			auto &src = blocks[from];
+			auto &dst = blocks[to];
+			dst.current_size = src.current_size;
+			dst.end_ptr = (char*)dst.data + (dst.unit_size * dst.current_size);
 		}
 
 		inline void CopyBlockToBlock(tfxMemoryBucket *from, tfxMemoryBucket *to) {
@@ -1209,102 +1291,150 @@ union tfxUInt10bit
 			to->end_ptr = (char*)to->data + (to->unit_size * to->current_size);
 		}
 
+		inline tfxMemoryArena *AddArena() {
+			tfxMemoryArena arena;
+			arena.total_memory = arena_size;
+			arena.memory_remaining = arena_size;
+			arena.data = malloc(arena_size);
+			arena.end_of_allocated = arena.data;
+			memset(arena.data, 0, arena_size);
+			arenas.push_back(arena);
+			return &arenas.back();
+		}
+
+		inline size_t TotalMemoryCapacity() {
+			size_t size = 0;
+			for (auto &arena : arenas) {
+				size += arena.total_memory;
+			}
+			return size;
+		}
+
+		inline size_t TotalMemoryInUse() {
+			size_t size = 0;
+			for (auto &arena : arenas) {
+				size += arena.total_memory - arena.memory_remaining;
+			}
+			return size;
+		}
 	};
 
+	inline tfxU64 NearestMultiple(tfxU64 numToRound, tfxU64 multiple)
+	{
+		assert(multiple);
+		return ((numToRound + multiple - 1) / multiple) * multiple;
+	}
+
+	static inline tfxMemoryArenaManager CreateArenaManager(size_t size_of_each_arena, tfxU32 size_diff_threshold = 8) {
+		tfxMemoryArenaManager manager;
+		manager.arena_size = size_of_each_arena;
+		manager.size_diff_threshold = size_diff_threshold;
+		return manager;
+	}
+
+	static inline tfxMemoryArena CreateMemoryArena(size_t size_in_bytes, tfxU32 size_diff_threshold = 8) {
+		assert(size_in_bytes > 1024 * 1024);	//minimum 1mb allocation
+		tfxMemoryArena allocator;
+		void* new_data = malloc(size_in_bytes);
+		allocator.data = new_data;
+		allocator.end_of_allocated = allocator.data;
+		allocator.memory_remaining = size_in_bytes;
+		allocator.total_memory = size_in_bytes;
+		memset((void*)allocator.data, 0, size_in_bytes);
+		return allocator;
+	}
+
 	template <typename T>
-	static bool Allocate(tfxBucketAllocator &allocator, tfxU32 bucket_size, tfxMemoryBucket **block) {
-		tfxU32 size_in_bytes = bucket_size * sizeof(T);
+	static bool Allocate(tfxMemoryArenaManager &allocator, tfxU32 block_size, tfxU32 &block) {
+		tfxU32 size_in_bytes = block_size * sizeof(T);
 		if (size_in_bytes == 0) return false;
-		if (allocator.free_block_count > 0) {
-			tfxU32 size_diff = tfxMAX_UINT;
-			tfxMemoryBucket *best_fit = NULL;
-			tfxMemoryBucket *found_free_block;
+		if (allocator.free_blocks.current_size > 0) {
+			size_t size_diff = tfxMAX_UINT;
+			tfxU32 best_fit = tfxINVALID;
+			tfxU32 found_free_block;
 			tfxU32 found_index = 0;
-			for (int i = 0; i != allocator.free_block_count; ++i) {
-				tfxMemoryBucket *free_block = allocator.free_blocks[i];
-				if (size_diff > free_block->capacity && free_block->capacity > size_in_bytes) {
-					size_diff = free_block->capacity;
+			tfxU32 i = 0;
+			for (auto free_block : allocator.free_blocks) {
+				if (size_diff > allocator.blocks[free_block].capacity && allocator.blocks[free_block].capacity_in_bytes() >= size_in_bytes) {
+					size_diff = allocator.blocks[free_block].capacity_in_bytes() - size_in_bytes;
 					best_fit = free_block;
 					found_free_block = free_block;
 					found_index = i;
 				}
+				++i;
 			}
-			if (best_fit && size_diff != tfxMAX_UINT && (size_diff <= allocator.size_diff_threshold || size_diff > allocator.memory_remaining)) {
-				allocator.free_blocks[found_index] = allocator.free_blocks[allocator.free_block_count - 1];
-				allocator.free_block_count--;
-				*block = best_fit;
+			if (best_fit != tfxINVALID && size_diff != tfxMAX_UINT && (size_diff <= allocator.size_diff_threshold)) {
+				allocator.free_blocks[found_index] = allocator.free_blocks[allocator.free_blocks.current_size - 1];
+				allocator.free_blocks.pop();
+				block = best_fit;
 				return true;
 			}
 		}
-		if (allocator.memory_remaining >= size_in_bytes) {
-			tfxMemoryBucket *new_block = &allocator.blocks[++allocator.block_count - 1];
-			new_block->unit_size = sizeof(T);
-			new_block->data = allocator.end_of_allocated;
-			new_block->end_ptr = allocator.end_of_allocated;
-			new_block->capacity = bucket_size;
-			allocator.end_of_allocated = (T*)allocator.end_of_allocated + bucket_size;
-			allocator.memory_remaining -= size_in_bytes;
-			*block = &allocator.blocks[allocator.block_count - 1];
-			return true;
-		} 
-		return false;
+
+		tfxMemoryArena *arena;
+		if (!allocator.FirstArenaWithEnoughSpace(size_in_bytes, &arena)) {
+			arena = allocator.AddArena();
+		}
+
+		tfxMemoryBucket new_block;
+		new_block.unit_size = sizeof(T);
+		new_block.data = arena->end_of_allocated;
+		new_block.end_ptr = arena->end_of_allocated;
+		new_block.capacity = block_size;
+		arena->end_of_allocated = (T*)arena->end_of_allocated + block_size;
+		arena->memory_remaining -= size_in_bytes;
+		allocator.blocks.push_back(new_block);
+		block = allocator.blocks.current_size - 1;
+		return true;
+
 	}
 
 	template <typename T>
-	static bool AllocateBucket(tfxBucketAllocator &allocator, tfxU32 bucket_size, tfxMemoryBucket **block) {
+	static bool AllocateBucket(tfxMemoryArenaManager &allocator, tfxU32 bucket_size, tfxU32 &block) {
 		tfxU32 size_in_bytes = bucket_size * sizeof(T);
 		assert(bucket_size > 1 && size_in_bytes > 0);		//bucket size must be greater than 1
-		if (allocator.free_block_count > 0) {
-			for (int i = 0; i != allocator.free_block_count; ++i) {
-				tfxMemoryBucket *free_block = allocator.free_blocks[i];
-				if (free_block->capacity * free_block->unit_size == size_in_bytes) {
-					allocator.free_blocks[i] = allocator.free_blocks[allocator.free_block_count - 1];
-					allocator.free_block_count--;
-					if (*block == NULL)
-						*block = free_block;
+		if (allocator.free_blocks.current_size > 0) {
+			for (auto &free_block : allocator.free_blocks) {
+				if (allocator.blocks[free_block].capacity * allocator.blocks[free_block].unit_size == size_in_bytes) {
+					free_block = allocator.free_blocks.back();
+					allocator.free_blocks.pop();
+					if (block == tfxINVALID)
+						block = free_block;
 					else
-						allocator.LastBlock(*block).next_block = free_block;
+						allocator.LastBlock(block).next_block = free_block;
 					return true;
 				}
 			}
 		}
-		else if (allocator.memory_remaining >= size_in_bytes) {
-			tfxMemoryBucket *new_block = &allocator.blocks[++allocator.block_count - 1];
-			new_block->unit_size = sizeof(T);
-			new_block->data = allocator.end_of_allocated;
-			new_block->end_ptr = allocator.end_of_allocated;
-			new_block->capacity = bucket_size;
-			allocator.end_of_allocated = (T*)allocator.end_of_allocated + bucket_size;
-			allocator.memory_remaining -= size_in_bytes;
-			if (*block == NULL)
-				*block = &allocator.blocks[allocator.block_count - 1];
-			else
-				allocator.LastBlock(*block).next_block = &allocator.blocks[allocator.block_count - 1];
-			return true;
+
+		tfxMemoryArena *arena = NULL;
+		if (!allocator.FirstArenaWithEnoughSpace(size_in_bytes, &arena)) {
+			arena = allocator.AddArena();
 		}
-		return false;
+
+		tfxMemoryBucket new_block;
+		new_block.unit_size = sizeof(T);
+		new_block.data = arena->end_of_allocated;
+		new_block.end_ptr = arena->end_of_allocated;
+		new_block.capacity = bucket_size;
+		arena->end_of_allocated = (T*)arena->end_of_allocated + bucket_size;
+		arena->memory_remaining -= size_in_bytes;
+		allocator.blocks.push_back(new_block);
+		if (block == tfxINVALID)
+			block = allocator.blocks.current_size - 1;
+		else
+			allocator.LastBlock(block).next_block = allocator.blocks.current_size - 1;
+
+		return true;
 	}
 
 	template <typename T>
-	inline tfxU32 AllocateMore(tfxBucketAllocator &allocator, tfxU32 amount, tfxMemoryBucket *block) {
-		tfxU32 size_in_bytes = amount * sizeof(T);
-		tfxMemoryBucket new_range = NULL;
-		tfxU32 allocatable_size = size_in_bytes > allocator.memory_remaining ? allocator.memory_remaining : size_in_bytes;
-		allocatable_size /= sizeof(T);
-		if (allocatable_size > 0 && Allocate<T>(allocator, allocatable_size, new_range)) {
-			block->next_block = new_range;
-			return allocatable_size;
+	inline T &FindValueByIndex(tfxMemoryArenaManager &allocator, tfxU32 i, tfxU32 block) {
+		while (i >= allocator.blocks[block].current_size && allocator.blocks[block].next_block != tfxINVALID) {
+			i -= allocator.blocks[block].current_size;
+			block = allocator.blocks[block].next_block;
 		}
-		return 0;
-	}
-
-	template <typename T>
-	inline T &FindValueByIndex(tfxBucketAllocator &allocator, tfxU32 i, tfxMemoryBucket *block) {
-		while (i >= block->current_size && block->next_block != NULL) {
-			i -= block->current_size;
-			block = block->next_block;
-		}
-		return *((T*)block->data + i);
+		return *((T*)allocator.blocks[block].data + i);
 	}
 
 	template <typename T>
@@ -1314,83 +1444,68 @@ union tfxUInt10bit
 
 #define tfxBucket(type, index, bucket_ptr) (type*)bucket_ptr + index;
 
-	static inline tfxBucketAllocator CreateBlockAllocator(size_t size_in_bytes, tfxU32 size_diff_threshold = 8, size_t min_block_size = 8192) {
-		assert(size_in_bytes > 1024 * 1024);	//minimum 1mb allocation
-		tfxBucketAllocator allocator;
-		void* new_data = malloc(size_in_bytes);
-		allocator.max_blocks = (tfxU32)(size_in_bytes / min_block_size);
-		allocator.management_space = allocator.max_blocks * sizeof(tfxMemoryBucket) + allocator.max_blocks * 8;
-		allocator.blocks = (tfxMemoryBucket*)((char*)new_data + size_in_bytes - allocator.management_space);
-		allocator.free_blocks = (tfxMemoryBucket**)(allocator.blocks + allocator.max_blocks);
-		allocator.data = new_data;
-		allocator.end_of_allocated = allocator.data;
-		allocator.memory_remaining = size_in_bytes - allocator.management_space;
-		allocator.size_diff_threshold = size_diff_threshold;
-		allocator.total_memory = allocator.memory_remaining;
-		memset((void*)allocator.data, 0, size_in_bytes);
-		return allocator;
-	}
-
 	//No Destructor, so use free_all before it goes out of scope!
 	template <typename T>
 	struct tfxArray {
-		tfxBucketAllocator *allocator;				//Pointer to the allocator that manages the memory and blocks of that memory
-		tfxMemoryBucket *block;						//The first block in the allocator
+		tfxMemoryArenaManager *allocator;			//Pointer to the allocator that manages the memory and blocks of that memory
+		T *block;									//The first block in the allocator
+		tfxU32 block_index;
 		tfxU32 capacity;							//The total capacity of the range vec
 
-		tfxArray() : allocator(NULL) { block = NULL; capacity = 0; }
-		tfxArray(tfxBucketAllocator *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; capacity = 0; reserve(size); }
+		tfxArray() : allocator(NULL) { block = NULL; capacity = 0; block_index = tfxINVALID; }
+		tfxArray(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; capacity = 0; reserve(size); }
 
 		inline tfxU32		size() { return capacity; }
 		inline const tfxU32	size() const { return capacity; }
 		inline T&           operator[](tfxU32 i) {
 			assert(i < capacity);		//Index is out of bounds
-			return ValueAt<T>(*block, i);
+			return block[i];
 		}
 		inline const T&     operator[](tfxU32 i) const {
 			assert(i < capacity);		//Index is out of bounds
-			return ValueAt<T>(*block, i);
+			return block[i];
 		}
 		inline tfxArray<T>&		operator=(const tfxArray<T>& src) {
-			if(!allocator)
+			if (!allocator)
 				allocator = src.allocator;
 			if (!src.block) return *this;
 			assert(resize(src.capacity));
-			allocator->CopyBlockToBlock(src.block, block);
+			allocator->CopyBlockToBlock(src.block_index, block_index);
 			return *this;
 		}
 
-		inline void         free() { if (block != NULL) { capacity = capacity = 0; allocator->FreeBlocks(block); block = NULL; } }
-		inline T*           begin() { return (T*)block->data; }
-		inline const T*     begin() const { return (T*)block->data; }
-		inline T*           end() { return (T*)block->end_ptr; }
-		inline const T*     end() const { return (T*)block->end_ptr; }
+		inline void         free() { if (block != NULL) { capacity = capacity = 0; allocator->FreeBlocks(block_index); block = NULL; } }
+		inline T*           begin() { return block; }
+		inline const T*     begin() const { return block; }
+		inline T*           end() { return block + capacity; }
+		inline const T*     end() const { return block + capacity; }
 		inline bool			reserve(tfxU32 size) {
 			assert(allocator);		//Must assign an allocator before doing anything with a tfxBucketArray. Capacity must equal 0
 			assert(capacity == 0);	//Capacity must equal 0 before reserving an array
+			assert(size * sizeof(T) < allocator->arena_size);	//The size of an array must fit into an arena size
 			if (capacity == 0) {
-				if (!Allocate<T>(*allocator, size, &block)) {
+				if (!Allocate<T>(*allocator, size, block_index)) {
 					return false;
 				}
 				capacity = size;
-				block->current_size = capacity;
-				block->end_ptr = (T*)block->end_ptr + capacity;
+				allocator->blocks[block_index].current_size = capacity;
+				allocator->blocks[block_index].end_ptr = (T*)allocator->blocks[block_index].end_ptr + capacity;
+				block = (T*)allocator->blocks[block_index].data;
 			}
 			return true;
 		}
 		inline bool			resize(tfxU32 size, bool keep_contents = false) {
 			assert(allocator);		//Must assign an allocator before doing anything with a tfxBucketArray. Capacity must equal 0
 			if (size == capacity) return true;
-			tfxMemoryBucket *current_block = block;
-			if (!Allocate<T>(*allocator, size, &block)) {
+			tfxU32 current_block = block_index;
+			if (!Allocate<T>(*allocator, size, block_index)) {
 				return false;
 			}
 			if (keep_contents)
-				allocator->CopyBlockToBlock(current_block, block);
+				allocator->CopyBlockToBlock(current_block, block_index);
 			allocator->FreeBlocks(current_block);
 			capacity = size;
-			block->current_size = capacity;
-			block->end_ptr = (T*)block->end_ptr + capacity;
+			block = (T*)allocator->blocks[block_index].data;
 			return true;
 		}
 
@@ -1398,16 +1513,16 @@ union tfxUInt10bit
 
 	template <typename T>
 	struct tfxBucketArray {
-		tfxBucketAllocator *allocator;	//Pointer to the allocator that manages the memory and blocks of that memory
-		tfxMemoryBucket *block;			//The first block in the allocator
-		tfxMemoryBucket *current_bucket;	//the current bucket for iterating all blocks
-		tfxU32 current_size;			//Current size of the bucket array. This will be the total of all buckets if there are more then one
-		tfxU32 capacity;				//The total capacity of the bucket array
-		tfxU32 size_of_each_bucket;		//The size of each bucket
+		tfxMemoryArenaManager *allocator;	//Pointer to the arena manager that handles the memory and blocks of that memory
+		tfxU32 block;						//The first block in the allocator
+		tfxU32 current_bucket;				//the current bucket for iterating all blocks
+		tfxU32 current_size;				//Current size of the bucket array. This will be the total of all buckets if there are more then one
+		tfxU32 capacity;					//The total capacity of the bucket array
+		tfxU32 size_of_each_bucket;			//The size of each bucket
 
-		tfxBucketArray() { allocator = NULL; current_bucket = block = NULL; size_of_each_bucket = 64; current_size = capacity = size_of_each_bucket = 0; }
-		tfxBucketArray(tfxBucketAllocator *allocator_init) : allocator(allocator_init) { size_of_each_bucket = 64; current_size = capacity = 0; current_bucket = block = NULL; }
-		tfxBucketArray(tfxBucketAllocator *allocator_init, tfxU32 bucket_size) { assert(bucket_size > 1); size_of_each_bucket = bucket_size; allocator = allocator_init; current_size = capacity = 0; current_bucket = block = NULL; }
+		tfxBucketArray() { allocator = NULL; current_bucket = block = tfxINVALID; size_of_each_bucket = 64; current_size = capacity = size_of_each_bucket = 0; }
+		tfxBucketArray(tfxMemoryArenaManager *allocator_init) : allocator(allocator_init) { size_of_each_bucket = 64; current_size = capacity = 0; current_bucket = block = tfxINVALID; }
+		tfxBucketArray(tfxMemoryArenaManager *allocator_init, tfxU32 bucket_size) { assert(bucket_size > 1); size_of_each_bucket = bucket_size; allocator = allocator_init; current_size = capacity = 0; current_bucket = block = tfxINVALID; }
 
 		inline bool			empty() { return current_size == 0; }
 		inline tfxU32		size() { return current_size; }
@@ -1421,34 +1536,33 @@ union tfxUInt10bit
 			return FindValueByIndex<T>(*allocator, i, block);
 		}
 		inline tfxBucketArray<T>&		operator=(const tfxBucketArray<T>& src) {
-			if(!allocator)
+			if (!allocator)
 				allocator = src.allocator;
-			current_size = src.current_size;
 			size_of_each_bucket = src.size_of_each_bucket;
 			if (src.capacity == 0) {
 				return *this;
 			}
 			assert(reserve(src.capacity / src.size_of_each_bucket));
 			current_bucket = block;
-			tfxMemoryBucket *src_block = src.block;
-			while (current_bucket != NULL && src_block != NULL) {
-				allocator->CopyBlockToBlock(src_block, block);
-				current_bucket = current_bucket->next_block;
-				src_block = src_block->next_block;
+			tfxU32 src_block = src.block;
+			while (current_bucket != tfxINVALID && src_block != tfxINVALID) {
+				allocator->CopyBlockToBlock(src_block, current_bucket);
+				current_bucket = allocator->blocks[current_bucket].next_block;
+				src_block = src.allocator->blocks[src_block].next_block;
 			}
 			current_bucket = block;
 			current_size = src.current_size;
 			return *this;
 		}
 
-		inline void         free_all() { if (block != NULL) { current_size = capacity = 0; current_bucket = NULL; allocator->FreeBlocks(block); block = NULL; } }
-		inline T*           begin() { return current_bucket ? (T*)current_bucket->data : NULL; }
-		inline const T*     begin() const { return current_bucket ? (T*)current_bucket->data : NULL; }
-		inline T*           end() { return current_bucket ? (T*)current_bucket->end_ptr : NULL; }
-		inline const T*     end() const { return current_bucket ? (T*)current_bucket->end_ptr : NULL; }
+		inline void         free_all() { if (block != tfxINVALID) { current_size = capacity = 0; current_bucket = tfxINVALID; allocator->FreeBlocks(block); block = tfxINVALID; } }
+		inline T*           begin() { return current_bucket != tfxINVALID ? (T*)allocator->blocks[current_bucket].data : NULL; }
+		inline const T*     begin() const { return current_bucket != tfxINVALID ? (T*)allocator->blocks[current_bucket].data : NULL; }
+		inline T*           end() { return current_bucket != tfxINVALID ? (T*)allocator->blocks[current_bucket].end_ptr : NULL; }
+		inline const T*     end() const { return current_bucket != tfxINVALID ? (T*)allocator->blocks[current_bucket].end_ptr : NULL; }
 		inline T*			bucket_end() { return (T*)allocator->FirstBlockWithSpace(block).end(); }
-		inline T&           front() { assert(current_size > 0); return *(T*)block->data; }
-		inline const T&     front() const { assert(current_size > 0); return *(T*)block->data; }
+		inline T&           front() { assert(current_size > 0); return *(T*)allocator->blocks[block].data; }
+		inline const T&     front() const { assert(current_size > 0); return *(T*)allocator->blocks[block].data; }
 		inline T&           back() { assert(current_size > 0); return BlockBack<T>(allocator->FirstBlockWithSpace(block)); }
 		inline const T&     back() const { assert(current_size > 0); return BlockBack<T>(allocator->FirstBlockWithSpace(block)); }
 		inline void         clear() {
@@ -1460,12 +1574,12 @@ union tfxUInt10bit
 			current_size++;
 			return (tfxU32)BumpBlock<T>(allocator->FirstBlockWithSpace(block)) - 1;
 		}
-		inline tfxU32 bump(tfxMemoryBucket *block_to_bump) {
+		inline tfxU32 bump(tfxU32 block_to_bump) {
 			//You must ensure that this block belongs to this bucket array
 			assert(current_size != capacity);
 			current_size++;
-			block_to_bump->current_size++;
-			block_to_bump->end_ptr = (T*)block_to_bump->data + block_to_bump->current_size;
+			allocator->blocks[block_to_bump].current_size++;
+			allocator->blocks[block_to_bump].end_ptr = (T*)allocator->blocks[block_to_bump].data + allocator->blocks[block_to_bump].current_size;
 			return current_size - 1;
 		}
 		inline bool			reserve(int number_of_buckets) {
@@ -1476,7 +1590,7 @@ union tfxUInt10bit
 				number_of_buckets = (int)allocator->BlockCount(block) - (int)number_of_buckets;
 			}
 			for (int i = 0; i < number_of_buckets; ++i) {
-				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, &block));		//Out of memory!
+				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
 				capacity += size_of_each_bucket;
 			}
 			return true;
@@ -1484,11 +1598,12 @@ union tfxUInt10bit
 		inline T&	        push_back(const T& v) {
 			assert(allocator);	//Must assign an allocator before doing anything with a tfxBucketArray
 			if (current_size == capacity) {
-				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, &block));		//Out of memory!
+				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
 				capacity += size_of_each_bucket;
 				ResetIteratorIndex();
 			}
 			tfxMemoryBucket &last_block = allocator->FirstBlockWithSpace(block);
+			assert(last_block.current_size < last_block.capacity);
 			*(T*)((T*)last_block.data + last_block.current_size++) = v;
 			last_block.end_ptr = (T*)last_block.end_ptr + 1;
 			current_size++;
@@ -1497,20 +1612,20 @@ union tfxUInt10bit
 		inline T*	insert(tfxU32 insert_index, const T &v) {
 			assert(insert_index < current_size);
 			if (current_size == capacity) {
-				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, &block));		//Out of memory!
+				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
 				capacity += size_of_each_bucket;
 				ResetIteratorIndex();
 			}
 			tfxU32 bucket_index = insert_index / size_of_each_bucket;
 			insert_index -= bucket_index * size_of_each_bucket;
-			tfxMemoryBucket *index_block = &allocator->BlockByIndex(bucket_index, block);
+			tfxU32 index_block = allocator->BlockIndexByIndex(bucket_index, block);
 			T value_to_insert = v;
 			T* return_value = NULL;
 			bool initial_inserted = false;
 			do {
-				T* insert_point = &ValueAt<T>(*index_block, insert_index);
-				size_t move_size = size_of_each_bucket - insert_index - (index_block->current_size == index_block->capacity ? 1 : 0);
-				T value_at_back = BlockBack<T>(*index_block);
+				T* insert_point = &ValueAt<T>(allocator->blocks[index_block], insert_index);
+				size_t move_size = size_of_each_bucket - insert_index - (allocator->blocks[index_block].current_size == allocator->blocks[index_block].capacity ? 1 : 0);
+				T value_at_back = BlockBack<T>(allocator->blocks[index_block]);
 				if (move_size > 0) {
 					memmove(insert_point + 1, insert_point, move_size * sizeof(T));
 				}
@@ -1519,18 +1634,18 @@ union tfxUInt10bit
 					initial_inserted = true;
 					return_value = insert_point;
 				}
-				if (index_block->current_size < index_block->capacity)
-					BumpBlock<T>(*index_block);
-				index_block = index_block->next_block;
-				if (index_block != NULL && index_block->current_size == 0) {
-					PushBack<T>(*index_block, value_at_back);
+				if (allocator->blocks[index_block].current_size < allocator->blocks[index_block].capacity)
+					BumpBlock<T>(allocator->blocks[index_block]);
+				index_block = allocator->blocks[index_block].next_block;
+				if (index_block != tfxINVALID && allocator->blocks[index_block].current_size == 0) {
+					PushBack<T>(allocator->blocks[index_block], value_at_back);
 					break;
 				}
 				else {
 					value_to_insert = value_at_back;
 				}
 				insert_index = 0;
-			} while (index_block != NULL);
+			} while (index_block != tfxINVALID);
 			current_size++;
 			return return_value;
 		}
@@ -1543,24 +1658,24 @@ union tfxUInt10bit
 			assert(erase_index < current_size);
 			tfxU32 bucket_index = erase_index / size_of_each_bucket;
 			erase_index -= bucket_index * size_of_each_bucket;
-			tfxMemoryBucket *index_block = &allocator->BlockByIndex(bucket_index, block);
-			tfxMemoryBucket *last_block = NULL;
+			tfxU32 index_block = allocator->BlockIndexByIndex(bucket_index, block);
+			tfxU32 last_block = tfxINVALID;
 			do {
-				T* erase_point = &ValueAt<T>(*index_block, erase_index);
+				T* erase_point = &ValueAt<T>(allocator->blocks[index_block], erase_index);
 				size_t move_size = size_of_each_bucket - erase_index - 1;
-				T value_at_back = BlockBack<T>(*index_block);
+				T value_at_back = BlockBack<T>(allocator->blocks[index_block]);
 				if (move_size > 0) {
 					memmove(erase_point, erase_point + 1, move_size * sizeof(T));
 				}
-				T &end_of_block = BlockBack<T>(*index_block);
-				if (index_block->next_block != NULL) {
-					end_of_block = BlockFront<T>(*index_block->next_block);
+				T &end_of_block = BlockBack<T>(allocator->blocks[index_block]);
+				if (allocator->blocks[index_block].next_block != tfxINVALID) {
+					end_of_block = BlockFront<T>(allocator->blocks[allocator->blocks[index_block].next_block]);
 				}
 				last_block = index_block;
-				index_block = index_block->next_block;
+				index_block = allocator->blocks[index_block].next_block;
 				erase_index = 0;
-			} while (index_block != NULL && index_block->current_size > 0);
-			PopBlock<T>(*last_block);
+			} while (index_block != tfxINVALID && allocator->blocks[index_block].current_size > 0);
+			PopBlock<T>(allocator->blocks[last_block]);
 			current_size--;
 			return true;
 		}
@@ -1570,34 +1685,34 @@ union tfxUInt10bit
 			return erase(index);
 		}
 		inline T* find(const T& v) {
-			assert(block);
-			tfxMemoryBucket *current_block = block;
-			T *_data = (T*)block->data;
-			while (current_block != NULL && current_block->current_size > 0) {
-				_data = (T*)current_block->data;
-				while (_data < current_block->end_ptr) {
+			assert(block != tfxINVALID);		//bucket array must be initialised
+			tfxU32 current_block = block;
+			T *_data = (T*)allocator->blocks[block].data;
+			while (current_block != tfxINVALID && allocator->blocks[current_block].current_size > 0) {
+				_data = (T*)allocator->blocks[current_block].data;
+				while (_data < allocator->blocks[current_block].end_ptr) {
 					if (*_data == v)
 						return _data;
 					++_data;
 				}
-				current_block = current_block->next_block;
+				current_block = allocator->blocks[current_block].next_block;
 			}
 			return _data;
 		}
 		inline T* find(const T& v, tfxU32 &index) {
-			assert(block);
+			assert(block != tfxINVALID);
 			index = 0;
-			tfxMemoryBucket *current_block = block;
-			T *_data = (T*)block->data;
-			while (current_block != NULL && current_block->current_size > 0) {
-				_data = (T*)current_block->data;
-				while (_data < current_block->end_ptr) {
+			tfxU32 current_block = block;
+			T *_data = (T*)allocator->blocks[block].data;
+			while (current_block != tfxINVALID && allocator->blocks[current_block].current_size > 0) {
+				_data = (T*)allocator->blocks[current_block].data;
+				while (_data < allocator->blocks[current_block].end_ptr) {
 					if (*_data == v)
 						return _data;
 					++index;
 					++_data;
 				}
-				current_block = current_block->next_block;
+				current_block = allocator->blocks[current_block].next_block;
 			}
 			return _data;
 		}
@@ -1605,8 +1720,8 @@ union tfxUInt10bit
 			current_bucket = block;
 		}
 		inline bool EndOfBuckets() {
-			current_bucket = current_bucket->next_block;
-			if (current_bucket == NULL) {
+			current_bucket = allocator->blocks[current_bucket].next_block;
+			if (current_bucket == tfxINVALID) {
 				current_bucket = block;
 				return true;
 			}
@@ -1614,28 +1729,24 @@ union tfxUInt10bit
 		}
 		inline tfxMemoryBucket &NextBlock() {
 			assert(allocator);	//Must assign and allocator before doing anything with a tfxBucketArray
-			return *current_bucket;
+			return allocator->blocks[current_bucket];
 		}
 		inline tfxMemoryBucket &GetFirstBucket() {
 			assert(allocator);	//Must assign an allocator before doing anything with a tfxBucketArray
-			return *block;
+			return allocator->blocks[block];
 		}
 		inline void TrimBuckets() {
-			if (current_size > capacity - current_size)
-				return;		//Nothing to trim
-			tfxMemoryBucket *block = &allocator->FirstBlockWithSpace(block);
-			while (block->current_size == 0 && block->next_block != NULL) {
-				tfxMemoryBucket *prev_block = block;
-				block = block = block->next_block;
-				allocator->free_blocks[allocator->free_block_count++] = &block;
-				prev_block->reset();
+			tfxU32 first_empty_block = allocator->FirstEmptyBlockIndex(block);
+			if (first_empty_block != tfxINVALID) {
+				tfxU32 freed_blocks = allocator->FreeBlocks(first_empty_block);
+				capacity -= freed_blocks * size_of_each_bucket;
+				allocator->CutOffBlock(block, first_empty_block);
 			}
-			block->reset();
 		}
 	};
 
 	template <typename T>
-	static inline tfxBucketArray<T> CreateBucketArray(tfxBucketAllocator *allocator, tfxU32 bucket_size) {
+	static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
 		tfxBucketArray bucket_array(allocator, bucket_size);
 		return bucket_array;
 	}
@@ -3338,8 +3449,6 @@ union tfxUInt10bit
 	bool EndOfProfiles();
 	tfxProfile* NextProfile();
 
-#define tfxINVALID 0xFFFFFFFF
-
 	const tfxU32 tfxMAGIC_NUMBER = '!XFT';
 	const tfxU32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
 	const tfxU32 tfxFILE_VERSION = 1;	//Not doing anything with this yet
@@ -3556,7 +3665,7 @@ union tfxUInt10bit
 		tfxU32 index;
 
 		tfxGraph();
-		tfxGraph(tfxBucketAllocator *node_allocator, tfxU32 bucket_size);
+		tfxGraph(tfxMemoryArenaManager *node_allocator, tfxU32 bucket_size);
 		~tfxGraph();
 
 		tfxAttributeNode* AddNode(float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
@@ -3655,7 +3764,7 @@ union tfxUInt10bit
 		tfxGraph emitter_height;
 		tfxGraph emitter_depth;
 
-		void Initialise(tfxBucketAllocator *allocator, tfxBucketAllocator *value_allocator, tfxU32 bucket_size = 8) {
+		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
 			life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -3732,7 +3841,7 @@ union tfxUInt10bit
 		tfxGraph arc_size;
 		tfxGraph arc_offset;
 
-		void Initialise(tfxBucketAllocator *allocator, tfxBucketAllocator *value_allocator, tfxU32 bucket_size = 8) {
+		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
 			emission_pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emission_yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emission_range.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -3760,6 +3869,21 @@ union tfxUInt10bit
 			arc_offset.lookup.values.allocator = value_allocator;
 		}
 
+		void Free() {
+			emission_pitch.Free();
+			emission_yaw.Free();
+			emission_range.Free();
+			roll.Free();
+			pitch.Free();
+			yaw.Free();
+			splatter.Free();
+			emitter_width.Free();
+			emitter_height.Free();
+			emitter_depth.Free();
+			arc_size.Free();
+			arc_offset.Free();
+		}
+
 	};
 
 	struct tfxBaseAttributes {
@@ -3772,7 +3896,7 @@ union tfxUInt10bit
 		tfxGraph spin;
 		tfxGraph noise_offset;
 
-		void Initialise(tfxBucketAllocator *allocator, tfxBucketAllocator *value_allocator, tfxU32 bucket_size = 8) {
+		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
 			life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -3791,6 +3915,18 @@ union tfxUInt10bit
 			spin.lookup.values.allocator = value_allocator;
 			noise_offset.lookup.values.allocator = value_allocator;
 		}
+
+		void Free() {
+			life.Free();
+			amount.Free();
+			velocity.Free();
+			width.Free();
+			height.Free();
+			weight.Free();
+			spin.Free();
+			noise_offset.Free();
+		}
+
 	};
 
 	struct tfxVariationAttributes {
@@ -3804,7 +3940,7 @@ union tfxUInt10bit
 		tfxGraph noise_offset;
 		tfxGraph noise_resolution;
 
-		void Initialise(tfxBucketAllocator *allocator, tfxBucketAllocator *value_allocator, tfxU32 bucket_size = 8) {
+		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
 			life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -3825,6 +3961,19 @@ union tfxUInt10bit
 			noise_offset.lookup.values.allocator = value_allocator;
 			noise_resolution.lookup.values.allocator = value_allocator;
 		}
+
+		void Free() {
+			life.Free();
+			amount.Free();
+			velocity.Free();
+			width.Free();
+			height.Free();
+			weight.Free();
+			spin.Free();
+			noise_offset.Free();
+			noise_resolution.Free();
+		}
+
 	};
 
 	struct tfxOvertimeAttributes {
@@ -3845,7 +3994,7 @@ union tfxUInt10bit
 		tfxGraph direction;
 		tfxGraph noise_resolution;
 
-		void Initialise(tfxBucketAllocator *allocator, tfxBucketAllocator *value_allocator, tfxU32 bucket_size = 8) {
+		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
 			velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -3879,7 +4028,28 @@ union tfxUInt10bit
 			intensity.lookup.values.allocator = value_allocator;
 			direction.lookup.values.allocator = value_allocator;
 			noise_resolution.lookup.values.allocator = value_allocator;
+
 		}
+
+		void Free() {
+			velocity.Free();
+			width.Free();
+			height.Free();
+			weight.Free();
+			spin.Free();
+			stretch.Free();
+			red.Free();
+			blue.Free();
+			green.Free();
+			blendfactor.Free();
+			velocity_turbulance.Free();
+			direction_turbulance.Free();
+			velocity_adjuster.Free();
+			intensity.Free();
+			direction.Free();
+			noise_resolution.Free();
+		}
+
 	};
 
 	static float(*lookup_overtime_callback)(tfxGraph &graph, float age, float lifetime) = LookupFastOvertime;
@@ -4581,7 +4751,7 @@ union tfxUInt10bit
 		pf.color = p.data.color;
 		pf.intensity = p.data.intensity;
 		pf.image_ptr = properties.image->ptr;
-		pf.image_frame = p.data.image_frame;
+		pf.image_frame = (tfxU32)p.data.image_frame;
 		return pf;
 	}
 
@@ -4799,11 +4969,20 @@ union tfxUInt10bit
 		tfxU32 total_attribute_nodes;
 		tfxU32 total_node_lookup_indexes;
 		tfxU32 total_shapes;
+		tfxU64 required_graph_node_memory;
+		tfxU64 required_graph_lookup_memory;
+		tfxU32 reserved1;
+		tfxU32 reserved2;
+		tfxU32 reserved3;
+		tfxU32 reserved4;
+		tfxU32 reserved5;
+		tfxU32 reserved6;
+		tfxU32 reserved7;
 	};
 
 	struct tfxEffectLibrary {
-		tfxBucketAllocator graph_node_allocator;
-		tfxBucketAllocator graph_lookup_allocator;
+		tfxMemoryArenaManager graph_node_allocator;
+		tfxMemoryArenaManager graph_lookup_allocator;
 		tfxStorageMap<tfxEffectEmitter*> effect_paths;
 		tfxvec<tfxEffectEmitter> effects;
 		tfxStorageMap<tfxImageData> particle_shapes;
@@ -5322,7 +5501,8 @@ union tfxUInt10bit
 	}
 	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
-	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr);
+	tfxEffectLibraryStats CreateLibraryStats(tfxEffectLibrary &lib);
+	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr, bool read_only = true);
 
 	//---
 	//Prepare an effect template for setting up function call backs to customise the behaviour of the effect in realtime
