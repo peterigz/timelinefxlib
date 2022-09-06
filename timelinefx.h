@@ -3655,6 +3655,7 @@ union tfxUInt10bit
 
 	struct tfxGraph {
 		//The ratio to transalte graph frame/value to grid x/y coords on a graph editor
+
 		tfxVec2 min;
 		tfxVec2 max;
 		tfxGraphPreset graph_preset;
@@ -3703,6 +3704,7 @@ union tfxUInt10bit
 		bool IsGlobalGraph();
 		bool IsAngleGraph();
 		void MultiplyAllValues(float scalar);
+		void CopyToNoLookups(tfxGraph *graph);
 
 	};
 
@@ -3884,6 +3886,21 @@ union tfxUInt10bit
 			arc_offset.Free();
 		}
 
+		void CopyToNoLookups(tfxPropertyAttributes *dst) {
+			emission_pitch.CopyToNoLookups(&dst->emission_pitch);
+			emission_yaw.CopyToNoLookups(&dst->emission_yaw);
+			emission_range.CopyToNoLookups(&dst->emission_range);
+			roll.CopyToNoLookups(&dst->roll);
+			pitch.CopyToNoLookups(&dst->pitch);
+			yaw.CopyToNoLookups(&dst->yaw);
+			splatter.CopyToNoLookups(&dst->splatter);
+			emitter_width.CopyToNoLookups(&dst->emitter_width);
+			emitter_height.CopyToNoLookups(&dst->emitter_height);
+			emitter_depth.CopyToNoLookups(&dst->emitter_depth);
+			arc_size.CopyToNoLookups(&dst->arc_size);
+			arc_offset.CopyToNoLookups(&dst->arc_offset);
+		}
+
 	};
 
 	struct tfxBaseAttributes {
@@ -3925,6 +3942,17 @@ union tfxUInt10bit
 			weight.Free();
 			spin.Free();
 			noise_offset.Free();
+		}
+
+		void CopyToNoLookups(tfxBaseAttributes *dst) {
+			life.CopyToNoLookups(&dst->life);
+			amount.CopyToNoLookups(&dst->amount);
+			velocity.CopyToNoLookups(&dst->velocity);
+			width.CopyToNoLookups(&dst->width);
+			height.CopyToNoLookups(&dst->height);
+			weight.CopyToNoLookups(&dst->weight);
+			spin.CopyToNoLookups(&dst->spin);
+			noise_offset.CopyToNoLookups(&dst->noise_offset);
 		}
 
 	};
@@ -3972,6 +4000,18 @@ union tfxUInt10bit
 			spin.Free();
 			noise_offset.Free();
 			noise_resolution.Free();
+		}
+
+		void CopyToNoLookups(tfxVariationAttributes *dst) {
+			life.CopyToNoLookups(&dst->life);
+			amount.CopyToNoLookups(&dst->amount);
+			velocity.CopyToNoLookups(&dst->velocity);
+			width.CopyToNoLookups(&dst->width);
+			height.CopyToNoLookups(&dst->height);
+			weight.CopyToNoLookups(&dst->weight);
+			spin.CopyToNoLookups(&dst->spin);
+			noise_offset.CopyToNoLookups(&dst->noise_offset);
+			noise_resolution.CopyToNoLookups(&dst->noise_resolution);
 		}
 
 	};
@@ -4050,6 +4090,46 @@ union tfxUInt10bit
 			noise_resolution.Free();
 		}
 
+		void CopyToNoLookups(tfxOvertimeAttributes *dst) {
+			velocity.CopyToNoLookups(&dst->velocity);
+			width.CopyToNoLookups(&dst->width);
+			height.CopyToNoLookups(&dst->height);
+			weight.CopyToNoLookups(&dst->weight);
+			spin.CopyToNoLookups(&dst->spin);
+			stretch.CopyToNoLookups(&dst->stretch);
+			red.CopyToNoLookups(&dst->red);
+			blue.CopyToNoLookups(&dst->green);
+			green.CopyToNoLookups(&dst->blue);
+			blendfactor.CopyToNoLookups(&dst->blendfactor);
+			velocity_turbulance.CopyToNoLookups(&dst->velocity_turbulance);
+			direction_turbulance.CopyToNoLookups(&dst->direction_turbulance);
+			velocity_adjuster.CopyToNoLookups(&dst->velocity_adjuster);
+			intensity.CopyToNoLookups(&dst->intensity);
+			direction.CopyToNoLookups(&dst->direction);
+			noise_resolution.CopyToNoLookups(&dst->noise_resolution);
+		}
+
+	};
+
+	struct tfxEmitterAttributes {
+		tfxPropertyAttributes properties;
+		tfxBaseAttributes base;
+		tfxVariationAttributes variation;
+		tfxOvertimeAttributes overtime;
+
+		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
+			properties.Initialise(allocator, value_allocator, bucket_size);
+			base.Initialise(allocator, value_allocator, bucket_size);
+			variation.Initialise(allocator, value_allocator, bucket_size);
+			overtime.Initialise(allocator, value_allocator, bucket_size);
+		}
+
+		void Free() {
+			properties.Free();
+			base.Free();
+			variation.Free();
+			overtime.Free();
+		}
 	};
 
 	static float(*lookup_overtime_callback)(tfxGraph &graph, float age, float lifetime) = LookupFastOvertime;
@@ -4411,10 +4491,7 @@ union tfxUInt10bit
 		tfxU32 compute_slot_id;
 		//All graphs that the effect uses to lookup attribute values are stored in the library. These variables here are indexes to the array where they're stored
 		tfxU32 global;
-		tfxU32 property;
-		tfxU32 base;
-		tfxU32 variation;
-		tfxU32 overtime;
+		tfxU32 emitter_attributes;
 		//Pointer to the immediate parent
 		tfxEffectEmitter *parent;
 		//Pointer to the next pointer in the particle manager buffer. 
@@ -4990,10 +5067,7 @@ union tfxUInt10bit
 		tfxvec<tfxEmitterProperties> emitter_properties;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
-		tfxvec<tfxPropertyAttributes> property_graphs;
-		tfxvec<tfxBaseAttributes> base_graphs;
-		tfxvec<tfxVariationAttributes> variation_graphs;
-		tfxvec<tfxOvertimeAttributes> overtime_graphs;
+		tfxvec<tfxEmitterAttributes> emitter_attributes;
 		tfxvec<tfxAnimationSettings> animation_settings;
 		tfxvec<tfxPreviewCameraSettings> preview_camera_settings;
 		tfxvec<tfxAttributeNode> all_nodes;
@@ -5005,10 +5079,7 @@ union tfxUInt10bit
 		tfxvec<tfxVec4> graph_min_max;
 
 		tfxvec<tfxU32> free_global_graphs;
-		tfxvec<tfxU32> free_property_graphs;
-		tfxvec<tfxU32> free_base_graphs;
-		tfxvec<tfxU32> free_variation_graphs;
-		tfxvec<tfxU32> free_overtime_graphs;
+		tfxvec<tfxU32> free_emitter_attributes;
 		tfxvec<tfxU32> free_animation_settings;
 		tfxvec<tfxU32> free_preview_camera_settings;
 		tfxvec<tfxU32> free_properties;
@@ -5029,10 +5100,7 @@ union tfxUInt10bit
 			effect_infos(tfxCONSTRUCTOR_VEC_INIT("effect_infos")),
 			emitter_properties(tfxCONSTRUCTOR_VEC_INIT("emitter_properties")),
 			global_graphs(tfxCONSTRUCTOR_VEC_INIT("global_graphs")),
-			property_graphs(tfxCONSTRUCTOR_VEC_INIT("property_graphs")),
-			base_graphs(tfxCONSTRUCTOR_VEC_INIT("base_graphs")),
-			variation_graphs(tfxCONSTRUCTOR_VEC_INIT("variation_graphs")),
-			overtime_graphs(tfxCONSTRUCTOR_VEC_INIT("overtime_graphs")),
+			emitter_attributes(tfxCONSTRUCTOR_VEC_INIT("emitter_attributes")),
 			animation_settings(tfxCONSTRUCTOR_VEC_INIT("animation_settings")),
 			preview_camera_settings(tfxCONSTRUCTOR_VEC_INIT("preview_camera_settings")),
 			all_nodes(tfxCONSTRUCTOR_VEC_INIT("all_nodes")),
@@ -5042,10 +5110,7 @@ union tfxUInt10bit
 			shape_data(tfxCONSTRUCTOR_VEC_INIT("shape_data")),
 			graph_min_max(tfxCONSTRUCTOR_VEC_INIT("graph_min_max")),
 			free_global_graphs(tfxCONSTRUCTOR_VEC_INIT("free_global_graphs")),
-			free_property_graphs(tfxCONSTRUCTOR_VEC_INIT("free_property_graphs")),
-			free_base_graphs(tfxCONSTRUCTOR_VEC_INIT("free_base_graphs")),
-			free_variation_graphs(tfxCONSTRUCTOR_VEC_INIT("free_variation_graphs")),
-			free_overtime_graphs(tfxCONSTRUCTOR_VEC_INIT("free_overtime_graphs")),
+			free_emitter_attributes(tfxCONSTRUCTOR_VEC_INIT("free_emitter_attributes")),
 			free_animation_settings(tfxCONSTRUCTOR_VEC_INIT("free_animation_settings")),
 			free_preview_camera_settings(tfxCONSTRUCTOR_VEC_INIT("free_preview_camera_settings")),
 			free_properties(tfxCONSTRUCTOR_VEC_INIT("free_properties")),
@@ -5118,22 +5183,13 @@ union tfxUInt10bit
 		tfxEffectEmitter* MoveUp(tfxEffectEmitter &effect);
 		tfxEffectEmitter* MoveDown(tfxEffectEmitter &effect);
 		tfxU32 AddGlobal();
-		tfxU32 AddProperty();
-		tfxU32 AddBase();
-		tfxU32 AddVariation();
-		tfxU32 AddOvertime();
+		tfxU32 AddEmitterAttributes();
 		void FreeGlobal(tfxU32 index);
-		void FreeProperty(tfxU32 index);
-		void FreeBase(tfxU32 index);
-		void FreeVariation(tfxU32 index);
-		void FreeOvertime(tfxU32 index);
+		void FreeEmitterAttributes(tfxU32 index);
 		void FreeProperties(tfxU32 index);
 		void FreeInfos(tfxEffectEmitter &e);
 		tfxU32 CloneGlobal(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneProperty(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneBase(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneVariation(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneOvertime(tfxU32 source_index, tfxEffectLibrary *destination_library);
+		tfxU32 CloneEmitterAttributes(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneInfo(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneProperties(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		void AddEmitterGraphs(tfxEffectEmitter& effect);
