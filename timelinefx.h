@@ -2950,6 +2950,7 @@ union tfxUInt10bit
 		inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
 		inline bool operator!=(const tfxStr string) { return strcmp(c_str(), string.c_str()); }
 		inline const char *strbuffer() const { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
+		inline char *strbuffer() { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
 		inline const char *c_str() const { return current_size ? strbuffer() : ""; }
 		int Find(const char *needle);
 		tfxStr Lower();

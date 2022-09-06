@@ -887,7 +887,7 @@ namespace tfx {
 		}
 
 		resize(needed_sz);
-		FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
+		FormatString(&strbuffer()[write_off - 1], (size_t)len + 1, format, args_copy);
 		va_end(args_copy);
 
 		va_end(args);
