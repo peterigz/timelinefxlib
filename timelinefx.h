@@ -422,12 +422,8 @@ union tfxUInt10bit
 	typedef tfxU32 tfxAngleSettingFlags;
 	typedef tfxU32 tfxEffectManagerFlags;
 	typedef tfxU32 tfxErrorFlags;
+	typedef tfxU32 tfxEffectCloningFlags;
 
-	//Returning anything over 0 means that effects were loaded ok
-	//-1 to -4 = Package not in correct format
-	//-5 = Data in package could not be loaded
-	//-6 = ShapeLoader did not add a pointer into the image data
-	//-7 = A shape image could not be loaded from the package
 	enum tfxErrorFlags_ {
 		tfxErrorCode_success = 0,
 		tfxErrorCode_incorrect_package_format = 1 << 0,
@@ -442,6 +438,14 @@ union tfxUInt10bit
 		tfxErrorCode_no_inventory = 1 << 9,
 		tfxErrorCode_invalid_inventory = 1 << 10
 
+	};
+
+	enum tfxEffectCloningFlags_ {
+		tfxEffectCloningFlags_none = 0,
+		tfxEffectCloningFlags_keep_user_data = 1 << 0,
+		tfxEffectCloningFlags_force_clone_global = 1 << 1,
+		tfxEffectCloningFlags_clone_graphs = 1 << 2,
+		tfxEffectCloningFlags_compile_graphs = 1 << 3
 	};
 
 	enum tfxParticleManagerModes {
@@ -1032,6 +1036,7 @@ union tfxUInt10bit
 		tfxU32 unit_size;
 		tfxU32 capacity = 0;
 		tfxU32 current_size = 0;
+		tfxU32 arena_index;
 
 		inline void*           begin() { return data; }
 		inline const void*     begin() const { return data; }
@@ -1225,12 +1230,14 @@ union tfxUInt10bit
 			return blocks[block];
 		}
 
-		inline bool FirstArenaWithEnoughSpace(size_t required_space_in_bytes, tfxMemoryArena **found_arena) {
+		inline bool FirstArenaWithEnoughSpace(size_t required_space_in_bytes, tfxMemoryArena **found_arena, tfxU32 &arena_index) {
+			arena_index = 0;
 			for (auto &arena : arenas) {
 				if (arena.memory_remaining >= required_space_in_bytes) {
 					*found_arena = &arena;
 					return true;
 				}
+				++arena_index;
 			}
 			*found_arena = NULL;
 			return false;
@@ -1355,7 +1362,7 @@ union tfxUInt10bit
 			tfxU32 found_index = 0;
 			tfxU32 i = 0;
 			for (auto free_block : allocator.free_blocks) {
-				if (size_diff > allocator.blocks[free_block].capacity && allocator.blocks[free_block].capacity_in_bytes() >= size_in_bytes) {
+				if (allocator.blocks[free_block].capacity_in_bytes() >= size_in_bytes && allocator.blocks[free_block].capacity_in_bytes() - size_in_bytes < size_diff) {
 					size_diff = allocator.blocks[free_block].capacity_in_bytes() - size_in_bytes;
 					best_fit = free_block;
 					found_free_block = free_block;
@@ -1366,14 +1373,31 @@ union tfxUInt10bit
 			if (best_fit != tfxINVALID && size_diff != tfxMAX_UINT && (size_diff <= allocator.size_diff_threshold)) {
 				allocator.free_blocks[found_index] = allocator.free_blocks[allocator.free_blocks.current_size - 1];
 				allocator.free_blocks.pop();
+				allocator.FreeBlocks(block);
 				block = best_fit;
 				return true;
 			}
 		}
 
+		//If the block exists and it's at the end of the memory space then just pop it off rather then adding it to free blocks
+		if (block != tfxINVALID) {
+			tfxU32 old_block_size = allocator.blocks[block].capacity;
+			void *end_ptr = (T*)allocator.blocks[block].data + old_block_size;
+			if (block == allocator.blocks.current_size - 1 && allocator.arenas[allocator.blocks[block].arena_index].end_of_allocated == end_ptr) {
+				allocator.arenas[allocator.blocks[block].arena_index].end_of_allocated = (T*)allocator.arenas[allocator.blocks[block].arena_index].end_of_allocated - old_block_size;
+				allocator.arenas[allocator.blocks[block].arena_index].memory_remaining += old_block_size * sizeof(T);
+				allocator.blocks.pop();
+			}
+			else {
+				allocator.FreeBlocks(block);
+			}
+		}
+
 		tfxMemoryArena *arena;
-		if (!allocator.FirstArenaWithEnoughSpace(size_in_bytes, &arena)) {
+		tfxU32 arena_index = 0;
+		if (!allocator.FirstArenaWithEnoughSpace(size_in_bytes, &arena, arena_index)) {
 			arena = allocator.AddArena();
+			arena_index = allocator.arenas.current_size - 1;
 		}
 
 		tfxMemoryBucket new_block;
@@ -1381,6 +1405,7 @@ union tfxUInt10bit
 		new_block.data = arena->end_of_allocated;
 		new_block.end_ptr = arena->end_of_allocated;
 		new_block.capacity = block_size;
+		new_block.arena_index = arena_index;
 		arena->end_of_allocated = (T*)arena->end_of_allocated + block_size;
 		arena->memory_remaining -= size_in_bytes;
 		allocator.blocks.push_back(new_block);
@@ -1407,9 +1432,11 @@ union tfxUInt10bit
 			}
 		}
 
-		tfxMemoryArena *arena = NULL;
-		if (!allocator.FirstArenaWithEnoughSpace(size_in_bytes, &arena)) {
+		tfxMemoryArena *arena;
+		tfxU32 arena_index = 0;
+		if (!allocator.FirstArenaWithEnoughSpace(size_in_bytes, &arena, arena_index)) {
 			arena = allocator.AddArena();
+			arena_index = allocator.arenas.current_size - 1;
 		}
 
 		tfxMemoryBucket new_block;
@@ -1417,6 +1444,7 @@ union tfxUInt10bit
 		new_block.data = arena->end_of_allocated;
 		new_block.end_ptr = arena->end_of_allocated;
 		new_block.capacity = bucket_size;
+		new_block.arena_index = arena_index;
 		arena->end_of_allocated = (T*)arena->end_of_allocated + bucket_size;
 		arena->memory_remaining -= size_in_bytes;
 		allocator.blocks.push_back(new_block);
@@ -1448,9 +1476,9 @@ union tfxUInt10bit
 	template <typename T>
 	struct tfxArray {
 		tfxMemoryArenaManager *allocator;			//Pointer to the allocator that manages the memory and blocks of that memory
-		T *block;									//The first block in the allocator
-		tfxU32 block_index;
-		tfxU32 capacity;							//The total capacity of the range vec
+		T *block;									//Pointer to the data storing the array. This will be somewhere in a tfxMemoryArena
+		tfxU32 block_index;							//This index of the block of memory referenced in allocator->blocks
+		tfxU32 capacity;							//The total capacity of the array in units of T
 
 		tfxArray() : allocator(NULL) { block = NULL; capacity = 0; block_index = tfxINVALID; }
 		tfxArray(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; capacity = 0; reserve(size); }
@@ -1503,7 +1531,6 @@ union tfxUInt10bit
 			}
 			if (keep_contents)
 				allocator->CopyBlockToBlock(current_block, block_index);
-			allocator->FreeBlocks(current_block);
 			capacity = size;
 			block = (T*)allocator->blocks[block_index].data;
 			return true;
@@ -3718,7 +3745,7 @@ union tfxUInt10bit
 	float GetDistance(float fromx, float fromy, float tox, float toy);
 	float GetVectorAngle(float, float);
 	static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
-	void CompileGraph(tfxGraph &graph);
+	void CompileGraph(tfxGraph &graph, bool debug = false);
 	void CompileGraphOvertime(tfxGraph &graph);
 	float GetMaxLife(tfxEffectEmitter &e);
 	float GetMaxAmount(tfxEffectEmitter &e);
@@ -3826,6 +3853,27 @@ union tfxUInt10bit
 			emitter_width.Free();
 			emitter_height.Free();
 			emitter_depth.Free();
+		}
+
+		void CopyToNoLookups(tfxGlobalAttributes *dst) {
+			life.CopyToNoLookups(&dst->life);
+			amount.CopyToNoLookups(&dst->amount);
+			velocity.CopyToNoLookups(&dst->velocity);
+			width.CopyToNoLookups(&dst->width);
+			height.CopyToNoLookups(&dst->height);
+			weight.CopyToNoLookups(&dst->weight);
+			spin.CopyToNoLookups(&dst->spin);
+			stretch.CopyToNoLookups(&dst->stretch);
+			overal_scale.CopyToNoLookups(&dst->overal_scale);
+			intensity.CopyToNoLookups(&dst->intensity);
+			frame_rate.CopyToNoLookups(&dst->frame_rate);
+			splatter.CopyToNoLookups(&dst->splatter);
+			roll.CopyToNoLookups(&dst->roll);
+			pitch.CopyToNoLookups(&dst->pitch);
+			yaw.CopyToNoLookups(&dst->yaw);
+			emitter_width.CopyToNoLookups(&dst->emitter_width);
+			emitter_height.CopyToNoLookups(&dst->emitter_height);
+			emitter_depth.CopyToNoLookups(&dst->emitter_depth);
 		}
 
 	};
@@ -4594,7 +4642,7 @@ union tfxUInt10bit
 
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
-		void Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxEffectLibrary *destination_library, bool keep_user_data = false, bool force_clone_global = false);
+		void Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxEffectLibrary *destination_library, tfxEffectCloningFlags flags = 0);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -5204,11 +5252,13 @@ union tfxUInt10bit
 		void UpdateComputeNodes();
 		void CompileAllGraphs();
 		void CompileGlobalGraph(tfxU32 index);
+		void CompileEmitterGraphs(tfxU32 index);
 		void CompilePropertyGraph(tfxU32 index);
 		void CompileBaseGraph(tfxU32 index);
 		void CompileVariationGraph(tfxU32 index);
 		void CompileOvertimeGraph(tfxU32 index);
 		void CompileColorGraphs(tfxU32 index);
+		void CompileGraphsOfEffect(tfxEffectEmitter &effect, tfxU32 depth = 0);
 		void SetMinMaxData();
 		float LookupPreciseOvertimeNodeList(tfxGraphType graph_type, int index, float age, float life);
 		float LookupPreciseNodeList(tfxGraphType graph_type, int index, float age);
