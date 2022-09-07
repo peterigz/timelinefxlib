@@ -1,4 +1,5 @@
 //#define tfxENABLE_PROFILING
+#define tfxTRACK_MEMORY
 /*
 	Timeline FX C++ library
 
@@ -947,14 +948,18 @@ union tfxUInt10bit
 	//Ring/Circular buffer
 	template<typename T>
 	struct tfxring {
+#ifdef tfxTRACK_MEMORY
+		char name[64];
+#endif
 		T* data;
 		unsigned int current_size;
 		unsigned int capacity;
 		unsigned int start_index;
 		int last_bump;
 
-		inline tfxring() { start_index = current_size = capacity = last_bump = 0; data = NULL; }
-		inline tfxring(unsigned int qty) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); }
+		inline tfxring() { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME; }
+		inline tfxring(const char *name_init) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
+		inline tfxring(unsigned int qty) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); tfxINIT_VEC_NAME; }
 		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 
 		inline bool			empty() { return current_size == 0; }
@@ -999,7 +1004,7 @@ union tfxUInt10bit
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         reserve(tfxU32 new_capacity) {
 			if (new_capacity <= capacity) return;
-			T* new_data = (T*)malloc((size_t)new_capacity * sizeof(T));
+			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T));
 			if (data) {
 				if (last_index() < start_index) {
 					memcpy(new_data, data + start_index, (size_t)(capacity - start_index) * sizeof(T));
@@ -1324,6 +1329,20 @@ union tfxUInt10bit
 			}
 			return size;
 		}
+
+		void CheckForOverlappingBlocks() {
+			tfxMemoryBucket *last_block = NULL;
+			for (auto &block : blocks) {
+				if (last_block) {
+					void *last_end = (char*)last_block->data + last_block->capacity_in_bytes();
+					const ptrdiff_t offset = (char*)last_end - (char*)block.data;
+					if (offset < 0) {
+						printf("Overlapping memory blocks found. %zi", offset);
+					}
+				}
+				last_block = &block;
+			}
+		}
 	};
 
 	inline tfxU64 NearestMultiple(tfxU64 numToRound, tfxU64 multiple)
@@ -1358,28 +1377,27 @@ union tfxUInt10bit
 		if (allocator.free_blocks.current_size > 0) {
 			size_t size_diff = tfxMAX_UINT;
 			tfxU32 best_fit = tfxINVALID;
-			tfxU32 found_free_block;
 			tfxU32 found_index = 0;
 			tfxU32 i = 0;
 			for (auto free_block : allocator.free_blocks) {
 				if (allocator.blocks[free_block].capacity_in_bytes() >= size_in_bytes && allocator.blocks[free_block].capacity_in_bytes() - size_in_bytes < size_diff) {
 					size_diff = allocator.blocks[free_block].capacity_in_bytes() - size_in_bytes;
 					best_fit = free_block;
-					found_free_block = free_block;
 					found_index = i;
+					if (size_diff == 0)
+						break;
 				}
 				++i;
 			}
 			if (best_fit != tfxINVALID && size_diff != tfxMAX_UINT && (size_diff <= allocator.size_diff_threshold)) {
-				allocator.free_blocks[found_index] = allocator.free_blocks[allocator.free_blocks.current_size - 1];
-				allocator.free_blocks.pop();
+				allocator.free_blocks[found_index] = allocator.free_blocks.pop_back();
 				allocator.FreeBlocks(block);
 				block = best_fit;
 				return true;
 			}
 		}
 
-		//If the block exists and it's at the end of the memory space then just pop it off rather then adding it to free blocks
+		//If the block exists and it's at the end of the area then don't add it to the free list, instead just remove the block and add the new on the end
 		if (block != tfxINVALID) {
 			tfxU32 old_block_size = allocator.blocks[block].capacity;
 			void *end_ptr = (T*)allocator.blocks[block].data + old_block_size;
@@ -1419,16 +1437,17 @@ union tfxUInt10bit
 		tfxU32 size_in_bytes = bucket_size * sizeof(T);
 		assert(bucket_size > 1 && size_in_bytes > 0);		//bucket size must be greater than 1
 		if (allocator.free_blocks.current_size > 0) {
-			for (auto &free_block : allocator.free_blocks) {
+			tfxU32 i = 0;
+			for (auto free_block : allocator.free_blocks) {
 				if (allocator.blocks[free_block].capacity * allocator.blocks[free_block].unit_size == size_in_bytes) {
-					free_block = allocator.free_blocks.back();
-					allocator.free_blocks.pop();
+					allocator.free_blocks[i] = allocator.free_blocks.pop_back();
 					if (block == tfxINVALID)
 						block = free_block;
 					else
 						allocator.LastBlock(block).next_block = free_block;
 					return true;
 				}
+				++i;
 			}
 		}
 
@@ -1502,7 +1521,7 @@ union tfxUInt10bit
 			return *this;
 		}
 
-		inline void         free() { if (block != NULL) { capacity = capacity = 0; allocator->FreeBlocks(block_index); block = NULL; } }
+		inline void         free() { if (block != NULL) { capacity = capacity = 0; allocator->FreeBlocks(block_index); block = NULL; block_index = tfxINVALID; } }
 		inline T*           begin() { return block; }
 		inline const T*     begin() const { return block; }
 		inline T*           end() { return block + capacity; }
@@ -3745,7 +3764,7 @@ union tfxUInt10bit
 	float GetDistance(float fromx, float fromy, float tox, float toy);
 	float GetVectorAngle(float, float);
 	static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
-	void CompileGraph(tfxGraph &graph, bool debug = false);
+	void CompileGraph(tfxGraph &graph);
 	void CompileGraphOvertime(tfxGraph &graph);
 	float GetMaxLife(tfxEffectEmitter &e);
 	float GetMaxAmount(tfxEffectEmitter &e);
@@ -4128,8 +4147,8 @@ union tfxUInt10bit
 			spin.Free();
 			stretch.Free();
 			red.Free();
-			blue.Free();
 			green.Free();
+			blue.Free();
 			blendfactor.Free();
 			velocity_turbulance.Free();
 			direction_turbulance.Free();
@@ -4147,8 +4166,8 @@ union tfxUInt10bit
 			spin.CopyToNoLookups(&dst->spin);
 			stretch.CopyToNoLookups(&dst->stretch);
 			red.CopyToNoLookups(&dst->red);
-			blue.CopyToNoLookups(&dst->green);
-			green.CopyToNoLookups(&dst->blue);
+			green.CopyToNoLookups(&dst->green);
+			blue.CopyToNoLookups(&dst->blue);
 			blendfactor.CopyToNoLookups(&dst->blendfactor);
 			velocity_turbulance.CopyToNoLookups(&dst->velocity_turbulance);
 			direction_turbulance.CopyToNoLookups(&dst->direction_turbulance);
@@ -4650,6 +4669,7 @@ union tfxUInt10bit
 		bool IsFiniteEffect();
 		void FlagAs3D(bool flag);
 		bool Is3DEffect();
+		tfxU32 CountAllLookupValues();
 		tfxParticleManagerModes GetRequiredParticleManagerMode();
 
 	};
@@ -4883,10 +4903,6 @@ union tfxUInt10bit
 
 	struct tfxEffect {
 		tfxEffectEmitter *effect_ptr;
-	};
-
-	struct tfxParticleBank {
-		tfxvec<tfxvec<tfxParticle>> particle_banks;
 	};
 
 	//Use the particle manager to add compute effects to your scene 
@@ -5236,7 +5252,9 @@ union tfxUInt10bit
 		void FreeGlobal(tfxU32 index);
 		void FreeEmitterAttributes(tfxU32 index);
 		void FreeProperties(tfxU32 index);
-		void FreeInfos(tfxEffectEmitter &e);
+		void FreeInfo(tfxU32 index);
+		tfxU32 CountGlobalLookUpValues(tfxU32 index);
+		tfxU32 CountEmitterLookUpValues(tfxU32 index);
 		tfxU32 CloneGlobal(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneEmitterAttributes(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneInfo(tfxU32 source_index, tfxEffectLibrary *destination_library);

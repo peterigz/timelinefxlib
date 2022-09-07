@@ -3666,6 +3666,8 @@ namespace tfx {
 					stack.push_back(sub);
 				}
 				current.GetInfo().sub_effectors.clear();
+				common.library->FreeProperties(current.property_index);
+				common.library->FreeInfo(current.info_index);
 			}
 		}
 
@@ -3695,7 +3697,8 @@ namespace tfx {
 				}
 				else {
 					clone.global = common.library->CloneGlobal(root_parent->global, destination_library);
-					clone.common.library->CompileGlobalGraph(clone.global);
+					if(flags & tfxEffectCloningFlags_compile_graphs)
+						clone.common.library->CompileGlobalGraph(clone.global);
 				}
 			}
 		}
@@ -3729,6 +3732,7 @@ namespace tfx {
 				clone.AddEffect(effect_copy);
 			}
 		}
+
 	}
 
 	bool PrepareEffectTemplate(tfxEffectLibrary &library, const char *name, tfxEffectTemplate &effect_template) {
@@ -3875,6 +3879,20 @@ namespace tfx {
 			common.library->emitter_attributes[emitter_attributes].overtime.direction.Free();
 			common.library->emitter_attributes[emitter_attributes].overtime.noise_resolution.Free();
 		}
+	}
+
+	tfxU32 tfxEffectEmitter::CountAllLookupValues() {
+		tfxU32 count = 0;
+		if (type == tfxEffectType) {
+			count += common.library->CountGlobalLookUpValues(global);
+			for (auto &emitter : GetInfo().sub_effectors) {
+				count += common.library->CountEmitterLookUpValues(emitter.emitter_attributes);
+			}
+		}
+		else if (type = tfxEmitterType) {
+			count += common.library->CountEmitterLookUpValues(emitter_attributes);
+		}
+		return count;
 	}
 
 	void tfxEffectEmitter::CompileGraphs() {
@@ -4177,9 +4195,89 @@ namespace tfx {
 		assert(index < free_properties.size());
 		free_properties.push_back(index);
 	}
-	void tfxEffectLibrary::FreeInfos(tfxEffectEmitter &e) {
-		assert(e.info_index < free_infos.size());
-		free_infos.push_back(e.info_index);
+	void tfxEffectLibrary::FreeInfo(tfxU32 index) {
+		assert(index < free_infos.size());
+		free_infos.push_back(index);
+	}
+
+	tfxU32 tfxEffectLibrary::CountGlobalLookUpValues(tfxU32 index) {
+		auto &global = global_graphs[index];
+		tfxU32 count = 0;
+		count += global.life.lookup.values.capacity;
+		count += global.amount.lookup.values.capacity;
+		count += global.velocity.lookup.values.capacity;
+		count += global.width.lookup.values.capacity;
+		count += global.height.lookup.values.capacity;
+		count += global.weight.lookup.values.capacity;
+		count += global.spin.lookup.values.capacity;
+		count += global.stretch.lookup.values.capacity;
+		count += global.overal_scale.lookup.values.capacity;
+		count += global.intensity.lookup.values.capacity;
+		count += global.frame_rate.lookup.values.capacity;
+		count += global.splatter.lookup.values.capacity;
+		count += global.roll.lookup.values.capacity;
+		count += global.pitch.lookup.values.capacity;
+		count += global.yaw.lookup.values.capacity;
+		count += global.emitter_width.lookup.values.capacity;
+		count += global.emitter_height.lookup.values.capacity;
+		count += global.emitter_depth.lookup.values.capacity;
+		return count;
+	}
+
+	tfxU32 tfxEffectLibrary::CountEmitterLookUpValues(tfxU32 index) {
+		auto &attributes = emitter_attributes[index];
+		tfxU32 count = 0;
+
+		count += attributes.properties.emission_pitch.lookup.values.capacity;
+		count += attributes.properties.emission_yaw.lookup.values.capacity;
+		count += attributes.properties.emission_range.lookup.values.capacity;
+		count += attributes.properties.roll.lookup.values.capacity;
+		count += attributes.properties.pitch.lookup.values.capacity;
+		count += attributes.properties.yaw.lookup.values.capacity;
+		count += attributes.properties.splatter.lookup.values.capacity;
+		count += attributes.properties.emitter_width.lookup.values.capacity;
+		count += attributes.properties.emitter_height.lookup.values.capacity;
+		count += attributes.properties.emitter_depth.lookup.values.capacity;
+		count += attributes.properties.arc_size.lookup.values.capacity;
+		count += attributes.properties.arc_offset.lookup.values.capacity;
+
+		count += attributes.base.life.lookup.values.capacity;
+		count += attributes.base.amount.lookup.values.capacity;
+		count += attributes.base.velocity.lookup.values.capacity;
+		count += attributes.base.width.lookup.values.capacity;
+		count += attributes.base.height.lookup.values.capacity;
+		count += attributes.base.weight.lookup.values.capacity;
+		count += attributes.base.spin.lookup.values.capacity;
+		count += attributes.base.noise_offset.lookup.values.capacity;
+
+		count += attributes.variation.life.lookup.values.capacity;
+		count += attributes.variation.amount.lookup.values.capacity;
+		count += attributes.variation.velocity.lookup.values.capacity;
+		count += attributes.variation.width.lookup.values.capacity;
+		count += attributes.variation.height.lookup.values.capacity;
+		count += attributes.variation.weight.lookup.values.capacity;
+		count += attributes.variation.spin.lookup.values.capacity;
+		count += attributes.variation.noise_offset.lookup.values.capacity;
+		count += attributes.variation.noise_resolution.lookup.values.capacity;
+
+		count += attributes.overtime.velocity.lookup.values.capacity;
+		count += attributes.overtime.width.lookup.values.capacity;
+		count += attributes.overtime.height.lookup.values.capacity;
+		count += attributes.overtime.weight.lookup.values.capacity;
+		count += attributes.overtime.spin.lookup.values.capacity;
+		count += attributes.overtime.stretch.lookup.values.capacity;
+		count += attributes.overtime.red.lookup.values.capacity;
+		count += attributes.overtime.green.lookup.values.capacity;
+		count += attributes.overtime.blue.lookup.values.capacity;
+		count += attributes.overtime.blendfactor.lookup.values.capacity;
+		count += attributes.overtime.velocity_turbulance.lookup.values.capacity;
+		count += attributes.overtime.direction_turbulance.lookup.values.capacity;
+		count += attributes.overtime.velocity_adjuster.lookup.values.capacity;
+		count += attributes.overtime.intensity.lookup.values.capacity;
+		count += attributes.overtime.direction.lookup.values.capacity;
+		count += attributes.overtime.noise_resolution.lookup.values.capacity;
+
+		return count;
 	}
 
 	tfxU32 tfxEffectLibrary::CloneGlobal(tfxU32 source_index, tfxEffectLibrary *destination_library) {
@@ -5300,6 +5398,7 @@ namespace tfx {
 		graph->effector = effector;
 		graph->nodes = nodes;
 		graph->index = index;
+		graph->lookup.life = lookup.life;
 	}
 
 	float tfxAttributeNode::GetX() {
@@ -6323,11 +6422,9 @@ namespace tfx {
 		return tfxVec2(0.1f, 0.1f);
 	}
 
-	void CompileGraph(tfxGraph &graph, bool debug) {
+	void CompileGraph(tfxGraph &graph) {
 		float last_frame = graph.GetLastFrame();
 		graph.lookup.last_frame = tfxU32(last_frame / tfxLOOKUP_FREQUENCY);
-		if(debug)
-			printf("resize amount: %i\n", graph.lookup.last_frame + 1);
 		if (graph.lookup.last_frame) {
 			assert(graph.lookup.values.resize(graph.lookup.last_frame + 1));
 			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
@@ -7749,7 +7846,7 @@ return free_slot;
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
 			for (tfxEachLayer) {
-				tfxring<tfxParticle> particles;
+				tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Ordered ring particle list"));
 				particle_banks.push_back(particles);
 				particle_banks.back().reserve(layer_max_values[layer]);
 				particle_banks.push_back(particles);
@@ -7785,7 +7882,7 @@ return free_slot;
 		}
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
-			tfxring<tfxParticle> particles;
+			tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Ordered ring particle list"));
 			for (tfxEachLayer) {
 				particle_banks.push_back(particles);
 				particle_banks.push_back(particles);
@@ -7817,7 +7914,7 @@ return free_slot;
 	void tfxParticleManager::CreateParticleBanksForEachLayer() {
 		FreeParticleBanks();
 		for (tfxEachLayer) {
-			tfxring<tfxParticle> particles;
+			tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Ordered ring particle list"));
 			particle_banks.push_back(particles);
 			particle_banks.back().reserve(max_cpu_particles_per_layer[layer]);
 			particle_banks.push_back(particles);
@@ -7928,7 +8025,7 @@ return free_slot;
 	}
 
 	tfxU32 CreateParticleBank(tfxParticleManager &pm, tfxU32 reserve_amount) {
-		tfxring<tfxParticle> particles;
+		tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Unordered ring particle list"));
 		particles.reserve(reserve_amount);
 		pm.particle_banks.push_back(particles);
 		return pm.particle_banks.current_size - 1;
