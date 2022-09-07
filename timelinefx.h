@@ -759,6 +759,7 @@ union tfxUInt10bit
 
 		tfxLogList log;
 		std::mutex insert_mutex;
+		char last_entry[64];
 
 		//Insert a new T value into the storage
 		void Insert(tfxKey key, const tfxMemoryTrackerEntry &value) {
@@ -774,6 +775,7 @@ union tfxUInt10bit
 				return;
 			} 
 			it->log = value;
+			memcpy(last_entry, value.name, 64);
 		}
 
 		inline tfxMemoryTrackerEntry *At(tfxKey key) {
@@ -4907,9 +4909,10 @@ union tfxUInt10bit
 
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
-		//In ordered mode, emitters get their own list of particles to update
+		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxring<tfxParticle>> particle_banks;
-		tfxStorageMap<tfxvec<tfxEffectEmitter>> expired_emitters;
+		//In unordered mode emitters that expire have their particle banks added here to be reused
+		tfxStorageMap<tfxvec<tfxU32>> free_particle_banks;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
@@ -4992,6 +4995,7 @@ union tfxUInt10bit
 		//have access to the effect if you need it.
 		void AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false);
 		void AddEffect(tfxEffectTemplate &effect);
+		void FreeParticleBank(tfxEffectEmitter &emitter);
 		//Clear all effects and particles in the particle manager
 		void ClearAll(bool free_memory = false);
 		void FreeParticleBanks();
@@ -5074,7 +5078,7 @@ union tfxUInt10bit
 		}
 	};
 
-	tfxU32 CreateParticleBank(tfxParticleManager &pm, tfxU32 reserve_amount = 100);
+	tfxU32 GrabParticleBank(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);

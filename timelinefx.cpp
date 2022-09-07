@@ -1700,7 +1700,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::NoTweenNextUpdate() {
-		tfxvec<tfxEffectEmitter*> stack;
+		tfxvec<tfxEffectEmitter*> stack("Temp Stack (NoTweenNextUpdate)");
 		stack.push_back(this);
 		while (!stack.empty()) {
 			auto &current = stack.pop_back();
@@ -7273,7 +7273,7 @@ namespace tfx {
 				emitter.parent = &effects[buffer][parent_index];
 				emitter.next_ptr = &emitter;
 				if (emitter.particles_index == tfxINVALID && flags & tfxEffectManagerFlags_unorderd) {
-					emitter.particles_index = CreateParticleBank(*this, 1000);
+					emitter.particles_index = GrabParticleBank(*this, emitter.path_hash, 100);
 				}
 				else {
 					emitter.particles_index = properties.layer * 2 + current_pbuff;
@@ -7413,6 +7413,17 @@ return free_slot;
 		return *(static_cast<tfxComputeParticle*>(new_compute_particle_ptr) + new_compute_particle_index++);
 	}
 
+	void tfxParticleManager::FreeParticleBank(tfxEffectEmitter &emitter) {
+		if (free_particle_banks.ValidKey(emitter.path_hash)) {
+			free_particle_banks.At(emitter.path_hash).push_back(emitter.particles_index);
+		}
+		else {
+			tfxvec<tfxU32> new_indexes;
+			new_indexes.push_back(emitter.particles_index);
+			free_particle_banks.Insert(emitter.path_hash, new_indexes);
+		}
+	}
+
 	void tfxParticleManager::Update() {
 		tfxPROFILE;
 		new_compute_particle_index = 0;
@@ -7455,6 +7466,9 @@ return free_slot;
 					e.next_ptr = nullptr;
 					if (flags & tfxEffectManagerFlags_use_compute_shader && e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter)
 						FreeComputeSlot(e.compute_slot_id);
+					if (flags & tfxEffectManagerFlags_unorderd) {
+						FreeParticleBank(e);
+					}
 				}
 			}
 		}
@@ -7988,10 +8002,24 @@ return free_slot;
 			}
 		}
 		if (flags & tfxEffectManagerFlags_unorderd) {
-			//Todo: isn't this a memory leak potentially? Maybe resuse
-			if (free_memory)
+			if (free_memory) {
 				FreeParticleBanks();
-			particle_banks.clear();
+				for (auto &bank : free_particle_banks.data) {
+					bank.free_all();
+				}
+				free_particle_banks.FreeAll();
+			}
+			else {
+				for (auto &bank : particle_banks) {
+					bank.clear();
+				}
+				//particle_banks.clear();
+			}
+			for (auto &e : effects[current_ebuff]) {
+				if (e.type == tfxEmitterType) {
+					FreeParticleBank(e);
+				}
+			}
 		}
 		effects[0].clear();
 		effects[1].clear();
@@ -8024,7 +8052,13 @@ return free_slot;
 		flags |= tfxEffectManagerFlags_update_base_values;
 	}
 
-	tfxU32 CreateParticleBank(tfxParticleManager &pm, tfxU32 reserve_amount) {
+	tfxU32 GrabParticleBank(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount) {
+		if (pm.free_particle_banks.ValidKey(emitter_hash)) {
+			tfxvec<tfxU32> &free_banks = pm.free_particle_banks.At(emitter_hash);
+			if (free_banks.current_size) {
+				return free_banks.pop_back();
+			}
+		}
 		tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Unordered ring particle list"));
 		particles.reserve(reserve_amount);
 		pm.particle_banks.push_back(particles);
