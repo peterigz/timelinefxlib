@@ -1700,7 +1700,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::NoTweenNextUpdate() {
-		tfxvec<tfxEffectEmitter*> stack("Temp Stack (NoTweenNextUpdate)");
+		tmpStack(tfxEffectEmitter*, stack);
 		stack.push_back(this);
 		while (!stack.empty()) {
 			auto &current = stack.pop_back();
@@ -4192,11 +4192,11 @@ namespace tfx {
 		emitter_attributes[index].Free();
 	}
 	void tfxEffectLibrary::FreeProperties(tfxU32 index) {
-		assert(index < free_properties.size());
+		assert(index < emitter_properties.size());
 		free_properties.push_back(index);
 	}
 	void tfxEffectLibrary::FreeInfo(tfxU32 index) {
-		assert(index < free_infos.size());
+		assert(index < effect_infos.size());
 		free_infos.push_back(index);
 	}
 
@@ -9100,6 +9100,11 @@ return free_slot;
 	tfxMemoryTrackerLog tfxMEMORY_TRACKER;
 	char tfxMEMORY_CONTEXT[64];
 	tfxDataTypesDictionary data_types;
+	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+
+	void InitialiseTimelineFX() {
+		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
+	}
 
 	bool EndOfProfiles() {
 		assert(tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code

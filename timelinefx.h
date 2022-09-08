@@ -1031,6 +1031,10 @@ union tfxUInt10bit
 #define tfxMegabyte(Value) (tfxKilobyte(Value)*1024LL)
 #define tfxGigabyte(Value) (tfxMegabyte(Value)*1024LL)
 
+#ifndef tfxSTACK_SIZE
+#define tfxSTACK_SIZE tfxMegabyte(2)
+#endif
+
 	inline tfxU32 IsPowerOf2(tfxU32 v)
 	{
 		return ((v & ~(v - 1)) == v);
@@ -1152,14 +1156,27 @@ union tfxUInt10bit
 			free_blocks.push_back(index);
 		}
 
+		inline void FreeBlock(tfxU32 block) {
+			if (block != tfxINVALID) {
+				if (block == blocks.current_size - 1) {
+					arenas[blocks[block].arena_index].end_of_allocated = blocks[block].data;
+					arenas[blocks[block].arena_index].memory_remaining += blocks[block].capacity_in_bytes();
+					blocks.pop();
+				}
+				else {
+					free_blocks.push_back(block);
+				}
+			}
+		}
+
 		inline tfxU32 FreeBlocks(tfxU32 block) {
 			if (block >= blocks.current_size) return 0;
-			free_blocks.push_back(block);
+			FreeBlock(block);
 			tfxU32 freed_count = 1;
 			while (blocks[block].next_block != tfxINVALID) {
 				tfxU32 prev_block = block;
 				block = blocks[block].next_block;
-				free_blocks.push_back(block);
+				FreeBlock(block);
 				freed_count++;
 				blocks[prev_block].reset();
 			}
@@ -1792,6 +1809,89 @@ union tfxUInt10bit
 			}
 		}
 	};
+
+	template <typename T>
+	struct tfxStack {
+		tfxMemoryArenaManager *allocator;			//Pointer to the allocator that manages the memory and blocks of that memory
+		T *block;									//Pointer to the data storing the array. This will be somewhere in a tfxMemoryArena
+		tfxU32 block_index;							//This index of the block of memory referenced in allocator->blocks
+		tfxU32 capacity;							//The total capacity of the array in units of T
+		tfxU32 current_size;
+
+		tfxStack() : allocator(NULL) { block = NULL; capacity = current_size = 0; block_index = tfxINVALID; }
+		tfxStack(tfxMemoryArenaManager *allocator_init) : allocator(allocator_init) { block = NULL; capacity = current_size = 0; block_index = tfxINVALID; }
+		tfxStack(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; capacity = current_size = 0; reserve(size); block_index = tfxINVALID; }
+		~tfxStack() { free(); }
+
+		inline tfxU32		size() { return capacity; }
+		inline const tfxU32	size() const { return capacity; }
+		inline T&           operator[](tfxU32 i) {
+			assert(i < capacity);		//Index is out of bounds
+			return block[i];
+		}
+		inline const T&     operator[](tfxU32 i) const {
+			assert(i < capacity);		//Index is out of bounds
+			return block[i];
+		}
+		inline tfxArray<T>&		operator=(const tfxArray<T>& src) {
+			if (!allocator)
+				allocator = src.allocator;
+			if (!src.block) return *this;
+			assert(resize(src.capacity));
+			allocator->CopyBlockToBlock(src.block_index, block_index);
+			return *this;
+		}
+
+		inline void         free() { if (block != NULL) { capacity = capacity = 0; allocator->FreeBlock(block_index); block = NULL; block_index = tfxINVALID; } }
+		inline T*           begin() { return block; }
+		inline const T*     begin() const { return block; }
+		inline T*           end() { return block + current_size; }
+		inline const T*     end() const { return block + current_size; }
+		inline bool			empty() { return current_size == 0; }
+		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline T&			pop_back() { 
+			assert(current_size > 0);		//Can't pop back if the stack is empty
+			current_size--; 
+			return block[current_size]; 
+		}
+		inline T&	        push_back(const T& v) {
+			if (current_size == capacity)
+				resize(_grow_capacity(current_size + 1), true);
+			memcpy(&block[current_size], &v, sizeof(v));
+			current_size++; return block[current_size - 1];
+		}
+		inline bool			reserve(tfxU32 size) {
+			assert(allocator);		//Must assign an allocator before doing anything with a tfxBucketArray. Capacity must equal 0
+			assert(capacity == 0);	//Capacity must equal 0 before reserving an array
+			assert(size * sizeof(T) < allocator->arena_size);	//The size of an array must fit into an arena size
+			if (capacity == 0) {
+				if (!Allocate<T>(*allocator, size, block_index)) {
+					return false;
+				}
+				capacity = size;
+				allocator->blocks[block_index].current_size = capacity;
+				allocator->blocks[block_index].end_ptr = (T*)allocator->blocks[block_index].end_ptr + capacity;
+				block = (T*)allocator->blocks[block_index].data;
+			}
+			return true;
+		}
+		inline bool			resize(tfxU32 size, bool keep_contents = false) {
+			assert(allocator);		//Must assign an allocator before doing anything with a tfxBucketArray. Capacity must equal 0
+			if (size == capacity) return true;
+			tfxU32 current_block = block_index;
+			if (!Allocate<T>(*allocator, size, block_index)) {
+				return false;
+			}
+			if (keep_contents && current_block != tfxINVALID)
+				allocator->CopyBlockToBlock(current_block, block_index);
+			capacity = size;
+			block = (T*)allocator->blocks[block_index].data;
+			return true;
+		}
+
+	};
+
+#define tmpStack(type, name) tfxStack<type> name(&tfxSTACK_ALLOCATOR)
 
 	template <typename T>
 	static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
@@ -5419,6 +5519,7 @@ union tfxUInt10bit
 	};
 
 	extern tfxDataTypesDictionary data_types;
+	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 
 	//Internal functions
 	//Some file IO functions
@@ -5615,6 +5716,8 @@ union tfxUInt10bit
 
 	//Get a graph by tfxGraphID
 	tfxGraph &GetGraph(tfxEffectLibrary &library, tfxGraphID &graph_id);
+
+	void InitialiseTimelineFX();
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	void SetUpdateFrequency(float fps);
