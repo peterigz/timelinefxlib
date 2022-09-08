@@ -1251,7 +1251,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::ResetAllBufferSizes() {
-		tfxvec<tfxEffectEmitter*> stack;
+		tmpStack(tfxEffectEmitter*, stack);
 		stack.push_back(this);
 		while (!stack.empty()) {
 			tfxEffectEmitter &current = *stack.pop_back();
@@ -1304,7 +1304,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::UpdateAllBufferSizes() {
-		tfxvec<tfxEffectEmitter*> stack;
+		tmpStack(tfxEffectEmitter*, stack);
 		stack.push_back(this);
 		for (int l = 0; l != tfxLAYERS; ++l) {
 			GetInfo().max_particles[l] = 0;
@@ -1378,7 +1378,7 @@ namespace tfx {
 			float highest_age = 0.f;
 			if (common.library->emitter_attributes[emitter_attributes].base.amount.nodes.size() > 1 || common.library->emitter_attributes[emitter_attributes].variation.amount.nodes.size() > 1 || common.library->global_graphs[parent->global].amount.nodes.size() > 1
 				|| common.library->emitter_attributes[emitter_attributes].base.life.nodes.size() > 1 || common.library->emitter_attributes[emitter_attributes].variation.life.nodes.size() > 1 || common.library->global_graphs[parent->global].life.nodes.size() > 1) {
-				tfxvec<tfxVec2> particles;
+				tmpStack(tfxVec2, particles);
 				float max_frames = std::fmaxf(common.library->emitter_attributes[emitter_attributes].base.amount.GetLastFrame(), common.library->emitter_attributes[emitter_attributes].variation.amount.GetLastFrame());
 				max_frames = std::fmaxf(max_frames, common.library->emitter_attributes[emitter_attributes].base.life.GetLastFrame());
 				max_frames = std::fmaxf(max_frames, common.library->emitter_attributes[emitter_attributes].variation.life.GetLastFrame());
@@ -1710,7 +1710,6 @@ namespace tfx {
 			}
 		}
 	}
-
 
 	float GetEmissionDirection2d(tfxCommon &common, tfxEmitterState &current, tfxEffectEmitter *library_link, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size) {
 		//float (*effect_lookup_callback)(tfxGraph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
@@ -3561,7 +3560,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::CountChildren(int &emitters, int &effects) {
-		tfxvec<tfxEffectEmitter*> stack;
+		tmpStack(tfxEffectEmitter*, stack);
 		stack.push_back(this);
 		emitters = 0;
 		effects = 0;
@@ -3629,7 +3628,7 @@ namespace tfx {
 
 	void tfxEffectEmitter::DeleteEmitter(tfxEffectEmitter *emitter) {
 		tfxEffectLibrary *library = emitter->common.library;
-		tfxvec<tfxEffectEmitter> stack;
+		tmpStack(tfxEffectEmitter, stack);
 		stack.push_back(*emitter);
 		while (stack.size()) {
 			tfxEffectEmitter &current = stack.pop_back();
@@ -3652,7 +3651,7 @@ namespace tfx {
 
 	void tfxEffectEmitter::CleanUp() {
 		if (GetInfo().sub_effectors.size()) {
-			tfxvec<tfxEffectEmitter> stack;
+			tmpStack(tfxEffectEmitter, stack);
 			stack.push_back(*this);
 			while (stack.size()) {
 				tfxEffectEmitter current = stack.pop_back();
@@ -4453,7 +4452,7 @@ namespace tfx {
 	void tfxEffectLibrary::UpdateComputeNodes() {
 		tfxU32 running_node_index = 0;
 		tfxU32 running_value_index = 0;
-		tfxvec<tfxEffectEmitter*> stack;
+		tmpStack(tfxEffectEmitter*, stack);
 		all_nodes.clear();
 		node_lookup_indexes.clear();
 		compiled_lookup_values.clear();
@@ -4994,7 +4993,7 @@ namespace tfx {
 		return 0;
 	}
 
-	void AssignGraphData(tfxEffectEmitter &effect, tfxvec<tfxStr64> &values) {
+	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr64> &values) {
 		if (values.size() > 0) {
 			if (values[0] == "global_amount") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].amount.AddNode(n); }
 			if (values[0] == "global_effect_angle") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].roll.AddNode(n); }
@@ -5078,7 +5077,7 @@ namespace tfx {
 		}
 	}
 
-	void AssignNodeData(tfxAttributeNode &n, tfxvec<tfxStr64> &values) {
+	void AssignNodeData(tfxAttributeNode &n, tfxStack<tfxStr64> &values) {
 		n.frame = (float)atof(values[1].c_str());
 		n.value = (float)atof(values[2].c_str());
 		n.flags = (bool)atoi(values[3].c_str()) ? tfxAttributeNodeFlags_is_curve : 0;
@@ -6707,10 +6706,12 @@ namespace tfx {
 		const size_t max_line_length = 512;
 		char buffer[max_line_length];
 
+		tmpStack(tfxStr64, pair);
 		while (fgets(buffer, max_line_length, fp)) {
 			buffer[strcspn(buffer, "\n")] = 0;
 			tfxStr512 str = buffer;
-			tfxvec<tfxStr64> pair = SplitString(str, 61);
+			pair.clear();
+			SplitStringStack(str, pair, 61);
 			if (pair.size() == 2) {
 				tfxStr64 key = pair[0];
 				if (data_types.names_and_types.ValidName(pair[0])) {
@@ -6736,28 +6737,7 @@ namespace tfx {
 
 	}
 
-	tfxvec<tfxStr64> SplitString(const tfxStr &str, char delim) {
-		tfxvec<tfxStr64> ret;
-
-		tfxStr64 line;
-		for (char c : str) {
-			if (c == delim && line.Length() && c != NULL) {
-				ret.push_back(line);
-				line.Clear();
-			}
-			else if(c != NULL) {
-				line.Append(c);
-			}
-		}
-
-		if (line.Length()) {
-			ret.push_back(line);
-		}
-
-		return ret;
-	}
-
-	void SplitString(const tfxStr &str, tfxvec<tfxStr64> &pair, char delim) {
+	void SplitStringStack(const tfxStr &str, tfxStack<tfxStr64> &pair, char delim) {
 		tfxStr64 line;
 		for (char c : str) {
 			if (c == delim && line.Length() && c != NULL) {
@@ -6851,8 +6831,10 @@ namespace tfx {
 		}
 
 		int shape_count = 0;
+		tmpStack(tfxStr64, pair);
 
 		while (!data->data.EoF()) {
+			pair.clear();
 			tfxStr128 line = data->data.ReadLine();
 			bool context_set = false;
 			if (StringIsUInt(line.c_str())) {
@@ -6862,9 +6844,10 @@ namespace tfx {
 				context_set = true;
 			}
 			if (context_set == false) {
-				tfxvec<tfxStr64> pair = SplitString(line.c_str());
+				SplitStringStack(line.c_str(), pair);
 				if (pair.size() != 2) {
-					pair = SplitString(line.c_str(), 44);
+					pair.clear();
+					SplitStringStack(line.c_str(), pair, 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
@@ -6903,7 +6886,9 @@ namespace tfx {
 		memset(&stats, 0, sizeof(tfxEffectLibraryStats));
 		bool inside_emitter = false;
 
+		tmpStack(tfxStr64, pair);
 		while (!data->data.EoF()) {
+			pair.clear();
 			tfxStr128 line = data->data.ReadLine();
 			bool context_set = false;
 			if (StringIsUInt(line.c_str())) {
@@ -6913,9 +6898,10 @@ namespace tfx {
 				}
 			}
 			if (context_set == false) {
-				tfxvec<tfxStr64> pair = SplitString(line.c_str());
+				SplitStringStack(line.c_str(), pair);
 				if (pair.size() != 2) {
-					pair = SplitString(line.c_str(), 44);
+					pair.clear();
+					SplitStringStack(line.c_str(), pair, 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
@@ -6949,7 +6935,7 @@ namespace tfx {
 		stats.total_effects = lib.effects.size();
 		stats.total_node_lookup_indexes = lib.node_lookup_indexes.size();
 		stats.total_attribute_nodes = lib.all_nodes.size();
-		tfxvec<tfxEffectEmitter> stack;
+		tmpStack(tfxEffectEmitter, stack);
 		for (auto &effect : lib.effects) {
 			stack.push_back(effect);
 		}
@@ -6979,7 +6965,7 @@ namespace tfx {
 		if (!data_types.initialised) data_types.Init();
 		lib.Clear();
 
-		tfxvec<tfxEffectEmitter> effect_stack;
+		tmpStack(tfxEffectEmitter, effect_stack);
 		int context = 0;
 		tfxErrorFlags error = 0;
 		int uid = 0;
@@ -7017,7 +7003,7 @@ namespace tfx {
 		}
 
 		int first_shape_index = -1;
-		tfxvec<tfxStr64> pair;
+		tmpStack(tfxStr64, pair);
 
 		while (!data->data.EoF()) {
 			tfxStr512 line = data->data.ReadLine();
@@ -7070,10 +7056,10 @@ namespace tfx {
 
 			if (context_set == false) {
 				pair.clear();
-				SplitString(line.c_str(), pair);
+				SplitStringStack(line.c_str(), pair);
 				if (pair.size() != 2) {
 					pair.clear();
-					SplitString(line.c_str(), pair, 44);
+					SplitStringStack(line.c_str(), pair, 44);
 					if (pair.size() < 2) {
 						error |= tfxErrorCode_some_data_not_loaded;
 						break;
@@ -7157,6 +7143,10 @@ namespace tfx {
 			if (context == tfxEndEmitter) {
 				effect_stack.back().InitialiseUninitialisedGraphs();
 				effect_stack.back().UpdateMaxLife();
+#ifdef tfxTRACK_MEMORY
+				tfxvec<tfxEffectEmitter> &sub_effectors = effect_stack.parent().GetInfo().sub_effectors;
+				memcpy(sub_effectors.name, "emitter_sub_effects\0", 20);
+#endif
 				effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
 				effect_stack.pop();
 			}
@@ -7164,6 +7154,10 @@ namespace tfx {
 			if (context == tfxEndEffect) {
 				effect_stack.back().ReIndex();
 				if (effect_stack.size() > 1) {
+#ifdef tfxTRACK_MEMORY
+					tfxvec<tfxEffectEmitter> &sub_effectors = effect_stack.parent().GetInfo().sub_effectors;
+					memcpy(sub_effectors.name, "effect_sub_emitters\0", 20);
+#endif
 					effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
 				}
@@ -7203,7 +7197,7 @@ namespace tfx {
 
 	void SetTimeOut(tfxEffectTemplate &effect_template, float frames) {
 		if (frames < 1.f) frames = 1.f;
-		tfxvec<tfxEffectEmitter*> stack;
+		tmpStack(tfxEffectEmitter*, stack);
 		stack.push_back(&effect_template.effect);
 		while (stack.size()) {
 			tfxEffectEmitter *current = stack.pop_back();
@@ -7215,7 +7209,7 @@ namespace tfx {
 	}
 
 	void tfxEffectTemplate::SetUserDataAll(void *data) {
-		tfxvec<tfxEffectEmitter*> stack;
+		tmpStack(tfxEffectEmitter*, stack);
 		stack.push_back(&effect);
 		while (stack.size()) {
 			tfxEffectEmitter *current = stack.pop_back();
@@ -7418,7 +7412,7 @@ return free_slot;
 			free_particle_banks.At(emitter.path_hash).push_back(emitter.particles_index);
 		}
 		else {
-			tfxvec<tfxU32> new_indexes;
+			tfxvec<tfxU32> new_indexes(tfxCONSTRUCTOR_VEC_INIT("FreeParticleBanks::new_indexes"));
 			new_indexes.push_back(emitter.particles_index);
 			free_particle_banks.Insert(emitter.path_hash, new_indexes);
 		}
@@ -7855,6 +7849,11 @@ return free_slot;
 
 		for (tfxEachLayer) {
 			max_cpu_particles_per_layer[layer] = layer_max_values[layer];
+
+#ifdef tfxTRACK_MEMORY
+			memcpy(sprites2d[layer].name, "ParticleManager::sprites2d\0", 27);
+#endif
+
 			sprites2d[layer].reserve(layer_max_values[layer]);
 		}
 
@@ -7868,8 +7867,11 @@ return free_slot;
 			}
 		}
 
-		effects[0] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 0"));
-		effects[1] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 1"));
+#ifdef tfxTRACK_MEMORY
+		memcpy(effects[0].name, "ParticleManager::effects0\0", 26);
+		memcpy(effects[1].name, "ParticleManager::effects1\0", 26);
+#endif
+
 		effects[0].create_pool(max_effects);
 		effects[1].create_pool(max_effects);
 		effects[0].clear();
@@ -7892,6 +7894,11 @@ return free_slot;
 
 		for (tfxEachLayer) {
 			max_cpu_particles_per_layer[layer] = layer_max_values[layer];
+
+#ifdef tfxTRACK_MEMORY
+			memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
+#endif
+
 			sprites3d[layer].reserve(layer_max_values[layer]);
 		}
 
@@ -7903,8 +7910,11 @@ return free_slot;
 			}
 		}
 
-		effects[0] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 0"));
-		effects[1] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 1"));
+#ifdef tfxTRACK_MEMORY
+		memcpy(effects[0].name, "ParticleManager::effects0\0", 26);
+		memcpy(effects[1].name, "ParticleManager::effects1\0", 26);
+#endif
+
 		effects[0].create_pool(max_effects);
 		effects[1].create_pool(max_effects);
 		effects[0].clear();
@@ -7975,6 +7985,12 @@ return free_slot;
 
 		for (tfxEachLayer) {
 			max_cpu_particles_per_layer[layer] = layer_max_values[layer];
+
+#ifdef tfxTRACK_MEMORY
+			memcpy(sprites2d[layer].name, "ParticleManager::sprites2d\0", 27);
+			memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
+#endif
+
 			sprites2d[layer].reserve(layer_max_values[layer]);
 			sprites3d[layer].reserve(layer_max_values[layer]);
 		}
@@ -7983,8 +7999,11 @@ return free_slot;
 			CreateParticleBanksForEachLayer();
 		}
 
-		effects[0] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 0"));
-		effects[1] = tfxvec<tfxEffectEmitter>(tfxCONSTRUCTOR_VEC_INIT("PM Effects Buffer 1"));
+#ifdef tfxTRACK_MEMORY
+		memcpy(effects[0].name, "ParticleManager::effects0\0", 26);
+		memcpy(effects[1].name, "ParticleManager::effects1\0", 26);
+#endif
+
 		effects[0].create_pool(max_effects);
 		effects[1].create_pool(max_effects);
 		effects[0].clear();

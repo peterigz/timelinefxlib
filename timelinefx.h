@@ -822,7 +822,7 @@ union tfxUInt10bit
 #ifdef tfxTRACK_MEMORY
 #define tfxALLOCATE(tracker_name, dst, size) malloc(size); tfxMemoryTrackerEntry tracker; memset(&tracker, '\0', sizeof(tfxMemoryTrackerEntry)); memcpy(tracker.name, tracker_name, strlen(tracker_name)); tracker.amount_allocated = size; tracker.address = dst; tfxU32 allocations = 0; if (data &&tfxMEMORY_TRACKER.ValidKey((tfxKey)data)) { tfxMemoryTrackerEntry *entry = tfxMEMORY_TRACKER.At((tfxKey)data); if(entry->is_alive) allocations = tfxMEMORY_TRACKER.At((tfxKey)data)->allocations; } tracker.allocations = allocations + 1; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker);
 #define tfxFREE(dst) free(dst); assert(tfxMEMORY_TRACKER.ValidKey((tfxKey)dst)); tfxMEMORY_TRACKER.At((tfxKey)dst)->is_alive = false;
-#define tfxINIT_VEC_NAME memset(name, '\0', 64); name[0] = 'X' 
+#define tfxINIT_VEC_NAME if(name[0] < 41 || name[0] > 90) { memset(name, '\0', 64); name[0] = 'X'; }
 #define tfxINIT_VEC_NAME_INIT memset(name, '\0', 64); memcpy(name, name_init, strlen(name_init));
 #define tfxINIT_VEC_NAME_SRC_COPY memset(name, '\0', 64); memcpy(name, src.name, strlen(src.name));
 #define tfxCONSTRUCTOR_VEC_DEF const char *name_init
@@ -877,8 +877,8 @@ union tfxUInt10bit
 
 		inline tfxvec() { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME;  }
 		inline tfxvec(const char *name_init) { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
-		inline tfxvec(const tfxvec<T> &src) { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
-		inline tfxvec<T>& operator=( const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); tfxINIT_VEC_NAME_SRC_COPY; return *this; }
+		inline tfxvec(const tfxvec<T> &src) { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
+		inline tfxvec<T>& operator=( const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
 		inline ~tfxvec() { if (data) { tfxFREE(data) }; data = NULL; current_size = capacity = 0; }
 
 		inline bool			empty() { return current_size == 0; }
@@ -908,8 +908,11 @@ union tfxUInt10bit
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 		inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
-		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; 
-			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity; }
+		inline void         reserve(tfxU32 new_capacity) { 
+			if (new_capacity <= capacity) 
+				return; 
+			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity; 
+		}
 
 		inline T&	        grab() {
 			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
@@ -1006,6 +1009,8 @@ union tfxUInt10bit
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         reserve(tfxU32 new_capacity) {
 			if (new_capacity <= capacity) return;
+			if (name[0] == 'X')
+				int debug = 1;
 			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T));
 			if (data) {
 				if (last_index() < start_index) {
@@ -1141,6 +1146,12 @@ union tfxUInt10bit
 		tfxvec<tfxMemoryArena> arenas;
 		tfxvec<tfxMemoryBucket> blocks;
 		tfxvec<tfxU32> free_blocks;
+
+		tfxMemoryArenaManager() :
+			arenas(tfxCONSTRUCTOR_VEC_INIT("Memory Arena arenas")),
+			blocks(tfxCONSTRUCTOR_VEC_INIT("Memory Arena blocks")),
+			free_blocks(tfxCONSTRUCTOR_VEC_INIT("Memory Arena free_blocks"))
+		{}
 
 		inline void FreeAll() {
 			for (auto &arena : arenas) {
@@ -1823,32 +1834,33 @@ union tfxUInt10bit
 		tfxStack(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; capacity = current_size = 0; reserve(size); block_index = tfxINVALID; }
 		~tfxStack() { free(); }
 
-		inline tfxU32		size() { return capacity; }
-		inline const tfxU32	size() const { return capacity; }
+		inline tfxU32		size() { return current_size; }
+		inline const tfxU32	size() const { return current_size; }
 		inline T&           operator[](tfxU32 i) {
-			assert(i < capacity);		//Index is out of bounds
+			assert(i < current_size);		//Index is out of bounds
 			return block[i];
 		}
 		inline const T&     operator[](tfxU32 i) const {
-			assert(i < capacity);		//Index is out of bounds
+			assert(i < current_size);		//Index is out of bounds
 			return block[i];
-		}
-		inline tfxArray<T>&		operator=(const tfxArray<T>& src) {
-			if (!allocator)
-				allocator = src.allocator;
-			if (!src.block) return *this;
-			assert(resize(src.capacity));
-			allocator->CopyBlockToBlock(src.block_index, block_index);
-			return *this;
 		}
 
 		inline void         free() { if (block != NULL) { capacity = capacity = 0; allocator->FreeBlock(block_index); block = NULL; block_index = tfxINVALID; } }
+		inline void			clear() { current_size = 0; }
 		inline T*           begin() { return block; }
 		inline const T*     begin() const { return block; }
 		inline T*           end() { return block + current_size; }
 		inline const T*     end() const { return block + current_size; }
+		inline T&           back() { return block[current_size - 1]; }
+		inline const T&     back() const { return block[current_size - 1]; }
+		inline T&           parent() { assert(current_size > 1); return block[current_size - 2]; }
+		inline const T&     parent() const { assert(current_size > 1); return block[current_size - 2]; }
 		inline bool			empty() { return current_size == 0; }
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline void			pop() { 
+			assert(current_size > 0);		//Can't pop back if the stack is empty
+			current_size--; 
+		}
 		inline T&			pop_back() { 
 			assert(current_size > 0);		//Can't pop back if the stack is empty
 			current_size--; 
@@ -1857,7 +1869,13 @@ union tfxUInt10bit
 		inline T&	        push_back(const T& v) {
 			if (current_size == capacity)
 				resize(_grow_capacity(current_size + 1), true);
-			memcpy(&block[current_size], &v, sizeof(v));
+			new((void*)(block + current_size)) T(v);
+			current_size++; return block[current_size - 1];
+		}
+		inline T&	        push_back_copy(const T& v) {
+			if (current_size == capacity)
+				resize(_grow_capacity(current_size + 1), true);
+			memcpy(&block[current_size], &v, sizeof(v)); 
 			current_size++; return block[current_size - 1];
 		}
 		inline bool			reserve(tfxU32 size) {
@@ -5072,8 +5090,9 @@ union tfxUInt10bit
 			max_new_compute_particles(10000),
 			new_compute_particle_index(0),
 			new_particles_count(0),
-			new_positions(tfxCONSTRUCTOR_VEC_INIT("new_positions")),
-			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT("free_comput_controllers"))
+			new_positions(tfxCONSTRUCTOR_VEC_INIT("pm new_positions")),
+			particle_banks(tfxCONSTRUCTOR_VEC_INIT("pm particle_banks")),
+			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
 		{ }
 		~tfxParticleManager();
 		tfxEffectEmitter &operator[] (unsigned int index);
@@ -5537,8 +5556,7 @@ union tfxUInt10bit
 	void StreamProperties(tfxEmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxStr &file);
 	void StreamProperties(tfxEffectEmitter &effect, tfxStr &file);
 	void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file);
-	tfxvec<tfxStr64> SplitString(const tfxStr &s, char delim = 61);
-	void SplitString(const tfxStr &s, tfxvec<tfxStr64> &pair, char delim = 61);
+	void SplitStringStack(const tfxStr &s, tfxStack<tfxStr64> &pair, char delim = 61);
 	bool StringIsUInt(const tfxStr &s);
 	int GetDataType(const tfxStr &s);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value);
@@ -5546,8 +5564,8 @@ union tfxUInt10bit
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
-	void AssignGraphData(tfxEffectEmitter &effect, tfxvec<tfxStr64> &values);
-	void AssignNodeData(tfxAttributeNode &node, tfxvec<tfxStr64> &values);
+	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr64> &values);
+	void AssignNodeData(tfxAttributeNode &node, tfxStack<tfxStr64> &values);
 	static inline void Transform(tfxEmitterTransform &out, const tfxEmitterTransform &in) {
 		float s = sin(out.local_rotations.roll);
 		float c = cos(out.local_rotations.roll);
