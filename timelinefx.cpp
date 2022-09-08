@@ -8355,7 +8355,7 @@ return free_slot;
 		}
 
 		e.common.age += tfxFRAME_LENGTH;
-		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single))
+		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single) || properties.single_shot_limit > 0)
 			e.highest_particle_age -= tfxFRAME_LENGTH;
 
 		if (properties.loop_length && e.common.age > properties.loop_length)
@@ -8588,6 +8588,7 @@ return free_slot;
 				sub.highest_particle_age = p.data.max_age;
 				sub.current.overal_scale = e.current.overal_scale;
 				sub.flags |= e.flags & tfxEmitterStateFlags_no_tween;
+				sub.SetTimeout(5);
 				pm.AddEffect(sub, pm.current_ebuff, true);
 			}
 		}
