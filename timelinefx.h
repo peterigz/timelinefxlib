@@ -1373,6 +1373,15 @@ union tfxUInt10bit
 		}
 	};
 
+	inline void CopyBlockToBlock(tfxMemoryArenaManager &from_allocator, tfxMemoryArenaManager &to_allocator, tfxU32 from, tfxU32 to) {
+		assert(from_allocator.blocks[from].capacity && from_allocator.blocks[from].capacity <= to_allocator.blocks[to].capacity);		//must have valid capacities
+		memcpy(to_allocator.blocks[to].data, from_allocator.blocks[from].data, from_allocator.blocks[from].capacity * from_allocator.blocks[from].unit_size);
+		auto &src = from_allocator.blocks[from];
+		auto &dst = to_allocator.blocks[to];
+		dst.current_size = src.current_size;
+		dst.end_ptr = (char*)dst.data + (dst.unit_size * dst.current_size);
+	}
+
 	inline tfxU64 NearestMultiple(tfxU64 numToRound, tfxU64 multiple)
 	{
 		assert(multiple);
@@ -1620,7 +1629,7 @@ union tfxUInt10bit
 			current_bucket = block;
 			tfxU32 src_block = src.block;
 			while (current_bucket != tfxINVALID && src_block != tfxINVALID) {
-				allocator->CopyBlockToBlock(src_block, current_bucket);
+				CopyBlockToBlock(*src.allocator, *allocator, src_block, current_bucket);
 				current_bucket = allocator->blocks[current_bucket].next_block;
 				src_block = src.allocator->blocks[src_block].next_block;
 			}
