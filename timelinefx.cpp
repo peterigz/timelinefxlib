@@ -7813,15 +7813,15 @@ return free_slot;
 	}
 
 	void tfxParticleManager::UpdateParticleOrderOnly() {
-		/*if (!(flags & tfxEffectManagerFlags_order_by_depth))
+		if (!(flags & tfxEffectManagerFlags_order_by_depth))
 			return;
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			int current_buffer_index = layer * 2 + pm.current_pbuff;
-			for (auto &p : particles[current_buffer_index]) {
-				p.data.depth = LengthVec3NoSqR(p.data.world_position - camera_position);
+			for (int i = 0; i != sprites3d[layer].current_size; ++i) {
+				tfxParticleSprite3d &s = sprites3d[layer][i];
+				//s. = LengthVec3NoSqR(s.transform.position - camera_position);
 			}
-			InsertionSortParticles(particles[current_buffer_index], particles[layer * 2 + !pm.current_pbuff]);
-		}*/
+			//InsertionSortParticles(particle_banks[current_buffer_index], particle_banks[layer * 2 + !current_pbuff]);
+		}
 	}
 
 	inline tfxEffectEmitter* tfxParticleManager::SetNextEffect(tfxEffectEmitter &e, unsigned int buffer) {
@@ -7946,7 +7946,7 @@ return free_slot;
 		}
 	}
 
-	void tfxParticleManager::Reconfigure(tfxParticleManagerModes mode, bool is_3d) {
+	void tfxParticleManager::Reconfigure(tfxParticleManagerModes mode, tfxU32 req_sort_passes, bool is_3d) {
 		if (flags & tfxEffectManagerFlags_unorderd && mode != tfxParticleManagerMode_unordered) {
 			FreeParticleBanks();
 			CreateParticleBanksForEachLayer();
@@ -7966,6 +7966,8 @@ return free_slot;
 
 		if (is_3d)
 			flags |= tfxEffectManagerFlags_3d_effects;
+
+		sort_passes = req_sort_passes;
 
 	}
 
