@@ -3979,6 +3979,8 @@ namespace tfx {
 
 	tfxEffectEmitter &tfxEffectLibrary::AddFolder(tfxStr64 &name) {
 		tfxEffectEmitter folder;
+		folder.info_index = AddEffectEmitterInfo();
+		folder.common.library = this;
 		folder.GetInfo().name = name;
 		folder.type = tfxFolder;
 		folder.common.library = this;
@@ -6741,8 +6743,7 @@ namespace tfx {
 		tfxStr64 line;
 		for (char c : str) {
 			if (c == delim && line.Length() && c != NULL) {
-				pair.push_back_copy(line);
-				pair.back().data = pair.back().buffer;
+				pair.push_back(line);
 				line.Clear();
 			}
 			else if (c != NULL) {
@@ -6751,8 +6752,7 @@ namespace tfx {
 		}
 
 		if (line.Length()) {
-			pair.push_back_copy(line);
-			pair.back().data = pair.back().buffer;
+			pair.push_back(line);
 		}
 	}
 

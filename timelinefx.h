@@ -1009,8 +1009,6 @@ union tfxUInt10bit
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         reserve(tfxU32 new_capacity) {
 			if (new_capacity <= capacity) return;
-			if (name[0] == 'X')
-				int debug = 1;
 			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T));
 			if (data) {
 				if (last_index() < start_index) {
