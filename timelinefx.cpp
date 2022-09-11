@@ -7953,6 +7953,10 @@ return free_slot;
 		}
 		else if (!(flags & tfxEffectManagerFlags_unorderd) && mode == tfxParticleManagerMode_unordered) {
 			FreeParticleBanks();
+			for (auto &bank : free_particle_banks.data) {
+				bank.free_all();
+			}
+			free_particle_banks.FreeAll();
 		}
 
 		if (mode == tfxParticleManagerMode_unordered)
@@ -7967,6 +7971,14 @@ return free_slot;
 		if (is_3d)
 			flags |= tfxEffectManagerFlags_3d_effects;
 
+		for (tfxEachLayer) {
+			sprites2d[layer].clear();
+			sprites3d[layer].clear();
+		}
+
+		memset(new_particles_index_start, tfxMAX_UINT, 4 * tfxLAYERS);
+		memset(sprite_index_point, 0, 4 * tfxLAYERS);
+		
 		sort_passes = req_sort_passes;
 
 	}
