@@ -1,5 +1,5 @@
 //#define tfxENABLE_PROFILING
-#define tfxTRACK_MEMORY
+//#define tfxTRACK_MEMORY
 /*
 	Timeline FX C++ library
 
@@ -5106,7 +5106,7 @@ union tfxUInt10bit
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
-		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false);
 		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);

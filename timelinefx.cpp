@@ -7412,7 +7412,11 @@ return free_slot;
 			free_particle_banks.At(emitter.path_hash).push_back(emitter.particles_index);
 		}
 		else {
+#ifdef tfxTRACK_MEMORY
 			tfxvec<tfxU32> new_indexes(tfxCONSTRUCTOR_VEC_INIT("FreeParticleBanks::new_indexes"));
+#else
+			tfxvec<tfxU32> new_indexes;
+#endif
 			new_indexes.push_back(emitter.particles_index);
 			free_particle_banks.Insert(emitter.path_hash, new_indexes);
 		}
@@ -7859,7 +7863,11 @@ return free_slot;
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
 			for (tfxEachLayer) {
+#ifdef tfxTRACK_MEMORY
 				tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Ordered ring particle list"));
+#else
+				tfxring<tfxParticle> particles;
+#endif
 				particle_banks.push_back(particles);
 				particle_banks.back().reserve(layer_max_values[layer]);
 				particle_banks.push_back(particles);
@@ -7903,7 +7911,11 @@ return free_slot;
 		}
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
+#ifdef tfxTRACK_MEMORY
 			tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Ordered ring particle list"));
+#else
+			tfxring<tfxParticle> particles;
+#endif
 			for (tfxEachLayer) {
 				particle_banks.push_back(particles);
 				particle_banks.push_back(particles);
@@ -7938,7 +7950,11 @@ return free_slot;
 	void tfxParticleManager::CreateParticleBanksForEachLayer() {
 		FreeParticleBanks();
 		for (tfxEachLayer) {
+#ifdef tfxTRACK_MEMORY
 			tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Ordered ring particle list"));
+#else
+			tfxring<tfxParticle> particles;
+#endif
 			particle_banks.push_back(particles);
 			particle_banks.back().reserve(max_cpu_particles_per_layer[layer]);
 			particle_banks.push_back(particles);
@@ -7959,6 +7975,8 @@ return free_slot;
 			free_particle_banks.FreeAll();
 		}
 
+		tfxEffectManagerFlags dynamic = flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
+
 		if (mode == tfxParticleManagerMode_unordered)
 			flags = tfxEffectManagerFlags_unorderd;
 		else if (mode == tfxParticleManagerMode_ordered_by_depth)
@@ -7970,6 +7988,8 @@ return free_slot;
 
 		if (is_3d)
 			flags |= tfxEffectManagerFlags_3d_effects;
+
+		flags |= dynamic;
 
 		for (tfxEachLayer) {
 			sprites2d[layer].clear();
@@ -7983,7 +8003,7 @@ return free_slot;
 
 	}
 
-	void tfxParticleManager::InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode) {
+	void tfxParticleManager::InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_sprite_allocation) {
 		max_effects = effects_limit;
 
 		flags = 0;
@@ -8022,7 +8042,7 @@ return free_slot;
 		effects[1].create_pool(max_effects);
 		effects[0].clear();
 		effects[1].clear();
-		flags |= tfxEffectManagerFlags_dynamic_sprite_allocation;
+		flags |= dynamic_sprite_allocation ? tfxEffectManagerFlags_dynamic_sprite_allocation : 0;
 	}
 
 	void tfxParticleManager::ClearAll(bool free_memory) {
@@ -8092,7 +8112,11 @@ return free_slot;
 				return free_banks.pop_back();
 			}
 		}
+#ifdef tfxTRACK_MEMORY
 		tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Unordered ring particle list"));
+#else
+		tfxring<tfxParticle> particles;
+#endif
 		particles.reserve(reserve_amount);
 		pm.particle_banks.push_back(particles);
 		return pm.particle_banks.current_size - 1;
