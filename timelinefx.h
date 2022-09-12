@@ -5211,7 +5211,6 @@ union tfxUInt10bit
 	};
 
 	inline void particle_bank_resize_callback(tfxring<tfxParticle> *bank, tfxParticle *new_data, void *user_data) {
-		return;
 		for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
 			tfxParticle &p = (*bank)[i];
 			ptrdiff_t diff = p.next_ptr - bank->data;

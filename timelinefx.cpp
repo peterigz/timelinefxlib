@@ -4517,7 +4517,7 @@ namespace tfx {
 		if (effect.type == tfxEffectType && depth == 0) {
 			CompileGlobalGraph(effect.global);
 		}
-		else {
+		else if(effect.type == tfxEmitterType) {
 			CompileEmitterGraphs(effect.emitter_attributes);
 		}
 		for (auto &sub : info.sub_effectors) {
@@ -8308,6 +8308,10 @@ return free_slot;
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
 					}
+					else if(pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
+						pm.sprite_index_point[properties.layer] -= max_spawn_count;
+						max_spawn_count = 0;
+					}
 					sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
@@ -8331,6 +8335,10 @@ return free_slot;
 					tfxring<tfxParticleSprite2d> &sprite_buffer = pm.sprites2d[properties.layer];
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
+					}
+					else if(pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
+						pm.sprite_index_point[properties.layer] -= max_spawn_count;
+						max_spawn_count = 0;
 					}
 					sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
 
