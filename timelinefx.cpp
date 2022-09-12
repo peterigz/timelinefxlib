@@ -7496,7 +7496,7 @@ return free_slot;
 		current_ebuff = next_buffer;
 
 		if (!(flags & tfxEffectManagerFlags_unorderd)) {
-			if(flags & tfxEffectManagerFlags_3d_effects && tfxEffectManagerFlags_order_by_depth) 
+			if(flags & tfxEffectManagerFlags_3d_effects && flags & tfxEffectManagerFlags_order_by_depth) 
 				ControlParticlesDepthOrdered3d(*this);
 			else if(flags & tfxEffectManagerFlags_3d_effects)
 				ControlParticlesOrdered3d(*this);
@@ -7587,6 +7587,7 @@ return free_slot;
 			pm.particle_banks[next_buffer_index].clear();
 
 			tfxU32 index = 0;
+			tfxU32 sprite_index = 0;
 			for (tfxU32 i = 0; i != pm.particle_banks[current_buffer_index].current_size; ++i) {
 				tfxParticle &p = pm.particle_banks[current_buffer_index][i];
 				p.parent = p.parent->next_ptr;
@@ -7596,8 +7597,8 @@ return free_slot;
 				//and instead have 2 separate for loops? It is highly predictable though.
 				if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
-					tfxParticleSprite3d &s = pm.sprites3d[properties.layer][index];
-					p.sprite_index = (properties.layer << 28) + index;
+					tfxParticleSprite3d s;
+					p.sprite_index = (properties.layer << 28) + sprite_index;
 
 					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
@@ -7622,6 +7623,7 @@ return free_slot;
 						alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
 						s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
 						s.image_ptr = properties.image->ptr;
+						pm.sprites3d[properties.layer][sprite_index++] = s;
 
 						p.next_ptr->data.captured_position = s.transform.position;
 
@@ -7631,12 +7633,12 @@ return free_slot;
 						s.intensity = 0;
 						s.image_frame_plus = 0;
 						s.image_ptr = properties.image->ptr;
+						pm.sprites3d[properties.layer][sprite_index++] = s;
 						p.next_ptr = nullptr;
 					}
 
 				}
 				else {
-					p.sprite_index = (properties.layer << 28) + index;
 					p.data.flags &= ~tfxParticleFlags_fresh;
 					p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 				}
@@ -7658,7 +7660,9 @@ return free_slot;
 			int layer_offset = layer * 2;
 			int next_buffer_index = next_buffer + layer_offset;
 			int current_buffer_index = pm.current_pbuff + layer_offset;
+
 			pm.particle_banks[next_buffer_index].clear();
+
 			tfxU32 new_index = pm.new_particles_index_start[layer];
 			tfxParticle *new_particle = nullptr;
 			if (new_index < pm.particle_banks[current_buffer_index].size())
