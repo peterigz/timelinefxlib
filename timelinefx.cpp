@@ -4639,6 +4639,7 @@ namespace tfx {
 		CompileGraph(g.yaw);
 		CompileGraph(g.emitter_width);
 		CompileGraph(g.emitter_height);
+		CompileGraph(g.emitter_depth);
 		CompileGraph(g.splatter);
 	}
 	void tfxEffectLibrary::CompileBaseGraph(tfxU32 index) {
