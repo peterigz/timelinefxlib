@@ -961,10 +961,12 @@ union tfxUInt10bit
 		unsigned int capacity;
 		unsigned int start_index;
 		int last_bump;
+		void *user_data;
+		void(*resize_callback)(tfxring<T> *ring, T *new_data, void *user_data);
 
-		inline tfxring() { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME; }
-		inline tfxring(const char *name_init) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
-		inline tfxring(unsigned int qty) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); tfxINIT_VEC_NAME; }
+		inline tfxring() : resize_callback(nullptr), user_data(NULL) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME; }
+		inline tfxring(const char *name_init) : resize_callback(nullptr), user_data(NULL) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
+		inline tfxring(unsigned int qty) : resize_callback(nullptr), user_data(NULL) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); tfxINIT_VEC_NAME; }
 		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 
 		inline bool			empty() { return current_size == 0; }
@@ -1007,7 +1009,7 @@ union tfxUInt10bit
 		}
 
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
-		inline void         reserve(tfxU32 new_capacity) {
+		inline void         reserve(tfxU32 new_capacity, bool use_callback = true) {
 			if (new_capacity <= capacity) return;
 			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T));
 			if (data) {
@@ -1018,7 +1020,9 @@ union tfxUInt10bit
 				else {
 					memcpy(new_data, data + start_index, (size_t)current_size * sizeof(T));
 				}
-				free(data);
+				if (resize_callback && use_callback)
+					resize_callback(this, new_data, user_data);
+				tfxFREE(data);
 			}
 			data = new_data;
 			capacity = new_capacity;
@@ -5156,7 +5160,9 @@ union tfxUInt10bit
 		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
 		void EnableCompute() { flags |= tfxEffectManagerFlags_use_compute_shader; }
 		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
-		tfxParticle &GrabCPUParticle(unsigned int index);
+		inline tfxParticle& GrabCPUParticle(unsigned int index) {
+			return particle_banks[index].grab();
+		}
 		tfxComputeParticle &GrabComputeParticle(unsigned int layer);
 		void ResetParticlePtr(void *ptr);
 		void ResetControllerPtr(void *ptr);
@@ -5204,6 +5210,48 @@ union tfxUInt10bit
 		}
 	};
 
+	inline void particle_bank_resize_callback(tfxring<tfxParticle> *bank, tfxParticle *new_data, void *user_data) {
+		return;
+		for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
+			tfxParticle &p = (*bank)[i];
+			ptrdiff_t diff = p.next_ptr - bank->data;
+			p.next_ptr = new_data + diff;
+			tfxParticle *n = new_data + i;
+			n->next_ptr = p.next_ptr;
+		}
+
+		tfxParticleManager *pm = static_cast<tfxParticleManager*>(user_data);
+		for (auto &e : pm->effects[pm->current_ebuff]) {
+			if (e.parent_particle) {
+				if (e.parent_particle >= bank->data && e.parent_particle < bank->data + bank->capacity) {
+					ptrdiff_t diff = e.parent_particle - bank->data;
+					if (diff < bank->capacity)
+						e.parent_particle = new_data + diff;
+					else
+						int debug = 0;
+				}
+				else {
+					int debug = 0;
+				}
+			}
+		}
+		for (auto &e : pm->effects[!pm->current_ebuff]) {
+			if (e.parent_particle) {
+				tfxEffectEmitter *ep = &e;
+				if (e.parent_particle >= bank->data && e.parent_particle < bank->data + bank->capacity) {
+					ptrdiff_t diff = e.parent_particle - bank->data;
+					if (diff < bank->capacity)
+						e.parent_particle = new_data + diff;
+					else
+						int debug = 0;
+				}
+				else {
+					int debug = 0;
+				}
+			}
+		}
+
+	}
 	tfxU32 GrabParticleBank(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 	void StopSpawning(tfxParticleManager &pm);
@@ -5336,13 +5384,13 @@ union tfxUInt10bit
 		tfxU32 GetLookupValuesSizeInBytes();
 
 		inline void MaybeGrowProperties() {
-			if (emitter_properties.current_size >= emitter_properties.capacity - 1) {
+			if (emitter_properties.current_size >= emitter_properties.capacity - 4) {
 				emitter_properties.reserve(emitter_properties._grow_capacity(emitter_properties.capacity + 1));
 			}
 		}
 
 		inline void MaybeGrowInfos() {
-			if (effect_infos.current_size == effect_infos.capacity) {
+			if (effect_infos.current_size >= effect_infos.capacity - 4) {
 				effect_infos.reserve(effect_infos._grow_capacity(effect_infos.current_size + 1));
 			}
 		}

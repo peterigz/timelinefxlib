@@ -7398,10 +7398,6 @@ return free_slot;
 		}
 	}
 
-	tfxParticle& tfxParticleManager::GrabCPUParticle(unsigned int index) {
-		return particle_banks[index].grab();
-	}
-
 	tfxComputeParticle& tfxParticleManager::GrabComputeParticle(unsigned int layer) {
 		assert(new_compute_particle_ptr);		//Use must assign the compute ptr to point to an area in memory where you can stage new particles for uploading to the GPU - See ResetComputePtr
 		return *(static_cast<tfxComputeParticle*>(new_compute_particle_ptr) + new_compute_particle_index++);
@@ -7446,7 +7442,9 @@ return free_slot;
 		}
 
 		tfxU32 start_size = effects[current_ebuff].current_size;
-		for (auto &e : effects[current_ebuff]) {
+		for (int i = 0; i != start_size; ++i) {
+			tfxEffectEmitter &e = effects[current_ebuff][i];
+
 			UpdatePMEmitter(*this, e);
 			if (e.type == tfxEffectType) {
 				if (e.common.timeout_counter <= e.common.timeout) {
@@ -7486,10 +7484,10 @@ return free_slot;
 				int b_cap = particle_banks[b_buffer].capacity;
 				if (particle_banks[a_buffer].capacity != particle_banks[b_buffer].capacity) {
 					if(particle_banks[a_buffer].capacity > particle_banks[b_buffer].capacity) {
-						particle_banks[b_buffer].reserve(particle_banks[a_buffer].capacity);
+						particle_banks[b_buffer].reserve(particle_banks[a_buffer].capacity, false);
 					}
 					else {
-						particle_banks[a_buffer].reserve(particle_banks[b_buffer].capacity);
+						particle_banks[a_buffer].reserve(particle_banks[b_buffer].capacity, false);
 					}
 				}
 			}
@@ -7531,8 +7529,8 @@ return free_slot;
 				if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
 					tfxParticleSprite2d &s = pm.sprites2d[properties.layer][index];
-
 					p.sprite_index = (properties.layer << 28) + index;
+
 					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
 							p.parent->current.transform_particle_callback2d(p.data, s.transform.position, s.transform.rotation, p.parent->common, p.parent->common.transform.captured_position);
@@ -7868,6 +7866,8 @@ return free_slot;
 #else
 				tfxring<tfxParticle> particles;
 #endif
+				particles.resize_callback = particle_bank_resize_callback;
+				particles.user_data = this;
 				particle_banks.push_back(particles);
 				particle_banks.back().reserve(layer_max_values[layer]);
 				particle_banks.push_back(particles);
@@ -7916,6 +7916,8 @@ return free_slot;
 #else
 			tfxring<tfxParticle> particles;
 #endif
+			particles.resize_callback = particle_bank_resize_callback;
+			particles.user_data = this;
 			for (tfxEachLayer) {
 				particle_banks.push_back(particles);
 				particle_banks.push_back(particles);
@@ -7955,6 +7957,8 @@ return free_slot;
 #else
 			tfxring<tfxParticle> particles;
 #endif
+			particles.resize_callback = particle_bank_resize_callback;
+			particles.user_data = this;
 			particle_banks.push_back(particles);
 			particle_banks.back().reserve(max_cpu_particles_per_layer[layer]);
 			particle_banks.push_back(particles);
@@ -8117,6 +8121,8 @@ return free_slot;
 #else
 		tfxring<tfxParticle> particles;
 #endif
+		particles.resize_callback = particle_bank_resize_callback;
+		particles.user_data = &pm;
 		particles.reserve(reserve_amount);
 		pm.particle_banks.push_back(particles);
 		return pm.particle_banks.current_size - 1;
@@ -9159,6 +9165,8 @@ return free_slot;
 	char tfxMEMORY_CONTEXT[64];
 	tfxDataTypesDictionary data_types;
 	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+	void *tfxDeferred_data_for_freeing[256];
+	tfxU32 tfxDeferred_index = 0;
 
 	void InitialiseTimelineFX() {
 		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
