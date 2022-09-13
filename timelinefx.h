@@ -473,7 +473,7 @@ union tfxUInt10bit
 		tfxEffectManagerFlags_update_base_values = 1 << 6,
 		tfxEffectManagerFlags_dynamic_sprite_allocation = 1 << 7,
 		tfxEffectManagerFlags_3d_effects = 1 << 8,
-		tfxEffectManagerFlags_unorderd = 1 << 9,
+		tfxEffectManagerFlags_unordered = 1 << 9,
 		tfxEffectManagerFlags_ordered_by_age = 1 << 10
 	};
 
@@ -963,10 +963,11 @@ union tfxUInt10bit
 		int last_bump;
 		void *user_data;
 		void(*resize_callback)(tfxring<T> *ring, T *new_data, void *user_data);
+		tfxring *pair;
 
-		inline tfxring() : resize_callback(nullptr), user_data(NULL) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME; }
-		inline tfxring(const char *name_init) : resize_callback(nullptr), user_data(NULL) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
-		inline tfxring(unsigned int qty) : resize_callback(nullptr), user_data(NULL) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); tfxINIT_VEC_NAME; }
+		inline tfxring() : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME; }
+		inline tfxring(const char *name_init) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
+		inline tfxring(unsigned int qty) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); tfxINIT_VEC_NAME; }
 		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 
 		inline bool			empty() { return current_size == 0; }
@@ -5211,6 +5212,7 @@ union tfxUInt10bit
 	};
 
 	inline void particle_bank_resize_callback(tfxring<tfxParticle> *bank, tfxParticle *new_data, void *user_data) {
+
 		for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
 			tfxParticle &p = (*bank)[i];
 			ptrdiff_t diff = p.next_ptr - bank->data;
@@ -5219,21 +5221,31 @@ union tfxUInt10bit
 			n->next_ptr = p.next_ptr;
 		}
 
+		if (bank->pair) {
+			for (tfxU32 i = 0; i != bank->pair->current_size - 1; ++i) {
+				tfxParticle &p = (*bank->pair)[i];
+				ptrdiff_t diff = p.next_ptr - bank->data;
+				p.next_ptr = new_data + diff;
+			}
+		}
+
 		tfxParticleManager *pm = static_cast<tfxParticleManager*>(user_data);
+
 		for (auto &e : pm->effects[pm->current_ebuff]) {
 			if (e.parent_particle) {
 				if (e.parent_particle >= bank->data && e.parent_particle < bank->data + bank->capacity) {
 					ptrdiff_t diff = e.parent_particle - bank->data;
 					if (diff < bank->capacity)
 						e.parent_particle = new_data + diff;
-					else
-						int debug = 0;
 				}
-				else {
-					int debug = 0;
+				if (e.parent_particle->next_ptr && e.parent_particle->next_ptr >= bank->data && e.parent_particle->next_ptr < bank->data + bank->capacity) {
+					ptrdiff_t diff = e.parent_particle->next_ptr - bank->data;
+					if (diff < bank->capacity)
+						e.parent_particle->next_ptr = new_data + diff;
 				}
 			}
 		}
+
 		for (auto &e : pm->effects[!pm->current_ebuff]) {
 			if (e.parent_particle) {
 				tfxEffectEmitter *ep = &e;
@@ -5241,11 +5253,11 @@ union tfxUInt10bit
 					ptrdiff_t diff = e.parent_particle - bank->data;
 					if (diff < bank->capacity)
 						e.parent_particle = new_data + diff;
-					else
-						int debug = 0;
 				}
-				else {
-					int debug = 0;
+				if (e.parent_particle->next_ptr && e.parent_particle->next_ptr >= bank->data && e.parent_particle->next_ptr < bank->data + bank->capacity) {
+					ptrdiff_t diff = e.parent_particle->next_ptr - bank->data;
+					if (diff < bank->capacity)
+						e.parent_particle->next_ptr = new_data + diff;
 				}
 			}
 		}
