@@ -8327,9 +8327,9 @@ return free_slot;
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
 					}
-					else if(pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
-						pm.sprite_index_point[properties.layer] -= max_spawn_count;
-						max_spawn_count = 0;
+					else if(e.sprites_index + max_spawn_count > sprite_buffer.capacity) {
+						pm.sprite_index_point[properties.layer] = sprite_buffer.capacity;
+						max_spawn_count = sprite_buffer.capacity - e.sprites_index;
 					}
 					sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
 
@@ -8340,6 +8340,9 @@ return free_slot;
 					else {
 						if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
 							amount_spawned = SpawnParticles3d(pm, e, spawn_controls, max_spawn_count);
+					}
+					if (amount_spawned > max_spawn_count) {
+						int debug = 1;
 					}
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
@@ -8355,9 +8358,9 @@ return free_slot;
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
 					}
-					else if(pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
-						pm.sprite_index_point[properties.layer] -= max_spawn_count;
-						max_spawn_count = 0;
+					else if(e.sprites_index + max_spawn_count > sprite_buffer.capacity) {
+						pm.sprite_index_point[properties.layer] = sprite_buffer.capacity;
+						max_spawn_count = sprite_buffer.capacity - e.sprites_index;
 					}
 					sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
 
@@ -8498,7 +8501,7 @@ return free_slot;
 
 		while (tween < 1.f) {
 			if (amount_spawned >= max_spawn_amount) {
-				e.current.amount_remainder = 0;
+				tween = 1.f;
 				break;
 			}
 
@@ -8546,7 +8549,7 @@ return free_slot;
 
 		while (tween < 1.f) {
 			if (amount_spawned >= max_spawn_amount) {
-				e.current.amount_remainder = 0;
+				tween = 1.f;
 				break;
 			}
 			tfxSpawnPosition new_position = InitialisePosition3d(e.current, e.common, spawn_controls, &e, tween);
