@@ -4523,7 +4523,6 @@ union tfxUInt10bit
 		float frame;
 		float age;
 		float loop_length;
-		float highest_particle_age;
 		float timeout_counter;
 		float timeout;
 		tfxU32 active_children;

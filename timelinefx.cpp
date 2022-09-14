@@ -7447,9 +7447,6 @@ return free_slot;
 			tfxEffectEmitter &e = effects[current_ebuff][i];
 			tfxEffectEmitter *ep = &e;
 
-			if (i == 4 && e.common.age > 215)
-				int debug = 1;
-
 			UpdatePMEmitter(*this, e);
 			if (e.type == tfxEffectType) {
 				if (e.common.timeout_counter <= e.common.timeout) {
@@ -7476,8 +7473,6 @@ return free_slot;
 
 		for (int i = start_size; i != effects[current_ebuff].current_size; ++i) {
 			tfxEffectEmitter &e = effects[current_ebuff][i];
-			if (i == 16)
-				int debug = 1;
 			UpdatePMEmitter(*this, e);
 			e.next_ptr = SetNextEffect(e, next_buffer);
 		}
@@ -7529,6 +7524,7 @@ return free_slot;
 			tfxU32 sprite_index = 0;
 			for (tfxU32 i = 0; i != pm.particle_banks[current_buffer_index].current_size; ++i) {
 				tfxParticle &p = pm.particle_banks[current_buffer_index][i];
+
 				p.parent = p.parent->next_ptr;
 				tfxEmitterProperties &properties = p.parent->GetProperties();
 
@@ -8341,9 +8337,6 @@ return free_slot;
 						if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
 							amount_spawned = SpawnParticles3d(pm, e, spawn_controls, max_spawn_count);
 					}
-					if (amount_spawned > max_spawn_count) {
-						int debug = 1;
-					}
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
 				}
@@ -8519,7 +8512,7 @@ return free_slot;
 			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][e.sprites_index++];
 			InitCPUParticle2d(pm, e, *p, s.transform, spawn_controls, tween);
 
-			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age);
+			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age + tfxFRAME_LENGTH + 1);
 			e.parent->highest_particle_age = e.highest_particle_age + tfxFRAME_LENGTH;
 
 			tween += qty_step_size;
@@ -8598,7 +8591,7 @@ return free_slot;
 			p->data.depth = position.distance_to_camera;
 			InitCPUParticle3d(pm, e, *p, s.transform, spawn_controls, tween);
 
-			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age);
+			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age + tfxFRAME_LENGTH + 1);
 			e.parent->highest_particle_age = e.highest_particle_age + tfxFRAME_LENGTH;
 
 			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
@@ -8673,7 +8666,7 @@ return free_slot;
 					break;
 				sub.parent = nullptr;
 				sub.parent_particle = &p;
-				sub.highest_particle_age = p.data.max_age;
+				sub.highest_particle_age = p.data.max_age + tfxFRAME_LENGTH + 1;
 				sub.current.overal_scale = e.current.overal_scale;
 				sub.flags |= e.flags & tfxEmitterStateFlags_no_tween;
 				sub.SetTimeout(5);
@@ -8708,7 +8701,7 @@ return free_slot;
 					break;
 				sub.parent = nullptr;
 				sub.parent_particle = &p;
-				sub.highest_particle_age = p.data.max_age;
+				sub.highest_particle_age = p.data.max_age + tfxFRAME_LENGTH + 1;
 				sub.current.overal_scale = e.current.overal_scale;
 				sub.flags |= e.flags & tfxEmitterStateFlags_no_tween;
 				pm.AddEffect(sub, pm.current_ebuff, true);
