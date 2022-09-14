@@ -4808,6 +4808,13 @@ union tfxUInt10bit
 
 	};
 
+	inline tfxU32 CountAllEffects(tfxEffectEmitter &effect, tfxU32 amount = 0) {
+		for (auto &sub : effect.GetInfo().sub_effectors) {
+			amount = CountAllEffects(sub, amount);
+		}
+		return ++amount;
+	}
+
 	struct EffectEmitterSnapShot {
 		tfxEffectEmitter effect;
 		tfxU32 index;
@@ -5223,7 +5230,7 @@ union tfxUInt10bit
 			n->next_ptr = p.next_ptr;
 		}
 
-		if (bank->pair) {
+		if (bank->pair && bank->pair->data) {
 			for (tfxU32 i = 0; i != bank->pair->current_size - 1; ++i) {
 				tfxParticle &p = (*bank->pair)[i];
 				ptrdiff_t diff = p.next_ptr - bank->data;
@@ -5396,8 +5403,8 @@ union tfxUInt10bit
 		tfxU32 GetLookupIndexesSizeInBytes();
 		tfxU32 GetLookupValuesSizeInBytes();
 
-		inline void MaybeGrowProperties() {
-			if (emitter_properties.current_size >= emitter_properties.capacity - 4) {
+		inline void MaybeGrowProperties(tfxU32 size_offset) {
+			if (emitter_properties.current_size >= emitter_properties.capacity - size_offset) {
 				emitter_properties.reserve(emitter_properties._grow_capacity(emitter_properties.capacity + 1));
 			}
 		}
