@@ -4564,13 +4564,15 @@ union tfxUInt10bit
 		float amount_remainder;
 		float emission_alternator;
 		float qty;
+		float qty_step_size;
 		//The callback to transform the particles each update. This will change based on the properties of the emitter
 		void(*transform_particle_callback2d)(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position);
 		void(*transform_particle_callback3d)(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position);
 
 		tfxEmitterState() :
 			amount_remainder(0.f),
-			emission_direction_normal(0.f, 1.f, 0.f)
+			emission_direction_normal(0.f, 1.f, 0.f),
+			qty_step_size(0.f)
 		{}
 	};
 

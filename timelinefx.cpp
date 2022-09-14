@@ -8495,17 +8495,23 @@ return free_slot;
 			return 0;
 
 		float qty_step_size = 1.f / e.current.qty;
-		float tween = e.current.amount_remainder;
+		float tween = 0;
+		if (qty_step_size == e.current.qty_step_size || e.common.property_flags & tfxEmitterPropertyFlags_single)
+			tween = e.current.amount_remainder;
+		else
+			tween = e.current.amount_remainder - (e.current.qty_step_size - qty_step_size);
+		e.current.qty_step_size = qty_step_size;
 		bool is_compute = e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 		tfxU32 amount_spawned = 0;
+
+		if (tween >= 1)
+			tween -= e.current.qty;
 
 		while (tween < 1.f) {
 			if (amount_spawned >= max_spawn_amount) {
 				tween = 1.f;
 				break;
 			}
-
-			bool is_single = e.common.property_flags & tfxEmitterPropertyFlags_single;
 
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
 			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
@@ -8542,7 +8548,12 @@ return free_slot;
 		tfxEmitterProperties &properties = e.GetProperties();
 
 		float qty_step_size = 1.f / e.current.qty;
-		float tween = e.current.amount_remainder;
+		float tween = 0;
+		if (qty_step_size == e.current.qty_step_size || e.common.property_flags & tfxEmitterPropertyFlags_single)
+			tween = e.current.amount_remainder;
+		else
+			tween = e.current.amount_remainder - (e.current.qty_step_size - qty_step_size);
+		e.current.qty_step_size = qty_step_size;
 		bool is_compute = e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 		float positions_qty = e.current.qty;
 		tfxU32 amount_spawned = 0;
@@ -8571,8 +8582,6 @@ return free_slot;
 		pm.new_particles_index_start[properties.layer] = std::min(pm.new_particles_index_start[properties.layer], pm.particle_banks[e.particles_index].current_size);
 
 		for (auto &position : pm.new_positions) {
-			bool is_single = e.common.property_flags & tfxEmitterPropertyFlags_single;
-
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
 
 			assert(e.sprites_index < pm.sprites3d[properties.layer].capacity);
