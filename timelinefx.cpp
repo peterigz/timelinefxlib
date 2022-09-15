@@ -4484,10 +4484,13 @@ namespace tfx {
 						index.start_index = running_node_index;
 						index.length = graph.nodes.size();
 						index.max_life = graph.lookup.life;
-						for (auto &node : graph.nodes) {
-							all_nodes.push_back(node);
-							running_node_index++;
-						}
+						graph.nodes.ResetIteratorIndex();
+						do {
+							for (auto &node : graph.nodes) {
+								all_nodes.push_back(node);
+								running_node_index++;
+							}
+						} while (!graph.nodes.EndOfBuckets());
 
 						tfxGraphLookupIndex value_index;
 						value_index.start_index = running_value_index;
@@ -4519,9 +4522,19 @@ namespace tfx {
 		}
 		else if(effect.type == tfxEmitterType) {
 			CompileEmitterGraphs(effect.emitter_attributes);
+			for (auto &sub : info.sub_effectors) {
+				CompileGraphsOfEffect(sub, ++depth);
+			}
 		}
-		for (auto &sub : info.sub_effectors) {
-			CompileGraphsOfEffect(sub, ++depth);
+		else if (effect.type == tfxFolder) {
+			for (auto &sub : info.sub_effectors) {
+				CompileGraphsOfEffect(sub, 0);
+			}
+		}
+		if (effect.type == tfxEffectType) {
+			for (auto &sub : info.sub_effectors) {
+				CompileGraphsOfEffect(sub, ++depth);
+			}
 		}
 	}
 
@@ -5347,9 +5360,12 @@ namespace tfx {
 
 	void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file) {
 
-		for (auto &n : graph.nodes) {
-			file.AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, n.frame, n.value, (n.flags & tfxAttributeNodeFlags_is_curve), n.left.x, n.left.y, n.right.x, n.right.y);
-		}
+		graph.nodes.ResetIteratorIndex();
+		do {
+			for (auto &n : graph.nodes) {
+				file.AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, n.frame, n.value, (n.flags & tfxAttributeNodeFlags_is_curve), n.left.x, n.left.y, n.right.x, n.right.y);
+			}
+		} while (!graph.nodes.EndOfBuckets());
 
 	}
 
@@ -5385,11 +5401,14 @@ namespace tfx {
 	}
 
 	void tfxGraph::MultiplyAllValues(float scalar) {
-		for (auto &node : nodes) {
-			node.value *= scalar;
-			node.left.y *= scalar;
-			node.right.y *= scalar;
-		}
+		nodes.ResetIteratorIndex();
+		do {
+			for (auto &node : nodes) {
+				node.value *= scalar;
+				node.left.y *= scalar;
+				node.right.y *= scalar;
+			}
+		} while (!nodes.EndOfBuckets());
 	}
 
 	void tfxGraph::CopyToNoLookups(tfxGraph *graph) {
@@ -5558,13 +5577,16 @@ namespace tfx {
 	}
 
 	void ClampGraph(tfxGraph &graph) {
-		for (auto &node : graph.nodes) {
-			ClampNode(graph, node);
-			if (node.flags & tfxAttributeNodeFlags_is_curve) {
-				ClampCurve(graph, node.left, node);
-				ClampCurve(graph, node.right, node);
+		graph.nodes.ResetIteratorIndex();
+		do {
+			for (auto &node : graph.nodes) {
+				ClampNode(graph, node);
+				if (node.flags & tfxAttributeNodeFlags_is_curve) {
+					ClampCurve(graph, node.left, node);
+					ClampCurve(graph, node.right, node);
+				}
 			}
-		}
+		} while (!graph.nodes.EndOfBuckets());
 	}
 
 	void ClampCurve(tfxGraph &graph, tfxVec2 &p, tfxAttributeNode &node) {
@@ -5704,10 +5726,13 @@ namespace tfx {
 	}
 
 	void tfxGraph::AddNode(tfxAttributeNode &node) {
-		for (auto &n : nodes) {
-			if (n.frame == node.frame)
-				return;
-		}
+		nodes.ResetIteratorIndex();
+		do {
+			for (auto &n : nodes) {
+				if (n.frame == node.frame)
+					return;
+			}
+		} while (!nodes.EndOfBuckets());
 		nodes.push_back(node);
 		Sort();
 		ReIndex();
@@ -5835,21 +5860,24 @@ namespace tfx {
 		float lastf = 0;
 		float p = 0;
 		tfxAttributeNode *lastec = nullptr;
-		for (auto &a : nodes) {
-			if (age < a.frame) {
-				p = (age - lastf) / (a.frame - lastf);
-				float bezier_value = GetBezierValue(lastec, a, p, min.y, max.y);
-				if (bezier_value) {
-					return bezier_value;
+		nodes.ResetIteratorIndex();
+		do {
+			for (auto &a : nodes) {
+				if (age < a.frame) {
+					p = (age - lastf) / (a.frame - lastf);
+					float bezier_value = GetBezierValue(lastec, a, p, min.y, max.y);
+					if (bezier_value) {
+						return bezier_value;
+					}
+					else {
+						return lastv - p * (lastv - a.value);
+					}
 				}
-				else {
-					return lastv - p * (lastv - a.value);
-				}
+				lastv = a.value;
+				lastf = a.frame - 1;
+				lastec = &a;
 			}
-			lastv = a.value;
-			lastf = a.frame - 1;
-			lastec = &a;
-		}
+		} while (!nodes.EndOfBuckets());
 		return lastv;
 
 	}
@@ -5879,21 +5907,24 @@ namespace tfx {
 		float lastf = 0;
 		float p = 0;
 		tfxAttributeNode *lastec = nullptr;
-		for (auto &a : nodes) {
-			if (age < a.frame) {
-				p = (age - lastf) / (a.frame - lastf);
-				float bezier_value = GetBezierValue(lastec, a, p, min.y, max.y);
-				if (bezier_value) {
-					return random_generation.Range(bezier_value);
+		nodes.ResetIteratorIndex();
+		do {
+			for (auto &a : nodes) {
+				if (age < a.frame) {
+					p = (age - lastf) / (a.frame - lastf);
+					float bezier_value = GetBezierValue(lastec, a, p, min.y, max.y);
+					if (bezier_value) {
+						return random_generation.Range(bezier_value);
+					}
+					else {
+						return random_generation.Range(lastv - p * (lastv - a.value));
+					}
 				}
-				else {
-					return random_generation.Range(lastv - p * (lastv - a.value));
-				}
+				lastv = a.value;
+				lastf = a.frame - 1;
+				lastec = &a;
 			}
-			lastv = a.value;
-			lastf = a.frame - 1;
-			lastec = &a;
-		}
+		} while (!nodes.EndOfBuckets());
 		return random_generation.Range(lastv);
 
 	}
@@ -5903,22 +5934,25 @@ namespace tfx {
 		float lastf = 0;
 		float p = 0;
 		tfxAttributeNode *lastec = nullptr;
-		for (auto &a : nodes) {
-			float frame = a.frame * life;
-			if (age < frame) {
-				p = (age - lastf) / (frame - lastf);
-				float bezier_value = GetBezierValue(lastec, a, p, min.y, max.y);
-				if (bezier_value) {
-					return bezier_value;
+		nodes.ResetIteratorIndex();
+		do {
+			for (auto &a : nodes) {
+				float frame = a.frame * life;
+				if (age < frame) {
+					p = (age - lastf) / (frame - lastf);
+					float bezier_value = GetBezierValue(lastec, a, p, min.y, max.y);
+					if (bezier_value) {
+						return bezier_value;
+					}
+					else {
+						return lastv - p * (lastv - a.value);
+					}
 				}
-				else {
-					return lastv - p * (lastv - a.value);
-				}
+				lastv = a.value;
+				lastf = frame - 1;
+				lastec = &a;
 			}
-			lastv = a.value;
-			lastf = frame - 1;
-			lastec = &a;
-		}
+		} while (!nodes.EndOfBuckets());
 		return lastv;
 	}
 
@@ -5944,10 +5978,13 @@ namespace tfx {
 	float tfxGraph::GetMaxValue() {
 		if (nodes.size()) {
 			float value = tfxMIN_FLOAT;
-			for (auto &n : nodes) {
-				if (value < n.value)
-					value = n.value;
-			}
+			nodes.ResetIteratorIndex();
+			do {
+				for (auto &n : nodes) {
+					if (value < n.value)
+						value = n.value;
+				}
+			} while (!nodes.EndOfBuckets());
 			return value;
 		}
 		return 0.f;
@@ -5956,10 +5993,13 @@ namespace tfx {
 	float tfxGraph::GetMinValue() {
 		if (nodes.size()) {
 			float value = tfxMAX_FLOAT;
-			for (auto &n : nodes) {
-				if (value > n.value)
-					value = n.value;
-			}
+			nodes.ResetIteratorIndex();
+			do {
+				for (auto &n : nodes) {
+					if (value > n.value)
+						value = n.value;
+				}
+			} while (!nodes.EndOfBuckets());
 			return value;
 		}
 		return 0.f;
@@ -5979,23 +6019,26 @@ namespace tfx {
 	void tfxGraph::ValidateCurves() {
 		tfxU32 index = 0;
 		tfxU32 last_index = nodes.size() - 1;
-		for(auto &n : nodes) {
-			if (n.flags & tfxAttributeNodeFlags_is_curve) {
-				if (index < last_index) {
-					if (nodes[index + 1].frame < n.right.x)
-						n.right.x = nodes[index + 1].frame;
+		nodes.ResetIteratorIndex();
+		do {
+			for(auto &n : nodes) {
+				if (n.flags & tfxAttributeNodeFlags_is_curve) {
+					if (index < last_index) {
+						if (nodes[index + 1].frame < n.right.x)
+							n.right.x = nodes[index + 1].frame;
+					}
+					if (index > 0) {
+						if (nodes[index - 1].frame > n.left.x)
+							n.left.x = nodes[index - 1].frame;
+					}
+					if (n.left.x > n.frame)
+						n.left.x = n.frame;
+					if (n.right.x < n.frame)
+						n.right.x = n.frame;
 				}
-				if (index > 0) {
-					if (nodes[index - 1].frame > n.left.x)
-						n.left.x = nodes[index - 1].frame;
-				}
-				if (n.left.x > n.frame)
-					n.left.x = n.frame;
-				if (n.right.x < n.frame)
-					n.right.x = n.frame;
+				index++;
 			}
-			index++;
-		}
+		} while (!nodes.EndOfBuckets());
 	}
 
 	void tfxGraph::DeleteNode(const tfxAttributeNode &n) {
@@ -6275,9 +6318,12 @@ namespace tfx {
 
 	void tfxGraph::ReIndex() {
 		tfxU32 i = 0;
-		for (auto &a : nodes) {
-			a.index = i++;
-		}
+		nodes.ResetIteratorIndex();
+		do {
+			for (auto &a : nodes) {
+				a.index = i++;
+			}
+		} while (!nodes.EndOfBuckets());
 	}
 
 	tfxVec2 tfxGraph::GetInitialZoom() {
@@ -6473,22 +6519,25 @@ namespace tfx {
 		float lastf = 0;
 		float p = 0;
 		tfxAttributeNode *lastec = nullptr;
-		for (auto &a : graph.nodes) {
-			float frame = a.frame * life;
-			if (age < frame) {
-				p = (age - lastf) / (frame - lastf);
-				float bezier_value = GetBezierValue(lastec, a, p, graph.min.y, graph.max.y);
-				if (bezier_value) {
-					return bezier_value;
+		graph.nodes.ResetIteratorIndex();
+		do {
+			for (auto &a : graph.nodes) {
+				float frame = a.frame * life;
+				if (age < frame) {
+					p = (age - lastf) / (frame - lastf);
+					float bezier_value = GetBezierValue(lastec, a, p, graph.min.y, graph.max.y);
+					if (bezier_value) {
+						return bezier_value;
+					}
+					else {
+						return lastv - p * (lastv - a.value);
+					}
 				}
-				else {
-					return lastv - p * (lastv - a.value);
-				}
+				lastv = a.value;
+				lastf = frame - 1;
+				lastec = &a;
 			}
-			lastv = a.value;
-			lastf = frame - 1;
-			lastec = &a;
-		}
+		} while (!graph.nodes.EndOfBuckets());
 		return lastv;
 	}
 
@@ -6497,21 +6546,24 @@ namespace tfx {
 		float lastf = 0;
 		float p = 0;
 		tfxAttributeNode *lastec = nullptr;
-		for (auto &a : graph.nodes) {
-			if (age < a.frame) {
-				p = (age - lastf) / (a.frame - lastf);
-				float bezier_value = GetBezierValue(lastec, a, p, graph.min.y, graph.max.y);
-				if (bezier_value) {
-					return bezier_value;
+		graph.nodes.ResetIteratorIndex();
+		do {
+			for (auto &a : graph.nodes) {
+				if (age < a.frame) {
+					p = (age - lastf) / (a.frame - lastf);
+					float bezier_value = GetBezierValue(lastec, a, p, graph.min.y, graph.max.y);
+					if (bezier_value) {
+						return bezier_value;
+					}
+					else {
+						return lastv - p * (lastv - a.value);
+					}
 				}
-				else {
-					return lastv - p * (lastv - a.value);
-				}
+				lastv = a.value;
+				lastf = a.frame - 1;
+				lastec = &a;
 			}
-			lastv = a.value;
-			lastf = a.frame - 1;
-			lastec = &a;
-		}
+		} while (!graph.nodes.EndOfBuckets());
 		return lastv;
 	}
 

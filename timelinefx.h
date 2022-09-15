@@ -1808,6 +1808,8 @@ union tfxUInt10bit
 			current_bucket = block;
 		}
 		inline bool EndOfBuckets() {
+			if (current_bucket == tfxINVALID)
+				return true;
 			current_bucket = allocator->blocks[current_bucket].next_block;
 			if (current_bucket == tfxINVALID) {
 				current_bucket = block;
