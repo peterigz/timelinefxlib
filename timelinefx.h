@@ -5231,7 +5231,7 @@ union tfxUInt10bit
 			n->next_ptr = p.next_ptr;
 		}
 
-		if (bank->pair && bank->pair->data) {
+		if (bank->pair && bank->pair->current_size > 0) {
 			for (tfxU32 i = 0; i != bank->pair->current_size - 1; ++i) {
 				tfxParticle &p = (*bank->pair)[i];
 				ptrdiff_t diff = p.next_ptr - bank->data;
