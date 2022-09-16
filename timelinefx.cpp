@@ -5729,7 +5729,7 @@ namespace tfx {
 		nodes.ResetIteratorIndex();
 		do {
 			for (auto &n : nodes) {
-				if (n.frame == node.frame)
+				if (n.frame == node.frame && n.value == node.value)
 					return;
 			}
 		} while (!nodes.EndOfBuckets());

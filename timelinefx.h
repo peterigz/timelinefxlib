@@ -1638,6 +1638,11 @@ union tfxUInt10bit
 				current_bucket = allocator->blocks[current_bucket].next_block;
 				src_block = src.allocator->blocks[src_block].next_block;
 			}
+			while (current_bucket != tfxINVALID) {
+				allocator->blocks[current_bucket].clear();
+				current_bucket = allocator->blocks[current_bucket].next_block;
+			}
+			TrimBuckets();
 			current_bucket = block;
 			current_size = src.current_size;
 			return *this;
@@ -1675,7 +1680,7 @@ union tfxUInt10bit
 			assert(size_of_each_bucket * number_of_buckets > 1);	//Buckets must be greater than 0
 			int block_count = (int)allocator->BlockCount(block);
 			if (block_count > 0) {
-				number_of_buckets = (int)allocator->BlockCount(block) - (int)number_of_buckets;
+				number_of_buckets = (int)number_of_buckets - block_count;
 			}
 			for (int i = 0; i < number_of_buckets; ++i) {
 				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
