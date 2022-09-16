@@ -7328,7 +7328,7 @@ namespace tfx {
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
 				emitter.flags |= emitter.parent->flags & tfxEmitterStateFlags_no_tween;
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_single && !(flags & tfxEffectManagerFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
-				emitter.flags |= emitter.common.property_flags & tfxParticleControlFlags_base_uniform_size;
+				emitter.flags |= emitter.common.property_flags & tfxEmitterPropertyFlags_base_uniform_size;
 				emitter.flags |= (properties.emission_type != tfxLine && !(e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type == tfxLine && !(e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_random_color;
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
