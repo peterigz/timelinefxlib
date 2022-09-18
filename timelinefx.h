@@ -1986,7 +1986,17 @@ union tfxUInt10bit
 		inline void			FreeAll() { if (data) { size = size = 0; free(data); data = NULL; } }
 		inline void         Clear() { if (data) { size = 0; } }
 
-		inline void         Resize(tfxU64 new_capacity) { if (new_capacity <= size) return; char* new_data = (char*)malloc((tfxU64)new_capacity * sizeof(char)); if (data) { memcpy(new_data, data, (tfxU64)size * sizeof(char)); free(data); } data = new_data; size = new_capacity; position = 0; }
+		inline void         Resize(tfxU64 new_capacity) { 
+			if (new_capacity <= size) 
+				return; 
+			char* new_data = (char*)malloc((tfxU64)new_capacity * sizeof(char)); 
+			if (data) { 
+				memcpy(new_data, data, (tfxU64)size * sizeof(char)); 
+				free(data); 
+			} 
+			data = new_data; size = new_capacity; 
+			position = 0; 
+		}
 		inline void			NullTerminate() { *(data + size) = NULL; }
 
 	};
@@ -3099,7 +3109,7 @@ union tfxUInt10bit
 		inline const char&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 
 		inline void         free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
-		inline void         Clear() { if (data) { current_size = 0; } }
+		inline void         Clear() { if (strbuffer()) { current_size = 0; } }
 		inline char*           begin() { return data; }
 		inline const char*     begin() const { return data; }
 		inline char*           end() { return data + current_size; }
