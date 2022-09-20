@@ -342,7 +342,8 @@ union tfxUInt10bit
 		tfxPoint,
 		tfxArea,
 		tfxLine,
-		tfxEllipse
+		tfxEllipse,
+		tfxCylinder
 	};
 
 	//Determines how for area, line and ellipse emitters the direction that particles should travel
@@ -565,6 +566,8 @@ union tfxUInt10bit
 		tfxEmitterPropertyFlags_can_grow_particle_memory = 1 << 23,			//Allows for expanding the memory used for particle emitters if the amount spawned is changed dynamically
 		tfxEmitterPropertyFlags_is_3d = 1 << 24,							//Makes the effect run in 3d mode for 3d effects
 		tfxEmitterPropertyFlags_use_dynamic = 1 << 25,						//Use a dynamic particle storage rather then a fixed one
+		tfxEmitterPropertyFlags_grid_spawn_random = 1 << 26,				//Spawn on grid points but randomly rather then in sequence
+		tfxEmitterPropertyFlags_area_open_ends = 1 << 27					//Only sides of the area/cylinder are spawned on when fill area is not checked
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
