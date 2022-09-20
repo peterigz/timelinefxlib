@@ -1914,70 +1914,102 @@ namespace tfx {
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_fill_area) {
-					if (!(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
-						current.grid_coords.x--;
-						if (current.grid_coords.x < 0.f) {
-							current.grid_coords.y--;
-							current.grid_coords.x = properties.grid_points.x - 1;
-							if (current.grid_coords.y < 0.f)
-								current.grid_coords.y = properties.grid_points.y - 1;
-						}
+					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+						current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+						current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+						data.local_position = current.grid_coords.xy() * spawn_values.grid_segment_size.xy();
 					}
+					else {
+						if (!(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
+							current.grid_coords.x--;
+							if (current.grid_coords.x < 0.f) {
+								current.grid_coords.y--;
+								current.grid_coords.x = properties.grid_points.x - 1;
+								if (current.grid_coords.y < 0.f)
+									current.grid_coords.y = properties.grid_points.y - 1;
+							}
+						}
 
-					data.local_position = position + (current.grid_coords.xy() * spawn_values.grid_segment_size.xy());
+						data.local_position = current.grid_coords.xy() * spawn_values.grid_segment_size.xy();
 
-					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
-						current.grid_coords.x++;
-						if (current.grid_coords.x == properties.grid_points.x) {
-							current.grid_coords.y++;
-							current.grid_coords.x = 0.f;
-							if (current.grid_coords.y >= properties.grid_points.y)
-								current.grid_coords.y = 0.f;
+						if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+							current.grid_coords.x++;
+							if (current.grid_coords.x == properties.grid_points.x) {
+								current.grid_coords.y++;
+								current.grid_coords.x = 0.f;
+								if (current.grid_coords.y >= properties.grid_points.y)
+									current.grid_coords.y = 0.f;
+							}
 						}
 					}
 				}
 				else {
-
-					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
-
-						current.grid_direction.x = 1;
-						current.grid_direction.y = 0;
-						if (current.grid_coords.x == properties.grid_points.x - 1 && current.grid_coords.y >= 0 && current.grid_coords.y < properties.grid_points.y - 1) {
-							current.grid_direction.x = 0;
-							current.grid_direction.y = 1;
+					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+						tfxU32 side = random_generation.RangeUInt(4);
+						if (side == 0) {
+							//left side
+							current.grid_coords.x = 0.f;
+							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
 						}
-						else if (current.grid_coords.x > 0 && current.grid_coords.x < properties.grid_points.x && current.grid_coords.y == properties.grid_points.y - 1) {
-							current.grid_direction.x = -1;
-							current.grid_direction.y = 0;
+						else if (side == 1) {
+							//right side
+							current.grid_coords.x = properties.grid_points.x - 1;
+							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
 						}
-						else if (current.grid_coords.x == 0 && current.grid_coords.y > 0 && current.grid_coords.y < properties.grid_points.y) {
-							current.grid_direction.x = 0;
-							current.grid_direction.y = -1;
+						else if (side == 2) {
+							//top side
+							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+							current.grid_coords.y = 0.f;
 						}
-
+						else if (side == 3) {
+							//bottom side
+							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+							current.grid_coords.y = properties.grid_points.y - 1;
+						}
+						data.local_position = current.grid_coords.xy() * spawn_values.grid_segment_size.xy();
 					}
 					else {
+						if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 
-						current.grid_direction.x = -1;
-						current.grid_direction.y = 0;
-						if (current.grid_coords.x == properties.grid_points.x - 1 && current.grid_coords.y > 0 && current.grid_coords.y < properties.grid_points.y) {
-							current.grid_direction.x = 0;
-							current.grid_direction.y = -1;
-						}
-						else if (current.grid_coords.x >= 0 && current.grid_coords.x < properties.grid_points.x - 1 && current.grid_coords.y == properties.grid_points.y - 1) {
 							current.grid_direction.x = 1;
 							current.grid_direction.y = 0;
+							if (current.grid_coords.x == properties.grid_points.x - 1 && current.grid_coords.y >= 0 && current.grid_coords.y < properties.grid_points.y - 1) {
+								current.grid_direction.x = 0;
+								current.grid_direction.y = 1;
+							}
+							else if (current.grid_coords.x > 0 && current.grid_coords.x < properties.grid_points.x && current.grid_coords.y == properties.grid_points.y - 1) {
+								current.grid_direction.x = -1;
+								current.grid_direction.y = 0;
+							}
+							else if (current.grid_coords.x == 0 && current.grid_coords.y > 0 && current.grid_coords.y < properties.grid_points.y) {
+								current.grid_direction.x = 0;
+								current.grid_direction.y = -1;
+							}
+
 						}
-						else if (current.grid_coords.x == 0 && current.grid_coords.y >= 0 && current.grid_coords.y < properties.grid_points.y - 1) {
-							current.grid_direction.x = 0;
-							current.grid_direction.y = 1;
+						else {
+
+							current.grid_direction.x = -1;
+							current.grid_direction.y = 0;
+							if (current.grid_coords.x == properties.grid_points.x - 1 && current.grid_coords.y > 0 && current.grid_coords.y < properties.grid_points.y) {
+								current.grid_direction.x = 0;
+								current.grid_direction.y = -1;
+							}
+							else if (current.grid_coords.x >= 0 && current.grid_coords.x < properties.grid_points.x - 1 && current.grid_coords.y == properties.grid_points.y - 1) {
+								current.grid_direction.x = 1;
+								current.grid_direction.y = 0;
+							}
+							else if (current.grid_coords.x == 0 && current.grid_coords.y >= 0 && current.grid_coords.y < properties.grid_points.y - 1) {
+								current.grid_direction.x = 0;
+								current.grid_direction.y = 1;
+							}
+
 						}
 
+						current.grid_coords += current.grid_direction;
+						tfxBound(current.grid_coords.xy(), properties.grid_points.xy());
+						data.local_position = position + (current.grid_coords.xy() * spawn_values.grid_segment_size.xy());
 					}
-
-					current.grid_coords += current.grid_direction;
-					tfxBound(current.grid_coords.xy(), properties.grid_points.xy());
-					data.local_position = position + (current.grid_coords.xy() * spawn_values.grid_segment_size.xy());
 				}
 			}
 			else {
