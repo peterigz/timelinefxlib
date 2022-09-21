@@ -1720,7 +1720,7 @@ namespace tfx {
 		float direction = 0;
 		tfxEmitterProperties &properties = library_link->GetProperties();
 
-		if (properties.emission_type == tfxEmissionType::tfxPoint)
+		if (properties.emission_type == tfxPoint)
 			return direction + emission_angle + random_generation.Range(-range, range);
 
 		tfxVec2 tmp_position;
@@ -1807,7 +1807,7 @@ namespace tfx {
 		tfxVec3 to_handle(0.f, 1.f, 0.f);
 		float parent_pitch = 0.f;
 		float parent_yaw = 0.f;
-		if (properties.emission_type != tfxEmissionType::tfxPoint) {
+		if (properties.emission_type != tfxPoint) {
 			if (properties.emission_direction == tfxEmissionDirection::tfxOutwards) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
@@ -1895,7 +1895,7 @@ namespace tfx {
 		data.captured_position = 0;
 		tfxEmitterProperties &properties = library_link->GetProperties();
 		tfxVec2 lerp_position = InterpolateVec2(tween, common.transform.captured_position.xy(), common.transform.world_position.xy());
-		if (properties.emission_type == tfxEmissionType::tfxPoint) {
+		if (properties.emission_type == tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 				data.local_position = 0;
 			else {
@@ -1908,7 +1908,7 @@ namespace tfx {
 				}
 			}
 		}
-		else if (properties.emission_type == tfxEmissionType::tfxArea) {
+		else if (properties.emission_type == tfxArea) {
 			tfxVec2 position = tfxVec2(0.f, 0.f);
 
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
@@ -2052,7 +2052,7 @@ namespace tfx {
 			}
 
 		}
-		else if (properties.emission_type == tfxEmissionType::tfxEllipse) {
+		else if (properties.emission_type == tfxEllipse) {
 			tfxVec2 emitter_size = (current.emitter_size.xy() * .5f);
 			tfxVec2 position = tfxVec2(0.f, 0.f);
 
@@ -2101,7 +2101,7 @@ namespace tfx {
 			}
 
 		}
-		else if (properties.emission_type == tfxEmissionType::tfxLine) {
+		else if (properties.emission_type == tfxLine) {
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 				current.grid_coords.x = 0.f;
@@ -2222,7 +2222,7 @@ namespace tfx {
 		if (properties.angle_settings & tfxAngleSettingFlags_align_roll && common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
 			sprite_transform.rotation = data.local_rotations.roll = direction + properties.angle_offsets.roll;
 
-		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
+		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
 
 		if (!line && !(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			current.transform_particle_callback2d(data, sprite_transform.position, sprite_transform.rotation, common, common.transform.world_position);
@@ -2309,7 +2309,7 @@ namespace tfx {
 		tfxSpawnPosition out;
 		tfxVec3 lerp_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position);
 		tfxEmitterProperties &properties = library_link->GetProperties();
-		if (properties.emission_type == tfxEmissionType::tfxPoint) {
+		if (properties.emission_type == tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 				out.local_position = 0;
 			else {
@@ -2322,7 +2322,7 @@ namespace tfx {
 				}
 			}
 		}
-		else if (properties.emission_type == tfxEmissionType::tfxArea) {
+		else if (properties.emission_type == tfxArea) {
 			tfxVec3 position;
 
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
@@ -2641,7 +2641,7 @@ namespace tfx {
 			}
 
 		}
-		else if (properties.emission_type == tfxEmissionType::tfxEllipse) {
+		else if (properties.emission_type == tfxEllipse) {
 			tfxVec3 emitter_size = current.emitter_size * .5f;
 			tfxVec3 position;
 
@@ -2678,14 +2678,77 @@ namespace tfx {
 				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 		}
-		else if (properties.emission_type == tfxEmissionType::tfxLine) {
+		else if (properties.emission_type == tfxCylinder) {
+			tfxVec3 emitter_size = (current.emitter_size * .5f);
+			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(common.property_flags & tfxEmitterPropertyFlags_fill_area)) {
+
+				current.grid_coords.z = 0.f;
+
+				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+					current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+					current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+
+					float th = current.grid_coords.x * spawn_values.grid_segment_size.x + spawn_values.arc_offset;
+					out.local_position = tfxVec3(std::cosf(th) * emitter_size.x + emitter_size.x, current.grid_coords.y * spawn_values.grid_segment_size.y, -std::sinf(th) * emitter_size.z + emitter_size.z);
+				}
+				else {
+					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+						current.grid_coords.x--;
+						if (current.grid_coords.x < 0.f) {
+							current.grid_coords.x = properties.grid_points.x - 1;
+							current.grid_coords.y--;
+							if (current.grid_coords.y < 0.f) {
+								current.grid_coords.y = properties.grid_points.y - 1;
+							}
+						}
+					}
+
+					float th = current.grid_coords.x * spawn_values.grid_segment_size.x + spawn_values.arc_offset;
+					out.local_position = tfxVec3(std::cosf(th) * emitter_size.x + emitter_size.x, current.grid_coords.y * spawn_values.grid_segment_size.y, -std::sinf(th) * emitter_size.z + emitter_size.z);
+
+					if (!(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
+						current.grid_coords.x++;
+						if (current.grid_coords.x >= properties.grid_points.x) {
+							current.grid_coords.x = 0.f;
+							current.grid_coords.y++;
+							if (current.grid_coords.y >= properties.grid_points.y) {
+								current.grid_coords.y = 0.f;
+							}
+						}
+					}
+				}
+
+			}
+			else if (!(common.property_flags & tfxEmitterPropertyFlags_fill_area)) {
+				float th = random_generation.Range(spawn_values.arc_size) + spawn_values.arc_offset;
+
+				out.local_position = tfxVec3(std::cosf(th) * emitter_size.x + emitter_size.x, random_generation.Range(current.emitter_size.y), -std::sinf(th) * emitter_size.z + emitter_size.z);
+			}
+			else {
+				out.local_position.x = random_generation.Range(0, current.emitter_size.x);
+				out.local_position.y = random_generation.Range(0, current.emitter_size.y);
+				out.local_position.z = random_generation.Range(0, current.emitter_size.z);
+
+				while ((std::pow(out.local_position.x - emitter_size.x, 2) / std::pow(emitter_size.x, 2)) + (std::pow(out.local_position.z - emitter_size.z, 2) / std::pow(emitter_size.z, 2)) > 1) {
+					out.local_position.x = random_generation.Range(0, current.emitter_size.x);
+					out.local_position.z = random_generation.Range(0, current.emitter_size.z);
+				}
+			}
+
+			//----TForm and Emission
+			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+				out.local_position = mmTransformVector3(common.transform.matrix, out.local_position + common.handle);
+				out.local_position = lerp_position + out.local_position * common.transform.scale;
+			}
+		}
+		else if (properties.emission_type == tfxLine) {
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 				current.grid_coords.x = 0.f;
 				current.grid_coords.z = 0.f;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					current.grid_coords.y = random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+					current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
 					out.local_position = current.grid_coords * spawn_values.grid_segment_size;
 				}
 				else {
@@ -2745,7 +2808,7 @@ namespace tfx {
 			}
 		}
 
-		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
+		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
 
 		if (!line && !(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
@@ -2774,10 +2837,10 @@ namespace tfx {
 		float emission_pitch = lookup_callback(common.library->emitter_attributes[library_link->emitter_attributes].properties.emission_pitch, common.frame);
 		float emission_yaw = lookup_callback(common.library->emitter_attributes[library_link->emitter_attributes].properties.emission_yaw, common.frame);
 
-		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != tfxEmissionType::tfxLine) {
+		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != tfxLine) {
 			out.velocity_normal = GetEmissionDirection3d(common, current, library_link, emission_pitch, emission_yaw, out.local_position, out.world_position, current.emitter_size);
 		}
-		else if (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine) {
+		else if (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine) {
 			out.velocity_normal = tfxVec3(0, 1.f, 0.f);
 		}
 		out.base_velocity = spawn_values.velocity + random_generation.Range(-spawn_values.velocity_variation, spawn_values.velocity_variation);
@@ -3031,7 +3094,7 @@ namespace tfx {
 		//p.data.motion_randomness_speed = 30.f * random_motion(random_generation.engine);
 		//p.data.motion_tracker = 0;
 
-		//if (!e.GetProperties().edge_traversal || e.GetProperties().emission_type != tfxEmissionType::kLine) {
+		//if (!e.GetProperties().edge_traversal || e.GetProperties().emission_type != kLine) {
 			//p.data.direction = p.data.emission_angle = e.GetEmissionDirection2d(p) + p.data.motion_randomness_direction;
 		//}
 
@@ -3040,7 +3103,7 @@ namespace tfx {
 		//p.data.velocity_normal.y = -std::cosf(p.data.direction);
 
 		//p.data.velocity = p.data.velocity_normal * p.data.base.velocity * p.data.velocity_scale * e.timer->UpdateTime();
-		//bool line = e.GetProperties().edge_traversal && e.GetProperties().emission_type == tfxEmissionType::kLine;
+		//bool line = e.GetProperties().edge_traversal && e.GetProperties().emission_type == kLine;
 
 		//if (e.GetProperties().angle_setting == AngleSetting::kAlign && !line) {
 			//p.data.rotations.roll = p.data.rotations.roll = GetVectorAngle(p.data.velocity_normal.x, p.data.velocity_normal.y) + e.GetProperties().angle_offset + e.world.position.w;
@@ -8750,7 +8813,7 @@ return free_slot;
 			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age + tfxFRAME_LENGTH + 1);
 			e.parent->highest_particle_age = e.highest_particle_age + tfxFRAME_LENGTH;
 
-			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
+			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
 			tfxVec3 alignment_vector(0.f, 0.002f, 0.f);
 			if (p->data.flags & tfxParticleFlags_fresh && properties.vector_align_type == tfxVectorAlignType_motion) {
 				alignment_vector = p->data.velocity_normal.xyz();
@@ -8926,7 +8989,7 @@ return free_slot;
 			e.current.image_handle = properties.image_handle;
 		}
 
-		bool is_area = properties.emission_type == tfxEmissionType::tfxArea || properties.emission_type == tfxEmissionType::tfxEllipse;
+		bool is_area = properties.emission_type == tfxArea || properties.emission_type == tfxEllipse || properties.emission_type == tfxCylinder;
 
 		if (is_area) {
 			e.current.emitter_size.x = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.emitter_width, e.common.frame);
@@ -8940,13 +9003,13 @@ return free_slot;
 
 		e.current.emitter_size *= parent.current.emitter_size;
 
-		if (properties.emission_type == tfxEmissionType::tfxEllipse) {
+		if (properties.emission_type == tfxEllipse || properties.emission_type == tfxCylinder) {
 			spawn_controls.arc_size = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.arc_size, e.common.frame);
 			spawn_controls.arc_offset = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.arc_offset, e.common.frame);
 		}
 
-		if (e.common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != tfxEmissionType::tfxPoint) {
-			if (properties.emission_type == tfxEmissionType::tfxEllipse && e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
+		if (e.common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != tfxPoint) {
+			if (properties.emission_type == tfxEllipse && e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 				e.common.handle = e.current.emitter_size * 0.f;
 			else if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 				e.common.handle = e.current.emitter_size * -0.5f;
@@ -8963,7 +9026,7 @@ return free_slot;
 		}
 
 		if (e.common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
-			if (properties.emission_type == tfxEmissionType::tfxArea) {
+			if (properties.emission_type == tfxArea) {
 				if (properties.grid_points.x > 1)
 					spawn_controls.grid_segment_size.x = e.current.emitter_size.x / (properties.grid_points.x - 1);
 				if (properties.grid_points.y > 1)
@@ -8971,11 +9034,17 @@ return free_slot;
 				if (properties.grid_points.z > 1)
 					spawn_controls.grid_segment_size.z = e.current.emitter_size.z / (properties.grid_points.z - 1);
 			}
-			else if (properties.emission_type == tfxEmissionType::tfxEllipse) {
+			else if (properties.emission_type == tfxEllipse) {
 				if (properties.grid_points.x > 0)
 					spawn_controls.grid_segment_size.x = spawn_controls.arc_size / (properties.grid_points.x);
 			}
-			else if (properties.emission_type == tfxEmissionType::tfxLine) {
+			else if (properties.emission_type == tfxCylinder) {
+				if (properties.grid_points.x > 0)
+					spawn_controls.grid_segment_size.x = spawn_controls.arc_size / (properties.grid_points.x);
+				if (properties.grid_points.y > 1)
+					spawn_controls.grid_segment_size.y = e.current.emitter_size.y / (properties.grid_points.y - 1);
+			}
+			else if (properties.emission_type == tfxLine) {
 				if (properties.grid_points.x > 1)
 					spawn_controls.grid_segment_size.y = e.current.emitter_size.y / (properties.grid_points.x - 1);
 			}
@@ -9228,7 +9297,7 @@ return free_slot;
 			}
 
 			tfxVec3 alignment_vector;
-			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxEmissionType::tfxLine;
+			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
 			if (properties.vector_align_type == tfxVectorAlignType_motion) {
 				alignment_vector = s.transform.position - p->data.captured_position;
 				float l = FastLength(alignment_vector);
