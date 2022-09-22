@@ -9162,6 +9162,7 @@ return free_slot;
 				assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
 				tfxParticleSprite2d &s = pm.sprites2d[properties.layer][e.sprites_index++];
 				s.transform.scale = 0;
+				s.transform.position = 0;
 				s.color.a = 0;
 				s.image_ptr = properties.image->ptr;
 				s.image_frame = 0;
