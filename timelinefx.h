@@ -1901,9 +1901,9 @@ union tfxUInt10bit
 			current_size++; return block[current_size - 1];
 		}
 		inline bool			reserve(tfxU32 size) {
-			assert(allocator);		//Must assign an allocator before doing anything with a tfxBucketArray. Capacity must equal 0
-			assert(capacity == 0);	//Capacity must equal 0 before reserving an array
-			assert(size * sizeof(T) < allocator->arena_size);	//The size of an array must fit into an arena size
+			assert(allocator);		//Must assign an allocator before doing anything with a tfxStack. Capacity must equal 0
+			assert(capacity == 0);	//Capacity must equal 0 before reserving
+			assert(size * sizeof(T) < allocator->arena_size);	//The size must fit into an arena size
 			if (capacity == 0) {
 				if (!Allocate<T>(*allocator, size, block_index)) {
 					return false;
@@ -3598,6 +3598,15 @@ union tfxUInt10bit
 		}
 
 	};
+
+
+	struct tfxFace {
+		int v[3];
+	};
+	extern tfxvec<tfxVec3> tfxIcosphere[6];
+	void MakeIcospheres();
+	int VertexForEdge(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, int first, int second);
+	tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, tfxvec<tfxFace> &triangles);
 
 	static inline uint32_t Millisecs() {
 		auto now = tfxClock::now().time_since_epoch();

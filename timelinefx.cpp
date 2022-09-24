@@ -746,6 +746,109 @@ namespace tfx {
 		return (output / denom);
 	}
 
+	tfxvec<tfxVec3> tfxIcosphere[6];
+
+	void MakeIcospheres() {
+		const float x = .525731112119133606f;
+		const float z = .850650808352039932f;
+		const float n = 0.f;
+		const int subdivisions = 6;
+
+		tfxIcosphere[0].reserve(42);
+		tfxIcosphere[1].reserve(162);
+		tfxIcosphere[2].reserve(642);
+		tfxIcosphere[3].reserve(2562);
+		tfxIcosphere[4].reserve(10242);
+		tfxIcosphere[5].reserve(40962);
+
+		tfxvec<tfxVec3> vertices;
+		vertices.push_back({-x, n, z});
+		vertices.push_back({ x, n, z});
+		vertices.push_back({-x, n,-z});
+		vertices.push_back({ x, n,-z});
+		vertices.push_back({ n, z, x});
+		vertices.push_back({ n, z,-x});
+		vertices.push_back({ n,-z, x});
+		vertices.push_back({ n,-z,-x});
+		vertices.push_back({ z, x, n});
+		vertices.push_back({-z, x, n});
+		vertices.push_back({ z,-x, n});
+		vertices.push_back({-z,-x, n});
+
+		tfxvec<tfxFace> triangles;
+		triangles.push_back({0,  4, 1});
+		triangles.push_back({0 , 9, 4});
+		triangles.push_back({9 , 5, 4});
+		triangles.push_back({4 , 5, 8});
+		triangles.push_back({4 , 8, 1});
+		triangles.push_back({8 ,10, 1});
+		triangles.push_back({8 , 3,10});
+		triangles.push_back({5 , 3, 8});
+		triangles.push_back({5 , 2, 3});
+		triangles.push_back({2 , 7, 3});
+		triangles.push_back({7 ,10, 3});
+		triangles.push_back({7 , 6,10});
+		triangles.push_back({7 ,11, 6});
+		triangles.push_back({11, 0, 6});
+		triangles.push_back({0 , 1, 6});
+		triangles.push_back({6 , 1,10});
+		triangles.push_back({9 , 0,11});
+		triangles.push_back({9 ,11, 2});
+		triangles.push_back({9 , 2, 5});
+		triangles.push_back({7 , 2,11});
+
+		tfxStorageMap<int> point_cache;
+
+		for (int i = 0; i < subdivisions; ++i)
+		{
+			triangles = SubDivideIcosphere(point_cache, vertices, triangles);
+			assert(tfxIcosphere[i].capacity == vertices.current_size);	//Must be the same size
+			memcpy(tfxIcosphere[i].data, vertices.data, vertices.current_size);
+			tfxIcosphere[i].current_size = vertices.current_size;
+		}
+
+	}
+
+	int VertexForEdge(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, int first, int second)
+	{
+		tfxKey key = ((tfxKey)first << 32) + second;
+		if (first > second)
+			key = ((tfxKey)second << 32) + first;
+
+		if (point_cache.ValidKey(key))
+			return point_cache.At(key);
+
+		point_cache.Insert(key, vertices.size());
+
+		auto& edge0 = vertices[first];
+		auto& edge1 = vertices[second];
+		auto point = NormalizeVec(edge0 + edge1);
+		vertices.push_back(point);
+
+		return vertices.size() - 1;
+	}
+
+	tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, tfxvec<tfxFace> &triangles)
+	{
+		tfxvec<tfxFace> result;
+
+		for (auto&& each : triangles)
+		{
+			int mid[3];
+			for (int edge = 0; edge < 3; ++edge)
+			{
+				mid[edge] = VertexForEdge(point_cache, vertices, each.v[edge], each.v[(edge + 1) % 3]);
+			}
+
+			result.push_back({ each.v[0], mid[0], mid[2] });
+			result.push_back({ each.v[1], mid[1], mid[0] });
+			result.push_back({ each.v[2], mid[2], mid[1] });
+			result.push_back({ mid[0], mid[1], mid[2] });
+		}
+
+		return result;
+	}
+
 	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
 	float tfxUPDATE_FREQUENCY = 60.f;
 	float tfxUPDATE_TIME = 1.f / tfxUPDATE_FREQUENCY;
@@ -7184,6 +7287,10 @@ namespace tfx {
 		assert(shape_loader);
 		if (!data_types.initialised) data_types.Init();
 		lib.Clear();
+
+		if (tfxIcosphere[0].current_size == 0) {
+			MakeIcospheres();
+		}
 
 		tmpStack(tfxEffectEmitter, effect_stack);
 		int context = 0;
