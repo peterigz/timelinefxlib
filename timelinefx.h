@@ -343,7 +343,8 @@ union tfxUInt10bit
 		tfxArea,
 		tfxLine,
 		tfxEllipse,
-		tfxCylinder
+		tfxCylinder,
+		tfxIcosphere
 	};
 
 	//Determines how for area, line and ellipse emitters the direction that particles should travel
@@ -3603,7 +3604,7 @@ union tfxUInt10bit
 	struct tfxFace {
 		int v[3];
 	};
-	extern tfxvec<tfxVec3> tfxIcosphere[6];
+	extern tfxvec<tfxVec3> tfxIcospherePoints[6];
 	void MakeIcospheres();
 	int VertexForEdge(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, int first, int second);
 	tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, tfxvec<tfxFace> &triangles);
@@ -5746,9 +5747,16 @@ union tfxUInt10bit
 		tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, data.local_position + common.handle);
 		world_position = from_position + rotatevec.xyz() * common.transform.scale;
 	}
+
 	static inline int SortParticles(void const *left, void const *right) {
 		float d1 = static_cast<const tfxSpawnPosition*>(left)->distance_to_camera;
 		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
+		return (d2 > d1) - (d2 < d1);
+	}
+
+	static inline int SortIcospherePoints(void const *left, void const *right) {
+		float d1 = static_cast<const tfxVec3*>(left)->y;
+		float d2 = static_cast<const tfxVec3*>(right)->y;
 		return (d2 > d1) - (d2 < d1);
 	}
 

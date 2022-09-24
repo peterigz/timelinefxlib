@@ -746,7 +746,7 @@ namespace tfx {
 		return (output / denom);
 	}
 
-	tfxvec<tfxVec3> tfxIcosphere[6];
+	tfxvec<tfxVec3> tfxIcospherePoints[6];
 
 	void MakeIcospheres() {
 		const float x = .525731112119133606f;
@@ -754,12 +754,12 @@ namespace tfx {
 		const float n = 0.f;
 		const int subdivisions = 6;
 
-		tfxIcosphere[0].reserve(42);
-		tfxIcosphere[1].reserve(162);
-		tfxIcosphere[2].reserve(642);
-		tfxIcosphere[3].reserve(2562);
-		tfxIcosphere[4].reserve(10242);
-		tfxIcosphere[5].reserve(40962);
+		tfxIcospherePoints[0].reserve(42);
+		tfxIcospherePoints[1].reserve(162);
+		tfxIcospherePoints[2].reserve(642);
+		tfxIcospherePoints[3].reserve(2562);
+		tfxIcospherePoints[4].reserve(10242);
+		tfxIcospherePoints[5].reserve(40962);
 
 		tfxvec<tfxVec3> vertices;
 		vertices.push_back({-x, n, z});
@@ -802,9 +802,10 @@ namespace tfx {
 		for (int i = 0; i < subdivisions; ++i)
 		{
 			triangles = SubDivideIcosphere(point_cache, vertices, triangles);
-			assert(tfxIcosphere[i].capacity == vertices.current_size);	//Must be the same size
-			memcpy(tfxIcosphere[i].data, vertices.data, vertices.current_size);
-			tfxIcosphere[i].current_size = vertices.current_size;
+			assert(tfxIcospherePoints[i].capacity == vertices.current_size);	//Must be the same size
+			memcpy(tfxIcospherePoints[i].data, vertices.data, vertices.current_size * sizeof(tfxVec3));
+			tfxIcospherePoints[i].current_size = vertices.current_size;
+			std::qsort(tfxIcospherePoints[i].data, tfxIcospherePoints[i].current_size, sizeof(tfxVec3), SortIcospherePoints);
 		}
 
 	}
@@ -828,7 +829,7 @@ namespace tfx {
 		return vertices.size() - 1;
 	}
 
-	tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, tfxvec<tfxFace> &triangles)
+	tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3> &vertices, tfxvec<tfxFace> &triangles)
 	{
 		tfxvec<tfxFace> result;
 
@@ -2779,6 +2780,15 @@ namespace tfx {
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				out.local_position = mmTransformVector3(common.transform.matrix, out.local_position + common.handle);
 				out.local_position = lerp_position + out.local_position * common.transform.scale;
+			}
+		}
+		else if (properties.emission_type == tfxIcosphere) {
+			tfxVec3 emitter_size = current.emitter_size * .5f;
+			tfxU32 sub_division = (tfxU32)properties.grid_points.x;
+			int i = random_generation.RangeUInt(tfxIcospherePoints[sub_division].current_size);
+			out.local_position = tfxIcospherePoints[sub_division][(tfxU32)current.grid_coords.x] * emitter_size;
+			if (++current.grid_coords.x >= tfxIcospherePoints[sub_division].current_size) {
+				current.grid_coords.x = 0;
 			}
 		}
 		else if (properties.emission_type == tfxCylinder) {
@@ -7288,7 +7298,7 @@ namespace tfx {
 		if (!data_types.initialised) data_types.Init();
 		lib.Clear();
 
-		if (tfxIcosphere[0].current_size == 0) {
+		if (tfxIcospherePoints[0].current_size == 0) {
 			MakeIcospheres();
 		}
 
@@ -9096,7 +9106,7 @@ return free_slot;
 			e.current.image_handle = properties.image_handle;
 		}
 
-		bool is_area = properties.emission_type == tfxArea || properties.emission_type == tfxEllipse || properties.emission_type == tfxCylinder;
+		bool is_area = properties.emission_type == tfxArea || properties.emission_type == tfxEllipse || properties.emission_type == tfxCylinder || properties.emission_type == tfxIcosphere;
 
 		if (is_area) {
 			e.current.emitter_size.x = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.emitter_width, e.common.frame);
@@ -9116,7 +9126,7 @@ return free_slot;
 		}
 
 		if (e.common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != tfxPoint) {
-			if (properties.emission_type == tfxEllipse && e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
+			if ((properties.emission_type == tfxEllipse || properties.emission_type == tfxIcosphere) && e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 				e.common.handle = e.current.emitter_size * 0.f;
 			else if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 				e.common.handle = e.current.emitter_size * -0.5f;
