@@ -1901,7 +1901,7 @@ namespace tfx {
 
 		tfxVec3 result;
 		tfxVec3 tmp_position;
-		if (common.handle.x + local_position.x == 0 && common.handle.y + local_position.y == 0)
+		if (common.handle.x + local_position.x == 0 && common.handle.y + local_position.y == 0 && common.handle.z + local_position.z == 0)
 			tmp_position = emitter_size;
 		else
 			tmp_position = local_position + common.handle;
@@ -2782,14 +2782,19 @@ namespace tfx {
 				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 		}
-		else if (properties.emission_type == tfxIcosphere) {
+		else if (properties.emission_type == tfxIcosphere && !(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
 			tfxVec3 emitter_size = current.emitter_size * .5f;
 			tfxU32 sub_division = (tfxU32)properties.grid_points.x;
-			int i = random_generation.RangeUInt(tfxIcospherePoints[sub_division].current_size);
 			out.local_position = tfxIcospherePoints[sub_division][(tfxU32)current.grid_coords.x] * emitter_size;
 			if (++current.grid_coords.x >= tfxIcospherePoints[sub_division].current_size) {
 				current.grid_coords.x = 0;
 			}
+		}
+		else if (properties.emission_type == tfxIcosphere && common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+			tfxVec3 emitter_size = current.emitter_size * .5f;
+			tfxU32 sub_division = (tfxU32)properties.grid_points.x;
+			int i = random_generation.RangeUInt(tfxIcospherePoints[sub_division].current_size);
+			out.local_position = tfxIcospherePoints[sub_division][i] * emitter_size;
 		}
 		else if (properties.emission_type == tfxCylinder) {
 			tfxVec3 emitter_size = (current.emitter_size * .5f);
