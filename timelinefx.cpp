@@ -7965,7 +7965,11 @@ return free_slot;
 							p.parent->current.transform_particle_callback3d(p.data, s.transform.position, s.transform.rotations, p.parent->common, p.parent->common.transform.world_position);
 						}
 
-						tfxVec3 alignment_vector = SetParticleAlignment(p, s.transform.position, properties);
+						tfxVec3 alignment_vector;
+						if (p.parent->common.property_flags & tfxEmitterPropertyFlags_relative_position && properties.vector_align_type == tfxVectorAlignType_emission)
+							alignment_vector = mmTransformVector3(p.parent->common.transform.matrix, p.data.velocity_normal.xyz());
+						else
+							alignment_vector = SetParticleAlignment(p, s.transform.position, properties);
 						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 
 						s.color = p.data.color;
@@ -8047,7 +8051,11 @@ return free_slot;
 						}
 						p.data.depth = LengthVec3NoSqR(s.transform.position - pm.camera_position);
 
-						tfxVec3 alignment_vector = SetParticleAlignment(p, s.transform.position, properties);
+						tfxVec3 alignment_vector;
+						if(p.parent->common.property_flags & tfxEmitterPropertyFlags_relative_position && properties.vector_align_type == tfxVectorAlignType_emission)
+							alignment_vector = mmTransformVector3(p.parent->common.transform.matrix, p.data.velocity_normal.xyz());
+						else 
+							alignment_vector = SetParticleAlignment(p, s.transform.position, properties);
 						while (new_particle && new_particle->data.depth > p.data.depth) {
 							tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
 							tfxParticleSprite3d &ns = pm.sprites3d[new_properties.layer][new_particle->sprite_index & 0x0FFFFFFF];
@@ -8955,6 +8963,9 @@ return free_slot;
 				p->data.velocity_normal.w *= l * 10.f;
 				alignment_vector = FastNormalizeVec(alignment_vector);
 			}
+			else if (properties.vector_align_type == tfxVectorAlignType_emission && e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
+				alignment_vector = mmTransformVector3(e.common.transform.matrix, p->data.velocity_normal.xyz());
+			}
 			else if (properties.vector_align_type == tfxVectorAlignType_emission) {
 				alignment_vector = p->data.velocity_normal.xyz();
 			}
@@ -8972,7 +8983,6 @@ return free_slot;
 					}
 				}
 			}
-			//p->data.flags &= ~tfxParticleFlags_fresh;
 
 			s.color = p->data.color;
 			s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p->data.image_frame;
@@ -9434,6 +9444,9 @@ return free_slot;
 				float l = FastLength(alignment_vector);
 				p->data.velocity_normal.w *= l * 10.f;
 				alignment_vector = FastNormalizeVec(alignment_vector);
+			}
+			else if (properties.vector_align_type == tfxVectorAlignType_emission && e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
+				alignment_vector = mmTransformVector3(e.common.transform.matrix, p->data.velocity_normal.xyz());
 			}
 			else if (properties.vector_align_type == tfxVectorAlignType_emission) {
 				alignment_vector = p->data.velocity_normal.xyz();
