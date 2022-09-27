@@ -5604,6 +5604,7 @@ namespace tfx {
 		file.AddLine("image_reverse_animation=%i", (flags & tfxEmitterPropertyFlags_reverse_animation));
 		file.AddLine("image_animate=%i", (flags & tfxEmitterPropertyFlags_animate));
 		file.AddLine("image_random_start_frame=%i", (flags & tfxEmitterPropertyFlags_random_start_frame));
+		file.AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
 		file.AddLine("spawn_amount=%i", property.spawn_amount);
 		file.AddLine("emission_type=%i", property.emission_type);
 		file.AddLine("emission_direction=%i", property.emission_direction);
@@ -5619,7 +5620,6 @@ namespace tfx {
 		file.AddLine("random_color=%i", (flags & tfxEmitterPropertyFlags_random_color));
 		file.AddLine("relative_position=%i", (flags & tfxEmitterPropertyFlags_relative_position));
 		file.AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
-		file.AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
 		file.AddLine("single=%i", (flags & tfxEmitterPropertyFlags_single));
 		file.AddLine("single_shot_limit=%i", property.single_shot_limit);
 		file.AddLine("spawn_on_grid=%i", (flags & tfxEmitterPropertyFlags_spawn_on_grid));
@@ -5651,7 +5651,7 @@ namespace tfx {
 		file.AddLine("sort_passes=%i", effect.sort_passes);
 	}
 
-	void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file) {
+	void StreamGraph(const char *name, tfxGraph &graph, tfxStr &file) {
 
 		graph.nodes.ResetIteratorIndex();
 		do {

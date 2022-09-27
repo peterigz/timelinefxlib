@@ -3114,12 +3114,12 @@ union tfxUInt10bit
 
 		inline void         free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
 		inline void         Clear() { current_size = 0; }
-		inline char*           begin() { return data; }
-		inline const char*     begin() const { return data; }
-		inline char*           end() { return data + current_size; }
-		inline const char*     end() const { return data + current_size; }
-		inline char&           back() { assert(current_size > 0); return data[current_size - 1]; }
-		inline const char&     back() const { assert(current_size > 0); return data[current_size - 1]; }
+		inline char*           begin() { return strbuffer(); }
+		inline const char*     begin() const { return strbuffer(); }
+		inline char*           end() { return strbuffer() + current_size; }
+		inline const char*     end() const { return strbuffer() + current_size; }
+		inline char&           back() { assert(current_size > 0); return strbuffer()[current_size - 1]; }
+		inline const char&     back() const { assert(current_size > 0); return strbuffer()[current_size - 1]; }
 		inline void         pop() { assert(current_size > 0); current_size--; }
 		inline void	        push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void*)(data + current_size)) char(v); current_size++; }
 
@@ -3171,7 +3171,7 @@ union tfxUInt10bit
 			pop();
 			NullTerminate();
 		}
-		inline void Trim(char c = 32) {
+		inline void Trim(char c = ' ') {
 			if (!Length()) return;
 			if(back() == NULL)
 				pop();
@@ -3179,6 +3179,17 @@ union tfxUInt10bit
 				pop();
 			}
 			NullTerminate();
+		}
+		inline void TrimFront(char c = ' ') {
+			if (!Length()) return;
+			tfxU32 pos = 0;
+			while (strbuffer()[pos] == c && pos < current_size) {
+				pos++;
+			}
+			if (pos < current_size) {
+				memcpy(strbuffer(), strbuffer() + pos, current_size - pos);
+			}
+			current_size -= pos;
 		}
 		void NullTerminate() { push_back(NULL); }
 		bool SaveToFile(const char *file_name);
