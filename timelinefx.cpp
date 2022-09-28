@@ -7306,26 +7306,23 @@ namespace tfx {
 		return stats;
 	}
 
-	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
+	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
+
 		assert(shape_loader);
 		if (!data_types.initialised) data_types.Init();
 		lib.Clear();
-
 		if (tfxIcospherePoints[0].current_size == 0) {
 			MakeIcospheres();
 		}
 
-		tmpStack(tfxEffectEmitter, effect_stack);
-		int context = 0;
-		tfxErrorFlags error = 0;
-		int uid = 0;
-		tfxU32 current_global_graph = 0;
-
-		tfxPackage package;
-		error = LoadPackage(filename, package);
-
 		tfxEntryInfo *data = package.GetFile("data.txt");
 		tfxEntryInfo *stats_struct = package.GetFile("stats.struct");
+		tmpStack(tfxEffectEmitter, effect_stack);
+		tfxErrorFlags error = 0;
+
+		int context = 0;
+		int uid = 0;
+		tfxU32 current_global_graph = 0;
 
 		if (!stats_struct) {
 			lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
@@ -7532,7 +7529,7 @@ namespace tfx {
 			//Effects were loaded so let's compile them
 			lib.CompileAllGraphs();
 			lib.ReIndex();
-			if(first_shape_index != -1)
+			if (first_shape_index != -1)
 				lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
 			lib.UpdateEffectPaths();
 			lib.UpdateComputeNodes();
@@ -7542,7 +7539,17 @@ namespace tfx {
 		lib.uid = uid;
 
 		return error;
+	}
 
+	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
+
+		tfxErrorFlags error = 0;
+
+		tfxPackage package;
+		error = LoadPackage(filename, package);
+		error = LoadEffectLibraryPackage(package, lib, shape_loader, user_data, read_only);
+
+		return error;
 	}
 
 	void SetTimeOut(tfxEffectTemplate &effect_template, float frames) {

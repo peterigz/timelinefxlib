@@ -3118,8 +3118,8 @@ union tfxUInt10bit
 		inline const char*     begin() const { return strbuffer(); }
 		inline char*           end() { return strbuffer() + current_size; }
 		inline const char*     end() const { return strbuffer() + current_size; }
-		inline char&           back() { assert(current_size > 0); return strbuffer()[current_size - 1]; }
-		inline const char&     back() const { assert(current_size > 0); return strbuffer()[current_size - 1]; }
+		inline char&           back() { assert(current_size > 1); return strbuffer()[current_size - 1]; }
+		inline const char&     back() const { assert(current_size > 1); return strbuffer()[current_size - 1]; }
 		inline void         pop() { assert(current_size > 0); current_size--; }
 		inline void	        push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void*)(data + current_size)) char(v); current_size++; }
 
@@ -5874,6 +5874,7 @@ union tfxUInt10bit
 	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
 	tfxEffectLibraryStats CreateLibraryStats(tfxEffectLibrary &lib);
+	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr, bool read_only = true);
 	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr, bool read_only = true);
 
 	//---
