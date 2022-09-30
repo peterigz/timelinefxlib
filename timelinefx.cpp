@@ -4325,10 +4325,14 @@ namespace tfx {
 			}
 			else {
 				for (auto &emitter : effect.GetInfo().sub_effectors) {
-					if (particle_shapes.ValidIntName(emitter.GetProperties().shape_index))
+					if (particle_shapes.ValidIntName(emitter.GetProperties().shape_index)) {
 						emitter.GetProperties().image = &particle_shapes.AtInt(emitter.GetProperties().shape_index);
-					else
+						emitter.GetProperties().end_frame = particle_shapes.AtInt(emitter.GetProperties().shape_index).animation_frames - 1;
+					}
+					else {
 						emitter.GetProperties().image = &particle_shapes.AtInt(default_index);
+						emitter.GetProperties().end_frame = particle_shapes.AtInt(emitter.GetProperties().shape_index).animation_frames - 1;
+					}
 					UpdateParticleShapeReferences(emitter.GetInfo().sub_effectors, default_index);
 				}
 			}
