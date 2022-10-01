@@ -1850,10 +1850,10 @@ namespace tfx {
 			tfxVec2 to_handle;
 
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-				to_handle = (-tmp_position);
+				to_handle = -tmp_position;
 
 			else
-				to_handle = (common.transform.world_position.xy() - world_position - common.handle.xy());
+				to_handle = common.transform.world_position.xy() - world_position;
 
 			direction = GetVectorAngle(to_handle.x, to_handle.y);
 
@@ -1867,7 +1867,7 @@ namespace tfx {
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 					to_handle = (tmp_position);
 				else
-					to_handle = (world_position - common.transform.world_position.xy() - common.handle.xy());
+					to_handle = world_position - common.transform.world_position.xy();
 
 				direction = GetVectorAngle(to_handle.x, to_handle.y);
 
@@ -1877,7 +1877,7 @@ namespace tfx {
 				tfxVec2 to_handle;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
-					to_handle = (-tmp_position);
+					to_handle = -tmp_position;
 				else
 					to_handle = (common.transform.world_position.xy() - world_position);
 
