@@ -4331,7 +4331,7 @@ namespace tfx {
 					}
 					else {
 						emitter.GetProperties().image = &particle_shapes.AtInt(default_index);
-						emitter.GetProperties().end_frame = particle_shapes.AtInt(emitter.GetProperties().shape_index).animation_frames - 1;
+						emitter.GetProperties().end_frame = particle_shapes.AtInt(default_index).animation_frames - 1;
 					}
 					UpdateParticleShapeReferences(emitter.GetInfo().sub_effectors, default_index);
 				}
