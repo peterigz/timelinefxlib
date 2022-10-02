@@ -3775,6 +3775,24 @@ namespace tfx {
 		common.library->emitter_attributes[emitter_attributes].overtime.blue.AddNode(frame, color.b);
 	}
 
+	void tfxEffectEmitter::AdjustColors(float hue, float brightness) {
+		if (common.property_flags & tfxEmitterPropertyFlags_exclude_from_hue_adjustments)
+			return;
+		for (tfxU32 index = 0; index != common.library->emitter_attributes[emitter_attributes].overtime.red.nodes.size(); ++index) {
+			float red = std::fminf(common.library->emitter_attributes[emitter_attributes].overtime.red.nodes[index].value * brightness, 1.f);
+			float green = std::fminf(common.library->emitter_attributes[emitter_attributes].overtime.green.nodes[index].value * brightness, 1.f);
+			float blue = std::fminf(common.library->emitter_attributes[emitter_attributes].overtime.blue.nodes[index].value * brightness, 1.f);
+			tfxHSV hsv = RGBtoHSV(tfxRGB(red, green, blue));
+			hsv.h += hue;
+			if (hsv.h > 360.f)
+				hsv.h -= 360.f;
+			tfxRGB hue_color = HSVtoRGB(hsv);
+			common.library->emitter_attributes[emitter_attributes].overtime.red.nodes[index].value = hue_color.r;
+			common.library->emitter_attributes[emitter_attributes].overtime.green.nodes[index].value = hue_color.g;
+			common.library->emitter_attributes[emitter_attributes].overtime.blue.nodes[index].value = hue_color.b;
+		}
+	}
+
 	void tfxEffectEmitter::ReSeed(uint64_t seed) {
 		if (seed == 0) {
 			seed = 0xFFFFFFFFFFF;
