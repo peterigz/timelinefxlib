@@ -569,7 +569,7 @@ union tfxUInt10bit
 		tfxEmitterPropertyFlags_use_dynamic = 1 << 25,						//Use a dynamic particle storage rather then a fixed one
 		tfxEmitterPropertyFlags_grid_spawn_random = 1 << 26,				//Spawn on grid points but randomly rather then in sequence
 		tfxEmitterPropertyFlags_area_open_ends = 1 << 27,					//Only sides of the area/cylinder are spawned on when fill area is not checked
-		tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 27		//Emitter will be excluded from hue adjustments if this flag is checked
+		tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 28		//Emitter will be excluded from effect hue adjustments if this flag is checked
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -4940,7 +4940,6 @@ union tfxUInt10bit
 
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
-		void AdjustColors(float hue, float brightness);
 		void Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxEffectLibrary *destination_library, tfxEffectCloningFlags flags = 0);
 		void EnableAllEmitters();
 		void EnableEmitter();
