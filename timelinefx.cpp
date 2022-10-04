@@ -2345,15 +2345,16 @@ namespace tfx {
 		velocity_normal.y = -std::cosf(direction);
 		tfxVec2 current_velocity = (data.base.velocity * common.library->emitter_attributes[library_link->emitter_attributes].overtime.velocity.GetFirstValue()) * velocity_normal;
 		current_velocity.y += data.weight_acceleration;
-		current_velocity *= micro_time;
-		data.local_position += current_velocity;
+		data.local_position += current_velocity * micro_time;
 		if (line || common.property_flags & tfxEmitterPropertyFlags_relative_position) {
 			tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 			data.captured_position = sprite_transform.captured_position = common.transform.captured_position.xy() + rotatevec * common.transform.scale.xy();
 			current.transform_particle_callback2d(data, sprite_transform.position, sprite_transform.rotation, common, tfxVec3(common.transform.world_position.x, common.transform.world_position.y, 0.f));
 		}
 		else {
-			sprite_transform.position += current_velocity;
+			sprite_transform.position += current_velocity * micro_time;
+			sprite_transform.captured_position = sprite_transform.position;
+			data.captured_position = sprite_transform.captured_position;
 		}
 		//end micro update
 
@@ -2393,6 +2394,7 @@ namespace tfx {
 		//----Color
 		data.color.a = unsigned char(255.f * common.library->emitter_attributes[library_link->emitter_attributes].overtime.blendfactor.GetFirstValue());
 		data.intensity = common.library->emitter_attributes[library_link->emitter_attributes].overtime.intensity.GetFirstValue() * current.intensity;
+		//data.intensity = 0.f;
 		if (common.property_flags & tfxEmitterPropertyFlags_random_color) {
 			float age = random_generation.Range(data.max_age);
 			data.color.r = unsigned char(255.f * lookup_overtime_callback(common.library->emitter_attributes[library_link->emitter_attributes].overtime.red, age, data.max_age));
@@ -2977,7 +2979,7 @@ namespace tfx {
 		//Do a micro update
 		//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
 		//the alignment on the first frame can be calculated
-		float micro_time = tfxUPDATE_TIME * (1 - tween + 0.001f);
+		float micro_time = tfxUPDATE_TIME * (1.f - tween + 0.001f);
 		out.weight_acceleration += out.base_weight * common.library->emitter_attributes[library_link->emitter_attributes].overtime.weight.GetFirstValue() * micro_time;
 		//----Velocity Changes
 		tfxVec3 current_velocity = out.velocity_normal.xyz() * (out.base_velocity * common.library->emitter_attributes[library_link->emitter_attributes].overtime.velocity.GetFirstValue());
@@ -2994,18 +2996,19 @@ namespace tfx {
 			}
 			else {
 				tfxVec4 rotatevec = mmTransformVector(common.transform.matrix, out.local_position + common.handle);
-				out.captured_position = common.transform.captured_position + rotatevec.xyz() * common.transform.scale;
 				out.world_position = common.transform.world_position + rotatevec.xyz() * common.transform.scale;
+				out.captured_position = out.world_position;
 			}
 		}
 		else {
 			out.world_position += current_velocity;
+			out.captured_position = out.world_position;
 		}
 
 		return out;
 	}
 
-	void InitialiseParticle3d(tfxParticleData &data, tfxSpriteTransform3d &sprite_transform, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link, float tween) {
+	void InitialiseParticle3d(tfxParticleData &data, tfxSpriteTransform3d &sprite_transform, tfxEmitterState &current, tfxCommon &common, tfxEmitterSpawnControls &spawn_values, tfxEffectEmitter *library_link) {
 		tfxPROFILE;
 		//----Spin
 		data.base.spin = random_generation.Range(-spawn_values.spin_variation, std::abs(spawn_values.spin_variation)) + spawn_values.spin;
@@ -3110,6 +3113,7 @@ namespace tfx {
 		//----Color
 		data.color.a = unsigned char(255.f * common.library->emitter_attributes[library_link->emitter_attributes].overtime.blendfactor.GetFirstValue());
 		data.intensity = common.library->emitter_attributes[library_link->emitter_attributes].overtime.intensity.GetFirstValue() * current.intensity;
+		//data.intensity = 0.f;
 		if (common.property_flags & tfxEmitterPropertyFlags_random_color) {
 			float age = random_generation.Range(data.max_age);
 			data.color.r = unsigned char(255.f * lookup_overtime_callback(common.library->emitter_attributes[library_link->emitter_attributes].overtime.red, age, data.max_age));
@@ -8919,6 +8923,8 @@ return free_slot;
 		float positions_qty = e.current.qty;
 		tfxU32 amount_spawned = 0;
 
+		float tween2 = tween;
+
 		while (tween < 1.f) {
 			if (amount_spawned >= max_spawn_amount) {
 				tween = 1.f;
@@ -8944,6 +8950,8 @@ return free_slot;
 
 		for (auto &position : pm.new_positions) {
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
+			p->data.age = (1.f - tween2) * tfxFRAME_LENGTH;
+			tween2 += qty_step_size;
 
 			assert(e.sprites_index < pm.sprites3d[properties.layer].capacity);
 			p->sprite_index = (properties.layer << 28) + e.sprites_index;
@@ -8957,7 +8965,7 @@ return free_slot;
 			p->data.base.velocity = position.base_velocity;
 			p->data.velocity_normal = position.velocity_normal;
 			p->data.depth = position.distance_to_camera;
-			InitCPUParticle3d(pm, e, *p, s.transform, spawn_controls, tween);
+			InitCPUParticle3d(pm, e, *p, s.transform, spawn_controls);
 
 			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age + tfxFRAME_LENGTH + 1);
 			e.parent->highest_particle_age = e.highest_particle_age + tfxFRAME_LENGTH;
@@ -9025,7 +9033,7 @@ return free_slot;
 
 		//----Life
 		p.data.max_age = spawn_controls.life + random_generation.Range(spawn_controls.life_variation);
-		p.data.age = 0.f;
+		p.data.age = (1.f - tween) * tfxFRAME_LENGTH;
 		p.data.single_loop_count = 1;
 
 		InitialiseParticle2d(p.data, sprite_transform, e.current, e.common, spawn_controls, &e, tween);
@@ -9045,7 +9053,7 @@ return free_slot;
 		}
 	}
 
-	void InitCPUParticle3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxSpriteTransform3d &sprite_transform, tfxEmitterSpawnControls &spawn_controls, float tween) {
+	void InitCPUParticle3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxSpriteTransform3d &sprite_transform, tfxEmitterSpawnControls &spawn_controls) {
 		tfxPROFILE;
 		p.data.flags = tfxParticleFlags_fresh;
 		p.next_ptr = &p;
@@ -9060,10 +9068,9 @@ return free_slot;
 
 		//----Life
 		p.data.max_age = spawn_controls.life + random_generation.Range(spawn_controls.life_variation);
-		p.data.age = 0.f;
 		p.data.single_loop_count = 1;
 
-		InitialiseParticle3d(p.data, sprite_transform, e.current, e.common, spawn_controls, &e, tween);
+		InitialiseParticle3d(p.data, sprite_transform, e.current, e.common, spawn_controls, &e);
 
 		if (e.GetInfo().sub_effectors.size()) {
 			for (auto &sub : e.GetInfo().sub_effectors) {
@@ -9344,14 +9351,14 @@ return free_slot;
 				e.current.transform_particle_callback2d(p->data, s.transform.position, s.transform.rotation, e.common, e.common.transform.world_position);
 			}
 
-			p->data.flags &= ~tfxParticleFlags_fresh;
-
 			s.color = p->data.color;
 			s.image_ptr = properties.image->ptr;
 			s.image_frame = (tfxU32)p->data.image_frame;
 			s.transform.captured_position = p->data.captured_position.xy();
 			s.intensity = p->data.intensity;
 			s.handle = e.current.image_handle;
+
+			p->data.flags &= ~tfxParticleFlags_fresh;
 
 			p->data.captured_position = s.transform.position;
 
