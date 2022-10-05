@@ -1407,6 +1407,10 @@ namespace tfx {
 		return tfxParticleManagerMode_unordered;
 	}
 
+	tfxPreviewCameraSettings &tfxEffectEmitter::GetCameraSettings() {
+		return common.library->preview_camera_settings[GetInfo().preview_camera_settings];
+	}
+
 	void tfxEffectEmitter::UpdateAllBufferSizes() {
 		tmpStack(tfxEffectEmitter*, stack);
 		stack.push_back(this);
@@ -1965,9 +1969,9 @@ namespace tfx {
 		float pitch = asinf(-to_handle.y);
 		float yaw = atan2(to_handle.x, to_handle.z);
 		tfxVec3 direction;
-		direction.z = cos(emission_yaw + yaw + parent_yaw) * cos(emission_pitch + pitch + parent_pitch);
-		direction.y = -sin(emission_pitch + pitch + parent_pitch);
-		direction.x = sin(emission_yaw + yaw + parent_yaw) * cos(emission_pitch + pitch + parent_pitch);
+		direction.z = cos(emission_yaw + yaw) * cos(emission_pitch + pitch);
+		direction.y = -sin(emission_pitch + pitch);
+		direction.x = sin(emission_yaw + yaw) * cos(emission_pitch + pitch);
 		tfxVec3 v = direction;
 		if (range != 0) {
 			result.y = random_generation.Range(1.f) * (1.f - cos(range)) + cos(range);

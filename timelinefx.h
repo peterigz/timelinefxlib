@@ -4950,6 +4950,7 @@ union tfxUInt10bit
 		bool Is3DEffect();
 		tfxU32 CountAllLookupValues();
 		tfxParticleManagerModes GetRequiredParticleManagerMode();
+		tfxPreviewCameraSettings &GetCameraSettings();
 
 	};
 
