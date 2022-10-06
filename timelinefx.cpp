@@ -3970,7 +3970,8 @@ namespace tfx {
 		//tfxU32 size = common.library->global_graphs[0].amount.lookup.values.capacity;
 		clone = *this;
 		clone.info_index = clone.common.library->CloneInfo(info_index, destination_library);
-		clone.property_index = clone.common.library->CloneProperties(property_index, destination_library);
+		if(clone.type != tfxFolder)
+			clone.property_index = clone.common.library->CloneProperties(property_index, destination_library);
 		clone.flags |= tfxEmitterStateFlags_enabled;
 		if(!(flags & tfxEffectCloningFlags_keep_user_data))
 			clone.user_data = nullptr;
@@ -4192,16 +4193,17 @@ namespace tfx {
 			for (tfxU32 t = (tfxU32)tfxGlobal_life; t != (tfxU32)tfxProperty_emission_pitch; ++t) {
 				CompileGraph(*GetGraphByType(tfxGraphType(t)));
 			}
-
-			for (auto &emitter : GetInfo().sub_effectors) {
-				for (tfxU32 t = (tfxU32)tfxProperty_emission_pitch; t != (tfxU32)tfxOvertime_velocity; ++t) {
-					CompileGraph(*GetGraphByType((tfxGraphType)t));
-				}
-
-				for (tfxU32 t = (tfxU32)tfxOvertime_velocity; t != (tfxU32)tfxGraphMaxIndex; ++t) {
-					CompileGraphOvertime(*emitter.GetGraphByType((tfxGraphType)t));
-				}
+		}
+		else if (type == tfxEmitterType) {
+			for (tfxU32 t = (tfxU32)tfxProperty_emission_pitch; t != (tfxU32)tfxOvertime_velocity; ++t) {
+				CompileGraph(*GetGraphByType((tfxGraphType)t));
 			}
+			for (tfxU32 t = (tfxU32)tfxOvertime_velocity; t != (tfxU32)tfxGraphMaxIndex; ++t) {
+				CompileGraphOvertime(*GetGraphByType((tfxGraphType)t));
+			}
+		}
+		for (auto &sub : GetInfo().sub_effectors) {
+			sub.CompileGraphs();
 		}
 	}
 
@@ -7379,7 +7381,6 @@ namespace tfx {
 					effect.common.library = &lib;
 					effect.type = tfxEffectEmitterType::tfxFolder;
 					effect.info_index = lib.AddEffectEmitterInfo();
-					effect.property_index = lib.AddEmitterProperties();
 					lib.GetInfo(effect).uid = uid++;
 					effect_stack.push_back(effect);
 				}
@@ -7612,6 +7613,7 @@ namespace tfx {
 
 	void tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter) {
 		tfxPROFILE;
+		assert(effect.type == tfxEffectType);
 		if (effects[buffer].current_size == effects[buffer].capacity)
 			return;
 		if (flags & tfxEffectManagerFlags_use_compute_shader && highest_compute_controller_index >= max_compute_controllers && free_compute_controllers.empty())
