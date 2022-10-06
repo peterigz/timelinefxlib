@@ -6313,8 +6313,9 @@ namespace tfx {
 	}
 
 	float tfxGraph::GetLastFrame() {
-		if (nodes.size())
-			return nodes.back().frame;
+		if (nodes.size()) {
+			return nodes.size() > 1 && nodes.back().frame == 0 ? tfxFRAME_LENGTH : nodes.back().frame;
+		}
 
 		return 0.f;
 	}
