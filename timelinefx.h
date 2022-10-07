@@ -4794,6 +4794,23 @@ union tfxUInt10bit
 		}
 	};
 
+	enum tfxEventType {
+		tfxEventType_add_effect,
+		tfxEventType_change_effect
+	};
+
+	struct tfxStageEvent {
+		tfxEventType type;
+		float time;
+		tfxVec3 position;
+		tfxU32 effect_index;
+	};
+
+	struct tfxStageProperties {
+		tfxU32 event_position;
+		tfxvec<tfxStageEvent> events;
+	};
+
 	//An tfxEffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
 	//This is only for library storage, when using to update each frame this is copied to tfxEffectType and tfxEmitterType, much more compact versions more
@@ -5422,7 +5439,7 @@ union tfxUInt10bit
 
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);
-	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, float x = 0.f, float y = 0.f);
+	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 &position);
 	void AddEffect(tfxParticleManager &pm, tfxEffectTemplate &effect, float x = 0.f, float y = 0.f);
 
 	void Rotate(tfxEffectEmitter &e, float r);
@@ -5448,6 +5465,10 @@ union tfxUInt10bit
 	void ControlParticlesOrdered3d(tfxParticleManager &pm);
 	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
 
+	//Stage functions
+	void ResetStage(tfxEffectEmitter &stage);
+	void UpdateStage(tfxParticleManager &pm, tfxEffectEmitter &stage);
+
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
 		tfxU32 total_sub_effects;
@@ -5466,6 +5487,10 @@ union tfxUInt10bit
 		tfxU32 reserved7;
 	};
 
+	struct tfxEffectsStage{
+		tfxvec<tfxEffectEmitter> effects;
+	};
+
 	struct tfxEffectLibrary {
 		tfxMemoryArenaManager graph_node_allocator;
 		tfxMemoryArenaManager graph_lookup_allocator;
@@ -5474,6 +5499,7 @@ union tfxUInt10bit
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxvec<tfxEmitterProperties> emitter_properties;
+		tfxvec<tfxStageProperties> stage_properties;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
@@ -5493,6 +5519,7 @@ union tfxUInt10bit
 		tfxvec<tfxU32> free_preview_camera_settings;
 		tfxvec<tfxU32> free_properties;
 		tfxvec<tfxU32> free_infos;
+		tfxvec<tfxU32> free_stage_infos;
 
 		//Get an effect from the library by index
 		tfxEffectEmitter& operator[] (uint32_t index);
@@ -5571,9 +5598,19 @@ union tfxUInt10bit
 			return effect_infos[e.info_index];
 		}
 
+		inline tfxStageProperties &GetStageProperties(tfxEffectEmitter &e) {
+			assert(stage_properties.size() > e.info_index);
+			return stage_properties[e.info_index];
+		}
+
 		inline const tfxEffectEmitterInfo &GetInfo(const tfxEffectEmitter &e) {
 			assert(effect_infos.size() > e.info_index);
 			return effect_infos[e.info_index];
+		}
+
+		inline const tfxStageProperties &GetStageProperties(const tfxEffectEmitter &e) {
+			assert(stage_properties.size() > e.info_index);
+			return stage_properties[e.info_index];
 		}
 
 		//Mainly internal functions
@@ -5581,6 +5618,7 @@ union tfxUInt10bit
 		tfxEffectEmitter &AddEffect(tfxEffectEmitter &effect);
 		tfxEffectEmitter &AddFolder(tfxStr64 &name);
 		tfxEffectEmitter &AddFolder(tfxEffectEmitter &effect);
+		tfxEffectEmitter &AddStage(tfxStr64 &name);
 		void UpdateEffectPaths();
 		void AddPath(tfxEffectEmitter &effect_emitter, tfxStr256 &path);
 		void DeleteEffect(tfxEffectEmitter *effect);
@@ -5610,6 +5648,7 @@ union tfxUInt10bit
 		tfxU32 AddPreviewCameraSettings();
 		tfxU32 AddEffectEmitterInfo();
 		tfxU32 AddEmitterProperties();
+		tfxU32 AddStageInfo();
 		void UpdateEffectParticleStorage();
 		void UpdateComputeNodes();
 		void CompileAllGraphs();

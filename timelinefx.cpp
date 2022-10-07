@@ -4296,6 +4296,20 @@ namespace tfx {
 		return effects.back();
 	}
 
+	tfxEffectEmitter &tfxEffectLibrary::AddStage(tfxStr64 &name) {
+		tfxEffectEmitter stage;
+		stage.info_index = AddEffectEmitterInfo();
+		stage.common.library = this;
+		stage.GetInfo().name = name;
+		stage.type = tfxStage;
+		stage.common.library = this;
+		stage.GetInfo().uid = ++uid;
+		effects.push_back(stage);
+		ReIndex();
+		UpdateEffectPaths();
+		return effects.back();
+	}
+
 	tfxEffectEmitter* tfxEffectLibrary::GetEffect(tfxStr256 &path) {
 		assert(effect_paths.ValidName(path));		//Effect was not found by that name
 		return effect_paths.At(path);
@@ -4695,6 +4709,15 @@ namespace tfx {
 		}
 		effect_infos.push_back(info);
 		return effect_infos.size() - 1;
+	}
+
+	tfxU32 tfxEffectLibrary::AddStageInfo() {
+		tfxStageProperties info;
+		if (free_stage_infos.size()) {
+			return free_stage_infos.pop_back();
+		}
+		stage_properties.push_back(info);
+		return stage_properties.size() - 1;
 	}
 
 	tfxU32 tfxEffectLibrary::AddEmitterProperties() {
@@ -8202,6 +8225,29 @@ return free_slot;
 		pm.flags &= ~tfxEffectManagerFlags_update_base_values;
 	}
 
+	void ResetStage(tfxEffectEmitter &stage) {
+		stage.common.age = 0.f;
+		stage.common.frame = 0.f;
+	}
+
+	void UpdateStage(tfxParticleManager &pm, tfxEffectEmitter &stage) {
+		tfxStageProperties &properties = stage.common.library->GetStageProperties(stage);
+		tfxEffectEmitterInfo &info = stage.common.library->GetInfo(stage);
+
+		stage.common.frame = stage.common.age / tfxFRAME_LENGTH;
+
+		//Execute all due events
+		while (properties.event_position < properties.events.current_size && properties.events[properties.event_position].time <= stage.common.age) {
+			tfxStageEvent &event = properties.events[properties.event_position++];
+			if (event.type == tfxEventType_add_effect) {
+				pm.AddEffect(info.sub_effectors[event.effect_index], pm.current_ebuff);
+				AddEffect(pm, info.sub_effectors[event.effect_index], event.position);
+			}
+		}
+
+		stage.common.age += tfxFRAME_LENGTH;
+	}
+
 	void tfxParticleManager::UpdateParticleOrderOnly() {
 		if (!(flags & tfxEffectManagerFlags_order_by_depth))
 			return;
@@ -8535,9 +8581,8 @@ return free_slot;
 		pm.ClearAll();
 	}
 
-	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, float x, float y) {
-		effect.common.transform.local_position.x = x;
-		effect.common.transform.local_position.y = y;
+	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 &position) {
+		effect.common.transform.local_position = position;
 		pm.AddEffect(effect, pm.current_ebuff);
 	}
 
