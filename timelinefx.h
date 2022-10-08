@@ -395,6 +395,7 @@ union tfxUInt10bit
 	};
 	
 	//Block designators for loading effects library
+	//The values of existing enums below must never change or older files won't load anymore!
 	enum tfxEffectLibraryStream : uint32_t {
 		tfxStartEffect = 0x00FFFF00,
 		tfxEndEffect,
@@ -413,6 +414,8 @@ union tfxUInt10bit
 		tfxEndFolder,
 		tfxStartPreviewCameraSettings,
 		tfxEndPreviewCameraSettings,
+		tfxStartStage,
+		tfxEndStage
 	};
 
 	typedef tfxU32 tfxEmitterPropertyFlags;
@@ -4908,6 +4911,7 @@ union tfxUInt10bit
 		void SetTimeout(float frames);
 
 		tfxEffectEmitterInfo &GetInfo();
+		tfxStageProperties &GetStageProperties();
 		tfxEmitterProperties &GetProperties();
 
 		//Override graph functions for use in update_callback
@@ -5439,8 +5443,7 @@ union tfxUInt10bit
 
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);
-	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 &position);
-	void AddEffect(tfxParticleManager &pm, tfxEffectTemplate &effect, float x = 0.f, float y = 0.f);
+	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 position);
 
 	void Rotate(tfxEffectEmitter &e, float r);
 	void SetAngle(tfxEffectEmitter &e, float a);
@@ -5519,7 +5522,7 @@ union tfxUInt10bit
 		tfxvec<tfxU32> free_preview_camera_settings;
 		tfxvec<tfxU32> free_properties;
 		tfxvec<tfxU32> free_infos;
-		tfxvec<tfxU32> free_stage_infos;
+		tfxvec<tfxU32> free_stage_properties;
 
 		//Get an effect from the library by index
 		tfxEffectEmitter& operator[] (uint32_t index);
@@ -5599,8 +5602,8 @@ union tfxUInt10bit
 		}
 
 		inline tfxStageProperties &GetStageProperties(tfxEffectEmitter &e) {
-			assert(stage_properties.size() > e.info_index);
-			return stage_properties[e.info_index];
+			assert(stage_properties.size() > e.property_index);
+			return stage_properties[e.property_index];
 		}
 
 		inline const tfxEffectEmitterInfo &GetInfo(const tfxEffectEmitter &e) {
@@ -5609,8 +5612,8 @@ union tfxUInt10bit
 		}
 
 		inline const tfxStageProperties &GetStageProperties(const tfxEffectEmitter &e) {
-			assert(stage_properties.size() > e.info_index);
-			return stage_properties[e.info_index];
+			assert(stage_properties.size() > e.property_index);
+			return stage_properties[e.property_index];
 		}
 
 		//Mainly internal functions
@@ -5648,7 +5651,7 @@ union tfxUInt10bit
 		tfxU32 AddPreviewCameraSettings();
 		tfxU32 AddEffectEmitterInfo();
 		tfxU32 AddEmitterProperties();
-		tfxU32 AddStageInfo();
+		tfxU32 AddStageProperties();
 		void UpdateEffectParticleStorage();
 		void UpdateComputeNodes();
 		void CompileAllGraphs();
@@ -5819,6 +5822,11 @@ union tfxUInt10bit
 	void SplitStringStack(const tfxStr &s, tfxStack<tfxStr64> &pair, char delim = 61);
 	bool StringIsUInt(const tfxStr &s);
 	int GetDataType(const tfxStr &s);
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value);
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);

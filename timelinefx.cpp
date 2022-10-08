@@ -3805,11 +3805,15 @@ namespace tfx {
 		}
 	}
 
-	inline tfxEffectEmitterInfo &tfxEffectEmitter::GetInfo() {
+	tfxEffectEmitterInfo &tfxEffectEmitter::GetInfo() {
 		return common.library->GetInfo(*this);
 	}
 
-	inline tfxEmitterProperties &tfxEffectEmitter::GetProperties() {
+	tfxStageProperties &tfxEffectEmitter::GetStageProperties() {
+		return common.library->GetStageProperties(*this);
+	}
+
+	tfxEmitterProperties &tfxEffectEmitter::GetProperties() {
 		return common.library->GetProperties(property_index);
 	}
 
@@ -4299,6 +4303,7 @@ namespace tfx {
 	tfxEffectEmitter &tfxEffectLibrary::AddStage(tfxStr64 &name) {
 		tfxEffectEmitter stage;
 		stage.info_index = AddEffectEmitterInfo();
+		stage.property_index = AddStageProperties();
 		stage.common.library = this;
 		stage.GetInfo().name = name;
 		stage.type = tfxStage;
@@ -4344,7 +4349,7 @@ namespace tfx {
 
 	void tfxEffectLibrary::UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, tfxU32 default_index) {
 		for (auto &effect : effects) {
-			if (effect.type == tfxFolder) {
+			if (effect.type == tfxFolder || effect.type == tfxStage) {
 				UpdateParticleShapeReferences(effect.GetInfo().sub_effectors, default_index);
 			}
 			else {
@@ -4711,12 +4716,12 @@ namespace tfx {
 		return effect_infos.size() - 1;
 	}
 
-	tfxU32 tfxEffectLibrary::AddStageInfo() {
-		tfxStageProperties info;
-		if (free_stage_infos.size()) {
-			return free_stage_infos.pop_back();
+	tfxU32 tfxEffectLibrary::AddStageProperties() {
+		tfxStageProperties index;
+		if (free_stage_properties.size()) {
+			return free_stage_properties.pop_back();
 		}
-		stage_properties.push_back(info);
+		stage_properties.push_back(index);
 		return stage_properties.size() - 1;
 	}
 
@@ -5427,6 +5432,24 @@ namespace tfx {
 		n.right.y = (float)atof(values[7].c_str());
 		if (n.flags & tfxAttributeNodeFlags_is_curve)
 			n.flags |= tfxAttributeNodeFlags_curves_initialised;
+	}
+
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value) {
+	}
+
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, float value) {
+	}
+
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, bool value) {
+	}
+
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, int value) {
+	}
+
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value) {
+		if (field == "name") {
+			effect.GetInfo().name = value;
+		}
 	}
 
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value) {
@@ -7408,7 +7431,16 @@ namespace tfx {
 					lib.GetInfo(effect).uid = uid++;
 					effect_stack.push_back(effect);
 				}
-				if (context == tfxStartEffect) {
+				else if (context == tfxStartStage) {
+					tfxEffectEmitter effect;
+					effect.common.library = &lib;
+					effect.type = tfxEffectEmitterType::tfxStage;
+					effect.info_index = lib.AddEffectEmitterInfo();
+					effect.property_index = lib.AddStageProperties();
+					lib.GetInfo(effect).uid = uid++;
+					effect_stack.push_back(effect);
+				}
+				else if (context == tfxStartEffect) {
 					tfxEffectEmitter effect;
 					effect.common.library = &lib;
 					effect.info_index = lib.AddEffectEmitterInfo();
@@ -7425,7 +7457,7 @@ namespace tfx {
 					effect_stack.push_back(effect);
 
 				}
-				if (context == tfxStartEmitter) {
+				else if (context == tfxStartEmitter) {
 					tfxEffectEmitter emitter;
 					emitter.common.library = &lib;
 					emitter.info_index = lib.AddEffectEmitterInfo();
@@ -7474,13 +7506,36 @@ namespace tfx {
 						error |= tfxErrorCode_some_data_not_loaded;
 					}
 				}
-
-				if (context == tfxStartGraphs && effect_stack.back().type == tfxEmitterType) {
+				else if (context == tfxStartGraphs && effect_stack.back().type == tfxEmitterType) {
 					AssignGraphData(effect_stack.back(), pair);
 				}
 				else if (context == tfxStartGraphs && effect_stack.back().type == tfxEffectType) {
 					if (effect_stack.size() <= 2)
 						AssignGraphData(effect_stack.back(), pair);
+				}
+				else if (context == tfxStartStage) {
+					if (data_types.names_and_types.ValidName(pair[0])) {
+						switch (data_types.names_and_types.At(pair[0])) {
+						case tfxUint:
+							AssignStageProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()));
+							break;
+						case tfxFloat:
+							AssignStageProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
+							break;
+						case tfxSInt:
+							AssignStageProperty(effect_stack.back(), pair[0], atoi(pair[1].c_str()));
+							break;
+						case tfxBool:
+							AssignStageProperty(effect_stack.back(), pair[0], (bool)(atoi(pair[1].c_str())));
+							break;
+						case tfxString:
+							AssignStageProperty(effect_stack.back(), pair[0], pair[1]);
+							break;
+						}
+					}
+					else {
+						error |= tfxErrorCode_some_data_not_loaded;
+					}
 				}
 
 				if (context == tfxStartShapes) {
@@ -7554,6 +7609,12 @@ namespace tfx {
 
 			if (context == tfxEndFolder) {
 				assert(effect_stack.size() == 1);			//Folders should not be contained within anything
+				lib.effects.push_back(effect_stack.back());
+				effect_stack.pop();
+			}
+
+			if (context == tfxEndStage) {
+				assert(effect_stack.size() == 1);			//Stages should not be contained within anything
 				lib.effects.push_back(effect_stack.back());
 				effect_stack.pop();
 			}
@@ -8240,7 +8301,6 @@ return free_slot;
 		while (properties.event_position < properties.events.current_size && properties.events[properties.event_position].time <= stage.common.age) {
 			tfxStageEvent &event = properties.events[properties.event_position++];
 			if (event.type == tfxEventType_add_effect) {
-				pm.AddEffect(info.sub_effectors[event.effect_index], pm.current_ebuff);
 				AddEffect(pm, info.sub_effectors[event.effect_index], event.position);
 			}
 		}
@@ -8581,15 +8641,9 @@ return free_slot;
 		pm.ClearAll();
 	}
 
-	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 &position) {
+	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 position) {
 		effect.common.transform.local_position = position;
 		pm.AddEffect(effect, pm.current_ebuff);
-	}
-
-	void AddEffect(tfxParticleManager &pm, tfxEffectTemplate &effect_template, float x, float y) {
-		effect_template.effect.common.transform.local_position.x = x;
-		effect_template.effect.common.transform.local_position.y = y;
-		pm.AddEffect(effect_template);
 	}
 
 	void Rotate(tfxEffectEmitter &e, float r) {
