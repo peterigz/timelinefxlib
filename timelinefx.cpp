@@ -3809,8 +3809,8 @@ namespace tfx {
 		return common.library->GetInfo(*this);
 	}
 
-	tfxStageProperties &tfxEffectEmitter::GetStageProperties() {
-		return common.library->GetStageProperties(*this);
+	tfxActions &tfxEffectEmitter::GetActions() {
+		return common.library->GetActions(*this);
 	}
 
 	tfxEmitterProperties &tfxEffectEmitter::GetProperties() {
@@ -4303,7 +4303,7 @@ namespace tfx {
 	tfxEffectEmitter &tfxEffectLibrary::AddStage(tfxStr64 &name) {
 		tfxEffectEmitter stage;
 		stage.info_index = AddEffectEmitterInfo();
-		stage.property_index = AddStageProperties();
+		stage.property_index = AddActions();
 		stage.common.library = this;
 		stage.GetInfo().name = name;
 		stage.type = tfxStage;
@@ -4518,6 +4518,10 @@ namespace tfx {
 		assert(index < effect_infos.size());
 		free_infos.push_back(index);
 	}
+	void tfxEffectLibrary::FreeActions(tfxU32 index) {
+		assert(index < actions.size());
+		free_actions.push_back(index);
+	}
 
 	tfxU32 tfxEffectLibrary::CountGlobalLookUpValues(tfxU32 index) {
 		auto &global = global_graphs[index];
@@ -4716,13 +4720,14 @@ namespace tfx {
 		return effect_infos.size() - 1;
 	}
 
-	tfxU32 tfxEffectLibrary::AddStageProperties() {
-		tfxStageProperties index;
-		if (free_stage_properties.size()) {
-			return free_stage_properties.pop_back();
+	tfxU32 tfxEffectLibrary::AddActions() {
+		tfxActions action;
+		if (free_actions.size()) {
+			return free_actions.pop_back();
 		}
-		stage_properties.push_back(index);
-		return stage_properties.size() - 1;
+		action.Initialise(&events_allocator);
+		actions.push_back(action);
+		return actions.size() - 1;
 	}
 
 	tfxU32 tfxEffectLibrary::AddEmitterProperties() {
@@ -7385,6 +7390,7 @@ namespace tfx {
 		int uid = 0;
 		tfxU32 current_global_graph = 0;
 
+		lib.events_allocator = CreateArenaManager(tfxMegabyte(2), 8);
 		if (!stats_struct) {
 			lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
 			lib.graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
@@ -7436,7 +7442,7 @@ namespace tfx {
 					effect.common.library = &lib;
 					effect.type = tfxEffectEmitterType::tfxStage;
 					effect.info_index = lib.AddEffectEmitterInfo();
-					effect.property_index = lib.AddStageProperties();
+					effect.actions_index = lib.AddActions();
 					lib.GetInfo(effect).uid = uid++;
 					effect_stack.push_back(effect);
 				}
@@ -7445,6 +7451,7 @@ namespace tfx {
 					effect.common.library = &lib;
 					effect.info_index = lib.AddEffectEmitterInfo();
 					effect.property_index = lib.AddEmitterProperties();
+					effect.actions_index = lib.AddActions();
 					if (effect_stack.size() <= 1) { //Only root effects get the global graphs
 						lib.AddEffectGraphs(effect);
 						effect.ResetEffectGraphs(false, false);
@@ -7462,6 +7469,7 @@ namespace tfx {
 					emitter.common.library = &lib;
 					emitter.info_index = lib.AddEffectEmitterInfo();
 					emitter.property_index = lib.AddEmitterProperties();
+					emitter.actions_index = lib.AddActions();
 					lib.AddEmitterGraphs(emitter);
 					emitter.type = tfxEffectEmitterType::tfxEmitterType;
 					emitter.ResetEmitterGraphs(false, false);
@@ -8291,21 +8299,36 @@ return free_slot;
 		stage.common.frame = 0.f;
 	}
 
-	void UpdateStage(tfxParticleManager &pm, tfxEffectEmitter &stage) {
-		tfxStageProperties &properties = stage.common.library->GetStageProperties(stage);
-		tfxEffectEmitterInfo &info = stage.common.library->GetInfo(stage);
-
-		stage.common.frame = stage.common.age / tfxFRAME_LENGTH;
+	void ProcessActions(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 position) {
+		tfxActions &actions = e.GetActions();
+		tfxEmitterProperties &info = e.GetProperties();
 
 		//Execute all due events
-		while (properties.event_position < properties.events.current_size && properties.events[properties.event_position].time <= stage.common.age) {
-			tfxStageEvent &event = properties.events[properties.event_position++];
-			if (event.type == tfxEventType_add_effect) {
-				AddEffect(pm, info.sub_effectors[event.effect_index], event.position);
-			}
+		while (position < actions.events.current_size && actions.events[position].frame <= e.common.age) {
+			tfxEvent &event = actions.events[position];
 		}
 
-		stage.common.age += tfxFRAME_LENGTH;
+	}
+
+	bool HasEventAtFrame(tfxEffectEmitter &effect, tfxU32 frame) {
+		tfxActions &actions = effect.GetActions();
+		do {
+			for (auto &e : actions.events) {
+				if (e.frame == frame)
+					return true;
+			}
+		} while (!actions.events.EndOfBuckets());
+		return false;
+	}
+
+	bool HasEventAtFrame(tfxActions &actions, tfxU32 frame) {
+		do {
+			for (auto &e : actions.events) {
+				if (e.frame == frame)
+					return true;
+			}
+		} while (!actions.events.EndOfBuckets());
+		return false;
 	}
 
 	void tfxParticleManager::UpdateParticleOrderOnly() {
