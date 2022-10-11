@@ -4816,6 +4816,15 @@ union tfxUInt10bit
 		inline void Initialise(tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8) {
 			events = tfxBucketArray<tfxEvent>(allocator, bucket_size);
 		}
+
+		inline void Reset() {
+			assert(events.allocator);	//Must have called Initialise first to assign an allocator
+			tfxEvent e;
+			//first action must always be to add the effect to the particle manager
+			e.type = tfxEventType_add_effect;
+			e.frame = 0;
+			events.push_back(e);
+		}
 	};
 
 	//An tfxEffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
@@ -4955,6 +4964,7 @@ union tfxUInt10bit
 		tfxU32 GetGraphIndexByType(tfxGraphType type);
 		void CompileGraphs();
 		void InitialiseUninitialisedGraphs();
+		void InitialiseUninitialisedEvents();
 		void SetName(const char *n);
 
 		void ReSeed(uint64_t seed = 0);
@@ -5305,7 +5315,7 @@ union tfxUInt10bit
 		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
-		void AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false);
+		void AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false, float add_delayed_spawning = 0);
 		void AddEffect(tfxEffectTemplate &effect);
 		void FreeParticleBank(tfxEffectEmitter &emitter);
 		//Clear all effects and particles in the particle manager
@@ -5449,6 +5459,7 @@ union tfxUInt10bit
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);
 	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 position);
+	void AddStage(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxVec3 position);
 
 	void Rotate(tfxEffectEmitter &e, float r);
 	void SetAngle(tfxEffectEmitter &e, float a);

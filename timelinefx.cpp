@@ -1395,14 +1395,31 @@ namespace tfx {
 	}
 
 	tfxParticleManagerModes tfxEffectEmitter::GetRequiredParticleManagerMode() {
-		if (effect_flags & tfxEffectPropertyFlags_guaranteed_order && effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
-			return tfxParticleManagerMode_ordered_by_depth_guaranteed;
+		if (type == tfxEffectType) {
+			if (effect_flags & tfxEffectPropertyFlags_guaranteed_order && effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
+				return tfxParticleManagerMode_ordered_by_depth_guaranteed;
+			}
+			else if (effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
+				return tfxParticleManagerMode_ordered_by_depth;
+			}
+			else if (effect_flags & tfxEffectPropertyFlags_age_order) {
+				return tfxParticleManagerMode_ordered_by_age;
+			}
 		}
-		else if (effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
-			return tfxParticleManagerMode_ordered_by_depth;
-		}
-		else if (effect_flags & tfxEffectPropertyFlags_age_order) {
-			return tfxParticleManagerMode_ordered_by_age;
+		else if (type == tfxStage) {
+			tfxParticleManagerModes result = tfxParticleManagerMode_unordered;
+			for (auto &effect : GetInfo().sub_effectors) {
+				if (effect_flags & tfxEffectPropertyFlags_guaranteed_order && effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
+					return tfxParticleManagerMode_ordered_by_depth_guaranteed;
+				}
+				else if (effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
+					result = tfxParticleManagerMode_ordered_by_depth;
+				}
+				else if (result != tfxParticleManagerMode_ordered_by_depth && effect_flags & tfxEffectPropertyFlags_age_order) {
+					result = tfxParticleManagerMode_ordered_by_age;
+				}
+			}
+			return result;
 		}
 		return tfxParticleManagerMode_unordered;
 	}
@@ -3690,6 +3707,11 @@ namespace tfx {
 		ResetVariationGraphs(add_node, compile);
 		UpdateMaxLife();
 		ResetOvertimeGraphs(add_node, compile);
+	}
+
+	void tfxEffectEmitter::InitialiseUninitialisedEvents() {
+		tfxActions &actions = GetActions();
+		if (actions.events.size() == 0)	actions.Reset();
 	}
 
 	void tfxEffectEmitter::InitialiseUninitialisedGraphs() {
@@ -7589,6 +7611,7 @@ namespace tfx {
 
 			if (context == tfxEndEmitter) {
 				effect_stack.back().InitialiseUninitialisedGraphs();
+				effect_stack.back().InitialiseUninitialisedEvents();
 				effect_stack.back().UpdateMaxLife();
 #ifdef tfxTRACK_MEMORY
 				tfxvec<tfxEffectEmitter> &sub_effectors = effect_stack.parent().GetInfo().sub_effectors;
@@ -7605,12 +7628,22 @@ namespace tfx {
 					tfxvec<tfxEffectEmitter> &sub_effectors = effect_stack.parent().GetInfo().sub_effectors;
 					memcpy(sub_effectors.name, "effect_sub_emitters\0", 20);
 #endif
+					if (effect_stack.parent().type == tfxStage && effect_stack.parent().GetInfo().sub_effectors.size() == 0) {
+						tfxEffectPropertyFlags tmp = effect_stack.parent().common.property_flags;
+						if (effect_stack.back().Is3DEffect()) {
+							effect_stack.parent().common.property_flags |= tfxEmitterPropertyFlags_is_3d;
+						}
+						tmp = effect_stack.parent().common.property_flags;
+						int debug = 1;
+					}
 					effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
+					effect_stack.back().InitialiseUninitialisedEvents();
 				}
 				else {
 					lib.effects.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
+					effect_stack.back().InitialiseUninitialisedEvents();
 				}
 				effect_stack.pop();
 			}
@@ -7704,7 +7737,7 @@ namespace tfx {
 		return effects[current_ebuff][index];
 	}
 
-	void tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter) {
+	void tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter, float add_delayed_spawning) {
 		tfxPROFILE;
 		assert(effect.type == tfxEffectType);
 		if (effects[buffer].current_size == effects[buffer].capacity)
@@ -7717,6 +7750,7 @@ namespace tfx {
 			effects[buffer][parent_index].parent_particle = nullptr;
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].ResetParents();
+		effects[buffer][parent_index].common.age = -add_delayed_spawning;
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
 		}
@@ -7736,6 +7770,7 @@ namespace tfx {
 				else {
 					emitter.particles_index = properties.layer * 2 + current_pbuff;
 				}
+
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
 				emitter.flags |= emitter.parent->flags & tfxEmitterStateFlags_no_tween;
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_single && !(flags & tfxEffectManagerFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
@@ -7749,6 +7784,7 @@ namespace tfx {
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_play_once;
 				emitter.flags |= properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
 				emitter.flags |= properties.end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
+
 				if (is_sub_emitter)
 					emitter.flags |= tfxEmitterStateFlags_is_sub_emitter;
 
@@ -8669,6 +8705,18 @@ return free_slot;
 		pm.AddEffect(effect, pm.current_ebuff);
 	}
 
+	void AddStage(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxVec3 position) {
+		for (auto &effect : stage.GetInfo().sub_effectors) {
+			auto &event = effect.GetActions().events.front();
+			effect.common.transform.local_position = event.position + position;
+			effect.GetProperties().delay_spawning = event.frame * tfxFRAME_LENGTH;
+			for (auto &emitter : effect.GetInfo().sub_effectors) {
+				//emitter.GetProperties().delay_spawning = event.frame * tfxFRAME_LENGTH;
+			}
+			pm.AddEffect(effect, pm.current_ebuff, false, event.frame * tfxFRAME_LENGTH);
+		}
+	}
+
 	void Rotate(tfxEffectEmitter &e, float r) {
 		e.common.transform.local_rotations.roll += r;
 	}
@@ -8714,7 +8762,7 @@ return free_slot;
 			e.parent = e.parent->next_ptr;
 
 			e.parent->common.timeout_counter = 0;
-			if (e.parent->common.age < properties.delay_spawning) {
+			if (e.parent->common.age <= properties.delay_spawning + tfxFRAME_LENGTH) {
 				return;
 			}
 
