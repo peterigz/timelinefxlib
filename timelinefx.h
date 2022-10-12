@@ -4797,29 +4797,29 @@ union tfxUInt10bit
 		}
 	};
 
-	enum tfxEventType {
+	enum tfxActionType {
 		tfxEventType_add_effect,
 		tfxEventType_change_effect
 	};
 
-	struct tfxEvent {
-		tfxEventType type;
+	struct tfxAction {
+		tfxActionType type;
 		tfxU32 frame;
 		tfxVec3 position;
 		tfxU32 effect_index;
 	};
 
-	struct tfxActions {
+	struct tfxKeyframes {
 		tfxU32 current_frame;
-		tfxBucketArray<tfxEvent> events;
+		tfxBucketArray<tfxAction> events;
 
 		inline void Initialise(tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8) {
-			events = tfxBucketArray<tfxEvent>(allocator, bucket_size);
+			events = tfxBucketArray<tfxAction>(allocator, bucket_size);
 		}
 
 		inline void Reset() {
 			assert(events.allocator);	//Must have called Initialise first to assign an allocator
-			tfxEvent e;
+			tfxAction e;
 			//first action must always be to add the effect to the particle manager
 			e.type = tfxEventType_add_effect;
 			e.frame = 0;
@@ -4925,7 +4925,7 @@ union tfxUInt10bit
 		void SetTimeout(float frames);
 
 		tfxEffectEmitterInfo &GetInfo();
-		tfxActions &GetActions();
+		tfxKeyframes &GetActions();
 		tfxEmitterProperties &GetProperties();
 
 		//Override graph functions for use in update_callback
@@ -5488,7 +5488,7 @@ union tfxUInt10bit
 	void ResetStage(tfxEffectEmitter &stage);
 	void ProcessActions(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxU32 position);
 	bool HasEventAtFrame(tfxEffectEmitter &effect, tfxU32 frame);
-	bool HasEventAtFrame(tfxActions &effect, tfxU32 frame);
+	bool HasEventAtFrame(tfxKeyframes &effect, tfxU32 frame);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -5521,7 +5521,7 @@ union tfxUInt10bit
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxvec<tfxEmitterProperties> emitter_properties;
-		tfxvec<tfxActions> actions;
+		tfxvec<tfxKeyframes> actions;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
@@ -5620,7 +5620,7 @@ union tfxUInt10bit
 			return effect_infos[e.info_index];
 		}
 
-		inline tfxActions &GetActions(tfxEffectEmitter &e) {
+		inline tfxKeyframes &GetActions(tfxEffectEmitter &e) {
 			assert(actions.size() > e.actions_index);
 			return actions[e.actions_index];
 		}
@@ -5630,7 +5630,7 @@ union tfxUInt10bit
 			return effect_infos[e.info_index];
 		}
 
-		inline const tfxActions &GetActions(const tfxEffectEmitter &e) {
+		inline const tfxKeyframes &GetActions(const tfxEffectEmitter &e) {
 			assert(actions.size() > e.property_index);
 			return actions[e.property_index];
 		}

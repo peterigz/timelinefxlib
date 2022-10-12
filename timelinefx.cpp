@@ -3710,7 +3710,7 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::InitialiseUninitialisedEvents() {
-		tfxActions &actions = GetActions();
+		tfxKeyframes &actions = GetActions();
 		if (actions.events.size() == 0)	actions.Reset();
 	}
 
@@ -3831,7 +3831,7 @@ namespace tfx {
 		return common.library->GetInfo(*this);
 	}
 
-	tfxActions &tfxEffectEmitter::GetActions() {
+	tfxKeyframes &tfxEffectEmitter::GetActions() {
 		return common.library->GetActions(*this);
 	}
 
@@ -4698,7 +4698,7 @@ namespace tfx {
 	}
 
 	tfxU32 tfxEffectLibrary::AddPreviewCameraSettings(tfxEffectEmitter& effect) {
-		assert(effect.type == tfxEffectType);
+		assert(effect.type == tfxEffectType || effect.type == tfxStage);
 		tfxPreviewCameraSettings a;
 		a.camera_settings.camera_floor_height = -10.f;
 		a.camera_settings.camera_fov = tfxRadians(60);
@@ -4743,7 +4743,7 @@ namespace tfx {
 	}
 
 	tfxU32 tfxEffectLibrary::AddActions() {
-		tfxActions action;
+		tfxKeyframes action;
 		if (free_actions.size()) {
 			return free_actions.pop_back();
 		}
@@ -7464,6 +7464,7 @@ namespace tfx {
 					effect.common.library = &lib;
 					effect.type = tfxEffectEmitterType::tfxStage;
 					effect.info_index = lib.AddEffectEmitterInfo();
+					lib.AddPreviewCameraSettings(effect);
 					effect.actions_index = lib.AddActions();
 					lib.GetInfo(effect).uid = uid++;
 					effect_stack.push_back(effect);
@@ -8336,18 +8337,18 @@ return free_slot;
 	}
 
 	void ProcessActions(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 position) {
-		tfxActions &actions = e.GetActions();
+		tfxKeyframes &actions = e.GetActions();
 		tfxEmitterProperties &info = e.GetProperties();
 
 		//Execute all due events
 		while (position < actions.events.current_size && actions.events[position].frame <= e.common.age) {
-			tfxEvent &event = actions.events[position];
+			tfxAction &event = actions.events[position];
 		}
 
 	}
 
 	bool HasEventAtFrame(tfxEffectEmitter &effect, tfxU32 frame) {
-		tfxActions &actions = effect.GetActions();
+		tfxKeyframes &actions = effect.GetActions();
 		do {
 			for (auto &e : actions.events) {
 				if (e.frame == frame)
@@ -8357,7 +8358,7 @@ return free_slot;
 		return false;
 	}
 
-	bool HasEventAtFrame(tfxActions &actions, tfxU32 frame) {
+	bool HasEventAtFrame(tfxKeyframes &actions, tfxU32 frame) {
 		do {
 			for (auto &e : actions.events) {
 				if (e.frame == frame)
