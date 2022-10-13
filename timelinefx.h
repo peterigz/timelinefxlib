@@ -911,7 +911,6 @@ union tfxUInt10bit
 		inline const T&     back() const { assert(current_size > 0); return data[current_size - 1]; }
 		inline T&           parent() { assert(current_size > 1); return data[current_size - 2]; }
 		inline const T&     parent() const { assert(current_size > 1); return data[current_size - 2]; }
-
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }

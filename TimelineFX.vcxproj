@@ -157,6 +157,8 @@
       <PrecompiledHeaderFile>
       </PrecompiledHeaderFile>
       <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+      <EnableModules>
+      </EnableModules>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>E:\Dropbox\C++\qulkanlib\qulkanlib\libs\msdf\freetype\win64;E:\Dropbox\C++\qulkanlib\qulkanlib\x64\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
