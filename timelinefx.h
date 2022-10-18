@@ -1791,7 +1791,7 @@ union tfxUInt10bit
 			while (current_block != tfxINVALID && allocator->blocks[current_block].current_size > 0) {
 				_data = (T*)allocator->blocks[current_block].data;
 				while (_data < allocator->blocks[current_block].end_ptr) {
-					if (*_data == v)
+					if (*_data == v)		//Note that you need to have an operator overload for == for your type if you don't have one or your inserts/erase may crash on compile here
 						return _data;
 					++_data;
 				}
@@ -1807,7 +1807,7 @@ union tfxUInt10bit
 			while (current_block != tfxINVALID && allocator->blocks[current_block].current_size > 0) {
 				_data = (T*)allocator->blocks[current_block].data;
 				while (_data < allocator->blocks[current_block].end_ptr) {
-					if (*_data == v)
+					if (*_data == v)		//Note that you need to have an operator overload for == for your type if you don't have one or your inserts/erase may crash on compile here
 						return _data;
 					++index;
 					++_data;
@@ -4797,8 +4797,11 @@ union tfxUInt10bit
 	};
 
 	enum tfxActionType {
-		tfxEventType_add_effect,
-		tfxEventType_change_effect
+		tfxActionType_add_effect,
+		tfxActionType_change_location,
+		tfxActionType_change_velocity,
+		tfxActionType_change_direction,
+		tfxMaxActionTypes
 	};
 
 	struct tfxAction {
@@ -4806,6 +4809,8 @@ union tfxUInt10bit
 		tfxU32 frame;
 		tfxVec3 position;
 		tfxU32 effect_index;
+
+		inline bool operator==(const tfxAction &a) { return a.frame == frame && a.type == type; }
 	};
 
 	struct tfxKeyframes {
@@ -4820,7 +4825,7 @@ union tfxUInt10bit
 			assert(events.allocator);	//Must have called Initialise first to assign an allocator
 			tfxAction e;
 			//first action must always be to add the effect to the particle manager
-			e.type = tfxEventType_add_effect;
+			e.type = tfxActionType_add_effect;
 			e.frame = 0;
 			events.push_back(e);
 		}
@@ -5486,8 +5491,11 @@ union tfxUInt10bit
 	//Event functions
 	void ResetStage(tfxEffectEmitter &stage);
 	void ProcessActions(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxU32 position);
-	bool HasEventAtFrame(tfxEffectEmitter &effect, tfxU32 frame);
-	bool HasEventAtFrame(tfxKeyframes &effect, tfxU32 frame);
+	bool HasActionAtFrame(tfxEffectEmitter &effect, tfxU32 frame);
+	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame);
+	bool HasActionType(tfxKeyframes &actions, tfxActionType type);
+	bool FrameIsAfterAddType(tfxKeyframes &actions, float frame);
+	void AddKeyframe(tfxKeyframes &actions, tfxActionType type, float frame);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
