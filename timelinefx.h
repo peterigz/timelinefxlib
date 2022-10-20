@@ -4807,7 +4807,7 @@ union tfxUInt10bit
 	struct tfxAction {
 		tfxActionType type;
 		tfxU32 frame;
-		tfxVec3 position;
+		tfxVec3 values;
 		tfxU32 effect_index;
 
 		inline bool operator==(const tfxAction &a) { return a.frame == frame && a.type == type; }
@@ -4828,6 +4828,21 @@ union tfxUInt10bit
 			e.type = tfxActionType_add_effect;
 			e.frame = 0;
 			events.push_back(e);
+		}
+
+		inline bool Sort() {
+			bool needed_sorting = false;
+			for (tfxU32 i = 1; i < events.current_size; ++i) {
+				tfxAction action = events[i];
+				int j = i - 1;
+				while (j >= 0 && action.frame < events[j].frame) {
+					events[j + 1] = events[j];
+					--j;
+					needed_sorting = true;
+				}
+				events[j + 1] = action;
+			}
+			return needed_sorting;
 		}
 	};
 
@@ -5493,9 +5508,11 @@ union tfxUInt10bit
 	void ProcessActions(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxU32 position);
 	bool HasActionAtFrame(tfxEffectEmitter &effect, tfxU32 frame);
 	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame);
+	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame, tfxActionType type);
 	bool HasActionType(tfxKeyframes &actions, tfxActionType type);
 	bool FrameIsAfterAddType(tfxKeyframes &actions, float frame);
 	void AddKeyframe(tfxKeyframes &actions, tfxActionType type, float frame);
+	void AdjustKeyframes(tfxKeyframes &actions, float amount);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;

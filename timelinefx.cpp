@@ -8371,6 +8371,17 @@ return free_slot;
 		return false;
 	}
 
+	bool HasActionAtFrame(tfxKeyframes &actions, tfxU32 frame, tfxActionType type) {
+		actions.events.ResetIteratorIndex();
+		do {
+			for (auto &e : actions.events) {
+				if (e.frame == frame && e.type == type)
+					return true;
+			}
+		} while (!actions.events.EndOfBuckets());
+		return false;
+	}
+
 	bool HasActionType(tfxKeyframes &actions, tfxActionType type) {
 		actions.events.ResetIteratorIndex();
 		do {
@@ -8406,12 +8417,18 @@ return free_slot;
 					tfxAction *r_value = actions.events.insert(&e, action);
 					return;
 				}
-				else if (frame == e.frame) {
+				else if (frame == e.frame && type == e.type) {
 					return;
 				}
 			}
 		} while (!actions.events.EndOfBuckets());
 		actions.events.push_back(action);
+	}
+
+	void AdjustKeyframes(tfxKeyframes &actions, float amount) {
+		for (auto &action : actions.events) {
+			action.frame += (tfxU32)amount;
+		}
 	}
 
 	void tfxParticleManager::UpdateParticleOrderOnly() {
@@ -8755,7 +8772,7 @@ return free_slot;
 	void AddStage(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxVec3 position) {
 		for (auto &effect : stage.GetInfo().sub_effectors) {
 			auto &event = effect.GetActions().events.front();
-			effect.common.transform.local_position = event.position + position;
+			effect.common.transform.local_position = event.values + position;
 			effect.GetProperties().delay_spawning = event.frame * tfxFRAME_LENGTH;
 			for (auto &emitter : effect.GetInfo().sub_effectors) {
 				//emitter.GetProperties().delay_spawning = event.frame * tfxFRAME_LENGTH;
