@@ -4673,6 +4673,7 @@ union tfxUInt10bit
 		float loop_length;
 		float timeout_counter;
 		float timeout;
+		tfxU32 keyframe_position;
 		tfxU32 active_children;
 		tfxVec3 handle;
 		tfxEmitterStateFlags state_flags;
@@ -4691,7 +4692,8 @@ union tfxUInt10bit
 			state_flags(0),
 			timeout_counter(0),
 			timeout(100.f),
-			active_children(0)
+			active_children(0),
+			keyframe_position(0)
 		{ }
 
 	};
@@ -4906,9 +4908,11 @@ union tfxUInt10bit
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
 
-		tfxU32 particles_index;
 		tfxU32 sprites_count;
 		tfxU32 sprites_index;
+
+		//Indexes into library storage
+		tfxU32 particles_index;
 		tfxU32 info_index;
 		tfxU32 property_index;
 		tfxU32 actions_index;
@@ -5505,11 +5509,12 @@ union tfxUInt10bit
 
 	//Event functions
 	void ResetStage(tfxEffectEmitter &stage);
-	void ProcessActions(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxU32 position);
+	void ProcessKeyframes(tfxParticleManager &pm, tfxEffectEmitter &e);
 	bool HasActionAtFrame(tfxEffectEmitter &effect, tfxU32 frame);
 	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame);
 	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame, tfxActionType type);
 	bool HasActionType(tfxKeyframes &actions, tfxActionType type);
+	tfxU32 GetAddTypeFrame(tfxKeyframes &actions);
 	bool FrameIsAfterAddType(tfxKeyframes &actions, float frame);
 	void AddKeyframe(tfxKeyframes &actions, tfxActionType type, float frame);
 	void AdjustKeyframes(tfxKeyframes &actions, float amount);

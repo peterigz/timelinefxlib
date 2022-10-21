@@ -8337,15 +8337,22 @@ return free_slot;
 		stage.common.frame = 0.f;
 	}
 
-	void ProcessActions(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 position) {
+	void ProcessKeyframes(tfxParticleManager &pm, tfxEffectEmitter &e) {
 		tfxKeyframes &actions = e.GetActions();
-		tfxEmitterProperties &info = e.GetProperties();
 
 		//Execute all due events
-		while (position < actions.events.current_size && actions.events[position].frame <= e.common.age) {
-			tfxAction &event = actions.events[position];
-		}
+		tfxU32 last_frame_bump = tfxMAX_UINT;
+		while (e.common.keyframe_position < actions.events.current_size && actions.events[e.common.keyframe_position].frame <= e.common.age) {
+			tfxAction &action = actions.events[e.common.keyframe_position];
 
+			if (action.type == tfxActionType_change_location) {
+				e.common.transform.local_position = action.values;
+			}
+
+			if(last_frame_bump != action.frame)
+				e.common.keyframe_position++;
+			last_frame_bump = action.frame;
+		}
 	}
 
 	bool HasActionAtFrame(tfxEffectEmitter &effect, tfxU32 frame) {
@@ -8391,6 +8398,17 @@ return free_slot;
 			}
 		} while (!actions.events.EndOfBuckets());
 		return false;
+	}
+
+	tfxU32 GetAddTypeFrame(tfxKeyframes &actions) {
+		actions.events.ResetIteratorIndex();
+		do {
+			for (auto &e : actions.events) {
+				if (e.type == tfxActionType_add_effect)
+					return e.frame;
+			}
+		} while (!actions.events.EndOfBuckets());
+		return 0;
 	}
 
 	bool FrameIsAfterAddType(tfxKeyframes &actions, float frame) {
@@ -8815,6 +8833,8 @@ return free_slot;
 		else {
 			e.common.frame = e.common.age / tfxLOOKUP_FREQUENCY;
 		}
+
+		ProcessKeyframes(pm, e);
 
 		if (e.type == tfxEffectEmitterType::tfxEffectType) {
 			pm.parent_spawn_controls = UpdateEffectState(e);
