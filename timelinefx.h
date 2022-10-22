@@ -4915,7 +4915,7 @@ union tfxUInt10bit
 		tfxU32 particles_index;
 		tfxU32 info_index;
 		tfxU32 property_index;
-		tfxU32 actions_index;
+		tfxU32 keyframes_index;
 
 		//Update callbacks that are called as the effect is updated in the particle manager. See tfxEffectTemplate
 		void(*update_effect_callback)(tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls);		//Called after the effect state has been udpated
@@ -5513,11 +5513,11 @@ union tfxUInt10bit
 	bool HasActionAtFrame(tfxEffectEmitter &effect, tfxU32 frame);
 	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame);
 	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame, tfxActionType type);
-	bool HasActionType(tfxKeyframes &actions, tfxActionType type);
-	tfxU32 GetAddTypeFrame(tfxKeyframes &actions);
-	bool FrameIsAfterAddType(tfxKeyframes &actions, float frame);
-	void AddKeyframe(tfxKeyframes &actions, tfxActionType type, float frame);
-	void AdjustKeyframes(tfxKeyframes &actions, float amount);
+	bool HasActionType(tfxKeyframes &keyframes, tfxActionType type);
+	tfxU32 GetAddTypeFrame(tfxKeyframes &keyframes);
+	bool FrameIsAfterAddType(tfxKeyframes &keyframes, float frame);
+	void AddKeyframe(tfxKeyframes &keyframes, tfxActionType type, float frame);
+	void AdjustKeyframes(tfxKeyframes &keyframes, float amount);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -5544,13 +5544,13 @@ union tfxUInt10bit
 	struct tfxEffectLibrary {
 		tfxMemoryArenaManager graph_node_allocator;
 		tfxMemoryArenaManager graph_lookup_allocator;
-		tfxMemoryArenaManager events_allocator;
+		tfxMemoryArenaManager keyframes_allocator;
 		tfxStorageMap<tfxEffectEmitter*> effect_paths;
 		tfxvec<tfxEffectEmitter> effects;
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxvec<tfxEmitterProperties> emitter_properties;
-		tfxvec<tfxKeyframes> actions;
+		tfxvec<tfxKeyframes> keyframes;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
@@ -5570,7 +5570,7 @@ union tfxUInt10bit
 		tfxvec<tfxU32> free_preview_camera_settings;
 		tfxvec<tfxU32> free_properties;
 		tfxvec<tfxU32> free_infos;
-		tfxvec<tfxU32> free_actions;
+		tfxvec<tfxU32> free_keyframes;
 
 		//Get an effect from the library by index
 		tfxEffectEmitter& operator[] (uint32_t index);
@@ -5650,8 +5650,8 @@ union tfxUInt10bit
 		}
 
 		inline tfxKeyframes &GetActions(tfxEffectEmitter &e) {
-			assert(actions.size() > e.actions_index);
-			return actions[e.actions_index];
+			assert(keyframes.size() > e.keyframes_index);
+			return keyframes[e.keyframes_index];
 		}
 
 		inline const tfxEffectEmitterInfo &GetInfo(const tfxEffectEmitter &e) {
@@ -5660,8 +5660,8 @@ union tfxUInt10bit
 		}
 
 		inline const tfxKeyframes &GetActions(const tfxEffectEmitter &e) {
-			assert(actions.size() > e.property_index);
-			return actions[e.property_index];
+			assert(keyframes.size() > e.property_index);
+			return keyframes[e.property_index];
 		}
 
 		//Mainly internal functions
@@ -5693,6 +5693,7 @@ union tfxUInt10bit
 		tfxU32 CloneEmitterAttributes(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneInfo(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneProperties(tfxU32 source_index, tfxEffectLibrary *destination_library);
+		tfxU32 CloneKeyframes(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		void AddEmitterGraphs(tfxEffectEmitter& effect);
 		void AddEffectGraphs(tfxEffectEmitter& effect);
 		tfxU32 AddAnimationSettings(tfxEffectEmitter& effect);
@@ -5700,7 +5701,7 @@ union tfxUInt10bit
 		tfxU32 AddPreviewCameraSettings();
 		tfxU32 AddEffectEmitterInfo();
 		tfxU32 AddEmitterProperties();
-		tfxU32 AddActions();
+		tfxU32 AddKeyframes();
 		void UpdateEffectParticleStorage();
 		void UpdateComputeNodes();
 		void CompileAllGraphs();
