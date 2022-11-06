@@ -7780,6 +7780,7 @@ namespace tfx {
 				else {
 					emitter.particles_index = properties.layer * 2 + current_pbuff;
 				}
+				emitter.common.delay_spawning = properties.delay_spawning;
 
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
 				emitter.flags |= emitter.parent->flags & tfxEmitterStateFlags_no_tween;
@@ -8854,9 +8855,10 @@ return free_slot;
 			e.parent = e.parent->next_ptr;
 
 			e.parent->common.timeout_counter = 0;
-			if (e.parent->common.age <= properties.delay_spawning + tfxFRAME_LENGTH) {
+			if (e.parent->common.age <= e.common.delay_spawning + tfxFRAME_LENGTH) {
 				return;
 			}
+			e.common.delay_spawning = -tfxFRAME_LENGTH;
 
 			//e.flags |= e.parent->flags & tfxEmitterStateFlags_stop_spawning;
 			e.flags |= e.parent->flags & tfxEmitterStateFlags_no_tween;
@@ -9072,7 +9074,7 @@ return free_slot;
 			e.highest_particle_age -= tfxFRAME_LENGTH;
 
 		if (properties.loop_length && e.common.age > properties.loop_length)
-			e.common.age = 0;
+			e.common.age -= properties.loop_length;
 
 		if (e.highest_particle_age <= 0 && e.common.age > tfxFRAME_LENGTH * 5.f) {
 			e.common.timeout_counter++;

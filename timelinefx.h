@@ -4671,6 +4671,7 @@ union tfxUInt10bit
 		float frame;
 		float age;
 		float loop_length;
+		float delay_spawning;
 		float timeout_counter;
 		float timeout;
 		tfxU32 keyframe_position;
@@ -4689,6 +4690,7 @@ union tfxUInt10bit
 							tfxEmitterPropertyFlags_lifetime_uniform_size),
 			frame(0.f),
 			age(0.f),
+			delay_spawning(0.f),
 			state_flags(0),
 			timeout_counter(0),
 			timeout(100.f),
