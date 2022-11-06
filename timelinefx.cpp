@@ -6207,12 +6207,15 @@ namespace tfx {
 
 		if (nodes.size() > 1) {
 			tfxAttributeNode *last_node = nullptr;
-			for (auto *n = nodes.begin() + 1; n != nodes.end(); ++n) {
-				if (node.frame < n->frame)
-					last_node = n;
-				else
-					break;
-			}
+			nodes.ResetIteratorIndex();
+			do {
+				for (auto *n = nodes.begin() + 1; n != nodes.end(); ++n) {
+					if (node.frame < n->frame)
+						last_node = n;
+					else
+						break;
+				}
+			} while (!nodes.EndOfBuckets());
 
 			if (last_node) {
 				tfxAttributeNode *r_value = nodes.insert(last_node, node);
