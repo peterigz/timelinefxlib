@@ -540,6 +540,7 @@ union tfxUInt10bit
 		tfxEffectPropertyFlags_depth_draw_order = 1 << 1,
 		tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
 		tfxEffectPropertyFlags_age_order = 1 << 3,
+		tfxEffectPropertyFlags_use_keyframes = 1 << 4
 	};
 
 	enum tfxEmitterPropertyFlags_ {

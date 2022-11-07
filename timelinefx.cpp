@@ -8354,16 +8354,14 @@ return free_slot;
 
 		//Execute all due events
 		tfxU32 last_frame_bump = tfxMAX_UINT;
-		while (e.common.keyframe_position < keyframes.events.current_size && keyframes.events[e.common.keyframe_position].frame <= e.common.age) {
+		while (e.common.keyframe_position < keyframes.events.current_size && keyframes.events[e.common.keyframe_position].frame <= e.common.age / tfxFRAME_LENGTH) {
 			tfxAction &action = keyframes.events[e.common.keyframe_position];
 
 			if (action.type == tfxActionType_change_location) {
 				e.common.transform.local_position = action.values;
 			}
 
-			if(last_frame_bump != action.frame)
-				e.common.keyframe_position++;
-			last_frame_bump = action.frame;
+			e.common.keyframe_position++;
 		}
 	}
 
