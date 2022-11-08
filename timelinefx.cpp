@@ -3658,6 +3658,9 @@ namespace tfx {
 		common.library->emitter_attributes[emitter_attributes].properties.emitter_depth.Reset(0.f, tfxDimensionsPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.emitter_depth.type = tfxProperty_emitter_depth;
 		common.library->emitter_attributes[emitter_attributes].properties.arc_size.Reset(tfxRadians(360.f), tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.arc_size.type = tfxProperty_arc_size;
 		common.library->emitter_attributes[emitter_attributes].properties.arc_offset.Reset(0.f, tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.arc_offset.type = tfxProperty_arc_offset;
+		common.library->emitter_attributes[emitter_attributes].properties.translation_x.Reset(0.f, tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.translation_x.type = tfxProperty_arc_offset;
+		common.library->emitter_attributes[emitter_attributes].properties.translation_y.Reset(0.f, tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.translation_y.type = tfxProperty_arc_offset;
+		common.library->emitter_attributes[emitter_attributes].properties.translation_z.Reset(0.f, tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.translation_z.type = tfxProperty_arc_offset;
 		if(compile)
 			common.library->CompilePropertyGraph(emitter_attributes);
 	}
@@ -3759,6 +3762,9 @@ namespace tfx {
 			if (common.library->emitter_attributes[emitter_attributes].properties.emitter_depth.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.emitter_depth.Reset(0.f, tfxDimensionsPreset);
 			if (common.library->emitter_attributes[emitter_attributes].properties.arc_size.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.arc_size.Reset(tfxRadians(360.f), tfxArcPreset);
 			if (common.library->emitter_attributes[emitter_attributes].properties.arc_offset.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.arc_offset.Reset(0.f, tfxArcPreset);
+			if (common.library->emitter_attributes[emitter_attributes].properties.translation_x.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.translation_x.Reset(0.f, tfxArcPreset);
+			if (common.library->emitter_attributes[emitter_attributes].properties.translation_y.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.translation_y.Reset(0.f, tfxArcPreset);
+			if (common.library->emitter_attributes[emitter_attributes].properties.translation_z.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.translation_z.Reset(0.f, tfxArcPreset);
 
 			if (common.library->emitter_attributes[emitter_attributes].variation.life.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].variation.life.Reset(0.f, tfxLifePreset);
 			if (common.library->emitter_attributes[emitter_attributes].variation.amount.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].variation.amount.Reset(0.f, tfxAmountPreset);

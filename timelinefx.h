@@ -4191,6 +4191,9 @@ union tfxUInt10bit
 		tfxGraph emitter_depth;
 		tfxGraph arc_size;
 		tfxGraph arc_offset;
+		tfxGraph translation_x;
+		tfxGraph translation_y;
+		tfxGraph translation_z;
 
 		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
 			emission_pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -4205,6 +4208,9 @@ union tfxUInt10bit
 			emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			arc_size.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			arc_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			translation_x.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			translation_y.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			translation_z.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 
 			emission_pitch.lookup.values.allocator = value_allocator;
 			emission_yaw.lookup.values.allocator = value_allocator;
@@ -4218,6 +4224,9 @@ union tfxUInt10bit
 			emitter_depth.lookup.values.allocator = value_allocator;
 			arc_size.lookup.values.allocator = value_allocator;
 			arc_offset.lookup.values.allocator = value_allocator;
+			translation_x.lookup.values.allocator = value_allocator;
+			translation_y.lookup.values.allocator = value_allocator;
+			translation_z.lookup.values.allocator = value_allocator;
 		}
 
 		void Free() {
@@ -4233,6 +4242,9 @@ union tfxUInt10bit
 			emitter_depth.Free();
 			arc_size.Free();
 			arc_offset.Free();
+			translation_x.Free();
+			translation_y.Free();
+			translation_z.Free();
 		}
 
 		void CopyToNoLookups(tfxPropertyAttributes *dst) {
@@ -4248,6 +4260,9 @@ union tfxUInt10bit
 			emitter_depth.CopyToNoLookups(&dst->emitter_depth);
 			arc_size.CopyToNoLookups(&dst->arc_size);
 			arc_offset.CopyToNoLookups(&dst->arc_offset);
+			translation_x.CopyToNoLookups(&dst->translation_x);
+			translation_y.CopyToNoLookups(&dst->translation_y);
+			translation_z.CopyToNoLookups(&dst->translation_z);
 		}
 
 	};
