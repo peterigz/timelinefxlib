@@ -4819,6 +4819,9 @@ union tfxUInt10bit
 	enum tfxActionType {
 		tfxActionType_add_effect,
 		tfxActionType_change_location,
+		tfxActionType_change_location_x,
+		tfxActionType_change_location_y,
+		tfxActionType_change_location_z,
 		tfxActionType_change_velocity,
 		tfxActionType_change_direction,
 		tfxMaxActionTypes
@@ -4829,6 +4832,7 @@ union tfxUInt10bit
 		tfxU32 frame;
 		tfxVec3 values;
 		tfxU32 effect_index;
+		tfxAttributeNode *graph_node;
 
 		inline bool operator==(const tfxAction &a) { return a.frame == frame && a.type == type; }
 	};
