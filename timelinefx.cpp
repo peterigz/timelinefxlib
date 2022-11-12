@@ -3719,9 +3719,9 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::InitialiseUninitialisedGraphs() {
-		if (common.library->keyframe_attributes[keyframe_attributes].translation_x.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_x.Reset(0.f, tfxDimensionsPreset, false);
-		if (common.library->keyframe_attributes[keyframe_attributes].translation_y.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_y.Reset(0.f, tfxDimensionsPreset, false);
-		if (common.library->keyframe_attributes[keyframe_attributes].translation_z.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_z.Reset(0.f, tfxDimensionsPreset, false);
+		if (common.library->keyframe_attributes[keyframe_attributes].translation_x.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_x.Reset(0.f, tfxDimensionsPreset);
+		if (common.library->keyframe_attributes[keyframe_attributes].translation_y.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_y.Reset(0.f, tfxDimensionsPreset);
+		if (common.library->keyframe_attributes[keyframe_attributes].translation_z.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_z.Reset(0.f, tfxDimensionsPreset);
 
 		if (type == tfxEffectType) {
 			if (common.library->global_graphs[global].life.nodes.size() == 0) common.library->global_graphs[global].life.Reset(1.f, tfxGlobalPercentPreset);
@@ -5839,6 +5839,10 @@ namespace tfx {
 			type == tfxProperty_emitter_roll || type == tfxProperty_emitter_pitch || type == tfxProperty_emitter_yaw || type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin || type == tfxOvertime_direction);
 	}
 
+	bool tfxGraph::IsTranslationGraph() {
+		return type == tfxKeyframe_translate_x || type == tfxKeyframe_translate_y || type == tfxKeyframe_translate_z;
+	}
+
 	void tfxGraph::MultiplyAllValues(float scalar) {
 		nodes.ResetIteratorIndex();
 		do {
@@ -7116,6 +7120,23 @@ namespace tfx {
 		return !IsOvertimeGraph(type) && !IsOvertimePercentageGraph(type) && !IsGlobalGraph(type) && !IsAngleGraph(type) && !IsOvertimeGraph(type);
 	}
 
+	bool HasKeyframes(tfxEffectEmitter &e) {
+		assert(e.keyframe_attributes < e.common.library->keyframe_attributes.size());		//Must be a valid keyframes index into the library
+		tfxKeyframeAttributes &keyframes = e.common.library->keyframe_attributes[e.keyframe_attributes];
+		tfxU32 size =	keyframes.translation_x.nodes.size() +
+						keyframes.translation_y.nodes.size() +
+						keyframes.translation_z.nodes.size();
+		return size > 0;
+	}
+
+	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e) {
+		assert(e.keyframe_attributes < e.common.library->keyframe_attributes.size());		//Must be a valid keyframes index into the library
+		tfxKeyframeAttributes &keyframes = e.common.library->keyframe_attributes[e.keyframe_attributes];
+		return	keyframes.translation_x.nodes.size() > 1 ||
+				keyframes.translation_y.nodes.size() > 1 ||
+				keyframes.translation_z.nodes.size() > 1;
+	}
+
 	bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key) {
 		return config.ValidName(key);
 	}
@@ -7307,9 +7328,13 @@ namespace tfx {
 			int ref = type - tfxVariationStart;
 			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].variation)[ref];
 		}
-		else if (type >= tfxOvertimeStart) {
+		else if (type >= tfxOvertimeStart && type < tfxKeyframeStart) {
 			int ref = type - tfxOvertimeStart;
 			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].overtime)[ref];
+		}
+		else if (type >= tfxKeyframeStart) {
+			int ref = type - tfxKeyframeStart;
+			return ((tfxGraph*)&library.keyframe_attributes[graph_id.graph_id])[ref];
 		}
 
 		assert(0);	//This function must return a value, make sure the graph_id is valid
@@ -8986,7 +9011,7 @@ return free_slot;
 		}
 		else {
 			if (!(e.flags & tfxEmitterStateFlags_retain_matrix)) {
-				e.common.transform.world_position = e.common.transform.local_position;
+				e.common.transform.world_position = e.common.transform.local_position + e.common.transform.translation;
 				e.common.transform.world_position += properties.emitter_handle * e.current.overal_scale;
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d) {
 					e.common.transform.world_rotations = e.common.transform.local_rotations;
@@ -9304,7 +9329,6 @@ return free_slot;
 		tfxEmitterProperties &properties = e.GetProperties();
 		tfxEmitterSpawnControls spawn_controls;
 
-		e.current.overal_scale = parent.current.overal_scale;
 		spawn_controls.life = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.life, e.common.frame) * parent_spawn_controls.life;
 		spawn_controls.life_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.life, e.common.frame) * parent_spawn_controls.life;
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
@@ -9323,20 +9347,25 @@ return free_slot;
 		spawn_controls.size_variation.y = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.height, e.common.frame) * parent_spawn_controls.size_y;
 		spawn_controls.velocity = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.velocity, e.common.frame) * parent_spawn_controls.velocity;
 		spawn_controls.velocity_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.velocity, e.common.frame) * parent_spawn_controls.velocity;
-		e.current.velocity_adjuster = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity_adjuster, e.common.frame);
 		spawn_controls.spin = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.spin, e.common.frame) * parent_spawn_controls.spin;
 		spawn_controls.spin_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.spin, e.common.frame) * parent_spawn_controls.spin;
-		e.common.transform.local_rotations.roll = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.roll, e.common.age);
-		e.common.transform.local_rotations.pitch = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.pitch, e.common.age);
-		e.common.transform.local_rotations.yaw = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.yaw, e.common.age);
-		e.current.intensity = parent_spawn_controls.intensity;
 		spawn_controls.splatter = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.splatter, e.common.frame) * parent_spawn_controls.splatter;
-		e.current.emitter_size.y = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.emitter_height, e.common.frame);
 		spawn_controls.weight = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.weight, e.common.frame) * parent_spawn_controls.weight;
 		spawn_controls.weight_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.weight, e.common.frame) * parent_spawn_controls.weight;
 		spawn_controls.noise_offset_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.noise_offset, e.common.frame);
 		spawn_controls.noise_offset = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.noise_offset, e.common.frame);
 		spawn_controls.noise_resolution = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.noise_resolution, e.common.frame);
+
+		e.common.transform.translation.x = lookup_callback(e.common.library->keyframe_attributes[e.keyframe_attributes].translation_x, e.common.frame);
+		e.common.transform.translation.y = lookup_callback(e.common.library->keyframe_attributes[e.keyframe_attributes].translation_y, e.common.frame);
+		e.common.transform.translation.z = lookup_callback(e.common.library->keyframe_attributes[e.keyframe_attributes].translation_z, e.common.frame);
+		e.current.overal_scale = parent.current.overal_scale;
+		e.common.transform.local_rotations.roll = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.roll, e.common.age);
+		e.common.transform.local_rotations.pitch = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.pitch, e.common.age);
+		e.common.transform.local_rotations.yaw = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.yaw, e.common.age);
+		e.current.velocity_adjuster = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity_adjuster, e.common.frame);
+		e.current.intensity = parent_spawn_controls.intensity;
+		e.current.emitter_size.y = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.emitter_height, e.common.frame);
 		e.current.stretch = parent.current.stretch;
 		e.common.transform.scale = parent.common.transform.scale;
 
@@ -9443,6 +9472,7 @@ return free_slot;
 		spawn_controls.spin = lookup_callback(e.common.library->global_graphs[e.global].spin, e.common.frame);
 		spawn_controls.intensity = lookup_callback(e.common.library->global_graphs[e.global].intensity, e.common.frame);
 		spawn_controls.splatter = lookup_callback(e.common.library->global_graphs[e.global].splatter, e.common.frame);
+		spawn_controls.weight = lookup_callback(e.common.library->global_graphs[e.global].weight, e.common.frame);
 		e.current.emitter_size.x = lookup_callback(e.common.library->global_graphs[e.global].emitter_width, e.common.frame);
 		e.current.emitter_size.y = lookup_callback(e.common.library->global_graphs[e.global].emitter_height, e.common.frame);
 		e.current.emitter_size.z = lookup_callback(e.common.library->global_graphs[e.global].emitter_depth, e.common.frame);
@@ -9465,7 +9495,9 @@ return free_slot;
 			e.common.transform.local_rotations.yaw = 0.f;
 		}
 		e.current.stretch = lookup_callback(e.common.library->global_graphs[e.global].stretch, e.common.frame);
-		spawn_controls.weight = lookup_callback(e.common.library->global_graphs[e.global].weight, e.common.frame);
+		e.common.transform.translation.x = lookup_callback(e.common.library->keyframe_attributes[e.keyframe_attributes].translation_x, e.common.frame);
+		e.common.transform.translation.y = lookup_callback(e.common.library->keyframe_attributes[e.keyframe_attributes].translation_y, e.common.frame);
+		e.common.transform.translation.z = lookup_callback(e.common.library->keyframe_attributes[e.keyframe_attributes].translation_z, e.common.frame);
 
 		if (e.update_effect_callback)
 			e.update_effect_callback(e, spawn_controls);

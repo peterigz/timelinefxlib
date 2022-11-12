@@ -4038,6 +4038,7 @@ union tfxUInt10bit
 		bool IsOvertimeGraph();
 		bool IsGlobalGraph();
 		bool IsAngleGraph();
+		bool IsTranslationGraph();
 		void MultiplyAllValues(float scalar);
 		void CopyToNoLookups(tfxGraph *graph);
 
@@ -4081,12 +4082,16 @@ union tfxUInt10bit
 	bool IsAngleOvertimeGraph(tfxGraphType type);
 	bool IsEverythingElseGraph(tfxGraphType type);
 	inline bool HasNodeAtFrame(tfxGraph &graph, float frame) {
-		for (auto &node : graph.nodes) {
-			if (node.frame == frame) return true;
-			if (frame > node.frame) return false;
-		}
+		graph.nodes.ResetIteratorIndex();
+		do {
+			for (auto &node : graph.nodes) {
+				if (node.frame == frame) return true;
+			}
+		} while (!graph.nodes.EndOfBuckets());
 		return false;
 	}
+	bool HasKeyframes(tfxEffectEmitter &e);
+	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
 
 	struct tfxGlobalAttributes {
 		tfxGraph life;
@@ -4225,9 +4230,24 @@ union tfxUInt10bit
 	}
 
 	inline void AddTranslationNodes(tfxKeyframeAttributes &keyframes, float frame) {
-		keyframes.translation_x.AddCoordNode(frame, 0.f);
-		keyframes.translation_y.AddCoordNode(frame, 0.f);
-		keyframes.translation_z.AddCoordNode(frame, 0.f);
+		if (keyframes.translation_x.nodes.size()) {
+			if (!HasNodeAtFrame(keyframes.translation_x, frame))
+				keyframes.translation_x.AddCoordNode(frame, 0.f);
+			if (!HasNodeAtFrame(keyframes.translation_y, frame))
+				keyframes.translation_y.AddCoordNode(frame, 0.f);
+			if (!HasNodeAtFrame(keyframes.translation_z, frame))
+				keyframes.translation_z.AddCoordNode(frame, 0.f);
+		}
+		else {
+			keyframes.translation_x.AddCoordNode(0.f, 0.f);
+			keyframes.translation_y.AddCoordNode(0.f, 0.f);
+			keyframes.translation_z.AddCoordNode(0.f, 0.f);
+			if (frame != 0) {
+				keyframes.translation_x.AddCoordNode(frame, 0.f);
+				keyframes.translation_y.AddCoordNode(frame, 0.f);
+				keyframes.translation_z.AddCoordNode(frame, 0.f);
+			}
+		}
 	}
 
 	struct tfxPropertyAttributes {
@@ -4705,6 +4725,7 @@ union tfxUInt10bit
 
 	struct tfxEmitterTransform {
 		//Position, scale and rotation values
+		tfxVec3 translation;
 		tfxVec3 local_position;
 		tfxVec3 world_position;
 		tfxVec3 captured_position;
@@ -5902,7 +5923,7 @@ union tfxUInt10bit
 		out.matrix = mmTransform(out.matrix, in.matrix);
 		tfxVec3 rotatevec = mmTransformVector3(in.matrix, out.local_position);
 
-		out.world_position = in.world_position + rotatevec;
+		out.world_position = in.world_position + out.translation + rotatevec;
 	}
 	static inline void TransformParticle(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_position = data.local_position.xy();
