@@ -335,6 +335,10 @@ union tfxUInt10bit
 		tfxGraphMaxIndex,
 	};
 
+	inline bool IsGraphEmitterDimension(tfxGraphType type) {
+		return type == tfxProperty_emitter_width || type == tfxProperty_emitter_height || type == tfxProperty_emitter_depth;
+	}
+
 	//tfxEffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 	enum tfxEffectEmitterType : unsigned char {
 		tfxEffectType,
