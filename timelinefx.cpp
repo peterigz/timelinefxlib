@@ -7092,11 +7092,11 @@ namespace tfx {
 	}
 
 	bool IsOvertimeGraph(tfxGraphType type) {
-		return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster;
+		return type >= tfxOvertime_velocity && type != tfxOvertime_noise_resolution && type <= tfxOvertime_noise_resolution;
 	}
 
 	bool IsOvertimePercentageGraph(tfxGraphType type) {
-		return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction;
+		return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && type <= tfxOvertime_noise_resolution;
 	}
 
 	bool IsGlobalGraph(tfxGraphType type) {

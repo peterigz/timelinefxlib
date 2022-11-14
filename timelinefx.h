@@ -339,6 +339,10 @@ union tfxUInt10bit
 		return type == tfxProperty_emitter_width || type == tfxProperty_emitter_height || type == tfxProperty_emitter_depth;
 	}
 
+	inline bool IsGraphTranslation(tfxGraphType type) {
+		return type == tfxKeyframe_translate_x || type == tfxKeyframe_translate_y || type == tfxKeyframe_translate_z;
+	}
+
 	//tfxEffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 	enum tfxEffectEmitterType : unsigned char {
 		tfxEffectType,
