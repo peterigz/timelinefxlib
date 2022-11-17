@@ -3633,9 +3633,9 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::ResetKeyframeGraphs(bool add_node, bool compile) {
-		common.library->keyframe_attributes[keyframe_attributes].translation_x.Reset(0.f, tfxArcPreset, add_node); common.library->keyframe_attributes[keyframe_attributes].translation_x.type = tfxKeyframe_translate_x;
-		common.library->keyframe_attributes[keyframe_attributes].translation_y.Reset(0.f, tfxArcPreset, add_node); common.library->keyframe_attributes[keyframe_attributes].translation_y.type = tfxKeyframe_translate_y;
-		common.library->keyframe_attributes[keyframe_attributes].translation_z.Reset(0.f, tfxArcPreset, add_node); common.library->keyframe_attributes[keyframe_attributes].translation_z.type = tfxKeyframe_translate_z;
+		common.library->keyframe_attributes[keyframe_attributes].translation_x.Reset(0.f, tfxTranslationPreset, add_node); common.library->keyframe_attributes[keyframe_attributes].translation_x.type = tfxKeyframe_translate_x;
+		common.library->keyframe_attributes[keyframe_attributes].translation_y.Reset(0.f, tfxTranslationPreset, add_node); common.library->keyframe_attributes[keyframe_attributes].translation_y.type = tfxKeyframe_translate_y;
+		common.library->keyframe_attributes[keyframe_attributes].translation_z.Reset(0.f, tfxTranslationPreset, add_node); common.library->keyframe_attributes[keyframe_attributes].translation_z.type = tfxKeyframe_translate_z;
 		if(compile)
 			common.library->CompileKeyframeGraph(emitter_attributes);
 	}
@@ -3719,9 +3719,12 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::InitialiseUninitialisedGraphs() {
-		if (common.library->keyframe_attributes[keyframe_attributes].translation_x.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_x.Reset(0.f, tfxDimensionsPreset);
-		if (common.library->keyframe_attributes[keyframe_attributes].translation_y.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_y.Reset(0.f, tfxDimensionsPreset);
-		if (common.library->keyframe_attributes[keyframe_attributes].translation_z.nodes.size() == 0) common.library->keyframe_attributes[keyframe_attributes].translation_z.Reset(0.f, tfxDimensionsPreset);
+		if (common.library->keyframe_attributes[keyframe_attributes].translation_x.nodes.size() == 0) 
+			common.library->keyframe_attributes[keyframe_attributes].translation_x.Reset(0.f, tfxTranslationPreset);
+		if (common.library->keyframe_attributes[keyframe_attributes].translation_y.nodes.size() == 0) 
+			common.library->keyframe_attributes[keyframe_attributes].translation_y.Reset(0.f, tfxTranslationPreset);
+		if (common.library->keyframe_attributes[keyframe_attributes].translation_z.nodes.size() == 0) 
+			common.library->keyframe_attributes[keyframe_attributes].translation_z.Reset(0.f, tfxTranslationPreset);
 
 		if (type == tfxEffectType) {
 			if (common.library->global_graphs[global].life.nodes.size() == 0) common.library->global_graphs[global].life.Reset(1.f, tfxGlobalPercentPreset);
@@ -4812,6 +4815,7 @@ namespace tfx {
 		particle_shapes.FreeAll();
 		global_graphs.free_all();
 		emitter_attributes.free_all();
+		keyframe_attributes.free_all();
 		animation_settings.free_all();
 		preview_camera_settings.free_all();
 		emitter_properties.free_all();
@@ -6531,6 +6535,9 @@ namespace tfx {
 		case tfxGraphPreset::tfxDimensionsPreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 4000.f };
 			break;
+		case tfxGraphPreset::tfxTranslationPreset:
+			min = { 0.f, -4000.f }; max = { tfxMAX_FRAME, 4000.f };
+			break;
 		case tfxGraphPreset::tfxLifePreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 100000.f };
 			break;
@@ -6619,6 +6626,9 @@ namespace tfx {
 			break;
 		case tfxGraphPreset::tfxDimensionsPreset:
 			mm = { 0.f, 0.f, tfxMAX_FRAME, 4000.f };
+			break;
+		case tfxGraphPreset::tfxTranslationPreset:
+			mm = { 0.f, -4000.f, tfxMAX_FRAME, 4000.f };
 			break;
 		case tfxGraphPreset::tfxLifePreset:
 			mm = { 0.f, 0.f, tfxMAX_FRAME, 100000.f };
@@ -6821,6 +6831,7 @@ namespace tfx {
 			return tfxVec2(0.0017f, .1f);
 			break;
 		case tfxGraphPreset::tfxDimensionsPreset:
+		case tfxGraphPreset::tfxTranslationPreset:
 		case tfxGraphPreset::tfxVelocityPreset:
 		case tfxGraphPreset::tfxWeightPreset:
 		case tfxGraphPreset::tfxWeightVariationPreset:
@@ -6889,6 +6900,7 @@ namespace tfx {
 			return tfxVec2(0.0017f, .01f);
 			break;
 		case tfxGraphPreset::tfxDimensionsPreset:
+		case tfxGraphPreset::tfxTranslationPreset:
 		case tfxGraphPreset::tfxVelocityPreset:
 		case tfxGraphPreset::tfxWeightPreset:
 		case tfxGraphPreset::tfxWeightVariationPreset:
@@ -7100,7 +7112,7 @@ namespace tfx {
 	}
 
 	bool IsGlobalGraph(tfxGraphType type) {
-		return type >= tfxGlobal_life && type <= tfxGlobal_effect_yaw;
+		return type >= tfxGlobal_life && type <= tfxGlobal_emitter_depth;
 	}
 
 	bool IsGlobalPercentageGraph(tfxGraphType type) {
@@ -7135,6 +7147,21 @@ namespace tfx {
 		return	keyframes.translation_x.nodes.size() > 1 ||
 				keyframes.translation_y.nodes.size() > 1 ||
 				keyframes.translation_z.nodes.size() > 1;
+	}
+
+	tfxU32 GetHighestKeyframeTranslationCount(tfxEffectEmitter &e) {
+		assert(e.keyframe_attributes < e.common.library->keyframe_attributes.size());		//Must be a valid keyframes index into the library
+		tfxKeyframeAttributes &keyframes = e.common.library->keyframe_attributes[e.keyframe_attributes];
+		return fmaxf(fmaxf(keyframes.translation_x.nodes.current_size, keyframes.translation_x.nodes.current_size), keyframes.translation_z.nodes.current_size);
+	}
+
+	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame) {
+		assert(e.keyframe_attributes < e.common.library->keyframe_attributes.size());		//Must be a valid keyframes index into the library
+		tfxKeyframeAttributes &keyframes = e.common.library->keyframe_attributes[e.keyframe_attributes];
+		tfxVec3 point(	lookup_callback(keyframes.translation_x, frame),
+						lookup_callback(keyframes.translation_y, frame),
+						lookup_callback(keyframes.translation_z, frame));
+		points.push_back(point);
 	}
 
 	bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key) {

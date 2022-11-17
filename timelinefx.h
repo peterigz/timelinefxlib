@@ -214,6 +214,7 @@ union tfxUInt10bit
 		tfxArcPreset,
 		tfxEmissionRangePreset,
 		tfxDimensionsPreset,
+		tfxTranslationPreset,
 		tfxLifePreset,
 		tfxAmountPreset,
 		tfxVelocityPreset,
@@ -335,12 +336,24 @@ union tfxUInt10bit
 		tfxGraphMaxIndex,
 	};
 
+	inline bool IsGraphEffectRotation(tfxGraphType type) {
+		return type == tfxGlobal_effect_roll || type == tfxGlobal_effect_pitch || type == tfxGlobal_effect_yaw;
+	}
+
+	inline bool IsGraphEmitterRotation(tfxGraphType type) {
+		return type == tfxProperty_emitter_roll || type == tfxProperty_emitter_pitch || type == tfxProperty_emitter_yaw;
+	}
+
 	inline bool IsGraphEmitterDimension(tfxGraphType type) {
 		return type == tfxProperty_emitter_width || type == tfxProperty_emitter_height || type == tfxProperty_emitter_depth;
 	}
 
 	inline bool IsGraphTranslation(tfxGraphType type) {
 		return type == tfxKeyframe_translate_x || type == tfxKeyframe_translate_y || type == tfxKeyframe_translate_z;
+	}
+
+	inline bool IsGraphEmission(tfxGraphType type) {
+		return type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw;
 	}
 
 	//tfxEffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
@@ -4100,6 +4113,8 @@ union tfxUInt10bit
 	}
 	bool HasKeyframes(tfxEffectEmitter &e);
 	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
+	tfxU32 GetHighestKeyframeTranslationCount(tfxEffectEmitter &e);
+	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
 
 	struct tfxGlobalAttributes {
 		tfxGraph life;
@@ -5914,7 +5929,7 @@ union tfxUInt10bit
 		out.world_rotations.roll = in.world_rotations.roll + out.local_rotations.roll;
 
 		out.matrix = mmTransform2(out.matrix, in.matrix);
-		tfxVec2 rotatevec = mmTransformVector(in.matrix, tfxVec2(out.local_position.x, out.local_position.y));
+		tfxVec2 rotatevec = mmTransformVector(in.matrix, tfxVec2(out.local_position.x + out.translation.x, out.local_position.y + out.translation.y));
 
 		out.world_position = in.world_position.xy() + rotatevec * in.scale.xy();
 	}
@@ -5929,9 +5944,9 @@ union tfxUInt10bit
 		out.world_rotations = in.world_rotations + out.local_rotations;
 
 		out.matrix = mmTransform(out.matrix, in.matrix);
-		tfxVec3 rotatevec = mmTransformVector3(in.matrix, out.local_position);
+		tfxVec3 rotatevec = mmTransformVector3(in.matrix, out.local_position + out.translation);
 
-		out.world_position = in.world_position + out.translation + rotatevec;
+		out.world_position = in.world_position + rotatevec;
 	}
 	static inline void TransformParticle(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_position = data.local_position.xy();
