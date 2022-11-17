@@ -7149,12 +7149,6 @@ namespace tfx {
 				keyframes.translation_z.nodes.size() > 1;
 	}
 
-	tfxU32 GetHighestKeyframeTranslationCount(tfxEffectEmitter &e) {
-		assert(e.keyframe_attributes < e.common.library->keyframe_attributes.size());		//Must be a valid keyframes index into the library
-		tfxKeyframeAttributes &keyframes = e.common.library->keyframe_attributes[e.keyframe_attributes];
-		return fmaxf(fmaxf(keyframes.translation_x.nodes.current_size, keyframes.translation_x.nodes.current_size), keyframes.translation_z.nodes.current_size);
-	}
-
 	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame) {
 		assert(e.keyframe_attributes < e.common.library->keyframe_attributes.size());		//Must be a valid keyframes index into the library
 		tfxKeyframeAttributes &keyframes = e.common.library->keyframe_attributes[e.keyframe_attributes];

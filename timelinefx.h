@@ -4113,7 +4113,6 @@ union tfxUInt10bit
 	}
 	bool HasKeyframes(tfxEffectEmitter &e);
 	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
-	tfxU32 GetHighestKeyframeTranslationCount(tfxEffectEmitter &e);
 	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
 
 	struct tfxGlobalAttributes {
