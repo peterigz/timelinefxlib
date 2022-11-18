@@ -3637,7 +3637,7 @@ namespace tfx {
 		common.library->keyframe_attributes[keyframe_attributes].translation_y.Reset(0.f, tfxTranslationPreset, add_node); common.library->keyframe_attributes[keyframe_attributes].translation_y.type = tfxKeyframe_translate_y;
 		common.library->keyframe_attributes[keyframe_attributes].translation_z.Reset(0.f, tfxTranslationPreset, add_node); common.library->keyframe_attributes[keyframe_attributes].translation_z.type = tfxKeyframe_translate_z;
 		if(compile)
-			common.library->CompileKeyframeGraph(emitter_attributes);
+			common.library->CompileKeyframeGraph(keyframe_attributes);
 	}
 
 	void tfxEffectEmitter::ResetBaseGraphs(bool add_node, bool compile) {
@@ -4005,7 +4005,6 @@ namespace tfx {
 		clone.info_index = clone.common.library->CloneInfo(info_index, destination_library);
 		if (clone.type != tfxFolder) {
 			clone.property_index = clone.common.library->CloneProperties(property_index, destination_library);
-			clone.keyframe_attributes = clone.common.library->CloneKeyframes(keyframe_attributes, destination_library);
 		}
 		clone.flags |= tfxEmitterStateFlags_enabled;
 		if(!(flags & tfxEffectCloningFlags_keep_user_data))
@@ -4016,10 +4015,17 @@ namespace tfx {
 		if (type == tfxEffectType) {
 			if (root_parent == &clone) {
 				clone.global = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneGlobal(global, destination_library) : clone.global = global;
-				if(flags & tfxEffectCloningFlags_compile_graphs)
+				clone.keyframe_attributes = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneKeyframes(keyframe_attributes, destination_library) : clone.keyframe_attributes = keyframe_attributes;
+				if (flags & tfxEffectCloningFlags_compile_graphs) {
 					clone.common.library->CompileGlobalGraph(clone.global);
+					clone.common.library->CompileKeyframeGraph(clone.keyframe_attributes);
+				}
 			}
 			else {
+				clone.keyframe_attributes = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneKeyframes(keyframe_attributes, destination_library) : clone.keyframe_attributes = keyframe_attributes;
+				if (flags & tfxEffectCloningFlags_compile_graphs) {
+					clone.common.library->CompileKeyframeGraph(clone.keyframe_attributes);
+				}
 				if (!(flags & tfxEffectCloningFlags_force_clone_global)) {
 					clone.global = root_parent->global;
 				}
@@ -4032,8 +4038,10 @@ namespace tfx {
 		}
 		else if(type == tfxEmitterType) {
 			clone.emitter_attributes = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneEmitterAttributes(emitter_attributes, destination_library) : emitter_attributes;
+			clone.keyframe_attributes = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneKeyframes(keyframe_attributes, destination_library) : keyframe_attributes;
 			clone.UpdateMaxLife();
 			if (flags & tfxEffectCloningFlags_compile_graphs) {
+				clone.common.library->CompileKeyframeGraph(clone.emitter_attributes);
 				clone.common.library->CompilePropertyGraph(clone.emitter_attributes);
 				clone.common.library->CompileBaseGraph(clone.emitter_attributes);
 				clone.common.library->CompileVariationGraph(clone.emitter_attributes);
@@ -4143,9 +4151,6 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::FreeGraphs() {
-		common.library->keyframe_attributes[keyframe_attributes].translation_x.Free();
-		common.library->keyframe_attributes[keyframe_attributes].translation_y.Free();
-		common.library->keyframe_attributes[keyframe_attributes].translation_z.Free();
 
 		if (type == tfxEffectType) {
 			common.library->global_graphs[global].life.Free();
@@ -4166,9 +4171,17 @@ namespace tfx {
 			common.library->global_graphs[global].emitter_width.Free();
 			common.library->global_graphs[global].emitter_height.Free();
 			common.library->global_graphs[global].emitter_depth.Free();
+
+			common.library->keyframe_attributes[keyframe_attributes].translation_x.Free();
+			common.library->keyframe_attributes[keyframe_attributes].translation_y.Free();
+			common.library->keyframe_attributes[keyframe_attributes].translation_z.Free();
 		}
 
 		if (type == tfxEmitterType) {
+			common.library->keyframe_attributes[keyframe_attributes].translation_x.Free();
+			common.library->keyframe_attributes[keyframe_attributes].translation_y.Free();
+			common.library->keyframe_attributes[keyframe_attributes].translation_z.Free();
+
 			common.library->emitter_attributes[emitter_attributes].properties.emission_pitch.Free();
 			common.library->emitter_attributes[emitter_attributes].properties.emission_yaw.Free();
 			common.library->emitter_attributes[emitter_attributes].properties.emission_range.Free();
@@ -5449,6 +5462,10 @@ namespace tfx {
 			if (values[0] == "global_emitter_width") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].emitter_width.AddNode(n); }
 			if (values[0] == "global_emitter_height") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].emitter_height.AddNode(n); }
 			if (values[0] == "global_emitter_depth") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].emitter_depth.AddNode(n); }
+
+			if (values[0] == "keyframe_translate_x") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->keyframe_attributes[effect.keyframe_attributes].translation_x.AddNode(n); }
+			if (values[0] == "keyframe_translate_y") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->keyframe_attributes[effect.keyframe_attributes].translation_y.AddNode(n); }
+			if (values[0] == "keyframe_translate_z") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->keyframe_attributes[effect.keyframe_attributes].translation_z.AddNode(n); }
 
 			if (values[0] == "base_arc_offset") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.arc_offset.AddNode(n); }
 			if (values[0] == "base_arc_size") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.arc_size.AddNode(n); }
