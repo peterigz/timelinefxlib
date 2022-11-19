@@ -239,6 +239,7 @@ union tfxUInt10bit
 
 	enum tfxGraphCategory : unsigned int {
 		tfxGraphCategory_global,
+		tfxGraphCategory_keyframe,
 		tfxGraphCategory_property,
 		tfxGraphCategory_base,
 		tfxGraphCategory_variation,
@@ -246,12 +247,12 @@ union tfxUInt10bit
 	};
 
 
-#define tfxGlobalCount  18
-#define	tfxPropertyCount  12
+#define tfxGlobalCount  15
+#define	tfxPropertyCount  9
 #define	tfxBaseCount  8
 #define	tfxVariationCount  9
 #define	tfxOvertimeCount  16
-#define	tfxKeyframeCount  3
+#define	tfxTransformCount  6
 
 #define tfxGlobalStart 0
 #define	tfxPropertyStart tfxGlobalCount
@@ -274,9 +275,6 @@ union tfxUInt10bit
 		tfxGlobal_intensity,
 		tfxGlobal_frame_rate,
 		tfxGlobal_splatter,
-		tfxGlobal_effect_roll,
-		tfxGlobal_effect_pitch,
-		tfxGlobal_effect_yaw,
 		tfxGlobal_emitter_width,
 		tfxGlobal_emitter_height,
 		tfxGlobal_emitter_depth,
@@ -284,9 +282,6 @@ union tfxUInt10bit
 		tfxProperty_emission_pitch,
 		tfxProperty_emission_yaw,
 		tfxProperty_emission_range,
-		tfxProperty_emitter_roll,
-		tfxProperty_emitter_pitch,
-		tfxProperty_emitter_yaw,
 		tfxProperty_splatter,
 		tfxProperty_emitter_width,
 		tfxProperty_emitter_height,
@@ -330,18 +325,17 @@ union tfxUInt10bit
 		tfxOvertime_direction,
 		tfxOvertime_noise_resolution,
 
-		tfxKeyframe_translate_x,
-		tfxKeyframe_translate_y,
-		tfxKeyframe_translate_z,
+		tfxTransform_roll,
+		tfxTransform_pitch,
+		tfxTransform_yaw,
+		tfxTransform_translate_x,
+		tfxTransform_translate_y,
+		tfxTransform_translate_z,
 		tfxGraphMaxIndex,
 	};
 
-	inline bool IsGraphEffectRotation(tfxGraphType type) {
-		return type == tfxGlobal_effect_roll || type == tfxGlobal_effect_pitch || type == tfxGlobal_effect_yaw;
-	}
-
-	inline bool IsGraphEmitterRotation(tfxGraphType type) {
-		return type == tfxProperty_emitter_roll || type == tfxProperty_emitter_pitch || type == tfxProperty_emitter_yaw;
+	inline bool IsGraphTransformRotation(tfxGraphType type) {
+		return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
 	}
 
 	inline bool IsGraphEmitterDimension(tfxGraphType type) {
@@ -349,7 +343,7 @@ union tfxUInt10bit
 	}
 
 	inline bool IsGraphTranslation(tfxGraphType type) {
-		return type == tfxKeyframe_translate_x || type == tfxKeyframe_translate_y || type == tfxKeyframe_translate_z;
+		return type == tfxTransform_translate_x || type == tfxTransform_translate_y || type == tfxTransform_translate_z;
 	}
 
 	inline bool IsGraphEmission(tfxGraphType type) {
@@ -4128,9 +4122,6 @@ union tfxUInt10bit
 		tfxGraph intensity;
 		tfxGraph frame_rate;
 		tfxGraph splatter;
-		tfxGraph roll;
-		tfxGraph pitch;
-		tfxGraph yaw;
 		tfxGraph emitter_width;
 		tfxGraph emitter_height;
 		tfxGraph emitter_depth;
@@ -4148,9 +4139,6 @@ union tfxUInt10bit
 			intensity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			frame_rate.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			roll.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -4167,9 +4155,6 @@ union tfxUInt10bit
 			intensity.lookup.values.allocator = value_allocator;
 			frame_rate.lookup.values.allocator = value_allocator;
 			splatter.lookup.values.allocator = value_allocator;
-			roll.lookup.values.allocator = value_allocator;
-			pitch.lookup.values.allocator = value_allocator;
-			yaw.lookup.values.allocator = value_allocator;
 			emitter_width.lookup.values.allocator = value_allocator;
 			emitter_height.lookup.values.allocator = value_allocator;
 			emitter_depth.lookup.values.allocator = value_allocator;
@@ -4188,9 +4173,6 @@ union tfxUInt10bit
 			intensity.Free();
 			frame_rate.Free();
 			splatter.Free();
-			roll.Free();
-			pitch.Free();
-			yaw.Free();
 			emitter_width.Free();
 			emitter_height.Free();
 			emitter_depth.Free();
@@ -4209,9 +4191,6 @@ union tfxUInt10bit
 			intensity.CopyToNoLookups(&dst->intensity);
 			frame_rate.CopyToNoLookups(&dst->frame_rate);
 			splatter.CopyToNoLookups(&dst->splatter);
-			roll.CopyToNoLookups(&dst->roll);
-			pitch.CopyToNoLookups(&dst->pitch);
-			yaw.CopyToNoLookups(&dst->yaw);
 			emitter_width.CopyToNoLookups(&dst->emitter_width);
 			emitter_height.CopyToNoLookups(&dst->emitter_height);
 			emitter_depth.CopyToNoLookups(&dst->emitter_depth);
@@ -4219,39 +4198,54 @@ union tfxUInt10bit
 
 	};
 
-	struct tfxKeyframeAttributes {
+	struct tfxTransformAttributes {
+		tfxGraph roll;
+		tfxGraph pitch;
+		tfxGraph yaw;
 		tfxGraph translation_x;
 		tfxGraph translation_y;
 		tfxGraph translation_z;
 
 		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
+			roll.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			translation_x.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			translation_y.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			translation_z.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 
+			roll.lookup.values.allocator = value_allocator;
+			pitch.lookup.values.allocator = value_allocator;
+			yaw.lookup.values.allocator = value_allocator;
 			translation_x.lookup.values.allocator = value_allocator;
 			translation_y.lookup.values.allocator = value_allocator;
 			translation_z.lookup.values.allocator = value_allocator;
 		}
 
 		void Free() {
+			roll.Free();
+			pitch.Free();
+			yaw.Free();
 			translation_x.Free();
 			translation_y.Free();
 			translation_z.Free();
 		}
 
-		void CopyToNoLookups(tfxKeyframeAttributes *dst) {
+		void CopyToNoLookups(tfxTransformAttributes *dst) {
+			roll.CopyToNoLookups(&dst->roll);
+			pitch.CopyToNoLookups(&dst->pitch);
+			yaw.CopyToNoLookups(&dst->yaw);
 			translation_x.CopyToNoLookups(&dst->translation_x);
 			translation_y.CopyToNoLookups(&dst->translation_y);
 			translation_z.CopyToNoLookups(&dst->translation_z);
 		}
 	};
 
-	inline bool HasTranslationKeyframes(tfxKeyframeAttributes &graphs) {
+	inline bool HasTranslationKeyframes(tfxTransformAttributes &graphs) {
 		return graphs.translation_x.nodes.size() || graphs.translation_y.nodes.size() || graphs.translation_z.nodes.size();
 	}
 
-	inline void AddTranslationNodes(tfxKeyframeAttributes &keyframes, float frame) {
+	inline void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame) {
 		if (keyframes.translation_x.nodes.size()) {
 			if (!HasNodeAtFrame(keyframes.translation_x, frame))
 				keyframes.translation_x.AddCoordNode(frame, 0.f);
@@ -4276,9 +4270,6 @@ union tfxUInt10bit
 		tfxGraph emission_pitch;
 		tfxGraph emission_yaw;
 		tfxGraph emission_range;
-		tfxGraph roll;
-		tfxGraph pitch;
-		tfxGraph yaw;
 		tfxGraph splatter;
 		tfxGraph emitter_width;
 		tfxGraph emitter_height;
@@ -4290,9 +4281,6 @@ union tfxUInt10bit
 			emission_pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emission_yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emission_range.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			roll.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -4303,9 +4291,6 @@ union tfxUInt10bit
 			emission_pitch.lookup.values.allocator = value_allocator;
 			emission_yaw.lookup.values.allocator = value_allocator;
 			emission_range.lookup.values.allocator = value_allocator;
-			roll.lookup.values.allocator = value_allocator;
-			pitch.lookup.values.allocator = value_allocator;
-			yaw.lookup.values.allocator = value_allocator;
 			splatter.lookup.values.allocator = value_allocator;
 			emitter_width.lookup.values.allocator = value_allocator;
 			emitter_height.lookup.values.allocator = value_allocator;
@@ -4318,9 +4303,6 @@ union tfxUInt10bit
 			emission_pitch.Free();
 			emission_yaw.Free();
 			emission_range.Free();
-			roll.Free();
-			pitch.Free();
-			yaw.Free();
 			splatter.Free();
 			emitter_width.Free();
 			emitter_height.Free();
@@ -4333,9 +4315,6 @@ union tfxUInt10bit
 			emission_pitch.CopyToNoLookups(&dst->emission_pitch);
 			emission_yaw.CopyToNoLookups(&dst->emission_yaw);
 			emission_range.CopyToNoLookups(&dst->emission_range);
-			roll.CopyToNoLookups(&dst->roll);
-			pitch.CopyToNoLookups(&dst->pitch);
-			yaw.CopyToNoLookups(&dst->yaw);
 			splatter.CopyToNoLookups(&dst->splatter);
 			emitter_width.CopyToNoLookups(&dst->emitter_width);
 			emitter_height.CopyToNoLookups(&dst->emitter_height);
@@ -4941,7 +4920,7 @@ union tfxUInt10bit
 		//All graphs that the effect uses to lookup attribute values are stored in the library. These variables here are indexes to the array where they're stored
 		tfxU32 global;
 		tfxU32 emitter_attributes;
-		tfxU32 keyframe_attributes;
+		tfxU32 transform_attributes;
 		//Pointer to the immediate parent
 		tfxEffectEmitter *parent;
 		//Pointer to the next pointer in the particle manager buffer. 
@@ -5019,7 +4998,7 @@ union tfxUInt10bit
 		void CleanUp();
 
 		void ResetGlobalGraphs(bool add_node = true, bool compile = true);
-		void ResetKeyframeGraphs(bool add_node = true, bool compile = true);
+		void ResetTransformGraphs(bool add_node = true, bool compile = true);
 		void ResetBaseGraphs(bool add_node = true, bool compile = true);
 		void ResetPropertyGraphs(bool add_node = true, bool compile = true);
 		void ResetVariationGraphs(bool add_node = true, bool compile = true);
@@ -5593,7 +5572,7 @@ union tfxUInt10bit
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
-		tfxvec<tfxKeyframeAttributes> keyframe_attributes;
+		tfxvec<tfxTransformAttributes> transform_attributes;
 		tfxvec<tfxAnimationSettings> animation_settings;
 		tfxvec<tfxPreviewCameraSettings> preview_camera_settings;
 		tfxvec<tfxAttributeNode> all_nodes;
@@ -5719,7 +5698,6 @@ union tfxUInt10bit
 		void FreeEmitterAttributes(tfxU32 index);
 		void FreeProperties(tfxU32 index);
 		void FreeInfo(tfxU32 index);
-		void FreeActions(tfxU32 index);
 		tfxU32 CountKeyframeLookUpValues(tfxU32 index);
 		tfxU32 CountGlobalLookUpValues(tfxU32 index);
 		tfxU32 CountEmitterLookUpValues(tfxU32 index);
@@ -5730,7 +5708,7 @@ union tfxUInt10bit
 		tfxU32 CloneProperties(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		void AddEmitterGraphs(tfxEffectEmitter &effect);
 		void AddEffectGraphs(tfxEffectEmitter &effect);
-		void AddKeyframeGraphs(tfxEffectEmitter &effect);
+		void AddTransformGraphs(tfxEffectEmitter &effect);
 		tfxU32 AddAnimationSettings(tfxEffectEmitter& effect);
 		tfxU32 AddPreviewCameraSettings(tfxEffectEmitter& effect);
 		tfxU32 AddPreviewCameraSettings();
