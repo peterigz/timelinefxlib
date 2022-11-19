@@ -4983,7 +4983,9 @@ union tfxUInt10bit
 			update_emitter_callback(NULL),
 			particle_onspawn_callback(NULL),
 			particle_update_callback(NULL),
-			particles_index(tfxINVALID)
+			particles_index(tfxINVALID),
+			info_index(tfxINVALID),
+			property_index(tfxINVALID)
 		{ }
 		~tfxEffectEmitter();
 
