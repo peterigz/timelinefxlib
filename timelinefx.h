@@ -239,7 +239,7 @@ union tfxUInt10bit
 
 	enum tfxGraphCategory : unsigned int {
 		tfxGraphCategory_global,
-		tfxGraphCategory_keyframe,
+		tfxGraphCategory_transform,
 		tfxGraphCategory_property,
 		tfxGraphCategory_base,
 		tfxGraphCategory_variation,
