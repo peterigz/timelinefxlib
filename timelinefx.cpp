@@ -4120,7 +4120,7 @@ namespace tfx {
 		}
 		else if (type >= tfxKeyframeStart) {
 			int ref = type - tfxKeyframeStart;
-			return &((tfxGraph*)&common.library->transform_attributes[transform_attributes].translation_x)[ref];
+			return &((tfxGraph*)&common.library->transform_attributes[transform_attributes].roll)[ref];
 		}
 
 		return nullptr;
@@ -7113,6 +7113,10 @@ namespace tfx {
 
 	bool IsGlobalGraph(tfxGraphType type) {
 		return type >= tfxGlobal_life && type <= tfxGlobal_emitter_depth;
+	}
+
+	bool IsTransformGraph(tfxGraphType type) {
+		return type >= tfxTransform_roll && type <= tfxTransform_translate_z;
 	}
 
 	bool IsGlobalPercentageGraph(tfxGraphType type) {
