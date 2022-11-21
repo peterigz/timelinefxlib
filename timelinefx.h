@@ -259,7 +259,7 @@ union tfxUInt10bit
 #define	tfxBaseStart (tfxPropertyStart + tfxPropertyCount)
 #define	tfxVariationStart (tfxBaseStart + tfxBaseCount)
 #define	tfxOvertimeStart (tfxVariationStart + tfxVariationCount)
-#define	tfxKeyframeStart (tfxOvertimeStart + tfxOvertimeCount)
+#define	tfxTransformStart (tfxOvertimeStart + tfxOvertimeCount)
 
 	//All the different types of graphs, split into main type: global, property, base, variation and overtime
 	enum tfxGraphType : unsigned char {
@@ -4092,6 +4092,7 @@ union tfxUInt10bit
 	bool IsOvertimeGraph(tfxGraphType type);
 	bool IsOvertimePercentageGraph(tfxGraphType type);
 	bool IsGlobalGraph(tfxGraphType type);
+	bool IsTransformGraph(tfxGraphType type);
 	bool IsGlobalPercentageGraph(tfxGraphType type);
 	bool IsAngleGraph(tfxGraphType type);
 	bool IsAngleOvertimeGraph(tfxGraphType type);

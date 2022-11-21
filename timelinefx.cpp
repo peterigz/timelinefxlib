@@ -4114,12 +4114,12 @@ namespace tfx {
 			int ref = type - tfxVariationStart;
 			return &((tfxGraph*)&common.library->emitter_attributes[emitter_attributes].variation)[ref];
 		}
-		else if (type >= tfxOvertimeStart && type < tfxKeyframeStart) {
+		else if (type >= tfxOvertimeStart && type < tfxTransformStart) {
 			int ref = type - tfxOvertimeStart;
 			return &((tfxGraph*)&common.library->emitter_attributes[emitter_attributes].overtime)[ref];
 		}
-		else if (type >= tfxKeyframeStart) {
-			int ref = type - tfxKeyframeStart;
+		else if (type >= tfxTransformStart) {
+			int ref = type - tfxTransformStart;
 			return &((tfxGraph*)&common.library->transform_attributes[transform_attributes].roll)[ref];
 		}
 
@@ -4132,7 +4132,7 @@ namespace tfx {
 		if (type < tfxGlobalCount) {
 			return global;
 		}
-		else if (type < tfxKeyframeStart) {
+		else if (type < tfxTransformStart) {
 			return emitter_attributes;
 		}
 		else {
@@ -7353,12 +7353,12 @@ namespace tfx {
 			int ref = type - tfxVariationStart;
 			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].variation)[ref];
 		}
-		else if (type >= tfxOvertimeStart && type < tfxKeyframeStart) {
+		else if (type >= tfxOvertimeStart && type < tfxTransformStart) {
 			int ref = type - tfxOvertimeStart;
 			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].overtime)[ref];
 		}
-		else if (type >= tfxKeyframeStart) {
-			int ref = type - tfxKeyframeStart;
+		else if (type >= tfxTransformStart) {
+			int ref = type - tfxTransformStart;
 			return ((tfxGraph*)&library.transform_attributes[graph_id.graph_id])[ref];
 		}
 
