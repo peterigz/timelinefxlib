@@ -214,6 +214,7 @@ union tfxUInt10bit
 		tfxArcPreset,
 		tfxEmissionRangePreset,
 		tfxDimensionsPreset,
+		tfxTranslationPreset,
 		tfxLifePreset,
 		tfxAmountPreset,
 		tfxVelocityPreset,
@@ -238,6 +239,7 @@ union tfxUInt10bit
 
 	enum tfxGraphCategory : unsigned int {
 		tfxGraphCategory_global,
+		tfxGraphCategory_transform,
 		tfxGraphCategory_property,
 		tfxGraphCategory_base,
 		tfxGraphCategory_variation,
@@ -245,17 +247,19 @@ union tfxUInt10bit
 	};
 
 
-#define tfxGlobalCount  18
-#define	tfxPropertyCount  12
+#define tfxGlobalCount  15
+#define	tfxPropertyCount  9
 #define	tfxBaseCount  8
 #define	tfxVariationCount  9
 #define	tfxOvertimeCount  16
+#define	tfxTransformCount  6
 
 #define tfxGlobalStart 0
 #define	tfxPropertyStart tfxGlobalCount
 #define	tfxBaseStart (tfxPropertyStart + tfxPropertyCount)
 #define	tfxVariationStart (tfxBaseStart + tfxBaseCount)
 #define	tfxOvertimeStart (tfxVariationStart + tfxVariationCount)
+#define	tfxTransformStart (tfxOvertimeStart + tfxOvertimeCount)
 
 	//All the different types of graphs, split into main type: global, property, base, variation and overtime
 	enum tfxGraphType : unsigned char {
@@ -271,9 +275,6 @@ union tfxUInt10bit
 		tfxGlobal_intensity,
 		tfxGlobal_frame_rate,
 		tfxGlobal_splatter,
-		tfxGlobal_effect_roll,
-		tfxGlobal_effect_pitch,
-		tfxGlobal_effect_yaw,
 		tfxGlobal_emitter_width,
 		tfxGlobal_emitter_height,
 		tfxGlobal_emitter_depth,
@@ -281,9 +282,6 @@ union tfxUInt10bit
 		tfxProperty_emission_pitch,
 		tfxProperty_emission_yaw,
 		tfxProperty_emission_range,
-		tfxProperty_emitter_roll,
-		tfxProperty_emitter_pitch,
-		tfxProperty_emitter_yaw,
 		tfxProperty_splatter,
 		tfxProperty_emitter_width,
 		tfxProperty_emitter_height,
@@ -326,8 +324,31 @@ union tfxUInt10bit
 		tfxOvertime_intensity,
 		tfxOvertime_direction,
 		tfxOvertime_noise_resolution,
+
+		tfxTransform_roll,
+		tfxTransform_pitch,
+		tfxTransform_yaw,
+		tfxTransform_translate_x,
+		tfxTransform_translate_y,
+		tfxTransform_translate_z,
 		tfxGraphMaxIndex,
 	};
+
+	inline bool IsGraphTransformRotation(tfxGraphType type) {
+		return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
+	}
+
+	inline bool IsGraphEmitterDimension(tfxGraphType type) {
+		return type == tfxProperty_emitter_width || type == tfxProperty_emitter_height || type == tfxProperty_emitter_depth;
+	}
+
+	inline bool IsGraphTranslation(tfxGraphType type) {
+		return type == tfxTransform_translate_x || type == tfxTransform_translate_y || type == tfxTransform_translate_z;
+	}
+
+	inline bool IsGraphEmission(tfxGraphType type) {
+		return type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw;
+	}
 
 	//tfxEffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 	enum tfxEffectEmitterType : unsigned char {
@@ -4019,6 +4040,7 @@ union tfxUInt10bit
 		tfxAttributeNode* FindNode(const tfxAttributeNode &n);
 		void ValidateCurves();
 		void DeleteNode(const tfxAttributeNode &n);
+		void DeleteNodeAtFrame(float frame);
 		void Reset(float first_node_value, tfxGraphPreset preset, bool add_node = true);
 		void DragValues(tfxGraphPreset preset, float &frame, float &value);
 		void Clear();
@@ -4031,6 +4053,7 @@ union tfxUInt10bit
 		bool IsOvertimeGraph();
 		bool IsGlobalGraph();
 		bool IsAngleGraph();
+		bool IsTranslationGraph();
 		void MultiplyAllValues(float scalar);
 		void CopyToNoLookups(tfxGraph *graph);
 
@@ -4069,10 +4092,23 @@ union tfxUInt10bit
 	bool IsOvertimeGraph(tfxGraphType type);
 	bool IsOvertimePercentageGraph(tfxGraphType type);
 	bool IsGlobalGraph(tfxGraphType type);
+	bool IsTransformGraph(tfxGraphType type);
 	bool IsGlobalPercentageGraph(tfxGraphType type);
 	bool IsAngleGraph(tfxGraphType type);
 	bool IsAngleOvertimeGraph(tfxGraphType type);
 	bool IsEverythingElseGraph(tfxGraphType type);
+	inline bool HasNodeAtFrame(tfxGraph &graph, float frame) {
+		graph.nodes.ResetIteratorIndex();
+		do {
+			for (auto &node : graph.nodes) {
+				if (node.frame == frame) return true;
+			}
+		} while (!graph.nodes.EndOfBuckets());
+		return false;
+	}
+	bool HasKeyframes(tfxEffectEmitter &e);
+	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
+	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
 
 	struct tfxGlobalAttributes {
 		tfxGraph life;
@@ -4087,9 +4123,6 @@ union tfxUInt10bit
 		tfxGraph intensity;
 		tfxGraph frame_rate;
 		tfxGraph splatter;
-		tfxGraph roll;
-		tfxGraph pitch;
-		tfxGraph yaw;
 		tfxGraph emitter_width;
 		tfxGraph emitter_height;
 		tfxGraph emitter_depth;
@@ -4107,9 +4140,6 @@ union tfxUInt10bit
 			intensity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			frame_rate.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			roll.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -4126,9 +4156,6 @@ union tfxUInt10bit
 			intensity.lookup.values.allocator = value_allocator;
 			frame_rate.lookup.values.allocator = value_allocator;
 			splatter.lookup.values.allocator = value_allocator;
-			roll.lookup.values.allocator = value_allocator;
-			pitch.lookup.values.allocator = value_allocator;
-			yaw.lookup.values.allocator = value_allocator;
 			emitter_width.lookup.values.allocator = value_allocator;
 			emitter_height.lookup.values.allocator = value_allocator;
 			emitter_depth.lookup.values.allocator = value_allocator;
@@ -4147,9 +4174,6 @@ union tfxUInt10bit
 			intensity.Free();
 			frame_rate.Free();
 			splatter.Free();
-			roll.Free();
-			pitch.Free();
-			yaw.Free();
 			emitter_width.Free();
 			emitter_height.Free();
 			emitter_depth.Free();
@@ -4168,9 +4192,6 @@ union tfxUInt10bit
 			intensity.CopyToNoLookups(&dst->intensity);
 			frame_rate.CopyToNoLookups(&dst->frame_rate);
 			splatter.CopyToNoLookups(&dst->splatter);
-			roll.CopyToNoLookups(&dst->roll);
-			pitch.CopyToNoLookups(&dst->pitch);
-			yaw.CopyToNoLookups(&dst->yaw);
 			emitter_width.CopyToNoLookups(&dst->emitter_width);
 			emitter_height.CopyToNoLookups(&dst->emitter_height);
 			emitter_depth.CopyToNoLookups(&dst->emitter_depth);
@@ -4178,91 +4199,129 @@ union tfxUInt10bit
 
 	};
 
-	struct tfxPropertyAttributes {
-		tfxGraph emission_pitch;
-		tfxGraph emission_yaw;
-		tfxGraph emission_range;
+	struct tfxTransformAttributes {
 		tfxGraph roll;
 		tfxGraph pitch;
 		tfxGraph yaw;
-		tfxGraph splatter;
-		tfxGraph emitter_width;
-		tfxGraph emitter_height;
-		tfxGraph emitter_depth;
-		tfxGraph arc_size;
-		tfxGraph arc_offset;
 		tfxGraph translation_x;
 		tfxGraph translation_y;
 		tfxGraph translation_z;
 
 		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			emission_pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emission_yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emission_range.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			roll.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			arc_size.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			arc_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			translation_x.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			translation_y.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 			translation_z.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 
-			emission_pitch.lookup.values.allocator = value_allocator;
-			emission_yaw.lookup.values.allocator = value_allocator;
-			emission_range.lookup.values.allocator = value_allocator;
 			roll.lookup.values.allocator = value_allocator;
 			pitch.lookup.values.allocator = value_allocator;
 			yaw.lookup.values.allocator = value_allocator;
-			splatter.lookup.values.allocator = value_allocator;
-			emitter_width.lookup.values.allocator = value_allocator;
-			emitter_height.lookup.values.allocator = value_allocator;
-			emitter_depth.lookup.values.allocator = value_allocator;
-			arc_size.lookup.values.allocator = value_allocator;
-			arc_offset.lookup.values.allocator = value_allocator;
 			translation_x.lookup.values.allocator = value_allocator;
 			translation_y.lookup.values.allocator = value_allocator;
 			translation_z.lookup.values.allocator = value_allocator;
 		}
 
 		void Free() {
-			emission_pitch.Free();
-			emission_yaw.Free();
-			emission_range.Free();
 			roll.Free();
 			pitch.Free();
 			yaw.Free();
+			translation_x.Free();
+			translation_y.Free();
+			translation_z.Free();
+		}
+
+		void CopyToNoLookups(tfxTransformAttributes *dst) {
+			roll.CopyToNoLookups(&dst->roll);
+			pitch.CopyToNoLookups(&dst->pitch);
+			yaw.CopyToNoLookups(&dst->yaw);
+			translation_x.CopyToNoLookups(&dst->translation_x);
+			translation_y.CopyToNoLookups(&dst->translation_y);
+			translation_z.CopyToNoLookups(&dst->translation_z);
+		}
+	};
+
+	inline bool HasTranslationKeyframes(tfxTransformAttributes &graphs) {
+		return graphs.translation_x.nodes.size() || graphs.translation_y.nodes.size() || graphs.translation_z.nodes.size();
+	}
+
+	inline void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame) {
+		if (keyframes.translation_x.nodes.size()) {
+			if (!HasNodeAtFrame(keyframes.translation_x, frame))
+				keyframes.translation_x.AddCoordNode(frame, 0.f);
+			if (!HasNodeAtFrame(keyframes.translation_y, frame))
+				keyframes.translation_y.AddCoordNode(frame, 0.f);
+			if (!HasNodeAtFrame(keyframes.translation_z, frame))
+				keyframes.translation_z.AddCoordNode(frame, 0.f);
+		}
+		else {
+			keyframes.translation_x.AddCoordNode(0.f, 0.f);
+			keyframes.translation_y.AddCoordNode(0.f, 0.f);
+			keyframes.translation_z.AddCoordNode(0.f, 0.f);
+			if (frame != 0) {
+				keyframes.translation_x.AddCoordNode(frame, 0.f);
+				keyframes.translation_y.AddCoordNode(frame, 0.f);
+				keyframes.translation_z.AddCoordNode(frame, 0.f);
+			}
+		}
+	}
+
+	struct tfxPropertyAttributes {
+		tfxGraph emission_pitch;
+		tfxGraph emission_yaw;
+		tfxGraph emission_range;
+		tfxGraph splatter;
+		tfxGraph emitter_width;
+		tfxGraph emitter_height;
+		tfxGraph emitter_depth;
+		tfxGraph arc_size;
+		tfxGraph arc_offset;
+
+		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
+			emission_pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			emission_yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			emission_range.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			arc_size.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+			arc_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+
+			emission_pitch.lookup.values.allocator = value_allocator;
+			emission_yaw.lookup.values.allocator = value_allocator;
+			emission_range.lookup.values.allocator = value_allocator;
+			splatter.lookup.values.allocator = value_allocator;
+			emitter_width.lookup.values.allocator = value_allocator;
+			emitter_height.lookup.values.allocator = value_allocator;
+			emitter_depth.lookup.values.allocator = value_allocator;
+			arc_size.lookup.values.allocator = value_allocator;
+			arc_offset.lookup.values.allocator = value_allocator;
+		}
+
+		void Free() {
+			emission_pitch.Free();
+			emission_yaw.Free();
+			emission_range.Free();
 			splatter.Free();
 			emitter_width.Free();
 			emitter_height.Free();
 			emitter_depth.Free();
 			arc_size.Free();
 			arc_offset.Free();
-			translation_x.Free();
-			translation_y.Free();
-			translation_z.Free();
 		}
 
 		void CopyToNoLookups(tfxPropertyAttributes *dst) {
 			emission_pitch.CopyToNoLookups(&dst->emission_pitch);
 			emission_yaw.CopyToNoLookups(&dst->emission_yaw);
 			emission_range.CopyToNoLookups(&dst->emission_range);
-			roll.CopyToNoLookups(&dst->roll);
-			pitch.CopyToNoLookups(&dst->pitch);
-			yaw.CopyToNoLookups(&dst->yaw);
 			splatter.CopyToNoLookups(&dst->splatter);
 			emitter_width.CopyToNoLookups(&dst->emitter_width);
 			emitter_height.CopyToNoLookups(&dst->emitter_height);
 			emitter_depth.CopyToNoLookups(&dst->emitter_depth);
 			arc_size.CopyToNoLookups(&dst->arc_size);
 			arc_offset.CopyToNoLookups(&dst->arc_offset);
-			translation_x.CopyToNoLookups(&dst->translation_x);
-			translation_y.CopyToNoLookups(&dst->translation_y);
-			translation_z.CopyToNoLookups(&dst->translation_z);
 		}
 
 	};
@@ -4668,6 +4727,7 @@ union tfxUInt10bit
 
 	struct tfxEmitterTransform {
 		//Position, scale and rotation values
+		tfxVec3 translation;
 		tfxVec3 local_position;
 		tfxVec3 world_position;
 		tfxVec3 captured_position;
@@ -4816,60 +4876,6 @@ union tfxUInt10bit
 		}
 	};
 
-	enum tfxActionType {
-		tfxActionType_add_effect,
-		tfxActionType_change_location,
-		tfxActionType_change_location_x,
-		tfxActionType_change_location_y,
-		tfxActionType_change_location_z,
-		tfxActionType_change_velocity,
-		tfxActionType_change_direction,
-		tfxMaxActionTypes
-	};
-
-	struct tfxAction {
-		tfxActionType type;
-		tfxU32 frame;
-		tfxVec3 values;
-		tfxU32 effect_index;
-		tfxAttributeNode *graph_node;
-
-		inline bool operator==(const tfxAction &a) { return a.frame == frame && a.type == type; }
-	};
-
-	struct tfxKeyframes {
-		tfxU32 current_frame;
-		tfxBucketArray<tfxAction> events;
-
-		inline void Initialise(tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8) {
-			events = tfxBucketArray<tfxAction>(allocator, bucket_size);
-		}
-
-		inline void Reset() {
-			assert(events.allocator);	//Must have called Initialise first to assign an allocator
-			tfxAction e;
-			//first action must always be to add the effect to the particle manager
-			e.type = tfxActionType_add_effect;
-			e.frame = 0;
-			events.push_back(e);
-		}
-
-		inline bool Sort() {
-			bool needed_sorting = false;
-			for (tfxU32 i = 1; i < events.current_size; ++i) {
-				tfxAction action = events[i];
-				int j = i - 1;
-				while (j >= 0 && action.frame < events[j].frame) {
-					events[j + 1] = events[j];
-					--j;
-					needed_sorting = true;
-				}
-				events[j + 1] = action;
-			}
-			return needed_sorting;
-		}
-	};
-
 	//An tfxEffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
 	//This is only for library storage, when using to update each frame this is copied to tfxEffectType and tfxEmitterType, much more compact versions more
@@ -4915,6 +4921,7 @@ union tfxUInt10bit
 		//All graphs that the effect uses to lookup attribute values are stored in the library. These variables here are indexes to the array where they're stored
 		tfxU32 global;
 		tfxU32 emitter_attributes;
+		tfxU32 transform_attributes;
 		//Pointer to the immediate parent
 		tfxEffectEmitter *parent;
 		//Pointer to the next pointer in the particle manager buffer. 
@@ -4937,7 +4944,6 @@ union tfxUInt10bit
 		tfxU32 particles_index;
 		tfxU32 info_index;
 		tfxU32 property_index;
-		tfxU32 keyframes_index;
 
 		//Update callbacks that are called as the effect is updated in the particle manager. See tfxEffectTemplate
 		void(*update_effect_callback)(tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls);		//Called after the effect state has been udpated
@@ -4957,7 +4963,9 @@ union tfxUInt10bit
 			update_emitter_callback(NULL),
 			particle_onspawn_callback(NULL),
 			particle_update_callback(NULL),
-			particles_index(tfxINVALID)
+			particles_index(tfxINVALID),
+			info_index(tfxINVALID),
+			property_index(tfxINVALID)
 		{ }
 		~tfxEffectEmitter();
 
@@ -4970,7 +4978,6 @@ union tfxUInt10bit
 		void SetTimeout(float frames);
 
 		tfxEffectEmitterInfo &GetInfo();
-		tfxKeyframes &GetActions();
 		tfxEmitterProperties &GetProperties();
 
 		//Override graph functions for use in update_callback
@@ -4992,6 +4999,7 @@ union tfxUInt10bit
 		void CleanUp();
 
 		void ResetGlobalGraphs(bool add_node = true, bool compile = true);
+		void ResetTransformGraphs(bool add_node = true, bool compile = true);
 		void ResetBaseGraphs(bool add_node = true, bool compile = true);
 		void ResetPropertyGraphs(bool add_node = true, bool compile = true);
 		void ResetVariationGraphs(bool add_node = true, bool compile = true);
@@ -5009,7 +5017,6 @@ union tfxUInt10bit
 		tfxU32 GetGraphIndexByType(tfxGraphType type);
 		void CompileGraphs();
 		void InitialiseUninitialisedGraphs();
-		void InitialiseUninitialisedEvents();
 		void SetName(const char *n);
 
 		void ReSeed(uint64_t seed = 0);
@@ -5531,15 +5538,6 @@ union tfxUInt10bit
 
 	//Event functions
 	void ResetStage(tfxEffectEmitter &stage);
-	void ProcessKeyframes(tfxParticleManager &pm, tfxEffectEmitter &e);
-	bool HasActionAtFrame(tfxEffectEmitter &effect, tfxU32 frame);
-	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame);
-	bool HasActionAtFrame(tfxKeyframes &effect, tfxU32 frame, tfxActionType type);
-	bool HasActionType(tfxKeyframes &keyframes, tfxActionType type);
-	tfxU32 GetAddTypeFrame(tfxKeyframes &keyframes);
-	bool FrameIsAfterAddType(tfxKeyframes &keyframes, float frame);
-	void AddKeyframe(tfxKeyframes &keyframes, tfxActionType type, float frame);
-	void AdjustKeyframes(tfxKeyframes &keyframes, float amount);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -5572,10 +5570,10 @@ union tfxUInt10bit
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxvec<tfxEmitterProperties> emitter_properties;
-		tfxvec<tfxKeyframes> keyframes;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
+		tfxvec<tfxTransformAttributes> transform_attributes;
 		tfxvec<tfxAnimationSettings> animation_settings;
 		tfxvec<tfxPreviewCameraSettings> preview_camera_settings;
 		tfxvec<tfxAttributeNode> all_nodes;
@@ -5587,6 +5585,7 @@ union tfxUInt10bit
 		tfxvec<tfxVec4> graph_min_max;
 
 		tfxvec<tfxU32> free_global_graphs;
+		tfxvec<tfxU32> free_keyframe_graphs;
 		tfxvec<tfxU32> free_emitter_attributes;
 		tfxvec<tfxU32> free_animation_settings;
 		tfxvec<tfxU32> free_preview_camera_settings;
@@ -5619,6 +5618,7 @@ union tfxUInt10bit
 			shape_data(tfxCONSTRUCTOR_VEC_INIT("shape_data")),
 			graph_min_max(tfxCONSTRUCTOR_VEC_INIT("graph_min_max")),
 			free_global_graphs(tfxCONSTRUCTOR_VEC_INIT("free_global_graphs")),
+			free_keyframe_graphs(tfxCONSTRUCTOR_VEC_INIT("free_keyframe_graphs")),
 			free_emitter_attributes(tfxCONSTRUCTOR_VEC_INIT("free_emitter_attributes")),
 			free_animation_settings(tfxCONSTRUCTOR_VEC_INIT("free_animation_settings")),
 			free_preview_camera_settings(tfxCONSTRUCTOR_VEC_INIT("free_preview_camera_settings")),
@@ -5671,19 +5671,9 @@ union tfxUInt10bit
 			return effect_infos[e.info_index];
 		}
 
-		inline tfxKeyframes &GetActions(tfxEffectEmitter &e) {
-			assert(keyframes.size() > e.keyframes_index);
-			return keyframes[e.keyframes_index];
-		}
-
 		inline const tfxEffectEmitterInfo &GetInfo(const tfxEffectEmitter &e) {
 			assert(effect_infos.size() > e.info_index);
 			return effect_infos[e.info_index];
-		}
-
-		inline const tfxKeyframes &GetActions(const tfxEffectEmitter &e) {
-			assert(keyframes.size() > e.property_index);
-			return keyframes[e.property_index];
 		}
 
 		//Mainly internal functions
@@ -5705,19 +5695,21 @@ union tfxUInt10bit
 		tfxU32 AddGlobal();
 		tfxU32 AddEmitterAttributes();
 		void FreeGlobal(tfxU32 index);
+		void FreeKeyframes(tfxU32 index);
 		void FreeEmitterAttributes(tfxU32 index);
 		void FreeProperties(tfxU32 index);
 		void FreeInfo(tfxU32 index);
-		void FreeActions(tfxU32 index);
+		tfxU32 CountKeyframeLookUpValues(tfxU32 index);
 		tfxU32 CountGlobalLookUpValues(tfxU32 index);
 		tfxU32 CountEmitterLookUpValues(tfxU32 index);
 		tfxU32 CloneGlobal(tfxU32 source_index, tfxEffectLibrary *destination_library);
+		tfxU32 CloneKeyframes(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneEmitterAttributes(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneInfo(tfxU32 source_index, tfxEffectLibrary *destination_library);
 		tfxU32 CloneProperties(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneKeyframes(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		void AddEmitterGraphs(tfxEffectEmitter& effect);
-		void AddEffectGraphs(tfxEffectEmitter& effect);
+		void AddEmitterGraphs(tfxEffectEmitter &effect);
+		void AddEffectGraphs(tfxEffectEmitter &effect);
+		void AddTransformGraphs(tfxEffectEmitter &effect);
 		tfxU32 AddAnimationSettings(tfxEffectEmitter& effect);
 		tfxU32 AddPreviewCameraSettings(tfxEffectEmitter& effect);
 		tfxU32 AddPreviewCameraSettings();
@@ -5728,6 +5720,7 @@ union tfxUInt10bit
 		void UpdateComputeNodes();
 		void CompileAllGraphs();
 		void CompileGlobalGraph(tfxU32 index);
+		void CompileKeyframeGraph(tfxU32 index);
 		void CompileEmitterGraphs(tfxU32 index);
 		void CompilePropertyGraph(tfxU32 index);
 		void CompileBaseGraph(tfxU32 index);
@@ -5916,7 +5909,7 @@ union tfxUInt10bit
 		out.world_rotations.roll = in.world_rotations.roll + out.local_rotations.roll;
 
 		out.matrix = mmTransform2(out.matrix, in.matrix);
-		tfxVec2 rotatevec = mmTransformVector(in.matrix, tfxVec2(out.local_position.x, out.local_position.y));
+		tfxVec2 rotatevec = mmTransformVector(in.matrix, tfxVec2(out.local_position.x + out.translation.x, out.local_position.y + out.translation.y));
 
 		out.world_position = in.world_position.xy() + rotatevec * in.scale.xy();
 	}
@@ -5931,7 +5924,7 @@ union tfxUInt10bit
 		out.world_rotations = in.world_rotations + out.local_rotations;
 
 		out.matrix = mmTransform(out.matrix, in.matrix);
-		tfxVec3 rotatevec = mmTransformVector3(in.matrix, out.local_position);
+		tfxVec3 rotatevec = mmTransformVector3(in.matrix, out.local_position + out.translation);
 
 		out.world_position = in.world_position + rotatevec;
 	}

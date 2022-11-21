@@ -3622,14 +3622,22 @@ namespace tfx {
 		common.library->global_graphs[global].intensity.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].intensity.type = tfxGlobal_intensity;
 		common.library->global_graphs[global].frame_rate.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].frame_rate.type = tfxGlobal_frame_rate;
 		common.library->global_graphs[global].splatter.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].splatter.type = tfxGlobal_splatter;
-		common.library->global_graphs[global].roll.Reset(0.f, tfxAnglePreset, add_node); common.library->global_graphs[global].roll.type = tfxGlobal_effect_roll;
-		common.library->global_graphs[global].pitch.Reset(0.f, tfxAnglePreset, add_node); common.library->global_graphs[global].pitch.type = tfxGlobal_effect_pitch;
-		common.library->global_graphs[global].yaw.Reset(0.f, tfxAnglePreset, add_node); common.library->global_graphs[global].yaw.type = tfxGlobal_effect_yaw;
 		common.library->global_graphs[global].emitter_width.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_width.type = tfxGlobal_emitter_width;
 		common.library->global_graphs[global].emitter_height.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_height.type = tfxGlobal_emitter_height;
 		common.library->global_graphs[global].emitter_depth.Reset(1.f, tfxGlobalPercentPreset, add_node); common.library->global_graphs[global].emitter_depth.type = tfxGlobal_emitter_depth;
 		if(compile)
 			common.library->CompileGlobalGraph(global);
+	}
+
+	void tfxEffectEmitter::ResetTransformGraphs(bool add_node, bool compile) {
+		common.library->transform_attributes[transform_attributes].roll.Reset(0.f, tfxAnglePreset, add_node); common.library->transform_attributes[transform_attributes].roll.type = tfxTransform_roll;
+		common.library->transform_attributes[transform_attributes].pitch.Reset(0.f, tfxAnglePreset, add_node); common.library->transform_attributes[transform_attributes].pitch.type = tfxTransform_pitch;
+		common.library->transform_attributes[transform_attributes].yaw.Reset(0.f, tfxAnglePreset, add_node); common.library->transform_attributes[transform_attributes].yaw.type = tfxTransform_yaw;
+		common.library->transform_attributes[transform_attributes].translation_x.Reset(0.f, tfxTranslationPreset, add_node); common.library->transform_attributes[transform_attributes].translation_x.type = tfxTransform_translate_x;
+		common.library->transform_attributes[transform_attributes].translation_y.Reset(0.f, tfxTranslationPreset, add_node); common.library->transform_attributes[transform_attributes].translation_y.type = tfxTransform_translate_y;
+		common.library->transform_attributes[transform_attributes].translation_z.Reset(0.f, tfxTranslationPreset, add_node); common.library->transform_attributes[transform_attributes].translation_z.type = tfxTransform_translate_z;
+		if(compile)
+			common.library->CompileKeyframeGraph(transform_attributes);
 	}
 
 	void tfxEffectEmitter::ResetBaseGraphs(bool add_node, bool compile) {
@@ -3649,18 +3657,12 @@ namespace tfx {
 		common.library->emitter_attributes[emitter_attributes].properties.emission_pitch.Reset(0.f, tfxAnglePreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.emission_pitch.type = tfxProperty_emission_pitch;
 		common.library->emitter_attributes[emitter_attributes].properties.emission_yaw.Reset(0.f, tfxAnglePreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.emission_yaw.type = tfxProperty_emission_yaw;
 		common.library->emitter_attributes[emitter_attributes].properties.emission_range.Reset(0.f, tfxEmissionRangePreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.emission_range.type = tfxProperty_emission_range;
-		common.library->emitter_attributes[emitter_attributes].properties.roll.Reset(0.f, tfxAnglePreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.roll.type = tfxProperty_emitter_roll;
-		common.library->emitter_attributes[emitter_attributes].properties.pitch.Reset(0.f, tfxAnglePreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.pitch.type = tfxProperty_emitter_roll;
-		common.library->emitter_attributes[emitter_attributes].properties.yaw.Reset(0.f, tfxAnglePreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.yaw.type = tfxProperty_emitter_roll;
 		common.library->emitter_attributes[emitter_attributes].properties.splatter.Reset(0.f, tfxDimensionsPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.splatter.type = tfxProperty_splatter;
 		common.library->emitter_attributes[emitter_attributes].properties.emitter_width.Reset(0.f, tfxDimensionsPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.emitter_width.type = tfxProperty_emitter_width;
 		common.library->emitter_attributes[emitter_attributes].properties.emitter_height.Reset(0.f, tfxDimensionsPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.emitter_height.type = tfxProperty_emitter_height;
 		common.library->emitter_attributes[emitter_attributes].properties.emitter_depth.Reset(0.f, tfxDimensionsPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.emitter_depth.type = tfxProperty_emitter_depth;
 		common.library->emitter_attributes[emitter_attributes].properties.arc_size.Reset(tfxRadians(360.f), tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.arc_size.type = tfxProperty_arc_size;
 		common.library->emitter_attributes[emitter_attributes].properties.arc_offset.Reset(0.f, tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.arc_offset.type = tfxProperty_arc_offset;
-		common.library->emitter_attributes[emitter_attributes].properties.translation_x.Reset(0.f, tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.translation_x.type = tfxProperty_arc_offset;
-		common.library->emitter_attributes[emitter_attributes].properties.translation_y.Reset(0.f, tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.translation_y.type = tfxProperty_arc_offset;
-		common.library->emitter_attributes[emitter_attributes].properties.translation_z.Reset(0.f, tfxArcPreset, add_node); common.library->emitter_attributes[emitter_attributes].properties.translation_z.type = tfxProperty_arc_offset;
 		if(compile)
 			common.library->CompilePropertyGraph(emitter_attributes);
 	}
@@ -3713,12 +3715,14 @@ namespace tfx {
 		ResetOvertimeGraphs(add_node, compile);
 	}
 
-	void tfxEffectEmitter::InitialiseUninitialisedEvents() {
-		tfxKeyframes &keyframes = GetActions();
-		if (keyframes.events.size() == 0) keyframes.Reset();
-	}
-
 	void tfxEffectEmitter::InitialiseUninitialisedGraphs() {
+		if (common.library->transform_attributes[transform_attributes].translation_x.nodes.size() == 0) common.library->transform_attributes[transform_attributes].translation_x.Reset(0.f, tfxTranslationPreset);
+		if (common.library->transform_attributes[transform_attributes].translation_y.nodes.size() == 0) common.library->transform_attributes[transform_attributes].translation_y.Reset(0.f, tfxTranslationPreset);
+		if (common.library->transform_attributes[transform_attributes].translation_z.nodes.size() == 0) common.library->transform_attributes[transform_attributes].translation_z.Reset(0.f, tfxTranslationPreset);
+		if (common.library->transform_attributes[transform_attributes].roll.nodes.size() == 0) common.library->transform_attributes[transform_attributes].roll.Reset(0.f, tfxAnglePreset);
+		if (common.library->transform_attributes[transform_attributes].pitch.nodes.size() == 0) common.library->transform_attributes[transform_attributes].pitch.Reset(0.f, tfxAnglePreset);
+		if (common.library->transform_attributes[transform_attributes].yaw.nodes.size() == 0) common.library->transform_attributes[transform_attributes].yaw.Reset(0.f, tfxAnglePreset);
+
 		if (type == tfxEffectType) {
 			if (common.library->global_graphs[global].life.nodes.size() == 0) common.library->global_graphs[global].life.Reset(1.f, tfxGlobalPercentPreset);
 			if (common.library->global_graphs[global].amount.nodes.size() == 0) common.library->global_graphs[global].amount.Reset(1.f, tfxGlobalPercentPreset);
@@ -3727,9 +3731,6 @@ namespace tfx {
 			if (common.library->global_graphs[global].height.nodes.size() == 0) common.library->global_graphs[global].height.Reset(1.f, tfxGlobalPercentPreset);
 			if (common.library->global_graphs[global].weight.nodes.size() == 0) common.library->global_graphs[global].weight.Reset(1.f, tfxGlobalPercentPreset);
 			if (common.library->global_graphs[global].spin.nodes.size() == 0) common.library->global_graphs[global].spin.Reset(1.f, tfxGlobalPercentPresetSigned);
-			if (common.library->global_graphs[global].roll.nodes.size() == 0) common.library->global_graphs[global].roll.Reset(0.f, tfxAnglePreset);
-			if (common.library->global_graphs[global].pitch.nodes.size() == 0) common.library->global_graphs[global].pitch.Reset(0.f, tfxAnglePreset);
-			if (common.library->global_graphs[global].yaw.nodes.size() == 0) common.library->global_graphs[global].yaw.Reset(0.f, tfxAnglePreset);
 			if (common.library->global_graphs[global].stretch.nodes.size() == 0) common.library->global_graphs[global].stretch.Reset(1.f, tfxGlobalPercentPreset);
 			if (common.library->global_graphs[global].overal_scale.nodes.size() == 0) common.library->global_graphs[global].overal_scale.Reset(1.f, tfxGlobalPercentPreset);
 			if (common.library->global_graphs[global].intensity.nodes.size() == 0) common.library->global_graphs[global].intensity.Reset(1.f, tfxGlobalPercentPreset);
@@ -3750,9 +3751,6 @@ namespace tfx {
 			if (common.library->emitter_attributes[emitter_attributes].base.spin.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].base.spin.Reset(0.f, tfxSpinPreset);
 			if (common.library->emitter_attributes[emitter_attributes].base.noise_offset.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].base.noise_offset.Reset(0.f, tfxGlobalPercentPreset);
 
-			if (common.library->emitter_attributes[emitter_attributes].properties.roll.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.roll.Reset(0.f, tfxAnglePreset);
-			if (common.library->emitter_attributes[emitter_attributes].properties.pitch.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.pitch.Reset(0.f, tfxAnglePreset);
-			if (common.library->emitter_attributes[emitter_attributes].properties.yaw.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.yaw.Reset(0.f, tfxAnglePreset);
 			if (common.library->emitter_attributes[emitter_attributes].properties.emission_pitch.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.emission_pitch.Reset(0.f, tfxAnglePreset);
 			if (common.library->emitter_attributes[emitter_attributes].properties.emission_yaw.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.emission_yaw.Reset(0.f, tfxAnglePreset);
 			if (common.library->emitter_attributes[emitter_attributes].properties.emission_range.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.emission_range.Reset(0.f, tfxEmissionRangePreset);
@@ -3762,9 +3760,6 @@ namespace tfx {
 			if (common.library->emitter_attributes[emitter_attributes].properties.emitter_depth.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.emitter_depth.Reset(0.f, tfxDimensionsPreset);
 			if (common.library->emitter_attributes[emitter_attributes].properties.arc_size.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.arc_size.Reset(tfxRadians(360.f), tfxArcPreset);
 			if (common.library->emitter_attributes[emitter_attributes].properties.arc_offset.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.arc_offset.Reset(0.f, tfxArcPreset);
-			if (common.library->emitter_attributes[emitter_attributes].properties.translation_x.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.translation_x.Reset(0.f, tfxArcPreset);
-			if (common.library->emitter_attributes[emitter_attributes].properties.translation_y.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.translation_y.Reset(0.f, tfxArcPreset);
-			if (common.library->emitter_attributes[emitter_attributes].properties.translation_z.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].properties.translation_z.Reset(0.f, tfxArcPreset);
 
 			if (common.library->emitter_attributes[emitter_attributes].variation.life.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].variation.life.Reset(0.f, tfxLifePreset);
 			if (common.library->emitter_attributes[emitter_attributes].variation.amount.nodes.size() == 0) common.library->emitter_attributes[emitter_attributes].variation.amount.Reset(0.f, tfxAmountPreset);
@@ -3836,10 +3831,6 @@ namespace tfx {
 
 	tfxEffectEmitterInfo &tfxEffectEmitter::GetInfo() {
 		return common.library->GetInfo(*this);
-	}
-
-	tfxKeyframes &tfxEffectEmitter::GetActions() {
-		return common.library->GetActions(*this);
 	}
 
 	tfxEmitterProperties &tfxEffectEmitter::GetProperties() {
@@ -4005,7 +3996,6 @@ namespace tfx {
 		clone.info_index = clone.common.library->CloneInfo(info_index, destination_library);
 		if (clone.type != tfxFolder) {
 			clone.property_index = clone.common.library->CloneProperties(property_index, destination_library);
-			clone.keyframes_index = clone.common.library->CloneKeyframes(keyframes_index, destination_library);
 		}
 		clone.flags |= tfxEmitterStateFlags_enabled;
 		if(!(flags & tfxEffectCloningFlags_keep_user_data))
@@ -4016,10 +4006,17 @@ namespace tfx {
 		if (type == tfxEffectType) {
 			if (root_parent == &clone) {
 				clone.global = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneGlobal(global, destination_library) : clone.global = global;
-				if(flags & tfxEffectCloningFlags_compile_graphs)
+				clone.transform_attributes = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneKeyframes(transform_attributes, destination_library) : clone.transform_attributes = transform_attributes;
+				if (flags & tfxEffectCloningFlags_compile_graphs) {
 					clone.common.library->CompileGlobalGraph(clone.global);
+					clone.common.library->CompileKeyframeGraph(clone.transform_attributes);
+				}
 			}
 			else {
+				clone.transform_attributes = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneKeyframes(transform_attributes, destination_library) : clone.transform_attributes = transform_attributes;
+				if (flags & tfxEffectCloningFlags_compile_graphs) {
+					clone.common.library->CompileKeyframeGraph(clone.transform_attributes);
+				}
 				if (!(flags & tfxEffectCloningFlags_force_clone_global)) {
 					clone.global = root_parent->global;
 				}
@@ -4032,8 +4029,10 @@ namespace tfx {
 		}
 		else if(type == tfxEmitterType) {
 			clone.emitter_attributes = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneEmitterAttributes(emitter_attributes, destination_library) : emitter_attributes;
+			clone.transform_attributes = flags & tfxEffectCloningFlags_clone_graphs ? common.library->CloneKeyframes(transform_attributes, destination_library) : transform_attributes;
 			clone.UpdateMaxLife();
 			if (flags & tfxEffectCloningFlags_compile_graphs) {
+				clone.common.library->CompileKeyframeGraph(clone.transform_attributes);
 				clone.common.library->CompilePropertyGraph(clone.emitter_attributes);
 				clone.common.library->CompileBaseGraph(clone.emitter_attributes);
 				clone.common.library->CompileVariationGraph(clone.emitter_attributes);
@@ -4115,9 +4114,13 @@ namespace tfx {
 			int ref = type - tfxVariationStart;
 			return &((tfxGraph*)&common.library->emitter_attributes[emitter_attributes].variation)[ref];
 		}
-		else if (type >= tfxOvertimeStart) {
+		else if (type >= tfxOvertimeStart && type < tfxTransformStart) {
 			int ref = type - tfxOvertimeStart;
 			return &((tfxGraph*)&common.library->emitter_attributes[emitter_attributes].overtime)[ref];
+		}
+		else if (type >= tfxTransformStart) {
+			int ref = type - tfxTransformStart;
+			return &((tfxGraph*)&common.library->transform_attributes[transform_attributes].roll)[ref];
 		}
 
 		return nullptr;
@@ -4129,13 +4132,17 @@ namespace tfx {
 		if (type < tfxGlobalCount) {
 			return global;
 		}
-		else {
+		else if (type < tfxTransformStart) {
 			return emitter_attributes;
+		}
+		else {
+			return transform_attributes;
 		}
 
 	}
 
 	void tfxEffectEmitter::FreeGraphs() {
+
 		if (type == tfxEffectType) {
 			common.library->global_graphs[global].life.Free();
 			common.library->global_graphs[global].amount.Free();
@@ -4144,9 +4151,6 @@ namespace tfx {
 			common.library->global_graphs[global].height.Free();
 			common.library->global_graphs[global].weight.Free();
 			common.library->global_graphs[global].spin.Free();
-			common.library->global_graphs[global].roll.Free();
-			common.library->global_graphs[global].pitch.Free();
-			common.library->global_graphs[global].yaw.Free();
 			common.library->global_graphs[global].stretch.Free();
 			common.library->global_graphs[global].overal_scale.Free();
 			common.library->global_graphs[global].intensity.Free();
@@ -4155,15 +4159,23 @@ namespace tfx {
 			common.library->global_graphs[global].emitter_width.Free();
 			common.library->global_graphs[global].emitter_height.Free();
 			common.library->global_graphs[global].emitter_depth.Free();
+
+			common.library->transform_attributes[transform_attributes].roll.Free();
+			common.library->transform_attributes[transform_attributes].pitch.Free();
+			common.library->transform_attributes[transform_attributes].yaw.Free();
+			common.library->transform_attributes[transform_attributes].translation_x.Free();
+			common.library->transform_attributes[transform_attributes].translation_y.Free();
+			common.library->transform_attributes[transform_attributes].translation_z.Free();
 		}
 
 		if (type == tfxEmitterType) {
+			common.library->transform_attributes[transform_attributes].translation_x.Free();
+			common.library->transform_attributes[transform_attributes].translation_y.Free();
+			common.library->transform_attributes[transform_attributes].translation_z.Free();
+
 			common.library->emitter_attributes[emitter_attributes].properties.emission_pitch.Free();
 			common.library->emitter_attributes[emitter_attributes].properties.emission_yaw.Free();
 			common.library->emitter_attributes[emitter_attributes].properties.emission_range.Free();
-			common.library->emitter_attributes[emitter_attributes].properties.roll.Free();
-			common.library->emitter_attributes[emitter_attributes].properties.pitch.Free();
-			common.library->emitter_attributes[emitter_attributes].properties.yaw.Free();
 			common.library->emitter_attributes[emitter_attributes].properties.splatter.Free();
 			common.library->emitter_attributes[emitter_attributes].properties.emitter_width.Free();
 			common.library->emitter_attributes[emitter_attributes].properties.emitter_height.Free();
@@ -4224,6 +4236,9 @@ namespace tfx {
 	}
 
 	void tfxEffectEmitter::CompileGraphs() {
+		for (tfxU32 t = (tfxU32)tfxTransform_translate_x; t != (tfxU32)tfxGraphMaxIndex; ++t) {
+			CompileGraph(*GetGraphByType(tfxGraphType(t)));
+		}
 		if (type == tfxEffectType) {
 			for (tfxU32 t = (tfxU32)tfxGlobal_life; t != (tfxU32)tfxProperty_emission_pitch; ++t) {
 				CompileGraph(*GetGraphByType(tfxGraphType(t)));
@@ -4233,7 +4248,7 @@ namespace tfx {
 			for (tfxU32 t = (tfxU32)tfxProperty_emission_pitch; t != (tfxU32)tfxOvertime_velocity; ++t) {
 				CompileGraph(*GetGraphByType((tfxGraphType)t));
 			}
-			for (tfxU32 t = (tfxU32)tfxOvertime_velocity; t != (tfxU32)tfxGraphMaxIndex; ++t) {
+			for (tfxU32 t = (tfxU32)tfxOvertime_velocity; t != (tfxU32)tfxTransform_translate_x; ++t) {
 				CompileGraphOvertime(*GetGraphByType((tfxGraphType)t));
 			}
 		}
@@ -4334,7 +4349,6 @@ namespace tfx {
 	tfxEffectEmitter &tfxEffectLibrary::AddStage(tfxStr64 &name) {
 		tfxEffectEmitter stage;
 		stage.info_index = AddEffectEmitterInfo();
-		stage.property_index = AddKeyframes();
 		stage.common.library = this;
 		stage.GetInfo().name = name;
 		stage.type = tfxStage;
@@ -4522,6 +4536,15 @@ namespace tfx {
 		return global_graphs.size() - 1;
 	}
 
+	tfxU32 tfxEffectLibrary::AddKeyframes() {
+		if (free_keyframes.size())
+			return free_keyframes.pop_back();
+		tfxTransformAttributes keyframes;
+		keyframes.Initialise(&graph_node_allocator, &graph_lookup_allocator);
+		transform_attributes.push_back(keyframes);
+		return transform_attributes.size() - 1;
+	}
+
 	tfxU32 tfxEffectLibrary::AddEmitterAttributes() {
 		if (free_emitter_attributes.size())
 			return free_emitter_attributes.pop_back();
@@ -4536,22 +4559,39 @@ namespace tfx {
 		free_global_graphs.push_back(index);
 		global_graphs[index].Free();
 	}
+
+	void tfxEffectLibrary::FreeKeyframes(tfxU32 index) {
+		assert(index < transform_attributes.size());
+		free_keyframes.push_back(index);
+		transform_attributes[index].Free();
+	}
+
 	void tfxEffectLibrary::FreeEmitterAttributes(tfxU32 index) {
 		assert(index < emitter_attributes.size());
 		free_emitter_attributes.push_back(index);
 		emitter_attributes[index].Free();
 	}
+
 	void tfxEffectLibrary::FreeProperties(tfxU32 index) {
 		assert(index < emitter_properties.size());
 		free_properties.push_back(index);
 	}
+
 	void tfxEffectLibrary::FreeInfo(tfxU32 index) {
 		assert(index < effect_infos.size());
 		free_infos.push_back(index);
 	}
-	void tfxEffectLibrary::FreeActions(tfxU32 index) {
-		assert(index < keyframes.size());
-		free_keyframes.push_back(index);
+
+	tfxU32 tfxEffectLibrary::CountKeyframeLookUpValues(tfxU32 index) {
+		auto &transform = transform_attributes[index];
+		tfxU32 count = 0;
+		count += transform.roll.lookup.values.capacity;
+		count += transform.pitch.lookup.values.capacity;
+		count += transform.yaw.lookup.values.capacity;
+		count += transform.translation_x.lookup.values.capacity;
+		count += transform.translation_y.lookup.values.capacity;
+		count += transform.translation_z.lookup.values.capacity;
+		return count;
 	}
 
 	tfxU32 tfxEffectLibrary::CountGlobalLookUpValues(tfxU32 index) {
@@ -4569,9 +4609,6 @@ namespace tfx {
 		count += global.intensity.lookup.values.capacity;
 		count += global.frame_rate.lookup.values.capacity;
 		count += global.splatter.lookup.values.capacity;
-		count += global.roll.lookup.values.capacity;
-		count += global.pitch.lookup.values.capacity;
-		count += global.yaw.lookup.values.capacity;
 		count += global.emitter_width.lookup.values.capacity;
 		count += global.emitter_height.lookup.values.capacity;
 		count += global.emitter_depth.lookup.values.capacity;
@@ -4585,9 +4622,6 @@ namespace tfx {
 		count += attributes.properties.emission_pitch.lookup.values.capacity;
 		count += attributes.properties.emission_yaw.lookup.values.capacity;
 		count += attributes.properties.emission_range.lookup.values.capacity;
-		count += attributes.properties.roll.lookup.values.capacity;
-		count += attributes.properties.pitch.lookup.values.capacity;
-		count += attributes.properties.yaw.lookup.values.capacity;
 		count += attributes.properties.splatter.lookup.values.capacity;
 		count += attributes.properties.emitter_width.lookup.values.capacity;
 		count += attributes.properties.emitter_height.lookup.values.capacity;
@@ -4640,6 +4674,12 @@ namespace tfx {
 		return index;
 	}
 
+	tfxU32 tfxEffectLibrary::CloneKeyframes(tfxU32 source_index, tfxEffectLibrary *destination_library) {
+		tfxU32 index = destination_library->AddKeyframes();
+		transform_attributes[source_index].CopyToNoLookups(&destination_library->transform_attributes[index]);
+		return index;
+	}
+
 	tfxU32 tfxEffectLibrary::CloneEmitterAttributes(tfxU32 source_index, tfxEffectLibrary *destination_library) {
 		tfxU32 index = destination_library->AddEmitterAttributes();
 		emitter_attributes[source_index].properties.CopyToNoLookups(&destination_library->emitter_attributes[index].properties);
@@ -4661,14 +4701,12 @@ namespace tfx {
 		return index;
 	}
 
-	tfxU32 tfxEffectLibrary::CloneKeyframes(tfxU32 source_index, tfxEffectLibrary *destination_library) {
-		tfxU32 index = destination_library->AddKeyframes();
-		destination_library->keyframes[index] = keyframes[source_index];
-		return index;
-	}
-
 	void tfxEffectLibrary::AddEmitterGraphs(tfxEffectEmitter& emitter) {
 		emitter.emitter_attributes = AddEmitterAttributes();
+	}
+
+	void tfxEffectLibrary::AddTransformGraphs(tfxEffectEmitter& emitter) {
+		emitter.transform_attributes = AddKeyframes();
 	}
 
 	void tfxEffectLibrary::AddEffectGraphs(tfxEffectEmitter& effect) {
@@ -4757,16 +4795,6 @@ namespace tfx {
 		return effect_infos.size() - 1;
 	}
 
-	tfxU32 tfxEffectLibrary::AddKeyframes() {
-		tfxKeyframes new_keyframes;
-		if (free_keyframes.size()) {
-			return free_keyframes.pop_back();
-		}
-		new_keyframes.Initialise(&keyframes_allocator);
-		keyframes.push_back(new_keyframes);
-		return keyframes.size() - 1;
-	}
-
 	tfxU32 tfxEffectLibrary::AddEmitterProperties() {
 		tfxEmitterProperties properties;
 		if (free_properties.size()) {
@@ -4785,6 +4813,7 @@ namespace tfx {
 		particle_shapes.FreeAll();
 		global_graphs.free_all();
 		emitter_attributes.free_all();
+		transform_attributes.free_all();
 		animation_settings.free_all();
 		preview_camera_settings.free_all();
 		emitter_properties.free_all();
@@ -4887,9 +4916,14 @@ namespace tfx {
 	void tfxEffectLibrary::CompileGraphsOfEffect(tfxEffectEmitter &effect, tfxU32 depth) {
 		auto &info = effect.GetInfo();
 		if (effect.type == tfxEffectType && depth == 0) {
+			CompileKeyframeGraph(effect.transform_attributes);
 			CompileGlobalGraph(effect.global);
 		}
+		else if (effect.type == tfxEffectType) {
+			CompileKeyframeGraph(effect.transform_attributes);
+		}
 		else if(effect.type == tfxEmitterType) {
+			CompileKeyframeGraph(effect.transform_attributes);
 			CompileEmitterGraphs(effect.emitter_attributes);
 			for (auto &sub : info.sub_effectors) {
 				CompileGraphsOfEffect(sub, ++depth);
@@ -4910,9 +4944,6 @@ namespace tfx {
 	void tfxEffectLibrary::CompileAllGraphs() {
 		for (auto &g : global_graphs) {
 			CompileGraph(g.amount);
-			CompileGraph(g.roll);
-			CompileGraph(g.pitch);
-			CompileGraph(g.yaw);
 			CompileGraph(g.frame_rate);
 			CompileGraph(g.height);
 			CompileGraph(g.width);
@@ -4928,15 +4959,20 @@ namespace tfx {
 			CompileGraph(g.emitter_height);
 			CompileGraph(g.emitter_depth);
 		}
+		for (auto &g : transform_attributes) {
+			CompileGraph(g.roll);
+			CompileGraph(g.pitch);
+			CompileGraph(g.yaw);
+			CompileGraph(g.translation_x);
+			CompileGraph(g.translation_y);
+			CompileGraph(g.translation_z);
+		}
 		for (auto &g : emitter_attributes) {
 			CompileGraph(g.properties.arc_offset);
 			CompileGraph(g.properties.arc_size);
 			CompileGraph(g.properties.emission_pitch);
 			CompileGraph(g.properties.emission_yaw);
 			CompileGraph(g.properties.emission_range);
-			CompileGraph(g.properties.roll);
-			CompileGraph(g.properties.pitch);
-			CompileGraph(g.properties.yaw);
 			CompileGraph(g.properties.emitter_width);
 			CompileGraph(g.properties.emitter_height);
 			CompileGraph(g.properties.emitter_depth);
@@ -4983,9 +5019,6 @@ namespace tfx {
 	void tfxEffectLibrary::CompileGlobalGraph(tfxU32 index) {
 		tfxGlobalAttributes &g = global_graphs[index];
 		CompileGraph(g.amount);
-		CompileGraph(g.roll);
-		CompileGraph(g.pitch);
-		CompileGraph(g.yaw);
 		CompileGraph(g.frame_rate);
 		CompileGraph(g.height);
 		CompileGraph(g.width);
@@ -5002,8 +5035,19 @@ namespace tfx {
 		CompileGraph(g.emitter_depth);
 	}
 
+	void tfxEffectLibrary::CompileKeyframeGraph(tfxU32 index) {
+		tfxTransformAttributes &g = transform_attributes[index];
+		CompileGraph(g.roll);
+		CompileGraph(g.pitch);
+		CompileGraph(g.yaw);
+		CompileGraph(g.translation_x);
+		CompileGraph(g.translation_y);
+		CompileGraph(g.translation_z);
+	}
+
 	void tfxEffectLibrary::CompileEmitterGraphs(tfxU32 index) {
 		CompilePropertyGraph(index);
+		CompileKeyframeGraph(index);
 		CompileBaseGraph(index);
 		CompileVariationGraph(index);
 		CompileOvertimeGraph(index);
@@ -5016,9 +5060,6 @@ namespace tfx {
 		CompileGraph(g.emission_pitch);
 		CompileGraph(g.emission_yaw);
 		CompileGraph(g.emission_range);
-		CompileGraph(g.roll);
-		CompileGraph(g.pitch);
-		CompileGraph(g.yaw);
 		CompileGraph(g.emitter_width);
 		CompileGraph(g.emitter_height);
 		CompileGraph(g.emitter_depth);
@@ -5089,14 +5130,17 @@ namespace tfx {
 		graph_min_max[tfxGlobal_intensity] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
 		graph_min_max[tfxGlobal_frame_rate] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 		graph_min_max[tfxGlobal_splatter] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
-		graph_min_max[tfxGlobal_effect_roll] = GetMinMaxGraphValues(tfxAnglePreset);
-		graph_min_max[tfxGlobal_effect_pitch] = GetMinMaxGraphValues(tfxAnglePreset);
-		graph_min_max[tfxGlobal_effect_yaw] = GetMinMaxGraphValues(tfxAnglePreset);
 		graph_min_max[tfxGlobal_emitter_width] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 		graph_min_max[tfxGlobal_emitter_height] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 		graph_min_max[tfxGlobal_emitter_depth] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 
-		graph_min_max[tfxProperty_emitter_roll] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxTransform_roll] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxTransform_pitch] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxTransform_yaw] = GetMinMaxGraphValues(tfxAnglePreset);
+		graph_min_max[tfxTransform_translate_x] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxTransform_translate_y] = GetMinMaxGraphValues(tfxDimensionsPreset);
+		graph_min_max[tfxTransform_translate_z] = GetMinMaxGraphValues(tfxDimensionsPreset);
+
 		graph_min_max[tfxProperty_emission_pitch] = GetMinMaxGraphValues(tfxAnglePreset);
 		graph_min_max[tfxProperty_emission_yaw] = GetMinMaxGraphValues(tfxAnglePreset);
 		graph_min_max[tfxProperty_emission_range] = GetMinMaxGraphValues(tfxEmissionRangePreset);
@@ -5383,10 +5427,6 @@ namespace tfx {
 	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr64> &values) {
 		if (values.size() > 0) {
 			if (values[0] == "global_amount") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].amount.AddNode(n); }
-			if (values[0] == "global_effect_angle") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].roll.AddNode(n); }
-			if (values[0] == "global_effect_roll") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].roll.AddNode(n); }
-			if (values[0] == "global_effect_pitch") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].pitch.AddNode(n); }
-			if (values[0] == "global_effect_yaw") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].yaw.AddNode(n); }
 			if (values[0] == "global_frame_rate") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].frame_rate.AddNode(n); }
 			if (values[0] == "global_height") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].height.AddNode(n); }
 			if (values[0] == "global_width") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].width.AddNode(n); }
@@ -5402,6 +5442,18 @@ namespace tfx {
 			if (values[0] == "global_emitter_height") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].emitter_height.AddNode(n); }
 			if (values[0] == "global_emitter_depth") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->global_graphs[effect.global].emitter_depth.AddNode(n); }
 
+			if (values[0] == "global_effect_angle") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].roll.AddNode(n); }
+			if (values[0] == "global_effect_roll") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].roll.AddNode(n); }
+			if (values[0] == "global_effect_pitch") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].pitch.AddNode(n); }
+			if (values[0] == "global_effect_yaw") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].yaw.AddNode(n); }
+			if (values[0] == "keyframe_translate_x") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].translation_x.AddNode(n); }
+			if (values[0] == "keyframe_translate_y") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].translation_y.AddNode(n); }
+			if (values[0] == "keyframe_translate_z") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].translation_z.AddNode(n); }
+			if (values[0] == "property_emitter_angle") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].roll.AddNode(n); }
+			if (values[0] == "property_emitter_roll") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].roll.AddNode(n); }
+			if (values[0] == "property_emitter_pitch") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].pitch.AddNode(n); }
+			if (values[0] == "property_emitter_yaw") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->transform_attributes[effect.transform_attributes].yaw.AddNode(n); }
+
 			if (values[0] == "base_arc_offset") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.arc_offset.AddNode(n); }
 			if (values[0] == "base_arc_size") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.arc_size.AddNode(n); }
 			if (values[0] == "base_emission_angle") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.emission_pitch.AddNode(n); }
@@ -5412,10 +5464,6 @@ namespace tfx {
 
 			if (values[0] == "property_arc_offset") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.arc_offset.AddNode(n); }
 			if (values[0] == "property_arc_size") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.arc_size.AddNode(n); }
-			if (values[0] == "property_emitter_angle") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.roll.AddNode(n); }
-			if (values[0] == "property_emitter_roll") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.roll.AddNode(n); }
-			if (values[0] == "property_emitter_pitch") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.pitch.AddNode(n); }
-			if (values[0] == "property_emitter_yaw") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.yaw.AddNode(n); }
 			if (values[0] == "property_emission_angle") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.emission_pitch.AddNode(n); }
 			if (values[0] == "property_emission_pitch") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.emission_pitch.AddNode(n); }
 			if (values[0] == "property_emission_yaw") { tfxAttributeNode n; AssignNodeData(n, values); effect.common.library->emitter_attributes[effect.emitter_attributes].properties.emission_yaw.AddNode(n); }
@@ -5791,8 +5839,12 @@ namespace tfx {
 	}
 
 	bool tfxGraph::IsAngleGraph() {
-		return (type == tfxGlobal_effect_roll || type == tfxGlobal_effect_pitch || type == tfxGlobal_effect_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw || type == tfxProperty_emission_range ||
-			type == tfxProperty_emitter_roll || type == tfxProperty_emitter_pitch || type == tfxProperty_emitter_yaw || type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin || type == tfxOvertime_direction);
+		return (type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw 
+			|| type == tfxProperty_emission_range || type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin || type == tfxOvertime_direction);
+	}
+
+	bool tfxGraph::IsTranslationGraph() {
+		return type == tfxTransform_translate_x || type == tfxTransform_translate_y || type == tfxTransform_translate_z;
 	}
 
 	void tfxGraph::MultiplyAllValues(float scalar) {
@@ -6444,6 +6496,19 @@ namespace tfx {
 		nodes.erase(&n);
 	}
 
+	void tfxGraph::DeleteNodeAtFrame(float frame) {
+		nodes.ResetIteratorIndex();
+		do {
+			for (auto &n : nodes) {
+				if (n.frame == frame) {
+					nodes.erase(&n);
+					return;
+				}
+			}
+		} while (!nodes.EndOfBuckets());
+		
+	}
+
 	void tfxGraph::Reset(float v, tfxGraphPreset preset, bool add_node) {
 		nodes.clear();
 		if (add_node)
@@ -6469,6 +6534,9 @@ namespace tfx {
 			break;
 		case tfxGraphPreset::tfxDimensionsPreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 4000.f };
+			break;
+		case tfxGraphPreset::tfxTranslationPreset:
+			min = { 0.f, -4000.f }; max = { tfxMAX_FRAME, 4000.f };
 			break;
 		case tfxGraphPreset::tfxLifePreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 100000.f };
@@ -6558,6 +6626,9 @@ namespace tfx {
 			break;
 		case tfxGraphPreset::tfxDimensionsPreset:
 			mm = { 0.f, 0.f, tfxMAX_FRAME, 4000.f };
+			break;
+		case tfxGraphPreset::tfxTranslationPreset:
+			mm = { 0.f, -4000.f, tfxMAX_FRAME, 4000.f };
 			break;
 		case tfxGraphPreset::tfxLifePreset:
 			mm = { 0.f, 0.f, tfxMAX_FRAME, 100000.f };
@@ -6760,6 +6831,7 @@ namespace tfx {
 			return tfxVec2(0.0017f, .1f);
 			break;
 		case tfxGraphPreset::tfxDimensionsPreset:
+		case tfxGraphPreset::tfxTranslationPreset:
 		case tfxGraphPreset::tfxVelocityPreset:
 		case tfxGraphPreset::tfxWeightPreset:
 		case tfxGraphPreset::tfxWeightVariationPreset:
@@ -6828,6 +6900,7 @@ namespace tfx {
 			return tfxVec2(0.0017f, .01f);
 			break;
 		case tfxGraphPreset::tfxDimensionsPreset:
+		case tfxGraphPreset::tfxTranslationPreset:
 		case tfxGraphPreset::tfxVelocityPreset:
 		case tfxGraphPreset::tfxWeightPreset:
 		case tfxGraphPreset::tfxWeightVariationPreset:
@@ -7031,15 +7104,19 @@ namespace tfx {
 	}
 
 	bool IsOvertimeGraph(tfxGraphType type) {
-		return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster;
+		return type >= tfxOvertime_velocity && type != tfxOvertime_noise_resolution && type <= tfxOvertime_noise_resolution;
 	}
 
 	bool IsOvertimePercentageGraph(tfxGraphType type) {
-		return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction;
+		return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && type <= tfxOvertime_noise_resolution;
 	}
 
 	bool IsGlobalGraph(tfxGraphType type) {
-		return type >= tfxGlobal_life && type <= tfxGlobal_effect_yaw;
+		return type >= tfxGlobal_life && type <= tfxGlobal_emitter_depth;
+	}
+
+	bool IsTransformGraph(tfxGraphType type) {
+		return type >= tfxTransform_roll && type <= tfxTransform_translate_z;
 	}
 
 	bool IsGlobalPercentageGraph(tfxGraphType type) {
@@ -7047,8 +7124,8 @@ namespace tfx {
 	}
 
 	bool IsAngleGraph(tfxGraphType type) {
-		return (type == tfxGlobal_effect_roll || type == tfxGlobal_effect_pitch || type == tfxGlobal_effect_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw || type == tfxProperty_emission_range ||
-			type == tfxProperty_emitter_roll || type == tfxProperty_emitter_pitch || type == tfxProperty_emitter_yaw || type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin);
+		return (type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw || type == tfxProperty_emission_range ||
+			type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin);
 	}
 
 	bool IsAngleOvertimeGraph(tfxGraphType type) {
@@ -7057,6 +7134,32 @@ namespace tfx {
 
 	bool IsEverythingElseGraph(tfxGraphType type) {
 		return !IsOvertimeGraph(type) && !IsOvertimePercentageGraph(type) && !IsGlobalGraph(type) && !IsAngleGraph(type) && !IsOvertimeGraph(type);
+	}
+
+	bool HasKeyframes(tfxEffectEmitter &e) {
+		assert(e.transform_attributes < e.common.library->transform_attributes.size());		//Must be a valid keyframes index into the library
+		tfxTransformAttributes &keyframes = e.common.library->transform_attributes[e.transform_attributes];
+		tfxU32 size =	keyframes.translation_x.nodes.size() +
+						keyframes.translation_y.nodes.size() +
+						keyframes.translation_z.nodes.size();
+		return size > 0;
+	}
+
+	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e) {
+		assert(e.transform_attributes < e.common.library->transform_attributes.size());		//Must be a valid keyframes index into the library
+		tfxTransformAttributes &keyframes = e.common.library->transform_attributes[e.transform_attributes];
+		return	keyframes.translation_x.nodes.size() > 1 ||
+				keyframes.translation_y.nodes.size() > 1 ||
+				keyframes.translation_z.nodes.size() > 1;
+	}
+
+	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame) {
+		assert(e.transform_attributes < e.common.library->transform_attributes.size());		//Must be a valid keyframes index into the library
+		tfxTransformAttributes &keyframes = e.common.library->transform_attributes[e.transform_attributes];
+		tfxVec3 point(	lookup_callback(keyframes.translation_x, frame),
+						lookup_callback(keyframes.translation_y, frame),
+						lookup_callback(keyframes.translation_z, frame));
+		points.push_back(point);
 	}
 
 	bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key) {
@@ -7250,9 +7353,13 @@ namespace tfx {
 			int ref = type - tfxVariationStart;
 			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].variation)[ref];
 		}
-		else if (type >= tfxOvertimeStart) {
+		else if (type >= tfxOvertimeStart && type < tfxTransformStart) {
 			int ref = type - tfxOvertimeStart;
 			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].overtime)[ref];
+		}
+		else if (type >= tfxTransformStart) {
+			int ref = type - tfxTransformStart;
+			return ((tfxGraph*)&library.transform_attributes[graph_id.graph_id])[ref];
 		}
 
 		assert(0);	//This function must return a value, make sure the graph_id is valid
@@ -7483,7 +7590,7 @@ namespace tfx {
 					effect.type = tfxEffectEmitterType::tfxStage;
 					effect.info_index = lib.AddEffectEmitterInfo();
 					lib.AddPreviewCameraSettings(effect);
-					effect.keyframes_index = lib.AddKeyframes();
+					effect.transform_attributes = lib.AddKeyframes();
 					lib.GetInfo(effect).uid = uid++;
 					effect_stack.push_back(effect);
 				}
@@ -7492,12 +7599,14 @@ namespace tfx {
 					effect.common.library = &lib;
 					effect.info_index = lib.AddEffectEmitterInfo();
 					effect.property_index = lib.AddEmitterProperties();
-					effect.keyframes_index = lib.AddKeyframes();
+					effect.transform_attributes = lib.AddKeyframes();
 					if (effect_stack.size() <= 1) { //Only root effects get the global graphs
 						lib.AddEffectGraphs(effect);
 						effect.ResetEffectGraphs(false, false);
 						current_global_graph = effect.global;
 					}
+					lib.AddTransformGraphs(effect);
+					effect.ResetTransformGraphs(false, false);
 					effect.type = tfxEffectEmitterType::tfxEffectType;
 					lib.AddAnimationSettings(effect);
 					lib.AddPreviewCameraSettings(effect);
@@ -7510,10 +7619,12 @@ namespace tfx {
 					emitter.common.library = &lib;
 					emitter.info_index = lib.AddEffectEmitterInfo();
 					emitter.property_index = lib.AddEmitterProperties();
-					emitter.keyframes_index = lib.AddKeyframes();
+					emitter.transform_attributes = lib.AddKeyframes();
 					lib.AddEmitterGraphs(emitter);
+					lib.AddTransformGraphs(emitter);
 					emitter.type = tfxEffectEmitterType::tfxEmitterType;
 					emitter.ResetEmitterGraphs(false, false);
+					emitter.ResetTransformGraphs(false, false);
 					lib.GetInfo(emitter).uid = uid++;
 					effect_stack.push_back(emitter);
 				}
@@ -7630,7 +7741,6 @@ namespace tfx {
 
 			if (context == tfxEndEmitter) {
 				effect_stack.back().InitialiseUninitialisedGraphs();
-				effect_stack.back().InitialiseUninitialisedEvents();
 				effect_stack.back().UpdateMaxLife();
 #ifdef tfxTRACK_MEMORY
 				tfxvec<tfxEffectEmitter> &sub_effectors = effect_stack.parent().GetInfo().sub_effectors;
@@ -7657,12 +7767,10 @@ namespace tfx {
 					}
 					effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
-					effect_stack.back().InitialiseUninitialisedEvents();
 				}
 				else {
 					lib.effects.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
-					effect_stack.back().InitialiseUninitialisedEvents();
 				}
 				effect_stack.pop();
 			}
@@ -8355,116 +8463,6 @@ return free_slot;
 		stage.common.frame = 0.f;
 	}
 
-	void ProcessKeyframes(tfxParticleManager &pm, tfxEffectEmitter &e) {
-		tfxKeyframes &keyframes = e.GetActions();
-
-		//Execute all due events
-		tfxU32 last_frame_bump = tfxMAX_UINT;
-		while (e.common.keyframe_position < keyframes.events.current_size && keyframes.events[e.common.keyframe_position].frame <= e.common.age / tfxFRAME_LENGTH) {
-			tfxAction &action = keyframes.events[e.common.keyframe_position];
-
-			if (action.type == tfxActionType_change_location) {
-				e.common.transform.local_position = action.values;
-			}
-
-			e.common.keyframe_position++;
-		}
-	}
-
-	bool HasActionAtFrame(tfxEffectEmitter &effect, tfxU32 frame) {
-		tfxKeyframes &keyframes = effect.GetActions();
-		keyframes.events.ResetIteratorIndex();
-		do {
-			for (auto &e : keyframes.events) {
-				if (e.frame == frame)
-					return true;
-			}
-		} while (!keyframes.events.EndOfBuckets());
-		return false;
-	}
-
-	bool HasActionAtFrame(tfxKeyframes &keyframes, tfxU32 frame) {
-		keyframes.events.ResetIteratorIndex();
-		do {
-			for (auto &e : keyframes.events) {
-				if (e.frame == frame)
-					return true;
-			}
-		} while (!keyframes.events.EndOfBuckets());
-		return false;
-	}
-
-	bool HasActionAtFrame(tfxKeyframes &keyframes, tfxU32 frame, tfxActionType type) {
-		keyframes.events.ResetIteratorIndex();
-		do {
-			for (auto &e : keyframes.events) {
-				if (e.frame == frame && e.type == type)
-					return true;
-			}
-		} while (!keyframes.events.EndOfBuckets());
-		return false;
-	}
-
-	bool HasActionType(tfxKeyframes &keyframes, tfxActionType type) {
-		keyframes.events.ResetIteratorIndex();
-		do {
-			for (auto &e : keyframes.events) {
-				if (e.type == type)
-					return true;
-			}
-		} while (!keyframes.events.EndOfBuckets());
-		return false;
-	}
-
-	tfxU32 GetAddTypeFrame(tfxKeyframes &keyframes) {
-		keyframes.events.ResetIteratorIndex();
-		do {
-			for (auto &e : keyframes.events) {
-				if (e.type == tfxActionType_add_effect)
-					return e.frame;
-			}
-		} while (!keyframes.events.EndOfBuckets());
-		return 0;
-	}
-
-	bool FrameIsAfterAddType(tfxKeyframes &keyframes, float frame) {
-		keyframes.events.ResetIteratorIndex();
-		do {
-			for (auto &e : keyframes.events) {
-				if (e.type == tfxActionType_add_effect && frame < e.frame)
-					return false;
-				else
-					return true;
-			}
-		} while (!keyframes.events.EndOfBuckets());
-		return false;
-	}
-
-	void AddKeyframe(tfxKeyframes &keyframes, tfxActionType type, float frame) {
-		tfxAction action;
-		action.frame = (tfxU32)frame;
-		action.type = type;
-		keyframes.events.ResetIteratorIndex();
-		do {
-			for (const auto &e : keyframes.events) {
-				if (frame < e.frame) {
-					tfxAction *r_value = keyframes.events.insert(&e, action);
-					return;
-				}
-				else if (frame == e.frame && type == e.type) {
-					return;
-				}
-			}
-		} while (!keyframes.events.EndOfBuckets());
-		keyframes.events.push_back(action);
-	}
-
-	void AdjustKeyframes(tfxKeyframes &keyframes, float amount) {
-		for (auto &action : keyframes.events) {
-			action.frame += (tfxU32)amount;
-		}
-	}
-
 	void tfxParticleManager::UpdateParticleOrderOnly() {
 		if (!(flags & tfxEffectManagerFlags_order_by_depth))
 			return;
@@ -8803,18 +8801,6 @@ return free_slot;
 		pm.AddEffect(effect, pm.current_ebuff);
 	}
 
-	void AddStage(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxVec3 position) {
-		for (auto &effect : stage.GetInfo().sub_effectors) {
-			auto &event = effect.GetActions().events.front();
-			effect.common.transform.local_position = event.values + position;
-			effect.GetProperties().delay_spawning = event.frame * tfxFRAME_LENGTH;
-			for (auto &emitter : effect.GetInfo().sub_effectors) {
-				//emitter.GetProperties().delay_spawning = event.frame * tfxFRAME_LENGTH;
-			}
-			pm.AddEffect(effect, pm.current_ebuff, false, event.frame * tfxFRAME_LENGTH);
-		}
-	}
-
 	void Rotate(tfxEffectEmitter &e, float r) {
 		e.common.transform.local_rotations.roll += r;
 	}
@@ -8850,8 +8836,6 @@ return free_slot;
 			e.common.frame = e.common.age / tfxLOOKUP_FREQUENCY;
 		}
 
-		ProcessKeyframes(pm, e);
-
 		if (e.type == tfxEffectEmitterType::tfxEffectType) {
 			pm.parent_spawn_controls = UpdateEffectState(e);
 		}
@@ -8862,7 +8846,7 @@ return free_slot;
 			e.parent = e.parent->next_ptr;
 
 			e.parent->common.timeout_counter = 0;
-			if (e.parent->common.age <= e.common.delay_spawning + tfxFRAME_LENGTH) {
+			if (e.parent->common.age < e.common.delay_spawning) {
 				return;
 			}
 			e.common.delay_spawning = -tfxFRAME_LENGTH;
@@ -9052,7 +9036,7 @@ return free_slot;
 		}
 		else {
 			if (!(e.flags & tfxEmitterStateFlags_retain_matrix)) {
-				e.common.transform.world_position = e.common.transform.local_position;
+				e.common.transform.world_position = e.common.transform.local_position + e.common.transform.translation;
 				e.common.transform.world_position += properties.emitter_handle * e.current.overal_scale;
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d) {
 					e.common.transform.world_rotations = e.common.transform.local_rotations;
@@ -9370,7 +9354,6 @@ return free_slot;
 		tfxEmitterProperties &properties = e.GetProperties();
 		tfxEmitterSpawnControls spawn_controls;
 
-		e.current.overal_scale = parent.current.overal_scale;
 		spawn_controls.life = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.life, e.common.frame) * parent_spawn_controls.life;
 		spawn_controls.life_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.life, e.common.frame) * parent_spawn_controls.life;
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
@@ -9389,20 +9372,25 @@ return free_slot;
 		spawn_controls.size_variation.y = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.height, e.common.frame) * parent_spawn_controls.size_y;
 		spawn_controls.velocity = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.velocity, e.common.frame) * parent_spawn_controls.velocity;
 		spawn_controls.velocity_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.velocity, e.common.frame) * parent_spawn_controls.velocity;
-		e.current.velocity_adjuster = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity_adjuster, e.common.frame);
 		spawn_controls.spin = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.spin, e.common.frame) * parent_spawn_controls.spin;
 		spawn_controls.spin_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.spin, e.common.frame) * parent_spawn_controls.spin;
-		e.common.transform.local_rotations.roll = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.roll, e.common.age);
-		e.common.transform.local_rotations.pitch = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.pitch, e.common.age);
-		e.common.transform.local_rotations.yaw = LookupPrecise(e.common.library->emitter_attributes[e.emitter_attributes].properties.yaw, e.common.age);
-		e.current.intensity = parent_spawn_controls.intensity;
 		spawn_controls.splatter = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.splatter, e.common.frame) * parent_spawn_controls.splatter;
-		e.current.emitter_size.y = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.emitter_height, e.common.frame);
 		spawn_controls.weight = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.weight, e.common.frame) * parent_spawn_controls.weight;
 		spawn_controls.weight_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.weight, e.common.frame) * parent_spawn_controls.weight;
 		spawn_controls.noise_offset_variation = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.noise_offset, e.common.frame);
 		spawn_controls.noise_offset = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].base.noise_offset, e.common.frame);
 		spawn_controls.noise_resolution = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].variation.noise_resolution, e.common.frame);
+
+		e.common.transform.translation.x = lookup_callback(e.common.library->transform_attributes[e.transform_attributes].translation_x, e.common.frame);
+		e.common.transform.translation.y = lookup_callback(e.common.library->transform_attributes[e.transform_attributes].translation_y, e.common.frame);
+		e.common.transform.translation.z = lookup_callback(e.common.library->transform_attributes[e.transform_attributes].translation_z, e.common.frame);
+		e.current.overal_scale = parent.current.overal_scale;
+		e.common.transform.local_rotations.roll = LookupPrecise(e.common.library->transform_attributes[e.transform_attributes].roll, e.common.age);
+		e.common.transform.local_rotations.pitch = LookupPrecise(e.common.library->transform_attributes[e.transform_attributes].pitch, e.common.age);
+		e.common.transform.local_rotations.yaw = LookupPrecise(e.common.library->transform_attributes[e.transform_attributes].yaw, e.common.age);
+		e.current.velocity_adjuster = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity_adjuster, e.common.frame);
+		e.current.intensity = parent_spawn_controls.intensity;
+		e.current.emitter_size.y = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.emitter_height, e.common.frame);
 		e.current.stretch = parent.current.stretch;
 		e.common.transform.scale = parent.common.transform.scale;
 
@@ -9509,6 +9497,7 @@ return free_slot;
 		spawn_controls.spin = lookup_callback(e.common.library->global_graphs[e.global].spin, e.common.frame);
 		spawn_controls.intensity = lookup_callback(e.common.library->global_graphs[e.global].intensity, e.common.frame);
 		spawn_controls.splatter = lookup_callback(e.common.library->global_graphs[e.global].splatter, e.common.frame);
+		spawn_controls.weight = lookup_callback(e.common.library->global_graphs[e.global].weight, e.common.frame);
 		e.current.emitter_size.x = lookup_callback(e.common.library->global_graphs[e.global].emitter_width, e.common.frame);
 		e.current.emitter_size.y = lookup_callback(e.common.library->global_graphs[e.global].emitter_height, e.common.frame);
 		e.current.emitter_size.z = lookup_callback(e.common.library->global_graphs[e.global].emitter_depth, e.common.frame);
@@ -9518,9 +9507,9 @@ return free_slot;
 			e.common.transform.scale.x = e.current.overal_scale;
 			e.common.transform.scale.y = e.current.overal_scale;
 			e.common.transform.scale.z = e.current.overal_scale;
-			e.common.transform.local_rotations.roll = LookupPrecise(e.common.library->global_graphs[e.global].roll, e.common.age);
-			e.common.transform.local_rotations.pitch = LookupPrecise(e.common.library->global_graphs[e.global].pitch, e.common.age);
-			e.common.transform.local_rotations.yaw = LookupPrecise(e.common.library->global_graphs[e.global].yaw, e.common.age);
+			e.common.transform.local_rotations.roll = LookupPrecise(e.common.library->transform_attributes[e.transform_attributes].roll, e.common.age);
+			e.common.transform.local_rotations.pitch = LookupPrecise(e.common.library->transform_attributes[e.transform_attributes].pitch, e.common.age);
+			e.common.transform.local_rotations.yaw = LookupPrecise(e.common.library->transform_attributes[e.transform_attributes].yaw, e.common.age);
 		}
 		else {
 			e.common.transform.scale.x = e.current.overal_scale;
@@ -9531,7 +9520,9 @@ return free_slot;
 			e.common.transform.local_rotations.yaw = 0.f;
 		}
 		e.current.stretch = lookup_callback(e.common.library->global_graphs[e.global].stretch, e.common.frame);
-		spawn_controls.weight = lookup_callback(e.common.library->global_graphs[e.global].weight, e.common.frame);
+		e.common.transform.translation.x = lookup_callback(e.common.library->transform_attributes[e.transform_attributes].translation_x, e.common.frame);
+		e.common.transform.translation.y = lookup_callback(e.common.library->transform_attributes[e.transform_attributes].translation_y, e.common.frame);
+		e.common.transform.translation.z = lookup_callback(e.common.library->transform_attributes[e.transform_attributes].translation_z, e.common.frame);
 
 		if (e.update_effect_callback)
 			e.update_effect_callback(e, spawn_controls);
