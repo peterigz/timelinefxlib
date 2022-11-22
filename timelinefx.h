@@ -3919,9 +3919,12 @@ union tfxUInt10bit
 
 	struct tfxRandom {
 		uint64_t seeds[2];
-		tfxRandom();
 
-		void ReSeed();
+		tfxRandom() {
+			ReSeed();
+		}
+
+		void ReSeed() { seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; }
 		void ReSeed(uint64_t seed1, uint64_t seed2);
 
 		inline float Generate() {
@@ -4555,9 +4558,9 @@ union tfxUInt10bit
 		}
 	};
 
-	static float(*lookup_overtime_callback)(tfxGraph &graph, float age, float lifetime) = LookupFastOvertime;
-	static float(*lookup_callback)(tfxGraph &graph, float age) = LookupFast;
-	static float(*lookup_random_callback)(tfxGraph &graph, float age) = GetRandomFast;
+	static float(*lookup_overtime_callback)(tfxGraph &graph, float age, float lifetime);
+	static float(*lookup_callback)(tfxGraph &graph, float age);
+	static float(*lookup_random_callback)(tfxGraph &graph, float age);
 
 	struct tfxShapeData {
 		char name[64];

@@ -5812,15 +5812,6 @@ namespace tfx {
 
 	}
 
-	tfxRandom::tfxRandom() {
-		ReSeed();
-	}
-
-	void tfxRandom::ReSeed() {
-		seeds[0] = Millisecs();
-		seeds[1] = Millisecs() * 2;
-	}
-
 	void tfxRandom::ReSeed(uint64_t seed1, uint64_t seed2) {
 		seeds[0] = seed1;
 		seeds[1] = seed2;
