@@ -103,6 +103,7 @@
 #if defined(_WIN32)
 #include <SDKDDKVer.h>
 #define WIN_LEAN_AND_MEAN
+#include <Windows.h>
 #endif
 
 //Might possibly replace some of these in the future
@@ -875,20 +876,140 @@ union tfxUInt10bit
 		tfxU64 result = _InterlockedExchange64((__int64*)value, new_value);
 		return result;
 	}
+
 	inline tfxU64 AtomicAdd64(tfxU64 volatile *value, tfxU64 amount_to_add) {
 		tfxU64 result = _InterlockedExchangeAdd64((__int64*)value, amount_to_add);
 		return result;
+	}
+
+	inline tfxU64 AtomicIncrement64(tfxU64 volatile *value) {
+		return InterlockedIncrement64((__int64*)value);
+	}
+
+	inline tfxU32 AtomicIncrement32(long volatile *value) {
+		return InterlockedIncrement((long*)value);
 	}
 
 	inline tfxU32 AtomicExchange32(tfxU32 volatile *value, tfxU32 new_value) {
 		tfxU32 result = _InterlockedExchange((long*)value, new_value);
 		return result;
 	}
+
 	inline tfxU32 AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
 		tfxU32 result = _InterlockedExchangeAdd((long*)value, amount_to_add);
 		return result;
 	}
 
+	inline tfxU32 AtomicExchangeCompare(tfxU32 volatile *value, tfxU32 exchange, tfxU32 compare) {
+		tfxU32 result = InterlockedCompareExchange(value, exchange, compare);
+		return result;
+	}
+
+#define tfxArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+
+	//Some multithreading functions - TODO: currently this is windows only, needs linux/max etc added
+	struct tfxWorkQueue;
+
+#define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
+	typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
+
+	struct tfxWorkQueueEntry {
+		tfxWorkQueueCallback *call_back;
+		void *data;
+	};
+
+	typedef tfxU32 tfxWorkQueueFlags;
+
+	enum tfxWorkQueueFlag_ {
+		tfxWorkQueueFlag_none = 0
+	};
+
+	struct tfxWorkQueue {
+		tfxU32 volatile entry_completion_goal = 0;
+		tfxU32 volatile entry_completion_count = 0;
+		tfxU32 volatile next_read_entry = 0;
+		tfxU32 volatile next_write_entry = 0;
+		tfxU32 volatile sleeping_threads = 0;
+		tfxU32 total_threads;
+		HANDLE semaphore_handle;
+		tfxWorkQueueEntry entries[256];
+	};
+
+	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+
+		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
+		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
+		queue->entries[queue->next_write_entry].data = data;
+		queue->entries[queue->next_write_entry].call_back = call_back;
+		++queue->entry_completion_goal;
+
+		_WriteBarrier();
+
+		queue->next_write_entry = new_entry_to_write;
+
+		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
+	}
+
+	struct tfxThreadInfo {
+		tfxWorkQueue *queue;
+		int logical_thread_index;
+	};
+
+	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
+		bool sleep = false;
+
+		tfxU32 original_read_entry = queue->next_read_entry;
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
+		if (original_read_entry != queue->next_write_entry) {
+			tfxU32 index = InterlockedCompareExchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
+			if (index == original_read_entry) {
+				tfxWorkQueueEntry *entry = queue->entries + index;
+				entry->call_back(queue, entry->data);
+				InterlockedIncrement(&queue->entry_completion_count);
+			}
+		}
+		else {
+			sleep = true;
+		}
+
+		return sleep;
+	}
+
+	static bool tfxWorkPending(tfxWorkQueue *queue) {
+		return queue->next_write_entry != queue->entry_completion_count;
+	}
+
+	DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
+
+		tfxThreadInfo *thread_info = (tfxThreadInfo*)lpParameter;
+
+		for (;;) {
+			if (tfxDoNextWorkQueueEntry(thread_info->queue)) {
+				//Suspend the thread
+				InterlockedIncrement(&thread_info->queue->sleeping_threads);
+				WaitForSingleObjectEx(thread_info->queue->semaphore_handle, INFINITE, false);
+				InterlockedDecrement(&thread_info->queue->sleeping_threads);
+			}
+		}
+
+	}
+
+	static void tfxCompleteAllWork(tfxWorkQueue *queue) {
+		tfxWorkQueueEntry entry = {};
+		while (queue->entry_completion_goal != queue->entry_completion_count) {
+			tfxDoNextWorkQueueEntry(queue);
+		}
+		queue->entry_completion_count = 0;
+		queue->entry_completion_goal = 0;
+		queue->next_write_entry = 0;
+		queue->next_read_entry = 0;
+	}
+
+	inline void tfxWaitUntilAllThreadsAreSleeping(tfxWorkQueue *queue) {
+		while(queue->sleeping_threads < queue->total_threads);
+	}
+
+	//Storage
 	//Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut
 	//std::vector replacement with some extra stuff and tweaks specific to Qulkan/TimelineFX
 	template<typename T>
@@ -2705,6 +2826,8 @@ union tfxUInt10bit
 		result.z = Clamp(lower, upper, v.z);
 		return result;
 	}
+
+#define tfxMin(a, b) (((a) < (b)) ? (a) : (b))
 
 	inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
 		tfxVec3 converted = Clamp(-1.f, 1.f, v) * 511.f;

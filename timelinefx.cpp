@@ -9199,7 +9199,7 @@ return free_slot;
 
 		e.current.amount_remainder = tween - 1.f;
 
-		pm.new_particles_index_start[properties.layer] = std::min(pm.new_particles_index_start[properties.layer], pm.particle_banks[e.particles_index].current_size);
+		pm.new_particles_index_start[properties.layer] = tfxMin(pm.new_particles_index_start[properties.layer], pm.particle_banks[e.particles_index].current_size);
 
 		for (auto &position : pm.new_positions) {
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
