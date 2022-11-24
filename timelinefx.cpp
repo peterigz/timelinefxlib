@@ -9848,13 +9848,8 @@ return free_slot;
 	tfxMemoryTrackerLog tfxMEMORY_TRACKER;
 	char tfxMEMORY_CONTEXT[64];
 	tfxDataTypesDictionary data_types;
-	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 	void *tfxDeferred_data_for_freeing[256];
 	tfxU32 tfxDeferred_index = 0;
-
-	void InitialiseTimelineFX() {
-		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
-	}
 
 	bool EndOfProfiles() {
 		assert(tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code

@@ -118,6 +118,7 @@
 #include <immintrin.h>
 #include <intrin.h>
 #include <mutex>
+#include <thread>					//only using this for std::thread::hardware_ concurrency()
 
 namespace tfx {
 
@@ -164,6 +165,8 @@ namespace tfx {
 #define tfxDelt "=" 
 #define tfxComt ","
 #define tfxEndLinet "\n"
+
+#define tfxMin(a, b) (((a) < (b)) ? (a) : (b))
 
 typedef std::chrono::high_resolution_clock tfxClock;
 
@@ -950,11 +953,6 @@ union tfxUInt10bit
 		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
 	}
 
-	struct tfxThreadInfo {
-		tfxWorkQueue *queue;
-		int logical_thread_index;
-	};
-
 	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
 		bool sleep = false;
 
@@ -981,14 +979,14 @@ union tfxUInt10bit
 
 	DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
 
-		tfxThreadInfo *thread_info = (tfxThreadInfo*)lpParameter;
+		tfxWorkQueue *queue = (tfxWorkQueue*)lpParameter;
 
 		for (;;) {
-			if (tfxDoNextWorkQueueEntry(thread_info->queue)) {
+			if (tfxDoNextWorkQueueEntry(queue)) {
 				//Suspend the thread
-				InterlockedIncrement(&thread_info->queue->sleeping_threads);
-				WaitForSingleObjectEx(thread_info->queue->semaphore_handle, INFINITE, false);
-				InterlockedDecrement(&thread_info->queue->sleeping_threads);
+				InterlockedIncrement(&queue->sleeping_threads);
+				WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, false);
+				InterlockedDecrement(&queue->sleeping_threads);
 			}
 		}
 
@@ -1007,6 +1005,23 @@ union tfxUInt10bit
 
 	inline void tfxWaitUntilAllThreadsAreSleeping(tfxWorkQueue *queue) {
 		while(queue->sleeping_threads < queue->total_threads);
+	}
+
+	inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue, tfxU32 max_threads) {
+		queue->entry_completion_count = 0;
+		queue->entry_completion_goal = 0;
+		queue->next_read_entry = 0;
+		queue->next_write_entry = 0;
+		queue->sleeping_threads = 0;
+		queue->total_threads = tfxMin(max_threads, std::thread::hardware_concurrency() - 1);
+		queue->semaphore_handle = CreateSemaphoreEx(0, 0, queue->total_threads, 0, 0, SEMAPHORE_ALL_ACCESS);
+
+		for (tfxU32 thread_index = 0; thread_index < queue->total_threads; ++thread_index) {
+			DWORD thread_id;
+			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, queue, 0, &thread_id);
+			CloseHandle(thread_handle);
+		}
+
 	}
 
 	//Storage
@@ -2826,8 +2841,6 @@ union tfxUInt10bit
 		result.z = Clamp(lower, upper, v.z);
 		return result;
 	}
-
-#define tfxMin(a, b) (((a) < (b)) ? (a) : (b))
 
 	inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
 		tfxVec3 converted = Clamp(-1.f, 1.f, v) * 511.f;
@@ -5992,7 +6005,6 @@ union tfxUInt10bit
 	};
 
 	extern tfxDataTypesDictionary data_types;
-	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 
 	//Internal functions
 	//Some file IO functions
@@ -6201,7 +6213,15 @@ union tfxUInt10bit
 	//Get a graph by tfxGraphID
 	tfxGraph &GetGraph(tfxEffectLibrary &library, tfxGraphID &graph_id);
 
-	void InitialiseTimelineFX();
+	//To enable multithreading set percent_of_available_threads_to_use to something higher then 0; 
+	//Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
+	static tfxWorkQueue tfxQueue;
+	static tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+	void InitialiseTimelineFX(float percent_of_available_threads_to_use = 0.f) {
+		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
+		tfxU32 max_threads = tfxU32((float)std::thread::hardware_concurrency() * percent_of_available_threads_to_use);
+		tfxInitialiseWorkQueue(&tfxQueue, max_threads);
+	}
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	void SetUpdateFrequency(float fps);
