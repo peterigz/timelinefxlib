@@ -8039,6 +8039,8 @@ return free_slot;
 	}
 
 	void tfxParticleManager::Update() {
+		tfxCompleteAllWork(&tfxQueue);
+
 		tfxPROFILE;
 		new_compute_particle_index = 0;
 
@@ -9218,7 +9220,7 @@ return free_slot;
 		work_entry.qty_step_size = qty_step_size;
 		work_entry.max_spawn_amount = max_spawn_amount;
 
-#if 0
+#if 1
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleAge);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticlePositions2d);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleNoise);
@@ -10552,13 +10554,14 @@ return free_slot;
 
 		e.sprites_index = amount_to_update + e.sprites_index;
 
-#if 0
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticlePosition(&tfxQueue, &work_entry));
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleSize(&tfxQueue, &work_entry));
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor(&tfxQueue, &work_entry));
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame(&tfxQueue, &work_entry));
+#if 1
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticlePosition);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleSize);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame);
 
 		tfxCompleteAllWork(&tfxQueue);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleAge);
 #else
 		ControlParticlePosition(&tfxQueue, &work_entry);
 		ControlParticleSize(&tfxQueue, &work_entry);
