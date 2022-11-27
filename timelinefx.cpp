@@ -2358,6 +2358,7 @@ namespace tfx {
 		if (!line) {
 			direction = data.velocity_normal.x = GetEmissionDirection2d(common, current, library_link, data.local_position.xy(), sprite_transform.position, current.emitter_size.xy()) + common.library->emitter_attributes[library_link->emitter_attributes].overtime.direction.GetFirstValue();
 		}
+
 		//Do a micro update
 		float micro_time = tfxUPDATE_TIME * (1.f - tween);
 		data.weight_acceleration += data.base.weight * common.library->emitter_attributes[library_link->emitter_attributes].overtime.weight.GetFirstValue() * micro_time;
@@ -7883,7 +7884,7 @@ namespace tfx {
 				emitter.parent = &effects[buffer][parent_index];
 				emitter.next_ptr = &emitter;
 				if (emitter.particles_index == tfxINVALID && flags & tfxEffectManagerFlags_unordered) {
-					emitter.particles_index = GrabParticleBank(*this, emitter.path_hash, 100);
+					emitter.particles_index = GrabParticleLists(*this, emitter.path_hash, 100);
 				}
 				else {
 					emitter.particles_index = properties.layer * 2 + current_pbuff;
@@ -8779,6 +8780,39 @@ return free_slot;
 		return pm.particle_banks.current_size - 1;
 	}
 
+	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount) {
+		if (pm.free_particle_lists.ValidKey(emitter_hash)) {
+			tfxvec<tfxU32> &free_banks = pm.free_particle_lists.At(emitter_hash);
+			if (free_banks.current_size) {
+				return free_banks.pop_back();
+			}
+		}
+
+		tfxParticleArrays lists;
+		lists.sprite_index.reserve(reserve_amount);
+		lists.age.reserve(reserve_amount);
+		lists.max_age.reserve(reserve_amount);
+		lists.local_position.reserve(reserve_amount);
+		lists.local_position.reserve(reserve_amount);
+		lists.local_rotations.reserve(reserve_amount);
+		lists.velocity_normal.reserve(reserve_amount);
+		lists.stretch.reserve(reserve_amount);
+		lists.weight_acceleration.reserve(reserve_amount);
+		lists.base_weight.reserve(reserve_amount);
+		lists.base_velocity.reserve(reserve_amount);
+		lists.base_spin.reserve(reserve_amount);
+		lists.noise_offset.reserve(reserve_amount);	
+		lists.noise_resolution.reserve(reserve_amount);
+		lists.color.reserve(reserve_amount);	
+		lists.intensity.reserve(reserve_amount);
+		lists.image_frame.reserve(reserve_amount);
+		lists.base_size.reserve(reserve_amount);
+		lists.single_loop_count.reserve(reserve_amount);			
+
+		pm.particle_arrays.push_back(lists);
+		return pm.particle_arrays.current_size - 1;
+	}
+
 	void StopSpawning(tfxParticleManager &pm) {
 		pm.SoftExpireAll();
 	}
@@ -8901,7 +8935,7 @@ return free_slot;
 						e.common.transform.captured_position = e.common.transform.world_position;
 					}
 
-					e.sprites_count = pm.particle_banks[e.particles_index].current_size;
+					e.sprites_count = pm.particle_arrays[e.particles_index].age.current_size;
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && e.sprites_count + max_spawn_count > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (e.sprites_count + max_spawn_count - sprite_buffer.free_space()) + 1));
 						sprite_buffer.current_size += e.sprites_count;
@@ -8921,11 +8955,11 @@ return free_slot;
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							amount_spawned = SpawnParticles2d(pm, e, spawn_controls, max_spawn_count);
+							amount_spawned = SpawnWideParticles2d(pm, e, spawn_controls, max_spawn_count);
 					}
 					else {
 						if (!(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							amount_spawned = SpawnParticles2d(pm, e, spawn_controls, max_spawn_count);
+							amount_spawned = SpawnWideParticles2d(pm, e, spawn_controls, max_spawn_count);
 					}
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
@@ -9153,6 +9187,633 @@ return free_slot;
 
 		e.current.amount_remainder = tween - 1.f;
 		return amount_spawned;
+	}
+
+	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount) {
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		if (e.flags & tfxEmitterStateFlags_single_shot_done || e.parent->flags & tfxEmitterStateFlags_stop_spawning)
+			return 0;
+		if (e.current.qty == 0)
+			return 0;
+
+		float qty_step_size = 1.f / e.current.qty;
+		float tween = 0;
+		if (qty_step_size == e.current.qty_step_size || e.common.property_flags & tfxEmitterPropertyFlags_single)
+			tween = e.current.amount_remainder;
+		else
+			tween = e.current.amount_remainder - (e.current.qty_step_size - qty_step_size);
+		e.current.qty_step_size = qty_step_size;
+		bool is_compute = e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
+
+		if (tween >= 1)
+			tween -= e.current.qty;
+
+		tfxSpawnWorkEntry work_entry;
+		work_entry.pm = &pm;
+		work_entry.e = &e;
+		work_entry.sprite_index = e.sprites_index;
+		work_entry.spawn_controls = &spawn_controls;
+		work_entry.tween = tween;
+		work_entry.qty_step_size = qty_step_size;
+		work_entry.max_spawn_amount = max_spawn_amount;
+
+#if 0
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleAge);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticlePositions2d);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleNoise);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleImageFrame);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSize);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpin);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpriteIndex);
+
+		tfxCompleteAllWork(&tfxQueue);
+#else
+		SpawnParticleAge(&tfxQueue, &work_entry);
+		SpawnParticlePositions2d(&tfxQueue, &work_entry);
+		SpawnParticleNoise(&tfxQueue, &work_entry);
+		SpawnParticleImageFrame(&tfxQueue, &work_entry);
+		SpawnParticleSize(&tfxQueue, &work_entry);
+		SpawnParticleSpin(&tfxQueue, &work_entry);
+		SpawnParticleSpriteIndex(&tfxQueue, &work_entry);
+#endif
+
+		tfxU32 amount_spawned = e.sprites_index - work_entry.sprite_index;
+		if (amount_spawned > 0 && e.common.property_flags & tfxEmitterPropertyFlags_single)
+			e.flags |= tfxEmitterStateFlags_single_shot_done;
+
+		return amount_spawned;
+	}
+
+	void SpawnParticleSpriteIndex(tfxWorkQueue *queue, void *data) {
+
+		tfxU32 amount_spawned = 0;
+		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		float tween = entry->tween;
+		tfxU32 sprite_index = entry->sprite_index;
+		tfxEffectEmitter &e = *entry->e;
+		tfxParticleManager &pm = *entry->pm;
+		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		while (tween < 1.f) {
+			if (amount_spawned >= entry->max_spawn_amount) {
+				tween = 1.f;
+				break;
+			}
+
+			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
+			tfxU32 &sprite_index = pm.GrabSpriteIndex(e.particles_index);
+			tfxU32 &next_index = pm.GrabNextIndex(e.particles_index);
+			tfxParticleFlags &flags = pm.GrabFlags(e.particles_index);
+		
+			sprite_index = (properties.layer << 28) + e.sprites_index;
+			flags = 0;
+			next_index = pm.particle_arrays[e.particles_index].next_index.current_size - 1;
+			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][e.sprites_index++];
+
+			s.handle = e.current.image_handle;
+			s.image_ptr = properties.image->ptr;
+
+			tween += entry->qty_step_size;
+			amount_spawned++;
+		}
+
+		e.current.amount_remainder = tween - 1.f;
+	}
+
+	void SpawnParticleAge(tfxWorkQueue *queue, void *data) {
+
+		tfxU32 amount_spawned = 0;
+		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		float tween = entry->tween;
+		tfxU32 sprite_index = entry->sprite_index;
+		tfxEffectEmitter &e = *entry->e;
+		tfxParticleManager &pm = *entry->pm;
+		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		while (tween < 1.f) {
+			if (amount_spawned >= entry->max_spawn_amount) {
+				tween = 1.f;
+				break;
+			}
+
+			float &age = pm.GrabAge(e.particles_index);
+			float &max_age = pm.GrabMaxAge(e.particles_index);
+			tfxRGBA8 &color = pm.GrabColor(e.particles_index);
+			float &intensity = pm.GrabIntensity(e.particles_index);
+			tfxU32 &single_loop_count = pm.GrabSingleLoopCount(e.particles_index);
+			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][sprite_index++];
+
+			//Max age
+			age = 0.f;
+			max_age = spawn_controls.life + random_generation.Range(spawn_controls.life_variation);
+			single_loop_count = 0;
+
+			e.highest_particle_age = std::fmaxf(e.highest_particle_age, max_age + tfxFRAME_LENGTH + 1);
+			e.parent->highest_particle_age = e.highest_particle_age + tfxFRAME_LENGTH;
+
+			//----Color
+			color.a = unsigned char(255.f * e.common.library->emitter_attributes[e.emitter_attributes].overtime.blendfactor.GetFirstValue());
+			intensity = e.common.library->emitter_attributes[e.emitter_attributes].overtime.intensity.GetFirstValue() * e.current.intensity;
+			if (e.common.property_flags & tfxEmitterPropertyFlags_random_color) {
+				float age = random_generation.Range(max_age);
+				color.r = unsigned char(255.f * lookup_overtime_callback(e.common.library->emitter_attributes[e.emitter_attributes].overtime.red, age, max_age));
+				color.g = unsigned char(255.f * lookup_overtime_callback(e.common.library->emitter_attributes[e.emitter_attributes].overtime.green, age, max_age));
+				color.b = unsigned char(255.f * lookup_overtime_callback(e.common.library->emitter_attributes[e.emitter_attributes].overtime.blue, age, max_age));
+			}
+			else {
+				color.r = unsigned char(255.f * e.common.library->emitter_attributes[e.emitter_attributes].overtime.red.GetFirstValue());
+				color.g = unsigned char(255.f * e.common.library->emitter_attributes[e.emitter_attributes].overtime.green.GetFirstValue());
+				color.b = unsigned char(255.f * e.common.library->emitter_attributes[e.emitter_attributes].overtime.blue.GetFirstValue());
+			}
+
+			s.color = color;
+			s.intensity = intensity;
+
+			tween += entry->qty_step_size;
+			amount_spawned++;
+		}
+	}
+
+	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data) {
+
+		tfxU32 amount_spawned = 0;
+		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		float tween = entry->tween;
+		tfxU32 sprite_index = entry->sprite_index;
+		tfxEffectEmitter &e = *entry->e;
+		tfxParticleManager &pm = *entry->pm;
+		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		while (tween < 1.f) {
+			if (amount_spawned >= entry->max_spawn_amount) {
+				tween = 1.f;
+				break;
+			}
+
+			float &image_frame = pm.GrabImageFrame(e.particles_index);
+			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][sprite_index++];
+
+			//----Image
+			//data.image = GetProperties().image;
+			if (e.common.property_flags & tfxEmitterPropertyFlags_random_start_frame && properties.image->animation_frames > 1) {
+				image_frame = random_generation.Range(properties.image->animation_frames);
+			}
+			else {
+				image_frame = properties.start_frame;
+			}
+
+			s.image_frame = (tfxU32)image_frame;
+			tween += entry->qty_step_size;
+			amount_spawned++;
+		}
+	}
+
+	void SpawnParticleSize(tfxWorkQueue *queue, void *data) {
+
+		tfxU32 amount_spawned = 0;
+		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		float tween = entry->tween;
+		tfxU32 sprite_index = entry->sprite_index;
+		tfxEffectEmitter &e = *entry->e;
+		tfxParticleManager &pm = *entry->pm;
+		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		while (tween < 1.f) {
+			if (amount_spawned >= entry->max_spawn_amount) {
+				tween = 1.f;
+				break;
+			}
+
+			tfxVec2 &base_size = pm.GrabSize(e.particles_index);
+			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][sprite_index++];
+
+			//----Size
+			if (!(e.common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
+				float random_size_x = random_generation.Range(spawn_controls.size_variation.x);
+				float random_size_y = random_generation.Range(spawn_controls.size_variation.y);
+				base_size.y = random_size_y + spawn_controls.size.y;
+				base_size.x = (random_size_x + spawn_controls.size.x) / properties.image->image_size.x;
+				float height = base_size.y / properties.image->image_size.y;
+
+				s.transform.scale.x = base_size.x * e.common.library->emitter_attributes[e.emitter_attributes].overtime.width.GetFirstValue();
+
+				if (e.common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
+					s.transform.scale.y = height * e.common.library->emitter_attributes[e.emitter_attributes].overtime.width.GetFirstValue();
+				}
+				else {
+					s.transform.scale.y = height * e.common.library->emitter_attributes[e.emitter_attributes].overtime.height.GetFirstValue();
+				}
+			}
+			else {
+				float random_size_x = random_generation.Range(spawn_controls.size_variation.x);
+				float random_size_y = random_size_x;
+				base_size.y = random_size_y + spawn_controls.size.y;
+				base_size.x = (random_size_x + spawn_controls.size.x) / properties.image->image_size.x;
+				float height = base_size.y / properties.image->image_size.y;
+
+				s.transform.scale.x = base_size.x * e.common.library->emitter_attributes[e.emitter_attributes].overtime.width.GetFirstValue();
+				s.transform.scale.y = s.transform.scale.x;
+			}
+			tween += entry->qty_step_size;
+			amount_spawned++;
+		}
+	}
+
+	void SpawnParticleNoise(tfxWorkQueue *queue, void *data) {
+
+		tfxU32 amount_spawned = 0;
+		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		float tween = entry->tween;
+		tfxU32 sprite_index = entry->sprite_index;
+		tfxEffectEmitter &e = *entry->e;
+		tfxParticleManager &pm = *entry->pm;
+		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		while (tween < 1.f) {
+			if (amount_spawned >= entry->max_spawn_amount) {
+				tween = 1.f;
+				break;
+			}
+
+			float &noise_offset = pm.GrabNoiseOffset(e.particles_index);
+			float &noise_resolution = pm.GrabNoiseResolution(e.particles_index);
+
+			//----Motion randomness
+			noise_offset = random_generation.Range(spawn_controls.noise_offset_variation) + spawn_controls.noise_offset;
+			noise_resolution = spawn_controls.noise_resolution + 0.01f;
+
+			tween += entry->qty_step_size;
+			amount_spawned++;
+		}
+	}
+
+	void SpawnParticleSpin(tfxWorkQueue *queue, void *data) {
+
+		tfxU32 amount_spawned = 0;
+		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		float tween = entry->tween;
+		tfxU32 sprite_index = entry->sprite_index;
+		tfxEffectEmitter &e = *entry->e;
+		tfxParticleManager &pm = *entry->pm;
+		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		while (tween < 1.f) {
+			if (amount_spawned >= entry->max_spawn_amount) {
+				tween = 1.f;
+				break;
+			}
+
+			float &base_spin = pm.GrabBaseSpin(e.particles_index);
+
+			//----Spin
+			base_spin = random_generation.Range(-spawn_controls.spin_variation, std::abs(spawn_controls.spin_variation)) + spawn_controls.spin;
+
+			tween += entry->qty_step_size;
+			amount_spawned++;
+		}
+	}
+
+	void SpawnParticlePositions2d(tfxWorkQueue *queue, void *data) {
+
+		tfxU32 amount_spawned = 0;
+		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		float tween = entry->tween;
+		tfxU32 sprite_index = entry->sprite_index;
+		tfxEffectEmitter &e = *entry->e;
+		tfxParticleManager &pm = *entry->pm;
+		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		while (tween < 1.f) {
+			if (amount_spawned >= entry->max_spawn_amount) {
+				tween = 1.f;
+				break;
+			}
+
+			tfxVec3 &local_position = pm.GrabLocalPosition(e.particles_index);
+			tfxVec3 &velocity_normal = pm.GrabVelocityNormal(e.particles_index);
+			tfxVec3 &local_rotations = pm.GrabLocalRotations(e.particles_index);
+			float &base_velocity = pm.GrabBaseVelocity(e.particles_index);
+			float &weight_acceleration = pm.GrabWeightAcceleration(e.particles_index);
+			float &base_weight = pm.GrabBaseWeight(e.particles_index);
+			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][sprite_index++];
+
+			//----Velocity
+			float velocity_scale = e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity.GetFirstValue() * e.current.velocity_adjuster;
+			base_velocity = spawn_controls.velocity + random_generation.Range(-spawn_controls.velocity_variation, spawn_controls.velocity_variation);
+
+			//----Weight
+			if (spawn_controls.weight) {
+				base_weight = spawn_controls.weight;
+				if (spawn_controls.weight_variation > 0) {
+					base_weight += random_generation.Range(-spawn_controls.weight_variation, spawn_controls.weight_variation);
+				}
+			}
+			else {
+				base_weight = 0;
+			}
+			weight_acceleration = base_weight * e.common.library->emitter_attributes[e.emitter_attributes].overtime.weight.GetFirstValue() * tfxUPDATE_TIME;
+
+			s.transform.rotation = 0;
+			local_rotations = 0;
+			if (properties.angle_settings & tfxAngleSettingFlags_random_roll) {
+				s.transform.rotation = local_rotations.roll = random_generation.Range(properties.angle_offsets.roll);
+			}
+			else if (properties.angle_settings & tfxAngleSettingFlags_specify_roll) {
+				s.transform.rotation = local_rotations.roll = properties.angle_offsets.roll;
+			}
+			else {
+				s.transform.rotation = local_rotations.roll = 0;
+			}
+
+			//----Position
+			local_position = 0;
+			tfxVec2 lerp_position = InterpolateVec2(tween, e.common.transform.captured_position.xy(), e.common.transform.world_position.xy());
+			if (properties.emission_type == tfxPoint) {
+				if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position)
+					local_position = 0;
+				else {
+					if (e.common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
+						local_position = lerp_position;
+					}
+					else {
+						tfxVec2 rotvec = mmTransformVector(e.common.transform.matrix, -e.common.handle.xy());
+						local_position = rotvec + lerp_position;
+					}
+				}
+			}
+			else if (properties.emission_type == tfxArea) {
+				tfxVec2 position = tfxVec2(0.f, 0.f);
+
+				if (e.common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
+
+					if (e.common.property_flags & tfxEmitterPropertyFlags_fill_area) {
+						if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+							e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+							e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+							local_position = e.current.grid_coords.xy() * spawn_controls.grid_segment_size.xy();
+						}
+						else {
+							if (!(e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
+								e.current.grid_coords.x--;
+								if (e.current.grid_coords.x < 0.f) {
+									e.current.grid_coords.y--;
+									e.current.grid_coords.x = properties.grid_points.x - 1;
+									if (e.current.grid_coords.y < 0.f)
+										e.current.grid_coords.y = properties.grid_points.y - 1;
+								}
+							}
+
+							local_position = e.current.grid_coords.xy() * spawn_controls.grid_segment_size.xy();
+
+							if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+								e.current.grid_coords.x++;
+								if (e.current.grid_coords.x == properties.grid_points.x) {
+									e.current.grid_coords.y++;
+									e.current.grid_coords.x = 0.f;
+									if (e.current.grid_coords.y >= properties.grid_points.y)
+										e.current.grid_coords.y = 0.f;
+								}
+							}
+						}
+					}
+					else {
+						if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+							tfxU32 side = random_generation.RangeUInt(4);
+							if (side == 0) {
+								//left side
+								e.current.grid_coords.x = 0.f;
+								e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+							}
+							else if (side == 1) {
+								//right side
+								e.current.grid_coords.x = properties.grid_points.x - 1;
+								e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+							}
+							else if (side == 2) {
+								//top side
+								e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+								e.current.grid_coords.y = 0.f;
+							}
+							else if (side == 3) {
+								//bottom side
+								e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+								e.current.grid_coords.y = properties.grid_points.y - 1;
+							}
+							local_position = e.current.grid_coords.xy() * spawn_controls.grid_segment_size.xy();
+						}
+						else {
+							if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+
+								e.current.grid_direction.x = 1;
+								e.current.grid_direction.y = 0;
+								if (e.current.grid_coords.x == properties.grid_points.x - 1 && e.current.grid_coords.y >= 0 && e.current.grid_coords.y < properties.grid_points.y - 1) {
+									e.current.grid_direction.x = 0;
+									e.current.grid_direction.y = 1;
+								}
+								else if (e.current.grid_coords.x > 0 && e.current.grid_coords.x < properties.grid_points.x && e.current.grid_coords.y == properties.grid_points.y - 1) {
+									e.current.grid_direction.x = -1;
+									e.current.grid_direction.y = 0;
+								}
+								else if (e.current.grid_coords.x == 0 && e.current.grid_coords.y > 0 && e.current.grid_coords.y < properties.grid_points.y) {
+									e.current.grid_direction.x = 0;
+									e.current.grid_direction.y = -1;
+								}
+
+							}
+							else {
+
+								e.current.grid_direction.x = -1;
+								e.current.grid_direction.y = 0;
+								if (e.current.grid_coords.x == properties.grid_points.x - 1 && e.current.grid_coords.y > 0 && e.current.grid_coords.y < properties.grid_points.y) {
+									e.current.grid_direction.x = 0;
+									e.current.grid_direction.y = -1;
+								}
+								else if (e.current.grid_coords.x >= 0 && e.current.grid_coords.x < properties.grid_points.x - 1 && e.current.grid_coords.y == properties.grid_points.y - 1) {
+									e.current.grid_direction.x = 1;
+									e.current.grid_direction.y = 0;
+								}
+								else if (e.current.grid_coords.x == 0 && e.current.grid_coords.y >= 0 && e.current.grid_coords.y < properties.grid_points.y - 1) {
+									e.current.grid_direction.x = 0;
+									e.current.grid_direction.y = 1;
+								}
+
+							}
+
+							e.current.grid_coords += e.current.grid_direction;
+							tfxBound(e.current.grid_coords.xy(), properties.grid_points.xy());
+							local_position = position + (e.current.grid_coords.xy() * spawn_controls.grid_segment_size.xy());
+						}
+					}
+				}
+				else {
+					if (e.common.property_flags & tfxEmitterPropertyFlags_fill_area) {
+						position.x = random_generation.Range(e.current.emitter_size.x);
+						position.y = random_generation.Range(e.current.emitter_size.y);
+					}
+					else {
+						//Spawn on one of 4 edges of the area
+						tfxU32 side = random_generation.RangeUInt(4);
+						if (side == 0) {
+							//left side
+							position.x = 0.f;
+							position.y = random_generation.Range(e.current.emitter_size.y);
+						}
+						else if (side == 1) {
+							//right side
+							position.x = e.current.emitter_size.x;
+							position.y = random_generation.Range(e.current.emitter_size.y);
+						}
+						else if (side == 2) {
+							//top side
+							position.x = random_generation.Range(e.current.emitter_size.x);
+							position.y = 0.f;
+						}
+						else if (side == 3) {
+							//bottom side
+							position.x = random_generation.Range(e.current.emitter_size.x);
+							position.y = e.current.emitter_size.y;
+						}
+					}
+
+					local_position = position;
+				}
+
+				//----TForm and Emission
+				if (!(e.common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+					local_position = mmTransformVector(e.common.transform.matrix, local_position.xy() + e.common.handle.xy());
+					local_position = lerp_position + local_position.xy() * e.common.transform.scale.xy();
+				}
+
+			}
+			else if (properties.emission_type == tfxEllipse) {
+				tfxVec2 emitter_size = (e.current.emitter_size.xy() * .5f);
+				tfxVec2 position = tfxVec2(0.f, 0.f);
+
+				if (e.common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(e.common.property_flags & tfxEmitterPropertyFlags_fill_area)) {
+
+					e.current.grid_coords.y = 0.f;
+
+					if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+						e.current.grid_coords.x--;
+						if (e.current.grid_coords.x < 0.f) {
+							e.current.grid_coords.x = properties.grid_points.x - 1;
+						}
+					}
+
+					float th = e.current.grid_coords.x * spawn_controls.grid_segment_size.x + spawn_controls.arc_offset;
+					local_position = tfxVec2(std::cosf(th) * emitter_size.x + emitter_size.x, -std::sinf(th) * emitter_size.y + emitter_size.y);
+
+					if (!(e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
+						e.current.grid_coords.x++;
+						if (e.current.grid_coords.x >= properties.grid_points.x) {
+							e.current.grid_coords.x = 0.f;
+						}
+					}
+
+				}
+				else if (!(e.common.property_flags & tfxEmitterPropertyFlags_fill_area)) {
+					float th = random_generation.Range(spawn_controls.arc_size) + spawn_controls.arc_offset;
+
+					local_position = tfxVec2(std::cosf(th) * emitter_size.x + emitter_size.x, -std::sinf(th) * emitter_size.y + emitter_size.y);
+
+				}
+				else {
+					local_position.x = random_generation.Range(0, e.current.emitter_size.x);
+					local_position.y = random_generation.Range(0, e.current.emitter_size.y);
+
+					while ((std::pow(local_position.x - emitter_size.x, 2) / std::pow(emitter_size.x, 2)) + (std::pow(local_position.y - emitter_size.y, 2) / std::pow(emitter_size.y, 2)) > 1) {
+						local_position.x = random_generation.Range(0, e.current.emitter_size.x);
+						local_position.y = random_generation.Range(0, e.current.emitter_size.y);
+					}
+				}
+
+				//----TForm and Emission
+				if (!(e.common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+					local_position = mmTransformVector(e.common.transform.matrix, local_position.xy() + e.common.handle.xy());
+					local_position = lerp_position + local_position.xy() * e.common.transform.scale.xy();
+				}
+
+			}
+			else if (properties.emission_type == tfxLine) {
+				if (e.common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
+
+					e.current.grid_coords.x = 0.f;
+
+					if (!(e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
+						e.current.grid_coords.y--;
+						if (e.current.grid_coords.y < 0.f) {
+							e.current.grid_coords.y = properties.grid_points.x - 1;
+						}
+					}
+
+					local_position = tfxVec2(e.current.grid_coords.xy() * -spawn_controls.grid_segment_size.xy());
+
+					if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+						e.current.grid_coords.y++;
+						if (e.current.grid_coords.y >= properties.grid_points.x) {
+							e.current.grid_coords.y = 0.f;
+						}
+					}
+
+				}
+				else {
+					local_position.x = 0.f;
+					local_position.y = random_generation.Range(-e.current.emitter_size.y, 0.f);
+
+				}
+
+				//----TForm and Emission
+				if (!(e.common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
+					local_position = mmTransformVector(e.common.transform.matrix, local_position.xy() + e.common.handle.xy());
+					local_position = lerp_position + local_position.xy() * e.common.transform.scale.xy();
+				}
+			}
+
+			float direction = 0;
+
+			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
+
+			if (!line && !(e.common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+				//e.current.transform_particle_callback2d(p, sprite_transform.position, sprite_transform.rotation, e.common, e.common.transform.world_position);
+				//data.captured_position = sprite_transform.captured_position = sprite_transform.position;
+			}
+
+			if (!line) {
+				direction = velocity_normal.x = GetEmissionDirection2d(e.common, e.current, &e, local_position.xy(), s.transform.position, e.current.emitter_size.xy()) + e.common.library->emitter_attributes[e.emitter_attributes].overtime.direction.GetFirstValue();
+			}
+
+			//Do a micro update
+			float micro_time = tfxUPDATE_TIME * (1.f - tween);
+			weight_acceleration += base_weight * e.common.library->emitter_attributes[e.emitter_attributes].overtime.weight.GetFirstValue() * micro_time;
+			//----Velocity Changes
+			velocity_normal.x = std::sinf(direction);
+			velocity_normal.y = -std::cosf(direction);
+			tfxVec2 current_velocity = (base_velocity * e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity.GetFirstValue()) * velocity_normal.xy();
+			current_velocity.y += weight_acceleration;
+			local_position += current_velocity * micro_time;
+			if (line || e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
+				tfxVec2 rotatevec = mmTransformVector(e.common.transform.matrix, tfxVec2(local_position.x, local_position.y) + e.common.handle.xy());
+				//p.captured_position = sprite_transform.captured_position = e.common.transform.captured_position.xy() + rotatevec * e.common.transform.scale.xy();
+				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e.common, tfxVec3(e.common.transform.world_position.x, e.common.transform.world_position.y, 0.f));
+			}
+			else {
+				s.transform.position += current_velocity * micro_time;
+				s.transform.captured_position = s.transform.position;
+			}
+			//end micro update
+
+			tween += entry->qty_step_size;
+			amount_spawned++;
+		}
+
 	}
 
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount) {
@@ -9521,6 +10182,332 @@ return free_slot;
 		return spawn_controls;
 	}
 
+	void ControlParticleAge(tfxWorkQueue *queue, void *data) {
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxEffectEmitter &e = *work_entry->e;
+		tfxParticleArrays &bank = work_entry->pm->particle_arrays[work_entry->e->particles_index];
+		tfxEmitterProperties &properties = e.GetProperties();
+
+		tfxU32 offset = 0;
+		for (int i = work_entry->start_index; i >= 0; --i) {
+			float &age = bank.age[i];
+			const float &max_age = bank.max_age[i];
+			tfxU32 &single_loop_count = bank.single_loop_count[i];
+			tfxU32 &next_index = bank.next_index[i];
+			tfxParticleFlags &flags = bank.flags[i];
+			age += tfxFRAME_LENGTH;
+			flags |= e.flags & tfxParticleFlags_remove;
+
+			if (flags & tfxParticleFlags_remove || age >= max_age) {
+				if (e.common.property_flags & tfxEmitterPropertyFlags_single && !(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning))
+					if (single_loop_count++ != properties.single_shot_limit) {
+						age = 0;
+					}
+					else {
+						flags |= tfxParticleFlags_remove;
+						next_index = tfxINVALID;
+					}
+				else {
+					flags |= tfxParticleFlags_remove;
+					next_index = tfxINVALID;
+				}
+			}
+
+			if (flags & tfxParticleFlags_remove) {
+				offset++;
+			}
+			else if (offset > 0) {
+				bank.next_index[i] = i + offset;
+
+				bank.sprite_index[i + offset] = bank.sprite_index[i];
+				bank.next_index[i + offset] = bank.next_index[i];
+				bank.flags[i + offset] = bank.flags[i];
+				bank.age[i + offset] = bank.age[i];	
+				bank.max_age[i + offset] = bank.max_age[i];
+				bank.local_position[i + offset] = bank.local_position[i];
+				bank.local_rotations[i + offset] = bank.local_rotations[i];
+				bank.velocity_normal[i + offset] = bank.velocity_normal[i];
+				bank.stretch[i + offset] = bank.stretch[i];
+				bank.weight_acceleration[i + offset] = bank.weight_acceleration[i];
+				bank.base_weight[i + offset] = bank.base_weight[i];
+				bank.base_velocity[i + offset] = bank.base_velocity[i];
+				bank.base_spin[i + offset] = bank.base_spin[i];
+				bank.noise_offset[i + offset] = bank.noise_offset[i];		
+				bank.noise_resolution[i + offset] = bank.noise_resolution[i];
+				bank.color[i + offset] = bank.color[i];			
+				bank.intensity[i + offset] = bank.intensity[i];
+				bank.image_frame[i + offset] = bank.image_frame[i];
+				bank.base_size[i + offset] = bank.base_size[i];
+				bank.single_loop_count[i + offset] = bank.single_loop_count[i];	
+
+			}
+
+		}
+
+		if (offset) {
+			bank.sprite_index.bump(offset);
+			bank.next_index.bump(offset);
+			bank.flags.bump(offset);
+			bank.age.bump(offset);
+			bank.max_age.bump(offset);
+			bank.local_position.bump(offset);
+			bank.local_rotations.bump(offset);
+			bank.velocity_normal.bump(offset);
+			bank.stretch.bump(offset);
+			bank.weight_acceleration.bump(offset);
+			bank.base_weight.bump(offset);
+			bank.base_velocity.bump(offset);
+			bank.base_spin.bump(offset);
+			bank.noise_offset.bump(offset);
+			bank.noise_resolution.bump(offset);
+			bank.color.bump(offset);
+			bank.intensity.bump(offset);
+			bank.image_frame.bump(offset);
+			bank.base_size.bump(offset);
+			bank.single_loop_count.bump(offset);
+		}
+
+	}
+
+	void ControlParticlePosition(tfxWorkQueue *queue, void *data) {
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxParticleArrays &bank = work_entry->pm->particle_arrays[work_entry->e->particles_index];
+		tfxControlData &c = *work_entry->c;
+
+		tfxU32 running_sprite_index = work_entry->sprites_index;
+
+		for (int i = work_entry->start_index; i >= 0; --i) {
+
+			const float age = bank.age[i];
+			const float max_age = bank.max_age[i];
+			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+
+			const float base_weight = bank.base_weight[i];
+			const float base_velocity = bank.base_velocity[i];
+			const float base_spin = bank.base_spin[i];
+			const float noise_offset = bank.noise_offset[i];
+			const float noise_resolution = bank.noise_resolution[i];
+			const float angle = bank.velocity_normal[i].x;
+			float &weight_acceleration = bank.weight_acceleration[i];
+			tfxVec3 &local_position = bank.local_position[i];
+			tfxVec3 &local_rotations = bank.local_rotations[i];
+			tfxParticleFlags &flags = bank.flags[i];
+
+			const float lookup_velocity = c.graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
+			const float lookup_velocity_turbulance = c.graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity_turbulance.lookup.last_frame)];
+			const float lookup_direction = c.graphs->direction.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->direction.lookup.last_frame)] + angle;
+			const float lookup_noise_resolution = c.graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->noise_resolution.lookup.last_frame)] * noise_resolution;
+			const float lookup_weight = c.graphs->weight.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->weight.lookup.last_frame)];
+			const float lookup_spin = c.graphs->spin.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->spin.lookup.last_frame)] * base_spin;
+
+			float direction = 0;
+
+			tfxVec2 mr_vec;
+			if (c.flags & tfxEmitterStateFlags_not_line) {
+				direction = lookup_direction;
+			}
+
+			if (lookup_velocity_turbulance) {
+				float eps = 0.0001f;
+				float eps2 = 0.0001f * 2.f;
+
+				float x = local_position.x / lookup_noise_resolution + noise_offset;
+				float y = local_position.y / lookup_noise_resolution + noise_offset;
+
+				//Find rate of change in YZ plane
+				float n1 = tfxSimplexNoise::noise(x, y + eps);
+				float n2 = tfxSimplexNoise::noise(x, y - eps);
+				//Average to find approximate derivative
+				float a = (n1 - n2) / eps2;
+				n1 = tfxSimplexNoise::noise(x, y);
+				n2 = tfxSimplexNoise::noise(x, y);
+				//Average to find approximate derivative
+				float b = (n1 - n2) / eps2;
+				mr_vec.x = a - b;
+
+				//Find rate of change in XZ plane
+				n1 = tfxSimplexNoise::noise(x, y);
+				n2 = tfxSimplexNoise::noise(x, y);
+				a = (n1 - n2) / eps2;
+				n1 = tfxSimplexNoise::noise(x + eps, y);
+				n2 = tfxSimplexNoise::noise(x - eps, y);
+				b = (n1 - n2) / eps2;
+				mr_vec.y = a - b;
+				mr_vec *= lookup_velocity_turbulance;
+			}
+
+			//----Weight Changes
+			weight_acceleration += base_weight * lookup_weight * tfxUPDATE_TIME;
+
+			//----Velocity Changes
+			tfxVec2 velocity_normal;
+			velocity_normal.x = std::sinf(direction);
+			velocity_normal.y = -std::cosf(direction);
+
+			tfxVec2 current_velocity = (base_velocity * lookup_velocity) * velocity_normal;
+			current_velocity += mr_vec;
+			current_velocity.y += weight_acceleration;
+			current_velocity *= tfxUPDATE_TIME;
+
+			//----Spin and angle Changes
+			float spin = 0;
+			if (c.flags & tfxEmitterStateFlags_can_spin) {
+				spin = lookup_spin;
+			}
+
+			//----Rotation
+			if (c.flags & tfxEmitterStateFlags_align_with_velocity) {
+				tfxVec2 vd = current_velocity.IsNill() ? velocity_normal : current_velocity;
+				local_rotations.roll = GetVectorAngle(vd.x, vd.y) + c.angle_offset;
+			}
+			else {
+				local_rotations.roll += spin * tfxUPDATE_TIME;
+			}
+
+			local_position += current_velocity * c.overal_scale;
+
+			//Lines - Reposition if the particle is travelling along a line
+			tfxVec2 offset = velocity_normal * c.emitter_size_y;
+			float length = std::fabsf(local_position.y);
+			float emitter_length = c.emitter_size_y;
+			bool line_and_kill = (c.flags & tfxEmitterStateFlags_is_line_traversal) && (c.flags & tfxEmitterStateFlags_kill) && length > emitter_length;
+			bool line_and_loop = (c.flags & tfxEmitterStateFlags_is_line_traversal) && (c.flags & tfxEmitterStateFlags_loop) && length > emitter_length;
+			if (line_and_loop) {
+				local_position.y -= offset.y;
+				flags |= tfxParticleFlags_capture_after_transform;
+			}
+			else if (line_and_kill) {
+				flags |= tfxParticleFlags_remove;
+			}
+
+			tfxParticleSprite2d &s = work_entry->sprites[work_entry->layer][running_sprite_index++];
+
+			if (flags & tfxParticleFlags_capture_after_transform) {
+				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry->e->common, work_entry->e->common.transform.captured_position);
+				//p->data.captured_position = s.transform.position;
+				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry->e->common, work_entry->e->common.transform.world_position);
+				flags &= ~tfxParticleFlags_capture_after_transform;
+			}
+			else {
+				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry->e->common, work_entry->e->common.transform.world_position);
+			}
+
+			s.transform.position = local_position.xy();
+			s.transform.rotation = local_rotations.roll;
+			s.transform.captured_position = s.transform.position;
+		}
+	}
+
+	void ControlParticleSize(tfxWorkQueue *queue, void *data) {
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxParticleArrays &bank = work_entry->pm->particle_arrays[work_entry->e->particles_index];
+		tfxControlData &c = *work_entry->c;
+
+		tfxU32 running_sprite_index = work_entry->sprites_index;
+
+		for (int i = work_entry->start_index; i >= 0; --i) {
+			const float age = bank.age[i];
+			const float max_age = bank.max_age[i];
+			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+
+			const tfxVec2 base_size = bank.base_size[i];
+			const float base_velocity = bank.base_velocity[i];
+			const float weight_acceleration = bank.weight_acceleration[i];
+
+			float lookup_velocity = c.graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->velocity.lookup.last_frame)] * c.velocity_adjuster;
+			float lookup_stretch = c.graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->stretch.lookup.last_frame)];
+			float lookup_width = c.graphs->width.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->width.lookup.last_frame)];
+			float lookup_height = c.graphs->height.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->height.lookup.last_frame)];
+
+			//----Size Changes
+			tfxVec2 scale;
+			scale.x = base_size.x * lookup_width;
+			if (scale.x < 0.f)
+				scale.x = scale.x;
+
+			//----Stretch Changes
+			float velocity = std::fabsf(lookup_velocity * base_velocity + weight_acceleration);
+			if (c.flags & tfxEmitterStateFlags_lifetime_uniform_size) {
+				scale.y = (lookup_width * (base_size.y + (velocity * lookup_stretch * c.stretch))) / c.image_size_y;
+				if (c.flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
+					scale.y = scale.x;
+			}
+			else
+				scale.y = (lookup_height * (base_size.y + (velocity * lookup_stretch * c.stretch))) / c.image_size_y;
+
+			tfxParticleSprite2d &s = work_entry->sprites[work_entry->layer][running_sprite_index++];
+			s.transform.scale = scale * c.overal_scale;
+			s.handle = work_entry->e->current.image_handle;
+		}
+	}
+
+	void ControlParticleColor(tfxWorkQueue *queue, void *data) {
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxParticleArrays &bank = work_entry->pm->particle_arrays[work_entry->e->particles_index];
+		tfxControlData &c = *work_entry->c;
+
+		tfxU32 running_sprite_index = work_entry->sprites_index;
+
+		for (int i = work_entry->start_index; i >= 0; --i) {
+			const float age = bank.age[i];
+			const float max_age = bank.max_age[i];
+			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+
+			float lookup_red = c.graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->red.lookup.last_frame)];
+			float lookup_green = c.graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->green.lookup.last_frame)];
+			float lookup_blue = c.graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->blue.lookup.last_frame)];
+			float lookup_opacity = c.graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->blendfactor.lookup.last_frame)];
+			float lookup_intensity = c.graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, c.graphs->intensity.lookup.last_frame)];
+
+			tfxRGBA8 &color = bank.color[i];
+			float &intensity = bank.intensity[i];
+
+			//----Color changes
+			color.a = unsigned char(255.f * lookup_opacity);
+			intensity = lookup_intensity * c.global_intensity;
+			if (!(c.flags & tfxEmitterStateFlags_random_color)) {
+				color.r = unsigned char(255.f * lookup_red);
+				color.g = unsigned char(255.f * lookup_green);
+				color.b = unsigned char(255.f * lookup_blue);
+			}
+
+			color = tfxRGBA8(color.r, color.g, color.b, color.a);
+
+			tfxParticleSprite2d &s = work_entry->sprites[work_entry->layer][running_sprite_index++];
+			s.color = color;
+			s.intensity = intensity;
+		}
+	}
+
+	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data) {
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxParticleArrays &bank = work_entry->pm->particle_arrays[work_entry->e->particles_index];
+		tfxControlData &c = *work_entry->c;
+		tfxEmitterProperties &properties = work_entry->e->GetProperties();
+
+		tfxU32 running_sprite_index = work_entry->sprites_index;
+
+		for (int i = work_entry->start_index; i >= 0; --i) {
+			const float age = bank.age[i];
+			const float max_age = bank.max_age[i];
+			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * c.graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+
+			float &image_frame = bank.image_frame[i];
+			tfxU32 &sprites_index = bank.sprite_index[i];
+			sprites_index = (work_entry->layer << 28) + running_sprite_index;
+			tfxParticleSprite2d &s = work_entry->sprites[work_entry->layer][running_sprite_index++];
+
+			//----Image animation
+			image_frame += c.image_frame_rate * tfxUPDATE_TIME;
+			image_frame = (c.flags & tfxEmitterStateFlags_play_once) && image_frame > c.end_frame ? image_frame = c.end_frame : image_frame;
+			image_frame = (c.flags & tfxEmitterStateFlags_play_once) && image_frame < 0 ? image_frame = 0 : image_frame;
+			image_frame = std::fmodf(image_frame, c.end_frame + 1);
+
+			s.image_frame = (tfxU32)image_frame;
+			s.image_ptr = properties.image->ptr;
+		}
+	}
+
 	void ControlParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned) {
 		tfxPROFILE;
 
@@ -9546,14 +10533,42 @@ return free_slot;
 		c.particle_update_callback = e.particle_update_callback;
 		c.user_data = e.user_data;
 
-		tfxring<tfxParticle> &bank = pm.particle_banks[e.particles_index];
+		tfxring<float> &bank = pm.particle_arrays[e.particles_index].age;
 		int offset = 0;
 		int particles_index = e.particles_index;
 		tfxU32 amount_to_update = bank.current_size;
 		if (e.sprites_count < bank.current_size) {
 			amount_to_update = e.sprites_count;
 		}
+		
+		tfxControlWorkEntry work_entry;
+		work_entry.start_index = amount_to_update - 1;
+		work_entry.e = &e;
+		work_entry.pm = &pm;
+		work_entry.c = &c;
+		work_entry.sprites_index = e.sprites_index;
+		work_entry.layer = e.GetProperties().layer;
+		work_entry.sprites = &pm.sprites2d[work_entry.layer];
+
+		e.sprites_index = amount_to_update + e.sprites_index;
+
+#if 0
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticlePosition(&tfxQueue, &work_entry));
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleSize(&tfxQueue, &work_entry));
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor(&tfxQueue, &work_entry));
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame(&tfxQueue, &work_entry));
+
+		tfxCompleteAllWork(&tfxQueue);
+#else
+		ControlParticlePosition(&tfxQueue, &work_entry);
+		ControlParticleSize(&tfxQueue, &work_entry);
+		ControlParticleColor(&tfxQueue, &work_entry);
+		ControlParticleImageFrame(&tfxQueue, &work_entry);
+		ControlParticleAge(&tfxQueue, &work_entry);
+#endif
+
 		for (int i = amount_to_update - 1 - amount_spawned; i >= 0; --i) {
+			/*
 			tfxParticle *p = &bank[i];
 
 			//Before we do anything, see if the particle should be removed/end of life
@@ -9590,8 +10605,8 @@ return free_slot;
 			else if (offset > 0) {
 				tfxParticle *next_ptr = bank[i + offset].next_ptr;
 				bank[i + offset] = bank[i];
-				bank[i].next_ptr = &bank[i + offset];
-				p = &bank[i + offset];
+				p->next_ptr = &bank[i + offset];
+				p = *p->next_ptr;
 				p->next_ptr = next_ptr;
 			}
 
@@ -9621,12 +10636,13 @@ return free_slot;
 			p->data.flags &= ~tfxParticleFlags_fresh;
 
 			p->data.captured_position = s.transform.position;
+			*/
 
 		}
-		if (offset) {
-			bank.bump(offset);
+		//if (offset) {
+			//bank.bump(offset);
 			//pm.sprites2d->current_size -= offset; //I put this in for a reason to fix another bug, but it causes current size to wrap around with some effects.
-		}
+		//}
 	}
 
 	void ControlParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned) {
@@ -9850,6 +10866,16 @@ return free_slot;
 	tfxDataTypesDictionary data_types;
 	void *tfxDeferred_data_for_freeing[256];
 	tfxU32 tfxDeferred_index = 0;
+	tfxWorkQueue tfxQueue;
+	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+
+	void InitialiseTimelineFX(float percent_of_available_threads_to_use) {
+		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
+		tfxU32 max_threads = tfxU32((float)std::thread::hardware_concurrency() * percent_of_available_threads_to_use);
+		tfxInitialiseWorkQueue(&tfxQueue, max_threads);
+		lookup_callback = LookupPrecise;
+		lookup_overtime_callback = LookupPreciseOvertime;
+	}
 
 	bool EndOfProfiles() {
 		assert(tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code

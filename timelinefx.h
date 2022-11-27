@@ -197,6 +197,62 @@ union tfxUInt10bit
 	tfxU32 pack;
 };
 
+#define tfxUSEAVX
+
+//Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
+//used by default
+#ifdef tfxUSEAVX
+#define tfxDataWidth 8	
+typedef __m256 tfxWideFloat;
+typedef __m256i tfxWideInt;
+#define tfxWideSet _mm256_set_ps
+#define tfxWideSetSingle _mm256_set1_ps
+#define tfxWideAdd _mm256_add_ps
+#define tfxWideSub _mm256_sub_ps
+#define tfxWideMul _mm256_mul_ps
+#define tfxWideDiv _mm256_div_ps
+#define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
+#define tfxWideStore _mm256_store_ps
+
+const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
+const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
+const __m256 tfxWIDEG32_4 = _mm256_set1_ps((1.0f / 6.0f) * 2.f);
+const __m256 tfxWIDEG33_4 = _mm256_set1_ps((1.0f / 6.0f) * 3.f);
+const __m256i tfxWIDEONEi = _mm256_set1_epi32(1);
+const __m256 tfxWIDEONE = _mm256_set1_ps(1.f);
+const __m256 tfxWIDEMINUSONE = _mm256_set1_ps(1.f);
+const __m256 tfxWIDEZERO = _mm256_set1_ps(0.f);
+const __m256 tfxWIDETHIRTYTWO = _mm256_set1_ps(32.f);
+const __m256i tfxWIDEFF = _mm256_set1_epi32(0xFF);
+const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
+
+#else
+#define tfxDataWidth 4	
+typedef __m128 tfxWideFloat;
+typedef __m128i tfxWideInt;
+#define tfxWideSet _mm_set_ps
+#define tfxWideSetSingle _mm_set_ps1
+#define tfxWideAdd _mm_add_ps
+#define tfxWideSub _mm_sub_ps
+#define tfxWideMul _mm_mul_ps
+#define tfxWideDiv _mm_div_ps
+#define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
+#define tfxWideStore _mm_store_ps
+
+const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
+const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
+const __m128 tfxWIDEG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
+const __m128 tfxWIDEG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
+const __m128i tfxWIDEONEi = _mm_set1_epi32(1);
+const __m128 tfxWIDEONE = _mm_set1_ps(1.f);
+const __m256 tfxWIDEMINUSONE = _mm256_set1_ps(1.f);
+const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
+const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
+const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
+const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
+
+#endif
+
 
 	//----------------------------------------------------------
 	//enums/flags
@@ -977,7 +1033,7 @@ union tfxUInt10bit
 		return queue->next_write_entry != queue->entry_completion_count;
 	}
 
-	DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
+	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
 
 		tfxWorkQueue *queue = (tfxWorkQueue*)lpParameter;
 
@@ -2302,6 +2358,86 @@ union tfxUInt10bit
 		inline void operator+=(float v) { x += v; y += v; z += v; w += v; }
 		inline void operator-=(float v) { x -= v; y -= v; z -= v; w -= v; }
 	};
+
+	//Wide simd versions of tfxVec2/3
+	struct tfxWideVec3 {
+		union {
+			struct { tfxWideFloat x, y, z; };
+			struct { tfxWideFloat pitch, yaw, roll; };
+		};
+
+		tfxWideVec3() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); z = tfxWideSetSingle(0.f); }
+		tfxWideVec3(tfxWideFloat _x, tfxWideFloat _y, tfxWideFloat _z) { x = _x; y = _y; z = _z; }
+
+		inline tfxWideVec3 operator+(const tfxWideVec3 &v) const { return tfxWideVec3(tfxWideAdd(x, v.x), tfxWideAdd(y, v.y), tfxWideAdd(z, v.z)); }
+		inline tfxWideVec3 operator-(const tfxWideVec3 &v) const { return tfxWideVec3(tfxWideSub(x, v.x), tfxWideSub(y, v.y), tfxWideSub(z, v.z)); }
+		inline tfxWideVec3 operator*(const tfxWideVec3 &v) const { return tfxWideVec3(tfxWideMul(x, v.x), tfxWideMul(y, v.y), tfxWideMul(z, v.z)); }
+		inline tfxWideVec3 operator/(const tfxWideVec3 &v) const { return tfxWideVec3(tfxWideDiv(x, v.x), tfxWideDiv(y, v.y), tfxWideDiv(z, v.z)); }
+
+		inline tfxWideVec3 operator-() const { return tfxWideVec3(tfxWideSub(tfxWideSetSingle(0.f), x), tfxWideSub(tfxWideSetSingle(0.f), y), tfxWideSub(tfxWideSetSingle(0.f), z)); }
+
+		inline void operator-=(const tfxWideVec3 &v) { x = tfxWideSub(x, v.x); y = tfxWideSub(y, v.y); z = tfxWideSub(z, v.z); }
+		inline void operator+=(const tfxWideVec3 &v) { x = tfxWideAdd(x, v.x); y = tfxWideAdd(y, v.y); z = tfxWideAdd(z, v.z); }
+		inline void operator*=(const tfxWideVec3 &v) { x = tfxWideMul(x, v.x); y = tfxWideMul(y, v.y); z = tfxWideMul(z, v.z); }
+		inline void operator/=(const tfxWideVec3 &v) { x = tfxWideDiv(x, v.x); y = tfxWideDiv(y, v.y); z = tfxWideDiv(z, v.z); }
+
+		inline tfxWideVec3 operator+(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec3(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
+		inline tfxWideVec3 operator-(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec3(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
+		inline tfxWideVec3 operator*(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec3(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
+		inline tfxWideVec3 operator/(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec3(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
+
+		inline tfxWideVec3 operator+(tfxWideFloat v) const { return tfxWideVec3(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
+		inline tfxWideVec3 operator-(tfxWideFloat v) const { return tfxWideVec3(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
+		inline tfxWideVec3 operator*(tfxWideFloat v) const { return tfxWideVec3(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
+		inline tfxWideVec3 operator/(tfxWideFloat v) const { return tfxWideVec3(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
+
+		inline void operator*=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideMul(x, wide_v); y = tfxWideMul(y, wide_v); z = tfxWideMul(z, wide_v); }
+		inline void operator/=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideDiv(x, wide_v); y = tfxWideDiv(y, wide_v); z = tfxWideDiv(z, wide_v); }
+		inline void operator+=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideAdd(x, wide_v); y = tfxWideAdd(y, wide_v); z = tfxWideAdd(z, wide_v); }
+		inline void operator-=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideSub(x, wide_v); y = tfxWideSub(y, wide_v); z = tfxWideSub(z, wide_v); }
+
+		inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideAdd(tfxWideMul(y, y), tfxWideMul(z, z))); }
+	};
+
+	struct tfxWideVec2 {
+		tfxWideFloat x, y; 
+
+		tfxWideVec2() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); }
+		tfxWideVec2(tfxWideFloat _x, tfxWideFloat _y) { x = _x; y = _y; }
+
+		inline tfxWideVec2 operator+(const tfxWideVec2 &v) const { return tfxWideVec2(tfxWideAdd(x, v.x), tfxWideAdd(y, v.y)); }
+		inline tfxWideVec2 operator-(const tfxWideVec2 &v) const { return tfxWideVec2(tfxWideSub(x, v.x), tfxWideSub(y, v.y)); }
+		inline tfxWideVec2 operator*(const tfxWideVec2 &v) const { return tfxWideVec2(tfxWideMul(x, v.x), tfxWideMul(y, v.y)); }
+		inline tfxWideVec2 operator/(const tfxWideVec2 &v) const { return tfxWideVec2(tfxWideDiv(x, v.x), tfxWideDiv(y, v.y)); }
+
+		inline tfxWideVec2 operator-() const { return tfxWideVec2(tfxWideSub(tfxWideSetSingle(0.f), x), tfxWideSub(tfxWideSetSingle(0.f), y)); }
+
+		inline void operator-=(const tfxWideVec2 &v) { x = tfxWideSub(x, v.x); y = tfxWideSub(y, v.y); }
+		inline void operator+=(const tfxWideVec2 &v) { x = tfxWideAdd(x, v.x); y = tfxWideAdd(y, v.y); }
+		inline void operator*=(const tfxWideVec2 &v) { x = tfxWideMul(x, v.x); y = tfxWideMul(y, v.y); }
+		inline void operator/=(const tfxWideVec2 &v) { x = tfxWideDiv(x, v.x); y = tfxWideDiv(y, v.y); }
+
+		inline tfxWideVec2 operator+(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec2(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
+		inline tfxWideVec2 operator-(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec2(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
+		inline tfxWideVec2 operator*(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec2(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
+		inline tfxWideVec2 operator/(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec2(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
+
+		inline tfxWideVec2 operator+(tfxWideFloat v) const { return tfxWideVec2(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
+		inline tfxWideVec2 operator-(tfxWideFloat v) const { return tfxWideVec2(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
+		inline tfxWideVec2 operator*(tfxWideFloat v) const { return tfxWideVec2(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
+		inline tfxWideVec2 operator/(tfxWideFloat v) const { return tfxWideVec2(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
+
+		inline void operator*=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideMul(x, wide_v); y = tfxWideMul(y, wide_v); }
+		inline void operator/=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideDiv(x, wide_v); y = tfxWideDiv(y, wide_v); }
+		inline void operator+=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideAdd(x, wide_v); y = tfxWideAdd(y, wide_v); }
+		inline void operator-=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideSub(x, wide_v); y = tfxWideSub(y, wide_v); }
+
+		inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideMul(y, y)); }
+	};
+
+	inline tfxWideVec3 InterpolateWideVec3(tfxWideFloat &tween, tfxWideVec3 &from, tfxWideVec3 &to) {
+		return to * tween + from * (tfxWideSub(tfxWIDEONE, tween));
+	}
 
 	static inline void ScaleVec4xyz(tfxVec4 &v, float scalar) {
 		v.x *= scalar;
@@ -5254,10 +5390,34 @@ union tfxUInt10bit
 	//Discard expired and write to next buffer
 	//
 
+	struct tfxParticleArrays {
+		tfxring<tfxU32> sprite_index;
+		tfxring<tfxU32> next_index;
+		tfxring<tfxParticleFlags> flags;
+		tfxring<float> age;							//The age of the particle, used by the controller to look up the current state on the graphs
+		tfxring<float> max_age;						//max age before the particle expires
+		tfxring<tfxVec3> local_position;			//The local position of the particle, relative to the emitter.
+		tfxring<tfxVec3> local_rotations;
+		tfxring<tfxVec3> velocity_normal;
+		tfxring<float> stretch;
+		tfxring<float> weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
+		tfxring<float> base_weight;
+		tfxring<float> base_velocity;
+		tfxring<float> base_spin;
+		tfxring<float> noise_offset;				//Higher numbers means random movement is less uniform
+		tfxring<float> noise_resolution;			//Higher numbers means random movement is more uniform
+		tfxring<tfxRGBA8> color;					//Colour of the particle
+		tfxring<float> intensity;
+		tfxring<float> image_frame;					//Current frame of the image if it's an animation
+		tfxring<tfxVec2> base_size;
+		tfxring<tfxU32> single_loop_count;			//The number of times a single particle has looped over
+	};
+
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
 	//Particles are stored in the particle manager particle buffer.
 	struct tfxParticleData {
+		//Updated every frame
 		tfxVec3 local_position;			//The local position of the particle, relative to the emitter.
 		tfxVec3 local_rotations;
 		tfxVec3 captured_position;
@@ -5266,13 +5426,13 @@ union tfxUInt10bit
 		tfxVec4 velocity_normal;			//Current velocity direction, with stretch factor in w
 		float noise_offset;					//Higer numbers means random movement is less uniform
 		float noise_resolution;				//Higer numbers means random movement is more uniform
+		float weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
 		tfxParticleFlags flags;				//flags for different states
 		//Updated everyframe
 		float age;							//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;						//max age before the particle expires
 		tfxU32 single_loop_count;			//The number of times a single particle has looped over
 		float image_frame;					//Current frame of the image if it's an animation
-		float weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
 		float intensity;					//Color is multiplied by this value in the shader to increase the brightness of the particles
 		float depth;
 		tfxRGBA8 color;						//Colour of the particle
@@ -5285,6 +5445,76 @@ union tfxUInt10bit
 		tfxU32 prev_index;
 		tfxParticleData data;
 	};
+
+	//Initial particle struct, looking to optimise this and make as small as possible
+	//These are spawned by effector emitter types
+	//Particles are stored in the particle manager particle buffer.
+	struct tfxWideParticleData {
+		//Updated every frame
+		tfxWideVec3 local_position;			//The local position of the particle, relative to the emitter.
+		tfxWideVec3 local_rotations;
+		tfxWideVec3 captured_position;
+		//Read only when ControlParticle is called, only written to at spawn time
+		tfxWideVec2 base_size;
+		tfxWideFloat base_velocity;
+		tfxWideFloat base_spin;
+		tfxWideFloat base_weight;
+		tfxWideVec3 velocity_normal;		//Current velocity direction, with stretch factor in w
+		tfxWideFloat stretch;				//Higer numbers means random movement is less uniform
+		tfxWideFloat noise_offset;			//Higer numbers means random movement is less uniform
+		tfxWideFloat noise_resolution;		//Higer numbers means random movement is more uniform
+		tfxParticleFlags flags;				//flags for different states
+		//Updated everyframe
+		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
+		tfxWideFloat max_age;				//max age before the particle expires
+		tfxU32 single_loop_count;			//The number of times a single particle has looped over
+		tfxWideFloat image_frame;			//Current frame of the image if it's an animation
+		tfxWideFloat weight_acceleration;	//The current amount of gravity applied to the y axis of the particle each frame
+		tfxWideFloat intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
+		tfxWideFloat depth;
+		tfxRGBA8 color;						//Colour of the particle
+	};
+
+	struct tfxWideParticlePosition {
+		tfxWideVec3 local_position;			//The local position of the particle, relative to the emitter.
+	};
+
+	struct tfxWideParticleAge {
+		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
+		tfxWideFloat max_age;				//max age before the particle expires
+	};
+
+	struct tfxWideParticle {
+		tfxParticle *next_ptr[tfxDataWidth];
+		tfxEffectEmitter *parent[tfxDataWidth];
+		tfxU32 sprite_index[tfxDataWidth];
+		tfxU32 prev_index[tfxDataWidth];
+		tfxWideParticleData data;
+	};
+
+	inline void StoreLocalPositionX(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_position.x) + slot) = value;
+	}
+
+	inline void StoreLocalPositionY(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_position.y) + slot) = value;
+	}
+
+	inline void StoreLocalPositionZ(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_position.z) + slot) = value;
+	}
+
+	inline void StoreLocalRotationPitch(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_rotations.pitch) + slot) = value;
+	}
+
+	inline void StoreLocalRotationRoll(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_rotations.roll) + slot) = value;
+	}
+
+	inline void StoreLocalRotationYaw(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_rotations.yaw) + slot) = value;
+	}
 
 	struct tfxSpriteTransform2d {
 		tfxVec2 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
@@ -5418,13 +5648,16 @@ union tfxUInt10bit
 	struct tfxEffect {
 		tfxEffectEmitter *effect_ptr;
 	};
-
+		
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
 		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxring<tfxParticle>> particle_banks;
+		tfxvec<tfxParticleArrays> particle_arrays;
+
 		//In unordered mode emitters that expire have their particle banks added here to be reused
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_banks;
+		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
@@ -5455,6 +5688,9 @@ union tfxUInt10bit
 		//The current effect buffer in use, can be either 0 or 1
 		unsigned int current_ebuff;
 
+		//When spawing particles the slot is the index within the wide data variable
+		tfxU32 spawn_slot;
+
 		tfxU32 sprite_index_point[tfxLAYERS];
 
 		unsigned int max_compute_controllers;
@@ -5484,6 +5720,7 @@ union tfxUInt10bit
 			max_new_compute_particles(10000),
 			new_compute_particle_index(0),
 			new_particles_count(0),
+			spawn_slot(0),
 			new_positions(tfxCONSTRUCTOR_VEC_INIT("pm new_positions")),
 			particle_banks(tfxCONSTRUCTOR_VEC_INIT("pm particle_banks")),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
@@ -5543,10 +5780,29 @@ union tfxUInt10bit
 		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
 		void EnableCompute() { flags |= tfxEffectManagerFlags_use_compute_shader; }
 		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
-		inline tfxParticle& GrabCPUParticle(unsigned int index) {
-			return particle_banks[index].grab();
-		}
-		tfxComputeParticle &GrabComputeParticle(unsigned int layer);
+		inline tfxParticle& GrabCPUParticle(unsigned int index) { return particle_banks[index].grab(); }
+
+		inline tfxVec3& GrabLocalPosition(unsigned int index) { return particle_arrays[index].local_position.grab(); }
+		inline tfxVec3& GrabLocalRotations(unsigned int index) { return particle_arrays[index].local_rotations.grab(); }
+		inline tfxVec3& GrabVelocityNormal(unsigned int index) { return particle_arrays[index].velocity_normal.grab(); }
+		inline tfxVec2& GrabSize(unsigned int index) { return particle_arrays[index].base_size.grab(); }
+		inline float& GrabBaseVelocity(unsigned int index) { return particle_arrays[index].base_velocity.grab(); }
+		inline float& GrabNoiseOffset(unsigned int index) { return particle_arrays[index].noise_offset.grab(); }
+		inline float& GrabNoiseResolution(unsigned int index) { return particle_arrays[index].noise_resolution.grab(); }
+		inline float& GrabBaseWeight(unsigned int index) { return particle_arrays[index].base_weight.grab(); }
+		inline float& GrabWeightAcceleration(unsigned int index) { return particle_arrays[index].weight_acceleration.grab(); }
+		inline float& GrabBaseSpin(unsigned int index) { return particle_arrays[index].base_spin.grab(); }
+		inline float& GrabAge(unsigned int index) { return particle_arrays[index].age.grab(); }
+		inline float& GrabMaxAge(unsigned int index) { return particle_arrays[index].max_age.grab(); }
+		inline tfxU32& GrabSingleLoopCount(unsigned int index) { return particle_arrays[index].single_loop_count.grab(); }
+		inline tfxRGBA8& GrabColor(unsigned int index) { return particle_arrays[index].color.grab(); }
+		inline float& GrabIntensity(unsigned int index) { return particle_arrays[index].intensity.grab(); }
+		inline float& GrabImageFrame(unsigned int index) { return particle_arrays[index].image_frame.grab(); }
+		inline tfxU32& GrabSpriteIndex(unsigned int index) { return particle_arrays[index].sprite_index.grab(); }
+		inline tfxU32& GrabNextIndex(unsigned int index) { return particle_arrays[index].next_index.grab(); }
+		inline tfxParticleFlags& GrabFlags(unsigned int index) { return particle_arrays[index].flags.grab(); }
+
+		tfxComputeParticle &GrabComputeParticle(unsigned int layer); 
 		void ResetParticlePtr(void *ptr);
 		void ResetControllerPtr(void *ptr);
 		inline unsigned int GetControllerMemoryUsage() { return highest_compute_controller_index * sizeof(tfxComputeController); }
@@ -5646,6 +5902,7 @@ union tfxUInt10bit
 
 	}
 	tfxU32 GrabParticleBank(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
+	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);
@@ -5674,6 +5931,42 @@ union tfxUInt10bit
 	void ControlParticlesOrdered2d(tfxParticleManager &pm);
 	void ControlParticlesOrdered3d(tfxParticleManager &pm);
 	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
+
+	//Wide mt versions
+	struct tfxSpawnWorkEntry {
+		tfxParticleManager *pm;
+		tfxEffectEmitter *e;
+		tfxEmitterSpawnControls *spawn_controls;
+		tfxU32 sprite_index;
+		float tween;
+		float qty_step_size;
+		tfxU32 max_spawn_amount;
+	};
+
+	struct tfxControlWorkEntry {
+		tfxU32 start_index;
+		tfxU32 sprites_index;
+		tfxEffectEmitter *e;
+		tfxParticleManager *pm;
+		tfxControlData *c;
+		tfxU32 layer;
+		tfxring<tfxParticleSprite2d> *sprites;
+	};
+
+	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
+	void SpawnParticlePositions2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
+	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSize(tfxWorkQueue *queue, void *data);
+	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSpin(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSpriteIndex(tfxWorkQueue *queue, void *data);
+
+	void ControlParticleAge(tfxWorkQueue *queue, void *data);
+	void ControlParticlePosition(tfxWorkQueue *queue, void *data);
+	void ControlParticleSize(tfxWorkQueue *queue, void *data);
+	void ControlParticleColor(tfxWorkQueue *queue, void *data);
+	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
 
 	//Event functions
 	void ResetStage(tfxEffectEmitter &stage);
@@ -6088,6 +6381,10 @@ union tfxUInt10bit
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
+	static inline void TransformParticlePosition(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_position = local_position;
+		world_rotations = roll;
+	}
 	static inline void TransformParticle3dPositions(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_position = data.local_position;
 	}
@@ -6215,13 +6512,10 @@ union tfxUInt10bit
 
 	//To enable multithreading set percent_of_available_threads_to_use to something higher then 0; 
 	//Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
-	static tfxWorkQueue tfxQueue;
-	static tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
-	void InitialiseTimelineFX(float percent_of_available_threads_to_use = 0.f) {
-		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
-		tfxU32 max_threads = tfxU32((float)std::thread::hardware_concurrency() * percent_of_available_threads_to_use);
-		tfxInitialiseWorkQueue(&tfxQueue, max_threads);
-	}
+	extern tfxWorkQueue tfxQueue;
+	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+
+	void InitialiseTimelineFX(float percent_of_available_threads_to_use = 0.f);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	void SetUpdateFrequency(float fps);
