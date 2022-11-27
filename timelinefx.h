@@ -977,7 +977,7 @@ union tfxUInt10bit
 		return queue->next_write_entry != queue->entry_completion_count;
 	}
 
-	DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
+	static DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
 
 		tfxWorkQueue *queue = (tfxWorkQueue*)lpParameter;
 
@@ -6215,13 +6215,9 @@ union tfxUInt10bit
 
 	//To enable multithreading set percent_of_available_threads_to_use to something higher then 0; 
 	//Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
-	static tfxWorkQueue tfxQueue;
-	static tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
-	void InitialiseTimelineFX(float percent_of_available_threads_to_use = 0.f) {
-		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
-		tfxU32 max_threads = tfxU32((float)std::thread::hardware_concurrency() * percent_of_available_threads_to_use);
-		tfxInitialiseWorkQueue(&tfxQueue, max_threads);
-	}
+	extern tfxWorkQueue tfxQueue;
+	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+	void InitialiseTimelineFX(float percent_of_available_threads_to_use = 0.f);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	void SetUpdateFrequency(float fps);

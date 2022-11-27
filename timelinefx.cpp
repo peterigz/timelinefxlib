@@ -9850,6 +9850,16 @@ return free_slot;
 	tfxDataTypesDictionary data_types;
 	void *tfxDeferred_data_for_freeing[256];
 	tfxU32 tfxDeferred_index = 0;
+	tfxWorkQueue tfxQueue;
+	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+
+	void InitialiseTimelineFX(float percent_of_available_threads_to_use) {
+		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
+		tfxU32 max_threads = tfxU32((float)std::thread::hardware_concurrency() * percent_of_available_threads_to_use);
+		tfxInitialiseWorkQueue(&tfxQueue, max_threads);
+		lookup_callback = LookupPrecise;
+		lookup_overtime_callback = LookupPreciseOvertime;
+	}
 
 	bool EndOfProfiles() {
 		assert(tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code
