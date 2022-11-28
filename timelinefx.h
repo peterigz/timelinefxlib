@@ -133,6 +133,7 @@ namespace tfx {
 	//Forward declarations
 
 	struct tfxEffectEmitter;
+	struct tfxParticleManager;
 	struct tfxEffectTemplate;
 	struct tfxParticle;
 	struct tfxParticleData;
@@ -5391,12 +5392,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//
 
 	struct tfxParticleArrays {
+		tfxring<tfxEffectEmitter*> parent;
 		tfxring<tfxU32> sprite_index;
 		tfxring<tfxU32> next_index;
 		tfxring<tfxParticleFlags> flags;
 		tfxring<float> age;							//The age of the particle, used by the controller to look up the current state on the graphs
 		tfxring<float> max_age;						//max age before the particle expires
 		tfxring<tfxVec3> local_position;			//The local position of the particle, relative to the emitter.
+		tfxring<tfxVec3> captured_position;			//The captured position of the particle, relative to the emitter.
 		tfxring<tfxVec3> local_rotations;
 		tfxring<tfxVec3> velocity_normal;
 		tfxring<float> stretch;
@@ -5648,6 +5651,28 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxEffect {
 		tfxEffectEmitter *effect_ptr;
 	};
+
+	struct tfxSpawnWorkEntry {
+		tfxParticleManager *pm;
+		tfxEffectEmitter *e;
+		tfxEmitterSpawnControls *spawn_controls;
+		tfxU32 sprite_index;
+		float tween;
+		float qty_step_size;
+		tfxU32 max_spawn_amount;
+		volatile tfxU32 completion_count;
+	};
+
+	struct tfxControlWorkEntry {
+		tfxU32 start_index;
+		tfxU32 sprites_index;
+		tfxEffectEmitter *e;
+		tfxParticleManager *pm;
+		tfxControlData c;
+		tfxU32 layer;
+		tfxring<tfxParticleSprite2d> *sprites;
+		volatile tfxU32 started_signal;
+	};
 		
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
@@ -5669,6 +5694,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Banks of sprites for drawing in unordered mode
 		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
+
+		tfxvec<tfxSpawnWorkEntry> spawn_work_entries;
+		tfxvec<tfxControlWorkEntry> control_work_entries;
+
+		tfxvec<tfxU32> free_spawn_entries;
+		tfxvec<tfxU32> free_control_entries;
 
 		//todo: document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
@@ -5736,6 +5767,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void CreateParticleBanksForEachLayer();
+		void InitWorkEntries();
+		//Thread safe functions for getting the next work queue entries
+		inline tfxU32 NextSpawnEntry() {
+			tfxU32 index = InterlockedDecrement(&free_spawn_entries.current_size);
+			return free_spawn_entries[index];
+		}
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
 		//When paused you still might want to keep the particles in order:
@@ -5783,6 +5820,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline tfxParticle& GrabCPUParticle(unsigned int index) { return particle_banks[index].grab(); }
 
 		inline tfxVec3& GrabLocalPosition(unsigned int index) { return particle_arrays[index].local_position.grab(); }
+		inline tfxVec3& GrabCapturedPosition(unsigned int index) { return particle_arrays[index].captured_position.grab(); }
 		inline tfxVec3& GrabLocalRotations(unsigned int index) { return particle_arrays[index].local_rotations.grab(); }
 		inline tfxVec3& GrabVelocityNormal(unsigned int index) { return particle_arrays[index].velocity_normal.grab(); }
 		inline tfxVec2& GrabSize(unsigned int index) { return particle_arrays[index].base_size.grab(); }
@@ -5801,6 +5839,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline tfxU32& GrabSpriteIndex(unsigned int index) { return particle_arrays[index].sprite_index.grab(); }
 		inline tfxU32& GrabNextIndex(unsigned int index) { return particle_arrays[index].next_index.grab(); }
 		inline tfxParticleFlags& GrabFlags(unsigned int index) { return particle_arrays[index].flags.grab(); }
+		inline tfxEffectEmitter** GrabParent(unsigned int index) { return &particle_arrays[index].parent.grab(); }
 
 		tfxComputeParticle &GrabComputeParticle(unsigned int layer); 
 		void ResetParticlePtr(void *ptr);
@@ -5933,25 +5972,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
 
 	//Wide mt versions
-	struct tfxSpawnWorkEntry {
-		tfxParticleManager *pm;
-		tfxEffectEmitter *e;
-		tfxEmitterSpawnControls *spawn_controls;
-		tfxU32 sprite_index;
-		float tween;
-		float qty_step_size;
-		tfxU32 max_spawn_amount;
-	};
-
-	struct tfxControlWorkEntry {
-		tfxU32 start_index;
-		tfxU32 sprites_index;
-		tfxEffectEmitter *e;
-		tfxParticleManager *pm;
-		tfxControlData *c;
-		tfxU32 layer;
-		tfxring<tfxParticleSprite2d> *sprites;
-	};
 
 	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
 	void SpawnParticlePositions2d(tfxWorkQueue *queue, void *data);
@@ -6069,6 +6089,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectEmitter *GetEffect(tfxKey key);
 		//Get and effect by it's index
 		void PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect);
+		void PrepareEffectTemplate(tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
 		void BuildComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData &image_data, int offset));
 		void CopyComputeShapeData(void* dst);
