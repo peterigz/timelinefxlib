@@ -5071,6 +5071,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//The callback to transform the particles each update. This will change based on the properties of the emitter
 		void(*transform_particle_callback2d)(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position);
 		void(*transform_particle_callback3d)(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position);
+		void(*transform_particle_callback2d2)(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position);
+		void(*transform_particle_callback3d2)(const tfxVec3 local_position, const float roll, tfxVec3 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position);
 
 		tfxEmitterState() :
 			amount_remainder(0.f),
@@ -6405,6 +6407,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	static inline void TransformParticlePosition(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_position = local_position;
 		world_rotations = roll;
+	}
+	static inline void TransformParticlePositionAngle(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_position = local_position;
+		world_rotations = common.transform.world_rotations.roll + roll;
+	}
+	static inline void TransformParticlePositionRelative(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_rotations = roll;
+		world_position = local_position;
+		float s = sin(roll);
+		float c = cos(roll);
+		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(local_position.x, local_position.y) + common.handle.xy());
+		world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
 	static inline void TransformParticle3dPositions(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_position = data.local_position;

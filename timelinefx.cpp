@@ -7931,15 +7931,19 @@ namespace tfx {
 				else {
 					if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position && (e.common.property_flags & tfxEmitterPropertyFlags_relative_angle || (e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine))) {
 						emitter.current.transform_particle_callback2d = TransformParticleRelativeLine;
+						emitter.current.transform_particle_callback2d2 = TransformParticlePositionRelative;
 					}
 					else if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
 						emitter.current.transform_particle_callback2d = TransformParticleRelative;
+						emitter.current.transform_particle_callback2d2 = TransformParticlePositionRelative;
 					}
 					else if (e.common.property_flags & tfxEmitterPropertyFlags_relative_angle) {
 						emitter.current.transform_particle_callback2d = TransformParticleAngle;
+						emitter.current.transform_particle_callback2d2 = TransformParticlePositionAngle;
 					}
 					else {
 						emitter.current.transform_particle_callback2d = TransformParticle;
+						emitter.current.transform_particle_callback2d2 = TransformParticlePosition;
 					}
 				}
 
@@ -10456,15 +10460,14 @@ return free_slot;
 			tfxParticleFlags &flags = bank.flags[i];
 
 			tfxParticleSprite2d &s = (*work_entry.sprites)[running_sprite_index++];
-
 			if (flags & tfxParticleFlags_capture_after_transform) {
-				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry.e->common, work_entry.e->common.transform.captured_position);
+				work_entry.e->current.transform_particle_callback2d2(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry.e->common, work_entry.e->common.transform.captured_position);
 				captured_position = s.transform.position;
-				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry.e->common, work_entry.e->common.transform.world_position);
+				work_entry.e->current.transform_particle_callback2d2(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry.e->common, work_entry.e->common.transform.world_position);
 				flags &= ~tfxParticleFlags_capture_after_transform;
 			}
 			else {
-				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry.e->common, work_entry.e->common.transform.world_position);
+				work_entry.e->current.transform_particle_callback2d2(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, work_entry.e->common, work_entry.e->common.transform.world_position);
 			}
 
 			s.transform.captured_position = s.transform.position;
