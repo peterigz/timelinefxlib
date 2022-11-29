@@ -9865,7 +9865,7 @@ return free_slot;
 			if (line || e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
 				tfxVec2 rotatevec = mmTransformVector(e.common.transform.matrix, tfxVec2(local_position.x, local_position.y) + e.common.handle.xy());
 				captured_position = s.transform.captured_position = e.common.transform.captured_position.xy() + rotatevec * e.common.transform.scale.xy();
-				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e.common, tfxVec3(e.common.transform.world_position.x, e.common.transform.world_position.y, 0.f));
+				e.current.transform_particle_callback2d2(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e.common, tfxVec3(e.common.transform.world_position.x, e.common.transform.world_position.y, 0.f));
 			}
 			else {
 				s.transform.position += current_velocity * micro_time;
