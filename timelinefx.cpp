@@ -4383,6 +4383,12 @@ namespace tfx {
 		effect_template.AddPath(effect_template.effect, effect_template.effect.GetInfo().name.c_str());
 	}
 
+	void tfxEffectLibrary::PrepareEffectTemplate(tfxEffectEmitter &effect, tfxEffectTemplate &effect_template) {
+		assert(effect.type == tfxEffectType);
+		effect.Clone(effect_template.effect, &effect_template.effect, this);
+		effect_template.AddPath(effect_template.effect, effect_template.effect.GetInfo().name.c_str());
+	}
+
 	void tfxEffectLibrary::ReIndex() {
 		tfxU32 index = 0;
 		for (auto &e : effects) {

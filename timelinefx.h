@@ -5776,6 +5776,7 @@ union tfxUInt10bit
 		tfxEffectEmitter *GetEffect(tfxKey key);
 		//Get and effect by it's index
 		void PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect);
+		void PrepareEffectTemplate(tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
 		void BuildComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData &image_data, int offset));
 		void CopyComputeShapeData(void* dst);
