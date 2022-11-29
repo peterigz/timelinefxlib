@@ -9857,9 +9857,10 @@ return free_slot;
 			float micro_time = tfxUPDATE_TIME * (1.f - tween);
 			weight_acceleration += base_weight * e.common.library->emitter_attributes[e.emitter_attributes].overtime.weight.GetFirstValue() * micro_time;
 			//----Velocity Changes
-			velocity_normal.x = std::sinf(direction);
-			velocity_normal.y = -std::cosf(direction);
-			tfxVec2 current_velocity = (base_velocity * e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity.GetFirstValue()) * velocity_normal.xy();
+			tfxVec2 velocity_normal_tmp;
+			velocity_normal_tmp.x = std::sinf(direction);
+			velocity_normal_tmp.y = -std::cosf(direction);
+			tfxVec2 current_velocity = (base_velocity * e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity.GetFirstValue()) * velocity_normal_tmp;
 			current_velocity.y += weight_acceleration;
 			local_position += current_velocity * micro_time;
 			if (line || e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
