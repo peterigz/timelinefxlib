@@ -9874,6 +9874,13 @@ return free_slot;
 			}
 			//end micro update
 
+			if ((properties.angle_settings & tfxAngleSettingFlags_align_roll || properties.angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
+				//----Normalize Velocity to direction
+				s.transform.rotation = local_rotations.roll = GetVectorAngle(velocity_normal_tmp.x, velocity_normal_tmp.y) + properties.angle_offsets.roll;
+				if (e.common.property_flags & tfxEmitterPropertyFlags_relative_angle)
+					s.transform.rotation += e.common.transform.world_rotations.roll;
+			}
+
 			tween += entry->qty_step_size;
 			amount_spawned++;
 		}
