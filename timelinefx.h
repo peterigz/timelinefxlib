@@ -1,3 +1,4 @@
+#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -933,35 +934,35 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Intrinsics and multithreading
 
 	inline tfxU64 AtomicExchange64(tfxU64 volatile *value, tfxU64 new_value) {
-		tfxU64 result = _InterlockedExchange64((__int64*)value, new_value);
+		tfxU64 result = _InterlockedExchange64((__int64 volatile*)value, new_value);
 		return result;
 	}
 
 	inline tfxU64 AtomicAdd64(tfxU64 volatile *value, tfxU64 amount_to_add) {
-		tfxU64 result = _InterlockedExchangeAdd64((__int64*)value, amount_to_add);
+		tfxU64 result = _InterlockedExchangeAdd64((__int64 volatile*)value, amount_to_add);
 		return result;
 	}
 
 	inline tfxU64 AtomicIncrement64(tfxU64 volatile *value) {
-		return InterlockedIncrement64((__int64*)value);
+		return InterlockedIncrement64((__int64 volatile*)value);
 	}
 
-	inline tfxU32 AtomicIncrement32(long volatile *value) {
-		return InterlockedIncrement((long*)value);
+	inline tfxU32 AtomicIncrement32(LONG volatile *value) {
+		return InterlockedIncrement((LONG volatile*)value);
 	}
 
 	inline tfxU32 AtomicExchange32(tfxU32 volatile *value, tfxU32 new_value) {
-		tfxU32 result = _InterlockedExchange((long*)value, new_value);
+		tfxU32 result = _InterlockedExchange((LONG*)value, new_value);
 		return result;
 	}
 
 	inline tfxU32 AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
-		tfxU32 result = _InterlockedExchangeAdd((long*)value, amount_to_add);
+		tfxU32 result = _InterlockedExchangeAdd((LONG*)value, amount_to_add);
 		return result;
 	}
 
 	inline tfxU32 AtomicExchangeCompare(tfxU32 volatile *value, tfxU32 exchange, tfxU32 compare) {
-		tfxU32 result = InterlockedCompareExchange(value, exchange, compare);
+		tfxU32 result = InterlockedCompareExchange((LONG volatile *)value, exchange, compare);
 		return result;
 	}
 
@@ -1016,11 +1017,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 original_read_entry = queue->next_read_entry;
 		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
 		if (original_read_entry != queue->next_write_entry) {
-			tfxU32 index = InterlockedCompareExchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
+			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
 			if (index == original_read_entry) {
-				tfxWorkQueueEntry *entry = queue->entries + index;
-				entry->call_back(queue, entry->data);
-				InterlockedIncrement(&queue->entry_completion_count);
+				tfxWorkQueueEntry entry = queue->entries[index];
+				entry.call_back(queue, entry.data);
+				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
 			}
 		}
 		else {
@@ -1041,9 +1042,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		for (;;) {
 			if (tfxDoNextWorkQueueEntry(queue)) {
 				//Suspend the thread
-				InterlockedIncrement(&queue->sleeping_threads);
+				InterlockedIncrement((LONG volatile *)&queue->sleeping_threads);
 				WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, false);
-				InterlockedDecrement(&queue->sleeping_threads);
+				InterlockedDecrement((LONG volatile *)&queue->sleeping_threads);
 			}
 		}
 
@@ -1070,7 +1071,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		queue->next_read_entry = 0;
 		queue->next_write_entry = 0;
 		queue->sleeping_threads = 0;
-		queue->total_threads = tfxMin(max_threads, std::thread::hardware_concurrency() - 1);
+		queue->total_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, std::thread::hardware_concurrency() - 1);
 		queue->semaphore_handle = CreateSemaphoreEx(0, 0, queue->total_threads, 0, 0, SEMAPHORE_ALL_ACCESS);
 
 		for (tfxU32 thread_index = 0; thread_index < queue->total_threads; ++thread_index) {
@@ -2098,6 +2099,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline const T&     parent() const { assert(current_size > 1); return block[current_size - 2]; }
 		inline bool			empty() { return current_size == 0; }
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
+		inline T&			next() {
+			if (current_size == capacity)
+				assert(resize(_grow_capacity(current_size + 1), true));	//Stack overflow, try increasing the stack size
+			return block[current_size++];
+		}
 		inline void			pop() { 
 			assert(current_size > 0);		//Can't pop back if the stack is empty
 			current_size--; 
@@ -2109,15 +2115,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 		inline T&	        push_back(const T& v) {
 			if (current_size == capacity)
-				resize(_grow_capacity(current_size + 1), true);
+				assert(resize(_grow_capacity(current_size + 1), true));	//Stack overflow, try increasing the stack size
 			new((void*)(block + current_size)) T(v);
-			current_size++; return block[current_size - 1];
+			return block[current_size++];
 		}
 		inline T&	        push_back_copy(const T& v) {
 			if (current_size == capacity)
-				resize(_grow_capacity(current_size + 1), true);
+				assert(resize(_grow_capacity(current_size + 1), true));	//Stack overflow, try increasing the stack size
 			memcpy(&block[current_size], &v, sizeof(v)); 
-			current_size++; return block[current_size - 1];
+			return block[current_size++];
 		}
 		inline bool			reserve(tfxU32 size) {
 			assert(allocator);		//Must assign an allocator before doing anything with a tfxStack. Capacity must equal 0
@@ -5675,6 +5681,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxring<tfxParticleSprite2d> *sprites;
 		volatile tfxU32 started_signal;
 	};
+
+	struct tfxParticleAgeWorkEntry {
+		tfxU32 start_index;
+		tfxEffectEmitter *e;
+		tfxParticleManager *pm;
+	};
 		
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
@@ -5772,7 +5784,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void InitWorkEntries();
 		//Thread safe functions for getting the next work queue entries
 		inline tfxU32 NextSpawnEntry() {
-			tfxU32 index = InterlockedDecrement(&free_spawn_entries.current_size);
+			tfxU32 index = InterlockedDecrement((LONG volatile*)&free_spawn_entries.current_size);
 			return free_spawn_entries[index];
 		}
 		//Update the particle manager. Call this once per frame in your logic udpate.
@@ -6414,7 +6426,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 	static inline void TransformParticlePositionRelative(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_rotations = roll;
-		world_position = local_position;
 		float s = sin(roll);
 		float c = cos(roll);
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(local_position.x, local_position.y) + common.handle.xy());

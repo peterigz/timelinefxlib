@@ -8101,23 +8101,26 @@ return free_slot;
 			}
 		}
 
+		tfxCompleteAllWork(&tfxQueue);
+
 		if (flags & tfxEffectManagerFlags_unordered) {
+			tmpStack(tfxParticleAgeWorkEntry, work);
 			for (int i = 0; i != start_size; ++i) {
 				tfxEffectEmitter &e = effects[current_ebuff][i];
 
 				if (e.type == tfxEmitterType) {
 					tfxring<float> &bank = particle_arrays[e.particles_index].age;
-					tfxControlWorkEntry work_entry;
+					tfxParticleAgeWorkEntry &work_entry = work.next();
 					work_entry.start_index = bank.current_size - 1;
 					work_entry.e = &e;
 					work_entry.pm = this;
-					work_entry.sprites_index = e.sprites_index;
-					work_entry.started_signal = 0;
+#if tfxMULTITHREADED
 					tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleAge);
-					while (work_entry.started_signal != 1);
+#else
+					ControlParticleAge(&tfxQueue, &work_entry);
+#endif
 				}
 			}
-
 			tfxCompleteAllWork(&tfxQueue);
 		}
 
@@ -9262,7 +9265,7 @@ return free_slot;
 		work_entry.completion_count = 0;
 		tfxEmitterProperties &tmp_delete_me = e.GetProperties();
 
-#if 1
+#if tfxMULTITHREADED
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleAge);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticlePositions2d);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleNoise);
@@ -9273,7 +9276,6 @@ return free_slot;
 
 		tfxCompleteAllWork(&tfxQueue);
 
-		while (work_entry.completion_count < 7);
 #else
 		SpawnParticleAge(&tfxQueue, &work_entry);
 		SpawnParticlePositions2d(&tfxQueue, &work_entry);
@@ -10246,7 +10248,6 @@ return free_slot;
 
 	void ControlParticleAge(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
-		InterlockedIncrement(&work_entry->started_signal);
 		tfxEffectEmitter &e = *work_entry->e;
 		tfxParticleArrays &bank = work_entry->pm->particle_arrays[work_entry->e->particles_index];
 		tfxEmitterProperties &properties = e.GetProperties();
@@ -10631,15 +10632,17 @@ return free_slot;
 		work_entry.sprites = &pm.sprites2d[work_entry.layer];
 		work_entry.started_signal = 0;
 
-#if 1
+#if tfxMULTITHREADED
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticlePosition);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleSize);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame);
 
 		while (work_entry.started_signal != 4);
+		//Note: Cannot add new things to a queue without completing previous work first.
+		tfxCompleteAllWork(&tfxQueue);
 #else
-		ControlParticlePosition(&tfxQueue, &position_work_entry);
+		ControlParticlePosition(&tfxQueue, &work_entry);
 		ControlParticleSize(&tfxQueue, &work_entry);
 		ControlParticleColor(&tfxQueue, &work_entry);
 		ControlParticleImageFrame(&tfxQueue, &work_entry);
