@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 0
+#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -1016,6 +1016,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		tfxU32 original_read_entry = queue->next_read_entry;
 		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
+
 		if (original_read_entry != queue->next_write_entry) {
 			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
 			if (index == original_read_entry) {
@@ -1057,8 +1058,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 		queue->entry_completion_count = 0;
 		queue->entry_completion_goal = 0;
-		queue->next_write_entry = 0;
-		queue->next_read_entry = 0;
 	}
 
 	inline void tfxWaitUntilAllThreadsAreSleeping(tfxWorkQueue *queue) {
@@ -5664,7 +5663,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxParticleManager *pm;
 		tfxEffectEmitter *e;
 		tfxEmitterSpawnControls *spawn_controls;
-		tfxU32 sprite_index;
+		tfxU32 sprite_count;
 		float tween;
 		float qty_step_size;
 		tfxU32 max_spawn_amount;

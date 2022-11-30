@@ -8049,8 +8049,6 @@ return free_slot;
 	}
 
 	void tfxParticleManager::Update() {
-		tfxCompleteAllWork(&tfxQueue);
-
 		tfxPROFILE;
 		new_compute_particle_index = 0;
 
@@ -8100,8 +8098,6 @@ return free_slot;
 				}
 			}
 		}
-
-		tfxCompleteAllWork(&tfxQueue);
 
 		if (flags & tfxEffectManagerFlags_unordered) {
 			tmpStack(tfxParticleAgeWorkEntry, work);
@@ -9257,7 +9253,6 @@ return free_slot;
 		tfxSpawnWorkEntry work_entry;
 		work_entry.pm = &pm;
 		work_entry.e = &e;
-		work_entry.sprite_index = e.sprites_index;
 		work_entry.spawn_controls = &spawn_controls;
 		work_entry.tween = tween;
 		work_entry.qty_step_size = qty_step_size;
@@ -9275,6 +9270,7 @@ return free_slot;
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpriteIndex);
 
 		tfxCompleteAllWork(&tfxQueue);
+		tfxWaitUntilAllThreadsAreSleeping(&tfxQueue);
 
 #else
 		SpawnParticleAge(&tfxQueue, &work_entry);
@@ -9286,11 +9282,10 @@ return free_slot;
 		SpawnParticleSpriteIndex(&tfxQueue, &work_entry);
 #endif
 
-		tfxU32 amount_spawned = e.sprites_index - work_entry.sprite_index;
-		if (amount_spawned > 0 && e.common.property_flags & tfxEmitterPropertyFlags_single)
+		if (work_entry.sprite_count > 0 && e.common.property_flags & tfxEmitterPropertyFlags_single)
 			e.flags |= tfxEmitterStateFlags_single_shot_done;
 
-		return amount_spawned;
+		return work_entry.sprite_count;
 	}
 
 	void SpawnParticleSpriteIndex(tfxWorkQueue *queue, void *data) {
@@ -9298,7 +9293,6 @@ return free_slot;
 		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
-		tfxU32 running_sprite_index = entry->sprite_index;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
@@ -9317,18 +9311,14 @@ return free_slot;
 			tfxEffectEmitter **parent = pm.GrabParent(e.particles_index);
 			*parent = entry->e;
 		
-			sprite_index = (properties.layer << 28) + running_sprite_index;
 			flags = 0;
 			next_index = pm.particle_arrays[e.particles_index].next_index.current_size - 1;
-			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][running_sprite_index++];
-
-			s.handle = e.current.image_handle;
-			s.image_ptr = properties.image->ptr;
 
 			tween += entry->qty_step_size;
 			amount_spawned++;
 		}
 
+		entry->sprite_count = amount_spawned;
 		e.current.amount_remainder = tween - 1.f;
 
 		InterlockedIncrement(&entry->completion_count);
@@ -9339,7 +9329,6 @@ return free_slot;
 		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
-		tfxU32 sprite_index = entry->sprite_index;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
@@ -9356,7 +9345,6 @@ return free_slot;
 			tfxRGBA8 &color = pm.GrabColor(e.particles_index);
 			float &intensity = pm.GrabIntensity(e.particles_index);
 			tfxU32 &single_loop_count = pm.GrabSingleLoopCount(e.particles_index);
-			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][sprite_index++];
 
 			//Max age
 			age = 0.f;
@@ -9381,9 +9369,6 @@ return free_slot;
 				color.b = unsigned char(255.f * e.common.library->emitter_attributes[e.emitter_attributes].overtime.blue.GetFirstValue());
 			}
 
-			s.color = color;
-			s.intensity = intensity;
-
 			tween += entry->qty_step_size;
 			amount_spawned++;
 		}
@@ -9396,7 +9381,6 @@ return free_slot;
 		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
-		tfxU32 sprite_index = entry->sprite_index;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
@@ -9409,7 +9393,6 @@ return free_slot;
 			}
 
 			float &image_frame = pm.GrabImageFrame(e.particles_index);
-			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][sprite_index++];
 
 			//----Image
 			//data.image = GetProperties().image;
@@ -9420,7 +9403,6 @@ return free_slot;
 				image_frame = properties.start_frame;
 			}
 
-			s.image_frame = (tfxU32)image_frame;
 			tween += entry->qty_step_size;
 			amount_spawned++;
 		}
@@ -9433,7 +9415,6 @@ return free_slot;
 		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
-		tfxU32 sprite_index = entry->sprite_index;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
@@ -9446,7 +9427,6 @@ return free_slot;
 			}
 
 			tfxVec2 &base_size = pm.GrabSize(e.particles_index);
-			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][sprite_index++];
 
 			//----Size
 			if (!(e.common.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
@@ -9455,15 +9435,6 @@ return free_slot;
 				base_size.y = random_size_y + spawn_controls.size.y;
 				base_size.x = (random_size_x + spawn_controls.size.x) / properties.image->image_size.x;
 				float height = base_size.y / properties.image->image_size.y;
-
-				s.transform.scale.x = base_size.x * e.common.library->emitter_attributes[e.emitter_attributes].overtime.width.GetFirstValue();
-
-				if (e.common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size) {
-					s.transform.scale.y = height * e.common.library->emitter_attributes[e.emitter_attributes].overtime.width.GetFirstValue();
-				}
-				else {
-					s.transform.scale.y = height * e.common.library->emitter_attributes[e.emitter_attributes].overtime.height.GetFirstValue();
-				}
 			}
 			else {
 				float random_size_x = random_generation.Range(spawn_controls.size_variation.x);
@@ -9471,9 +9442,6 @@ return free_slot;
 				base_size.y = random_size_y + spawn_controls.size.y;
 				base_size.x = (random_size_x + spawn_controls.size.x) / properties.image->image_size.x;
 				float height = base_size.y / properties.image->image_size.y;
-
-				s.transform.scale.x = base_size.x * e.common.library->emitter_attributes[e.emitter_attributes].overtime.width.GetFirstValue();
-				s.transform.scale.y = s.transform.scale.x;
 			}
 			tween += entry->qty_step_size;
 			amount_spawned++;
@@ -9487,7 +9455,6 @@ return free_slot;
 		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
-		tfxU32 sprite_index = entry->sprite_index;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
@@ -9518,7 +9485,6 @@ return free_slot;
 		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
-		tfxU32 sprite_index = entry->sprite_index;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
@@ -9547,7 +9513,6 @@ return free_slot;
 		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
-		tfxU32 sprite_index = entry->sprite_index;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
@@ -9566,7 +9531,6 @@ return free_slot;
 			float &base_velocity = pm.GrabBaseVelocity(e.particles_index);
 			float &weight_acceleration = pm.GrabWeightAcceleration(e.particles_index);
 			float &base_weight = pm.GrabBaseWeight(e.particles_index);
-			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][sprite_index++];
 
 			//----Velocity
 			float velocity_scale = e.common.library->emitter_attributes[e.emitter_attributes].overtime.velocity.GetFirstValue() * e.current.velocity_adjuster;
@@ -9584,16 +9548,15 @@ return free_slot;
 			}
 			weight_acceleration = base_weight * e.common.library->emitter_attributes[e.emitter_attributes].overtime.weight.GetFirstValue() * tfxUPDATE_TIME;
 
-			s.transform.rotation = 0;
 			local_rotations = 0;
 			if (properties.angle_settings & tfxAngleSettingFlags_random_roll) {
-				s.transform.rotation = local_rotations.roll = random_generation.Range(properties.angle_offsets.roll);
+				local_rotations.roll = random_generation.Range(properties.angle_offsets.roll);
 			}
 			else if (properties.angle_settings & tfxAngleSettingFlags_specify_roll) {
-				s.transform.rotation = local_rotations.roll = properties.angle_offsets.roll;
+				local_rotations.roll = properties.angle_offsets.roll;
 			}
 			else {
-				s.transform.rotation = local_rotations.roll = 0;
+				 local_rotations.roll = 0;
 			}
 
 			//----Position
@@ -9844,13 +9807,14 @@ return free_slot;
 
 			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
 
+			tfxSpriteTransform2d sprite_transform;
 			if (!line && !(e.common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				TransformParticlePosition(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e.common, e.common.transform.world_position);
-				captured_position = s.transform.captured_position = s.transform.position;
+				TransformParticlePosition(local_position.xy(), local_rotations.roll, sprite_transform.position, sprite_transform.rotation, e.common, e.common.transform.world_position);
+				captured_position = sprite_transform.position;
 			}
 
 			if (!line) {
-				direction = velocity_normal.x = GetEmissionDirection2d(e.common, e.current, &e, local_position.xy(), s.transform.position, e.current.emitter_size.xy()) + e.common.library->emitter_attributes[e.emitter_attributes].overtime.direction.GetFirstValue();
+				direction = velocity_normal.x = GetEmissionDirection2d(e.common, e.current, &e, local_position.xy(), sprite_transform.position, e.current.emitter_size.xy()) + e.common.library->emitter_attributes[e.emitter_attributes].overtime.direction.GetFirstValue();
 			}
 
 			//Do a micro update
@@ -9865,20 +9829,17 @@ return free_slot;
 			local_position += current_velocity * micro_time;
 			if (line || e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
 				tfxVec2 rotatevec = mmTransformVector(e.common.transform.matrix, tfxVec2(local_position.x, local_position.y) + e.common.handle.xy());
-				captured_position = s.transform.captured_position = e.common.transform.captured_position.xy() + rotatevec * e.common.transform.scale.xy();
-				e.current.transform_particle_callback2d2(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e.common, tfxVec3(e.common.transform.world_position.x, e.common.transform.world_position.y, 0.f));
+				captured_position = sprite_transform.captured_position = e.common.transform.captured_position.xy() + rotatevec * e.common.transform.scale.xy();
+				e.current.transform_particle_callback2d2(local_position.xy(), local_rotations.roll, sprite_transform.position, sprite_transform.rotation, e.common, tfxVec3(e.common.transform.world_position.x, e.common.transform.world_position.y, 0.f));
 			}
 			else {
-				s.transform.position += current_velocity * micro_time;
-				s.transform.captured_position = s.transform.position;
+				sprite_transform.position += current_velocity * micro_time;
 			}
 			//end micro update
 
 			if ((properties.angle_settings & tfxAngleSettingFlags_align_roll || properties.angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
 				//----Normalize Velocity to direction
-				s.transform.rotation = local_rotations.roll = GetVectorAngle(velocity_normal_tmp.x, velocity_normal_tmp.y) + properties.angle_offsets.roll;
-				if (e.common.property_flags & tfxEmitterPropertyFlags_relative_angle)
-					s.transform.rotation += e.common.transform.world_rotations.roll;
+				local_rotations.roll = GetVectorAngle(velocity_normal_tmp.x, velocity_normal_tmp.y) + properties.angle_offsets.roll;
 			}
 
 			tween += entry->qty_step_size;
@@ -10632,7 +10593,7 @@ return free_slot;
 			amount_to_update = e.sprites_count;
 		}
 		
-		work_entry.start_index = amount_to_update - 1;
+		work_entry.start_index = amount_to_update == 0 ? 0 : amount_to_update - 1;
 		work_entry.e = &e;
 		work_entry.pm = &pm;
 		work_entry.sprites_index = e.sprites_index;
@@ -10640,21 +10601,22 @@ return free_slot;
 		work_entry.sprites = &pm.sprites2d[work_entry.layer];
 		work_entry.started_signal = 0;
 
+		if (amount_to_update > 0) {
 #if tfxMULTITHREADED
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticlePosition);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleSize);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticlePosition);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleSize);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame);
 
-		while (work_entry.started_signal != 4);
-		//Note: Cannot add new things to a queue without completing previous work first.
-		tfxCompleteAllWork(&tfxQueue);
+			//Note: Cannot add new things to a queue without completing previous work first.
+			tfxCompleteAllWork(&tfxQueue);
 #else
-		ControlParticlePosition(&tfxQueue, &work_entry);
-		ControlParticleSize(&tfxQueue, &work_entry);
-		ControlParticleColor(&tfxQueue, &work_entry);
-		ControlParticleImageFrame(&tfxQueue, &work_entry);
+			ControlParticlePosition(&tfxQueue, &work_entry);
+			ControlParticleSize(&tfxQueue, &work_entry);
+			ControlParticleColor(&tfxQueue, &work_entry);
+			ControlParticleImageFrame(&tfxQueue, &work_entry);
 #endif
+		}
 
 		//for (int i = amount_to_update - 1 - amount_spawned; i >= 0; --i) {
 			/*
