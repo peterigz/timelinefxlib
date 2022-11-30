@@ -8048,6 +8048,21 @@ return free_slot;
 		}
 	}
 
+	void tfxParticleManager::FreeParticleList(tfxEffectEmitter &emitter) {
+		if (free_particle_lists.ValidKey(emitter.path_hash)) {
+			free_particle_lists.At(emitter.path_hash).push_back(emitter.particles_index);
+		}
+		else {
+#ifdef tfxTRACK_MEMORY
+			tfxvec<tfxU32> new_indexes(tfxCONSTRUCTOR_VEC_INIT("FreeParticleBanks::new_indexes"));
+#else
+			tfxvec<tfxU32> new_indexes;
+#endif
+			new_indexes.push_back(emitter.particles_index);
+			free_particle_lists.Insert(emitter.path_hash, new_indexes);
+		}
+	}
+
 	void tfxParticleManager::Update() {
 		tfxPROFILE;
 		new_compute_particle_index = 0;
@@ -8093,7 +8108,7 @@ return free_slot;
 					if (flags & tfxEffectManagerFlags_use_compute_shader && e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter)
 						FreeComputeSlot(e.compute_slot_id);
 					if (flags & tfxEffectManagerFlags_unordered) {
-						FreeParticleBank(e);
+						FreeParticleList(e);
 					}
 				}
 			}
@@ -8763,11 +8778,34 @@ return free_slot;
 				for (auto &bank : particle_banks) {
 					bank.clear();
 				}
-				//particle_banks.clear();
+				for (auto &bank : particle_arrays) {
+					bank.parent.clear();
+					bank.sprite_index.clear();
+					bank.next_id.clear();
+					bank.flags.clear();
+					bank.age.clear();
+					bank.max_age.clear();
+					bank.local_position.clear();
+					bank.captured_position.clear();
+					bank.local_rotations.clear();
+					bank.velocity_normal.clear();
+					bank.stretch.clear();
+					bank.weight_acceleration.clear();
+					bank.base_weight.clear();
+					bank.base_velocity.clear();
+					bank.base_spin.clear();
+					bank.noise_offset.clear();
+					bank.noise_resolution.clear();
+					bank.color.clear();
+					bank.intensity.clear();
+					bank.image_frame.clear();
+					bank.base_size.clear();
+					bank.single_loop_count.clear();
+				}
 			}
 			for (auto &e : effects[current_ebuff]) {
 				if (e.type == tfxEmitterType) {
-					FreeParticleBank(e);
+					FreeParticleList(e);
 				}
 			}
 		}
@@ -8780,6 +8818,31 @@ return free_slot;
 			bank.free_all();
 		}
 		particle_banks.clear();
+		for (auto &bank : particle_arrays) {
+			bank.parent.free_all();
+			bank.sprite_index.free_all();
+			bank.next_id.free_all();
+			bank.flags.free_all();
+			bank.age.free_all();
+			bank.max_age.free_all();
+			bank.local_position.free_all();
+			bank.captured_position.free_all();
+			bank.local_rotations.free_all();
+			bank.velocity_normal.free_all();
+			bank.stretch.free_all();
+			bank.weight_acceleration.free_all();
+			bank.base_weight.free_all();
+			bank.base_velocity.free_all();
+			bank.base_spin.free_all();
+			bank.noise_offset.free_all();
+			bank.noise_resolution.free_all();
+			bank.color.free_all();
+			bank.intensity.free_all();
+			bank.image_frame.free_all();
+			bank.base_size.free_all();
+			bank.single_loop_count.free_all();
+		}
+		particle_arrays.clear();
 	}
 	void tfxParticleManager::SoftExpireAll() {
 		for (auto &e : effects[current_ebuff]) {
@@ -8831,10 +8894,16 @@ return free_slot;
 
 		tfxParticleArrays lists;
 		lists.sprite_index.reserve(reserve_amount);
+		//lists.next_id.reserve(reserve_amount);
+		lists.next_id.resize_callback = particle_array_resize_callback;
+		lists.next_id.user_data = &pm;
+		lists.next_id.bank_index = pm.particle_arrays.current_size;
+		lists.parent.reserve(reserve_amount);
 		lists.age.reserve(reserve_amount);
+		lists.flags.reserve(reserve_amount);
 		lists.max_age.reserve(reserve_amount);
 		lists.local_position.reserve(reserve_amount);
-		lists.local_position.reserve(reserve_amount);
+		lists.captured_position.reserve(reserve_amount);
 		lists.local_rotations.reserve(reserve_amount);
 		lists.velocity_normal.reserve(reserve_amount);
 		lists.stretch.reserve(reserve_amount);
@@ -9076,12 +9145,16 @@ return free_slot;
 			e.common.timeout_counter = e.common.timeout;
 			return;
 		}
-		else if (e.parent_particle) {
+		else if (e.parent_particle_id != tfxINVALID) {
 			//e.flags |= e.parent_particle->data.flags & tfxParticleFlags_remove;
-			if (e.parent_particle->next_ptr) {
-				e.parent_particle = e.parent_particle->next_ptr;
-				tfxU32 sprite_layer = (e.parent_particle->sprite_index & 0xF0000000) >> 28;
-				tfxU32 sprite_index = e.parent_particle->sprite_index & 0x0FFFFFFF;
+			tfxU32 bi = ParticleBank(e.parent_particle_id);
+			tfxU32 pi = ParticleIndex(e.parent_particle_id);
+			tfxParticleID next_id = pm.GetParticleNextID(e.parent_particle_id);
+			if (next_id != tfxINVALID) {
+				e.parent_particle_id = next_id;
+				tfxU32 sprite_id = pm.GetParticleSpriteIndex(e.parent_particle_id);
+				tfxU32 sprite_layer = (sprite_id & 0xF0000000) >> 28;
+				tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 					TransformEffector3d(e, pm.sprites3d[sprite_layer][sprite_index].transform, true, e.common.property_flags & tfxEmitterPropertyFlags_relative_angle);
 				else
@@ -9093,7 +9166,7 @@ return free_slot;
 				}
 			}
 			else {
-				e.parent_particle = nullptr;
+				e.parent_particle_id = tfxINVALID;
 				e.flags |= tfxEmitterStateFlags_retain_matrix;
 				e.common.transform.local_position = e.common.transform.world_position;
 				e.common.transform.local_rotations.roll = e.common.transform.world_rotations.roll;
@@ -9267,11 +9340,8 @@ return free_slot;
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleImageFrame);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSize);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpin);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpriteIndex);
 
 		tfxCompleteAllWork(&tfxQueue);
-		tfxWaitUntilAllThreadsAreSleeping(&tfxQueue);
-
 #else
 		SpawnParticleAge(&tfxQueue, &work_entry);
 		SpawnParticlePositions2d(&tfxQueue, &work_entry);
@@ -9279,49 +9349,12 @@ return free_slot;
 		SpawnParticleImageFrame(&tfxQueue, &work_entry);
 		SpawnParticleSize(&tfxQueue, &work_entry);
 		SpawnParticleSpin(&tfxQueue, &work_entry);
-		SpawnParticleSpriteIndex(&tfxQueue, &work_entry);
 #endif
 
 		if (work_entry.sprite_count > 0 && e.common.property_flags & tfxEmitterPropertyFlags_single)
 			e.flags |= tfxEmitterStateFlags_single_shot_done;
 
 		return work_entry.sprite_count;
-	}
-
-	void SpawnParticleSpriteIndex(tfxWorkQueue *queue, void *data) {
-
-		tfxU32 amount_spawned = 0;
-		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		float tween = entry->tween;
-		tfxEffectEmitter &e = *entry->e;
-		tfxParticleManager &pm = *entry->pm;
-		tfxEmitterSpawnControls &spawn_controls = *entry->spawn_controls;
-		tfxEmitterProperties &properties = e.GetProperties();
-
-		while (tween < 1.f) {
-			if (amount_spawned >= entry->max_spawn_amount) {
-				tween = 1.f;
-				break;
-			}
-
-			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
-			tfxU32 &sprite_index = pm.GrabSpriteIndex(e.particles_index);
-			tfxU32 &next_index = pm.GrabNextIndex(e.particles_index);
-			tfxParticleFlags &flags = pm.GrabFlags(e.particles_index);
-			tfxEffectEmitter **parent = pm.GrabParent(e.particles_index);
-			*parent = entry->e;
-		
-			flags = 0;
-			next_index = pm.particle_arrays[e.particles_index].next_index.current_size - 1;
-
-			tween += entry->qty_step_size;
-			amount_spawned++;
-		}
-
-		entry->sprite_count = amount_spawned;
-		e.current.amount_remainder = tween - 1.f;
-
-		InterlockedIncrement(&entry->completion_count);
 	}
 
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data) {
@@ -9346,6 +9379,16 @@ return free_slot;
 			float &intensity = pm.GrabIntensity(e.particles_index);
 			tfxU32 &single_loop_count = pm.GrabSingleLoopCount(e.particles_index);
 
+			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
+			tfxU32 &sprite_index = pm.GrabSpriteIndex(e.particles_index);
+			tfxU32 &next_id = pm.GrabNextIndex(e.particles_index);
+			tfxParticleFlags &flags = pm.GrabFlags(e.particles_index);
+			tfxEffectEmitter **parent = pm.GrabParent(e.particles_index);
+			*parent = entry->e;
+
+			flags = 0;
+			next_id = SetParticleID(e.particles_index, pm.particle_arrays[e.particles_index].next_id.last_index());
+
 			//Max age
 			age = 0.f;
 			max_age = spawn_controls.life + random_generation.Range(spawn_controls.life_variation);
@@ -9369,9 +9412,26 @@ return free_slot;
 				color.b = unsigned char(255.f * e.common.library->emitter_attributes[e.emitter_attributes].overtime.blue.GetFirstValue());
 			}
 
+			if (e.GetInfo().sub_effectors.size()) {
+				for (auto &sub : e.GetInfo().sub_effectors) {
+					if (!pm.FreeEffectCapacity())
+						break;
+					sub.parent = nullptr;
+					sub.parent_particle_id = next_id;
+					sub.highest_particle_age = max_age + tfxFRAME_LENGTH + 1;
+					sub.current.overal_scale = e.current.overal_scale;
+					sub.flags |= e.flags & tfxEmitterStateFlags_no_tween;
+					sub.SetTimeout(5);
+					pm.AddEffect(sub, pm.current_ebuff, true);
+				}
+			}
+
 			tween += entry->qty_step_size;
 			amount_spawned++;
 		}
+
+		entry->sprite_count = amount_spawned;
+		e.current.amount_remainder = tween - 1.f;
 
 		InterlockedIncrement(&entry->completion_count);
 	}
@@ -10218,7 +10278,7 @@ return free_slot;
 	void ControlParticleAge(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxEffectEmitter &e = *work_entry->e;
-		tfxParticleArrays &bank = work_entry->pm->particle_arrays[work_entry->e->particles_index];
+		tfxParticleArrays &bank = work_entry->pm->particle_arrays[e.particles_index];
 		tfxEmitterProperties &properties = e.GetProperties();
 
 		tfxU32 offset = 0;
@@ -10226,14 +10286,14 @@ return free_slot;
 			float &age = bank.age[i];
 			const float &max_age = bank.max_age[i];
 			tfxU32 &single_loop_count = bank.single_loop_count[i];
-			tfxU32 &next_index = bank.next_index[i];
+			tfxParticleID &next_index = bank.next_id[i];
 			tfxParticleFlags &flags = bank.flags[i];
 			age += tfxFRAME_LENGTH;
 			flags |= e.flags & tfxParticleFlags_remove;
 
 			if (flags & tfxParticleFlags_remove || age >= max_age) {
 				if (e.common.property_flags & tfxEmitterPropertyFlags_single && !(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning))
-					if (single_loop_count++ != properties.single_shot_limit) {
+					if (++single_loop_count != properties.single_shot_limit) {
 						age = 0;
 					}
 					else {
@@ -10250,11 +10310,11 @@ return free_slot;
 				offset++;
 			}
 			else if (offset > 0) {
-				bank.next_index[i] = i + offset;
+				bank.next_id[i] = SetParticleID(e.particles_index, i + offset);
 
 				bank.parent[i + offset] = bank.parent[i];
 				bank.sprite_index[i + offset] = bank.sprite_index[i];
-				bank.next_index[i + offset] = bank.next_index[i];
+				bank.next_id[i + offset] = SetParticleID(e.particles_index, bank.next_id[i]);
 				bank.flags[i + offset] = bank.flags[i];
 				bank.age[i + offset] = bank.age[i];	
 				bank.max_age[i + offset] = bank.max_age[i];
@@ -10274,7 +10334,6 @@ return free_slot;
 				bank.image_frame[i + offset] = bank.image_frame[i];
 				bank.base_size[i + offset] = bank.base_size[i];
 				bank.single_loop_count[i + offset] = bank.single_loop_count[i];	
-
 			}
 
 		}
@@ -10282,7 +10341,7 @@ return free_slot;
 		if (offset) {
 			bank.parent.bump(offset);
 			bank.sprite_index.bump(offset);
-			bank.next_index.bump(offset);
+			bank.next_id.bump(offset);
 			bank.flags.bump(offset);
 			bank.age.bump(offset);
 			bank.max_age.bump(offset);

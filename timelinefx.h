@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 1
+#define tfxMULTITHREADED 0
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -187,6 +187,20 @@ typedef unsigned long long tfxU64;
 typedef long long tfxS64;
 typedef tfxU32 tfxEffectID;
 typedef unsigned long long tfxKey;
+typedef tfxU32 tfxParticleID;
+
+inline tfxParticleID SetParticleID(tfxU32 bank_index, tfxU32 particle_index) {
+	return ((bank_index & 0x00000FFF) << 20) + particle_index;
+}
+
+inline tfxU32 ParticleIndex(tfxParticleID id) {
+	return id & 0x000FFFFF;
+}
+
+inline tfxU32 ParticleBank(tfxParticleID id) {
+	return (id & 0xFFF00000) >> 20;
+}
+
 union tfxUInt10bit
 {
 	struct
@@ -1185,6 +1199,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		int last_bump;
 		void *user_data;
 		void(*resize_callback)(tfxring<T> *ring, T *new_data, void *user_data);
+		unsigned int bank_index;
 		tfxring *pair;
 
 		inline tfxring() : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME; }
@@ -5211,6 +5226,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectEmitter *next_ptr;
 		//Pointer to the sub effect's particle that spawned it
 		tfxParticle *parent_particle;
+		tfxParticleID parent_particle_id;
 		//State flags for emitters and effects
 		tfxEmitterStateFlags flags;
 		tfxEffectPropertyFlags effect_flags;
@@ -5238,6 +5254,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			highest_particle_age(0),
 			parent(nullptr),
 			parent_particle(nullptr),
+			parent_particle_id(tfxINVALID),
 			user_data(nullptr),
 			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
 			effect_flags(tfxEffectPropertyFlags_none),
@@ -5401,7 +5418,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxParticleArrays {
 		tfxring<tfxEffectEmitter*> parent;
 		tfxring<tfxU32> sprite_index;
-		tfxring<tfxU32> next_index;
+		tfxring<tfxParticleID> next_id;
 		tfxring<tfxParticleFlags> flags;
 		tfxring<float> age;							//The age of the particle, used by the controller to look up the current state on the graphs
 		tfxring<float> max_age;						//max age before the particle expires
@@ -5796,6 +5813,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false, float add_delayed_spawning = 0);
 		void AddEffect(tfxEffectTemplate &effect);
 		void FreeParticleBank(tfxEffectEmitter &emitter);
+		void FreeParticleList(tfxEffectEmitter &emitter);
 		//Clear all effects and particles in the particle manager
 		void ClearAll(bool free_memory = false);
 		void FreeParticleBanks();
@@ -5850,9 +5868,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline float& GrabIntensity(unsigned int index) { return particle_arrays[index].intensity.grab(); }
 		inline float& GrabImageFrame(unsigned int index) { return particle_arrays[index].image_frame.grab(); }
 		inline tfxU32& GrabSpriteIndex(unsigned int index) { return particle_arrays[index].sprite_index.grab(); }
-		inline tfxU32& GrabNextIndex(unsigned int index) { return particle_arrays[index].next_index.grab(); }
+		inline tfxU32& GrabNextIndex(unsigned int index) { return particle_arrays[index].next_id.grab(); }
 		inline tfxParticleFlags& GrabFlags(unsigned int index) { return particle_arrays[index].flags.grab(); }
 		inline tfxEffectEmitter** GrabParent(unsigned int index) { return &particle_arrays[index].parent.grab(); }
+		inline tfxParticleID &GetParticleNextID(tfxParticleID id) { return particle_arrays[ParticleBank(id)].next_id.AtAbs(ParticleIndex(id)); }
+		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index.AtAbs(ParticleIndex(id)); }
 
 		tfxComputeParticle &GrabComputeParticle(unsigned int layer); 
 		void ResetParticlePtr(void *ptr);
@@ -5951,6 +5971,52 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				}
 			}
 		}
+	}
+	inline void particle_array_resize_callback(tfxring<tfxParticleID> *bank, tfxParticleID *new_data, void *user_data) {
+
+		for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
+			tfxParticleID &id = (*bank)[i];
+			tfxU32 bank_index = ParticleBank(id);
+			tfxU32 next_index = ParticleIndex(id);
+			
+			id = SetParticleID(bank_index, i);
+			tfxParticleID *new_id = new_data + i;
+			*new_id = SetParticleID(bank_index, next_index < bank->start_index ? bank->capacity - bank->start_index + next_index : next_index - bank->start_index);
+		}
+
+		if (bank->pair && bank->pair->current_size > 0) {
+			for (tfxU32 i = 0; i != bank->pair->current_size - 1; ++i) {
+				tfxParticleID &id = (*bank->pair)[i];
+				tfxU32 bank_index = ParticleBank(id);
+				tfxU32 next_index = ParticleIndex(id);
+
+				id = SetParticleID(bank_index, (next_index % bank->start_index) + i);
+			}
+		}
+
+		tfxParticleManager *pm = static_cast<tfxParticleManager*>(user_data);
+
+		for (auto &e : pm->effects[pm->current_ebuff]) {
+			if (e.parent_particle_id != tfxINVALID) {
+				tfxU32 bank_index = ParticleBank(e.parent_particle_id);
+				if (bank_index == bank->bank_index) {
+					tfxParticleID next_id = pm->GetParticleNextID(e.parent_particle_id);
+					e.parent_particle_id = next_id;
+					tfxParticleID *new_next_id = new_data + ParticleIndex(next_id);
+				}
+			}
+		}
+
+		for (auto &e : pm->effects[!pm->current_ebuff]) {
+			if (e.parent_particle_id != tfxINVALID) {
+				tfxU32 bank_index = ParticleBank(e.parent_particle_id);
+				if (bank_index == bank->bank_index) {
+					tfxParticleID next_id = pm->GetParticleNextID(e.parent_particle_id);
+					e.parent_particle_id = next_id;
+					tfxParticleID *new_next_id = new_data + ParticleIndex(next_id);
+				}
+			}
+		}
 
 	}
 	tfxU32 GrabParticleBank(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
@@ -5993,7 +6059,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void SpawnParticleSize(tfxWorkQueue *queue, void *data);
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSpin(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSpriteIndex(tfxWorkQueue *queue, void *data);
 
 	void ControlParticleAge(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition(tfxWorkQueue *queue, void *data);
