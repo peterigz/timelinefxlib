@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 0
+#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -1105,6 +1105,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 #endif
 		tfxU32 current_size;
 		tfxU32 capacity;
+		tfxU32 volatile locked;
 		T* data;
 
 		// Provide standard typedefs but we don't use them ourselves.
@@ -1112,9 +1113,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		typedef value_type*         iterator;
 		typedef const value_type*   const_iterator;
 
-		inline tfxvec() { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME;  }
-		inline tfxvec(const char *name_init) { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
-		inline tfxvec(const tfxvec<T> &src) { current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
+		inline tfxvec() { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME; }
+		inline tfxvec(const char *name_init) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
+		inline tfxvec(const tfxvec<T> &src) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 		inline tfxvec<T>& operator=( const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
 		inline ~tfxvec() { if (data) { tfxFREE(data) }; data = NULL; current_size = capacity = 0; }
 
@@ -1123,6 +1124,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline const tfxU32	size() const { return current_size; }
 		inline T&           operator[](tfxU32 i) { return data[i]; }
 		inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
+		inline T&           ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
 
 		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 		inline void         clear() { if (data) { current_size = 0; } }
@@ -1154,6 +1156,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
 			current_size++;
 			return data[current_size - 1];
+		}
+		inline tfxU32        ts_push_back(const T& v) {
+			while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
+			if (current_size == capacity)
+				reserve(_grow_capacity(current_size + 1));
+			new((void*)(data + current_size)) T(v); 
+			tfxU32 index = current_size++;
+			InterlockedExchange((LONG volatile*)&locked, 0);
+			return index;
 		}
 		inline T&	        push_back(const T& v) { 
 			if (current_size == capacity) 
@@ -5679,12 +5690,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxSpawnWorkEntry {
 		tfxParticleManager *pm;
 		tfxEffectEmitter *e;
-		tfxEmitterSpawnControls *spawn_controls;
+		tfxEmitterSpawnControls spawn_controls;
 		tfxU32 sprite_count;
 		float tween;
 		float qty_step_size;
-		tfxU32 max_spawn_amount;
-		volatile tfxU32 completion_count;
+		float highest_particle_age;
+		tfxU32 max_spawn_count;
 	};
 
 	struct tfxControlWorkEntry {
@@ -5695,7 +5706,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxControlData c;
 		tfxU32 layer;
 		tfxring<tfxParticleSprite2d> *sprites;
-		volatile tfxU32 started_signal;
 	};
 
 	struct tfxParticleAgeWorkEntry {
@@ -6035,7 +6045,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void Position(tfxEffectEmitter &e, const tfxVec3& p);
 	void TransformEffector(tfxEffectEmitter &e, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
 	void TransformEffector3d(tfxEffectEmitter &e, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
-	void UpdatePMEmitter(tfxParticleManager &pm, tfxEffectEmitter &e);
+	void UpdatePMEmitter(tfxParticleManager &pm, tfxEffectEmitter &e, tfxSpawnWorkEntry *spawn_work_entry);
 	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxEffectEmitter &e);
 	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
@@ -6044,7 +6054,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxEmitterSpawnControls UpdateEmitterState(tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls);
 	tfxParentSpawnControls UpdateEffectState(tfxEffectEmitter &e);
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxVec2 &sprite_scale , tfxEffectEmitter &e);
-	void ControlParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
+	void ControlParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxControlWorkEntry &work_entry);
 	void ControlParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
 	void ControlParticlesOrdered2d(tfxParticleManager &pm);
 	void ControlParticlesOrdered3d(tfxParticleManager &pm);
@@ -6052,7 +6062,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//Wide mt versions
 
-	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
+	void SpawnWideParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxSpawnWorkEntry &spawn_work_entry);
 	void SpawnParticlePositions2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);
