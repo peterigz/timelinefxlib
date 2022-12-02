@@ -5691,11 +5691,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxParticleManager *pm;
 		tfxEffectEmitter *e;
 		tfxEmitterSpawnControls spawn_controls;
-		tfxU32 sprite_count;
 		float tween;
+		tfxU32 max_spawn_count;
 		float qty_step_size;
 		float highest_particle_age;
-		tfxU32 max_spawn_count;
 	};
 
 	struct tfxControlWorkEntry {
@@ -6045,7 +6044,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void Position(tfxEffectEmitter &e, const tfxVec3& p);
 	void TransformEffector(tfxEffectEmitter &e, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
 	void TransformEffector3d(tfxEffectEmitter &e, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
-	void UpdatePMEmitter(tfxParticleManager &pm, tfxEffectEmitter &e, tfxSpawnWorkEntry *spawn_work_entry);
+	void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry);
 	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxEffectEmitter &e);
 	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxU32 max_spawn_amount);
@@ -6062,7 +6061,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//Wide mt versions
 
-	void SpawnWideParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxSpawnWorkEntry &spawn_work_entry);
+	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
 	void SpawnParticlePositions2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);

@@ -8092,45 +8092,43 @@ return free_slot;
 		tfxU32 start_size = effects[current_ebuff].current_size;
 		tmpStack(tfxSpawnWorkEntry, spawn_work);
 		for (int i = 0; i != start_size; ++i) {
-			tfxEffectEmitter &e = effects[current_ebuff][i];
-
 			tfxSpawnWorkEntry *spawn_work_entry = &spawn_work.next();
-			spawn_work_entry->sprite_count = 0;
-			spawn_work_entry->max_spawn_count = 0;
-			UpdatePMEmitter(*this, e, spawn_work_entry);
-			if (e.type == tfxEffectType) {
-				if (e.common.timeout_counter <= e.common.timeout) {
-					e.next_ptr = SetNextEffect(e, next_buffer);
+			spawn_work_entry->e = &effects[current_ebuff][i];
+
+			UpdatePMEmitter(*this, spawn_work_entry);
+			if (spawn_work_entry->e->type == tfxEffectType) {
+				if (spawn_work_entry->e->common.timeout_counter <= spawn_work_entry->e->common.timeout) {
+					spawn_work_entry->e->next_ptr = SetNextEffect(*spawn_work_entry->e, next_buffer);
 				}
 				else {
-					e.next_ptr = nullptr;
+					spawn_work_entry->e->next_ptr = nullptr;
 				}
 			}
 			else {
-				if (e.common.timeout_counter <= e.common.timeout) {
-					e.next_ptr = SetNextEffect(e, next_buffer);
+				if (spawn_work_entry->e->common.timeout_counter <= spawn_work_entry->e->common.timeout) {
+					spawn_work_entry->e->next_ptr = SetNextEffect(*spawn_work_entry->e, next_buffer);
 				}
 				else {
-					e.next_ptr = nullptr;
-					if (flags & tfxEffectManagerFlags_use_compute_shader && e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter)
-						FreeComputeSlot(e.compute_slot_id);
+					spawn_work_entry->e->next_ptr = nullptr;
+					if (flags & tfxEffectManagerFlags_use_compute_shader && spawn_work_entry->e->common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter)
+						FreeComputeSlot(spawn_work_entry->e->compute_slot_id);
 					if (flags & tfxEffectManagerFlags_unordered) {
-						FreeParticleList(e);
+						FreeParticleList(*spawn_work_entry->e);
 					}
 				}
 			}
 		}
 
+		//Complete the spawn particles work
 		tfxCompleteAllWork(&tfxQueue);
+
 		for (auto &work_entry : spawn_work) {
-			if (work_entry.e && work_entry.sprite_count > 0) {
+			if (work_entry.e->type == tfxEmitterType) {
 				tfxU32 layer = work_entry.e->GetProperties().layer;
-				sprites2d[layer].current_size -= (work_entry.max_spawn_count - work_entry.sprite_count);
-				sprite_index_point[layer] -= (work_entry.max_spawn_count - work_entry.sprite_count);
 				if (work_entry.e->next_ptr) {
-					work_entry.e->next_ptr->highest_particle_age = std::fmaxf(work_entry.e->highest_particle_age, work_entry.highest_particle_age);
-					work_entry.e->next_ptr->parent->highest_particle_age = work_entry.e->highest_particle_age + tfxFRAME_LENGTH;
-					if (work_entry.e->common.property_flags & tfxEmitterPropertyFlags_single)
+					work_entry.e->next_ptr->highest_particle_age = std::fmaxf(work_entry.e->next_ptr->highest_particle_age, work_entry.highest_particle_age);
+					work_entry.e->next_ptr->parent->highest_particle_age = work_entry.e->next_ptr->highest_particle_age + tfxFRAME_LENGTH;
+					if (work_entry.e->next_ptr->common.property_flags & tfxEmitterPropertyFlags_single)
 						work_entry.e->next_ptr->flags |= tfxEmitterStateFlags_single_shot_done;
 				}
 			}
@@ -8148,6 +8146,7 @@ return free_slot;
 					}
 				}
 				tfxCompleteAllWork(&tfxQueue);
+				work.free();
 			}
 			{
 				tmpStack(tfxParticleAgeWorkEntry, work);
@@ -8168,17 +8167,18 @@ return free_slot;
 					}
 				}
 				tfxCompleteAllWork(&tfxQueue);
+				work.free();
 			}
 		}
 
 		for (int i = start_size; i != effects[current_ebuff].current_size; ++i) {
-			tfxEffectEmitter &e = effects[current_ebuff][i];
-			if (e.type == tfxEmitterType && e.particles_index == tfxINVALID && flags & tfxEffectManagerFlags_unordered) {
-				e.particles_index = GrabParticleLists(*this, e.path_hash, 100);
-			}
 			tfxSpawnWorkEntry work_entry;
-			UpdatePMEmitter(*this, e, &work_entry);
-			e.next_ptr = SetNextEffect(e, next_buffer);
+			work_entry.e = &effects[current_ebuff][i];
+			if (work_entry.e->type == tfxEmitterType && work_entry.e->particles_index == tfxINVALID && flags & tfxEffectManagerFlags_unordered) {
+				work_entry.e->particles_index = GrabParticleLists(*this, work_entry.e->path_hash, 100);
+			}
+			UpdatePMEmitter(*this, &work_entry);
+			work_entry.e->next_ptr = SetNextEffect(*work_entry.e, next_buffer);
 		}
 
 		if (!(flags & tfxEffectManagerFlags_unordered)) {
@@ -9001,8 +9001,9 @@ return free_slot;
 		e.common.transform.local_position = p;
 	}
 
-	void UpdatePMEmitter(tfxParticleManager &pm, tfxEffectEmitter &e, tfxSpawnWorkEntry *spawn_work_entry) {
+	void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry) {
 		tfxPROFILE;
+		tfxEffectEmitter &e = *spawn_work_entry->e;
 		e.common.transform.captured_position = e.common.transform.world_position;
 
 		if (pm.lookup_mode == tfxPrecise) {
@@ -9033,7 +9034,7 @@ return free_slot;
 
 			bool is_compute = e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 			tfxU32 amount_spawned = 0;
-			spawn_work_entry->max_spawn_count = NewSpritesNeeded(pm, e);
+			tfxU32 max_spawn_count = NewSpritesNeeded(pm, e);
 
 			if (pm.flags & tfxEffectManagerFlags_unordered) {
 
@@ -9047,33 +9048,33 @@ return free_slot;
 					}
 
 					e.sprites_count = pm.particle_banks[e.particles_index].current_size;
-					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && e.sprites_count + spawn_work_entry->max_spawn_count > sprite_buffer.free_space()) {
-						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (e.sprites_count + spawn_work_entry->max_spawn_count - sprite_buffer.free_space()) + 1));
+					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && e.sprites_count + max_spawn_count > sprite_buffer.free_space()) {
+						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (e.sprites_count + max_spawn_count - sprite_buffer.free_space()) + 1));
 						sprite_buffer.current_size += e.sprites_count;
 					}
 					else if (!(pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation)) {
 						e.sprites_count = e.sprites_count > sprite_buffer.free_space() ? sprite_buffer.free_space() : e.sprites_count;
 						sprite_buffer.current_size += e.sprites_count;
-						spawn_work_entry->max_spawn_count = spawn_work_entry->max_spawn_count > sprite_buffer.free_space() ? sprite_buffer.free_space() : spawn_work_entry->max_spawn_count;
+						max_spawn_count = max_spawn_count > sprite_buffer.free_space() ? sprite_buffer.free_space() : max_spawn_count;
 					}
 					else {
 						sprite_buffer.current_size += e.sprites_count;
 					}
-					e.sprites_count += spawn_work_entry->max_spawn_count;
-					sprite_buffer.current_size += spawn_work_entry->max_spawn_count;
+					e.sprites_count += max_spawn_count;
+					sprite_buffer.current_size += max_spawn_count;
 					e.sprites_index = pm.sprite_index_point[properties.layer];
 					pm.sprite_index_point[properties.layer] += e.sprites_count;
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, spawn_work_entry->max_spawn_count);
+							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
 					else {
 						if (!(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, spawn_work_entry->max_spawn_count);
+							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
-					sprite_buffer.current_size -= (spawn_work_entry->max_spawn_count - amount_spawned);
-					pm.sprite_index_point[properties.layer] -= (spawn_work_entry->max_spawn_count - amount_spawned);
+					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
 
 					ControlParticles3d(pm, e, amount_spawned);
 				}
@@ -9087,42 +9088,41 @@ return free_slot;
 					}
 
 					e.sprites_count = pm.particle_arrays[e.particles_index].age.current_size;
-					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && e.sprites_count + spawn_work_entry->max_spawn_count > sprite_buffer.free_space()) {
-						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (e.sprites_count + spawn_work_entry->max_spawn_count - sprite_buffer.free_space()) + 1));
+					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && e.sprites_count + max_spawn_count > sprite_buffer.free_space()) {
+						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (e.sprites_count + max_spawn_count - sprite_buffer.free_space()) + 1));
 						sprite_buffer.current_size += e.sprites_count;
 					}
 					else if (!(pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation)) {
 						e.sprites_count = e.sprites_count > sprite_buffer.free_space() ? sprite_buffer.free_space() : e.sprites_count;
 						sprite_buffer.current_size += e.sprites_count;
-						spawn_work_entry->max_spawn_count = spawn_work_entry->max_spawn_count > sprite_buffer.free_space() ? sprite_buffer.free_space() : spawn_work_entry->max_spawn_count;
+						max_spawn_count = max_spawn_count > sprite_buffer.free_space() ? sprite_buffer.free_space() : max_spawn_count;
 					}
 					else {
 						sprite_buffer.current_size += e.sprites_count;
 					}
 
+					e.sprites_count += max_spawn_count;
+					e.sprites_index = pm.sprite_index_point[properties.layer];
+					pm.sprite_index_point[properties.layer] += e.sprites_count;
+					sprite_buffer.current_size += max_spawn_count;
+
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning)) {
-							e.sprites_count += spawn_work_entry->max_spawn_count;
-							e.sprites_index = pm.sprite_index_point[properties.layer];
-							pm.sprite_index_point[properties.layer] += e.sprites_count;
-							sprite_buffer.current_size += spawn_work_entry->max_spawn_count;
-							SpawnWideParticles2d(pm, e, spawn_work_entry->spawn_controls, *spawn_work_entry);
+							amount_spawned = SpawnWideParticles2d(pm, *spawn_work_entry, max_spawn_count);
 						}
 					}
 					else {
 						if (!(pm.flags & tfxEffectManagerFlags_disable_spawning)) {
-							e.sprites_count += spawn_work_entry->max_spawn_count;
-							e.sprites_index = pm.sprite_index_point[properties.layer];
-							pm.sprite_index_point[properties.layer] += e.sprites_count;
-							sprite_buffer.current_size += spawn_work_entry->max_spawn_count;
-							SpawnWideParticles2d(pm, e, spawn_work_entry->spawn_controls, *spawn_work_entry);
+							amount_spawned = SpawnWideParticles2d(pm, *spawn_work_entry, max_spawn_count);
 						}
 					}
+					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
 				}
 			}
 			else {
 				e.sprites_index = pm.sprite_index_point[properties.layer];
-				pm.sprite_index_point[properties.layer] += spawn_work_entry->max_spawn_count;
+				pm.sprite_index_point[properties.layer] += max_spawn_count;
 				e.particles_index = properties.layer * 2 + pm.current_pbuff;
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d) {
 					Transform3d(e.common.transform, e.parent->common.transform);
@@ -9135,22 +9135,22 @@ return free_slot;
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
 					}
-					else if(e.sprites_index + spawn_work_entry->max_spawn_count > sprite_buffer.capacity) {
+					else if(e.sprites_index + max_spawn_count > sprite_buffer.capacity) {
 						pm.sprite_index_point[properties.layer] = sprite_buffer.capacity;
-						spawn_work_entry->max_spawn_count = sprite_buffer.capacity - e.sprites_index;
+						max_spawn_count = sprite_buffer.capacity - e.sprites_index;
 					}
 					sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && e.common.property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, spawn_work_entry->max_spawn_count);
+							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
 					else {
 						if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, spawn_work_entry->max_spawn_count);
+							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
-					sprite_buffer.current_size -= (spawn_work_entry->max_spawn_count - amount_spawned);
-					pm.sprite_index_point[properties.layer] -= (spawn_work_entry->max_spawn_count - amount_spawned);
+					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
 				}
 				else {
 					Transform(e.common.transform, e.parent->common.transform);
@@ -9163,22 +9163,22 @@ return free_slot;
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
 						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
 					}
-					else if(e.sprites_index + spawn_work_entry->max_spawn_count > sprite_buffer.capacity) {
+					else if(e.sprites_index + max_spawn_count > sprite_buffer.capacity) {
 						pm.sprite_index_point[properties.layer] = sprite_buffer.capacity;
-						spawn_work_entry->max_spawn_count = sprite_buffer.capacity - e.sprites_index;
+						max_spawn_count = sprite_buffer.capacity - e.sprites_index;
 					}
 					sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							amount_spawned = SpawnParticles2d(pm, e, spawn_work_entry->spawn_controls, spawn_work_entry->max_spawn_count);
+							amount_spawned = SpawnParticles2d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
 					else {
 						if (!(pm.flags & tfxEffectManagerFlags_disable_spawning))
-							amount_spawned = SpawnParticles2d(pm, e, spawn_work_entry->spawn_controls, spawn_work_entry->max_spawn_count);
+							amount_spawned = SpawnParticles2d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
-					sprite_buffer.current_size -= (spawn_work_entry->max_spawn_count - amount_spawned);
-					pm.sprite_index_point[properties.layer] -= (spawn_work_entry->max_spawn_count - amount_spawned);
+					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
 				}
 			}
 
@@ -9346,30 +9346,63 @@ return free_slot;
 		return amount_spawned;
 	}
 
-	void SpawnWideParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxEmitterSpawnControls &spawn_controls, tfxSpawnWorkEntry &work_entry) {
-		tfxEmitterProperties &properties = e.GetProperties();
+	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &work_entry, tfxU32 max_spawn_count) {
+		tfxEmitterProperties &properties = work_entry.e->GetProperties();
 
-		if (e.flags & tfxEmitterStateFlags_single_shot_done || e.parent->flags & tfxEmitterStateFlags_stop_spawning)
-			return;
-		if (e.current.qty == 0)
-			return;
+		if (work_entry.e->flags & tfxEmitterStateFlags_single_shot_done || work_entry.e->parent->flags & tfxEmitterStateFlags_stop_spawning)
+			return 0;
+		if (work_entry.e->current.qty == 0)
+			return 0;
 
-		float qty_step_size = 1.f / e.current.qty;
+		float qty_step_size = 1.f / work_entry.e->current.qty;
 		float tween = 0;
-		if (qty_step_size == e.current.qty_step_size || e.common.property_flags & tfxEmitterPropertyFlags_single)
-			tween = e.current.amount_remainder;
+		if (qty_step_size == work_entry.e->current.qty_step_size || work_entry.e->common.property_flags & tfxEmitterPropertyFlags_single)
+			tween = work_entry.e->current.amount_remainder;
 		else
-			tween = e.current.amount_remainder - (e.current.qty_step_size - qty_step_size);
-		e.current.qty_step_size = qty_step_size;
-		bool is_compute = e.common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
+			tween = work_entry.e->current.amount_remainder - (work_entry.e->current.qty_step_size - qty_step_size);
+		work_entry.e->current.qty_step_size = qty_step_size;
+		bool is_compute = work_entry.e->common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 
-		if (tween >= 1)
-			tween -= e.current.qty;
+		if (tween >= 1) {
+			tween -= work_entry.e->current.qty;
+		}
 
 		work_entry.pm = &pm;
-		work_entry.e = &e;
 		work_entry.tween = tween;
+		work_entry.max_spawn_count = max_spawn_count;
 		work_entry.qty_step_size = qty_step_size;
+
+		tfxU32 amount_spawned = 0;
+		if (tween >= 1) {
+			work_entry.e->current.amount_remainder = tween - 1.f;
+		}
+		else {
+			while (tween < 1.f && amount_spawned < max_spawn_count) {
+				tween += qty_step_size;
+				amount_spawned++;
+			}
+			if (tween < 1.f && amount_spawned >= max_spawn_count) {
+				work_entry.e->current.amount_remainder = 0;
+			}
+			else {
+				work_entry.e->current.amount_remainder = tween - 1.f;
+			}
+			/*
+			float amount_that_will_spawn = (1.f + tween) / qty_step_size;
+			amount_spawned = (tfxU32)amount_that_will_spawn;
+			if (amount_spawned == 0 && max_spawn_count != 0) {
+				amount_spawned = 1;
+				work_entry.e->current.amount_remainder = tween + qty_step_size - 1.f;
+			}
+			else if (amount_spawned >= max_spawn_count) {
+				work_entry.e->current.amount_remainder = 0.f;
+				amount_spawned = max_spawn_count;
+			}
+			else {
+				work_entry.e->current.amount_remainder = amount_that_will_spawn - (float)amount_spawned;
+			}
+			*/
+		}
 
 #if tfxMULTITHREADED
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleAge);
@@ -9379,14 +9412,17 @@ return free_slot;
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSize);
 		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpin);
 #else
-		SpawnParticleAge(&tfxQueue, &work_entry);
+		tfxU32 actually_spawned = SpawnParticleAge(&tfxQueue, &work_entry);
 		SpawnParticlePositions2d(&tfxQueue, &work_entry);
 		SpawnParticleNoise(&tfxQueue, &work_entry);
 		SpawnParticleImageFrame(&tfxQueue, &work_entry);
 		SpawnParticleSize(&tfxQueue, &work_entry);
 		SpawnParticleSpin(&tfxQueue, &work_entry);
 #endif
-
+		//printf("%i vs %i\n", actually_spawned, amount_spawned);
+		//if (actually_spawned != amount_spawned)
+			//int debug = 1;
+		return amount_spawned;
 	}
 
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data) {
@@ -9443,13 +9479,7 @@ return free_slot;
 			amount_spawned++;
 		}
 
-		if (amount_spawned >= entry->max_spawn_count && tween < 1.f) {
-			tween = 1.f;
-		}
-
-		entry->sprite_count = amount_spawned;
-		e.current.amount_remainder = tween - 1.f;
-
+		//return amount_spawned;
 	}
 
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data) {
