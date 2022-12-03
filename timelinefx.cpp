@@ -7934,7 +7934,7 @@ namespace tfx {
 				else {
 					if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position && (e.common.property_flags & tfxEmitterPropertyFlags_relative_angle || (e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine))) {
 						emitter.current.transform_particle_callback2d = TransformParticleRelativeLine;
-						emitter.current.transform_particle_callback2d2 = TransformParticlePositionRelative;
+						emitter.current.transform_particle_callback2d2 = TransformParticlePositionRelativeLine;
 					}
 					else if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
 						emitter.current.transform_particle_callback2d = TransformParticleRelative;
@@ -9847,11 +9847,35 @@ return free_slot;
 				}
 			}
 
+			//----Splatter
+			if (spawn_controls.splatter) {
+				float splattertemp = spawn_controls.splatter;
+				float splatx = random_generation.Range(-spawn_controls.splatter, spawn_controls.splatter);
+				float splaty = random_generation.Range(-spawn_controls.splatter, spawn_controls.splatter);
+
+				while (GetDistance(0, 0, splatx, splaty) >= splattertemp && splattertemp > 0) {
+					splatx = random_generation.Range(-spawn_controls.splatter, spawn_controls.splatter);
+					splaty = random_generation.Range(-spawn_controls.splatter, spawn_controls.splatter);
+				}
+
+				if (!(e.common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+					local_position.x += splatx * e.common.transform.scale.x;
+					local_position.y += splaty * e.common.transform.scale.y;
+				}
+				else {
+					local_position.x += splatx;
+					local_position.y += splaty;
+				}
+			}
+
+			tfxSpriteTransform2d sprite_transform;
 			float direction = 0;
+
+			if (properties.angle_settings & tfxAngleSettingFlags_align_roll && e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
+				sprite_transform.rotation = local_rotations.roll = direction + properties.angle_offsets.roll;
 
 			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
 
-			tfxSpriteTransform2d sprite_transform;
 			if (!line && !(e.common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				TransformParticlePosition(local_position.xy(), local_rotations.roll, sprite_transform.position, sprite_transform.rotation, e.common, e.common.transform.world_position);
 				captured_position = sprite_transform.position;
@@ -9876,13 +9900,9 @@ return free_slot;
 				captured_position = sprite_transform.captured_position = e.common.transform.captured_position.xy() + rotatevec * e.common.transform.scale.xy();
 				e.current.transform_particle_callback2d2(local_position.xy(), local_rotations.roll, sprite_transform.position, sprite_transform.rotation, e.common, tfxVec3(e.common.transform.world_position.x, e.common.transform.world_position.y, 0.f));
 			}
-			else {
-				sprite_transform.position += current_velocity * micro_time;
-			}
 			//end micro update
 
 			if ((properties.angle_settings & tfxAngleSettingFlags_align_roll || properties.angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
-				//----Normalize Velocity to direction
 				local_rotations.roll = GetVectorAngle(velocity_normal_tmp.x, velocity_normal_tmp.y) + properties.angle_offsets.roll;
 			}
 

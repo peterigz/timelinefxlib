@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 1
+#define tfxMULTITHREADED 0
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -6478,15 +6478,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 	static inline void TransformParticleRelative(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_rotations = data.local_rotations.roll;
-		float s = sin(data.local_rotations.roll);
-		float c = cos(data.local_rotations.roll);
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
 	static inline void TransformParticleRelativeLine(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_rotations = common.transform.world_rotations.roll + data.local_rotations.roll;
-		float s = sin(data.local_rotations.roll);
-		float c = cos(data.local_rotations.roll);
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(data.local_position.x, data.local_position.y) + common.handle.xy());
 		world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
@@ -6500,8 +6496,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 	static inline void TransformParticlePositionRelative(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
 		world_rotations = roll;
-		float s = sin(roll);
-		float c = cos(roll);
+		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(local_position.x, local_position.y) + common.handle.xy());
+		world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
+	}
+	static inline void TransformParticlePositionRelativeLine(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position) {
+		world_rotations = common.transform.world_rotations.roll + roll;
 		tfxVec2 rotatevec = mmTransformVector(common.transform.matrix, tfxVec2(local_position.x, local_position.y) + common.handle.xy());
 		world_position = from_position.xy() + rotatevec * common.transform.scale.xy();
 	}
