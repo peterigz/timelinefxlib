@@ -5693,6 +5693,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEmitterSpawnControls spawn_controls;
 		float tween;
 		tfxU32 max_spawn_count;
+		tfxU32 amount_to_spawn;
 		float qty_step_size;
 		float highest_particle_age;
 	};

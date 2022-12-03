@@ -9371,63 +9371,86 @@ return free_slot;
 		work_entry.tween = tween;
 		work_entry.max_spawn_count = max_spawn_count;
 		work_entry.qty_step_size = qty_step_size;
+		work_entry.amount_to_spawn = 0;
 
-		tfxU32 amount_spawned = 0;
 		if (tween >= 1) {
 			work_entry.e->current.amount_remainder = tween - 1.f;
 		}
 		else {
-			while (tween < 1.f && amount_spawned < max_spawn_count) {
-				tween += qty_step_size;
-				amount_spawned++;
+			float tmp_tween = tween;
+			tfxU32 amount_to_spawn = 0;
+			float test_remainder = 0.f;
+			while (tmp_tween < 1.f && amount_to_spawn < max_spawn_count) {
+				tmp_tween += qty_step_size;
+				amount_to_spawn++;
 			}
-			if (tween < 1.f && amount_spawned >= max_spawn_count) {
-				work_entry.e->current.amount_remainder = 0;
+			if (tmp_tween < 1.f && amount_to_spawn >= max_spawn_count) {
+				test_remainder = 0;
 			}
 			else {
-				work_entry.e->current.amount_remainder = tween - 1.f;
+				test_remainder = tmp_tween - 1.f;
 			}
-			/*
-			float amount_that_will_spawn = (1.f + tween) / qty_step_size;
-			amount_spawned = (tfxU32)amount_that_will_spawn;
-			if (amount_spawned == 0 && max_spawn_count != 0) {
-				amount_spawned = 1;
+
+
+			float amount_that_will_spawn = 0.f;
+			float remainder = 0.f;
+			float mod_remainder = 0.f;
+			if (qty_step_size <= 1.f) {
+				amount_that_will_spawn = (1.f - tween) / qty_step_size;
+				work_entry.amount_to_spawn = (tfxU32)amount_that_will_spawn;
+				remainder = amount_that_will_spawn - (float)work_entry.amount_to_spawn;
+				if (remainder > 0) {
+					work_entry.amount_to_spawn++;
+					work_entry.e->current.amount_remainder = remainder * qty_step_size;
+				}
+			}
+			else {
+				work_entry.amount_to_spawn = 1;
 				work_entry.e->current.amount_remainder = tween + qty_step_size - 1.f;
 			}
-			else if (amount_spawned >= max_spawn_count) {
+			if (work_entry.amount_to_spawn == 0 && max_spawn_count != 0) {
+				work_entry.amount_to_spawn = 1;
+				work_entry.e->current.amount_remainder = tween + qty_step_size - 1.f;
+			}
+			else if (work_entry.amount_to_spawn > max_spawn_count) {
 				work_entry.e->current.amount_remainder = 0.f;
-				amount_spawned = max_spawn_count;
+				work_entry.amount_to_spawn = max_spawn_count;
 			}
-			else {
-				work_entry.e->current.amount_remainder = amount_that_will_spawn - (float)amount_spawned;
+
+			assert(work_entry.e->current.amount_remainder >= 0);
+
+			if (work_entry.amount_to_spawn != amount_to_spawn)
+				int debug = 1;
+
+			if ((float)work_entry.amount_to_spawn * qty_step_size > 1.f) {
+				//work_entry.amount_to_spawn -= 1;
 			}
-			*/
+
 		}
 
 #if tfxMULTITHREADED
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleAge);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticlePositions2d);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleNoise);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleImageFrame);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSize);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpin);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleAge);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticlePositions2d);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleNoise);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleImageFrame);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSize);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpin);
 #else
-		tfxU32 actually_spawned = SpawnParticleAge(&tfxQueue, &work_entry);
-		SpawnParticlePositions2d(&tfxQueue, &work_entry);
-		SpawnParticleNoise(&tfxQueue, &work_entry);
-		SpawnParticleImageFrame(&tfxQueue, &work_entry);
-		SpawnParticleSize(&tfxQueue, &work_entry);
-		SpawnParticleSpin(&tfxQueue, &work_entry);
+			SpawnParticleAge(&tfxQueue, &work_entry);
+			SpawnParticlePositions2d(&tfxQueue, &work_entry);
+			SpawnParticleNoise(&tfxQueue, &work_entry);
+			SpawnParticleImageFrame(&tfxQueue, &work_entry);
+			SpawnParticleSize(&tfxQueue, &work_entry);
+			SpawnParticleSpin(&tfxQueue, &work_entry);
 #endif
 		//printf("%i vs %i\n", actually_spawned, amount_spawned);
 		//if (actually_spawned != amount_spawned)
 			//int debug = 1;
-		return amount_spawned;
+		return work_entry.amount_to_spawn;
 	}
 
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data) {
 
-		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
 		tfxEffectEmitter &e = *entry->e;
@@ -9436,8 +9459,7 @@ return free_slot;
 		tfxEmitterProperties &properties = e.GetProperties();
 		tfxEffectEmitterInfo &info = e.GetInfo();
 
-		while (tween < 1.f && amount_spawned < entry->max_spawn_count) {
-
+		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 			float &age = pm.GrabAge(e.particles_index);
 			float &max_age = pm.GrabMaxAge(e.particles_index);
 			tfxRGBA8 &color = pm.GrabColor(e.particles_index);
@@ -9455,6 +9477,7 @@ return free_slot;
 			next_id = SetParticleID(e.particles_index, pm.particle_arrays[e.particles_index].next_id.last_index());
 
 			//Max age
+			//Todo: should age be set to the tween value?
 			age = 0.f;
 			max_age = spawn_controls.life + random_generation.Range(spawn_controls.life_variation);
 			single_loop_count = 0;
@@ -9474,24 +9497,19 @@ return free_slot;
 					pm.AddEffect(sub, pm.current_ebuff, true);
 				}
 			}
-
-			tween += entry->qty_step_size;
-			amount_spawned++;
 		}
 
-		//return amount_spawned;
 	}
 
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data) {
 
-		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterProperties &properties = e.GetProperties();
 
-		while (tween < 1.f && amount_spawned < entry->max_spawn_count) {
+		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
 			float &image_frame = pm.GrabImageFrame(e.particles_index);
 
@@ -9504,15 +9522,12 @@ return free_slot;
 				image_frame = properties.start_frame;
 			}
 
-			tween += entry->qty_step_size;
-			amount_spawned++;
 		}
 
 	}
 
 	void SpawnParticleSize(tfxWorkQueue *queue, void *data) {
 
-		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
 		tfxEffectEmitter &e = *entry->e;
@@ -9520,7 +9535,7 @@ return free_slot;
 		tfxEmitterSpawnControls &spawn_controls = entry->spawn_controls;
 		tfxEmitterProperties &properties = e.GetProperties();
 
-		while (tween < 1.f && amount_spawned < entry->max_spawn_count) {
+		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
 			tfxVec2 &base_size = pm.GrabSize(e.particles_index);
 
@@ -9537,15 +9552,12 @@ return free_slot;
 				base_size.y = random_size_y + spawn_controls.size.y;
 				base_size.x = (random_size_x + spawn_controls.size.x) / properties.image->image_size.x;
 			}
-			tween += entry->qty_step_size;
-			amount_spawned++;
 		}
 
 	}
 
 	void SpawnParticleNoise(tfxWorkQueue *queue, void *data) {
 
-		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
 		tfxEffectEmitter &e = *entry->e;
@@ -9553,7 +9565,7 @@ return free_slot;
 		tfxEmitterSpawnControls &spawn_controls = entry->spawn_controls;
 		tfxEmitterProperties &properties = e.GetProperties();
 
-		while (tween < 1.f && amount_spawned < entry->max_spawn_count) {
+		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
 			float &noise_offset = pm.GrabNoiseOffset(e.particles_index);
 			float &noise_resolution = pm.GrabNoiseResolution(e.particles_index);
@@ -9562,15 +9574,12 @@ return free_slot;
 			noise_offset = random_generation.Range(spawn_controls.noise_offset_variation) + spawn_controls.noise_offset;
 			noise_resolution = spawn_controls.noise_resolution + 0.01f;
 
-			tween += entry->qty_step_size;
-			amount_spawned++;
 		}
 
 	}
 
 	void SpawnParticleSpin(tfxWorkQueue *queue, void *data) {
 
-		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
 		tfxEffectEmitter &e = *entry->e;
@@ -9578,22 +9587,19 @@ return free_slot;
 		tfxEmitterSpawnControls &spawn_controls = entry->spawn_controls;
 		tfxEmitterProperties &properties = e.GetProperties();
 
-		while (tween < 1.f && amount_spawned < entry->max_spawn_count) {
+		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
 			float &base_spin = pm.GrabBaseSpin(e.particles_index);
 
 			//----Spin
 			base_spin = random_generation.Range(-spawn_controls.spin_variation, std::abs(spawn_controls.spin_variation)) + spawn_controls.spin;
 
-			tween += entry->qty_step_size;
-			amount_spawned++;
 		}
 
 	}
 
 	void SpawnParticlePositions2d(tfxWorkQueue *queue, void *data) {
 
-		tfxU32 amount_spawned = 0;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		float tween = entry->tween;
 		tfxEffectEmitter &e = *entry->e;
@@ -9601,7 +9607,7 @@ return free_slot;
 		tfxEmitterSpawnControls &spawn_controls = entry->spawn_controls;
 		tfxEmitterProperties &properties = e.GetProperties();
 
-		while (tween < 1.f && amount_spawned < entry->max_spawn_count) {
+		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
 			tfxVec3 &local_position = pm.GrabLocalPosition(e.particles_index);
 			tfxVec3 &captured_position = pm.GrabCapturedPosition(e.particles_index);
@@ -9922,7 +9928,6 @@ return free_slot;
 			}
 
 			tween += entry->qty_step_size;
-			amount_spawned++;
 		}
 
 	}
