@@ -8128,6 +8128,7 @@ return free_slot;
 				if (work_entry.e->next_ptr) {
 					work_entry.e->next_ptr->highest_particle_age = std::fmaxf(work_entry.e->next_ptr->highest_particle_age, work_entry.highest_particle_age);
 					work_entry.e->next_ptr->parent->highest_particle_age = work_entry.e->next_ptr->highest_particle_age + tfxFRAME_LENGTH;
+					work_entry.e->next_ptr->current.grid_coords = work_entry.e->current.grid_coords;
 					if (work_entry.e->next_ptr->common.property_flags & tfxEmitterPropertyFlags_single)
 						work_entry.e->next_ptr->flags |= tfxEmitterStateFlags_single_shot_done;
 				}
@@ -9377,75 +9378,33 @@ return free_slot;
 			work_entry.e->current.amount_remainder = tween - 1.f;
 		}
 		else {
-			float tmp_tween = tween;
-			tfxU32 amount_to_spawn = 0;
-			float test_remainder = 0.f;
-			while (tmp_tween < 1.f && amount_to_spawn < max_spawn_count) {
-				tmp_tween += qty_step_size;
-				amount_to_spawn++;
-			}
-			if (tmp_tween < 1.f && amount_to_spawn >= max_spawn_count) {
-				test_remainder = 0;
-			}
-			else {
-				test_remainder = tmp_tween - 1.f;
-			}
-
-
-			float amount_that_will_spawn = 0.f;
-			float remainder = 0.f;
-			float mod_remainder = 0.f;
-			if (qty_step_size <= 1.f) {
-				amount_that_will_spawn = (1.f - tween) / qty_step_size;
-				work_entry.amount_to_spawn = (tfxU32)amount_that_will_spawn;
-				remainder = amount_that_will_spawn - (float)work_entry.amount_to_spawn;
-				if (remainder > 0) {
-					work_entry.amount_to_spawn++;
-					work_entry.e->current.amount_remainder = remainder * qty_step_size;
-				}
-			}
-			else {
-				work_entry.amount_to_spawn = 1;
-				work_entry.e->current.amount_remainder = tween + qty_step_size - 1.f;
-			}
-			if (work_entry.amount_to_spawn == 0 && max_spawn_count != 0) {
-				work_entry.amount_to_spawn = 1;
-				work_entry.e->current.amount_remainder = tween + qty_step_size - 1.f;
-			}
-			else if (work_entry.amount_to_spawn > max_spawn_count) {
-				work_entry.e->current.amount_remainder = 0.f;
+			float amount_that_will_spawn = (1.f - tween) / qty_step_size;
+			work_entry.amount_to_spawn = (tfxU32)std::ceilf(amount_that_will_spawn);
+			if (work_entry.amount_to_spawn > max_spawn_count) {
 				work_entry.amount_to_spawn = max_spawn_count;
+				work_entry.e->current.amount_remainder = 0.f;
 			}
-
-			assert(work_entry.e->current.amount_remainder >= 0);
-
-			if (work_entry.amount_to_spawn != amount_to_spawn)
-				int debug = 1;
-
-			if ((float)work_entry.amount_to_spawn * qty_step_size > 1.f) {
-				//work_entry.amount_to_spawn -= 1;
+			else {
+				work_entry.e->current.amount_remainder = amount_that_will_spawn - (tfxU32)amount_that_will_spawn;
+				work_entry.e->current.amount_remainder = (1.f - work_entry.e->current.amount_remainder) * qty_step_size;
 			}
-
 		}
 
 #if tfxMULTITHREADED
-			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleAge);
-			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticlePositions2d);
-			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleNoise);
-			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleImageFrame);
-			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSize);
-			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpin);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleAge);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticlePositions2d);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleNoise);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleImageFrame);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSize);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSpin);
 #else
-			SpawnParticleAge(&tfxQueue, &work_entry);
-			SpawnParticlePositions2d(&tfxQueue, &work_entry);
-			SpawnParticleNoise(&tfxQueue, &work_entry);
-			SpawnParticleImageFrame(&tfxQueue, &work_entry);
-			SpawnParticleSize(&tfxQueue, &work_entry);
-			SpawnParticleSpin(&tfxQueue, &work_entry);
+		SpawnParticleAge(&tfxQueue, &work_entry);
+		SpawnParticlePositions2d(&tfxQueue, &work_entry);
+		SpawnParticleNoise(&tfxQueue, &work_entry);
+		SpawnParticleImageFrame(&tfxQueue, &work_entry);
+		SpawnParticleSize(&tfxQueue, &work_entry);
+		SpawnParticleSpin(&tfxQueue, &work_entry);
 #endif
-		//printf("%i vs %i\n", actually_spawned, amount_spawned);
-		//if (actually_spawned != amount_spawned)
-			//int debug = 1;
 		return work_entry.amount_to_spawn;
 	}
 
