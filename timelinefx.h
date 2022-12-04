@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 0
+#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -1291,6 +1291,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 #define tfxSTACK_SIZE tfxMegabyte(2)
 #endif
 
+#ifndef tfxMT_STACK_SIZE
+#define tfxMT_STACK_SIZE tfxMegabyte(4)
+#endif
+
 	inline tfxU32 IsPowerOf2(tfxU32 v)
 	{
 		return ((v & ~(v - 1)) == v);
@@ -2182,6 +2186,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 #define tmpStack(type, name) tfxStack<type> name(&tfxSTACK_ALLOCATOR)
+#define tmpMTStack(type, name) tfxStack<type> name(&tfxMT_STACK_ALLOCATOR)
 
 	template <typename T>
 	static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
@@ -5882,10 +5887,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline tfxParticleFlags& GrabFlags(unsigned int index) { return particle_arrays[index].flags.grab(); }
 		inline tfxEffectEmitter** GrabParent(unsigned int index) { return &particle_arrays[index].parent.grab(); }
 		inline tfxParticleID &GetParticleNextID(tfxParticleID id) { return particle_arrays[ParticleBank(id)].next_id.AtAbs(ParticleIndex(id)); }
-		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { 
-			tfxU32 index = particle_arrays[ParticleBank(id)].sprite_index.AtAbs(ParticleIndex(id));
-			return index; 
-		}
+		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index.AtAbs(ParticleIndex(id)); }
 
 		tfxComputeParticle &GrabComputeParticle(unsigned int layer); 
 		void ResetParticlePtr(void *ptr);
@@ -6636,6 +6638,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
 	extern tfxWorkQueue tfxQueue;
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
 	void InitialiseTimelineFX(float percent_of_available_threads_to_use = 0.f);
 

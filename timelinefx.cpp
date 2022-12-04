@@ -8090,7 +8090,7 @@ return free_slot;
 		}
 
 		tfxU32 start_size = effects[current_ebuff].current_size;
-		tmpStack(tfxSpawnWorkEntry, spawn_work);
+		tmpMTStack(tfxSpawnWorkEntry, spawn_work);
 		for (int i = 0; i != start_size; ++i) {
 			tfxSpawnWorkEntry *spawn_work_entry = &spawn_work.next();
 			spawn_work_entry->e = &effects[current_ebuff][i];
@@ -8123,7 +8123,7 @@ return free_slot;
 		tfxCompleteAllWork(&tfxQueue);
 
 		for (auto &work_entry : spawn_work) {
-			if (work_entry.e->type == tfxEmitterType) {
+			if (work_entry.e && work_entry.e->type == tfxEmitterType) {
 				tfxU32 layer = work_entry.e->GetProperties().layer;
 				if (work_entry.e->next_ptr) {
 					work_entry.e->next_ptr->highest_particle_age = std::fmaxf(work_entry.e->next_ptr->highest_particle_age, work_entry.highest_particle_age);
@@ -8138,7 +8138,7 @@ return free_slot;
 
 		if (flags & tfxEffectManagerFlags_unordered) {
 			{
-				tmpStack(tfxControlWorkEntry, work);
+				tmpMTStack(tfxControlWorkEntry, work);
 				for (int i = 0; i != start_size; ++i) {
 					tfxEffectEmitter &e = effects[current_ebuff][i];
 					if (e.type == tfxEmitterType) {
@@ -8150,7 +8150,7 @@ return free_slot;
 				work.free();
 			}
 			{
-				tmpStack(tfxParticleAgeWorkEntry, work);
+				tmpMTStack(tfxParticleAgeWorkEntry, work);
 				for (int i = 0; i != start_size; ++i) {
 					tfxEffectEmitter &e = effects[current_ebuff][i];
 
@@ -8935,7 +8935,7 @@ return free_slot;
 
 		tfxParticleArrays lists;
 		lists.sprite_index.reserve(reserve_amount);
-		//lists.next_id.reserve(reserve_amount);
+		lists.next_id.reserve(reserve_amount);
 		lists.next_id.resize_callback = particle_array_resize_callback;
 		lists.next_id.user_data = &pm;
 		lists.next_id.bank_index = pm.particle_arrays.current_size;
@@ -9434,6 +9434,9 @@ return free_slot;
 
 			flags = 0;
 			next_id = SetParticleID(e.particles_index, pm.particle_arrays[e.particles_index].next_id.last_index());
+			if (e.particles_index == 0) {
+				printf("Index: %i\n", pm.particle_arrays[e.particles_index].next_id.last_index());
+			}
 
 			//Max age
 			//Todo: should age be set to the tween value?
@@ -10972,9 +10975,11 @@ return free_slot;
 	tfxU32 tfxDeferred_index = 0;
 	tfxWorkQueue tfxQueue;
 	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+	tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
 	void InitialiseTimelineFX(float percent_of_available_threads_to_use) {
 		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
+		tfxMT_STACK_ALLOCATOR = CreateArenaManager(tfxMT_STACK_SIZE, 8);
 		tfxU32 max_threads = tfxU32((float)std::thread::hardware_concurrency() * percent_of_available_threads_to_use);
 		tfxInitialiseWorkQueue(&tfxQueue, max_threads);
 		lookup_callback = LookupPrecise;
