@@ -9191,9 +9191,9 @@ return free_slot;
 		}
 		else if (e.parent_particle_id != tfxINVALID) {
 			//e.flags |= e.parent_particle->data.flags & tfxParticleFlags_remove;
-			tfxU32 bi = ParticleBank(e.parent_particle_id);
-			tfxU32 pi = ParticleIndex(e.parent_particle_id);
 			tfxParticleID next_id = pm.GetParticleNextID(e.parent_particle_id);
+			tfxU32 bi = ParticleBank(next_id);
+			tfxU32 pi = ParticleIndex(next_id);
 			if (next_id != tfxINVALID) {
 				e.parent_particle_id = next_id;
 				tfxU32 sprite_id = pm.GetParticleSpriteIndex(e.parent_particle_id);
@@ -9452,7 +9452,7 @@ return free_slot;
 					sub.highest_particle_age = max_age + tfxFRAME_LENGTH + 1;
 					sub.current.overal_scale = e.current.overal_scale;
 					sub.flags |= e.flags & tfxEmitterStateFlags_no_tween;
-					sub.SetTimeout(5);
+					sub.SetTimeout(10);
 					pm.AddEffect(sub, pm.current_ebuff, true);
 				}
 			}
@@ -10313,10 +10313,11 @@ return free_slot;
 			}
 			else if (offset > 0) {
 				bank.next_id[i] = SetParticleID(e.particles_index, i + offset);
+				//tfxParticleID tmp_id = bank.next_id[offset + i];
 
 				bank.parent[i + offset] = bank.parent[i];
 				bank.sprite_index[i + offset] = bank.sprite_index[i];
-				bank.next_id[i + offset] = SetParticleID(e.particles_index, bank.next_id[i]);
+				//bank.next_id[i + offset] = SetParticleID(e.particles_index, bank.next_id[i]);
 				bank.flags[i + offset] = bank.flags[i];
 				bank.age[i + offset] = bank.age[i];	
 				bank.max_age[i + offset] = bank.max_age[i];

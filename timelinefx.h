@@ -5882,7 +5882,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline tfxParticleFlags& GrabFlags(unsigned int index) { return particle_arrays[index].flags.grab(); }
 		inline tfxEffectEmitter** GrabParent(unsigned int index) { return &particle_arrays[index].parent.grab(); }
 		inline tfxParticleID &GetParticleNextID(tfxParticleID id) { return particle_arrays[ParticleBank(id)].next_id.AtAbs(ParticleIndex(id)); }
-		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index.AtAbs(ParticleIndex(id)); }
+		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { 
+			tfxU32 index = particle_arrays[ParticleBank(id)].sprite_index.AtAbs(ParticleIndex(id));
+			return index; 
+		}
 
 		tfxComputeParticle &GrabComputeParticle(unsigned int layer); 
 		void ResetParticlePtr(void *ptr);
