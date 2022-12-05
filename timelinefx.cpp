@@ -1882,6 +1882,7 @@ namespace tfx {
 		}
 		else if (properties.emission_direction == tfxEmissionDirection::tfxBothways) {
 
+			//todo: replace these if statements
 			if (current.emission_alternator) {
 
 				tfxVec2 to_handle;
@@ -7535,7 +7536,8 @@ namespace tfx {
 		int uid = 0;
 		tfxU32 current_global_graph = 0;
 
-		lib.keyframes_allocator = CreateArenaManager(tfxMegabyte(2), 8);
+		lib.property_array_allocator = CreateArenaManager(tfxMegabyte(4));
+
 		if (!stats_struct) {
 			lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
 			lib.graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
@@ -9525,7 +9527,6 @@ return free_slot;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = entry->spawn_controls;
-		tfxEmitterProperties &properties = e.GetProperties();
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9547,7 +9548,6 @@ return free_slot;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = entry->spawn_controls;
-		tfxEmitterProperties &properties = e.GetProperties();
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -10316,11 +10316,9 @@ return free_slot;
 			}
 			else if (offset > 0) {
 				bank.next_id[i] = SetParticleID(e.particles_index, i + offset);
-				//tfxParticleID tmp_id = bank.next_id[offset + i];
 
 				bank.parent[i + offset] = bank.parent[i];
 				bank.sprite_index[i + offset] = bank.sprite_index[i];
-				//bank.next_id[i + offset] = SetParticleID(e.particles_index, bank.next_id[i]);
 				bank.flags[i + offset] = bank.flags[i];
 				bank.age[i + offset] = bank.age[i];	
 				bank.max_age[i + offset] = bank.max_age[i];

@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 1
+#define tfxMULTITHREADED 0
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -982,7 +982,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 #define tfxArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
-	//Some multithreading functions - TODO: currently this is windows only, needs linux/max etc added
+	//Some multithreading functions - TODO: currently this is windows only, needs linux/mac etc added
 	struct tfxWorkQueue;
 
 #define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
@@ -1630,6 +1630,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	};
 
+	//A double buffered arena manager which can be used for structs of arrays where if the arrays need to grow, then new arrays are 
+	//created in the next buffer and copied over
+	struct tfxSoABuffer {
+		tfxU32 current_arena;
+		tfxMemoryArenaManager arenas[2];
+	};
+
 	inline void CopyBlockToBlock(tfxMemoryArenaManager &from_allocator, tfxMemoryArenaManager &to_allocator, tfxU32 from, tfxU32 to) {
 		assert(from_allocator.blocks[from].capacity && from_allocator.blocks[from].capacity <= to_allocator.blocks[to].capacity);		//must have valid capacities
 		memcpy(to_allocator.blocks[to].data, from_allocator.blocks[from].data, from_allocator.blocks[from].capacity * from_allocator.blocks[from].unit_size);
@@ -1650,6 +1657,23 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		manager.arena_size = size_of_each_arena;
 		manager.size_diff_threshold = size_diff_threshold;
 		return manager;
+	}
+
+	static inline tfxSoABuffer CreateDoubleBufferedArena(size_t size_of_each_arena, tfxU32 size_diff_threshold = 8) {
+		tfxSoABuffer buffer;
+		for (int i = 0; i != 2; ++i) {
+			buffer.arenas[i].arena_size = size_of_each_arena;
+			buffer.arenas[i].size_diff_threshold = size_diff_threshold;
+		}
+		return buffer;
+	}
+
+	static inline void GrowArrays(tfxSoABuffer *buffer) {
+		tfxMemoryArenaManager &manager = buffer->arenas[buffer->current_arena];
+		for (int i = 0; i != 2; ++i) {
+			manager.arenas[i].arena_size = size_of_each_arena;
+			manager.arenas[i].size_diff_threshold = size_diff_threshold;
+		}
 	}
 
 	static inline tfxMemoryArena CreateMemoryArena(size_t size_in_bytes, tfxU32 size_diff_threshold = 8) {
@@ -4967,6 +4991,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		{ }
 	};
 
+	struct tfxEmitterPropertyData {
+		tfxArray<tfxVec3> angle_offsets;
+	};
+
 	struct tfxEmitterProperties {
 		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
 		tfxVec3 angle_offsets;
@@ -5118,6 +5146,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	struct tfxEmitterSpawnControls {
+
 		float life;
 		float life_variation;
 		float arc_size;
@@ -5135,6 +5164,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float noise_offset;
 		float noise_resolution;
 		tfxVec3 grid_segment_size;
+
 	};
 
 	//Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -5688,10 +5718,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return pf;
 	}
 
-	struct tfxEffect {
-		tfxEffectEmitter *effect_ptr;
-	};
-
 	struct tfxSpawnWorkEntry {
 		tfxParticleManager *pm;
 		tfxEffectEmitter *e;
@@ -5717,6 +5743,87 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 start_index;
 		tfxEffectEmitter *e;
 		tfxParticleManager *pm;
+	};
+
+	struct tfxEffectData {
+		tfxvec<tfxU32> global_attributes;
+		tfxvec<tfxU32> transform_attributes;
+		tfxvec<float> overal_scale;
+		tfxvec<float> life;
+		tfxvec<float> size_x;
+		tfxvec<float> size_y;
+		tfxvec<float> velocity;
+		tfxvec<float> spin;
+		tfxvec<float> intensity;
+		tfxvec<float> splatter;
+		tfxvec<float> weight;
+	};
+
+
+#define tfx2DTRANSFORMCALLBACK(name) void name(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position)
+	typedef tfx2DTRANSFORMCALLBACK(tfxParticleTransformCallback2d);
+
+#define tfx3DTRANSFORMCALLBACK(name) void name(const tfxVec3 local_position, const tfxVec3 rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position)
+	typedef tfx3DTRANSFORMCALLBACK(tfxParticleTransformCallback3d);
+
+	struct tfxEmitterData {
+		//State data
+		float frame;
+		float age;
+		float loop_length;
+		float delay_spawning;
+		float timeout_counter;
+		float timeout;
+		tfxU32 keyframe_position;
+		tfxU32 active_children;
+		tfxVec3 handle;
+
+		//Control data
+		tfxvec<tfxU32> particles_index;
+		tfxvec<tfxU32> sprite_layer;
+		tfxvec<tfxU32> sprites_index;
+		tfxvec<tfxU32> emitter_attributes;
+		tfxvec<tfxU32> transform_attributes;
+		tfxvec<tfxU32> overtime_attributes;
+		tfxvec<tfxEmitterStateFlags> state_flags;
+		tfxvec<tfxEmitterPropertyFlags> property_flags;
+		tfxvec<float> overal_scale;
+		tfxvec<float> velocity_adjuster;
+		tfxvec<float> global_intensity;
+		tfxvec<float> image_frame_rate;
+		tfxvec<float> stretch;
+		tfxvec<float> end_frame;
+		tfxvec<tfxVec3> grid_coords;
+		tfxvec<tfxVec3> grid_direction;
+		tfxvec<tfxVec3> emitter_size;
+		tfxvec<float> emission_alternator;
+		tfxvec<tfxParticleTransformCallback2d> transform_call_back_2d;
+		tfxvec<tfxParticleTransformCallback3d> transform_call_back_2d;
+		//property settings
+		tfxvec<tfxVec2> image_size;
+		tfxvec<tfxAngleSettingFlags> angle_settings;
+		tfxvec<tfxVec3> angle_offsets;
+		tfxvec<tfxVec3> grid_points;
+		tfxvec<tfxEmissionType> emission_type;
+		tfxvec<tfxU32> single_shot_limit;
+		//Spawn controls
+		tfxvec<float> life;
+		tfxvec<float> life_variation;
+		tfxvec<float> arc_size;
+		tfxvec<float> arc_offset;
+		tfxvec<float> weight;
+		tfxvec<float> weight_variation;
+		tfxvec<float> velocity;
+		tfxvec<float> velocity_variation;
+		tfxvec<float> spin;
+		tfxvec<float> spin_variation;
+		tfxvec<float> splatter;
+		tfxvec<float> noise_offset_variation;
+		tfxvec<float> noise_offset;
+		tfxvec<float> noise_resolution;
+		tfxvec<tfxVec2> size;
+		tfxvec<tfxVec2> size_variation;
+		tfxvec<tfxVec3> grid_segment_size;
 	};
 		
 	//Use the particle manager to add compute effects to your scene 
@@ -6109,12 +6216,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxEffectLibrary {
 		tfxMemoryArenaManager graph_node_allocator;
 		tfxMemoryArenaManager graph_lookup_allocator;
-		tfxMemoryArenaManager keyframes_allocator;
+		tfxMemoryArenaManager property_array_allocator;
+
 		tfxStorageMap<tfxEffectEmitter*> effect_paths;
 		tfxvec<tfxEffectEmitter> effects;
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxvec<tfxEmitterProperties> emitter_properties;
+		tfxEmitterPropertyData emitter_property_data;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
