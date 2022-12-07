@@ -1429,351 +1429,6 @@ namespace tfx {
 		return common.library->preview_camera_settings[GetInfo().preview_camera_settings];
 	}
 
-	void tfxEffectEmitter::UpdateAllBufferSizes() {
-		tmpStack(tfxEffectEmitter*, stack);
-		stack.push_back(this);
-		for (int l = 0; l != tfxLAYERS; ++l) {
-			GetInfo().max_particles[l] = 0;
-		}
-		GetInfo().max_sub_emitters = 0;
-		while (!stack.empty()) {
-			tfxEffectEmitter &current = *stack.pop_back();
-			if (current.type == tfxEmitterType) {
-				tfxU32 particle_count = 0;
-				if (current.parent->parent && current.parent->parent->type != tfxFolder) {
-					particle_count = current.GetHighestQty(current.parent->parent->GetInfo().max_life);
-					GetInfo().max_sub_emitters += (current.parent->parent->GetInfo().max_particles[current.parent->parent->GetProperties().layer] * (current.GetInfo().sub_effectors.size() + 1) + (current.GetInfo().sub_effectors.size() + 1)) * tfxU32(current.GetInfo().max_sub_emitter_life / 1000.f);
-				}
-				else {
-					particle_count = current.GetHighestQty(0.f);
-				}
-				current.GetInfo().max_particles[current.GetProperties().layer] = particle_count;
-			}
-			for (auto &sub : current.GetInfo().sub_effectors) {
-				stack.push_back(&sub);
-			}
-		}
-		//UpdateAllSpriteAmounts();
-	}
-
-	void tfxEffectEmitter::UpdateAllSpriteAmounts() {
-		for (int layer = 0; layer != tfxLAYERS; ++layer) {
-			for (auto &emitter : GetInfo().sub_effectors) {
-				GetInfo().max_particles[layer] += emitter.GetInfo().max_particles[layer];
-				if (emitter.GetInfo().sub_effectors.size()) {
-					GetInfo().max_particles[layer] += emitter.GetSubEffectSpriteCounts(layer, emitter.GetInfo().max_particles[emitter.GetProperties().layer]);
-				}
-			}
-		}
-	}
-
-	tfxU32 tfxEffectEmitter::GetSubEffectSpriteCounts(tfxU32 layer, tfxU32 multiplier) {
-		float total = 0;
-		for (auto &effect :GetInfo().sub_effectors) {
-			for (auto &emitter : effect.GetInfo().sub_effectors) {
-				if (common.property_flags & tfxEmitterPropertyFlags_single)
-					total += emitter.GetInfo().max_particles[layer] * multiplier;
-				else
-					total += emitter.GetInfo().max_particles[layer] * multiplier * (GetInfo().max_sub_emitter_life / 1000.f);
-				if (emitter.GetInfo().sub_effectors.size()) {
-					if (common.property_flags & tfxEmitterPropertyFlags_single)
-						total += emitter.GetSubEffectSpriteCounts(layer, emitter.GetInfo().max_particles[emitter.GetProperties().layer] * multiplier);
-					else
-						total += emitter.GetSubEffectSpriteCounts(layer, emitter.GetInfo().max_particles[emitter.GetProperties().layer] * multiplier * int(GetInfo().max_sub_emitter_life / 1000.f));
-				}
-			}
-		}
-		return (tfxU32)total;
-	}
-
-	float tfxEffectEmitter::GetSubEffectLength() {
-		if (!parent) return 0.f;
-		float max_life = 0.f;
-		for (auto &e : GetInfo().sub_effectors) {
-			max_life = std::fmaxf(GetMaxLife(e), max_life);
-		}
-		max_life += GetMaxLife(*parent);
-		return max_life;
-	}
-
-	tfxU32 tfxEffectEmitter::GetHighestQty(float parent_age) {
-		GetInfo().max_sub_emitter_life = 0.f;
-		if (!(common.property_flags & tfxEmitterPropertyFlags_single)) {
-			float max_qty = 0.f;
-			float amount_remainder = 0.f;
-			float highest_age = 0.f;
-			if (common.library->emitter_attributes[emitter_attributes].base.amount.nodes.size() > 1 || common.library->emitter_attributes[emitter_attributes].variation.amount.nodes.size() > 1 || common.library->global_graphs[parent->global].amount.nodes.size() > 1
-				|| common.library->emitter_attributes[emitter_attributes].base.life.nodes.size() > 1 || common.library->emitter_attributes[emitter_attributes].variation.life.nodes.size() > 1 || common.library->global_graphs[parent->global].life.nodes.size() > 1) {
-				tmpStack(tfxVec2, particles);
-				float max_frames = std::fmaxf(common.library->emitter_attributes[emitter_attributes].base.amount.GetLastFrame(), common.library->emitter_attributes[emitter_attributes].variation.amount.GetLastFrame());
-				max_frames = std::fmaxf(max_frames, common.library->emitter_attributes[emitter_attributes].base.life.GetLastFrame());
-				max_frames = std::fmaxf(max_frames, common.library->emitter_attributes[emitter_attributes].variation.life.GetLastFrame());
-				max_frames = std::fmaxf(max_frames, common.library->global_graphs[parent->global].amount.GetLastFrame());
-				max_frames = std::fmaxf(max_frames, common.library->global_graphs[parent->global].life.GetLastFrame());
-				max_frames = std::fmaxf(max_frames, GetProperties().loop_length);
-				float max_last_life = common.library->emitter_attributes[emitter_attributes].base.life.GetLastValue() + common.library->emitter_attributes[emitter_attributes].variation.life.GetLastValue();
-				float current_frame = 0.f;
-				unsigned start_index = 0;
-				if (parent_age > 0.f)
-					max_frames = std::fminf(max_frames, parent_age);
-				for (float frame = 0; frame <= max_frames + max_last_life; frame += tfxFRAME_LENGTH) {
-					float qty;
-					qty = LookupFast(common.library->emitter_attributes[emitter_attributes].base.amount, current_frame);
-					qty += LookupFast(common.library->emitter_attributes[emitter_attributes].variation.amount, current_frame);
-					float life = LookupFast(common.library->emitter_attributes[emitter_attributes].base.life, current_frame) + lookup_callback(common.library->emitter_attributes[emitter_attributes].variation.life, current_frame);
-
-					if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (GetProperties().emission_type == tfxArea || GetProperties().emission_type == tfxEllipse)) {
-						float area = LookupFast(common.library->emitter_attributes[emitter_attributes].properties.emitter_width, current_frame) * LookupFast(common.library->emitter_attributes[emitter_attributes].properties.emitter_height, current_frame);
-						qty = (qty / 10000.f) * area;
-					}
-					else if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && GetProperties().emission_type == tfxLine) {
-						qty = (qty / 100.f) * LookupFast(common.library->emitter_attributes[emitter_attributes].properties.emitter_height, current_frame);
-					}
-
-					qty *= LookupFast(parent->common.library->global_graphs[parent->global].amount, current_frame);
-					qty *= tfxUPDATE_TIME;
-					qty += amount_remainder;
-
-					float total_qty = 0;
-					for (auto &p : particles) {
-						if (parent_age && current_frame <= parent_age)
-							highest_age = std::fmaxf(highest_age, p.y);
-						p.y -= tfxFRAME_LENGTH;
-						if (p.y < 0) p.x = 0;
-						total_qty += p.x;
-					}
-					max_qty = std::fmaxf(max_qty, total_qty);
-
-					if (qty >= 1) {
-						amount_remainder = qty - (int)qty;
-						particles.push_back(tfxVec2(float((int)qty), life));
-					}
-					else {
-						amount_remainder = qty;
-					}
-					current_frame += tfxFRAME_LENGTH / tfxLOOKUP_FREQUENCY;
-					if (GetProperties().loop_length > 0 && current_frame > GetProperties().loop_length)
-						current_frame = 0;
-				}
-
-				float total_qty = 0;
-				for (auto &p : particles) {
-					p.y -= tfxFRAME_LENGTH;
-					if (parent_age && current_frame <= parent_age)
-						highest_age = std::fmaxf(highest_age, p.y);
-					if (p.y < 0) p.x = 0;
-					total_qty += p.x;
-				}
-				max_qty = std::fmaxf(max_qty, total_qty);
-				GetInfo().max_sub_emitter_life = highest_age + current_frame;
-
-				return (tfxU32)max_qty;
-			}
-			else {
-				float max_life = GetMaxLife(*this);
-				GetInfo().max_sub_emitter_life = max_life + parent_age;
-				float qty = (common.library->emitter_attributes[emitter_attributes].base.amount.GetFirstValue() + common.library->emitter_attributes[emitter_attributes].variation.amount.GetFirstValue()) * (max_life / 1000.f) + 1.f;
-				if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (GetProperties().emission_type == tfxArea || GetProperties().emission_type == tfxEllipse)) {
-					float area = common.library->emitter_attributes[emitter_attributes].properties.emitter_width.GetFirstValue() * common.library->emitter_attributes[emitter_attributes].properties.emitter_height.GetFirstValue();
-					qty = (qty / 10000.f) * area;
-				}
-				else if (common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && GetProperties().emission_type == tfxLine) {
-					qty = (qty / 100.f) * common.library->emitter_attributes[emitter_attributes].properties.emitter_height.GetFirstValue();
-				}
-				return tfxU32(qty);
-			}
-		}
-		else {
-			GetInfo().max_sub_emitter_life = GetInfo().max_life + parent_age;
-			return (tfxU32)GetProperties().spawn_amount;
-		}
-	}
-
-	void tfxParticleMemoryTools::GetEffectMaxFrames(tfxEffectEmitter &effect) {
-		if (effect.type == tfxEffectType && effect.IsRootEffect()) {
-			max_frames = std::fmaxf(max_frames, effect.common.library->global_graphs[effect.global].amount.GetLastFrame());
-			max_frames = std::fmaxf(max_frames, effect.common.library->global_graphs[effect.global].life.GetLastFrame());
-			max_frames = std::fmaxf(max_frames, effect.GetProperties().loop_length);
-		}
-		else if (effect.type == tfxEmitterType) {
-			max_frames = std::fmaxf(max_frames, effect.common.library->emitter_attributes[effect.emitter_attributes].base.amount.GetLastFrame());
-			max_frames = std::fmaxf(max_frames, effect.common.library->emitter_attributes[effect.emitter_attributes].variation.amount.GetLastFrame());
-			max_frames = std::fmaxf(max_frames, effect.common.library->emitter_attributes[effect.emitter_attributes].base.life.GetLastFrame());
-			max_frames = std::fmaxf(max_frames, effect.common.library->emitter_attributes[effect.emitter_attributes].variation.life.GetLastFrame());
-			max_frames = std::fmaxf(max_frames, effect.GetProperties().loop_length);
-			max_last_life = std::fmaxf(max_last_life, effect.common.library->emitter_attributes[effect.emitter_attributes].base.life.GetLastValue() + effect.common.library->emitter_attributes[effect.emitter_attributes].variation.life.GetLastValue());
-		}
-		for (auto &sub : effect.GetInfo().sub_effectors) {
-			GetEffectMaxFrames(sub);
-		}
-	}
-
-	void tfxParticleMemoryTools::ProcessEffect(tfxEffectEmitter &effect) {
-		effects[0].reserve(10000);
-		effects[1].reserve(10000);
-		effects[0].clear();
-		effects[1].clear();
-		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-			particles[layer][0].clear();
-			particles[layer][1].clear();
-			sprite_count[layer] = 0;
-		}
-		sub_effect_count = 0;
-		emitters_removed = 0;
-		GetEffectMaxFrames(effect);
-		AddEffect(effect);
-		initial_effect_size = effect.GetInfo().sub_effectors.size() + 1;
-		Process();
-		for (tfxEachLayer) {
-			effect.GetInfo().max_particles[layer] = sprite_count[layer];
-			effect.GetInfo().max_sub_emitters = sub_effect_count;
-		}
-	}
-
-	void tfxParticleMemoryTools::Process() {
-		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-			sprite_count[layer] = 0;
-		}
-		for (float frame = 0; frame <= max_frames + max_last_life; frame += tfxFRAME_LENGTH) {
-			current_effect.highest_particle_age += tfxFRAME_LENGTH;
-			for (int i = effects[current_buffer].current_size - 1; i >= 0; --i) {
-				auto &emitter = effects[current_buffer][i];
-				MockUpdateEmitter(emitter);
-				if (emitter.library_link->type == tfxEmitterType && emitter.timeout_counter < emitter.timeout) {
-					effects[!current_buffer].push_back(emitter);
-				}
-				else if (emitter.library_link->type == tfxEffectType && emitter.emitter_count > 0) {
-					effects[!current_buffer].push_back(emitter);
-				}
-				else if (emitter.library_link->type == tfxEmitterType) {
-					emitters_removed++;
-				}
-			}
-			MockUpdateParticles();
-			for (tfxEachLayer) {
-				sprite_count[layer] = (tfxU32)std::fmaxf((float)sprite_count[layer], (float)particles[layer][!current_buffer].current_size);
-			}
-			sub_effect_count = (tfxU32)std::fmaxf((float)effects[!current_buffer].current_size, (float)sub_effect_count);
-
-			effects[current_buffer].clear();
-			current_buffer = !current_buffer;
-		}
-		sub_effect_count -= initial_effect_size;
-	}
-
-	void tfxParticleMemoryTools::MockUpdateEmitter(tfxMockEffect &emitter) {
-		if (emitter.library_link->type == tfxEmitterType) {
-
-			for (auto p : emitter.particles[current_buffer]) {
-				p -= tfxFRAME_LENGTH;
-				if (p > 0) emitter.particles[!current_buffer].push_back(p);
-			}
-			tfxEmitterProperties &properties = emitter.library_link->GetProperties();
-			emitter.library_link->GetInfo().max_particles[properties.layer] = (tfxU32)std::fmaxf((float)emitter.library_link->GetInfo().max_particles[properties.layer], (float)emitter.particles[current_buffer].current_size);
-			emitter.particles[current_buffer].clear();
-
-			float life = LookupFast(emitter.library->emitter_attributes[emitter.library_link->emitter_attributes].base.life, emitter.frame) + lookup_callback(emitter.library->emitter_attributes[emitter.library_link->emitter_attributes].variation.life, emitter.frame) * 0.75f;
-			if (!(emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_single)) {
-				emitter.qty = LookupFast(emitter.library->emitter_attributes[emitter.library_link->emitter_attributes].base.amount, emitter.frame);
-				emitter.qty += LookupFast(emitter.library->emitter_attributes[emitter.library_link->emitter_attributes].variation.amount, emitter.frame);
-
-				if (emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
-					float area = LookupFast(emitter.library->emitter_attributes[emitter.library_link->emitter_attributes].properties.emitter_width, emitter.frame) * LookupFast(emitter.library->emitter_attributes[emitter.library_link->emitter_attributes].properties.emitter_height, emitter.frame);
-					emitter.qty = (emitter.qty / 10000.f) * area;
-				}
-				else if (emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && properties.emission_type == tfxLine) {
-					emitter.qty = (emitter.qty / 100.f) * LookupFast(emitter.library->emitter_attributes[emitter.library_link->emitter_attributes].properties.emitter_height, emitter.frame);
-				}
-
-				emitter.qty *= LookupFast(emitter.library->global_graphs[emitter.library_link->parent->global].amount, emitter.frame);
-				emitter.qty *= tfxUPDATE_TIME;
-				emitter.qty += emitter.amount_remainder;
-
-				if (!emitter.started_spawning && emitter.qty < 1)
-					emitter.qty = 1.f;
-
-				if (emitter.qty >= 1) {
-					while (emitter.qty > 1) {
-						emitter.qty -= 1.f;
-						particles[properties.layer][!current_buffer].push_back(life + tfxFRAME_LENGTH);
-						emitter.particles[!current_buffer].push_back(life + tfxFRAME_LENGTH);
-						for (auto &sub : emitter.library_link->GetInfo().sub_effectors) {
-							AddEffect(sub);
-						}
-					}
-					emitter.started_spawning = true;
-					emitter.highest_particle_age = std::fmaxf(emitter.highest_particle_age, life);
-				}
-				emitter.amount_remainder = emitter.qty;
-				if (properties.loop_length > 0 && emitter.frame > properties.loop_length)
-					emitter.frame = 0;
-			}
-			else if(!emitter.single_shot_done) {
-				emitter.started_spawning = true;
-				emitter.library_link->GetInfo().max_particles[properties.layer] = properties.spawn_amount;
-				for (int q = 0; q != properties.spawn_amount; ++q) {
-					if (emitter.library_link->common.property_flags & tfxEmitterPropertyFlags_single) {
-						particles[properties.layer][!current_buffer].push_back(max_frames + max_last_life);
-						emitter.particles[!current_buffer].push_back(max_frames + max_last_life);
-					}
-					else {
-						particles[properties.layer][!current_buffer].push_back(life + tfxFRAME_LENGTH);
-						emitter.particles[!current_buffer].push_back(life + tfxFRAME_LENGTH);
-					}
-					emitter.highest_particle_age = std::fmaxf(emitter.highest_particle_age, life);
-					for (auto &sub : emitter.library_link->GetInfo().sub_effectors) {
-						AddEffect(sub);
-					}
-				}
-				emitter.single_shot_done = true;
-			}
-		}
-		else {
-			if (emitters_removed > 0 && emitter.emitter_count > 0) {
-				emitter.emitter_count--;
-				emitters_removed--;
-				if (emitter.emitter_count == 0)
-					emitter.timeout_counter = emitter.timeout;
-			}
-			return;
-		}
-
-		emitter.age += tfxFRAME_LENGTH;
-		emitter.frame += tfxFRAME_LENGTH / tfxLOOKUP_FREQUENCY;
-		emitter.highest_particle_age -= tfxFRAME_LENGTH;
-
-		if (emitter.highest_particle_age <= 0 && emitter.started_spawning && emitter.qty == 0.f) {
-			emitter.timeout_counter++;
-		}
-		else {
-			emitter.timeout_counter = 0;
-		}
-	}
-
-	void tfxParticleMemoryTools::MockUpdateParticles() {
-		for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-			for (auto p : particles[layer][current_buffer]) {
-				p -= tfxFRAME_LENGTH;
-				if (p > 0) particles[layer][!current_buffer].push_back(p);
-			}
-			particles[layer][current_buffer].clear();
-		}
-	}
-
-	void tfxParticleMemoryTools::AddEffect(tfxEffectEmitter &effect) {
-		tfxMockEffect new_effect;
-		new_effect.library_link = effect.common.library->GetEffect(effect.path_hash);
-		new_effect.library = effect.common.library;
-		new_effect.emitter_count = effect.GetInfo().sub_effectors.size();
-		effects[!current_buffer].push_back(new_effect);
-		for (auto &emitter : effect.GetInfo().sub_effectors) {
-			tfxMockEffect new_emitter;
-			new_emitter.library_link = effect.common.library->GetEffect(emitter.path_hash);
-			new_emitter.library = effect.common.library;
-			effects[!current_buffer].push_back(new_emitter);
-		}
-	}
-
 	tfxEffectEmitter& tfxEffectEmitter::AddEmitter(tfxEffectEmitter &e) {
 		assert(e.GetInfo().name.Length());				//Emitter must have a name so that a hash can be generated
 		e.type = tfxEffectEmitterType::tfxEmitterType;
@@ -1844,9 +1499,10 @@ namespace tfx {
 		//----Emission
 		float range = emission_angle_variation *.5f;
 		float direction = 0;
-		tfxEmitterProperties &properties = library_link->GetProperties();
+		tfxEmissionType emission_type = common.library->emitter_properties.emission_type[library_link->property_index];
+		tfxEmissionDirection emission_direction = common.library->emitter_properties.emission_direction[library_link->property_index];
 
-		if (properties.emission_type == tfxPoint)
+		if (emission_type == tfxPoint)
 			return direction + emission_angle + random_generation.Range(-range, range);
 
 		tfxVec2 tmp_position;
@@ -1855,7 +1511,7 @@ namespace tfx {
 		else
 			tmp_position = local_position + common.handle.xy();
 
-		if (properties.emission_direction == tfxEmissionDirection::tfxOutwards) {
+		if (emission_direction == tfxEmissionDirection::tfxOutwards) {
 
 			tfxVec2 to_handle;
 
@@ -1867,7 +1523,7 @@ namespace tfx {
 			direction = GetVectorAngle(to_handle.x, to_handle.y);
 
 		}
-		else if (properties.emission_direction == tfxEmissionDirection::tfxInwards) {
+		else if (emission_direction == tfxEmissionDirection::tfxInwards) {
 
 			tfxVec2 to_handle;
 
@@ -1880,7 +1536,7 @@ namespace tfx {
 			direction = GetVectorAngle(to_handle.x, to_handle.y);
 
 		}
-		else if (properties.emission_direction == tfxEmissionDirection::tfxBothways) {
+		else if (emission_direction == tfxEmissionDirection::tfxBothways) {
 
 			//todo: replace these if statements
 			if (current.emission_alternator) {
@@ -1929,13 +1585,14 @@ namespace tfx {
 		else
 			tmp_position = local_position + common.handle;
 
-		tfxEmitterProperties &properties = library_link->GetProperties();
+		tfxEmissionType emission_type = common.library->emitter_properties.emission_type[library_link->property_index];
+		tfxEmissionDirection emission_direction = common.library->emitter_properties.emission_direction[library_link->property_index];
 
 		tfxVec3 to_handle(0.f, 1.f, 0.f);
 		float parent_pitch = 0.f;
 		float parent_yaw = 0.f;
-		if (properties.emission_type != tfxPoint) {
-			if (properties.emission_direction == tfxEmissionDirection::tfxOutwards) {
+		if (emission_type != tfxPoint) {
+			if (emission_direction == tfxEmissionDirection::tfxOutwards) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 					to_handle = tmp_position;
@@ -1945,7 +1602,7 @@ namespace tfx {
 				to_handle = FastNormalizeVec(to_handle);
 
 			}
-			else if (properties.emission_direction == tfxEmissionDirection::tfxInwards) {
+			else if (emission_direction == tfxEmissionDirection::tfxInwards) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 					to_handle = -tmp_position;
@@ -1955,7 +1612,7 @@ namespace tfx {
 				to_handle = FastNormalizeVec(to_handle);
 
 			}
-			else if (properties.emission_direction == tfxEmissionDirection::tfxBothways) {
+			else if (emission_direction == tfxEmissionDirection::tfxBothways) {
 
 				if (current.emission_alternator) {
 
@@ -2020,9 +1677,16 @@ namespace tfx {
 		data.local_position = 0;
 		sprite_transform.position = 0;
 		data.captured_position = 0;
-		tfxEmitterProperties &properties = library_link->GetProperties();
+
+		tfxEmissionType emission_type = common.library->emitter_properties.emission_type[library_link->property_index];
+		tfxVec3 grid_points = common.library->emitter_properties.grid_points[library_link->property_index];
+		tfxImageData *image = common.library->emitter_properties.image[library_link->property_index];
+		tfxAngleSettingFlags angle_settings = common.library->emitter_properties.angle_settings[library_link->property_index];
+		tfxVec3 angle_offsets = common.library->emitter_properties.angle_offsets[library_link->property_index];
+		float start_frame = common.library->emitter_properties.start_frame[library_link->property_index];
+
 		tfxVec2 lerp_position = InterpolateVec2(tween, common.transform.captured_position.xy(), common.transform.world_position.xy());
-		if (properties.emission_type == tfxPoint) {
+		if (emission_type == tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 				data.local_position = 0;
 			else {
@@ -2035,15 +1699,15 @@ namespace tfx {
 				}
 			}
 		}
-		else if (properties.emission_type == tfxArea) {
+		else if (emission_type == tfxArea) {
 			tfxVec2 position = tfxVec2(0.f, 0.f);
 
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_fill_area) {
 					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-						current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-						current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+						current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+						current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 						data.local_position = current.grid_coords.xy() * spawn_values.grid_segment_size.xy();
 					}
 					else {
@@ -2051,9 +1715,9 @@ namespace tfx {
 							current.grid_coords.x--;
 							if (current.grid_coords.x < 0.f) {
 								current.grid_coords.y--;
-								current.grid_coords.x = properties.grid_points.x - 1;
+								current.grid_coords.x = grid_points.x - 1;
 								if (current.grid_coords.y < 0.f)
-									current.grid_coords.y = properties.grid_points.y - 1;
+									current.grid_coords.y = grid_points.y - 1;
 							}
 						}
 
@@ -2061,10 +1725,10 @@ namespace tfx {
 
 						if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 							current.grid_coords.x++;
-							if (current.grid_coords.x == properties.grid_points.x) {
+							if (current.grid_coords.x == grid_points.x) {
 								current.grid_coords.y++;
 								current.grid_coords.x = 0.f;
-								if (current.grid_coords.y >= properties.grid_points.y)
+								if (current.grid_coords.y >= grid_points.y)
 									current.grid_coords.y = 0.f;
 							}
 						}
@@ -2076,22 +1740,22 @@ namespace tfx {
 						if (side == 0) {
 							//left side
 							current.grid_coords.x = 0.f;
-							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 						}
 						else if (side == 1) {
 							//right side
-							current.grid_coords.x = properties.grid_points.x - 1;
-							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+							current.grid_coords.x = grid_points.x - 1;
+							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 						}
 						else if (side == 2) {
 							//top side
-							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
 							current.grid_coords.y = 0.f;
 						}
 						else if (side == 3) {
 							//bottom side
-							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-							current.grid_coords.y = properties.grid_points.y - 1;
+							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							current.grid_coords.y = grid_points.y - 1;
 						}
 						data.local_position = current.grid_coords.xy() * spawn_values.grid_segment_size.xy();
 					}
@@ -2100,15 +1764,15 @@ namespace tfx {
 
 							current.grid_direction.x = 1;
 							current.grid_direction.y = 0;
-							if (current.grid_coords.x == properties.grid_points.x - 1 && current.grid_coords.y >= 0 && current.grid_coords.y < properties.grid_points.y - 1) {
+							if (current.grid_coords.x == grid_points.x - 1 && current.grid_coords.y >= 0 && current.grid_coords.y < grid_points.y - 1) {
 								current.grid_direction.x = 0;
 								current.grid_direction.y = 1;
 							}
-							else if (current.grid_coords.x > 0 && current.grid_coords.x < properties.grid_points.x && current.grid_coords.y == properties.grid_points.y - 1) {
+							else if (current.grid_coords.x > 0 && current.grid_coords.x < grid_points.x && current.grid_coords.y == grid_points.y - 1) {
 								current.grid_direction.x = -1;
 								current.grid_direction.y = 0;
 							}
-							else if (current.grid_coords.x == 0 && current.grid_coords.y > 0 && current.grid_coords.y < properties.grid_points.y) {
+							else if (current.grid_coords.x == 0 && current.grid_coords.y > 0 && current.grid_coords.y < grid_points.y) {
 								current.grid_direction.x = 0;
 								current.grid_direction.y = -1;
 							}
@@ -2118,15 +1782,15 @@ namespace tfx {
 
 							current.grid_direction.x = -1;
 							current.grid_direction.y = 0;
-							if (current.grid_coords.x == properties.grid_points.x - 1 && current.grid_coords.y > 0 && current.grid_coords.y < properties.grid_points.y) {
+							if (current.grid_coords.x == grid_points.x - 1 && current.grid_coords.y > 0 && current.grid_coords.y < grid_points.y) {
 								current.grid_direction.x = 0;
 								current.grid_direction.y = -1;
 							}
-							else if (current.grid_coords.x >= 0 && current.grid_coords.x < properties.grid_points.x - 1 && current.grid_coords.y == properties.grid_points.y - 1) {
+							else if (current.grid_coords.x >= 0 && current.grid_coords.x < grid_points.x - 1 && current.grid_coords.y == grid_points.y - 1) {
 								current.grid_direction.x = 1;
 								current.grid_direction.y = 0;
 							}
-							else if (current.grid_coords.x == 0 && current.grid_coords.y >= 0 && current.grid_coords.y < properties.grid_points.y - 1) {
+							else if (current.grid_coords.x == 0 && current.grid_coords.y >= 0 && current.grid_coords.y < grid_points.y - 1) {
 								current.grid_direction.x = 0;
 								current.grid_direction.y = 1;
 							}
@@ -2134,7 +1798,7 @@ namespace tfx {
 						}
 
 						current.grid_coords += current.grid_direction;
-						tfxBound(current.grid_coords.xy(), properties.grid_points.xy());
+						tfxBound(current.grid_coords.xy(), grid_points.xy());
 						data.local_position = position + (current.grid_coords.xy() * spawn_values.grid_segment_size.xy());
 					}
 				}
@@ -2179,7 +1843,7 @@ namespace tfx {
 			}
 
 		}
-		else if (properties.emission_type == tfxEllipse) {
+		else if (emission_type == tfxEllipse) {
 			tfxVec2 emitter_size = (current.emitter_size.xy() * .5f);
 			tfxVec2 position = tfxVec2(0.f, 0.f);
 
@@ -2190,7 +1854,7 @@ namespace tfx {
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 					current.grid_coords.x--;
 					if (current.grid_coords.x < 0.f) {
-						current.grid_coords.x = properties.grid_points.x - 1;
+						current.grid_coords.x = grid_points.x - 1;
 					}
 				}
 
@@ -2199,7 +1863,7 @@ namespace tfx {
 
 				if (!(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 					current.grid_coords.x++;
-					if (current.grid_coords.x >= properties.grid_points.x) {
+					if (current.grid_coords.x >= grid_points.x) {
 						current.grid_coords.x = 0.f;
 					}
 				}
@@ -2228,7 +1892,7 @@ namespace tfx {
 			}
 
 		}
-		else if (properties.emission_type == tfxLine) {
+		else if (emission_type == tfxLine) {
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 				current.grid_coords.x = 0.f;
@@ -2236,7 +1900,7 @@ namespace tfx {
 				if (!(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 					current.grid_coords.y--;
 					if (current.grid_coords.y < 0.f) {
-						current.grid_coords.y = properties.grid_points.x - 1;
+						current.grid_coords.y = grid_points.x - 1;
 					}
 				}
 
@@ -2244,7 +1908,7 @@ namespace tfx {
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 					current.grid_coords.y++;
-					if (current.grid_coords.y >= properties.grid_points.x) {
+					if (current.grid_coords.y >= grid_points.x) {
 						current.grid_coords.y = 0.f;
 					}
 				}
@@ -2284,8 +1948,8 @@ namespace tfx {
 			float random_size_x = random_generation.Range(spawn_values.size_variation.x);
 			float random_size_y = random_generation.Range(spawn_values.size_variation.y);
 			data.base.size.y = random_size_y + spawn_values.size.y;
-			data.base.size.x = (random_size_x + spawn_values.size.x) / properties.image->image_size.x;
-			float height = data.base.size.y / properties.image->image_size.y;
+			data.base.size.x = (random_size_x + spawn_values.size.x) / image->image_size.x;
+			float height = data.base.size.y / image->image_size.y;
 
 			sprite_transform.scale.x = data.base.size.x * common.library->emitter_attributes[library_link->emitter_attributes].overtime.width.GetFirstValue();
 
@@ -2300,8 +1964,8 @@ namespace tfx {
 			float random_size_x = random_generation.Range(spawn_values.size_variation.x);
 			float random_size_y = random_size_x;
 			data.base.size.y = random_size_y + spawn_values.size.y;
-			data.base.size.x = (random_size_x + spawn_values.size.x) / properties.image->image_size.x;
-			float height = data.base.size.y / properties.image->image_size.y;
+			data.base.size.x = (random_size_x + spawn_values.size.x) / image->image_size.x;
+			float height = data.base.size.y / image->image_size.y;
 
 			sprite_transform.scale.x = data.base.size.x * common.library->emitter_attributes[library_link->emitter_attributes].overtime.width.GetFirstValue();
 			sprite_transform.scale.y = sprite_transform.scale.x;
@@ -2314,11 +1978,11 @@ namespace tfx {
 
 		sprite_transform.rotation = 0;
 		data.local_rotations = 0;
-		if (properties.angle_settings & tfxAngleSettingFlags_random_roll) {
-			sprite_transform.rotation = data.local_rotations.roll = random_generation.Range(properties.angle_offsets.roll);
+		if (angle_settings & tfxAngleSettingFlags_random_roll) {
+			sprite_transform.rotation = data.local_rotations.roll = random_generation.Range(angle_offsets.roll);
 		}
-		else if (properties.angle_settings & tfxAngleSettingFlags_specify_roll) {
-			sprite_transform.rotation = data.local_rotations.roll = properties.angle_offsets.roll;
+		else if (angle_settings & tfxAngleSettingFlags_specify_roll) {
+			sprite_transform.rotation = data.local_rotations.roll = angle_offsets.roll;
 		}else{
 			sprite_transform.rotation = data.local_rotations.roll = 0;
 		}
@@ -2346,10 +2010,10 @@ namespace tfx {
 
 		float direction = 0;
 
-		if (properties.angle_settings & tfxAngleSettingFlags_align_roll && common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
-			sprite_transform.rotation = data.local_rotations.roll = direction + properties.angle_offsets.roll;
+		if (angle_settings & tfxAngleSettingFlags_align_roll && common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
+			sprite_transform.rotation = data.local_rotations.roll = direction + angle_offsets.roll;
 
-		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
+		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 
 		if (!line && !(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			current.transform_particle_callback2d(data, sprite_transform.position, sprite_transform.rotation, common, common.transform.world_position);
@@ -2384,12 +2048,12 @@ namespace tfx {
 
 		//data.velocity = data.velocity_normal * data.base.velocity * data.velocity_scale * tfxUPDATE_TIME;
 
-		if ((properties.angle_settings & tfxAngleSettingFlags_align_roll || properties.angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
+		if ((angle_settings & tfxAngleSettingFlags_align_roll || angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
 			//----Normalize Velocity to direction
 			tfxVec2 velocity_normal;
 			velocity_normal.x = std::sinf(direction);
 			velocity_normal.y = -std::cosf(direction);
-			sprite_transform.rotation = data.local_rotations.roll = GetVectorAngle(velocity_normal.x, velocity_normal.y) + properties.angle_offsets.roll;
+			sprite_transform.rotation = data.local_rotations.roll = GetVectorAngle(velocity_normal.x, velocity_normal.y) + angle_offsets.roll;
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_angle)
 				sprite_transform.rotation += common.transform.world_rotations.roll;
 		}
@@ -2408,11 +2072,11 @@ namespace tfx {
 
 		//----Image
 		//data.image = GetProperties().image;
-		if (common.property_flags & tfxEmitterPropertyFlags_random_start_frame && properties.image->animation_frames > 1) {
-			data.image_frame = random_generation.Range(properties.image->animation_frames);
+		if (common.property_flags & tfxEmitterPropertyFlags_random_start_frame && image->animation_frames > 1) {
+			data.image_frame = random_generation.Range(image->animation_frames);
 		}
 		else {
-			data.image_frame = properties.start_frame;
+			data.image_frame = start_frame;
 		}
 
 		//----Color
@@ -2437,9 +2101,13 @@ namespace tfx {
 		tfxPROFILE;
 		//----Position
 		tfxSpawnPosition out;
+
+		tfxEmissionType emission_type = common.library->emitter_properties.emission_type[library_link->property_index];
+		tfxVec3 grid_points = common.library->emitter_properties.grid_points[library_link->property_index];
+		tfxVectorAlignType vector_align_type = common.library->emitter_properties.vector_align_type[library_link->property_index];
+
 		tfxVec3 lerp_position = InterpolateVec3(tween, common.transform.captured_position, common.transform.world_position);
-		tfxEmitterProperties &properties = library_link->GetProperties();
-		if (properties.emission_type == tfxPoint) {
+		if (emission_type == tfxPoint) {
 			if (common.property_flags & tfxEmitterPropertyFlags_relative_position)
 				out.local_position = 0;
 			else {
@@ -2452,7 +2120,7 @@ namespace tfx {
 				}
 			}
 		}
-		else if (properties.emission_type == tfxArea) {
+		else if (emission_type == tfxArea) {
 			tfxVec3 position;
 
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
@@ -2460,9 +2128,9 @@ namespace tfx {
 				if (common.property_flags & tfxEmitterPropertyFlags_fill_area) {
 
 					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-						current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-						current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
-						current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.z);
+						current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+						current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+						current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
 
 						out.local_position = current.grid_coords * spawn_values.grid_segment_size;
 					}
@@ -2471,12 +2139,12 @@ namespace tfx {
 							current.grid_coords.x--;
 							if (current.grid_coords.x < 0.f) {
 								current.grid_coords.y--;
-								current.grid_coords.x = properties.grid_points.x - 1;
+								current.grid_coords.x = grid_points.x - 1;
 								if (current.grid_coords.y < 0.f) {
 									current.grid_coords.z--;
-									current.grid_coords.y = properties.grid_points.y - 1;
+									current.grid_coords.y = grid_points.y - 1;
 									if (current.grid_coords.z < 0.f)
-										current.grid_coords.z = properties.grid_points.z;
+										current.grid_coords.z = grid_points.z;
 								}
 							}
 						}
@@ -2485,13 +2153,13 @@ namespace tfx {
 
 						if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 							current.grid_coords.x++;
-							if (current.grid_coords.x == properties.grid_points.x) {
+							if (current.grid_coords.x == grid_points.x) {
 								current.grid_coords.y++;
 								current.grid_coords.x = 0.f;
-								if (current.grid_coords.y >= properties.grid_points.y) {
+								if (current.grid_coords.y >= grid_points.y) {
 									current.grid_coords.z++;
 									current.grid_coords.y = 0.f;
-									if (current.grid_coords.z >= properties.grid_points.z)
+									if (current.grid_coords.z >= grid_points.z)
 										current.grid_coords.z = 0.f;
 								}
 							}
@@ -2506,37 +2174,37 @@ namespace tfx {
 						if (side == 0) {
 							//left side
 							current.grid_coords.x = 0.f;
-							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
-							current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.z);
+							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+							current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
 						}
 						else if (side == 1) {
 							//right side
-							current.grid_coords.x = properties.grid_points.x - 1;
-							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
-							current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.z);
+							current.grid_coords.x = grid_points.x - 1;
+							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+							current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
 						}
 						else if (side == 2) {
 							//top side
-							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
 							current.grid_coords.y = 0.f;
-							current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.z);
+							current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
 						}
 						else if (side == 3) {
 							//bottom side
-							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-							current.grid_coords.y = properties.grid_points.y - 1;
-							current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.z);
+							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							current.grid_coords.y = grid_points.y - 1;
+							current.grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
 						}
 						else if (side == 4) {
 							//End far
-							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
-							current.grid_coords.z = properties.grid_points.z - 1;
+							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+							current.grid_coords.z = grid_points.z - 1;
 						}
 						else if (side == 5) {
 							//End near
-							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+							current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 							current.grid_coords.z = 0.f;
 						}
 						out.local_position = current.grid_coords * spawn_values.grid_segment_size;
@@ -2549,9 +2217,9 @@ namespace tfx {
 								current.grid_coords.x = 0.f;
 								if (current.grid_coords.z < 0.f) {
 									current.grid_coords.y++;
-									current.grid_coords.z = properties.grid_points.z - 1;
-									if (current.grid_coords.y >= properties.grid_points.y - 1) {
-										current.grid_coords.y = properties.grid_points.y - 1;
+									current.grid_coords.z = grid_points.z - 1;
+									if (current.grid_coords.y >= grid_points.y - 1) {
+										current.grid_coords.y = grid_points.y - 1;
 										current.grid_direction.z = 2;
 									}
 								}
@@ -2559,10 +2227,10 @@ namespace tfx {
 							else if (current.grid_direction.z == 1) {
 								//left side
 								current.grid_coords.z--;
-								current.grid_coords.x = properties.grid_points.x - 1;
+								current.grid_coords.x = grid_points.x - 1;
 								if (current.grid_coords.z < 0.f) {
 									current.grid_coords.y--;
-									current.grid_coords.z = properties.grid_points.z - 1;
+									current.grid_coords.z = grid_points.z - 1;
 									if (current.grid_coords.y < 0) {
 										current.grid_coords.y = 0;
 										current.grid_coords.x--;
@@ -2573,12 +2241,12 @@ namespace tfx {
 							else if (current.grid_direction.z == 2) {
 								//top side
 								current.grid_coords.z--;
-								current.grid_coords.y = properties.grid_points.y - 1;
+								current.grid_coords.y = grid_points.y - 1;
 								if (current.grid_coords.z < 0.f) {
 									current.grid_coords.x++;
-									current.grid_coords.z = properties.grid_points.z - 1;
-									if (current.grid_coords.x >= properties.grid_points.x - 1) {
-										current.grid_coords.x = properties.grid_points.x - 1;
+									current.grid_coords.z = grid_points.z - 1;
+									if (current.grid_coords.x >= grid_points.x - 1) {
+										current.grid_coords.x = grid_points.x - 1;
 										current.grid_direction.z = 1;
 									}
 								}
@@ -2589,7 +2257,7 @@ namespace tfx {
 								current.grid_coords.y = 0.f;
 								if (current.grid_coords.z < 0.f) {
 									current.grid_coords.x--;
-									current.grid_coords.z = properties.grid_points.z - 1;
+									current.grid_coords.z = grid_points.z - 1;
 									if (current.grid_coords.x < 0) {
 										current.grid_coords.x = 0.f;
 										current.grid_coords.y = 1.f;
@@ -2601,12 +2269,12 @@ namespace tfx {
 								//End far
 								current.grid_coords.x++;
 								current.grid_coords.z = 0.f;
-								if (current.grid_coords.x >= properties.grid_points.x) {
+								if (current.grid_coords.x >= grid_points.x) {
 									current.grid_coords.y++;
 									current.grid_coords.x = 0.f;
-									if (current.grid_coords.y >= properties.grid_points.y - 1) {
-										current.grid_coords.y = properties.grid_points.y - 1;
-										current.grid_coords.x = properties.grid_points.x - 1;
+									if (current.grid_coords.y >= grid_points.y - 1) {
+										current.grid_coords.y = grid_points.y - 1;
+										current.grid_coords.x = grid_points.x - 1;
 										current.grid_direction.z = 5;
 									}
 								}
@@ -2614,10 +2282,10 @@ namespace tfx {
 							else if (current.grid_direction.z == 5) {
 								//End near
 								current.grid_coords.x--;
-								current.grid_coords.z = properties.grid_points.z - 1;
+								current.grid_coords.z = grid_points.z - 1;
 								if (current.grid_coords.x < 0.f) {
 									current.grid_coords.y--;
-									current.grid_coords.x = properties.grid_points.x - 1;
+									current.grid_coords.x = grid_points.x - 1;
 									if (current.grid_coords.y < 0.f) {
 										current.grid_coords.y = 0.f;
 										current.grid_direction.z = 0;
@@ -2632,7 +2300,7 @@ namespace tfx {
 								current.grid_coords.x = 0.f;
 								if (current.grid_coords.z < 0.f) {
 									current.grid_coords.y--;
-									current.grid_coords.z = properties.grid_points.z - 1;
+									current.grid_coords.z = grid_points.z - 1;
 									if (current.grid_coords.y < 1 ) {
 										current.grid_coords.y = 0;
 										current.grid_direction.z = 3;
@@ -2642,12 +2310,12 @@ namespace tfx {
 							else if (current.grid_direction.z == 1) {
 								//left side
 								current.grid_coords.z--;
-								current.grid_coords.x = properties.grid_points.x - 1;
+								current.grid_coords.x = grid_points.x - 1;
 								if (current.grid_coords.z < 0.f) {
 									current.grid_coords.y++;
-									current.grid_coords.z = properties.grid_points.z - 1;
-									if (current.grid_coords.y >= properties.grid_points.y) {
-										current.grid_coords.y = properties.grid_points.y - 1;
+									current.grid_coords.z = grid_points.z - 1;
+									if (current.grid_coords.y >= grid_points.y) {
+										current.grid_coords.y = grid_points.y - 1;
 										current.grid_coords.x--;
 										current.grid_direction.z = 2;
 									}
@@ -2656,10 +2324,10 @@ namespace tfx {
 							else if (current.grid_direction.z == 2) {
 								//top side
 								current.grid_coords.z--;
-								current.grid_coords.y = properties.grid_points.y - 1;
+								current.grid_coords.y = grid_points.y - 1;
 								if (current.grid_coords.z < 0.f) {
 									current.grid_coords.x--;
-									current.grid_coords.z = properties.grid_points.z - 1;
+									current.grid_coords.z = grid_points.z - 1;
 									if (current.grid_coords.x < 1) {
 										current.grid_coords.x = 0.f;
 										current.grid_direction.z = (common.property_flags & tfxEmitterPropertyFlags_area_open_ends) ? 0.f : 4.f;
@@ -2672,9 +2340,9 @@ namespace tfx {
 								current.grid_coords.y = 0.f;
 								if (current.grid_coords.z < 0.f) {
 									current.grid_coords.x++;
-									current.grid_coords.z = properties.grid_points.z - 1;
-									if (current.grid_coords.x >= properties.grid_points.x - 1) {
-										current.grid_coords.x = properties.grid_points.x - 1;
+									current.grid_coords.z = grid_points.z - 1;
+									if (current.grid_coords.x >= grid_points.x - 1) {
+										current.grid_coords.x = grid_points.x - 1;
 										current.grid_coords.y = 0.f;
 										current.grid_direction.z = 1;
 									}
@@ -2684,12 +2352,12 @@ namespace tfx {
 								//End far
 								current.grid_coords.x++;
 								current.grid_coords.z = 0.f;
-								if (current.grid_coords.x >= properties.grid_points.x) {
+								if (current.grid_coords.x >= grid_points.x) {
 									current.grid_coords.y--;
 									current.grid_coords.x = 0.f;
 									if (current.grid_coords.y < 0) {
 										current.grid_coords.y = 0.f;
-										current.grid_coords.x = properties.grid_points.x - 1;
+										current.grid_coords.x = grid_points.x - 1;
 										current.grid_direction.z = 5;
 									}
 								}
@@ -2697,18 +2365,18 @@ namespace tfx {
 							else if (current.grid_direction.z == 5) {
 								//End near
 								current.grid_coords.x--;
-								current.grid_coords.z = properties.grid_points.z - 1;
+								current.grid_coords.z = grid_points.z - 1;
 								if (current.grid_coords.x < 0.f) {
 									current.grid_coords.y++;
-									current.grid_coords.x = properties.grid_points.x - 1;
-									if (current.grid_coords.y >= properties.grid_points.y - 1) {
-										current.grid_coords.y = properties.grid_points.y - 1;
+									current.grid_coords.x = grid_points.x - 1;
+									if (current.grid_coords.y >= grid_points.y - 1) {
+										current.grid_coords.y = grid_points.y - 1;
 										current.grid_direction.z = 0.f;
 									}
 								}
 							}
 						}
-						tfxBound3d(current.grid_coords, properties.grid_points);
+						tfxBound3d(current.grid_coords, grid_points);
 						out.local_position = position + (current.grid_coords * spawn_values.grid_segment_size);
 					}
 
@@ -2771,7 +2439,7 @@ namespace tfx {
 			}
 
 		}
-		else if (properties.emission_type == tfxEllipse) {
+		else if (emission_type == tfxEllipse) {
 			tfxVec3 emitter_size = current.emitter_size * .5f;
 			tfxVec3 position;
 
@@ -2808,9 +2476,9 @@ namespace tfx {
 				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 		}
-		else if (properties.emission_type == tfxIcosphere && !(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
+		else if (emission_type == tfxIcosphere && !(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
 			tfxVec3 emitter_size = current.emitter_size * .5f;
-			tfxU32 sub_division = (tfxU32)properties.grid_points.x;
+			tfxU32 sub_division = (tfxU32)grid_points.x;
 			out.local_position = tfxIcospherePoints[sub_division][(tfxU32)current.grid_coords.x] * emitter_size;
 			if (++current.grid_coords.x >= tfxIcospherePoints[sub_division].current_size) {
 				current.grid_coords.x = 0;
@@ -2820,9 +2488,9 @@ namespace tfx {
 				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 		}
-		else if (properties.emission_type == tfxIcosphere && common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+		else if (emission_type == tfxIcosphere && common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 			tfxVec3 emitter_size = current.emitter_size * .5f;
-			tfxU32 sub_division = (tfxU32)properties.grid_points.x;
+			tfxU32 sub_division = (tfxU32)grid_points.x;
 			int i = random_generation.RangeUInt(tfxIcospherePoints[sub_division].current_size);
 			out.local_position = tfxIcospherePoints[sub_division][i] * emitter_size;
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -2830,15 +2498,15 @@ namespace tfx {
 				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 		}
-		else if (properties.emission_type == tfxCylinder) {
+		else if (emission_type == tfxCylinder) {
 			tfxVec3 emitter_size = (current.emitter_size * .5f);
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(common.property_flags & tfxEmitterPropertyFlags_fill_area)) {
 
 				current.grid_coords.z = 0.f;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-					current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+					current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+					current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 
 					float th = current.grid_coords.x * spawn_values.grid_segment_size.x + spawn_values.arc_offset;
 					out.local_position = tfxVec3(std::cosf(th) * emitter_size.x + emitter_size.x, current.grid_coords.y * spawn_values.grid_segment_size.y, -std::sinf(th) * emitter_size.z + emitter_size.z);
@@ -2847,10 +2515,10 @@ namespace tfx {
 					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						current.grid_coords.x--;
 						if (current.grid_coords.x < 0.f) {
-							current.grid_coords.x = properties.grid_points.x - 1;
+							current.grid_coords.x = grid_points.x - 1;
 							current.grid_coords.y--;
 							if (current.grid_coords.y < 0.f) {
-								current.grid_coords.y = properties.grid_points.y - 1;
+								current.grid_coords.y = grid_points.y - 1;
 							}
 						}
 					}
@@ -2860,10 +2528,10 @@ namespace tfx {
 
 					if (!(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 						current.grid_coords.x++;
-						if (current.grid_coords.x >= properties.grid_points.x) {
+						if (current.grid_coords.x >= grid_points.x) {
 							current.grid_coords.x = 0.f;
 							current.grid_coords.y++;
-							if (current.grid_coords.y >= properties.grid_points.y) {
+							if (current.grid_coords.y >= grid_points.y) {
 								current.grid_coords.y = 0.f;
 							}
 						}
@@ -2893,14 +2561,14 @@ namespace tfx {
 				out.local_position = lerp_position + out.local_position * common.transform.scale;
 			}
 		}
-		else if (properties.emission_type == tfxLine) {
+		else if (emission_type == tfxLine) {
 			if (common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 				current.grid_coords.x = 0.f;
 				current.grid_coords.z = 0.f;
 
 				if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+					current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
 					out.local_position = current.grid_coords * spawn_values.grid_segment_size;
 				}
 				else {
@@ -2908,7 +2576,7 @@ namespace tfx {
 					if (!(common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 						current.grid_coords.y--;
 						if (current.grid_coords.y < 0.f) {
-							current.grid_coords.y = properties.grid_points.x - 1;
+							current.grid_coords.y = grid_points.x - 1;
 						}
 					}
 
@@ -2916,7 +2584,7 @@ namespace tfx {
 
 					if (common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						current.grid_coords.y++;
-						if (current.grid_coords.y >= properties.grid_points.x) {
+						if (current.grid_coords.y >= grid_points.x) {
 							current.grid_coords.y = 0.f;
 						}
 					}
@@ -2960,7 +2628,7 @@ namespace tfx {
 			}
 		}
 
-		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
+		bool line = common.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 
 		if (!line && !(common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			if (!(common.property_flags & tfxEmitterPropertyFlags_relative_position) && !(common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
@@ -2989,10 +2657,10 @@ namespace tfx {
 		float emission_pitch = lookup_callback(common.library->emitter_attributes[library_link->emitter_attributes].properties.emission_pitch, common.frame);
 		float emission_yaw = lookup_callback(common.library->emitter_attributes[library_link->emitter_attributes].properties.emission_yaw, common.frame);
 
-		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || properties.emission_type != tfxLine) {
+		if (!(common.property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
 			out.velocity_normal = GetEmissionDirection3d(common, current, library_link, emission_pitch, emission_yaw, out.local_position, out.world_position, current.emitter_size);
 		}
-		else if (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine) {
+		else if (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
 			out.velocity_normal = tfxVec3(0, 1.f, 0.f);
 		}
 		out.base_velocity = spawn_values.velocity + random_generation.Range(-spawn_values.velocity_variation, spawn_values.velocity_variation);
@@ -3008,7 +2676,7 @@ namespace tfx {
 		//----Velocity Changes
 		tfxVec3 current_velocity = out.velocity_normal.xyz() * (out.base_velocity * common.library->emitter_attributes[library_link->emitter_attributes].overtime.velocity.GetFirstValue());
 		current_velocity.y -= out.weight_acceleration;
-		if (properties.vector_align_type == tfxVectorAlignType_motion) {
+		if (vector_align_type == tfxVectorAlignType_motion) {
 			float l = FastLength(current_velocity * tfxUPDATE_TIME);
 			out.velocity_normal.w = common.library->emitter_attributes[library_link->emitter_attributes].overtime.stretch.GetFirstValue() * l * 10.f;
 		}
@@ -3037,25 +2705,30 @@ namespace tfx {
 		//----Spin
 		data.base.spin = random_generation.Range(-spawn_values.spin_variation, std::abs(spawn_values.spin_variation)) + spawn_values.spin;
 
-		tfxEmitterProperties &properties = library_link->GetProperties();
+		tfxEmissionType emission_type = common.library->emitter_properties.emission_type[library_link->property_index];
+		tfxVec3 angle_offsets = common.library->emitter_properties.angle_offsets[library_link->property_index];
+		tfxAngleSettingFlags angle_settings = common.library->emitter_properties.angle_settings[library_link->property_index];
+		tfxVectorAlignType vector_align_type = common.library->emitter_properties.vector_align_type[library_link->property_index];
+		tfxImageData *image = common.library->emitter_properties.image[library_link->property_index];
+		float start_frame = common.library->emitter_properties.start_frame[library_link->property_index];
 
 		sprite_transform.rotations.roll = data.local_rotations.pitch = 0;
 		sprite_transform.rotations.roll = data.local_rotations.yaw = 0;
 		sprite_transform.rotations.roll = data.local_rotations.roll = 0;
-		if (properties.angle_settings & tfxAngleSettingFlags_specify_roll)
-			sprite_transform.rotations.roll = data.local_rotations.roll = properties.angle_offsets.roll;
-		if (properties.angle_settings & tfxAngleSettingFlags_specify_pitch)
-			sprite_transform.rotations.pitch = data.local_rotations.pitch = properties.angle_offsets.pitch;
-		if (properties.angle_settings & tfxAngleSettingFlags_specify_yaw)
-			sprite_transform.rotations.yaw = data.local_rotations.yaw = properties.angle_offsets.yaw;
-		if (properties.angle_settings & tfxAngleSettingFlags_random_pitch)
-			sprite_transform.rotations.pitch = data.local_rotations.pitch = random_generation.Range(properties.angle_offsets.pitch);
-		if (properties.angle_settings & tfxAngleSettingFlags_random_yaw)
-			sprite_transform.rotations.yaw = data.local_rotations.yaw = random_generation.Range(properties.angle_offsets.yaw);
-		if (properties.angle_settings & tfxAngleSettingFlags_random_roll)
-			sprite_transform.rotations.roll = data.local_rotations.roll = random_generation.Range(properties.angle_offsets.roll);
+		if (angle_settings & tfxAngleSettingFlags_specify_roll)
+			sprite_transform.rotations.roll = data.local_rotations.roll = angle_offsets.roll;
+		if (angle_settings & tfxAngleSettingFlags_specify_pitch)
+			sprite_transform.rotations.pitch = data.local_rotations.pitch = angle_offsets.pitch;
+		if (angle_settings & tfxAngleSettingFlags_specify_yaw)
+			sprite_transform.rotations.yaw = data.local_rotations.yaw = angle_offsets.yaw;
+		if (angle_settings & tfxAngleSettingFlags_random_pitch)
+			sprite_transform.rotations.pitch = data.local_rotations.pitch = random_generation.Range(angle_offsets.pitch);
+		if (angle_settings & tfxAngleSettingFlags_random_yaw)
+			sprite_transform.rotations.yaw = data.local_rotations.yaw = random_generation.Range(angle_offsets.yaw);
+		if (angle_settings & tfxAngleSettingFlags_random_roll)
+			sprite_transform.rotations.roll = data.local_rotations.roll = random_generation.Range(angle_offsets.roll);
 
-		if (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine) {
+		if (common.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
 			sprite_transform.rotations = data.local_rotations;
 			float s = sin(data.local_rotations.roll);
 			float c = cos(data.local_rotations.roll);
@@ -3127,11 +2800,11 @@ namespace tfx {
 
 		//----Image
 		//data.image = GetProperties().image;
-		if (common.property_flags & tfxEmitterPropertyFlags_random_start_frame && properties.image->animation_frames > 1) {
-			data.image_frame = random_generation.Range(properties.image->animation_frames);
+		if (common.property_flags & tfxEmitterPropertyFlags_random_start_frame && image->animation_frames > 1) {
+			data.image_frame = random_generation.Range(image->animation_frames);
 		}
 		else {
-			data.image_frame = properties.start_frame;
+			data.image_frame = start_frame;
 		}
 
 		//----Color
@@ -3836,7 +3509,7 @@ namespace tfx {
 	}
 
 	tfxEmitterProperties &tfxEffectEmitter::GetProperties() {
-		return common.library->GetProperties(property_index);
+		return common.library->emitter_properties;
 	}
 
 	bool tfxEffectEmitter::HasSingle() {
@@ -4407,13 +4080,13 @@ namespace tfx {
 			}
 			else {
 				for (auto &emitter : effect.GetInfo().sub_effectors) {
-					if (particle_shapes.ValidIntName(emitter.GetProperties().shape_index)) {
-						emitter.GetProperties().image = &particle_shapes.AtInt(emitter.GetProperties().shape_index);
-						emitter.GetProperties().end_frame = particle_shapes.AtInt(emitter.GetProperties().shape_index).animation_frames - 1;
+					if (particle_shapes.ValidIntName(emitter_properties.shape_index[emitter.property_index])) {
+						emitter_properties.image[emitter.property_index] = &particle_shapes.AtInt(emitter_properties.shape_index[emitter.property_index]);
+						emitter_properties.end_frame[emitter.property_index] = particle_shapes.AtInt(emitter_properties.shape_index[emitter.property_index]).animation_frames - 1;
 					}
 					else {
-						emitter.GetProperties().image = &particle_shapes.AtInt(default_index);
-						emitter.GetProperties().end_frame = particle_shapes.AtInt(default_index).animation_frames - 1;
+						emitter_properties.image[emitter.property_index] = &particle_shapes.AtInt(default_index);
+						emitter_properties.end_frame[emitter.property_index] = particle_shapes.AtInt(default_index).animation_frames - 1;
 					}
 					UpdateParticleShapeReferences(emitter.GetInfo().sub_effectors, default_index);
 				}
@@ -4581,7 +4254,7 @@ namespace tfx {
 	}
 
 	void tfxEffectLibrary::FreeProperties(tfxU32 index) {
-		assert(index < emitter_properties.size());
+		assert(index < emitter_properties_buffer.current_size);
 		free_properties.push_back(index);
 	}
 
@@ -4705,7 +4378,7 @@ namespace tfx {
 
 	tfxU32 tfxEffectLibrary::CloneProperties(tfxU32 source_index, tfxEffectLibrary *destination_library) {
 		tfxU32 index = destination_library->AddEmitterProperties();
-		destination_library->emitter_properties[index] = emitter_properties[source_index];
+		CopyEmitterProperites(emitter_properties, source_index, destination_library->emitter_properties, index);
 		return index;
 	}
 
@@ -4804,12 +4477,41 @@ namespace tfx {
 	}
 
 	tfxU32 tfxEffectLibrary::AddEmitterProperties() {
-		tfxEmitterProperties properties;
 		if (free_properties.size()) {
 			return free_properties.pop_back();
 		}
-		emitter_properties.push_back(properties);
-		return emitter_properties.size() - 1;
+		return AddRow(&emitter_properties_buffer);
+	}
+
+	void tfxEffectLibrary::Init() {
+		graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
+		graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 8); 
+		InitEmitterProperties();
+	}
+
+	void tfxEffectLibrary::InitEmitterProperties() {
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxVec3), offsetof(tfxEmitterProperties, angle_offsets));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxVectorAlignType), offsetof(tfxEmitterProperties, vector_align_type));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxEmissionType), offsetof(tfxEmitterProperties, emission_type));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterProperties, single_shot_limit));
+		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterProperties, frame_rate));
+		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterProperties, end_frame));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxImageData), offsetof(tfxEmitterProperties, image));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxBillboardingOptions), offsetof(tfxEmitterProperties, billboard_option));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxVec3), offsetof(tfxEmitterProperties, grid_points));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxAngleSettingFlags), offsetof(tfxEmitterProperties, angle_settings));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterProperties, layer));
+		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterProperties, delay_spawning));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxEmissionDirection), offsetof(tfxEmitterProperties, emission_direction));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxLineTraversalEndBehaviour), offsetof(tfxEmitterProperties, end_behaviour));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxParticleControlFlags), offsetof(tfxEmitterProperties, compute_flags));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxVec2), offsetof(tfxEmitterProperties, image_handle));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxVec3), offsetof(tfxEmitterProperties, emitter_handle));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterProperties, spawn_amount));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterProperties, shape_index));
+		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterProperties, loop_length));
+		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterProperties, start_frame));
+		FinishSoABufferSetup(&emitter_properties_buffer, &emitter_properties, 100);
 	}
 
 	void tfxEffectLibrary::Clear() {
@@ -4824,7 +4526,7 @@ namespace tfx {
 		transform_attributes.free_all();
 		animation_settings.free_all();
 		preview_camera_settings.free_all();
-		emitter_properties.free_all();
+		FreeSoABuffer(&emitter_properties_buffer);
 		effect_infos.free_all();
 		AddPreviewCameraSettings();
 
@@ -4839,22 +4541,6 @@ namespace tfx {
 		free_properties.free_all();
 
 		uid = 0;
-	}
-
-	void tfxEffectLibrary::UpdateEffectParticleStorage() {
-		tfxParticleMemoryTools tools;
-		for (auto &e : effects) {
-			if (e.type != tfxFolder) {
-				e.ResetAllBufferSizes();
-				tools.ProcessEffect(e);
-			}
-			else {
-				for (auto &sub : e.GetInfo().sub_effectors) {
-					sub.ResetAllBufferSizes();
-					tools.ProcessEffect(e);
-				}
-			}
-		}
 	}
 
 	void tfxEffectLibrary::UpdateComputeNodes() {
@@ -5551,10 +5237,11 @@ namespace tfx {
 	}
 
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value) {
+		tfxEmitterProperties &emitter_properties = effect.common.library->emitter_properties;
 		if (field == "image_index")
-			effect.GetProperties().shape_index = value;
+			emitter_properties.shape_index[effect.property_index] = value;
 		if (field == "spawn_amount")
-			effect.GetProperties().spawn_amount = value;
+			emitter_properties.spawn_amount[effect.property_index] = value;
 		if (field == "frames")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].frames = value;
 		if (field == "current_frame")
@@ -5562,31 +5249,32 @@ namespace tfx {
 		if (field == "seed")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].seed = value;
 		if (field == "layer")
-			effect.GetProperties().layer = value;
+			emitter_properties.layer[effect.property_index] = value;
 		if (field == "frame_offset")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].frame_offset = value;
 		if (field == "single_shot_limit")
-			effect.GetProperties().single_shot_limit = value;
+			emitter_properties.single_shot_limit[effect.property_index] = value;
 		if (field == "billboard_option")
-			effect.GetProperties().billboard_option = (tfxBillboardingOptions)value;
+			emitter_properties.billboard_option[effect.property_index] = (tfxBillboardingOptions)value;
 		if (field == "vector_align_type")
-			effect.GetProperties().vector_align_type = (tfxVectorAlignType)value;
+			emitter_properties.vector_align_type[effect.property_index] = (tfxVectorAlignType)value;
 		if (field == "angle_setting")
-			effect.GetProperties().angle_settings = (tfxAngleSettingFlags)value;
+			emitter_properties.angle_settings[effect.property_index] = (tfxAngleSettingFlags)value;
 		if (field == "sort_passes")
 			effect.sort_passes = value;
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value) {
+		tfxEmitterProperties &emitter_properties = effect.common.library->emitter_properties;
 		if (field == "emission_type")
-			effect.GetProperties().emission_type = (tfxEmissionType)value;
+			emitter_properties.emission_type[effect.property_index] = (tfxEmissionType)value;
 		if (field == "emission_direction")
-			effect.GetProperties().emission_direction = (tfxEmissionDirection)value;
+			emitter_properties.emission_direction[effect.property_index] = (tfxEmissionDirection)value;
 		if (field == "color_option")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].color_option = (tfxExportColorOptions)value;
 		if (field == "export_option")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].export_option = (tfxExportOptions)value;
 		if (field == "end_behaviour")
-			effect.GetProperties().end_behaviour = (tfxLineTraversalEndBehaviour)value;
+			emitter_properties.end_behaviour[effect.property_index] = (tfxLineTraversalEndBehaviour)value;
 		if (field == "frame_offset")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].frame_offset = value;
 		if (field == "extra_frames_count")
@@ -5598,6 +5286,7 @@ namespace tfx {
 		}
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value) {
+		tfxEmitterProperties &emitter_properties = effect.common.library->emitter_properties;
 		if (field == "position_x")
 			effect.common.library->animation_settings[effect.GetInfo().animation_settings].position.x = value;
 		if (field == "position_y")
@@ -5649,37 +5338,37 @@ namespace tfx {
 		if (field == "preview_camera_speed")
 			effect.common.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_speed = value;
 		if (field == "image_handle_x")
-			effect.GetProperties().image_handle.x = value;
+			emitter_properties.image_handle[effect.property_index].x = value;
 		if (field == "image_handle_y")
-			effect.GetProperties().image_handle.y = value;
+			emitter_properties.image_handle[effect.property_index].y = value;
 		if (field == "delay_spawning")
-			effect.GetProperties().delay_spawning = value;
+			emitter_properties.delay_spawning[effect.property_index] = value;
 		if (field == "grid_rows")
-			effect.GetProperties().grid_points.x = value;
+			emitter_properties.grid_points[effect.property_index].x = value;
 		if (field == "grid_columns")
-			effect.GetProperties().grid_points.y = value;
+			emitter_properties.grid_points[effect.property_index].y = value;
 		if (field == "grid_depth")
-			effect.GetProperties().grid_points.z = value;
+			emitter_properties.grid_points[effect.property_index].z = value;
 		if (field == "loop_length")
-			effect.GetProperties().loop_length = value;
+			emitter_properties.loop_length[effect.property_index] = value;
 		if (field == "emitter_handle_x")
-			effect.GetProperties().emitter_handle.x = value;
+			emitter_properties.emitter_handle[effect.property_index].x = value;
 		if (field == "emitter_handle_y")
-			effect.GetProperties().emitter_handle.y = value;
+			emitter_properties.emitter_handle[effect.property_index].y = value;
 		if (field == "emitter_handle_z")
-			effect.GetProperties().emitter_handle.z = value;
+			emitter_properties.emitter_handle[effect.property_index].z = value;
 		if (field == "image_start_frame")
-			effect.GetProperties().start_frame = value;
+			emitter_properties.start_frame[effect.property_index] = value;
 		if (field == "image_end_frame")
-			effect.GetProperties().end_frame = value;
+			emitter_properties.end_frame[effect.property_index] = value;
 		if (field == "image_frame_rate")
-			effect.GetProperties().frame_rate = value;
+			emitter_properties.frame_rate[effect.property_index] = value;
 		if (field == "angle_offset")
-			effect.GetProperties().angle_offsets.roll = value;
+			emitter_properties.angle_offsets[effect.property_index].roll = value;
 		if (field == "angle_offset_pitch")
-			effect.GetProperties().angle_offsets.pitch = value;
+			emitter_properties.angle_offsets[effect.property_index].pitch = value;
 		if (field == "angle_offset_yaw")
-			effect.GetProperties().angle_offsets.yaw = value;
+			emitter_properties.angle_offsets[effect.property_index].yaw = value;
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value) {
 		if (field == "loop")
@@ -5750,31 +5439,31 @@ namespace tfx {
 			if (value) effect.effect_flags |= tfxEffectPropertyFlags_guaranteed_order; else effect.effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order;
 	}
 
-	void StreamProperties(tfxEmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxStr &file) {
+	void StreamProperties(tfxEmitterProperties &property, tfxU32 index, tfxEmitterPropertyFlags &flags, tfxStr &file) {
 
-		file.AddLine("image_index=%i", property.shape_index);
-		file.AddLine("image_handle_x=%f", property.image_handle.x);
-		file.AddLine("image_handle_y=%f", property.image_handle.y);
-		file.AddLine("image_start_frame=%f", property.start_frame);
-		file.AddLine("image_end_frame=%f", property.end_frame);
-		file.AddLine("image_frame_rate=%f", property.frame_rate);
+		file.AddLine("image_index=%i", property.shape_index[index]);
+		file.AddLine("image_handle_x=%f", property.image_handle[index].x);
+		file.AddLine("image_handle_y=%f", property.image_handle[index].y);
+		file.AddLine("image_start_frame=%f", property.start_frame[index]);
+		file.AddLine("image_end_frame=%f", property.end_frame[index]);
+		file.AddLine("image_frame_rate=%f", property.frame_rate[index]);
 		file.AddLine("image_play_once=%i", (flags & tfxEmitterPropertyFlags_play_once));
 		file.AddLine("image_reverse_animation=%i", (flags & tfxEmitterPropertyFlags_reverse_animation));
 		file.AddLine("image_animate=%i", (flags & tfxEmitterPropertyFlags_animate));
 		file.AddLine("image_random_start_frame=%i", (flags & tfxEmitterPropertyFlags_random_start_frame));
 		file.AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
-		file.AddLine("spawn_amount=%i", property.spawn_amount);
-		file.AddLine("emission_type=%i", property.emission_type);
-		file.AddLine("emission_direction=%i", property.emission_direction);
-		file.AddLine("grid_rows=%f", property.grid_points.x);
-		file.AddLine("grid_columns=%f", property.grid_points.y);
-		file.AddLine("grid_depth=%f", property.grid_points.z);
-		file.AddLine("delay_spawning=%f", property.delay_spawning);
-		file.AddLine("loop_length=%f", property.loop_length);
-		file.AddLine("emitter_handle_x=%f", property.emitter_handle.x);
-		file.AddLine("emitter_handle_y=%f", property.emitter_handle.y);
-		file.AddLine("emitter_handle_z=%f", property.emitter_handle.z);
-		file.AddLine("end_behaviour=%i", property.end_behaviour);
+		file.AddLine("spawn_amount=%i", property.spawn_amount[index]);
+		file.AddLine("emission_type=%i", property.emission_type[index]);
+		file.AddLine("emission_direction=%i", property.emission_direction[index]);
+		file.AddLine("grid_rows=%f", property.grid_points[index].x);
+		file.AddLine("grid_columns=%f", property.grid_points[index].y);
+		file.AddLine("grid_depth=%f", property.grid_points[index].z);
+		file.AddLine("delay_spawning=%f", property.delay_spawning[index]);
+		file.AddLine("loop_length=%f", property.loop_length[index]);
+		file.AddLine("emitter_handle_x=%f", property.emitter_handle[index].x);
+		file.AddLine("emitter_handle_y=%f", property.emitter_handle[index].y);
+		file.AddLine("emitter_handle_z=%f", property.emitter_handle[index].z);
+		file.AddLine("end_behaviour=%i", property.end_behaviour[index]);
 		file.AddLine("random_color=%i", (flags & tfxEmitterPropertyFlags_random_color));
 		file.AddLine("relative_position=%i", (flags & tfxEmitterPropertyFlags_relative_position));
 		file.AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
@@ -5787,18 +5476,18 @@ namespace tfx {
 		file.AddLine("area_open_ends=%i", (flags & tfxEmitterPropertyFlags_area_open_ends));
 		file.AddLine("emitter_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_emitter_handle_auto_center));
 		file.AddLine("edge_traversal=%i", (flags & tfxEmitterPropertyFlags_edge_traversal));
-		file.AddLine("angle_setting=%i", property.angle_settings);
-		file.AddLine("angle_offset=%f", property.angle_offsets.roll);
-		file.AddLine("angle_offset_pitch=%f", property.angle_offsets.pitch);
-		file.AddLine("angle_offset_yaw=%f", property.angle_offsets.yaw);
+		file.AddLine("angle_setting=%i", property.angle_settings[index]);
+		file.AddLine("angle_offset=%f", property.angle_offsets[index].roll);
+		file.AddLine("angle_offset_pitch=%f", property.angle_offsets[index].pitch);
+		file.AddLine("angle_offset_yaw=%f", property.angle_offsets[index].yaw);
 		file.AddLine("global_uniform_size=%i", (flags & tfxEmitterPropertyFlags_global_uniform_size));
 		file.AddLine("base_uniform_size=%i", (flags & tfxEmitterPropertyFlags_base_uniform_size));
 		file.AddLine("lifetime_uniform_size=%i", (flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
 		file.AddLine("use_spawn_ratio=%i", (flags & tfxEmitterPropertyFlags_use_spawn_ratio));
 		file.AddLine("is_3d=%i", (flags & tfxEmitterPropertyFlags_is_3d));
-		file.AddLine("billboard_option=%i", property.billboard_option);
-		file.AddLine("vector_align_type=%i", property.vector_align_type);
-		file.AddLine("layer=%i", property.layer);
+		file.AddLine("billboard_option=%i", property.billboard_option[index]);
+		file.AddLine("vector_align_type=%i", property.vector_align_type[index]);
+		file.AddLine("layer=%i", property.layer[index]);
 
 	}
 
@@ -7075,33 +6764,6 @@ namespace tfx {
 		return max_life;
 	}
 
-	float GetMaxAmount(tfxEffectEmitter &e) {
-		if (e.common.property_flags & tfxEmitterPropertyFlags_single)
-			return (float)e.GetProperties().spawn_amount;
-		tfxGraph &amount = *e.GetGraphByType(tfxBase_amount);
-		tfxGraph &amount_variation = *e.GetGraphByType(tfxVariation_amount);
-		float tempamount = 0;
-		float max_amount = 0;
-		float amount_last_frame = amount.GetLastFrame();
-		float amount_variation_last_frame = amount_variation.GetLastFrame();
-		float global_adjust = 1.f;
-		if (amount_last_frame + amount_variation_last_frame > 0) {
-			for (float f = 0; f < std::fmaxf(amount_last_frame, amount_variation_last_frame); ++f) {
-				if (e.parent)
-					global_adjust = e.parent->GetGraphByType(tfxGlobal_amount)->GetMaxValue();
-				tempamount = amount.GetValue(f) + amount_variation.GetValue(f);
-				tempamount *= global_adjust;
-				if (max_amount < tempamount)
-					max_amount = tempamount;
-			}
-		}
-		else {
-			max_amount = amount.GetFirstValue() + amount_variation.GetFirstValue();
-		}
-
-		return max_amount;
-	}
-
 	bool IsOvertimeGraph(tfxGraphType type) {
 		return type >= tfxOvertime_velocity && type != tfxOvertime_noise_resolution && type <= tfxOvertime_noise_resolution;
 	}
@@ -7537,6 +7199,7 @@ namespace tfx {
 		tfxU32 current_global_graph = 0;
 
 		lib.property_array_allocator = CreateArenaManager(tfxMegabyte(4));
+		lib.InitEmitterProperties();
 
 		if (!stats_struct) {
 			lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
@@ -7799,7 +7462,6 @@ namespace tfx {
 				lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
 			lib.UpdateEffectPaths();
 			lib.UpdateComputeNodes();
-			//lib.UpdateEffectParticleStorage();
 			lib.SetMinMaxData();
 		}
 		lib.uid = uid;
@@ -7889,7 +7551,7 @@ namespace tfx {
 				unsigned int index = effects[buffer].current_size++;
 				effects[buffer][index] = e;
 				tfxEffectEmitter &emitter = effects[buffer].back();
-				tfxEmitterProperties &properties = emitter.GetProperties();
+				tfxEmitterProperties &properties = emitter.common.library->emitter_properties;
 				emitter.parent = &effects[buffer][parent_index];
 				emitter.next_ptr = &emitter;
 				if (emitter.particles_index == tfxINVALID && flags & tfxEffectManagerFlags_unordered) {
@@ -7897,30 +7559,30 @@ namespace tfx {
 						emitter.particles_index = GrabParticleLists(*this, emitter.path_hash, 100);
 				}
 				else {
-					emitter.particles_index = properties.layer * 2 + current_pbuff;
+					emitter.particles_index = properties.layer[emitter.property_index] * 2 + current_pbuff;
 				}
-				emitter.common.delay_spawning = properties.delay_spawning;
+				emitter.common.delay_spawning = properties.delay_spawning[emitter.property_index];
 				emitter.highest_particle_age = tfxFRAME_LENGTH * 2.f;
 
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
 				emitter.flags |= emitter.parent->flags & tfxEmitterStateFlags_no_tween;
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_single && !(flags & tfxEffectManagerFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
 				emitter.flags |= emitter.common.property_flags & tfxEmitterPropertyFlags_base_uniform_size;
-				emitter.flags |= (properties.emission_type != tfxLine && !(e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type == tfxLine && !(e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
+				emitter.flags |= (properties.emission_type[emitter.property_index] != tfxLine && !(e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type[emitter.property_index] == tfxLine && !(e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_random_color;
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-				emitter.flags |= properties.angle_settings != tfxAngleSettingFlags_align_roll && !(e.common.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
-				emitter.flags |= properties.angle_settings == tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
-				emitter.flags |= properties.emission_type == tfxLine && e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
+				emitter.flags |= properties.angle_settings[emitter.property_index] != tfxAngleSettingFlags_align_roll && !(e.common.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+				emitter.flags |= properties.angle_settings[emitter.property_index] == tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
+				emitter.flags |= properties.emission_type[emitter.property_index] == tfxLine && e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
 				emitter.flags |= e.common.property_flags & tfxEmitterPropertyFlags_play_once;
-				emitter.flags |= properties.end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
-				emitter.flags |= properties.end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
+				emitter.flags |= properties.end_behaviour[emitter.property_index] == tfxLoop ? tfxEmitterStateFlags_loop : 0;
+				emitter.flags |= properties.end_behaviour[emitter.property_index] == tfxKill ? tfxEmitterStateFlags_kill : 0;
 
 				if (is_sub_emitter)
 					emitter.flags |= tfxEmitterStateFlags_is_sub_emitter;
 
 				if (effect.Is3DEffect()) {
-					if (e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine) {
+					if (e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type[emitter.property_index] == tfxLine) {
 						emitter.current.transform_particle_callback3d = TransformParticle3dRelativeLine;
 					}
 					else if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
@@ -7934,7 +7596,7 @@ namespace tfx {
 					}
 				}
 				else {
-					if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position && (e.common.property_flags & tfxEmitterPropertyFlags_relative_angle || (e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine))) {
+					if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position && (e.common.property_flags & tfxEmitterPropertyFlags_relative_angle || (e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type[emitter.property_index] == tfxLine))) {
 						emitter.current.transform_particle_callback2d = TransformParticleRelativeLine;
 						emitter.current.transform_particle_callback2d2 = TransformParticlePositionRelativeLine;
 					}
@@ -7967,21 +7629,21 @@ namespace tfx {
 						c.flags |= emitter.common.property_flags & tfxParticleControlFlags_lifetime_uniform_size;
 						c.flags |= emitter.common.property_flags & tfxParticleControlFlags_reverse_animation;
 						c.flags |= emitter.common.property_flags & tfxParticleControlFlags_play_once;
-						c.flags |= ((properties.emission_type == tfxPoint) << 3);
-						c.flags |= ((properties.emission_type == tfxArea) << 4);
-						c.flags |= ((properties.emission_type == tfxLine) << 5);
-						c.flags |= ((properties.emission_type == tfxEllipse) << 6);
-						c.flags |= ((properties.end_behaviour == tfxLoop) << 7);
-						c.flags |= ((properties.end_behaviour == tfxKill) << 8);
-						c.flags |= ((properties.end_behaviour == tfxLetFree) << 9);
-						properties.compute_flags = c.flags;
+						c.flags |= ((properties.emission_type[emitter.property_index] == tfxPoint) << 3);
+						c.flags |= ((properties.emission_type[emitter.property_index] == tfxArea) << 4);
+						c.flags |= ((properties.emission_type[emitter.property_index] == tfxLine) << 5);
+						c.flags |= ((properties.emission_type[emitter.property_index] == tfxEllipse) << 6);
+						c.flags |= ((properties.end_behaviour[emitter.property_index] == tfxLoop) << 7);
+						c.flags |= ((properties.end_behaviour[emitter.property_index] == tfxKill) << 8);
+						c.flags |= ((properties.end_behaviour[emitter.property_index] == tfxLetFree) << 9);
+						properties.compute_flags[emitter.property_index] = c.flags;
 						if (emitter.common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 							c.image_handle = tfxVec2(0.5f, 0.5f);
 						}
 						else {
-							c.image_handle = properties.image_handle;
+							c.image_handle = properties.image_handle[emitter.property_index];
 						}
-						c.image_handle = properties.image_handle;
+						c.image_handle = properties.image_handle[emitter.property_index];
 					}
 				}
 			}
@@ -8126,7 +7788,6 @@ return free_slot;
 
 		for (auto &work_entry : spawn_work) {
 			if (work_entry.e && work_entry.e->type == tfxEmitterType) {
-				tfxU32 layer = work_entry.e->GetProperties().layer;
 				if (work_entry.e->next_ptr) {
 					work_entry.e->next_ptr->highest_particle_age = std::fmaxf(work_entry.e->next_ptr->highest_particle_age, work_entry.highest_particle_age);
 					work_entry.e->next_ptr->parent->highest_particle_age = work_entry.e->next_ptr->highest_particle_age + tfxFRAME_LENGTH;
@@ -8234,13 +7895,14 @@ return free_slot;
 
 				p.parent = p.parent->next_ptr;
 				tfxEmitterProperties &properties = p.parent->GetProperties();
+				tfxU32 property_index = p.parent->property_index;
 
 				//All of the new particles will be at the end of the buffer so might not need this condition
 				//and instead have 2 separate for loops? It is highly predictable though.
 				if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
 					tfxParticleSprite2d s;
-					p.sprite_index = (properties.layer << 28) + sprite_index;
+					p.sprite_index = (properties.layer[property_index] << 28) + sprite_index;
 
 					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
@@ -8255,12 +7917,12 @@ return free_slot;
 						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 
 						s.color = p.data.color;
-						s.image_ptr = properties.image->ptr;
+						s.image_ptr = properties.image[property_index]->ptr;
 						s.image_frame = (tfxU32)p.data.image_frame;
 						s.transform.captured_position = p.data.captured_position.xy();
 						s.intensity = p.data.intensity;
 						s.handle = p.parent->current.image_handle;
-						pm.sprites2d[properties.layer][sprite_index++] = s;
+						pm.sprites2d[properties.layer[property_index]][sprite_index++] = s;
 						p.next_ptr->data.captured_position = s.transform.position;
 
 					}
@@ -8268,8 +7930,8 @@ return free_slot;
 						s.transform.scale = 0;
 						s.intensity = 0;
 						s.image_frame = 0;
-						s.image_ptr = properties.image->ptr;
-						pm.sprites2d[properties.layer][sprite_index++] = s;
+						s.image_ptr = properties.image[property_index]->ptr;
+						pm.sprites2d[properties.layer[property_index]][sprite_index++] = s;
 						p.next_ptr = nullptr;
 					}
 
@@ -8304,13 +7966,14 @@ return free_slot;
 				tfxParticle &p = pm.particle_banks[current_buffer_index][i];
 				p.parent = p.parent->next_ptr;
 				tfxEmitterProperties &properties = p.parent->GetProperties();
+				tfxU32 property_index = p.parent->property_index;
 
 				//All of the new particles will be at the end of the buffer so might not need this condition
 				//and instead have 2 separate for loops? It is highly predictable though.
 				if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
 					tfxParticleSprite3d s;
-					p.sprite_index = (properties.layer << 28) + sprite_index;
+					p.sprite_index = (properties.layer[property_index] << 28) + sprite_index;
 
 					if (p.parent && ControlParticle(pm, p, s.transform.scale, *p.parent)) {
 						if (p.data.flags & tfxParticleFlags_capture_after_transform) {
@@ -8324,22 +7987,22 @@ return free_slot;
 						}
 
 						tfxVec3 alignment_vector;
-						if (p.parent->common.property_flags & tfxEmitterPropertyFlags_relative_position && properties.vector_align_type == tfxVectorAlignType_emission)
+						if (p.parent->common.property_flags & tfxEmitterPropertyFlags_relative_position && properties.vector_align_type[property_index] == tfxVectorAlignType_emission)
 							alignment_vector = mmTransformVector3(p.parent->common.transform.matrix, p.data.velocity_normal.xyz());
 						else
-							alignment_vector = SetParticleAlignment(p, s.transform.position, properties);
+							alignment_vector = SetParticleAlignment(p, s.transform.position, properties.vector_align_type[property_index]);
 						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
 
 						s.color = p.data.color;
-						s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p.data.image_frame;
+						s.image_frame_plus = (properties.billboard_option[property_index] << 24) + (tfxU32)p.data.image_frame;
 						s.transform.captured_position = p.data.captured_position;
 						s.stretch = p.data.velocity_normal.w;
 						s.intensity = p.data.intensity;
 						s.handle = p.parent->current.image_handle;
 						alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
-						s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
-						s.image_ptr = properties.image->ptr;
-						pm.sprites3d[properties.layer][sprite_index++] = s;
+						s.alignment = Pack10bit(alignment_vector, properties.billboard_option[property_index] & 0x00000003);
+						s.image_ptr = properties.image[property_index]->ptr;
+						pm.sprites3d[properties.layer[property_index]][sprite_index++] = s;
 
 						p.next_ptr->data.captured_position = s.transform.position;
 
@@ -8348,8 +8011,8 @@ return free_slot;
 						s.transform.scale = 0;
 						s.intensity = 0;
 						s.image_frame_plus = 0;
-						s.image_ptr = properties.image->ptr;
-						pm.sprites3d[properties.layer][sprite_index++] = s;
+						s.image_ptr = properties.image[property_index]->ptr;
+						pm.sprites3d[properties.layer[property_index]][sprite_index++] = s;
 						p.next_ptr = nullptr;
 					}
 
@@ -8392,6 +8055,7 @@ return free_slot;
 				p.parent = p.parent->next_ptr;
 				p.prev_index = index;
 				tfxEmitterProperties &properties = p.parent->GetProperties();
+				tfxU32 property_index = p.parent->property_index;
 
 				if (!(p.data.flags & tfxParticleFlags_fresh)) {
 
@@ -8410,15 +8074,15 @@ return free_slot;
 						p.data.depth = LengthVec3NoSqR(s.transform.position - pm.camera_position);
 
 						tfxVec3 alignment_vector;
-						if(p.parent->common.property_flags & tfxEmitterPropertyFlags_relative_position && properties.vector_align_type == tfxVectorAlignType_emission)
+						if(p.parent->common.property_flags & tfxEmitterPropertyFlags_relative_position && properties.vector_align_type[property_index] == tfxVectorAlignType_emission)
 							alignment_vector = mmTransformVector3(p.parent->common.transform.matrix, p.data.velocity_normal.xyz());
 						else 
-							alignment_vector = SetParticleAlignment(p, s.transform.position, properties);
+							alignment_vector = SetParticleAlignment(p, s.transform.position, properties.vector_align_type[property_index]);
 						while (new_particle && new_particle->data.depth > p.data.depth) {
 							tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
-							tfxParticleSprite3d &ns = pm.sprites3d[new_properties.layer][new_particle->sprite_index & 0x0FFFFFFF];
-							pm.sprites3d[new_properties.layer][sprite_index++] = ns;
-							new_particle->sprite_index = (properties.layer << 28) + next_index;
+							tfxParticleSprite3d &ns = pm.sprites3d[new_properties.layer[new_particle->parent->property_index]][new_particle->sprite_index & 0x0FFFFFFF];
+							pm.sprites3d[new_properties.layer[new_particle->parent->property_index]][sprite_index++] = ns;
+							new_particle->sprite_index = (properties.layer[property_index] << 28) + next_index;
 							new_particle->prev_index = new_index;
 							new_particle->data.flags &= ~tfxParticleFlags_fresh;
 							new_particle->parent = new_particle->parent->next_ptr;
@@ -8429,17 +8093,17 @@ return free_slot;
 								new_particle = &pm.particle_banks[current_buffer_index][new_index];
 						}
 
-						p.sprite_index = (properties.layer << 28) + sprite_index;
+						p.sprite_index = (properties.layer[property_index] << 28) + sprite_index;
 						s.color = p.data.color;
-						s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p.data.image_frame;
+						s.image_frame_plus = (properties.billboard_option[property_index] << 24) + (tfxU32)p.data.image_frame;
 						s.transform.captured_position = p.data.captured_position;
 						s.stretch = p.data.velocity_normal.w;
 						s.intensity = p.data.intensity;
 						s.handle = p.parent->current.image_handle;
 						alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
-						s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
-						s.image_ptr = properties.image->ptr;
-						pm.sprites3d[properties.layer][sprite_index++] = s;
+						s.alignment = Pack10bit(alignment_vector, properties.billboard_option[property_index] & 0x00000003);
+						s.image_ptr = properties.image[property_index]->ptr;
+						pm.sprites3d[properties.layer[property_index]][sprite_index++] = s;
 
 						p.data.captured_position = s.transform.position;
 						p.next_ptr = pm.SetNextParticle(next_buffer_index, p);
@@ -8449,8 +8113,8 @@ return free_slot;
 						s.transform.scale = 0;
 						s.intensity = 0;
 						s.image_frame_plus = 0;
-						s.image_ptr = properties.image->ptr;
-						pm.sprites3d[properties.layer][sprite_index++] = s;
+						s.image_ptr = properties.image[property_index]->ptr;
+						pm.sprites3d[properties.layer[property_index]][sprite_index++] = s;
 						p.next_ptr = nullptr;
 					}
 
@@ -8493,8 +8157,8 @@ return free_slot;
 				while (new_index < pm.particle_banks[current_buffer_index].current_size) {
 					new_particle = &pm.particle_banks[current_buffer_index][new_index];
 					tfxEmitterProperties &new_properties = new_particle->parent->GetProperties();
-					tfxParticleSprite3d &ns = pm.sprites3d[new_properties.layer][new_particle->sprite_index & 0x0FFFFFFF];
-					pm.sprites3d[new_properties.layer][next_index] = ns;
+					tfxParticleSprite3d &ns = pm.sprites3d[new_properties.layer[new_particle->parent->property_index]][new_particle->sprite_index & 0x0FFFFFFF];
+					pm.sprites3d[new_properties.layer[new_particle->parent->property_index]][next_index] = ns;
 					new_particle->prev_index = new_index;
 					new_particle->data.flags &= ~tfxParticleFlags_fresh;
 					new_particle->parent = new_particle->parent->next_ptr;
@@ -9024,6 +8688,7 @@ return free_slot;
 
 		if (e.parent && e.parent->type != tfxFolder && e.parent->next_ptr) {
 			e.parent = e.parent->next_ptr;
+			tfxU32 layer = properties.layer[e.property_index];
 
 			e.parent->common.timeout_counter = 0;
 			if (e.parent->common.age < e.common.delay_spawning) {
@@ -9042,7 +8707,7 @@ return free_slot;
 			if (pm.flags & tfxEffectManagerFlags_unordered) {
 
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d) {
-					tfxring<tfxParticleSprite3d> &sprite_buffer = pm.sprites3d[properties.layer];
+					tfxring<tfxParticleSprite3d> &sprite_buffer = pm.sprites3d[layer];
 
 					Transform3d(e.common.transform, e.parent->common.transform);
 
@@ -9065,8 +8730,8 @@ return free_slot;
 					}
 					e.sprites_count += max_spawn_count;
 					sprite_buffer.current_size += max_spawn_count;
-					e.sprites_index = pm.sprite_index_point[properties.layer];
-					pm.sprite_index_point[properties.layer] += e.sprites_count;
+					e.sprites_index = pm.sprite_index_point[layer];
+					pm.sprite_index_point[layer] += e.sprites_count;
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
@@ -9077,12 +8742,12 @@ return free_slot;
 							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
-					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 
 					ControlParticles3d(pm, e, amount_spawned);
 				}
 				else {
-					tfxring<tfxParticleSprite2d> &sprite_buffer = pm.sprites2d[properties.layer];
+					tfxring<tfxParticleSprite2d> &sprite_buffer = pm.sprites2d[layer];
 
 					Transform(e.common.transform, e.parent->common.transform);
 
@@ -9105,8 +8770,8 @@ return free_slot;
 					}
 
 					e.sprites_count += max_spawn_count;
-					e.sprites_index = pm.sprite_index_point[properties.layer];
-					pm.sprite_index_point[properties.layer] += e.sprites_count;
+					e.sprites_index = pm.sprite_index_point[layer];
+					pm.sprite_index_point[layer] += e.sprites_count;
 					sprite_buffer.current_size += max_spawn_count;
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
@@ -9120,13 +8785,13 @@ return free_slot;
 						}
 					}
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
-					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 				}
 			}
 			else {
-				e.sprites_index = pm.sprite_index_point[properties.layer];
-				pm.sprite_index_point[properties.layer] += max_spawn_count;
-				e.particles_index = properties.layer * 2 + pm.current_pbuff;
+				e.sprites_index = pm.sprite_index_point[layer];
+				pm.sprite_index_point[layer] += max_spawn_count;
+				e.particles_index = layer * 2 + pm.current_pbuff;
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d) {
 					Transform3d(e.common.transform, e.parent->common.transform);
 
@@ -9134,15 +8799,15 @@ return free_slot;
 						e.common.transform.captured_position = e.common.transform.world_position;
 					}
 
-					tfxring<tfxParticleSprite3d> &sprite_buffer = pm.sprites3d[properties.layer];
-					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
-						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
+					tfxring<tfxParticleSprite3d> &sprite_buffer = pm.sprites3d[layer];
+					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[layer] > sprite_buffer.free_space()) {
+						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[layer] - sprite_buffer.free_space()) + 1));
 					}
 					else if(e.sprites_index + max_spawn_count > sprite_buffer.capacity) {
-						pm.sprite_index_point[properties.layer] = sprite_buffer.capacity;
+						pm.sprite_index_point[layer] = sprite_buffer.capacity;
 						max_spawn_count = sprite_buffer.capacity - e.sprites_index;
 					}
-					sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
+					sprite_buffer.current_size = pm.sprite_index_point[layer];
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && e.common.property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
@@ -9153,7 +8818,7 @@ return free_slot;
 							amount_spawned = SpawnParticles3d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
-					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 				}
 				else {
 					Transform(e.common.transform, e.parent->common.transform);
@@ -9162,15 +8827,15 @@ return free_slot;
 						e.common.transform.captured_position = e.common.transform.world_position;
 					}
 
-					tfxring<tfxParticleSprite2d> &sprite_buffer = pm.sprites2d[properties.layer];
-					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[properties.layer] > sprite_buffer.free_space()) {
-						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[properties.layer] - sprite_buffer.free_space()) + 1));
+					tfxring<tfxParticleSprite2d> &sprite_buffer = pm.sprites2d[layer];
+					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[layer] > sprite_buffer.free_space()) {
+						sprite_buffer.reserve(sprite_buffer._grow_capacity(sprite_buffer.capacity + (pm.sprite_index_point[layer] - sprite_buffer.free_space()) + 1));
 					}
 					else if(e.sprites_index + max_spawn_count > sprite_buffer.capacity) {
-						pm.sprite_index_point[properties.layer] = sprite_buffer.capacity;
+						pm.sprite_index_point[layer] = sprite_buffer.capacity;
 						max_spawn_count = sprite_buffer.capacity - e.sprites_index;
 					}
-					sprite_buffer.current_size = pm.sprite_index_point[properties.layer];
+					sprite_buffer.current_size = pm.sprite_index_point[layer];
 
 					if (e.flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (e.common.age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
@@ -9181,7 +8846,7 @@ return free_slot;
 							amount_spawned = SpawnParticles2d(pm, e, spawn_work_entry->spawn_controls, max_spawn_count);
 					}
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
-					pm.sprite_index_point[properties.layer] -= (max_spawn_count - amount_spawned);
+					pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 				}
 			}
 
@@ -9206,7 +8871,7 @@ return free_slot;
 				else
 					TransformEffector(e, pm.sprites2d[sprite_layer][sprite_index].transform, true, e.common.property_flags & tfxEmitterPropertyFlags_relative_angle);
 
-				e.common.transform.world_position += properties.emitter_handle * e.current.overal_scale;
+				e.common.transform.world_position += properties.emitter_handle[e.property_index] * e.current.overal_scale;
 				if (e.flags & tfxEmitterStateFlags_no_tween_this_update || e.flags & tfxEmitterStateFlags_no_tween) {
 					e.common.transform.captured_position = e.common.transform.world_position;
 				}
@@ -9222,7 +8887,7 @@ return free_slot;
 		else {
 			if (!(e.flags & tfxEmitterStateFlags_retain_matrix)) {
 				e.common.transform.world_position = e.common.transform.local_position + e.common.transform.translation;
-				e.common.transform.world_position += properties.emitter_handle * e.current.overal_scale;
+				e.common.transform.world_position += properties.emitter_handle[e.property_index] * e.current.overal_scale;
 				if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d) {
 					e.common.transform.world_rotations = e.common.transform.local_rotations;
 					tfxMatrix4 roll = mmZRotate(e.common.transform.local_rotations.roll);
@@ -9246,11 +8911,11 @@ return free_slot;
 		}
 
 		e.common.age += tfxFRAME_LENGTH;
-		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single) || properties.single_shot_limit > 0)
+		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single) || properties.single_shot_limit[e.property_index] > 0)
 			e.highest_particle_age -= tfxFRAME_LENGTH;
 
-		if (properties.loop_length && e.common.age > properties.loop_length)
-			e.common.age -= properties.loop_length;
+		if (properties.loop_length && e.common.age > properties.loop_length[e.property_index])
+			e.common.age -= properties.loop_length[e.property_index];
 
 		if (e.highest_particle_age <= 0 && e.common.age > tfxFRAME_LENGTH * 5.f) {
 			e.common.timeout_counter++;
@@ -9273,7 +8938,7 @@ return free_slot;
 
 		float qty_step_size = 0;
 		if (!(e.common.property_flags & tfxEmitterPropertyFlags_single)) {
-			if (e.common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type == tfxArea || properties.emission_type == tfxEllipse)) {
+			if (e.common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type[e.property_index] == tfxArea || properties.emission_type[e.property_index] == tfxEllipse)) {
 				if (e.Is3DEffect()) {
 					float area = std::fmaxf(0.1f, e.current.emitter_size.x) * std::fmaxf(0.1f, e.current.emitter_size.y) * std::fmaxf(0.1f, e.current.emitter_size.z);
 					e.current.qty = (e.current.qty / 50.f) * area;
@@ -9283,7 +8948,7 @@ return free_slot;
 					e.current.qty = (e.current.qty / 10000.f) * area;
 				}
 			}
-			else if (e.common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && properties.emission_type == tfxLine) {
+			else if (e.common.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && properties.emission_type[e.property_index] == tfxLine) {
 				e.current.qty = (e.current.qty / 100.f) * e.current.emitter_size.y;
 			}
 
@@ -9326,9 +8991,9 @@ return free_slot;
 			}
 
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
-			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
-			p->sprite_index = (properties.layer << 28) + e.sprites_index;
-			tfxParticleSprite2d &s = pm.sprites2d[properties.layer][e.sprites_index++];
+			assert(e.sprites_index < pm.sprites2d[properties.layer[e.property_index]].capacity);
+			p->sprite_index = (properties.layer[e.property_index] << 28) + e.sprites_index;
+			tfxParticleSprite2d &s = pm.sprites2d[properties.layer[e.property_index]][e.sprites_index++];
 			InitCPUParticle2d(pm, e, *p, s.transform, spawn_controls, tween);
 
 			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age + tfxFRAME_LENGTH + 1);
@@ -9340,7 +9005,7 @@ return free_slot;
 			s.image_frame = (tfxU32)p->data.image_frame;
 			s.intensity = p->data.intensity;
 			s.handle = e.current.image_handle;
-			s.image_ptr = properties.image->ptr;
+			s.image_ptr = properties.image[e.property_index]->ptr;
 
 			amount_spawned++;
 		}
@@ -9427,7 +9092,7 @@ return free_slot;
 			float &intensity = pm.GrabIntensity(e.particles_index);
 			tfxU32 &single_loop_count = pm.GrabSingleLoopCount(e.particles_index);
 
-			assert(e.sprites_index < pm.sprites2d[properties.layer].capacity);
+			assert(e.sprites_index < pm.sprites2d[properties.layer[e.property_index]].capacity);
 			tfxU32 &sprite_index = pm.GrabSpriteIndex(e.particles_index);
 			tfxU32 &next_id = pm.GrabNextIndex(e.particles_index);
 			tfxParticleFlags &flags = pm.GrabFlags(e.particles_index);
@@ -9479,11 +9144,11 @@ return free_slot;
 
 			//----Image
 			//data.image = GetProperties().image;
-			if (e.common.property_flags & tfxEmitterPropertyFlags_random_start_frame && properties.image->animation_frames > 1) {
-				image_frame = random_generation.Range(properties.image->animation_frames);
+			if (e.common.property_flags & tfxEmitterPropertyFlags_random_start_frame && properties.image[e.property_index]->animation_frames > 1) {
+				image_frame = random_generation.Range(properties.image[e.property_index]->animation_frames);
 			}
 			else {
-				image_frame = properties.start_frame;
+				image_frame = properties.start_frame[e.property_index];
 			}
 
 		}
@@ -9497,7 +9162,7 @@ return free_slot;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = entry->spawn_controls;
-		tfxEmitterProperties &properties = e.GetProperties();
+		tfxVec2 &image_size = e.GetProperties().image[e.property_index]->image_size;
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9508,13 +9173,13 @@ return free_slot;
 				float random_size_x = random_generation.Range(spawn_controls.size_variation.x);
 				float random_size_y = random_generation.Range(spawn_controls.size_variation.y);
 				base_size.y = random_size_y + spawn_controls.size.y;
-				base_size.x = (random_size_x + spawn_controls.size.x) / properties.image->image_size.x;
+				base_size.x = (random_size_x + spawn_controls.size.x) / image_size.x;
 			}
 			else {
 				float random_size_x = random_generation.Range(spawn_controls.size_variation.x);
 				float random_size_y = random_size_x;
 				base_size.y = random_size_y + spawn_controls.size.y;
-				base_size.x = (random_size_x + spawn_controls.size.x) / properties.image->image_size.x;
+				base_size.x = (random_size_x + spawn_controls.size.x) / image_size.x;
 			}
 		}
 
@@ -9567,7 +9232,10 @@ return free_slot;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
 		tfxEmitterSpawnControls &spawn_controls = entry->spawn_controls;
-		tfxEmitterProperties &properties = e.GetProperties();
+		tfxVec3 &angle_offsets = e.GetProperties().angle_offsets[e.property_index];
+		tfxAngleSettingFlags &angle_settings = e.GetProperties().angle_settings[e.property_index];
+		tfxEmissionType &emission_type = e.GetProperties().emission_type[e.property_index];
+		tfxVec3 &grid_points = e.GetProperties().grid_points[e.property_index];
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9596,11 +9264,11 @@ return free_slot;
 			weight_acceleration = base_weight * e.common.library->emitter_attributes[e.emitter_attributes].overtime.weight.GetFirstValue() * tfxUPDATE_TIME;
 
 			local_rotations = 0;
-			if (properties.angle_settings & tfxAngleSettingFlags_random_roll) {
-				local_rotations.roll = random_generation.Range(properties.angle_offsets.roll);
+			if (angle_settings & tfxAngleSettingFlags_random_roll) {
+				local_rotations.roll = random_generation.Range(angle_offsets.roll);
 			}
-			else if (properties.angle_settings & tfxAngleSettingFlags_specify_roll) {
-				local_rotations.roll = properties.angle_offsets.roll;
+			else if (angle_settings & tfxAngleSettingFlags_specify_roll) {
+				local_rotations.roll = angle_offsets.roll;
 			}
 			else {
 				 local_rotations.roll = 0;
@@ -9609,7 +9277,7 @@ return free_slot;
 			//----Position
 			local_position = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, e.common.transform.captured_position.xy(), e.common.transform.world_position.xy());
-			if (properties.emission_type == tfxPoint) {
+			if (emission_type == tfxPoint) {
 				if (e.common.property_flags & tfxEmitterPropertyFlags_relative_position)
 					local_position = 0;
 				else {
@@ -9622,15 +9290,15 @@ return free_slot;
 					}
 				}
 			}
-			else if (properties.emission_type == tfxArea) {
+			else if (emission_type == tfxArea) {
 				tfxVec2 position = tfxVec2(0.f, 0.f);
 
 				if (e.common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 					if (e.common.property_flags & tfxEmitterPropertyFlags_fill_area) {
 						if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-							e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-							e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+							e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 							local_position = e.current.grid_coords.xy() * spawn_controls.grid_segment_size.xy();
 						}
 						else {
@@ -9638,9 +9306,9 @@ return free_slot;
 								e.current.grid_coords.x--;
 								if (e.current.grid_coords.x < 0.f) {
 									e.current.grid_coords.y--;
-									e.current.grid_coords.x = properties.grid_points.x - 1;
+									e.current.grid_coords.x = grid_points.x - 1;
 									if (e.current.grid_coords.y < 0.f)
-										e.current.grid_coords.y = properties.grid_points.y - 1;
+										e.current.grid_coords.y = grid_points.y - 1;
 								}
 							}
 
@@ -9648,10 +9316,10 @@ return free_slot;
 
 							if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 								e.current.grid_coords.x++;
-								if (e.current.grid_coords.x == properties.grid_points.x) {
+								if (e.current.grid_coords.x == grid_points.x) {
 									e.current.grid_coords.y++;
 									e.current.grid_coords.x = 0.f;
-									if (e.current.grid_coords.y >= properties.grid_points.y)
+									if (e.current.grid_coords.y >= grid_points.y)
 										e.current.grid_coords.y = 0.f;
 								}
 							}
@@ -9663,22 +9331,22 @@ return free_slot;
 							if (side == 0) {
 								//left side
 								e.current.grid_coords.x = 0.f;
-								e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+								e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 							}
 							else if (side == 1) {
 								//right side
-								e.current.grid_coords.x = properties.grid_points.x - 1;
-								e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.y);
+								e.current.grid_coords.x = grid_points.x - 1;
+								e.current.grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 							}
 							else if (side == 2) {
 								//top side
-								e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
+								e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
 								e.current.grid_coords.y = 0.f;
 							}
 							else if (side == 3) {
 								//bottom side
-								e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)properties.grid_points.x);
-								e.current.grid_coords.y = properties.grid_points.y - 1;
+								e.current.grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+								e.current.grid_coords.y = grid_points.y - 1;
 							}
 							local_position = e.current.grid_coords.xy() * spawn_controls.grid_segment_size.xy();
 						}
@@ -9687,15 +9355,15 @@ return free_slot;
 
 								e.current.grid_direction.x = 1;
 								e.current.grid_direction.y = 0;
-								if (e.current.grid_coords.x == properties.grid_points.x - 1 && e.current.grid_coords.y >= 0 && e.current.grid_coords.y < properties.grid_points.y - 1) {
+								if (e.current.grid_coords.x == grid_points.x - 1 && e.current.grid_coords.y >= 0 && e.current.grid_coords.y < grid_points.y - 1) {
 									e.current.grid_direction.x = 0;
 									e.current.grid_direction.y = 1;
 								}
-								else if (e.current.grid_coords.x > 0 && e.current.grid_coords.x < properties.grid_points.x && e.current.grid_coords.y == properties.grid_points.y - 1) {
+								else if (e.current.grid_coords.x > 0 && e.current.grid_coords.x < grid_points.x && e.current.grid_coords.y == grid_points.y - 1) {
 									e.current.grid_direction.x = -1;
 									e.current.grid_direction.y = 0;
 								}
-								else if (e.current.grid_coords.x == 0 && e.current.grid_coords.y > 0 && e.current.grid_coords.y < properties.grid_points.y) {
+								else if (e.current.grid_coords.x == 0 && e.current.grid_coords.y > 0 && e.current.grid_coords.y < grid_points.y) {
 									e.current.grid_direction.x = 0;
 									e.current.grid_direction.y = -1;
 								}
@@ -9705,15 +9373,15 @@ return free_slot;
 
 								e.current.grid_direction.x = -1;
 								e.current.grid_direction.y = 0;
-								if (e.current.grid_coords.x == properties.grid_points.x - 1 && e.current.grid_coords.y > 0 && e.current.grid_coords.y < properties.grid_points.y) {
+								if (e.current.grid_coords.x == grid_points.x - 1 && e.current.grid_coords.y > 0 && e.current.grid_coords.y < grid_points.y) {
 									e.current.grid_direction.x = 0;
 									e.current.grid_direction.y = -1;
 								}
-								else if (e.current.grid_coords.x >= 0 && e.current.grid_coords.x < properties.grid_points.x - 1 && e.current.grid_coords.y == properties.grid_points.y - 1) {
+								else if (e.current.grid_coords.x >= 0 && e.current.grid_coords.x < grid_points.x - 1 && e.current.grid_coords.y == grid_points.y - 1) {
 									e.current.grid_direction.x = 1;
 									e.current.grid_direction.y = 0;
 								}
-								else if (e.current.grid_coords.x == 0 && e.current.grid_coords.y >= 0 && e.current.grid_coords.y < properties.grid_points.y - 1) {
+								else if (e.current.grid_coords.x == 0 && e.current.grid_coords.y >= 0 && e.current.grid_coords.y < grid_points.y - 1) {
 									e.current.grid_direction.x = 0;
 									e.current.grid_direction.y = 1;
 								}
@@ -9721,7 +9389,7 @@ return free_slot;
 							}
 
 							e.current.grid_coords += e.current.grid_direction;
-							tfxBound(e.current.grid_coords.xy(), properties.grid_points.xy());
+							tfxBound(e.current.grid_coords.xy(), grid_points.xy());
 							local_position = position + (e.current.grid_coords.xy() * spawn_controls.grid_segment_size.xy());
 						}
 					}
@@ -9766,7 +9434,7 @@ return free_slot;
 				}
 
 			}
-			else if (properties.emission_type == tfxEllipse) {
+			else if (emission_type == tfxEllipse) {
 				tfxVec2 emitter_size = (e.current.emitter_size.xy() * .5f);
 				tfxVec2 position = tfxVec2(0.f, 0.f);
 
@@ -9777,7 +9445,7 @@ return free_slot;
 					if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						e.current.grid_coords.x--;
 						if (e.current.grid_coords.x < 0.f) {
-							e.current.grid_coords.x = properties.grid_points.x - 1;
+							e.current.grid_coords.x = grid_points.x - 1;
 						}
 					}
 
@@ -9786,7 +9454,7 @@ return free_slot;
 
 					if (!(e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 						e.current.grid_coords.x++;
-						if (e.current.grid_coords.x >= properties.grid_points.x) {
+						if (e.current.grid_coords.x >= grid_points.x) {
 							e.current.grid_coords.x = 0.f;
 						}
 					}
@@ -9815,7 +9483,7 @@ return free_slot;
 				}
 
 			}
-			else if (properties.emission_type == tfxLine) {
+			else if (emission_type == tfxLine) {
 				if (e.common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 					e.current.grid_coords.x = 0.f;
@@ -9823,7 +9491,7 @@ return free_slot;
 					if (!(e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 						e.current.grid_coords.y--;
 						if (e.current.grid_coords.y < 0.f) {
-							e.current.grid_coords.y = properties.grid_points.x - 1;
+							e.current.grid_coords.y = grid_points.x - 1;
 						}
 					}
 
@@ -9831,7 +9499,7 @@ return free_slot;
 
 					if (e.common.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						e.current.grid_coords.y++;
-						if (e.current.grid_coords.y >= properties.grid_points.x) {
+						if (e.current.grid_coords.y >= grid_points.x) {
 							e.current.grid_coords.y = 0.f;
 						}
 					}
@@ -9874,10 +9542,10 @@ return free_slot;
 			tfxSpriteTransform2d sprite_transform;
 			float direction = 0;
 
-			if (properties.angle_settings & tfxAngleSettingFlags_align_roll && e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
-				sprite_transform.rotation = local_rotations.roll = direction + properties.angle_offsets.roll;
+			if (angle_settings & tfxAngleSettingFlags_align_roll && e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal)
+				sprite_transform.rotation = local_rotations.roll = direction + angle_offsets.roll;
 
-			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
+			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 
 			if (!line && !(e.common.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				TransformParticlePosition(local_position.xy(), local_rotations.roll, sprite_transform.position, sprite_transform.rotation, e.common, e.common.transform.world_position);
@@ -9905,8 +9573,8 @@ return free_slot;
 			}
 			//end micro update
 
-			if ((properties.angle_settings & tfxAngleSettingFlags_align_roll || properties.angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
-				local_rotations.roll = GetVectorAngle(velocity_normal_tmp.x, velocity_normal_tmp.y) + properties.angle_offsets.roll;
+			if ((angle_settings & tfxAngleSettingFlags_align_roll || angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
+				local_rotations.roll = GetVectorAngle(velocity_normal_tmp.x, velocity_normal_tmp.y) + angle_offsets.roll;
 			}
 
 			tween += entry->qty_step_size;
@@ -9923,6 +9591,11 @@ return free_slot;
 			return 0;
 
 		tfxEmitterProperties &properties = e.GetProperties();
+		tfxU32 layer = properties.layer[e.property_index];
+		tfxEmissionType emission_type = properties.emission_type[e.property_index];
+		tfxVectorAlignType vector_align_type = properties.vector_align_type[e.property_index];
+		tfxU32 billboard_option = properties.billboard_option[e.property_index];
+		tfxImageData *image = properties.image[e.property_index];
 
 		float qty_step_size = 1.f / e.current.qty;
 		float tween = 0;
@@ -9958,16 +9631,16 @@ return free_slot;
 
 		e.current.amount_remainder = tween - 1.f;
 
-		pm.new_particles_index_start[properties.layer] = tfxMin(pm.new_particles_index_start[properties.layer], pm.particle_banks[e.particles_index].current_size);
+		pm.new_particles_index_start[layer] = tfxMin(pm.new_particles_index_start[layer], pm.particle_banks[e.particles_index].current_size);
 
 		for (auto &position : pm.new_positions) {
 			tfxParticle *p = &pm.GrabCPUParticle(e.particles_index);
 			p->data.age = (1.f - tween2) * tfxFRAME_LENGTH;
 			tween2 += qty_step_size;
 
-			assert(e.sprites_index < pm.sprites3d[properties.layer].capacity);
-			p->sprite_index = (properties.layer << 28) + e.sprites_index;
-			tfxParticleSprite3d &s = pm.sprites3d[properties.layer][e.sprites_index++];
+			assert(e.sprites_index < pm.sprites3d[layer].capacity);
+			p->sprite_index = (layer << 28) + e.sprites_index;
+			tfxParticleSprite3d &s = pm.sprites3d[layer][e.sprites_index++];
 
 			p->data.local_position = position.local_position;
 			p->data.captured_position = s.transform.captured_position = position.captured_position;
@@ -9982,30 +9655,30 @@ return free_slot;
 			e.highest_particle_age = std::fmaxf(e.highest_particle_age, p->data.max_age + tfxFRAME_LENGTH + 1);
 			e.parent->highest_particle_age = e.highest_particle_age + tfxFRAME_LENGTH;
 
-			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
+			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 			tfxVec3 alignment_vector(0.f, 0.002f, 0.f);
-			if (p->data.flags & tfxParticleFlags_fresh && properties.vector_align_type == tfxVectorAlignType_motion) {
+			if (p->data.flags & tfxParticleFlags_fresh && vector_align_type == tfxVectorAlignType_motion) {
 				alignment_vector = p->data.velocity_normal.xyz();
 				alignment_vector = FastNormalizeVec(alignment_vector);
 			}
-			else if (properties.vector_align_type == tfxVectorAlignType_motion) {
+			else if (vector_align_type == tfxVectorAlignType_motion) {
 				alignment_vector = s.transform.position - p->data.captured_position;
 				float l = FastLength(alignment_vector);
 				p->data.velocity_normal.w *= l * 10.f;
 				alignment_vector = FastNormalizeVec(alignment_vector);
 			}
-			else if (properties.vector_align_type == tfxVectorAlignType_emission && e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
+			else if (vector_align_type == tfxVectorAlignType_emission && e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
 				alignment_vector = mmTransformVector3(e.common.transform.matrix, p->data.velocity_normal.xyz());
 			}
-			else if (properties.vector_align_type == tfxVectorAlignType_emission) {
+			else if (vector_align_type == tfxVectorAlignType_emission) {
 				alignment_vector = p->data.velocity_normal.xyz();
 			}
-			else if (properties.vector_align_type == tfxVectorAlignType_emitter) {
+			else if (vector_align_type == tfxVectorAlignType_emitter) {
 				alignment_vector = mmTransformVector(e.common.transform.matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
 			}
 			else {
 				if (!(e.common.property_flags & tfxEmitterPropertyFlags_fill_area)) {
-					if (properties.vector_align_type == tfxVectorAlignType_surface_normal) {
+					if (vector_align_type == tfxVectorAlignType_surface_normal) {
 						tfxVec3 emitter_size = e.current.emitter_size * .5f;
 						alignment_vector = tfxVec3(p->data.local_position.x / (emitter_size.x * emitter_size.x),
 							p->data.local_position.y / (emitter_size.y * emitter_size.y),
@@ -10016,12 +9689,12 @@ return free_slot;
 			}
 
 			s.color = p->data.color;
-			s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p->data.image_frame;
+			s.image_frame_plus = (billboard_option << 24) + (tfxU32)p->data.image_frame;
 			s.stretch = p->data.velocity_normal.w;
 			s.intensity = p->data.intensity;
 			s.handle = e.current.image_handle;
-			s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
-			s.image_ptr = properties.image->ptr;
+			s.alignment = Pack10bit(alignment_vector, billboard_option & 0x00000003);
+			s.image_ptr = image->ptr;
 
 		}
 
@@ -10152,7 +9825,7 @@ return free_slot;
 			e.current.qty *= lookup_callback(e.parent->common.library->global_graphs[e.parent->global].amount, e.common.frame);
 		}
 		else {
-			e.current.qty = (float)properties.spawn_amount;
+			e.current.qty = (float)properties.spawn_amount[e.property_index];
 		}
 
 		//----Handle
@@ -10160,10 +9833,10 @@ return free_slot;
 			e.current.image_handle = tfxVec2(0.5f, 0.5f);
 		}
 		else {
-			e.current.image_handle = properties.image_handle;
+			e.current.image_handle = properties.image_handle[e.property_index];
 		}
 
-		bool is_area = properties.emission_type == tfxArea || properties.emission_type == tfxEllipse || properties.emission_type == tfxCylinder || properties.emission_type == tfxIcosphere;
+		bool is_area = properties.emission_type[e.property_index] == tfxArea || properties.emission_type[e.property_index] == tfxEllipse || properties.emission_type[e.property_index] == tfxCylinder || properties.emission_type[e.property_index] == tfxIcosphere;
 
 		if (is_area) {
 			e.current.emitter_size.x = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.emitter_width, e.common.frame);
@@ -10177,50 +9850,50 @@ return free_slot;
 
 		e.current.emitter_size *= parent.current.emitter_size;
 
-		if (properties.emission_type == tfxEllipse || properties.emission_type == tfxCylinder) {
+		if (properties.emission_type[e.property_index] == tfxEllipse || properties.emission_type[e.property_index] == tfxCylinder) {
 			spawn_controls.arc_size = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.arc_size, e.common.frame);
 			spawn_controls.arc_offset = lookup_callback(e.common.library->emitter_attributes[e.emitter_attributes].properties.arc_offset, e.common.frame);
 		}
 
-		if (e.common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != tfxPoint) {
-			if ((properties.emission_type == tfxEllipse || properties.emission_type == tfxIcosphere) && e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
+		if (e.common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type[e.property_index] != tfxPoint) {
+			if ((properties.emission_type[e.property_index] == tfxEllipse || properties.emission_type[e.property_index] == tfxIcosphere) && e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 				e.common.handle = e.current.emitter_size * 0.f;
 			else if (e.common.property_flags & tfxEmitterPropertyFlags_is_3d)
 				e.common.handle = e.current.emitter_size * -0.5f;
-			else if (properties.emission_type == tfxLine)
+			else if (properties.emission_type[e.property_index] == tfxLine)
 				e.common.handle = e.current.emitter_size * 0.5f;
 			else
 				e.common.handle = e.current.emitter_size * -0.5f;
 		}
 		else if (!(e.common.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center)) {
-			e.common.handle = properties.emitter_handle;
+			e.common.handle = properties.emitter_handle[e.property_index];
 		}
 		else {
 			e.common.handle = 0.f;
 		}
 
 		if (e.common.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
-			if (properties.emission_type == tfxArea) {
-				if (properties.grid_points.x > 1)
-					spawn_controls.grid_segment_size.x = e.current.emitter_size.x / (properties.grid_points.x - 1);
-				if (properties.grid_points.y > 1)
-					spawn_controls.grid_segment_size.y = e.current.emitter_size.y / (properties.grid_points.y - 1);
-				if (properties.grid_points.z > 1)
-					spawn_controls.grid_segment_size.z = e.current.emitter_size.z / (properties.grid_points.z - 1);
+			if (properties.emission_type[e.property_index] == tfxArea) {
+				if (properties.grid_points[e.property_index].x > 1)
+					spawn_controls.grid_segment_size.x = e.current.emitter_size.x / (properties.grid_points[e.property_index].x - 1);
+				if (properties.grid_points[e.property_index].y > 1)
+					spawn_controls.grid_segment_size.y = e.current.emitter_size.y / (properties.grid_points[e.property_index].y - 1);
+				if (properties.grid_points[e.property_index].z > 1)
+					spawn_controls.grid_segment_size.z = e.current.emitter_size.z / (properties.grid_points[e.property_index].z - 1);
 			}
-			else if (properties.emission_type == tfxEllipse) {
-				if (properties.grid_points.x > 0)
-					spawn_controls.grid_segment_size.x = spawn_controls.arc_size / (properties.grid_points.x);
+			else if (properties.emission_type[e.property_index] == tfxEllipse) {
+				if (properties.grid_points[e.property_index].x > 0)
+					spawn_controls.grid_segment_size.x = spawn_controls.arc_size / (properties.grid_points[e.property_index].x);
 			}
-			else if (properties.emission_type == tfxCylinder) {
-				if (properties.grid_points.x > 0)
-					spawn_controls.grid_segment_size.x = spawn_controls.arc_size / (properties.grid_points.x);
-				if (properties.grid_points.y > 1)
-					spawn_controls.grid_segment_size.y = e.current.emitter_size.y / (properties.grid_points.y - 1);
+			else if (properties.emission_type[e.property_index] == tfxCylinder) {
+				if (properties.grid_points[e.property_index].x > 0)
+					spawn_controls.grid_segment_size.x = spawn_controls.arc_size / (properties.grid_points[e.property_index].x);
+				if (properties.grid_points[e.property_index].y > 1)
+					spawn_controls.grid_segment_size.y = e.current.emitter_size.y / (properties.grid_points[e.property_index].y - 1);
 			}
-			else if (properties.emission_type == tfxLine) {
-				if (properties.grid_points.x > 1)
-					spawn_controls.grid_segment_size.y = e.current.emitter_size.y / (properties.grid_points.x - 1);
+			else if (properties.emission_type[e.property_index] == tfxLine) {
+				if (properties.grid_points[e.property_index].x > 1)
+					spawn_controls.grid_segment_size.y = e.current.emitter_size.y / (properties.grid_points[e.property_index].x - 1);
 			}
 		}
 
@@ -10284,7 +9957,7 @@ return free_slot;
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxEffectEmitter &e = *work_entry->e;
 		tfxParticleArrays &bank = work_entry->pm->particle_arrays[e.particles_index];
-		tfxEmitterProperties &properties = e.GetProperties();
+		tfxU32 single_shot_limit = e.GetProperties().single_shot_limit[e.property_index];
 
 		tfxU32 offset = 0;
 		for (int i = work_entry->start_index; i >= 0; --i) {
@@ -10298,7 +9971,7 @@ return free_slot;
 
 			if (flags & tfxParticleFlags_remove || age >= max_age) {
 				if (e.common.property_flags & tfxEmitterPropertyFlags_single && !(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning))
-					if (++single_loop_count != properties.single_shot_limit) {
+					if (++single_loop_count != single_shot_limit) {
 						age = 0;
 					}
 					else {
@@ -10593,7 +10266,7 @@ return free_slot;
 		tfxControlWorkEntry *work_entry_ptr = static_cast<tfxControlWorkEntry*>(data);
 		tfxControlWorkEntry work_entry = *work_entry_ptr;
 		tfxParticleArrays &bank = work_entry.pm->particle_arrays[work_entry.e->particles_index];
-		tfxEmitterProperties &properties = work_entry.e->GetProperties();
+		tfxImageData *image = work_entry.e->GetProperties().image[work_entry.e->property_index];
 
 		tfxU32 running_sprite_index = work_entry.sprites_index;
 
@@ -10614,7 +10287,7 @@ return free_slot;
 			image_frame = std::fmodf(image_frame, work_entry.c.end_frame + 1);
 
 			s.image_frame = (tfxU32)image_frame;
-			s.image_ptr = properties.image->ptr;
+			s.image_ptr = image->ptr;
 		}
 
 	}
@@ -10632,13 +10305,13 @@ return free_slot;
 		work_entry.c.flags = e.flags;
 		work_entry.c.velocity_adjuster = e.current.velocity_adjuster;
 		work_entry.c.global_intensity = e.current.intensity;
-		work_entry.c.image_size_y = properties.image->image_size.y;
-		work_entry.c.image_frame_rate = properties.image->animation_frames > 1 && e.common.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate : 0.f;
-		work_entry.c.end_frame = properties.end_frame;
+		work_entry.c.image_size_y = properties.image[e.property_index]->image_size.y;
+		work_entry.c.image_frame_rate = properties.image[e.property_index]->animation_frames > 1 && e.common.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate[e.property_index] : 0.f;
+		work_entry.c.end_frame = properties.end_frame[e.property_index];
 		work_entry.c.stretch = e.current.stretch;
 		work_entry.c.emitter_size_y = e.current.emitter_size.y;
 		work_entry.c.overal_scale = e.current.overal_scale;
-		work_entry.c.angle_offset = properties.angle_offsets.roll;
+		work_entry.c.angle_offset = properties.angle_offsets[e.property_index].roll;
 		work_entry.c.graphs = &e.common.library->emitter_attributes[e.emitter_attributes].overtime;
 		work_entry.c.particle_update_callback = e.particle_update_callback;
 		work_entry.c.user_data = e.user_data;
@@ -10655,7 +10328,7 @@ return free_slot;
 		work_entry.e = &e;
 		work_entry.pm = &pm;
 		work_entry.sprites_index = e.sprites_index;
-		work_entry.layer = properties.layer;
+		work_entry.layer = properties.layer[e.property_index];
 		work_entry.sprites = &pm.sprites2d[work_entry.layer];
 
 		if (amount_to_update > 0) {
@@ -10764,13 +10437,13 @@ return free_slot;
 		c.flags = e.flags;
 		c.velocity_adjuster = e.current.velocity_adjuster;
 		c.global_intensity = e.current.intensity;
-		c.image_size_y = properties.image->image_size.y;
-		c.image_frame_rate = properties.image->animation_frames > 1 && e.common.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate : 0.f;
-		c.end_frame = properties.end_frame;
+		c.image_size_y = properties.image[e.property_index]->image_size.y;
+		c.image_frame_rate = properties.image[e.property_index]->animation_frames > 1 && e.common.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate[e.property_index] : 0.f;
+		c.end_frame = properties.end_frame[e.property_index];
 		c.stretch = e.current.stretch;
 		c.emitter_size_y = e.current.emitter_size.y;
 		c.overal_scale = e.current.overal_scale;
-		c.angle_offset = properties.angle_offsets.roll;
+		c.angle_offset = properties.angle_offsets[e.property_index].roll;
 		c.graphs = &e.common.library->emitter_attributes[e.emitter_attributes].overtime;
 		c.particle_update_callback = e.particle_update_callback;
 		c.user_data = e.user_data;
@@ -10792,7 +10465,7 @@ return free_slot;
 
 			if (p->data.flags & tfxParticleFlags_remove || p->data.age >= p->data.max_age) {
 				if (e.common.property_flags & tfxEmitterPropertyFlags_single && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-					if (p->data.single_loop_count++ != properties.single_shot_limit) {
+					if (p->data.single_loop_count++ != properties.single_shot_limit[e.property_index]) {
 						p->data.age = 0;
 					}
 					else {
@@ -10806,10 +10479,10 @@ return free_slot;
 			}
 			if (p->data.flags & tfxParticleFlags_remove) {
 				//Draw a blank sprite for one frame so there's no gaps with invalid data
-				tfxParticleSprite3d &s = pm.sprites3d[properties.layer][e.sprites_index++];
+				tfxParticleSprite3d &s = pm.sprites3d[properties.layer[e.property_index]][e.sprites_index++];
 				s.transform.scale = 0;
 				s.color.a = 0;
-				s.image_ptr = properties.image->ptr;
+				s.image_ptr = properties.image[e.property_index]->ptr;
 				s.image_frame_plus = 0;
 				offset++;
 				continue;
@@ -10821,8 +10494,8 @@ return free_slot;
 				p = &bank[i + offset];
 				p->next_ptr = next_ptr;
 			}
-			p->sprite_index = (properties.layer << 28) + e.sprites_index;
-			tfxParticleSprite3d &s = pm.sprites3d[properties.layer][e.sprites_index++];
+			p->sprite_index = (properties.layer[e.property_index] << 28) + e.sprites_index;
+			tfxParticleSprite3d &s = pm.sprites3d[properties.layer[e.property_index]][e.sprites_index++];
 
 			UpdateParticle3d(p->data, s.transform.scale, c);
 
@@ -10837,32 +10510,32 @@ return free_slot;
 			}
 
 			tfxVec3 alignment_vector;
-			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type == tfxLine;
-			if (properties.vector_align_type == tfxVectorAlignType_motion) {
+			bool line = e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type[e.property_index] == tfxLine;
+			if (properties.vector_align_type[e.property_index] == tfxVectorAlignType_motion) {
 				alignment_vector = s.transform.position - p->data.captured_position;
 				float l = FastLength(alignment_vector);
 				p->data.velocity_normal.w *= l * 10.f;
 				alignment_vector = FastNormalizeVec(alignment_vector);
 			}
-			else if (properties.vector_align_type == tfxVectorAlignType_emission && e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
+			else if (properties.vector_align_type[e.property_index] == tfxVectorAlignType_emission && e.common.property_flags & tfxEmitterPropertyFlags_relative_position) {
 				alignment_vector = mmTransformVector3(e.common.transform.matrix, p->data.velocity_normal.xyz());
 			}
-			else if (properties.vector_align_type == tfxVectorAlignType_emission) {
+			else if (properties.vector_align_type[e.property_index] == tfxVectorAlignType_emission) {
 				alignment_vector = p->data.velocity_normal.xyz();
 			}
-			else if (properties.vector_align_type == tfxVectorAlignType_emitter) {
+			else if (properties.vector_align_type[e.property_index] == tfxVectorAlignType_emitter) {
 				alignment_vector = mmTransformVector(e.common.transform.matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
 			}
 
 			s.color = p->data.color;
-			s.image_frame_plus = (properties.billboard_option << 24) + (tfxU32)p->data.image_frame;
+			s.image_frame_plus = (properties.billboard_option[e.property_index] << 24) + (tfxU32)p->data.image_frame;
 			s.transform.captured_position = p->data.captured_position;
 			s.stretch = p->data.velocity_normal.w;
 			s.intensity = p->data.intensity;
 			s.handle = e.current.image_handle;
 			alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
-			s.alignment = Pack10bit(alignment_vector, properties.billboard_option & 0x00000003);
-			s.image_ptr = properties.image->ptr;
+			s.alignment = Pack10bit(alignment_vector, properties.billboard_option[e.property_index] & 0x00000003);
+			s.image_ptr = properties.image[e.property_index]->ptr;
 
 			p->data.captured_position = s.transform.position;
 		}
@@ -10892,7 +10565,7 @@ return free_slot;
 
 		if (p.data.age >= p.data.max_age) {
 			if (e.common.property_flags & tfxEmitterPropertyFlags_single && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-				if (p.data.single_loop_count++ != properties.single_shot_limit) {
+				if (p.data.single_loop_count++ != properties.single_shot_limit[e.property_index]) {
 					p.data.age = 0;
 				}
 				else {
@@ -10907,13 +10580,13 @@ return free_slot;
 		c.flags = e.flags;
 		c.velocity_adjuster = e.current.velocity_adjuster;
 		c.global_intensity = e.current.intensity;
-		c.image_size_y = properties.image->image_size.y;
-		c.image_frame_rate = properties.image->animation_frames > 1 && e.common.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate : 0.f;
-		c.end_frame = properties.end_frame;
+		c.image_size_y = properties.image[e.property_index]->image_size.y;
+		c.image_frame_rate = properties.image[e.property_index]->animation_frames > 1 && e.common.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate[e.property_index] : 0.f;
+		c.end_frame = properties.end_frame[e.property_index];
 		c.stretch = e.current.stretch;
 		c.emitter_size_y = e.current.emitter_size.y;
 		c.overal_scale = e.current.overal_scale;
-		c.angle_offset = properties.angle_offsets.roll;
+		c.angle_offset = properties.angle_offsets[e.property_index].roll;
 		c.graphs = &e.common.library->emitter_attributes[e.emitter_attributes].overtime;
 		c.particle_update_callback = e.particle_update_callback;
 		c.user_data = e.user_data;

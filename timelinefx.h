@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 0
+#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -1703,7 +1703,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Once you have called AddStructArray for all your member variables you must call this function in order to 
 	//set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 	//inside the space
-	static inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, size_t reserve_amount) {
+	static inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
 		assert(buffer->data == NULL && buffer->array_count > 0);
 		for (int i = 0; i != buffer->array_count; ++i) {
 			buffer->struct_size += buffer->array_ptrs[i].unit_size;
@@ -1713,6 +1713,28 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		buffer->capacity = reserve_amount;
 		buffer->struct_of_arrays = struct_of_arrays;
 		size_t running_offset = 0;
+		for (int i = 0; i != buffer->array_count; ++i) {
+			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
+			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
+			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
+		}
+	}
+
+	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
+	static inline void GrowArrays(tfxSoABuffer *buffer) {
+		assert(buffer->capacity);			//buffer must already have a capacity!
+		tfxU32 new_capacity = buffer->capacity + buffer->capacity / 2; 
+		void *new_data = malloc(new_capacity * buffer->struct_size);
+		size_t running_offset = 0;
+		for (int i = 0; i != buffer->array_count; ++i) {
+			memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
+			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
+		}
+		free(buffer->data);
+		buffer->data = new_data;
+		buffer->capacity = new_capacity;
+		buffer->current_arena_size = new_capacity * buffer->struct_size;
+		running_offset = 0;
 		for (int i = 0; i != buffer->array_count; ++i) {
 			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
@@ -1745,34 +1767,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		buffer->current_size--;
 	}
 	
-	//Decrease the current size of a SoA Buffer.
+	//Free the SoA buffer
 	static inline void FreeSoABuffer(tfxSoABuffer *buffer) {
-		assert(buffer->data);				//No data allocated in buffer
-		buffer->current_size--;
 		buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
+		if (buffer->data)
+			free(buffer->data);
 		buffer->data = NULL;
-	}
-
-	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
-	static inline void GrowArrays(tfxSoABuffer *buffer) {
-		assert(buffer->capacity);			//buffer must already have a capacity!
-		tfxU32 new_capacity = buffer->capacity + buffer->capacity / 2; 
-		void *new_data = malloc(new_capacity * buffer->struct_size);
-		size_t running_offset = 0;
-		for (int i = 0; i != buffer->array_count; ++i) {
-			memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
-			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
-		}
-		free(buffer->data);
-		buffer->data = new_data;
-		buffer->capacity = new_capacity;
-		buffer->current_arena_size = new_capacity * buffer->struct_size;
-		running_offset = 0;
-		for (int i = 0; i != buffer->array_count; ++i) {
-			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
-			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
-			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
-		}
 	}
 
 	template <typename T>
@@ -4494,7 +4494,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void CompileGraph(tfxGraph &graph);
 	void CompileGraphOvertime(tfxGraph &graph);
 	float GetMaxLife(tfxEffectEmitter &e);
-	float GetMaxAmount(tfxEffectEmitter &e);
 	float LookupFastOvertime(tfxGraph &graph, float age, float lifetime);
 	float LookupFast(tfxGraph &graph, float frame);
 	float LookupPreciseOvertime(tfxGraph &graph, float age, float lifetime);
@@ -5084,73 +5083,97 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxEmitterProperties {
 		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
-		tfxVec3 angle_offsets;
+		tfxVec3 *angle_offsets;
 		//When aligning the billboard along a vector, you can set the type of vector that it aligns with
-		tfxVectorAlignType vector_align_type;
+		tfxVectorAlignType *vector_align_type;
 		//Point, area, ellipse emitter etc.
-		tfxEmissionType emission_type;
+		tfxEmissionType *emission_type;
 		//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
-		tfxU32 single_shot_limit;
+		tfxU32 *single_shot_limit;
 		//Animation frame rate
-		float frame_rate;
+		float *frame_rate;
 		//The final frame index of the animation
-		float end_frame;
+		float *end_frame;
 		//Pointer to the ImageData in the EffectLibary. 
-		tfxImageData *image;
+		tfxImageData **image;
 		//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
-		tfxBillboardingOptions billboard_option;
+		tfxBillboardingOptions *billboard_option;
 
 		//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
-		tfxVec3 grid_points;
+		tfxVec3 *grid_points;
 		//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
-		tfxAngleSettingFlags angle_settings;
+		tfxAngleSettingFlags *angle_settings;
 		//Layer of the particle manager that the particle is added to
-		tfxU32 layer;
+		tfxU32 *layer;
 		//Milliseconds to delay spawing
-		float delay_spawning;
+		float *delay_spawning;
 		//Should particles emit towards the center of the emitter or away, or in a specific direction
-		tfxEmissionDirection emission_direction;
+		tfxEmissionDirection *emission_direction;
 
 		//How particles should behave when they reach the end of the line
-		tfxLineTraversalEndBehaviour end_behaviour;
+		tfxLineTraversalEndBehaviour *end_behaviour;
 		//Bit field of various boolean flags
-		tfxParticleControlFlags compute_flags;
+		tfxParticleControlFlags *compute_flags;
 		//Offset to draw particles at
-		tfxVec2 image_handle;
+		tfxVec2 *image_handle;
 		//Offset of emitters
-		tfxVec3 emitter_handle;
+		tfxVec3 *emitter_handle;
 		//When single flag is set, spawn this amount of particles in one go
-		tfxU32 spawn_amount;
+		tfxU32 *spawn_amount;
 		//The shape being used for all particles spawned from the emitter
-		tfxU32 shape_index;
+		tfxU32 *shape_index;
 		//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
-		float loop_length;
+		float *loop_length;
 		//The start frame index of the animation
-		float start_frame;
-
-		tfxEmitterProperties() :
-			angle_offsets(0.f, 0.f, tfx360Radians),
-			image(nullptr),
-			image_handle(tfxVec2()),
-			spawn_amount(1),
-			single_shot_limit(0),
-			emission_type(tfxEmissionType::tfxPoint),
-			billboard_option(tfxBillboarding),
-			vector_align_type(tfxVectorAlignType_motion),
-			emission_direction(tfxEmissionDirection::tfxOutwards),
-			grid_points({ 10.f, 10.f, 10.f }),
-			emitter_handle(),
-			end_behaviour(tfxLineTraversalEndBehaviour::tfxLoop),
-			loop_length(0.f),
-			layer(0),
-			shape_index(1),
-			start_frame(0),
-			end_frame(0),
-			frame_rate(30.f),
-			angle_settings(tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw),
-			delay_spawning(0.f)
-		{ }
+		float *start_frame;
 	};
+
+	inline void InitEmitterProperites(tfxEmitterProperties &properties, tfxU32 i) {
+		properties.angle_offsets[i] = {0.f, 0.f, tfx360Radians};
+		properties.image[i] = nullptr;
+		properties.image_handle[i] = tfxVec2();
+		properties.spawn_amount[i] = 1;
+		properties.single_shot_limit[i] = 0;
+		properties.emission_type[i] = tfxEmissionType::tfxPoint;
+		properties.billboard_option[i] = tfxBillboarding;
+		properties.vector_align_type[i] = tfxVectorAlignType_motion;
+		properties.emission_direction[i] = tfxEmissionDirection::tfxOutwards;
+		properties.grid_points[i] = { 10.f, 10.f, 10.f };
+		properties.emitter_handle[i] = { 0.f, 0.f };
+		properties.end_behaviour[i] = tfxLineTraversalEndBehaviour::tfxLoop;
+		properties.loop_length[i] = 0.f;
+		properties.layer[i] = 0;
+		properties.shape_index[i] = 1;
+		properties.start_frame[i] = 0;
+		properties.end_frame[i] = 0;
+		properties.frame_rate[i] = 30.f;
+		properties.angle_settings[i] = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
+		properties.delay_spawning[i] = 0.f;
+	}
+
+	//Use with care, no checks for out of bounds
+	inline void CopyEmitterProperites(tfxEmitterProperties &from_properties, tfxU32 from_i, tfxEmitterProperties &to_properties, tfxU32 to_i) {
+		to_properties.angle_offsets[to_i] = from_properties.angle_offsets[from_i];
+		to_properties.image[to_i] = from_properties.image[from_i];
+		to_properties.image_handle[to_i] = from_properties.image_handle[from_i];
+		to_properties.spawn_amount[to_i] = from_properties.spawn_amount[from_i];
+		to_properties.single_shot_limit[to_i] = from_properties.single_shot_limit[from_i];
+		to_properties.emission_type[to_i] = from_properties.emission_type[from_i];
+		to_properties.billboard_option[to_i] = from_properties.billboard_option[from_i];
+		to_properties.vector_align_type[to_i] = from_properties.vector_align_type[from_i];
+		to_properties.emission_direction[to_i] = from_properties.emission_direction[from_i];
+		to_properties.grid_points[to_i] = from_properties.grid_points[from_i];
+		to_properties.emitter_handle[to_i] = from_properties.emitter_handle[from_i];
+		to_properties.end_behaviour[to_i] = from_properties.end_behaviour[from_i];
+		to_properties.loop_length[to_i] = from_properties.loop_length[from_i];
+		to_properties.layer[to_i] = from_properties.layer[from_i];
+		to_properties.shape_index[to_i] = from_properties.shape_index[from_i];
+		to_properties.start_frame[to_i] = from_properties.start_frame[from_i];
+		to_properties.end_frame[to_i] = from_properties.end_frame[from_i];
+		to_properties.frame_rate[to_i] = from_properties.frame_rate[from_i];
+		to_properties.angle_settings[to_i] = from_properties.angle_settings[from_i];
+		to_properties.delay_spawning[to_i] = from_properties.delay_spawning[from_i];
+	}
 
 	struct tfxEmitterTransform {
 		//Position, scale and rotation values
@@ -5441,11 +5464,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void ResetEmitterGraphs(bool add_node = true, bool compile = true);
 		void UpdateMaxLife();
 		void ResetAllBufferSizes();
-		void UpdateAllBufferSizes();
-		void UpdateAllSpriteAmounts();
-		tfxU32 GetSubEffectSpriteCounts(tfxU32 layer, tfxU32 multiplier);
-		float GetSubEffectLength();
-		tfxU32 GetHighestQty(float parent_age);
 		tfxGraph* GetGraphByType(tfxGraphType type);
 		tfxU32 GetGraphIndexByType(tfxGraphType type);
 		void CompileGraphs();
@@ -5789,18 +5807,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 alignment_type;
 	};
 
-	static inline tfxParticleFrame ConvertToParticleFrame(const tfxParticle &p, tfxEmitterProperties &properties, tfxVec2 &handle) {
+	static inline tfxParticleFrame ConvertToParticleFrame(const tfxParticle &p, const tfxU32 &billboard_option, void *image_ptr, tfxVec2 &handle) {
 		tfxParticleFrame pf;
 		//pf.position = p.data.world_position;
 		//pf.scale = p.data.scale;
 		//pf.alignment = p.data.alignment_vector;
 		pf.stretch = p.data.velocity_normal.w;
 		//pf.rotations = p.data.world_rotations;
-		pf.alignment_type = properties.billboard_option;
+		pf.alignment_type = billboard_option;
 		pf.handle = handle;
 		pf.color = p.data.color;
 		pf.intensity = p.data.intensity;
-		pf.image_ptr = properties.image->ptr;
+		pf.image_ptr = image_ptr;
 		pf.image_frame = (tfxU32)p.data.image_frame;
 		return pf;
 	}
@@ -6229,7 +6247,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);
 	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 position);
-	void AddStage(tfxParticleManager &pm, tfxEffectEmitter &stage, tfxVec3 position);
 
 	void Rotate(tfxEffectEmitter &e, float r);
 	void SetAngle(tfxEffectEmitter &e, float a);
@@ -6299,12 +6316,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxMemoryArenaManager graph_node_allocator;
 		tfxMemoryArenaManager graph_lookup_allocator;
 		tfxMemoryArenaManager property_array_allocator;
+		tfxSoABuffer emitter_properties_buffer;
 
 		tfxStorageMap<tfxEffectEmitter*> effect_paths;
 		tfxvec<tfxEffectEmitter> effects;
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
-		tfxvec<tfxEmitterProperties> emitter_properties;
+		tfxEmitterProperties emitter_properties;
 		tfxEmitterPropertyData emitter_property_data;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
@@ -6365,6 +6383,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Todo: Inline a lot of these
 		//Free everything in the library
 		void Clear();
+		void Init();
+		void InitEmitterProperties();
 		//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
 		//You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
 		tfxEffectEmitter *GetEffect(tfxStr256 &path);
@@ -6387,8 +6407,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 GetLookupValuesSizeInBytes();
 
 		inline void MaybeGrowProperties(tfxU32 size_offset) {
-			if (emitter_properties.current_size >= emitter_properties.capacity - size_offset) {
-				emitter_properties.reserve(emitter_properties._grow_capacity(emitter_properties.capacity + 1));
+			if (emitter_properties_buffer.current_size >= emitter_properties_buffer.capacity - size_offset) {
+				GrowArrays(&emitter_properties_buffer);
 			}
 		}
 
@@ -6396,11 +6416,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			if (effect_infos.current_size >= effect_infos.capacity - 4) {
 				effect_infos.reserve(effect_infos._grow_capacity(effect_infos.current_size + 1));
 			}
-		}
-
-		inline tfxEmitterProperties &GetProperties(tfxU32 index) {
-			assert(emitter_properties.size() > index);
-			return emitter_properties[index];
 		}
 
 		inline tfxEffectEmitterInfo &GetInfo(tfxEffectEmitter &e) {
@@ -6453,7 +6468,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 AddEffectEmitterInfo();
 		tfxU32 AddEmitterProperties();
 		tfxU32 AddKeyframes();
-		void UpdateEffectParticleStorage();
 		void UpdateComputeNodes();
 		void CompileAllGraphs();
 		void CompileGlobalGraph(tfxU32 index);
@@ -6543,45 +6557,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	effects. Use of compute shaders is also easier at this point with the particle manager. So at this point I think it's best to keep both methods even though it's more code to maintain.
 	*/
 
-	struct tfxMockEffect {
-		tfxU32 timeout = 5;
-		tfxU32 timeout_counter = 0;
-		tfxU32 emitter_count = 0;
-		float highest_particle_age = 0;
-		float frame = 0.f;
-		float age = 0.f;
-		float amount_remainder = 0;
-		float qty = 1.f;
-		tfxEffectEmitter *library_link;
-		tfxEffectLibrary *library;
-		bool single_shot_done = false;
-		bool started_spawning = false;
-		tfxvec<float> particles[2];
-	};
-
-	//This is used to figure out how much memory each effect and emitter needs to draw particles so that the correct amount of memory can be assigned as each effect is used.
-	struct tfxParticleMemoryTools {
-		tfxU32 sprite_count[4];
-		tfxU32 sub_effect_count;
-		tfxU32 initial_effect_size = 0;
-		tfxU32 emitters_removed = 0;
-		float max_frames;
-		float max_last_life;
-		tfxU32 current_buffer;
-		tfxvec<float> particles[tfxLAYERS][2];
-		tfxvec<tfxMockEffect> effects[2];
-		tfxEffectEmitter current_effect;
-
-		tfxParticleMemoryTools() : current_buffer(0), sub_effect_count(0) {}
-
-		void AddEffect(tfxEffectEmitter &effect);
-		void GetEffectMaxFrames(tfxEffectEmitter &effect);
-		void ProcessEffect(tfxEffectEmitter &effect);
-		void Process();
-		void MockUpdateEmitter(tfxMockEffect &emitter);
-		void MockUpdateParticles();
-	};
-
 	struct tfxDataEntry {
 		tfxDataType type;
 		tfxStr32 key;
@@ -6617,7 +6592,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	float& GetDataFloatValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
 	bool SaveDataFile(tfxStorageMap<tfxDataEntry> &config, const char* path = "");
 	bool LoadDataFile(tfxStorageMap<tfxDataEntry> &config, const char* path);
-	void StreamProperties(tfxEmitterProperties &property, tfxEmitterPropertyFlags &flags, tfxStr &file);
+	void StreamProperties(tfxEmitterProperties &property, tfxU32 index, tfxEmitterPropertyFlags &flags, tfxStr &file);
 	void StreamProperties(tfxEffectEmitter &effect, tfxStr &file);
 	void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file);
 	void SplitStringStack(const tfxStr &s, tfxStack<tfxStr64> &pair, char delim = 61);
@@ -6796,17 +6771,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tweened = world * tween + captured * (1.f - tween);
 		return tweened;
 	}
-	static inline tfxVec3 SetParticleAlignment(tfxParticle &p, tfxVec3 &position, tfxEmitterProperties &properties) {
-		if (properties.vector_align_type == tfxVectorAlignType_motion) {
+	static inline tfxVec3 SetParticleAlignment(tfxParticle &p, tfxVec3 &position, const tfxVectorAlignType &vector_align_type) {
+		if (vector_align_type == tfxVectorAlignType_motion) {
 			tfxVec3 alignment_vector = position - p.data.captured_position;
 			float l = FastLength(alignment_vector);
 			p.data.velocity_normal.w *= l * 10.f;
 			return FastNormalizeVec(alignment_vector);
 		}
-		else if (properties.vector_align_type == tfxVectorAlignType_emission) {
+		else if (vector_align_type == tfxVectorAlignType_emission) {
 			return p.data.velocity_normal.xyz();
 		}
-		else if (properties.vector_align_type == tfxVectorAlignType_emitter) {
+		else if (vector_align_type == tfxVectorAlignType_emitter) {
 			return mmTransformVector(p.parent->common.transform.matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
 		}
 		return tfxVec3(0.f, 0.002f, 0.f);
