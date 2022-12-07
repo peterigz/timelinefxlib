@@ -1630,13 +1630,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	};
 
-	//A double buffered arena manager which can be used for structs of arrays where if the arrays need to grow, then new arrays are 
-	//created in the next buffer and copied over
-	struct tfxSoABuffer {
-		tfxU32 current_arena;
-		tfxMemoryArenaManager arenas[2];
-	};
-
 	inline void CopyBlockToBlock(tfxMemoryArenaManager &from_allocator, tfxMemoryArenaManager &to_allocator, tfxU32 from, tfxU32 to) {
 		assert(from_allocator.blocks[from].capacity && from_allocator.blocks[from].capacity <= to_allocator.blocks[to].capacity);		//must have valid capacities
 		memcpy(to_allocator.blocks[to].data, from_allocator.blocks[from].data, from_allocator.blocks[from].capacity * from_allocator.blocks[from].unit_size);
@@ -1659,23 +1652,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return manager;
 	}
 
-	static inline tfxSoABuffer CreateDoubleBufferedArena(size_t size_of_each_arena, tfxU32 size_diff_threshold = 8) {
-		tfxSoABuffer buffer;
-		for (int i = 0; i != 2; ++i) {
-			buffer.arenas[i].arena_size = size_of_each_arena;
-			buffer.arenas[i].size_diff_threshold = size_diff_threshold;
-		}
-		return buffer;
-	}
-
-	static inline void GrowArrays(tfxSoABuffer *buffer) {
-		tfxMemoryArenaManager &manager = buffer->arenas[buffer->current_arena];
-		for (int i = 0; i != 2; ++i) {
-			manager.arenas[i].arena_size = size_of_each_arena;
-			manager.arenas[i].size_diff_threshold = size_diff_threshold;
-		}
-	}
-
 	static inline tfxMemoryArena CreateMemoryArena(size_t size_in_bytes, tfxU32 size_diff_threshold = 8) {
 		assert(size_in_bytes > 1024 * 1024);	//minimum 1mb allocation
 		tfxMemoryArena allocator;
@@ -1686,6 +1662,117 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		allocator.total_memory = size_in_bytes;
 		memset((void*)allocator.data, 0, size_in_bytes);
 		return allocator;
+	}
+
+	struct tfxSoAData {
+		void *ptr = NULL;
+		size_t offset;
+		size_t unit_size;
+	};
+
+	//A buffer designed to contain structs of arrays. If the arrays need to grow then a new memory block is made and all copied over
+	//together. All arrays in the struct will be the same capacity but can all have different unit sizes/types.
+	//In order to use this you need to first prepare the buffer by calling AddStructArray for each struct member of the sSoA you're setting up. 
+	//All members must be of the same struct.
+	//Then call FinishSoABufferSetup to create the memory for the struct of arrays with an initial reserver amount.
+	struct tfxSoABuffer {
+		size_t current_arena_size = 0;		//The current size of the arena that contains all the arrays
+		size_t struct_size = 0;				//The size of the struct (each member unit size added up)
+		tfxU32 array_count = 0;				//The number of arrays in the buffer
+		tfxU32 current_size = 0;			//current size of each array
+		tfxU32 capacity = 0;				//capacity of each array
+		tfxSoAData array_ptrs[64];			//Container for all the pointers into the arena
+		void *struct_of_arrays;				//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
+		void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
+
+		tfxSoABuffer() {
+			memset(array_ptrs, 0, 64 * sizeof(tfxSoAData));
+		}
+
+	};
+
+	//Add an array to a SoABuffer. parse in the size of the data type and the offset to the member variable within the struct.
+	//You must add all the member veriables in the struct before calling FinishSoABufferSetup
+	static inline void AddStructArray(tfxSoABuffer *buffer, size_t unit_size, size_t offset) {
+		tfxSoAData data;
+		data.unit_size = unit_size;
+		data.offset = offset;
+		buffer->array_ptrs[buffer->array_count++] = data;
+	}
+
+	//Once you have called AddStructArray for all your member variables you must call this function in order to 
+	//set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
+	//inside the space
+	static inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, size_t reserve_amount) {
+		assert(buffer->data == NULL && buffer->array_count > 0);
+		for (int i = 0; i != buffer->array_count; ++i) {
+			buffer->struct_size += buffer->array_ptrs[i].unit_size;
+		}
+		buffer->current_arena_size = reserve_amount * buffer->struct_size;
+		buffer->data = malloc(buffer->current_arena_size);
+		buffer->capacity = reserve_amount;
+		buffer->struct_of_arrays = struct_of_arrays;
+		size_t running_offset = 0;
+		for (int i = 0; i != buffer->array_count; ++i) {
+			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
+			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
+			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
+		}
+	}
+	
+	//Increase current size of a SoA Buffer and grow if necessary.
+	static inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
+		assert(buffer->data);			//No data allocated in buffer
+		buffer->current_size = new_size;
+		if (buffer->current_size >= buffer->capacity) {
+			GrowArrays(buffer);
+		}
+	}
+	
+	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
+	static inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
+		assert(buffer->data);			//No data allocated in buffer
+		buffer->current_size++;
+		if (grow && buffer->current_size == buffer->capacity) {
+			GrowArrays(buffer);
+		}
+		return buffer->current_size - 1;
+	}
+	
+	//Decrease the current size of a SoA Buffer.
+	static inline void PopRow(tfxSoABuffer *buffer, bool grow = false) {
+		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
+		buffer->current_size--;
+	}
+	
+	//Decrease the current size of a SoA Buffer.
+	static inline void FreeSoABuffer(tfxSoABuffer *buffer) {
+		assert(buffer->data);				//No data allocated in buffer
+		buffer->current_size--;
+		buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
+		buffer->data = NULL;
+	}
+
+	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
+	static inline void GrowArrays(tfxSoABuffer *buffer) {
+		assert(buffer->capacity);			//buffer must already have a capacity!
+		tfxU32 new_capacity = buffer->capacity + buffer->capacity / 2; 
+		void *new_data = malloc(new_capacity * buffer->struct_size);
+		size_t running_offset = 0;
+		for (int i = 0; i != buffer->array_count; ++i) {
+			memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
+			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
+		}
+		free(buffer->data);
+		buffer->data = new_data;
+		buffer->capacity = new_capacity;
+		buffer->current_arena_size = new_capacity * buffer->struct_size;
+		running_offset = 0;
+		for (int i = 0; i != buffer->array_count; ++i) {
+			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
+			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
+			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
+		}
 	}
 
 	template <typename T>
@@ -4992,7 +5079,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	struct tfxEmitterPropertyData {
-		tfxArray<tfxVec3> angle_offsets;
+		tfxVec3 *angle_offsets;
 	};
 
 	struct tfxEmitterProperties {
@@ -5768,62 +5855,55 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxEmitterData {
 		//State data
-		float frame;
-		float age;
-		float loop_length;
-		float delay_spawning;
-		float timeout_counter;
-		float timeout;
-		tfxU32 keyframe_position;
-		tfxU32 active_children;
-		tfxVec3 handle;
+		float *frame;
+		float *age;
+		float *loop_length;
+		float *delay_spawning;
+		float *timeout_counter;
+		float *timeout;
+		tfxU32 *keyframe_position;
+		tfxU32 *active_children;
+		tfxVec3 *handle;
 
 		//Control data
-		tfxvec<tfxU32> particles_index;
-		tfxvec<tfxU32> sprite_layer;
-		tfxvec<tfxU32> sprites_index;
-		tfxvec<tfxU32> emitter_attributes;
-		tfxvec<tfxU32> transform_attributes;
-		tfxvec<tfxU32> overtime_attributes;
-		tfxvec<tfxEmitterStateFlags> state_flags;
-		tfxvec<tfxEmitterPropertyFlags> property_flags;
-		tfxvec<float> overal_scale;
-		tfxvec<float> velocity_adjuster;
-		tfxvec<float> global_intensity;
-		tfxvec<float> image_frame_rate;
-		tfxvec<float> stretch;
-		tfxvec<float> end_frame;
-		tfxvec<tfxVec3> grid_coords;
-		tfxvec<tfxVec3> grid_direction;
-		tfxvec<tfxVec3> emitter_size;
-		tfxvec<float> emission_alternator;
-		tfxvec<tfxParticleTransformCallback2d> transform_call_back_2d;
-		tfxvec<tfxParticleTransformCallback3d> transform_call_back_2d;
-		//property settings
-		tfxvec<tfxVec2> image_size;
-		tfxvec<tfxAngleSettingFlags> angle_settings;
-		tfxvec<tfxVec3> angle_offsets;
-		tfxvec<tfxVec3> grid_points;
-		tfxvec<tfxEmissionType> emission_type;
-		tfxvec<tfxU32> single_shot_limit;
+		tfxU32 *particles_index;
+		tfxU32 *sprite_layer;
+		tfxU32 *sprites_index;
+		tfxU32 *emitter_attributes;
+		tfxU32 *transform_attributes;
+		tfxU32 *overtime_attributes;
+		tfxEmitterStateFlags *state_flags;
+		tfxEmitterPropertyFlags *property_flags;
+		float *overal_scale;
+		float *velocity_adjuster;
+		float *global_intensity;
+		float *image_frame_rate;
+		float *stretch;
+		float *end_frame;
+		tfxVec3 *grid_coords;
+		tfxVec3 *grid_direction;
+		tfxVec3 *emitter_size;
+		float *emission_alternator;
+		//tfxParticleTransformCallback2d transform_call_back_2d;
+		//tfxParticleTransformCallback3d transform_call_back_2d;
 		//Spawn controls
-		tfxvec<float> life;
-		tfxvec<float> life_variation;
-		tfxvec<float> arc_size;
-		tfxvec<float> arc_offset;
-		tfxvec<float> weight;
-		tfxvec<float> weight_variation;
-		tfxvec<float> velocity;
-		tfxvec<float> velocity_variation;
-		tfxvec<float> spin;
-		tfxvec<float> spin_variation;
-		tfxvec<float> splatter;
-		tfxvec<float> noise_offset_variation;
-		tfxvec<float> noise_offset;
-		tfxvec<float> noise_resolution;
-		tfxvec<tfxVec2> size;
-		tfxvec<tfxVec2> size_variation;
-		tfxvec<tfxVec3> grid_segment_size;
+		float *life;
+		float *life_variation;
+		float *arc_size;
+		float *arc_offset;
+		float *weight;
+		float *weight_variation;
+		float *velocity;
+		float *velocity_variation;
+		float *spin;
+		float *spin_variation;
+		float *splatter;
+		float *noise_offset_variation;
+		float *noise_offset;
+		float *noise_resolution;
+		tfxVec2 *size;
+		tfxVec2 *size_variation;
+		tfxVec3 *grid_segment_size;
 	};
 		
 	//Use the particle manager to add compute effects to your scene 
@@ -5840,6 +5920,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
 		//you can use an tfxEffectTemplate and use callback funcitons. 
 		tfxvec<tfxEffectEmitter> effects[2];
+		tfxSoABuffer emitter_buffers[3];
+		tfxEmitterData emitters[3];
 		//Set when an effect is updated and used to pass on global attributes to child emitters
 		tfxParentSpawnControls parent_spawn_controls;
 
