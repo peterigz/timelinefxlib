@@ -4480,7 +4480,7 @@ namespace tfx {
 		if (free_properties.size()) {
 			return free_properties.pop_back();
 		}
-		return AddRow(&emitter_properties_buffer);
+		return AddRow(&emitter_properties_buffer, true);
 	}
 
 	void tfxEffectLibrary::Init() {
@@ -7475,6 +7475,8 @@ namespace tfx {
 
 		tfxPackage package;
 		error = LoadPackage(filename, package);
+		if (error != 0)
+			return error;
 		error = LoadEffectLibraryPackage(package, lib, shape_loader, user_data, read_only);
 
 		return error;
@@ -9101,9 +9103,6 @@ return free_slot;
 
 			flags = 0;
 			next_id = SetParticleID(e.particles_index, pm.particle_arrays[e.particles_index].next_id.last_index());
-			if (e.particles_index == 0) {
-				printf("Index: %i\n", pm.particle_arrays[e.particles_index].next_id.last_index());
-			}
 
 			//Max age
 			//Todo: should age be set to the tween value?

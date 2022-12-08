@@ -5081,6 +5081,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 *angle_offsets;
 	};
 
+	//Struct of Arrays for the emitter properties. 
 	struct tfxEmitterProperties {
 		//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
 		tfxVec3 *angle_offsets;
