@@ -1816,12 +1816,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		buffer->data = NULL;
 	}
 	
-	//Free the SoA buffer
+	//Clear the SoA buffer
 	static inline void ClearSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_size = buffer->start_index = 0;
-		if (buffer->data)
-			free(buffer->data);
-		buffer->data = NULL;
 	}
 
 	template <typename T>
@@ -5634,6 +5631,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Discard expired and write to next buffer
 	//
 
+	//These all point into a tfxSoABuffer, initialised with InitParticleSoA
 	struct tfxParticleSoA {
 		tfxEffectEmitter** parent;
 		tfxU32* sprite_index;
