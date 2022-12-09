@@ -1157,7 +1157,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			current_size++;
 			return data[current_size - 1];
 		}
-		inline tfxU32        ts_push_back(const T& v) {
+		inline tfxU32        locked_push_back(const T& v) {
 			while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
 			if (current_size == capacity)
 				reserve(_grow_capacity(current_size + 1));
@@ -1680,8 +1680,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		size_t struct_size = 0;				//The size of the struct (each member unit size added up)
 		tfxU32 array_count = 0;				//The number of arrays in the buffer
 		tfxU32 current_size = 0;			//current size of each array
+		tfxU32 start_index = 0;				//Start index if you're using the buffer as a ring buffer
 		tfxU32 capacity = 0;				//capacity of each array
 		tfxSoAData array_ptrs[64];			//Container for all the pointers into the arena
+		void(*resize_callback)(tfxSoABuffer *ring, void *new_data, void *user_data);
 		void *struct_of_arrays;				//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
 		void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
 
@@ -1690,6 +1692,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 
 	};
+
+	//Get the index based on the buffer being a ring buffer
+	static inline tfxU32 GetCircularIndex(tfxSoABuffer *buffer, tfxU32 index) {
+		return (buffer->start_index + index) % buffer->capacity;
+	}
 
 	//Add an array to a SoABuffer. parse in the size of the data type and the offset to the member variable within the struct.
 	//You must add all the member veriables in the struct before calling FinishSoABufferSetup
@@ -1723,14 +1730,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
 	static inline void GrowArrays(tfxSoABuffer *buffer) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
-		tfxU32 new_capacity = buffer->capacity + buffer->capacity / 2; 
+		tfxU32 new_capacity = buffer->current_size > buffer->capacity ? buffer->current_size + buffer->current_size / 2 : buffer->capacity + buffer->capacity / 2; 
 		void *new_data = malloc(new_capacity * buffer->struct_size);
 		size_t running_offset = 0;
 		for (int i = 0; i != buffer->array_count; ++i) {
 			memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
 			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
 		}
-		free(buffer->data);
+		void *old_data = buffer->data;
 		buffer->data = new_data;
 		buffer->capacity = new_capacity;
 		buffer->current_arena_size = new_capacity * buffer->struct_size;
@@ -1740,6 +1747,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
 		}
+		free(old_data);
 	}
 	
 	//Increase current size of a SoA Buffer and grow if necessary.
@@ -1758,7 +1766,20 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		if (grow && buffer->current_size == buffer->capacity) {
 			GrowArrays(buffer);
 		}
+		assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return buffer->current_size - 1;
+	}
+	
+	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
+	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow = false) {
+		assert(buffer->data);			//No data allocated in buffer
+		tfxU32 first_new_index = buffer->current_size;
+		buffer->current_size += amount;
+		if (grow && buffer->current_size >= buffer->capacity) {
+			GrowArrays(buffer);
+		}
+		assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
+		return first_new_index;
 	}
 	
 	//Decrease the current size of a SoA Buffer.
@@ -1767,9 +1788,37 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		buffer->current_size--;
 	}
 	
+	//Bump the start index of the SoA buffer (ring buffer usage)
+	static inline void Bump(tfxSoABuffer *buffer) {
+		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
+		if (buffer->current_size == 0) 
+			return; 
+		buffer->start_index++; buffer->start_index %= buffer->capacity; buffer->current_size--; 
+	}
+
+	//Bump the start index of the SoA buffer (ring buffer usage)
+	static inline void Bump(tfxSoABuffer *buffer, tfxU32 amount) {
+		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
+		if (buffer->current_size == 0) 
+			return; 
+		if (amount > buffer->current_size) 
+			amount = buffer->current_size; 
+		buffer->start_index += amount; 
+		buffer->start_index %= buffer->capacity; 
+		buffer->current_size -= amount; 
+	}
+	
 	//Free the SoA buffer
 	static inline void FreeSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
+		if (buffer->data)
+			free(buffer->data);
+		buffer->data = NULL;
+	}
+	
+	//Free the SoA buffer
+	static inline void ClearSoABuffer(tfxSoABuffer *buffer) {
+		buffer->current_size = buffer->start_index = 0;
 		if (buffer->data)
 			free(buffer->data);
 		buffer->data = NULL;
@@ -1970,10 +2019,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 current_size;				//Current size of the bucket array. This will be the total of all buckets if there are more then one
 		tfxU32 capacity;					//The total capacity of the bucket array
 		tfxU32 size_of_each_bucket;			//The size of each bucket
+		tfxU32 volatile locked;
 
-		tfxBucketArray() { allocator = NULL; current_bucket = block = tfxINVALID; size_of_each_bucket = 64; current_size = capacity = size_of_each_bucket = 0; }
-		tfxBucketArray(tfxMemoryArenaManager *allocator_init) : allocator(allocator_init) { size_of_each_bucket = 64; current_size = capacity = 0; current_bucket = block = tfxINVALID; }
-		tfxBucketArray(tfxMemoryArenaManager *allocator_init, tfxU32 bucket_size) { assert(bucket_size > 1); size_of_each_bucket = bucket_size; allocator = allocator_init; current_size = capacity = 0; current_bucket = block = tfxINVALID; }
+		tfxBucketArray() { allocator = NULL; current_bucket = block = tfxINVALID; size_of_each_bucket = 64; current_size = capacity = size_of_each_bucket = locked = 0; }
+		tfxBucketArray(tfxMemoryArenaManager *allocator_init) : allocator(allocator_init) { size_of_each_bucket = 64; current_size = capacity = locked = 0; current_bucket = block = tfxINVALID; }
+		tfxBucketArray(tfxMemoryArenaManager *allocator_init, tfxU32 bucket_size) { assert(bucket_size > 1); size_of_each_bucket = bucket_size; allocator = allocator_init; current_size = locked = capacity = 0; current_bucket = block = tfxINVALID; }
 
 		inline bool			empty() { return current_size == 0; }
 		inline tfxU32		size() { return current_size; }
@@ -2050,6 +2100,23 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				capacity += size_of_each_bucket;
 			}
 			return true;
+		}
+		inline tfxU32        locked_push_back(const T& v) {
+			while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
+
+			if (current_size == capacity) {
+				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
+				capacity += size_of_each_bucket;
+				ResetIteratorIndex();
+			}
+			tfxMemoryBucket &last_block = allocator->FirstBlockWithSpace(block);
+			assert(last_block.current_size < last_block.capacity);
+			*(T*)((T*)last_block.data + last_block.current_size++) = v;
+			last_block.end_ptr = (T*)last_block.end_ptr + 1;
+			tfxU32 index = current_size++;
+
+			InterlockedExchange((LONG volatile*)&locked, 0);
+			return index;
 		}
 		inline T&	        push_back(const T& v) {
 			assert(allocator);	//Must assign an allocator before doing anything with a tfxBucketArray
@@ -5567,30 +5634,56 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Discard expired and write to next buffer
 	//
 
-	struct tfxParticleArrays {
-		tfxring<tfxEffectEmitter*> parent;
-		tfxring<tfxU32> sprite_index;
-		tfxring<tfxParticleID> next_id;
-		tfxring<tfxParticleFlags> flags;
-		tfxring<float> age;							//The age of the particle, used by the controller to look up the current state on the graphs
-		tfxring<float> max_age;						//max age before the particle expires
-		tfxring<tfxVec3> local_position;			//The local position of the particle, relative to the emitter.
-		tfxring<tfxVec3> captured_position;			//The captured position of the particle, relative to the emitter.
-		tfxring<tfxVec3> local_rotations;
-		tfxring<tfxVec3> velocity_normal;
-		tfxring<float> stretch;
-		tfxring<float> weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
-		tfxring<float> base_weight;
-		tfxring<float> base_velocity;
-		tfxring<float> base_spin;
-		tfxring<float> noise_offset;				//Higher numbers means random movement is less uniform
-		tfxring<float> noise_resolution;			//Higher numbers means random movement is more uniform
-		tfxring<tfxRGBA8> color;					//Colour of the particle
-		tfxring<float> intensity;
-		tfxring<float> image_frame;					//Current frame of the image if it's an animation
-		tfxring<tfxVec2> base_size;
-		tfxring<tfxU32> single_loop_count;			//The number of times a single particle has looped over
+	struct tfxParticleSoA {
+		tfxEffectEmitter** parent;
+		tfxU32* sprite_index;
+		tfxParticleID* next_id;
+		tfxParticleFlags* flags;
+		float* age;							//The age of the particle, used by the controller to look up the current state on the graphs
+		float* max_age;						//max age before the particle expires
+		tfxVec3* local_position;			//The local position of the particle, relative to the emitter.
+		tfxVec3* captured_position;			//The captured position of the particle, relative to the emitter.
+		tfxVec3* local_rotations;
+		tfxVec3* velocity_normal;
+		float* stretch;
+		float* weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
+		float* base_weight;
+		float* base_velocity;
+		float* base_spin;
+		float* noise_offset;				//Higher numbers means random movement is less uniform
+		float* noise_resolution;			//Higher numbers means random movement is more uniform
+		tfxRGBA8* color;					//Colour of the particle
+		float* intensity;
+		float* image_frame;					//Current frame of the image if it's an animation
+		tfxVec2* base_size;
+		tfxU32* single_loop_count;			//The number of times a single particle has looped over
 	};
+
+	inline void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxParticleSoA, parent));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, sprite_index));
+		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxParticleSoA, next_id));
+		AddStructArray(buffer, sizeof(tfxParticleFlags), offsetof(tfxParticleSoA, flags));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, max_age));						
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, local_position));			
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, captured_position));			
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, local_rotations));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, velocity_normal));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, weight_acceleration));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_velocity));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_spin));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_offset));				
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_resolution));			
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxParticleSoA, color));					
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, intensity));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));					
+		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxParticleSoA, base_size));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, single_loop_count));			
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
 
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
@@ -5827,10 +5920,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxSpawnWorkEntry {
 		tfxParticleManager *pm;
 		tfxEffectEmitter *e;
+		tfxParticleSoA *particle_data;
 		tfxEmitterSpawnControls spawn_controls;
 		float tween;
 		tfxU32 max_spawn_count;
 		tfxU32 amount_to_spawn;
+		tfxU32 spawn_start_index;
 		float qty_step_size;
 		float highest_particle_age;
 	};
@@ -5929,8 +6024,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxParticleManager {
 		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxring<tfxParticle>> particle_banks;
-		tfxvec<tfxParticleArrays> particle_arrays;
+		tfxvec<tfxSoABuffer> particle_array_buffers;
+		tfxBucketArray<tfxParticleSoA> particle_arrays;
 
+		tfxMemoryArenaManager particle_array_allocator;
 		//In unordered mode emitters that expire have their particle banks added here to be reused
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_banks;
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
@@ -6073,29 +6170,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
 		inline tfxParticle& GrabCPUParticle(unsigned int index) { return particle_banks[index].grab(); }
 
-		inline tfxVec3& GrabLocalPosition(unsigned int index) { return particle_arrays[index].local_position.grab(); }
-		inline tfxVec3& GrabCapturedPosition(unsigned int index) { return particle_arrays[index].captured_position.grab(); }
-		inline tfxVec3& GrabLocalRotations(unsigned int index) { return particle_arrays[index].local_rotations.grab(); }
-		inline tfxVec3& GrabVelocityNormal(unsigned int index) { return particle_arrays[index].velocity_normal.grab(); }
-		inline tfxVec2& GrabSize(unsigned int index) { return particle_arrays[index].base_size.grab(); }
-		inline float& GrabBaseVelocity(unsigned int index) { return particle_arrays[index].base_velocity.grab(); }
-		inline float& GrabNoiseOffset(unsigned int index) { return particle_arrays[index].noise_offset.grab(); }
-		inline float& GrabNoiseResolution(unsigned int index) { return particle_arrays[index].noise_resolution.grab(); }
-		inline float& GrabBaseWeight(unsigned int index) { return particle_arrays[index].base_weight.grab(); }
-		inline float& GrabWeightAcceleration(unsigned int index) { return particle_arrays[index].weight_acceleration.grab(); }
-		inline float& GrabBaseSpin(unsigned int index) { return particle_arrays[index].base_spin.grab(); }
-		inline float& GrabAge(unsigned int index) { return particle_arrays[index].age.grab(); }
-		inline float& GrabMaxAge(unsigned int index) { return particle_arrays[index].max_age.grab(); }
-		inline tfxU32& GrabSingleLoopCount(unsigned int index) { return particle_arrays[index].single_loop_count.grab(); }
-		inline tfxRGBA8& GrabColor(unsigned int index) { return particle_arrays[index].color.grab(); }
-		inline float& GrabIntensity(unsigned int index) { return particle_arrays[index].intensity.grab(); }
-		inline float& GrabImageFrame(unsigned int index) { return particle_arrays[index].image_frame.grab(); }
-		inline tfxU32& GrabSpriteIndex(unsigned int index) { return particle_arrays[index].sprite_index.grab(); }
-		inline tfxU32& GrabNextIndex(unsigned int index) { return particle_arrays[index].next_id.grab(); }
-		inline tfxParticleFlags& GrabFlags(unsigned int index) { return particle_arrays[index].flags.grab(); }
-		inline tfxEffectEmitter** GrabParent(unsigned int index) { return &particle_arrays[index].parent.grab(); }
-		inline tfxParticleID &GetParticleNextID(tfxParticleID id) { return particle_arrays[ParticleBank(id)].next_id.AtAbs(ParticleIndex(id)); }
-		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index.AtAbs(ParticleIndex(id)); }
+		inline tfxParticleID &GetParticleNextID(tfxParticleID id) { return particle_arrays[ParticleBank(id)].next_id[ParticleIndex(id)]; }
+		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index[ParticleIndex(id)]; }
 
 		tfxComputeParticle &GrabComputeParticle(unsigned int layer); 
 		void ResetParticlePtr(void *ptr);
@@ -6240,8 +6316,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				}
 			}
 		}
-
 	}
+
 	tfxU32 GrabParticleBank(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
