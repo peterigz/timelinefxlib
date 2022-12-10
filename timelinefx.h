@@ -1734,13 +1734,24 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void *new_data = malloc(new_capacity * buffer->struct_size);
 		size_t running_offset = 0;
 		for (int i = 0; i != buffer->array_count; ++i) {
-			memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
+			if (((buffer->start_index + buffer->current_size - 1) % buffer->capacity) < buffer->start_index) {
+				size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
+				size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
+				memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
+				memcpy((char*)new_data + (capacity - start_index) + running_offset, (char*)buffer->array_ptrs[i].ptr, (size_t)(start_index));
+			}
+			else {
+				memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
+			}
 			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
+
 		}
 		void *old_data = buffer->data;
+
 		buffer->data = new_data;
 		buffer->capacity = new_capacity;
 		buffer->current_arena_size = new_capacity * buffer->struct_size;
+		buffer->start_index = 0;
 		running_offset = 0;
 		for (int i = 0; i != buffer->array_count; ++i) {
 			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;

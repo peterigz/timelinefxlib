@@ -4496,7 +4496,7 @@ namespace tfx {
 		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterProperties, single_shot_limit));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterProperties, frame_rate));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterProperties, end_frame));
-		AddStructArray(&emitter_properties_buffer, sizeof(tfxImageData), offsetof(tfxEmitterProperties, image));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxImageData*), offsetof(tfxEmitterProperties, image));
 		AddStructArray(&emitter_properties_buffer, sizeof(tfxBillboardingOptions), offsetof(tfxEmitterProperties, billboard_option));
 		AddStructArray(&emitter_properties_buffer, sizeof(tfxVec3), offsetof(tfxEmitterProperties, grid_points));
 		AddStructArray(&emitter_properties_buffer, sizeof(tfxAngleSettingFlags), offsetof(tfxEmitterProperties, angle_settings));
@@ -9919,6 +9919,9 @@ return free_slot;
 		tfxU32 single_shot_limit = e.GetProperties().single_shot_limit[e.property_index];
 
 		tfxU32 offset = 0;
+		if (work_entry->start_index >= 2381) {
+			int debug = 1;
+		}
 		for (int i = work_entry->start_index; i >= 0; --i) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[e.particles_index], i);
 			float &age = bank.age[index];
