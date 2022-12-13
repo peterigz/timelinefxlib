@@ -1506,7 +1506,7 @@ namespace tfx {
 		if (emission_type == tfxPoint)
 			return direction + emission_angle + random_generation.Range(-range, range);
 
-		const tfxVec3 &handle = pm.emitters[pm.current_ebuff].frame[emitter->buffer_index];
+		const tfxVec3 &handle = pm.emitters[pm.current_ebuff].handle[emitter->buffer_index];
 		const tfxEmitterPropertyFlags &property_flags = pm.emitters[pm.current_ebuff].property_flags[emitter->buffer_index];
 		const tfxVec3 &emitter_world_position = pm.emitters[pm.current_ebuff].world_position[emitter->buffer_index];
 
@@ -7624,6 +7624,8 @@ namespace tfx {
 
 				if (is_sub_emitter) {
 					emitter.flags |= tfxEmitterStateFlags_is_sub_emitter;
+				}
+				else {
 					emitter.highest_particle_age = tfxFRAME_LENGTH * 2.f;
 				}
 
@@ -9150,7 +9152,7 @@ namespace tfx {
 			parent = entry->e;
 
 			flags = 0;
-			next_id = SetParticleID(e.particles_index, i);
+			next_id = SetParticleID(e.particles_index, index);
 
 			//Max age
 			//Todo: should age be set to the tween value?
