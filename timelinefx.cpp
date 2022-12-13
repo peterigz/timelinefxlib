@@ -7456,7 +7456,6 @@ namespace tfx {
 							effect_stack.parent().common.property_flags |= tfxEmitterPropertyFlags_is_3d;
 						}
 						tmp = effect_stack.parent().common.property_flags;
-						int debug = 1;
 					}
 					effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
 					effect_stack.back().InitialiseUninitialisedGraphs();
@@ -7569,15 +7568,16 @@ namespace tfx {
 		tfxU32 effect_index = AddRow(&emitter_buffers[buffer]);
 		effects[buffer][parent_index] = effect;
 		effects[buffer][parent_index].buffer_index = effect_index;
-		if(!is_sub_emitter)
+		if (!is_sub_emitter) {
 			effects[buffer][parent_index].parent_particle = nullptr;
+			effects[buffer][parent_index].highest_particle_age = tfxFRAME_LENGTH * 3.f;
+		}
 		effects[buffer][parent_index].flags &= ~tfxEmitterStateFlags_retain_matrix;
 		effects[buffer][parent_index].ResetParents();
 		emitters[buffer].age[effect_index] = -add_delayed_spawning;
 		emitters[buffer].frame[effect_index] = 0.f;
 		emitters[buffer].property_flags[effect_index] = effects[buffer][parent_index].common.property_flags;
 		emitters[buffer].local_position[effect_index] = tfxVec3();
-		effects[buffer][parent_index].highest_particle_age = tfxFRAME_LENGTH * 3.f;
 		effects[buffer][parent_index].timeout = 100.f;
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
@@ -7588,7 +7588,6 @@ namespace tfx {
 			if (e.flags & tfxEmitterStateFlags_enabled) {
 				unsigned int index = effects[buffer].current_size++;
 				tfxU32 emitter_index = AddRow(&emitter_buffers[buffer]);
-
 				effects[buffer][index] = e;
 				effects[buffer][index].buffer_index = emitter_index;
 				tfxEffectEmitter &emitter = effects[buffer].back();
@@ -7608,7 +7607,6 @@ namespace tfx {
 				emitters[buffer].local_position[emitter_index] = tfxVec3();
 				emitters[buffer].property_flags[emitter_index] = e.common.property_flags;
 				emitter.timeout = 100;
-				emitter.highest_particle_age = tfxFRAME_LENGTH * 2.f;
 
 				emitter.flags &= ~tfxEmitterStateFlags_retain_matrix;
 				emitter.flags |= emitter.parent->flags & tfxEmitterStateFlags_no_tween;
@@ -7624,8 +7622,10 @@ namespace tfx {
 				emitter.flags |= properties.end_behaviour[emitter.property_index] == tfxLoop ? tfxEmitterStateFlags_loop : 0;
 				emitter.flags |= properties.end_behaviour[emitter.property_index] == tfxKill ? tfxEmitterStateFlags_kill : 0;
 
-				if (is_sub_emitter)
+				if (is_sub_emitter) {
 					emitter.flags |= tfxEmitterStateFlags_is_sub_emitter;
+					emitter.highest_particle_age = tfxFRAME_LENGTH * 2.f;
+				}
 
 				if (effect.Is3DEffect()) {
 					if (e.common.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type[emitter.property_index] == tfxLine) {
@@ -7839,7 +7839,7 @@ namespace tfx {
 		for (auto &work_entry : spawn_work) {
 			if (work_entry.e && work_entry.e->type == tfxEmitterType) {
 				if (work_entry.e->next_ptr) {
-					work_entry.e->next_ptr->highest_particle_age = std::fmaxf(work_entry.e->next_ptr->highest_particle_age, work_entry.highest_particle_age);
+					work_entry.e->next_ptr->highest_particle_age = std::fmaxf(work_entry.e->highest_particle_age, work_entry.highest_particle_age);
 					work_entry.e->next_ptr->parent->highest_particle_age = work_entry.e->next_ptr->highest_particle_age + tfxFRAME_LENGTH;
 					work_entry.e->next_ptr->current.grid_coords = work_entry.e->current.grid_coords;
 					if (work_entry.e->next_ptr->common.property_flags & tfxEmitterPropertyFlags_single)
@@ -8289,6 +8289,7 @@ namespace tfx {
 		unsigned int index = effects[to_buffer].current_size++;
 		assert(index < effects[to_buffer].capacity);
 		effects[to_buffer][index] = e;
+		AddRow(&emitter_buffers[to_buffer]);
 		emitters[to_buffer].age[index] = emitters[from_buffer].age[e.buffer_index];
 		emitters[to_buffer].frame[index] = emitters[from_buffer].frame[e.buffer_index];
 		emitters[to_buffer].delay_spawning[index] = emitters[from_buffer].delay_spawning[e.buffer_index];
@@ -8714,6 +8715,8 @@ namespace tfx {
 			frame = age / tfxLOOKUP_FREQUENCY;
 		}
 
+		spawn_work_entry->highest_particle_age = e.highest_particle_age;
+
 		if (e.type == tfxEffectEmitterType::tfxEffectType) {
 			pm.parent_spawn_controls = UpdateEffectState(pm, e);
 		}
@@ -8892,8 +8895,6 @@ namespace tfx {
 					pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 				}
 			}
-
-			e.parent->highest_particle_age = e.highest_particle_age;
 		}
 		else if (e.parent && e.parent->type != tfxFolder && !e.parent->next_ptr) {
 			timeout_counter = e.timeout;
@@ -8954,8 +8955,10 @@ namespace tfx {
 		}
 
 		age += tfxFRAME_LENGTH;
-		if (!(property_flags & tfxEmitterPropertyFlags_single) || properties.single_shot_limit[e.property_index] > 0)
+		if (!(property_flags & tfxEmitterPropertyFlags_single) || properties.single_shot_limit[e.property_index] > 0) {
 			e.highest_particle_age -= tfxFRAME_LENGTH;
+			spawn_work_entry->highest_particle_age -= tfxFRAME_LENGTH;
+		}
 
 		if (properties.loop_length && age > properties.loop_length[e.property_index])
 			age -= properties.loop_length[e.property_index];
@@ -9067,12 +9070,13 @@ namespace tfx {
 
 		float qty_step_size = 1.f / work_entry.e->current.qty;
 		float tween = 0;
-		if (qty_step_size == work_entry.e->current.qty_step_size || work_entry.e->common.property_flags & tfxEmitterPropertyFlags_single)
+		const tfxEmitterPropertyFlags property_flags = pm.emitters[pm.current_ebuff].property_flags[work_entry.e->buffer_index];
+		if (qty_step_size == work_entry.e->current.qty_step_size || property_flags & tfxEmitterPropertyFlags_single)
 			tween = work_entry.e->current.amount_remainder;
 		else
 			tween = work_entry.e->current.amount_remainder - (work_entry.e->current.qty_step_size - qty_step_size);
 		work_entry.e->current.qty_step_size = qty_step_size;
-		bool is_compute = work_entry.e->common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
+		//bool is_compute = work_entry.e->common.property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 
 		if (tween >= 1) {
 			tween -= work_entry.e->current.qty;
@@ -10035,9 +10039,6 @@ namespace tfx {
 		tfxU32 single_shot_limit = e.GetProperties().single_shot_limit[e.property_index];
 
 		tfxU32 offset = 0;
-		if (work_entry->start_index >= 2381) {
-			int debug = 1;
-		}
 		for (int i = work_entry->start_index; i >= 0; --i) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[e.particles_index], i);
 			float &age = bank.age[index];
