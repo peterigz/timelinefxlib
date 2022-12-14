@@ -5926,6 +5926,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxControlWorkEntry {
 		tfxU32 start_index;
+		tfxU32 next_buffer;
 		tfxU32 sprites_index;
 		tfxEffectEmitter *e;
 		tfxParticleManager *pm;

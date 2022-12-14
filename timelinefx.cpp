@@ -7854,10 +7854,11 @@ namespace tfx {
 		if (flags & tfxEffectManagerFlags_unordered) {
 			{
 				tmpMTStack(tfxControlWorkEntry, work);
-				for (int i = 0; i != start_size; ++i) {
-					tfxEffectEmitter &e = effects[current_ebuff][i];
+				for (int i = 0; i != effects[next_buffer].current_size; ++i) {
+					tfxEffectEmitter &e = effects[next_buffer][i];
 					if (e.type == tfxEmitterType) {
 						tfxControlWorkEntry &work_entry = work.next();
+						work_entry.next_buffer = next_buffer;
 						ControlParticles2d(*this, e, work_entry);
 					}
 				}
@@ -7866,8 +7867,8 @@ namespace tfx {
 			}
 			{
 				tmpMTStack(tfxParticleAgeWorkEntry, work);
-				for (int i = 0; i != start_size; ++i) {
-					tfxEffectEmitter &e = effects[current_ebuff][i];
+				for (int i = 0; i != effects[next_buffer].current_size; ++i) {
+					tfxEffectEmitter &e = effects[next_buffer][i];
 
 					if (e.type == tfxEmitterType) {
 						tfxSoABuffer &bank = particle_array_buffers[e.particles_index];
@@ -10035,7 +10036,7 @@ namespace tfx {
 	}
 
 	void ControlParticleAge(tfxWorkQueue *queue, void *data) {
-		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxParticleAgeWorkEntry *work_entry = static_cast<tfxParticleAgeWorkEntry*>(data);
 		tfxEffectEmitter &e = *work_entry->e;
 		tfxParticleSoA &bank = work_entry->pm->particle_arrays[e.particles_index];
 		tfxU32 single_shot_limit = e.GetProperties().single_shot_limit[e.property_index];
@@ -10221,7 +10222,7 @@ namespace tfx {
 
 		running_sprite_index = work_entry->sprites_index;
 
-		tfxEmitterSoA &emitters = work_entry->pm->emitters[work_entry->pm->current_ebuff];
+		tfxEmitterSoA &emitters = work_entry->pm->emitters[work_entry->next_buffer];
 		tfxU32 buffer_index = work_entry->e->buffer_index;
 
 		tfxVec3 &e_captured_position = emitters.captured_position[buffer_index];
