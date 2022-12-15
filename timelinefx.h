@@ -5437,8 +5437,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 transform_attributes;
 		//Pointer to the immediate parent
 		tfxEffectEmitter *parent;
-		//Pointer to the next pointer in the particle manager buffer. 
-		tfxEffectEmitter *next_ptr;
 		//Pointer to the sub effect's particle that spawned it
 		tfxParticle *parent_particle;
 		tfxParticleID parent_particle_id;
@@ -5460,6 +5458,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 particles_index;
 		tfxU32 info_index;
 		tfxU32 property_index;
+
+		tfxU32 uid;
+		tfxU32 parent_uid;
 
 		//Update callbacks that are called as the effect is updated in the particle manager. See tfxEffectTemplate
 		void(*update_effect_callback)(tfxParticleManager &pm, tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls);		//Called after the effect state has been udpated
@@ -5651,6 +5652,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float* image_frame;					//Current frame of the image if it's an animation
 		tfxVec2* base_size;
 		tfxU32* single_loop_count;			//The number of times a single particle has looped over
+		tfxU32* uid;
 	};
 
 	inline void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount) {
@@ -5676,6 +5678,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));					
 		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxParticleSoA, base_size));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, single_loop_count));			
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, uid));			
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
@@ -5920,6 +5923,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 max_spawn_count;
 		tfxU32 amount_to_spawn;
 		tfxU32 spawn_start_index;
+		tfxU32 next_buffer;
 		float qty_step_size;
 		float highest_particle_age;
 	};
@@ -5981,6 +5985,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 *scale;
 		//Todo: save space and use a quaternion here
 		tfxMatrix4 *matrix;
+		tfxU32 *uid;
 	};
 
 	inline void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount) {
@@ -6000,6 +6005,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, scale));
 		//Todo: save space and use a quaternion here
 		AddStructArray(buffer, sizeof(tfxMatrix4), offsetof(tfxEmitterSoA, matrix));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, uid));
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
@@ -6072,21 +6078,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxvec<tfxSpawnPosition> new_positions;
 		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
 		//you can use an tfxEffectTemplate and use callback funcitons. 
-		tfxvec<tfxEffectEmitter> effects[2];
-		tfxSoABuffer emitter_buffers[2];
-		tfxEmitterSoA emitters[2];
+		tfxvec<tfxU32> effects_in_use[2];
+		tfxvec<tfxU32> free_effects;
+		tfxvec<tfxEffectEmitter> effects;
+		tfxSoABuffer emitter_buffers;
+		tfxEmitterSoA emitters;
 		//Set when an effect is updated and used to pass on global attributes to child emitters
 		tfxParentSpawnControls parent_spawn_controls;
 
 		//Banks of sprites for drawing in unordered mode
 		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
-
-		tfxvec<tfxSpawnWorkEntry> spawn_work_entries;
-		tfxvec<tfxControlWorkEntry> control_work_entries;
-
-		tfxvec<tfxU32> free_spawn_entries;
-		tfxvec<tfxU32> free_control_entries;
 
 		//todo: document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
@@ -6106,9 +6108,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//The current effect buffer in use, can be either 0 or 1
 		unsigned int current_ebuff;
 
-		//When spawing particles the slot is the index within the wide data variable
-		tfxU32 spawn_slot;
-
 		tfxU32 sprite_index_point[tfxLAYERS];
 
 		unsigned int max_compute_controllers;
@@ -6121,11 +6120,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 camera_front;
 		tfxVec3 camera_position;
 
+		tfxU32 uid;
+
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
 		tfxEffectManagerFlags flags;
 
 		tfxParticleManager() :
+			uid(0),
 			flags(0),
 			lookup_mode(tfxFast),
 			max_effects(10000),
@@ -6138,7 +6140,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			max_new_compute_particles(10000),
 			new_compute_particle_index(0),
 			new_particles_count(0),
-			spawn_slot(0),
 			new_positions(tfxCONSTRUCTOR_VEC_INIT("pm new_positions")),
 			particle_banks(tfxCONSTRUCTOR_VEC_INIT("pm particle_banks")),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
@@ -6154,12 +6155,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void CreateParticleBanksForEachLayer();
-		void InitWorkEntries();
-		//Thread safe functions for getting the next work queue entries
-		inline tfxU32 NextSpawnEntry() {
-			tfxU32 index = InterlockedDecrement((LONG volatile*)&free_spawn_entries.current_size);
-			return free_spawn_entries[index];
-		}
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
 		//When paused you still might want to keep the particles in order:
@@ -6169,6 +6164,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//have access to the effect if you need it.
 		tfxU32 AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false, float add_delayed_spawning = 0);
 		tfxU32 AddEffect(tfxEffectTemplate &effect);
+		inline tfxU32 GetEffectSlot() {
+			if (!free_effects.empty()) {
+				return free_effects.pop_back();
+			}
+			if (effects.current_size == effects.capacity)
+				return tfxINVALID;
+			AddRow(&emitter_buffers);
+			return effects.current_size++;
+		}
 		void FreeParticleBank(tfxEffectEmitter &emitter);
 		void FreeParticleList(tfxEffectEmitter &emitter);
 		//Clear all effects and particles in the particle manager
@@ -6217,9 +6221,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline unsigned int GetParticleMemoryUsage() { return new_compute_particle_index * sizeof(tfxComputeParticle); }
 		void UpdateCompute(void *sampled_particles, unsigned int sample_size = 100);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
-		inline tfxEffectEmitter* SetNextEffect(tfxEffectEmitter &e, tfxU32 to_buffer, tfxU32 from_buffer);
 		void UpdateBaseValues();
-		tfxvec<tfxEffectEmitter> *GetEffectBuffer();
+		tfxvec<tfxU32> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
 		inline tfxParticle *SetNextParticle(unsigned int buffer_index, tfxParticle &p) {
 			unsigned int index = particle_banks[buffer_index].current_size++;
@@ -6245,7 +6248,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 
 		inline bool FreeEffectCapacity() {
-			return effects[0].current_size + effects[1].current_size < max_effects;
+			return effects.current_size < max_effects;
 		}
 		inline tfxU32 ParticleCount() { 
 			tfxU32 count = 0;
@@ -6258,7 +6261,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	inline void particle_bank_resize_callback(tfxring<tfxParticle> *bank, tfxParticle *new_data, void *user_data) {
-
+/*
 		for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
 			tfxParticle &p = (*bank)[i];
 			ptrdiff_t diff = p.next_ptr - bank->data;
@@ -6307,10 +6310,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				}
 			}
 		}
+*/
 	}
 	inline void particle_array_resize_callback(tfxring<tfxParticleID> *bank, tfxParticleID *new_data, void *user_data) {
 
-		for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
+		/*for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
 			tfxParticleID &id = (*bank)[i];
 			tfxU32 bank_index = ParticleBank(id);
 			tfxU32 next_index = ParticleIndex(id);
@@ -6352,7 +6356,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 					tfxParticleID *new_next_id = new_data + ParticleIndex(next_id);
 				}
 			}
-		}
+		}*/
 	}
 
 	tfxU32 GrabParticleBank(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
