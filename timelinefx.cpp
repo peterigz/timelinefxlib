@@ -2008,7 +2008,7 @@ namespace tfx {
 		sprite_transform.scale *= current.overal_scale;
 
 		//----Spin
-		data.base.spin = random_generation.Range(-spin_variation, std::abs(spin_variation)) + spin;
+		data.base.spin = random_generation.Range(-spin_variation, spin_variation) + spin;
 
 		sprite_transform.rotation = 0;
 		data.local_rotations = 0;
@@ -2762,7 +2762,7 @@ namespace tfx {
 		const float noise_offset = pm.emitters.noise_offset[emitter->buffer_index];
 		const float noise_resolution = pm.emitters.noise_resolution[emitter->buffer_index];
 
-		data.base.spin = random_generation.Range(-spin_variation, std::abs(spin_variation)) + spin;
+		data.base.spin = random_generation.Range(-spin_variation, spin_variation) + spin;
 
 		tfxEmissionType emission_type = common.library->emitter_properties.emission_type[emitter->property_index];
 		tfxVec3 angle_offsets = common.library->emitter_properties.angle_offsets[emitter->property_index];
@@ -9233,9 +9233,9 @@ namespace tfx {
 		float tween = entry->tween;
 		tfxEffectEmitter &e = *entry->e;
 		tfxParticleManager &pm = *entry->pm;
-		const float noise_offset_variation = pm.emitters.noise_offset_variation[e.buffer_index];
-		const float noise_offset = pm.emitters.noise_offset[e.buffer_index];
-		const float noise_resolution = pm.emitters.noise_resolution[e.buffer_index];
+		const float emitter_noise_offset_variation = pm.emitters.noise_offset_variation[e.buffer_index];
+		const float emitter_noise_offset = pm.emitters.noise_offset[e.buffer_index];
+		const float emitter_noise_resolution = pm.emitters.noise_resolution[e.buffer_index];
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9244,8 +9244,8 @@ namespace tfx {
 			float &noise_resolution = entry->particle_data->noise_resolution[index];
 
 			//----Motion randomness
-			noise_offset = random_generation.Range(noise_offset_variation) + noise_offset;
-			noise_resolution = noise_resolution + 0.01f;
+			noise_offset = random_generation.Range(emitter_noise_offset_variation) + emitter_noise_offset;
+			noise_resolution = emitter_noise_resolution + 0.01f;
 
 		}
 
@@ -9267,7 +9267,7 @@ namespace tfx {
 			float &base_spin = entry->particle_data->base_spin[index];
 
 			//----Spin
-			base_spin = random_generation.Range(spin_variation, std::abs(spin_variation)) + spin;
+			base_spin = random_generation.Range(-spin_variation, spin_variation) + spin;
 
 		}
 

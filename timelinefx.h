@@ -1778,7 +1778,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		if (grow && buffer->current_size == buffer->capacity) {
 			GrowArrays(buffer);
 		}
-		assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
+		assert(buffer->current_size <= buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return buffer->current_size - 1;
 	}
 	
