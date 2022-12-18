@@ -272,7 +272,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 
 	//----------------------------------------------------------
-	//enums/flags
+	//enums/state_flags
 
 	//Blend mode property of the emitter
 	//It's up to whoever is implementing this library to provide a render function for the particles and make use of these blend modes
@@ -593,7 +593,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	enum tfxAngleSettingFlags_ {
 		tfxAngleSettingFlags_none = 0,														//No flag
 		tfxAngleSettingFlags_align_roll = 1 << 0,											//Align the particle with it's direction of travel in 2d
-		tfxAngleSettingFlags_random_roll = 1 << 1,											//Chose a random angle at spawn time/flags
+		tfxAngleSettingFlags_random_roll = 1 << 1,											//Chose a random angle at spawn time/state_flags
 		tfxAngleSettingFlags_specify_roll = 1 << 2,											//Specify the angle at spawn time
 		tfxAngleSettingFlags_align_with_emission = 1 << 3,									//Align the particle with the emission direction only
 		tfxAngleSettingFlags_random_pitch = 1 << 4,											//3d mode allows for rotating pitch and yaw when not using billboarding (when particle always faces the camera)
@@ -602,7 +602,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxAngleSettingFlags_specify_yaw = 1 << 7
 	};
 
-	//All the flags needed by the ControlParticle function put into one enum to save space
+	//All the state_flags needed by the ControlParticle function put into one enum to save space
 	enum tfxParticleControlFlags_ {
 		tfxParticleControlFlags_none = 0,
 		tfxParticleControlFlags_random_color = 1 << 0,
@@ -671,7 +671,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEmitterPropertyFlags_use_dynamic = 1 << 25,						//Use a dynamic particle storage rather then a fixed one
 		tfxEmitterPropertyFlags_grid_spawn_random = 1 << 26,				//Spawn on grid points but randomly rather then in sequence
 		tfxEmitterPropertyFlags_area_open_ends = 1 << 27,					//Only sides of the area/cylinder are spawned on when fill area is not checked
-		tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 28		//Emitter will be excluded from effect hue adjustments if this flag is checked
+		tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 28,		//Emitter will be excluded from effect hue adjustments if this flag is checked
+		tfxEmitterPropertyFlags_enabled = 1 << 29							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -689,7 +690,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEmitterStateFlags_relative_angle = 1 << 2,						//Keep the angle of the particles relative to the current angle of the emitter
 		tfxEmitterStateFlags_stop_spawning = 1 << 3,						//Tells the emitter to stop spawning
 		tfxEmitterStateFlags_remove = 1 << 4,								//Tells the effect/emitter to remove itself from the particle manager immediately
-		tfxEmitterStateFlags_enabled = 1 << 5,								//the emitter is enabled. If flag is not set then it will not be added to the particle manager with AddEffect
+		tfxEmitterStateFlags_unused1 = 1 << 5,								//the emitter is enabled. **moved to property state_flags**
 		tfxEmitterStateFlags_retain_matrix = 1 << 6,						//Internal flag about matrix usage
 		tfxEmitterStateFlags_no_tween_this_update = 1 << 7,					//Internal flag generally, but you could use it if you want to teleport the effect to another location
 		tfxEmitterStateFlags_is_single = 1 << 8,
@@ -4302,7 +4303,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxHeader {
 		tfxU32 magic_number;						//Magic number to confirm file format
 		tfxU32 file_version;						//The version of the file
-		tfxU32 flags;								//Any flags for the file
+		tfxU32 flags;								//Any state_flags for the file
 		tfxU32 reserved0;							//Reserved for future if needed
 		tfxU64 offset_to_inventory;					//Memory offset for the inventory of files
 		tfxU64 reserved1;							//More reserved space
@@ -5189,7 +5190,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		//How particles should behave when they reach the end of the line
 		tfxLineTraversalEndBehaviour *end_behaviour;
-		//Bit field of various boolean flags
+		//Bit field of various boolean state_flags
 		tfxParticleControlFlags *compute_flags;
 		//Offset to draw particles at
 		tfxVec2 *image_handle;
@@ -5287,20 +5288,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	struct tfxEmitterState {
-		tfxVec3 emitter_size;
-		tfxVec3 grid_coords;
-		tfxVec3 grid_direction;
+
 		tfxVec2 image_handle;
-		float intensity;
-		float velocity_adjuster;
-		float global_opacity;
-		float stretch;
 		float emitter_handle_y;
-		float overal_scale;
 		float amount_remainder;
-		float emission_alternator;
 		float qty;
 		float qty_step_size;
+
 		//The callback to transform the particles each update. This will change based on the properties of the emitter
 		void(*transform_particle_callback2d)(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
 		void(*transform_particle_callback3d)(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
@@ -5392,6 +5386,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Todo: save space and use a quaternion here
 		tfxMatrix4 *matrix;
 
+		//Spawn controls
 		float *life;
 		float *life_variation;
 		float *arc_size;
@@ -5409,6 +5404,22 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec2 *size;
 		tfxVec2 *size_variation;
 		tfxVec3 *grid_segment_size;
+
+		//Control Data
+		tfxU32 *particles_index;
+		float *overal_scale;
+		float *velocity_adjuster;
+		float *intensity;
+		float *image_frame_rate;
+		float *stretch;
+		float *end_frame;
+		tfxVec3 *grid_coords;
+		tfxVec3 *grid_direction;
+		tfxVec3 *emitter_size;
+		float *emission_alternator;
+		tfxEmitterStateFlags *state_flags;
+		tfxVec2 *image_size;
+		float *angle_offset;
 
 	};
 
@@ -5446,6 +5457,21 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, size));
 		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, size_variation));
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_segment_size));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, particles_index));
+
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, overal_scale));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, velocity_adjuster));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, intensity));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, image_frame_rate));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, end_frame));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_coords));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_direction));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, emitter_size));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, emission_alternator));
+		AddStructArray(buffer, sizeof(tfxEmitterStateFlags), offsetof(tfxEmitterSoA, state_flags));
+		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, image_size));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, angle_offset));
 
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
@@ -5456,24 +5482,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float *loop_length;
 
 		//Control data
-		tfxU32 *particles_index;
-		tfxU32 *sprite_layer;
-		tfxU32 *sprites_index;
+
 		tfxU32 *emitter_attributes;
 		tfxU32 *transform_attributes;
 		tfxU32 *overtime_attributes;
-		tfxEmitterStateFlags *state_flags;
-		tfxEmitterPropertyFlags *property_flags;
-		float *overal_scale;
-		float *velocity_adjuster;
-		float *global_intensity;
-		float *image_frame_rate;
-		float *stretch;
-		float *end_frame;
-		tfxVec3 *grid_coords;
-		tfxVec3 *grid_direction;
-		tfxVec3 *emitter_size;
-		float *emission_alternator;
+
 		//tfxParticleTransformCallback2d transform_call_back_2d;
 		//tfxParticleTransformCallback3d transform_call_back_2d;
 		//Spawn controls
@@ -5492,7 +5505,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	parent_particle
 	next_ptr
 	properties
-	flags
+	state_flags
 	current
 	highest_particle_age
 	spawn_controls
@@ -5532,8 +5545,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Pointer to the sub effect's particle that spawned it
 		tfxParticle *parent_particle;
 		tfxParticleID parent_particle_id;
-		//State flags for emitters and effects
-		tfxEmitterStateFlags flags;
+		//State state_flags for emitters and effects
 		tfxEffectPropertyFlags effect_flags;
 		//When not using insert sort to guarantee particle order, sort passes offers a more lax way of ordering particles over a number of frames.
 		//The more passes the more quickly ordered the particles will be but at a higher cost
@@ -5547,7 +5559,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 sprites_index;
 
 		//Indexes into library storage
-		tfxU32 particles_index;
 		tfxU32 info_index;
 		tfxU32 property_index;
 
@@ -5563,22 +5574,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			parent_particle(nullptr),
 			parent_particle_id(tfxINVALID),
 			user_data(nullptr),
-			flags(tfxEmitterStateFlags_no_tween_this_update | tfxEmitterStateFlags_enabled),
 			effect_flags(tfxEffectPropertyFlags_none),
 			sort_passes(1),
 			update_effect_callback(NULL),
 			update_emitter_callback(NULL),
 			particle_onspawn_callback(NULL),
 			particle_update_callback(NULL),
-			particles_index(tfxINVALID),
 			info_index(tfxINVALID),
 			property_index(tfxINVALID)
 		{ }
 		~tfxEffectEmitter();
 
 		//API functions
-		//Tell the effect to stop spawning so that eventually particles will expire and the effect will be removed from the particle manager
-		inline void SoftExpire();
 
 		void SetUserData(void *data);
 		void *GetUserData();
@@ -5626,7 +5633,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		bool RenameSubEffector(tfxEffectEmitter &effect, const char *new_name);
 		bool NameExists(tfxEffectEmitter &effect, const char *name);
 		void FreeGraphs();
-		void NoTweenNextUpdate();
 
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
@@ -5643,6 +5649,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxPreviewCameraSettings &GetCameraSettings();
 
 	};
+
+	//Tell the effect to stop spawning so that eventually particles will expire and the effect will be removed from the particle manager
+	inline void SoftExpire(tfxParticleManager &pm, tfxU32 effect_id);
 
 	inline tfxU32 CountAllEffects(tfxEffectEmitter &effect, tfxU32 amount = 0) {
 		for (auto &sub : effect.GetInfo().sub_effectors) {
@@ -5670,16 +5679,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	struct tfxControlData {
-		tfxU32 flags;
-		float velocity_adjuster;
-		float global_intensity;
-		float image_size_y;
-		float image_frame_rate;
-		float stretch;
-		float emitter_size_y;
-		float overal_scale;
-		float angle_offset;
-		float end_frame;
 		void(*particle_update_callback)(tfxParticleData &particle, void *user_data);
 		void *user_data;
 		tfxOvertimeAttributes *graphs;
@@ -5783,7 +5782,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float noise_offset;					//Higer numbers means random movement is less uniform
 		float noise_resolution;				//Higer numbers means random movement is more uniform
 		float weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
-		tfxParticleFlags flags;				//flags for different states
+		tfxParticleFlags flags;				//state_flags for different states
 		//Updated everyframe
 		float age;							//The age of the particle, used by the controller to look up the current state on the graphs
 		float max_age;						//max age before the particle expires
@@ -5819,7 +5818,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxWideFloat stretch;				//Higer numbers means random movement is less uniform
 		tfxWideFloat noise_offset;			//Higer numbers means random movement is less uniform
 		tfxWideFloat noise_resolution;		//Higer numbers means random movement is more uniform
-		tfxParticleFlags flags;				//flags for different states
+		tfxParticleFlags flags;				//state_flags for different states
 		//Updated everyframe
 		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
 		tfxWideFloat max_age;				//max age before the particle expires
@@ -6349,9 +6348,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
 	void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry);
 	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxEffectEmitter &e);
-	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 max_spawn_amount);
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 max_spawn_amount);
-	void InitCPUParticle2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxSpriteTransform2d &sprite_transform, float tween);
 	void InitCPUParticle3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxSpriteTransform3d &sprite_transform);
 	void UpdateEmitterState(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls);
 	tfxParentSpawnControls UpdateEffectState(tfxParticleManager &pm, tfxEffectEmitter &e);
@@ -6879,11 +6876,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
 
 	//Particle initialisation functions, one for 2d one for 3d effects
-	void InitialiseParticle2d(tfxParticleManager &pm, tfxEffectLibrary &library, tfxParticleData &data, tfxSpriteTransform2d &sprite_transform, tfxEmitterState &current, tfxEffectEmitter *emitter, float tween);
 	tfxSpawnPosition InitialisePosition3d(tfxParticleManager &pm, tfxEffectLibrary &library, tfxEmitterState &current, tfxEffectEmitter *emitter, float tween);
 	void InitialiseParticle3d(tfxParticleManager &pm, tfxParticleData &data, tfxSpriteTransform3d &sprite_transform, tfxEmitterState &current, tfxCommon &common, tfxEffectEmitter *library_link);
-	void UpdateParticle2d(tfxParticleData &data, tfxVec2 &sprite_scale, tfxControlData &c);
-	void UpdateParticle3d(tfxParticleData &data, tfxVec2 &sprite_scale, tfxControlData &c);
+	void UpdateParticle2d(tfxParticleManager &pm, tfxU32 buffer_index, tfxParticleData &data, tfxVec2 &sprite_scale, tfxOvertimeAttributes *graphs);
+	void UpdateParticle3d(tfxParticleManager &pm, tfxU32 buffer_index, tfxParticleData &data, tfxVec2 &sprite_scale, tfxOvertimeAttributes *graphs);
 
 	//Get a graph by tfxGraphID
 	tfxGraph &GetGraph(tfxEffectLibrary &library, tfxGraphID &graph_id);
