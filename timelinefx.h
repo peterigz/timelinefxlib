@@ -4990,7 +4990,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			intensity.lookup.values.allocator = value_allocator;
 			direction.lookup.values.allocator = value_allocator;
 			noise_resolution.lookup.values.allocator = value_allocator;
-
 		}
 
 		void Free() {
@@ -5360,21 +5359,30 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	};
 
-#define tfx2DTRANSFORMCALLBACK(name) void name(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position)
+#define tfx2DTRANSFORMCALLBACK(name) void *name(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxCommon &common, const tfxVec3 &from_position)
 	typedef tfx2DTRANSFORMCALLBACK(tfxParticleTransformCallback2d);
 
-#define tfx3DTRANSFORMCALLBACK(name) void name(const tfxVec3 local_position, const tfxVec3 rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxCommon &common, const tfxVec3 &from_position)
+#define tfx2DTRANSFORMCALLBACK(name) void *name(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position)
+	typedef tfx2DTRANSFORMCALLBACK(tfxParticleTransformCallback2d2);
+
+#define tfx3DTRANSFORMCALLBACK(name) void *name(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position)
 	typedef tfx3DTRANSFORMCALLBACK(tfxParticleTransformCallback3d);
 
 	struct tfxEmitterSoA {
+		tfxParticleTransformCallback2d transform_particle_callback2d;
+		tfxParticleTransformCallback2d transform_particle_callback2d2;
+		tfxParticleTransformCallback2d transform_particle_callback3d;
+
 		//State data
 		float *frame;
 		float *age;
+		float *highest_particle_age;
 		float *delay_spawning;
 		float *timeout_counter;
 		float *timeout;
 		tfxVec3 *handle;
 		tfxEmitterPropertyFlags *property_flags;
+		float *loop_length;
 		//Position, scale and rotation values
 		tfxVec3 *translation;
 		tfxVec3 *local_position;
@@ -5385,6 +5393,22 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 *scale;
 		//Todo: save space and use a quaternion here
 		tfxMatrix4 *matrix;
+		tfxVec2 *image_handle;
+		float *amount_remainder;
+		float *spawn_quantity;
+		float *qty_step_size;
+
+		tfxU32 *global_attributes;
+		tfxU32 *emitter_attributes;
+		tfxU32 *transform_attributes;
+		tfxU32 *overtime_attributes;
+
+		tfxU32 *parent_index;
+		tfxU32 *properties_index;
+		tfxParticleID *parent_particle_id;
+		tfxEffectEmitterType *type;
+		tfxKey *path_hash;
+		tfxEffectLibrary **library;
 
 		//Spawn controls
 		float *life;
@@ -5424,13 +5448,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	inline void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, transform_particle_callback2d));
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, transform_particle_callback2d2));
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, transform_particle_callback3d));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, frame));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, highest_particle_age));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, delay_spawning));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, timeout_counter));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, timeout));
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, handle));
 		AddStructArray(buffer, sizeof(tfxEmitterPropertyFlags), offsetof(tfxEmitterSoA, property_flags));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, loop_length));
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, translation));
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, local_position));
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, world_position));
@@ -5438,8 +5467,22 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, local_rotations));
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, world_rotations));
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, scale));
+
 		//Todo: save space and use a quaternion here?
 		AddStructArray(buffer, sizeof(tfxMatrix4), offsetof(tfxEmitterSoA, matrix));
+		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, image_handle));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, amount_remainder));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, spawn_quantity));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, qty_step_size));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, global_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, emitter_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, transform_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, overtime_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, parent_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, properties_index));
+		AddStructArray(buffer, sizeof(tfxEffectEmitterType), offsetof(tfxEmitterSoA, type));
+		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, library));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life_variation));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_size));
@@ -5477,15 +5520,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	struct tfxEmitterDataAll {
-
-		//State data
-		float *loop_length;
-
-		//Control data
-
-		tfxU32 *emitter_attributes;
-		tfxU32 *transform_attributes;
-		tfxU32 *overtime_attributes;
 
 		//tfxParticleTransformCallback2d transform_call_back_2d;
 		//tfxParticleTransformCallback3d transform_call_back_2d;
@@ -6002,7 +6036,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxSpawnWorkEntry {
 		tfxParticleManager *pm;
-		tfxEffectEmitter *e;
+		tfxU32 emitter_index;
 		tfxParticleSoA *particle_data;
 		float tween;
 		tfxU32 max_spawn_count;
@@ -6017,7 +6051,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 start_index;
 		tfxU32 next_buffer;
 		tfxU32 sprites_index;
-		tfxEffectEmitter *e;
+		tfxU32 emitter_index;
 		tfxParticleManager *pm;
 		tfxControlData c;
 		tfxU32 layer;
@@ -6026,7 +6060,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxParticleAgeWorkEntry {
 		tfxU32 start_index;
-		tfxEffectEmitter *e;
+		tfxU32 emitter_index;
 		tfxParticleManager *pm;
 	};
 
@@ -6061,7 +6095,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//you can use an tfxEffectTemplate and use callback funcitons. 
 		tfxvec<tfxU32> effects_in_use[2];
 		tfxvec<tfxU32> free_effects;
-		tfxvec<tfxEffectEmitter> effects;
+		//tfxvec<tfxEffectEmitter> effects;
 		tfxSoABuffer emitter_buffers;
 		tfxEmitterSoA emitters;
 		//Set when an effect is updated and used to pass on global attributes to child emitters
@@ -6123,7 +6157,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
 		{ }
 		~tfxParticleManager();
-		tfxEffectEmitter &operator[] (unsigned int index);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
@@ -6146,13 +6179,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			if (!free_effects.empty()) {
 				return free_effects.pop_back();
 			}
-			if (effects.current_size == effects.capacity)
+			if (emitter_buffers.current_size == emitter_buffers.capacity)
 				return tfxINVALID;
 			AddRow(&emitter_buffers);
-			return effects.current_size++;
+			return emitter_buffers.current_size;
 		}
 		void FreeParticleBank(tfxEffectEmitter &emitter);
-		void FreeParticleList(tfxEffectEmitter &emitter);
+		void FreeParticleList(tfxU32 index);
 		//Clear all effects and particles in the particle manager
 		void ClearAll(bool free_memory = false);
 		void FreeParticleBanks();
@@ -6226,7 +6259,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 
 		inline bool FreeEffectCapacity() {
-			return effects.current_size < max_effects;
+			return emitter_buffers.current_size < max_effects;
 		}
 		inline tfxU32 ParticleCount() { 
 			tfxU32 count = 0;
@@ -6350,10 +6383,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxEffectEmitter &e);
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 max_spawn_amount);
 	void InitCPUParticle3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParticle &p, tfxSpriteTransform3d &sprite_transform);
-	void UpdateEmitterState(tfxParticleManager &pm, tfxEffectEmitter &e, tfxParentSpawnControls &parent_spawn_controls);
-	tfxParentSpawnControls UpdateEffectState(tfxParticleManager &pm, tfxEffectEmitter &e);
+	void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxParentSpawnControls &parent_spawn_controls);
+	tfxParentSpawnControls UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxVec2 &sprite_scale , tfxEffectEmitter &e);
-	void ControlParticles2d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxControlWorkEntry &work_entry);
+	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticles3d(tfxParticleManager &pm, tfxEffectEmitter &e, tfxU32 amount_spawned);
 	void ControlParticlesOrdered2d(tfxParticleManager &pm);
 	void ControlParticlesOrdered3d(tfxParticleManager &pm);
