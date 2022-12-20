@@ -7096,6 +7096,7 @@ namespace tfx {
 				emitters.angle_offset[index] = properties.angle_offsets[e.property_index].roll;
 				emitters.timeout[index] = 100.f;
 				emitters.amount_remainder[index] = 0.f;
+				emitters.qty_step_size[index] = 0.f;
 				//----Handle
 				if (e.common.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 					emitters.image_handle[index] = tfxVec2(0.5f, 0.5f);
@@ -8605,12 +8606,9 @@ namespace tfx {
 				for (auto &sub : *entry->sub_effects) {
 					if (!pm.FreeEffectCapacity())
 						break;
-					sub.parent = nullptr;
-					sub.parent_particle_id = next_id;
-					sub.highest_particle_age = max_age + tfxFRAME_LENGTH + 1;
-					sub.SetTimeout(10);
 					tfxU32 added_index = pm.AddEffect(sub, pm.current_ebuff, true);
 					pm.emitters.overal_scale[added_index] = pm.emitters.overal_scale[index];
+					pm.emitters.parent_particle_id[added_index] = next_id;
 				}
 			}
 		}
