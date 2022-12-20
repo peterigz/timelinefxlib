@@ -5268,44 +5268,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		{}
 	};
 
-	struct tfxCommon {
-
-		tfxEmitterStateFlags state_flags;
-		tfxEmitterPropertyFlags property_flags;
-		tfxEffectLibrary *library;
-
-		tfxCommon() :
-			property_flags(tfxEmitterPropertyFlags_image_handle_auto_center | 
-							tfxEmitterPropertyFlags_grid_spawn_clockwise | 
-							tfxEmitterPropertyFlags_emitter_handle_auto_center | 
-							tfxEmitterPropertyFlags_global_uniform_size | 
-							tfxEmitterPropertyFlags_base_uniform_size | 
-							tfxEmitterPropertyFlags_lifetime_uniform_size),
-			state_flags(0)
-		{ }
-
-	};
-
-	struct tfxEmitterState {
-
-		tfxVec2 image_handle;
-		float emitter_handle_y;
-		float amount_remainder;
-		float qty;
-		float qty_step_size;
-
-		//The callback to transform the particles each update. This will change based on the properties of the emitter
-		void(*transform_particle_callback2d)(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
-		void(*transform_particle_callback3d)(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
-		void(*transform_particle_callback2d2)(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
-		void(*transform_particle_callback3d2)(const tfxVec3 local_position, const float roll, tfxVec3 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
-
-		tfxEmitterState() :
-			amount_remainder(0.f),
-			qty_step_size(0.f)
-		{}
-	};
-
 	//Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
 	struct tfxParentSpawnControls {
 		float life;
@@ -5394,7 +5356,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float *spawn_quantity;
 		float *qty_step_size;
 
-		tfxU32 *global_attributes;
 		tfxU32 *emitter_attributes;
 		tfxU32 *transform_attributes;
 		tfxU32 *overtime_attributes;
@@ -5404,8 +5365,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 *info_index;
 		tfxU32 *sprites_count;
 		tfxU32 *sprites_index;
-		tfxParticleID *parent_particle_id;
-		tfxEffectEmitterType *type;
 		tfxKey *path_hash;
 		tfxEffectLibrary **library;
 
@@ -5472,17 +5431,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, amount_remainder));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, spawn_quantity));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, qty_step_size));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, global_attributes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, emitter_attributes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, transform_attributes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, overtime_attributes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, parent_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_count));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_index));
-		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxEmitterSoA, parent_particle_id));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, properties_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, info_index));
-		AddStructArray(buffer, sizeof(tfxEffectEmitterType), offsetof(tfxEmitterSoA, type));
 		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
 		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, library));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
@@ -5521,13 +5477,77 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	struct tfxEmitterDataAll {
+	struct tfxEffectSoA {
+		//State data
+		float *frame;
+		float *age;
+		float *highest_particle_age;
+		float *timeout_counter;
+		float *timeout;
+		tfxVec3 *handle;
+		tfxEmitterPropertyFlags *property_flags;
+		float *loop_length;
+		//Position, scale and rotation values
+		tfxVec3 *translation;
+		tfxVec3 *local_position;
+		tfxVec3 *world_position;
+		tfxVec3 *captured_position;
+		tfxVec3 *local_rotations;
+		tfxVec3 *world_rotations;
+		tfxVec3 *scale;
+		//Todo: save space and use a quaternion here
+		tfxMatrix4 *matrix;
 
-		//tfxParticleTransformCallback2d transform_call_back_2d;
-		//tfxParticleTransformCallback3d transform_call_back_2d;
+		tfxU32 *global_attributes;
+		tfxU32 *transform_attributes;
+
+		tfxU32 *properties_index;
+		tfxU32 *info_index;
+		tfxParticleID *parent_particle_id;
+		tfxEffectLibrary **library;
+
 		//Spawn controls
+		tfxParentSpawnControls *spawn_controls;
+		tfxVec3 *emitter_size;
+		float *stretch;
+		float *overal_scale;
+		tfxEmitterStateFlags *state_flags;
 
 	};
+
+	inline void InitEffectSoA(tfxSoABuffer *buffer, tfxEffectSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, frame));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, highest_particle_age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, timeout_counter));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, timeout));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, handle));
+		AddStructArray(buffer, sizeof(tfxEmitterPropertyFlags), offsetof(tfxEffectSoA, property_flags));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, loop_length));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, translation));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, local_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, world_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, captured_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, local_rotations));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, world_rotations));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, scale));
+
+		//Todo: save space and use a quaternion here?
+		AddStructArray(buffer, sizeof(tfxMatrix4), offsetof(tfxEffectSoA, matrix));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, global_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, transform_attributes));
+		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxEffectSoA, parent_particle_id));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, properties_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, info_index));
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, library));
+		AddStructArray(buffer, sizeof(tfxParentSpawnControls), offsetof(tfxEffectSoA, spawn_controls));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, emitter_size));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, overal_scale));
+		AddStructArray(buffer, sizeof(tfxEmitterStateFlags), offsetof(tfxEffectSoA, state_flags));
+
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
 
 	//An tfxEffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
@@ -5556,31 +5576,21 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxEffectEmitter {
 		//Required for frame by frame updating
 		//The current state of the effect/emitter used in the editor only at this point
-		tfxEmitterState current;
-		//Common variables needed to update the effect/emitter
-		tfxCommon common;
+		tfxEmitterStateFlags state_flags;
+		tfxEmitterPropertyFlags property_flags;
+		tfxEffectLibrary *library;
 		//Is this an tfxEffectType or tfxEmitterType
 		tfxEffectEmitterType type;
 		//The index within the library that this exists at
 		tfxU32 library_index;
 		//A hash of the directory path to the effect ie Flare/spark, and also a UID for the effect/emitter
 		tfxKey path_hash;
-		//The current highest particle age. When using a compute buffer we don't have any reliable way of keeping track of particle counts of individual emitters, so how do we know when to remove an emitter
-		//after all it's particles have expired? We set this variable to the highest particle age each time it spawns a particle and then counts it down each frame. When it's 0 then we know that there are no
-		//more particles being controlled by this emitter and can therefore time it out.
-		float highest_particle_age;
-		float timeout;
-		//compute slot id if a compute shader is being used. Only applied to bottom emitters (emitters with no child effects)
-		tfxU32 compute_slot_id;
 		//All graphs that the effect uses to lookup attribute values are stored in the library. These variables here are indexes to the array where they're stored
 		tfxU32 global;
 		tfxU32 emitter_attributes;
 		tfxU32 transform_attributes;
 		//Pointer to the immediate parent
 		tfxEffectEmitter *parent;
-		//Pointer to the sub effect's particle that spawned it
-		tfxParticle *parent_particle;
-		tfxParticleID parent_particle_id;
 		//State state_flags for emitters and effects
 		tfxEffectPropertyFlags effect_flags;
 		//When not using insert sort to guarantee particle order, sort passes offers a more lax way of ordering particles over a number of frames.
@@ -5595,26 +5605,20 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 info_index;
 		tfxU32 property_index;
 
-		//Update callbacks that are called as the effect is updated in the particle manager. See tfxEffectTemplate
-		void(*update_effect_callback)(tfxParticleManager &pm, tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls);		//Called after the effect state has been udpated
-		void(*update_emitter_callback)(tfxEmitterSoA &effect_emitter, tfxU32 index);		//Called after the emitter state has been udpated
-		void(*particle_onspawn_callback)(tfxParticle &particle, void *user_data);
-		void(*particle_update_callback)(tfxParticleData &particle, void *user_data);		//Called for each particle that has been udpated, but before it's state is updated (so you can override behaviour first) 
-
 		tfxEffectEmitter() :
-			highest_particle_age(0),
 			parent(nullptr),
-			parent_particle(nullptr),
-			parent_particle_id(tfxINVALID),
 			user_data(nullptr),
 			effect_flags(tfxEffectPropertyFlags_none),
 			sort_passes(1),
-			update_effect_callback(NULL),
-			update_emitter_callback(NULL),
-			particle_onspawn_callback(NULL),
-			particle_update_callback(NULL),
 			info_index(tfxINVALID),
-			property_index(tfxINVALID)
+			property_index(tfxINVALID),
+			property_flags(tfxEmitterPropertyFlags_image_handle_auto_center |
+				tfxEmitterPropertyFlags_grid_spawn_clockwise |
+				tfxEmitterPropertyFlags_emitter_handle_auto_center |
+				tfxEmitterPropertyFlags_global_uniform_size |
+				tfxEmitterPropertyFlags_base_uniform_size |
+				tfxEmitterPropertyFlags_lifetime_uniform_size),
+			state_flags(0)
 		{ }
 		~tfxEffectEmitter();
 
@@ -5622,7 +5626,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		void SetUserData(void *data);
 		void *GetUserData();
-		void SetTimeout(float frames);
 
 		tfxEffectEmitterInfo &GetInfo();
 		tfxEmitterPropertiesSoA &GetProperties();
@@ -6081,6 +6084,32 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float *weight;
 	};
 
+	struct tfxEffectsInUseSoA {
+		tfxU32 *effects_in_use[3][2];
+		tfxU32 *emitters_in_use[3][2];
+		tfxU32 *free_effects[3];
+		tfxU32 *free_emitters[3];
+	};
+
+	inline void InitEffectsInUse(tfxSoABuffer *buffer, tfxEffectsInUseSoA *soa, tfxU32 reserve_amount) {
+
+		for (int i = 0; i != 3; ++i) {
+			for (int j = 0; j != 2; ++j) {
+				AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectsInUseSoA, effects_in_use[i][j]));
+			}
+			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectsInUseSoA, free_effects[i]));
+		}
+
+		for (int i = 0; i != 3; ++i) {
+			for (int j = 0; j != 2; ++j) {
+				AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectsInUseSoA, emitters_in_use[i][j]));
+			}
+			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectsInUseSoA, free_emitters[i]));
+		}
+
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
 		//In unordered mode, emitters get their own list of particles to update
@@ -6094,15 +6123,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
-		//Effects are also stored using double buffering. Effects stored here are "fire and forget", so you won't be able to apply changes to the effect in realtime. If you want to do that then 
-		//you can use an tfxEffectTemplate and use callback funcitons. 
+
 		tfxvec<tfxU32> effects_in_use[2];
+		tfxvec<tfxU32> emitters_in_use[2];
 		tfxvec<tfxU32> free_effects;
+		tfxvec<tfxU32> free_emitters;
 		//tfxvec<tfxEffectEmitter> effects;
+		tfxSoABuffer effect_buffers;
+		tfxEffectSoA effects;
 		tfxSoABuffer emitter_buffers;
 		tfxEmitterSoA emitters;
 		//Set when an effect is updated and used to pass on global attributes to child emitters
-		tfxParentSpawnControls parent_spawn_controls;
 
 		//Banks of sprites for drawing in unordered mode
 		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
@@ -6181,6 +6212,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline tfxU32 GetEffectSlot() {
 			if (!free_effects.empty()) {
 				return free_effects.pop_back();
+			}
+			if (effect_buffers.current_size == effect_buffers.capacity)
+				return tfxINVALID;
+			AddRow(&effect_buffers);
+			return effect_buffers.current_size - 1;
+		}
+		inline tfxU32 GetEmitterSlot() {
+			if (!free_emitters.empty()) {
+				return free_emitters.pop_back();
 			}
 			if (emitter_buffers.current_size == emitter_buffers.capacity)
 				return tfxINVALID;
@@ -6382,12 +6422,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	void TransformEffector2d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
 	void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
+	void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index);
 	void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry);
 	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxEmitterPropertiesSoA &properties);
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxU32 max_spawn_amount, tfxEmitterPropertiesSoA &properties);
 	void InitCPUParticle3d(tfxParticleManager &pm, tfxU32 index, tfxParticle &p, tfxSpriteTransform3d &sprite_transform);
-	void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxParentSpawnControls &parent_spawn_controls);
-	tfxParentSpawnControls UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
+	void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls &parent_spawn_controls);
+	void UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxVec2 &sprite_scale, tfxU32 parent_index, tfxEffectLibrary *library);
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxEffectLibrary *library, tfxU32 amount_spawned);
@@ -6620,9 +6661,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		{}
 		void AddPath(tfxEffectEmitter &effect_emitter, tfxStr256 path) {
 			paths.Insert(path, &effect_emitter);
-			for (auto &sub : effect_emitter.common.library->GetInfo(effect_emitter).sub_effectors) {
+			for (auto &sub : effect_emitter.library->GetInfo(effect_emitter).sub_effectors) {
 				tfxStr256 sub_path = path;
-				sub_path.Appendf("/%s", sub.common.library->GetInfo(sub).name.c_str());
+				sub_path.Appendf("/%s", sub.library->GetInfo(sub).name.c_str());
 				AddPath(sub, sub_path);
 			}
 		}
@@ -6635,18 +6676,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline void SetEffectUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager &pm, tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls)) { 
 			assert(paths.ValidName(path));						//Path does not exist in library
 			assert(paths.At(path)->type == tfxEffectType);		//Path must be path to an effect type
-			paths.At(path)->update_effect_callback = update_callback;
 		}
-		inline void SetEmitterUpdateCallback(tfxStr256 path, void(*update_callback)(tfxEmitterSoA &effect_emitter, tfxU32 index)) { 
+		inline void SetEmitterUpdateCallback(tfxStr256 path, void(*update_callback)(tfxEmitterSoA &effect_emitter, tfxU32 index)) {
 			assert(paths.ValidName(path));						//Path does not exist in library
 			assert(paths.At(path)->type == tfxEmitterType);		//Path must be a path to an emitter type
-			paths.At(path)->update_emitter_callback = update_callback; }
-		inline void SetEffectUpdateCallback(void(*update_callback)(tfxParticleManager &pm, tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls)) { effect.update_effect_callback = update_callback; }
-		void SetParticleUpdateCallback(tfxStr256 path, void(*particle_update_callback)(tfxParticleData &particle, void *user_data));
-		void SetParticleOnSpawnCallback(tfxStr256 path, void(*particle_onspawn_callback)(tfxParticle &particle, void *user_data));
+		}
 	};
-
-	void SetTimeOut(tfxEffectTemplate &effect_template, float frames);
 
 	/*
 	Notes on updating effects emitters and particles:
