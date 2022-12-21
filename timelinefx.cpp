@@ -4847,7 +4847,7 @@ namespace tfx {
 		if (field == "grid_depth")
 			emitter_properties.grid_points[effect.property_index].z = value;
 		if (field == "loop_length")
-			emitter_properties.loop_length[effect.property_index] = value;
+			emitter_properties.loop_length[effect.property_index] = value < 0 ? 0.f : value;
 		if (field == "emitter_handle_x")
 			emitter_properties.emitter_handle[effect.property_index].x = value;
 		if (field == "emitter_handle_y")
@@ -7271,16 +7271,17 @@ namespace tfx {
 		}
 
 		tmpMTStack(tfxSpawnWorkEntry, spawn_work);
+		//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 			effects_in_use[depth][next_buffer].clear();
 			emitters_in_use[depth][next_buffer].clear();
 
 			for (int i = 0; i != effects_start_size[depth]; ++i) {
 				tfxU32 current_index = effects_in_use[depth][current_ebuff][i];
-				float &timeout_counter = emitters.timeout_counter[current_index];
+				float &timeout_counter = effects.timeout_counter[current_index];
 
 				UpdatePMEffect(*this, current_index);
-				if (timeout_counter <= emitters.timeout[current_index]) {
+				if (timeout_counter <= effects.timeout[current_index]) {
 					effects_in_use[depth][next_buffer].push_back(current_index);
 				}
 				else {
