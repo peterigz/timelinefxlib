@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 0
+#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -129,6 +129,7 @@ namespace tfx {
 #define tfx360Radians 6.28319f
 #define tfx180Radians 3.14159f
 #define tfx90Radians 1.5708f
+#define tfxMAXDEPTH 3
 
 	//----------------------------------------------------------
 	//Forward declarations
@@ -1674,9 +1675,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//A buffer designed to contain structs of arrays. If the arrays need to grow then a new memory block is made and all copied over
 	//together. All arrays in the struct will be the same capacity but can all have different unit sizes/types.
-	//In order to use this you need to first prepare the buffer by calling AddStructArray for each struct member of the sSoA you're setting up. 
+	//In order to use this you need to first prepare the buffer by calling AddStructArray for each struct member of the SoA you're setting up. 
 	//All members must be of the same struct.
-	//Then call FinishSoABufferSetup to create the memory for the struct of arrays with an initial reserver amount.
+	//Then call FinishSoABufferSetup to create the memory for the struct of arrays with an initial reserve amount.
 	struct tfxSoABuffer {
 		size_t current_arena_size = 0;		//The current size of the arena that contains all the arrays
 		size_t struct_size = 0;				//The size of the struct (each member unit size added up)
@@ -6047,6 +6048,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 amount_to_spawn;
 		tfxU32 spawn_start_index;
 		tfxU32 next_buffer;
+		int depth;
 		float qty_step_size;
 		float highest_particle_age;
 	};
@@ -6124,8 +6126,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
 
-		tfxvec<tfxU32> effects_in_use[2];
-		tfxvec<tfxU32> emitters_in_use[2];
+		tfxvec<tfxU32> effects_in_use[tfxMAXDEPTH][2];
+		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> free_effects;
 		tfxvec<tfxU32> free_emitters;
 		//tfxvec<tfxEffectEmitter> effects;
@@ -6207,7 +6209,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
-		tfxU32 AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_effect = false, float add_delayed_spawning = 0);
+		tfxU32 AddEffect(tfxEffectEmitter &effect, int buffer, int depth, bool is_sub_effect = false, float add_delayed_spawning = 0);
 		tfxU32 AddEffect(tfxEffectTemplate &effect);
 		inline tfxU32 GetEffectSlot() {
 			if (!free_effects.empty()) {

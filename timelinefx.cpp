@@ -6990,7 +6990,13 @@ namespace tfx {
 		}
 	}
 
-	tfxU32 tfxParticleManager::AddEffect(tfxEffectEmitter &effect, unsigned int buffer, bool is_sub_emitter, float add_delayed_spawning) {
+	tfxParticleManager::~tfxParticleManager() {
+		FreeSoABuffer(&effect_buffers);
+		FreeSoABuffer(&emitter_buffers);
+		particle_array_allocator.FreeAll();
+	}
+
+	tfxU32 tfxParticleManager::AddEffect(tfxEffectEmitter &effect, int buffer, int depth, bool is_sub_emitter, float add_delayed_spawning) {
 		tfxPROFILE;
 		assert(effect.type == tfxEffectType);
 		if (flags & tfxEffectManagerFlags_use_compute_shader && highest_compute_controller_index >= max_compute_controllers && free_compute_controllers.empty())
@@ -7013,7 +7019,8 @@ namespace tfx {
 		effects.parent_particle_id[parent_index] = tfxINVALID;
 		effects.info_index[parent_index] = effect.info_index;
 		effects.properties_index[parent_index] = effect.property_index;
-		effects_in_use[buffer].push_back(parent_index);
+		effects.timeout_counter[parent_index] = 0;
+		effects_in_use[depth][buffer].push_back(parent_index);
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
 		}
@@ -7025,7 +7032,7 @@ namespace tfx {
 				if (index == tfxINVALID)
 					break;
 				emitters.particles_index[index] = tfxINVALID;
-				emitters_in_use[buffer].push_back(index);
+				emitters_in_use[depth][buffer].push_back(index);
 				tfxEmitterPropertiesSoA &properties = e.library->emitter_properties;
 				emitters.parent_index[index] = parent_index;
 				if (emitters.particles_index[index] == tfxINVALID && flags & tfxEffectManagerFlags_unordered) {
@@ -7055,6 +7062,7 @@ namespace tfx {
 				emitters.timeout[index] = 100.f;
 				emitters.amount_remainder[index] = 0.f;
 				emitters.qty_step_size[index] = 0.f;
+				emitters.timeout_counter[index] = 0;
 				//----Handle
 				if (e.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 					emitters.image_handle[index] = tfxVec2(0.5f, 0.5f);
@@ -7155,7 +7163,7 @@ namespace tfx {
 	}
 
 	tfxU32 tfxParticleManager::AddEffect(tfxEffectTemplate &effect) {
-		return AddEffect(effect.effect, current_ebuff);
+		return AddEffect(effect.effect, current_ebuff, 0);
 	}
 
 	int tfxParticleManager::AddComputeController() {
@@ -7238,8 +7246,6 @@ namespace tfx {
 		new_compute_particle_index = 0;
 
 		unsigned int next_buffer = !current_ebuff;
-		effects_in_use[next_buffer].clear();
-		emitters_in_use[next_buffer].clear();
 
 		memset(new_particles_index_start, tfxMAX_UINT, 4 * tfxLAYERS);
 		memset(sprite_index_point, 0, 4 * tfxLAYERS);
@@ -7256,43 +7262,54 @@ namespace tfx {
 			sprites2d[layer].clear();
 			sprites3d[layer].clear();
 		}
-
-		tfxU32 effects_start_size = effects_in_use[current_ebuff].current_size;
-		tmpMTStack(tfxSpawnWorkEntry, spawn_work);
-		for (int i = 0; i != effects_start_size; ++i) {
-			tfxU32 current_index = effects_in_use[current_ebuff][i];
-			float &timeout_counter = emitters.timeout_counter[current_index];
-
-			UpdatePMEffect(*this, current_index);
-			if (timeout_counter <= emitters.timeout[current_index]) {
-				effects_in_use[next_buffer].push_back(current_index);
-			}
-			else {
-				free_effects.push_back(current_index);
-			}
+		
+		tfxU32 effects_start_size[tfxMAXDEPTH];
+		tfxU32 emitter_start_size[tfxMAXDEPTH];
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			effects_start_size[depth] = effects_in_use[depth][current_ebuff].current_size;
+			emitter_start_size[depth] = emitters_in_use[depth][current_ebuff].current_size;
 		}
 
-		tfxU32 emitter_start_size = emitters_in_use[current_ebuff].current_size;
-		for (int i = 0; i != emitter_start_size; ++i) {
-			tfxSpawnWorkEntry *spawn_work_entry = &spawn_work.next();
-			tfxU32 current_index = emitters_in_use[current_ebuff][i];
-			spawn_work_entry->emitter_index = current_index;
-			spawn_work_entry->next_buffer = next_buffer;
-			spawn_work_entry->properties = &emitters.library[current_index]->emitter_properties;
-			spawn_work_entry->sub_effects = &emitters.library[current_index]->effect_infos[emitters.info_index[current_index]].sub_effectors;
+		tmpMTStack(tfxSpawnWorkEntry, spawn_work);
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			effects_in_use[depth][next_buffer].clear();
+			emitters_in_use[depth][next_buffer].clear();
 
-			float &timeout_counter = emitters.timeout_counter[current_index];
+			for (int i = 0; i != effects_start_size[depth]; ++i) {
+				tfxU32 current_index = effects_in_use[depth][current_ebuff][i];
+				float &timeout_counter = emitters.timeout_counter[current_index];
 
-			UpdatePMEmitter(*this, spawn_work_entry);
-			if (timeout_counter <= emitters.timeout[current_index]) {
-				emitters_in_use[next_buffer].push_back(current_index);
+				UpdatePMEffect(*this, current_index);
+				if (timeout_counter <= emitters.timeout[current_index]) {
+					effects_in_use[depth][next_buffer].push_back(current_index);
+				}
+				else {
+					free_effects.push_back(current_index);
+				}
 			}
-			else {
-				free_emitters.push_back(current_index);
-				//if (flags & tfxEffectManagerFlags_use_compute_shader && emitters.property_flags[current_index] & tfxEmitterPropertyFlags_is_bottom_emitter)
-					//FreeComputeSlot(emitters.compute_slot_id[current_index]);
-				if (flags & tfxEffectManagerFlags_unordered) {
-					FreeParticleList(current_index);
+
+			for (int i = 0; i != emitter_start_size[depth]; ++i) {
+				tfxSpawnWorkEntry *spawn_work_entry = &spawn_work.next();
+				tfxU32 current_index = emitters_in_use[depth][current_ebuff][i];
+				spawn_work_entry->depth = depth;
+				spawn_work_entry->emitter_index = current_index;
+				spawn_work_entry->next_buffer = next_buffer;
+				spawn_work_entry->properties = &emitters.library[current_index]->emitter_properties;
+				spawn_work_entry->sub_effects = &emitters.library[current_index]->effect_infos[emitters.info_index[current_index]].sub_effectors;
+
+				float &timeout_counter = emitters.timeout_counter[current_index];
+
+				UpdatePMEmitter(*this, spawn_work_entry);
+				if (timeout_counter <= emitters.timeout[current_index]) {
+					emitters_in_use[depth][next_buffer].push_back(current_index);
+				}
+				else {
+					free_emitters.push_back(current_index);
+					//if (flags & tfxEffectManagerFlags_use_compute_shader && emitters.property_flags[current_index] & tfxEmitterPropertyFlags_is_bottom_emitter)
+						//FreeComputeSlot(emitters.compute_slot_id[current_index]);
+					if (flags & tfxEffectManagerFlags_unordered) {
+						FreeParticleList(current_index);
+					}
 				}
 			}
 		}
@@ -7310,52 +7327,56 @@ namespace tfx {
 		spawn_work.free();
 
 		if (flags & tfxEffectManagerFlags_unordered) {
-			{
-				tmpMTStack(tfxControlWorkEntry, work);
-				for (int index : emitters_in_use[next_buffer]) {
-					tfxControlWorkEntry &work_entry = work.next();
-					work_entry.next_buffer = next_buffer;
-					work_entry.properties = &emitters.library[index]->emitter_properties;
-					work_entry.emitter_index = index;
-					ControlParticles2d(*this, index, work_entry);
+			for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+				{
+					tmpMTStack(tfxControlWorkEntry, work);
+					for (int index : emitters_in_use[depth][next_buffer]) {
+						tfxControlWorkEntry &work_entry = work.next();
+						work_entry.next_buffer = next_buffer;
+						work_entry.properties = &emitters.library[index]->emitter_properties;
+						work_entry.emitter_index = index;
+						ControlParticles2d(*this, index, work_entry);
+					}
+					tfxCompleteAllWork(&tfxQueue);
+					work.free();
 				}
-				tfxCompleteAllWork(&tfxQueue);
-				work.free();
-			}
-			{
-				tmpMTStack(tfxParticleAgeWorkEntry, work);
-				for (int index : emitters_in_use[next_buffer]) {
-					tfxSoABuffer &bank = particle_array_buffers[emitters.particles_index[index]];
-					tfxParticleAgeWorkEntry &work_entry = work.next();
-					work_entry.properties = &emitters.library[index]->emitter_properties;
-					work_entry.start_index = bank.current_size - 1;
-					work_entry.emitter_index = index;
-					work_entry.pm = this;
+				{
+					tmpMTStack(tfxParticleAgeWorkEntry, work);
+					for (int index : emitters_in_use[depth][next_buffer]) {
+						tfxSoABuffer &bank = particle_array_buffers[emitters.particles_index[index]];
+						tfxParticleAgeWorkEntry &work_entry = work.next();
+						work_entry.properties = &emitters.library[index]->emitter_properties;
+						work_entry.start_index = bank.current_size - 1;
+						work_entry.emitter_index = index;
+						work_entry.pm = this;
 #if tfxMULTITHREADED
-					tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleAge);
+						tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleAge);
 #else
-					ControlParticleAge(&tfxQueue, &work_entry);
+						ControlParticleAge(&tfxQueue, &work_entry);
 #endif
+					}
+					tfxCompleteAllWork(&tfxQueue);
+					work.free();
 				}
-				tfxCompleteAllWork(&tfxQueue);
-				work.free();
 			}
 		}
 
-		for (int i = effects_start_size; i != effects_in_use[current_ebuff].current_size; ++i) {
-			tfxU32 current_index = emitters_in_use[current_ebuff][i];
-			UpdatePMEffect(*this, current_index);
-			effects_in_use[next_buffer].push_back(current_index);
-		}
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			for (int i = effects_start_size[depth]; i != effects_in_use[depth][current_ebuff].current_size; ++i) {
+				tfxU32 current_index = effects_in_use[depth][current_ebuff][i];
+				UpdatePMEffect(*this, current_index);
+				effects_in_use[depth][next_buffer].push_back(current_index);
+			}
 
-		for (int i = emitter_start_size; i != emitters_in_use[current_ebuff].current_size; ++i) {
-			tfxSpawnWorkEntry work_entry;
-			tfxU32 current_index = emitters_in_use[current_ebuff][i];
-			work_entry.emitter_index = current_index;
-			work_entry.next_buffer = next_buffer;
-			emitters.particles_index[current_index] = GrabParticleLists(*this, emitters.path_hash[current_index], 100);
-			UpdatePMEmitter(*this, &work_entry);
-			emitters_in_use[next_buffer].push_back(current_index);
+			for (int i = emitter_start_size[depth]; i != emitters_in_use[depth][current_ebuff].current_size; ++i) {
+				tfxSpawnWorkEntry work_entry;
+				tfxU32 current_index = emitters_in_use[depth][current_ebuff][i];
+				work_entry.emitter_index = current_index;
+				work_entry.next_buffer = next_buffer;
+				emitters.particles_index[current_index] = GrabParticleLists(*this, emitters.path_hash[current_index], 100);
+				UpdatePMEmitter(*this, &work_entry);
+				emitters_in_use[depth][next_buffer].push_back(current_index);
+			}
 		}
 
 		if (!(flags & tfxEffectManagerFlags_unordered)) {
@@ -7760,7 +7781,7 @@ namespace tfx {
 	}
 
 	tfxvec<tfxU32> *tfxParticleManager::GetEffectBuffer() {
-		return &effects_in_use[current_ebuff];
+		return &effects_in_use[0][current_ebuff];
 	}
 
 	void tfxParticleManager::InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode) {
@@ -7815,11 +7836,13 @@ namespace tfx {
 		memcpy(effects[1].name, "ParticleManager::effects1\0", 26);
 #endif
 
-		effects_in_use[0].reserve(max_effects);
-		effects_in_use[1].reserve(max_effects);
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			effects_in_use[depth][0].reserve(max_effects);
+			effects_in_use[depth][1].reserve(max_effects);
 
-		emitters_in_use[0].reserve(max_effects);
-		emitters_in_use[1].reserve(max_effects);
+			emitters_in_use[depth][0].reserve(max_effects);
+			emitters_in_use[depth][1].reserve(max_effects);
+		}
 
 		InitEffectSoA(&effect_buffers, &effects, max_effects);
 		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
@@ -7878,8 +7901,13 @@ namespace tfx {
 		memcpy(effects[1].name, "ParticleManager::effects1\0", 26);
 #endif
 
-		effects_in_use[0].reserve(max_effects);
-		effects_in_use[1].reserve(max_effects);
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			effects_in_use[depth][0].reserve(max_effects);
+			effects_in_use[depth][1].reserve(max_effects);
+
+			emitters_in_use[depth][0].reserve(max_effects);
+			emitters_in_use[depth][1].reserve(max_effects);
+		}
 		free_effects.reserve(max_effects);
 	}
 
@@ -8026,14 +8054,19 @@ namespace tfx {
 					ClearSoABuffer(&bank);
 				}
 			}
-			for (auto index : emitters_in_use[current_ebuff]) {
-				FreeParticleList(index);
+			for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+				for (auto index : emitters_in_use[depth][current_ebuff]) {
+					FreeParticleList(index);
+				}
 			}
 		}
-		effects_in_use[0].clear();
-		effects_in_use[1].clear();
-		emitters_in_use[0].clear();
-		emitters_in_use[1].clear();
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			effects_in_use[depth][0].clear();
+			effects_in_use[depth][1].clear();
+
+			emitters_in_use[depth][0].clear();
+			emitters_in_use[depth][1].clear();
+		}
 		free_effects.clear();
 		free_emitters.clear();
 		ClearSoABuffer(&emitter_buffers);
@@ -8054,7 +8087,7 @@ namespace tfx {
 	}
 
 	void tfxParticleManager::SoftExpireAll() {
-		for (auto index : effects_in_use[current_ebuff]) {
+		for (auto index : effects_in_use[0][current_ebuff]) {
 			emitters.state_flags[index] |= tfxEmitterStateFlags_stop_spawning;
 		}
 	}
@@ -8120,7 +8153,7 @@ namespace tfx {
 	}
 
 	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 position) {
-		tfxU32 buffer_index = pm.AddEffect(effect, pm.current_ebuff);
+		tfxU32 buffer_index = pm.AddEffect(effect, pm.current_ebuff, 0);
 		pm.emitters.local_position[buffer_index] = position;
 	}
 
@@ -8623,7 +8656,8 @@ namespace tfx {
 				for (auto &sub : *entry->sub_effects) {
 					if (!pm.FreeEffectCapacity())
 						break;
-					tfxU32 added_index = pm.AddEffect(sub, pm.current_ebuff, true);
+					assert(entry->depth < tfxMAXDEPTH - 1);
+					tfxU32 added_index = pm.AddEffect(sub, pm.current_ebuff, entry->depth + 1, true);
 					pm.effects.overal_scale[added_index] = pm.emitters.overal_scale[index];
 					pm.effects.parent_particle_id[added_index] = next_id;
 				}
