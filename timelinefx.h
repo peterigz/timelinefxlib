@@ -1008,12 +1008,31 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 volatile next_read_entry = 0;
 		tfxU32 volatile next_write_entry = 0;
 		tfxU32 volatile sleeping_threads = 0;
+		tfxU32 volatile locked = 0;
 		tfxU32 total_threads;
 		HANDLE semaphore_handle;
 		tfxWorkQueueEntry entries[256];
 	};
 
 	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+
+		while (InterlockedCompareExchange(&queue->locked, 1, 0) != 0);
+		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
+		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
+		queue->entries[queue->next_write_entry].data = data;
+		queue->entries[queue->next_write_entry].call_back = call_back;
+		++queue->entry_completion_goal;
+
+		_WriteBarrier();
+
+		queue->next_write_entry = new_entry_to_write;
+
+		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
+
+		InterlockedExchange(&queue->locked, 0);
+	}
+
+	inline void tfxDeferredAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
 
 		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
 		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
@@ -6051,6 +6070,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		int depth;
 		float qty_step_size;
 		float highest_particle_age;
+		LONG volatile position_progress;
+		LONG volatile micro_ran;
 	};
 
 	struct tfxControlWorkEntry {
@@ -6174,6 +6195,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
 		tfxEffectManagerFlags flags;
+
+		tfxU32 volatile micros_added_count;	//delete me
 
 		tfxParticleManager() :
 			flags(0),
@@ -6439,20 +6462,30 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
 
 	//Wide mt versions
-
 	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
-	void SpawnParticlePositions2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleArea2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleWeight(tfxWorkQueue *queue, void *data);
+	void SpawnParticleVelocity(tfxWorkQueue *queue, void *data);
+	void SpawnParticleRoll(tfxWorkQueue *queue, void *data);
+	void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSize(tfxWorkQueue *queue, void *data);
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSpin(tfxWorkQueue *queue, void *data);
+	void MaybeAddMicroUpdateToQueue(tfxSpawnWorkEntry *entry);
 
 	void ControlParticleAge(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize(tfxWorkQueue *queue, void *data);
 	void ControlParticleColor(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
+
+	tfxU32 SpawnWideParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
+	void SpawnParticlePositions3d(tfxWorkQueue *queue, void *data);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
