@@ -7270,8 +7270,6 @@ namespace tfx {
 			emitter_start_size[depth] = emitters_in_use[depth][current_ebuff].current_size;
 		}
 
-		micros_added_count = 0;
-
 		tmpMTStack(tfxSpawnWorkEntry, spawn_work);
 		//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
@@ -7299,8 +7297,6 @@ namespace tfx {
 				spawn_work_entry->next_buffer = next_buffer;
 				spawn_work_entry->properties = &emitters.library[current_index]->emitter_properties;
 				spawn_work_entry->sub_effects = &emitters.library[current_index]->effect_infos[emitters.info_index[current_index]].sub_effectors;
-				spawn_work_entry->position_progress = 0;
-				spawn_work_entry->micro_ran = 0;
 				spawn_work_entry->amount_to_spawn = 0;
 
 				float &timeout_counter = emitters.timeout_counter[current_index];
@@ -7320,27 +7316,10 @@ namespace tfx {
 			}
 		}
 
-		//Complete the spawn particles work
-		for (auto &work_entry : spawn_work) {
-			tfxU32 index = work_entry.emitter_index;
-			if (work_entry.amount_to_spawn > 0) {
-				if (work_entry.amount_to_spawn > 0 && work_entry.position_progress != 4) {
-					int debug;
-				}
-			}
-		}
-		if(spawn_work.current_size > 10)
-			while (micros_added_count < 15);
 		tfxCompleteAllWork(&tfxQueue);
-		printf("Micro updates added: %i \n", micros_added_count);
 
 		for (auto &work_entry : spawn_work) {
 			tfxU32 index = work_entry.emitter_index;
-			if (micros_added_count == 15 && work_entry.amount_to_spawn > 0) {
-				if (work_entry.micro_ran == 0) {
-					printf("No micro update \n");
-				}
-			}
 			emitters.highest_particle_age[index] = std::fmaxf(emitters.highest_particle_age[index], work_entry.highest_particle_age);
 			effects.highest_particle_age[emitters.parent_index[index]] = emitters.highest_particle_age[index] + tfxFRAME_LENGTH;
 			if (emitters.property_flags[index] & tfxEmitterPropertyFlags_single)
@@ -8636,6 +8615,11 @@ namespace tfx {
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleWeight);
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleVelocity);
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleRoll);
+			//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
+			//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
+			//fine and is stable
+			tfxCompleteAllWork(&tfxQueue);
+			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleMicroUpdate2d);
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleNoise);
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleImageFrame);
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticleSize);
@@ -8659,11 +8643,11 @@ namespace tfx {
 		SpawnParticleWeight(&tfxQueue, &work_entry);
 		SpawnParticleVelocity(&tfxQueue, &work_entry);
 		SpawnParticleRoll(&tfxQueue, &work_entry);
+		SpawnParticleMicroUpdate2d(&tfxQueue, &work_entry);
 		SpawnParticleNoise(&tfxQueue, &work_entry);
 		SpawnParticleImageFrame(&tfxQueue, &work_entry);
 		SpawnParticleSize(&tfxQueue, &work_entry);
 		SpawnParticleSpin(&tfxQueue, &work_entry);
-		SpawnParticleMicroUpdate2d(&tfxQueue, &work_entry);
 #endif
 		return work_entry.amount_to_spawn;
 	}
@@ -8938,7 +8922,7 @@ namespace tfx {
 			tween += entry->qty_step_size;
 		}
 
-		MaybeAddMicroUpdateToQueue(entry);
+		//MaybeAddMicroUpdateToQueue(entry);
 	}
 
 	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data) {
@@ -9004,7 +8988,7 @@ namespace tfx {
 			tween += entry->qty_step_size;
 		}
 
-		MaybeAddMicroUpdateToQueue(entry);
+		//MaybeAddMicroUpdateToQueue(entry);
 	}
 
 	void SpawnParticleArea2d(tfxWorkQueue *queue, void *data) {
@@ -9180,7 +9164,7 @@ namespace tfx {
 			tween += entry->qty_step_size;
 		}
 
-		MaybeAddMicroUpdateToQueue(entry);
+		//MaybeAddMicroUpdateToQueue(entry);
 	}
 
 	void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data) {
@@ -9263,7 +9247,7 @@ namespace tfx {
 			tween += entry->qty_step_size;
 		}
 
-		MaybeAddMicroUpdateToQueue(entry);
+		//MaybeAddMicroUpdateToQueue(entry);
 	}
 
 	void SpawnParticleWeight(tfxWorkQueue *queue, void *data) {
@@ -9295,7 +9279,7 @@ namespace tfx {
 			weight_acceleration = base_weight * first_weight_value;
 		}
 
-		MaybeAddMicroUpdateToQueue(entry);
+		//MaybeAddMicroUpdateToQueue(entry);
 	}
 
 	void SpawnParticleVelocity(tfxWorkQueue *queue, void *data) {
@@ -9319,7 +9303,7 @@ namespace tfx {
 			base_velocity = velocity + random_generation.Range(-velocity_variation, velocity_variation);
 		}
 
-		MaybeAddMicroUpdateToQueue(entry);
+		//MaybeAddMicroUpdateToQueue(entry);
 	}
 
 	void SpawnParticleRoll(tfxWorkQueue *queue, void *data) {
@@ -9348,15 +9332,16 @@ namespace tfx {
 			}
 		}
 
-		MaybeAddMicroUpdateToQueue(entry);
+		//MaybeAddMicroUpdateToQueue(entry);
 	}
 
 	void MaybeAddMicroUpdateToQueue(tfxSpawnWorkEntry *entry) {
-		LONG progress = InterlockedIncrement(&entry->position_progress);
-		if (progress == 4) {
-			tfxAddWorkQueueEntry(&tfxQueue, entry, SpawnParticleMicroUpdate2d);
-			InterlockedIncrement(&entry->pm->micros_added_count);
-		}
+		return;
+		//if (progress == 4) {
+			//tfxAddWorkQueueEntry(&tfxQueue, entry, SpawnParticleMicroUpdate2d);
+			//SpawnParticleMicroUpdate2d(&tfxQueue, entry);
+			//InterlockedIncrement(&entry->pm->micros_added_count);
+		//}
 	}
 
 	void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data) {
@@ -9463,7 +9448,6 @@ namespace tfx {
 
 			tween += entry->qty_step_size;
 		}
-		entry->micro_ran = 1;
 	}
 
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxU32 max_spawn_amount, tfxEmitterPropertiesSoA &properties) {
@@ -10071,8 +10055,9 @@ namespace tfx {
 			else {
 				transform_particle_callback2d(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
 			}
+			s.transform.captured_position = captured_position.xy();
+			captured_position = s.transform.position;
 
-			s.transform.captured_position = s.transform.position;
 		}
 	}
 

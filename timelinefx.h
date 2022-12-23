@@ -1008,7 +1008,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 volatile next_read_entry = 0;
 		tfxU32 volatile next_write_entry = 0;
 		tfxU32 volatile sleeping_threads = 0;
-		tfxU32 volatile locked = 0;
+		std::mutex mutex;
 		tfxU32 total_threads;
 		HANDLE semaphore_handle;
 		tfxWorkQueueEntry entries[256];
@@ -1016,12 +1016,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
 
-		while (InterlockedCompareExchange(&queue->locked, 1, 0) != 0);
+		std::lock_guard<std::mutex> lock(queue->mutex);
+
 		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
 		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
 		queue->entries[queue->next_write_entry].data = data;
 		queue->entries[queue->next_write_entry].call_back = call_back;
-		++queue->entry_completion_goal;
+		InterlockedIncrement(&queue->entry_completion_goal);
 
 		_WriteBarrier();
 
@@ -1029,22 +1030,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
 
-		InterlockedExchange(&queue->locked, 0);
-	}
-
-	inline void tfxDeferredAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
-
-		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
-		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
-		queue->entries[queue->next_write_entry].data = data;
-		queue->entries[queue->next_write_entry].call_back = call_back;
-		++queue->entry_completion_goal;
-
-		_WriteBarrier();
-
-		queue->next_write_entry = new_entry_to_write;
-
-		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
 	}
 
 	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
@@ -1066,10 +1051,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 
 		return sleep;
-	}
-
-	static bool tfxWorkPending(tfxWorkQueue *queue) {
-		return queue->next_write_entry != queue->entry_completion_count;
 	}
 
 	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
@@ -2339,6 +2320,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline T&			next() {
 			if (current_size == capacity)
 				assert(resize(_grow_capacity(current_size + 1), true));	//Stack overflow, try increasing the stack size
+			new((void*)(block + current_size)) T();
 			return block[current_size++];
 		}
 		inline void			pop() { 
@@ -6064,14 +6046,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxvec<tfxEffectEmitter> *sub_effects;
 		float tween;
 		tfxU32 max_spawn_count;
-		tfxU32 amount_to_spawn;
+		tfxU32 amount_to_spawn = 0;
 		tfxU32 spawn_start_index;
 		tfxU32 next_buffer;
 		int depth;
 		float qty_step_size;
 		float highest_particle_age;
-		LONG volatile position_progress;
-		LONG volatile micro_ran;
+		//LONG volatile position_progress = 0;	//Was used in a multi producer version but had issues getting it working
 	};
 
 	struct tfxControlWorkEntry {
@@ -6195,8 +6176,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
 		tfxEffectManagerFlags flags;
-
-		tfxU32 volatile micros_added_count;	//delete me
 
 		tfxParticleManager() :
 			flags(0),
