@@ -5331,7 +5331,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxEmitterSoA {
 		void(**transform_particle_callback2d)(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
-		void(**transform_particle_callback3d)(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
+		void(**transform_particle_callback3d)(const tfxVec3 local_position, const tfxVec3 local_rotation, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
 
 		//State data
 		float *frame;
@@ -5403,7 +5403,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float *emission_alternator;
 		tfxEmitterStateFlags *state_flags;
 		tfxVec2 *image_size;
-		float *angle_offset;
+		tfxVec3 *angle_offsets;
 
 	};
 
@@ -5474,7 +5474,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, emission_alternator));
 		AddStructArray(buffer, sizeof(tfxEmitterStateFlags), offsetof(tfxEmitterSoA, state_flags));
 		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, image_size));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, angle_offset));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, angle_offsets));
 
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
@@ -5754,30 +5754,36 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Discard expired and write to next buffer
 	//
 
+	struct tfxDepth {
+		float depth;
+		tfxU32 index;
+	};
+
 	//These all point into a tfxSoABuffer, initialised with InitParticleSoA
 	struct tfxParticleSoA {
 		tfxU32 *parent_index;
-		tfxU32* sprite_index;
-		tfxParticleID* next_id;
-		tfxParticleFlags* flags;
-		float* age;							//The age of the particle, used by the controller to look up the current state on the graphs
-		float* max_age;						//max age before the particle expires
-		tfxVec3* local_position;			//The local position of the particle, relative to the emitter.
-		tfxVec3* captured_position;			//The captured position of the particle, relative to the emitter.
-		tfxVec3* local_rotations;
-		tfxVec3* velocity_normal;
-		float* stretch;
-		float* weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
-		float* base_weight;
-		float* base_velocity;
-		float* base_spin;
-		float* noise_offset;				//Higher numbers means random movement is less uniform
-		float* noise_resolution;			//Higher numbers means random movement is more uniform
-		tfxRGBA8* color;					//Colour of the particle
-		float* intensity;
-		float* image_frame;					//Current frame of the image if it's an animation
-		tfxVec2* base_size;
-		tfxU32* single_loop_count;			//The number of times a single particle has looped over
+		tfxU32 *sprite_index;
+		tfxParticleID *next_id;
+		tfxParticleFlags *flags;
+		float *age;
+		float *max_age;
+		tfxVec3 *local_position;
+		tfxVec3 *captured_position;	
+		tfxVec3 *local_rotations;
+		tfxVec4 *velocity_normal;
+		tfxDepth *depth;
+		float *stretch;
+		float *weight_acceleration;
+		float *base_weight;
+		float *base_velocity;
+		float *base_spin;
+		float *noise_offset;	
+		float *noise_resolution;
+		tfxRGBA8 *color;	
+		float *intensity;
+		float *image_frame;
+		tfxVec2 *base_size;
+		tfxU32 *single_loop_count;
 	};
 
 	inline void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount) {
@@ -5790,7 +5796,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, local_position));			
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, captured_position));			
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, local_rotations));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, velocity_normal));
+		AddStructArray(buffer, sizeof(tfxVec4), offsetof(tfxParticleSoA, velocity_normal));
+		AddStructArray(buffer, sizeof(tfxDepth), offsetof(tfxParticleSoA, depth));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, stretch));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, weight_acceleration));			
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
@@ -6064,7 +6071,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxOvertimeAttributes *graphs;
 		tfxU32 layer;
 		tfxEmitterPropertiesSoA *properties;
-		tfxring<tfxParticleSprite2d> *sprites;
+		tfxring<tfxParticleSprite2d> *sprites2d;
+		tfxring<tfxParticleSprite3d> *sprites3d;
 	};
 
 	struct tfxParticleAgeWorkEntry {
@@ -6435,7 +6443,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
 	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxVec2 &sprite_scale, tfxU32 parent_index, tfxEffectLibrary *library);
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
-	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxEffectLibrary *library, tfxU32 amount_spawned);
+	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticlesOrdered2d(tfxParticleManager &pm);
 	void ControlParticlesOrdered3d(tfxParticleManager &pm);
 	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
@@ -6446,25 +6454,42 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleArea2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
+
 	void SpawnParticleWeight(tfxWorkQueue *queue, void *data);
 	void SpawnParticleVelocity(tfxWorkQueue *queue, void *data);
 	void SpawnParticleRoll(tfxWorkQueue *queue, void *data);
-	void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSize(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSpin(tfxWorkQueue *queue, void *data);
-	void MaybeAddMicroUpdateToQueue(tfxSpawnWorkEntry *entry);
-
-	void ControlParticleAge(tfxWorkQueue *queue, void *data);
-	void ControlParticlePosition(tfxWorkQueue *queue, void *data);
-	void ControlParticleSize(tfxWorkQueue *queue, void *data);
-	void ControlParticleColor(tfxWorkQueue *queue, void *data);
-	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
 
 	tfxU32 SpawnWideParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
-	void SpawnParticlePositions3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleLine3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleArea3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleEllipse3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleCylinder3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleIcosphereRandom3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleDepthSort(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
+
+	void MaybeAddMicroUpdateToQueue(tfxSpawnWorkEntry *entry);	//Not in use currently, had issues with multithreading, needs working multiproducer queue
+
+	void ControlParticleAge(tfxWorkQueue *queue, void *data);
+	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleSize2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleColor2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleImageFrame2d(tfxWorkQueue *queue, void *data);
+	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleSize3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleColor3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data);
+
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
@@ -6827,24 +6852,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(data.local_position.x, data.local_position.y) + handle.xy());
 		world_position = from_position.xy() + rotatevec * scale.xy();
 	}
-	static inline void TransformParticlePosition(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = local_position;
-		world_rotations = roll;
-	}
-	static inline void TransformParticlePositionAngle(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = local_position;
-		world_rotations = parent_rotations.roll + roll;
-	}
-	static inline void TransformParticlePositionRelative(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_rotations = roll;
-		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position.x, local_position.y) + handle.xy());
-		world_position = from_position.xy() + rotatevec * scale.xy();
-	}
-	static inline void TransformParticlePositionRelativeLine(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_rotations = parent_rotations.roll + roll;
-		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position.x, local_position.y) + handle.xy());
-		world_position = from_position.xy() + rotatevec * scale.xy();
-	}
 	static inline void TransformParticle3dPositions(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_position = data.local_position;
 	}
@@ -6865,6 +6872,49 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec4 rotatevec = mmTransformVector(matrix, data.local_position + handle);
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
+	//-------------------------------------------------
+	//--New transform particle functions for SoA data--
+	//--------------------------2d---------------------
+	static inline void TransformParticlePosition(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_position = local_position;
+		world_rotations = roll;
+	}
+	static inline void TransformParticlePositionAngle(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_position = local_position;
+		world_rotations = parent_rotations.roll + roll;
+	}
+	static inline void TransformParticlePositionRelative(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_rotations = roll;
+		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position.x, local_position.y) + handle.xy());
+		world_position = from_position.xy() + rotatevec * scale.xy();
+	}
+	static inline void TransformParticlePositionRelativeLine(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_rotations = parent_rotations.roll + roll;
+		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position.x, local_position.y) + handle.xy());
+		world_position = from_position.xy() + rotatevec * scale.xy();
+	}
+	//-------------------------------------------------
+	//--New transform particle functions for SoA data--
+	//--------------------------3d---------------------
+	static inline void TransformParticlePosition3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_position = local_position;
+		world_rotations = local_rotations;
+	}
+	static inline void TransformParticlePositionAngle3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_position = local_position;
+		world_rotations = world_rotations + local_rotations;
+	}
+	static inline void TransformParticlePositionRelative3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_rotations = local_rotations;
+		tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
+		world_position = from_position + rotatevec.xyz() * scale;
+	}
+	static inline void TransformParticlePositionRelativeLine3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_rotations = local_rotations;
+		tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
+		world_position = from_position + rotatevec.xyz() * scale;
+	}
+	//-------------------------------------------------
 	//todo: redundant function? Remove if so.
 	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_rotations = data.local_rotations;
@@ -6875,6 +6925,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	static inline int SortParticles(void const *left, void const *right) {
 		float d1 = static_cast<const tfxSpawnPosition*>(left)->distance_to_camera;
 		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
+		return (d2 > d1) - (d2 < d1);
+	}
+
+	static inline int SortDepth(void const *left, void const *right) {
+		float d1 = static_cast<const tfxDepth*>(left)->depth;
+		float d2 = static_cast<const tfxDepth*>(right)->depth;
 		return (d2 > d1) - (d2 < d1);
 	}
 
