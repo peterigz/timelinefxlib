@@ -10388,6 +10388,18 @@ namespace tfx {
 			tfxVec4 &velocity_normal = entry->particle_data->velocity_normal[index];
 			float &base_velocity = entry->particle_data->base_velocity[index];
 
+			tfxVec3 world_position;
+			if (!line && !(property_flags & tfxEmitterPropertyFlags_relative_position)) {
+				if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
+					world_position = local_position;
+				}
+				else {
+					tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
+					world_position = world_position + rotatevec.xyz() * scale;
+				}
+				captured_position = world_position;
+			}
+
 			//Do a micro update
 			//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
 			//the alignment on the first frame can be calculated
@@ -10402,7 +10414,6 @@ namespace tfx {
 			}
 			current_velocity *= micro_time;
 			local_position += current_velocity;
-			tfxVec3 world_position;
 			if (line || property_flags & tfxEmitterPropertyFlags_relative_position) {
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
 					world_position = local_position;
