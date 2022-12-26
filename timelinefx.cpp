@@ -7023,6 +7023,7 @@ namespace tfx {
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
 		}
+		tfxEmitterPropertiesSoA &properties = effect.library->emitter_properties;
 		for (auto &e : effect.GetInfo().sub_effectors) {
 			if (!FreeEffectCapacity())
 				break;
@@ -7032,7 +7033,6 @@ namespace tfx {
 					break;
 				emitters.particles_index[index] = tfxINVALID;
 				emitters_in_use[depth][buffer].push_back(index);
-				tfxEmitterPropertiesSoA &properties = e.library->emitter_properties;
 				emitters.parent_index[index] = parent_index;
 				if (emitters.particles_index[index] == tfxINVALID && flags & tfxEffectManagerFlags_unordered) {
 					if(!is_sub_emitter)
@@ -7062,6 +7062,7 @@ namespace tfx {
 				emitters.amount_remainder[index] = 0.f;
 				emitters.qty_step_size[index] = 0.f;
 				emitters.timeout_counter[index] = 0;
+				emitters.emitter_size[index] = 0.f;
 				//----Handle
 				if (e.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 					emitters.image_handle[index] = tfxVec2(0.5f, 0.5f);
@@ -7080,8 +7081,8 @@ namespace tfx {
 				state_flags |= (properties.emission_type[e.property_index] != tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type[e.property_index] == tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
 				state_flags |= e.property_flags & tfxEmitterPropertyFlags_random_color;
 				state_flags |= e.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-				state_flags |= properties.angle_settings[e.property_index] != tfxAngleSettingFlags_align_roll && !(e.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
-				state_flags |= properties.angle_settings[e.property_index] == tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
+				state_flags |= !(properties.angle_settings[e.property_index] & tfxAngleSettingFlags_align_roll) && !(e.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+				state_flags |= properties.angle_settings[e.property_index] & tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
 				state_flags |= properties.emission_type[e.property_index] == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
 				state_flags |= e.property_flags & tfxEmitterPropertyFlags_play_once;
 				state_flags |= properties.end_behaviour[e.property_index] == tfxLoop ? tfxEmitterStateFlags_loop : 0;
@@ -7321,8 +7322,6 @@ namespace tfx {
 			tfxU32 index = work_entry.emitter_index;
 			emitters.highest_particle_age[index] = std::fmaxf(emitters.highest_particle_age[index], work_entry.highest_particle_age);
 			effects.highest_particle_age[emitters.parent_index[index]] = emitters.highest_particle_age[index] + tfxFRAME_LENGTH;
-			if (emitters.property_flags[index] & tfxEmitterPropertyFlags_single)
-				emitters.state_flags[index] |= tfxEmitterStateFlags_single_shot_done;
 		}
 		spawn_work.free();
 
@@ -8480,6 +8479,7 @@ namespace tfx {
 					pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 				}
 			}
+
 		}
 		else {
 			assert(false);	//Emitter must have a valid parent index
@@ -8650,9 +8650,13 @@ namespace tfx {
 		SpawnParticleMicroUpdate2d(&tfxQueue, &work_entry);
 		SpawnParticleNoise(&tfxQueue, &work_entry);
 		SpawnParticleImageFrame(&tfxQueue, &work_entry);
-		SpawnParticleSize(&tfxQueue, &work_entry);
-		SpawnParticleSpin(&tfxQueue, &work_entry);
+		SpawnParticleSize2d(&tfxQueue, &work_entry);
+		SpawnParticleSpin2d(&tfxQueue, &work_entry);
 #endif
+
+		if (work_entry.amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
+			pm.emitters.state_flags[work_entry.emitter_index] |= tfxEmitterStateFlags_single_shot_done;
+
 		return work_entry.amount_to_spawn;
 	}
 
@@ -8755,26 +8759,39 @@ namespace tfx {
 		SpawnParticleAge(&tfxQueue, &work_entry);
 
 		if (emission_type == tfxPoint) {
-			SpawnParticlePoint2d(&tfxQueue, &work_entry);
+			SpawnParticlePoint3d(&tfxQueue, &work_entry);
 		}
 		else if (emission_type == tfxArea) {
-			SpawnParticleArea2d(&tfxQueue, &work_entry);
+			SpawnParticleArea3d(&tfxQueue, &work_entry);
 		}
 		else if (emission_type == tfxEllipse) {
-			SpawnParticleEllipse2d(&tfxQueue, &work_entry);
+			SpawnParticleEllipse3d(&tfxQueue, &work_entry);
 		}
 		else if (emission_type == tfxLine) {
-			SpawnParticleLine2d(&tfxQueue, &work_entry);
+			SpawnParticleLine3d(&tfxQueue, &work_entry);
+		}
+		else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+			SpawnParticleLine3d(&tfxQueue, &work_entry);
+		}
+		else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
+			SpawnParticleLine3d(&tfxQueue, &work_entry);
+		}
+		else if (emission_type == tfxCylinder) {
+			SpawnParticleLine3d(&tfxQueue, &work_entry);
 		}
 		SpawnParticleWeight(&tfxQueue, &work_entry);
 		SpawnParticleVelocity(&tfxQueue, &work_entry);
 		SpawnParticleRoll(&tfxQueue, &work_entry);
-		SpawnParticleMicroUpdate2d(&tfxQueue, &work_entry);
+		SpawnParticleMicroUpdate3d(&tfxQueue, &work_entry);
 		SpawnParticleNoise(&tfxQueue, &work_entry);
 		SpawnParticleImageFrame(&tfxQueue, &work_entry);
-		SpawnParticleSize(&tfxQueue, &work_entry);
-		SpawnParticleSpin(&tfxQueue, &work_entry);
+		SpawnParticleSize3d(&tfxQueue, &work_entry);
+		SpawnParticleSpin3d(&tfxQueue, &work_entry);
 #endif
+
+		if (work_entry.amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
+			pm.emitters.state_flags[work_entry.emitter_index] |= tfxEmitterStateFlags_single_shot_done;
+
 		return work_entry.amount_to_spawn;
 	}
 
@@ -8924,14 +8941,12 @@ namespace tfx {
 				float random_size_y = random_generation.Range(size_variation.y);
 				base_size.y = random_size_y + size.y;
 				base_size.x = random_size_x + size.x;
-				float height = base_size.y;
 			}
 			else {
 				float random_size_x = random_generation.Range(size_variation.x);
 				float random_size_y = random_size_x;
 				base_size.y = random_size_y + size.y;
 				base_size.x = random_size_x + size.x;
-				float height = base_size.y;
 			}
 
 		}
@@ -8994,14 +9009,12 @@ namespace tfx {
 		tfxParticleManager &pm = *entry->pm;
 
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
-		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const float spin_variation = pm.emitters.spin_variation[emitter_index];
 		const float spin = pm.emitters.spin[emitter_index];
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 		const tfxVec3 angle_offsets = pm.emitters.angle_offsets[emitter_index];
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
-		const tfxAngleSettingFlags angle_settings = properties.angle_settings[emitter_index];
-		const tfxEmissionType emission_type = properties.emission_type[emitter_index];
+		const tfxAngleSettingFlags angle_settings = entry->properties->angle_settings[property_index];
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9876,12 +9889,12 @@ namespace tfx {
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 		const tfxVec3 emitter_captured_position = pm.emitters.captured_position[emitter_index];
 		const tfxVec3 emitter_world_position = pm.emitters.world_position[emitter_index];
+		const tfxVec3 emitter_size = pm.emitters.emitter_size[emitter_index];
 		const tfxMatrix4 matrix = pm.emitters.matrix[emitter_index];
 		const tfxVec3 handle = pm.emitters.handle[emitter_index];
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 		const tfxVec3 &grid_points = properties.grid_points[property_index];
 		const tfxVec3 &grid_segment_size = pm.emitters.grid_segment_size[emitter_index];
-		const tfxVec3 emitter_size = pm.emitters.emitter_size[emitter_index];
 		const tfxVec3 scale = pm.emitters.scale[emitter_index];
 		const float arc_offset = pm.emitters.arc_offset[emitter_index];
 		const float arc_size = pm.emitters.arc_size[emitter_index];
@@ -9894,7 +9907,7 @@ namespace tfx {
 			local_position = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
-			tfxVec3 emitter_size = emitter_size * .5f;
+			tfxVec3 half_emitter_size = emitter_size * .5f;
 			tfxVec3 position;
 
 			if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
@@ -9906,19 +9919,19 @@ namespace tfx {
 				float cos_theta = std::cosf(theta);
 				float sin_phi = std::sinf(phi);
 				float cos_phi = std::cosf(phi);
-				local_position.x = emitter_size.x * sin_phi * cos_theta;
-				local_position.y = emitter_size.y * sin_phi * sin_theta;
-				local_position.z = emitter_size.z * cos_phi;
+				local_position.x = half_emitter_size.x * sin_phi * cos_theta;
+				local_position.y = half_emitter_size.y * sin_phi * sin_theta;
+				local_position.z = half_emitter_size.z * cos_phi;
 			}
 			else {
-				position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
-				position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
-				position.z = random_generation.Range(-emitter_size.z, emitter_size.z);
+				position.x = random_generation.Range(-half_emitter_size.x, half_emitter_size.x);
+				position.y = random_generation.Range(-half_emitter_size.y, half_emitter_size.y);
+				position.z = random_generation.Range(-half_emitter_size.z, half_emitter_size.z);
 
-				while (std::powf(position.x / emitter_size.x, 2.f) + std::powf(position.y / emitter_size.y, 2.f) + std::powf(position.z / emitter_size.z, 2.f) > 1.f) {
-					position.x = random_generation.Range(-emitter_size.x, emitter_size.x);
-					position.y = random_generation.Range(-emitter_size.y, emitter_size.y);
-					position.z = random_generation.Range(-emitter_size.z, emitter_size.z);
+				while (std::powf(position.x / half_emitter_size.x, 2.f) + std::powf(position.y / half_emitter_size.y, 2.f) + std::powf(position.z / half_emitter_size.z, 2.f) > 1.f) {
+					position.x = random_generation.Range(-half_emitter_size.x, half_emitter_size.x);
+					position.y = random_generation.Range(-half_emitter_size.y, half_emitter_size.y);
+					position.z = random_generation.Range(-half_emitter_size.z, half_emitter_size.z);
 				}
 
 				local_position = position;
@@ -10364,18 +10377,15 @@ namespace tfx {
 		const float first_velocity_value = library->emitter_attributes[emitter_attributes].overtime.velocity.GetFirstValue() * tfxUPDATE_TIME;
 		const float first_weight_value = library->emitter_attributes[emitter_attributes].overtime.weight.GetFirstValue() * tfxUPDATE_TIME;
 		const float first_stretch_value = library->emitter_attributes[emitter_attributes].overtime.stretch.GetFirstValue() * tfxUPDATE_TIME;
-		const tfxAngleSettingFlags angle_settings = properties.angle_settings[property_index];
-		const float angle_roll_offset = properties.angle_offsets[property_index].roll;
-		const tfxVec3 emitter_captured_position = pm.emitters.captured_position[emitter_index];
 		const tfxVec3 emitter_world_position = pm.emitters.world_position[emitter_index];
-		const tfxVec3 emitter_world_rotations = pm.emitters.world_rotations[emitter_index];
+		const tfxVec3 emitter_size = pm.emitters.emitter_size[emitter_index];
 		const tfxVec3 handle = pm.emitters.handle[emitter_index];
 		const tfxMatrix4 matrix = pm.emitters.matrix[emitter_index];
 		const tfxEmissionType emission_type = properties.emission_type[property_index];
-		const tfxVec2 emitter_size = pm.emitters.emitter_size[emitter_index].xy();
-		auto transform_particle_callback2d = pm.emitters.transform_particle_callback2d[emitter_index];
 		const tfxVectorAlignType vector_align_type = properties.vector_align_type[property_index];
 		const bool line = property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
+		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
+		const float frame = pm.emitters.frame[emitter_index];
 
 		//Micro Update
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -10386,7 +10396,7 @@ namespace tfx {
 			tfxVec3 &local_position = entry->particle_data->local_position[index];
 			tfxVec3 &captured_position = entry->particle_data->captured_position[index];
 			tfxVec4 &velocity_normal = entry->particle_data->velocity_normal[index];
-			float &base_velocity = entry->particle_data->base_velocity[index];
+			const float base_velocity = entry->particle_data->base_velocity[index];
 
 			tfxVec3 world_position;
 			if (!line && !(property_flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -10395,10 +10405,22 @@ namespace tfx {
 				}
 				else {
 					tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
-					world_position = world_position + rotatevec.xyz() * scale;
+					world_position = emitter_world_position + rotatevec.xyz() * scale;
 				}
 				captured_position = world_position;
 			}
+
+			//----Velocity
+			float emission_pitch = lookup_callback(library->emitter_attributes[emitter_attributes].properties.emission_pitch, frame);
+			float emission_yaw = lookup_callback(library->emitter_attributes[emitter_attributes].properties.emission_yaw, frame);
+
+			if (!(property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
+				velocity_normal = GetEmissionDirection3d(pm, library, property_index, emitter_index, emission_pitch, emission_yaw, local_position, world_position, emitter_size);
+			}
+			else if (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
+				velocity_normal = tfxVec3(0, 1.f, 0.f);
+			}
+			float velocity_scale = first_velocity_value * velocity_adjuster * base_velocity;
 
 			//Do a micro update
 			//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
@@ -10420,7 +10442,7 @@ namespace tfx {
 				}
 				else {
 					tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
-					world_position = world_position + rotatevec.xyz() * scale;
+					world_position = emitter_world_position + rotatevec.xyz() * scale;
 					captured_position = world_position;
 				}
 			}
@@ -11127,7 +11149,7 @@ namespace tfx {
 			const float lookup_noise_resolution = work_entry->graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->noise_resolution.lookup.last_frame)] * noise_resolution;
 			const float lookup_weight = work_entry->graphs->weight.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->weight.lookup.last_frame)];
 			const float lookup_spin = work_entry->graphs->spin.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->spin.lookup.last_frame)] * base_spin;
-			const float lookup_stretch = work_entry->graphs->spin.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->spin.lookup.last_frame)];
+			const float lookup_stretch = work_entry->graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->stretch.lookup.last_frame)];
 
 			float direction = 0.f;
 			float mr_angle = 0.f;
@@ -11228,9 +11250,6 @@ namespace tfx {
 				flags |= tfxParticleFlags_remove;
 			}
 
-			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
-			s.stretch = velocity_normal.w;
-
 		}
 
 		running_sprite_index = work_entry->sprites_index;
@@ -11288,6 +11307,7 @@ namespace tfx {
 			s.transform.captured_position = captured_position;
 			alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
 			s.alignment = Pack10bit(alignment_vector, billboard_option & 0x00000003);
+			s.stretch = velocity_normal.w;
 
 			captured_position = s.transform.position;
 
@@ -11444,6 +11464,8 @@ namespace tfx {
 		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
 		const tfxVec2 image_size = pm.emitters.image_size[emitter_index];
 		const tfxVec2 image_handle = pm.emitters.image_handle[emitter_index];
+		const tfxU32 width_last_frame = work_entry->graphs->width.lookup.last_frame;
+		const tfxU32 height_last_frame = work_entry->graphs->height.lookup.last_frame;
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
@@ -11451,13 +11473,12 @@ namespace tfx {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			const float age = bank.age[index];
 			const float max_age = bank.max_age[index];
-			const tfxParticleControlFlags flags = bank.flags[index];
 			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
 			const tfxVec2 base_size = bank.base_size[index];
 
-			float lookup_width = work_entry->graphs->width.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->width.lookup.last_frame)];
-			float lookup_height = work_entry->graphs->height.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->height.lookup.last_frame)];
+			float lookup_width = work_entry->graphs->width.lookup.values[std::min<tfxU32>(lookup_frame, width_last_frame)];
+			float lookup_height = work_entry->graphs->height.lookup.values[std::min<tfxU32>(lookup_frame, height_last_frame)];
 
 			//----Size Changes
 			tfxVec2 scale;
@@ -11465,9 +11486,9 @@ namespace tfx {
 			if (scale.x < 0.f)
 				scale.x = scale.x;
 
-			if (flags & tfxEmitterStateFlags_lifetime_uniform_size) {
+			if (emitter_flags & tfxEmitterStateFlags_lifetime_uniform_size) {
 				scale.y = lookup_width * base_size.y;
-				if (flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
+				if (emitter_flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
 					scale.y = scale.x;
 			}
 			else
@@ -11603,10 +11624,10 @@ namespace tfx {
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor2d);
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame2d);
 #else
-			ControlParticlePosition(&tfxQueue, &work_entry);
-			ControlParticleSize(&tfxQueue, &work_entry);
-			ControlParticleColor(&tfxQueue, &work_entry);
-			ControlParticleImageFrame(&tfxQueue, &work_entry);
+			ControlParticlePosition2d(&tfxQueue, &work_entry);
+			ControlParticleSize2d(&tfxQueue, &work_entry);
+			ControlParticleColor2d(&tfxQueue, &work_entry);
+			ControlParticleImageFrame2d(&tfxQueue, &work_entry);
 #endif
 		}
 
@@ -11651,10 +11672,10 @@ namespace tfx {
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor3d);
 			tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame3d);
 #else
-			ControlParticlePosition(&tfxQueue, &work_entry);
-			ControlParticleSize(&tfxQueue, &work_entry);
-			ControlParticleColor(&tfxQueue, &work_entry);
-			ControlParticleImageFrame(&tfxQueue, &work_entry);
+			ControlParticlePosition3d(&tfxQueue, &work_entry);
+			ControlParticleSize3d(&tfxQueue, &work_entry);
+			ControlParticleColor3d(&tfxQueue, &work_entry);
+			ControlParticleImageFrame3d(&tfxQueue, &work_entry);
 #endif
 		}
 
