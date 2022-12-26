@@ -7081,8 +7081,8 @@ namespace tfx {
 				state_flags |= (properties.emission_type[e.property_index] != tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type[e.property_index] == tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
 				state_flags |= e.property_flags & tfxEmitterPropertyFlags_random_color;
 				state_flags |= e.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
-				state_flags |= !(properties.angle_settings[e.property_index] & tfxAngleSettingFlags_align_roll) && !(e.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
-				state_flags |= properties.angle_settings[e.property_index] & tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
+				state_flags |= properties.angle_settings[e.property_index] != tfxAngleSettingFlags_align_roll && !(e.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
+				state_flags |= properties.angle_settings[e.property_index] == tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
 				state_flags |= properties.emission_type[e.property_index] == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
 				state_flags |= e.property_flags & tfxEmitterPropertyFlags_play_once;
 				state_flags |= properties.end_behaviour[e.property_index] == tfxLoop ? tfxEmitterStateFlags_loop : 0;
@@ -8809,6 +8809,7 @@ namespace tfx {
 		const tfxU32 property_index = pm.emitters.properties_index[index];
 		const tfxU32 sprites_index = pm.emitters.sprites_index[index];
 		const float highest_particle_age = pm.emitters.highest_particle_age[index];
+		const tfxU32 loop_count = entry->properties->single_shot_limit[property_index] + 1;
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
@@ -8833,7 +8834,7 @@ namespace tfx {
 			max_age = life + random_generation.Range(life_variation);
 			single_loop_count = 0;
 
-			entry->highest_particle_age = std::fmaxf(highest_particle_age, max_age + tfxFRAME_LENGTH + 1);
+			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
 
 			if (entry->sub_effects->current_size > 0) {
 				for (auto &sub : *entry->sub_effects) {
