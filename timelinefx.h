@@ -1684,6 +1684,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 array_count = 0;				//The number of arrays in the buffer
 		tfxU32 current_size = 0;			//current size of each array
 		tfxU32 start_index = 0;				//Start index if you're using the buffer as a ring buffer
+		tfxU32 last_bump = 0;				//the amount the the start index was bumped by the last time Bump was called
 		tfxU32 capacity = 0;				//capacity of each array
 		tfxSoAData array_ptrs[96];			//Container for all the pointers into the arena
 		void(*resize_callback)(tfxSoABuffer *ring, void *new_data, void *user_data);
@@ -1699,6 +1700,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Get the index based on the buffer being a ring buffer
 	static inline tfxU32 GetCircularIndex(tfxSoABuffer *buffer, tfxU32 index) {
 		return (buffer->start_index + index) % buffer->capacity;
+	}
+
+	//Get the index based on the buffer being a ring buffer
+	static inline tfxU32 GetAbsoluteIndex(tfxSoABuffer *buffer, tfxU32 circular_index) {
+		return buffer->capacity - (circular_index % buffer->capacity);
 	}
 
 	//Add an array to a SoABuffer. parse in the size of the data type and the offset to the member variable within the struct.
@@ -1820,6 +1826,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		buffer->start_index += amount; 
 		buffer->start_index %= buffer->capacity; 
 		buffer->current_size -= amount; 
+		buffer->last_bump = amount;
 	}
 	
 	//Free the SoA buffer

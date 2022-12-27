@@ -8198,9 +8198,10 @@ namespace tfx {
 		tfxEmitterPropertiesSoA &properties = library->emitter_properties;
 
 		if (parent_particle_id != tfxINVALID) {
+			tfxU32 bank_index = ParticleBank(parent_particle_id);
+			tfxU32 particle_index = GetCircularIndex(&pm.particle_array_buffers[bank_index], ParticleIndex(parent_particle_id));
+			tfxParticleID test_id = pm.particle_arrays[bank_index].next_id[particle_index];
 			tfxParticleID next_id = pm.GetParticleNextID(parent_particle_id);
-			tfxU32 bi = ParticleBank(next_id);
-			tfxU32 pi = ParticleIndex(next_id);
 			if (next_id != tfxINVALID) {
 				const float overal_scale = pm.effects.overal_scale[index];
 				parent_particle_id = next_id;
@@ -8211,6 +8212,12 @@ namespace tfx {
 					TransformEffector3d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites3d[sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
 				else
 					TransformEffector2d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites2d[sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
+
+				tfxVec3 test = world_position - captured_position;
+				float length = LengthVec(test);
+				if (index > 0) {
+					printf("Index: %i, Sprite: %i, Diff: %f\n", index, sprite_index, length);
+				}
 
 				world_position += properties.emitter_handle[property_index] * overal_scale;
 				if (state_flags & tfxEmitterStateFlags_no_tween_this_update || state_flags & tfxEmitterStateFlags_no_tween) {
@@ -8771,13 +8778,13 @@ namespace tfx {
 			SpawnParticleLine3d(&tfxQueue, &work_entry);
 		}
 		else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-			SpawnParticleLine3d(&tfxQueue, &work_entry);
+			SpawnParticleIcosphereRandom3d(&tfxQueue, &work_entry);
 		}
 		else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
-			SpawnParticleLine3d(&tfxQueue, &work_entry);
+			SpawnParticleIcosphere3d(&tfxQueue, &work_entry);
 		}
 		else if (emission_type == tfxCylinder) {
-			SpawnParticleLine3d(&tfxQueue, &work_entry);
+			SpawnParticleCylinder3d(&tfxQueue, &work_entry);
 		}
 		SpawnParticleWeight(&tfxQueue, &work_entry);
 		SpawnParticleVelocity(&tfxQueue, &work_entry);
@@ -8800,15 +8807,15 @@ namespace tfx {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		float tween = entry->tween;
-		tfxU32 index = entry->emitter_index;
+		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 
-		const float life = pm.emitters.life[index];
-		const float life_variation = pm.emitters.life_variation[index];
-		const tfxU32 particles_index = pm.emitters.particles_index[index];
-		const tfxU32 property_index = pm.emitters.properties_index[index];
-		const tfxU32 sprites_index = pm.emitters.sprites_index[index];
-		const float highest_particle_age = pm.emitters.highest_particle_age[index];
+		const float life = pm.emitters.life[emitter_index];
+		const float life_variation = pm.emitters.life_variation[emitter_index];
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
+		const tfxU32 sprites_index = pm.emitters.sprites_index[emitter_index];
+		const float highest_particle_age = pm.emitters.highest_particle_age[emitter_index];
 		const tfxU32 loop_count = entry->properties->single_shot_limit[property_index] + 1;
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -8819,11 +8826,12 @@ namespace tfx {
 			float &intensity = entry->particle_data->intensity[index];
 			tfxU32 &single_loop_count = entry->particle_data->single_loop_count[index];
 
-			assert(sprites_index < pm.sprites3d[properties.layer[property_index]].capacity);
-			tfxU32 &next_id = entry->particle_data->next_id[index];
+			//Todo: put this assert into the SpawnWide function
+			//assert(sprites_index < pm.sprites3d[properties.layer[property_index]].capacity);
+			tfxParticleID &next_id = entry->particle_data->next_id[index];
 			tfxParticleFlags &flags = entry->particle_data->flags[index];
 			tfxU32 &parent = entry->particle_data->parent_index[index];
-			parent = index;
+			parent = emitter_index;
 
 			flags = 0;
 			next_id = SetParticleID(particles_index, index);
@@ -8831,7 +8839,12 @@ namespace tfx {
 			//Max age
 			//Todo: should age be set to the tween value?
 			age = 0.f;
-			max_age = life + random_generation.Range(life_variation);
+			//if (entry->depth == 0) {
+				//max_age = 400.f + (1 - index) * 400;
+			//}
+			//else {
+				max_age = life + random_generation.Range(life_variation);
+			//}
 			single_loop_count = 0;
 
 			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
@@ -10965,8 +10978,6 @@ namespace tfx {
 		const float angle_offset = pm.emitters.angle_offsets[emitter_index].roll;
 		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
 
-		tfxU32 running_sprite_index = work_entry->sprites_index;
-
 		for (int i = work_entry->start_index; i >= 0; --i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 
@@ -11075,7 +11086,7 @@ namespace tfx {
 
 		}
 
-		running_sprite_index = work_entry->sprites_index;
+		tfxU32 running_sprite_index = work_entry->sprites_index;
 
 		tfxVec3 &e_captured_position = pm.emitters.captured_position[emitter_index];
 		tfxVec3 &e_world_position = pm.emitters.world_position[emitter_index];
