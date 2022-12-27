@@ -8839,12 +8839,7 @@ namespace tfx {
 			//Max age
 			//Todo: should age be set to the tween value?
 			age = 0.f;
-			//if (entry->depth == 0) {
-				//max_age = 400.f + (1 - index) * 400;
-			//}
-			//else {
-				max_age = life + random_generation.Range(life_variation);
-			//}
+			max_age = life + random_generation.Range(life_variation);
 			single_loop_count = 0;
 
 			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
@@ -10907,6 +10902,7 @@ namespace tfx {
 			const float &max_age = bank.max_age[index];
 			tfxU32 &single_loop_count = bank.single_loop_count[index];
 			tfxParticleID &next_index = bank.next_id[index];
+			next_index = SetParticleID(particles_index, index);
 			tfxParticleFlags &flags = bank.flags[index];
 			age += tfxFRAME_LENGTH;
 			flags |= state_flags & tfxParticleFlags_remove;
