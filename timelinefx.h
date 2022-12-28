@@ -176,7 +176,8 @@ typedef std::chrono::high_resolution_clock tfxClock;
 //Override this for more layers, although currently the editor is fixed at 4
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
-#define tfxEachLayer int layer = 0; layer !=tfxLAYERS; ++layer
+#define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
+#define tfxEachLayerDB int layer = 0; layer != tfxLAYERS * 2; ++layer
 #endif 
 #ifndef tfxDEFAULT_SPRITE_ALLOCATION
 #define tfxDEFAULT_SPRITE_ALLOCATION 25000
@@ -1737,9 +1738,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
-	static inline void GrowArrays(tfxSoABuffer *buffer) {
+	static inline void GrowArrays(tfxSoABuffer *buffer, size_t new_size = 0) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
-		tfxU32 new_capacity = buffer->current_size > buffer->capacity ? buffer->current_size + buffer->current_size / 2 : buffer->capacity + buffer->capacity / 2; 
+		size_t new_capacity = 0;
+		if (new_size > 0) {
+			if (new_size < buffer->capacity)
+				return;
+			new_capacity = new_size;
+		}
+		else {
+			new_capacity = buffer->current_size > buffer->capacity ? buffer->current_size + buffer->current_size / 2 : buffer->capacity + buffer->capacity / 2;
+		}
 		void *new_data = malloc(new_capacity * buffer->struct_size);
 		size_t running_offset = 0;
 		for (int i = 0; i != buffer->array_count; ++i) {
@@ -1771,11 +1780,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 	
 	//Increase current size of a SoA Buffer and grow if necessary.
-	static inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
+	static inline void Resize(tfxSoABuffer *buffer, size_t new_size) {
 		assert(buffer->data);			//No data allocated in buffer
 		buffer->current_size = new_size;
 		if (buffer->current_size >= buffer->capacity) {
-			GrowArrays(buffer);
+			GrowArrays(buffer, new_size);
 		}
 	}
 	
@@ -6132,7 +6141,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
 		//In unordered mode, emitters get their own list of particles to update
-		tfxvec<tfxring<tfxParticle>> particle_banks;
 		tfxvec<tfxSoABuffer> particle_array_buffers;
 		tfxBucketArray<tfxParticleSoA> particle_arrays;
 
@@ -6177,12 +6185,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		unsigned int current_ebuff;
 
 		tfxU32 sprite_index_point[tfxLAYERS];
+		tfxU32 new_particles_index_start[tfxLAYERS];
 
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
 		tfxComputeFXGlobalState compute_global_state;
 		tfxU32 sort_passes;
-		tfxU32 new_particles_index_start[tfxLAYERS];
 		tfxLookupMode lookup_mode;
 		//For when particles are ordered by distance from camera (3d effects)
 		tfxVec3 camera_front;
@@ -6206,7 +6214,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			new_compute_particle_index(0),
 			new_particles_count(0),
 			new_positions(tfxCONSTRUCTOR_VEC_INIT("pm new_positions")),
-			particle_banks(tfxCONSTRUCTOR_VEC_INIT("pm particle_banks")),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
 		{ }
 		~tfxParticleManager();
@@ -6282,7 +6289,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
 		void EnableCompute() { flags |= tfxEffectManagerFlags_use_compute_shader; }
 		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
-		inline tfxParticle& GrabCPUParticle(unsigned int index) { return particle_banks[index].grab(); }
+		//inline tfxParticle& GrabCPUParticle(unsigned int index) { return 0; }
 
 		inline tfxParticleID &GetParticleNextID(tfxParticleID id) { return particle_arrays[ParticleBank(id)].next_id[ParticleIndex(id)]; }
 		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index[ParticleIndex(id)]; }
@@ -6297,11 +6304,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void UpdateBaseValues();
 		tfxvec<tfxU32> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
-		inline tfxParticle *SetNextParticle(unsigned int buffer_index, tfxParticle &p) {
-			unsigned int index = particle_banks[buffer_index].current_size++;
-			assert(index < particle_banks[buffer_index].capacity);
-			particle_banks[buffer_index][index] = p;
-			return &particle_banks[buffer_index][index];
+		inline tfxParticleID SetNextParticle(unsigned int buffer_index, tfxU32 other_index) {
+			unsigned int index = particle_array_buffers[buffer_index].current_size++;
+			assert(index < particle_array_buffers[buffer_index].capacity);
+			return SetParticleID(buffer_index, index);
 		}
 
 		inline bool FreeCapacity2d(int index, bool compute) {
@@ -6432,7 +6438,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}*/
 	}
 
-	tfxU32 GrabParticleBank(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 	void StopSpawning(tfxParticleManager &pm);
@@ -6448,7 +6453,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void InitCPUParticle3d(tfxParticleManager &pm, tfxU32 index, tfxParticle &p, tfxSpriteTransform3d &sprite_transform);
 	void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls &parent_spawn_controls);
 	void UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
-	bool ControlParticle(tfxParticleManager &pm, tfxParticle &p, tfxVec2 &sprite_scale, tfxU32 parent_index, tfxEffectLibrary *library);
+	bool ControlParticle(tfxParticleManager &pm, tfxParticleSoA &bank, tfxU32 index, tfxVec2 &sprite_scale, tfxU32 parent_index, tfxEffectLibrary *library);
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticlesOrdered2d(tfxParticleManager &pm);
@@ -7026,8 +7031,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Particle initialisation functions, one for 2d one for 3d effects
 	tfxSpawnPosition InitialisePosition3d(tfxParticleManager &pm, tfxEffectLibrary &library, tfxU32 emitter_index, float tween);
 	void InitialiseParticle3d(tfxParticleManager &pm, tfxParticleData &data, tfxSpriteTransform3d &sprite_transform, tfxU32 emitter_index);
-	void UpdateParticle2d(tfxParticleManager &pm, tfxU32 buffer_index, tfxParticleData &data, tfxVec2 &sprite_scale, tfxOvertimeAttributes *graphs);
-	void UpdateParticle3d(tfxParticleManager &pm, tfxU32 buffer_index, tfxParticleData &data, tfxVec2 &sprite_scale, tfxOvertimeAttributes *graphs);
+	void UpdateParticle2d(tfxParticleManager &pm, tfxU32 buffer_index, tfxParticleSoA &bank, tfxU32 index, tfxVec2 &sprite_scale, tfxOvertimeAttributes *graphs);
+	void UpdateParticle3d(tfxParticleManager &pm, tfxU32 buffer_index, tfxParticleSoA &bank, tfxU32 index, tfxVec2 &sprite_scale, tfxOvertimeAttributes *graphs);
 
 	//Get a graph by tfxGraphID
 	tfxGraph &GetGraph(tfxEffectLibrary &library, tfxGraphID &graph_id);
