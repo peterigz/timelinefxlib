@@ -1738,9 +1738,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
-	static inline void GrowArrays(tfxSoABuffer *buffer, size_t new_size = 0) {
+	static inline void GrowArrays(tfxSoABuffer *buffer, tfxU32 new_size = 0) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
-		size_t new_capacity = 0;
+		tfxU32 new_capacity = 0;
 		if (new_size > 0) {
 			if (new_size < buffer->capacity)
 				return;
@@ -1780,7 +1780,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 	
 	//Increase current size of a SoA Buffer and grow if necessary.
-	static inline void Resize(tfxSoABuffer *buffer, size_t new_size) {
+	static inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
 		assert(buffer->data);			//No data allocated in buffer
 		buffer->current_size = new_size;
 		if (buffer->current_size >= buffer->capacity) {
@@ -6091,6 +6091,16 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxring<tfxParticleSprite3d> *sprites3d;
 	};
 
+	struct tfxControlWorkEntryOrdered {
+		tfxParticleManager *pm;
+		tfxU32 layer;
+		tfxU32 current_buffer_index;
+		tfxU32 next_buffer_index;
+		tfxU32 amount_to_update;
+		tfxring<tfxParticleSprite2d> *sprites2d;
+		tfxring<tfxParticleSprite3d> *sprites3d;
+	};
+
 	struct tfxParticleAgeWorkEntry {
 		tfxU32 start_index;
 		tfxU32 emitter_index;
@@ -6304,10 +6314,35 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void UpdateBaseValues();
 		tfxvec<tfxU32> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
-		inline tfxParticleID SetNextParticle(unsigned int buffer_index, tfxU32 other_index) {
-			unsigned int index = particle_array_buffers[buffer_index].current_size++;
-			assert(index < particle_array_buffers[buffer_index].capacity);
-			return SetParticleID(buffer_index, index);
+		inline tfxParticleID SetNextParticle(unsigned int next_index, tfxU32 current_index, tfxU32 other_index) {
+			tfxParticleSoA &to_bank = particle_arrays[next_index];
+			tfxParticleSoA &from_bank = particle_arrays[current_index];
+			unsigned int index = particle_array_buffers[next_index].current_size++;
+			assert(index < particle_array_buffers[next_index].capacity);
+			to_bank.parent_index[index] = from_bank.parent_index[other_index];
+			to_bank.sprite_index[index] = from_bank.sprite_index[other_index];
+			to_bank.next_id[index] = from_bank.next_id[other_index];
+			to_bank.flags[index] = from_bank.flags[other_index];
+			to_bank.age[index] = from_bank.age[other_index];
+			to_bank.max_age[index] = from_bank.max_age[other_index];
+			to_bank.local_position[index] = from_bank.local_position[other_index];
+			to_bank.captured_position[index] = from_bank.captured_position[other_index];
+			to_bank.local_rotations[index] = from_bank.local_rotations[other_index];
+			to_bank.velocity_normal[index] = from_bank.velocity_normal[other_index];
+			to_bank.depth[index] = from_bank.depth[other_index];
+			to_bank.stretch[index] = from_bank.stretch[other_index];
+			to_bank.weight_acceleration[index] = from_bank.weight_acceleration[other_index];
+			to_bank.base_weight[index] = from_bank.base_weight[other_index];
+			to_bank.base_velocity[index] = from_bank.base_velocity[other_index];
+			to_bank.base_spin[index] = from_bank.base_spin[other_index];
+			to_bank.noise_offset[index] = from_bank.noise_offset[other_index];
+			to_bank.noise_resolution[index] = from_bank.noise_resolution[other_index];
+			to_bank.color[index] = from_bank.color[other_index];
+			to_bank.intensity[index] = from_bank.intensity[other_index];
+			to_bank.image_frame[index] = from_bank.image_frame[other_index];
+			to_bank.base_size[index] = from_bank.base_size[other_index];
+			to_bank.single_loop_count[index] = from_bank.single_loop_count[other_index];
+			return SetParticleID(next_index, index);
 		}
 
 		inline bool FreeCapacity2d(int index, bool compute) {
@@ -6456,7 +6491,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	bool ControlParticle(tfxParticleManager &pm, tfxParticleSoA &bank, tfxU32 index, tfxVec2 &sprite_scale, tfxU32 parent_index, tfxEffectLibrary *library);
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
-	void ControlParticlesOrdered2d(tfxParticleManager &pm);
+	void ControlParticlesOrdered2d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
 	void ControlParticlesOrdered3d(tfxParticleManager &pm);
 	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
 
@@ -6501,6 +6536,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ControlParticleSize3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleColor3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data);
+
+	void ControlParticleOrderedAge2d(tfxWorkQueue *queue, void *data);
+	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleColorOrdered2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleImageFrameOrdered2d(tfxWorkQueue *queue, void *data);
 
 
 	struct tfxEffectLibraryStats {
