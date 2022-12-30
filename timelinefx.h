@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 0
+#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -1682,20 +1682,28 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxSoABuffer {
 		size_t current_arena_size = 0;		//The current size of the arena that contains all the arrays
 		size_t struct_size = 0;				//The size of the struct (each member unit size added up)
-		tfxU32 array_count = 0;				//The number of arrays in the buffer
 		tfxU32 current_size = 0;			//current size of each array
 		tfxU32 start_index = 0;				//Start index if you're using the buffer as a ring buffer
 		tfxU32 last_bump = 0;				//the amount the the start index was bumped by the last time Bump was called
 		tfxU32 capacity = 0;				//capacity of each array
-		tfxSoAData array_ptrs[96];			//Container for all the pointers into the arena
+		tfxvec<tfxSoAData> array_ptrs;		//Container for all the pointers into the arena
 		void(*resize_callback)(tfxSoABuffer *ring, void *new_data, void *user_data);
 		void *struct_of_arrays;				//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
 		void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
+	};
 
-		tfxSoABuffer() {
-			memset(array_ptrs, 0, 64 * sizeof(tfxSoAData));
-		}
+	struct tfxSoARange {
+		tfxU32 start_index;
+		tfxU32 current_size;
+		tfxU32 end_index;
+	};
 
+	struct tfxSoARanges {
+		tfxSoABuffer *buffer;
+		tfxU32 range_size;
+		tfxvec<tfxSoARange> ranges;
+		tfxvec<tfxU32> ranges_in_use;
+		tfxvec<tfxU32> free_ranges;
 	};
 
 	//Get the index based on the buffer being a ring buffer
@@ -1714,15 +1722,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxSoAData data;
 		data.unit_size = unit_size;
 		data.offset = offset;
-		buffer->array_ptrs[buffer->array_count++] = data;
+		buffer->array_ptrs.push_back(data);
 	}
 
 	//Once you have called AddStructArray for all your member variables you must call this function in order to 
 	//set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 	//inside the space
 	static inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
-		assert(buffer->data == NULL && buffer->array_count > 0);
-		for (int i = 0; i != buffer->array_count; ++i) {
+		assert(buffer->data == NULL && buffer->array_ptrs.current_size > 0);
+		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 			buffer->struct_size += buffer->array_ptrs[i].unit_size;
 		}
 		buffer->current_arena_size = reserve_amount * buffer->struct_size;
@@ -1730,7 +1738,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		buffer->capacity = reserve_amount;
 		buffer->struct_of_arrays = struct_of_arrays;
 		size_t running_offset = 0;
-		for (int i = 0; i != buffer->array_count; ++i) {
+		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
@@ -1751,7 +1759,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 		void *new_data = malloc(new_capacity * buffer->struct_size);
 		size_t running_offset = 0;
-		for (int i = 0; i != buffer->array_count; ++i) {
+		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 			if (((buffer->start_index + buffer->current_size - 1) % buffer->capacity) < buffer->start_index) {
 				size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
 				size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
@@ -1771,12 +1779,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		buffer->current_arena_size = new_capacity * buffer->struct_size;
 		buffer->start_index = 0;
 		running_offset = 0;
-		for (int i = 0; i != buffer->array_count; ++i) {
+		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
 		}
 		free(old_data);
+	}
+
+	static inline void GrowArraysBySpecificAmount(tfxSoABuffer *buffer, tfxU32 extra_size) {
+		assert(extra_size > 0);		//Must specify a size
+		assert(buffer->data);		//Must be a valid SoA buffer
+		GrowArrays(buffer, buffer->capacity + extra_size);
 	}
 	
 	//Increase current size of a SoA Buffer and grow if necessary.
@@ -1849,6 +1863,38 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Clear the SoA buffer
 	static inline void ClearSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_size = buffer->start_index = 0;
+	}
+
+	inline void InitialiseSoARanges(tfxSoARanges *ranges, tfxSoABuffer *buffer, tfxU32 size_of_each_range) {
+		ranges->buffer = buffer;
+		ranges->range_size = size_of_each_range;
+	}
+
+	inline tfxSoARange GrabRange(tfxSoARanges *ranges) {
+		if (ranges->free_ranges.current_size > 0) {
+			tfxU32 free_range = ranges->free_ranges.pop_back();
+			ranges->ranges_in_use.push_back(free_range);
+			return ranges->ranges[free_range];
+		}
+		tfxSoARange range;
+		range.start_index = ranges->buffer->capacity;
+		range.end_index = range.start_index + ranges->range_size;
+		range.current_size = 0;
+		GrowArraysBySpecificAmount(ranges->buffer, ranges->range_size);
+		ranges->ranges_in_use.push_back(ranges->ranges.current_size);
+		ranges->ranges.push_back(range);
+	}
+
+	inline void FreeRange(tfxSoARanges *ranges, tfxU32 range_index) {
+		assert(range_index < ranges->ranges.current_size);	//range_index is out of bounds
+		ranges->ranges[range_index].current_size = 0;
+		ranges->free_ranges.push_back(range_index);
+	}
+
+	inline void ClearAllRanges(tfxSoARanges *ranges) {
+		for (auto &range : ranges->ranges) {
+			range.current_size = 0;
+		}
 	}
 
 	template <typename T>
@@ -6070,6 +6116,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float tween;
 		tfxU32 max_spawn_count;
 		tfxU32 amount_to_spawn = 0;
+		tfxU32 end_index;
 		tfxU32 spawn_start_index;
 		tfxU32 next_buffer;
 		int depth;
@@ -6097,6 +6144,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 current_buffer_index;
 		tfxU32 next_buffer_index;
 		tfxU32 amount_to_update;
+		tfxU32 range_index;
+		tfxU32 start_index;
+		tfxU32 end_index;
 		tfxring<tfxParticleSprite2d> *sprites2d;
 		tfxring<tfxParticleSprite3d> *sprites3d;
 	};
@@ -6148,11 +6198,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
+	struct tfxParticleMemory {
+		tfxvec<tfxU32> buckets_in_use;
+		tfxvec<tfxSoABuffer> particle_array_buffers;
+		tfxvec<tfxParticleSoA> particle_arrays;
+		tfxMemoryArenaManager particle_array_allocator;
+	};
+
 	//Use the particle manager to add compute effects to your scene 
 	struct tfxParticleManager {
 		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxSoABuffer> particle_array_buffers;
 		tfxBucketArray<tfxParticleSoA> particle_arrays;
+		tfxvec<tfxSoARanges> particle_ranges;
 
 		tfxMemoryArenaManager particle_array_allocator;
 		//In unordered mode emitters that expire have their particle banks added here to be reused
@@ -6314,10 +6372,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void UpdateBaseValues();
 		tfxvec<tfxU32> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
-		inline tfxParticleID SetNextParticle(unsigned int next_index, tfxU32 current_index, tfxU32 other_index) {
+		inline tfxParticleID SetNextParticle(tfxU32 next_index, tfxU32 current_index, tfxU32 other_index, tfxU32 range_index) {
 			tfxParticleSoA &to_bank = particle_arrays[next_index];
 			tfxParticleSoA &from_bank = particle_arrays[current_index];
-			unsigned int index = particle_array_buffers[next_index].current_size++;
+			tfxU32 index = particle_ranges[next_index].ranges[range_index].start_index + particle_ranges[next_index].ranges[range_index].current_size++;
 			assert(index < particle_array_buffers[next_index].capacity);
 			to_bank.parent_index[index] = from_bank.parent_index[other_index];
 			to_bank.sprite_index[index] = from_bank.sprite_index[other_index];

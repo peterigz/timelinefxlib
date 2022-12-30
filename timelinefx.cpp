@@ -7312,6 +7312,7 @@ namespace tfx {
 				spawn_work_entry->properties = &emitters.library[current_index]->emitter_properties;
 				spawn_work_entry->sub_effects = &emitters.library[current_index]->effect_infos[emitters.info_index[current_index]].sub_effectors;
 				spawn_work_entry->amount_to_spawn = 0;
+				spawn_work_entry->end_index = 0;
 
 				float &timeout_counter = emitters.timeout_counter[current_index];
 
@@ -7402,14 +7403,18 @@ namespace tfx {
 			{
 				tmpMTStack(tfxControlWorkEntryOrdered, work);
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-					tfxControlWorkEntryOrdered &work_entry = work.next();
 					int layer_offset = layer * 2;
-					work_entry.next_buffer_index = next_particle_buffer + layer_offset;
-					work_entry.current_buffer_index = current_pbuff + layer_offset;
-					work_entry.amount_to_update = particle_array_buffers[work_entry.current_buffer_index].current_size;
-					work_entry.pm = this;
-					work_entry.layer = layer;
-					if (work_entry.amount_to_update > 0) {
+					for (auto &range : particle_ranges[current_pbuff + layer_offset].ranges) {
+						if (range.current_size == 0)
+							continue;
+						tfxControlWorkEntryOrdered &work_entry = work.next();
+						work_entry.next_buffer_index = next_particle_buffer + layer_offset;
+						work_entry.current_buffer_index = current_pbuff + layer_offset;
+						work_entry.amount_to_update = particle_array_buffers[work_entry.current_buffer_index].current_size;
+						work_entry.pm = this;
+						work_entry.layer = layer;
+						work_entry.start_index = range.start_index;
+						work_entry.end_index = range.start_index + range.current_size;
 						ControlParticlesOrdered2d(*this, work_entry);
 					}
 				}
@@ -7419,16 +7424,25 @@ namespace tfx {
 			{
 				tmpMTStack(tfxControlWorkEntryOrdered, work);
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-					tfxControlWorkEntryOrdered &work_entry = work.next();
 					int layer_offset = layer * 2;
-					work_entry.next_buffer_index = next_particle_buffer + layer_offset;
-					work_entry.current_buffer_index = current_pbuff + layer_offset;
-					work_entry.amount_to_update = particle_array_buffers[work_entry.current_buffer_index].current_size;
-					work_entry.layer = layer;
-					work_entry.pm = this;
-					ClearSoABuffer(&particle_array_buffers[work_entry.next_buffer_index]);
-					if (work_entry.amount_to_update > 0) {
+					tfxU32 range_index = 0;
+					for (auto &range : particle_ranges[current_pbuff + layer_offset].ranges) {
+						if (range.current_size == 0)
+							continue;
+						tfxControlWorkEntryOrdered &work_entry = work.next();
+						work_entry.next_buffer_index = next_particle_buffer + layer_offset;
+						work_entry.current_buffer_index = current_pbuff + layer_offset;
+						work_entry.amount_to_update = particle_array_buffers[work_entry.current_buffer_index].current_size;
+						work_entry.pm = this;
+						work_entry.layer = layer;
+						work_entry.start_index = range.start_index;
+						work_entry.end_index = range.start_index + range.current_size;
+						work_entry.range_index = range_index++;
+#if tfxMULTITHREADED
+						tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleOrderedAge2d);
+#else
 						ControlParticleOrderedAge2d(&tfxQueue, &work_entry);
+#endif
 					}
 				}
 				tfxCompleteAllWork(&tfxQueue);
@@ -7475,10 +7489,10 @@ namespace tfx {
 		work_entry.sprites2d = &pm.sprites2d[work_entry.layer];
 
 #if tfxMULTITHREADED
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticlePosition2d);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleSize2d);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColor2d);
-		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrame2d);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticlePositionOrdered2d);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleSizeOrdered2d);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleColorOrdered2d);
+		tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleImageFrameOrdered2d);
 #else
 		ControlParticlePositionOrdered2d(&tfxQueue, &work_entry);
 		ControlParticleSizeOrdered2d(&tfxQueue, &work_entry);
@@ -7581,7 +7595,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = 0;
 
-		for (tfxU32 index = 0; index != work_entry->amount_to_update; ++index) {
+		for (tfxU32 index = work_entry->start_index; index != work_entry->end_index; ++index) {
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
@@ -7623,7 +7637,7 @@ namespace tfx {
 				next_index = tfxINVALID;
 			}
 			else {
-				next_index = pm.SetNextParticle(next_buffer_index, current_buffer_index, index);
+				next_index = pm.SetNextParticle(next_buffer_index, current_buffer_index, index, work_entry->range_index);
 			}
 			running_sprite_index++;
 
@@ -7637,7 +7651,7 @@ namespace tfx {
 		const tfxU32 current_buffer_index = work_entry->current_buffer_index;
 		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
 
-		for (tfxU32 index = 0; index != work_entry->amount_to_update; ++index) {
+		for (tfxU32 index = work_entry->start_index; index != work_entry->end_index; ++index) {
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
@@ -7795,7 +7809,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = 0;
 
-		for (int index = 0; index != work_entry->amount_to_update; ++index) {
+		for (tfxU32 index = work_entry->start_index; index != work_entry->end_index; ++index) {
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
@@ -8250,19 +8264,26 @@ namespace tfx {
 		}
 
 		if (!(flags & tfxEffectManagerFlags_unordered)) {
+			const tfxU32 range_size = 512;
 			for (tfxEachLayerDB) {
-#ifdef tfxTRACK_MEMORY
-				tfxring<tfxParticle> particles(tfxCONSTRUCTOR_VEC_INIT("Ordered ring particle list"));
-#else
-				tfxring<tfxParticle> particles;
-#endif
-
+				tfxU32 ranges_to_create = tfxMin(layer_max_values[layer] / range_size, 1);
 				tfxParticleSoA lists;
 				tfxU32 index = particle_arrays.locked_push_back(lists);
 				tfxSoABuffer buffer;
 				particle_array_buffers.push_back(buffer);
+				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), range_size);
 				assert(index == particle_array_buffers.current_size - 1);
-				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), layer_max_values[layer]);
+				tfxSoARanges ranges;
+				InitialiseSoARanges(&ranges, &particle_array_buffers.back(), range_size);
+				tfxSoARange range;
+				range.current_size = 0;
+				range.start_index = 0;
+				range.end_index = range_size;
+				ranges.ranges.push_back(range);
+				particle_ranges.push_back(ranges);
+				for (tfxU32 range_index = 1; range_index != ranges_to_create; ++range_index) {
+					GrabRange(&particle_ranges.back());
+				}
 			}
 		}
 
@@ -8998,10 +9019,24 @@ namespace tfx {
 		}
 
 		work_entry.spawn_start_index = AddRows(&pm.particle_array_buffers[pm.emitters.particles_index[work_entry.emitter_index]], work_entry.amount_to_spawn, true);
+		tfxU32 first_range_index = work_entry.spawn_start_index / 512;
+		tfxU32 spawn_count = work_entry.amount_to_spawn;
+		tfxU32 buffer_index = pm.emitters.particles_index[work_entry.emitter_index];
+		tfxU32 r = first_range_index;
+		while (spawn_count > 0) {
+			tfxU32 size = pm.particle_ranges[buffer_index].ranges[r].current_size;
+			pm.particle_ranges[buffer_index].ranges[r].current_size += spawn_count;
+			if (pm.particle_ranges[buffer_index].ranges[r].current_size > 512) {
+				spawn_count -= pm.particle_ranges[buffer_index].ranges[r].current_size - 512 + size;
+				pm.particle_ranges[buffer_index].ranges[r].current_size = 512;
+			}
+			++r;
+		}
 		tfxEmissionType &emission_type = properties.emission_type[pm.emitters.properties_index[work_entry.emitter_index]];
 
 #if tfxMULTITHREADED
 		if (work_entry.amount_to_spawn > 0) {
+			work_entry.end_index = work_entry.amount_to_spawn;
 			//tfxBumpCompletionCount(&tfxQueue);
 			if (emission_type == tfxPoint) {
 				tfxAddWorkQueueEntry(&tfxQueue, &work_entry, SpawnParticlePoint2d);
