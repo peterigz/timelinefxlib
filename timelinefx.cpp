@@ -7053,7 +7053,7 @@ namespace tfx {
 						emitters.particles_index[index] = GrabParticleLists(*this, e.path_hash, 100);
 				}
 				else {
-					emitters.particles_index[index] = properties.layer[e.property_index] * 2 + current_pbuff;
+					emitters.particles_index[index] = properties.layer[e.property_index];
 				}
 				emitters.path_hash[index] = e.path_hash;
 				emitters.info_index[index] = e.info_index;
@@ -7266,9 +7266,7 @@ namespace tfx {
 
 		if (!(flags & tfxEffectManagerFlags_unordered)) {
 			for (tfxEachLayer) {
-				int layer_offset = layer * 2;
-				int current_buffer_index = current_pbuff + layer_offset;
-				sprite_index_point[layer] = particle_array_buffers[current_buffer_index].current_size;
+				sprite_index_point[layer] = particle_array_buffers[layer].current_size;
 			}
 		}
 
@@ -7378,78 +7376,51 @@ namespace tfx {
 			}
 		}
 		else {
-			for (tfxEachLayer) {
-				int layer_offset = layer * 2;
-				int a_buffer = !current_pbuff + layer_offset;
-				int b_buffer = current_pbuff + layer_offset;
-				int a_cap = particle_array_buffers[a_buffer].capacity;
-				int b_cap = particle_array_buffers[b_buffer].capacity;
-				if (particle_array_buffers[a_buffer].capacity != particle_array_buffers[b_buffer].capacity) {
-					if(particle_array_buffers[a_buffer].capacity > particle_array_buffers[b_buffer].capacity) {
-						Resize(&particle_array_buffers[b_buffer], particle_array_buffers[a_buffer].capacity);
-					}
-					else {
-						Resize(&particle_array_buffers[a_buffer], particle_array_buffers[b_buffer].capacity);
-					}
-				}
-			}
+
 			//if(flags & tfxEffectManagerFlags_3d_effects && flags & tfxEffectManagerFlags_order_by_depth) 
 				//ControlParticlesDepthOrdered3d(*this);
 			//else if(flags & tfxEffectManagerFlags_3d_effects)
 				//ControlParticlesOrdered3d(*this);
 			//else
 
-			tfxU32 next_particle_buffer = !current_pbuff;
 			{
 				tmpMTStack(tfxControlWorkEntryOrdered, work);
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-					int layer_offset = layer * 2;
-					for (auto &range : particle_ranges[current_pbuff + layer_offset].ranges) {
-						if (range.current_size == 0)
-							continue;
+					int particles_to_update = particle_array_buffers[layer].current_size;
+					tfxU32 running_start_index = 0;
+					while(particles_to_update > 0) {
 						tfxControlWorkEntryOrdered &work_entry = work.next();
-						work_entry.next_buffer_index = next_particle_buffer + layer_offset;
-						work_entry.current_buffer_index = current_pbuff + layer_offset;
-						work_entry.amount_to_update = particle_array_buffers[work_entry.current_buffer_index].current_size;
 						work_entry.pm = this;
 						work_entry.layer = layer;
-						work_entry.start_index = range.start_index;
-						work_entry.end_index = range.start_index + range.current_size;
+						work_entry.start_index = running_start_index;
+						work_entry.end_index = particles_to_update > 512 ? running_start_index + 512 :  running_start_index + particles_to_update;
+						work_entry.amount_to_update = work_entry.end_index - work_entry.start_index;
+						particles_to_update -= 512;
+						running_start_index += 512;
 						ControlParticlesOrdered2d(*this, work_entry);
 					}
 				}
+		
 				tfxCompleteAllWork(&tfxQueue);
 				work.free();
 			}
-			{
-				tmpMTStack(tfxControlWorkEntryOrdered, work);
-				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-					int layer_offset = layer * 2;
-					tfxU32 range_index = 0;
-					for (auto &range : particle_ranges[current_pbuff + layer_offset].ranges) {
-						if (range.current_size == 0)
-							continue;
-						tfxControlWorkEntryOrdered &work_entry = work.next();
-						work_entry.next_buffer_index = next_particle_buffer + layer_offset;
-						work_entry.current_buffer_index = current_pbuff + layer_offset;
-						work_entry.amount_to_update = particle_array_buffers[work_entry.current_buffer_index].current_size;
-						work_entry.pm = this;
-						work_entry.layer = layer;
-						work_entry.start_index = range.start_index;
-						work_entry.end_index = range.start_index + range.current_size;
-						work_entry.range_index = range_index++;
+			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+				tfxControlWorkEntryOrdered &work_entry = ordered_age_work_entry[layer];
+				work_entry.amount_to_update = particle_array_buffers[layer].current_size;
+				if (work_entry.amount_to_update == 0)
+					continue;
+				work_entry.pm = this;
+				work_entry.layer = layer;
+				work_entry.start_index = work_entry.amount_to_update - 1;
+				work_entry.end_index = 0;
 #if tfxMULTITHREADED
-						tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleOrderedAge2d);
+				tfxAddWorkQueueEntry(&tfxQueue, &work_entry, ControlParticleOrderedAge2d);
 #else
-						ControlParticleOrderedAge2d(&tfxQueue, &work_entry);
+				ControlParticleOrderedAge2d(&tfxQueue, &work_entry);
 #endif
-					}
-				}
-				tfxCompleteAllWork(&tfxQueue);
-				work.free();
 			}
+			tfxCompleteAllWork(&tfxQueue);
 
-			current_pbuff = next_particle_buffer;
 		}
 
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
@@ -7589,13 +7560,11 @@ namespace tfx {
 	void ControlParticleOrderedAge2d(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
-		const tfxU32 current_buffer_index = work_entry->current_buffer_index;
-		const tfxU32 next_buffer_index = work_entry->next_buffer_index;
-		tfxParticleSoA &bank = work_entry->pm->particle_arrays[current_buffer_index];
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->layer];
 
-		tfxU32 running_sprite_index = 0;
-
-		for (tfxU32 index = work_entry->start_index; index != work_entry->end_index; ++index) {
+		tfxU32 offset = 0;
+		for (int i = work_entry->start_index; i >= 0; --i) {
+			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[work_entry->layer], i);
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
@@ -7605,9 +7574,10 @@ namespace tfx {
 			const tfxU32 single_shot_limit = library->emitter_properties.single_shot_limit[property_index];
 
 			float &age = bank.age[index];
-			const float &max_age = bank.max_age[index];
+			const float max_age = bank.max_age[index];
 			tfxU32 &single_loop_count = bank.single_loop_count[index];
 			tfxParticleID &next_index = bank.next_id[index];
+			next_index = SetParticleID(work_entry->layer, index);
 			tfxParticleFlags &flags = bank.flags[index];
 			age += tfxFRAME_LENGTH;
 			flags |= state_flags & tfxParticleFlags_remove;
@@ -7628,30 +7598,50 @@ namespace tfx {
 			}
 
 			if (flags & tfxParticleFlags_remove) {
-				tfxParticleSprite2d s;
-				s.transform.scale = 0;
-				s.intensity = 0;
-				s.image_frame = 0;
-				s.image_ptr = library->emitter_properties.image[property_index]->ptr;
-				pm.sprites2d[library->emitter_properties.layer[property_index]][running_sprite_index] = s;
-				next_index = tfxINVALID;
+				offset++;
 			}
-			else {
-				next_index = pm.SetNextParticle(next_buffer_index, current_buffer_index, index, work_entry->range_index);
+			else if (offset > 0) {
+				tfxU32 next_index = GetCircularIndex(&work_entry->pm->particle_array_buffers[work_entry->layer], i + offset);
+				bank.next_id[index] = SetParticleID(work_entry->layer, next_index);
+
+				bank.parent_index[next_index] = bank.parent_index[index];
+				bank.sprite_index[next_index] = bank.sprite_index[index];
+				bank.flags[next_index] = bank.flags[index];
+				bank.age[next_index] = bank.age[index];
+				bank.max_age[next_index] = bank.max_age[index];
+				bank.local_position[next_index] = bank.local_position[index];
+				bank.captured_position[next_index] = bank.captured_position[index];
+				bank.local_rotations[next_index] = bank.local_rotations[index];
+				bank.velocity_normal[next_index] = bank.velocity_normal[index];
+				bank.stretch[next_index] = bank.stretch[index];
+				bank.weight_acceleration[next_index] = bank.weight_acceleration[index];
+				bank.base_weight[next_index] = bank.base_weight[index];
+				bank.base_velocity[next_index] = bank.base_velocity[index];
+				bank.base_spin[next_index] = bank.base_spin[index];
+				bank.noise_offset[next_index] = bank.noise_offset[index];
+				bank.noise_resolution[next_index] = bank.noise_resolution[index];
+				bank.color[next_index] = bank.color[index];
+				bank.intensity[next_index] = bank.intensity[index];
+				bank.image_frame[next_index] = bank.image_frame[index];
+				bank.base_size[next_index] = bank.base_size[index];
+				bank.single_loop_count[next_index] = bank.single_loop_count[index];
+
 			}
-			running_sprite_index++;
 
 		}
 
+		if (offset) {
+			Bump(&work_entry->pm->particle_array_buffers[work_entry->layer], offset);
+		}
 	}
 
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
-		const tfxU32 current_buffer_index = work_entry->current_buffer_index;
-		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->layer];
 
-		for (tfxU32 index = work_entry->start_index; index != work_entry->end_index; ++index) {
+		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->layer], i);
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
@@ -7767,9 +7757,10 @@ namespace tfx {
 
 		}
 
-		tfxU32 running_sprite_index = 0;
+		tfxU32 running_sprite_index = work_entry->start_index;
 
-		for (tfxU32 index = 0; index != work_entry->amount_to_update; ++index) {
+		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->layer], i);
 			const tfxU32 parent_index = bank.parent_index[index];
 
 			tfxVec3 &e_captured_position = pm.emitters.captured_position[parent_index];
@@ -7805,11 +7796,12 @@ namespace tfx {
 	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->layer];
 
-		tfxU32 running_sprite_index = 0;
+		tfxU32 running_sprite_index = work_entry->start_index;
 
-		for (tfxU32 index = work_entry->start_index; index != work_entry->end_index; ++index) {
+		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->layer], i);
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
@@ -7859,11 +7851,12 @@ namespace tfx {
 	void ControlParticleColorOrdered2d(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->layer];
 
-		tfxU32 running_sprite_index = 0;
+		tfxU32 running_sprite_index = work_entry->start_index;
 
-		for (int index = 0; index != work_entry->amount_to_update; ++index) {
+		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->layer], i);
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
@@ -7904,11 +7897,12 @@ namespace tfx {
 	void ControlParticleImageFrameOrdered2d(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->layer];
 
-		tfxU32 running_sprite_index = 0;
+		tfxU32 running_sprite_index = work_entry->start_index;
 
-		for (int index = 0; index != work_entry->amount_to_update; ++index) {
+		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->layer], i);
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
@@ -8264,26 +8258,13 @@ namespace tfx {
 		}
 
 		if (!(flags & tfxEffectManagerFlags_unordered)) {
-			const tfxU32 range_size = 512;
-			for (tfxEachLayerDB) {
-				tfxU32 ranges_to_create = tfxMin(layer_max_values[layer] / range_size, 1);
+			for (tfxEachLayer) {
 				tfxParticleSoA lists;
 				tfxU32 index = particle_arrays.locked_push_back(lists);
 				tfxSoABuffer buffer;
 				particle_array_buffers.push_back(buffer);
-				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), range_size);
+				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), layer_max_values[layer]);
 				assert(index == particle_array_buffers.current_size - 1);
-				tfxSoARanges ranges;
-				InitialiseSoARanges(&ranges, &particle_array_buffers.back(), range_size);
-				tfxSoARange range;
-				range.current_size = 0;
-				range.start_index = 0;
-				range.end_index = range_size;
-				ranges.ranges.push_back(range);
-				particle_ranges.push_back(ranges);
-				for (tfxU32 range_index = 1; range_index != ranges_to_create; ++range_index) {
-					GrabRange(&particle_ranges.back());
-				}
 			}
 		}
 
@@ -8630,9 +8611,6 @@ namespace tfx {
 				else
 					TransformEffector2d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites2d[sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
 
-				tfxVec3 test = world_position - captured_position;
-				float length = LengthVec(test);
-
 				world_position += properties.emitter_handle[property_index] * overal_scale;
 				if (state_flags & tfxEmitterStateFlags_no_tween_this_update || state_flags & tfxEmitterStateFlags_no_tween) {
 					captured_position = world_position;
@@ -8842,7 +8820,7 @@ namespace tfx {
 			else {
 				sprites_index = pm.sprite_index_point[layer];
 				pm.sprite_index_point[layer] += max_spawn_count;
-				particles_index = layer * 2 + pm.current_pbuff;
+				particles_index = layer;
 				if (property_flags & tfxEmitterPropertyFlags_is_3d) {
 					Transform3d(world_rotations, local_rotations, scale, world_position, local_position, translation, matrix, parent_world_rotations, parent_scale, parent_world_position, parent_matrix);
 
@@ -9019,19 +8997,6 @@ namespace tfx {
 		}
 
 		work_entry.spawn_start_index = AddRows(&pm.particle_array_buffers[pm.emitters.particles_index[work_entry.emitter_index]], work_entry.amount_to_spawn, true);
-		tfxU32 first_range_index = work_entry.spawn_start_index / 512;
-		tfxU32 spawn_count = work_entry.amount_to_spawn;
-		tfxU32 buffer_index = pm.emitters.particles_index[work_entry.emitter_index];
-		tfxU32 r = first_range_index;
-		while (spawn_count > 0) {
-			tfxU32 size = pm.particle_ranges[buffer_index].ranges[r].current_size;
-			pm.particle_ranges[buffer_index].ranges[r].current_size += spawn_count;
-			if (pm.particle_ranges[buffer_index].ranges[r].current_size > 512) {
-				spawn_count -= pm.particle_ranges[buffer_index].ranges[r].current_size - 512 + size;
-				pm.particle_ranges[buffer_index].ranges[r].current_size = 512;
-			}
-			++r;
-		}
 		tfxEmissionType &emission_type = properties.emission_type[pm.emitters.properties_index[work_entry.emitter_index]];
 
 #if tfxMULTITHREADED

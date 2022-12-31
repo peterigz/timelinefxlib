@@ -1802,6 +1802,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	}
 	
+	//Increase current size of a SoA Buffer and grow if necessary.
+	static inline void SetCapacity(tfxSoABuffer *buffer, tfxU32 new_size) {
+		assert(buffer->data);			//No data allocated in buffer
+		if (new_size >= buffer->capacity) {
+			GrowArrays(buffer, new_size);
+		}
+	}
+	
 	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
 	static inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
 		assert(buffer->data);			//No data allocated in buffer
@@ -6141,10 +6149,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxControlWorkEntryOrdered {
 		tfxParticleManager *pm;
 		tfxU32 layer;
-		tfxU32 current_buffer_index;
-		tfxU32 next_buffer_index;
 		tfxU32 amount_to_update;
-		tfxU32 range_index;
 		tfxU32 start_index;
 		tfxU32 end_index;
 		tfxring<tfxParticleSprite2d> *sprites2d;
@@ -6210,7 +6215,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxSoABuffer> particle_array_buffers;
 		tfxBucketArray<tfxParticleSoA> particle_arrays;
-		tfxvec<tfxSoARanges> particle_ranges;
 
 		tfxMemoryArenaManager particle_array_allocator;
 		//In unordered mode emitters that expire have their particle banks added here to be reused
@@ -6218,6 +6222,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
+		tfxControlWorkEntryOrdered ordered_age_work_entry[tfxLAYERS];
 
 		tfxvec<tfxU32> effects_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
@@ -6247,10 +6252,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		unsigned int max_cpu_particles_per_layer[tfxLAYERS];
 		//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
 		unsigned int max_new_compute_particles;
-		//The current sprite buffer in use, can be either 0 or 1
-		unsigned int current_pbuff;
 		//The current effect buffer in use, can be either 0 or 1
 		unsigned int current_ebuff;
+		unsigned int next_ebuff;
+		tfxU32 effects_start_size[tfxMAXDEPTH];
+		tfxU32 emitter_start_size[tfxMAXDEPTH];
 
 		tfxU32 sprite_index_point[tfxLAYERS];
 		tfxU32 new_particles_index_start[tfxLAYERS];
@@ -6273,7 +6279,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			lookup_mode(tfxFast),
 			max_effects(10000),
 			current_ebuff(0),
-			current_pbuff(0),
 			highest_compute_controller_index(0),
 			new_compute_particle_ptr(nullptr),
 			compute_controller_ptr(nullptr),
@@ -6372,10 +6377,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void UpdateBaseValues();
 		tfxvec<tfxU32> *GetEffectBuffer();
 		void SetLookUpMode(tfxLookupMode mode);
-		inline tfxParticleID SetNextParticle(tfxU32 next_index, tfxU32 current_index, tfxU32 other_index, tfxU32 range_index) {
+		inline tfxParticleID SetNextParticle(tfxU32 next_index, tfxU32 current_index, tfxU32 other_index) {
 			tfxParticleSoA &to_bank = particle_arrays[next_index];
 			tfxParticleSoA &from_bank = particle_arrays[current_index];
-			tfxU32 index = particle_ranges[next_index].ranges[range_index].start_index + particle_ranges[next_index].ranges[range_index].current_size++;
+			tfxU32 index = particle_array_buffers[next_index].current_size++;
 			assert(index < particle_array_buffers[next_index].capacity);
 			to_bank.parent_index[index] = from_bank.parent_index[other_index];
 			to_bank.sprite_index[index] = from_bank.sprite_index[other_index];
