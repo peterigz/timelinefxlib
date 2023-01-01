@@ -7257,6 +7257,7 @@ namespace tfx {
 
 	void tfxParticleManager::Update() {
 		tfxPROFILE;
+		tfxCompleteAllWork(&tfxQueue);
 		new_compute_particle_index = 0;
 
 		unsigned int next_buffer = !current_ebuff;
@@ -7393,10 +7394,10 @@ namespace tfx {
 						work_entry.pm = this;
 						work_entry.layer = layer;
 						work_entry.start_index = running_start_index;
-						work_entry.end_index = particles_to_update > 512 ? running_start_index + 512 :  running_start_index + particles_to_update;
+						work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size :  running_start_index + particles_to_update;
 						work_entry.amount_to_update = work_entry.end_index - work_entry.start_index;
-						particles_to_update -= 512;
-						running_start_index += 512;
+						particles_to_update -= mt_batch_size;
+						running_start_index += mt_batch_size;
 						ControlParticlesOrdered2d(*this, work_entry);
 					}
 				}
@@ -7419,11 +7420,11 @@ namespace tfx {
 				ControlParticleOrderedAge2d(&tfxQueue, &work_entry);
 #endif
 			}
-			tfxCompleteAllWork(&tfxQueue);
 
 		}
 
-		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+		/*
+		for (int depth = 1; depth != tfxMAXDEPTH; ++depth) {
 			for (int i = effects_start_size[depth]; i != effects_in_use[depth][current_ebuff].current_size; ++i) {
 				tfxU32 current_index = effects_in_use[depth][current_ebuff][i];
 				UpdatePMEffect(*this, current_index);
@@ -7434,11 +7435,25 @@ namespace tfx {
 				tfxU32 current_index = emitters_in_use[depth][current_ebuff][i];
 				work_entry.emitter_index = current_index;
 				work_entry.next_buffer = next_buffer;
-
 				if (flags & tfxEffectManagerFlags_unordered) {
 					emitters.particles_index[current_index] = GrabParticleLists(*this, emitters.path_hash[current_index], 100);
 				}
 				UpdatePMEmitter(*this, &work_entry);
+				emitters_in_use[depth][next_buffer].push_back(current_index);
+			}
+		}
+		*/
+
+		for (int depth = 1; depth != tfxMAXDEPTH; ++depth) {
+			for (int i = effects_start_size[depth]; i != effects_in_use[depth][current_ebuff].current_size; ++i) {
+				tfxU32 current_index = effects_in_use[depth][current_ebuff][i];
+				effects_in_use[depth][next_buffer].push_back(current_index);
+			}
+			for (int i = emitter_start_size[depth]; i != emitters_in_use[depth][current_ebuff].current_size; ++i) {
+				tfxU32 current_index = emitters_in_use[depth][current_ebuff][i];
+				if (flags & tfxEffectManagerFlags_unordered) {
+					emitters.particles_index[current_index] = GrabParticleLists(*this, emitters.path_hash[current_index], 100);
+				}
 				emitters_in_use[depth][next_buffer].push_back(current_index);
 			}
 		}
@@ -8227,8 +8242,9 @@ namespace tfx {
 		return &effects_in_use[0][current_ebuff];
 	}
 
-	void tfxParticleManager::InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode) {
+	void tfxParticleManager::InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, tfxU32 multi_threaded_batch_size) {
 		max_effects = effects_limit;
+		mt_batch_size = multi_threaded_batch_size;
 
 		if (particle_array_allocator.arenas.current_size == 0) {
 			//todo need to be able to adjust the arena size
@@ -8286,8 +8302,9 @@ namespace tfx {
 		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
 	}
 
-	void tfxParticleManager::InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode) {
+	void tfxParticleManager::InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, tfxU32 multi_threaded_batch_size) {
 		max_effects = effects_limit;
+		mt_batch_size = multi_threaded_batch_size;
 
 		if (particle_array_allocator.arenas.current_size == 0) {
 			//todo need to be able to adjust the arena size
@@ -8461,6 +8478,7 @@ namespace tfx {
 	}
 
 	void tfxParticleManager::ClearAll(bool free_memory) {
+		tfxCompleteAllWork(&tfxQueue);
 		for (tfxEachLayer) {
 			sprites2d[layer].clear();
 			sprites3d[layer].clear();
@@ -8562,7 +8580,7 @@ namespace tfx {
 		pm.emitters.local_position[buffer_index] = position;
 	}
 
-	void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index) {
+	void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index) {
 		tfxPROFILE;
 
 		const tfxU32 property_index = pm.effects.properties_index[index];
@@ -8648,7 +8666,6 @@ namespace tfx {
 			if (state_flags & tfxEmitterStateFlags_no_tween_this_update || state_flags & tfxEmitterStateFlags_no_tween) {
 				captured_position = world_position;
 			}
-
 		}
 
 		age += tfxFRAME_LENGTH;

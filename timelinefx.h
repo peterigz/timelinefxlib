@@ -6233,7 +6233,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectSoA effects;
 		tfxSoABuffer emitter_buffers;
 		tfxEmitterSoA emitters;
-		//Set when an effect is updated and used to pass on global attributes to child emitters
 
 		//Banks of sprites for drawing in unordered mode
 		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
@@ -6261,6 +6260,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 sprite_index_point[tfxLAYERS];
 		tfxU32 new_particles_index_start[tfxLAYERS];
 
+		tfxU32 mt_batch_size;
+
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
 		tfxComputeFXGlobalState compute_global_state;
@@ -6286,6 +6287,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			max_new_compute_particles(10000),
 			new_compute_particle_index(0),
 			new_particles_count(0),
+			mt_batch_size(512),
 			new_positions(tfxCONSTRUCTOR_VEC_INIT("pm new_positions")),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
 		{ }
@@ -6294,8 +6296,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
 		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false);
-		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
-		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, tfxU32 multi_threaded_batch_size = 512);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void CreateParticleBanksForEachLayer();
@@ -6544,7 +6546,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	void TransformEffector2d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
 	void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
-	void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index);
+	void SubEffectUpdate(tfxParticleManager &pm, tfxU32 index);
+	void SubEmitterUpdate(tfxParticleManager &pm, tfxU32 index);
+	void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 	void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry);
 	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxEmitterPropertiesSoA &properties);
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxU32 max_spawn_amount, tfxEmitterPropertiesSoA &properties);
