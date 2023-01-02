@@ -986,119 +986,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 #define tfxArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
-	//Some multithreading functions - TODO: currently this is windows only, needs linux/mac etc added
-	struct tfxWorkQueue;
-
-#define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
-	typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
-
-	struct tfxWorkQueueEntry {
-		tfxWorkQueueCallback *call_back;
-		void *data;
-	};
-
-	typedef tfxU32 tfxWorkQueueFlags;
-
-	enum tfxWorkQueueFlag_ {
-		tfxWorkQueueFlag_none = 0
-	};
-
-	struct tfxWorkQueue {
-		tfxU32 volatile entry_completion_goal = 0;
-		tfxU32 volatile entry_completion_count = 0;
-		tfxU32 volatile next_read_entry = 0;
-		tfxU32 volatile next_write_entry = 0;
-		tfxU32 volatile sleeping_threads = 0;
-		std::mutex mutex;
-		tfxU32 total_threads;
-		HANDLE semaphore_handle;
-		tfxWorkQueueEntry entries[256];
-	};
-
-	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
-
-		std::lock_guard<std::mutex> lock(queue->mutex);
-
-		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
-		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
-		queue->entries[queue->next_write_entry].data = data;
-		queue->entries[queue->next_write_entry].call_back = call_back;
-		InterlockedIncrement(&queue->entry_completion_goal);
-
-		_WriteBarrier();
-
-		queue->next_write_entry = new_entry_to_write;
-
-		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
-
-	}
-
-	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
-		bool sleep = false;
-
-		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
-
-		if (original_read_entry != queue->next_write_entry) {
-			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
-			if (index == original_read_entry) {
-				tfxWorkQueueEntry entry = queue->entries[index];
-				entry.call_back(queue, entry.data);
-				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
-			}
-		}
-		else {
-			sleep = true;
-		}
-
-		return sleep;
-	}
-
-	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
-
-		tfxWorkQueue *queue = (tfxWorkQueue*)lpParameter;
-
-		for (;;) {
-			if (tfxDoNextWorkQueueEntry(queue)) {
-				//Suspend the thread
-				InterlockedIncrement((LONG volatile *)&queue->sleeping_threads);
-				WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, false);
-				InterlockedDecrement((LONG volatile *)&queue->sleeping_threads);
-			}
-		}
-
-	}
-
-	static void tfxCompleteAllWork(tfxWorkQueue *queue) {
-		tfxWorkQueueEntry entry = {};
-		while (queue->entry_completion_goal != queue->entry_completion_count) {
-			tfxDoNextWorkQueueEntry(queue);
-		}
-		queue->entry_completion_count = 0;
-		queue->entry_completion_goal = 0;
-	}
-
-	inline void tfxWaitUntilAllThreadsAreSleeping(tfxWorkQueue *queue) {
-		while(queue->sleeping_threads < queue->total_threads);
-	}
-
-	inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue, tfxU32 max_threads) {
-		queue->entry_completion_count = 0;
-		queue->entry_completion_goal = 0;
-		queue->next_read_entry = 0;
-		queue->next_write_entry = 0;
-		queue->sleeping_threads = 0;
-		queue->total_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, std::thread::hardware_concurrency() - 1);
-		queue->semaphore_handle = CreateSemaphoreEx(0, 0, queue->total_threads, 0, 0, SEMAPHORE_ALL_ACCESS);
-
-		for (tfxU32 thread_index = 0; thread_index < queue->total_threads; ++thread_index) {
-			DWORD thread_id;
-			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, queue, 0, &thread_id);
-			CloseHandle(thread_handle);
-		}
-
-	}
-
 	//Storage
 	//Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut
 	//std::vector replacement with some extra stuff and tweaks specific to Qulkan/TimelineFX
@@ -1244,7 +1131,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
 
 		inline void         pop() { assert(current_size > 0); current_size--; }
-		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
+		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[last_index()]; }
+		inline T&	        pop_front() { assert(current_size > 0); tfxU32 front_index = start_index++; start_index %= capacity; current_size--; return data[front_index]; }
 
 		inline T&	        emplace_back(const T& v) {
 			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
@@ -2518,6 +2406,173 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline void			NullTerminate() { *(data + size) = NULL; }
 
 	};
+
+	//Some multithreading functions - TODO: currently this is windows only, needs linux/mac etc added
+	//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue.
+	struct tfxWorkQueue;
+
+#define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
+	typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
+
+	struct tfxWorkQueueEntry {
+		tfxWorkQueueCallback *call_back;
+		void *data;
+	};
+
+	typedef tfxU32 tfxWorkQueueFlags;
+
+	enum tfxWorkQueueFlag_ {
+		tfxWorkQueueFlag_none = 0
+	};
+
+	extern HANDLE tfxThreadSemaphore;
+	extern tfxU32 tfxNumberOfThreadsInAdditionToMain;
+
+	struct tfxWorkQueue {
+		tfxU32 volatile entry_completion_goal = 0;
+		tfxU32 volatile entry_completion_count = 0;
+		tfxU32 volatile next_read_entry = 0;
+		tfxU32 volatile next_write_entry = 0;
+		tfxWorkQueueEntry entries[256];
+	};
+
+	struct tfxQueueProcessor {
+		std::mutex mutex;
+		HANDLE empty_semaphore;
+		HANDLE full_semaphore;
+		tfxU32 count;
+		tfxWorkQueue *queues[64];
+	};
+
+	extern tfxQueueProcessor tfxThreadQueues;
+
+	inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
+		queues->count = 0;
+		queues->empty_semaphore = CreateSemaphoreEx(0, 64, 64, 0, 0, SEMAPHORE_ALL_ACCESS);
+		queues->full_semaphore = CreateSemaphoreEx(0, 0, 64, 0, 0, SEMAPHORE_ALL_ACCESS);
+		memset(queues->queues, 0, 64 * sizeof(void*));
+	}
+
+	inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
+		WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
+		std::unique_lock<std::mutex> lock(thread_processor->mutex);
+		tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
+		ReleaseSemaphore(thread_processor->empty_semaphore, 1, 0);
+		return queue;
+	}
+
+	inline void tfxPushQueueWork(tfxQueueProcessor *thread_processor, tfxWorkQueue *queue) {
+		WaitForSingleObject(thread_processor->empty_semaphore, INFINITE);
+		std::unique_lock<std::mutex> lock(thread_processor->mutex);
+		thread_processor->queues[thread_processor->count++] = queue;
+		ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
+	}
+
+	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+
+		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
+		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
+		queue->entries[queue->next_write_entry].data = data;
+		queue->entries[queue->next_write_entry].call_back = call_back;
+		InterlockedIncrement(&queue->entry_completion_goal);
+
+		_WriteBarrier();
+
+		tfxPushQueueWork(&tfxThreadQueues, queue);
+		queue->next_write_entry = new_entry_to_write;
+
+		ReleaseSemaphore(tfxThreadSemaphore, 1, 0);
+	}
+
+	static bool tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
+		bool sleep = false;
+
+		tfxWorkQueue *queue = tfxGetQueueWithWork(queue_processor);
+
+		if (queue) {
+			tfxU32 original_read_entry = queue->next_read_entry;
+			tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
+
+			if (original_read_entry != queue->next_write_entry) {
+				tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
+				if (index == original_read_entry) {
+					tfxWorkQueueEntry entry = queue->entries[index];
+					entry.call_back(queue, entry.data);
+					InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+				}
+			}
+			else {
+				sleep = true;
+			}
+		}
+		else {
+			sleep = false;
+		}
+
+		return sleep;
+	}
+
+	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
+		bool sleep = false;
+
+		tfxU32 original_read_entry = queue->next_read_entry;
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
+
+		if (original_read_entry != queue->next_write_entry) {
+			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
+			if (index == original_read_entry) {
+				tfxWorkQueueEntry entry = queue->entries[index];
+				entry.call_back(queue, entry.data);
+				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+			}
+		}
+		else {
+			sleep = true;
+		}
+
+		return sleep;
+	}
+
+	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
+
+		tfxQueueProcessor *thread_processor = (tfxQueueProcessor*)lpParameter;
+
+		for (;;) {
+			if (tfxDoNextWorkQueue(thread_processor)) {
+				//Suspend the thread
+				WaitForSingleObjectEx(tfxThreadSemaphore, INFINITE, false);
+			}
+		}
+
+	}
+
+	static void tfxCompleteAllWork(tfxWorkQueue *queue) {
+		tfxWorkQueueEntry entry = {};
+		while (queue->entry_completion_goal != queue->entry_completion_count) {
+			tfxDoNextWorkQueueEntry(queue);
+		}
+		queue->entry_completion_count = 0;
+		queue->entry_completion_goal = 0;
+	}
+
+	inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue) {
+		queue->entry_completion_count = 0;
+		queue->entry_completion_goal = 0;
+		queue->next_read_entry = 0;
+		queue->next_write_entry = 0;
+	}
+
+	inline void tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
+		InitialiseThreadQueues(&tfxThreadQueues);
+
+		tfxThreadSemaphore = CreateSemaphoreEx(0, 0, tfxNumberOfThreadsInAdditionToMain, 0, 0, SEMAPHORE_ALL_ACCESS);
+		for (tfxU32 thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
+			DWORD thread_id;
+			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, thread_queues, 0, &thread_id);
+			CloseHandle(thread_handle);
+		}
+
+	}
 
 	//Just the very basic vector types that we need
 	struct tfxVec2 {
@@ -6234,6 +6289,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxSoABuffer emitter_buffers;
 		tfxEmitterSoA emitters;
 
+		tfxWorkQueue work_queue;
+
 		//Banks of sprites for drawing in unordered mode
 		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
@@ -6260,7 +6317,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 sprite_index_point[tfxLAYERS];
 		tfxU32 new_particles_index_start[tfxLAYERS];
 
-		tfxU32 mt_batch_size;
+		int mt_batch_size;
 
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
@@ -7147,7 +7204,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//To enable multithreading set percent_of_available_threads_to_use to something higher then 0; 
 	//Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
-	extern tfxWorkQueue tfxQueue;
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
