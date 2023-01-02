@@ -7883,9 +7883,6 @@ namespace tfx {
 			tfxOvertimeAttributes *graphs = &library->emitter_attributes[emitter_attributes].overtime;
 			const tfxU32 lookup_frame = static_cast<tfxU32>((life * graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
-			const float lookup_red = graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, graphs->red.lookup.last_frame)];
-			const float lookup_green = graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, graphs->green.lookup.last_frame)];
-			const float lookup_blue = graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, graphs->blue.lookup.last_frame)];
 			const float lookup_opacity = graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, graphs->blendfactor.lookup.last_frame)];
 			const float lookup_intensity = graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->intensity.lookup.last_frame)];
 
@@ -7896,6 +7893,9 @@ namespace tfx {
 			color.a = unsigned char(255.f * lookup_opacity);
 			intensity = lookup_intensity * global_intensity;
 			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
+				const float lookup_red = graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, graphs->red.lookup.last_frame)];
+				const float lookup_green = graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, graphs->green.lookup.last_frame)];
+				const float lookup_blue = graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, graphs->blue.lookup.last_frame)];
 				color.r = unsigned char(255.f * lookup_red);
 				color.g = unsigned char(255.f * lookup_green);
 				color.b = unsigned char(255.f * lookup_blue);
@@ -9229,6 +9229,14 @@ namespace tfx {
 		const tfxU32 sprites_index = pm.emitters.sprites_index[emitter_index];
 		const float highest_particle_age = pm.emitters.highest_particle_age[emitter_index];
 		const tfxU32 loop_count = entry->properties->single_shot_limit[property_index] + 1;
+		tfxEffectLibrary *library = pm.emitters.library[emitter_index];
+		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
+		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
+		const float emitter_intensity = pm.emitters.intensity[emitter_index];
+		const float first_red_value = library->emitter_attributes[emitter_attributes].overtime.red.GetFirstValue();
+		const float first_green_value = library->emitter_attributes[emitter_attributes].overtime.green.GetFirstValue();
+		const float first_blue_value = library->emitter_attributes[emitter_attributes].overtime.blue.GetFirstValue();
+		const float first_intensity_value = library->emitter_attributes[emitter_attributes].overtime.intensity.GetFirstValue();
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
@@ -9253,6 +9261,21 @@ namespace tfx {
 			age = 0.f;
 			max_age = life + random_generation.Range(life_variation);
 			single_loop_count = 0;
+
+			color.a = unsigned char(255.f * library->emitter_attributes[emitter_attributes].overtime.blendfactor.GetFirstValue());
+			intensity = first_intensity_value * emitter_intensity;
+			//intensity = 0.f;
+			if (emitter_flags & tfxEmitterStateFlags_random_color) {
+				float age = random_generation.Range(max_age);
+				color.r = unsigned char(255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.red, age, max_age));
+				color.g = unsigned char(255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.green, age, max_age));
+				color.b = unsigned char(255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.blue, age, max_age));
+			}
+			else {
+				color.r = unsigned char(255.f * first_red_value);
+				color.g = unsigned char(255.f * first_green_value);
+				color.b = unsigned char(255.f * first_blue_value);
+			}
 
 			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
 
@@ -11806,9 +11829,6 @@ namespace tfx {
 			const float max_age = bank.max_age[index];
 			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
-			const float lookup_red = work_entry->graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->red.lookup.last_frame)];
-			const float lookup_green = work_entry->graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->green.lookup.last_frame)];
-			const float lookup_blue = work_entry->graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blue.lookup.last_frame)];
 			const float lookup_opacity = work_entry->graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blendfactor.lookup.last_frame)];
 			const float lookup_intensity = work_entry->graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->intensity.lookup.last_frame)];
 
@@ -11819,6 +11839,9 @@ namespace tfx {
 			color.a = unsigned char(255.f * lookup_opacity);
 			intensity = lookup_intensity * global_intensity;
 			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
+				const float lookup_red = work_entry->graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->red.lookup.last_frame)];
+				const float lookup_green = work_entry->graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->green.lookup.last_frame)];
+				const float lookup_blue = work_entry->graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blue.lookup.last_frame)];
 				color.r = unsigned char(255.f * lookup_red);
 				color.g = unsigned char(255.f * lookup_green);
 				color.b = unsigned char(255.f * lookup_blue);
