@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 1
+#define tfxMULTITHREADED 0
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -6190,7 +6190,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxControlWorkEntry {
 		tfxU32 start_index;
-		tfxU32 next_buffer;
 		tfxU32 sprites_index;
 		tfxU32 emitter_index;
 		tfxParticleManager *pm;
@@ -6203,7 +6202,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxControlWorkEntryOrdered {
 		tfxParticleManager *pm;
-		tfxU32 layer;
+		tfxU32 sprite_layer;
+		tfxU32 current_buffer_index;
+		tfxU32 next_buffer_index;
 		tfxU32 amount_to_update;
 		tfxU32 start_index;
 		tfxU32 end_index;
@@ -6277,7 +6278,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
-		tfxControlWorkEntryOrdered ordered_age_work_entry[tfxLAYERS];
+		tfxControlWorkEntryOrdered ordered_age_work_entry[tfxLAYERS * 2];
 
 		tfxvec<tfxU32> effects_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
@@ -6311,6 +6312,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//The current effect buffer in use, can be either 0 or 1
 		unsigned int current_ebuff;
 		unsigned int next_ebuff;
+		//When using depth sorting in 3d, the particles are double buffered
+		unsigned int current_pbuff;
 		tfxU32 effects_start_size[tfxMAXDEPTH];
 		tfxU32 emitter_start_size[tfxMAXDEPTH];
 
@@ -6337,6 +6340,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			lookup_mode(tfxFast),
 			max_effects(10000),
 			current_ebuff(0),
+			current_pbuff(0),
 			highest_compute_controller_index(0),
 			new_compute_particle_ptr(nullptr),
 			compute_controller_ptr(nullptr),
@@ -6662,6 +6666,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticleOrderedAge(tfxWorkQueue *queue, void *data);
+	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data);
