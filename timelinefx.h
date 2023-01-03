@@ -2441,7 +2441,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		HANDLE empty_semaphore;
 		HANDLE full_semaphore;
 		tfxU32 count;
-		tfxWorkQueue *queues[64];
+		tfxWorkQueue *queues[256];
 	};
 
 	extern tfxQueueProcessor tfxThreadQueues;
@@ -6616,7 +6616,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticlesOrdered2d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
-	void ControlParticlesOrdered3d(tfxParticleManager &pm);
+	void ControlParticlesOrdered3d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
 	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
 
 	//Wide mt versions
@@ -6661,11 +6661,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ControlParticleColor3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data);
 
-	void ControlParticleOrderedAge2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleOrderedAge(tfxWorkQueue *queue, void *data);
+
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleColorOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrameOrdered2d(tfxWorkQueue *queue, void *data);
+
+	void ControlParticlePositionOrdered3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleSizeOrdered3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleColorOrdered3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleImageFrameOrdered3d(tfxWorkQueue *queue, void *data);
+
 
 
 	struct tfxEffectLibraryStats {
