@@ -7644,14 +7644,11 @@ namespace tfx {
 			const float depth = bank.depth[index].depth;
 
 			while (new_index != tfxINVALID && bank.depth[new_index].depth > depth) {
-				bank.next_id[new_index] = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, new_index++);
-				new_index = new_index == work_entry->amount_to_update ? tfxINVALID : new_index;
+				bank.next_id[new_index] = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, new_index);
+				new_index = ++new_index >= work_entry->amount_to_update ? tfxINVALID : new_index;
 			}
 			
-			//tfxU32 index = i++;
 			const tfxU32 parent_index = bank.parent_index[index];
-			//if (parent_index > 1)
-				//continue;
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 			tfxParticleID &next_index = bank.next_id[index];
 
@@ -7997,8 +7994,6 @@ namespace tfx {
 		const tfxU32 layer = work_entry->current_buffer_index;
 		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
 
-		tfxU32 running_sprite_index = work_entry->start_index;
-
 		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->current_buffer_index], i);
 			const tfxU32 parent_index = bank.parent_index[index];
@@ -8138,7 +8133,7 @@ namespace tfx {
 
 		}
 
-		running_sprite_index = work_entry->start_index;
+		tfxU32 running_sprite_index = work_entry->start_index;
 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->current_buffer_index], i);
@@ -9017,8 +9012,8 @@ namespace tfx {
 		tfxEmitterPropertiesSoA &properties = library->emitter_properties;
 
 		if (parent_particle_id != tfxINVALID) {
-			//tfxU32 bank_index = ParticleBank(parent_particle_id);
-			//tfxU32 particle_index = GetCircularIndex(&pm.particle_array_buffers[bank_index], ParticleIndex(parent_particle_id));
+			tfxU32 bank_index = ParticleBank(parent_particle_id);
+			tfxU32 particle_index = GetCircularIndex(&pm.particle_array_buffers[bank_index], ParticleIndex(parent_particle_id));
 			tfxParticleID next_id = pm.GetParticleNextID(parent_particle_id);
 			if (next_id != tfxINVALID) {
 				const float overal_scale = pm.effects.overal_scale[index];
@@ -9577,7 +9572,9 @@ namespace tfx {
 		}
 #else
 		SpawnParticleAge(&pm.work_queue, &work_entry);
-
+		if (!(pm.flags & tfxEffectManagerFlags_order_by_depth)) {
+			SpawnParticleSubEffects(&pm.work_queue, &work_entry);
+		}
 		if (emission_type == tfxPoint) {
 			SpawnParticlePoint3d(&pm.work_queue, &work_entry);
 		}
@@ -9612,6 +9609,9 @@ namespace tfx {
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
 			tfxCompleteAllWork(&pm.work_queue);
 			SpawnParticleDepthSort(&pm.work_queue, &work_entry);
+			if (work_entry.sub_effects->current_size > 0) {
+				SpawnParticleSubEffects(&pm.work_queue, &work_entry);
+			}
 		}
 
 		if (work_entry.amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
@@ -9652,15 +9652,11 @@ namespace tfx {
 			float &intensity = entry->particle_data->intensity[index];
 			tfxU32 &single_loop_count = entry->particle_data->single_loop_count[index];
 
-			//Todo: put this assert into the SpawnWide function
-			//assert(sprites_index < pm.sprites3d[properties.layer[property_index]].capacity);
-			tfxParticleID &next_id = entry->particle_data->next_id[index];
 			tfxParticleFlags &flags = entry->particle_data->flags[index];
 			tfxU32 &parent = entry->particle_data->parent_index[index];
 			parent = emitter_index;
 
-			flags = tfxParticleFlags_fresh;
-			next_id = SetParticleID(particles_index, index);
+			flags = 0;
 
 			//Max age
 			//Todo: should age be set to the tween value?
@@ -9684,16 +9680,28 @@ namespace tfx {
 			}
 
 			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
+		}
+	}
 
-			if (entry->sub_effects->current_size > 0) {
-				for (auto &sub : *entry->sub_effects) {
-					if (!pm.FreeEffectCapacity())
-						break;
-					assert(entry->depth < tfxMAXDEPTH - 1);
-					tfxU32 added_index = pm.AddEffect(sub, pm.current_ebuff, entry->depth + 1, true);
-					pm.effects.overal_scale[added_index] = pm.emitters.overal_scale[index];
-					pm.effects.parent_particle_id[added_index] = next_id;
-				}
+	void SpawnParticleSubEffects(tfxWorkQueue *queue, void *data) {
+
+		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxU32 emitter_index = entry->emitter_index;
+		tfxParticleManager &pm = *entry->pm;
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+
+		for (int i = 0; i != entry->amount_to_spawn; ++i) {
+			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
+			tfxParticleID &next_id = entry->particle_data->next_id[index];
+			next_id = SetParticleID(particles_index, index);
+
+			for (auto &sub : *entry->sub_effects) {
+				if (!pm.FreeEffectCapacity())
+					break;
+				assert(entry->depth < tfxMAXDEPTH - 1);
+				tfxU32 added_index = pm.AddEffect(sub, pm.current_ebuff, entry->depth + 1, true);
+				pm.effects.overal_scale[added_index] = pm.emitters.overal_scale[index];
+				pm.effects.parent_particle_id[added_index] = next_id;
 			}
 		}
 
@@ -11308,7 +11316,6 @@ namespace tfx {
 	}
 
 	void SpawnParticleDepthSort(tfxWorkQueue *queue, void *data) {
-		return;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -11318,29 +11325,30 @@ namespace tfx {
 		std::qsort(entry->particle_data->depth + entry->spawn_start_index, entry->amount_to_spawn, sizeof(tfxDepth), SortDepth);
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
-			tfxU32 di = bank.depth[i].index;
-			std::swap(bank.age[i], bank.age[di]);
-			std::swap(bank.parent_index[i], bank.parent_index[di]);
-			std::swap(bank.sprite_index[i], bank.sprite_index[di]);
-			std::swap(bank.next_id[i], bank.next_id[di]);
-			std::swap(bank.flags[i], bank.flags[di]);
-			std::swap(bank.max_age[i], bank.max_age[di]);
-			std::swap(bank.local_position[i], bank.local_position[di]);
-			std::swap(bank.captured_position[i], bank.captured_position[di]);
-			std::swap(bank.local_rotations[i], bank.local_rotations[di]);
-			std::swap(bank.velocity_normal[i], bank.velocity_normal[di]);
-			std::swap(bank.stretch[i], bank.stretch[di]);
-			std::swap(bank.weight_acceleration[i], bank.weight_acceleration[di]);
-			std::swap(bank.base_weight[i], bank.base_weight[di]);
-			std::swap(bank.base_velocity[i], bank.base_velocity[di]);
-			std::swap(bank.base_spin[i], bank.base_spin[di]);
-			std::swap(bank.noise_offset[i], bank.noise_offset[di]);
-			std::swap(bank.noise_resolution[i], bank.noise_resolution[di]);
-			std::swap(bank.color[i], bank.color[di]);
-			std::swap(bank.intensity[i], bank.intensity[di]);
-			std::swap(bank.image_frame[i], bank.image_frame[di]);
-			std::swap(bank.base_size[i], bank.base_size[di]);
-			std::swap(bank.single_loop_count[i], bank.single_loop_count[di]);
+			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
+			tfxU32 di = bank.depth[index].index;
+			std::swap(bank.age[index], bank.age[di]);
+			std::swap(bank.parent_index[index], bank.parent_index[di]);
+			std::swap(bank.sprite_index[index], bank.sprite_index[di]);
+			std::swap(bank.next_id[index], bank.next_id[di]);
+			std::swap(bank.flags[index], bank.flags[di]);
+			std::swap(bank.max_age[index], bank.max_age[di]);
+			std::swap(bank.local_position[index], bank.local_position[di]);
+			std::swap(bank.captured_position[index], bank.captured_position[di]);
+			std::swap(bank.local_rotations[index], bank.local_rotations[di]);
+			std::swap(bank.velocity_normal[index], bank.velocity_normal[di]);
+			std::swap(bank.stretch[index], bank.stretch[di]);
+			std::swap(bank.weight_acceleration[index], bank.weight_acceleration[di]);
+			std::swap(bank.base_weight[index], bank.base_weight[di]);
+			std::swap(bank.base_velocity[index], bank.base_velocity[di]);
+			std::swap(bank.base_spin[index], bank.base_spin[di]);
+			std::swap(bank.noise_offset[index], bank.noise_offset[di]);
+			std::swap(bank.noise_resolution[index], bank.noise_resolution[di]);
+			std::swap(bank.color[index], bank.color[di]);
+			std::swap(bank.intensity[index], bank.intensity[di]);
+			std::swap(bank.image_frame[index], bank.image_frame[di]);
+			std::swap(bank.base_size[index], bank.base_size[di]);
+			std::swap(bank.single_loop_count[index], bank.single_loop_count[di]);
 		}
 
 	}

@@ -6639,6 +6639,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSubEffects(tfxWorkQueue *queue, void *data);
 
 	tfxU32 SpawnWideParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
 	void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data);
