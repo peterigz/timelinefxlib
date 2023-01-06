@@ -7436,7 +7436,7 @@ namespace tfx {
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
 			int next_particle_buffer = !current_pbuff;
 
-			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+			for (tfxEachLayer) {
 				int layer_offset = layer * 2;
 				int next_buffer_index = next_particle_buffer + layer_offset;
 				int current_buffer_index = current_pbuff + layer_offset;
@@ -7445,6 +7445,8 @@ namespace tfx {
 				work_entry.amount_to_update = particle_array_buffers[current_buffer_index].current_size;
 				if (work_entry.amount_to_update == 0)
 					continue;
+				//SpawnParticleDepthSort2(particle_arrays[current_buffer_index], new_particles_index_start[layer], particle_array_buffers[current_buffer_index].current_size);
+				InsertionSortSoAParticles2(particle_arrays[current_buffer_index], current_buffer_index, new_particles_index_start[layer], particle_array_buffers[current_buffer_index].current_size);
 				work_entry.pm = this;
 				work_entry.sprite_layer = layer;
 				work_entry.current_buffer_index = current_buffer_index;
@@ -7459,6 +7461,7 @@ namespace tfx {
 				tmpMTStack(tfxControlWorkEntryOrdered, work);
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 					int layer_offset = layer * 2;
+					int prev_buffer_index = next_particle_buffer + layer_offset;
 					int current_buffer_index = current_pbuff + layer_offset;
 					int particles_to_update = particle_array_buffers[current_buffer_index].current_size;
 					sprites3d[layer].current_size = particles_to_update;
@@ -7475,6 +7478,7 @@ namespace tfx {
 						running_start_index += mt_batch_size;
 						ControlParticlesOrdered3d(*this, work_entry);
 					}
+					//InsertionSortSoAParticles(particle_arrays[current_buffer_index], particle_arrays[prev_buffer_index], current_buffer_index, sprites3d[layer].current_size);
 				}
 
 				tfxCompleteAllWork(&work_queue);
@@ -7644,8 +7648,10 @@ namespace tfx {
 			const float depth = bank.depth[index].depth;
 
 			while (new_index != tfxINVALID && bank.depth[new_index].depth > depth) {
+				bank.depth[new_index].index = new_index;
 				bank.next_id[new_index] = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, new_index);
-				new_index = ++new_index >= work_entry->amount_to_update ? tfxINVALID : new_index;
+				new_index++;
+				new_index = new_index >= work_entry->amount_to_update ? tfxINVALID : new_index;
 			}
 			
 			const tfxU32 parent_index = bank.parent_index[index];
@@ -7681,6 +7687,7 @@ namespace tfx {
 			}
 
 			if (!(flags & tfxParticleFlags_remove)) {
+				bank.depth[index].index = index;
 				next_index = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, index);
 			}
 		}
@@ -9260,6 +9267,8 @@ namespace tfx {
 						if (property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
 							amount_spawned = SpawnWideParticles3d(pm, *spawn_work_entry, max_spawn_count);
 					}
+					if (amount_spawned > 0)
+						int debug = 1;
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 					pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 				}
@@ -9534,7 +9543,6 @@ namespace tfx {
 
 #if tfxMULTITHREADED
 		if (work_entry.amount_to_spawn > 0) {
-			//tfxBumpCompletionCount(&pm.work_queue);
 			if (emission_type == tfxPoint) {
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint3d);
 			}
@@ -9572,9 +9580,6 @@ namespace tfx {
 		}
 #else
 		SpawnParticleAge(&pm.work_queue, &work_entry);
-		if (!(pm.flags & tfxEffectManagerFlags_order_by_depth)) {
-			SpawnParticleSubEffects(&pm.work_queue, &work_entry);
-		}
 		if (emission_type == tfxPoint) {
 			SpawnParticlePoint3d(&pm.work_queue, &work_entry);
 		}
@@ -9606,6 +9611,7 @@ namespace tfx {
 		SpawnParticleSpin3d(&pm.work_queue, &work_entry);
 #endif
 
+		/*
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
 			tfxCompleteAllWork(&pm.work_queue);
 			SpawnParticleDepthSort(&pm.work_queue, &work_entry);
@@ -9613,6 +9619,7 @@ namespace tfx {
 				SpawnParticleSubEffects(&pm.work_queue, &work_entry);
 			}
 		}
+		*/
 
 		if (work_entry.amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
 			pm.emitters.state_flags[work_entry.emitter_index] |= tfxEmitterStateFlags_single_shot_done;
@@ -9680,6 +9687,9 @@ namespace tfx {
 			}
 
 			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
+		}
+		if (!(pm.flags & tfxEffectManagerFlags_order_by_depth)) {
+			SpawnParticleSubEffects(&pm.work_queue, entry);
 		}
 	}
 
@@ -11324,8 +11334,39 @@ namespace tfx {
 
 		std::qsort(entry->particle_data->depth + entry->spawn_start_index, entry->amount_to_spawn, sizeof(tfxDepth), SortDepth);
 
-		for (int i = 0; i != entry->amount_to_spawn; ++i) {
+		for (tfxU32 i = entry->spawn_start_index; i < entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
+			tfxU32 di = bank.depth[index].index;
+			std::swap(bank.age[index], bank.age[di]);
+			std::swap(bank.parent_index[index], bank.parent_index[di]);
+			std::swap(bank.sprite_index[index], bank.sprite_index[di]);
+			std::swap(bank.next_id[index], bank.next_id[di]);
+			std::swap(bank.flags[index], bank.flags[di]);
+			std::swap(bank.max_age[index], bank.max_age[di]);
+			std::swap(bank.local_position[index], bank.local_position[di]);
+			std::swap(bank.captured_position[index], bank.captured_position[di]);
+			std::swap(bank.local_rotations[index], bank.local_rotations[di]);
+			std::swap(bank.velocity_normal[index], bank.velocity_normal[di]);
+			std::swap(bank.stretch[index], bank.stretch[di]);
+			std::swap(bank.weight_acceleration[index], bank.weight_acceleration[di]);
+			std::swap(bank.base_weight[index], bank.base_weight[di]);
+			std::swap(bank.base_velocity[index], bank.base_velocity[di]);
+			std::swap(bank.base_spin[index], bank.base_spin[di]);
+			std::swap(bank.noise_offset[index], bank.noise_offset[di]);
+			std::swap(bank.noise_resolution[index], bank.noise_resolution[di]);
+			std::swap(bank.color[index], bank.color[di]);
+			std::swap(bank.intensity[index], bank.intensity[di]);
+			std::swap(bank.image_frame[index], bank.image_frame[di]);
+			std::swap(bank.base_size[index], bank.base_size[di]);
+			std::swap(bank.single_loop_count[index], bank.single_loop_count[di]);
+		}
+
+	}
+
+	void SpawnParticleDepthSort2(tfxParticleSoA &bank, tfxU32 start_index, tfxU32 end_index) {
+		std::qsort(bank.depth + start_index, end_index, sizeof(tfxDepth), SortDepth);
+
+		for (tfxU32 index = start_index; index < end_index; ++index) {
 			tfxU32 di = bank.depth[index].index;
 			std::swap(bank.age[index], bank.age[di]);
 			std::swap(bank.parent_index[index], bank.parent_index[di]);

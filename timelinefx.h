@@ -5884,6 +5884,33 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 index;
 	};
 
+	//this is just used in sorting to store a temporary copy of the particle data
+	struct tfxParticleTemp {
+		tfxU32 parent_index;
+		tfxU32 sprite_index;
+		tfxParticleID next_id;
+		tfxParticleFlags flags;
+		float age;
+		float max_age;
+		tfxVec3 local_position;
+		tfxVec3 captured_position;	
+		tfxVec3 local_rotations;
+		tfxVec4 velocity_normal;
+		tfxDepth depth;
+		float stretch;
+		float weight_acceleration;
+		float base_weight;
+		float base_velocity;
+		float base_spin;
+		float noise_offset;	
+		float noise_resolution;
+		tfxRGBA8 color;	
+		float intensity;
+		float image_frame;
+		tfxVec2 base_size;
+		tfxU32 single_loop_count;
+	};
+
 	//These all point into a tfxSoABuffer, initialised with InitParticleSoA
 	struct tfxParticleSoA {
 		tfxU32 *parent_index;
@@ -6651,6 +6678,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleDepthSort(tfxWorkQueue *queue, void *data);
+	void SpawnParticleDepthSort2(tfxParticleSoA &bank, tfxU32 start_index, tfxU32 end_index);
 	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
 
@@ -7142,6 +7170,116 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			}
 			particles[j + 1] = key;
 			current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
+		}
+	}
+
+	static inline void SwapSoAParticle(tfxParticleSoA &particles, tfxU32 from, tfxU32 to) {
+		std::swap(particles.depth[from], particles.depth[to]);
+		std::swap(particles.age[from], particles.age[to]);
+		std::swap(particles.parent_index[from], particles.parent_index[to]);
+		std::swap(particles.sprite_index[from], particles.sprite_index[to]);
+		std::swap(particles.next_id[from], particles.next_id[to]);
+		std::swap(particles.flags[from], particles.flags[to]);
+		std::swap(particles.max_age[from], particles.max_age[to]);
+		std::swap(particles.local_position[from], particles.local_position[to]);
+		std::swap(particles.captured_position[from], particles.captured_position[to]);
+		std::swap(particles.local_rotations[from], particles.local_rotations[to]);
+		std::swap(particles.velocity_normal[from], particles.velocity_normal[to]);
+		std::swap(particles.stretch[from], particles.stretch[to]);
+		std::swap(particles.weight_acceleration[from], particles.weight_acceleration[to]);
+		std::swap(particles.base_weight[from], particles.base_weight[to]);
+		std::swap(particles.base_velocity[from], particles.base_velocity[to]);
+		std::swap(particles.base_spin[from], particles.base_spin[to]);
+		std::swap(particles.noise_offset[from], particles.noise_offset[to]);
+		std::swap(particles.noise_resolution[from], particles.noise_resolution[to]);
+		std::swap(particles.color[from], particles.color[to]);
+		std::swap(particles.intensity[from], particles.intensity[to]);
+		std::swap(particles.image_frame[from], particles.image_frame[to]);
+		std::swap(particles.base_size[from], particles.base_size[to]);
+		std::swap(particles.single_loop_count[from], particles.single_loop_count[to]);
+	}
+
+	static inline void StoreSoAParticle(tfxParticleSoA &particles, tfxU32 from, tfxParticleTemp &temp) {
+		temp.depth = particles.depth[from];
+		temp.age = particles.age[from];
+		temp.parent_index = particles.parent_index[from];
+		temp.sprite_index = particles.sprite_index[from];
+		temp.next_id = particles.next_id[from];
+		temp.flags = particles.flags[from];
+		temp.max_age = particles.max_age[from];
+		temp.local_position = particles.local_position[from];
+		temp.captured_position = particles.captured_position[from];
+		temp.local_rotations = particles.local_rotations[from];
+		temp.velocity_normal = particles.velocity_normal[from];
+		temp.stretch = particles.stretch[from];
+		temp.weight_acceleration = particles.weight_acceleration[from];
+		temp.base_weight = particles.base_weight[from];
+		temp.base_velocity = particles.base_velocity[from];
+		temp.base_spin = particles.base_spin[from];
+		temp.noise_offset = particles.noise_offset[from];
+		temp.noise_resolution = particles.noise_resolution[from];
+		temp.color = particles.color[from];
+		temp.intensity = particles.intensity[from];
+		temp.image_frame = particles.image_frame[from];
+		temp.base_size = particles.base_size[from];
+		temp.single_loop_count = particles.single_loop_count[from];
+	}
+
+	static inline void LoadSoAParticle(tfxParticleSoA &particles, tfxU32 from, tfxParticleTemp &temp) {
+		particles.depth[from] = temp.depth;
+		particles.age[from] = temp.age;
+		particles.parent_index[from] = temp.parent_index;
+		particles.sprite_index[from] = temp.sprite_index;
+		particles.next_id[from] = temp.next_id;
+		particles.flags[from] = temp.flags;
+		particles.max_age[from] = temp.max_age;
+		particles.local_position[from] = temp.local_position;
+		particles.captured_position[from] = temp.captured_position;
+		particles.local_rotations[from] = temp.local_rotations;
+		particles.velocity_normal[from] = temp.velocity_normal;
+		particles.stretch[from] = temp.stretch;
+		particles.weight_acceleration[from] = temp.weight_acceleration;
+		particles.base_weight[from] = temp.base_weight;
+		particles.base_velocity[from] = temp.base_velocity;
+		particles.base_spin[from] = temp.base_spin;
+		particles.noise_offset[from] = temp.noise_offset;
+		particles.noise_resolution[from] = temp.noise_resolution;
+		particles.color[from] = temp.color;
+		particles.intensity[from] = temp.intensity;
+		particles.image_frame[from] = temp.image_frame;
+		particles.base_size[from] = temp.base_size;
+		particles.single_loop_count[from] = temp.single_loop_count;
+	}
+
+	static inline void InsertionSortSoAParticles(tfxParticleSoA &particles, tfxParticleSoA &current_buffer, tfxU32 next_buffer_index, tfxU32 size) {
+		tfxPROFILE;
+		tfxParticleTemp key;
+		for (tfxU32 i = 1; i < size; ++i) {
+			StoreSoAParticle(particles, i, key);
+			int j = i - 1;
+			while (j >= 0 && key.depth.depth > particles.depth[j].depth) {
+				SwapSoAParticle(particles, j + 1, j);
+				current_buffer.next_id[particles.depth[j + 1].index] = SetParticleID(next_buffer_index, j + 1);
+				--j;
+			}
+			LoadSoAParticle(particles, j + 1, key);
+			current_buffer.next_id[particles.depth[j + 1].index] = SetParticleID(next_buffer_index, j + 1);
+		}
+	}
+
+	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, tfxU32 bank_index, tfxU32 start_index, tfxU32 end_index) {
+		tfxPROFILE;
+		tfxParticleTemp key;
+		for (tfxU32 i = start_index + 1; i < end_index; ++i) {
+			StoreSoAParticle(particles, i, key);
+			int j = i - 1;
+			while (j >= 0 && key.depth.depth > particles.depth[j].depth) {
+				SwapSoAParticle(particles, j + 1, j);
+				particles.next_id[j] = SetParticleID(bank_index, j);
+				particles.next_id[j + 1] = SetParticleID(bank_index, j + 1);
+				--j;
+			}
+			LoadSoAParticle(particles, j + 1, key);
 		}
 	}
 
