@@ -732,6 +732,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	const float tfxMIN_FLOAT = -2147483648.f;
 	const float tfxMAX_FLOAT = 2147483647.f;
 	const tfxU32 tfxMAX_UINT = 4294967295;
+	const int tfxMAX_INT = INT_MAX;
+	const int tfxMIN_INT = INT_MAX;
 
 	const float tfxLIFE_MIN = 0.f;
 	const float tfxLIFE_MAX = 100000.f;
@@ -7267,13 +7269,16 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	}
 
-	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, tfxU32 bank_index, tfxU32 start_index, tfxU32 end_index) {
+	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, tfxU32 bank_index, int start_index, int end_index) {
 		tfxPROFILE;
+		if (start_index == tfxMAX_UINT)
+			return;
 		tfxParticleTemp key;
-		for (tfxU32 i = start_index + 1; i < end_index; ++i) {
+		int si = (int)start_index;
+		for (int i = si + 1; i < end_index; ++i) {
 			StoreSoAParticle(particles, i, key);
 			int j = i - 1;
-			while (j >= 0 && key.depth.depth > particles.depth[j].depth) {
+			while (j >= si && key.depth.depth > particles.depth[j].depth) {
 				SwapSoAParticle(particles, j + 1, j);
 				particles.next_id[j] = SetParticleID(bank_index, j);
 				particles.next_id[j + 1] = SetParticleID(bank_index, j + 1);

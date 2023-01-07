@@ -7446,7 +7446,19 @@ namespace tfx {
 				if (work_entry.amount_to_update == 0)
 					continue;
 				//SpawnParticleDepthSort2(particle_arrays[current_buffer_index], new_particles_index_start[layer], particle_array_buffers[current_buffer_index].current_size);
+				if(new_particles_index_start[layer] != tfxMAX_UINT)
+					for (tfxU32 i = new_particles_index_start[layer]; i != particle_array_buffers[current_buffer_index].current_size; ++i) {
+						printf("Depth OoO: %f\n", particle_arrays[current_buffer_index].depth[i].depth);
+					}
 				InsertionSortSoAParticles2(particle_arrays[current_buffer_index], current_buffer_index, new_particles_index_start[layer], particle_array_buffers[current_buffer_index].current_size);
+				if (new_particles_index_start[layer] != tfxMAX_UINT) {
+					for (tfxU32 i = 0; i != new_particles_index_start[layer]; ++i) {
+						printf("CB: %f\n", particle_arrays[current_buffer_index].depth[i].depth);
+					}
+					for (tfxU32 i = new_particles_index_start[layer]; i != particle_array_buffers[current_buffer_index].current_size; ++i) {
+						printf("Depth IO: %f\n", particle_arrays[current_buffer_index].depth[i].depth);
+					}
+				}
 				work_entry.pm = this;
 				work_entry.sprite_layer = layer;
 				work_entry.current_buffer_index = current_buffer_index;
