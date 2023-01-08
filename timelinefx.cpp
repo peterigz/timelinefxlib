@@ -7478,7 +7478,7 @@ namespace tfx {
 						running_start_index += mt_batch_size;
 						ControlParticlesOrdered3d(*this, work_entry);
 					}
-					//InsertionSortSoAParticles(particle_arrays[current_buffer_index], particle_arrays[prev_buffer_index], current_buffer_index, sprites3d[layer].current_size);
+					//InsertionSortSoAParticles(particle_arrays[current_buffer_index], sprites3d[layer].current_size);
 				}
 
 				tfxCompleteAllWork(&work_queue);
@@ -7599,7 +7599,7 @@ namespace tfx {
 			else if (offset > 0) {
 				tfxU32 next_index = GetCircularIndex(&work_entry->pm->particle_array_buffers[work_entry->current_buffer_index], i + offset);
 				if(flags & tfxParticleFlags_has_sub_effects)
-					pm.particle_indexes[bank.particle_index[index]] = SetParticleID(work_entry->current_buffer_index, next_index);
+					pm.particle_indexes[bank.particle_index[index]] = MakeParticleID(work_entry->current_buffer_index, next_index);
 
 				bank.parent_index[next_index] = bank.parent_index[index];
 				bank.sprite_index[next_index] = bank.sprite_index[index];
@@ -7649,7 +7649,6 @@ namespace tfx {
 			const float depth = bank.depth[index];
 
 			while (new_index != tfxINVALID && bank.depth[new_index] > depth) {
-				bank.flags[new_index] &= ~tfxParticleFlags_fresh;
 				tfxU32 next_index = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, new_index);
 				if (bank.flags[new_index] & tfxParticleFlags_has_sub_effects) {
 					pm.particle_indexes[bank.particle_index[new_index]] = next_index;
@@ -7697,16 +7696,13 @@ namespace tfx {
 				pm.FreeParticleIndex(bank.particle_index[index]);
 			}
 
-			if (flags & tfxParticleFlags_fresh) {
-				flags &= ~tfxParticleFlags_fresh;
-			}
 		}
 
 		if (new_index != tfxINVALID) {
 			for (tfxU32 index = new_index; index < work_entry->amount_to_update; ++index) {
 				tfxU32 next_index = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, index);
-				if (bank.flags[new_index] & tfxParticleFlags_has_sub_effects) {
-					pm.particle_indexes[bank.particle_index[new_index]] = next_index;
+				if (bank.flags[index] & tfxParticleFlags_has_sub_effects) {
+					pm.particle_indexes[bank.particle_index[index]] = next_index;
 				}
 			}
 		}
@@ -9666,7 +9662,7 @@ namespace tfx {
 			parent = emitter_index;
 			particle_index = tfxINVALID;
 
-			flags = tfxParticleFlags_fresh;
+			flags = 0;
 
 			//Max age
 			//Todo: should age be set to the tween value?
@@ -9692,7 +9688,8 @@ namespace tfx {
 			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
 
 			if (entry->sub_effects->current_size > 0) {
-				particle_index = pm.GetParticleIndexSlot(SetParticleID(particles_index, index));
+				particle_index = pm.GetParticleIndexSlot(MakeParticleID(particles_index, index));
+				flags |= tfxParticleFlags_has_sub_effects;
 				for (auto &sub : *entry->sub_effects) {
 					if (!pm.FreeEffectCapacity())
 						break;
@@ -9700,7 +9697,6 @@ namespace tfx {
 					tfxU32 added_index = pm.AddEffect(sub, pm.current_ebuff, entry->depth + 1, true);
 					pm.effects.overal_scale[added_index] = pm.emitters.overal_scale[index];
 					pm.effects.parent_particle_index[added_index] = particle_index;
-					flags |= tfxParticleFlags_has_sub_effects;
 				}
 			}
 		}
@@ -11740,7 +11736,7 @@ namespace tfx {
 			else if (offset > 0) {
 				tfxU32 next_index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i + offset);
 				if(flags & tfxParticleFlags_has_sub_effects)
-					pm.particle_indexes[bank.particle_index[index]] = SetParticleID(particles_index, next_index);
+					pm.particle_indexes[bank.particle_index[index]] = MakeParticleID(particles_index, next_index);
 
 				bank.parent_index[next_index] = bank.parent_index[index];
 				bank.sprite_index[next_index] = bank.sprite_index[index];

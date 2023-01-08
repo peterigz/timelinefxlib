@@ -179,9 +179,6 @@ typedef std::chrono::high_resolution_clock tfxClock;
 #define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
 #define tfxEachLayerDB int layer = 0; layer != tfxLAYERS * 2; ++layer
 #endif 
-#ifndef tfxDEFAULT_SPRITE_ALLOCATION
-#define tfxDEFAULT_SPRITE_ALLOCATION 25000
-#endif
 //type defs
 typedef unsigned int tfxU32;
 typedef unsigned int tfxEmitterID;
@@ -192,7 +189,7 @@ typedef tfxU32 tfxEffectID;
 typedef unsigned long long tfxKey;
 typedef tfxU32 tfxParticleID;
 
-inline tfxParticleID SetParticleID(tfxU32 bank_index, tfxU32 particle_index) {
+inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index) {
 	return ((bank_index & 0x00000FFF) << 20) + particle_index;
 }
 
@@ -6509,7 +6506,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			to_bank.image_frame[index] = from_bank.image_frame[other_index];
 			to_bank.base_size[index] = from_bank.base_size[other_index];
 			to_bank.single_loop_count[index] = from_bank.single_loop_count[other_index];
-			return SetParticleID(next_index, index);
+			return MakeParticleID(next_index, index);
 		}
 
 		inline bool FreeCapacity2d(int index, bool compute) {
@@ -6600,9 +6597,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			tfxU32 bank_index = ParticleBank(id);
 			tfxU32 next_index = ParticleIndex(id);
 			
-			id = SetParticleID(bank_index, i);
+			id = MakeParticleID(bank_index, i);
 			tfxParticleID *new_id = new_data + i;
-			*new_id = SetParticleID(bank_index, next_index < bank->start_index ? bank->capacity - bank->start_index + next_index : next_index - bank->start_index);
+			*new_id = MakeParticleID(bank_index, next_index < bank->start_index ? bank->capacity - bank->start_index + next_index : next_index - bank->start_index);
 		}
 
 		if (bank->pair && bank->pair->current_size > 0) {
@@ -6611,7 +6608,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				tfxU32 bank_index = ParticleBank(id);
 				tfxU32 next_index = ParticleIndex(id);
 
-				id = SetParticleID(bank_index, (next_index % bank->start_index) + i);
+				id = MakeParticleID(bank_index, (next_index % bank->start_index) + i);
 			}
 		}
 
@@ -7263,7 +7260,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		particles.single_loop_count[from] = temp.single_loop_count;
 	}
 
-	static inline void InsertionSortSoAParticles(tfxParticleSoA &particles, tfxU32 next_buffer_index, tfxU32 size) {
+	static inline void InsertionSortSoAParticles(tfxParticleSoA &particles, tfxU32 size) {
 		tfxPROFILE;
 		tfxParticleTemp key;
 		for (tfxU32 i = 1; i < size; ++i) {
