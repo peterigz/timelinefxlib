@@ -683,6 +683,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxParticleFlags_capture_after_transform = 1 << 3,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
 		tfxParticleFlags_remove = 1 << 4,									//Particle will be removed this or next frame
 		tfxParticleFlags_has_velocity = 1 << 5,								//Flagged if the particle is currently moving
+		tfxParticleFlags_has_sub_effects = 1 << 6,							//Flagged if the particle has sub effects
 	};
 
 	enum tfxEmitterStateFlags_ : unsigned int {
@@ -5492,6 +5493,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 *parent_index;
 		tfxU32 *properties_index;
 		tfxU32 *info_index;
+		tfxU32 *hierarchy_depth;
 		tfxU32 *sprites_count;
 		tfxU32 *sprites_index;
 		tfxKey *path_hash;
@@ -5568,6 +5570,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, properties_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, info_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, hierarchy_depth));
 		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
 		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, library));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
@@ -5632,7 +5635,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		tfxU32 *properties_index;
 		tfxU32 *info_index;
-		tfxParticleID *parent_particle_id;
+		tfxU32 *parent_particle_index;
 		tfxEffectLibrary **library;
 
 		//Spawn controls
@@ -5665,7 +5668,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxMatrix4), offsetof(tfxEffectSoA, matrix));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, global_attributes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, transform_attributes));
-		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxEffectSoA, parent_particle_id));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, parent_particle_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, properties_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, info_index));
 		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, library));
@@ -5881,16 +5884,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Discard expired and write to next buffer
 	//
 
-	struct tfxDepth {
-		float depth;
-		tfxU32 index;
-	};
-
 	//this is just used in sorting to store a temporary copy of the particle data
 	struct tfxParticleTemp {
 		tfxU32 parent_index;
 		tfxU32 sprite_index;
-		tfxParticleID next_id;
+		tfxU32 particle_index;
 		tfxParticleFlags flags;
 		float age;
 		float max_age;
@@ -5898,7 +5896,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 captured_position;	
 		tfxVec3 local_rotations;
 		tfxVec4 velocity_normal;
-		tfxDepth depth;
+		float depth;
 		float stretch;
 		float weight_acceleration;
 		float base_weight;
@@ -5917,7 +5915,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxParticleSoA {
 		tfxU32 *parent_index;
 		tfxU32 *sprite_index;
-		tfxParticleID *next_id;
+		tfxU32 *particle_index;
 		tfxParticleFlags *flags;
 		float *age;
 		float *max_age;
@@ -5925,7 +5923,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 *captured_position;	
 		tfxVec3 *local_rotations;
 		tfxVec4 *velocity_normal;
-		tfxDepth *depth;
+		float *depth;
 		float *stretch;
 		float *weight_acceleration;
 		float *base_weight;
@@ -5943,7 +5941,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	inline void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, parent_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, sprite_index));
-		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxParticleSoA, next_id));
+		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxParticleSoA, particle_index));
 		AddStructArray(buffer, sizeof(tfxParticleFlags), offsetof(tfxParticleSoA, flags));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, age));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, max_age));						
@@ -5951,7 +5949,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, captured_position));			
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, local_rotations));
 		AddStructArray(buffer, sizeof(tfxVec4), offsetof(tfxParticleSoA, velocity_normal));
-		AddStructArray(buffer, sizeof(tfxDepth), offsetof(tfxParticleSoA, depth));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, depth));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, stretch));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, weight_acceleration));			
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
@@ -6309,6 +6307,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxvec<tfxSpawnPosition> new_positions;
 		tfxControlWorkEntryOrdered ordered_age_work_entry[tfxLAYERS * 2];
 
+		tfxvec<tfxParticleID> particle_indexes;
+		tfxvec<tfxU32> free_particle_indexes;
 		tfxvec<tfxU32> effects_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> free_effects;
@@ -6418,6 +6418,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			AddRow(&emitter_buffers);
 			return emitter_buffers.current_size - 1;
 		}
+		inline tfxU32 GetParticleIndexSlot(tfxParticleID particle_id) {
+			if (!free_particle_indexes.empty()) {
+				particle_indexes[free_particle_indexes.back()] = particle_id;
+				return free_particle_indexes.pop_back();
+			}
+			particle_indexes.push_back(particle_id);
+			return particle_indexes.current_size - 1;
+		}
+		inline void FreeParticleIndex(tfxU32 &index) {
+			particle_indexes[index] = tfxINVALID;
+			free_particle_indexes.push_back(index);
+			index = tfxINVALID;
+		}
 		void FreeParticleBank(tfxEffectEmitter &emitter);
 		void FreeParticleList(tfxU32 index);
 		//Clear all effects and particles in the particle manager
@@ -6456,7 +6469,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
 		//inline tfxParticle& GrabCPUParticle(unsigned int index) { return 0; }
 
-		inline tfxParticleID &GetParticleNextID(tfxParticleID id) { return particle_arrays[ParticleBank(id)].next_id[ParticleIndex(id)]; }
 		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index[ParticleIndex(id)]; }
 
 		tfxComputeParticle &GrabComputeParticle(unsigned int layer); 
@@ -6476,7 +6488,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			assert(index < particle_array_buffers[next_index].capacity);
 			to_bank.parent_index[index] = from_bank.parent_index[other_index];
 			to_bank.sprite_index[index] = from_bank.sprite_index[other_index];
-			to_bank.next_id[index] = from_bank.next_id[other_index];
+			to_bank.particle_index[index] = from_bank.particle_index[other_index];
 			to_bank.flags[index] = from_bank.flags[other_index];
 			to_bank.age[index] = from_bank.age[other_index];
 			to_bank.max_age[index] = from_bank.max_age[other_index];
@@ -6668,7 +6680,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSubEffects(tfxWorkQueue *queue, void *data);
 
 	tfxU32 SpawnWideParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
 	void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data);
@@ -6680,7 +6691,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleDepthSort(tfxWorkQueue *queue, void *data);
-	void SpawnParticleDepthSort2(tfxParticleSoA &bank, tfxU32 start_index, tfxU32 end_index);
 	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
 
@@ -7149,8 +7159,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	static inline int SortDepth(void const *left, void const *right) {
-		float d1 = static_cast<const tfxDepth*>(left)->depth;
-		float d2 = static_cast<const tfxDepth*>(right)->depth;
+		float d1 = *static_cast<const float*>(left);
+		float d2 = *static_cast<const float*>(right);
 		return (d2 > d1) - (d2 < d1);
 	}
 
@@ -7180,7 +7190,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		std::swap(particles.age[from], particles.age[to]);
 		std::swap(particles.parent_index[from], particles.parent_index[to]);
 		std::swap(particles.sprite_index[from], particles.sprite_index[to]);
-		std::swap(particles.next_id[from], particles.next_id[to]);
+		std::swap(particles.particle_index[from], particles.particle_index[to]);
 		std::swap(particles.flags[from], particles.flags[to]);
 		std::swap(particles.max_age[from], particles.max_age[to]);
 		std::swap(particles.local_position[from], particles.local_position[to]);
@@ -7206,7 +7216,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		temp.age = particles.age[from];
 		temp.parent_index = particles.parent_index[from];
 		temp.sprite_index = particles.sprite_index[from];
-		temp.next_id = particles.next_id[from];
+		temp.particle_index = particles.particle_index[from];
 		temp.flags = particles.flags[from];
 		temp.max_age = particles.max_age[from];
 		temp.local_position = particles.local_position[from];
@@ -7232,7 +7242,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		particles.age[from] = temp.age;
 		particles.parent_index[from] = temp.parent_index;
 		particles.sprite_index[from] = temp.sprite_index;
-		particles.next_id[from] = temp.next_id;
+		particles.particle_index[from] = temp.particle_index;
 		particles.flags[from] = temp.flags;
 		particles.max_age[from] = temp.max_age;
 		particles.local_position[from] = temp.local_position;
@@ -7253,19 +7263,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		particles.single_loop_count[from] = temp.single_loop_count;
 	}
 
-	static inline void InsertionSortSoAParticles(tfxParticleSoA &particles, tfxParticleSoA &current_buffer, tfxU32 next_buffer_index, tfxU32 size) {
+	static inline void InsertionSortSoAParticles(tfxParticleSoA &particles, tfxU32 next_buffer_index, tfxU32 size) {
 		tfxPROFILE;
 		tfxParticleTemp key;
 		for (tfxU32 i = 1; i < size; ++i) {
 			StoreSoAParticle(particles, i, key);
 			int j = i - 1;
-			while (j >= 0 && key.depth.depth > particles.depth[j].depth) {
+			while (j >= 0 && key.depth > particles.depth[j]) {
 				SwapSoAParticle(particles, j + 1, j);
-				current_buffer.next_id[particles.depth[j + 1].index] = SetParticleID(next_buffer_index, j + 1);
 				--j;
 			}
 			LoadSoAParticle(particles, j + 1, key);
-			current_buffer.next_id[particles.depth[j + 1].index] = SetParticleID(next_buffer_index, j + 1);
 		}
 	}
 
@@ -7278,10 +7286,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		for (int i = si + 1; i < end_index; ++i) {
 			StoreSoAParticle(particles, i, key);
 			int j = i - 1;
-			while (j >= si && key.depth.depth > particles.depth[j].depth) {
+			while (j >= si && key.depth > particles.depth[j]) {
 				SwapSoAParticle(particles, j + 1, j);
-				particles.next_id[j] = SetParticleID(bank_index, j);
-				particles.next_id[j + 1] = SetParticleID(bank_index, j + 1);
 				--j;
 			}
 			LoadSoAParticle(particles, j + 1, key);

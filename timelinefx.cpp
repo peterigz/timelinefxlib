@@ -7009,7 +7009,7 @@ namespace tfx {
 		particle_array_allocator.FreeAll();
 	}
 
-	tfxU32 tfxParticleManager::AddEffect(tfxEffectEmitter &effect, int buffer, int depth, bool is_sub_emitter, float add_delayed_spawning) {
+	tfxU32 tfxParticleManager::AddEffect(tfxEffectEmitter &effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning) {
 		tfxPROFILE;
 		assert(effect.type == tfxEffectType);
 		if (flags & tfxEffectManagerFlags_use_compute_shader && highest_compute_controller_index >= max_compute_controllers && free_compute_controllers.empty())
@@ -7029,11 +7029,11 @@ namespace tfx {
 		effects.local_position[parent_index] = tfxVec3();
 		effects.timeout[parent_index] = 100.f;
 		effects.library[parent_index] = effect.library;
-		effects.parent_particle_id[parent_index] = tfxINVALID;
+		effects.parent_particle_index[parent_index] = tfxINVALID;
 		effects.info_index[parent_index] = effect.info_index;
 		effects.properties_index[parent_index] = effect.property_index;
 		effects.timeout_counter[parent_index] = 0;
-		effects_in_use[depth][buffer].push_back(parent_index);
+		effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
 		}
@@ -7046,7 +7046,7 @@ namespace tfx {
 				if (index == tfxINVALID)
 					break;
 				emitters.particles_index[index] = tfxINVALID;
-				emitters_in_use[depth][buffer].push_back(index);
+				emitters_in_use[hierarchy_depth][buffer].push_back(index);
 				emitters.parent_index[index] = parent_index;
 				if (emitters.particles_index[index] == tfxINVALID && flags & tfxEffectManagerFlags_unordered) {
 					if(!is_sub_emitter)
@@ -7077,6 +7077,7 @@ namespace tfx {
 				emitters.qty_step_size[index] = 0.f;
 				emitters.timeout_counter[index] = 0;
 				emitters.emitter_size[index] = 0.f;
+				emitters.hierarchy_depth[index] = hierarchy_depth;
 				//----Handle
 				if (e.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 					emitters.image_handle[index] = tfxVec2(0.5f, 0.5f);
@@ -7445,20 +7446,7 @@ namespace tfx {
 				work_entry.amount_to_update = particle_array_buffers[current_buffer_index].current_size;
 				if (work_entry.amount_to_update == 0)
 					continue;
-				//SpawnParticleDepthSort2(particle_arrays[current_buffer_index], new_particles_index_start[layer], particle_array_buffers[current_buffer_index].current_size);
-				if(new_particles_index_start[layer] != tfxMAX_UINT)
-					for (tfxU32 i = new_particles_index_start[layer]; i != particle_array_buffers[current_buffer_index].current_size; ++i) {
-						printf("Depth OoO: %f\n", particle_arrays[current_buffer_index].depth[i].depth);
-					}
 				InsertionSortSoAParticles2(particle_arrays[current_buffer_index], current_buffer_index, new_particles_index_start[layer], particle_array_buffers[current_buffer_index].current_size);
-				if (new_particles_index_start[layer] != tfxMAX_UINT) {
-					for (tfxU32 i = 0; i != new_particles_index_start[layer]; ++i) {
-						printf("CB: %f\n", particle_arrays[current_buffer_index].depth[i].depth);
-					}
-					for (tfxU32 i = new_particles_index_start[layer]; i != particle_array_buffers[current_buffer_index].current_size; ++i) {
-						printf("Depth IO: %f\n", particle_arrays[current_buffer_index].depth[i].depth);
-					}
-				}
 				work_entry.pm = this;
 				work_entry.sprite_layer = layer;
 				work_entry.current_buffer_index = current_buffer_index;
@@ -7585,8 +7573,6 @@ namespace tfx {
 			float &age = bank.age[index];
 			const float max_age = bank.max_age[index];
 			tfxU32 &single_loop_count = bank.single_loop_count[index];
-			tfxParticleID &next_index = bank.next_id[index];
-			next_index = SetParticleID(work_entry->current_buffer_index, index);
 			tfxParticleFlags &flags = bank.flags[index];
 			age += tfxFRAME_LENGTH;
 			flags |= state_flags & tfxParticleFlags_remove;
@@ -7598,23 +7584,26 @@ namespace tfx {
 					}
 					else {
 						flags |= tfxParticleFlags_remove;
-						next_index = tfxINVALID;
 					}
 				else {
 					flags |= tfxParticleFlags_remove;
-					next_index = tfxINVALID;
 				}
 			}
 
 			if (flags & tfxParticleFlags_remove) {
 				offset++;
+				if (flags & tfxParticleFlags_has_sub_effects) {
+					pm.FreeParticleIndex(bank.particle_index[index]);
+				}
 			}
 			else if (offset > 0) {
 				tfxU32 next_index = GetCircularIndex(&work_entry->pm->particle_array_buffers[work_entry->current_buffer_index], i + offset);
-				bank.next_id[index] = SetParticleID(work_entry->current_buffer_index, next_index);
+				if(flags & tfxParticleFlags_has_sub_effects)
+					pm.particle_indexes[bank.particle_index[index]] = SetParticleID(work_entry->current_buffer_index, next_index);
 
 				bank.parent_index[next_index] = bank.parent_index[index];
 				bank.sprite_index[next_index] = bank.sprite_index[index];
+				bank.particle_index[next_index] = bank.particle_index[index];
 				bank.flags[next_index] = bank.flags[index];
 				bank.age[next_index] = bank.age[index];
 				bank.max_age[next_index] = bank.max_age[index];
@@ -7657,18 +7646,20 @@ namespace tfx {
 		tfxU32 amount_to_update = tfxMin(pm.new_particles_index_start[work_entry->sprite_layer], work_entry->amount_to_update);
 
 		for(int index = 0; index != amount_to_update; ++index) {
-			const float depth = bank.depth[index].depth;
+			const float depth = bank.depth[index];
 
-			while (new_index != tfxINVALID && bank.depth[new_index].depth > depth) {
-				bank.depth[new_index].index = new_index;
-				bank.next_id[new_index] = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, new_index);
+			while (new_index != tfxINVALID && bank.depth[new_index] > depth) {
+				bank.flags[new_index] &= ~tfxParticleFlags_fresh;
+				tfxU32 next_index = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, new_index);
+				if (bank.flags[new_index] & tfxParticleFlags_has_sub_effects) {
+					pm.particle_indexes[bank.particle_index[new_index]] = next_index;
+				}
 				new_index++;
 				new_index = new_index >= work_entry->amount_to_update ? tfxINVALID : new_index;
 			}
 			
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
-			tfxParticleID &next_index = bank.next_id[index];
 
 			tfxParticleFlags &flags = bank.flags[index];
 
@@ -7690,23 +7681,33 @@ namespace tfx {
 					}
 					else {
 						flags |= tfxParticleFlags_remove;
-						next_index = tfxINVALID;
 					}
 				else {
 					flags |= tfxParticleFlags_remove;
-					next_index = tfxINVALID;
 				}
 			}
 
 			if (!(flags & tfxParticleFlags_remove)) {
-				bank.depth[index].index = index;
-				next_index = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, index);
+				tfxU32 next_index = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, index);
+				if (bank.flags[index] & tfxParticleFlags_has_sub_effects) {
+					pm.particle_indexes[bank.particle_index[index]] = next_index;
+				}
+			}
+			else if (flags & tfxParticleFlags_has_sub_effects) {
+				pm.FreeParticleIndex(bank.particle_index[index]);
+			}
+
+			if (flags & tfxParticleFlags_fresh) {
+				flags &= ~tfxParticleFlags_fresh;
 			}
 		}
 
 		if (new_index != tfxINVALID) {
 			for (tfxU32 index = new_index; index < work_entry->amount_to_update; ++index) {
-				bank.next_id[index] = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, index);
+				tfxU32 next_index = pm.SetNextParticle(work_entry->next_buffer_index, work_entry->current_buffer_index, index);
+				if (bank.flags[new_index] & tfxParticleFlags_has_sub_effects) {
+					pm.particle_indexes[bank.particle_index[new_index]] = next_index;
+				}
 			}
 		}
 
@@ -8213,7 +8214,7 @@ namespace tfx {
 			s.stretch = velocity_normal.w;
 
 			captured_position = s.transform.position;
-			bank.depth[index].depth = LengthVec3NoSqR(s.transform.position - pm.camera_position);
+			bank.depth[index] = LengthVec3NoSqR(s.transform.position - pm.camera_position);
 		}
 	}
 
@@ -8931,6 +8932,8 @@ namespace tfx {
 		}
 		free_effects.clear();
 		free_emitters.clear();
+		particle_indexes.clear();
+		free_particle_indexes.clear();
 		ClearSoABuffer(&emitter_buffers);
 		ClearSoABuffer(&effect_buffers);
 		particle_id = 0;
@@ -9000,7 +9003,7 @@ namespace tfx {
 		tfxPROFILE;
 
 		const tfxU32 property_index = pm.effects.properties_index[index];
-		tfxU32 &parent_particle_id = pm.effects.parent_particle_id[index];
+		tfxU32 &parent_particle_index = pm.effects.parent_particle_index[index];
 		tfxVec3 &captured_position = pm.effects.captured_position[index];
 		tfxVec3 &world_position = pm.effects.world_position[index];
 		tfxVec3 &local_position = pm.effects.local_position[index];
@@ -9030,13 +9033,11 @@ namespace tfx {
 
 		tfxEmitterPropertiesSoA &properties = library->emitter_properties;
 
-		if (parent_particle_id != tfxINVALID) {
-			tfxU32 bank_index = ParticleBank(parent_particle_id);
-			tfxU32 particle_index = GetCircularIndex(&pm.particle_array_buffers[bank_index], ParticleIndex(parent_particle_id));
-			tfxParticleID next_id = pm.GetParticleNextID(parent_particle_id);
-			if (next_id != tfxINVALID) {
+		if (parent_particle_index != tfxINVALID) {
+			tfxParticleID parent_particle_id = pm.particle_indexes[parent_particle_index];
+			if (parent_particle_id != tfxINVALID) {
+				tfxU32 bank_index = ParticleBank(parent_particle_id);
 				const float overal_scale = pm.effects.overal_scale[index];
-				parent_particle_id = next_id;
 				tfxU32 sprite_id = pm.GetParticleSpriteIndex(parent_particle_id);
 				tfxU32 sprite_layer = (sprite_id & 0xF0000000) >> 28;
 				tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
@@ -9051,7 +9052,7 @@ namespace tfx {
 				}
 			}
 			else {
-				parent_particle_id = tfxINVALID;
+				parent_particle_index = tfxINVALID;
 				state_flags |= tfxEmitterStateFlags_retain_matrix;
 				local_position = world_position;
 				local_rotations.roll = world_rotations.roll;
@@ -9279,8 +9280,6 @@ namespace tfx {
 						if (property_flags & tfxEmitterPropertyFlags_is_3d && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
 							amount_spawned = SpawnWideParticles3d(pm, *spawn_work_entry, max_spawn_count);
 					}
-					if (amount_spawned > 0)
-						int debug = 1;
 					sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 					pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 				}
@@ -9623,16 +9622,6 @@ namespace tfx {
 		SpawnParticleSpin3d(&pm.work_queue, &work_entry);
 #endif
 
-		/*
-		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
-			tfxCompleteAllWork(&pm.work_queue);
-			SpawnParticleDepthSort(&pm.work_queue, &work_entry);
-			if (work_entry.sub_effects->current_size > 0) {
-				SpawnParticleSubEffects(&pm.work_queue, &work_entry);
-			}
-		}
-		*/
-
 		if (work_entry.amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
 			pm.emitters.state_flags[work_entry.emitter_index] |= tfxEmitterStateFlags_single_shot_done;
 
@@ -9673,9 +9662,11 @@ namespace tfx {
 
 			tfxParticleFlags &flags = entry->particle_data->flags[index];
 			tfxU32 &parent = entry->particle_data->parent_index[index];
+			tfxU32 &particle_index = entry->particle_data->particle_index[index];
 			parent = emitter_index;
+			particle_index = tfxINVALID;
 
-			flags = 0;
+			flags = tfxParticleFlags_fresh;
 
 			//Max age
 			//Todo: should age be set to the tween value?
@@ -9699,31 +9690,18 @@ namespace tfx {
 			}
 
 			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
-		}
-		if (!(pm.flags & tfxEffectManagerFlags_order_by_depth)) {
-			SpawnParticleSubEffects(&pm.work_queue, entry);
-		}
-	}
 
-	void SpawnParticleSubEffects(tfxWorkQueue *queue, void *data) {
-
-		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxU32 emitter_index = entry->emitter_index;
-		tfxParticleManager &pm = *entry->pm;
-		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
-
-		for (int i = 0; i != entry->amount_to_spawn; ++i) {
-			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxParticleID &next_id = entry->particle_data->next_id[index];
-			next_id = SetParticleID(particles_index, index);
-
-			for (auto &sub : *entry->sub_effects) {
-				if (!pm.FreeEffectCapacity())
-					break;
-				assert(entry->depth < tfxMAXDEPTH - 1);
-				tfxU32 added_index = pm.AddEffect(sub, pm.current_ebuff, entry->depth + 1, true);
-				pm.effects.overal_scale[added_index] = pm.emitters.overal_scale[index];
-				pm.effects.parent_particle_id[added_index] = next_id;
+			if (entry->sub_effects->current_size > 0) {
+				particle_index = pm.GetParticleIndexSlot(SetParticleID(particles_index, index));
+				for (auto &sub : *entry->sub_effects) {
+					if (!pm.FreeEffectCapacity())
+						break;
+					assert(entry->depth < tfxMAXDEPTH - 1);
+					tfxU32 added_index = pm.AddEffect(sub, pm.current_ebuff, entry->depth + 1, true);
+					pm.effects.overal_scale[added_index] = pm.emitters.overal_scale[index];
+					pm.effects.parent_particle_index[added_index] = particle_index;
+					flags |= tfxParticleFlags_has_sub_effects;
+				}
 			}
 		}
 
@@ -11330,80 +11308,14 @@ namespace tfx {
 				captured_position = world_position;
 			}
 			if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
-				entry->particle_data->depth[index].depth = LengthVec3NoSqR(world_position - pm.camera_position);
-				entry->particle_data->depth[index].index = index;
+				entry->particle_data->depth[index] = LengthVec3NoSqR(world_position - pm.camera_position);
 			}
 			tween += entry->qty_step_size;
 		}
 	}
 
 	void SpawnParticleDepthSort(tfxWorkQueue *queue, void *data) {
-		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxU32 emitter_index = entry->emitter_index;
-		tfxParticleManager &pm = *entry->pm;
-		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
-		tfxParticleSoA &bank = *entry->particle_data;
-
-		std::qsort(entry->particle_data->depth + entry->spawn_start_index, entry->amount_to_spawn, sizeof(tfxDepth), SortDepth);
-
-		for (tfxU32 i = entry->spawn_start_index; i < entry->amount_to_spawn; ++i) {
-			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxU32 di = bank.depth[index].index;
-			std::swap(bank.age[index], bank.age[di]);
-			std::swap(bank.parent_index[index], bank.parent_index[di]);
-			std::swap(bank.sprite_index[index], bank.sprite_index[di]);
-			std::swap(bank.next_id[index], bank.next_id[di]);
-			std::swap(bank.flags[index], bank.flags[di]);
-			std::swap(bank.max_age[index], bank.max_age[di]);
-			std::swap(bank.local_position[index], bank.local_position[di]);
-			std::swap(bank.captured_position[index], bank.captured_position[di]);
-			std::swap(bank.local_rotations[index], bank.local_rotations[di]);
-			std::swap(bank.velocity_normal[index], bank.velocity_normal[di]);
-			std::swap(bank.stretch[index], bank.stretch[di]);
-			std::swap(bank.weight_acceleration[index], bank.weight_acceleration[di]);
-			std::swap(bank.base_weight[index], bank.base_weight[di]);
-			std::swap(bank.base_velocity[index], bank.base_velocity[di]);
-			std::swap(bank.base_spin[index], bank.base_spin[di]);
-			std::swap(bank.noise_offset[index], bank.noise_offset[di]);
-			std::swap(bank.noise_resolution[index], bank.noise_resolution[di]);
-			std::swap(bank.color[index], bank.color[di]);
-			std::swap(bank.intensity[index], bank.intensity[di]);
-			std::swap(bank.image_frame[index], bank.image_frame[di]);
-			std::swap(bank.base_size[index], bank.base_size[di]);
-			std::swap(bank.single_loop_count[index], bank.single_loop_count[di]);
-		}
-
-	}
-
-	void SpawnParticleDepthSort2(tfxParticleSoA &bank, tfxU32 start_index, tfxU32 end_index) {
-		std::qsort(bank.depth + start_index, end_index, sizeof(tfxDepth), SortDepth);
-
-		for (tfxU32 index = start_index; index < end_index; ++index) {
-			tfxU32 di = bank.depth[index].index;
-			std::swap(bank.age[index], bank.age[di]);
-			std::swap(bank.parent_index[index], bank.parent_index[di]);
-			std::swap(bank.sprite_index[index], bank.sprite_index[di]);
-			std::swap(bank.next_id[index], bank.next_id[di]);
-			std::swap(bank.flags[index], bank.flags[di]);
-			std::swap(bank.max_age[index], bank.max_age[di]);
-			std::swap(bank.local_position[index], bank.local_position[di]);
-			std::swap(bank.captured_position[index], bank.captured_position[di]);
-			std::swap(bank.local_rotations[index], bank.local_rotations[di]);
-			std::swap(bank.velocity_normal[index], bank.velocity_normal[di]);
-			std::swap(bank.stretch[index], bank.stretch[di]);
-			std::swap(bank.weight_acceleration[index], bank.weight_acceleration[di]);
-			std::swap(bank.base_weight[index], bank.base_weight[di]);
-			std::swap(bank.base_velocity[index], bank.base_velocity[di]);
-			std::swap(bank.base_spin[index], bank.base_spin[di]);
-			std::swap(bank.noise_offset[index], bank.noise_offset[di]);
-			std::swap(bank.noise_resolution[index], bank.noise_resolution[di]);
-			std::swap(bank.color[index], bank.color[di]);
-			std::swap(bank.intensity[index], bank.intensity[di]);
-			std::swap(bank.image_frame[index], bank.image_frame[di]);
-			std::swap(bank.base_size[index], bank.base_size[di]);
-			std::swap(bank.single_loop_count[index], bank.single_loop_count[di]);
-		}
-
+		return;
 	}
 
 	/*tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxU32 max_spawn_amount, tfxEmitterPropertiesSoA &properties) {
@@ -11758,7 +11670,7 @@ namespace tfx {
 		emitter_size.z = lookup_callback(library->global_graphs[global_attributes].emitter_depth, frame);
 		//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control thglobal scale.
 		overal_scale = lookup_callback(library->global_graphs[global_attributes].overal_scale, frame);
-		if (pm.effects.parent_particle_id[index] == tfxINVALID) {
+		if (pm.effects.parent_particle_index[index] == tfxINVALID) {
 			scale.x = overal_scale;
 			scale.y = overal_scale;
 			scale.z = overal_scale;
@@ -11802,8 +11714,6 @@ namespace tfx {
 			float &age = bank.age[index];
 			const float &max_age = bank.max_age[index];
 			tfxU32 &single_loop_count = bank.single_loop_count[index];
-			tfxParticleID &next_index = bank.next_id[index];
-			next_index = SetParticleID(particles_index, index);
 			tfxParticleFlags &flags = bank.flags[index];
 			age += tfxFRAME_LENGTH;
 			flags |= state_flags & tfxParticleFlags_remove;
@@ -11815,23 +11725,26 @@ namespace tfx {
 					}
 					else {
 						flags |= tfxParticleFlags_remove;
-						next_index = tfxINVALID;
 					}
 				else {
 					flags |= tfxParticleFlags_remove;
-					next_index = tfxINVALID;
 				}
 			}
 
 			if (flags & tfxParticleFlags_remove) {
 				offset++;
+				if (flags & tfxParticleFlags_has_sub_effects) {
+					pm.FreeParticleIndex(bank.particle_index[index]);
+				}
 			}
 			else if (offset > 0) {
 				tfxU32 next_index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i + offset);
-				bank.next_id[index] = SetParticleID(particles_index, next_index);
+				if(flags & tfxParticleFlags_has_sub_effects)
+					pm.particle_indexes[bank.particle_index[index]] = SetParticleID(particles_index, next_index);
 
 				bank.parent_index[next_index] = bank.parent_index[index];
 				bank.sprite_index[next_index] = bank.sprite_index[index];
+				bank.particle_index[next_index] = bank.particle_index[index];
 				bank.flags[next_index] = bank.flags[index];
 				bank.age[next_index] = bank.age[index];	
 				bank.max_age[next_index] = bank.max_age[index];
@@ -11851,7 +11764,6 @@ namespace tfx {
 				bank.image_frame[next_index] = bank.image_frame[index];
 				bank.base_size[next_index] = bank.base_size[index];
 				bank.single_loop_count[next_index] = bank.single_loop_count[index];	
-
 			}
 
 		}
