@@ -5850,19 +5850,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxOvertimeAttributes *graphs;
 	};
 
-	//This struct is only used for 3d. It's used to get the particle's spawn position which we can then use to order by depth to the camera.
-	//We can then initialise the rest of the particle data with that position knowing that it will be in order.
-	struct tfxSpawnPosition {
-		tfxVec3 local_position;
-		tfxVec3 captured_position;
-		tfxVec3 world_position;
-		tfxVec4 velocity_normal;
-		float distance_to_camera;
-		float base_weight;
-		float base_velocity;
-		float weight_acceleration;
-	};
-
 	// ----------Stage 1-----------
 	//Attributes
 	//		--> Age	
@@ -6302,7 +6289,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//In unordered mode emitters that expire have their particle banks added here to be reused
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
-		tfxvec<tfxSpawnPosition> new_positions;
 		tfxControlWorkEntryOrdered ordered_age_work_entry[tfxLAYERS * 2];
 
 		tfxvec<tfxParticleID> particle_indexes;
@@ -6376,7 +6362,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			new_compute_particle_index(0),
 			new_particles_count(0),
 			mt_batch_size(512),
-			new_positions(tfxCONSTRUCTOR_VEC_INIT("pm new_positions")),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
 		{ }
 		~tfxParticleManager();
@@ -6645,21 +6630,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	void TransformEffector2d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
 	void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
-	void SubEffectUpdate(tfxParticleManager &pm, tfxU32 index);
-	void SubEmitterUpdate(tfxParticleManager &pm, tfxU32 index);
 	void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 	void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry);
 	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxEmitterPropertiesSoA &properties);
-	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxU32 max_spawn_amount, tfxEmitterPropertiesSoA &properties);
-	void InitCPUParticle3d(tfxParticleManager &pm, tfxU32 index, tfxParticle &p, tfxSpriteTransform3d &sprite_transform);
 	void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls &parent_spawn_controls);
 	void UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
-	bool ControlParticle(tfxParticleManager &pm, tfxParticleSoA &bank, tfxU32 index, tfxVec2 &sprite_scale, tfxU32 parent_index, tfxEffectLibrary *library);
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticlesOrdered2d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
 	void ControlParticlesOrdered3d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
-	void ControlParticlesDepthOrdered3d(tfxParticleManager &pm);
 
 	//Wide mt versions
 	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
@@ -6687,11 +6666,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void SpawnParticleIcosphereRandom3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleDepthSort(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
-
-	void MaybeAddMicroUpdateToQueue(tfxSpawnWorkEntry *entry);	//Not in use currently, had issues with multithreading, needs working multiproducer queue
 
 	void ControlParticleAge(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
@@ -7149,12 +7125,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
 
-	static inline int SortParticles(void const *left, void const *right) {
-		float d1 = static_cast<const tfxSpawnPosition*>(left)->distance_to_camera;
-		float d2 = static_cast<const tfxSpawnPosition*>(right)->distance_to_camera;
-		return (d2 > d1) - (d2 < d1);
-	}
-
 	static inline int SortDepth(void const *left, void const *right) {
 		float d1 = *static_cast<const float*>(left);
 		float d2 = *static_cast<const float*>(right);
@@ -7354,12 +7324,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
-
-	//Particle initialisation functions, one for 2d one for 3d effects
-	tfxSpawnPosition InitialisePosition3d(tfxParticleManager &pm, tfxEffectLibrary &library, tfxU32 emitter_index, float tween);
-	void InitialiseParticle3d(tfxParticleManager &pm, tfxParticleData &data, tfxSpriteTransform3d &sprite_transform, tfxU32 emitter_index);
-	void UpdateParticle2d(tfxParticleManager &pm, tfxU32 buffer_index, tfxParticleSoA &bank, tfxU32 index, tfxVec2 &sprite_scale, tfxOvertimeAttributes *graphs);
-	void UpdateParticle3d(tfxParticleManager &pm, tfxU32 buffer_index, tfxParticleSoA &bank, tfxU32 index, tfxVec2 &sprite_scale, tfxOvertimeAttributes *graphs);
 
 	//Get a graph by tfxGraphID
 	tfxGraph &GetGraph(tfxEffectLibrary &library, tfxGraphID &graph_id);
