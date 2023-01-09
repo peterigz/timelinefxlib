@@ -988,8 +988,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 #define tfxArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
 	//Storage
-	//Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut
-	//std::vector replacement with some extra stuff and tweaks specific to Qulkan/TimelineFX
+	//Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut for tfxvec
+	//std::vector replacement with some extra stuff and tweaks specific to TimelineFX
 	template<typename T>
 	struct tfxvec {
 #ifdef tfxTRACK_MEMORY
@@ -1050,6 +1050,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			return data[current_size - 1];
 		}
 		inline tfxU32        locked_push_back(const T& v) {
+			//suspect, just use a mutex instead
 			while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
 			if (current_size == capacity)
 				reserve(_grow_capacity(current_size + 1));
@@ -2409,6 +2410,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	//Some multithreading functions - TODO: currently this is windows only, needs linux/mac etc added
+	//Might end up just using std::thread but will see how the Mac API is
 	//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue.
 	struct tfxWorkQueue;
 
@@ -3581,6 +3583,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	/**
+	Start of simple noise code that encompasses the following license
 	 * @file    SimplexNoise.h
 	 * @brief   A Perlin Simplex Noise C++ Implementation (1D, 2D, 3D).
 	 *
@@ -3634,8 +3637,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float mLacunarity;  ///< Lacunarity specifies the frequency multiplier between successive octaves (default to 2.0).
 		float mPersistence; ///< Persistence is the loss of amplitude between successive octaves (usually 1/lacunarity)
 	};
+	//End of simplenoise code
 
 	/*
+		Start of xxHash code that encompasses the following license
 		MIT License
 
 		Copyright (c) 2018 Stephan Brumme
@@ -4016,7 +4021,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxStrType(tfxStr32, 32);
 	tfxStrType(tfxStr16, 16);
 
-	/*struct tfxStr64 : public tfxStr {
+	/*
+	//Unwrapped for convenience when debuggin. Can be removed at some point
+	struct tfxStr64 : public tfxStr {
 		char buffer[64]; 
 		tfxStr64() { data = buffer; capacity = 64; current_size = 0; is_local_buffer = true; NullTerminate(); }
 		inline void operator=(const tfxStr& src) {
@@ -4144,6 +4151,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//and use At() to retrieve data items by name use [] overload to fetch by index if you have that.
 	//Should not be used to constantly insert/remove things every frame, it's designed for setting up lists and fetching values in loops (by index preferably), and modifying based on user interaction or setting up new situation.
 	//Note that if you reference things by index and you then remove something then that index may not be valid anymore so you would need to keep checks on that.
+	//Not sure how efficient a hash lookup with this is, could probably be better, but isn't used much at all in any realtime particle updating.
 	template<typename T>
 	struct tfxStorageMap {
 		struct pair {
@@ -5681,28 +5689,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//An tfxEffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
-	//This is only for library storage, when using to update each frame this is copied to tfxEffectType and tfxEmitterType, much more compact versions more
+	//This is only for library storage, when using to update each frame this is copied to tfxEffectSoA and tfxEmitterSoA for realtime updates
 	//suited for realtime use.
-	/*
-	Effect Emitter realtime fields:
-	common
-	type
-	parent
-	parent_particle
-	next_ptr
-	properties
-	state_flags
-	current
-	highest_particle_age
-	spawn_controls
-	global
-	property
-	base
-	variation
-	overtime
-	sub_effectors
-	compute_slot_id
-	*/
 	struct tfxEffectEmitter {
 		//Required for frame by frame updating
 		//The current state of the effect/emitter used in the editor only at this point
@@ -5850,25 +5838,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxOvertimeAttributes *graphs;
 	};
 
-	// ----------Stage 1-----------
-	//Attributes
-	//		--> Age	
-	//		-->	Noise		-->	Velocity	-->	Location
-	//		--> Spin		--> Rotation	
-	//		--> Size		--> Scale
-	//		--> Alignment 
-	//		--> Depth
-	//		--> Frame
-	//		--> Color
-
-	// ----------Stage 2-----------
-	//Transform
-
-	// ----------Stage 3-----------
-	//Output
-	//Discard expired and write to next buffer
-	//
-
 	//this is just used in sorting to store a temporary copy of the particle data
 	struct tfxParticleTemp {
 		tfxU32 parent_index;
@@ -5949,39 +5918,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, single_loop_count));			
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
-
-	//Initial particle struct, looking to optimise this and make as small as possible
-	//These are spawned by effector emitter types
-	//Particles are stored in the particle manager particle buffer.
-	struct tfxParticleData {
-		//Updated every frame
-		tfxVec3 local_position;			//The local position of the particle, relative to the emitter.
-		tfxVec3 local_rotations;
-		tfxVec3 captured_position;
-		//Read only when ControlParticle is called, only written to at spawn time
-		tfxBase base;						//Base values created when the particle is spawned. They can be different per particle due to variations
-		tfxVec4 velocity_normal;			//Current velocity direction, with stretch factor in w
-		float noise_offset;					//Higer numbers means random movement is less uniform
-		float noise_resolution;				//Higer numbers means random movement is more uniform
-		float weight_acceleration;			//The current amount of gravity applied to the y axis of the particle each frame
-		tfxParticleFlags flags;				//state_flags for different states
-		//Updated everyframe
-		float age;							//The age of the particle, used by the controller to look up the current state on the graphs
-		float max_age;						//max age before the particle expires
-		tfxU32 single_loop_count;			//The number of times a single particle has looped over
-		float image_frame;					//Current frame of the image if it's an animation
-		float intensity;					//Color is multiplied by this value in the shader to increase the brightness of the particles
-		float depth;
-		tfxRGBA8 color;						//Colour of the particle
-	};
-
-	struct tfxParticle {
-		tfxParticle *next_ptr;
-		tfxU32 parent_index;
-		tfxU32 sprite_index;
-		tfxU32 prev_index;
-		tfxParticleData data;
-	};
 
 	//Initial particle struct, looking to optimise this and make as small as possible
 	//These are spawned by effector emitter types
@@ -6087,17 +6023,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float intensity;
 	};
 
-	/*struct BillboardInstance {
-		QVec4 uv;					//The UV coords of the image in the texture
-		QVec4 position;				//The position of the sprite with roll in w
-		QVec4 scale_pitch_yaw;		//The image scale of the billboard and pitch/yaw in z/w
-		QVec2 handle;				//The handle of the billboard
-		u32 alignment;				//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-		QRGBA8 color;				//The color tint of the sprite
-		float stretch;				//Amount to stretch the billboard along it's alignment vector
-		u32 blend_texture_array;	//reference for the texture array (8bits) and blend factor (24bits)
-	};*/
-
 	struct tfxComputeFXGlobalState {
 		tfxU32 start_index = 0;
 		tfxU32 current_length = 0;
@@ -6166,19 +6091,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 alignment_type;
 	};
 
-	static inline tfxParticleFrame ConvertToParticleFrame(const tfxParticle &p, const tfxU32 &billboard_option, void *image_ptr, tfxVec2 &handle) {
+	static inline tfxParticleFrame ConvertToParticleFrame(tfxParticleSoA &bank, tfxU32 index, const tfxU32 &billboard_option, void *image_ptr, tfxVec2 &handle) {
 		tfxParticleFrame pf;
-		//pf.position = p.data.world_position;
-		//pf.scale = p.data.scale;
-		//pf.alignment = p.data.alignment_vector;
-		pf.stretch = p.data.velocity_normal.w;
-		//pf.rotations = p.data.world_rotations;
+		pf.stretch = bank.velocity_normal[index].w;
 		pf.alignment_type = billboard_option;
 		pf.handle = handle;
-		pf.color = p.data.color;
-		pf.intensity = p.data.intensity;
+		pf.color = bank.color[index];
+		pf.intensity = bank.intensity[index];
 		pf.image_ptr = image_ptr;
-		pf.image_frame = (tfxU32)p.data.image_frame;
+		pf.image_frame = (tfxU32)bank.image_frame[index];
 		return pf;
 	}
 
@@ -6197,7 +6118,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		int depth;
 		float qty_step_size;
 		float highest_particle_age;
-		//LONG volatile position_progress = 0;	//Was used in a multi producer version but had issues getting it working
 	};
 
 	struct tfxControlWorkEntry {
@@ -6523,105 +6443,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	};
 
-	inline void particle_bank_resize_callback(tfxring<tfxParticle> *bank, tfxParticle *new_data, void *user_data) {
-/*
-		for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
-			tfxParticle &p = (*bank)[i];
-			ptrdiff_t diff = p.next_ptr - bank->data;
-			p.next_ptr = new_data + diff;
-			tfxParticle *n = new_data + i;
-			n->next_ptr = p.next_ptr;
-		}
-
-		if (bank->pair && bank->pair->current_size > 0) {
-			for (tfxU32 i = 0; i != bank->pair->current_size - 1; ++i) {
-				tfxParticle &p = (*bank->pair)[i];
-				ptrdiff_t diff = p.next_ptr - bank->data;
-				p.next_ptr = new_data + diff;
-			}
-		}
-
-		tfxParticleManager *pm = static_cast<tfxParticleManager*>(user_data);
-
-		for (auto &e : pm->effects[pm->current_ebuff]) {
-			if (e.parent_particle) {
-				if (e.parent_particle >= bank->data && e.parent_particle < bank->data + bank->capacity) {
-					ptrdiff_t diff = e.parent_particle - bank->data;
-					if (diff < bank->capacity)
-						e.parent_particle = new_data + diff;
-				}
-				if (e.parent_particle->next_ptr && e.parent_particle->next_ptr >= bank->data && e.parent_particle->next_ptr < bank->data + bank->capacity) {
-					ptrdiff_t diff = e.parent_particle->next_ptr - bank->data;
-					if (diff < bank->capacity)
-						e.parent_particle->next_ptr = new_data + diff;
-				}
-			}
-		}
-
-		for (auto &e : pm->effects[!pm->current_ebuff]) {
-			if (e.parent_particle) {
-				tfxEffectEmitter *ep = &e;
-				if (e.parent_particle >= bank->data && e.parent_particle < bank->data + bank->capacity) {
-					ptrdiff_t diff = e.parent_particle - bank->data;
-					if (diff < bank->capacity)
-						e.parent_particle = new_data + diff;
-				}
-				if (e.parent_particle->next_ptr && e.parent_particle->next_ptr >= bank->data && e.parent_particle->next_ptr < bank->data + bank->capacity) {
-					ptrdiff_t diff = e.parent_particle->next_ptr - bank->data;
-					if (diff < bank->capacity)
-						e.parent_particle->next_ptr = new_data + diff;
-				}
-			}
-		}
-*/
-	}
-	inline void particle_array_resize_callback(tfxring<tfxParticleID> *bank, tfxParticleID *new_data, void *user_data) {
-
-		/*for (tfxU32 i = 0; i != bank->current_size - 1; ++i) {
-			tfxParticleID &id = (*bank)[i];
-			tfxU32 bank_index = ParticleBank(id);
-			tfxU32 next_index = ParticleIndex(id);
-			
-			id = MakeParticleID(bank_index, i);
-			tfxParticleID *new_id = new_data + i;
-			*new_id = MakeParticleID(bank_index, next_index < bank->start_index ? bank->capacity - bank->start_index + next_index : next_index - bank->start_index);
-		}
-
-		if (bank->pair && bank->pair->current_size > 0) {
-			for (tfxU32 i = 0; i != bank->pair->current_size - 1; ++i) {
-				tfxParticleID &id = (*bank->pair)[i];
-				tfxU32 bank_index = ParticleBank(id);
-				tfxU32 next_index = ParticleIndex(id);
-
-				id = MakeParticleID(bank_index, (next_index % bank->start_index) + i);
-			}
-		}
-
-		tfxParticleManager *pm = static_cast<tfxParticleManager*>(user_data);
-
-		for (auto &e : pm->effects[pm->current_ebuff]) {
-			if (e.parent_particle_id != tfxINVALID) {
-				tfxU32 bank_index = ParticleBank(e.parent_particle_id);
-				if (bank_index == bank->bank_index) {
-					tfxParticleID next_id = pm->GetParticleNextID(e.parent_particle_id);
-					e.parent_particle_id = next_id;
-					tfxParticleID *new_next_id = new_data + ParticleIndex(next_id);
-				}
-			}
-		}
-
-		for (auto &e : pm->effects[!pm->current_ebuff]) {
-			if (e.parent_particle_id != tfxINVALID) {
-				tfxU32 bank_index = ParticleBank(e.parent_particle_id);
-				if (bank_index == bank->bank_index) {
-					tfxParticleID next_id = pm->GetParticleNextID(e.parent_particle_id);
-					e.parent_particle_id = next_id;
-					tfxParticleID *new_next_id = new_data + ParticleIndex(next_id);
-				}
-			}
-		}*/
-	}
-
 	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 	void StopSpawning(tfxParticleManager &pm);
@@ -6928,31 +6749,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	/*
 	Notes on updating effects emitters and particles:
 
-	We're presented with a number of constraints when updating and drawing particles based on the asthetics that we want for the particles:
-	1) Draw order of particles is important, especially when emitters emit alpha blended particles
-	2) Effects can have sub effects, presenting a problem from a memory management point of view especially as particles with sub effects will be expiring at different times leaving holes in memory.
-	3) You may want to draw effects in different orders, grouping together the sprites generated from effects so that they can be drawn in specific orders or not at all if not on screen etc.
-	4) Particles need to be updated as quickly as possible so memory layout is very important.
-
-	In an ideal world emitters maintain their own list of particles and update them in turn. This means that all the base values can be accessed and held in local variables. 
-	The problem is that other emitters in the same effect would be spawning particles too so the draw order becomes important, you want the particles from each emitter to be mixed together when drawn
-	so updating them by emitter means you lose that order.
-
-	Sub effects start to complicate things from a memory management point of view. With each particle having it's own sub effect that need their own place in memory.
-
-	The particle manager solves a lot of these issues by having 2 lists, an effects list and a particle list. First the effects list is updated and then the particle list is updated. When the particle
-	list is updated the particles need to reference their parent emitters/effects and each particle may be referencing different emitters so I'm not sure how good that is from a caching point of view.
-	Not great I would assume. 
-	Another problem with the particle manager is that all the particles are in one list and so you can't separate out individual effects when drawing which would pose a problem when drawing the effects
-	in different orders with other non particle related drawing.
-	But the particle manager does make managing the memory a lot easier as you only need the effects and particle lists.
-
-	My current conclusion is that for use in a game where you have already defined your particle effects in the editor you can use the tfxEffect approach where draw order of effects is more flexible and
-	memory access is more efficient. The draw back is you can't really make an emitter spawn more particles, but the easy work around here is to create the effect with the most amount of particles spawning
-	as you need and then scale them back dynamically as you need.
-
-	But there is still a strong enough case for the particle manager for use in the editor where it's very useful to be able to dynamically grow the number of particles and sub effects as you work on new 
-	effects. Use of compute shaders is also easier at this point with the particle manager. So at this point I think it's best to keep both methods even though it's more code to maintain.
+	Todo: rewrite now that we've converted to SoA data layouts
 	*/
 
 	struct tfxDataEntry {
@@ -7037,44 +6834,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		out_position = in_position + rotatevec;
 	}
-	static inline void TransformParticle(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = data.local_position.xy();
-		world_rotations = data.local_rotations.roll;
-	}
-	static inline void TransformParticleAngle(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = data.local_position.xy();
-		world_rotations = parent_rotations.roll + data.local_rotations.roll;
-	}
-	static inline void TransformParticleRelative(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_rotations = data.local_rotations.roll;
-		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(data.local_position.x, data.local_position.y) + handle.xy());
-		world_position = from_position.xy() + rotatevec * scale.xy();
-	}
-	static inline void TransformParticleRelativeLine(tfxParticleData &data, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_rotations = parent_rotations.roll + data.local_rotations.roll;
-		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(data.local_position.x, data.local_position.y) + handle.xy());
-		world_position = from_position.xy() + rotatevec * scale.xy();
-	}
-	static inline void TransformParticle3dPositions(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = data.local_position;
-	}
-	static inline void TransformParticle3dPositionsRelative(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		tfxVec4 rotatevec = mmTransformVector(matrix, data.local_position + handle);
-		world_position = world_position + rotatevec.xyz();
-	}
-	static inline void TransformParticle3d(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = data.local_position;
-		world_rotations = data.local_rotations;
-	}
-	static inline void TransformParticle3dAngle(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = data.local_position;
-		world_rotations = world_rotations + data.local_rotations;
-	}
-	static inline void TransformParticle3dRelative(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_rotations = data.local_rotations;
-		tfxVec4 rotatevec = mmTransformVector(matrix, data.local_position + handle);
-		world_position = from_position + rotatevec.xyz() * scale;
-	}
 	//-------------------------------------------------
 	//--New transform particle functions for SoA data--
 	//--------------------------2d---------------------
@@ -7117,13 +6876,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
-	//-------------------------------------------------
-	//todo: redundant function? Remove if so.
-	static inline void TransformParticle3dRelativeLine(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_rotations = data.local_rotations;
-		tfxVec4 rotatevec = mmTransformVector(matrix, data.local_position + handle);
-		world_position = from_position + rotatevec.xyz() * scale;
-	}
 
 	static inline int SortDepth(void const *left, void const *right) {
 		float d1 = *static_cast<const float*>(left);
@@ -7135,21 +6887,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float d1 = static_cast<const tfxVec3*>(left)->y;
 		float d2 = static_cast<const tfxVec3*>(right)->y;
 		return (d2 > d1) - (d2 < d1);
-	}
-
-	static inline void InsertionSortParticles(tfxring<tfxParticle> &particles, tfxring<tfxParticle> &current_buffer) {
-		tfxPROFILE;
-		for (tfxU32 i = 1; i < particles.current_size; ++i) {
-			tfxParticle key = particles[i];
-			int j = i - 1;
-			while (j >= 0 && key.data.depth > particles[j].data.depth) {
-				particles[j + 1] = particles[j];
-				current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
-				--j;
-			}
-			particles[j + 1] = key;
-			current_buffer[particles[j + 1].prev_index].next_ptr = &particles[j + 1];
-		}
 	}
 
 	static inline void SwapSoAParticle(tfxParticleSoA &particles, tfxU32 from, tfxU32 to) {
@@ -7264,21 +7001,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	}
 
-	/*static inline void InsertionSortSprites3d(tfxring<tfxParticleSprite3d> &sprites, tfxvec<tfxring<tfxParticle>> &particle_banks) {
-		tfxPROFILE;
-		for (tfxU32 i = 1; i < sprites.current_size; ++i) {
-			tfxParticleSprite3d key = sprites[i];
-			int j = i - 1;
-			while (j >= 0 && key.depth > sprites[j].depth) {
-				sprites[j + 1] = sprites[j];
-				particle_banks[(sprites[j + 1].particle & 0xFFF00000) >> 20][sprites[j + 1].particle & 0x000FFFFF].sprite_index = j + 1;
-				--j;
-			}
-			sprites[j + 1] = key;
-			particle_banks[(sprites[j + 1].particle & 0xFFF00000) >> 20][sprites[j + 1].particle & 0x000FFFFF].sprite_index = j + 1;
-		}
-	}*/
-
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticleFrame key = particles[i];
@@ -7291,36 +7013,25 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			particles[j + 1] = key;
 		}
 	}
+
 	inline tfxVec3 Tween(float tween, const tfxVec3 &world, const tfxVec3 &captured) {
 		tfxVec3 tweened;
 		tweened = world * tween + captured * (1.f - tween);
 		return tweened;
 	}
+
 	inline tfxVec2 Tween2d(float tween, const tfxVec4 &world) {
 		tfxVec2 tweened;
 		tweened = world.xy() * tween + world.zw() * (1.f - tween);
 		return tweened;
 	}
+
 	inline tfxVec2 Tween2d(float tween, const tfxVec2 &world, const tfxVec2 &captured) {
 		tfxVec2 tweened;
 		tweened = world * tween + captured * (1.f - tween);
 		return tweened;
 	}
-	static inline tfxVec3 SetParticleAlignment(tfxParticle &p, tfxMatrix4 &matrix, tfxVec3 &position, const tfxVectorAlignType &vector_align_type) {
-		if (vector_align_type == tfxVectorAlignType_motion) {
-			tfxVec3 alignment_vector = position - p.data.captured_position;
-			float l = FastLength(alignment_vector);
-			p.data.velocity_normal.w *= l * 10.f;
-			return FastNormalizeVec(alignment_vector);
-		}
-		else if (vector_align_type == tfxVectorAlignType_emission) {
-			return p.data.velocity_normal.xyz();
-		}
-		else if (vector_align_type == tfxVectorAlignType_emitter) {
-			return mmTransformVector(matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
-		}
-		return tfxVec3(0.f, 0.002f, 0.f);
-	}
+
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
@@ -7337,16 +7048,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	void SetUpdateFrequency(float fps);
-
 	inline float GetUpdateFrequency() { return tfxUPDATE_FREQUENCY; }
 	inline float GetUpdateTime() { return tfxUPDATE_TIME; }
 	inline float GetFrameLength() { return tfxFRAME_LENGTH; }
+
 	inline void SetLookUpFrequency(float frequency) {
 		tfxLOOKUP_FREQUENCY = frequency;
 	}
+
 	inline void SetLookUpFrequencyOvertime(float frequency) {
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
+
 	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
 	tfxEffectLibraryStats CreateLibraryStats(tfxEffectLibrary &lib);
