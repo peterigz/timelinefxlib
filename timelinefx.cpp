@@ -7338,13 +7338,22 @@ namespace tfx {
 				{
 					tmpMTStack(tfxControlWorkEntry, work);
 					for (int index : emitters_in_use[depth][next_buffer]) {
-						tfxControlWorkEntry &work_entry = work.next();
-						work_entry.properties = &emitters.library[index]->emitter_properties;
-						work_entry.emitter_index = index;
-						if(emitters.property_flags[index] & tfxEmitterPropertyFlags_is_3d)
-							ControlParticles3d(*this, index, work_entry);
-						else
-							ControlParticles2d(*this, index, work_entry);
+						tfxSoABuffer &bank = particle_array_buffers[emitters.particles_index[index]];
+						int particles_to_update = bank.current_size;
+						tfxU32 running_start_index = 0;
+						while (particles_to_update > 0) {
+							tfxControlWorkEntry &work_entry = work.next();
+							work_entry.properties = &emitters.library[index]->emitter_properties;
+							work_entry.emitter_index = index;
+							work_entry.start_index = running_start_index;
+							work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size :  running_start_index + particles_to_update;
+							particles_to_update -= mt_batch_size;
+							running_start_index += mt_batch_size;
+							if (emitters.property_flags[index] & tfxEmitterPropertyFlags_is_3d)
+								ControlParticles3d(*this, index, work_entry);
+							else
+								ControlParticles2d(*this, index, work_entry);
+						}
 					}
 					tfxCompleteAllWork(&work_queue);
 					work.free();
@@ -7967,7 +7976,7 @@ namespace tfx {
 
 			color = tfxRGBA8(color.r, color.g, color.b, color.a);
 
-			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
+			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
 			s.color = color;
 			s.intensity = intensity;
 		}
@@ -11786,7 +11795,7 @@ namespace tfx {
 		const float angle_offset = pm.emitters.angle_offsets[emitter_index].roll;
 		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 
 			const float age = bank.age[index];
@@ -11903,7 +11912,7 @@ namespace tfx {
 		tfxMatrix4 &e_matrix = pm.emitters.matrix[emitter_index];
 		tfxVec3 &e_scale = pm.emitters.scale[emitter_index];
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			const tfxVec3 &local_position = bank.local_position[index];
 			const tfxVec3 &local_rotations = bank.local_rotations[index];
@@ -11943,7 +11952,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 
 			const float age = bank.age[index];
@@ -12086,7 +12095,7 @@ namespace tfx {
 		const tfxVectorAlignType vector_align_type = work_entry->properties->vector_align_type[property_index];
 		const tfxBillboardingOptions billboard_option = work_entry->properties->billboard_option[property_index];
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			const tfxVec3 local_position = bank.local_position[index];
 			const tfxVec3 local_rotations = bank.local_rotations[index];
@@ -12150,7 +12159,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			const float age = bank.age[index];
 			const float max_age = bank.max_age[index];
@@ -12200,7 +12209,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			const float age = bank.age[index];
 			const float max_age = bank.max_age[index];
@@ -12248,7 +12257,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			const float age = bank.age[index];
 			const float max_age = bank.max_age[index];
@@ -12289,7 +12298,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			const float age = bank.age[index];
 			const float max_age = bank.max_age[index];
@@ -12333,7 +12342,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			const float age = bank.age[index];
 			const float max_age = bank.max_age[index];
@@ -12382,7 +12391,7 @@ namespace tfx {
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i >= 0; --i) {
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 
 			float &image_frame = bank.image_frame[index];
@@ -12428,9 +12437,8 @@ namespace tfx {
 			amount_to_update = sprites_count;
 		}
 		
-		work_entry.start_index = amount_to_update == 0 ? 0 : amount_to_update - 1;
 		work_entry.pm = &pm;
-		work_entry.sprites_index = sprites_index;
+		work_entry.sprites_index = sprites_index + work_entry.start_index;
 		work_entry.layer = properties.layer[property_index];
 		work_entry.sprites2d = &pm.sprites2d[work_entry.layer];
 
@@ -12476,9 +12484,8 @@ namespace tfx {
 			amount_to_update = sprites_count;
 		}
 
-		work_entry.start_index = amount_to_update == 0 ? 0 : amount_to_update - 1;
 		work_entry.pm = &pm;
-		work_entry.sprites_index = sprites_index;
+		work_entry.sprites_index = sprites_index + work_entry.start_index;
 		work_entry.layer = properties.layer[property_index];
 		work_entry.sprites3d = &pm.sprites3d[work_entry.layer];
 

@@ -1,4 +1,4 @@
-#define tfxMULTITHREADED 0
+#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -6215,6 +6215,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxControlWorkEntry {
 		tfxU32 start_index;
+		tfxU32 end_index;
 		tfxU32 sprites_index;
 		tfxU32 emitter_index;
 		tfxParticleManager *pm;
