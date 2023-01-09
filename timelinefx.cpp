@@ -8903,8 +8903,8 @@ namespace tfx {
 			sprites2d[layer].clear();
 			sprites3d[layer].clear();
 			if (!(flags & tfxEffectManagerFlags_unordered)) {
-				ClearSoABuffer(&particle_array_buffers[layer]);
-				ClearSoABuffer(&particle_array_buffers[layer + 1]);
+				ClearSoABuffer(&particle_array_buffers[layer * 2]);
+				ClearSoABuffer(&particle_array_buffers[layer * 2 + 1]);
 			}
 		}
 		if (flags & tfxEffectManagerFlags_unordered) {
