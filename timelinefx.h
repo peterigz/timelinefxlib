@@ -170,6 +170,7 @@ namespace tfx {
 #define tfxEndLinet "\n"
 
 #define tfxMin(a, b) (((a) < (b)) ? (a) : (b))
+#define tfxMax(a, b) (((a) > (b)) ? (a) : (b))
 
 typedef std::chrono::high_resolution_clock tfxClock;
 
@@ -6298,7 +6299,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		tfxMemoryArenaManager particle_array_allocator;
 		//In unordered mode emitters that expire have their particle banks added here to be reused
-		tfxStorageMap<tfxvec<tfxU32>> free_particle_banks;
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxvec<tfxSpawnPosition> new_positions;
@@ -6428,7 +6428,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			free_particle_indexes.push_back(index);
 			index = tfxINVALID;
 		}
-		void FreeParticleBank(tfxEffectEmitter &emitter);
 		void FreeParticleList(tfxU32 index);
 		//Clear all effects and particles in the particle manager
 		void ClearAll(bool free_memory = false);
@@ -7260,7 +7259,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		particles.single_loop_count[from] = temp.single_loop_count;
 	}
 
-	static inline void InsertionSortSoAParticles(tfxParticleSoA &particles, tfxU32 size) {
+	static inline void InsertionSortSoAParticles(tfxParticleManager &pm, tfxParticleSoA &particles, tfxU32 current_buffer_index, tfxU32 size) {
 		tfxPROFILE;
 		tfxParticleTemp key;
 		for (tfxU32 i = 1; i < size; ++i) {
@@ -7268,9 +7267,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			int j = i - 1;
 			while (j >= 0 && key.depth > particles.depth[j]) {
 				SwapSoAParticle(particles, j + 1, j);
+				if (particles.flags[j + 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j + 1]] = MakeParticleID(current_buffer_index, j + 1);
+				if (particles.flags[j] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j]] = MakeParticleID(current_buffer_index, j);
 				--j;
 			}
 			LoadSoAParticle(particles, j + 1, key);
+			if (particles.flags[j + 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j + 1]] = MakeParticleID(current_buffer_index, j + 1);
 		}
 	}
 

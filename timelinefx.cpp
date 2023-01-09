@@ -7034,6 +7034,7 @@ namespace tfx {
 		effects.properties_index[parent_index] = effect.property_index;
 		effects.timeout_counter[parent_index] = 0;
 		effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
+		sort_passes = tfxMax(effect.sort_passes, sort_passes);
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
 		}
@@ -7224,21 +7225,6 @@ namespace tfx {
 	tfxComputeParticle& tfxParticleManager::GrabComputeParticle(unsigned int layer) {
 		assert(new_compute_particle_ptr);		//Use must assign the compute ptr to point to an area in memory where you can stage new particles for uploading to the GPU - See ResetComputePtr
 		return *(static_cast<tfxComputeParticle*>(new_compute_particle_ptr) + new_compute_particle_index++);
-	}
-
-	void tfxParticleManager::FreeParticleBank(tfxEffectEmitter &emitter) {
-		if (free_particle_banks.ValidKey(emitter.path_hash)) {
-			free_particle_banks.At(emitter.path_hash).push_back(emitters.particles_index[emitter.buffer_index]);
-		}
-		else {
-#ifdef tfxTRACK_MEMORY
-			tfxvec<tfxU32> new_indexes(tfxCONSTRUCTOR_VEC_INIT("FreeParticleBanks::new_indexes"));
-#else
-			tfxvec<tfxU32> new_indexes;
-#endif
-			new_indexes.push_back(emitters.particles_index[emitter.buffer_index]);
-			free_particle_banks.Insert(emitter.path_hash, new_indexes);
-		}
 	}
 
 	void tfxParticleManager::FreeParticleList(tfxU32 index) {
@@ -7461,7 +7447,6 @@ namespace tfx {
 				tmpMTStack(tfxControlWorkEntryOrdered, work);
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 					int layer_offset = layer * 2;
-					int prev_buffer_index = next_particle_buffer + layer_offset;
 					int current_buffer_index = current_pbuff + layer_offset;
 					int particles_to_update = particle_array_buffers[current_buffer_index].current_size;
 					sprites3d[layer].current_size = particles_to_update;
@@ -7478,11 +7463,17 @@ namespace tfx {
 						running_start_index += mt_batch_size;
 						ControlParticlesOrdered3d(*this, work_entry);
 					}
-					//InsertionSortSoAParticles(particle_arrays[current_buffer_index], sprites3d[layer].current_size);
 				}
 
 				tfxCompleteAllWork(&work_queue);
 				work.free();
+				if (flags & tfxEffectManagerFlags_guarantee_order) {
+					for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+						int layer_offset = layer * 2;
+						int current_buffer_index = current_pbuff + layer_offset;
+						InsertionSortSoAParticles(*this, particle_arrays[current_buffer_index], current_buffer_index, sprites3d[layer].current_size);
+					}
+				}
 			}
 
 		}
@@ -7707,6 +7698,20 @@ namespace tfx {
 			}
 		}
 
+		if (!(pm.flags & tfxEffectManagerFlags_guarantee_order) && pm.sort_passes > 0) {
+			for (tfxU32 sorts = 0; sorts != pm.sort_passes; ++sorts) {
+				tfxParticleSoA &next_bank = pm.particle_arrays[work_entry->next_buffer_index];
+				for (tfxU32 i = 1; i < work_entry->amount_to_update; ++i) {
+					float depth1 = next_bank.depth[i - 1];
+					float depth2 = next_bank.depth[i];
+					if (depth1 < depth2) {
+						SwapSoAParticle(next_bank, i - 1, i);
+						if (next_bank.flags[i - 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[next_bank.particle_index[i - 1]] = MakeParticleID(work_entry->current_buffer_index, i - 1);
+						if (next_bank.flags[i] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[next_bank.particle_index[i]] = MakeParticleID(work_entry->current_buffer_index, i);
+					}
+				}
+			}
+		}
 	}
 
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data) {
@@ -8813,10 +8818,10 @@ namespace tfx {
 		}
 		else if (!(flags & tfxEffectManagerFlags_unordered) && mode == tfxParticleManagerMode_unordered) {
 			FreeParticleBanks();
-			for (auto &bank : free_particle_banks.data) {
+			for (auto &bank : free_particle_lists.data) {
 				bank.free_all();
 			}
-			free_particle_banks.FreeAll();
+			free_particle_lists.FreeAll();
 		}
 
 		tfxEffectManagerFlags dynamic = flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
@@ -8842,9 +8847,11 @@ namespace tfx {
 
 		memset(new_particles_index_start, tfxMAX_UINT, 4 * tfxLAYERS);
 		memset(sprite_index_point, 0, 4 * tfxLAYERS);
+
+		ClearSoABuffer(&emitter_buffers);
+		ClearSoABuffer(&effect_buffers);
 		
 		sort_passes = req_sort_passes;
-
 	}
 
 	void tfxParticleManager::InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_sprite_allocation) {
@@ -8903,10 +8910,6 @@ namespace tfx {
 		if (flags & tfxEffectManagerFlags_unordered) {
 			if (free_memory) {
 				FreeParticleBanks();
-				for (auto &bank : free_particle_banks.data) {
-					bank.free_all();
-				}
-				free_particle_banks.FreeAll();
 			}
 			else {
 				for (auto &bank : particle_array_buffers) {
