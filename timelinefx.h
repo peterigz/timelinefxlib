@@ -6984,7 +6984,38 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	}
 
-	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, tfxU32 bank_index, int start_index, int end_index) {
+	static inline int QuickSortPartition(tfxParticleSoA &particles, int start_index, int end_index)
+	{
+		float depth = particles.depth[end_index];
+		int i = (start_index - 1); 
+		for (int j = start_index; j < end_index; j++)
+		{
+			if (particles.depth[j] >= depth)
+			{
+				i++;
+				SwapSoAParticle(particles, i, j);
+			}
+		}
+
+		SwapSoAParticle(particles, i + 1, end_index);
+		return i + 1;
+	}
+
+	static inline void QuickSortSoAParticles(tfxParticleSoA &particles, int start_index, int end_index) {
+		if (start_index == 0)
+			return;
+		if (start_index < end_index)
+		{
+			//partition the array around pivot
+			int pivot = QuickSortPartition(particles, start_index, end_index);
+
+			//call quick_sort recursively to sort sub arrays
+			QuickSortSoAParticles(particles, start_index, pivot - 1);
+			QuickSortSoAParticles(particles, pivot + 1, end_index);
+		}
+	}
+
+	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, int start_index, int end_index) {
 		tfxPROFILE;
 		if (start_index == tfxMAX_UINT)
 			return;
