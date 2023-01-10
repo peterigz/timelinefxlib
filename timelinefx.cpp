@@ -6328,7 +6328,7 @@ namespace tfx {
 				work_entry.amount_to_update = particle_array_buffers[current_buffer_index].current_size;
 				if (work_entry.amount_to_update == 0)
 					continue;
-				QuickSortSoAParticles(particle_arrays[current_buffer_index], new_particles_index_start[layer] + 1, particle_array_buffers[current_buffer_index].current_size - 1);
+				//QuickSortSoAParticles(particle_arrays[current_buffer_index], new_particles_index_start[layer] + 1, particle_array_buffers[current_buffer_index].current_size - 1);
 				work_entry.pm = this;
 				work_entry.sprite_layer = layer;
 				work_entry.current_buffer_index = current_buffer_index;
@@ -6602,12 +6602,13 @@ namespace tfx {
 					float depth2 = next_bank.depth[i];
 					if (depth1 < depth2) {
 						SwapSoAParticle(next_bank, i - 1, i);
-						if (next_bank.flags[i - 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[next_bank.particle_index[i - 1]] = MakeParticleID(work_entry->current_buffer_index, i - 1);
-						if (next_bank.flags[i] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[next_bank.particle_index[i]] = MakeParticleID(work_entry->current_buffer_index, i);
+						if (next_bank.flags[i - 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[next_bank.particle_index[i - 1]] = MakeParticleID(work_entry->next_buffer_index, i - 1);
+						if (next_bank.flags[i] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[next_bank.particle_index[i]] = MakeParticleID(work_entry->next_buffer_index, i);
 					}
 				}
 			}
 		}
+
 	}
 
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data) {
