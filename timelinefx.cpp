@@ -6254,11 +6254,12 @@ namespace tfx {
 						work_entry.start_index = bank.current_size - 1;
 						work_entry.emitter_index = index;
 						work_entry.pm = this;
-#if tfxMULTITHREADED
-						tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleAge);
-#else
-						ControlParticleAge(&work_queue, &work_entry);
-#endif
+						if (tfxNumberOfThreadsInAdditionToMain) {
+							tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleAge);
+						}
+						else {
+							ControlParticleAge(&work_queue, &work_entry);
+						}
 					}
 					tfxCompleteAllWork(&work_queue);
 					work.free();
@@ -6308,11 +6309,12 @@ namespace tfx {
 				work_entry.current_buffer_index = layer;
 				work_entry.start_index = work_entry.amount_to_update - 1;
 				work_entry.end_index = 0;
-#if tfxMULTITHREADED
-				tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleOrderedAge);
-#else
-				ControlParticleOrderedAge(&work_queue, &work_entry);
-#endif
+				if (tfxNumberOfThreadsInAdditionToMain) {
+					tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleOrderedAge);
+				}
+				else {
+					ControlParticleOrderedAge(&work_queue, &work_entry);
+				}
 			}
 
 		}
@@ -6369,9 +6371,19 @@ namespace tfx {
 
 				if (flags & tfxEffectManagerFlags_guarantee_order) {
 					for (tfxEachLayer) {
+						tfxSortWorkEntry &work_entry = sorting_work_entry[layer];
 						int layer_offset = layer * 2;
 						int current_buffer_index = current_pbuff + layer_offset;
-						InsertionSortSoAParticles(*this, particle_arrays[current_buffer_index], current_buffer_index, sprites3d[layer].current_size);
+						work_entry.current_buffer_index = current_buffer_index;
+						work_entry.pm = this;
+						work_entry.size = sprites3d[layer].current_size;
+						work_entry.particles = &particle_arrays[current_buffer_index];
+						if (tfxNumberOfThreadsInAdditionToMain > 0) {
+							tfxAddWorkQueueEntry(&work_queue, &work_entry, InsertionSortSoAParticles);
+						}
+						else {
+							InsertionSortSoAParticles(&work_queue, &work_entry);
+						}
 					}
 				}
 				else if (sort_passes > 0) {
@@ -6392,9 +6404,7 @@ namespace tfx {
 						}
 					}
 				}
-
 			}
-
 		}
 
 		//Add Subeffects to the next buffer
@@ -6428,17 +6438,18 @@ namespace tfx {
 
 		work_entry.sprites2d = &pm.sprites2d[work_entry.sprite_layer];
 
-#if tfxMULTITHREADED
-		tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered2d);
-		tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSizeOrdered2d);
-		tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered2d);
-		tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrameOrdered2d);
-#else
-		ControlParticlePositionOrdered2d(&pm.work_queue, &work_entry);
-		ControlParticleSizeOrdered2d(&pm.work_queue, &work_entry);
-		ControlParticleColorOrdered2d(&pm.work_queue, &work_entry);
-		ControlParticleImageFrameOrdered2d(&pm.work_queue, &work_entry);
-#endif
+		if (tfxNumberOfThreadsInAdditionToMain) {
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered2d);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSizeOrdered2d);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered2d);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrameOrdered2d);
+		}
+		else {
+			ControlParticlePositionOrdered2d(&pm.work_queue, &work_entry);
+			ControlParticleSizeOrdered2d(&pm.work_queue, &work_entry);
+			ControlParticleColorOrdered2d(&pm.work_queue, &work_entry);
+			ControlParticleImageFrameOrdered2d(&pm.work_queue, &work_entry);
+		}
 	}
 
 	void ControlParticlesOrdered3d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry) {
@@ -6451,17 +6462,18 @@ namespace tfx {
 
 		work_entry.sprites3d = &pm.sprites3d[work_entry.sprite_layer];
 
-#if tfxMULTITHREADED
-		tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered3d);
-		tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSizeOrdered3d);
-		tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered3d);
-		tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrameOrdered3d);
-#else
-		ControlParticlePositionOrdered3d(&pm.work_queue, &work_entry);
-		ControlParticleSizeOrdered3d(&pm.work_queue, &work_entry);
-		ControlParticleColorOrdered3d(&pm.work_queue, &work_entry);
-		ControlParticleImageFrameOrdered3d(&pm.work_queue, &work_entry);
-#endif
+		if (tfxNumberOfThreadsInAdditionToMain) {
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered3d);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSizeOrdered3d);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered3d);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrameOrdered3d);
+		}
+		else {
+			ControlParticlePositionOrdered3d(&pm.work_queue, &work_entry);
+			ControlParticleSizeOrdered3d(&pm.work_queue, &work_entry);
+			ControlParticleColorOrdered3d(&pm.work_queue, &work_entry);
+			ControlParticleImageFrameOrdered3d(&pm.work_queue, &work_entry);
+		}
 	}
 
 	void ControlParticleOrderedAge(tfxWorkQueue *queue, void *data) {
@@ -8053,60 +8065,61 @@ namespace tfx {
 		work_entry.spawn_start_index = AddRows(&pm.particle_array_buffers[pm.emitters.particles_index[work_entry.emitter_index]], work_entry.amount_to_spawn, true);
 		tfxEmissionType &emission_type = properties.emission_type[pm.emitters.properties_index[work_entry.emitter_index]];
 
-#if tfxMULTITHREADED
-		if (work_entry.amount_to_spawn > 0) {
-			work_entry.end_index = work_entry.amount_to_spawn;
-			//tfxBumpCompletionCount(&pm.work_queue);
+		if (tfxNumberOfThreadsInAdditionToMain) {
+			if (work_entry.amount_to_spawn > 0) {
+				work_entry.end_index = work_entry.amount_to_spawn;
+				//tfxBumpCompletionCount(&pm.work_queue);
+				if (emission_type == tfxPoint) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint2d);
+				}
+				else if (emission_type == tfxArea) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleArea2d);
+				}
+				else if (emission_type == tfxEllipse) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleEllipse2d);
+				}
+				else if (emission_type == tfxLine) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleLine2d);
+				}
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleWeight);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleVelocity);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleRoll);
+				//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
+				//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
+				//fine and is stable
+				tfxCompleteAllWork(&pm.work_queue);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleMicroUpdate2d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleNoise);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleImageFrame);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSize2d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSpin2d);
+			}
+		}
+		else {
+			SpawnParticleAge(&pm.work_queue, &work_entry);
+
 			if (emission_type == tfxPoint) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint2d);
+				SpawnParticlePoint2d(&pm.work_queue, &work_entry);
 			}
 			else if (emission_type == tfxArea) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleArea2d);
+				SpawnParticleArea2d(&pm.work_queue, &work_entry);
 			}
 			else if (emission_type == tfxEllipse) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleEllipse2d);
+				SpawnParticleEllipse2d(&pm.work_queue, &work_entry);
 			}
 			else if (emission_type == tfxLine) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleLine2d);
+				SpawnParticleLine2d(&pm.work_queue, &work_entry);
 			}
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleWeight);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleVelocity);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleRoll);
-			//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
-			//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
-			//fine and is stable
-			tfxCompleteAllWork(&pm.work_queue);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleMicroUpdate2d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleNoise);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleImageFrame);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSize2d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSpin2d);
+			SpawnParticleWeight(&pm.work_queue, &work_entry);
+			SpawnParticleVelocity(&pm.work_queue, &work_entry);
+			SpawnParticleRoll(&pm.work_queue, &work_entry);
+			SpawnParticleMicroUpdate2d(&pm.work_queue, &work_entry);
+			SpawnParticleNoise(&pm.work_queue, &work_entry);
+			SpawnParticleImageFrame(&pm.work_queue, &work_entry);
+			SpawnParticleSize2d(&pm.work_queue, &work_entry);
+			SpawnParticleSpin2d(&pm.work_queue, &work_entry);
 		}
-#else
-		SpawnParticleAge(&pm.work_queue, &work_entry);
-
-		if (emission_type == tfxPoint) {
-			SpawnParticlePoint2d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxArea) {
-			SpawnParticleArea2d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxEllipse) {
-			SpawnParticleEllipse2d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxLine) {
-			SpawnParticleLine2d(&pm.work_queue, &work_entry);
-		}
-		SpawnParticleWeight(&pm.work_queue, &work_entry);
-		SpawnParticleVelocity(&pm.work_queue, &work_entry);
-		SpawnParticleRoll(&pm.work_queue, &work_entry);
-		SpawnParticleMicroUpdate2d(&pm.work_queue, &work_entry);
-		SpawnParticleNoise(&pm.work_queue, &work_entry);
-		SpawnParticleImageFrame(&pm.work_queue, &work_entry);
-		SpawnParticleSize2d(&pm.work_queue, &work_entry);
-		SpawnParticleSpin2d(&pm.work_queue, &work_entry);
-#endif
 
 		if (work_entry.amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
 			pm.emitters.state_flags[work_entry.emitter_index] |= tfxEmitterStateFlags_single_shot_done;
@@ -8172,75 +8185,76 @@ namespace tfx {
 		work_entry.spawn_start_index = AddRows(&pm.particle_array_buffers[pm.emitters.particles_index[work_entry.emitter_index]], work_entry.amount_to_spawn, true);
 		tfxEmissionType &emission_type = properties.emission_type[property_index];
 
-#if tfxMULTITHREADED
-		if (work_entry.amount_to_spawn > 0) {
+		if (tfxNumberOfThreadsInAdditionToMain) {
+			if (work_entry.amount_to_spawn > 0) {
+				if (emission_type == tfxPoint) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint3d);
+				}
+				else if (emission_type == tfxArea) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleArea3d);
+				}
+				else if (emission_type == tfxEllipse) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleEllipse3d);
+				}
+				else if (emission_type == tfxLine) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleLine3d);
+				}
+				else if (emission_type == tfxCylinder) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleCylinder3d);
+				}
+				else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleIcosphereRandom3d);
+				}
+				else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleIcosphere3d);
+				}
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleWeight);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleVelocity);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleRoll);
+				//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
+				//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
+				//fine and is stable
+				tfxCompleteAllWork(&pm.work_queue);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleMicroUpdate3d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleNoise);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleImageFrame);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSize3d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSpin3d);
+			}
+		}
+		else {
+			SpawnParticleAge(&pm.work_queue, &work_entry);
 			if (emission_type == tfxPoint) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint3d);
+				SpawnParticlePoint3d(&pm.work_queue, &work_entry);
 			}
 			else if (emission_type == tfxArea) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleArea3d);
+				SpawnParticleArea3d(&pm.work_queue, &work_entry);
 			}
 			else if (emission_type == tfxEllipse) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleEllipse3d);
+				SpawnParticleEllipse3d(&pm.work_queue, &work_entry);
 			}
 			else if (emission_type == tfxLine) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleLine3d);
-			}
-			else if (emission_type == tfxCylinder) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleCylinder3d);
+				SpawnParticleLine3d(&pm.work_queue, &work_entry);
 			}
 			else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleIcosphereRandom3d);
+				SpawnParticleIcosphereRandom3d(&pm.work_queue, &work_entry);
 			}
 			else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleIcosphere3d);
+				SpawnParticleIcosphere3d(&pm.work_queue, &work_entry);
 			}
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleWeight);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleVelocity);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleRoll);
-			//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
-			//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
-			//fine and is stable
-			tfxCompleteAllWork(&pm.work_queue);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleMicroUpdate3d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleNoise);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleImageFrame);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSize3d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSpin3d);
+			else if (emission_type == tfxCylinder) {
+				SpawnParticleCylinder3d(&pm.work_queue, &work_entry);
+			}
+			SpawnParticleWeight(&pm.work_queue, &work_entry);
+			SpawnParticleVelocity(&pm.work_queue, &work_entry);
+			SpawnParticleRoll(&pm.work_queue, &work_entry);
+			SpawnParticleMicroUpdate3d(&pm.work_queue, &work_entry);
+			SpawnParticleNoise(&pm.work_queue, &work_entry);
+			SpawnParticleImageFrame(&pm.work_queue, &work_entry);
+			SpawnParticleSize3d(&pm.work_queue, &work_entry);
+			SpawnParticleSpin3d(&pm.work_queue, &work_entry);
 		}
-#else
-		SpawnParticleAge(&pm.work_queue, &work_entry);
-		if (emission_type == tfxPoint) {
-			SpawnParticlePoint3d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxArea) {
-			SpawnParticleArea3d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxEllipse) {
-			SpawnParticleEllipse3d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxLine) {
-			SpawnParticleLine3d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-			SpawnParticleIcosphereRandom3d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
-			SpawnParticleIcosphere3d(&pm.work_queue, &work_entry);
-		}
-		else if (emission_type == tfxCylinder) {
-			SpawnParticleCylinder3d(&pm.work_queue, &work_entry);
-		}
-		SpawnParticleWeight(&pm.work_queue, &work_entry);
-		SpawnParticleVelocity(&pm.work_queue, &work_entry);
-		SpawnParticleRoll(&pm.work_queue, &work_entry);
-		SpawnParticleMicroUpdate3d(&pm.work_queue, &work_entry);
-		SpawnParticleNoise(&pm.work_queue, &work_entry);
-		SpawnParticleImageFrame(&pm.work_queue, &work_entry);
-		SpawnParticleSize3d(&pm.work_queue, &work_entry);
-		SpawnParticleSpin3d(&pm.work_queue, &work_entry);
-#endif
 
 		if (work_entry.amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
 			pm.emitters.state_flags[work_entry.emitter_index] |= tfxEmitterStateFlags_single_shot_done;
@@ -10834,17 +10848,18 @@ namespace tfx {
 		work_entry.sprites2d = &pm.sprites2d[work_entry.layer];
 
 		if (amount_to_update > 0) {
-#if tfxMULTITHREADED
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition2d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize2d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor2d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame2d);
-#else
-			ControlParticlePosition2d(&pm.work_queue, &work_entry);
-			ControlParticleSize2d(&pm.work_queue, &work_entry);
-			ControlParticleColor2d(&pm.work_queue, &work_entry);
-			ControlParticleImageFrame2d(&pm.work_queue, &work_entry);
-#endif
+			if (tfxNumberOfThreadsInAdditionToMain) {
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition2d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize2d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor2d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame2d);
+			}
+			else {
+				ControlParticlePosition2d(&pm.work_queue, &work_entry);
+				ControlParticleSize2d(&pm.work_queue, &work_entry);
+				ControlParticleColor2d(&pm.work_queue, &work_entry);
+				ControlParticleImageFrame2d(&pm.work_queue, &work_entry);
+			}
 		}
 
 	}
@@ -10881,17 +10896,18 @@ namespace tfx {
 		work_entry.sprites3d = &pm.sprites3d[work_entry.layer];
 
 		if (amount_to_update > 0) {
-#if tfxMULTITHREADED
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition3d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize3d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor3d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame3d);
-#else
-			ControlParticlePosition3d(&pm.work_queue, &work_entry);
-			ControlParticleSize3d(&pm.work_queue, &work_entry);
-			ControlParticleColor3d(&pm.work_queue, &work_entry);
-			ControlParticleImageFrame3d(&pm.work_queue, &work_entry);
-#endif
+			if (tfxNumberOfThreadsInAdditionToMain){
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition3d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize3d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor3d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame3d);
+			}
+			else {
+				ControlParticlePosition3d(&pm.work_queue, &work_entry);
+				ControlParticleSize3d(&pm.work_queue, &work_entry);
+				ControlParticleColor3d(&pm.work_queue, &work_entry);
+				ControlParticleImageFrame3d(&pm.work_queue, &work_entry);
+			}
 		}
 	}
 
@@ -10941,19 +10957,20 @@ namespace tfx {
 	void *tfxDeferred_data_for_freeing[256];
 	tfxU32 tfxDeferred_index = 0;
 	HANDLE tfxThreadSemaphore;
-	tfxU32 tfxNumberOfThreadsInAdditionToMain;
+	int tfxNumberOfThreadsInAdditionToMain;
 	tfxQueueProcessor tfxThreadQueues;
 	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 	tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
-	void InitialiseTimelineFX(float percent_of_available_threads_to_use) {
+	//Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
+	//max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
+	void InitialiseTimelineFX(int max_threads) {
 		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
 		tfxMT_STACK_ALLOCATOR = CreateArenaManager(tfxMT_STACK_SIZE, 8);
-		tfxU32 max_threads = tfxU32((float)std::thread::hardware_concurrency() * percent_of_available_threads_to_use);
-		tfxNumberOfThreadsInAdditionToMain = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, std::thread::hardware_concurrency() - 1);
-		tfxInitialiseThreads(&tfxThreadQueues);
+		tfxNumberOfThreadsInAdditionToMain = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 		lookup_callback = LookupPrecise;
 		lookup_overtime_callback = LookupPreciseOvertime;
+		tfxInitialiseThreads(&tfxThreadQueues);
 	}
 
 	bool EndOfProfiles() {

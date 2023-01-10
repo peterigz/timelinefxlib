@@ -1,4 +1,3 @@
-#define tfxMULTITHREADED 1
 //#define tfxENABLE_PROFILING
 //#define tfxTRACK_MEMORY
 /*
@@ -2429,7 +2428,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	extern HANDLE tfxThreadSemaphore;
-	extern tfxU32 tfxNumberOfThreadsInAdditionToMain;
+	extern int tfxNumberOfThreadsInAdditionToMain;
 
 	struct tfxWorkQueue {
 		tfxU32 volatile entry_completion_goal = 0;
@@ -2472,6 +2471,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+		assert(tfxNumberOfThreadsInAdditionToMain > 0);
 
 		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
 		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
@@ -2569,7 +2569,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		InitialiseThreadQueues(&tfxThreadQueues);
 
 		tfxThreadSemaphore = CreateSemaphoreEx(0, 0, tfxNumberOfThreadsInAdditionToMain, 0, 0, SEMAPHORE_ALL_ACCESS);
-		for (tfxU32 thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
+		for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
 			DWORD thread_id;
 			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, thread_queues, 0, &thread_id);
 			CloseHandle(thread_handle);
@@ -6152,6 +6152,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxParticleManager *pm;
 	};
 
+	struct tfxSortWorkEntry {
+		tfxParticleManager *pm;
+		tfxParticleSoA *particles;
+		tfxU32 current_buffer_index;
+		tfxU32 size;
+		int start_index;
+		int end_index;
+	};
+
 	struct tfxEffectData {
 		tfxU32 *global_attributes;
 		tfxU32 *transform_attributes;
@@ -6210,6 +6219,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 		tfxControlWorkEntryOrdered ordered_age_work_entry[tfxLAYERS * 2];
+		tfxSortWorkEntry sorting_work_entry[tfxLAYERS];
 
 		tfxvec<tfxParticleID> particle_indexes;
 		tfxvec<tfxU32> free_particle_indexes;
@@ -6967,8 +6977,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		particles.single_loop_count[from] = temp.single_loop_count;
 	}
 
-	static inline void InsertionSortSoAParticles(tfxParticleManager &pm, tfxParticleSoA &particles, tfxU32 current_buffer_index, tfxU32 size) {
+	static inline void InsertionSortSoAParticles(tfxWorkQueue *queue, void *data) {
 		tfxPROFILE;
+		tfxSortWorkEntry *work_entry = static_cast<tfxSortWorkEntry*>(data);
+		tfxParticleManager &pm = *work_entry->pm;
+		tfxU32 size = work_entry->size;
+		tfxU32 current_buffer_index = work_entry->current_buffer_index;
+		tfxParticleSoA &particles = *work_entry->particles;
 		tfxParticleTemp key;
 		for (tfxU32 i = 1; i < size; ++i) {
 			StoreSoAParticle(particles, i, key);
@@ -6982,48 +6997,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			LoadSoAParticle(particles, j + 1, key);
 			if (particles.flags[j + 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j + 1]] = MakeParticleID(current_buffer_index, j + 1);
 		}
-	}
-
-	//  quickSort
-	//
-	//  This public-domain C implementation by Darel Rex Finley.
-	//
-	//  * Returns YES if sort was successful, or NO if the nested
-	//    pivots went too deep, in which case your array will have
-	//    been re-ordered, but probably not sorted correctly.
-	//
-	//  * This function assumes it is called with valid parameters.
-	//
-	//  * Example calls:
-	//    quickSort(&myArray[0],5); // sorts elements 0, 1, 2, 3, and 4
-	//    quickSort(&myArray[3],5); // sorts elements 3, 4, 5, 6, and 7
-
-	static inline bool QuickSort(tfxParticleSoA &particles, int start_index, int elements) {
-
-#define  MAX_LEVELS  1000
-
-		float pivot_depth;
-		int beg[MAX_LEVELS], end[MAX_LEVELS], i = 0, L, R;
-		tfxParticleTemp temp;
-
-		beg[0] = start_index; end[0] = elements;
-		while (i >= 0) {
-			L = beg[i]; R = end[i] - 1;
-			if (L < R) {
-				pivot_depth = particles.depth[L]; 
-				StoreSoAParticle(particles, L, temp);
-				if (i == MAX_LEVELS - 1) return false;
-				while (L < R) {
-					while (particles.depth[R] <= pivot_depth && L < R) R--; if (L < R) SwapSoAParticle(particles, L++, R);
-					while (particles.depth[L] >= pivot_depth && L < R) L++; if (L < R) SwapSoAParticle(particles, R--, L);
-				}
-				LoadSoAParticle(particles, L, temp); beg[i + 1] = L + 1; end[i + 1] = end[i]; end[i++] = L;
-			}
-			else {
-				i--;
-			}
-		}
-		return true;
 	}
 
 	static inline int QuickSortPartition(tfxParticleSoA &particles, int start_index, int end_index)
@@ -7111,7 +7084,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
-	void InitialiseTimelineFX(float percent_of_available_threads_to_use = 0.f);
+	void InitialiseTimelineFX(int max_threads = 0);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	void SetUpdateFrequency(float fps);
