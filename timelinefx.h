@@ -6984,10 +6984,52 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	}
 
+	//  quickSort
+	//
+	//  This public-domain C implementation by Darel Rex Finley.
+	//
+	//  * Returns YES if sort was successful, or NO if the nested
+	//    pivots went too deep, in which case your array will have
+	//    been re-ordered, but probably not sorted correctly.
+	//
+	//  * This function assumes it is called with valid parameters.
+	//
+	//  * Example calls:
+	//    quickSort(&myArray[0],5); // sorts elements 0, 1, 2, 3, and 4
+	//    quickSort(&myArray[3],5); // sorts elements 3, 4, 5, 6, and 7
+
+	static inline bool QuickSort(tfxParticleSoA &particles, int start_index, int elements) {
+
+#define  MAX_LEVELS  1000
+
+		float pivot_depth;
+		int beg[MAX_LEVELS], end[MAX_LEVELS], i = 0, L, R;
+		tfxParticleTemp temp;
+
+		beg[0] = start_index; end[0] = elements;
+		while (i >= 0) {
+			L = beg[i]; R = end[i] - 1;
+			if (L < R) {
+				pivot_depth = particles.depth[L]; 
+				StoreSoAParticle(particles, L, temp);
+				if (i == MAX_LEVELS - 1) return false;
+				while (L < R) {
+					while (particles.depth[R] <= pivot_depth && L < R) R--; if (L < R) SwapSoAParticle(particles, L++, R);
+					while (particles.depth[L] >= pivot_depth && L < R) L++; if (L < R) SwapSoAParticle(particles, R--, L);
+				}
+				LoadSoAParticle(particles, L, temp); beg[i + 1] = L + 1; end[i + 1] = end[i]; end[i++] = L;
+			}
+			else {
+				i--;
+			}
+		}
+		return true;
+	}
+
 	static inline int QuickSortPartition(tfxParticleSoA &particles, int start_index, int end_index)
 	{
 		float depth = particles.depth[end_index];
-		int i = (start_index - 1); 
+		int i = start_index - 1; 
 		for (int j = start_index; j < end_index; j++)
 		{
 			if (particles.depth[j] >= depth)
@@ -6996,29 +7038,23 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				SwapSoAParticle(particles, i, j);
 			}
 		}
-
-		SwapSoAParticle(particles, i + 1, end_index);
-		return i + 1;
+		i++;
+		SwapSoAParticle(particles, i, end_index);
+		return i;
 	}
 
 	static inline void QuickSortSoAParticles(tfxParticleSoA &particles, int start_index, int end_index) {
-		if (start_index == 0)
+		if (start_index >= end_index || start_index < 0)
 			return;
-		if (start_index < end_index)
-		{
-			//partition the array around pivot
-			int pivot = QuickSortPartition(particles, start_index, end_index);
 
-			//call quick_sort recursively to sort sub arrays
-			QuickSortSoAParticles(particles, start_index, pivot - 1);
-			QuickSortSoAParticles(particles, pivot + 1, end_index);
-		}
+		int pivot = QuickSortPartition(particles, start_index, end_index);
+
+		QuickSortSoAParticles(particles, start_index, pivot - 1);
+		QuickSortSoAParticles(particles, pivot + 1, end_index);
 	}
 
 	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, int start_index, int end_index) {
 		tfxPROFILE;
-		if (start_index == tfxMAX_UINT)
-			return;
 		tfxParticleTemp key;
 		int si = (int)start_index;
 		for (int i = si + 1; i < end_index; ++i) {
