@@ -2137,8 +2137,16 @@ namespace tfx {
 		pm.effects.local_position[effect_index] = position;
 	}
 
+	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, tfxVec2 position) {
+		pm.effects.local_position[effect_index] = position;
+	}
+
 	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, float x, float y, float z) {
 		tfxVec3 position(x, y, z);
+		pm.effects.local_position[effect_index] = position;
+	}
+
+	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, tfxVec3 position) {
 		pm.effects.local_position[effect_index] = position;
 	}
 

@@ -6311,7 +6311,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
 		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
 		//have access to the effect if you need it.
-		tfxU32 AddEffect(tfxEffectEmitter &effect, int buffer, int depth, bool is_sub_effect = false, float add_delayed_spawning = 0);
+		tfxU32 AddEffect(tfxEffectEmitter &effect, int buffer, int depth = 0, bool is_sub_effect = false, float add_delayed_spawning = 0);
 		tfxU32 AddEffect(tfxEffectTemplate &effect);
 		inline tfxU32 GetEffectSlot() {
 			if (!free_effects.empty()) {
@@ -7119,6 +7119,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	bool PrepareEffectTemplate(tfxEffectLibrary &library, const char *name, tfxEffectTemplate &effect_template);
 	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, float x, float y);
 	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, float x, float y, float z);
+	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, tfxVec2 position);
+	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, tfxVec3 position);
 
 }
 
