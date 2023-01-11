@@ -6391,7 +6391,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void UpdateCompute(void *sampled_particles, unsigned int sample_size = 100);
 		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
 		void UpdateBaseValues();
-		tfxvec<tfxU32> *GetEffectBuffer();
+		tfxvec<tfxU32> *GetEffectBuffer(tfxU32 depth = 0);
+		tfxvec<tfxU32> *GetEmitterBuffer(tfxU32 depth = 0);
 		void SetLookUpMode(tfxLookupMode mode);
 		inline tfxParticleID SetNextParticle(tfxU32 next_index, tfxU32 current_index, tfxU32 other_index) {
 			tfxParticleSoA &to_bank = particle_arrays[next_index];

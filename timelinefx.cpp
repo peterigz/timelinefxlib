@@ -7283,11 +7283,16 @@ namespace tfx {
 		return;
 	}
 
-	tfxvec<tfxU32> *tfxParticleManager::GetEffectBuffer() {
-		return &effects_in_use[0][current_ebuff];
+	tfxvec<tfxU32> *tfxParticleManager::GetEffectBuffer(tfxU32 depth) {
+		return &effects_in_use[depth][current_ebuff];
+	}
+
+	tfxvec<tfxU32> *tfxParticleManager::GetEmitterBuffer(tfxU32 depth) {
+		return &emitters_in_use[depth][current_ebuff];
 	}
 
 	void tfxParticleManager::InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, tfxU32 multi_threaded_batch_size) {
+		assert(mode == tfxParticleManagerMode_unordered || mode == tfxParticleManagerMode_ordered_by_age);	//Only these 2 modes are available for 2d effects
 		max_effects = effects_limit;
 		mt_batch_size = multi_threaded_batch_size;
 		tfxInitialiseWorkQueue(&work_queue);
@@ -7501,6 +7506,7 @@ namespace tfx {
 		if (particle_array_allocator.arenas.current_size == 0) {
 			//todo need to be able to adjust the arena size
 			particle_array_allocator = CreateArenaManager(tfxMegabyte(2), 8);
+			particle_arrays = tfxBucketArray<tfxParticleSoA>(&particle_array_allocator, 32);
 		}
 
 		flags = 0;
@@ -7536,6 +7542,17 @@ namespace tfx {
 #endif
 
 		flags |= dynamic_sprite_allocation ? tfxEffectManagerFlags_dynamic_sprite_allocation : 0;
+
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			effects_in_use[depth][0].reserve(max_effects);
+			effects_in_use[depth][1].reserve(max_effects);
+
+			emitters_in_use[depth][0].reserve(max_effects);
+			emitters_in_use[depth][1].reserve(max_effects);
+		}
+		free_effects.reserve(max_effects);
+		InitEffectSoA(&effect_buffers, &effects, max_effects);
+		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
 	}
 
 	void tfxParticleManager::ClearAll(bool free_memory) {
