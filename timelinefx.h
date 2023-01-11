@@ -6999,6 +6999,21 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 	}
 
+	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, int start_index, int end_index) {
+		tfxPROFILE;
+		tfxParticleTemp key;
+		int si = (int)start_index;
+		for (int i = si + 1; i < end_index; ++i) {
+			StoreSoAParticle(particles, i, key);
+			int j = i - 1;
+			while (j >= si && key.depth > particles.depth[j]) {
+				SwapSoAParticle(particles, j + 1, j);
+				--j;
+			}
+			LoadSoAParticle(particles, j + 1, key);
+		}
+	}
+
 	static inline int QuickSortPartition(tfxParticleSoA &particles, int start_index, int end_index)
 	{
 		float depth = particles.depth[end_index];
@@ -7020,25 +7035,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		if (start_index >= end_index || start_index < 0)
 			return;
 
+		if (end_index - start_index <= 15)
+		{
+			//todo: This needs proper benchmarking
+			InsertionSortSoAParticles2(particles, start_index, end_index);
+			return;
+		}
+
 		int pivot = QuickSortPartition(particles, start_index, end_index);
 
 		QuickSortSoAParticles(particles, start_index, pivot - 1);
 		QuickSortSoAParticles(particles, pivot + 1, end_index);
-	}
-
-	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, int start_index, int end_index) {
-		tfxPROFILE;
-		tfxParticleTemp key;
-		int si = (int)start_index;
-		for (int i = si + 1; i < end_index; ++i) {
-			StoreSoAParticle(particles, i, key);
-			int j = i - 1;
-			while (j >= si && key.depth > particles.depth[j]) {
-				SwapSoAParticle(particles, j + 1, j);
-				--j;
-			}
-			LoadSoAParticle(particles, j + 1, key);
-		}
 	}
 
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
