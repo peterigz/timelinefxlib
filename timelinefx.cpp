@@ -6650,12 +6650,12 @@ namespace tfx {
 			const tfxU32 parent_index = bank.parent_index[index];
 			tfxEffectLibrary *library = pm.emitters.library[parent_index];
 
-			const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[parent_index];
 			const tfxVec3 emitter_size = pm.emitters.emitter_size[parent_index];
 			const float overal_scale = pm.emitters.overal_scale[parent_index];
 			const float angle_offset = pm.emitters.angle_offsets[parent_index].roll;
 			const float velocity_adjuster = pm.emitters.velocity_adjuster[parent_index];
 			const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[parent_index];
+			const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[parent_index];
 
 			const float life = bank.age[index] / bank.max_age[index];
 			tfxOvertimeAttributes *graphs = &library->emitter_attributes[emitter_attributes].overtime;
@@ -7068,8 +7068,8 @@ namespace tfx {
 			tfxVec3 offset = velocity_normal.xyz() * emitter_size.y;
 			float length = std::fabsf(local_position.y);
 			float emitter_length = emitter_size.y;
-			bool line_and_kill = (flags & tfxEmitterStateFlags_is_line_traversal) && (flags & tfxEmitterStateFlags_kill) && length > emitter_length;
-			bool line_and_loop = (flags & tfxEmitterStateFlags_is_line_traversal) && (flags & tfxEmitterStateFlags_loop) && length > emitter_length;
+			bool line_and_kill = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_kill) && length > emitter_length;
+			bool line_and_loop = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_loop) && length > emitter_length;
 			if (line_and_loop) {
 				local_position.y -= offset.y;
 				flags |= tfxParticleFlags_capture_after_transform;
@@ -10522,8 +10522,8 @@ namespace tfx {
 			tfxVec3 offset = velocity_normal.xyz() * emitter_size.y;
 			float length = std::fabsf(local_position.y);
 			float emitter_length = emitter_size.y;
-			bool line_and_kill = (flags & tfxEmitterStateFlags_is_line_traversal) && (flags & tfxEmitterStateFlags_kill) && length > emitter_length;
-			bool line_and_loop = (flags & tfxEmitterStateFlags_is_line_traversal) && (flags & tfxEmitterStateFlags_loop) && length > emitter_length;
+			bool line_and_kill = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_kill) && length > emitter_length;
+			bool line_and_loop = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_loop) && length > emitter_length;
 			if (line_and_loop) {
 				local_position.y -= offset.y;
 				flags |= tfxParticleFlags_capture_after_transform;
