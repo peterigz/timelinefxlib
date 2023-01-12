@@ -10558,6 +10558,7 @@ namespace tfx {
 
 			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
 			auto transform_particle_callback3d = pm.emitters.transform_particle_callback3d[emitter_index];
+
 			if (flags & tfxParticleFlags_capture_after_transform) {
 				transform_particle_callback3d(local_position, local_rotations, s.transform.position, s.transform.rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_captured_position);
 				captured_position = s.transform.position;

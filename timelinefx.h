@@ -6839,7 +6839,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		out_matrix = mmTransform(out_matrix, roll);
 		out_scale = in_scale;
 
-		out_rotations = in_rotations + out_rotations;
+		out_rotations = in_rotations + out_local_rotations;
 
 		out_matrix = mmTransform(out_matrix, in_matrix);
 		tfxVec3 rotatevec = mmTransformVector3(in_matrix, out_local_position + out_translation);
@@ -6876,7 +6876,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 	static inline void TransformParticlePositionAngle3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_position = local_position;
-		world_rotations = world_rotations + local_rotations;
+		world_rotations = parent_rotations + local_rotations;
 	}
 	static inline void TransformParticlePositionRelative3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_rotations = local_rotations;
