@@ -5974,6 +5974,7 @@ namespace tfx {
 				emitters.timeout_counter[index] = 0;
 				emitters.emitter_size[index] = 0.f;
 				emitters.hierarchy_depth[index] = hierarchy_depth;
+				emitters.world_rotations[index] = 0.f;
 				//----Handle
 				if (e.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 					emitters.image_handle[index] = tfxVec2(0.5f, 0.5f);
@@ -7481,6 +7482,27 @@ namespace tfx {
 		else if (mode == tfxParticleManagerMode_ordered_by_age)
 			flags = tfxEffectManagerFlags_ordered_by_age;
 
+		if (flags & tfxEffectManagerFlags_ordered_by_age) {
+			for (tfxEachLayer) {
+				tfxParticleSoA lists;
+				tfxU32 index = particle_arrays.locked_push_back(lists);
+				tfxSoABuffer buffer;
+				particle_array_buffers.push_back(buffer);
+				assert(index == particle_array_buffers.current_size - 1);
+				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer]);
+			}
+		}
+		else if (flags & tfxEffectManagerFlags_order_by_depth) {
+			for (tfxEachLayerDB) {
+				tfxParticleSoA lists;
+				tfxU32 index = particle_arrays.locked_push_back(lists);
+				tfxSoABuffer buffer;
+				particle_array_buffers.push_back(buffer);
+				assert(index == particle_array_buffers.current_size - 1);
+				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer / 2]);
+			}
+		}
+
 		if (is_3d)
 			flags |= tfxEffectManagerFlags_3d_effects;
 
@@ -7500,8 +7522,9 @@ namespace tfx {
 		sort_passes = req_sort_passes;
 	}
 
-	void tfxParticleManager::InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_sprite_allocation) {
+	void tfxParticleManager::InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
 		max_effects = effects_limit;
+		mt_batch_size = multi_threaded_batch_size;
 
 		if (particle_array_allocator.arenas.current_size == 0) {
 			//todo need to be able to adjust the arena size

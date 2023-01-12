@@ -1624,6 +1624,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 		buffer->current_arena_size = reserve_amount * buffer->struct_size;
 		buffer->data = malloc(buffer->current_arena_size);
+		memset(buffer->data, 0, buffer->current_arena_size);
 		buffer->capacity = reserve_amount;
 		buffer->struct_of_arrays = struct_of_arrays;
 		size_t running_offset = 0;
@@ -6298,7 +6299,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
-		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false);
+		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
 		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, tfxU32 multi_threaded_batch_size = 512);
 		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, tfxU32 multi_threaded_batch_size = 512);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
