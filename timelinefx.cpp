@@ -8022,7 +8022,7 @@ namespace tfx {
 		const tfxEmitterStateFlags state_flags = pm.emitters.state_flags[index];
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[index];
 		const tfxEmitterStateFlags parent_state_flags = pm.effects.state_flags[parent_index];
-		const tfxU32 property_index = pm.effects.properties_index[parent_index];
+		const tfxU32 property_index = pm.emitters.properties_index[index];
 		const float amount_remainder = pm.emitters.amount_remainder[index];
 		float &spawn_quantity = pm.emitters.spawn_quantity[index];
 
@@ -8037,7 +8037,7 @@ namespace tfx {
 		if (!(property_flags & tfxEmitterPropertyFlags_single)) {
 			if (property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties.emission_type[property_index] == tfxArea || properties.emission_type[property_index] == tfxEllipse)) {
 				if (property_flags & tfxEmitterPropertyFlags_is_3d) {
-					float area = std::fmaxf(0.1f, emitter_size.x) * std::fmaxf(0.1f, emitter_size.y) * std::fmaxf(0.1f, emitter_size.z);
+					float area = tfxMax(0.1f, emitter_size.x) * tfxMax(0.1f, emitter_size.y) * tfxMax(0.1f, emitter_size.z);
 					spawn_quantity = (spawn_quantity / 50.f) * area;
 				}
 				else {
