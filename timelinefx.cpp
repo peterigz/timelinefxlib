@@ -1429,6 +1429,10 @@ namespace tfx {
 		return library->preview_camera_settings[GetInfo().preview_camera_settings];
 	}
 
+	tfxU32 tfxEffectEmitter::GetCameraSettingsIndex() {
+		return GetInfo().preview_camera_settings;
+	}
+
 	tfxEffectEmitter& tfxEffectEmitter::AddEmitter(tfxEffectEmitter &e) {
 		assert(e.GetInfo().name.Length());				//Emitter must have a name so that a hash can be generated
 		e.type = tfxEffectEmitterType::tfxEmitterType;
@@ -3873,7 +3877,7 @@ namespace tfx {
 		file.AddLine("relative_position=%i", (flags & tfxEmitterPropertyFlags_relative_position));
 		file.AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
 		file.AddLine("single=%i", (flags & tfxEmitterPropertyFlags_single));
-		file.AddLine("single_shot_limit=%i", property.single_shot_limit);
+		file.AddLine("single_shot_limit=%i", property.single_shot_limit[index]);
 		file.AddLine("spawn_on_grid=%i", (flags & tfxEmitterPropertyFlags_spawn_on_grid));
 		file.AddLine("grid_spawn_clockwise=%i", (flags & tfxEmitterPropertyFlags_grid_spawn_clockwise));
 		file.AddLine("fill_area=%i", (flags & tfxEmitterPropertyFlags_fill_area));
@@ -7677,6 +7681,11 @@ namespace tfx {
 	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 position) {
 		tfxU32 buffer_index = pm.AddEffect(effect, pm.current_ebuff, 0);
 		pm.emitters.local_position[buffer_index] = position;
+	}
+
+	void SetEffectUserData(tfxParticleManager &pm, tfxU32 effect_index, void *data) {
+		assert(effect_index < pm.effect_buffers.current_size);	//effect index is out of bounds of the array
+		pm.effects.user_data[effect_index] = data;
 	}
 
 	void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index) {

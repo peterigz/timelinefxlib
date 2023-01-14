@@ -1581,20 +1581,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
 	};
 
-	struct tfxSoARange {
-		tfxU32 start_index;
-		tfxU32 current_size;
-		tfxU32 end_index;
-	};
-
-	struct tfxSoARanges {
-		tfxSoABuffer *buffer;
-		tfxU32 range_size;
-		tfxvec<tfxSoARange> ranges;
-		tfxvec<tfxU32> ranges_in_use;
-		tfxvec<tfxU32> free_ranges;
-	};
-
 	//Get the index based on the buffer being a ring buffer
 	static inline tfxU32 GetCircularIndex(tfxSoABuffer *buffer, tfxU32 index) {
 		return (buffer->start_index + index) % buffer->capacity;
@@ -1761,38 +1747,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Clear the SoA buffer
 	static inline void ClearSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_size = buffer->start_index = 0;
-	}
-
-	inline void InitialiseSoARanges(tfxSoARanges *ranges, tfxSoABuffer *buffer, tfxU32 size_of_each_range) {
-		ranges->buffer = buffer;
-		ranges->range_size = size_of_each_range;
-	}
-
-	inline tfxSoARange GrabRange(tfxSoARanges *ranges) {
-		if (ranges->free_ranges.current_size > 0) {
-			tfxU32 free_range = ranges->free_ranges.pop_back();
-			ranges->ranges_in_use.push_back(free_range);
-			return ranges->ranges[free_range];
-		}
-		tfxSoARange range;
-		range.start_index = ranges->buffer->capacity;
-		range.end_index = range.start_index + ranges->range_size;
-		range.current_size = 0;
-		GrowArraysBySpecificAmount(ranges->buffer, ranges->range_size);
-		ranges->ranges_in_use.push_back(ranges->ranges.current_size);
-		ranges->ranges.push_back(range);
-	}
-
-	inline void FreeRange(tfxSoARanges *ranges, tfxU32 range_index) {
-		assert(range_index < ranges->ranges.current_size);	//range_index is out of bounds
-		ranges->ranges[range_index].current_size = 0;
-		ranges->free_ranges.push_back(range_index);
-	}
-
-	inline void ClearAllRanges(tfxSoARanges *ranges) {
-		for (auto &range : ranges->ranges) {
-			range.current_size = 0;
-		}
 	}
 
 	template <typename T>
@@ -5636,7 +5590,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 *scale;
 		//Todo: save space and use a quaternion here
 		tfxMatrix4 *matrix;
-
 		tfxU32 *global_attributes;
 		tfxU32 *transform_attributes;
 
@@ -5652,6 +5605,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float *overal_scale;
 		tfxEmitterStateFlags *state_flags;
 
+		//User Data
+		void **user_data;
 	};
 
 	inline void InitEffectSoA(tfxSoABuffer *buffer, tfxEffectSoA *soa, tfxU32 reserve_amount) {
@@ -5684,6 +5639,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, stretch));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, overal_scale));
 		AddStructArray(buffer, sizeof(tfxEmitterStateFlags), offsetof(tfxEffectSoA, state_flags));
+
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, user_data));
 
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
@@ -5802,6 +5759,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 CountAllLookupValues();
 		tfxParticleManagerModes GetRequiredParticleManagerMode();
 		tfxPreviewCameraSettings &GetCameraSettings();
+		tfxU32 GetCameraSettingsIndex();
 
 	};
 
@@ -6460,6 +6418,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void StopSpawning(tfxParticleManager &pm);
 	void RemoveAllEffects(tfxParticleManager &pm);
 	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 position);
+	//Set the user data of an effect in the particle Manager. Not guaranteed that your effect index is actually in use
+	void SetEffectUserData(tfxParticleManager &pm, tfxU32 effect_index, void *data);
 
 	void TransformEffector2d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
 	void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
