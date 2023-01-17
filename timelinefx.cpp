@@ -936,8 +936,10 @@ namespace tfx {
 			return false;
 
 		tfxU32 l = Length();
-		if (fwrite(data, 1, Length(), file) != Length())
+		if (fwrite(data, 1, Length(), file) != Length()) {
+			fclose(file);
 			return false;
+		}
 
 		fclose(file);
 		return true;
@@ -1050,6 +1052,7 @@ namespace tfx {
 		if (length != package.file_size) return false;							//The file on disk is no longer the same size as the package file size since it was loaded
 
 		//Everything seems ok
+		fclose(file);
 		return true;
 	}
 
@@ -1067,7 +1070,13 @@ namespace tfx {
 		assert(ValidatePackage(*this));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
 		tfxEntryInfo *entry = &inventory.entries.At(name);
 		if (entry->data.Size() != entry->file_size) {
-			FILE *file = fopen(file_path.c_str(), "rb");
+			//FILE *file = fopen(file_path.c_str(), "rb");
+			FILE *file;
+			errno_t error = fopen_s(&file, file_path.c_str(), "rb");
+			if (error != 0) {
+				printf("strerror says open failed: %s\n", strerror(error)); // C4996
+			}
+			assert(file);		//couldn't open the file!
 			_fseeki64(file, entry->offset_from_start_of_file, SEEK_SET);
 			entry->data.Resize(entry->file_size);
 			fread(entry->data.data, 1, entry->file_size, file);
@@ -1110,6 +1119,7 @@ namespace tfx {
 
 		// file invalid? fseek() fail?
 		if (file == NULL || fseek(file, 0, SEEK_END)) {
+			fclose(file);
 			return buffer;
 		}
 
@@ -5359,7 +5369,7 @@ namespace tfx {
 			}
 		}
 
-		int close = fclose(fp);
+		fclose(fp);
 		return true;
 
 	}
