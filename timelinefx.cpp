@@ -5348,7 +5348,7 @@ namespace tfx {
 	}
 
 	bool LoadDataFile(tfxStorageMap<tfxDataEntry> &map, const char* path) {
-		if (!data_types.initialised) data_types.Init();
+		if (!tfxDataTypes.initialised) tfxDataTypes.Init();
 		FILE* fp;
 		fp = fopen(path, "r");
 		if (fp == NULL) {
@@ -5366,8 +5366,8 @@ namespace tfx {
 			SplitStringStack(str, pair, 61);
 			if (pair.size() == 2) {
 				tfxStr64 key = pair[0];
-				if (data_types.names_and_types.ValidName(pair[0])) {
-					tfxDataType t = data_types.names_and_types.At(pair[0]);
+				if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
+					tfxDataType t = tfxDataTypes.names_and_types.At(pair[0]);
 					if (t == tfxBool) {
 						AddDataValue(map, key, (bool)atoi(pair[1].c_str()));
 					}
@@ -5617,7 +5617,7 @@ namespace tfx {
 	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 
 		assert(shape_loader);
-		if (!data_types.initialised) data_types.Init();
+		if (!tfxDataTypes.initialised) tfxDataTypes.Init();
 		lib.Clear();
 		if (tfxIcospherePoints[0].current_size == 0) {
 			MakeIcospheres();
@@ -5743,8 +5743,8 @@ namespace tfx {
 				}
 
 				if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
-					if (data_types.names_and_types.ValidName(pair[0])) {
-						switch (data_types.names_and_types.At(pair[0])) {
+					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
+						switch (tfxDataTypes.names_and_types.At(pair[0])) {
 						case tfxUint:
 							AssignEffectorProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()));
 							break;
@@ -5774,8 +5774,8 @@ namespace tfx {
 						AssignGraphData(effect_stack.back(), pair);
 				}
 				else if (context == tfxStartStage) {
-					if (data_types.names_and_types.ValidName(pair[0])) {
-						switch (data_types.names_and_types.At(pair[0])) {
+					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
+						switch (tfxDataTypes.names_and_types.At(pair[0])) {
 						case tfxUint:
 							AssignStageProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()));
 							break;
@@ -11027,7 +11027,7 @@ namespace tfx {
 	tfxProfile tfxPROFILE_ARRAY[tfxPROFILE_COUNT];
 	tfxMemoryTrackerLog tfxMEMORY_TRACKER;
 	char tfxMEMORY_CONTEXT[64];
-	tfxDataTypesDictionary data_types;
+	tfxDataTypesDictionary tfxDataTypes;
 	void *tfxDeferred_data_for_freeing[256];
 	tfxU32 tfxDeferred_index = 0;
 	HANDLE tfxThreadSemaphore;

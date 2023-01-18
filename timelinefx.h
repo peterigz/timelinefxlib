@@ -6743,7 +6743,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void Init();
 	};
 
-	extern tfxDataTypesDictionary data_types;
+	extern tfxDataTypesDictionary tfxDataTypes;
 
 	//Internal functions
 	//Some file IO functions
