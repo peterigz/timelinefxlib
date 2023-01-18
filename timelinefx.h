@@ -2309,7 +2309,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		inline tfxstream() { size = position = 0; data = NULL; }
 		inline tfxstream(tfxU64 qty) { size = position = 0; data = NULL; Resize(qty); }
-		inline tfxstream(const tfxstream &src) { size = 0; data = NULL; Resize(src.size); memcpy(data, src.data, (tfxU64)size * sizeof(char)); }
 
 		inline bool Read(char* dst, tfxU64 count) {
 			if (count + position <= size) { 

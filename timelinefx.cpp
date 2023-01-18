@@ -3544,9 +3544,13 @@ namespace tfx {
 	int ValidateEffectPackage(const char *filename) {
 		tfxPackage package;
 		tfxErrorFlags status = LoadPackage(filename, package);
-		if (status) return status;					//returns 1 to 4 if it's an invalid package format
+		if (status) {
+			package.Free();
+			return status;					//returns 1 to 4 if it's an invalid package format
+		}
 
 		tfxEntryInfo *data_txt = package.GetFile("data.txt");
+		package.Free();
 		if (!data_txt) return tfxErrorCode_data_could_not_be_loaded;					//Unable to load the the data.txt file in the package
 
 		return 0;
@@ -5516,6 +5520,7 @@ namespace tfx {
 			}
 		}
 
+		package.Free();
 		return shape_count;
 	}
 
@@ -5617,7 +5622,8 @@ namespace tfx {
 	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 
 		assert(shape_loader);
-		if (!tfxDataTypes.initialised) tfxDataTypes.Init();
+		if (!tfxDataTypes.initialised) 
+			tfxDataTypes.Init();
 		lib.Clear();
 		if (tfxIcospherePoints[0].current_size == 0) {
 			MakeIcospheres();
@@ -5626,9 +5632,6 @@ namespace tfx {
 		tfxEntryInfo *data = package.GetFile("data.txt");
 		tfxEntryInfo *stats_struct = package.GetFile("stats.struct");
 		tfxErrorFlags error = 0;
-
-		package.Free();
-		return 0;
 
 		int context = 0;
 		int uid = 0;
