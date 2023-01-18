@@ -2345,13 +2345,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline tfxU64		Size() { return size; }
 		inline const tfxU64	Size() const { return size; }
 
-		inline void			FreeAll() { if (data) { size = size = 0; free(data); data = NULL; } }
+		inline void			FreeAll() { if (data) { size = size = 0; tfxFREE(data); data = NULL; } }
 		inline void         Clear() { if (data) { size = 0; } }
 
 		inline void         Resize(tfxU64 new_capacity) { 
 			if (new_capacity <= size) 
 				return; 
-			char* new_data = (char*)malloc((tfxU64)new_capacity * sizeof(char)); 
+			char* new_data = (char*)tfxALLOCATE("Stream", new_data, (tfxU64)new_capacity * sizeof(char)); 
 			if (data) { 
 				memcpy(new_data, data, (tfxU64)size * sizeof(char)); 
 				free(data); 

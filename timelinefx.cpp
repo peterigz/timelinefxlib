@@ -1074,7 +1074,7 @@ namespace tfx {
 			FILE *file;
 			errno_t error = fopen_s(&file, file_path.c_str(), "rb");
 			if (error != 0) {
-				printf("strerror says open failed: %s\n", strerror(error)); // C4996
+				printf("strerror says open failed: %s\n", strerror(error)); 
 			}
 			assert(file);		//couldn't open the file!
 			_fseeki64(file, entry->offset_from_start_of_file, SEEK_SET);
@@ -5621,7 +5621,7 @@ namespace tfx {
 
 	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 
-		assert(shape_loader);
+		assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 		if (!tfxDataTypes.initialised) 
 			tfxDataTypes.Init();
 		lib.Clear();
