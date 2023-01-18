@@ -2263,6 +2263,9 @@ namespace tfx {
 		}
 
 		if (type == tfxEmitterType) {
+			library->transform_attributes[transform_attributes].roll.Free();
+			library->transform_attributes[transform_attributes].pitch.Free();
+			library->transform_attributes[transform_attributes].yaw.Free();
 			library->transform_attributes[transform_attributes].translation_x.Free();
 			library->transform_attributes[transform_attributes].translation_y.Free();
 			library->transform_attributes[transform_attributes].translation_z.Free();
@@ -2945,19 +2948,31 @@ namespace tfx {
 		transform_attributes.free_all();
 		animation_settings.free_all();
 		preview_camera_settings.free_all();
+		all_nodes.free_all();
+		node_lookup_indexes.free_all();
+		compiled_lookup_indexes.free_all();
+		compiled_lookup_values.free_all();
 		FreeSoABuffer(&emitter_properties_buffer);
+		shape_data.free_all();
+		graph_min_max.free_all();
+		for (auto &info : effect_infos) {
+			info.sub_effectors.free_all();
+		}
 		effect_infos.free_all();
 		AddPreviewCameraSettings();
 
+		property_array_allocator.FreeAll();
 		graph_node_allocator.FreeAll();
 		graph_lookup_allocator.FreeAll();
 
 		free_global_graphs.free_all();
+		free_keyframe_graphs.free_all();
 		free_emitter_attributes.free_all();
 		free_animation_settings.free_all();
 		free_preview_camera_settings.free_all();
 		free_infos.free_all();
 		free_properties.free_all();
+		free_keyframes.free_all();
 
 		uid = 0;
 	}
@@ -5610,8 +5625,10 @@ namespace tfx {
 
 		tfxEntryInfo *data = package.GetFile("data.txt");
 		tfxEntryInfo *stats_struct = package.GetFile("stats.struct");
-		tmpStack(tfxEffectEmitter, effect_stack);
 		tfxErrorFlags error = 0;
+
+		package.Free();
+		return 0;
 
 		int context = 0;
 		int uid = 0;
@@ -5646,6 +5663,7 @@ namespace tfx {
 		}
 
 		int first_shape_index = -1;
+		tmpStack(tfxEffectEmitter, effect_stack);
 		tmpStack(tfxStr64, pair);
 
 		while (!data->data.EoF()) {
@@ -5893,10 +5911,13 @@ namespace tfx {
 
 		tfxPackage package;
 		error = LoadPackage(filename, package);
-		if (error != 0)
+		if (error != 0) {
+			package.Free();
 			return error;
+		}
 		error = LoadEffectLibraryPackage(package, lib, shape_loader, user_data, read_only);
 
+		package.Free();
 		return error;
 	}
 
@@ -7350,11 +7371,6 @@ namespace tfx {
 			}
 		}
 
-#ifdef tfxTRACK_MEMORY
-		memcpy(effects[0].name, "ParticleManager::effects0\0", 26);
-		memcpy(effects[1].name, "ParticleManager::effects1\0", 26);
-#endif
-
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 			effects_in_use[depth][0].reserve(max_effects);
 			effects_in_use[depth][1].reserve(max_effects);
@@ -7422,11 +7438,6 @@ namespace tfx {
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer / 2]);
 			}
 		}
-
-#ifdef tfxTRACK_MEMORY
-		memcpy(effects[0].name, "ParticleManager::effects0\0", 26);
-		memcpy(effects[1].name, "ParticleManager::effects1\0", 26);
-#endif
 
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 			effects_in_use[depth][0].reserve(max_effects);
@@ -7572,11 +7583,6 @@ namespace tfx {
 		if (!(flags & tfxEffectManagerFlags_unordered)) {
 			CreateParticleBanksForEachLayer();
 		}
-
-#ifdef tfxTRACK_MEMORY
-		memcpy(effects[0].name, "ParticleManager::effects0\0", 26);
-		memcpy(effects[1].name, "ParticleManager::effects1\0", 26);
-#endif
 
 		flags |= dynamic_sprite_allocation ? tfxEffectManagerFlags_dynamic_sprite_allocation : 0;
 

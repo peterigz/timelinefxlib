@@ -1,5 +1,5 @@
 //#define tfxENABLE_PROFILING
-//#define tfxTRACK_MEMORY
+#define tfxTRACK_MEMORY
 /*
 	Timeline FX C++ library
 
@@ -1742,6 +1742,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		if (buffer->data)
 			free(buffer->data);
 		buffer->data = NULL;
+		buffer->array_ptrs.free_all();
 	}
 	
 	//Clear the SoA buffer
@@ -6520,7 +6521,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxEmitterPropertiesSoA emitter_properties;
-		tfxEmitterPropertyData emitter_property_data;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
@@ -6557,7 +6557,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			particle_shapes("EffectLib shapes map", "EffectLib shapes data"),
 			effects(tfxCONSTRUCTOR_VEC_INIT("effects")),
 			effect_infos(tfxCONSTRUCTOR_VEC_INIT("effect_infos")),
-			emitter_properties(tfxCONSTRUCTOR_VEC_INIT("emitter_properties")),
 			global_graphs(tfxCONSTRUCTOR_VEC_INIT("global_graphs")),
 			emitter_attributes(tfxCONSTRUCTOR_VEC_INIT("emitter_attributes")),
 			animation_settings(tfxCONSTRUCTOR_VEC_INIT("animation_settings")),
