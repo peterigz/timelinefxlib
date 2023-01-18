@@ -1,5 +1,5 @@
 //#define tfxENABLE_PROFILING
-#define tfxTRACK_MEMORY
+//#define tfxTRACK_MEMORY
 /*
 	Timeline FX C++ library
 
@@ -2316,9 +2316,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				position += count; 
 				return true;
 			}
-			else { 
-				assert(false); //Trying to read beyond the data boundary
-			}
 			return false;
 		}
 		inline tfxStr512 ReadLine();
@@ -2327,9 +2324,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				memcpy(data + position, src, count);
 				position += count;
 				return true;
-			}
-			else {
-				assert(false); //Trying to write beyond the data boundary
 			}
 			return false;
 		}
