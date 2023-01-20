@@ -5674,6 +5674,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Indexes into library storage
 		tfxU32 info_index;
 		tfxU32 property_index;
+		tfxU32 pm_index;
 
 		tfxEffectEmitter() :
 			parent(nullptr),

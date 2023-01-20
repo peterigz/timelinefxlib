@@ -5967,6 +5967,7 @@ namespace tfx {
 		effects.properties_index[parent_index] = effect.property_index;
 		effects.timeout_counter[parent_index] = 0;
 		effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
+		effect.pm_index = parent_index;
 		sort_passes = tfxMax(effect.sort_passes, sort_passes);
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
@@ -6013,6 +6014,7 @@ namespace tfx {
 				emitters.emitter_size[index] = 0.f;
 				emitters.hierarchy_depth[index] = hierarchy_depth;
 				emitters.world_rotations[index] = 0.f;
+				e.pm_index = index;
 				//----Handle
 				if (e.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 					emitters.image_handle[index] = tfxVec2(0.5f, 0.5f);
