@@ -1301,6 +1301,7 @@ namespace tfx {
 	tfxErrorFlags LoadPackage(tfxstream &stream, tfxPackage &package) {
 		//Note: tfxstream does not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
 		package.file_data = stream;
+		package.file_data.Seek(0);
 		if (package.file_data.Size() == 0)
 			return tfxErrorCode_unable_to_read_file;			//the file size is smaller then the expected header size
 
