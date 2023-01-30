@@ -3951,6 +3951,7 @@ namespace tfx {
 	void tfxRandom::ReSeed(uint64_t seed1, uint64_t seed2) {
 		seeds[0] = seed1;
 		seeds[1] = seed2;
+		Generate();
 	}
 
 	static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right) {

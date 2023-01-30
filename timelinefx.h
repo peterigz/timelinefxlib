@@ -4506,7 +4506,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			ReSeed();
 		}
 
-		void ReSeed() { seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; }
+		void ReSeed() { seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; Generate(); }
 		void ReSeed(uint64_t seed1, uint64_t seed2);
 
 		inline float Generate() {
@@ -4535,7 +4535,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		};
 
 		inline tfxU32 RangeUInt(tfxU32 max) {
-			float a = Generate() * (float)max;
+			float g = Generate();
+			float a = g * (float)max;
 			return tfxU32(a);
 		};
 
