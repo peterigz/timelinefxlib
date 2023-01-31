@@ -3709,7 +3709,7 @@ namespace tfx {
 		if (field == "emission_direction")
 			emitter_properties.emission_direction[effect.property_index] = (tfxEmissionDirection)value;
 		if (field == "color_option")
-			effect.library->animation_settings[effect.GetInfo().animation_settings].color_option = (tfxExportColorOptions)value;
+			effect.library->animation_settings[effect.GetInfo().animation_settings].color_option = value > 3 ? tfxFullColor : (tfxExportColorOptions)value;
 		if (field == "export_option")
 			effect.library->animation_settings[effect.GetInfo().animation_settings].export_option = (tfxExportOptions)value;
 		if (field == "end_behaviour")

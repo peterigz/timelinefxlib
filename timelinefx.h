@@ -463,9 +463,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	enum tfxExportColorOptions {
 		tfxFullColor,
 		tfxOneColor,
-		tfxGreyScale,
-		tfxOneColorAlpha,
-		tfxGreyScaleAlhpa
+		tfxGreyScale
 	};
 
 	//Mainly for the editor, maybe this can just be moved there instead?
