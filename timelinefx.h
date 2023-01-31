@@ -1963,6 +1963,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline tfxBucketArray<T>&		operator=(const tfxBucketArray<T>& src) {
 			if (!allocator)
 				allocator = src.allocator;
+			free_all();
 			size_of_each_bucket = src.size_of_each_bucket;
 			if (src.capacity == 0) {
 				return *this;
