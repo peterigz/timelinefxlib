@@ -8092,6 +8092,10 @@ namespace tfx {
 		return tween >= 1.f ? 0 : tfxU32((1.f - amount_remainder) / step_size) + 1;
 	}
 
+	void CompletePMWork(tfxParticleManager &pm) {
+		tfxCompleteAllWork(&pm.work_queue);
+	}
+
 	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &work_entry, tfxU32 max_spawn_count) {
 		const tfxEmitterPropertiesSoA &properties = *work_entry.properties;
 		const tfxEmitterStateFlags state_flags = pm.emitters.state_flags[work_entry.emitter_index];
@@ -9518,6 +9522,8 @@ namespace tfx {
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
 			tfxU32 sub_division = (tfxU32)grid_points.x;
+			assert(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
+
 			local_position = tfxIcospherePoints[sub_division][(tfxU32)grid_coords.x] * half_emitter_size;
 			if (++grid_coords.x >= tfxIcospherePoints[sub_division].current_size) {
 				grid_coords.x = 0;
@@ -9560,6 +9566,7 @@ namespace tfx {
 
 			tfxVec3 emitter_size = emitter_size * .5f;
 			tfxU32 sub_division = (tfxU32)grid_points.x;
+			assert(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
 			int ico_point = random_generation.RangeUInt(tfxIcospherePoints[sub_division].current_size);
 			local_position = tfxIcospherePoints[sub_division][ico_point] * emitter_size;
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {

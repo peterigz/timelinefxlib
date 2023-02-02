@@ -6428,6 +6428,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ControlParticlesOrdered2d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
 	void ControlParticlesOrdered3d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
 
+	void CompletePMWork(tfxParticleManager &pm);
 	//Wide mt versions
 	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
 	void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data);
