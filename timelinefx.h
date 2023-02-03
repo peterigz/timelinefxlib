@@ -1961,6 +1961,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			return FindValueByIndex<T>(*allocator, i, block);
 		}
 		inline tfxBucketArray<T>&		operator=(const tfxBucketArray<T>& src) {
+			if (&src == this) {
+				return *this;
+			}
 			if (!allocator)
 				allocator = src.allocator;
 			free_all();
