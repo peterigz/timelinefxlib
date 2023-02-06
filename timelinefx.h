@@ -5763,6 +5763,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//Tell the effect to stop spawning so that eventually particles will expire and the effect will be removed from the particle manager
 	inline void SoftExpire(tfxParticleManager &pm, tfxU32 effect_id);
+	inline int GetDepth(tfxEffectEmitter &e) {
+		tfxEffectEmitter *current_parent = e.parent;
+		int depth = 0;
+		while (current_parent) {
+			if (current_parent->type = tfxEmitterType) {
+				depth++;
+			}
+			current_parent = current_parent->parent;
+		}
+		return depth;
+	}
 
 	inline tfxU32 CountAllEffects(tfxEffectEmitter &effect, tfxU32 amount = 0) {
 		for (auto &sub : effect.GetInfo().sub_effectors) {
