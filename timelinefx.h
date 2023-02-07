@@ -5767,7 +5767,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectEmitter *current_parent = e.parent;
 		int depth = 0;
 		while (current_parent) {
-			if (current_parent->type = tfxEmitterType) {
+			if (current_parent->type == tfxEmitterType) {
 				depth++;
 			}
 			current_parent = current_parent->parent;
