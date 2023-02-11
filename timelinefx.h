@@ -426,6 +426,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw;
 	}
 
+	inline bool IsGraphParticleSize(tfxGraphType type) {
+		return	type == tfxBase_width || type == tfxBase_height ||
+				type == tfxVariation_width || type == tfxVariation_height ||
+				type == tfxOvertime_width || type == tfxOvertime_height;
+	}
+
 	//tfxEffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 	enum tfxEffectEmitterType : unsigned char {
 		tfxEffectType,
@@ -1310,11 +1316,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		inline void FreeBlock(tfxMemoryBucket *block) {
 			tfxU32 index = blocks.index_from_ptr(block);
+			block->clear();
 			free_blocks.push_back(index);
 		}
 
 		inline void FreeBlock(tfxU32 block) {
 			if (block != tfxINVALID) {
+				blocks[block].clear();
 				if (block == blocks.current_size - 1) {
 					arenas[blocks[block].arena_index].end_of_allocated = blocks[block].data;
 					arenas[blocks[block].arena_index].memory_remaining += blocks[block].capacity_in_bytes();
@@ -1376,7 +1384,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 
 		inline tfxU32 FirstEmptyBlockIndex(tfxU32 starting_block) {
-			assert(starting_block != tfxINVALID);
+			if (starting_block == tfxINVALID) return tfxINVALID;
 			tfxU32 found_block = starting_block;
 			while (blocks[found_block].next_block != tfxINVALID) {
 				if (blocks[found_block].current_size == 0) {
@@ -2195,6 +2203,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				capacity -= freed_blocks * size_of_each_bucket;
 				allocator->CutOffBlock(block, first_empty_block);
 			}
+			if (block == first_empty_block) 
+				block = tfxINVALID;
 		}
 	};
 

@@ -4395,9 +4395,9 @@ namespace tfx {
 			tfxAttributeNode *last_node = nullptr;
 			nodes.ResetIteratorIndex();
 			do {
-				for (auto *n = nodes.begin() + 1; n != nodes.end(); ++n) {
-					if (node.frame < n->frame)
-						last_node = n;
+				for (auto &n : nodes) {
+					if (node.frame < n.frame)
+						last_node = &n;
 					else
 						break;
 				}
@@ -4639,6 +4639,7 @@ namespace tfx {
 
 	void tfxGraph::Reset(float v, tfxGraphPreset preset, bool add_node) {
 		nodes.clear();
+		nodes.TrimBuckets();
 		if (add_node)
 			AddNode(0.f, v);
 		switch (preset) {
