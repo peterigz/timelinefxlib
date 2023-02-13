@@ -1628,7 +1628,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
-	static inline void GrowArrays(tfxSoABuffer *buffer, tfxU32 new_size = 0) {
+	static inline void GrowArrays(tfxSoABuffer *buffer, tfxU32 new_size = 0, bool keep_data = true) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
 		tfxU32 new_capacity = 0;
 		if (new_size > 0) {
@@ -1641,18 +1641,20 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 		void *new_data = malloc(new_capacity * buffer->struct_size);
 		size_t running_offset = 0;
-		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
-			if (((buffer->start_index + buffer->current_size - 1) % buffer->capacity) < buffer->start_index) {
-				size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
-				size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
-				memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
-				memcpy((char*)new_data + (capacity - start_index) + running_offset, (char*)buffer->array_ptrs[i].ptr, (size_t)(start_index));
-			}
-			else {
-				memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
-			}
-			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
+		if (keep_data) {
+			for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+				if (((buffer->start_index + buffer->current_size - 1) % buffer->capacity) < buffer->start_index) {
+					size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
+					size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
+					memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
+					memcpy((char*)new_data + (capacity - start_index) + running_offset, (char*)buffer->array_ptrs[i].ptr, (size_t)(start_index));
+				}
+				else {
+					memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
+				}
+				running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
 
+			}
 		}
 		void *old_data = buffer->data;
 

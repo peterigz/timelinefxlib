@@ -6377,10 +6377,10 @@ namespace tfx {
 				int layer_offset = layer * 2;
 				int next_buffer_index = next_particle_buffer + layer_offset;
 				int current_buffer_index = current_pbuff + layer_offset;
-				ClearSoABuffer(&particle_array_buffers[next_buffer_index]);
 				if (particle_array_buffers[next_buffer_index].capacity != particle_array_buffers[current_buffer_index].capacity) {
-					GrowArrays(&particle_array_buffers[next_buffer_index], particle_array_buffers[current_buffer_index].capacity);
+					GrowArrays(&particle_array_buffers[next_buffer_index], particle_array_buffers[current_buffer_index].capacity, true);
 				}
+				ClearSoABuffer(&particle_array_buffers[next_buffer_index]);
 				tfxControlWorkEntryOrdered &work_entry = ordered_age_work_entry[current_buffer_index];
 				work_entry.amount_to_update = particle_array_buffers[current_buffer_index].current_size;
 				if (work_entry.amount_to_update == 0)
@@ -8272,6 +8272,10 @@ namespace tfx {
 			}
 		}
 
+		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
+			//We must complete all work first before potentially growing the particle_array_buffers as some threads may still be working in the buffer
+			tfxCompleteAllWork(&pm.work_queue);
+		}
 		work_entry.spawn_start_index = AddRows(&pm.particle_array_buffers[pm.emitters.particles_index[work_entry.emitter_index]], work_entry.amount_to_spawn, true);
 		tfxEmissionType &emission_type = properties.emission_type[property_index];
 
