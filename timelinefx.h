@@ -2304,8 +2304,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	};
 
-#define tmpStack(type, name) tfxStack<type> name(&tfxSTACK_ALLOCATOR)
-#define tmpMTStack(type, name) tfxStack<type> name(&tfxMT_STACK_ALLOCATOR)
+		//You must called InitialiseTimelineFX() before doing anything!
+#define tmpStack(type, name) assert(tfxSTACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxSTACK_ALLOCATOR)
+		//You must called InitialiseTimelineFX() before doing anything!
+#define tmpMTStack(type, name) assert(tfxMT_STACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxMT_STACK_ALLOCATOR)
 
 	template <typename T>
 	static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
@@ -6782,7 +6784,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void StreamProperties(tfxEmitterPropertiesSoA &property, tfxU32 index, tfxEmitterPropertyFlags &flags, tfxStr &file);
 	void StreamProperties(tfxEffectEmitter &effect, tfxStr &file);
 	void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file);
-	void SplitStringStack(const tfxStr &s, tfxStack<tfxStr64> &pair, char delim = 61);
+	void SplitStringStack(const tfxStr &s, tfxStack<tfxStr256> &pair, char delim = 61);
+	void SplitStringVec(const tfxStr &s, tfxvec<tfxStr256> &pair, char delim = 61);
 	bool StringIsUInt(const tfxStr &s);
 	int GetDataType(const tfxStr &s);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value);
@@ -6795,8 +6798,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
-	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr64> &values);
-	void AssignNodeData(tfxAttributeNode &node, tfxStack<tfxStr64> &values);
+	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr256> &values);
+	void AssignNodeData(tfxAttributeNode &node, tfxStack<tfxStr256> &values);
 	static inline void Transform2d(tfxVec3 &out_rotations, tfxVec3 &out_local_rotations, tfxVec3 &out_scale, tfxVec3 &out_position, tfxVec3 &out_local_position, tfxVec3 &out_translation, tfxMatrix4 &out_matrix, const tfxVec3 &in_rotations, const tfxVec3 &in_scale, const tfxVec3 &in_position, const tfxMatrix4 &in_matrix) {
 		float s = sin(out_local_rotations.roll);
 		float c = cos(out_local_rotations.roll);

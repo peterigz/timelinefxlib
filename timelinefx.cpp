@@ -3558,7 +3558,7 @@ namespace tfx {
 		return 0;
 	}
 
-	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr64> &values) {
+	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr256> &values) {
 		if (values.size() > 0) {
 			if (values[0] == "global_amount") { tfxAttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].amount.AddNode(n); }
 			if (values[0] == "global_frame_rate") { tfxAttributeNode n; AssignNodeData(n, values); effect.library->global_graphs[effect.global].frame_rate.AddNode(n); }
@@ -3646,7 +3646,7 @@ namespace tfx {
 		}
 	}
 
-	void AssignNodeData(tfxAttributeNode &n, tfxStack<tfxStr64> &values) {
+	void AssignNodeData(tfxAttributeNode &n, tfxStack<tfxStr256> &values) {
 		n.frame = (float)atof(values[1].c_str());
 		n.value = (float)atof(values[2].c_str());
 		n.flags = (bool)atoi(values[3].c_str()) ? tfxAttributeNodeFlags_is_curve : 0;
@@ -5358,7 +5358,10 @@ namespace tfx {
 	bool LoadDataFile(tfxStorageMap<tfxDataEntry> &map, const char* path) {
 		if (!tfxDataTypes.initialised) tfxDataTypes.Init();
 		FILE* fp;
-		fp = fopen(path, "r");
+		errno_t error = fopen_s(&fp, path, "r");
+		if (error != 0) {
+			printf("strerror says open failed: %s\n", strerror(error));
+		}
 		if (fp == NULL) {
 			return false;
 		}
@@ -5366,14 +5369,14 @@ namespace tfx {
 		const size_t max_line_length = 512;
 		char buffer[max_line_length];
 
-		tmpStack(tfxStr64, pair);
+		tfxvec<tfxStr256> pair;
 		while (fgets(buffer, max_line_length, fp)) {
 			buffer[strcspn(buffer, "\n")] = 0;
 			tfxStr512 str = buffer;
 			pair.clear();
-			SplitStringStack(str, pair, 61);
+			SplitStringVec(str, pair, 61);
 			if (pair.size() == 2) {
-				tfxStr64 key = pair[0];
+				tfxStr256 key = pair[0];
 				if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
 					tfxDataType t = tfxDataTypes.names_and_types.At(pair[0]);
 					if (t == tfxBool) {
@@ -5397,8 +5400,25 @@ namespace tfx {
 
 	}
 
-	void SplitStringStack(const tfxStr &str, tfxStack<tfxStr64> &pair, char delim) {
-		tfxStr64 line;
+	void SplitStringStack(const tfxStr &str, tfxStack<tfxStr256> &pair, char delim) {
+		tfxStr256 line;
+		for (char c : str) {
+			if (c == delim && line.Length() && c != NULL) {
+				pair.push_back(line);
+				line.Clear();
+			}
+			else if (c != NULL) {
+				line.Append(c);
+			}
+		}
+
+		if (line.Length()) {
+			pair.push_back(line);
+		}
+	}
+
+	void SplitStringVec(const tfxStr &str, tfxvec<tfxStr256> &pair, char delim) {
+		tfxStr256 line;
 		for (char c : str) {
 			if (c == delim && line.Length() && c != NULL) {
 				pair.push_back(line);
@@ -5493,7 +5513,7 @@ namespace tfx {
 		}
 
 		int shape_count = 0;
-		tmpStack(tfxStr64, pair);
+		tmpStack(tfxStr256, pair);
 
 		while (!data->data.EoF()) {
 			pair.clear();
@@ -5549,7 +5569,7 @@ namespace tfx {
 		memset(&stats, 0, sizeof(tfxEffectLibraryStats));
 		bool inside_emitter = false;
 
-		tmpStack(tfxStr64, pair);
+		tmpStack(tfxStr256, pair);
 		while (!data->data.EoF()) {
 			pair.clear();
 			tfxStr128 line = data->data.ReadLine();
@@ -5671,7 +5691,7 @@ namespace tfx {
 
 		int first_shape_index = -1;
 		tmpStack(tfxEffectEmitter, effect_stack);
-		tmpStack(tfxStr64, pair);
+		tmpStack(tfxStr256, pair);
 
 		while (!data->data.EoF()) {
 			tfxStr512 line = data->data.ReadLine();
