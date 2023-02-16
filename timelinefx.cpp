@@ -5999,12 +5999,10 @@ namespace tfx {
 		}
 		tfxEmitterPropertiesSoA &properties = effect.library->emitter_properties;
 		for (auto &e : effect.GetInfo().sub_effectors) {
-			if (!FreeEffectCapacity())
+			unsigned int index = GetEmitterSlot();
+			if (index == tfxINVALID)
 				break;
 			if (e.property_flags & tfxEmitterPropertyFlags_enabled) {
-				unsigned int index = GetEmitterSlot();
-				if (index == tfxINVALID)
-					break;
 				emitters.particles_index[index] = tfxINVALID;
 				emitters_in_use[hierarchy_depth][buffer].push_back(index);
 				emitters.parent_index[index] = parent_index;
