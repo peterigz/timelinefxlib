@@ -176,7 +176,15 @@ typedef std::chrono::high_resolution_clock tfxClock;
 //Override this for more layers, although currently the editor is fixed at 4
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
+
+/*
+Helper macro to place inside a for loop, for example:
+for(tfxEachLayer)
+You can then use layer inside the loop to get the current layer
+*/
 #define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
+
+//Internal use macro
 #define tfxEachLayerDB int layer = 0; layer != tfxLAYERS * 2; ++layer
 #endif 
 //type defs
@@ -6221,6 +6229,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
 
+		tfxU32 sprite_index_2d[tfxLAYERS];
+		tfxU32 sprite_index_3d[tfxLAYERS];
+
 		//todo: document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
 		tfxvec<unsigned int> free_compute_controllers;
@@ -6275,7 +6286,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			new_particles_count(0),
 			mt_batch_size(512),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
-		{ }
+		{
+			memset(sprite_index_2d, 0, tfxLAYERS * 4);
+			memset(sprite_index_3d, 0, tfxLAYERS * 4);
+		}
 		~tfxParticleManager();
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
@@ -7077,6 +7091,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
 	tfxEffectLibraryStats CreateLibraryStats(tfxEffectLibrary &lib);
+	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+	inline float GetUpdateTime() { return tfxUPDATE_TIME; }
+	inline float GetFrameLength() { return tfxFRAME_LENGTH; }
+	inline void SetLookUpFrequency(float frequency) {
+		tfxLOOKUP_FREQUENCY = frequency;
+	}
+	inline void SetLookUpFrequencyOvertime(float frequency) {
+		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
+	}
 
 	//[API functions]
 	//All the functions below represent all that you will need to call to implement TimelineFX
@@ -7087,17 +7110,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	*						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
 	*/
 	void InitialiseTimelineFX(int max_threads = 0);
-	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
+
+	/*
+	Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
+	* @param fps	The target number of frames to be udpated per second. If this does not match the current update rate of your game then the particles may playback slower or faster then they should
+	*/
 	void SetUpdateFrequency(float fps);
+
+	/*
+	Get the current update frequency of timelineFX
+	* @return float of the the current update frequency
+	*/
 	inline float GetUpdateFrequency() { return tfxUPDATE_FREQUENCY; }
-	inline float GetUpdateTime() { return tfxUPDATE_TIME; }
-	inline float GetFrameLength() { return tfxFRAME_LENGTH; }
-	inline void SetLookUpFrequency(float frequency) {
-		tfxLOOKUP_FREQUENCY = frequency;
-	}
-	inline void SetLookUpFrequencyOvertime(float frequency) {
-		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
-	}
 
 	/**
 	* Loads an effect library package from the specified filename into the provided tfxEffectLibrary object.
@@ -7124,7 +7148,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxErrorCode_invalid_inventory
 	*/
 	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
-	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
 	//[Particle Manager functions]
 
@@ -7171,6 +7194,106 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Returns true on success.
 	*/
 	bool PrepareEffectTemplate(tfxEffectLibrary &library, const char *name, tfxEffectTemplate &effect_template);
+
+	/*
+	Add an effect to a tfxParticleManager
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param effect_template	The tfxEffectTemplate object that you want to add to the particle manager. It must have already been prepared by calling PrepareEffectTemplate
+	*
+	* @return					Index of the effect after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
+								For example by calling SetEffectPosition
+	*/
+	tfxU32 AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate &effect);
+
+	/*
+	Get the next 3d sprite for rendering. To be used in a while loop with EndOfSprites3d. Make sure you also call ResetSpriteIndexes3d for the loop as well. You can also use the helper macro tfxEachLayer to
+	create a for loop to loop over each layer.
+
+	ResetSpriteIndexes3d(&pm);
+	for (tfxEachLayer) {
+		while(!EndOfSprites3d(&pm, layer)) {
+			tfxParticleSprite3d *s = Next3dSprite(&pm, layer);
+		}
+	}
+
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param layer				The layer to get the next sprite of
+	*/
+	inline tfxParticleSprite3d *Next3dSprite(tfxParticleManager *pm, tfxU32 layer) {
+		return &pm->sprites3d[layer][pm->sprite_index_3d[layer]++];
+	}
+
+	/*
+	Test if the end of the 3d sprites in the layer has been reached. See Next3dSprite for an example
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param layer				The layer index in the sprites list
+	*/
+	inline bool EndOfSprites3d(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprite_index_3d[layer] >= pm->sprites3d[layer].current_size;
+	}
+
+	/*
+	Reset the 3d sprite indexes of the specific layer to 0. Important to use this each time you want to loop over all of the sprites in the particle manager. See Next3dSprite for an example.
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param layer				The layer to Reset the sprite indexes of
+	*/
+	inline bool ResetSpriteIndexes3d(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprite_index_3d[layer] = 0;
+	}
+
+	/*
+	Reset the 3d sprite indexes for all layers. Important to use this each time you want to loop over all of the sprites in the particle manager. See Next3dSprite for an example.
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param layer				The layer to Reset the sprite indexes of
+	*/
+	inline bool ResetSpriteIndexes3d(tfxParticleManager *pm) {
+		return memset(pm->sprite_index_3d, 0, tfxLAYERS * sizeof(tfxU32));
+	}
+
+	/*
+	Get the next 2d sprite for rendering. To be used in a while loop with EndOfSprites2d. Make sure you also call ResetSpriteIndexes2d for the loop as well. You can also use the helper macro tfxEachLayer to
+	create a for loop to loop over each layer.
+
+	ResetSpriteIndexes2d(&pm);
+	for (tfxEachLayer) {
+		while(!EndOfSprites2d(&pm, layer)) {
+			tfxParticleSprite2d *s = Next2dSprite(&pm, layer);
+		}
+	}
+
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param layer				The layer to get the next sprite of
+	*/
+	inline tfxParticleSprite2d *Next2dSprite(tfxParticleManager *pm, tfxU32 layer) {
+		return &pm->sprites2d[layer][pm->sprite_index_2d[layer]++];
+	}
+
+	/*
+	Test if the end of the 2d sprites in the layer has been reached. See Next2dSprite for an example
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param layer				The layer index in the sprites list
+	*/
+	inline bool EndOfSprites2d(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprite_index_2d[layer] >= pm->sprites2d[layer].current_size;
+	}
+
+	/*
+	Reset the 2d sprite indexes of the specific layer to 0. Important to use this each time you want to loop over all of the sprites in the particle manager. See Next2dSprite for an example.
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param layer				The layer to Reset the sprite indexes of
+	*/
+	inline bool ResetSpriteIndexes2d(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprite_index_2d[layer] = 0;
+	}
+
+	/*
+	Reset the 2d sprite indexes for all layers. Important to use this each time you want to loop over all of the sprites in the particle manager. See Next2dSprite for an example.
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param layer				The layer to Reset the sprite indexes of
+	*/
+	inline bool ResetSpriteIndexes2d(tfxParticleManager *pm) {
+		return memset(pm->sprite_index_2d, 0, tfxLAYERS * sizeof(tfxU32));
+	}
 
 	/*
 	Set the position of a 2d effect

@@ -2148,24 +2148,6 @@ namespace tfx {
 		return false;
 	}
 
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y) {
-		tfxVec2 position(x, y);
-		pm->effects.local_position[effect_index] = position;
-	}
-
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec2 position) {
-		pm->effects.local_position[effect_index] = position;
-	}
-
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z) {
-		tfxVec3 position(x, y, z);
-		pm->effects.local_position[effect_index] = position;
-	}
-
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec3 position) {
-		pm->effects.local_position[effect_index] = position;
-	}
-
 	void tfxEffectEmitter::EnableAllEmitters() {
 		for (auto &e : GetInfo().sub_effectors) {
 			e.property_flags |= tfxEmitterPropertyFlags_enabled;
@@ -11118,6 +11100,37 @@ namespace tfx {
 	void InitParticleManagerFor2d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_allocation, tfxU32 mt_batch_size) {
 		assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
 		pm->InitFor2d(layer_max_values, effects_limit, mode, dynamic_allocation, mt_batch_size);
+	}
+
+
+	tfxU32 AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate &effect) {
+		return pm->AddEffect(effect.effect, pm->current_ebuff, 0, false, 0.f);
+	}
+
+	tfxU32 SpritesInLayer2d(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprites2d[layer].current_size;
+	}
+
+	tfxU32 SpritesInLayer3d(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprites3d[layer].current_size;
+	}
+
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y) {
+		tfxVec2 position(x, y);
+		pm->effects.local_position[effect_index] = position;
+	}
+
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec2 position) {
+		pm->effects.local_position[effect_index] = position;
+	}
+
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z) {
+		tfxVec3 position(x, y, z);
+		pm->effects.local_position[effect_index] = position;
+	}
+
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec3 position) {
+		pm->effects.local_position[effect_index] = position;
 	}
 
 }
