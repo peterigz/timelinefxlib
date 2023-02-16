@@ -527,7 +527,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	typedef tfxU32 tfxParticleControlFlags;
 	typedef tfxU32 tfxAttributeNodeFlags;
 	typedef tfxU32 tfxAngleSettingFlags;
-	typedef tfxU32 tfxEffectManagerFlags;
+	typedef tfxU32 tfxParticleManagerFlags;
 	typedef tfxU32 tfxErrorFlags;
 	typedef tfxU32 tfxEffectCloningFlags;
 
@@ -569,7 +569,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxBillboarding_align = 1 << 2 
 	};
 
-	enum tfxEffectManagerFlags_ {
+	enum tfxParticleManagerFlags_ {
 		tfxEffectManagerFlags_none = 0,
 		tfxEffectManagerFlags_disable_spawning = 1,
 		tfxEffectManagerFlags_force_capture = 2,
@@ -6258,7 +6258,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
-		tfxEffectManagerFlags flags;
+		tfxParticleManagerFlags flags;
 
 		tfxParticleManager() :
 			flags(0),
@@ -6281,8 +6281,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
 		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void CreateParticleBanksForEachLayer();
@@ -7071,41 +7071,141 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//Get a graph by tfxGraphID
 	tfxGraph &GetGraph(tfxEffectLibrary &library, tfxGraphID &graph_id);
 
-	//To enable multithreading set percent_of_available_threads_to_use to something higher then 0; 
-	//Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
-	void InitialiseTimelineFX(int max_threads = 0);
+	int GetShapesInPackage(const char *filename);
+	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
+	tfxEffectLibraryStats CreateLibraryStats(tfxEffectLibrary &lib);
 
+	//[API functions]
+	//All the functions below represent all that you will need to call to implement TimelineFX
+
+	/*
+	Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
+	* @param max_threads	Pass the number of threads that you want to use in addition to the main thread.
+	*						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
+	*/
+	void InitialiseTimelineFX(int max_threads = 0);
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
 	void SetUpdateFrequency(float fps);
 	inline float GetUpdateFrequency() { return tfxUPDATE_FREQUENCY; }
 	inline float GetUpdateTime() { return tfxUPDATE_TIME; }
 	inline float GetFrameLength() { return tfxFRAME_LENGTH; }
-
 	inline void SetLookUpFrequency(float frequency) {
 		tfxLOOKUP_FREQUENCY = frequency;
 	}
-
 	inline void SetLookUpFrequencyOvertime(float frequency) {
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
 
-	int GetShapesInPackage(const char *filename);
-	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
-	tfxEffectLibraryStats CreateLibraryStats(tfxEffectLibrary &lib);
-	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr, bool read_only = true);
-	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data) = nullptr, void *user_data = nullptr, bool read_only = true);
+	/**
+	* Loads an effect library package from the specified filename into the provided tfxEffectLibrary object.
+	*
+	* @param filename		A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
+	* @param lib			A reference to a tfxEffectLibrary object that will hold the loaded effect library data.
+	* @param shape_loader	A pointer to a function that will be used to load image data into the effect library package.
+	*						The function has the following signature: void shape_loader(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data).
+	* @param user_data		A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
+	* @param read_only		A boolean value that determines whether the effect library data will be loaded in read-only mode. (Maybe removed in the future).
+	*
+	* @return A tfxErrorFlags value that indicates whether the function succeeded or failed. The possible return values are:
+		tfxErrorCode_success = 0
+		tfxErrorCode_incorrect_package_format
+		tfxErrorCode_data_could_not_be_loaded
+		tfxErrorCode_could_not_add_shape
+		tfxErrorCode_error_loading_shapes
+		tfxErrorCode_some_data_not_loaded
+		tfxErrorCode_unable_to_open_file
+		tfxErrorCode_unable_to_read_file
+		tfxErrorCode_wrong_file_size
+		tfxErrorCode_invalid_format
+		tfxErrorCode_no_inventory
+		tfxErrorCode_invalid_inventory
+	*/
+	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
-	//---
-	//Prepare an effect template for setting up function call backs to customise the behaviour of the effect in realtime
+	//[Particle Manager functions]
+
+	/*
+	Initialise a tfxParticleManager for 3d usage	
+	* @param pm					A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+	* @param layer_max_values	An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
+	* @param effects_limit		The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
+	* @param mode				The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
+		tfxParticleManagerMode_unordered					Particles will be updated by emitter. No ordering is maintained, each emitter will spawn and update their particles in turn and sprites will be ordered
+															according to that sequence.
+		tfxParticleManagerMode_ordered_by_age				Particles will be kept in age order, older particles will be drawn first and newer ones last
+		tfxParticleManagerMode_ordered_by_depth				Particles will be drawn in depth order or distance from the camera. You can specify the number of sort passes when setting up the effects in TimelineFX editor
+		tfxParticleManagerMode_ordered_by_depth_guaranteed	Particles will be sorted each update and kept in depth order
+	* @param dynamic_allocation	If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
+								many particles you will need to display while developing you're game/app. Default is false.
+	* @param mt_batch_size		When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512
+
+	*/
+	void InitParticleManagerFor3d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+
+	/*
+	Initialise a tfxParticleManager for 2d usage
+	* @param pm					A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+	* @param layer_max_values	An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
+	* @param effects_limit		The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
+	* @param mode				The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
+		tfxParticleManagerMode_unordered					Particles will be updated by emitter. No ordering is maintained, each emitter will spawn and update their particles in turn and sprites will be ordered
+															according to that sequence.
+		tfxParticleManagerMode_ordered_by_age				Particles will be kept in age order, older particles will be drawn first and newer ones last
+	* @param dynamic_allocation	If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
+								many particles you will need to display while developing you're game/app. Default is false.
+	* @param mt_batch_size		When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
+
+	*/
+	void InitParticleManagerFor2d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+
+	/*
+	Prepare a tfxEffectTemplate that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
+	means that you can tweak an effect without editing the base effect in the library.
+	* @param library					A reference to a tfxEffectLibrary that should be loaded with LoadEffectLibraryPackage
+	* @param name						The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
+	* @param effect_template			The empty tfxEffectTemplate object that you want the effect loading into
 	//Returns true on success.
+	*/
 	bool PrepareEffectTemplate(tfxEffectLibrary &library, const char *name, tfxEffectTemplate &effect_template);
-	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, float x, float y);
-	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, float x, float y, float z);
-	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, tfxVec2 position);
-	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, tfxVec3 position);
+
+	/*
+	Set the position of a 2d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param x				The x value of the position
+	* @param y				The y value of the position
+	*/
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y);
+
+	/*
+	Set the position of a 3d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param x				The x value of the position
+	* @param y				The y value of the position
+	* @param z				The y value of the position
+	*/
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z);
+
+	/*
+	Set the position of a 2d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param position		A tfxVec2 vector object containing the x and y coordinates
+	*/
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec2 position);
+
+	/*
+	Set the position of a 3d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param position		A tfxVec3 vector object containing the x, y and z coordinates
+	*/
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec3 position);
 
 }
 

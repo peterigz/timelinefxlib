@@ -2140,6 +2140,7 @@ namespace tfx {
 	}
 
 	bool PrepareEffectTemplate(tfxEffectLibrary &library, const char *name, tfxEffectTemplate &effect_template) {
+		assert(effect_template.paths.Size() == 0);		//Must be an empty effect_template!
 		if (library.effect_paths.ValidName(name)) {
 			library.PrepareEffectTemplate(name, effect_template);
 			return true;
@@ -2147,22 +2148,22 @@ namespace tfx {
 		return false;
 	}
 
-	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, float x, float y) {
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y) {
 		tfxVec2 position(x, y);
-		pm.effects.local_position[effect_index] = position;
+		pm->effects.local_position[effect_index] = position;
 	}
 
-	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, tfxVec2 position) {
-		pm.effects.local_position[effect_index] = position;
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec2 position) {
+		pm->effects.local_position[effect_index] = position;
 	}
 
-	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, float x, float y, float z) {
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z) {
 		tfxVec3 position(x, y, z);
-		pm.effects.local_position[effect_index] = position;
+		pm->effects.local_position[effect_index] = position;
 	}
 
-	void SetEffectPosition(tfxParticleManager &pm, tfxU32 effect_index, tfxVec3 position) {
-		pm.effects.local_position[effect_index] = position;
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec3 position) {
+		pm->effects.local_position[effect_index] = position;
 	}
 
 	void tfxEffectEmitter::EnableAllEmitters() {
@@ -2475,8 +2476,8 @@ namespace tfx {
 
 	void tfxEffectLibrary::PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect_template) {
 		tfxEffectEmitter *effect = GetEffect(path);
-		assert(effect);
-		assert(effect->type == tfxEffectType);
+		assert(effect);								//Effect was not found, make sure the path exists
+		assert(effect->type == tfxEffectType);		//The effect must be an effect type, not an emitter
 		effect->Clone(effect_template.effect, &effect_template.effect, this);
 		effect_template.AddPath(effect_template.effect, effect_template.effect.GetInfo().name.c_str());
 	}
@@ -7359,7 +7360,7 @@ namespace tfx {
 		return &emitters_in_use[depth][current_ebuff];
 	}
 
-	void tfxParticleManager::InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, tfxU32 multi_threaded_batch_size) {
+	void tfxParticleManager::InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
 		assert(mode == tfxParticleManagerMode_unordered || mode == tfxParticleManagerMode_ordered_by_age);	//Only these 2 modes are available for 2d effects
 		max_effects = effects_limit;
 		mt_batch_size = multi_threaded_batch_size;
@@ -7403,6 +7404,8 @@ namespace tfx {
 			}
 		}
 
+		flags |= dynamic_sprite_allocation ? tfxEffectManagerFlags_dynamic_sprite_allocation : 0;
+
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 			effects_in_use[depth][0].reserve(max_effects);
 			effects_in_use[depth][1].reserve(max_effects);
@@ -7416,7 +7419,7 @@ namespace tfx {
 		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
 	}
 
-	void tfxParticleManager::InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, tfxU32 multi_threaded_batch_size) {
+	void tfxParticleManager::InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
 		max_effects = effects_limit;
 		mt_batch_size = multi_threaded_batch_size;
 		tfxInitialiseWorkQueue(&work_queue);
@@ -7470,6 +7473,8 @@ namespace tfx {
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer / 2]);
 			}
 		}
+
+		flags |= dynamic_sprite_allocation ? tfxEffectManagerFlags_dynamic_sprite_allocation : 0;
 
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 			effects_in_use[depth][0].reserve(max_effects);
@@ -7528,7 +7533,7 @@ namespace tfx {
 			free_particle_lists.FreeAll();
 		}
 
-		tfxEffectManagerFlags dynamic = flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
+		tfxParticleManagerFlags dynamic = flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
 
 		if (mode == tfxParticleManagerMode_unordered)
 			flags = tfxEffectManagerFlags_unordered;
@@ -11087,8 +11092,8 @@ namespace tfx {
 		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
 		tfxMT_STACK_ALLOCATOR = CreateArenaManager(tfxMT_STACK_SIZE, 8);
 		tfxNumberOfThreadsInAdditionToMain = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
-		lookup_callback = LookupPrecise;
-		lookup_overtime_callback = LookupPreciseOvertime;
+		lookup_callback = LookupFast;
+		lookup_overtime_callback = LookupFastOvertime;
 		tfxInitialiseThreads(&tfxThreadQueues);
 	}
 
@@ -11105,6 +11110,16 @@ namespace tfx {
 		assert(tfxPROFILE_COUNT && tfxCURRENT_PROFILE_OFFSET < tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code
 		tfxProfile *profile = tfxPROFILE_ARRAY + tfxCURRENT_PROFILE_OFFSET++;
 		return profile;
+	}
+
+	void InitParticleManagerFor3d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_allocation, tfxU32 mt_batch_size) {
+		assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
+		pm->InitFor3d(layer_max_values, effects_limit, mode, dynamic_allocation, mt_batch_size);
+	}
+
+	void InitParticleManagerFor2d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool dynamic_allocation, tfxU32 mt_batch_size) {
+		assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
+		pm->InitFor2d(layer_max_values, effects_limit, mode, dynamic_allocation, mt_batch_size);
 	}
 
 }
