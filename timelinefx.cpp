@@ -11107,14 +11107,6 @@ namespace tfx {
 		return pm->AddEffect(effect.effect, pm->current_ebuff, 0, false, 0.f);
 	}
 
-	tfxU32 SpritesInLayer2d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprites2d[layer].current_size;
-	}
-
-	tfxU32 SpritesInLayer3d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprites3d[layer].current_size;
-	}
-
 	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y) {
 		tfxVec2 position(x, y);
 		pm->effects.local_position[effect_index] = position;
@@ -11131,6 +11123,22 @@ namespace tfx {
 
 	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec3 position) {
 		pm->effects.local_position[effect_index] = position;
+	}
+
+	void SetEffectRotation(tfxParticleManager *pm, tfxU32 effect_index, float rotation) {
+		pm->effects.local_rotations[effect_index].roll = rotation;
+	}
+
+	void SetEffectRoll(tfxParticleManager *pm, tfxU32 effect_index, float roll) {
+		pm->effects.local_rotations[effect_index].roll = roll;
+	}
+
+	void SetEffectPitch(tfxParticleManager *pm, tfxU32 effect_index, float pitch) {
+		pm->effects.local_rotations[effect_index].pitch = pitch;
+	}
+
+	void SetEffectYaw(tfxParticleManager *pm, tfxU32 effect_index, float pitch) {
+		pm->effects.local_rotations[effect_index].pitch = pitch;
 	}
 
 }

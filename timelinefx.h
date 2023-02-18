@@ -7206,6 +7206,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxU32 AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate &effect);
 
 	/*
+	Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	*/
+	inline void UpdateParticleManager(tfxParticleManager *pm) {
+		pm->Update();
+	}
+
+	/*
 	Get the next 3d sprite for rendering. To be used in a while loop with EndOfSprites3d. Make sure you also call ResetSpriteIndexes3d for the loop as well. You can also use the helper macro tfxEachLayer to
 	create a for loop to loop over each layer.
 
@@ -7296,23 +7304,57 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	/*
-	Set the position of a 2d effect
-	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
-	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
-	* @param x				The x value of the position
-	* @param y				The y value of the position
+	Get the total number of 2d sprites within the layer of the particle manager
+	* @param pm					A pointer to an initialised tfxParticleManager. 
+	* @param layer				The layer of the sprites to the count of
 	*/
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y);
+	inline tfxU32 SpritesInLayer2d(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprites2d[layer].current_size;
+	}
 
 	/*
-	Set the position of a 3d effect
+	Get the total number of 3d sprites within the layer of the particle manager
+	* @param pm					A pointer to an initialised tfxParticleManager.
+	* @param layer				The layer of the sprites to the count of
+	*/
+	inline tfxU32 SpritesInLayer3d(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprites3d[layer].current_size;
+	}
+
+	/*
+	Get the total number of 2d sprites ready for rendering in the particle manager
+	* @param pm					A pointer to an initialised tfxParticleManager.
+	*/
+	inline tfxU32 TotalSpriteCount2d(tfxParticleManager *pm) {
+		tfxU32 count = 0;
+		for(tfxEachLayer) {
+			count += pm->sprites2d[layer].current_size;
+		}
+		return count;
+	}
+
+	/*
+	Get the total number of 3d sprites ready for rendering in the particle manager
+	* @param pm					A pointer to an initialised tfxParticleManager.
+	*/
+	inline tfxU32 TotalSpriteCount3d(tfxParticleManager *pm) {
+		tfxU32 count = 0;
+		for(tfxEachLayer) {
+			count += pm->sprites3d[layer].current_size;
+		}
+		return count;
+	}
+
+	//[Effects functions for altering effects that are currently playing out in a particle manager]
+	/*
+	Set the position of an effect
 	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param x				The x value of the position
 	* @param y				The y value of the position
-	* @param z				The y value of the position
+	* @param z				The z value of the position [optional when it's a 2d effect]
 	*/
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z);
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z = 0.f);
 
 	/*
 	Set the position of a 2d effect
@@ -7329,6 +7371,42 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param position		A tfxVec3 vector object containing the x, y and z coordinates
 	*/
 	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec3 position);
+
+	/*
+	Set the rotation of a 2d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current rotation of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param rotation		A float of the amount that you want to set the rotation too
+	*/
+	void SetEffectRotation(tfxParticleManager *pm, tfxU32 effect_index, float rotation);
+
+	/*
+	Set the roll of a 3d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current roll of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param roll			A float of the amount that you want to set the roll too
+	*/
+	void SetEffectRoll(tfxParticleManager *pm, tfxU32 effect_index, float roll);
+
+	/*
+	Set the pitch of a 3d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current pitch of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param pitch			A float of the amount that you want to set the pitch too
+	*/
+	void SetEffectPitch(tfxParticleManager *pm, tfxU32 effect_index, float pitch);
+
+	/*
+	Set the yaw of a 3d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current yaw of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param yaw			A float of the amount that you want to set the yaw too
+	*/
+	void SetEffectYaw(tfxParticleManager *pm, tfxU32 effect_index, float yaw);
 
 }
 
