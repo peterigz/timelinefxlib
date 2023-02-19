@@ -7347,14 +7347,23 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//[Effects functions for altering effects that are currently playing out in a particle manager]
 	/*
-	Set the position of an effect
+	Set the position of a 2d effect
 	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param x				The x value of the position
 	* @param y				The y value of the position
-	* @param z				The z value of the position [optional when it's a 2d effect]
 	*/
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z = 0.f);
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y);
+
+	/*
+	Set the position of a 3d effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param x				The x value of the position
+	* @param y				The y value of the position
+	* @param z				The y value of the position
+	*/
+	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z);
 
 	/*
 	Set the position of a 2d effect
@@ -7407,6 +7416,36 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param yaw			A float of the amount that you want to set the yaw too
 	*/
 	void SetEffectYaw(tfxParticleManager *pm, tfxU32 effect_index, float yaw);
+
+	/*
+	Set the width of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current width of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param width			A float of the amount that you want to set the width multiplier too. The width multiplier will multiply all widths of emitters within the effect so it can be an easy way to alter the size
+							of area, line, ellipse etc., emitters.
+	*/
+	void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float width);
+
+	/*
+	Set the height of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current height of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param height			A float of the amount that you want to set the height multiplier too. The height multiplier will multiply all heights of emitters within the effect so it can be an easy way to alter the size
+							of area, line, ellipse etc., emitters.
+	*/
+	void SetEffectHeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float height);
+
+	/*
+	Set the depth of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current depth of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param depth			A float of the amount that you want to set the depth multiplier too. The depth multiplier will multiply all heights of emitters within the effect so it can be an easy way to alter the size
+							of area, line, ellipse etc., emitters.
+	*/
+	void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float depth);
 
 }
 

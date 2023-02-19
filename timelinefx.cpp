@@ -11141,4 +11141,16 @@ namespace tfx {
 		pm->effects.local_rotations[effect_index].pitch = pitch;
 	}
 
+	void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float width) {
+		pm->effects.emitter_size[effect_index].x = width;
+	}
+
+	void SetEffectHeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float height) {
+		pm->effects.emitter_size[effect_index].y = height;
+	}
+
+	void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float depth) {
+		pm->effects.emitter_size[effect_index].z = depth;
+	}
+
 }
