@@ -7447,5 +7447,79 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	*/
 	void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float depth);
 
+	/*
+	Set the life multiplier of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current life of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param life			A float of the amount that you want to set the life multiplier too. The life mulitplier will affect how long all particles emitted within the effect will last before expiring.
+	*/
+	void SetEffectLifeMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float life);
+
+	/*
+	Set the particle width multiplier of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current particle width of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param width			A float of the amount that you want to set the particle width multiplier too. The particle width mulitplier will affect the width of each particle if the emitter has a non uniform particle size, otherwise
+							it will uniformly size the particle
+	*/
+	void SetEffectParticleWidthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float width);
+
+	/*
+	Set the particle height multiplier of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current particle width of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param height			A float of the amount that you want to set the particle height multiplier too. The particle height mulitplier will affect the height of each particle if the emitter has a non uniform particle size, otherwise
+							this function will have no effect.
+	*/
+	void SetEffectParticleHeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float height);
+
+	/*
+	Set the velocity multiplier of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current velocity of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param velocity		A float of the amount that you want to set the particle velocity multiplier too. The particle velocity mulitplier will affect the base velocity of a particle at spawn time.
+	*/
+	void SetEffectVelocityMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float velocity);
+
+	/*
+	Set the spin multiplier of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current spin of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param spin			A float of the amount that you want to set the particle spin multiplier too. The particle spin mulitplier will affect the base spin of a particle at spawn time.
+	*/
+	void SetEffectSpinMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float spin);
+
+	/*
+	Set the intensity multiplier of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current intensity of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param intensity		A float of the amount that you want to set the particle intensity multiplier too. The particle intensity mulitplier will instantly affect the opacity of all particles currently emitted by the effect.
+	*/
+	void SetEffectIntensityMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float intensity);
+
+	/*
+	Set the splatter multiplier of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current splatter of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param splatter		A float of the amount that you want to set the particle splatter multiplier too. The particle splatter mulitplier will change the amount of random offset all particles emitted in the effect will have.
+	*/
+	void SetEffectSplatterMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float splatter);
+
+	/*
+	Set the weight multiplier of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current weight of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param weight			A float of the amount that you want to set the particle weight multiplier too. The particle weight mulitplier will change the weight applied to particles in the effect at spawn time.
+	*/
+	void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float weight);
+
 }
 
