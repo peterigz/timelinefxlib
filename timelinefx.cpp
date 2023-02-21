@@ -10081,6 +10081,7 @@ namespace tfx {
 		}
 		else {
 			spawn_quantity = (float)properties.spawn_amount[property_index];
+			spawn_quantity *= lookup_callback(library->global_graphs[global_attributes].amount, frame);
 		}
 
 		bool is_area = properties.emission_type[property_index] == tfxArea || properties.emission_type[property_index] == tfxEllipse || properties.emission_type[property_index] == tfxCylinder || properties.emission_type[property_index] == tfxIcosphere;
