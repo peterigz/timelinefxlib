@@ -9392,7 +9392,7 @@ namespace tfx {
 			tfxVec2 half_emitter_size = (emitter_size * .5f);
 			tfxVec2 position = tfxVec2(0.f, 0.f);
 
-			if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(property_flags & tfxEmitterPropertyFlags_fill_area)) {
+			if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(property_flags & tfxEmitterPropertyFlags_fill_area) && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
 
 				grid_coords.y = 0.f;
 
@@ -9413,6 +9413,10 @@ namespace tfx {
 					}
 				}
 
+			}
+			else if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(property_flags & tfxEmitterPropertyFlags_fill_area) && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+				float th = random_generation.RangeUInt(grid_points.x) * grid_segment_size.x + arc_offset;
+				local_position = tfxVec2(std::cosf(th) * half_emitter_size.x + half_emitter_size.x, -std::sinf(th) * half_emitter_size.y + half_emitter_size.y);
 			}
 			else if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
 				float th = random_generation.Range(arc_size) + arc_offset;
