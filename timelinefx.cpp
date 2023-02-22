@@ -3943,7 +3943,7 @@ namespace tfx {
 	}
 
 	bool tfxGraph::IsOvertimeGraph() {
-		return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster;
+		return type >= tfxOvertime_velocity && type <= tfxOvertime_noise_resolution && type != tfxOvertime_velocity_adjuster;
 	}
 
 	bool tfxGraph::IsGlobalGraph() {
