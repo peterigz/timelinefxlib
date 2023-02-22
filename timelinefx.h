@@ -719,7 +719,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEmitterStateFlags_is_area = 1 << 19,
 		tfxEmitterStateFlags_no_tween = 1 << 20,
 		tfxEmitterStateFlags_align_with_velocity = 1 << 21,
-		tfxEmitterStateFlags_is_sub_emitter = 1 << 28
+		tfxEmitterStateFlags_is_sub_emitter = 1 << 22
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
@@ -7346,6 +7346,26 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	//[Effects functions for altering effects that are currently playing out in a particle manager]
+
+	/*
+	Expire an effect by telling it to stop spawning particles. This means that the effect will eventually be removed from the particle manager after all of it's remaining particles have expired.
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
+	*/
+	inline void SoftExpireEffect(tfxParticleManager *pm, tfxU32 effect_index) {
+		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
+	}
+
+	/*
+	Expire an effect by telling it to stop spawning particles and remove all associated particles immediately.
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
+	*/
+	inline void HardExpireEffect(tfxParticleManager *pm, tfxU32 effect_index) {
+		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
+		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_remove;
+	}
+
 	/*
 	Set the position of a 2d effect
 	* @param pm				A pointer to a tfxParticleManager where the effect is being managed

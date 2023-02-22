@@ -7881,6 +7881,8 @@ namespace tfx {
 
 			//e.state_flags |= e.parent->state_flags & tfxEmitterStateFlags_stop_spawning;
 			state_flags |= parent_state_flags & tfxEmitterStateFlags_no_tween;
+			state_flags |= parent_state_flags & tfxEmitterStateFlags_stop_spawning;
+			state_flags |= parent_state_flags & tfxEmitterStateFlags_remove;
 			UpdateEmitterState(pm, index, parent_index, pm.effects.spawn_controls[parent_index]);
 
 			bool is_compute = property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
