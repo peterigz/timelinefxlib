@@ -9415,7 +9415,7 @@ namespace tfx {
 
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(property_flags & tfxEmitterPropertyFlags_fill_area) && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-				float th = random_generation.RangeUInt(grid_points.x) * grid_segment_size.x + arc_offset;
+				float th = (float)random_generation.RangeUInt((tfxU32)grid_points.x) * grid_segment_size.x + arc_offset;
 				local_position = tfxVec2(std::cosf(th) * half_emitter_size.x + half_emitter_size.x, -std::sinf(th) * half_emitter_size.y + half_emitter_size.y);
 			}
 			else if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
