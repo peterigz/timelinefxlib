@@ -11210,4 +11210,8 @@ namespace tfx {
 	void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float weight) {
 		pm->effects.spawn_controls[effect_index].weight = weight;
 	}
+
+	void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxU32 effect_index, float noise_offset) {
+		pm->effects.noise_base_offset[effect_index] = noise_offset;
+	}
 }

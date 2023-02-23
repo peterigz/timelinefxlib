@@ -7547,5 +7547,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	*/
 	void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float weight);
 
+	/*
+	Set the base noise offset for an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. 
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param noise_offset	A float of the amount that you want to set the effect noise offset to. By default when an effect is added to a particle manager a random noise offset will be set based on the Base Noise Offset Range property. Here you can override that
+							value by setting it here. The most ideal time to set this would be immediately after you have added the effect to the particle manager, but you could call it any time you wanted for a constantly changing noise offset.
+	*/
+	void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxU32 effect_index, float noise_offset);
+
 }
 
