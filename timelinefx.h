@@ -5313,6 +5313,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float *loop_length;
 		//The start frame index of the animation
 		float *start_frame;
+		//Base noise offset random range so that noise patterns don't repeat so much over multiple effects
+		float *noise_base_offset_range;
 	};
 
 	inline void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i) {
@@ -5336,6 +5338,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		properties.frame_rate[i] = 30.f;
 		properties.angle_settings[i] = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
 		properties.delay_spawning[i] = 0.f;
+		properties.noise_base_offset_range[i] = 1000.f;
 	}
 
 	//Use with care, no checks for out of bounds
@@ -5360,6 +5363,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		to_properties.frame_rate[to_i] = from_properties.frame_rate[from_i];
 		to_properties.angle_settings[to_i] = from_properties.angle_settings[from_i];
 		to_properties.delay_spawning[to_i] = from_properties.delay_spawning[from_i];
+		to_properties.noise_base_offset_range[to_i] = from_properties.noise_base_offset_range[from_i];
 	}
 
 	struct tfxEmitterTransform {
@@ -5607,7 +5611,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 *local_rotations;
 		tfxVec3 *world_rotations;
 		tfxVec3 *scale;
-		//Todo: save space and use a quaternion here
+		//Todo: save space and use a quaternion here?
 		tfxMatrix4 *matrix;
 		tfxU32 *global_attributes;
 		tfxU32 *transform_attributes;
@@ -5622,6 +5626,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 *emitter_size;
 		float *stretch;
 		float *overal_scale;
+		float *noise_base_offset;
 		tfxEmitterStateFlags *state_flags;
 
 		//User Data
@@ -5657,6 +5662,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, emitter_size));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, stretch));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, overal_scale));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, noise_base_offset));
 		AddStructArray(buffer, sizeof(tfxEmitterStateFlags), offsetof(tfxEffectSoA, state_flags));
 
 		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, user_data));

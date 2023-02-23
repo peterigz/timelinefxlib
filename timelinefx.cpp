@@ -2917,6 +2917,7 @@ namespace tfx {
 		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterPropertiesSoA, shape_index));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, loop_length));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, start_frame));
+		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, noise_base_offset_range));
 		FinishSoABufferSetup(&emitter_properties_buffer, &emitter_properties, 100);
 	}
 
@@ -3401,6 +3402,7 @@ namespace tfx {
 		names_and_types.Insert("grid_columns", tfxFloat);
 		names_and_types.Insert("grid_depth", tfxFloat);
 		names_and_types.Insert("loop_length", tfxFloat);
+		names_and_types.Insert("noise_base_offset_range", tfxFloat);
 		names_and_types.Insert("emitter_handle_x", tfxFloat);
 		names_and_types.Insert("emitter_handle_y", tfxFloat);
 		names_and_types.Insert("emitter_handle_z", tfxFloat);
@@ -3774,6 +3776,8 @@ namespace tfx {
 			emitter_properties.grid_points[effect.property_index].z = value;
 		if (field == "loop_length")
 			emitter_properties.loop_length[effect.property_index] = value < 0 ? 0.f : value;
+		if (field == "noise_base_offset_range")
+			emitter_properties.noise_base_offset_range[effect.property_index] = value < 0 ? 0.f : value;
 		if (field == "emitter_handle_x")
 			emitter_properties.emitter_handle[effect.property_index].x = value;
 		if (field == "emitter_handle_y")
@@ -3883,6 +3887,7 @@ namespace tfx {
 		file.AddLine("grid_depth=%f", property.grid_points[index].z);
 		file.AddLine("delay_spawning=%f", property.delay_spawning[index]);
 		file.AddLine("loop_length=%f", property.loop_length[index]);
+		file.AddLine("noise_base_offset_range=%f", property.noise_base_offset_range[index]);
 		file.AddLine("emitter_handle_x=%f", property.emitter_handle[index].x);
 		file.AddLine("emitter_handle_y=%f", property.emitter_handle[index].y);
 		file.AddLine("emitter_handle_z=%f", property.emitter_handle[index].z);
@@ -5960,6 +5965,7 @@ namespace tfx {
 		if (!is_sub_emitter) {
 			effects.highest_particle_age[parent_index] = tfxFRAME_LENGTH * 3.f;
 		}
+		tfxEmitterPropertiesSoA &properties = effect.library->emitter_properties;
 		effects.global_attributes[parent_index] = effect.global;
 		effects.transform_attributes[parent_index] = effect.transform_attributes;
 		effects.age[parent_index] = -add_delayed_spawning;
@@ -5973,13 +5979,14 @@ namespace tfx {
 		effects.info_index[parent_index] = effect.info_index;
 		effects.properties_index[parent_index] = effect.property_index;
 		effects.timeout_counter[parent_index] = 0;
+		float range = properties.noise_base_offset_range[effect.property_index];
+		effects.noise_base_offset[parent_index] = random_generation.Range(range);
 		effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
 		effect.pm_index = parent_index;
 		sort_passes = tfxMax(effect.sort_passes, sort_passes);
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
 		}
-		tfxEmitterPropertiesSoA &properties = effect.library->emitter_properties;
 		for (auto &e : effect.GetInfo().sub_effectors) {
 			unsigned int index = GetEmitterSlot();
 			if (index == tfxINVALID)
@@ -8567,6 +8574,7 @@ namespace tfx {
 		const float emitter_noise_offset_variation = pm.emitters.noise_offset_variation[index];
 		const float emitter_noise_offset = pm.emitters.noise_offset[index];
 		const float emitter_noise_resolution = pm.emitters.noise_resolution[index];
+		const float parent_noise_base_offset = pm.effects.noise_base_offset[pm.emitters.parent_index[index]];
 		const tfxU32 particles_index = pm.emitters.particles_index[index];
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -8576,7 +8584,7 @@ namespace tfx {
 			float &noise_resolution = entry->particle_data->noise_resolution[index];
 
 			//----Motion randomness
-			noise_offset = random_generation.Range(emitter_noise_offset_variation) + emitter_noise_offset;
+			noise_offset = random_generation.Range(emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
 			noise_resolution = emitter_noise_resolution + 0.01f;
 
 		}
