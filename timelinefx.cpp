@@ -3680,7 +3680,7 @@ namespace tfx {
 		if (field == "billboard_option")
 			emitter_properties.billboard_option[effect.property_index] = (tfxBillboardingOptions)value;
 		if (field == "vector_align_type")
-			emitter_properties.vector_align_type[effect.property_index] = (tfxVectorAlignType)value;
+			emitter_properties.vector_align_type[effect.property_index] = value >= 0 && value < tfxVectorAlignType_max ? (tfxVectorAlignType)value : (tfxVectorAlignType)0;
 		if (field == "angle_setting")
 			emitter_properties.angle_settings[effect.property_index] = (tfxAngleSettingFlags)value;
 		if (field == "sort_passes")
@@ -6247,6 +6247,7 @@ namespace tfx {
 				spawn_work_entry->sub_effects = &emitters.library[current_index]->effect_infos[emitters.info_index[current_index]].sub_effectors;
 				spawn_work_entry->amount_to_spawn = 0;
 				spawn_work_entry->end_index = 0;
+				spawn_work_entry->highest_particle_age = 0;
 
 				float &timeout_counter = emitters.timeout_counter[current_index];
 
@@ -7824,6 +7825,11 @@ namespace tfx {
 			timeout_counter = 0;
 		}
 
+		if (state_flags & tfxEmitterStateFlags_remove) {
+			pm.emitters.timeout[index] = 1;
+			highest_particle_age = 0;
+		}
+
 		state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
 	}
 
@@ -8058,6 +8064,11 @@ namespace tfx {
 		}
 		else {
 			timeout_counter = 0;
+		}
+
+		if (state_flags & tfxEmitterStateFlags_remove) {
+			pm.emitters.timeout[index] = 1;
+			highest_particle_age = 0;
 		}
 
 		state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
