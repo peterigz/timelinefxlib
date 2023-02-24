@@ -534,6 +534,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	typedef tfxU32 tfxVectorFieldFlags;
 	typedef unsigned char tfxParticleFlags;
 	typedef tfxU32 tfxEmitterStateFlags;
+	typedef tfxU32 tfxEffectStateFlags;
 	typedef tfxU32 tfxParticleControlFlags;
 	typedef tfxU32 tfxAttributeNodeFlags;
 	typedef tfxU32 tfxAngleSettingFlags;
@@ -722,6 +723,16 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEmitterStateFlags_no_tween = 1 << 20,
 		tfxEmitterStateFlags_align_with_velocity = 1 << 21,
 		tfxEmitterStateFlags_is_sub_emitter = 1 << 22
+	};
+
+	enum tfxEffectStateFlags_ : unsigned int {
+		tfxEffectStateFlags_none = 0,
+		tfxEffectStateFlags_stop_spawning = 1 << 3,							//Tells the emitter to stop spawning
+		tfxEffectStateFlags_remove = 1 << 4,								//Tells the effect/emitter to remove itself from the particle manager immediately
+		tfxEffectStateFlags_retain_matrix = 1 << 6,							//Internal flag about matrix usage
+		tfxEffectStateFlags_no_tween_this_update = 1 << 7,					//Internal flag generally, but you could use it if you want to teleport the effect to another location
+		tfxEffectStateFlags_override_overal_scale = 1 << 8,					//Flagged when the over scale is overridden with SetEffectOveralScale
+		tfxEffectStateFlags_no_tween = 1 << 20,
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
@@ -5665,7 +5676,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, stretch));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, overal_scale));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, noise_base_offset));
-		AddStructArray(buffer, sizeof(tfxEmitterStateFlags), offsetof(tfxEffectSoA, state_flags));
+		AddStructArray(buffer, sizeof(tfxEffectStateFlags), offsetof(tfxEffectSoA, state_flags));
 
 		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, user_data));
 
@@ -7548,6 +7559,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param weight			A float of the amount that you want to set the particle weight multiplier too. The particle weight mulitplier will change the weight applied to particles in the effect at spawn time.
 	*/
 	tfxAPI void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float weight);
+
+	/*
+	Set the overal scale of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current weight of the effect that was
+	*						set in the TimelineFX editor.
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param overal_scale	A float of the amount that you want to set the overal scale to. The overal scale is an simply way to change the size of an effect
+	*/
+	tfxAPI void SetEffectOveralScale(tfxParticleManager *pm, tfxU32 effect_index, float overal_scale);
 
 	/*
 	Set the base noise offset for an effect

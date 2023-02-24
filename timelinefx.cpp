@@ -6039,7 +6039,7 @@ namespace tfx {
 				
 				state_flags = tfxEmitterStateFlags_no_tween_this_update;
 				state_flags &= ~tfxEmitterStateFlags_retain_matrix;
-				state_flags |= parent_state_flags & tfxEmitterStateFlags_no_tween;
+				state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
 				state_flags |= e.property_flags & tfxEmitterPropertyFlags_single && !(flags & tfxEffectManagerFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
 				state_flags |= e.property_flags & tfxEmitterPropertyFlags_base_uniform_size;
 				state_flags |= (properties.emission_type[e.property_index] != tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || properties.emission_type[e.property_index] == tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
@@ -7779,20 +7779,20 @@ namespace tfx {
 					TransformEffector2d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites2d[sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
 
 				world_position += properties.emitter_handle[property_index] * overal_scale;
-				if (state_flags & tfxEmitterStateFlags_no_tween_this_update || state_flags & tfxEmitterStateFlags_no_tween) {
+				if (state_flags & tfxEffectStateFlags_no_tween_this_update || state_flags & tfxEffectStateFlags_no_tween) {
 					captured_position = world_position;
 				}
 			}
 			else {
 				parent_particle_index = tfxINVALID;
-				state_flags |= tfxEmitterStateFlags_retain_matrix;
+				state_flags |= tfxEffectStateFlags_retain_matrix;
 				local_position = world_position;
 				local_rotations.roll = world_rotations.roll;
-				state_flags |= tfxEmitterStateFlags_stop_spawning;
+				state_flags |= tfxEffectStateFlags_stop_spawning;
 			}
 		}
 		else {
-			if (!(state_flags & tfxEmitterStateFlags_retain_matrix)) {
+			if (!(state_flags & tfxEffectStateFlags_retain_matrix)) {
 				const float overal_scale = pm.effects.overal_scale[index];
 				world_position = local_position + translation;
 				world_position += properties.emitter_handle[property_index] * overal_scale;
@@ -7812,7 +7812,7 @@ namespace tfx {
 				}
 			}
 
-			if (state_flags & tfxEmitterStateFlags_no_tween_this_update || state_flags & tfxEmitterStateFlags_no_tween) {
+			if (state_flags & tfxEffectStateFlags_no_tween_this_update || state_flags & tfxEffectStateFlags_no_tween) {
 				captured_position = world_position;
 			}
 		}
@@ -7832,12 +7832,12 @@ namespace tfx {
 			timeout_counter = 0;
 		}
 
-		if (state_flags & tfxEmitterStateFlags_remove) {
+		if (state_flags & tfxEffectStateFlags_remove) {
 			pm.emitters.timeout[index] = 1;
 			highest_particle_age = 0;
 		}
 
-		state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
+		state_flags &= ~tfxEffectStateFlags_no_tween_this_update;
 	}
 
 	void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry) {
@@ -7893,9 +7893,9 @@ namespace tfx {
 			delay_spawning = -tfxFRAME_LENGTH;
 
 			//e.state_flags |= e.parent->state_flags & tfxEmitterStateFlags_stop_spawning;
-			state_flags |= parent_state_flags & tfxEmitterStateFlags_no_tween;
-			state_flags |= parent_state_flags & tfxEmitterStateFlags_stop_spawning;
-			state_flags |= parent_state_flags & tfxEmitterStateFlags_remove;
+			state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
+			state_flags |= parent_state_flags & tfxEffectStateFlags_stop_spawning;
+			state_flags |= parent_state_flags & tfxEffectStateFlags_remove;
 			UpdateEmitterState(pm, index, parent_index, pm.effects.spawn_controls[parent_index]);
 
 			bool is_compute = property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
@@ -8090,7 +8090,7 @@ namespace tfx {
 		const float amount_remainder = pm.emitters.amount_remainder[index];
 		float &spawn_quantity = pm.emitters.spawn_quantity[index];
 
-		if (state_flags & tfxEmitterStateFlags_single_shot_done || parent_state_flags & tfxEmitterStateFlags_stop_spawning)
+		if (state_flags & tfxEmitterStateFlags_single_shot_done || parent_state_flags & tfxEffectStateFlags_stop_spawning)
 			return 0;
 		if (spawn_quantity == 0)
 			return 0;
@@ -8137,7 +8137,7 @@ namespace tfx {
 		float &qty_step_size = pm.emitters.qty_step_size[work_entry.emitter_index];
 		float &amount_remainder = pm.emitters.amount_remainder[work_entry.emitter_index];
 
-		if (state_flags & tfxEmitterStateFlags_single_shot_done || parent_state_flags & tfxEmitterStateFlags_stop_spawning)
+		if (state_flags & tfxEmitterStateFlags_single_shot_done || parent_state_flags & tfxEffectStateFlags_stop_spawning)
 			return 0;
 		if (spawn_quantity == 0)
 			return 0;
@@ -8255,7 +8255,7 @@ namespace tfx {
 		float &qty_step_size = pm.emitters.qty_step_size[work_entry.emitter_index];
 		float &amount_remainder = pm.emitters.amount_remainder[work_entry.emitter_index];
 
-		if (state_flags & tfxEmitterStateFlags_single_shot_done || parent_state_flags & tfxEmitterStateFlags_stop_spawning)
+		if (state_flags & tfxEmitterStateFlags_single_shot_done || parent_state_flags & tfxEffectStateFlags_stop_spawning)
 			return 0;
 		if (spawn_quantity == 0)
 			return 0;
@@ -10189,6 +10189,7 @@ namespace tfx {
 		tfxVec3 &scale = pm.effects.scale[index];
 		tfxVec3 &emitter_size = pm.effects.emitter_size[index];
 		float &overal_scale = pm.effects.overal_scale[index];
+		tfxEffectStateFlags &state_flags = pm.effects.state_flags[index];
 		float &stretch = pm.effects.stretch[index];
 
 		//If this effect is a sub effect then the graph index will reference the global graphs for the root parent effect
@@ -10210,8 +10211,8 @@ namespace tfx {
 		emitter_size.x = lookup_callback(library->global_graphs[global_attributes].emitter_width, frame);
 		emitter_size.y = lookup_callback(library->global_graphs[global_attributes].emitter_height, frame);
 		emitter_size.z = lookup_callback(library->global_graphs[global_attributes].emitter_depth, frame);
-		//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control thglobal scale.
-		overal_scale = lookup_callback(library->global_graphs[global_attributes].overal_scale, frame);
+		//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
+		overal_scale = state_flags & tfxEffectStateFlags_override_overal_scale ? overal_scale : lookup_callback(library->global_graphs[global_attributes].overal_scale, frame);
 		if (pm.effects.parent_particle_index[index] == tfxINVALID) {
 			scale.x = overal_scale;
 			scale.y = overal_scale;
@@ -11211,7 +11212,13 @@ namespace tfx {
 		pm->effects.spawn_controls[effect_index].weight = weight;
 	}
 
+	void SetEffectOveralScale(tfxParticleManager *pm, tfxU32 effect_index, float overal_scale) {
+		pm->effects.overal_scale[effect_index] = overal_scale;
+		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_overal_scale;
+	}
+
 	void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxU32 effect_index, float noise_offset) {
 		pm->effects.noise_base_offset[effect_index] = noise_offset;
 	}
+
 }
