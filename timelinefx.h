@@ -141,7 +141,7 @@ namespace tfx {
 	struct tfxComputeSprite;
 	struct tfxComputeParticle;
 	struct tfxAnimationSettings;
-	struct tfxEffectLibrary;
+	struct tfxLibrary;
 	struct tfxStr;
 	struct tfxStr16;
 	struct tfxStr32;
@@ -5408,8 +5408,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 
-	float GetEmissionDirection2d(tfxParticleManager &pm, tfxEffectLibrary *library, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
-	tfxVec3 GetEmissionDirection3d( tfxParticleManager &pm,	tfxEffectLibrary *library, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
+	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
+	tfxVec3 GetEmissionDirection3d( tfxParticleManager &pm,	tfxLibrary *library, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffectEmitterInfo {
 		//Name of the effect
@@ -5494,7 +5494,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 *sprites_count;
 		tfxU32 *sprites_index;
 		tfxKey *path_hash;
-		tfxEffectLibrary **library;
+		tfxLibrary **library;
 
 		//Spawn controls
 		float *life;
@@ -5632,7 +5632,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 *properties_index;
 		tfxU32 *info_index;
 		tfxU32 *parent_particle_index;
-		tfxEffectLibrary **library;
+		tfxLibrary **library;
 
 		//Spawn controls
 		tfxParentSpawnControls *spawn_controls;
@@ -5692,7 +5692,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//The current state of the effect/emitter used in the editor only at this point
 		tfxEmitterStateFlags state_flags;
 		tfxEmitterPropertyFlags property_flags;
-		tfxEffectLibrary *library;
+		tfxLibrary *library;
 		//Is this an tfxEffectType or tfxEmitterType
 		tfxEffectEmitterType type;
 		//The index within the library that this exists at
@@ -5787,7 +5787,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		void ClearColors();
 		void AddColorOvertime(float frame, tfxRGB color);
-		void Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxEffectLibrary *destination_library, tfxEffectCloningFlags flags = 0);
+		void Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxLibrary *destination_library, tfxEffectCloningFlags flags = 0);
 		void EnableAllEmitters();
 		void EnableEmitter();
 		void DisableAllEmitters();
@@ -6566,7 +6566,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxvec<tfxEffectEmitter> effects;
 	};
 
-	struct tfxEffectLibrary {
+	struct tfxLibrary {
 		tfxMemoryArenaManager graph_node_allocator;
 		tfxMemoryArenaManager graph_lookup_allocator;
 		tfxMemoryArenaManager property_array_allocator;
@@ -6608,7 +6608,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxStr library_file_path;
 		tfxU32 uid;
 
-		tfxEffectLibrary() :
+		tfxLibrary() :
 			effect_paths("EffectLib effect paths map", "EffectLib effect paths data"),
 			particle_shapes("EffectLib shapes map", "EffectLib shapes data"),
 			effects(tfxCONSTRUCTOR_VEC_INIT("effects")),
@@ -6706,11 +6706,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 CountKeyframeLookUpValues(tfxU32 index);
 		tfxU32 CountGlobalLookUpValues(tfxU32 index);
 		tfxU32 CountEmitterLookUpValues(tfxU32 index);
-		tfxU32 CloneGlobal(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneKeyframes(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneEmitterAttributes(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneInfo(tfxU32 source_index, tfxEffectLibrary *destination_library);
-		tfxU32 CloneProperties(tfxU32 source_index, tfxEffectLibrary *destination_library);
+		tfxU32 CloneGlobal(tfxU32 source_index, tfxLibrary *destination_library);
+		tfxU32 CloneKeyframes(tfxU32 source_index, tfxLibrary *destination_library);
+		tfxU32 CloneEmitterAttributes(tfxU32 source_index, tfxLibrary *destination_library);
+		tfxU32 CloneInfo(tfxU32 source_index, tfxLibrary *destination_library);
+		tfxU32 CloneProperties(tfxU32 source_index, tfxLibrary *destination_library);
 		void AddEmitterGraphs(tfxEffectEmitter &effect);
 		void AddEffectGraphs(tfxEffectEmitter &effect);
 		void AddTransformGraphs(tfxEffectEmitter &effect);
@@ -7102,15 +7102,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
 
 	//Get a graph by tfxGraphID
-	tfxGraph &GetGraph(tfxEffectLibrary &library, tfxGraphID &graph_id);
+	tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
 
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
 	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
-	tfxEffectLibraryStats CreateLibraryStats(tfxEffectLibrary &lib);
-	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+	tfxEffectLibraryStats CreateLibraryStats(tfxLibrary &lib);
+	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 	inline float GetUpdateTime() { return tfxUPDATE_TIME; }
 	inline float GetFrameLength() { return tfxFRAME_LENGTH; }
 	inline void SetLookUpFrequency(float frequency) {
@@ -7143,10 +7143,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxAPI inline float GetUpdateFrequency() { return tfxUPDATE_FREQUENCY; }
 
 	/**
-	* Loads an effect library package from the specified filename into the provided tfxEffectLibrary object.
+	* Loads an effect library package from the specified filename into the provided tfxLibrary object.
 	*
 	* @param filename		A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
-	* @param lib			A reference to a tfxEffectLibrary object that will hold the loaded effect library data.
+	* @param lib			A reference to a tfxLibrary object that will hold the loaded effect library data.
 	* @param shape_loader	A pointer to a function that will be used to load image data into the effect library package.
 	*						The function has the following signature: void shape_loader(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data).
 	* @param user_data		A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
@@ -7166,7 +7166,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxErrorCode_no_inventory
 		tfxErrorCode_invalid_inventory
 	*/
-	tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxEffectLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+	tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
 	//[Particle Manager functions]
 
@@ -7207,12 +7207,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	/*
 	Prepare a tfxEffectTemplate that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
 	means that you can tweak an effect without editing the base effect in the library.
-	* @param library					A reference to a tfxEffectLibrary that should be loaded with LoadEffectLibraryPackage
+	* @param library					A reference to a tfxLibrary that should be loaded with LoadEffectLibraryPackage
 	* @param name						The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
 	* @param effect_template			The empty tfxEffectTemplate object that you want the effect loading into
 	//Returns true on success.
 	*/
-	tfxAPI bool PrepareEffectTemplate(tfxEffectLibrary &library, const char *name, tfxEffectTemplate &effect_template);
+	tfxAPI bool PrepareEffectTemplate(tfxLibrary &library, const char *name, tfxEffectTemplate &effect_template);
 
 	/*
 	Add an effect to a tfxParticleManager
