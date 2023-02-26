@@ -3674,7 +3674,7 @@ namespace tfx {
 		if (field == "seed")
 			effect.library->animation_settings[effect.GetInfo().animation_settings].seed = value;
 		if (field == "layer")
-			emitter_properties.layer[effect.property_index] = value;
+			emitter_properties.layer[effect.property_index] = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
 		if (field == "frame_offset")
 			effect.library->animation_settings[effect.GetInfo().animation_settings].frame_offset = value;
 		if (field == "single_shot_limit")
