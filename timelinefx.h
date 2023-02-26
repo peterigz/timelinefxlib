@@ -4008,7 +4008,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxStrType(tfxStr16, 16);
 
 	/*
-	//Unwrapped for convenience when debuggin. Can be removed at some point
+	//Unwrapped for convenience when debugging. Can be removed at some point
 	struct tfxStr64 : public tfxStr {
 		char buffer[64]; 
 		tfxStr64() { data = buffer; capacity = 64; current_size = 0; is_local_buffer = true; NullTerminate(); }

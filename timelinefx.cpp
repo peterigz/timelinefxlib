@@ -8058,7 +8058,7 @@ namespace tfx {
 		}
 
 		age += tfxFRAME_LENGTH;
-		if (!(property_flags & tfxEmitterPropertyFlags_single) || properties.single_shot_limit[property_index] > 0) {
+		if (!(property_flags & tfxEmitterPropertyFlags_single) || (property_flags & tfxEmitterPropertyFlags_single && properties.single_shot_limit[property_index] > 0)) {
 			highest_particle_age -= tfxFRAME_LENGTH;
 			spawn_work_entry->highest_particle_age -= tfxFRAME_LENGTH;
 		}
