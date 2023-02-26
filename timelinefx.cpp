@@ -6729,7 +6729,7 @@ namespace tfx {
 			tfxVec3 &local_rotations = bank.local_rotations[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
-			const float lookup_velocity = graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity.lookup.last_frame)] * velocity_adjuster;
+			const float lookup_velocity = graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity.lookup.last_frame)];
 			const float lookup_velocity_turbulance = graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity_turbulance.lookup.last_frame)];
 			const float lookup_direction = graphs->direction.lookup.values[std::min<tfxU32>(lookup_frame, graphs->direction.lookup.last_frame)] + angle;
 			const float lookup_noise_resolution = graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, graphs->noise_resolution.lookup.last_frame)] * noise_resolution;
@@ -6783,7 +6783,7 @@ namespace tfx {
 			tfxVec2 current_velocity = (base_velocity * lookup_velocity) * velocity_normal;
 			current_velocity += mr_vec;
 			current_velocity.y += weight_acceleration;
-			current_velocity *= tfxUPDATE_TIME;
+			current_velocity *= tfxUPDATE_TIME * velocity_adjuster;
 
 			//----Spin and angle Changes
 			float spin = 0;
@@ -7027,7 +7027,7 @@ namespace tfx {
 			tfxVec4 &velocity_normal = bank.velocity_normal[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
-			const float lookup_velocity = graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity.lookup.last_frame)] * velocity_adjuster;
+			const float lookup_velocity = graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity.lookup.last_frame)];
 			const float lookup_velocity_turbulance = graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity_turbulance.lookup.last_frame)];
 			const float lookup_direction = graphs->direction.lookup.values[std::min<tfxU32>(lookup_frame, graphs->direction.lookup.last_frame)] + angle;
 			const float lookup_noise_resolution = graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, graphs->noise_resolution.lookup.last_frame)] * noise_resolution;
@@ -7100,7 +7100,7 @@ namespace tfx {
 			current_velocity += mr_vec;
 			current_velocity.y -= weight_acceleration;
 			velocity_normal.w = lookup_stretch * stretch;
-			current_velocity *= tfxUPDATE_TIME;
+			current_velocity *= tfxUPDATE_TIME * velocity_adjuster;
 
 			//----Spin and angle Changes
 			float spin = 0;
@@ -10349,7 +10349,7 @@ namespace tfx {
 			tfxVec3 &local_rotations = bank.local_rotations[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
-			const float lookup_velocity = work_entry->graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity.lookup.last_frame)] * velocity_adjuster;
+			const float lookup_velocity = work_entry->graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity.lookup.last_frame)];
 			const float lookup_velocity_turbulance = work_entry->graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity_turbulance.lookup.last_frame)];
 			const float lookup_direction = work_entry->graphs->direction.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->direction.lookup.last_frame)] + angle;
 			const float lookup_noise_resolution = work_entry->graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->noise_resolution.lookup.last_frame)] * noise_resolution;
@@ -10403,7 +10403,7 @@ namespace tfx {
 			tfxVec2 current_velocity = (base_velocity * lookup_velocity) * velocity_normal;
 			current_velocity += mr_vec;
 			current_velocity.y += weight_acceleration;
-			current_velocity *= tfxUPDATE_TIME;
+			current_velocity *= tfxUPDATE_TIME * velocity_adjuster;
 
 			//----Spin and angle Changes
 			float spin = 0;
@@ -10507,7 +10507,7 @@ namespace tfx {
 			tfxVec4 &velocity_normal = bank.velocity_normal[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
-			const float lookup_velocity = work_entry->graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity.lookup.last_frame)] * velocity_adjuster;
+			const float lookup_velocity = work_entry->graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity.lookup.last_frame)];
 			const float lookup_velocity_turbulance = work_entry->graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity_turbulance.lookup.last_frame)];
 			const float lookup_direction = work_entry->graphs->direction.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->direction.lookup.last_frame)] + angle;
 			const float lookup_noise_resolution = work_entry->graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->noise_resolution.lookup.last_frame)] * noise_resolution;
@@ -10580,7 +10580,7 @@ namespace tfx {
 			current_velocity += mr_vec;
 			current_velocity.y -= weight_acceleration;
 			velocity_normal.w = lookup_stretch * stretch;
-			current_velocity *= tfxUPDATE_TIME;
+			current_velocity *= tfxUPDATE_TIME * velocity_adjuster;
 
 			//----Spin and angle Changes
 			float spin = 0;
