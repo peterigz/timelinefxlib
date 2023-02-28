@@ -3686,7 +3686,7 @@ namespace tfx {
 		if (field == "angle_setting")
 			emitter_properties.angle_settings[effect.property_index] = (tfxAngleSettingFlags)value;
 		if (field == "sort_passes")
-			effect.sort_passes = value;
+			effect.sort_passes = tfxMin(5, value);
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value) {
 		tfxEmitterPropertiesSoA &emitter_properties = effect.library->emitter_properties;
@@ -5984,6 +5984,7 @@ namespace tfx {
 		effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
 		effect.pm_index = parent_index;
 		sort_passes = tfxMax(effect.sort_passes, sort_passes);
+		sort_passes = tfxMin(5, sort_passes);
 		if (!effect.Is3DEffect()) {
 			flags &= ~tfxEffectManagerFlags_3d_effects;
 		}
@@ -11134,90 +11135,90 @@ namespace tfx {
 		return pm->AddEffect(effect.effect, pm->current_ebuff, 0, false, 0.f);
 	}
 
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y) {
+	void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y) {
 		tfxVec2 position(x, y);
 		pm->effects.local_position[effect_index] = position;
 	}
 
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec2 position) {
+	void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec2 position) {
 		pm->effects.local_position[effect_index] = position;
 	}
 
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z) {
+	void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y, float z) {
 		tfxVec3 position(x, y, z);
 		pm->effects.local_position[effect_index] = position;
 	}
 
-	void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec3 position) {
+	void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 position) {
 		pm->effects.local_position[effect_index] = position;
 	}
 
-	void SetEffectRotation(tfxParticleManager *pm, tfxU32 effect_index, float rotation) {
+	void SetEffectRotation(tfxParticleManager *pm, tfxEffectID effect_index, float rotation) {
 		pm->effects.local_rotations[effect_index].roll = rotation;
 	}
 
-	void SetEffectRoll(tfxParticleManager *pm, tfxU32 effect_index, float roll) {
+	void SetEffectRoll(tfxParticleManager *pm, tfxEffectID effect_index, float roll) {
 		pm->effects.local_rotations[effect_index].roll = roll;
 	}
 
-	void SetEffectPitch(tfxParticleManager *pm, tfxU32 effect_index, float pitch) {
+	void SetEffectPitch(tfxParticleManager *pm, tfxEffectID effect_index, float pitch) {
 		pm->effects.local_rotations[effect_index].pitch = pitch;
 	}
 
-	void SetEffectYaw(tfxParticleManager *pm, tfxU32 effect_index, float pitch) {
+	void SetEffectYaw(tfxParticleManager *pm, tfxEffectID effect_index, float pitch) {
 		pm->effects.local_rotations[effect_index].pitch = pitch;
 	}
 
-	void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float width) {
+	void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float width) {
 		pm->effects.emitter_size[effect_index].x = width;
 	}
 
-	void SetEffectHeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float height) {
+	void SetEffectHeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float height) {
 		pm->effects.emitter_size[effect_index].y = height;
 	}
 
-	void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float depth) {
+	void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float depth) {
 		pm->effects.emitter_size[effect_index].z = depth;
 	}
 
-	void SetEffectLifeMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float life) {
+	void SetEffectLifeMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float life) {
 		pm->effects.spawn_controls[effect_index].life = life;
 	}
 
-	void SetEffectParticleWidthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float width) {
+	void SetEffectParticleWidthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float width) {
 		pm->effects.spawn_controls[effect_index].size_x = width;
 	}
 
-	void SetEffectParticleHeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float height) {
+	void SetEffectParticleHeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float height) {
 		pm->effects.spawn_controls[effect_index].size_y = height;
 	}
 
-	void SetEffectVelocityMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float velocity) {
+	void SetEffectVelocityMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float velocity) {
 		pm->effects.spawn_controls[effect_index].velocity = velocity;
 	}
 
-	void SetEffectSpinMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float spin) {
+	void SetEffectSpinMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float spin) {
 		pm->effects.spawn_controls[effect_index].spin = spin;
 	}
 
-	void SetEffectIntensityMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float intensity) {
+	void SetEffectIntensityMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float intensity) {
 		pm->effects.spawn_controls[effect_index].intensity = intensity;
 	}
 
-	void SetEffectSplatterMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float splatter) {
+	void SetEffectSplatterMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float splatter) {
 		pm->effects.spawn_controls[effect_index].splatter = splatter;
 	}
 
-	void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float weight) {
+	void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float weight) {
 		pm->effects.spawn_controls[effect_index].weight = weight;
 	}
 
-	void SetEffectOveralScale(tfxParticleManager *pm, tfxU32 effect_index, float overal_scale) {
+	void SetEffectOveralScale(tfxParticleManager *pm, tfxEffectID effect_index, float overal_scale) {
 		pm->effects.overal_scale[effect_index] = overal_scale;
 		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_overal_scale;
 	}
 
-	void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxU32 effect_index, float noise_offset) {
+	void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxEffectID effect_index, float noise_offset) {
 		pm->effects.noise_base_offset[effect_index] = noise_offset;
 	}
 

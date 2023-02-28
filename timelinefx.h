@@ -7222,7 +7222,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @return					Index of the effect after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
 								For example by calling SetEffectPosition
 	*/
-	tfxAPI tfxU32 AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate &effect);
+	tfxAPI tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate &effect);
 
 	/*
 	Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
@@ -7371,7 +7371,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
 	* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
 	*/
-	tfxAPI inline void SoftExpireEffect(tfxParticleManager *pm, tfxU32 effect_index) {
+	tfxAPI inline void SoftExpireEffect(tfxParticleManager *pm, tfxEffectID effect_index) {
 		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
 	}
 
@@ -7380,7 +7380,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
 	* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
 	*/
-	tfxAPI inline void HardExpireEffect(tfxParticleManager *pm, tfxU32 effect_index) {
+	tfxAPI inline void HardExpireEffect(tfxParticleManager *pm, tfxEffectID effect_index) {
 		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
 		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_remove;
 	}
@@ -7392,7 +7392,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param x				The x value of the position
 	* @param y				The y value of the position
 	*/
-	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y);
+	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y);
 
 	/*
 	Set the position of a 3d effect
@@ -7402,7 +7402,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param y				The y value of the position
 	* @param z				The y value of the position
 	*/
-	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, float x, float y, float z);
+	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y, float z);
 
 	/*
 	Set the position of a 2d effect
@@ -7410,7 +7410,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param position		A tfxVec2 vector object containing the x and y coordinates
 	*/
-	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec2 position);
+	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec2 position);
 
 	/*
 	Set the position of a 3d effect
@@ -7418,7 +7418,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param position		A tfxVec3 vector object containing the x, y and z coordinates
 	*/
-	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxU32 effect_index, tfxVec3 position);
+	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 position);
 
 	/*
 	Set the rotation of a 2d effect
@@ -7427,7 +7427,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param rotation		A float of the amount that you want to set the rotation too
 	*/
-	tfxAPI void SetEffectRotation(tfxParticleManager *pm, tfxU32 effect_index, float rotation);
+	tfxAPI void SetEffectRotation(tfxParticleManager *pm, tfxEffectID effect_index, float rotation);
 
 	/*
 	Set the roll of a 3d effect
@@ -7436,7 +7436,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param roll			A float of the amount that you want to set the roll too
 	*/
-	tfxAPI void SetEffectRoll(tfxParticleManager *pm, tfxU32 effect_index, float roll);
+	tfxAPI void SetEffectRoll(tfxParticleManager *pm, tfxEffectID effect_index, float roll);
 
 	/*
 	Set the pitch of a 3d effect
@@ -7445,7 +7445,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param pitch			A float of the amount that you want to set the pitch too
 	*/
-	tfxAPI void SetEffectPitch(tfxParticleManager *pm, tfxU32 effect_index, float pitch);
+	tfxAPI void SetEffectPitch(tfxParticleManager *pm, tfxEffectID effect_index, float pitch);
 
 	/*
 	Set the yaw of a 3d effect
@@ -7454,7 +7454,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param yaw			A float of the amount that you want to set the yaw too
 	*/
-	tfxAPI void SetEffectYaw(tfxParticleManager *pm, tfxU32 effect_index, float yaw);
+	tfxAPI void SetEffectYaw(tfxParticleManager *pm, tfxEffectID effect_index, float yaw);
 
 	/*
 	Set the width of an effect
@@ -7464,7 +7464,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param width			A float of the amount that you want to set the width multiplier too. The width multiplier will multiply all widths of emitters within the effect so it can be an easy way to alter the size
 							of area, line, ellipse etc., emitters.
 	*/
-	tfxAPI void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float width);
+	tfxAPI void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float width);
 
 	/*
 	Set the height of an effect
@@ -7474,7 +7474,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param height			A float of the amount that you want to set the height multiplier too. The height multiplier will multiply all heights of emitters within the effect so it can be an easy way to alter the size
 							of area, line, ellipse etc., emitters.
 	*/
-	tfxAPI void SetEffectHeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float height);
+	tfxAPI void SetEffectHeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float height);
 
 	/*
 	Set the depth of an effect
@@ -7484,7 +7484,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param depth			A float of the amount that you want to set the depth multiplier too. The depth multiplier will multiply all heights of emitters within the effect so it can be an easy way to alter the size
 							of area, line, ellipse etc., emitters.
 	*/
-	tfxAPI void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float depth);
+	tfxAPI void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float depth);
 
 	/*
 	Set the life multiplier of an effect
@@ -7493,7 +7493,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param life			A float of the amount that you want to set the life multiplier too. The life mulitplier will affect how long all particles emitted within the effect will last before expiring.
 	*/
-	tfxAPI void SetEffectLifeMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float life);
+	tfxAPI void SetEffectLifeMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float life);
 
 	/*
 	Set the particle width multiplier of an effect
@@ -7503,7 +7503,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param width			A float of the amount that you want to set the particle width multiplier too. The particle width mulitplier will affect the width of each particle if the emitter has a non uniform particle size, otherwise
 							it will uniformly size the particle
 	*/
-	tfxAPI void SetEffectParticleWidthMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float width);
+	tfxAPI void SetEffectParticleWidthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float width);
 
 	/*
 	Set the particle height multiplier of an effect
@@ -7513,7 +7513,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param height			A float of the amount that you want to set the particle height multiplier too. The particle height mulitplier will affect the height of each particle if the emitter has a non uniform particle size, otherwise
 							this function will have no effect.
 	*/
-	tfxAPI void SetEffectParticleHeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float height);
+	tfxAPI void SetEffectParticleHeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float height);
 
 	/*
 	Set the velocity multiplier of an effect
@@ -7522,7 +7522,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param velocity		A float of the amount that you want to set the particle velocity multiplier too. The particle velocity mulitplier will affect the base velocity of a particle at spawn time.
 	*/
-	tfxAPI void SetEffectVelocityMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float velocity);
+	tfxAPI void SetEffectVelocityMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float velocity);
 
 	/*
 	Set the spin multiplier of an effect
@@ -7531,7 +7531,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param spin			A float of the amount that you want to set the particle spin multiplier too. The particle spin mulitplier will affect the base spin of a particle at spawn time.
 	*/
-	tfxAPI void SetEffectSpinMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float spin);
+	tfxAPI void SetEffectSpinMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float spin);
 
 	/*
 	Set the intensity multiplier of an effect
@@ -7540,7 +7540,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param intensity		A float of the amount that you want to set the particle intensity multiplier too. The particle intensity mulitplier will instantly affect the opacity of all particles currently emitted by the effect.
 	*/
-	tfxAPI void SetEffectIntensityMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float intensity);
+	tfxAPI void SetEffectIntensityMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float intensity);
 
 	/*
 	Set the splatter multiplier of an effect
@@ -7549,7 +7549,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param splatter		A float of the amount that you want to set the particle splatter multiplier too. The particle splatter mulitplier will change the amount of random offset all particles emitted in the effect will have.
 	*/
-	tfxAPI void SetEffectSplatterMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float splatter);
+	tfxAPI void SetEffectSplatterMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float splatter);
 
 	/*
 	Set the weight multiplier of an effect
@@ -7558,7 +7558,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param weight			A float of the amount that you want to set the particle weight multiplier too. The particle weight mulitplier will change the weight applied to particles in the effect at spawn time.
 	*/
-	tfxAPI void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxU32 effect_index, float weight);
+	tfxAPI void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float weight);
 
 	/*
 	Set the overal scale of an effect
@@ -7567,7 +7567,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param overal_scale	A float of the amount that you want to set the overal scale to. The overal scale is an simply way to change the size of an effect
 	*/
-	tfxAPI void SetEffectOveralScale(tfxParticleManager *pm, tfxU32 effect_index, float overal_scale);
+	tfxAPI void SetEffectOveralScale(tfxParticleManager *pm, tfxEffectID effect_index, float overal_scale);
 
 	/*
 	Set the base noise offset for an effect
@@ -7576,7 +7576,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param noise_offset	A float of the amount that you want to set the effect noise offset to. By default when an effect is added to a particle manager a random noise offset will be set based on the Base Noise Offset Range property. Here you can override that
 							value by setting it here. The most ideal time to set this would be immediately after you have added the effect to the particle manager, but you could call it any time you wanted for a constantly changing noise offset.
 	*/
-	tfxAPI void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxU32 effect_index, float noise_offset);
+	tfxAPI void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxEffectID effect_index, float noise_offset);
 
 }
 
