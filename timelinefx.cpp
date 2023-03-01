@@ -10218,9 +10218,11 @@ namespace tfx {
 			scale.x = overal_scale;
 			scale.y = overal_scale;
 			scale.z = overal_scale;
-			local_rotations.roll = LookupPrecise(library->transform_attributes[transform_attributes].roll, age);
-			local_rotations.pitch = LookupPrecise(library->transform_attributes[transform_attributes].pitch, age);
-			local_rotations.yaw = LookupPrecise(library->transform_attributes[transform_attributes].yaw, age);
+			if (!(state_flags & tfxEffectStateFlags_override_orientiation)) {
+				local_rotations.roll = LookupPrecise(library->transform_attributes[transform_attributes].roll, age);
+				local_rotations.pitch = LookupPrecise(library->transform_attributes[transform_attributes].pitch, age);
+				local_rotations.yaw = LookupPrecise(library->transform_attributes[transform_attributes].yaw, age);
+			}
 		}
 		else {
 			scale.x = overal_scale;
@@ -11155,18 +11157,22 @@ namespace tfx {
 
 	void SetEffectRotation(tfxParticleManager *pm, tfxEffectID effect_index, float rotation) {
 		pm->effects.local_rotations[effect_index].roll = rotation;
+		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
 	}
 
 	void SetEffectRoll(tfxParticleManager *pm, tfxEffectID effect_index, float roll) {
 		pm->effects.local_rotations[effect_index].roll = roll;
+		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
 	}
 
 	void SetEffectPitch(tfxParticleManager *pm, tfxEffectID effect_index, float pitch) {
 		pm->effects.local_rotations[effect_index].pitch = pitch;
+		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
 	}
 
 	void SetEffectYaw(tfxParticleManager *pm, tfxEffectID effect_index, float pitch) {
 		pm->effects.local_rotations[effect_index].pitch = pitch;
+		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
 	}
 
 	void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float width) {
