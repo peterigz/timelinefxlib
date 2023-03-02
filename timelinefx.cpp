@@ -10209,9 +10209,11 @@ namespace tfx {
 		spawn_controls.intensity = lookup_callback(library->global_graphs[global_attributes].intensity, frame);
 		spawn_controls.splatter = lookup_callback(library->global_graphs[global_attributes].splatter, frame);
 		spawn_controls.weight = lookup_callback(library->global_graphs[global_attributes].weight, frame);
-		emitter_size.x = lookup_callback(library->global_graphs[global_attributes].emitter_width, frame);
-		emitter_size.y = lookup_callback(library->global_graphs[global_attributes].emitter_height, frame);
-		emitter_size.z = lookup_callback(library->global_graphs[global_attributes].emitter_depth, frame);
+		if (!(state_flags & tfxEffectStateFlags_override_size_multiplier)) {
+			emitter_size.x = lookup_callback(library->global_graphs[global_attributes].emitter_width, frame);
+			emitter_size.y = lookup_callback(library->global_graphs[global_attributes].emitter_height, frame);
+			emitter_size.z = lookup_callback(library->global_graphs[global_attributes].emitter_depth, frame);
+		}
 		//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
 		overal_scale = state_flags & tfxEffectStateFlags_override_overal_scale ? overal_scale : lookup_callback(library->global_graphs[global_attributes].overal_scale, frame);
 		if (pm.effects.parent_particle_index[index] == tfxINVALID) {
@@ -11177,14 +11179,17 @@ namespace tfx {
 
 	void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float width) {
 		pm->effects.emitter_size[effect_index].x = width;
+		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
 	}
 
 	void SetEffectHeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float height) {
 		pm->effects.emitter_size[effect_index].y = height;
+		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
 	}
 
 	void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float depth) {
 		pm->effects.emitter_size[effect_index].z = depth;
+		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
 	}
 
 	void SetEffectLifeMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float life) {

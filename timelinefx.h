@@ -733,7 +733,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectStateFlags_no_tween_this_update = 1 << 7,					//Internal flag generally, but you could use it if you want to teleport the effect to another location
 		tfxEffectStateFlags_override_overal_scale = 1 << 8,					//Flagged when the over scale is overridden with SetEffectOveralScale
 		tfxEffectStateFlags_override_orientiation = 1 << 9,					//Flagged when any of the effect angles are overridden
-		tfxEffectStateFlags_no_tween = 1 << 20,
+		tfxEffectStateFlags_override_size_multiplier = 1 << 10,				//Flagged when any of the effect size multipliers are overridden
+		tfxEffectStateFlags_no_tween = 1 << 20
 	};
 
 	enum tfxVectorFieldFlags_: unsigned char {
