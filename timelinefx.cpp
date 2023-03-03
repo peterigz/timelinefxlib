@@ -11161,6 +11161,10 @@ namespace tfx {
 		pm->effects.local_position[effect_index] += {x, y, z};
 	}
 
+	tfxAPI tfxVec3 GetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index) {
+		return pm->effects.local_position[effect_index];
+	}
+
 	void SetEffectRotation(tfxParticleManager *pm, tfxEffectID effect_index, float rotation) {
 		pm->effects.local_rotations[effect_index].roll = rotation;
 		pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;

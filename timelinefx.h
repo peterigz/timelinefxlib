@@ -7447,6 +7447,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxAPI void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y, float z);
 
 	/*
+	Get the current position of an effect
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @return				tfxVec3 containing the effect position
+	*/
+	tfxAPI tfxVec3 GetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index);
+
+	/*
 	Set the rotation of a 2d effect
 	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current rotation of the effect that was
 	*						set in the TimelineFX editor.
