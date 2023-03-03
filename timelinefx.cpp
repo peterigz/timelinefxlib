@@ -1342,10 +1342,6 @@ namespace tfx {
 	tfxEffectEmitter::~tfxEffectEmitter() {
 	}
 
-	void SoftExpire(tfxParticleManager &pm, tfxU32 effect_id) {
-		pm.emitters.state_flags[effect_id] |= tfxEmitterStateFlags_stop_spawning;
-	}
-
 	void tfxEffectEmitter::UpdateMaxLife() {
 		GetInfo().max_life = GetMaxLife(*this);
 		GetGraphByType(tfxOvertime_red)->lookup.life = GetInfo().max_life;
@@ -11155,6 +11151,14 @@ namespace tfx {
 
 	void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 position) {
 		pm->effects.local_position[effect_index] = position;
+	}
+
+	void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 amount) {
+		pm->effects.local_position[effect_index] += amount;
+	}
+
+	void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y, float z) {
+		pm->effects.local_position[effect_index] += {x, y, z};
 	}
 
 	void SetEffectRotation(tfxParticleManager *pm, tfxEffectID effect_index, float rotation) {

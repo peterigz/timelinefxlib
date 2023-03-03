@@ -5804,8 +5804,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	};
 
-	//Tell the effect to stop spawning so that eventually particles will expire and the effect will be removed from the particle manager
-	inline void SoftExpire(tfxParticleManager &pm, tfxU32 effect_id);
 	inline int GetDepth(tfxEffectEmitter &e) {
 		tfxEffectEmitter *current_parent = e.parent;
 		int depth = 0;
@@ -7366,6 +7364,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return count;
 	}
 
+	/*
+	Clear all particles and effects in a particle manager
+	* @param pm					A pointer to an initialised tfxParticleManager.
+	*/
+	tfxAPI inline void ClearParticleManager(tfxParticleManager *pm) {
+		pm->ClearAll();
+	}
+
 	//[Effects functions for altering effects that are currently playing out in a particle manager]
 
 	/*
@@ -7402,7 +7408,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param x				The x value of the position
 	* @param y				The y value of the position
-	* @param z				The y value of the position
+	* @param z				The z value of the position
 	*/
 	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y, float z);
 
@@ -7421,6 +7427,24 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param position		A tfxVec3 vector object containing the x, y and z coordinates
 	*/
 	tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 position);
+
+	/*
+	Move an Effect by a specified amount relative to the effect's current position
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param amount			A tfxVec3 vector object containing the amount to move in the x, y and z planes
+	*/
+	tfxAPI void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 amount);
+
+	/*
+	Move an Effect by a specified amount relative to the effect's current position
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+	* @param x				The amount to move in the x plane
+	* @param y				The amount to move in the y plane
+	* @param z				The amount to move in the z plane
+	*/
+	tfxAPI void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y, float z);
 
 	/*
 	Set the rotation of a 2d effect
