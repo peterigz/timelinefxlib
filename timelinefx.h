@@ -5646,6 +5646,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		//User Data
 		void **user_data;
+		void(**update_callback)(tfxParticleManager *pm, tfxEffectID effect_index);
 	};
 
 	inline void InitEffectSoA(tfxSoABuffer *buffer, tfxEffectSoA *soa, tfxU32 reserve_amount) {
@@ -5681,6 +5682,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxEffectStateFlags), offsetof(tfxEffectSoA, state_flags));
 
 		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, user_data));
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, update_callback));
 
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
@@ -5714,6 +5716,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 sort_passes;
 		//Custom user data, can be accessed in callback functions
 		void *user_data;
+		void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index);
 
 		tfxU32 buffer_index;
 
@@ -5725,6 +5728,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectEmitter() :
 			parent(nullptr),
 			user_data(nullptr),
+			update_callback(nullptr),
 			effect_flags(tfxEffectPropertyFlags_none),
 			sort_passes(1),
 			info_index(tfxINVALID),
@@ -5739,16 +5743,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		{ }
 		~tfxEffectEmitter();
 
-		//API functions
+		//API related functions
 
 		void SetUserData(void *data);
 		void *GetUserData();
 
 		tfxEffectEmitterInfo &GetInfo();
 		tfxEmitterPropertiesSoA &GetProperties();
-
-		//Override graph functions for use in update_callback
-		//Some of these change the same state and property values, but they're named differently just to make it clearer as to whether you're overriding kEffect or a kEmitter.
 
 		//Internal functions
 		tfxEffectEmitter& AddEmitter(tfxEffectEmitter &e);
@@ -5839,12 +5840,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec2 position;			//The position of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite
 		tfxU32 parameters;	//4 extra parameters packed into a tfxU32: blend_mode, image layer index, shader function index, blend type
-	};
-
-	struct tfxControlData {
-		void(*particle_update_callback)(tfxParticleData &particle, void *user_data);
-		void *user_data;
-		tfxOvertimeAttributes *graphs;
 	};
 
 	//this is just used in sorting to store a temporary copy of the particle data
@@ -6758,16 +6753,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			}
 		}
 
-		inline tfxEffectEmitter &Effect() { return effect; }
-		inline tfxEffectEmitter *Get(tfxStr256 &path) { if (paths.ValidName(path)) return paths.At(path); return nullptr; }
-		inline void SetUserData(tfxStr256 &path, void *data) { if (paths.ValidName(path)) paths.At(path)->user_data = data; }
-		inline void SetUserData(void *data) { effect.user_data = data; }
-		void SetUserDataAll(void *data);
-		inline void SetEffectUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager &pm, tfxEffectEmitter &effect_emitter, tfxParentSpawnControls &spawn_controls)) { 
+		tfxAPI inline tfxEffectEmitter &Effect() { return effect; }
+		tfxAPI inline tfxEffectEmitter *Get(tfxStr256 &path) { if (paths.ValidName(path)) return paths.At(path); return nullptr; }
+		tfxAPI inline void SetUserData(tfxStr256 &path, void *data) { if (paths.ValidName(path)) paths.At(path)->user_data = data; }
+		tfxAPI inline void SetUserData(void *data) { effect.user_data = data; }
+		tfxAPI void SetUserDataAll(void *data);
+		tfxAPI inline void SetEffectUpdateCallback(void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index)) {
+			effect.update_callback = update_callback;
+		}
+		tfxAPI inline void SetEffectUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index)) { 
 			assert(paths.ValidName(path));						//Path does not exist in library
 			assert(paths.At(path)->type == tfxEffectType);		//Path must be path to an effect type
 		}
-		inline void SetEmitterUpdateCallback(tfxStr256 path, void(*update_callback)(tfxEmitterSoA &effect_emitter, tfxU32 index)) {
+		tfxAPI inline void SetEmitterUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager *pm, tfxEffectID emitter_index)) {
 			assert(paths.ValidName(path));						//Path does not exist in library
 			assert(paths.At(path)->type == tfxEmitterType);		//Path must be a path to an emitter type
 		}
@@ -7391,6 +7389,26 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxAPI inline void HardExpireEffect(tfxParticleManager *pm, tfxEffectID effect_index) {
 		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
 		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_remove;
+	}
+
+	/*
+	Get effect user data
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
+	* @returns				void* pointing to the user data set in the effect. See tfxEffectTemplate::SetUserData() and SetEffectUserData()
+	*/
+	tfxAPI inline void* GetEffectUserData(tfxParticleManager *pm, tfxEffectID effect_index) {
+		return pm->effects.user_data[effect_index];
+	}
+
+	/*
+	Set the effect user data for an effect already added to a particle manager
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
+	* @param user_data		A void* pointing to the user_data that you want to store in the effect
+	*/
+	tfxAPI inline void SetEffectUserData(tfxParticleManager *pm, tfxEffectID effect_index, void* user_data) {
+		 pm->effects.user_data[effect_index] = user_data;
 	}
 
 	/*

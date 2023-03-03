@@ -5975,6 +5975,8 @@ namespace tfx {
 		effects.info_index[parent_index] = effect.info_index;
 		effects.properties_index[parent_index] = effect.property_index;
 		effects.timeout_counter[parent_index] = 0;
+		effects.user_data[parent_index] = effect.user_data;
+		effects.update_callback[parent_index] = effect.update_callback;
 		float range = properties.noise_base_offset_range[effect.property_index];
 		effects.noise_base_offset[parent_index] = random_generation.Range(range);
 		effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
@@ -10235,8 +10237,8 @@ namespace tfx {
 		translation.y = lookup_callback(library->transform_attributes[transform_attributes].translation_y, frame);
 		translation.z = lookup_callback(library->transform_attributes[transform_attributes].translation_z, frame);
 
-		//if (e.update_effect_callback)
-			//e.update_effect_callback(pm, e, spawn_controls);
+		if (pm.effects.update_callback[index])
+			pm.effects.update_callback[index](&pm, index);
 
 	}
 
@@ -10263,7 +10265,7 @@ namespace tfx {
 			flags |= state_flags & tfxParticleFlags_remove;
 
 			if (flags & tfxParticleFlags_remove || age >= max_age) {
-				if (property_flags & tfxEmitterPropertyFlags_single && !(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning))
+				if (property_flags & tfxEmitterPropertyFlags_single && !(state_flags & tfxEmitterStateFlags_stop_spawning) && !(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning))
 					if (++single_loop_count != single_shot_limit) {
 						age = 0;
 					}
