@@ -5205,6 +5205,10 @@ namespace tfx {
 		return type >= tfxGlobal_life && type <= tfxGlobal_emitter_depth;
 	}
 
+	bool IsEmitterGraph(tfxGraphType type) {
+		return type >= tfxPropertyStart && type < tfxTransformStart;
+	}
+
 	bool IsTransformGraph(tfxGraphType type) {
 		return type >= tfxTransform_roll && type <= tfxTransform_translate_z;
 	}
@@ -6567,7 +6571,7 @@ namespace tfx {
 			flags |= state_flags & tfxParticleFlags_remove;
 
 			if (flags & tfxParticleFlags_remove || age >= max_age) {
-				if (property_flags & tfxEmitterPropertyFlags_single && !(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning))
+				if (property_flags & tfxEmitterPropertyFlags_single && !(state_flags & tfxEmitterStateFlags_stop_spawning) && !(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning))
 					if (++single_loop_count != single_shot_limit) {
 						age = 0;
 					}
@@ -7820,9 +7824,7 @@ namespace tfx {
 		}
 
 		age += tfxFRAME_LENGTH;
-		if (!(property_flags & tfxEmitterPropertyFlags_single) || properties.single_shot_limit[property_index] > 0) {
-			highest_particle_age -= tfxFRAME_LENGTH;
-		}
+		highest_particle_age -= tfxFRAME_LENGTH;
 
 		if (properties.loop_length && age > properties.loop_length[property_index])
 			age -= properties.loop_length[property_index];
@@ -8060,7 +8062,7 @@ namespace tfx {
 		}
 
 		age += tfxFRAME_LENGTH;
-		if (!(property_flags & tfxEmitterPropertyFlags_single) || (property_flags & tfxEmitterPropertyFlags_single && properties.single_shot_limit[property_index] > 0)) {
+		if (!(property_flags & tfxEmitterPropertyFlags_single) || (property_flags & tfxEmitterPropertyFlags_single && properties.single_shot_limit[property_index] > 0) || state_flags & tfxEmitterStateFlags_stop_spawning) {
 			highest_particle_age -= tfxFRAME_LENGTH;
 			spawn_work_entry->highest_particle_age -= tfxFRAME_LENGTH;
 		}
