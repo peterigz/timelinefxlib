@@ -6801,13 +6801,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		/*
 		Scale all nodes on the global amount graph of the effect
-		* @param amount		A float of the amount that you want to scale the amount multiplier by. Use this to control the overal number of particles that all emitters within the effect should emit. This can be useful for
-							setting up particle controls in your game settings so that users can tone down particles to improve FPS etc. Note that this will restore the original graph first before multiplying all of the values.
+		* @param global_type		tfxGraphType of the global graph that you want to scale. Must be a global graph or an assert will be called
+		* @param amount				A float of the amount that you want to scale the amount multiplier by. Use this to control the overal number of particles that all emitters within the effect should emit. This can be useful for
+									setting up particle controls in your game settings so that users can tone down particles to improve FPS etc. Note that this will restore the original graph first before multiplying all of the values.
 		*/
-		tfxAPI inline void ScaleAmountMultiplier(float amount) {
-			tfxGraph *graph = effect.GetGraphByType(tfxGlobal_amount);
+		tfxAPI inline void ScaleGlobalMultiplier(tfxGraphType global_type, float amount) {
+			assert(IsGlobalGraph(global_type));
+			tfxGraph *graph = effect.GetGraphByType(global_type);
 			tfxEffectEmitter *original_effect = effect.library->GetEffect(original_effect_hash);
-			tfxGraph *original_graph = original_effect->GetGraphByType(tfxGlobal_amount);
+			tfxGraph *original_graph = original_effect->GetGraphByType(global_type);
 			original_graph->Copy(*graph);
 			graph->MultiplyAllValues(amount);
 			CompileGraph(*graph);
