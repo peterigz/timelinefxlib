@@ -2136,7 +2136,7 @@ namespace tfx {
 	}
 
 	bool PrepareEffectTemplate(tfxLibrary &library, const char *name, tfxEffectTemplate &effect_template) {
-		assert(effect_template.paths.Size() == 0);		//Must be an empty effect_template!
+		effect_template.Reset();
 		if (library.effect_paths.ValidName(name)) {
 			library.PrepareEffectTemplate(name, effect_template);
 			return true;
@@ -2456,7 +2456,8 @@ namespace tfx {
 		tfxEffectEmitter *effect = GetEffect(path);
 		assert(effect);								//Effect was not found, make sure the path exists
 		assert(effect->type == tfxEffectType);		//The effect must be an effect type, not an emitter
-		effect->Clone(effect_template.effect, &effect_template.effect, this);
+		effect_template.original_effect_hash = effect->path_hash;
+		effect->Clone(effect_template.effect, &effect_template.effect, this, tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_compile_graphs);
 		effect_template.AddPath(effect_template.effect, effect_template.effect.GetInfo().name.c_str());
 	}
 
@@ -4872,17 +4873,19 @@ namespace tfx {
 		lookup.values.free();
 	}
 
-	void tfxGraph::Copy(tfxGraph &to) {
+	void tfxGraph::Copy(tfxGraph &to, bool compile) {
 		to.Clear();
 		do {
 			for (auto &n : nodes) {
 				to.nodes.push_back(n);
 			}
 		} while (!nodes.EndOfBuckets());
-		if(IsOvertimeGraph())
-			CompileGraphOvertime(to);
-		else
-			CompileGraph(to);
+		if (compile) {
+			if (IsOvertimeGraph())
+				CompileGraphOvertime(to);
+			else
+				CompileGraph(to);
+		}
 	}
 
 	bool tfxGraph::Sort() {

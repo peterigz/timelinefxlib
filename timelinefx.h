@@ -4670,7 +4670,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void DragValues(tfxGraphPreset preset, float &frame, float &value);
 		void Clear();
 		void Free();
-		void Copy(tfxGraph &to);
+		void Copy(tfxGraph &to, bool compile = true);
 		bool Sort();
 		void ReIndex();
 		tfxVec2 GetInitialZoom();
@@ -6740,6 +6740,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxEffectTemplate {
 		tfxStorageMap<tfxEffectEmitter*> paths;
 		tfxEffectEmitter effect;
+		tfxKey original_effect_hash;
 
 		tfxEffectTemplate() :
 			paths("Effect template paths map", "Effect template paths data")
@@ -6753,6 +6754,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			}
 		}
 
+		tfxAPI inline void Reset() {
+			if (paths.Size()) {
+				paths.Clear();
+				effect.CleanUp();
+			}
+		}
 		tfxAPI inline tfxEffectEmitter &Effect() { return effect; }
 		tfxAPI inline tfxEffectEmitter *Get(tfxStr256 &path) { if (paths.ValidName(path)) return paths.At(path); return nullptr; }
 		tfxAPI inline void SetUserData(tfxStr256 &path, void *data) { if (paths.ValidName(path)) paths.At(path)->user_data = data; }
@@ -6768,6 +6775,20 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxAPI inline void SetEmitterUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager *pm, tfxEffectID emitter_index)) {
 			assert(paths.ValidName(path));						//Path does not exist in library
 			assert(paths.At(path)->type == tfxEmitterType);		//Path must be a path to an emitter type
+		}
+
+		/*
+		Scale all nodes on the global amount graph of the effect
+		* @param amount		A float of the amount that you want to scale the amount multiplier by. Use this to control the overal number of particles that all emitters within the effect should emit. This can be useful for
+							setting up particle controls in your game settings so that users can tone down particles to improve FPS etc. Note that this will restore the original graph first before multiplying all of the values.
+		*/
+		tfxAPI inline void ScaleAmountMultiplier(float amount) {
+			tfxGraph *graph = effect.GetGraphByType(tfxGlobal_amount);
+			tfxEffectEmitter *original_effect = effect.library->GetEffect(original_effect_hash);
+			tfxGraph *original_graph = original_effect->GetGraphByType(tfxGlobal_amount);
+			original_graph->Copy(*graph);
+			graph->MultiplyAllValues(amount);
+			CompileGraph(*graph);
 		}
 	};
 
