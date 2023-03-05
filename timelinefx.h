@@ -6778,6 +6778,28 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 
 		/*
+		Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager
+		* @param path		const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
+		*/
+		tfxAPI inline void DisableEmitter(const char *path) {
+			assert(paths.ValidName(path));			//Must be a valid path to the emitter
+			tfxEffectEmitter *emitter = paths.At(path);
+			assert(emitter->type == tfxEmitterType);	//Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those. 
+			emitter->property_flags &= ~tfxEmitterPropertyFlags_enabled;
+		}
+
+		/*
+		Enable an emitter within an effect so that it is added to the particle manager when calling AddEffectToParticleManager. Emitters are enabled by default.
+		* @param path		const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
+		*/
+		tfxAPI inline void EnableEmitter(const char *path) {
+			assert(paths.ValidName(path));			//Must be a valid path to the emitter
+			tfxEffectEmitter *emitter = paths.At(path);
+			assert(emitter->type == tfxEmitterType);	//Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those
+			emitter->property_flags |= tfxEmitterPropertyFlags_enabled;
+		}
+
+		/*
 		Scale all nodes on the global amount graph of the effect
 		* @param amount		A float of the amount that you want to scale the amount multiplier by. Use this to control the overal number of particles that all emitters within the effect should emit. This can be useful for
 							setting up particle controls in your game settings so that users can tone down particles to improve FPS etc. Note that this will restore the original graph first before multiplying all of the values.
@@ -6790,6 +6812,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			graph->MultiplyAllValues(amount);
 			CompileGraph(*graph);
 		}
+
 	};
 
 	/*
