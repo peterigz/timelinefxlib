@@ -6817,17 +6817,32 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		/*
 		Scale all nodes on an emitter graph
+		* @param emitter_path		const *char of the emitter path
 		* @param global_type		tfxGraphType of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
 		* @param amount				A float of the amount that you want to scale the graph by.
 		*/
-		tfxAPI inline void ScaleEmitterGraph(tfxGraphType base_type, float amount) {
-			assert(IsEmitterGraph(base_type));
-			tfxGraph *graph = effect.GetGraphByType(base_type);
-			tfxEffectEmitter *original_effect = effect.library->GetEffect(original_effect_hash);
-			tfxGraph *original_graph = original_effect->GetGraphByType(base_type);
+		tfxAPI inline void ScaleEmitterGraph(const char *emitter_path, tfxGraphType graph_type, float amount) {
+			assert(IsEmitterGraph(graph_type));		//Must be an emitter graph type. This is any property, base, variaion or overtime graph
+			assert(paths.ValidName(emitter_path));			//Must be a valid path to the emitter
+			tfxEffectEmitter *emitter = paths.At(emitter_path);
+			tfxGraph *graph = emitter->GetGraphByType(graph_type);
+			tfxEffectEmitter *original_emitter = effect.library->GetEffect(emitter_path);
+			tfxGraph *original_graph = original_emitter->GetGraphByType(graph_type);
 			original_graph->Copy(*graph, false);
 			graph->MultiplyAllValues(amount);
 			CompileGraph(*graph);
+		}
+
+		/*
+		Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
+		* @param emitter_path		const *char of the emitter path
+		* @param amount				A float of the amount that you want to set the single spawn amount to.
+		*/
+		tfxAPI inline void SetSingleSpawnAmount(const char *emitter_path, float amount) {
+			assert(amount >= 0);							//Amount must not be less than 0
+			assert(paths.ValidName(emitter_path));			//Must be a valid path to the emitter
+			tfxEffectEmitter *emitter = paths.At(emitter_path);
+			emitter->GetProperties().spawn_amount[emitter->property_index] = amount;
 		}
 
 	};
