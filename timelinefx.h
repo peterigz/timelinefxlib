@@ -6282,6 +6282,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		unsigned int particle_id;
 		tfxParticleManagerFlags flags;
 
+
 		tfxParticleManager() :
 			flags(0),
 			lookup_mode(tfxFast),
@@ -6834,7 +6835,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		* @param emitter_path		const *char of the emitter path
 		* @param amount				A float of the amount that you want to set the single spawn amount to.
 		*/
-		tfxAPI inline void SetSingleSpawnAmount(const char *emitter_path, float amount) {
+		tfxAPI inline void SetSingleSpawnAmount(const char *emitter_path, tfxU32 amount) {
 			assert(amount >= 0);							//Amount must not be less than 0
 			assert(paths.ValidName(emitter_path));			//Must be a valid path to the emitter
 			tfxEffectEmitter *emitter = paths.At(emitter_path);
