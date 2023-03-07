@@ -9867,21 +9867,22 @@ namespace tfx {
 
 			float micro_time = tfxUPDATE_TIME * (1.f - tween);
 
-			tfxSpriteTransform2d sprite_transform;
+			tfxVec2 sprite_transform_position;
+			float sprite_transform_rotation;
 			float direction = 0;
 
 			if (angle_settings & tfxAngleSettingFlags_align_roll && property_flags & tfxEmitterPropertyFlags_edge_traversal)
-				sprite_transform.rotation = roll = angle_roll_offset;
+				roll = angle_roll_offset;
 
 			bool line = property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 
 			if (!line && !(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				TransformParticlePosition(local_position.xy(), roll, sprite_transform.position, sprite_transform.rotation, emitter_world_rotations, matrix, handle, scale, emitter_world_position);
-				captured_position = sprite_transform.position;
+				TransformParticlePosition(local_position.xy(), roll, sprite_transform_position, sprite_transform_rotation, emitter_world_rotations, matrix, handle, scale, emitter_world_position);
+				captured_position = sprite_transform_position;
 			}
 
 			if (!line) {
-				direction = velocity_normal = GetEmissionDirection2d(pm, library, property_index, emitter_index, local_position.xy(), sprite_transform.position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
+				direction = velocity_normal = GetEmissionDirection2d(pm, library, property_index, emitter_index, local_position.xy(), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
 			}
 
 			weight_acceleration += base_weight * first_weight_value * micro_time;
@@ -9894,8 +9895,7 @@ namespace tfx {
 			local_position += current_velocity * micro_time;
 			if (line || property_flags & tfxEmitterPropertyFlags_relative_position) {
 				tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position.x, local_position.y) + handle.xy());
-				captured_position = sprite_transform.captured_position = emitter_captured_position.xy() + rotatevec * scale.xy();
-				transform_particle_callback2d(local_position.xy(), roll, sprite_transform.position, sprite_transform.rotation, emitter_world_rotations, matrix, handle, scale, tfxVec3(emitter_world_position.x, emitter_world_position.y, 0.f));
+				captured_position = emitter_captured_position.xy() + rotatevec * scale.xy();
 			}
 			//end micro update
 
@@ -9957,6 +9957,7 @@ namespace tfx {
 		const float first_weight_value = library->emitter_attributes[emitter_attributes].overtime.weight.GetFirstValue() * tfxUPDATE_TIME;
 		const float first_stretch_value = library->emitter_attributes[emitter_attributes].overtime.stretch.GetFirstValue() * tfxUPDATE_TIME;
 		const tfxVec3 emitter_world_position = pm.emitters.world_position[emitter_index];
+		const tfxVec3 emitter_captured_position = pm.emitters.captured_position[emitter_index];
 		const tfxVec3 emitter_size = pm.emitters.emitter_size[emitter_index];
 		const tfxVec3 handle = pm.emitters.handle[emitter_index];
 		const tfxMatrix4 matrix = pm.emitters.matrix[emitter_index];
@@ -10016,13 +10017,13 @@ namespace tfx {
 			current_velocity *= micro_time;
 			local_position += current_velocity;
 			if (line || property_flags & tfxEmitterPropertyFlags_relative_position) {
+
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
 					world_position = local_position;
 				}
 				else {
 					tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
-					world_position = emitter_world_position + rotatevec.xyz() * scale;
-					captured_position = world_position;
+					captured_position = world_position = emitter_captured_position + rotatevec.xyz() * scale;
 				}
 			}
 			else {
