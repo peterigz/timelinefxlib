@@ -2811,16 +2811,13 @@ namespace tfx {
 		a.position = tfxVec2(0.f, 0.f);
 		a.frame_size = tfxVec2(256.f, 256.f);
 		a.playback_speed = 1.f;
-		a.loop = false;
-		a.seamless = false;
+		a.animation_flags = tfxAnimationFlags_needs_recording | tfxAnimationFlags_export_with_transparency;
 		a.seed = 0;
 		a.zoom = 1.f;
 		a.scale = 1.f;
-		a.needs_recording = true;
 		a.needs_exporting = 0;
 		a.color_option = tfxExportColorOptions::tfxFullColor;
 		a.export_option = tfxExportOptions::tfxSpriteSheet;
-		a.export_with_transparency = true;
 		a.camera_settings.camera_floor_height = -10.f;
 		a.camera_settings.camera_fov = tfxRadians(60);
 		a.camera_settings.camera_pitch = tfxRadians(-30.f);
@@ -3451,6 +3448,7 @@ namespace tfx {
 		names_and_types.Insert("position_y", tfxFloat);
 		names_and_types.Insert("frame_width", tfxFloat);
 		names_and_types.Insert("frame_height", tfxFloat);
+		names_and_types.Insert("animation_flags", tfxUint);
 		names_and_types.Insert("loop", tfxBool);
 		names_and_types.Insert("seamless", tfxBool);
 		names_and_types.Insert("seed", tfxUint);
@@ -3684,6 +3682,8 @@ namespace tfx {
 			emitter_properties.angle_settings[effect.property_index] = (tfxAngleSettingFlags)value;
 		if (field == "sort_passes")
 			effect.sort_passes = tfxMin(5, value);
+		if (field == "animation_flags")
+			effect.library->animation_settings[effect.GetInfo().animation_settings].animation_flags = value;
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value) {
 		tfxEmitterPropertiesSoA &emitter_properties = effect.library->emitter_properties;
@@ -3796,11 +3796,11 @@ namespace tfx {
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value) {
 		if (field == "loop")
-			effect.library->animation_settings[effect.GetInfo().animation_settings].loop = value;
+			effect.library->animation_settings[effect.GetInfo().animation_settings].animation_flags |= value ? tfxAnimationFlags_loop : 0;
 		if (field == "seamless")
-			effect.library->animation_settings[effect.GetInfo().animation_settings].seamless = value;
+			effect.library->animation_settings[effect.GetInfo().animation_settings].animation_flags |= value ? tfxAnimationFlags_seamless : 0;
 		if (field == "export_with_transparency")
-			effect.library->animation_settings[effect.GetInfo().animation_settings].export_with_transparency = value;
+			effect.library->animation_settings[effect.GetInfo().animation_settings].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
 		if (field == "camera_isometric")
 			effect.library->animation_settings[effect.GetInfo().animation_settings].camera_settings.camera_isometric = value;
 		if (field == "camera_hide_floor")

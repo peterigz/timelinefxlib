@@ -541,6 +541,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	typedef tfxU32 tfxParticleManagerFlags;
 	typedef tfxU32 tfxErrorFlags;
 	typedef tfxU32 tfxEffectCloningFlags;
+	typedef tfxU32 tfxAnimationFlags;
 
 	enum tfxErrorFlags_ {
 		tfxErrorCode_success = 0,
@@ -746,9 +747,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	enum tfxAttributeNodeFlags_ {
 		tfxAttributeNodeFlags_none = 0,
 		tfxAttributeNodeFlags_is_curve = 1 << 0,
-		tfxAttributeNodeFlags_is_left_curve = 2 << 1,
-		tfxAttributeNodeFlags_is_right_curve = 3 << 2,
-		tfxAttributeNodeFlags_curves_initialised = 4 << 3
+		tfxAttributeNodeFlags_is_left_curve = 1 << 1,
+		tfxAttributeNodeFlags_is_right_curve = 1 << 2,
+		tfxAttributeNodeFlags_curves_initialised = 1 << 3
+	};
+
+	enum tfxAnimationFlags_ {
+		tfxAnimationFlags_none = 0,
+		tfxAnimationFlags_loop = 1 << 0,
+		tfxAnimationFlags_seamless = 1 << 1,
+		tfxAnimationFlags_needs_recording = 1 << 2,
+		tfxAnimationFlags_export_with_transparency = 1 << 3
 	};
 
 	//-----------------------------------------------------------
@@ -5229,16 +5238,17 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		int frame_offset;
 		int extra_frames_count;
 		tfxU32 seed;
-		bool seamless;
-		bool loop;
-		bool needs_recording;
+		tfxAnimationFlags animation_flags;
+		//bool seamless;
+		//bool loop;
+		//bool needs_recording;
+		//bool export_with_transparency;
 		tfxU32 needs_exporting;
 		float max_radius;
 		tfxU32 largest_frame;
 		float playback_speed;
 		tfxExportColorOptions color_option;
 		tfxExportOptions export_option;
-		bool export_with_transparency;
 		tfxAnimationCameraSettings camera_settings;
 	};
 
@@ -6008,12 +6018,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxSpriteTransform3d {
 		tfxVec3 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
-		tfxVec3 captured_position;	
-		tfxVec3 rotations;			//Scale and rotation (x, y = scale, z = rotation, w = intensity)
-		tfxVec2 scale;				//Scale, stretch and intensity (x, y = scale, z = stretch, w = intensity)
+		tfxVec3 captured_position;	//For interpolation
+		tfxVec3 rotations;			//Rotations of the sprite
+		tfxVec2 scale;				//Scale
 	};
 
-	struct tfxParticleSprite3d {	//88 bytes
+	struct tfxParticleSprite3d {	//80 bytes
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag
 		void *image_ptr;
 		tfxSpriteTransform3d transform;
@@ -6202,14 +6212,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	struct tfxParticleMemory {
-		tfxvec<tfxU32> buckets_in_use;
-		tfxvec<tfxSoABuffer> particle_array_buffers;
-		tfxvec<tfxParticleSoA> particle_arrays;
-		tfxMemoryArenaManager particle_array_allocator;
-	};
-
-	//Use the particle manager to add compute effects to your scene 
+	//Use the particle manager to add multiple effects to your scene 
 	struct tfxParticleManager {
 		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxSoABuffer> particle_array_buffers;
@@ -6228,7 +6231,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> free_effects;
 		tfxvec<tfxU32> free_emitters;
-		//tfxvec<tfxEffectEmitter> effects;
 		tfxSoABuffer effect_buffers;
 		tfxEffectSoA effects;
 		tfxSoABuffer emitter_buffers;
