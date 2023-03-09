@@ -757,9 +757,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxAnimationFlags_loop = 1 << 0,
 		tfxAnimationFlags_seamless = 1 << 1,
 		tfxAnimationFlags_needs_recording = 1 << 2,
-		tfxAnimationFlags_export_with_transparency = 1 << 3
+		tfxAnimationFlags_export_with_transparency = 1 << 3,
+		tfxAnimationFlags_sprite_data_mode = 1 << 4
 	};
 
+	inline bool tfxIsSpriteDataMode(tfxAnimationFlags flags) {
+		return flags & tfxAnimationFlags_sprite_data_mode;
+	}
 	//-----------------------------------------------------------
 	//Constants
 
@@ -5239,10 +5243,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		int extra_frames_count;
 		tfxU32 seed;
 		tfxAnimationFlags animation_flags;
-		//bool seamless;
-		//bool loop;
-		//bool needs_recording;
-		//bool export_with_transparency;
 		tfxU32 needs_exporting;
 		float max_radius;
 		tfxU32 largest_frame;
