@@ -141,6 +141,7 @@ namespace tfx {
 	struct tfxComputeSprite;
 	struct tfxComputeParticle;
 	struct tfxSpriteSheetSettings;
+	struct tfxSpriteDataSettings;
 	struct tfxLibrary;
 	struct tfxStr;
 	struct tfxStr16;
@@ -757,13 +758,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxAnimationFlags_loop = 1 << 0,
 		tfxAnimationFlags_seamless = 1 << 1,
 		tfxAnimationFlags_needs_recording = 1 << 2,
-		tfxAnimationFlags_export_with_transparency = 1 << 3,
-		tfxAnimationFlags_sprite_data_mode = 1 << 4
+		tfxAnimationFlags_export_with_transparency = 1 << 3
 	};
 
-	inline bool tfxIsSpriteDataMode(tfxAnimationFlags flags) {
-		return flags & tfxAnimationFlags_sprite_data_mode;
-	}
 	//-----------------------------------------------------------
 	//Constants
 
@@ -5212,7 +5209,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float weight;
 	};
 
-	struct tfxAnimationCameraSettings {
+	struct tfxCameraSettings {
 		tfxVec3 camera_position;
 		float camera_pitch;
 		float camera_yaw;
@@ -5224,7 +5221,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 	
 	struct tfxPreviewCameraSettings {
-		tfxAnimationCameraSettings camera_settings;
+		tfxCameraSettings camera_settings;
 		float effect_z_offset;
 		float camera_speed;
 		bool attach_effect_to_camera = false;
@@ -5232,7 +5229,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
 	struct tfxSpriteSheetSettings {
-		tfxVec4 bb;
 		tfxVec3 position;
 		tfxVec2 frame_size;
 		float scale;
@@ -5249,7 +5245,21 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float playback_speed;
 		tfxExportColorOptions color_option;
 		tfxExportOptions export_option;
-		tfxAnimationCameraSettings camera_settings;
+		tfxCameraSettings camera_settings;
+	};
+
+	//This struct has the settings for recording sprite data frames so that they can be played back as an alternative to dynamic particle updating
+	struct tfxSpriteDataSettings {
+		int frames;
+		int current_frame;
+		int frame_offset;
+		int extra_frames_count;
+		tfxU32 seed;
+		tfxAnimationFlags animation_flags;
+		tfxU32 needs_exporting;
+		float max_radius;
+		tfxU32 largest_frame;
+		float playback_speed;
 	};
 
 	//------------------------------------------------------------
@@ -5432,8 +5442,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//Experiment: index into the lookup index data in the effect library
 		tfxU32 lookup_node_index;
 		tfxU32 lookup_value_index;
-		//Index to animation settings stored in the effect library. Would like to move this at some point
-		tfxU32 animation_settings;
+		//Index to sprite sheet settings stored in the effect library. 
+		tfxU32 sprite_sheet_settings_index;
+		//Index to sprite data settings stored in the effect library. 
+		tfxU32 sprite_data_settings_index;
 		//Index to preview camera settings stored in the effect library. Would like to move this at some point
 		tfxU32 preview_camera_settings;
 		//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
@@ -5445,7 +5457,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 max_sub_emitters;
 
 		tfxEffectEmitterInfo() :
-			animation_settings(0),
+			sprite_sheet_settings_index(0),
 			preview_camera_settings(0),
 			max_sub_emitters(0),
 			max_sub_emitter_life(0.f),
@@ -6576,7 +6588,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
 		tfxvec<tfxTransformAttributes> transform_attributes;
-		tfxvec<tfxSpriteSheetSettings> animation_settings;
+		tfxvec<tfxSpriteSheetSettings> sprite_sheet_settings;
+		tfxvec<tfxSpriteDataSettings> sprite_data_settings;
 		tfxvec<tfxPreviewCameraSettings> preview_camera_settings;
 		tfxvec<tfxAttributeNode> all_nodes;
 		tfxvec<tfxEffectLookUpData> node_lookup_indexes;
@@ -6610,7 +6623,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			effect_infos(tfxCONSTRUCTOR_VEC_INIT("effect_infos")),
 			global_graphs(tfxCONSTRUCTOR_VEC_INIT("global_graphs")),
 			emitter_attributes(tfxCONSTRUCTOR_VEC_INIT("emitter_attributes")),
-			animation_settings(tfxCONSTRUCTOR_VEC_INIT("animation_settings")),
+			sprite_sheet_settings(tfxCONSTRUCTOR_VEC_INIT("animation_settings")),
 			preview_camera_settings(tfxCONSTRUCTOR_VEC_INIT("preview_camera_settings")),
 			all_nodes(tfxCONSTRUCTOR_VEC_INIT("all_nodes")),
 			node_lookup_indexes(tfxCONSTRUCTOR_VEC_INIT("nodes_lookup_indexes")),
@@ -6709,7 +6722,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void AddEmitterGraphs(tfxEffectEmitter &effect);
 		void AddEffectGraphs(tfxEffectEmitter &effect);
 		void AddTransformGraphs(tfxEffectEmitter &effect);
-		tfxU32 AddAnimationSettings(tfxEffectEmitter& effect);
+		tfxU32 AddSpriteSheetSettings(tfxEffectEmitter& effect);
+		tfxU32 AddSpriteDataSettings(tfxEffectEmitter& effect);
 		tfxU32 AddPreviewCameraSettings(tfxEffectEmitter& effect);
 		tfxU32 AddPreviewCameraSettings();
 		tfxU32 AddEffectEmitterInfo();
