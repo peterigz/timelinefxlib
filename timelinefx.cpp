@@ -2803,7 +2803,7 @@ namespace tfx {
 
 	tfxU32 tfxLibrary::AddAnimationSettings(tfxEffectEmitter& effect) {
 		assert(effect.type == tfxEffectType);
-		tfxAnimationSettings a;
+		tfxSpriteSheetSettings a;
 		a.frames = 32;
 		a.current_frame = 1;
 		a.frame_offset = 0;

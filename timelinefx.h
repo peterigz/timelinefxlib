@@ -140,7 +140,7 @@ namespace tfx {
 	struct tfxParticleData;
 	struct tfxComputeSprite;
 	struct tfxComputeParticle;
-	struct tfxAnimationSettings;
+	struct tfxSpriteSheetSettings;
 	struct tfxLibrary;
 	struct tfxStr;
 	struct tfxStr16;
@@ -5231,7 +5231,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	//this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
-	struct tfxAnimationSettings {
+	struct tfxSpriteSheetSettings {
 		tfxVec4 bb;
 		tfxVec3 position;
 		tfxVec2 frame_size;
@@ -6576,7 +6576,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
 		tfxvec<tfxTransformAttributes> transform_attributes;
-		tfxvec<tfxAnimationSettings> animation_settings;
+		tfxvec<tfxSpriteSheetSettings> animation_settings;
 		tfxvec<tfxPreviewCameraSettings> preview_camera_settings;
 		tfxvec<tfxAttributeNode> all_nodes;
 		tfxvec<tfxEffectLookUpData> node_lookup_indexes;
