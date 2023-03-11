@@ -1526,7 +1526,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			tfxMemoryArena arena;
 			arena.total_memory = arena_size;
 			arena.memory_remaining = arena_size;
-			arena.data = malloc(arena_size);
+			arena.data = tfxALLOCATE(0, 0, arena_size);
 			arena.end_of_allocated = arena.data;
 			memset(arena.data, 0, arena_size);
 			arenas.push_back(arena);
@@ -1589,7 +1589,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	static inline tfxMemoryArena CreateMemoryArena(size_t size_in_bytes, tfxU32 size_diff_threshold = 8) {
 		assert(size_in_bytes > 1024 * 1024);	//minimum 1mb allocation
 		tfxMemoryArena allocator;
-		void* new_data = malloc(size_in_bytes);
+		void* new_data = tfxALLOCATE(0, 0, size_in_bytes);
 		allocator.data = new_data;
 		allocator.end_of_allocated = allocator.data;
 		allocator.memory_remaining = size_in_bytes;
@@ -1650,7 +1650,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			buffer->struct_size += buffer->array_ptrs[i].unit_size;
 		}
 		buffer->current_arena_size = reserve_amount * buffer->struct_size;
-		buffer->data = malloc(buffer->current_arena_size);
+		buffer->data = tfxALLOCATE(0, 0, buffer->current_arena_size);
 		memset(buffer->data, 0, buffer->current_arena_size);
 		buffer->capacity = reserve_amount;
 		buffer->struct_of_arrays = struct_of_arrays;
@@ -1674,7 +1674,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		else {
 			new_capacity = buffer->current_size > buffer->capacity ? buffer->current_size + buffer->current_size / 2 : buffer->capacity + buffer->capacity / 2;
 		}
-		void *new_data = malloc(new_capacity * buffer->struct_size);
+		void *new_data = tfxALLOCATE(0, 0, new_capacity * buffer->struct_size);
 		size_t running_offset = 0;
 		if (keep_data) {
 			for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
@@ -3886,7 +3886,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void         reserve(tfxU32 new_capacity) { 
 			if (new_capacity <= capacity) return; 
-			char* new_data = (char*)malloc((size_t)new_capacity * sizeof(char)); 
+			char* new_data = (char*)tfxALLOCATE(0, 0, (size_t)new_capacity * sizeof(char)); 
 			if (data && !is_local_buffer) { 
 				memcpy(new_data, data, (size_t)current_size * sizeof(char)); 
 				free(data); 
@@ -6057,7 +6057,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float intensity;
 	};
 
-	struct tfxSpriteData {
+	struct tfxSpriteData3d {
+		tfxParticleSprite3d *data;
+		tfxvec<tfxFrameMeta> frame_meta;
+	};
+
+	struct tfxSpriteData2d {
 		tfxParticleSprite3d *data;
 		tfxvec<tfxFrameMeta> frame_meta;
 	};
@@ -6601,6 +6606,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxEmitterPropertiesSoA emitter_properties;
+		tfxStorageMap<tfxSpriteData3d> pre_recorded_3d_effects;
+		tfxStorageMap<tfxSpriteData2d> pre_recorded_2d_effects;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;

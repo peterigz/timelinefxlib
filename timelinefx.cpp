@@ -2963,6 +2963,8 @@ namespace tfx {
 		}
 		effect_infos.free_all();
 		AddPreviewCameraSettings();
+		pre_recorded_2d_effects.FreeAll();
+		pre_recorded_3d_effects.FreeAll();
 
 		property_array_allocator.FreeAll();
 		graph_node_allocator.FreeAll();
