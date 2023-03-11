@@ -594,7 +594,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectManagerFlags_3d_effects = 1 << 8,
 		tfxEffectManagerFlags_unordered = 1 << 9,
 		tfxEffectManagerFlags_ordered_by_age = 1 << 10,
-		tfxEffectManagerFlags_update_age_only = 1 << 10
+		tfxEffectManagerFlags_update_age_only = 1 << 11
 	};
 
 	enum tfxVectorAlignType {

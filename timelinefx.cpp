@@ -3470,6 +3470,7 @@ namespace tfx {
 		names_and_types.Insert("layer", tfxUint);
 		names_and_types.Insert("position_x", tfxFloat);
 		names_and_types.Insert("position_y", tfxFloat);
+		names_and_types.Insert("position_z", tfxFloat);
 		names_and_types.Insert("frame_width", tfxFloat);
 		names_and_types.Insert("frame_height", tfxFloat);
 		names_and_types.Insert("animation_flags", tfxUint);
@@ -3737,6 +3738,8 @@ namespace tfx {
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].position.x = value;
 		if (field == "position_y")
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].position.y = value;
+		if (field == "position_z")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].position.z = value;
 		if (field == "frame_width")
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].frame_size.x = value;
 		if (field == "frame_height")
@@ -8337,7 +8340,7 @@ namespace tfx {
 		work_entry.spawn_start_index = AddRows(&pm.particle_array_buffers[pm.emitters.particles_index[work_entry.emitter_index]], work_entry.amount_to_spawn, true);
 		tfxEmissionType &emission_type = properties.emission_type[property_index];
 
-		if (!(state_flags & tfxEffectManagerFlags_update_age_only) && tfxNumberOfThreadsInAdditionToMain) {
+		if (!(pm.flags & tfxEffectManagerFlags_update_age_only) && tfxNumberOfThreadsInAdditionToMain) {
 			if (work_entry.amount_to_spawn > 0) {
 				if (emission_type == tfxPoint) {
 					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint3d);
@@ -8375,7 +8378,7 @@ namespace tfx {
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSpin3d);
 			}
 		}
-		else if (!(state_flags & tfxEffectManagerFlags_update_age_only)) {
+		else if (!(pm.flags & tfxEffectManagerFlags_update_age_only)) {
 			SpawnParticleAge(&pm.work_queue, &work_entry);
 			if (emission_type == tfxPoint) {
 				SpawnParticlePoint3d(&pm.work_queue, &work_entry);
