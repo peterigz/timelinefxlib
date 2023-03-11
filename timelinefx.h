@@ -593,7 +593,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectManagerFlags_dynamic_sprite_allocation = 1 << 7,
 		tfxEffectManagerFlags_3d_effects = 1 << 8,
 		tfxEffectManagerFlags_unordered = 1 << 9,
-		tfxEffectManagerFlags_ordered_by_age = 1 << 10
+		tfxEffectManagerFlags_ordered_by_age = 1 << 10,
+		tfxEffectManagerFlags_update_age_only = 1 << 10
 	};
 
 	enum tfxVectorAlignType {
@@ -724,7 +725,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEmitterStateFlags_is_area = 1 << 19,
 		tfxEmitterStateFlags_no_tween = 1 << 20,
 		tfxEmitterStateFlags_align_with_velocity = 1 << 21,
-		tfxEmitterStateFlags_is_sub_emitter = 1 << 22
+		tfxEmitterStateFlags_is_sub_emitter = 1 << 22,
 	};
 
 	enum tfxEffectStateFlags_ : unsigned int {
@@ -1107,6 +1108,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			memcpy(&data[current_size], &v, sizeof(v)); 
 			current_size++; return data[current_size - 1];
 		}
+		inline void			zero() { assert(capacity > 0); memset(data, 0, capacity * sizeof(T)); }
 		inline void         pop() { assert(current_size > 0); current_size--; }
 		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
 		inline void         push_front(const T& v) { if (current_size == 0) push_back(v); else insert(data, v); }
@@ -6035,6 +6037,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec2 scale;				//Scale
 	};
 
+	//When exporting effects as sprite data each frame gets frame meta containing information about the frame such as bounding box and sprite count/offset into the buffer
+	struct tfxFrameMeta {
+		tfxU32 frame_index;			//The index of the frame of animation
+		tfxU32 index_offset;		//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
+		tfxU32 sprite_count;		//The number of sprites in the frame
+		tfxVec3 corner1;			//Bounding box corner
+		tfxVec3 corner2;			//The bounding box can be used to decide if this frame needs to be drawn
+	};
+
 	struct tfxParticleSprite3d {	//80 bytes
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag
 		void *image_ptr;
@@ -6044,6 +6055,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
 		float stretch;
 		float intensity;
+	};
+
+	struct tfxSpriteData {
+		tfxParticleSprite3d *data;
+		tfxvec<tfxFrameMeta> frame_meta;
 	};
 
 	struct tfxComputeFXGlobalState {
@@ -6335,6 +6351,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//have access to the effect if you need it.
 		tfxU32 AddEffect(tfxEffectEmitter &effect, int buffer, int depth = 0, bool is_sub_effect = false, float add_delayed_spawning = 0);
 		tfxU32 AddEffect(tfxEffectTemplate &effect);
+		inline void UpdateAgeOnly(bool switch_on) { if (switch_on) flags |= tfxEffectManagerFlags_update_age_only; else flags &= ~tfxEffectManagerFlags_update_age_only; }
 		inline tfxU32 GetEffectSlot() {
 			if (!free_effects.empty()) {
 				return free_effects.pop_back();
