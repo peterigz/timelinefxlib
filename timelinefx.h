@@ -1923,7 +1923,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 capacity;							//The total capacity of the array in units of T
 
 		tfxArray() : allocator(NULL) { block = NULL; capacity = 0; block_index = tfxINVALID; }
-		tfxArray(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; capacity = 0; reserve(size); }
+		tfxArray(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; block_index = tfxINVALID; capacity = 0; reserve(size); }
 
 		inline tfxU32		size() { return capacity; }
 		inline const tfxU32	size() const { return capacity; }
@@ -1977,6 +1977,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			block = (T*)allocator->blocks[block_index].data;
 			return true;
 		}
+		inline void			zero() { assert(capacity > 0); memset(block, 0, capacity * sizeof(T)); }
 
 	};
 
@@ -6058,14 +6059,26 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	struct tfxSpriteData3d {
-		tfxParticleSprite3d *data;
-		tfxvec<tfxFrameMeta> frame_meta;
+		tfxU32 frame_count;
+		tfxParticleSprite3d *sprites;
+		tfxArray<tfxFrameMeta> frame_meta;
 	};
 
 	struct tfxSpriteData2d {
-		tfxParticleSprite3d *data;
-		tfxvec<tfxFrameMeta> frame_meta;
+		tfxU32 frame_count;
+		tfxParticleSprite2d *sprites;
+		tfxArray<tfxFrameMeta> frame_meta;
 	};
+
+	inline void FreeSpriteData(tfxSpriteData2d &sprite_data) {
+		tfxFREE(sprite_data.sprites);
+		sprite_data.frame_meta.free();
+	}
+
+	inline void FreeSpriteData(tfxSpriteData3d &sprite_data) {
+		tfxFREE(sprite_data.sprites);
+		sprite_data.frame_meta.free();
+	}
 
 	struct tfxComputeFXGlobalState {
 		tfxU32 start_index = 0;
@@ -6598,7 +6611,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxLibrary {
 		tfxMemoryArenaManager graph_node_allocator;
 		tfxMemoryArenaManager graph_lookup_allocator;
-		tfxMemoryArenaManager property_array_allocator;
+		tfxMemoryArenaManager sprite_data_allocator;
 		tfxSoABuffer emitter_properties_buffer;
 
 		tfxStorageMap<tfxEffectEmitter*> effect_paths;
@@ -6664,7 +6677,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			free_infos(tfxCONSTRUCTOR_VEC_INIT("free_infos"))
 		{}
 
-		//Todo: Inline a lot of these
 		//Free everything in the library
 		void Clear();
 		void Init();

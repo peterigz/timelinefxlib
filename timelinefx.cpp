@@ -2966,9 +2966,9 @@ namespace tfx {
 		pre_recorded_2d_effects.FreeAll();
 		pre_recorded_3d_effects.FreeAll();
 
-		property_array_allocator.FreeAll();
 		graph_node_allocator.FreeAll();
 		graph_lookup_allocator.FreeAll();
+		sprite_data_allocator.FreeAll();
 
 		free_global_graphs.free_all();
 		free_keyframe_graphs.free_all();
@@ -5681,8 +5681,8 @@ namespace tfx {
 		int uid = 0;
 		tfxU32 current_global_graph = 0;
 
-		lib.property_array_allocator = CreateArenaManager(tfxMegabyte(4));
 		lib.InitEmitterProperties();
+		lib.sprite_data_allocator = CreateArenaManager(tfxMegabyte(4));
 
 		if (!stats_struct) {
 			lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
