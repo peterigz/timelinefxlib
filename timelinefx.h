@@ -7540,6 +7540,41 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	/*
+	Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side SpriteDataEndIndex to create
+	a for loop to iterate over the sprites in a pre-recorded effect
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param frame			The index of the frame you want the offset for
+	* @param layer			The sprite layer 
+	* @returns				tfxU32 containing the index offset
+	*/
+	tfxAPI inline tfxU32 SpriteDataIndexOffset(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+		return sprite_data->frame_meta[frame].index_offset[layer];
+	}
+
+	/*
+	Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side SpriteDataIndexOffset to create
+	a for loop to iterate over the sprites in a pre-recorded effect
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param frame			The index of the frame you want the end index for
+	* @param layer			The sprite layer 
+	* @returns				tfxU32 containing the end offset
+	*/
+	tfxAPI inline tfxU32 SpriteDataEndIndex(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+		return sprite_data->frame_meta[frame].index_offset[layer] + sprite_data->frame_meta[frame].sprite_count[layer];
+	}
+
+	/*
+	Get the sprite by index from sprite data containing a pre-recorded effect. Can be used along side SpriteDataIndexOffset and SpriteDataEndIndex to create
+	a for loop to iterate over the sprites in a pre-recorded effect
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param index			The index of the sprite you want to retrieve
+	* @returns				tfxParticleSprite3d reference containing the sprite data for drawing
+	*/
+	tfxAPI inline tfxParticleSprite3d &SpriteDataSprite3d(tfxSpriteData *sprite_data, tfxU32 index) {
+		return *((tfxParticleSprite3d*)sprite_data->sprites + index);
+	}
+
+	/*
 	Set the position of a 2d effect
 	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
