@@ -594,7 +594,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectManagerFlags_3d_effects = 1 << 8,
 		tfxEffectManagerFlags_unordered = 1 << 9,
 		tfxEffectManagerFlags_ordered_by_age = 1 << 10,
-		tfxEffectManagerFlags_update_age_only = 1 << 11
+		tfxEffectManagerFlags_update_age_only = 1 << 11,
+		tfxEffectManagerFlags_single_threaded = 1 << 12
 	};
 
 	enum tfxVectorAlignType {
@@ -4558,7 +4559,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			ReSeed();
 		}
 
-		void ReSeed() { seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; Generate(); }
+		void ReSeed() { 
+			seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; Generate(); 
+		}
 		void ReSeed(uint64_t seed1, uint64_t seed2);
 
 		inline float Generate() {
@@ -6040,11 +6043,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	//When exporting effects as sprite data each frame gets frame meta containing information about the frame such as bounding box and sprite count/offset into the buffer
 	struct tfxFrameMeta {
-		tfxU32 frame_index;			//The index of the frame of animation
-		tfxU32 index_offset;		//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
-		tfxU32 sprite_count;		//The number of sprites in the frame
-		tfxVec3 corner1;			//Bounding box corner
-		tfxVec3 corner2;			//The bounding box can be used to decide if this frame needs to be drawn
+		tfxU32 frame_index;					//The index of the frame of animation
+		tfxU32 index_offset[tfxLAYERS];		//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
+		tfxU32 sprite_count[tfxLAYERS];		//The number of sprites in the frame
+		tfxVec3 corner1;					//Bounding box corner
+		tfxVec3 corner2;					//The bounding box can be used to decide if this frame needs to be drawn
 	};
 
 	struct tfxParticleSprite3d {	//80 bytes
@@ -6058,24 +6061,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float intensity;
 	};
 
-	struct tfxSpriteData3d {
+	struct tfxSpriteData {
 		tfxU32 frame_count;
-		tfxParticleSprite3d *sprites;
+		void *sprites;
 		tfxArray<tfxFrameMeta> frame_meta;
 	};
 
-	struct tfxSpriteData2d {
-		tfxU32 frame_count;
-		tfxParticleSprite2d *sprites;
-		tfxArray<tfxFrameMeta> frame_meta;
-	};
-
-	inline void FreeSpriteData(tfxSpriteData2d &sprite_data) {
-		tfxFREE(sprite_data.sprites);
-		sprite_data.frame_meta.free();
-	}
-
-	inline void FreeSpriteData(tfxSpriteData3d &sprite_data) {
+	inline void FreeSpriteData(tfxSpriteData &sprite_data) {
 		tfxFREE(sprite_data.sprites);
 		sprite_data.frame_meta.free();
 	}
@@ -6370,6 +6362,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 AddEffect(tfxEffectEmitter &effect, int buffer, int depth = 0, bool is_sub_effect = false, float add_delayed_spawning = 0);
 		tfxU32 AddEffect(tfxEffectTemplate &effect);
 		inline void UpdateAgeOnly(bool switch_on) { if (switch_on) flags |= tfxEffectManagerFlags_update_age_only; else flags &= ~tfxEffectManagerFlags_update_age_only; }
+		inline void ForceSingleThreaded(bool switch_on) { if (switch_on) flags |= tfxEffectManagerFlags_single_threaded; else flags &= ~tfxEffectManagerFlags_single_threaded; }
 		inline tfxU32 GetEffectSlot() {
 			if (!free_effects.empty()) {
 				return free_effects.pop_back();
@@ -6619,8 +6612,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxStorageMap<tfxImageData> particle_shapes;
 		tfxvec<tfxEffectEmitterInfo> effect_infos;
 		tfxEmitterPropertiesSoA emitter_properties;
-		tfxStorageMap<tfxSpriteData3d> pre_recorded_3d_effects;
-		tfxStorageMap<tfxSpriteData2d> pre_recorded_2d_effects;
+		tfxStorageMap<tfxSpriteData> pre_recorded_effects;
 
 		tfxvec<tfxGlobalAttributes> global_graphs;
 		tfxvec<tfxEmitterAttributes> emitter_attributes;
@@ -6787,6 +6779,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 CountOfFreeGraphs();
 	};
 
+	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect);
+	void RecordSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect);
+
 	struct tfxEffectTemplate {
 		tfxStorageMap<tfxEffectEmitter*> paths;
 		tfxEffectEmitter effect;
@@ -6826,6 +6821,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			assert(paths.ValidName(path));						//Path does not exist in library
 			assert(paths.At(path)->type == tfxEmitterType);		//Path must be a path to an emitter type
 		}
+
+		/*
+		Pre-record this effect into a sprite cache so that you can play the effect back without the need to actually caclulate particles in realtime.
+			* @param pm			Reference to a pm that will be used to run the particle simulation and record the sprite data
+			* @param path		const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
+			* / void RecordSpriteData3d(tfxParticleManager &pm, u32 frames, u32 start_frame, int extra_frames, u32 &largest_frame);
+		*/
+		tfxAPI void RecordSpriteData(tfxParticleManager &pm);
 
 		/*
 		Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager

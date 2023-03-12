@@ -2963,8 +2963,7 @@ namespace tfx {
 		}
 		effect_infos.free_all();
 		AddPreviewCameraSettings();
-		pre_recorded_2d_effects.FreeAll();
-		pre_recorded_3d_effects.FreeAll();
+		pre_recorded_effects.FreeAll();
 
 		graph_node_allocator.FreeAll();
 		graph_lookup_allocator.FreeAll();
@@ -5981,6 +5980,202 @@ namespace tfx {
 		}
 	}
 
+	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect) {
+
+	}
+
+	void RecordSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect) {
+		tfxSpriteDataSettings &anim = effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index];
+		tfxU32 frames = anim.frames;
+		tfxU32 start_frame = anim.frame_offset;
+		int extra_frames = anim.extra_frames_count;
+		tfxU32 largest_frame = anim.largest_frame;
+		tfxU32 frame = 0;
+		int extra_frame_count = 0;
+		tfxU32 offset = 0;
+		bool particles_started = false;
+		bool start_counting_extra_frames = false;
+
+		float update_freq = tfxUPDATE_FREQUENCY;
+		SetUpdateFrequency(60.f * anim.playback_speed);
+
+		tfxSpriteData *sprite_data = nullptr;
+		if (effect.library->pre_recorded_effects.ValidKey(effect.path_hash)) {
+			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
+			FreeSpriteData(*sprite_data);
+			sprite_data->frame_count = frames;
+			sprite_data->frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
+			sprite_data->frame_meta.zero();
+		}
+		else {
+			tfxSpriteData data;
+			data.frame_count = frames;
+			data.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
+			data.frame_meta.zero();
+			effect.library->pre_recorded_effects.Insert(effect.path_hash, data);
+			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
+		}
+
+		tfxArray<tfxFrameMeta> &frame_meta = sprite_data->frame_meta;
+
+		//First pass to count the number of sprites in each frame
+		pm.UpdateAgeOnly(false);
+		pm.ForceSingleThreaded(true);
+
+		pm.ClearAll();
+		effect.ReSeed(anim.seed);
+		tfxU32 preview_effect_index = pm.AddEffect(effect, pm.current_ebuff);
+		SetEffectPosition(&pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
+		Transform3d(pm.effects.world_rotations[preview_effect_index],
+			pm.effects.local_rotations[preview_effect_index],
+			pm.effects.scale[preview_effect_index],
+			pm.effects.world_position[preview_effect_index],
+			pm.effects.local_position[preview_effect_index],
+			pm.effects.translation[preview_effect_index],
+			pm.effects.matrix[preview_effect_index],
+			pm.effects.world_rotations[preview_effect_index],
+			pm.effects.scale[preview_effect_index],
+			pm.effects.world_position[preview_effect_index],
+			pm.effects.matrix[preview_effect_index]
+		);
+
+		tfxU32 total_sprites = 0;
+		while (frame < frames && offset < 99999) {
+			tfxU32 count_this_frame = 0;
+			pm.Update();
+			bool particles_processed_last_frame = false;
+
+			if (offset >= start_frame) {
+				for (tfxEachLayer) {
+					frame_meta[frame].sprite_count[layer] += pm.sprites3d[layer].size();
+					total_sprites += pm.sprites3d[layer].size();
+					particles_started |= frame_meta[frame].sprite_count[layer] > 0;
+					particles_processed_last_frame |= frame_meta[frame].sprite_count[layer] > 0;
+				}
+			}
+
+			offset++;
+
+			if (particles_started)
+				frame++;
+
+			if (anim.animation_flags & tfxAnimationFlags_loop && particles_started) {
+				if (frame == frames) {
+					frame = 0;
+					start_counting_extra_frames = true;
+				}
+				if (!particles_processed_last_frame)
+					break;
+			}
+			if (start_counting_extra_frames && extra_frame_count++ >= extra_frames)
+				pm.DisableSpawning(true);
+		}
+
+		tfxU32 last_count = 0;
+		for (auto &meta : frame_meta) {
+			for (tfxEachLayer) {
+				meta.index_offset[layer] = last_count;
+				last_count += meta.sprite_count[layer];
+			}
+		}
+
+		//std::cout << "Total Sprites: " << total_sprites << std::endl;
+
+		//for (auto &meta : frame_meta) {
+			//std::cout << meta.index_offset[0] << ", " << meta.sprite_count[0] << std::endl;
+		//}
+
+		pm.UpdateAgeOnly(false);
+
+		pm.ClearAll();
+		effect.ReSeed(anim.seed);
+		preview_effect_index = pm.AddEffect(effect, pm.current_ebuff);
+		SetEffectPosition(&pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
+		Transform3d(pm.effects.world_rotations[preview_effect_index],
+			pm.effects.local_rotations[preview_effect_index],
+			pm.effects.scale[preview_effect_index],
+			pm.effects.world_position[preview_effect_index],
+			pm.effects.local_position[preview_effect_index],
+			pm.effects.translation[preview_effect_index],
+			pm.effects.matrix[preview_effect_index],
+			pm.effects.world_rotations[preview_effect_index],
+			pm.effects.scale[preview_effect_index],
+			pm.effects.world_position[preview_effect_index],
+			pm.effects.matrix[preview_effect_index]
+		);
+
+		sprite_data->sprites = (tfxParticleSprite3d*)tfxALLOCATE(0, 0, sizeof(tfxParticleSprite3d) * total_sprites);
+
+		tfxvec<tfxParticleSprite3d> temp_sprites;
+		tfxvec<tfxU32> running_count[tfxLAYERS];
+
+		for (tfxEachLayer) {
+			running_count[layer].resize(frames);
+			running_count[layer].zero();
+		}
+
+		frame = 0;
+		offset = 0;
+		extra_frame_count = 0;
+		particles_started = false;
+		pm.DisableSpawning(false);
+		total_sprites = 0;
+
+		while (frame < frames && offset < 99999) {
+			tfxU32 count_this_frame = 0;
+			pm.Update();
+			bool particles_processed_last_frame = false;
+
+			if (offset >= start_frame) {
+				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+					if (running_count[layer][frame] > 0) {
+						temp_sprites.reserve(running_count[layer][frame]);
+						memcpy(temp_sprites.data, sprite_data->sprites, sizeof(tfxParticleSprite3d) * running_count[layer][frame]);
+					}
+					memcpy((tfxParticleSprite3d*)sprite_data->sprites + frame_meta[frame].index_offset[layer], pm.sprites3d[layer].data, sizeof(tfxParticleSprite3d) * pm.sprites3d[layer].size());
+					if (running_count[layer][frame] > 0) {
+						memcpy((tfxParticleSprite3d*)sprite_data->sprites + pm.sprites3d[layer].size(), temp_sprites.data, sizeof(tfxParticleSprite3d) * temp_sprites.size());
+					}
+					running_count[layer][frame] += pm.sprites3d[layer].size();
+					total_sprites += pm.sprites3d[layer].size();
+					particles_started |= frame_meta[frame].sprite_count[layer] > 0;
+					particles_processed_last_frame |= frame_meta[frame].sprite_count[layer] > 0;
+				}
+			}
+
+			offset++;
+
+			if (particles_started)
+				frame++;
+
+			if (anim.animation_flags & tfxAnimationFlags_loop && particles_started) {
+				if (frame == frames) {
+					frame = 0;
+					start_counting_extra_frames = true;
+				}
+				if (!particles_processed_last_frame)
+					break;
+			}
+			if (start_counting_extra_frames && extra_frame_count++ >= extra_frames)
+				pm.DisableSpawning(true);
+		}
+
+		//std::cout << "Total Sprites: " << total_sprites << std::endl;
+
+		SetUpdateFrequency(update_freq);
+		pm.DisableSpawning(false);
+		pm.ForceSingleThreaded(false);
+	}
+
+	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager &pm) {
+		if (effect.Is3DEffect()) {
+			RecordSpriteData3d(pm, effect);
+		}
+		else {
+			RecordSpriteData2d(pm, effect);
+		}
+	}
+
 	tfxParticleManager::~tfxParticleManager() {
 		FreeSoABuffer(&effect_buffers);
 		FreeSoABuffer(&emitter_buffers);
@@ -6352,7 +6547,7 @@ namespace tfx {
 						work_entry.start_index = bank.current_size - 1;
 						work_entry.emitter_index = index;
 						work_entry.pm = this;
-						if (tfxNumberOfThreadsInAdditionToMain) {
+						if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 							tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleAge);
 						}
 						else {
@@ -6407,7 +6602,7 @@ namespace tfx {
 				work_entry.current_buffer_index = layer;
 				work_entry.start_index = work_entry.amount_to_update - 1;
 				work_entry.end_index = 0;
-				if (tfxNumberOfThreadsInAdditionToMain) {
+				if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 					tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleOrderedAge);
 				}
 				else {
@@ -6479,7 +6674,7 @@ namespace tfx {
 						work_entry.pm = this;
 						work_entry.size = sprites3d[layer].current_size;
 						work_entry.particles = &particle_arrays[current_buffer_index];
-						if (tfxNumberOfThreadsInAdditionToMain > 0) {
+						if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
 							tfxAddWorkQueueEntry(&work_queue, &work_entry, InsertionSortSoAParticles);
 						}
 						else {
@@ -6539,7 +6734,7 @@ namespace tfx {
 
 		work_entry.sprites2d = &pm.sprites2d[work_entry.sprite_layer];
 
-		if (tfxNumberOfThreadsInAdditionToMain) {
+		if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered2d);
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSizeOrdered2d);
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered2d);
@@ -6563,7 +6758,7 @@ namespace tfx {
 
 		work_entry.sprites3d = &pm.sprites3d[work_entry.sprite_layer];
 
-		if (tfxNumberOfThreadsInAdditionToMain) {
+		if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered3d);
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSizeOrdered3d);
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered3d);
@@ -8342,7 +8537,7 @@ namespace tfx {
 		work_entry.spawn_start_index = AddRows(&pm.particle_array_buffers[pm.emitters.particles_index[work_entry.emitter_index]], work_entry.amount_to_spawn, true);
 		tfxEmissionType &emission_type = properties.emission_type[property_index];
 
-		if (!(pm.flags & tfxEffectManagerFlags_update_age_only) && tfxNumberOfThreadsInAdditionToMain) {
+		if (!(pm.flags & tfxEffectManagerFlags_update_age_only) && !(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			if (work_entry.amount_to_spawn > 0) {
 				if (emission_type == tfxPoint) {
 					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint3d);
@@ -8413,7 +8608,7 @@ namespace tfx {
 			SpawnParticleSpin3d(&pm.work_queue, &work_entry);
 		}
 		else {
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);
+			SpawnParticleAge(&pm.work_queue, &work_entry);
 		}
 
 		if (work_entry.amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
@@ -11024,7 +11219,7 @@ namespace tfx {
 		work_entry.sprites2d = &pm.sprites2d[work_entry.layer];
 
 		if (amount_to_update > 0) {
-			if (tfxNumberOfThreadsInAdditionToMain) {
+			if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition2d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize2d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor2d);
@@ -11072,7 +11267,7 @@ namespace tfx {
 		work_entry.sprites3d = &pm.sprites3d[work_entry.layer];
 
 		if (amount_to_update > 0) {
-			if (tfxNumberOfThreadsInAdditionToMain){
+			if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain){
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition3d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize3d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor3d);
