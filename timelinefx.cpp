@@ -6049,8 +6049,8 @@ namespace tfx {
 				for (tfxEachLayer) {
 					frame_meta[frame].sprite_count[layer] += pm.sprites3d[layer].size();
 					total_sprites += pm.sprites3d[layer].size();
-					particles_started |= frame_meta[frame].sprite_count[layer] > 0;
-					particles_processed_last_frame |= frame_meta[frame].sprite_count[layer] > 0;
+					particles_started = total_sprites > 0;
+					particles_processed_last_frame = total_sprites > 0;
 				}
 			}
 
@@ -6118,6 +6118,7 @@ namespace tfx {
 		offset = 0;
 		extra_frame_count = 0;
 		particles_started = false;
+		start_counting_extra_frames = false;
 		pm.DisableSpawning(false);
 		total_sprites = 0;
 
@@ -6130,16 +6131,16 @@ namespace tfx {
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 					if (running_count[layer][frame] > 0) {
 						temp_sprites.reserve(running_count[layer][frame]);
-						memcpy(temp_sprites.data, sprite_data->sprites, sizeof(tfxParticleSprite3d) * running_count[layer][frame]);
+						memcpy(temp_sprites.data, (tfxParticleSprite3d*)sprite_data->sprites + frame_meta[frame].index_offset[layer], sizeof(tfxParticleSprite3d) * running_count[layer][frame]);
 					}
 					memcpy((tfxParticleSprite3d*)sprite_data->sprites + frame_meta[frame].index_offset[layer], pm.sprites3d[layer].data, sizeof(tfxParticleSprite3d) * pm.sprites3d[layer].size());
 					if (running_count[layer][frame] > 0) {
-						memcpy((tfxParticleSprite3d*)sprite_data->sprites + pm.sprites3d[layer].size(), temp_sprites.data, sizeof(tfxParticleSprite3d) * temp_sprites.size());
+						memcpy((tfxParticleSprite3d*)sprite_data->sprites + frame_meta[frame].index_offset[layer] + pm.sprites3d[layer].size(), temp_sprites.data, sizeof(tfxParticleSprite3d) * running_count[layer][frame]);
 					}
 					running_count[layer][frame] += pm.sprites3d[layer].size();
 					total_sprites += pm.sprites3d[layer].size();
-					particles_started |= frame_meta[frame].sprite_count[layer] > 0;
-					particles_processed_last_frame |= frame_meta[frame].sprite_count[layer] > 0;
+					particles_started = total_sprites > 0;
+					particles_processed_last_frame = total_sprites > 0;
 				}
 			}
 
