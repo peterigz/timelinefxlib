@@ -3412,7 +3412,6 @@ namespace tfx {
 		names_and_types.Insert("image_start_frame", tfxFloat);
 		names_and_types.Insert("image_end_frame", tfxFloat);
 		names_and_types.Insert("image_frame_rate", tfxFloat);
-		names_and_types.Insert("playback_speed", tfxFloat);
 
 		names_and_types.Insert("emission_type", tfxSInt);
 		names_and_types.Insert("emission_direction", tfxSInt);
@@ -3463,6 +3462,7 @@ namespace tfx {
 		names_and_types.Insert("guaranteed_draw_order", tfxBool);
 
 		//Animation settings
+		names_and_types.Insert("playback_speed", tfxFloat);
 		names_and_types.Insert("animation_magenta_mask", tfxBool);
 		names_and_types.Insert("frames", tfxUint);
 		names_and_types.Insert("current_frame", tfxUint);
@@ -3480,6 +3480,12 @@ namespace tfx {
 		names_and_types.Insert("seed", tfxUint);
 		names_and_types.Insert("zoom", tfxFloat);
 		names_and_types.Insert("scale", tfxFloat);
+		names_and_types.Insert("sprite_data_seed", tfxUint);
+		names_and_types.Insert("sprite_data_flags", tfxUint);
+		names_and_types.Insert("sprite_data_frames", tfxUint);
+		names_and_types.Insert("sprite_data_frame_offset", tfxUint);
+		names_and_types.Insert("sprite_data_extra_frames_count", tfxUint);
+		names_and_types.Insert("sprite_data_playback_speed", tfxFloat);
 		names_and_types.Insert("color_option", tfxSInt);
 		names_and_types.Insert("export_option", tfxSInt);
 		names_and_types.Insert("export_with_transparency", tfxBool);
@@ -3710,6 +3716,16 @@ namespace tfx {
 			effect.sort_passes = tfxMin(5, value);
 		if (field == "animation_flags")
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].animation_flags = value;
+		if (field == "sprite_data_flags")
+			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].animation_flags = value;
+		if (field == "sprite_data_seed")
+			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].seed = value;
+		if (field == "sprite_data_frame_offset")
+			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].frame_offset = value;
+		if (field == "sprite_data_frames")
+			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].frames = value;
+		if (field == "sprite_data_extra_frames_count")
+			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].extra_frames_count = value;
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value) {
 		tfxEmitterPropertiesSoA &emitter_properties = effect.library->emitter_properties;
@@ -3821,6 +3837,8 @@ namespace tfx {
 			emitter_properties.angle_offsets[effect.property_index].pitch = value;
 		if (field == "angle_offset_yaw")
 			emitter_properties.angle_offsets[effect.property_index].yaw = value;
+		if (field == "sprite_data_playback_speed")
+			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].playback_speed = value;
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value) {
 		if (field == "loop")
@@ -5785,7 +5803,7 @@ namespace tfx {
 					SplitStringStack(line.c_str(), pair, 44);
 					if (pair.size() < 2) {
 						error |= tfxErrorCode_some_data_not_loaded;
-						break;
+						continue;
 					}
 				}
 

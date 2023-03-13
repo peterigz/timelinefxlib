@@ -7548,6 +7548,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @returns				tfxU32 containing the index offset
 	*/
 	tfxAPI inline tfxU32 SpriteDataIndexOffset(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+		assert(frame < sprite_data->frame_meta.size());			//frame is outside index range
+		assert(layer < tfxLAYERS);								//layer is outside index range
 		return sprite_data->frame_meta[frame].index_offset[layer];
 	}
 
@@ -7560,6 +7562,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @returns				tfxU32 containing the end offset
 	*/
 	tfxAPI inline tfxU32 SpriteDataEndIndex(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+		assert(frame < sprite_data->frame_meta.size());			//frame is outside index range
+		assert(layer < tfxLAYERS);								//layer is outside index range
 		return sprite_data->frame_meta[frame].index_offset[layer] + sprite_data->frame_meta[frame].sprite_count[layer];
 	}
 
