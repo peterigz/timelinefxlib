@@ -760,7 +760,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxAnimationFlags_loop = 1 << 0,
 		tfxAnimationFlags_seamless = 1 << 1,
 		tfxAnimationFlags_needs_recording = 1 << 2,
-		tfxAnimationFlags_export_with_transparency = 1 << 3
+		tfxAnimationFlags_export_with_transparency = 1 << 3,
+		tfxAnimationFlags_auto_set_length = 1 << 4
 	};
 
 	//-----------------------------------------------------------
@@ -1052,6 +1053,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		inline bool			empty() { return current_size == 0; }
 		inline tfxU32		size() { return current_size; }
 		inline const tfxU32	size() const { return current_size; }
+		inline tfxU32		size_in_bytes() { return current_size * sizeof(T); }
+		inline const tfxU32	size_in_bytes() const { return current_size * sizeof(T); }
 		inline T&           operator[](tfxU32 i) { return data[i]; }
 		inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 		inline T&           ts_at(tfxU32 i) { while (locked > 0); return data[i]; }

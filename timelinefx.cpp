@@ -6017,24 +6017,11 @@ namespace tfx {
 		float update_freq = tfxUPDATE_FREQUENCY;
 		SetUpdateFrequency(60.f * (anim.playback_speed ? anim.playback_speed : 1.f));
 
-		tfxSpriteData *sprite_data = nullptr;
-		if (effect.library->pre_recorded_effects.ValidKey(effect.path_hash)) {
-			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
-			FreeSpriteData(*sprite_data);
-			sprite_data->frame_count = frames;
-			sprite_data->frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
-			sprite_data->frame_meta.zero();
+		bool auto_set_length = false;
+		if (anim.animation_flags & tfxAnimationFlags_auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && effect.IsFinite()) {
+			frames = 99999;
+			auto_set_length = true;
 		}
-		else {
-			tfxSpriteData data;
-			data.frame_count = frames;
-			data.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
-			data.frame_meta.zero();
-			effect.library->pre_recorded_effects.Insert(effect.path_hash, data);
-			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
-		}
-
-		tfxArray<tfxFrameMeta> &frame_meta = sprite_data->frame_meta;
 
 		//First pass to count the number of sprites in each frame
 		pm.UpdateAgeOnly(false);
@@ -6058,18 +6045,31 @@ namespace tfx {
 		);
 
 		tfxU32 total_sprites = 0;
+		tfxvec<tfxFrameMeta> tmp_frame_meta;
+		tfxU32 sprites_in_layers = 0;
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
 			pm.Update();
 			bool particles_processed_last_frame = false;
 
 			if (offset >= start_frame) {
+				sprites_in_layers = 0;
 				for (tfxEachLayer) {
-					frame_meta[frame].sprite_count[layer] += pm.sprites3d[layer].size();
+					if (frame >= tmp_frame_meta.size()) {
+						tfxFrameMeta meta;
+						memset(&meta, 0, sizeof(tfxFrameMeta));
+						tmp_frame_meta.push_back(meta);
+					}
+					tmp_frame_meta[frame].sprite_count[layer] += pm.sprites3d[layer].size();
 					total_sprites += pm.sprites3d[layer].size();
+					sprites_in_layers += pm.sprites3d[layer].size();
 					particles_started = total_sprites > 0;
 					particles_processed_last_frame = total_sprites > 0;
 				}
+			}
+
+			if (auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && particles_started && sprites_in_layers == 0) {
+				break;
 			}
 
 			offset++;
@@ -6088,6 +6088,30 @@ namespace tfx {
 			if (start_counting_extra_frames && extra_frame_count++ >= extra_frames)
 				pm.DisableSpawning(true);
 		}
+
+		frames = tmp_frame_meta.size();
+		anim.frames = frames;
+
+		tfxSpriteData *sprite_data = nullptr;
+		if (effect.library->pre_recorded_effects.ValidKey(effect.path_hash)) {
+			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
+			FreeSpriteData(*sprite_data);
+			sprite_data->frame_count = frames;
+			sprite_data->frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
+			sprite_data->frame_meta.zero();
+		}
+		else {
+			tfxSpriteData data;
+			data.frame_count = frames;
+			data.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
+			data.frame_meta.zero();
+			effect.library->pre_recorded_effects.Insert(effect.path_hash, data);
+			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
+		}
+
+		tfxArray<tfxFrameMeta> &frame_meta = sprite_data->frame_meta;
+		memcpy(frame_meta.block, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
+		tmp_frame_meta.free_all();
 
 		tfxU32 last_count = 0;
 		for (auto &meta : frame_meta) {
