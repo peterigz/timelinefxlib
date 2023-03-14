@@ -1377,13 +1377,14 @@ namespace tfx {
 		}
 	}
 
-	bool tfxEffectEmitter::IsFiniteEffect() {
+	bool tfxEffectEmitter::IsFinite() {
 		for (auto &e : GetInfo().sub_effectors) {
-			if (e.property_flags & tfxEmitterPropertyFlags_single)
-				return true;
 			float qty = e.library->emitter_attributes[e.emitter_attributes].base.amount.GetLastValue() + e.library->emitter_attributes[e.emitter_attributes].variation.amount.GetLastValue();
-			if (!(e.property_flags & tfxEmitterPropertyFlags_single) && qty > 0)
+			if (!(e.property_flags & tfxEmitterPropertyFlags_single) && qty > 0) 
 				return false;
+			else if (e.property_flags & tfxEmitterPropertyFlags_single && e.GetProperties().single_shot_limit[e.property_index] == 0)
+				return false;
+
 		}
 		return true;
 	}
