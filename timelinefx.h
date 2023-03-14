@@ -5820,7 +5820,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		void EnableEmitter();
 		void DisableAllEmitters();
 		void DisableAllEmittersExcept(tfxEffectEmitter &emitter);
-		bool IsFiniteEffect();
+		bool IsFinite();
 		void FlagAs3D(bool flag);
 		bool Is3DEffect();
 		tfxU32 CountAllLookupValues();
