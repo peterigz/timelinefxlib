@@ -2851,7 +2851,7 @@ namespace tfx {
 		//a.camera_settings.camera_isometric_scale = 5.f;
 		//a.camera_settings.camera_hide_floor = false;
 		sprite_data_settings.push_back(a);
-		effect.GetInfo().sprite_data_settings_index = sprite_sheet_settings.size() - 1;
+		effect.GetInfo().sprite_data_settings_index = sprite_data_settings.size() - 1;
 		return effect.GetInfo().sprite_data_settings_index;
 	}
 
@@ -6007,7 +6007,6 @@ namespace tfx {
 		tfxU32 frames = anim.frames;
 		tfxU32 start_frame = anim.frame_offset;
 		int extra_frames = anim.extra_frames_count;
-		tfxU32 largest_frame = anim.largest_frame;
 		tfxU32 frame = 0;
 		int extra_frame_count = 0;
 		tfxU32 offset = 0;
@@ -6015,7 +6014,7 @@ namespace tfx {
 		bool start_counting_extra_frames = false;
 
 		float update_freq = tfxUPDATE_FREQUENCY;
-		SetUpdateFrequency(60.f * anim.playback_speed);
+		SetUpdateFrequency(60.f * (anim.playback_speed ? anim.playback_speed : 1.f));
 
 		tfxSpriteData *sprite_data = nullptr;
 		if (effect.library->pre_recorded_effects.ValidKey(effect.path_hash)) {
