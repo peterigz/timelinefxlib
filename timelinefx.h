@@ -3369,6 +3369,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return to * tween + from * (1.f - tween);
 	}
 
+	inline tfxRGBA8 InterpolateRGBA(float tween, tfxRGBA8 from, tfxRGBA8 to) {
+		tfxRGBA8 out;
+		out.r = char((float)to.r * tween + (float)from.r * (1 - tween));
+		out.g = char((float)to.g * tween + (float)from.g * (1 - tween));
+		out.b = char((float)to.b * tween + (float)from.b * (1 - tween));
+		out.a = char((float)to.a * tween + (float)from.a * (1 - tween));
+		return out;
+	}
+
 	inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &to) {
 		__m128 l4 = _mm_set_ps1(tween);
 		__m128 l4minus1 = _mm_set_ps1(1.f - tween);
@@ -3384,7 +3393,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	inline float Interpolatef(float tween, float from, float to) {
-		return from * tween + to * (1.f - tween);
+		return to * tween + from * (1.f - tween);
 	}
 
 	typedef union {
@@ -5261,6 +5270,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxSpriteDataSettings {
 		int frames;
 		int current_frame;
+		float current_time;
+		float animation_time;
 		int frame_offset;
 		int extra_frames_count;
 		tfxU32 seed;
@@ -6061,11 +6072,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec2 handle;				//Image handle offset of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
 		float stretch;
-		float intensity;
+		float intensity;			
+		tfxU32 captured_index;
 	};
 
 	struct tfxSpriteData {
 		tfxU32 frame_count;
+		float animation_length_in_time;		//measured in millesecs
 		void *sprites;
 		tfxArray<tfxFrameMeta> frame_meta;
 	};

@@ -6090,24 +6090,28 @@ namespace tfx {
 		}
 
 		frames = tmp_frame_meta.size();
-		anim.frames = frames;
 
 		tfxSpriteData *sprite_data = nullptr;
 		if (effect.library->pre_recorded_effects.ValidKey(effect.path_hash)) {
 			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
 			FreeSpriteData(*sprite_data);
 			sprite_data->frame_count = frames;
+			sprite_data->animation_length_in_time = frames * tfxFRAME_LENGTH;
 			sprite_data->frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
 			sprite_data->frame_meta.zero();
 		}
 		else {
 			tfxSpriteData data;
 			data.frame_count = frames;
+			data.animation_length_in_time = frames * tfxFRAME_LENGTH;
 			data.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
 			data.frame_meta.zero();
 			effect.library->pre_recorded_effects.Insert(effect.path_hash, data);
 			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
 		}
+
+		anim.frames = frames;
+		anim.animation_time = sprite_data->animation_length_in_time;
 
 		tfxArray<tfxFrameMeta> &frame_meta = sprite_data->frame_meta;
 		memcpy(frame_meta.block, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
@@ -7585,17 +7589,18 @@ namespace tfx {
 			tfxLibrary *library = pm.emitters.library[parent_index];
 
 			const tfxU32 property_index = work_entry->pm->emitters.properties_index[parent_index];
-			tfxImageData *image = library->emitter_properties.image[property_index];
+			const tfxImageData *image = library->emitter_properties.image[property_index];
 			const tfxBillboardingOptions billboard_option = library->emitter_properties.billboard_option[property_index];
-			float image_frame_rate = pm.emitters.image_frame_rate[parent_index];
-			float end_frame = pm.emitters.end_frame[parent_index];
-			tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[parent_index];
+			const float image_frame_rate = pm.emitters.image_frame_rate[parent_index];
+			const float end_frame = pm.emitters.end_frame[parent_index];
+			const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[parent_index];
 			const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[parent_index];
 
 			float &image_frame = bank.image_frame[index];
 			tfxU32 &sprites_index = bank.sprite_index[index];
-			sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index;
-			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
+			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index];
+			s.captured_index = sprites_index;
+			sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index++;
 
 			//----Image animation
 			image_frame += image_frame_rate * tfxUPDATE_TIME;
@@ -8754,6 +8759,8 @@ namespace tfx {
 
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			float &image_frame = entry->particle_data->image_frame[index];
+			tfxU32 &sprites_index = entry->particle_data->sprite_index[index];
+			sprites_index = tfxINVALID;
 
 			//----Image
 			//data.image = GetProperties().image;
@@ -11215,8 +11222,9 @@ namespace tfx {
 
 			float &image_frame = bank.image_frame[index];
 			tfxU32 &sprites_index = bank.sprite_index[index];
-			sprites_index = (work_entry->layer << 28) + running_sprite_index;
-			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
+			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index];
+			s.captured_index = sprites_index;
+			sprites_index = (work_entry->layer << 28) + running_sprite_index++;
 
 			//----Image animation
 			image_frame += image_frame_rate * tfxUPDATE_TIME;
