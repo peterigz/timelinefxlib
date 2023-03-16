@@ -6112,6 +6112,7 @@ namespace tfx {
 
 		anim.frames = frames;
 		anim.animation_time = sprite_data->animation_length_in_time;
+		sprite_data->frame_compression = anim.playback_speed;
 
 		tfxArray<tfxFrameMeta> &frame_meta = sprite_data->frame_meta;
 		memcpy(frame_meta.block, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
@@ -6150,7 +6151,9 @@ namespace tfx {
 			pm.effects.matrix[preview_effect_index]
 		);
 
-		sprite_data->sprites = (tfxParticleSprite3d*)tfxALLOCATE(0, 0, sizeof(tfxParticleSprite3d) * total_sprites);
+		sprite_data->total_sprites = total_sprites;
+		sprite_data->total_memory_for_sprites = total_sprites * sizeof(tfxParticleSprite3d);
+		sprite_data->sprites = (tfxParticleSprite3d*)tfxALLOCATE(0, 0, sprite_data->total_memory_for_sprites);
 
 		tfxvec<tfxParticleSprite3d> temp_sprites;
 		tfxvec<tfxU32> running_count[tfxLAYERS];

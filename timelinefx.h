@@ -6064,7 +6064,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 corner2;					//The bounding box can be used to decide if this frame needs to be drawn
 	};
 
-	struct tfxParticleSprite3d {	//80 bytes
+	struct tfxParticleSprite3d {	//80 bytes	48 byte target for sprite data
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag
 		void *image_ptr;
 		tfxSpriteTransform3d transform;
@@ -6078,7 +6078,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxSpriteData {
 		tfxU32 frame_count;
+		float frame_compression;
 		float animation_length_in_time;		//measured in millesecs
+		tfxU32 total_sprites;
+		tfxU32 total_memory_for_sprites;
 		void *sprites;
 		tfxArray<tfxFrameMeta> frame_meta;
 	};
