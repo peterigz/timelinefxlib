@@ -2675,6 +2675,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
 		tfxVec4(tfxVec2 vec1, tfxVec2 vec2) : x(vec1.x), y(vec1.y), z(vec2.x), w(vec2.y) {}
 		tfxVec4(tfxVec3 vec) : x(vec.x), y(vec.y), z(vec.z), w(0.f) {}
+		tfxVec4(tfxVec3 vec, float _w) : x(vec.x), y(vec.y), z(vec.z), w(_w) {}
 
 		inline tfxVec2 xy() { return tfxVec2(x, y); }
 		inline tfxVec2 zw() { return tfxVec2(z, w); }
@@ -3361,6 +3362,34 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	}
 
+	inline tfxUInt10bit UintToPacked10bit(tfxU32 in) {
+		tfxUInt10bit out;
+		out.data.x = (in & 0x3FF);
+		out.data.y = ((in >> 10) & 0x3FF);
+		out.data.z = ((in >> 20) & 0x3FF);
+		out.data.w = ((in >> 30) & 0x3);
+		return out;
+	}
+
+	inline tfxVec4 UnPack10bit(tfxU32 in) {
+		tfxUInt10bit unpack;
+		unpack.pack = in;
+		tfxVec3 result(unpack.data.z, unpack.data.y, unpack.data.x);
+		result = Clamp(-1.f, 1.f, result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f));
+		return tfxVec4(result, (float)unpack.data.w);
+	}
+
+	inline tfxVec3 UnPack10bitVec3(tfxU32 in) {
+		tfxUInt10bit unpack;
+		unpack.pack = in;
+		tfxVec3 result(unpack.data.z, unpack.data.y, unpack.data.x);
+		return Clamp(-1.f, 1.f, result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f));
+	}
+
+	inline tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
+		return ((in >> 30) & 0x3);
+	}
+
 	inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
 		return to * tween + from * (1.f - tween);
 	}
@@ -3376,6 +3405,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		out.b = char((float)to.b * tween + (float)from.b * (1 - tween));
 		out.a = char((float)to.a * tween + (float)from.a * (1 - tween));
 		return out;
+	}
+
+	inline tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to) {
+		tfxVec3 fromf = UnPack10bitVec3(from);
+		tfxVec3 tof = UnPack10bitVec3(to);
+		return Pack10bit(InterpolateVec3(tween, fromf, tof), (from >> 30) & 0x3);
 	}
 
 	inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &to) {
