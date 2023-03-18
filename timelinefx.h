@@ -3374,7 +3374,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	inline tfxVec4 UnPack10bit(tfxU32 in) {
 		tfxUInt10bit unpack;
 		unpack.pack = in;
-		tfxVec3 result(unpack.data.z, unpack.data.y, unpack.data.x);
+		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
 		result = Clamp(-1.f, 1.f, result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f));
 		return tfxVec4(result, (float)unpack.data.w);
 	}
@@ -3382,7 +3382,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	inline tfxVec3 UnPack10bitVec3(tfxU32 in) {
 		tfxUInt10bit unpack;
 		unpack.pack = in;
-		tfxVec3 result(unpack.data.z, unpack.data.y, unpack.data.x);
+		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
 		return Clamp(-1.f, 1.f, result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f));
 	}
 

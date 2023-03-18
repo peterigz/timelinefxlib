@@ -6064,7 +6064,7 @@ namespace tfx {
 					total_sprites += pm.sprites3d[layer].size();
 					sprites_in_layers += pm.sprites3d[layer].size();
 					particles_started = total_sprites > 0;
-					particles_processed_last_frame = total_sprites > 0;
+					particles_processed_last_frame |= pm.sprites3d[layer].size() > 0;
 				}
 			}
 
@@ -6170,6 +6170,7 @@ namespace tfx {
 		start_counting_extra_frames = false;
 		pm.DisableSpawning(false);
 		total_sprites = 0;
+		tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
 
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
@@ -6178,18 +6179,36 @@ namespace tfx {
 
 			if (offset >= start_frame) {
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-					if (running_count[layer][frame] > 0) {
+					if (running_count[layer][frame] > 0 && pm.sprites3d[layer].size() > 0) {
 						temp_sprites.reserve(running_count[layer][frame]);
 						memcpy(temp_sprites.data, (tfxParticleSprite3d*)sprite_data->sprites + frame_meta[frame].index_offset[layer], sizeof(tfxParticleSprite3d) * running_count[layer][frame]);
+						temp_sprites.current_size = running_count[layer][frame];
+						if (captured_offset[layer] > 0) {
+							for (auto &s : temp_sprites) {
+								if(s.captured_index != tfxINVALID)
+									s.captured_index += captured_offset[layer];
+							}
+						}
+					}
+					else if (captured_offset[layer] > 0 && pm.sprites3d[layer].size() == 0) {
+						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
+							tfxParticleSprite3d &s = SpriteDataSprite3d(sprite_data, index);
+							if(s.captured_index != tfxINVALID)
+								SpriteDataSprite3d(sprite_data, index).captured_index += captured_offset[layer];
+						}
 					}
 					memcpy((tfxParticleSprite3d*)sprite_data->sprites + frame_meta[frame].index_offset[layer], pm.sprites3d[layer].data, sizeof(tfxParticleSprite3d) * pm.sprites3d[layer].size());
-					if (running_count[layer][frame] > 0) {
-						memcpy((tfxParticleSprite3d*)sprite_data->sprites + frame_meta[frame].index_offset[layer] + pm.sprites3d[layer].size(), temp_sprites.data, sizeof(tfxParticleSprite3d) * running_count[layer][frame]);
+					if (running_count[layer][frame] > 0 && pm.sprites3d[layer].size() > 0) {
+						memcpy((tfxParticleSprite3d*)sprite_data->sprites + frame_meta[frame].index_offset[layer] + pm.sprites3d[layer].size(), temp_sprites.data, temp_sprites.size_in_bytes());
+						captured_offset[layer] = pm.sprites3d[layer].size();
+					}
+					else if (pm.sprites3d[layer].size() == 0) {
+						captured_offset[layer] = 0;
 					}
 					running_count[layer][frame] += pm.sprites3d[layer].size();
 					total_sprites += pm.sprites3d[layer].size();
 					particles_started = total_sprites > 0;
-					particles_processed_last_frame = total_sprites > 0;
+					particles_processed_last_frame |= pm.sprites3d[layer].size() > 0;
 				}
 			}
 
