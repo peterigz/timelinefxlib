@@ -7491,7 +7491,7 @@ namespace tfx {
 				alignment_vector = mmTransformVector(e_matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
 			}
 
-			s.transform.captured_position = captured_position;
+			//s.transform.captured_position = captured_position;
 			alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
 			s.alignment = Pack10bit(alignment_vector, billboard_option & 0x00000003);
 			s.stretch = velocity_normal.w;
@@ -7546,7 +7546,7 @@ namespace tfx {
 
 			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
 			s.transform.scale = scale * overal_scale;
-			s.handle = image_handle;
+			//s.handle = image_handle;
 		}
 
 	}
@@ -7631,7 +7631,7 @@ namespace tfx {
 			image_frame = std::fmodf(image_frame, end_frame + 1);
 
 			s.image_frame_plus = (billboard_option << 24) + (tfxU32)image_frame;
-			s.image_ptr = image->ptr;
+			//s.image_ptr = image->ptr;
 		}
 
 	}
@@ -10981,7 +10981,7 @@ namespace tfx {
 				alignment_vector = mmTransformVector(e_matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
 			}
 
-			s.transform.captured_position = captured_position;
+			//s.transform.captured_position = captured_position;
 			alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
 			s.alignment = Pack10bit(alignment_vector, billboard_option & 0x00000003);
 			s.stretch = velocity_normal.w;
@@ -11173,7 +11173,7 @@ namespace tfx {
 
 			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
 			s.transform.scale = scale * overal_scale;
-			s.handle = image_handle;
+			//s.handle = image_handle;
 		}
 
 	}
@@ -11254,8 +11254,8 @@ namespace tfx {
 			image_frame = (emitter_flags & tfxEmitterStateFlags_play_once) && image_frame < 0 ? image_frame = 0 : image_frame;
 			image_frame = std::fmodf(image_frame, end_frame + 1);
 
-			s.image_frame_plus = (billboard_option << 24) + (tfxU32)image_frame;
-			s.image_ptr = image->ptr;
+			s.image_frame_plus = (billboard_option << 24) + ((tfxU32)image_frame << 16) + (property_index);
+			//s.image_ptr = image->ptr;
 		}
 
 	}

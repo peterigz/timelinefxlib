@@ -199,6 +199,8 @@ typedef long long tfxS64;
 typedef tfxU32 tfxEffectID;
 typedef unsigned long long tfxKey;
 typedef tfxU32 tfxParticleID;
+typedef short tfxShort;
+typedef unsigned short tfxUShort;
 
 inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index) {
 	return ((bank_index & 0x00000FFF) << 20) + particle_index;
@@ -577,8 +579,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	enum tfxBillboardingOptions {
 		tfxBillboarding = 0,
-		tfxBillboarding_disabled = 1,
-		tfxBillboarding_disabled_align = 2,
+		tfxBillboarding_disabled = 1 << 0,
+		tfxBillboarding_disabled_align = 1 << 1,
 		tfxBillboarding_align = 1 << 2 
 	};
 
@@ -3375,7 +3377,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxUInt10bit unpack;
 		unpack.pack = in;
 		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-		result = Clamp(-1.f, 1.f, result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f));
+		result = result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
 		return tfxVec4(result, (float)unpack.data.w);
 	}
 
@@ -3383,7 +3385,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxUInt10bit unpack;
 		unpack.pack = in;
 		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-		return Clamp(-1.f, 1.f, result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f));
+		return result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
 	}
 
 	inline tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
@@ -6085,7 +6087,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	struct tfxSpriteTransform3d {
 		tfxVec3 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
-		tfxVec3 captured_position;	//For interpolation
+		//tfxVec3 captured_position;	//For interpolation
 		tfxVec3 rotations;			//Rotations of the sprite
 		tfxVec2 scale;				//Scale
 	};
@@ -6099,16 +6101,26 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 corner2;					//The bounding box can be used to decide if this frame needs to be drawn
 	};
 
-	struct tfxParticleSprite3d {	//80 bytes	48 byte target for sprite data
-		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag
-		void *image_ptr;
+	struct tfxParticleSprite3d {	//60 bytes
+		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
+		tfxU32 captured_index;
 		tfxSpriteTransform3d transform;
 		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-		tfxVec2 handle;				//Image handle offset of the sprite
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
 		float stretch;
 		float intensity;			
+	};
+
+	struct tfxCompactSprite3d {		//60 bytes
+		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 captured_index;
+		tfxVec3 position;
+		tfxVec3 rotations;
+		tfxVec2 scale;
+		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
+		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
+		float stretch;
+		float intensity;			
 	};
 
 	struct tfxSpriteData {
@@ -6118,6 +6130,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
 		void *sprites;
+		tfxArray<void*> image_ptrs;
+		tfxArray<tfxVec2> handles;
 		tfxArray<tfxFrameMeta> frame_meta;
 	};
 
