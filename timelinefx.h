@@ -6000,76 +6000,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	//Initial particle struct, looking to optimise this and make as small as possible
-	//These are spawned by effector emitter types
-	//Particles are stored in the particle manager particle buffer.
-	struct tfxWideParticleData {
-		//Updated every frame
-		tfxWideVec3 local_position;			//The local position of the particle, relative to the emitter.
-		tfxWideVec3 local_rotations;
-		tfxWideVec3 captured_position;
-		//Read only when ControlParticle is called, only written to at spawn time
-		tfxWideVec2 base_size;
-		tfxWideFloat base_velocity;
-		tfxWideFloat base_spin;
-		tfxWideFloat base_weight;
-		tfxWideVec3 velocity_normal;		//Current velocity direction, with stretch factor in w
-		tfxWideFloat stretch;				//Higer numbers means random movement is less uniform
-		tfxWideFloat noise_offset;			//Higer numbers means random movement is less uniform
-		tfxWideFloat noise_resolution;		//Higer numbers means random movement is more uniform
-		tfxParticleFlags flags;				//state_flags for different states
-		//Updated everyframe
-		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
-		tfxWideFloat max_age;				//max age before the particle expires
-		tfxU32 single_loop_count;			//The number of times a single particle has looped over
-		tfxWideFloat image_frame;			//Current frame of the image if it's an animation
-		tfxWideFloat weight_acceleration;	//The current amount of gravity applied to the y axis of the particle each frame
-		tfxWideFloat intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
-		tfxWideFloat depth;
-		tfxRGBA8 color;						//Colour of the particle
-	};
-
-	struct tfxWideParticlePosition {
-		tfxWideVec3 local_position;			//The local position of the particle, relative to the emitter.
-	};
-
-	struct tfxWideParticleAge {
-		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
-		tfxWideFloat max_age;				//max age before the particle expires
-	};
-
-	struct tfxWideParticle {
-		tfxParticle *next_ptr[tfxDataWidth];
-		tfxEffectEmitter *parent[tfxDataWidth];
-		tfxU32 sprite_index[tfxDataWidth];
-		tfxU32 prev_index[tfxDataWidth];
-		tfxWideParticleData data;
-	};
-
-	inline void StoreLocalPositionX(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_position.x) + slot) = value;
-	}
-
-	inline void StoreLocalPositionY(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_position.y) + slot) = value;
-	}
-
-	inline void StoreLocalPositionZ(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_position.z) + slot) = value;
-	}
-
-	inline void StoreLocalRotationPitch(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_rotations.pitch) + slot) = value;
-	}
-
-	inline void StoreLocalRotationRoll(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_rotations.roll) + slot) = value;
-	}
-
-	inline void StoreLocalRotationYaw(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_rotations.yaw) + slot) = value;
-	}
-
 	struct tfxSpriteTransform2d {
 		tfxVec2 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
 		tfxVec2 captured_position;
@@ -6112,16 +6042,16 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float intensity;			
 	};
 
-	struct tfxCompactSprite3d {		//60 bytes
-		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
-		tfxU32 captured_index;
-		tfxVec3 position;
-		tfxVec3 rotations;
-		tfxVec2 scale;
-		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
-		float stretch;
-		float intensity;			
+	struct tfxSIMDSprite3d {		//60 bytes
+		tfxWideInt image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
+		tfxWideInt captured_index;
+		tfxWideInt alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
+		tfxWideInt color;				//The color tint of the sprite and blend factor in a
+		tfxWideFloat stretch;
+		tfxWideFloat intensity;			
+		tfxWideVec3 position;
+		tfxWideVec3 rotations;
+		tfxWideVec2 scale;
 	};
 
 	struct tfxSpriteData {
@@ -6500,6 +6430,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 		tfxAPI inline tfxParticleSprite3d &GetCapturedSprite3d(tfxU32 layer, tfxU32 index) {
 			return sprites3d[!current_sprite_buffer][layer][index];
+		}
+		tfxAPI inline tfxVec3 &GetCapturedSprite3dPosition(tfxU32 layer, tfxU32 index) {
+			return sprites3d[!current_sprite_buffer][layer][index].transform.position;
 		}
 
 		//Internal use only
