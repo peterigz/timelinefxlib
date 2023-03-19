@@ -597,7 +597,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEffectManagerFlags_unordered = 1 << 9,
 		tfxEffectManagerFlags_ordered_by_age = 1 << 10,
 		tfxEffectManagerFlags_update_age_only = 1 << 11,
-		tfxEffectManagerFlags_single_threaded = 1 << 12
+		tfxEffectManagerFlags_single_threaded = 1 << 12,
+		tfxEffectManagerFlags_double_buffer_sprites = 1 << 13
 	};
 
 	enum tfxVectorAlignType {
@@ -6129,7 +6130,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float animation_length_in_time;		//measured in millesecs
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
-		void *sprites;
+		tfxParticleSprite3d *sprites;
 		tfxArray<void*> image_ptrs;
 		tfxArray<tfxVec2> handles;
 		tfxArray<tfxFrameMeta> frame_meta;
@@ -6345,8 +6346,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxWorkQueue work_queue;
 
 		//Banks of sprites for drawing in unordered mode
-		tfxring<tfxParticleSprite3d> sprites3d[tfxLAYERS];
+		tfxring<tfxParticleSprite3d> sprites3d[2][tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
+		tfxU32 current_sprite_buffer;
 
 		tfxU32 sprite_index_2d[tfxLAYERS];
 		tfxU32 sprite_index_3d[tfxLAYERS];
@@ -6405,6 +6407,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			new_compute_particle_index(0),
 			new_particles_count(0),
 			mt_batch_size(512),
+			current_sprite_buffer(0),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
 		{
 			memset(sprite_index_2d, 0, tfxLAYERS * 4);
@@ -6414,9 +6417,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
-		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void CreateParticleBanksForEachLayer();
@@ -6491,6 +6494,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 				flags &= ~tfxEffectManagerFlags_disable_spawning;
 		}
 		void SoftExpireAll();
+		tfxAPI inline tfxU32 PreviousSpriteBuffer() { 
+			assert(flags & tfxEffectManagerFlags_double_buffer_sprites);		//Particle manager must have double buffered sprites activated
+			return !current_sprite_buffer; 
+		}
+		tfxAPI inline tfxParticleSprite3d &GetCapturedSprite3d(tfxU32 layer, tfxU32 index) {
+			return sprites3d[!current_sprite_buffer][layer][index];
+		}
 
 		//Internal use only
 		int AddComputeController();
@@ -6553,7 +6563,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		inline bool FreeCapacity3d(int index, bool compute) {
 			if (!compute) {
-				return sprites3d[index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
+				return sprites3d[current_sprite_buffer][index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
@@ -6566,7 +6576,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			tfxU32 count = 0;
 			for (tfxEachLayer) {
 				count += sprites2d[layer].current_size;
-				count += sprites3d[layer].current_size;
+				count += sprites3d[current_sprite_buffer][layer].current_size;
 			}
 			return count;
 		}
@@ -7366,37 +7376,59 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	/*
 	Initialise a tfxParticleManager for 3d usage	
-	* @param pm					A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
-	* @param layer_max_values	An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
-	* @param effects_limit		The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
-	* @param mode				The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
+	* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+	* @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
+	* @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
+	* @param mode					The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
 		tfxParticleManagerMode_unordered					Particles will be updated by emitter. No ordering is maintained, each emitter will spawn and update their particles in turn and sprites will be ordered
 															according to that sequence.
 		tfxParticleManagerMode_ordered_by_age				Particles will be kept in age order, older particles will be drawn first and newer ones last
 		tfxParticleManagerMode_ordered_by_depth				Particles will be drawn in depth order or distance from the camera. You can specify the number of sort passes when setting up the effects in TimelineFX editor
 		tfxParticleManagerMode_ordered_by_depth_guaranteed	Particles will be sorted each update and kept in depth order
-	* @param dynamic_allocation	If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
-								many particles you will need to display while developing you're game/app. Default is false.
-	* @param mt_batch_size		When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512
+	* @param double_buffer_sprites	True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
+	* @param dynamic_allocation		If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
+									many particles you will need to display while developing you're game/app. Default is false.
+	* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512
 
 	*/
-	tfxAPI void InitParticleManagerFor3d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+	tfxAPI void InitParticleManagerFor3d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 	/*
 	Initialise a tfxParticleManager for 2d usage
-	* @param pm					A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
-	* @param layer_max_values	An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
-	* @param effects_limit		The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
-	* @param mode				The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
+	* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+	* @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
+	* @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
+	* @param mode					The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
 		tfxParticleManagerMode_unordered					Particles will be updated by emitter. No ordering is maintained, each emitter will spawn and update their particles in turn and sprites will be ordered
 															according to that sequence.
 		tfxParticleManagerMode_ordered_by_age				Particles will be kept in age order, older particles will be drawn first and newer ones last
-	* @param dynamic_allocation	If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
-								many particles you will need to display while developing you're game/app. Default is false.
-	* @param mt_batch_size		When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
+	* @param double_buffer_sprites	True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
+	* @param dynamic_allocation		If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
+									many particles you will need to display while developing you're game/app. Default is false.
+	* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
 
 	*/
-	tfxAPI void InitParticleManagerFor2d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+	tfxAPI void InitParticleManagerFor2d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+
+	/*
+	Enable or disable double buffering of sprites in a particle manager. When double buffered, you can used the previous frame of sprites to interpolated sprites each frame for smoother animation. You can disable it to save memory.
+	* @param pm							A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param double_buffer_sprites	True or False to activate or deactivate double buffering of sprites
+	*/
+	tfxAPI inline void DoubleBufferSprites(tfxParticleManager *pm, bool double_buffer_sprites) {
+		if (!double_buffer_sprites && pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
+			for (tfxEachLayer) {
+				pm->sprites3d[1][layer].free_all();
+			}
+			pm->flags &= ~tfxEffectManagerFlags_double_buffer_sprites;
+		}
+		else if (double_buffer_sprites && !(pm->flags & tfxEffectManagerFlags_double_buffer_sprites)) {
+			for (tfxEachLayer) {
+				pm->sprites3d[1][layer].reserve(tfxMax(pm->max_cpu_particles_per_layer[layer], 8));
+			}
+			pm->flags |= tfxEffectManagerFlags_double_buffer_sprites;
+		}
+	}
 
 	/*
 	Prepare a tfxEffectTemplate that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
@@ -7441,7 +7473,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param layer				The layer to get the next sprite of
 	*/
 	tfxAPI inline tfxParticleSprite3d *Next3dSprite(tfxParticleManager *pm, tfxU32 layer) {
-		return &pm->sprites3d[layer][pm->sprite_index_3d[layer]++];
+		return &pm->sprites3d[pm->current_sprite_buffer][layer][pm->sprite_index_3d[layer]++];
 	}
 
 	/*
@@ -7450,7 +7482,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param layer				The layer index in the sprites list
 	*/
 	tfxAPI inline bool EndOfSprites3d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprite_index_3d[layer] >= pm->sprites3d[layer].current_size;
+		return pm->sprite_index_3d[layer] >= pm->sprites3d[pm->current_sprite_buffer][layer].current_size;
 	}
 
 	/*
@@ -7531,7 +7563,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param layer				The layer of the sprites to the count of
 	*/
 	tfxAPI inline tfxU32 SpritesInLayer3d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprites3d[layer].current_size;
+		return pm->sprites3d[pm->current_sprite_buffer][layer].current_size;
 	}
 
 	/*
@@ -7553,7 +7585,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxAPI inline tfxU32 TotalSpriteCount3d(tfxParticleManager *pm) {
 		tfxU32 count = 0;
 		for(tfxEachLayer) {
-			count += pm->sprites3d[layer].current_size;
+			count += pm->sprites3d[pm->current_sprite_buffer][layer].current_size;
 		}
 		return count;
 	}
@@ -7643,7 +7675,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @returns				tfxParticleSprite3d reference containing the sprite data for drawing
 	*/
 	tfxAPI inline tfxParticleSprite3d &SpriteDataSprite3d(tfxSpriteData *sprite_data, tfxU32 index) {
-		return *((tfxParticleSprite3d*)sprite_data->sprites + index);
+		return *(sprite_data->sprites + index);
 	}
 
 	/*
