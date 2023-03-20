@@ -2828,10 +2828,14 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxHSV(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
 	};
 
+	const float one_div_255 = 1 / 255.f;
+	const float one_div_511 = 1 / 511.f;
+
 	struct tfxRGBA {
 		float r, g, b, a;
 		tfxRGBA() { r = g = b = a = 1.f; }
 		tfxRGBA(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) { }
+		tfxRGBA(tfxRGBA8 c) : r((float)c.r * one_div_255), g((float)c.g * one_div_255), b((float)c.b * one_div_255), a((float)c.a * one_div_255) { }
 	};
 
 	inline tfxHSV RGBtoHSV(tfxRGB in)
@@ -3343,13 +3347,32 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	}
 
 	inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
-		tfxVec3 converted = Clamp(-1.f, 1.f, v) * 511.f;
+		tfxVec3 converted =  v * 511.f;
 		tfxUInt10bit result;
 		result.data.x = (tfxU32)converted.z;
 		result.data.y = (tfxU32)converted.y;
 		result.data.z = (tfxU32)converted.x;
 		result.data.w = extra;
 		return result.pack;
+	}
+
+	inline tfxVec4 UnPack10bit(tfxU32 in) {
+		tfxUInt10bit unpack;
+		unpack.pack = in;
+		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
+		result = result * tfxVec3(1.f * one_div_511, 1.f * one_div_511, 1.f * one_div_511);
+		return tfxVec4(result, (float)unpack.data.w);
+	}
+
+	inline tfxVec3 UnPack10bitVec3(tfxU32 in) {
+		tfxUInt10bit unpack;
+		unpack.pack = in;
+		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
+		return result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
+	}
+
+	inline tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
+		return ((in >> 30) & 0x3);
 	}
 
 	static inline size_t ClampStringSize(size_t compare, size_t string_size) {
@@ -3372,25 +3395,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		out.data.z = ((in >> 20) & 0x3FF);
 		out.data.w = ((in >> 30) & 0x3);
 		return out;
-	}
-
-	inline tfxVec4 UnPack10bit(tfxU32 in) {
-		tfxUInt10bit unpack;
-		unpack.pack = in;
-		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-		result = result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
-		return tfxVec4(result, (float)unpack.data.w);
-	}
-
-	inline tfxVec3 UnPack10bitVec3(tfxU32 in) {
-		tfxUInt10bit unpack;
-		unpack.pack = in;
-		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-		return result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
-	}
-
-	inline tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
-		return ((in >> 30) & 0x3);
 	}
 
 	inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
@@ -3426,8 +3430,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		__m128 result = _mm_add_ps(from_lerp, to_lerp);
 		tfxVec4 vec;
 		_mm_store_ps(&vec.x, result);
-
 		return vec;
+	}
+
+	inline tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat &from, tfxWideFloat &to) {
+		tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
+		tfxWideFloat to_lerp = tfxWideMul(to, tween);
+		tfxWideFloat from_lerp = tfxWideMul(from, one_minus_tween);
+		tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
+		return result;
 	}
 
 	inline float Interpolatef(float tween, float from, float to) {
@@ -6000,6 +6011,76 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
+	//Initial particle struct, looking to optimise this and make as small as possible
+	//These are spawned by effector emitter types
+	//Particles are stored in the particle manager particle buffer.
+	struct tfxWideParticleData {
+		//Updated every frame
+		tfxWideVec3 local_position;			//The local position of the particle, relative to the emitter.
+		tfxWideVec3 local_rotations;
+		tfxWideVec3 captured_position;
+		//Read only when ControlParticle is called, only written to at spawn time
+		tfxWideVec2 base_size;
+		tfxWideFloat base_velocity;
+		tfxWideFloat base_spin;
+		tfxWideFloat base_weight;
+		tfxWideVec3 velocity_normal;		//Current velocity direction, with stretch factor in w
+		tfxWideFloat stretch;				//Higer numbers means random movement is less uniform
+		tfxWideFloat noise_offset;			//Higer numbers means random movement is less uniform
+		tfxWideFloat noise_resolution;		//Higer numbers means random movement is more uniform
+		tfxParticleFlags flags;				//state_flags for different states
+		//Updated everyframe
+		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
+		tfxWideFloat max_age;				//max age before the particle expires
+		tfxU32 single_loop_count;			//The number of times a single particle has looped over
+		tfxWideFloat image_frame;			//Current frame of the image if it's an animation
+		tfxWideFloat weight_acceleration;	//The current amount of gravity applied to the y axis of the particle each frame
+		tfxWideFloat intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
+		tfxWideFloat depth;
+		tfxRGBA8 color;						//Colour of the particle
+	};
+
+	struct tfxWideParticlePosition {
+		tfxWideVec3 local_position;			//The local position of the particle, relative to the emitter.
+	};
+
+	struct tfxWideParticleAge {
+		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
+		tfxWideFloat max_age;				//max age before the particle expires
+	};
+
+	struct tfxWideParticle {
+		tfxParticle *next_ptr[tfxDataWidth];
+		tfxEffectEmitter *parent[tfxDataWidth];
+		tfxU32 sprite_index[tfxDataWidth];
+		tfxU32 prev_index[tfxDataWidth];
+		tfxWideParticleData data;
+	};
+
+	inline void StoreLocalPositionX(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_position.x) + slot) = value;
+	}
+
+	inline void StoreLocalPositionY(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_position.y) + slot) = value;
+	}
+
+	inline void StoreLocalPositionZ(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_position.z) + slot) = value;
+	}
+
+	inline void StoreLocalRotationPitch(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_rotations.pitch) + slot) = value;
+	}
+
+	inline void StoreLocalRotationRoll(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_rotations.roll) + slot) = value;
+	}
+
+	inline void StoreLocalRotationYaw(tfxWideParticleData *data, float value, tfxU32 slot) {
+		*(reinterpret_cast<float*>(&data->local_rotations.yaw) + slot) = value;
+	}
+
 	struct tfxSpriteTransform2d {
 		tfxVec2 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
 		tfxVec2 captured_position;
@@ -6032,7 +6113,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 corner2;					//The bounding box can be used to decide if this frame needs to be drawn
 	};
 
-	struct tfxParticleSprite3d {	//60 bytes
+	struct tfxParticleSprite3d {	//56 bytes
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 captured_index;
 		tfxSpriteTransform3d transform;
@@ -6042,7 +6123,30 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float intensity;			
 	};
 
-	struct tfxSIMDSprite3d {		//60 bytes
+	struct tfxParticleSprite3dAVX {	//56 bytes
+		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
+		tfxU32 captured_index;
+		tfxWideFloat transform;
+		tfxVec3 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
+		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
+		float stretch;
+		float intensity;
+	};
+
+	struct tfxWideLerpTransformResult {
+		float position[3];
+		float rotations[3];
+		float scale[2];
+	};
+
+	struct tfxWideLerpOtherResult {
+		float stretch;
+		float intensity;
+		float color[4];
+		float padding[2];
+	};
+
+	struct tfxSIMDSprite3d {			//60 bytes
 		tfxWideInt image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxWideInt captured_index;
 		tfxWideInt alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
@@ -6052,6 +6156,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxWideVec3 position;
 		tfxWideVec3 rotations;
 		tfxWideVec2 scale;
+		tfxWideInt captured_color;
+		tfxWideFloat captured_stretch;
+		tfxWideFloat captured_intensity;
+		tfxWideVec3 captured_position;
+		tfxWideVec3 captured_rotations;
+		tfxWideVec2 captured_scale;
 	};
 
 	struct tfxSpriteData {
@@ -6061,8 +6171,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
 		tfxParticleSprite3d *sprites;
-		tfxArray<void*> image_ptrs;
-		tfxArray<tfxVec2> handles;
+		tfxSIMDSprite3d *simd_sprites;
 		tfxArray<tfxFrameMeta> frame_meta;
 	};
 
@@ -6433,6 +6542,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		}
 		tfxAPI inline tfxVec3 &GetCapturedSprite3dPosition(tfxU32 layer, tfxU32 index) {
 			return sprites3d[!current_sprite_buffer][layer][index].transform.position;
+		}
+		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
+			return sprites3d[!current_sprite_buffer][layer][index].transform;
 		}
 
 		//Internal use only
