@@ -6146,6 +6146,20 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float padding[2];
 	};
 
+	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured ) {
+		tfxWideFloat to = tfxWideSet(current.scale.y, current.scale.x, current.rotations.z, current.rotations.y, current.rotations.x,
+			current.position.z, current.position.y, current.position.x);
+		tfxWideFloat from = tfxWideSet(captured.scale.y, captured.scale.x, captured.rotations.z, captured.rotations.y, captured.rotations.x,
+			captured.position.z, captured.position.y, captured.position.x);
+		tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
+		tfxWideFloat to_lerp = tfxWideMul(to, tween);
+		tfxWideFloat from_lerp = tfxWideMul(from, one_minus_tween);
+		tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
+		tfxWideLerpTransformResult out;
+		tfxWideStore(out.position, result);
+		return out;
+	}
+
 	struct tfxSIMDSprite3d {			//60 bytes
 		tfxWideInt image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxWideInt captured_index;
