@@ -234,14 +234,26 @@ union tfxUInt10bit
 #define tfxDataWidth 8	
 typedef __m256 tfxWideFloat;
 typedef __m256i tfxWideInt;
+#define tfxWideLoad _mm256_load_ps
 #define tfxWideSet _mm256_set_ps
 #define tfxWideSetSingle _mm256_set1_ps
+#define tfxWideSeti _mm256_set_epi32
+#define tfxWideSetSinglei _mm256_set1_epi32
 #define tfxWideAdd _mm256_add_ps
 #define tfxWideSub _mm256_sub_ps
 #define tfxWideMul _mm256_mul_ps
 #define tfxWideDiv _mm256_div_ps
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
 #define tfxWideStore _mm256_store_ps
+#define tfxWideCasti _mm256_castps_si256 
+#define tfxWideConverti _mm256_cvttps_epi32 
+#define tfxWideGather _mm256_i32gather_ps
+#define tfxWideMin _mm256_min_ps
+#define tfxWideMax _mm256_max_ps
+#define tfxWideMini _mm256_min_epi32
+#define tfxWideMaxi _mm256_max_epi32
+#define tfxWideOr _mm256_or_ps
+#define tfxWideAnd _mm256_and_ps
 
 const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
 const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
@@ -259,14 +271,25 @@ const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
 #define tfxDataWidth 4	
 typedef __m128 tfxWideFloat;
 typedef __m128i tfxWideInt;
+#define tfxWideLoad _mm_load_ps
 #define tfxWideSet _mm_set_ps
 #define tfxWideSetSingle _mm_set_ps1
+#define tfxWideSeti _mm_set_epi32
+#define tfxWideSetSinglei _mm_set1_epi32
 #define tfxWideAdd _mm_add_ps
 #define tfxWideSub _mm_sub_ps
 #define tfxWideMul _mm_mul_ps
 #define tfxWideDiv _mm_div_ps
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
 #define tfxWideStore _mm_store_ps
+#define tfxWideCasti _mm_castps_si256 
+#define tfxWideGather _mm_i32gather_ps
+#define tfxWideMin _mm_min_ps
+#define tfxWideMax _mm_max_ps
+#define tfxWideMini _mm_min_epi32
+#define tfxWideMaxi _mm_max_epi32
+#define tfxWideOr _mm_or_ps
+#define tfxWideAnd _mm_and_ps
 
 const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
 const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
@@ -861,6 +884,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	static float tfxLOOKUP_FREQUENCY = 10.f;
 	//Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
 	static float tfxLOOKUP_FREQUENCY_OVERTIME = 1.f;
+
+	//Look up frequency determines the resolution of graphs that are compiled into look up arrays.
+	static tfxWideFloat tfxLOOKUP_FREQUENCY_WIDE = tfxWideSetSingle(10.f);
+	//Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
+	static tfxWideFloat tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetSingle(1.f);
 
 	//-----------------------------------------------------------
 	//Utility things:
@@ -1623,8 +1651,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 start_index = 0;				//Start index if you're using the buffer as a ring buffer
 		tfxU32 last_bump = 0;				//the amount the the start index was bumped by the last time Bump was called
 		tfxU32 capacity = 0;				//capacity of each array
+		tfxU32 block_size = tfxDataWidth;	//Keep the capacity to the nearest block size
 		tfxvec<tfxSoAData> array_ptrs;		//Container for all the pointers into the arena
-		void(*resize_callback)(tfxSoABuffer *ring, void *new_data, void *user_data);
+		void *user_data;
+		void(*resize_callback)(tfxSoABuffer *ring, tfxU32 new_index_start) = NULL;
 		void *struct_of_arrays;				//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
 		void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
 	};
@@ -1653,9 +1683,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//inside the space
 	static inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
 		assert(buffer->data == NULL && buffer->array_ptrs.current_size > 0);
+		assert(reserve_amount > buffer->block_size);		//reserve amount must be greater than the block_size
 		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 			buffer->struct_size += buffer->array_ptrs[i].unit_size;
 		}
+		reserve_amount = (reserve_amount / buffer->block_size + 1) * buffer->block_size;
 		buffer->current_arena_size = reserve_amount * buffer->struct_size;
 		buffer->data = tfxALLOCATE(0, 0, buffer->current_arena_size);
 		memset(buffer->data, 0, buffer->current_arena_size);
@@ -1667,10 +1699,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
 		}
+		if (buffer->resize_callback) {
+			buffer->resize_callback(buffer, 0);
+		}
 	}
 
 	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
-	static inline void GrowArrays(tfxSoABuffer *buffer, tfxU32 new_size = 0, bool keep_data = true) {
+	static inline void GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_size = 0, bool keep_data = true) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
 		tfxU32 new_capacity = 0;
 		if (new_size > 0) {
@@ -1681,7 +1716,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		else {
 			new_capacity = buffer->current_size > buffer->capacity ? buffer->current_size + buffer->current_size / 2 : buffer->capacity + buffer->capacity / 2;
 		}
+		new_capacity = (new_capacity / buffer->block_size + 1) * buffer->block_size;
 		void *new_data = tfxALLOCATE(0, 0, new_capacity * buffer->struct_size);
+		memset(new_data, 0, new_capacity * buffer->struct_size);
 		size_t running_offset = 0;
 		if (keep_data) {
 			for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
@@ -1711,12 +1748,16 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
 		}
 		free(old_data);
+
+		if (buffer->resize_callback) {
+			buffer->resize_callback(buffer, first_new_index);
+		}
 	}
 
 	static inline void GrowArraysBySpecificAmount(tfxSoABuffer *buffer, tfxU32 extra_size) {
 		assert(extra_size > 0);		//Must specify a size
 		assert(buffer->data);		//Must be a valid SoA buffer
-		GrowArrays(buffer, buffer->capacity + extra_size);
+		GrowArrays(buffer, buffer->capacity, buffer->capacity + extra_size);
 	}
 	
 	//Increase current size of a SoA Buffer and grow if necessary.
@@ -1724,7 +1765,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		assert(buffer->data);			//No data allocated in buffer
 		buffer->current_size = new_size;
 		if (buffer->current_size >= buffer->capacity) {
-			GrowArrays(buffer, new_size);
+			GrowArrays(buffer, buffer->capacity);
 		}
 	}
 	
@@ -1732,7 +1773,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	static inline void SetCapacity(tfxSoABuffer *buffer, tfxU32 new_size) {
 		assert(buffer->data);			//No data allocated in buffer
 		if (new_size >= buffer->capacity) {
-			GrowArrays(buffer, new_size);
+			GrowArrays(buffer, buffer->capacity, new_size);
 		}
 	}
 	
@@ -1741,7 +1782,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		assert(buffer->data);			//No data allocated in buffer
 		buffer->current_size++;
 		if (grow && buffer->current_size == buffer->capacity) {
-			GrowArrays(buffer);
+			GrowArrays(buffer, buffer->capacity);
 		}
 		assert(buffer->current_size <= buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return buffer->current_size - 1;
@@ -1753,7 +1794,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 first_new_index = buffer->current_size;
 		buffer->current_size += amount;
 		if (grow && buffer->current_size >= buffer->capacity) {
-			GrowArrays(buffer);
+			GrowArrays(buffer, buffer->capacity);
 		}
 		assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return first_new_index;
@@ -6372,6 +6413,15 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
+	inline void tfxResizeParticleSoACallback(tfxSoABuffer *buffer, tfxU32 index) {
+		tfxParticleSoA *particles = static_cast<tfxParticleSoA*>(buffer->user_data);
+		memset(particles->age, 0, (buffer->capacity - index) * sizeof(float));
+		for (int i = index; i != buffer->capacity; ++i) {
+			particles->max_age[i] = 1.f;
+			particles->age[i] = 0.f;
+		}
+	}
+
 	//Use the particle manager to add multiple effects to your scene 
 	struct tfxParticleManager {
 		//In unordered mode, emitters get their own list of particles to update
@@ -6444,7 +6494,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
 		tfxParticleManagerFlags flags;
-
 
 		tfxParticleManager() :
 			flags(0),
@@ -6833,7 +6882,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		inline void MaybeGrowProperties(tfxU32 size_offset) {
 			if (emitter_properties_buffer.current_size >= emitter_properties_buffer.capacity - size_offset) {
-				GrowArrays(&emitter_properties_buffer);
+				GrowArrays(&emitter_properties_buffer, emitter_properties_buffer.capacity);
 			}
 		}
 

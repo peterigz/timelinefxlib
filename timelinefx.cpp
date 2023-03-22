@@ -7693,6 +7693,7 @@ namespace tfx {
 				tfxSoABuffer buffer;
 				particle_array_buffers.push_back(buffer);
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), layer_max_values[layer]);
+				memset(particle_arrays[layer].max_age, 1, layer_max_values[layer] * sizeof(float));
 				assert(index == particle_array_buffers.current_size - 1);
 			}
 		}
@@ -7759,6 +7760,7 @@ namespace tfx {
 				particle_array_buffers.push_back(buffer);
 				assert(index == particle_array_buffers.current_size - 1);
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer]);
+				memset(particle_arrays[layer].max_age, 1, layer_max_values[layer] * sizeof(float));
 			}
 		}
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
@@ -7812,6 +7814,8 @@ namespace tfx {
 			tfxParticleSoA lists;
 			tfxU32 index = particle_arrays.locked_push_back(lists);
 			tfxSoABuffer buffer;
+			buffer.resize_callback = tfxResizeParticleSoACallback;
+			buffer.user_data = &particle_arrays.back();
 			particle_array_buffers.push_back(buffer);
 			assert(index == particle_array_buffers.current_size - 1);
 			InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), tfxMax(max_cpu_particles_per_layer[layer], 8));
@@ -8029,6 +8033,8 @@ namespace tfx {
 		tfxParticleSoA lists;
 		tfxU32 index = pm.particle_arrays.locked_push_back(lists);
 		tfxSoABuffer buffer;
+		buffer.resize_callback = tfxResizeParticleSoACallback;
+		buffer.user_data = &pm.particle_arrays.back();
 		pm.particle_array_buffers.push_back(buffer);
 		assert(index == pm.particle_array_buffers.current_size - 1);
 		InitParticleSoA(&pm.particle_array_buffers[index], &pm.particle_arrays.back(), 100);
@@ -11156,45 +11162,86 @@ namespace tfx {
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
 
-		const float overal_scale = pm.emitters.overal_scale[emitter_index];
 		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
 		const float stretch = pm.emitters.stretch[emitter_index];
 		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
 		const tfxVec2 image_size = pm.emitters.image_size[emitter_index];
 		const tfxVec2 image_handle = pm.emitters.image_handle[emitter_index];
-		const tfxU32 width_last_frame = work_entry->graphs->width.lookup.last_frame;
-		const tfxU32 height_last_frame = work_entry->graphs->height.lookup.last_frame;
+		const tfxWideInt width_last_frame = tfxWideSetSinglei(work_entry->graphs->width.lookup.last_frame);
+		const tfxWideInt height_last_frame = tfxWideSetSinglei(work_entry->graphs->height.lookup.last_frame);
+		const tfxWideFloat overal_scale = tfxWideSetSingle(pm.emitters.overal_scale[emitter_index]);
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const float age = bank.age[index];
-			const float max_age = bank.max_age[index];
-			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+		tfxWideFloat velocity_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+		tfxWideInt x_indexes = tfxWideSeti(14, 12, 10, 8, 6, 4, 2, 0);
+		tfxWideInt y_indexes = tfxWideSeti(15, 13, 11, 9, 7, 5, 3, 1);
 
-			const tfxVec2 base_size = bank.base_size[index];
+		tfxU32 capacity = work_entry->pm->particle_array_buffers[particles_index].capacity;
+		
+		tfxU32 circular_start = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], work_entry->start_index);
+		tfxU32 circular_end = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], work_entry->end_index - 1);
 
-			float lookup_width = work_entry->graphs->width.lookup.values[std::min<tfxU32>(lookup_frame, width_last_frame)];
-			float lookup_height = work_entry->graphs->height.lookup.values[std::min<tfxU32>(lookup_frame, height_last_frame)];
+		tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+		tfxU32 block_end_index = (circular_end / tfxDataWidth + 1) * tfxDataWidth;
+		tfxU32 end_index = block_end_index;
+		end_index = circular_start > circular_end ? capacity : end_index;
+		tfxU32 start_diff = circular_start - block_start_index;
 
-			//----Size Changes
-			tfxVec2 scale;
-			scale.x = base_size.x * lookup_width;
-			if (scale.x < 0.f)
-				scale.x = scale.x;
+		float scale_x_arr[tfxDataWidth];
+		float scale_y_arr[tfxDataWidth];
+		bool done = false;
 
-			if (emitter_flags & tfxEmitterStateFlags_lifetime_uniform_size) {
-				scale.y = lookup_width * base_size.y;
-				if (emitter_flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
-					scale.y = scale.x;
+		while (!done) {
+			for (tfxU32 index = block_start_index; index != end_index; index += tfxDataWidth) {
+				const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+				tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+
+				tfxWideFloat life = tfxWideDiv(age, max_age);
+				life = tfxWideMul(life, velocity_life);
+				life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+				tfxWideInt lookup_frame = tfxWideConverti(life);
+
+				const tfxWideFloat base_size_x = tfxWideGather(&bank.base_size[index].x, x_indexes, 4);
+				const tfxWideFloat base_size_y = tfxWideGather(&bank.base_size[index].y, y_indexes, 4);
+
+				tfxWideFloat lookup_width = tfxWideGather(work_entry->graphs->width.lookup.values.block, tfxWideMini(lookup_frame, width_last_frame), 4);
+				tfxWideFloat lookup_height = tfxWideGather(work_entry->graphs->height.lookup.values.block, tfxWideMini(lookup_frame, height_last_frame), 4);
+
+				//----Size Changes
+				tfxWideFloat scale_x = tfxWideMul(base_size_x, lookup_width);
+				tfxWideFloat scale_y;
+
+				if (emitter_flags & tfxEmitterStateFlags_lifetime_uniform_size) {
+					scale_y = tfxWideMul(lookup_width, base_size_y);
+					if (emitter_flags & tfxEmitterPropertyFlags_base_uniform_size)
+						scale_y = tfxWideMin(scale_x, scale_y);
+				}
+				else
+					scale_y = tfxWideMul(lookup_height, base_size_y);
+
+				scale_x = tfxWideMul(scale_x, overal_scale);
+				scale_y = tfxWideMul(scale_y, overal_scale);
+				tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprites3d->current_size ? work_entry->sprites3d->current_size - running_sprite_index : tfxDataWidth;
+				tfxWideStore(scale_x_arr, scale_x);
+				tfxWideStore(scale_y_arr, scale_y);
+
+				for (tfxU32 i = start_diff; i < limit_index; ++i) {
+					tfxVec2 &s = (*work_entry->sprites3d)[running_sprite_index++].transform.scale;
+					s.x = scale_x_arr[i];
+					s.y = scale_y_arr[i];
+				}
+				start_diff = 0;
 			}
-			else
-				scale.y = lookup_height * base_size.y;
-
-			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
-			s.transform.scale = scale * overal_scale;
-			//s.handle = image_handle;
+			//Determine if we need to loop round again for the first halve of the ring buffer
+			if (circular_start > circular_end) {
+				circular_start = 0;
+				block_start_index = 0;
+				end_index = block_end_index;
+			}
+			else {
+				done = true;
+			}
 		}
 
 	}
