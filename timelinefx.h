@@ -245,15 +245,16 @@ typedef __m256i tfxWideInt;
 #define tfxWideDiv _mm256_div_ps
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
 #define tfxWideStore _mm256_store_ps
+#define tfxWideStorei _mm256_store_si256
 #define tfxWideCasti _mm256_castps_si256 
 #define tfxWideConverti _mm256_cvttps_epi32 
-#define tfxWideGather _mm256_i32gather_ps
 #define tfxWideMin _mm256_min_ps
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
 #define tfxWideMaxi _mm256_max_epi32
 #define tfxWideOr _mm256_or_ps
 #define tfxWideAnd _mm256_and_ps
+#define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
 const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
@@ -282,14 +283,15 @@ typedef __m128i tfxWideInt;
 #define tfxWideDiv _mm_div_ps
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
 #define tfxWideStore _mm_store_ps
-#define tfxWideCasti _mm_castps_si256 
-#define tfxWideGather _mm_i32gather_ps
+#define tfxWideStorei _mm_store_si128
+#define tfxWideCasti _mm_castps_si128 
 #define tfxWideMin _mm_min_ps
 #define tfxWideMax _mm_max_ps
 #define tfxWideMini _mm_min_epi32
 #define tfxWideMaxi _mm_max_epi32
 #define tfxWideOr _mm_or_ps
 #define tfxWideAnd _mm_and_ps
+#define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
 const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
@@ -3373,6 +3375,12 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return result;
 	}
 
+	static inline int Clamp(int lower, int upper, int value) {
+		if (value < lower) return lower;
+		if (value > upper) return upper;
+		return value;
+	}
+
 	static inline float Clamp(float lower, float upper, float value) {
 		if (value < lower) return lower;
 		if (value > upper) return upper;
@@ -5994,7 +6002,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxRGBA8 color;	
 		float intensity;
 		float image_frame;
-		tfxVec2 base_size;
+		float base_size_x;
+		float base_size_y;
 		tfxU32 single_loop_count;
 	};
 
@@ -6021,7 +6030,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxRGBA8 *color;	
 		float *intensity;
 		float *image_frame;
-		tfxVec2 *base_size;
+		float *base_size_x;
+		float *base_size_y;
 		tfxU32 *single_loop_count;
 	};
 
@@ -6047,7 +6057,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxParticleSoA, color));					
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, intensity));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));					
-		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxParticleSoA, base_size));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_y));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, single_loop_count));			
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
@@ -6163,6 +6174,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float stretch;
 		float intensity;			
 	};
+
+	const tfxU32 tfxSprite3dfScaleXOffset = offsetof(tfxParticleSprite3d, transform.scale.x);
+	const tfxU32 tfxSprite3dfScaleYOffset = offsetof(tfxParticleSprite3d, transform.scale.y);
+	const tfxU32 tfxSizeOfSprite3d = sizeof(tfxParticleSprite3d);
+
 
 	struct tfxParticleSprite3dAVX {	//56 bytes
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
@@ -6415,10 +6431,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	inline void tfxResizeParticleSoACallback(tfxSoABuffer *buffer, tfxU32 index) {
 		tfxParticleSoA *particles = static_cast<tfxParticleSoA*>(buffer->user_data);
-		memset(particles->age, 0, (buffer->capacity - index) * sizeof(float));
 		for (int i = index; i != buffer->capacity; ++i) {
 			particles->max_age[i] = 1.f;
-			particles->age[i] = 0.f;
+			particles->age[i] = 1.f;
 		}
 	}
 
@@ -6656,7 +6671,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			to_bank.color[index] = from_bank.color[other_index];
 			to_bank.intensity[index] = from_bank.intensity[other_index];
 			to_bank.image_frame[index] = from_bank.image_frame[other_index];
-			to_bank.base_size[index] = from_bank.base_size[other_index];
+			to_bank.base_size_x[index] = from_bank.base_size_x[other_index];
+			to_bank.base_size_y[index] = from_bank.base_size_y[other_index];
 			to_bank.single_loop_count[index] = from_bank.single_loop_count[other_index];
 			return MakeParticleID(next_index, index);
 		}
@@ -7251,7 +7267,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		std::swap(particles.color[from], particles.color[to]);
 		std::swap(particles.intensity[from], particles.intensity[to]);
 		std::swap(particles.image_frame[from], particles.image_frame[to]);
-		std::swap(particles.base_size[from], particles.base_size[to]);
+		std::swap(particles.base_size_x[from], particles.base_size_x[to]);
+		std::swap(particles.base_size_y[from], particles.base_size_y[to]);
 		std::swap(particles.single_loop_count[from], particles.single_loop_count[to]);
 	}
 
@@ -7277,7 +7294,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		temp.color = particles.color[from];
 		temp.intensity = particles.intensity[from];
 		temp.image_frame = particles.image_frame[from];
-		temp.base_size = particles.base_size[from];
+		temp.base_size_x = particles.base_size_x[from];
+		temp.base_size_y = particles.base_size_y[from];
 		temp.single_loop_count = particles.single_loop_count[from];
 	}
 
@@ -7303,7 +7321,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		particles.color[from] = temp.color;
 		particles.intensity[from] = temp.intensity;
 		particles.image_frame[from] = temp.image_frame;
-		particles.base_size[from] = temp.base_size;
+		particles.base_size_x[from] = temp.base_size_x;
+		particles.base_size_y[from] = temp.base_size_y;
 		particles.single_loop_count[from] = temp.single_loop_count;
 	}
 

@@ -6912,7 +6912,8 @@ namespace tfx {
 				bank.color[next_index] = bank.color[index];
 				bank.intensity[next_index] = bank.intensity[index];
 				bank.image_frame[next_index] = bank.image_frame[index];
-				bank.base_size[next_index] = bank.base_size[index];
+				bank.base_size_x[next_index] = bank.base_size_x[index];
+				bank.base_size_y[next_index] = bank.base_size_y[index];
 				bank.single_loop_count[next_index] = bank.single_loop_count[index];
 
 			}
@@ -7182,7 +7183,8 @@ namespace tfx {
 			tfxOvertimeAttributes *graphs = &library->emitter_attributes[emitter_attributes].overtime;
 			const tfxU32 lookup_frame = static_cast<tfxU32>((life * graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
-			const tfxVec2 base_size = bank.base_size[index];
+			const float base_size_x = bank.base_size_x[index];
+			const float base_size_y = bank.base_size_y[index];
 			const float base_velocity = bank.base_velocity[index];
 			const float weight_acceleration = bank.weight_acceleration[index];
 
@@ -7193,19 +7195,19 @@ namespace tfx {
 
 			//----Size Changes
 			tfxVec2 scale;
-			scale.x = base_size.x * lookup_width;
+			scale.x = base_size_x * lookup_width;
 			if (scale.x < 0.f)
 				scale.x = scale.x;
 
 			//----Stretch Changes
 			float velocity = std::fabsf(lookup_velocity * base_velocity + weight_acceleration);
 			if (emitter_flags & tfxEmitterStateFlags_lifetime_uniform_size) {
-				scale.y = (lookup_width * (base_size.y + (velocity * lookup_stretch * stretch))) / image_size.y;
+				scale.y = (lookup_width * (base_size_y + (velocity * lookup_stretch * stretch))) / image_size.y;
 				if (emitter_flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
 					scale.y = scale.x;
 			}
 			else
-				scale.y = (lookup_height * (base_size.y + (velocity * lookup_stretch * stretch))) / image_size.y;
+				scale.y = (lookup_height * (base_size_y + (velocity * lookup_stretch * stretch))) / image_size.y;
 
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
 			s.transform.scale = scale * overal_scale;
@@ -7529,24 +7531,25 @@ namespace tfx {
 			const float life = bank.age[index] / bank.max_age[index];
 			const tfxU32 lookup_frame = static_cast<tfxU32>((life * graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
-			const tfxVec2 base_size = bank.base_size[index];
+			const float base_size_x = bank.base_size_x[index];
+			const float base_size_y = bank.base_size_y[index];
 
 			float lookup_width = graphs->width.lookup.values[std::min<tfxU32>(lookup_frame, width_last_frame)];
 			float lookup_height = graphs->height.lookup.values[std::min<tfxU32>(lookup_frame, height_last_frame)];
 
 			//----Size Changes
 			tfxVec2 scale;
-			scale.x = base_size.x * lookup_width;
+			scale.x = base_size_x * lookup_width;
 			if (scale.x < 0.f)
 				scale.x = scale.x;
 
 			if (emitter_flags & tfxEmitterStateFlags_lifetime_uniform_size) {
-				scale.y = lookup_width * base_size.y;
+				scale.y = lookup_width * base_size_y;
 				if (emitter_flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
 					scale.y = scale.x;
 			}
 			else
-				scale.y = lookup_height * base_size.y;
+				scale.y = lookup_height * base_size_y;
 
 			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
 			s.transform.scale = scale * overal_scale;
@@ -7693,7 +7696,6 @@ namespace tfx {
 				tfxSoABuffer buffer;
 				particle_array_buffers.push_back(buffer);
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), layer_max_values[layer]);
-				memset(particle_arrays[layer].max_age, 1, layer_max_values[layer] * sizeof(float));
 				assert(index == particle_array_buffers.current_size - 1);
 			}
 		}
@@ -7746,9 +7748,9 @@ namespace tfx {
 			memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
 #endif
 
-			sprites3d[0][layer].reserve(tfxMax(layer_max_values[layer], 8));
+			sprites3d[0][layer].reserve(tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8));
 			if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-				sprites3d[1][layer].reserve(tfxMax(layer_max_values[layer], 8));
+				sprites3d[1][layer].reserve(tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8));
 			}
 		}
 
@@ -7760,7 +7762,6 @@ namespace tfx {
 				particle_array_buffers.push_back(buffer);
 				assert(index == particle_array_buffers.current_size - 1);
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer]);
-				memset(particle_arrays[layer].max_age, 1, layer_max_values[layer] * sizeof(float));
 			}
 		}
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
@@ -7924,9 +7925,9 @@ namespace tfx {
 #endif
 
 			sprites2d[layer].reserve(tfxMax(layer_max_values[layer], 8));
-			sprites3d[0][layer].reserve(tfxMax(layer_max_values[layer], 8));
+			sprites3d[0][layer].reserve(tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8));
 			if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-				sprites3d[1][layer].reserve(tfxMax(layer_max_values[layer], 8));
+				sprites3d[1][layer].reserve(tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8));
 			}
 		}
 
@@ -8842,20 +8843,21 @@ namespace tfx {
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec2 &base_size = entry->particle_data->base_size[index];
+			float &base_size_x = entry->particle_data->base_size_x[index];
+			float &base_size_y = entry->particle_data->base_size_y[index];
 
 			//----Size
 			if (!(property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
 				float random_size_x = random_generation.Range(size_variation.x);
 				float random_size_y = random_generation.Range(size_variation.y);
-				base_size.y = random_size_y + size.y;
-				base_size.x = (random_size_x + size.x) / image_size.x;
+				base_size_y = random_size_y + size.y;
+				base_size_x = (random_size_x + size.x) / image_size.x;
 			}
 			else {
 				float random_size_x = random_generation.Range(size_variation.x);
 				float random_size_y = random_size_x;
-				base_size.y = random_size_y + size.y;
-				base_size.x = (random_size_x + size.x) / image_size.x;
+				base_size_y = random_size_y + size.y;
+				base_size_x = (random_size_x + size.x) / image_size.x;
 			}
 		}
 
@@ -8879,20 +8881,21 @@ namespace tfx {
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec2 &base_size = entry->particle_data->base_size[index];
+			float &base_size_x = entry->particle_data->base_size_x[index];
+			float &base_size_y = entry->particle_data->base_size_y[index];
 
 			//----Size
 			if (!(property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
 				float random_size_x = random_generation.Range(size_variation.x);
 				float random_size_y = random_generation.Range(size_variation.y);
-				base_size.y = random_size_y + size.y;
-				base_size.x = random_size_x + size.x;
+				base_size_y = random_size_y + size.y;
+				base_size_x = random_size_x + size.x;
 			}
 			else {
 				float random_size_x = random_generation.Range(size_variation.x);
 				float random_size_y = random_size_x;
-				base_size.y = random_size_y + size.y;
-				base_size.x = random_size_x + size.x;
+				base_size_y = random_size_y + size.y;
+				base_size_x = random_size_x + size.x;
 			}
 
 		}
@@ -10644,7 +10647,8 @@ namespace tfx {
 				bank.color[next_index] = bank.color[index];			
 				bank.intensity[next_index] = bank.intensity[index];
 				bank.image_frame[next_index] = bank.image_frame[index];
-				bank.base_size[next_index] = bank.base_size[index];
+				bank.base_size_x[next_index] = bank.base_size_x[index];
+				bank.base_size_y[next_index] = bank.base_size_y[index];
 				bank.single_loop_count[next_index] = bank.single_loop_count[index];	
 			}
 
@@ -11040,7 +11044,8 @@ namespace tfx {
 			const float max_age = bank.max_age[index];
 			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 
-			const tfxVec2 base_size = bank.base_size[index];
+			const float base_size_x = bank.base_size_x[index];
+			const float base_size_y = bank.base_size_y[index];
 			const float base_velocity = bank.base_velocity[index];
 			const float weight_acceleration = bank.weight_acceleration[index];
 
@@ -11051,19 +11056,19 @@ namespace tfx {
 
 			//----Size Changes
 			tfxVec2 scale;
-			scale.x = base_size.x * lookup_width;
+			scale.x = base_size_x * lookup_width;
 			if (scale.x < 0.f)
 				scale.x = scale.x;
 
 			//----Stretch Changes
 			float velocity = std::fabsf(lookup_velocity * base_velocity + weight_acceleration);
 			if (emitter_flags & tfxEmitterStateFlags_lifetime_uniform_size) {
-				scale.y = (lookup_width * (base_size.y + (velocity * lookup_stretch * stretch))) / image_size.y;
+				scale.y = (lookup_width * (base_size_y + (velocity * lookup_stretch * stretch))) / image_size.y;
 				if (emitter_flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
 					scale.y = scale.x;
 			}
 			else
-				scale.y = (lookup_height * (base_size.y + (velocity * lookup_stretch * stretch))) / image_size.y;
+				scale.y = (lookup_height * (base_size_y + (velocity * lookup_stretch * stretch))) / image_size.y;
 
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
 			s.transform.scale = scale * overal_scale;
@@ -11176,6 +11181,7 @@ namespace tfx {
 		tfxWideFloat velocity_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 		tfxWideInt x_indexes = tfxWideSeti(14, 12, 10, 8, 6, 4, 2, 0);
 		tfxWideInt y_indexes = tfxWideSeti(15, 13, 11, 9, 7, 5, 3, 1);
+		tfxWideInt sprite_indexes = tfxWideSeti(7, 6, 5, 4, 3, 2, 1, 0);
 
 		tfxU32 capacity = work_entry->pm->particle_array_buffers[particles_index].capacity;
 		
@@ -11185,8 +11191,12 @@ namespace tfx {
 		tfxU32 end_index = (work_entry->end_index / tfxDataWidth + 1) * tfxDataWidth;
 		tfxU32 start_diff = circular_start - block_start_index;
 
+		end_index = end_index - start_diff < work_entry->end_index ? end_index + tfxDataWidth : end_index;
+		int l = 0;
+
 		float scale_x_arr[tfxDataWidth];
 		float scale_y_arr[tfxDataWidth];
+		int lookup_frames[tfxDataWidth];
 		bool done = false;
 
 		for (tfxU32 i = work_entry->start_index; i != end_index; i += tfxDataWidth) {
@@ -11197,13 +11207,15 @@ namespace tfx {
 			tfxWideFloat life = tfxWideDiv(age, max_age);
 			life = tfxWideMul(life, velocity_life);
 			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
-			tfxWideInt lookup_frame = tfxWideConverti(life);
+			tfxWideInt lookup_frame_width = tfxWideMini(tfxWideConverti(life), width_last_frame);
+			tfxWideInt lookup_frame_height = tfxWideMini(tfxWideConverti(life), height_last_frame);
+			tfxWideStorei((tfxWideInt*)lookup_frames, lookup_frame_width);
+			const tfxWideFloat lookup_width = tfxWideLookupSet(work_entry->graphs->width.lookup.values, lookup_frames);
+			tfxWideStorei((tfxWideInt*)lookup_frames, lookup_frame_height);
+			const tfxWideFloat lookup_height = tfxWideLookupSet(work_entry->graphs->height.lookup.values, lookup_frames);
 
-			const tfxWideFloat base_size_x = tfxWideGather(&bank.base_size[index].x, x_indexes, 4);
-			const tfxWideFloat base_size_y = tfxWideGather(&bank.base_size[index].y, y_indexes, 4);
-
-			tfxWideFloat lookup_width = tfxWideGather(work_entry->graphs->width.lookup.values.block, tfxWideMini(lookup_frame, width_last_frame), 4);
-			tfxWideFloat lookup_height = tfxWideGather(work_entry->graphs->height.lookup.values.block, tfxWideMini(lookup_frame, height_last_frame), 4);
+			const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
+			const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
 
 			//----Size Changes
 			tfxWideFloat scale_x = tfxWideMul(base_size_x, lookup_width);
@@ -11222,11 +11234,10 @@ namespace tfx {
 			tfxWideStore(scale_x_arr, scale_x);
 			tfxWideStore(scale_y_arr, scale_y);
 
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprites3d->current_size ? work_entry->sprites3d->current_size - running_sprite_index : tfxDataWidth;
-			for (tfxU32 i = start_diff; i < limit_index; ++i) {
+			for (tfxU32 j = start_diff; j < tfxDataWidth; ++j) {
 				tfxVec2 &s = (*work_entry->sprites3d)[running_sprite_index++].transform.scale;
-				s.x = scale_x_arr[i];
-				s.y = scale_y_arr[i];
+				s.x = scale_x_arr[j];
+				s.y = scale_y_arr[j];
 			}
 			start_diff = 0;
 		}
