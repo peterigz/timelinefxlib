@@ -11167,8 +11167,6 @@ namespace tfx {
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
 
-		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
-		const float stretch = pm.emitters.stretch[emitter_index];
 		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
 		const tfxWideInt width_last_frame = tfxWideSetSinglei(work_entry->graphs->width.lookup.last_frame);
 		const tfxWideInt height_last_frame = tfxWideSetSinglei(work_entry->graphs->height.lookup.last_frame);
@@ -11180,18 +11178,14 @@ namespace tfx {
 		tfxWideFloat velocity_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 
 		tfxU32 circular_start = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], work_entry->start_index);
-
 		tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 		tfxU32 end_index = (work_entry->end_index / tfxDataWidth + 1) * tfxDataWidth;
 		tfxU32 start_diff = circular_start - block_start_index;
-
 		end_index = end_index - start_diff < work_entry->end_index ? end_index + tfxDataWidth : end_index;
-		int l = 0;
 
 		float scale_x_arr[tfxDataWidth];
 		float scale_y_arr[tfxDataWidth];
 		int lookup_frames[tfxDataWidth];
-		bool done = false;
 
 		for (tfxU32 i = work_entry->start_index; i != end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;

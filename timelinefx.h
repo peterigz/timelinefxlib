@@ -226,7 +226,7 @@ union tfxUInt10bit
 	tfxU32 pack;
 };
 
-#define tfxUSEAVX
+//#define tfxUSEAVX
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
@@ -285,13 +285,14 @@ typedef __m128i tfxWideInt;
 #define tfxWideStore _mm_store_ps
 #define tfxWideStorei _mm_store_si128
 #define tfxWideCasti _mm_castps_si128 
+#define tfxWideConverti _mm_cvttps_epi32 
 #define tfxWideMin _mm_min_ps
 #define tfxWideMax _mm_max_ps
 #define tfxWideMini _mm_min_epi32
 #define tfxWideMaxi _mm_max_epi32
 #define tfxWideOr _mm_or_ps
 #define tfxWideAnd _mm_and_ps
-#define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
+#define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
 const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
@@ -6063,76 +6064,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	//Initial particle struct, looking to optimise this and make as small as possible
-	//These are spawned by effector emitter types
-	//Particles are stored in the particle manager particle buffer.
-	struct tfxWideParticleData {
-		//Updated every frame
-		tfxWideVec3 local_position;			//The local position of the particle, relative to the emitter.
-		tfxWideVec3 local_rotations;
-		tfxWideVec3 captured_position;
-		//Read only when ControlParticle is called, only written to at spawn time
-		tfxWideVec2 base_size;
-		tfxWideFloat base_velocity;
-		tfxWideFloat base_spin;
-		tfxWideFloat base_weight;
-		tfxWideVec3 velocity_normal;		//Current velocity direction, with stretch factor in w
-		tfxWideFloat stretch;				//Higer numbers means random movement is less uniform
-		tfxWideFloat noise_offset;			//Higer numbers means random movement is less uniform
-		tfxWideFloat noise_resolution;		//Higer numbers means random movement is more uniform
-		tfxParticleFlags flags;				//state_flags for different states
-		//Updated everyframe
-		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
-		tfxWideFloat max_age;				//max age before the particle expires
-		tfxU32 single_loop_count;			//The number of times a single particle has looped over
-		tfxWideFloat image_frame;			//Current frame of the image if it's an animation
-		tfxWideFloat weight_acceleration;	//The current amount of gravity applied to the y axis of the particle each frame
-		tfxWideFloat intensity;				//Color is multiplied by this value in the shader to increase the brightness of the particles
-		tfxWideFloat depth;
-		tfxRGBA8 color;						//Colour of the particle
-	};
-
-	struct tfxWideParticlePosition {
-		tfxWideVec3 local_position;			//The local position of the particle, relative to the emitter.
-	};
-
-	struct tfxWideParticleAge {
-		tfxWideFloat age;					//The age of the particle, used by the controller to look up the current state on the graphs
-		tfxWideFloat max_age;				//max age before the particle expires
-	};
-
-	struct tfxWideParticle {
-		tfxParticle *next_ptr[tfxDataWidth];
-		tfxEffectEmitter *parent[tfxDataWidth];
-		tfxU32 sprite_index[tfxDataWidth];
-		tfxU32 prev_index[tfxDataWidth];
-		tfxWideParticleData data;
-	};
-
-	inline void StoreLocalPositionX(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_position.x) + slot) = value;
-	}
-
-	inline void StoreLocalPositionY(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_position.y) + slot) = value;
-	}
-
-	inline void StoreLocalPositionZ(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_position.z) + slot) = value;
-	}
-
-	inline void StoreLocalRotationPitch(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_rotations.pitch) + slot) = value;
-	}
-
-	inline void StoreLocalRotationRoll(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_rotations.roll) + slot) = value;
-	}
-
-	inline void StoreLocalRotationYaw(tfxWideParticleData *data, float value, tfxU32 slot) {
-		*(reinterpret_cast<float*>(&data->local_rotations.yaw) + slot) = value;
-	}
-
 	struct tfxSpriteTransform2d {
 		tfxVec2 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
 		tfxVec2 captured_position;
@@ -6175,11 +6106,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float intensity;			
 	};
 
-	const tfxU32 tfxSprite3dfScaleXOffset = offsetof(tfxParticleSprite3d, transform.scale.x);
-	const tfxU32 tfxSprite3dfScaleYOffset = offsetof(tfxParticleSprite3d, transform.scale.y);
-	const tfxU32 tfxSizeOfSprite3d = sizeof(tfxParticleSprite3d);
-
-
 	struct tfxParticleSprite3dAVX {	//56 bytes
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 captured_index;
@@ -6203,12 +6129,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float padding[2];
 	};
 
-	//todo need an sse version for thise
 	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured ) {
-		tfxWideFloat to = tfxWideSet(current.scale.y, current.scale.x, current.rotations.z, current.rotations.y, current.rotations.x,
-			current.position.z, current.position.y, current.position.x);
-		tfxWideFloat from = tfxWideSet(captured.scale.y, captured.scale.x, captured.rotations.z, captured.rotations.y, captured.rotations.x,
-			captured.position.z, captured.position.y, captured.position.x);
+#ifdef tfxUSEAVX
+		tfxWideFloat to = tfxWideLoad(&current.position.x);
+		tfxWideFloat from = tfxWideLoad(&captured.position.x);
 		tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
 		tfxWideFloat to_lerp = tfxWideMul(to, tween);
 		tfxWideFloat from_lerp = tfxWideMul(from, one_minus_tween);
@@ -6216,6 +6140,23 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxWideLerpTransformResult out;
 		tfxWideStore(out.position, result);
 		return out;
+#else
+		tfxWideFloat to1 = tfxWideLoad(&current.position.x);
+		tfxWideFloat from1 = tfxWideLoad(&captured.position.x);
+		tfxWideFloat to2 = tfxWideLoad(&current.rotations.y);
+		tfxWideFloat from2 = tfxWideLoad(&captured.rotations.y);
+		tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
+		tfxWideFloat to_lerp1 = tfxWideMul(to1, tween);
+		tfxWideFloat from_lerp1 = tfxWideMul(from1, one_minus_tween);
+		tfxWideFloat result = tfxWideAdd(from_lerp1, to_lerp1);
+		tfxWideLerpTransformResult out;
+		tfxWideStore(out.position, result);
+		to_lerp1 = tfxWideMul(to2, tween);
+		from_lerp1 = tfxWideMul(from2, one_minus_tween);
+		result = tfxWideAdd(from_lerp1, to_lerp1);
+		tfxWideStore(&out.rotations[1], result);
+		return out;
+#endif
 	}
 
 	struct tfxSIMDSprite3d {			//60 bytes
