@@ -226,7 +226,7 @@ union tfxUInt10bit
 	tfxU32 pack;
 };
 
-//#define tfxUSEAVX
+#define tfxUSEAVX
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
@@ -254,6 +254,8 @@ typedef __m256i tfxWideInt;
 #define tfxWideMaxi _mm256_max_epi32
 #define tfxWideOr _mm256_or_ps
 #define tfxWideAnd _mm256_and_ps
+#define tfxWidePacks32 _mm256_packs_epi32
+#define tfxWidePackus16 _mm256_packs_epi16
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
@@ -262,6 +264,7 @@ const __m256 tfxWIDEG32_4 = _mm256_set1_ps((1.0f / 6.0f) * 2.f);
 const __m256 tfxWIDEG33_4 = _mm256_set1_ps((1.0f / 6.0f) * 3.f);
 const __m256i tfxWIDEONEi = _mm256_set1_epi32(1);
 const __m256 tfxWIDEONE = _mm256_set1_ps(1.f);
+const __m256 tfxWIDE255 = _mm256_set1_ps(255.f);
 const __m256 tfxWIDEMINUSONE = _mm256_set1_ps(1.f);
 const __m256 tfxWIDEZERO = _mm256_set1_ps(0.f);
 const __m256 tfxWIDETHIRTYTWO = _mm256_set1_ps(32.f);
@@ -301,6 +304,7 @@ const __m128 tfxWIDEG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
 const __m128i tfxWIDEONEi = _mm_set1_epi32(1);
 const __m128 tfxWIDEONE = _mm_set1_ps(1.f);
 const __m256 tfxWIDEMINUSONE = _mm256_set1_ps(1.f);
+const __m256 tfxWIDE255 = _mm_set1_ps(255.f);
 const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
 const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
 const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
@@ -2858,6 +2862,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		tfxRGBA8() { r = g = b = a = 0; }
 		tfxRGBA8(unsigned char _r, unsigned char _g, unsigned char _b, unsigned char _a) : r(_r), g(_g), b(_b), a(_a) { }
+		tfxRGBA8(float _r, float _g, float _b, float _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
 	};
 
 	struct tfxRGB {
@@ -6000,7 +6005,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float base_spin;
 		float noise_offset;	
 		float noise_resolution;
-		tfxRGBA8 color;	
+		float red;	
+		float green;	
+		float blue;	
+		float alpha;	
 		float intensity;
 		float image_frame;
 		float base_size_x;
@@ -6028,7 +6036,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float *base_spin;
 		float *noise_offset;	
 		float *noise_resolution;
-		tfxRGBA8 *color;	
+		float *red;
+		float *green;
+		float *blue;
+		float *alpha;
 		float *intensity;
 		float *image_frame;
 		float *base_size_x;
@@ -6055,7 +6066,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_spin));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_offset));				
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_resolution));			
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxParticleSoA, color));					
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, red));					
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, green));					
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, blue));					
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, alpha));					
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, intensity));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));					
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_x));
@@ -6266,7 +6280,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		pf.stretch = bank.velocity_normal[index].w;
 		pf.alignment_type = billboard_option;
 		pf.handle = handle;
-		pf.color = bank.color[index];
+		pf.color = tfxRGBA8(bank.red[index], bank.green[index], bank.blue[index], bank.alpha[index]);
 		pf.intensity = bank.intensity[index];
 		pf.image_ptr = image_ptr;
 		pf.image_frame = (tfxU32)bank.image_frame[index];
@@ -6610,7 +6624,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			to_bank.base_spin[index] = from_bank.base_spin[other_index];
 			to_bank.noise_offset[index] = from_bank.noise_offset[other_index];
 			to_bank.noise_resolution[index] = from_bank.noise_resolution[other_index];
-			to_bank.color[index] = from_bank.color[other_index];
+			to_bank.red[index] = from_bank.red[other_index];
+			to_bank.green[index] = from_bank.green[other_index];
+			to_bank.blue[index] = from_bank.blue[other_index];
+			to_bank.alpha[index] = from_bank.alpha[other_index];
 			to_bank.intensity[index] = from_bank.intensity[other_index];
 			to_bank.image_frame[index] = from_bank.image_frame[other_index];
 			to_bank.base_size_x[index] = from_bank.base_size_x[other_index];
@@ -7206,7 +7223,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		std::swap(particles.base_spin[from], particles.base_spin[to]);
 		std::swap(particles.noise_offset[from], particles.noise_offset[to]);
 		std::swap(particles.noise_resolution[from], particles.noise_resolution[to]);
-		std::swap(particles.color[from], particles.color[to]);
+		std::swap(particles.red[from], particles.red[to]);
+		std::swap(particles.green[from], particles.green[to]);
+		std::swap(particles.blue[from], particles.blue[to]);
+		std::swap(particles.alpha[from], particles.alpha[to]);
 		std::swap(particles.intensity[from], particles.intensity[to]);
 		std::swap(particles.image_frame[from], particles.image_frame[to]);
 		std::swap(particles.base_size_x[from], particles.base_size_x[to]);
@@ -7233,7 +7253,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		temp.base_spin = particles.base_spin[from];
 		temp.noise_offset = particles.noise_offset[from];
 		temp.noise_resolution = particles.noise_resolution[from];
-		temp.color = particles.color[from];
+		temp.red = particles.red[from];
+		temp.green = particles.green[from];
+		temp.blue = particles.blue[from];
+		temp.alpha = particles.alpha[from];
 		temp.intensity = particles.intensity[from];
 		temp.image_frame = particles.image_frame[from];
 		temp.base_size_x = particles.base_size_x[from];
@@ -7260,7 +7283,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		particles.base_spin[from] = temp.base_spin;
 		particles.noise_offset[from] = temp.noise_offset;
 		particles.noise_resolution[from] = temp.noise_resolution;
-		particles.color[from] = temp.color;
+		particles.red[from] = temp.red;
+		particles.green[from] = temp.green;
+		particles.blue[from] = temp.blue;
+		particles.alpha[from] = temp.alpha;
 		particles.intensity[from] = temp.intensity;
 		particles.image_frame[from] = temp.image_frame;
 		particles.base_size_x[from] = temp.base_size_x;

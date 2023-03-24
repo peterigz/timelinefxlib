@@ -6909,7 +6909,10 @@ namespace tfx {
 				bank.base_spin[next_index] = bank.base_spin[index];
 				bank.noise_offset[next_index] = bank.noise_offset[index];
 				bank.noise_resolution[next_index] = bank.noise_resolution[index];
-				bank.color[next_index] = bank.color[index];
+				bank.red[next_index] = bank.red[index];
+				bank.green[next_index] = bank.green[index];
+				bank.blue[next_index] = bank.blue[index];
+				bank.alpha[next_index] = bank.alpha[index];
 				bank.intensity[next_index] = bank.intensity[index];
 				bank.image_frame[next_index] = bank.image_frame[index];
 				bank.base_size_x[next_index] = bank.base_size_x[index];
@@ -7241,22 +7244,23 @@ namespace tfx {
 			const float lookup_opacity = graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, graphs->blendfactor.lookup.last_frame)];
 			const float lookup_intensity = graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->intensity.lookup.last_frame)];
 
-			tfxRGBA8 &color = bank.color[index];
+			float &red = bank.red[index];
+			float &green = bank.green[index];
+			float &blue = bank.blue[index];
+			float &alpha = bank.alpha[index];
 			float &intensity = bank.intensity[index];
 
 			//----Color changes
-			color.a = unsigned char(255.f * lookup_opacity);
+			alpha = 255.f * lookup_opacity;
 			intensity = lookup_intensity * global_intensity;
 			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
-				color.r = unsigned char(255.f * lookup_red);
-				color.g = unsigned char(255.f * lookup_green);
-				color.b = unsigned char(255.f * lookup_blue);
+				red = 255.f * lookup_red;
+				green = 255.f * lookup_green;
+				blue = 255.f * lookup_blue;
 			}
 
-			color = tfxRGBA8(color.r, color.g, color.b, color.a);
-
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
-			s.color = color;
+			s.color = tfxRGBA8(red, green, blue, alpha);
 			s.intensity = intensity;
 		}
 
@@ -7581,25 +7585,26 @@ namespace tfx {
 			const float lookup_opacity = graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, graphs->blendfactor.lookup.last_frame)];
 			const float lookup_intensity = graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->intensity.lookup.last_frame)];
 
-			tfxRGBA8 &color = bank.color[index];
+			float &red = bank.red[index];
+			float &green = bank.green[index];
+			float &blue = bank.blue[index];
+			float &alpha = bank.alpha[index];
 			float &intensity = bank.intensity[index];
 
 			//----Color changes
-			color.a = unsigned char(255.f * lookup_opacity);
+			alpha = 255.f * lookup_opacity;
 			intensity = lookup_intensity * global_intensity;
 			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
 				const float lookup_red = graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, graphs->red.lookup.last_frame)];
 				const float lookup_green = graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, graphs->green.lookup.last_frame)];
 				const float lookup_blue = graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, graphs->blue.lookup.last_frame)];
-				color.r = unsigned char(255.f * lookup_red);
-				color.g = unsigned char(255.f * lookup_green);
-				color.b = unsigned char(255.f * lookup_blue);
+				red = 255.f * lookup_red;
+				green = 255.f * lookup_green;
+				blue = 255.f * lookup_blue;
 			}
 
-			color = tfxRGBA8(color.r, color.g, color.b, color.a);
-
 			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
-			s.color = color;
+			s.color = tfxRGBA8(red, green, blue, alpha);
 			s.intensity = intensity;
 		}
 	}
@@ -8737,13 +8742,17 @@ namespace tfx {
 		const float first_red_value = library->emitter_attributes[emitter_attributes].overtime.red.GetFirstValue();
 		const float first_green_value = library->emitter_attributes[emitter_attributes].overtime.green.GetFirstValue();
 		const float first_blue_value = library->emitter_attributes[emitter_attributes].overtime.blue.GetFirstValue();
+		const float first_alpha_value = library->emitter_attributes[emitter_attributes].overtime.blendfactor.GetFirstValue();
 		const float first_intensity_value = library->emitter_attributes[emitter_attributes].overtime.intensity.GetFirstValue();
 
 		for(int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			float &age = entry->particle_data->age[index];
 			float &max_age = entry->particle_data->max_age[index];
-			tfxRGBA8 &color = entry->particle_data->color[index];
+			float &red = entry->particle_data->red[index];
+			float &green = entry->particle_data->green[index];
+			float &blue = entry->particle_data->blue[index];
+			float &alpha = entry->particle_data->alpha[index];
 			float &intensity = entry->particle_data->intensity[index];
 			tfxU32 &single_loop_count = entry->particle_data->single_loop_count[index];
 
@@ -8761,19 +8770,19 @@ namespace tfx {
 			max_age = life + random_generation.Range(life_variation);
 			single_loop_count = 0;
 
-			color.a = unsigned char(255.f * library->emitter_attributes[emitter_attributes].overtime.blendfactor.GetFirstValue());
+			alpha = 255.f * first_alpha_value;
 			intensity = first_intensity_value * emitter_intensity;
 			//intensity = 0.f;
 			if (emitter_flags & tfxEmitterStateFlags_random_color) {
 				float age = random_generation.Range(max_age);
-				color.r = unsigned char(255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.red, age, max_age));
-				color.g = unsigned char(255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.green, age, max_age));
-				color.b = unsigned char(255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.blue, age, max_age));
+				red = 255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.red, age, max_age);
+				green = 255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.green, age, max_age);
+				blue = 255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.blue, age, max_age);
 			}
 			else {
-				color.r = unsigned char(255.f * first_red_value);
-				color.g = unsigned char(255.f * first_green_value);
-				color.b = unsigned char(255.f * first_blue_value);
+				red = 255.f * first_red_value;
+				green = 255.f * first_green_value;
+				blue = 255.f * first_blue_value;
 			}
 
 			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
@@ -8791,7 +8800,6 @@ namespace tfx {
 				}
 			}
 		}
-
 	}
 
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data) {
@@ -10644,7 +10652,10 @@ namespace tfx {
 				bank.base_spin[next_index] = bank.base_spin[index];
 				bank.noise_offset[next_index] = bank.noise_offset[index];		
 				bank.noise_resolution[next_index] = bank.noise_resolution[index];
-				bank.color[next_index] = bank.color[index];			
+				bank.red[next_index] = bank.red[index];			
+				bank.green[next_index] = bank.green[index];			
+				bank.blue[next_index] = bank.blue[index];			
+				bank.alpha[next_index] = bank.alpha[index];			
 				bank.intensity[next_index] = bank.intensity[index];
 				bank.image_frame[next_index] = bank.image_frame[index];
 				bank.base_size_x[next_index] = bank.base_size_x[index];
@@ -11098,25 +11109,26 @@ namespace tfx {
 			const float lookup_opacity = work_entry->graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blendfactor.lookup.last_frame)];
 			const float lookup_intensity = work_entry->graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->intensity.lookup.last_frame)];
 
-			tfxRGBA8 &color = bank.color[index];
+			float &red = bank.red[index];
+			float &green = bank.green[index];
+			float &blue = bank.blue[index];
+			float &alpha = bank.alpha[index];
 			float &intensity = bank.intensity[index];
 
 			//----Color changes
-			color.a = unsigned char(255.f * lookup_opacity);
+			alpha = 255.f * lookup_opacity;
 			intensity = lookup_intensity * global_intensity;
 			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
 				const float lookup_red = work_entry->graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->red.lookup.last_frame)];
 				const float lookup_green = work_entry->graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->green.lookup.last_frame)];
 				const float lookup_blue = work_entry->graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blue.lookup.last_frame)];
-				color.r = unsigned char(255.f * lookup_red);
-				color.g = unsigned char(255.f * lookup_green);
-				color.b = unsigned char(255.f * lookup_blue);
+				red = 255.f * lookup_red;
+				green = 255.f * lookup_green;
+				blue = 255.f * lookup_blue;
 			}
 
-			color = tfxRGBA8(color.r, color.g, color.b, color.a);
-
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
-			s.color = color;
+			s.color = tfxRGBA8(red, green, blue, alpha);
 			s.intensity = intensity;
 		}
 
@@ -11173,28 +11185,29 @@ namespace tfx {
 		const tfxWideFloat overal_scale = tfxWideSetSingle(pm.emitters.overal_scale[emitter_index]);
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
+
+		tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+
 		tfxU32 sprite_buffer_end_index = work_entry->sprites_index + work_entry->end_index;
-
-		tfxWideFloat velocity_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-
 		tfxU32 circular_start = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], work_entry->start_index);
 		tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 		tfxU32 end_index = (work_entry->end_index / tfxDataWidth + 1) * tfxDataWidth;
 		tfxU32 start_diff = circular_start - block_start_index;
 		end_index = end_index - start_diff < work_entry->end_index ? end_index + tfxDataWidth : end_index;
+		int lookup_frames[tfxDataWidth];
 
 		float scale_x_arr[tfxDataWidth];
 		float scale_y_arr[tfxDataWidth];
-		int lookup_frames[tfxDataWidth];
 
 		for (tfxU32 i = work_entry->start_index; i != end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
+
 			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 			tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
-
 			tfxWideFloat life = tfxWideDiv(age, max_age);
-			life = tfxWideMul(life, velocity_life);
+			life = tfxWideMul(life, max_life);
 			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+
 			tfxWideInt lookup_frame_width = tfxWideMini(tfxWideConverti(life), width_last_frame);
 			tfxWideInt lookup_frame_height = tfxWideMini(tfxWideConverti(life), height_last_frame);
 			tfxWideStorei((tfxWideInt*)lookup_frames, lookup_frame_width);
@@ -11240,40 +11253,88 @@ namespace tfx {
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = work_entry->pm->particle_arrays[particles_index];
 
-		const float global_intensity = pm.emitters.intensity[emitter_index];
+		const tfxWideFloat global_intensity = tfxWideSetSingle(pm.emitters.intensity[emitter_index]);
 		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 
-		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const float age = bank.age[index];
-			const float max_age = bank.max_age[index];
-			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+		tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+		tfxU32 sprite_buffer_end_index = work_entry->sprites_index + work_entry->end_index;
+		tfxU32 circular_start = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], work_entry->start_index);
+		tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+		tfxU32 end_index = (work_entry->end_index / tfxDataWidth + 1) * tfxDataWidth;
+		tfxU32 start_diff = circular_start - block_start_index;
+		end_index = end_index - start_diff < work_entry->end_index ? end_index + tfxDataWidth : end_index;
+		int lookup_frames[tfxDataWidth];
 
-			const float lookup_red = work_entry->graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->red.lookup.last_frame)];
-			const float lookup_green = work_entry->graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->green.lookup.last_frame)];
-			const float lookup_blue = work_entry->graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blue.lookup.last_frame)];
-			const float lookup_opacity = work_entry->graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blendfactor.lookup.last_frame)];
-			const float lookup_intensity = work_entry->graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->intensity.lookup.last_frame)];
+		const tfxWideInt last_frame_color = tfxWideSetSinglei(work_entry->graphs->red.lookup.last_frame);
+		const tfxWideInt last_frame_intensity = tfxWideSetSinglei(work_entry->graphs->intensity.lookup.last_frame);
+		const tfxWideInt last_frame_opacity = tfxWideSetSinglei(work_entry->graphs->blendfactor.lookup.last_frame);
+		tfxWideFloat wide_alpha;
+		tfxWideFloat wide_red;
+		tfxWideFloat wide_green;
+		tfxWideFloat wide_blue;
+		tfxWideFloat wide_intensity;
+		tfxWideInt lookup_frame;
 
-			tfxRGBA8 &color = bank.color[index];
-			float &intensity = bank.intensity[index];
+		for (tfxU32 i = work_entry->start_index; i != end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+			tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			tfxWideFloat life = tfxWideDiv(age, max_age);
+			life = tfxWideMul(life, max_life);
+			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+
+			lookup_frame = tfxWideMini(tfxWideConverti(life), last_frame_color);
+			tfxWideStorei((tfxWideInt*)lookup_frames, lookup_frame);
+			const tfxWideFloat lookup_red = tfxWideLookupSet(work_entry->graphs->red.lookup.values, lookup_frames);
+
+			lookup_frame = tfxWideMini(tfxWideConverti(life), last_frame_color);
+			tfxWideStorei((tfxWideInt*)lookup_frames, lookup_frame);
+			const tfxWideFloat lookup_green = tfxWideLookupSet(work_entry->graphs->green.lookup.values, lookup_frames);
+
+			lookup_frame = tfxWideMini(tfxWideConverti(life), last_frame_color);
+			tfxWideStorei((tfxWideInt*)lookup_frames, lookup_frame);
+			const tfxWideFloat lookup_blue = tfxWideLookupSet(work_entry->graphs->blue.lookup.values, lookup_frames);
+
+			lookup_frame = tfxWideMini(tfxWideConverti(life), last_frame_intensity);
+			tfxWideStorei((tfxWideInt*)lookup_frames, lookup_frame);
+			const tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, lookup_frames);
+
+			lookup_frame = tfxWideMini(tfxWideConverti(life), last_frame_opacity);
+			tfxWideStorei((tfxWideInt*)lookup_frames, lookup_frame);
+			const tfxWideFloat lookup_opacity = tfxWideLookupSet(work_entry->graphs->blendfactor.lookup.values, lookup_frames);
+
+			float *red = &bank.red[index];
+			float *green = &bank.green[index];
+			float *blue = &bank.blue[index];
+			float *alpha = &bank.alpha[index];
+			float *intensity = &bank.intensity[index];
 
 			//----Color changes
-			color.a = unsigned char(255.f * lookup_opacity);
-			intensity = lookup_intensity * global_intensity;
+			wide_alpha = tfxWideMul(tfxWIDE255, lookup_opacity);
+			wide_intensity = tfxWideMul(global_intensity, lookup_intensity);
+			tfxWideStore(intensity, wide_intensity);
+
 			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
-				color.r = unsigned char(255.f * lookup_red);
-				color.g = unsigned char(255.f * lookup_green);
-				color.b = unsigned char(255.f * lookup_blue);
+				wide_red = tfxWideMul(tfxWIDE255, lookup_red);
+				wide_green = tfxWideMul(tfxWIDE255, lookup_green);
+				wide_blue = tfxWideMul(tfxWIDE255, lookup_blue);
+				tfxWideStore(red, wide_red);
+				tfxWideStore(green, wide_green);
+				tfxWideStore(blue, wide_blue);
 			}
 
-			color = tfxRGBA8(color.r, color.g, color.b, color.a);
+			tfxWideStore(alpha, wide_alpha);
 
-			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
-			s.color = color;
-			s.intensity = intensity;
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > sprite_buffer_end_index ? sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+			for (tfxU32 j = start_diff; j < limit_index; ++j) {
+				tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
+				s.color = tfxRGBA8(*(red + j), *(green + j), *(blue + j), *(alpha + j));
+				s.intensity = *(intensity + j);
+			}
+			start_diff = 0;
 		}
 
 	}
