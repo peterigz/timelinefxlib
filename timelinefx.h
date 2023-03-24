@@ -6203,6 +6203,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float padding[2];
 	};
 
+	//todo need an sse version for thise
 	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured ) {
 		tfxWideFloat to = tfxWideSet(current.scale.y, current.scale.x, current.rotations.z, current.rotations.y, current.rotations.x,
 			current.position.z, current.position.y, current.position.x);

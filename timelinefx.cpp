@@ -7628,7 +7628,7 @@ namespace tfx {
 			float &image_frame = bank.image_frame[index];
 			tfxU32 &sprites_index = bank.sprite_index[index];
 			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index];
-			s.captured_index = sprites_index;
+			s.captured_index = sprites_index & 0x00FFFFFF;
 			sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index++;
 
 			//----Image animation
@@ -11170,21 +11170,15 @@ namespace tfx {
 		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
 		const float stretch = pm.emitters.stretch[emitter_index];
 		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
-		const tfxVec2 image_size = pm.emitters.image_size[emitter_index];
-		const tfxVec2 image_handle = pm.emitters.image_handle[emitter_index];
 		const tfxWideInt width_last_frame = tfxWideSetSinglei(work_entry->graphs->width.lookup.last_frame);
 		const tfxWideInt height_last_frame = tfxWideSetSinglei(work_entry->graphs->height.lookup.last_frame);
 		const tfxWideFloat overal_scale = tfxWideSetSingle(pm.emitters.overal_scale[emitter_index]);
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
+		tfxU32 sprite_buffer_end_index = work_entry->sprites_index + work_entry->end_index;
 
 		tfxWideFloat velocity_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-		tfxWideInt x_indexes = tfxWideSeti(14, 12, 10, 8, 6, 4, 2, 0);
-		tfxWideInt y_indexes = tfxWideSeti(15, 13, 11, 9, 7, 5, 3, 1);
-		tfxWideInt sprite_indexes = tfxWideSeti(7, 6, 5, 4, 3, 2, 1, 0);
 
-		tfxU32 capacity = work_entry->pm->particle_array_buffers[particles_index].capacity;
-		
 		tfxU32 circular_start = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], work_entry->start_index);
 
 		tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
@@ -11234,7 +11228,8 @@ namespace tfx {
 			tfxWideStore(scale_x_arr, scale_x);
 			tfxWideStore(scale_y_arr, scale_y);
 
-			for (tfxU32 j = start_diff; j < tfxDataWidth; ++j) {
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > sprite_buffer_end_index ? sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+			for (tfxU32 j = start_diff; j < limit_index; ++j) {
 				tfxVec2 &s = (*work_entry->sprites3d)[running_sprite_index++].transform.scale;
 				s.x = scale_x_arr[j];
 				s.y = scale_y_arr[j];
@@ -11311,7 +11306,7 @@ namespace tfx {
 			float &image_frame = bank.image_frame[index];
 			tfxU32 &sprites_index = bank.sprite_index[index];
 			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index];
-			s.captured_index = sprites_index;
+			s.captured_index = sprites_index & 0x00FFFFFF;
 			sprites_index = (work_entry->layer << 28) + running_sprite_index++;
 
 			//----Image animation
