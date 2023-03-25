@@ -7347,7 +7347,6 @@ namespace tfx {
 
 			const float lookup_velocity = graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity.lookup.last_frame)];
 			const float lookup_velocity_turbulance = graphs->velocity_turbulance.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity_turbulance.lookup.last_frame)];
-			const float lookup_direction = graphs->direction.lookup.values[std::min<tfxU32>(lookup_frame, graphs->direction.lookup.last_frame)] + angle;
 			const float lookup_noise_resolution = graphs->noise_resolution.lookup.values[std::min<tfxU32>(lookup_frame, graphs->noise_resolution.lookup.last_frame)] * noise_resolution;
 			const float lookup_weight = graphs->weight.lookup.values[std::min<tfxU32>(lookup_frame, graphs->weight.lookup.last_frame)];
 			const float lookup_spin = graphs->spin.lookup.values[std::min<tfxU32>(lookup_frame, graphs->spin.lookup.last_frame)] * base_spin;
@@ -8116,7 +8115,7 @@ namespace tfx {
 				tfxU32 sprite_layer = (sprite_id & 0xF0000000) >> 28;
 				tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
 				if (property_flags & tfxEmitterPropertyFlags_is_3d)
-					TransformEffector3d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites3d[pm.current_sprite_buffer][sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
+					TransformEffector3d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites3d[!pm.current_sprite_buffer][sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
 				else
 					TransformEffector2d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites2d[sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
 
