@@ -6123,16 +6123,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float intensity;			
 	};
 
-	struct tfxParticleSprite3dAVX {	//56 bytes
-		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
-		tfxU32 captured_index;
-		tfxWideFloat transform;
-		tfxVec3 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
-		float stretch;
-		float intensity;
-	};
-
 	struct tfxWideLerpTransformResult {
 		float position[3];
 		float rotations[3];
