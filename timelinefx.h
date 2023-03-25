@@ -235,6 +235,7 @@ union tfxUInt10bit
 typedef __m256 tfxWideFloat;
 typedef __m256i tfxWideInt;
 #define tfxWideLoad _mm256_load_ps
+#define tfxWideLoadi _mm256_load_si128
 #define tfxWideSet _mm256_set_ps
 #define tfxWideSetSingle _mm256_set1_ps
 #define tfxWideSeti _mm256_set_epi32
@@ -276,6 +277,7 @@ const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
 typedef __m128 tfxWideFloat;
 typedef __m128i tfxWideInt;
 #define tfxWideLoad _mm_load_ps
+#define tfxWideLoadi _mm_load_si128
 #define tfxWideSet _mm_set_ps
 #define tfxWideSetSingle _mm_set_ps1
 #define tfxWideSeti _mm_set_epi32

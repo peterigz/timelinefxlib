@@ -11385,14 +11385,20 @@ namespace tfx {
 			tfxWideStore(image_frames, image_frame);
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index];
+				tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
 				s.image_frame_plus = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
-				s.captured_index = bank.sprite_index[index + j] & 0x00FFFFFF;
-				bank.sprite_index[index + j] = (work_entry->layer << 28) + running_sprite_index++;
 			}
 			start_diff = 0;
 		}
 
+		running_sprite_index = work_entry->sprites_index;
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
+			tfxU32 &sprites_index = bank.sprite_index[index];
+			tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index];
+			s.captured_index = sprites_index & 0x0FFFFFFF;
+			sprites_index = (work_entry->layer << 28) + running_sprite_index++;
+		}
 	}
 
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry) {
