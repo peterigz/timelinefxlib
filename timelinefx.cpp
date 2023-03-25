@@ -11246,7 +11246,7 @@ namespace tfx {
 			tfxWideStore(scale_y_arr, scale_y);
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-			for (tfxU32 j = start_diff; j < limit_index; ++j) {
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxVec2 &s = (*work_entry->sprites3d)[running_sprite_index++].transform.scale;
 				s.x = scale_x_arr[j];
 				s.y = scale_y_arr[j];
@@ -11334,7 +11334,7 @@ namespace tfx {
 			tfxWideStore(alpha, wide_alpha);
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-			for (tfxU32 j = start_diff; j < limit_index; ++j) {
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index++];
 				s.color = tfxRGBA8(*(red + j), *(green + j), *(blue + j), *(alpha + j));
 				s.intensity = *(intensity + j);
@@ -11384,7 +11384,7 @@ namespace tfx {
 			tfxWideStore(&bank.image_frame[index], image_frame);
 			tfxWideStore(image_frames, image_frame);
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-			for (tfxU32 j = start_diff; j < limit_index; ++j) {
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxParticleSprite3d &s = (*work_entry->sprites3d)[running_sprite_index];
 				s.image_frame_plus = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 				s.captured_index = bank.sprite_index[index + j] & 0x00FFFFFF;
