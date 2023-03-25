@@ -226,7 +226,7 @@ union tfxUInt10bit
 	tfxU32 pack;
 };
 
-#define tfxUSEAVX
+//#define tfxUSEAVX
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
@@ -244,9 +244,12 @@ typedef __m256i tfxWideInt;
 #define tfxWideMul _mm256_mul_ps
 #define tfxWideDiv _mm256_div_ps
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
+#define tfxWideGreater(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GT_OS)
+#define tfxWideLess(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LT_OS)
+#define tfxWideLessEqeual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LE_OS)
 #define tfxWideStore _mm256_store_ps
 #define tfxWideStorei _mm256_store_si256
-#define tfxWideCasti _mm256_castps_si256 
+#define tfxWideCasti _mm256_castsi256_ps 
 #define tfxWideConverti _mm256_cvttps_epi32 
 #define tfxWideMin _mm256_min_ps
 #define tfxWideMax _mm256_max_ps
@@ -254,8 +257,6 @@ typedef __m256i tfxWideInt;
 #define tfxWideMaxi _mm256_max_epi32
 #define tfxWideOr _mm256_or_ps
 #define tfxWideAnd _mm256_and_ps
-#define tfxWidePacks32 _mm256_packs_epi32
-#define tfxWidePackus16 _mm256_packs_epi16
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
@@ -265,7 +266,6 @@ const __m256 tfxWIDEG33_4 = _mm256_set1_ps((1.0f / 6.0f) * 3.f);
 const __m256i tfxWIDEONEi = _mm256_set1_epi32(1);
 const __m256 tfxWIDEONE = _mm256_set1_ps(1.f);
 const __m256 tfxWIDE255 = _mm256_set1_ps(255.f);
-const __m256 tfxWIDEMINUSONE = _mm256_set1_ps(1.f);
 const __m256 tfxWIDEZERO = _mm256_set1_ps(0.f);
 const __m256 tfxWIDETHIRTYTWO = _mm256_set1_ps(32.f);
 const __m256i tfxWIDEFF = _mm256_set1_epi32(0xFF);
@@ -285,6 +285,9 @@ typedef __m128i tfxWideInt;
 #define tfxWideMul _mm_mul_ps
 #define tfxWideDiv _mm_div_ps
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
+#define tfxWideGreater(v1, v2) _mm_cmpgt_ps(v1, v2)
+#define tfxWideLessEqual(v1, v2) _mm_cmple_ps(v1, v2)
+#define tfxWideLess(v1, v2) _mm_cmplt_ps(v1, v2)
 #define tfxWideStore _mm_store_ps
 #define tfxWideStorei _mm_store_si128
 #define tfxWideCasti _mm_castps_si128 
@@ -303,8 +306,7 @@ const __m128 tfxWIDEG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
 const __m128 tfxWIDEG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
 const __m128i tfxWIDEONEi = _mm_set1_epi32(1);
 const __m128 tfxWIDEONE = _mm_set1_ps(1.f);
-const __m256 tfxWIDEMINUSONE = _mm256_set1_ps(1.f);
-const __m256 tfxWIDE255 = _mm_set1_ps(255.f);
+const __m128 tfxWIDE255 = _mm_set1_ps(255.f);
 const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
 const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
 const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
@@ -755,7 +757,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEmitterStateFlags_kill = 1 << 15,
 		tfxEmitterStateFlags_play_once = 1 << 16,							//Play the animation once only
 		tfxEmitterStateFlags_single_shot_done = 1 << 17,
-		tfxEmitterStateFlags_is_line = 1 << 18,
+		tfxEmitterStateFlags_is_line_loop_or_kill = 1 << 18,
 		tfxEmitterStateFlags_is_area = 1 << 19,
 		tfxEmitterStateFlags_no_tween = 1 << 20,
 		tfxEmitterStateFlags_align_with_velocity = 1 << 21,
@@ -885,6 +887,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
 	extern float tfxUPDATE_FREQUENCY;
 	extern float tfxUPDATE_TIME;
+	extern tfxWideFloat tfxUPDATE_TIME_WIDE;
 	extern float tfxFRAME_LENGTH;
 
 	//Look up frequency determines the resolution of graphs that are compiled into look up arrays.
@@ -6307,7 +6310,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	struct tfxControlWorkEntry {
 		tfxU32 start_index;
 		tfxU32 end_index;
+		tfxU32 wide_end_index;
+		tfxU32 start_diff;
 		tfxU32 sprites_index;
+		tfxU32 sprite_buffer_end_index;
 		tfxU32 emitter_index;
 		tfxParticleManager *pm;
 		tfxOvertimeAttributes *graphs;
