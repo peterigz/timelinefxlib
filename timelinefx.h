@@ -1672,6 +1672,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	};
 
 	//Get the index based on the buffer being a ring buffer
+	static inline tfxU32 FreeSpace(tfxSoABuffer *buffer) {
+		return buffer->capacity - buffer->current_size;
+	}
+
+	//Get the index based on the buffer being a ring buffer
 	static inline tfxU32 GetCircularIndex(tfxSoABuffer *buffer, tfxU32 index) {
 		return (buffer->start_index + index) % buffer->capacity;
 	}
@@ -3278,6 +3283,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		}
 		return res;
+	}
+
+	static inline void mmTransformRow(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
+		x = tfxWideMul(x, tfxWideSetSingle(mat.v[0].x));
+		x = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].x)), x);
+		x = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].x)), x);
+		y = tfxWideMul(x, tfxWideSetSingle(mat.v[0].y));
+		y = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].y)), y);
+		y = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].y)), y);
+		z = tfxWideMul(x, tfxWideSetSingle(mat.v[0].z));
+		z = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].z)), z);
+		z = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].z)), z);
 	}
 
 	static inline tfxVec4 mmTransformVector(const tfxMatrix4 &mat, const tfxVec4 vec) {
@@ -6115,7 +6132,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxVec3 corner2;					//The bounding box can be used to decide if this frame needs to be drawn
 	};
 
-	struct tfxParticleSprite3d {	//56 bytes
+	struct tfxSprite3d {	//56 bytes
 		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 captured_index;
 		tfxSpriteTransform3d transform;
@@ -6124,6 +6141,27 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float stretch;
 		float intensity;			
 	};
+
+	struct tfxSprite3dSoA {	//56 bytes
+		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
+		tfxU32 *captured_index;
+		tfxSpriteTransform3d *transform;
+		tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
+		tfxRGBA8 *color;				//The color tint of the sprite and blend factor in a
+		float *stretch;
+		float *intensity;			
+	};
+
+	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSprite3dSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSprite3dSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSprite3dSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSprite3dSoA, transform));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSprite3dSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSprite3dSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSprite3dSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSprite3dSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
 
 	struct tfxWideLerpTransformResult {
 		float position[3];
@@ -6192,7 +6230,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float animation_length_in_time;		//measured in millesecs
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
-		tfxParticleSprite3d *sprites;
+		tfxSprite3d *sprites;
 		tfxSIMDSprite3d *simd_sprites;
 		tfxArray<tfxFrameMeta> frame_meta;
 	};
@@ -6312,7 +6350,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 layer;
 		tfxEmitterPropertiesSoA *properties;
 		tfxring<tfxParticleSprite2d> *sprites2d;
-		tfxring<tfxParticleSprite3d> *sprites3d;
+		tfxSprite3dSoA *sprites3d;
 	};
 
 	struct tfxControlWorkEntryOrdered {
@@ -6324,7 +6362,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 start_index;
 		tfxU32 end_index;
 		tfxring<tfxParticleSprite2d> *sprites2d;
-		tfxring<tfxParticleSprite3d> *sprites3d;
+		tfxSprite3dSoA *sprites3d;
 	};
 
 	struct tfxParticleAgeWorkEntry {
@@ -6418,7 +6456,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxWorkQueue work_queue;
 
 		//Banks of sprites for drawing in unordered mode
-		tfxring<tfxParticleSprite3d> sprites3d[2][tfxLAYERS];
+		tfxSoABuffer sprites3d_buffer[2][tfxLAYERS];
+		tfxSprite3dSoA sprites3d[2][tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
 		tfxU32 current_sprite_buffer;
 
@@ -6569,14 +6608,11 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			assert(flags & tfxEffectManagerFlags_double_buffer_sprites);		//Particle manager must have double buffered sprites activated
 			return !current_sprite_buffer; 
 		}
-		tfxAPI inline tfxParticleSprite3d &GetCapturedSprite3d(tfxU32 layer, tfxU32 index) {
-			return sprites3d[!current_sprite_buffer][layer][index];
-		}
 		tfxAPI inline tfxVec3 &GetCapturedSprite3dPosition(tfxU32 layer, tfxU32 index) {
-			return sprites3d[!current_sprite_buffer][layer][index].transform.position;
+			return sprites3d[!current_sprite_buffer][layer].transform[index].position;
 		}
 		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
-			return sprites3d[!current_sprite_buffer][layer][index].transform;
+			return sprites3d[!current_sprite_buffer][layer].transform[index];
 		}
 
 		//Internal use only
@@ -6644,7 +6680,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 		inline bool FreeCapacity3d(int index, bool compute) {
 			if (!compute) {
-				return sprites3d[current_sprite_buffer][index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
+				return sprites3d_buffer[current_sprite_buffer][index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
@@ -6657,7 +6693,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			tfxU32 count = 0;
 			for (tfxEachLayer) {
 				count += sprites2d[layer].current_size;
-				count += sprites3d[current_sprite_buffer][layer].current_size;
+				count += sprites3d_buffer[current_sprite_buffer][layer].current_size;
 			}
 			return count;
 		}
@@ -7511,13 +7547,13 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxAPI inline void DoubleBufferSprites(tfxParticleManager *pm, bool double_buffer_sprites) {
 		if (!double_buffer_sprites && pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
 			for (tfxEachLayer) {
-				pm->sprites3d[1][layer].free_all();
+				FreeSoABuffer(&pm->sprites3d_buffer[1][layer]);
 			}
 			pm->flags &= ~tfxEffectManagerFlags_double_buffer_sprites;
 		}
 		else if (double_buffer_sprites && !(pm->flags & tfxEffectManagerFlags_double_buffer_sprites)) {
 			for (tfxEachLayer) {
-				pm->sprites3d[1][layer].reserve(tfxMax(pm->max_cpu_particles_per_layer[layer], 8));
+				InitSprite3dSoA(&pm->sprites3d_buffer[1][layer], &pm->sprites3d[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8));
 			}
 			pm->flags |= tfxEffectManagerFlags_double_buffer_sprites;
 		}
@@ -7549,51 +7585,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	*/
 	tfxAPI inline void UpdateParticleManager(tfxParticleManager *pm) {
 		pm->Update();
-	}
-
-	/*
-	Get the next 3d sprite for rendering. To be used in a while loop with EndOfSprites3d. Make sure you also call ResetSpriteIndexes3d for the loop as well. You can also use the helper macro tfxEachLayer to
-	create a for loop to loop over each layer.
-
-	ResetSpriteIndexes3d(&pm);
-	for (tfxEachLayer) {
-		while(!EndOfSprites3d(&pm, layer)) {
-			tfxParticleSprite3d *s = Next3dSprite(&pm, layer);
-		}
-	}
-
-	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param layer				The layer to get the next sprite of
-	*/
-	tfxAPI inline tfxParticleSprite3d *Next3dSprite(tfxParticleManager *pm, tfxU32 layer) {
-		return &pm->sprites3d[pm->current_sprite_buffer][layer][pm->sprite_index_3d[layer]++];
-	}
-
-	/*
-	Test if the end of the 3d sprites in the layer has been reached. See Next3dSprite for an example
-	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param layer				The layer index in the sprites list
-	*/
-	tfxAPI inline bool EndOfSprites3d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprite_index_3d[layer] >= pm->sprites3d[pm->current_sprite_buffer][layer].current_size;
-	}
-
-	/*
-	Reset the 3d sprite indexes of the specific layer to 0. Important to use this each time you want to loop over all of the sprites in the particle manager. See Next3dSprite for an example.
-	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param layer				The layer to Reset the sprite indexes of
-	*/
-	tfxAPI inline bool ResetSpriteIndexes3d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprite_index_3d[layer] = 0;
-	}
-
-	/*
-	Reset the 3d sprite indexes for all layers. Important to use this each time you want to loop over all of the sprites in the particle manager. See Next3dSprite for an example.
-	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param layer				The layer to Reset the sprite indexes of
-	*/
-	tfxAPI inline bool ResetSpriteIndexes3d(tfxParticleManager *pm) {
-		return memset(pm->sprite_index_3d, 0, tfxLAYERS * sizeof(tfxU32));
 	}
 
 	/*
@@ -7656,7 +7647,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	* @param layer				The layer of the sprites to the count of
 	*/
 	tfxAPI inline tfxU32 SpritesInLayer3d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprites3d[pm->current_sprite_buffer][layer].current_size;
+		return pm->sprites3d_buffer[pm->current_sprite_buffer][layer].current_size;
 	}
 
 	/*
@@ -7678,7 +7669,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxAPI inline tfxU32 TotalSpriteCount3d(tfxParticleManager *pm) {
 		tfxU32 count = 0;
 		for(tfxEachLayer) {
-			count += pm->sprites3d[pm->current_sprite_buffer][layer].current_size;
+			count += pm->sprites3d_buffer[pm->current_sprite_buffer][layer].current_size;
 		}
 		return count;
 	}
@@ -7765,9 +7756,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	a for loop to iterate over the sprites in a pre-recorded effect
 	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
 	* @param index			The index of the sprite you want to retrieve
-	* @returns				tfxParticleSprite3d reference containing the sprite data for drawing
+	* @returns				tfxSprite3dSoA reference containing the sprite data for drawing
 	*/
-	tfxAPI inline tfxParticleSprite3d &SpriteDataSprite3d(tfxSpriteData *sprite_data, tfxU32 index) {
+	tfxAPI inline tfxSprite3d &SpriteDataSprite3d(tfxSpriteData *sprite_data, tfxU32 index) {
 		return *(sprite_data->sprites + index);
 	}
 
