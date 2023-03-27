@@ -1,4 +1,5 @@
-//#define tfxENABLE_PROFILING
+#define tfxENABLE_PROFILING
+#define tfxPROFILER_SAMPLES 60
 //#define tfxTRACK_MEMORY
 /*
 	Timeline FX C++ library
@@ -226,7 +227,7 @@ union tfxUInt10bit
 	tfxU32 pack;
 };
 
-//#define tfxUSEAVX
+#define tfxUSEAVX
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
@@ -808,7 +809,10 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	const float tfxMAX_FLOAT = 2147483647.f;
 	const tfxU32 tfxMAX_UINT = 4294967295;
 	const int tfxMAX_INT = INT_MAX;
-	const int tfxMIN_INT = INT_MAX;
+	const int tfxMIN_INT = INT_MIN;
+	const tfxS64 tfxMAX_64i = LLONG_MAX;
+	const tfxS64 tfxMIN_64i = LLONG_MIN;
+	const tfxU64 tfxMAX_64u = ULLONG_MAX;
 
 	const float tfxLIFE_MIN = 0.f;
 	const float tfxLIFE_MAX = 100000.f;
@@ -4533,43 +4537,79 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return m;
 	}
 
-	struct tfxProfile {
-		const char *name;
+	struct tfxProfileStats {
+		tfxU64 cycle_high;
+		tfxU64 cycle_low;
+		tfxU64 cycle_average;
+		tfxU64 time_high;
+		tfxU64 time_low;
+		tfxU64 time_average;
+		tfxU32 hit_count;
+	};
+
+	struct tfxProfileSnapshot {
 		tfxU32 hit_count;
 		tfxU64 run_time;
 		tfxU64 cycle_count;
 	};
 
-	tfxProfile tfxPROFILE_ARRAY[];
+	struct tfxProfile {
+		const char *name;
+		tfxProfileSnapshot snapshots[tfxPROFILER_SAMPLES];
+	};
+
+	extern const tfxU32 tfxPROFILE_COUNT;
+	extern tfxU32 tfxCurrentSnapshot;
+	tfxProfile tfxProfileArray[];
 
 	struct tfxProfileTag {
 		tfxProfile *profile;
+		tfxProfileSnapshot *snapshot;
 		tfxU64 start_cycles;
 
-		tfxProfileTag(tfxU32 id, const char *name) {
-			profile = tfxPROFILE_ARRAY + id;
-			profile->name = name;
-			//It's surprisingly slow to use microsecs in debug mode, QueryPerformanceCounter counter is slightly faster but not enough to actually use. Release build seems fine.
-			profile->run_time -= Microsecs();
-			start_cycles = __rdtsc();
-			AtomicAdd32(&profile->hit_count, 1);
-		}
+		tfxProfileTag(tfxU32 id, const char *name);
 
 		~tfxProfileTag() {
-			profile->run_time += Microsecs();
-			AtomicAdd64(&profile->cycle_count, (__rdtsc() - start_cycles));
+			snapshot->run_time += Microsecs();
+			AtomicAdd64(&snapshot->cycle_count, (__rdtsc() - start_cycles));
 		}
 
 	};
+
+	inline void GatherStats(tfxProfile *profile, tfxProfileStats *stat) {
+		stat->cycle_high = 0;
+		stat->cycle_low = tfxMAX_64u;
+		stat->time_high = 0;
+		stat->time_low = tfxMAX_64u;
+		stat->hit_count = 0;
+		stat->cycle_average = 0;
+		stat->time_average = 0;
+		for (int i = 0; i != tfxPROFILER_SAMPLES; ++i) {
+			tfxProfileSnapshot *snap = profile->snapshots + i;
+			stat->cycle_high = tfxMax(snap->cycle_count, stat->cycle_high);
+			stat->cycle_low = tfxMin(snap->cycle_count, stat->cycle_low);
+			stat->cycle_average += snap->cycle_count;
+			stat->time_high = tfxMax(snap->run_time, stat->time_high);
+			stat->time_low = tfxMin(snap->run_time, stat->time_low);
+			stat->time_average += snap->run_time;
+			stat->hit_count += snap->hit_count;
+		}
+		stat->cycle_average /= tfxPROFILER_SAMPLES;
+		stat->time_average /= tfxPROFILER_SAMPLES;
+		stat->hit_count /= tfxPROFILER_SAMPLES;
+	}
+
+	inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
+		snapshot->cycle_count = 0;
+		snapshot->hit_count = 0;
+		snapshot->run_time = 0;
+	}
 
 #ifdef tfxENABLE_PROFILING 
 #define tfxPROFILE tfxProfileTag tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
 #else
 #define tfxPROFILE __COUNTER__
 #endif
-
-	bool EndOfProfiles();
-	tfxProfile* NextProfile();
 
 	const tfxU32 tfxMAGIC_NUMBER = '!XFT';
 	const tfxU32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';

@@ -10836,6 +10836,7 @@ namespace tfx {
 	}
 
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxU32 emitter_index = work_entry->emitter_index;
 		tfxParticleManager &pm = *work_entry->pm;
@@ -11192,6 +11193,7 @@ namespace tfx {
 	}
 
 	void ControlParticleSize3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxU32 emitter_index = work_entry->emitter_index;
 		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
@@ -11217,8 +11219,9 @@ namespace tfx {
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
 
+			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			_ReadBarrier();
 			tfxWideFloat life = tfxWideDiv(age, max_age);
 			life = tfxWideMul(life, max_life);
 			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
@@ -11261,6 +11264,7 @@ namespace tfx {
 	}
 
 	void ControlParticleColor3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxU32 emitter_index = work_entry->emitter_index;
 		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
@@ -11291,7 +11295,8 @@ namespace tfx {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
 
 			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			_ReadBarrier();
 			tfxWideFloat life = tfxWideDiv(age, max_age);
 			life = tfxWideMul(life, max_life);
 			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
@@ -11349,6 +11354,7 @@ namespace tfx {
 	}
 
 	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxU32 emitter_index = work_entry->emitter_index;
 		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
@@ -11537,9 +11543,9 @@ namespace tfx {
 
 	}
 
-	tfxU32 tfxCURRENT_PROFILE_OFFSET = 0;
 	const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
-	tfxProfile tfxPROFILE_ARRAY[tfxPROFILE_COUNT];
+	tfxU32 tfxCurrentSnapshot = 0;
+	tfxProfile tfxProfileArray[tfxPROFILE_COUNT];
 	tfxMemoryTrackerLog tfxMEMORY_TRACKER;
 	char tfxMEMORY_CONTEXT[64];
 	tfxDataTypesDictionary tfxDataTypes;
@@ -11559,22 +11565,17 @@ namespace tfx {
 		tfxNumberOfThreadsInAdditionToMain = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 		lookup_callback = LookupFast;
 		lookup_overtime_callback = LookupFastOvertime;
+		memset(tfxProfileArray, 0, tfxPROFILE_COUNT * sizeof(tfxProfile));
 		tfxInitialiseThreads(&tfxThreadQueues);
 	}
 
-	bool EndOfProfiles() {
-		assert(tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code
-		if (tfxCURRENT_PROFILE_OFFSET == tfxPROFILE_COUNT) {
-			tfxCURRENT_PROFILE_OFFSET = 0;
-			memset(tfxPROFILE_ARRAY, 0, sizeof(tfxPROFILE_ARRAY));
-			return true;
-		}
-		return false;
-	}
-	tfxProfile* NextProfile() {
-		assert(tfxPROFILE_COUNT && tfxCURRENT_PROFILE_OFFSET < tfxPROFILE_COUNT);	//there must be tfxPROFILE used in the code
-		tfxProfile *profile = tfxPROFILE_ARRAY + tfxCURRENT_PROFILE_OFFSET++;
-		return profile;
+	tfxProfileTag::tfxProfileTag(tfxU32 id, const char *name) {
+		profile = tfxProfileArray + id;
+		profile->name = name;
+		snapshot = profile->snapshots + tfxCurrentSnapshot;
+		snapshot->run_time -= Microsecs();
+		start_cycles = __rdtsc();
+		AtomicAdd32(&snapshot->hit_count, 1);
 	}
 
 	void InitParticleManagerFor3d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_allocation, tfxU32 mt_batch_size) {
