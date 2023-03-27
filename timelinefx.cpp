@@ -6907,7 +6907,7 @@ namespace tfx {
 				bank.flags[next_index] = bank.flags[index];
 				bank.age[next_index] = bank.age[index];
 				bank.max_age[next_index] = bank.max_age[index];
-				bank.local_position[next_index] = bank.local_position[index];
+				bank.position[next_index] = bank.position[index];
 				bank.captured_position[next_index] = bank.captured_position[index];
 				bank.local_rotations[next_index] = bank.local_rotations[index];
 				bank.velocity_normal[next_index] = bank.velocity_normal[index];
@@ -7041,7 +7041,7 @@ namespace tfx {
 			const float noise_resolution = bank.noise_resolution[index];
 			const float angle = bank.velocity_normal[index].x;
 			float &weight_acceleration = bank.weight_acceleration[index];
-			tfxVec3 &local_position = bank.local_position[index];
+			tfxVec3 &local_position = bank.position[index];
 			tfxVec3 &captured_position = bank.captured_position[index];
 			tfxVec3 &local_rotations = bank.local_rotations[index];
 			tfxParticleFlags &flags = bank.flags[index];
@@ -7148,7 +7148,7 @@ namespace tfx {
 			tfxMatrix4 &e_matrix = pm.emitters.matrix[parent_index];
 			tfxVec3 &e_scale = pm.emitters.scale[parent_index];
 
-			const tfxVec3 &local_position = bank.local_position[index];
+			const tfxVec3 &local_position = bank.position[index];
 			const tfxVec3 &local_rotations = bank.local_rotations[index];
 			tfxVec3 &captured_position = bank.captured_position[index];
 			tfxParticleFlags &flags = bank.flags[index];
@@ -7340,7 +7340,7 @@ namespace tfx {
 			const float noise_resolution = bank.noise_resolution[index];
 			const float angle = bank.velocity_normal[index].x;
 			float &weight_acceleration = bank.weight_acceleration[index];
-			tfxVec3 &local_position = bank.local_position[index];
+			tfxVec3 &local_position = bank.position[index];
 			tfxVec3 &captured_position = bank.captured_position[index];
 			tfxVec3 &local_rotations = bank.local_rotations[index];
 			tfxVec4 &velocity_normal = bank.velocity_normal[index];
@@ -7474,7 +7474,7 @@ namespace tfx {
 			const tfxVectorAlignType vector_align_type = library->emitter_properties.vector_align_type[property_index];
 			const tfxBillboardingOptions billboard_option = library->emitter_properties.billboard_option[property_index];
 
-			const tfxVec3 local_position = bank.local_position[index];
+			const tfxVec3 local_position = bank.position[index];
 			const tfxVec3 local_rotations = bank.local_rotations[index];
 			tfxVec4 &velocity_normal = bank.velocity_normal[index];
 			tfxVec3 &captured_position = bank.captured_position[index];
@@ -9023,7 +9023,7 @@ namespace tfx {
 		
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, emitter_captured_position.xy(), emitter_world_position.xy());
@@ -9058,7 +9058,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
@@ -9099,7 +9099,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, emitter_captured_position.xy(), emitter_world_position.xy());
@@ -9163,7 +9163,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
@@ -9236,7 +9236,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, emitter_captured_position.xy(), emitter_world_position.xy());
@@ -9410,7 +9410,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
@@ -9760,7 +9760,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, emitter_captured_position.xy(), emitter_world_position.xy());
@@ -9845,7 +9845,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
@@ -9912,7 +9912,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
@@ -9955,7 +9955,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
@@ -9999,7 +9999,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 
 			local_position = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
@@ -10167,7 +10167,7 @@ namespace tfx {
 		if (splatter) {
 			for (int i = 0; i != entry->amount_to_spawn; ++i) {
 				tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-				tfxVec3 &local_position = entry->particle_data->local_position[index];
+				tfxVec3 &local_position = entry->particle_data->position[index];
 
 				//----Splatter
 				float splattertemp = splatter;
@@ -10211,7 +10211,7 @@ namespace tfx {
 			const float base_weight = entry->particle_data->base_weight[index];
 			float &weight_acceleration = entry->particle_data->weight_acceleration[index];
 			float &roll = entry->particle_data->local_rotations[index].roll;
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 			tfxVec3 &captured_position = entry->particle_data->captured_position[index];
 			float &velocity_normal = entry->particle_data->velocity_normal[index].x;
 			float &base_velocity = entry->particle_data->base_velocity[index];
@@ -10273,7 +10273,7 @@ namespace tfx {
 		if (splatter) {
 			for (int i = 0; i != entry->amount_to_spawn; ++i) {
 				tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-				tfxVec3 &local_position = entry->particle_data->local_position[index];
+				tfxVec3 &local_position = entry->particle_data->position[index];
 
 				//----Splatter
 				if (splatter) {
@@ -10324,7 +10324,7 @@ namespace tfx {
 			const float base_weight = entry->particle_data->base_weight[index];
 			float &weight_acceleration = entry->particle_data->weight_acceleration[index];
 			float &roll = entry->particle_data->local_rotations[index].roll;
-			tfxVec3 &local_position = entry->particle_data->local_position[index];
+			tfxVec3 &local_position = entry->particle_data->position[index];
 			tfxVec3 &captured_position = entry->particle_data->captured_position[index];
 			tfxVec4 &velocity_normal = entry->particle_data->velocity_normal[index];
 			const float base_velocity = entry->particle_data->base_velocity[index];
@@ -10651,7 +10651,7 @@ namespace tfx {
 				bank.flags[next_index] = bank.flags[index];
 				bank.age[next_index] = bank.age[index];	
 				bank.max_age[next_index] = bank.max_age[index];
-				bank.local_position[next_index] = bank.local_position[index];
+				bank.position[next_index] = bank.position[index];
 				bank.captured_position[next_index] = bank.captured_position[index];
 				bank.local_rotations[next_index] = bank.local_rotations[index];
 				bank.velocity_normal[next_index] = bank.velocity_normal[index];
@@ -10708,7 +10708,7 @@ namespace tfx {
 			const float noise_resolution = bank.noise_resolution[index];
 			const float angle = bank.velocity_normal[index].x;
 			float &weight_acceleration = bank.weight_acceleration[index];
-			tfxVec3 &local_position = bank.local_position[index];
+			tfxVec3 &local_position = bank.position[index];
 			tfxVec3 &captured_position = bank.captured_position[index];
 			tfxVec3 &local_rotations = bank.local_rotations[index];
 			tfxParticleFlags &flags = bank.flags[index];
@@ -10813,7 +10813,7 @@ namespace tfx {
 
 		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const tfxVec3 &local_position = bank.local_position[index];
+			const tfxVec3 &local_position = bank.position[index];
 			const tfxVec3 &local_rotations = bank.local_rotations[index];
 			tfxVec3 &captured_position = bank.captured_position[index];
 			tfxParticleFlags &flags = bank.flags[index];
@@ -10865,7 +10865,7 @@ namespace tfx {
 			const float noise_resolution = bank.noise_resolution[index];
 			const float angle = bank.velocity_normal[index].x;
 			float &weight_acceleration = bank.weight_acceleration[index];
-			tfxVec3 &local_position = bank.local_position[index];
+			tfxVec3 &local_position = bank.position[index];
 			tfxVec3 &local_rotations = bank.local_rotations[index];
 			tfxVec4 &velocity_normal = bank.velocity_normal[index];
 			tfxParticleFlags &flags = bank.flags[index];
@@ -10972,7 +10972,7 @@ namespace tfx {
 			for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 				const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 				tfxVec4 &velocity_normal = bank.velocity_normal[index];
-				tfxVec3 &local_position = bank.local_position[index];
+				tfxVec3 &local_position = bank.position[index];
 				tfxParticleFlags &flags = bank.flags[index];
 
 				//Lines - Reposition if the particle is travelling along a line
@@ -11007,7 +11007,7 @@ namespace tfx {
 
 		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const tfxVec3 local_position = bank.local_position[index];
+			const tfxVec3 local_position = bank.position[index];
 			const tfxVec3 local_rotations = bank.local_rotations[index];
 			tfxVec4 &velocity_normal = bank.velocity_normal[index];
 			tfxVec3 &captured_position = bank.captured_position[index];
