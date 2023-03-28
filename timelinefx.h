@@ -227,7 +227,7 @@ union tfxUInt10bit
 	tfxU32 pack;
 };
 
-#define tfxUSEAVX
+//#define tfxUSEAVX
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
