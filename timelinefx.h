@@ -5662,8 +5662,8 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	typedef tfx3DTRANSFORMCALLBACK(tfxParticleTransformCallback3d);
 
 	struct tfxEmitterSoA {
-		void(**transform_particle_callback2d)(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
-		void(**transform_particle_callback3d)(const tfxVec3 local_position, const tfxVec3 local_rotation, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
+		void(**transform_particle_callback2d)(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
+		void(**transform_particle_callback3d)(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotation, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
 
 		//State data
 		float *frame;
@@ -6055,10 +6055,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxParticleFlags flags;
 		float age;
 		float max_age;
-		tfxVec3 local_position;
-		tfxVec3 captured_position;	
-		tfxVec3 local_rotations;
-		tfxVec4 velocity_normal;
+		float position_x;
+		float position_y;
+		float position_z;
+		float captured_position_x;	
+		float captured_position_y;	
+		float captured_position_z;	
+		float local_rotations_x;
+		float local_rotations_y;
+		float local_rotations_z;
+		float velocity_normal_x;
+		float velocity_normal_y;
+		float velocity_normal_z;
+		float velocity_normal_w;
 		float depth;
 		float stretch;
 		float weight_acceleration;
@@ -6086,10 +6095,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxParticleFlags *flags;
 		float *age;
 		float *max_age;
-		tfxVec3 *position;
-		tfxVec3 *captured_position;	
-		tfxVec3 *local_rotations;
-		tfxVec4 *velocity_normal;
+		float *position_x;
+		float *position_y;
+		float *position_z;
+		float *captured_position_x;	
+		float *captured_position_y;	
+		float *captured_position_z;	
+		float *local_rotations_x;
+		float *local_rotations_y;
+		float *local_rotations_z;
+		float *velocity_normal_x;
+		float *velocity_normal_y;
+		float *velocity_normal_z;
+		float *velocity_normal_w;
 		float *depth;
 		float *stretch;
 		float *weight_acceleration;
@@ -6116,10 +6134,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(tfxParticleFlags), offsetof(tfxParticleSoA, flags));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, age));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, max_age));						
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, position));			
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, captured_position));			
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxParticleSoA, local_rotations));
-		AddStructArray(buffer, sizeof(tfxVec4), offsetof(tfxParticleSoA, velocity_normal));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_x));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_y));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_z));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_x));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_y));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_z));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_z));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_z));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_w));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, depth));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, stretch));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, weight_acceleration));			
@@ -6350,7 +6377,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
 	static inline tfxParticleFrame ConvertToParticleFrame(tfxParticleSoA &bank, tfxU32 index, const tfxU32 &billboard_option, void *image_ptr, tfxVec2 &handle) {
 		tfxParticleFrame pf;
-		pf.stretch = bank.velocity_normal[index].w;
+		pf.stretch = bank.velocity_normal_w[index];
 		pf.alignment_type = billboard_option;
 		pf.handle = handle;
 		pf.color = tfxRGBA8(bank.red[index], bank.green[index], bank.blue[index], bank.alpha[index]);
@@ -6686,10 +6713,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 			to_bank.flags[index] = from_bank.flags[other_index];
 			to_bank.age[index] = from_bank.age[other_index];
 			to_bank.max_age[index] = from_bank.max_age[other_index];
-			to_bank.position[index] = from_bank.position[other_index];
-			to_bank.captured_position[index] = from_bank.captured_position[other_index];
-			to_bank.local_rotations[index] = from_bank.local_rotations[other_index];
-			to_bank.velocity_normal[index] = from_bank.velocity_normal[other_index];
+			to_bank.position_x[index] = from_bank.position_x[other_index];
+			to_bank.position_y[index] = from_bank.position_y[other_index];
+			to_bank.position_z[index] = from_bank.position_z[other_index];
+			to_bank.captured_position_x[index] = from_bank.captured_position_x[other_index];
+			to_bank.captured_position_y[index] = from_bank.captured_position_y[other_index];
+			to_bank.captured_position_z[index] = from_bank.captured_position_z[other_index];
+			to_bank.local_rotations_x[index] = from_bank.local_rotations_x[other_index];
+			to_bank.local_rotations_y[index] = from_bank.local_rotations_y[other_index];
+			to_bank.local_rotations_z[index] = from_bank.local_rotations_z[other_index];
+			to_bank.velocity_normal_x[index] = from_bank.velocity_normal_x[other_index];
+			to_bank.velocity_normal_y[index] = from_bank.velocity_normal_y[other_index];
+			to_bank.velocity_normal_z[index] = from_bank.velocity_normal_z[other_index];
+			to_bank.velocity_normal_w[index] = from_bank.velocity_normal_w[other_index];
 			to_bank.depth[index] = from_bank.depth[other_index];
 			to_bank.stretch[index] = from_bank.stretch[other_index];
 			to_bank.weight_acceleration[index] = from_bank.weight_acceleration[other_index];
@@ -7226,43 +7262,49 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	//-------------------------------------------------
 	//--New transform particle functions for SoA data--
 	//--------------------------2d---------------------
-	static inline void TransformParticlePosition(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = local_position;
+	static inline void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_position.x = local_position_x;
+		world_position.y = local_position_y;
 		world_rotations = roll;
 	}
-	static inline void TransformParticlePositionAngle(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = local_position;
+	static inline void TransformParticlePositionAngle(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_position.x = local_position_x;
+		world_position.y = local_position_y;
 		world_rotations = parent_rotations.roll + roll;
 	}
-	static inline void TransformParticlePositionRelative(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+	static inline void TransformParticlePositionRelative(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_rotations = roll;
-		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position.x, local_position.y) + handle.xy());
+		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle.xy());
 		world_position = from_position.xy() + rotatevec * scale.xy();
 	}
-	static inline void TransformParticlePositionRelativeLine(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+	static inline void TransformParticlePositionRelativeLine(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_rotations = parent_rotations.roll + roll;
-		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position.x, local_position.y) + handle.xy());
+		tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle.xy());
 		world_position = from_position.xy() + rotatevec * scale.xy();
 	}
 	//-------------------------------------------------
 	//--New transform particle functions for SoA data--
 	//--------------------------3d---------------------
-	static inline void TransformParticlePosition3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = local_position;
+	static inline void TransformParticlePosition3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_position.x = local_position_x;
+		world_position.y = local_position_y;
+		world_position.z = local_position_z;
 		world_rotations = local_rotations;
 	}
-	static inline void TransformParticlePositionAngle3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-		world_position = local_position;
+	static inline void TransformParticlePositionAngle3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		world_position.x = local_position_x;
+		world_position.y = local_position_y;
+		world_position.z = local_position_z;
 		world_rotations = parent_rotations + local_rotations;
 	}
-	static inline void TransformParticlePositionRelative3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+	static inline void TransformParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_rotations = local_rotations;
-		tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
+		tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
-	static inline void TransformParticlePositionRelativeLine3d(const tfxVec3 local_position, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+	static inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_rotations = local_rotations;
-		tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
+		tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
 
@@ -7286,10 +7328,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		std::swap(particles.particle_index[from], particles.particle_index[to]);
 		std::swap(particles.flags[from], particles.flags[to]);
 		std::swap(particles.max_age[from], particles.max_age[to]);
-		std::swap(particles.position[from], particles.position[to]);
-		std::swap(particles.captured_position[from], particles.captured_position[to]);
-		std::swap(particles.local_rotations[from], particles.local_rotations[to]);
-		std::swap(particles.velocity_normal[from], particles.velocity_normal[to]);
+		std::swap(particles.position_x[from], particles.position_x[to]);
+		std::swap(particles.position_y[from], particles.position_y[to]);
+		std::swap(particles.position_z[from], particles.position_z[to]);
+		std::swap(particles.captured_position_x[from], particles.captured_position_x[to]);
+		std::swap(particles.captured_position_y[from], particles.captured_position_y[to]);
+		std::swap(particles.captured_position_z[from], particles.captured_position_z[to]);
+		std::swap(particles.local_rotations_x[from], particles.local_rotations_x[to]);
+		std::swap(particles.local_rotations_y[from], particles.local_rotations_y[to]);
+		std::swap(particles.local_rotations_z[from], particles.local_rotations_z[to]);
+		std::swap(particles.velocity_normal_x[from], particles.velocity_normal_x[to]);
+		std::swap(particles.velocity_normal_y[from], particles.velocity_normal_y[to]);
+		std::swap(particles.velocity_normal_z[from], particles.velocity_normal_z[to]);
+		std::swap(particles.velocity_normal_w[from], particles.velocity_normal_w[to]);
 		std::swap(particles.stretch[from], particles.stretch[to]);
 		std::swap(particles.weight_acceleration[from], particles.weight_acceleration[to]);
 		std::swap(particles.base_weight[from], particles.base_weight[to]);
@@ -7316,10 +7367,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		temp.particle_index = particles.particle_index[from];
 		temp.flags = particles.flags[from];
 		temp.max_age = particles.max_age[from];
-		temp.local_position = particles.position[from];
-		temp.captured_position = particles.captured_position[from];
-		temp.local_rotations = particles.local_rotations[from];
-		temp.velocity_normal = particles.velocity_normal[from];
+		temp.position_x = particles.position_x[from];
+		temp.position_y = particles.position_y[from];
+		temp.position_z = particles.position_z[from];
+		temp.captured_position_x = particles.captured_position_x[from];
+		temp.captured_position_y = particles.captured_position_y[from];
+		temp.captured_position_z = particles.captured_position_z[from];
+		temp.local_rotations_x = particles.local_rotations_x[from];
+		temp.local_rotations_y = particles.local_rotations_y[from];
+		temp.local_rotations_z = particles.local_rotations_z[from];
+		temp.velocity_normal_x = particles.velocity_normal_x[from];
+		temp.velocity_normal_y = particles.velocity_normal_y[from];
+		temp.velocity_normal_z = particles.velocity_normal_z[from];
+		temp.velocity_normal_w = particles.velocity_normal_w[from];
 		temp.stretch = particles.stretch[from];
 		temp.weight_acceleration = particles.weight_acceleration[from];
 		temp.base_weight = particles.base_weight[from];
@@ -7346,10 +7406,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		particles.particle_index[from] = temp.particle_index;
 		particles.flags[from] = temp.flags;
 		particles.max_age[from] = temp.max_age;
-		particles.position[from] = temp.local_position;
-		particles.captured_position[from] = temp.captured_position;
-		particles.local_rotations[from] = temp.local_rotations;
-		particles.velocity_normal[from] = temp.velocity_normal;
+		particles.position_x[from] = temp.position_x;
+		particles.position_y[from] = temp.position_y;
+		particles.position_z[from] = temp.position_z;
+		particles.captured_position_x[from] = temp.captured_position_x;
+		particles.captured_position_y[from] = temp.captured_position_y;
+		particles.captured_position_z[from] = temp.captured_position_z;
+		particles.local_rotations_x[from] = temp.local_rotations_x;
+		particles.local_rotations_y[from] = temp.local_rotations_y;
+		particles.local_rotations_z[from] = temp.local_rotations_z;
+		particles.velocity_normal_x[from] = temp.velocity_normal_x;
+		particles.velocity_normal_y[from] = temp.velocity_normal_y;
+		particles.velocity_normal_z[from] = temp.velocity_normal_z;
+		particles.velocity_normal_w[from] = temp.velocity_normal_w;
 		particles.stretch[from] = temp.stretch;
 		particles.weight_acceleration[from] = temp.weight_acceleration;
 		particles.base_weight[from] = temp.base_weight;

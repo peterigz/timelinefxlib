@@ -6907,10 +6907,19 @@ namespace tfx {
 				bank.flags[next_index] = bank.flags[index];
 				bank.age[next_index] = bank.age[index];
 				bank.max_age[next_index] = bank.max_age[index];
-				bank.position[next_index] = bank.position[index];
-				bank.captured_position[next_index] = bank.captured_position[index];
-				bank.local_rotations[next_index] = bank.local_rotations[index];
-				bank.velocity_normal[next_index] = bank.velocity_normal[index];
+				bank.position_x[next_index] = bank.position_x[index];
+				bank.position_y[next_index] = bank.position_y[index];
+				bank.position_z[next_index] = bank.position_z[index];
+				bank.captured_position_x[next_index] = bank.captured_position_x[index];
+				bank.captured_position_y[next_index] = bank.captured_position_y[index];
+				bank.captured_position_z[next_index] = bank.captured_position_z[index];
+				bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
+				bank.local_rotations_y[next_index] = bank.local_rotations_y[index];
+				bank.local_rotations_z[next_index] = bank.local_rotations_z[index];
+				bank.velocity_normal_x[next_index] = bank.velocity_normal_x[index];
+				bank.velocity_normal_x[next_index] = bank.velocity_normal_y[index];
+				bank.velocity_normal_z[next_index] = bank.velocity_normal_z[index];
+				bank.velocity_normal_w[next_index] = bank.velocity_normal_w[index];
 				bank.stretch[next_index] = bank.stretch[index];
 				bank.weight_acceleration[next_index] = bank.weight_acceleration[index];
 				bank.base_weight[next_index] = bank.base_weight[index];
@@ -7039,11 +7048,13 @@ namespace tfx {
 			const float base_spin = bank.base_spin[index];
 			const float noise_offset = bank.noise_offset[index];
 			const float noise_resolution = bank.noise_resolution[index];
-			const float angle = bank.velocity_normal[index].x;
+			const float angle = bank.velocity_normal_x[index];
 			float &weight_acceleration = bank.weight_acceleration[index];
-			tfxVec3 &local_position = bank.position[index];
-			tfxVec3 &captured_position = bank.captured_position[index];
-			tfxVec3 &local_rotations = bank.local_rotations[index];
+			float &local_position_x = bank.position_x[index];
+			float &local_position_y = bank.position_y[index];
+			float &captured_position_x = bank.captured_position_x[index];
+			float &captured_position_y = bank.captured_position_y[index];
+			float &roll = bank.local_rotations_z[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
 			const float lookup_velocity = graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity.lookup.last_frame)];
@@ -7064,8 +7075,8 @@ namespace tfx {
 				float eps = 0.0001f;
 				float eps2 = 0.0001f * 2.f;
 
-				float x = local_position.x / lookup_noise_resolution + noise_offset;
-				float y = local_position.y / lookup_noise_resolution + noise_offset;
+				float x = local_position_x / lookup_noise_resolution + noise_offset;
+				float y = local_position_y / lookup_noise_resolution + noise_offset;
 
 				//Find rate of change in YZ plane
 				float n1 = tfxSimplexNoise::noise(x, y + eps);
@@ -7111,22 +7122,23 @@ namespace tfx {
 			//----Rotation
 			if (emitter_flags & tfxEmitterStateFlags_align_with_velocity) {
 				tfxVec2 vd = current_velocity.IsNill() ? velocity_normal : current_velocity;
-				local_rotations.roll = GetVectorAngle(vd.x, vd.y) + angle_offset;
+				roll = GetVectorAngle(vd.x, vd.y) + angle_offset;
 			}
 			else {
-				local_rotations.roll += spin * tfxUPDATE_TIME;
+				roll += spin * tfxUPDATE_TIME;
 			}
 
-			local_position += current_velocity * overal_scale;
+			local_position_x += current_velocity.x * overal_scale;
+			local_position_y += current_velocity.y * overal_scale;
 
 			//Lines - Reposition if the particle is travelling along a line
 			tfxVec2 offset = velocity_normal * emitter_size.y;
-			float length = std::fabsf(local_position.y);
+			float length = std::fabsf(local_position_y);
 			float emitter_length = emitter_size.y;
 			bool line_and_kill = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_kill) && length > emitter_length;
 			bool line_and_loop = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_loop) && length > emitter_length;
 			if (line_and_loop) {
-				local_position.y -= offset.y;
+				local_position_y -= offset.y;
 				flags |= tfxParticleFlags_capture_after_transform;
 			}
 			else if (line_and_kill) {
@@ -7148,24 +7160,29 @@ namespace tfx {
 			tfxMatrix4 &e_matrix = pm.emitters.matrix[parent_index];
 			tfxVec3 &e_scale = pm.emitters.scale[parent_index];
 
-			const tfxVec3 &local_position = bank.position[index];
-			const tfxVec3 &local_rotations = bank.local_rotations[index];
-			tfxVec3 &captured_position = bank.captured_position[index];
+			const float local_position_x = bank.position_x[index];
+			const float local_position_y = bank.position_y[index];
+			const float roll = bank.local_rotations_z[index];
+			float &captured_position_x = bank.captured_position_x[index];
+			float &captured_position_y = bank.captured_position_y[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
 			auto transform_particle_callback2d = pm.emitters.transform_particle_callback2d[parent_index];
 			if (flags & tfxParticleFlags_capture_after_transform) {
-				transform_particle_callback2d(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_captured_position.x, e_captured_position.y, 0.f));
-				captured_position = s.transform.position;
-				transform_particle_callback2d(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
+				transform_particle_callback2d(local_position_x, local_position_y, roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_captured_position.x, e_captured_position.y, 0.f));
+				captured_position_x = s.transform.position.x;
+				captured_position_y = s.transform.position.y;
+				transform_particle_callback2d(local_position_x, local_position_y, roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
 				flags &= ~tfxParticleFlags_capture_after_transform;
 			}
 			else {
-				transform_particle_callback2d(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
+				transform_particle_callback2d(local_position_x, local_position_y, roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
 			}
-			s.transform.captured_position = captured_position.xy();
-			captured_position = s.transform.position;
+			s.transform.captured_position.x = captured_position_x;
+			s.transform.captured_position.x = captured_position_y;
+			captured_position_x = s.transform.position.x;
+			captured_position_y = s.transform.position.y;
 
 		}
 	}
@@ -7338,12 +7355,18 @@ namespace tfx {
 			const float base_spin = bank.base_spin[index];
 			const float base_noise_offset = bank.noise_offset[index];
 			const float noise_resolution = bank.noise_resolution[index];
-			const float angle = bank.velocity_normal[index].x;
 			float &weight_acceleration = bank.weight_acceleration[index];
-			tfxVec3 &local_position = bank.position[index];
-			tfxVec3 &captured_position = bank.captured_position[index];
-			tfxVec3 &local_rotations = bank.local_rotations[index];
-			tfxVec4 &velocity_normal = bank.velocity_normal[index];
+			float &local_position_x = bank.position_x[index];
+			float &local_position_y = bank.position_y[index];
+			float &local_position_z = bank.position_z[index];
+			float &captured_position_x = bank.captured_position_x[index];
+			float &captured_position_y = bank.captured_position_y[index];
+			float &captured_position_z = bank.captured_position_z[index];
+			float &roll = bank.local_rotations_z[index];
+			float &velocity_normal_x = bank.velocity_normal_x[index];
+			float &velocity_normal_y = bank.velocity_normal_y[index];
+			float &velocity_normal_z = bank.velocity_normal_z[index];
+			float &velocity_normal_w = bank.velocity_normal_w[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
 			const float lookup_velocity = graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->velocity.lookup.last_frame)];
@@ -7364,9 +7387,9 @@ namespace tfx {
 
 				float noise_offset = base_noise_offset * overal_scale;
 
-				float x = local_position.x / lookup_noise_resolution + noise_offset;
-				float y = local_position.y / lookup_noise_resolution + noise_offset;
-				float z = local_position.z / lookup_noise_resolution + noise_offset;
+				float x = local_position_x / lookup_noise_resolution + noise_offset;
+				float y = local_position_y / lookup_noise_resolution + noise_offset;
+				float z = local_position_z / lookup_noise_resolution + noise_offset;
 
 				__m128 x4 = _mm_set1_ps(x);
 				__m128 y4 = _mm_set1_ps(y);
@@ -7414,10 +7437,13 @@ namespace tfx {
 
 			//----Velocity Changes
 			float velocity_scalar = base_velocity * lookup_velocity;
-			tfxVec3 current_velocity = velocity_normal.xyz() * velocity_scalar;
+			tfxVec3 current_velocity;
+			current_velocity.x = velocity_normal_x * velocity_scalar;
+			current_velocity.y = velocity_normal_y * velocity_scalar;
+			current_velocity.z = velocity_normal_z * velocity_scalar;
 			current_velocity += mr_vec;
 			current_velocity.y -= weight_acceleration;
-			velocity_normal.w = lookup_stretch * stretch;
+			velocity_normal_w = lookup_stretch * stretch;
 			current_velocity *= tfxUPDATE_TIME * velocity_adjuster;
 
 			//----Spin and angle Changes
@@ -7428,24 +7454,29 @@ namespace tfx {
 
 			//----Rotation
 			if (flags & tfxEmitterStateFlags_align_with_velocity) {
-				tfxVec3 vd = current_velocity.IsNill() ? velocity_normal.xyz() : current_velocity;
-				local_rotations.roll = GetVectorAngle(vd.x, vd.y) + angle_offsets.roll;
+				tfxVec3 vd = current_velocity.IsNill() ? tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z) : current_velocity;
+				roll = GetVectorAngle(vd.x, vd.y) + angle_offsets.roll;
 			}
 			else {
-				local_rotations.roll += spin * tfxUPDATE_TIME;
+				roll += spin * tfxUPDATE_TIME;
 			}
 
 			//----Position
-			local_position += current_velocity * overal_scale;
+			local_position_x += current_velocity.x * overal_scale;
+			local_position_y += current_velocity.y * overal_scale;
+			local_position_z += current_velocity.z * overal_scale;
 
 			//Lines - Reposition if the particle is travelling along a line
-			tfxVec3 offset = velocity_normal.xyz() * emitter_size.y;
-			float length = std::fabsf(local_position.y);
+			tfxVec3 offset;
+			offset = velocity_normal_x * emitter_size.y;
+			offset = velocity_normal_y * emitter_size.y;
+			offset = velocity_normal_z * emitter_size.y;
+			float length = std::fabsf(local_position_y);
 			float emitter_length = emitter_size.y;
 			bool line_and_kill = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_kill) && length > emitter_length;
 			bool line_and_loop = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_loop) && length > emitter_length;
 			if (line_and_loop) {
-				local_position.y -= offset.y;
+				local_position_y -= offset.y;
 				flags |= tfxParticleFlags_capture_after_transform;
 			}
 			else if (line_and_kill) {
@@ -7474,37 +7505,50 @@ namespace tfx {
 			const tfxVectorAlignType vector_align_type = library->emitter_properties.vector_align_type[property_index];
 			const tfxBillboardingOptions billboard_option = library->emitter_properties.billboard_option[property_index];
 
-			const tfxVec3 local_position = bank.position[index];
-			const tfxVec3 local_rotations = bank.local_rotations[index];
-			tfxVec4 &velocity_normal = bank.velocity_normal[index];
-			tfxVec3 &captured_position = bank.captured_position[index];
+			const float local_position_x = bank.position_x[index];
+			const float local_position_y = bank.position_y[index];
+			const float local_position_z = bank.position_z[index];
+			const float local_rotations_x = bank.local_rotations_x[index];
+			const float local_rotations_y = bank.local_rotations_y[index];
+			const float local_rotations_z = bank.local_rotations_z[index];
+			const float velocity_normal_x = bank.velocity_normal_x[index];
+			const float velocity_normal_y = bank.velocity_normal_y[index];
+			const float velocity_normal_z = bank.velocity_normal_z[index];
+			float &velocity_normal_w = bank.velocity_normal_w[index];
+			float &captured_position_x = bank.captured_position_x[index];
+			float &captured_position_y = bank.captured_position_y[index];
+			float &captured_position_z = bank.captured_position_z[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
 			tfxU32 s = running_sprite_index++;
 			auto transform_particle_callback3d = pm.emitters.transform_particle_callback3d[parent_index];
 			if (flags & tfxParticleFlags_capture_after_transform) {
-				transform_particle_callback3d(local_position, local_rotations, sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_captured_position);
-				captured_position = sprites.transform[s].position;
-				transform_particle_callback3d(local_position, local_rotations, sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_world_position);
+				transform_particle_callback3d(local_position_x, local_position_y, local_position_z, tfxVec3(local_rotations_x, local_rotations_y, local_rotations_z), sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_captured_position);
+				captured_position_x = sprites.transform[s].position.x;
+				captured_position_y = sprites.transform[s].position.y;
+				captured_position_z = sprites.transform[s].position.z;
+				transform_particle_callback3d(local_position_x, local_position_y, local_position_z, tfxVec3(local_rotations_x, local_rotations_y, local_rotations_z), sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_world_position);
 				flags &= ~tfxParticleFlags_capture_after_transform;
 			}
 			else {
-				transform_particle_callback3d(local_position, local_rotations, sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_world_position);
+				transform_particle_callback3d(local_position_x, local_position_y, local_position_z, tfxVec3(local_rotations_x, local_rotations_y, local_rotations_z), sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_world_position);
 			}
 
 			tfxVec3 alignment_vector;
 			bool line = property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 			if (vector_align_type == tfxVectorAlignType_motion) {
-				alignment_vector = sprites.transform[s].position - captured_position;
+				alignment_vector.x = sprites.transform[s].position.x - captured_position_x;
+				alignment_vector.y = sprites.transform[s].position.y - captured_position_y;
+				alignment_vector.z = sprites.transform[s].position.z - captured_position_z;
 				float l = FastLength(alignment_vector);
-				velocity_normal.w *= l * 10.f;
+				velocity_normal_w *= l * 10.f;
 				alignment_vector = FastNormalizeVec(alignment_vector);
 			}
 			else if (vector_align_type == tfxVectorAlignType_emission && property_flags & tfxEmitterPropertyFlags_relative_position) {
-				alignment_vector = mmTransformVector3(e_matrix, velocity_normal.xyz());
+				alignment_vector = mmTransformVector3(e_matrix, tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z));
 			}
 			else if (vector_align_type == tfxVectorAlignType_emission) {
-				alignment_vector = velocity_normal.xyz();
+				alignment_vector = tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z);
 			}
 			else if (vector_align_type == tfxVectorAlignType_emitter) {
 				alignment_vector = mmTransformVector(e_matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
@@ -7513,9 +7557,11 @@ namespace tfx {
 			//s.transform.captured_position = captured_position;
 			alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
 			sprites.alignment[s] = Pack10bit(alignment_vector, billboard_option & 0x00000003);
-			sprites.stretch[s] = velocity_normal.w;
+			sprites.stretch[s] = velocity_normal_w;
 
-			captured_position = sprites.transform[s].position;
+			captured_position_x = sprites.transform[s].position.x;
+			captured_position_y = sprites.transform[s].position.y;
+			captured_position_z = sprites.transform[s].position.z;
 			bank.depth[index] = LengthVec3NoSqR(sprites.transform[s].position - pm.camera_position);
 		}
 	}
@@ -8987,22 +9033,24 @@ namespace tfx {
 
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			float &base_spin = entry->particle_data->base_spin[index];
-			tfxVec3 &local_rotations = entry->particle_data->local_rotations[index];
+			float &local_rotations_x = entry->particle_data->local_rotations_x[index];
+			float &local_rotations_y = entry->particle_data->local_rotations_y[index];
+			float &local_rotations_z = entry->particle_data->local_rotations_z[index];
 
 			//----Spin
 			base_spin = random_generation.Range(-spin_variation, spin_variation) + spin;
 			if (angle_settings & tfxAngleSettingFlags_specify_roll)
-				local_rotations.roll = angle_offsets.roll;
+				local_rotations_z = angle_offsets.roll;
 			if (angle_settings & tfxAngleSettingFlags_specify_pitch)
-				local_rotations.pitch = angle_offsets.pitch;
+				local_rotations_x = angle_offsets.pitch;
 			if (angle_settings & tfxAngleSettingFlags_specify_yaw)
-				local_rotations.yaw = angle_offsets.yaw;
+				local_rotations_y = angle_offsets.yaw;
 			if (angle_settings & tfxAngleSettingFlags_random_pitch)
-				local_rotations.pitch = random_generation.Range(angle_offsets.pitch);
+				local_rotations_x = random_generation.Range(angle_offsets.pitch);
 			if (angle_settings & tfxAngleSettingFlags_random_yaw)
-				local_rotations.yaw = random_generation.Range(angle_offsets.yaw);
+				local_rotations_y = random_generation.Range(angle_offsets.yaw);
 			if (angle_settings & tfxAngleSettingFlags_random_roll)
-				local_rotations.roll = random_generation.Range(angle_offsets.roll);
+				local_rotations_z = random_generation.Range(angle_offsets.roll);
 
 		}
 
@@ -9023,19 +9071,22 @@ namespace tfx {
 		
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, emitter_captured_position.xy(), emitter_world_position.xy());
 			if (property_flags & tfxEmitterPropertyFlags_relative_position)
-				local_position = 0;
+				local_position_x = local_position_y = 0;
 			else {
 				if (property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
-					local_position = lerp_position;
+					local_position_x = lerp_position.x;
+					local_position_y = lerp_position.y;
 				}
 				else {
 					tfxVec2 rotvec = mmTransformVector(matrix, -handle.xy());
-					local_position = rotvec + lerp_position;
+					local_position_x = rotvec.x + lerp_position.x;
+					local_position_y = rotvec.y + lerp_position.y;
 				}
 			}
 			tween += entry->qty_step_size;
@@ -9058,19 +9109,25 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 			if (property_flags & tfxEmitterPropertyFlags_relative_position)
-				local_position = 0;
+				local_position_x = local_position_y = 0;
 			else {
 				if (property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
-					local_position = lerp_position;
+					local_position_x = lerp_position.x;
+					local_position_y = lerp_position.y;
+					local_position_z = lerp_position.z;
 				}
 				else {
 					tfxVec3 rotvec = mmTransformVector3(matrix, -handle);
-					local_position = rotvec + lerp_position;
+					local_position_x = rotvec.x + lerp_position.x;
+					local_position_y = rotvec.y + lerp_position.y;
+					local_position_z = rotvec.z + lerp_position.z;
 				}
 			}
 			tween += entry->qty_step_size;
@@ -9099,9 +9156,10 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, emitter_captured_position.xy(), emitter_world_position.xy());
 
 			if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
@@ -9115,7 +9173,8 @@ namespace tfx {
 					}
 				}
 
-				local_position = tfxVec2(grid_coords.xy() * -grid_segment_size.xy());
+				local_position_x = grid_coords.x * -grid_segment_size.x;
+				local_position_y = grid_coords.y * -grid_segment_size.y;
 
 				if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 					grid_coords.y++;
@@ -9126,15 +9185,16 @@ namespace tfx {
 
 			}
 			else {
-				local_position.x = 0.f;
-				local_position.y = random_generation.Range(-emitter_size.y, 0.f);
+				local_position_x = 0.f;
+				local_position_y = random_generation.Range(-emitter_size.y, 0.f);
 
 			}
 
 			//----TForm and Emission
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-				local_position = mmTransformVector(matrix, local_position.xy() + handle.xy());
-				local_position = lerp_position + local_position.xy() * scale.xy();
+				tfxVec2 pos = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle.xy());
+				local_position_x = lerp_position.x + pos.x * scale.x;
+				local_position_y = lerp_position.y + pos.y * scale.y;
 			}
 
 			tween += entry->qty_step_size;
@@ -9163,9 +9223,11 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = local_position_z = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
 			if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
@@ -9175,7 +9237,9 @@ namespace tfx {
 
 				if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 					grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
-					local_position = grid_coords * grid_segment_size;
+					local_position_x = grid_coords.x * grid_segment_size.x;
+					local_position_y = grid_coords.y * grid_segment_size.y;
+					local_position_z = grid_coords.z * grid_segment_size.z;
 				}
 				else {
 
@@ -9186,7 +9250,9 @@ namespace tfx {
 						}
 					}
 
-					local_position = grid_coords * grid_segment_size;
+					local_position_x = grid_coords.x * grid_segment_size.x;
+					local_position_y = grid_coords.y * grid_segment_size.y;
+					local_position_z = grid_coords.z * grid_segment_size.z;
 
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 						grid_coords.y++;
@@ -9198,15 +9264,17 @@ namespace tfx {
 
 			}
 			else {
-				local_position.x = 0.f;
-				local_position.y = random_generation.Range(0.f, emitter_size.y);
-				local_position.z = 0.f;
+				local_position_x = 0.f;
+				local_position_y = random_generation.Range(0.f, emitter_size.y);
+				local_position_z = 0.f;
 			}
 
 			//----TForm and Emission
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-				local_position = mmTransformVector3(matrix, local_position + handle);
-				local_position = lerp_position + local_position * scale;
+				tfxVec3 pos = mmTransformVector3(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+				local_position_x = lerp_position.x + pos.x * scale.x;
+				local_position_y = lerp_position.y + pos.y * scale.y;
+				local_position_z = lerp_position.z + pos.z * scale.z;
 			}
 	
 			tween += entry->qty_step_size;
@@ -9236,9 +9304,10 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, emitter_captured_position.xy(), emitter_world_position.xy());
 
 			tfxVec2 position = tfxVec2(0.f, 0.f);
@@ -9249,7 +9318,8 @@ namespace tfx {
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 						grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
 						grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
-						local_position = grid_coords.xy() * grid_segment_size.xy();
+						local_position_x = grid_coords.x * grid_segment_size.x;
+						local_position_y = grid_coords.y * grid_segment_size.y;
 					}
 					else {
 						if (!(property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
@@ -9262,7 +9332,8 @@ namespace tfx {
 							}
 						}
 
-						local_position = grid_coords.xy() * grid_segment_size.xy();
+						local_position_x = grid_coords.x * grid_segment_size.x;
+						local_position_y = grid_coords.y * grid_segment_size.y;
 
 						if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 							grid_coords.x++;
@@ -9298,7 +9369,8 @@ namespace tfx {
 							grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
 							grid_coords.y = grid_points.y - 1;
 						}
-						local_position = grid_coords.xy() * grid_segment_size.xy();
+						local_position_x = grid_coords.x * grid_segment_size.x;
+						local_position_y = grid_coords.y * grid_segment_size.y;
 					}
 					else {
 						if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
@@ -9340,7 +9412,8 @@ namespace tfx {
 
 						grid_coords += grid_direction;
 						tfxBound(grid_coords.xy(), grid_points.xy());
-						local_position = position + (grid_coords.xy() * grid_segment_size.xy());
+						local_position_x = position.x + (grid_coords.x * grid_segment_size.x);
+						local_position_y = position.y + (grid_coords.y * grid_segment_size.y);
 					}
 				}
 			}
@@ -9374,13 +9447,15 @@ namespace tfx {
 					}
 				}
 
-				local_position = position;
+				local_position_x = position.x;
+				local_position_y = position.y;
 			}
 
 			//----TForm and Emission
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				local_position = mmTransformVector(matrix, local_position.xy() + handle.xy());
-				local_position = lerp_position + local_position.xy() * scale.xy();
+				tfxVec2 pos = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle.xy());
+				local_position_x = lerp_position.x + pos.x * scale.x;
+				local_position_y = lerp_position.y + pos.y * scale.y;
 			}
 
 			tween += entry->qty_step_size;
@@ -9410,9 +9485,11 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = local_position_z = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
 			tfxVec3 position;
@@ -9426,7 +9503,9 @@ namespace tfx {
 						grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 						grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
 
-						local_position = grid_coords * grid_segment_size;
+						local_position_x = grid_coords.x * grid_segment_size.x;
+						local_position_y = grid_coords.y * grid_segment_size.y;
+						local_position_z = grid_coords.z * grid_segment_size.z;
 					}
 					else {
 						if (!(property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
@@ -9443,7 +9522,9 @@ namespace tfx {
 							}
 						}
 
-						local_position = position + (grid_coords * grid_segment_size);
+						local_position_x = position.x + (grid_coords.x * grid_segment_size.x);
+						local_position_y = position.y + (grid_coords.y * grid_segment_size.y);
+						local_position_z = position.z + (grid_coords.z * grid_segment_size.z);
 
 						if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 							grid_coords.x++;
@@ -9501,7 +9582,9 @@ namespace tfx {
 							grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 							grid_coords.z = 0.f;
 						}
-						local_position = grid_coords * grid_segment_size;
+						local_position_x = grid_coords.x * grid_segment_size.x;
+						local_position_y = grid_coords.y * grid_segment_size.y;
+						local_position_z = grid_coords.z * grid_segment_size.z;
 					}
 					else {
 						if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
@@ -9671,7 +9754,9 @@ namespace tfx {
 							}
 						}
 						tfxBound3d(grid_coords, grid_points);
-						local_position = position + (grid_coords * grid_segment_size);
+						local_position_x = position.x + (grid_coords.x * grid_segment_size.x);
+						local_position_y = position.y + (grid_coords.y * grid_segment_size.y);
+						local_position_z = position.z + (grid_coords.z * grid_segment_size.z);
 					}
 
 				}
@@ -9723,13 +9808,17 @@ namespace tfx {
 					}
 				}
 
-				local_position = position;
+				local_position_x = position.x;
+				local_position_y = position.y;
+				local_position_z = position.z;
 			}
 
 			//----TForm and Emission
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				local_position = mmTransformVector3(matrix, local_position + handle);
-				local_position = lerp_position + local_position * scale;
+				tfxVec3 pos = mmTransformVector3(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+				local_position_x = lerp_position.x + pos.x * scale.x;
+				local_position_y = lerp_position.y + pos.y * scale.y;
+				local_position_z = lerp_position.z + pos.z * scale.z;
 			}
 	
 			tween += entry->qty_step_size;
@@ -9760,9 +9849,10 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = 0;
 			tfxVec2 lerp_position = InterpolateVec2(tween, emitter_captured_position.xy(), emitter_world_position.xy());
 
 			tfxVec2 half_emitter_size = (emitter_size * .5f);
@@ -9780,7 +9870,8 @@ namespace tfx {
 				}
 
 				float th = grid_coords.x * grid_segment_size.x + arc_offset;
-				local_position = tfxVec2(std::cosf(th) * half_emitter_size.x + half_emitter_size.x, -std::sinf(th) * half_emitter_size.y + half_emitter_size.y);
+				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+				local_position_y = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
 
 				if (!(property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 					grid_coords.x++;
@@ -9792,28 +9883,31 @@ namespace tfx {
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(property_flags & tfxEmitterPropertyFlags_fill_area) && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 				float th = (float)random_generation.RangeUInt((tfxU32)grid_points.x) * grid_segment_size.x + arc_offset;
-				local_position = tfxVec2(std::cosf(th) * half_emitter_size.x + half_emitter_size.x, -std::sinf(th) * half_emitter_size.y + half_emitter_size.y);
+				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+				local_position_x = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
 			}
 			else if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
 				float th = random_generation.Range(arc_size) + arc_offset;
 
-				local_position = tfxVec2(std::cosf(th) * half_emitter_size.x + half_emitter_size.x, -std::sinf(th) * half_emitter_size.y + half_emitter_size.y);
+				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+				local_position_y = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
 
 			}
 			else {
-				local_position.x = random_generation.Range(0, emitter_size.x);
-				local_position.y = random_generation.Range(0, emitter_size.y);
+				local_position_x = random_generation.Range(0, emitter_size.x);
+				local_position_y = random_generation.Range(0, emitter_size.y);
 
-				while ((std::pow(local_position.x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position.y - half_emitter_size.y, 2) / std::pow(half_emitter_size.y, 2)) > 1) {
-					local_position.x = random_generation.Range(0, emitter_size.x);
-					local_position.y = random_generation.Range(0, emitter_size.y);
+				while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_y - half_emitter_size.y, 2) / std::pow(half_emitter_size.y, 2)) > 1) {
+					local_position_x = random_generation.Range(0, emitter_size.x);
+					local_position_y = random_generation.Range(0, emitter_size.y);
 				}
 			}
 
 			//----TForm and Emission
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				local_position = mmTransformVector(matrix, local_position.xy() + handle.xy());
-				local_position = lerp_position + local_position.xy() * scale.xy();
+				tfxVec2 pos = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle.xy());
+				local_position_x = lerp_position.x + pos.x * scale.x;
+				local_position_y = lerp_position.y + pos.y * scale.y;
 			}
 
 
@@ -9845,9 +9939,11 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = local_position_z = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
 			tfxVec3 half_emitter_size = emitter_size * .5f;
@@ -9862,9 +9958,9 @@ namespace tfx {
 				float cos_theta = std::cosf(theta);
 				float sin_phi = std::sinf(phi);
 				float cos_phi = std::cosf(phi);
-				local_position.x = half_emitter_size.x * sin_phi * cos_theta;
-				local_position.y = half_emitter_size.y * sin_phi * sin_theta;
-				local_position.z = half_emitter_size.z * cos_phi;
+				local_position_x = half_emitter_size.x * sin_phi * cos_theta;
+				local_position_y = half_emitter_size.y * sin_phi * sin_theta;
+				local_position_z = half_emitter_size.z * cos_phi;
 			}
 			else {
 				position.x = random_generation.Range(-half_emitter_size.x, half_emitter_size.x);
@@ -9877,13 +9973,17 @@ namespace tfx {
 					position.z = random_generation.Range(-half_emitter_size.z, half_emitter_size.z);
 				}
 
-				local_position = position;
+				local_position_x = position.x;
+				local_position_y = position.y;
+				local_position_z = position.z;
 			}
 
 			//----TForm and Emission
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				local_position = mmTransformVector3(matrix, local_position + handle);
-				local_position = lerp_position + local_position * scale;
+				tfxVec3 pos = mmTransformVector3(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+				local_position_x = lerp_position.x + pos.x * scale.x;
+				local_position_y = lerp_position.y + pos.y * scale.y;
+				local_position_z = lerp_position.z + pos.z * scale.z;
 			}
 
 			tween += entry->qty_step_size;
@@ -9912,21 +10012,27 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = local_position_z = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
 			tfxU32 sub_division = (tfxU32)grid_points.x;
 			assert(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
 
-			local_position = tfxIcospherePoints[sub_division][(tfxU32)grid_coords.x] * half_emitter_size;
+			local_position_x = tfxIcospherePoints[sub_division][(tfxU32)grid_coords.x].x * half_emitter_size.x;
+			local_position_y = tfxIcospherePoints[sub_division][(tfxU32)grid_coords.x].y * half_emitter_size.y;
+			local_position_z = tfxIcospherePoints[sub_division][(tfxU32)grid_coords.x].z * half_emitter_size.z;
 			if (++grid_coords.x >= tfxIcospherePoints[sub_division].current_size) {
 				grid_coords.x = 0;
 			}
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				local_position = mmTransformVector3(matrix, local_position + handle);
-				local_position = lerp_position + local_position * scale;
+				tfxVec3 pos = mmTransformVector3(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+				local_position_x = lerp_position.x + local_position_x * scale.x;
+				local_position_y = lerp_position.y + local_position_y * scale.y;
+				local_position_z = lerp_position.z + local_position_z * scale.z;
 			}
 
 			tween += entry->qty_step_size;
@@ -9955,19 +10061,25 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = local_position_z = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
 			tfxVec3 emitter_size = emitter_size * .5f;
 			tfxU32 sub_division = (tfxU32)grid_points.x;
 			assert(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
 			int ico_point = random_generation.RangeUInt(tfxIcospherePoints[sub_division].current_size);
-			local_position = tfxIcospherePoints[sub_division][ico_point] * emitter_size;
+			local_position_x = tfxIcospherePoints[sub_division][ico_point].x * emitter_size.x;
+			local_position_y = tfxIcospherePoints[sub_division][ico_point].y * emitter_size.y;
+			local_position_z = tfxIcospherePoints[sub_division][ico_point].z * emitter_size.z;
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				local_position = mmTransformVector3(matrix, local_position + handle);
-				local_position = lerp_position + local_position * scale;
+				tfxVec3 pos = mmTransformVector3(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+				local_position_x = lerp_position.x + local_position_x * scale.x;
+				local_position_y = lerp_position.y + local_position_y * scale.y;
+				local_position_z = lerp_position.z + local_position_z * scale.z;
 			}
 
 			tween += entry->qty_step_size;
@@ -9999,9 +10111,11 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			tfxVec3 &local_position = entry->particle_data->position[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position = 0;
+			local_position_x = local_position_y = local_position_z = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
 			if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(property_flags & tfxEmitterPropertyFlags_fill_area)) {
@@ -10013,7 +10127,9 @@ namespace tfx {
 					grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
 
 					float th = grid_coords.x * grid_segment_size.x + arc_offset;
-					local_position = tfxVec3(std::cosf(th) * half_emitter_size.x + half_emitter_size.x, grid_coords.y * grid_segment_size.y, -std::sinf(th) * half_emitter_size.z + half_emitter_size.z);
+					local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+					local_position_y = grid_coords.y * grid_segment_size.y;
+					local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
 				}
 				else {
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
@@ -10028,7 +10144,9 @@ namespace tfx {
 					}
 
 					float th = grid_coords.x * grid_segment_size.x + arc_offset;
-					local_position = tfxVec3(std::cosf(th) * half_emitter_size.x + half_emitter_size.x, grid_coords.y * grid_segment_size.y, -std::sinf(th) * half_emitter_size.z + half_emitter_size.z);
+					local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+					local_position_y = grid_coords.y * grid_segment_size.y;
+					local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
 
 					if (!(property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 						grid_coords.x++;
@@ -10046,23 +10164,27 @@ namespace tfx {
 			else if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
 				float th = random_generation.Range(arc_size) + arc_offset;
 
-				local_position = tfxVec3(std::cosf(th) * half_emitter_size.x + half_emitter_size.x, random_generation.Range(half_emitter_size.y), -std::sinf(th) * half_emitter_size.z + half_emitter_size.z);
+				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+				local_position_y = random_generation.Range(half_emitter_size.y);
+				local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
 			}
 			else {
-				local_position.x = random_generation.Range(0, half_emitter_size.x);
-				local_position.y = random_generation.Range(0, half_emitter_size.y);
-				local_position.z = random_generation.Range(0, half_emitter_size.z);
+				local_position_x = random_generation.Range(0, half_emitter_size.x);
+				local_position_y = random_generation.Range(0, half_emitter_size.y);
+				local_position_z = random_generation.Range(0, half_emitter_size.z);
 
-				while ((std::pow(local_position.x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position.z - half_emitter_size.z, 2) / std::pow(half_emitter_size.z, 2)) > 1) {
-					local_position.x = random_generation.Range(0, half_emitter_size.x);
-					local_position.z = random_generation.Range(0, half_emitter_size.z);
+				while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_z - half_emitter_size.z, 2) / std::pow(half_emitter_size.z, 2)) > 1) {
+					local_position_x = random_generation.Range(0, half_emitter_size.x);
+					local_position_z = random_generation.Range(0, half_emitter_size.z);
 				}
 			}
 
 			//----TForm and Emission
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				local_position = mmTransformVector3(matrix, local_position + handle);
-				local_position = lerp_position + local_position * scale;
+				tfxVec3 pos = mmTransformVector3(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+				local_position_x = lerp_position.x + local_position_x * scale.x;
+				local_position_y = lerp_position.y + local_position_y * scale.y;
+				local_position_z = lerp_position.z + local_position_z * scale.z;
 			}
 
 			tween += entry->qty_step_size;
@@ -10136,7 +10258,7 @@ namespace tfx {
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-			float &roll = entry->particle_data->local_rotations[index].roll;
+			float &roll = entry->particle_data->local_rotations_z[index];
 
 			roll = 0;
 			if (angle_settings & tfxAngleSettingFlags_random_roll) {
@@ -10167,7 +10289,9 @@ namespace tfx {
 		if (splatter) {
 			for (int i = 0; i != entry->amount_to_spawn; ++i) {
 				tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-				tfxVec3 &local_position = entry->particle_data->position[index];
+				float &local_position_x = entry->particle_data->position_x[index];
+				float &local_position_y = entry->particle_data->position_y[index];
+				float &local_position_z = entry->particle_data->position_z[index];
 
 				//----Splatter
 				float splattertemp = splatter;
@@ -10180,12 +10304,12 @@ namespace tfx {
 				}
 
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-					local_position.x += splatx * scale.x;
-					local_position.y += splaty * scale.y;
+					local_position_x += splatx * scale.x;
+					local_position_y += splaty * scale.y;
 				}
 				else {
-					local_position.x += splatx;
-					local_position.y += splaty;
+					local_position_x += splatx;
+					local_position_y += splaty;
 				}
 			}
 		}
@@ -10210,10 +10334,12 @@ namespace tfx {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			const float base_weight = entry->particle_data->base_weight[index];
 			float &weight_acceleration = entry->particle_data->weight_acceleration[index];
-			float &roll = entry->particle_data->local_rotations[index].roll;
-			tfxVec3 &local_position = entry->particle_data->position[index];
-			tfxVec3 &captured_position = entry->particle_data->captured_position[index];
-			float &velocity_normal = entry->particle_data->velocity_normal[index].x;
+			float &roll = entry->particle_data->local_rotations_z[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &captured_position_x = entry->particle_data->captured_position_x[index];
+			float &captured_position_y = entry->particle_data->captured_position_y[index];
+			float &velocity_normal = entry->particle_data->velocity_normal_x[index];
 			float &base_velocity = entry->particle_data->base_velocity[index];
 
 			float micro_time = tfxUPDATE_TIME * (1.f - tween);
@@ -10228,12 +10354,13 @@ namespace tfx {
 			bool line = property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 
 			if (!line && !(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				TransformParticlePosition(local_position.xy(), roll, sprite_transform_position, sprite_transform_rotation, emitter_world_rotations, matrix, handle, scale, emitter_world_position);
-				captured_position = sprite_transform_position;
+				TransformParticlePosition(local_position_x, local_position_y, roll, sprite_transform_position, sprite_transform_rotation, emitter_world_rotations, matrix, handle, scale, emitter_world_position);
+				captured_position_x = sprite_transform_position.x;
+				captured_position_y = sprite_transform_position.y;
 			}
 
 			if (!line) {
-				direction = velocity_normal = GetEmissionDirection2d(pm, library, property_index, emitter_index, local_position.xy(), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
+				direction = velocity_normal = GetEmissionDirection2d(pm, library, property_index, emitter_index, tfxVec2(local_position_x, local_position_y), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
 			}
 
 			weight_acceleration += base_weight * first_weight_value * micro_time;
@@ -10243,10 +10370,12 @@ namespace tfx {
 			velocity_normal_tmp.y = -std::cosf(direction);
 			tfxVec2 current_velocity = base_velocity * first_velocity_value * velocity_normal_tmp;
 			current_velocity.y += weight_acceleration;
-			local_position += current_velocity * micro_time;
+			local_position_x += current_velocity.x * micro_time;
+			local_position_y += current_velocity.y * micro_time;
 			if (line || property_flags & tfxEmitterPropertyFlags_relative_position) {
-				tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position.x, local_position.y) + handle.xy());
-				captured_position = emitter_captured_position.xy() + rotatevec * scale.xy();
+				tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle.xy());
+				captured_position_x = emitter_captured_position.x + rotatevec.x * scale.x;
+				captured_position_y = emitter_captured_position.y + rotatevec.y * scale.y;
 			}
 			//end micro update
 
@@ -10273,7 +10402,9 @@ namespace tfx {
 		if (splatter) {
 			for (int i = 0; i != entry->amount_to_spawn; ++i) {
 				tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
-				tfxVec3 &local_position = entry->particle_data->position[index];
+				float &local_position_x = entry->particle_data->position_x[index];
+				float &local_position_y = entry->particle_data->position_y[index];
+				float &local_position_z = entry->particle_data->position_z[index];
 
 				//----Splatter
 				if (splatter) {
@@ -10288,14 +10419,14 @@ namespace tfx {
 					}
 
 					if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-						local_position.x += splatx * scale.x;
-						local_position.y += splaty * scale.y;
-						local_position.z += splatz * scale.z;
+						local_position_x += splatx * scale.x;
+						local_position_y += splaty * scale.y;
+						local_position_z += splatz * scale.z;
 					}
 					else {
-						local_position.x += splatx;
-						local_position.y += splaty;
-						local_position.z += splatz;
+						local_position_x += splatx;
+						local_position_y += splaty;
+						local_position_z += splatz;
 					}
 				}
 
@@ -10323,22 +10454,33 @@ namespace tfx {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			const float base_weight = entry->particle_data->base_weight[index];
 			float &weight_acceleration = entry->particle_data->weight_acceleration[index];
-			float &roll = entry->particle_data->local_rotations[index].roll;
-			tfxVec3 &local_position = entry->particle_data->position[index];
-			tfxVec3 &captured_position = entry->particle_data->captured_position[index];
-			tfxVec4 &velocity_normal = entry->particle_data->velocity_normal[index];
+			float &roll = entry->particle_data->local_rotations_z[index];
+			float &local_position_x = entry->particle_data->position_x[index];
+			float &local_position_y = entry->particle_data->position_y[index];
+			float &local_position_z = entry->particle_data->position_z[index];
+			float &captured_position_x = entry->particle_data->captured_position_x[index];
+			float &captured_position_y = entry->particle_data->captured_position_y[index];
+			float &captured_position_z = entry->particle_data->captured_position_z[index];
+			float &velocity_normal_x = entry->particle_data->velocity_normal_x[index];
+			float &velocity_normal_y = entry->particle_data->velocity_normal_y[index];
+			float &velocity_normal_z = entry->particle_data->velocity_normal_z[index];
+			float &velocity_normal_w = entry->particle_data->velocity_normal_w[index];
 			const float base_velocity = entry->particle_data->base_velocity[index];
 
 			tfxVec3 world_position;
 			if (!line && !(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-					world_position = local_position;
+					world_position.x = local_position_x;
+					world_position.y = local_position_y;
+					world_position.z = local_position_z;
 				}
 				else {
-					tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
+					tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
 					world_position = emitter_world_position + rotatevec.xyz() * scale;
 				}
-				captured_position = world_position;
+				captured_position_x = world_position.x;
+				captured_position_y = world_position.y;
+				captured_position_z = world_position.z;
 			}
 
 			//----Velocity
@@ -10346,10 +10488,15 @@ namespace tfx {
 			float emission_yaw = lookup_callback(library->emitter_attributes[emitter_attributes].properties.emission_yaw, frame);
 
 			if (!(property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
-				velocity_normal = GetEmissionDirection3d(pm, library, property_index, emitter_index, emission_pitch, emission_yaw, local_position, world_position, emitter_size);
+				tfxVec3 velocity_normal = GetEmissionDirection3d(pm, library, property_index, emitter_index, emission_pitch, emission_yaw, tfxVec3(local_position_x, local_position_y, local_position_z), world_position, emitter_size);
+				velocity_normal_x = velocity_normal.x;
+				velocity_normal_y = velocity_normal.y;
+				velocity_normal_z = velocity_normal.z;
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
-				velocity_normal = tfxVec3(0, 1.f, 0.f);
+				velocity_normal_x = 0.f;
+				velocity_normal_y = 1.f;
+				velocity_normal_z = 0.f;
 			}
 			float velocity_scale = first_velocity_value * velocity_adjuster * base_velocity;
 
@@ -10359,27 +10506,35 @@ namespace tfx {
 			float micro_time = tfxUPDATE_TIME * (1.f - tween + 0.001f);
 			weight_acceleration += base_weight * first_weight_value * micro_time;
 			//----Velocity Changes
-			tfxVec3 current_velocity = velocity_normal.xyz() * base_velocity * first_velocity_value;
+			tfxVec3 current_velocity = tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z) * base_velocity * first_velocity_value;
 			current_velocity.y -= weight_acceleration;
 			if (vector_align_type == tfxVectorAlignType_motion) {
 				float l = FastLength(current_velocity * tfxUPDATE_TIME);
-				velocity_normal.w = first_stretch_value * l * 10.f;
+				velocity_normal_w = first_stretch_value * l * 10.f;
 			}
 			current_velocity *= micro_time;
-			local_position += current_velocity;
+			local_position_x += current_velocity.x;
+			local_position_y += current_velocity.y;
+			local_position_z += current_velocity.z;
 			if (line || property_flags & tfxEmitterPropertyFlags_relative_position) {
 
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-					world_position = local_position;
+					world_position.x = local_position_x;
+					world_position.y = local_position_y;
+					world_position.z = local_position_z;
 				}
 				else {
-					tfxVec4 rotatevec = mmTransformVector(matrix, local_position + handle);
-					captured_position = world_position = emitter_captured_position + rotatevec.xyz() * scale;
+					tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+					captured_position_x = world_position.x = emitter_captured_position.x + rotatevec.x * scale.x;
+					captured_position_y = world_position.y = emitter_captured_position.y + rotatevec.y * scale.y;
+					captured_position_z = world_position.z = emitter_captured_position.z + rotatevec.z * scale.z;
 				}
 			}
 			else {
 				world_position += current_velocity;
-				captured_position = world_position;
+				captured_position_x = world_position.x;
+				captured_position_y = world_position.y;
+				captured_position_z = world_position.z;
 			}
 			if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
 				entry->particle_data->depth[index] = LengthVec3NoSqR(world_position - pm.camera_position);
@@ -10651,10 +10806,19 @@ namespace tfx {
 				bank.flags[next_index] = bank.flags[index];
 				bank.age[next_index] = bank.age[index];	
 				bank.max_age[next_index] = bank.max_age[index];
-				bank.position[next_index] = bank.position[index];
-				bank.captured_position[next_index] = bank.captured_position[index];
-				bank.local_rotations[next_index] = bank.local_rotations[index];
-				bank.velocity_normal[next_index] = bank.velocity_normal[index];
+				bank.position_x[next_index] = bank.position_x[index];
+				bank.position_y[next_index] = bank.position_y[index];
+				bank.position_z[next_index] = bank.position_z[index];
+				bank.captured_position_x[next_index] = bank.captured_position_x[index];
+				bank.captured_position_y[next_index] = bank.captured_position_y[index];
+				bank.captured_position_z[next_index] = bank.captured_position_z[index];
+				bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
+				bank.local_rotations_y[next_index] = bank.local_rotations_y[index];
+				bank.local_rotations_z[next_index] = bank.local_rotations_z[index];
+				bank.velocity_normal_x[next_index] = bank.velocity_normal_x[index];
+				bank.velocity_normal_y[next_index] = bank.velocity_normal_y[index];
+				bank.velocity_normal_z[next_index] = bank.velocity_normal_z[index];
+				bank.velocity_normal_w[next_index] = bank.velocity_normal_w[index];
 				bank.stretch[next_index] = bank.stretch[index];
 				bank.weight_acceleration[next_index] = bank.weight_acceleration[index];
 				bank.base_weight[next_index] = bank.base_weight[index];
@@ -10706,11 +10870,14 @@ namespace tfx {
 			const float base_spin = bank.base_spin[index];
 			const float noise_offset = bank.noise_offset[index];
 			const float noise_resolution = bank.noise_resolution[index];
-			const float angle = bank.velocity_normal[index].x;
+			const float angle = bank.velocity_normal_x[index];
 			float &weight_acceleration = bank.weight_acceleration[index];
-			tfxVec3 &local_position = bank.position[index];
-			tfxVec3 &captured_position = bank.captured_position[index];
-			tfxVec3 &local_rotations = bank.local_rotations[index];
+			float &local_position_x = bank.position_x[index];
+			float &local_position_y = bank.position_y[index];
+			float &captured_position_x = bank.captured_position_x[index];
+			float &captured_position_y = bank.captured_position_y[index];
+			float &captured_position_z = bank.captured_position_z[index];
+			float &roll = bank.local_rotations_z[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
 			const float lookup_velocity = work_entry->graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity.lookup.last_frame)];
@@ -10731,8 +10898,8 @@ namespace tfx {
 				float eps = 0.0001f;
 				float eps2 = 0.0001f * 2.f;
 
-				float x = local_position.x / lookup_noise_resolution + noise_offset;
-				float y = local_position.y / lookup_noise_resolution + noise_offset;
+				float x = local_position_x / lookup_noise_resolution + noise_offset;
+				float y = local_position_y / lookup_noise_resolution + noise_offset;
 
 				//Find rate of change in YZ plane
 				float n1 = tfxSimplexNoise::noise(x, y + eps);
@@ -10778,22 +10945,23 @@ namespace tfx {
 			//----Rotation
 			if (emitter_flags & tfxEmitterStateFlags_align_with_velocity) {
 				tfxVec2 vd = current_velocity.IsNill() ? velocity_normal : current_velocity;
-				local_rotations.roll = GetVectorAngle(vd.x, vd.y) + angle_offset;
+				roll = GetVectorAngle(vd.x, vd.y) + angle_offset;
 			}
 			else {
-				local_rotations.roll += spin * tfxUPDATE_TIME;
+				roll += spin * tfxUPDATE_TIME;
 			}
 
-			local_position += current_velocity * overal_scale;
+			local_position_x += current_velocity.x * overal_scale;
+			local_position_y += current_velocity.y * overal_scale;
 
 			//Lines - Reposition if the particle is travelling along a line
 			tfxVec2 offset = velocity_normal * emitter_size.y;
-			float length = std::fabsf(local_position.y);
+			float length = std::fabsf(local_position_y);
 			float emitter_length = emitter_size.y;
 			bool line_and_kill = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_kill) && length > emitter_length;
 			bool line_and_loop = (emitter_flags & tfxEmitterStateFlags_is_line_traversal) && (emitter_flags & tfxEmitterStateFlags_loop) && length > emitter_length;
 			if (line_and_loop) {
-				local_position.y -= offset.y;
+				local_position_y -= offset.y;
 				flags |= tfxParticleFlags_capture_after_transform;
 			}
 			else if (line_and_kill) {
@@ -10813,24 +10981,29 @@ namespace tfx {
 
 		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const tfxVec3 &local_position = bank.position[index];
-			const tfxVec3 &local_rotations = bank.local_rotations[index];
-			tfxVec3 &captured_position = bank.captured_position[index];
+			const float local_position_x = bank.position_x[index];
+			const float local_position_y = bank.position_y[index];
+			const float roll = bank.local_rotations_z[index];
+			float &captured_position_x = bank.captured_position_x[index];
+			float &captured_position_y = bank.captured_position_y[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
 			auto transform_particle_callback2d = pm.emitters.transform_particle_callback2d[emitter_index];
 			if (flags & tfxParticleFlags_capture_after_transform) {
-				transform_particle_callback2d(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_captured_position.x, e_captured_position.y, 0.f));
-				captured_position = s.transform.position;
-				transform_particle_callback2d(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
+				transform_particle_callback2d(local_position_x, local_position_y, roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_captured_position.x, e_captured_position.y, 0.f));
+				captured_position_x = s.transform.position.x;
+				captured_position_y = s.transform.position.y;
+				transform_particle_callback2d(local_position_x, local_position_y, roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
 				flags &= ~tfxParticleFlags_capture_after_transform;
 			}
 			else {
-				transform_particle_callback2d(local_position.xy(), local_rotations.roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
+				transform_particle_callback2d(local_position_x, local_position_y, roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
 			}
-			s.transform.captured_position = captured_position.xy();
-			captured_position = s.transform.position;
+			s.transform.captured_position.x = captured_position_x;
+			s.transform.captured_position.y = captured_position_y;
+			captured_position_x = s.transform.position.x;
+			captured_position_y = s.transform.position.y;
 
 		}
 	}
@@ -10863,11 +11036,15 @@ namespace tfx {
 			const float base_spin = bank.base_spin[index];
 			const float base_noise_offset = bank.noise_offset[index];
 			const float noise_resolution = bank.noise_resolution[index];
-			const float angle = bank.velocity_normal[index].x;
 			float &weight_acceleration = bank.weight_acceleration[index];
-			tfxVec3 &local_position = bank.position[index];
-			tfxVec3 &local_rotations = bank.local_rotations[index];
-			tfxVec4 &velocity_normal = bank.velocity_normal[index];
+			float &local_position_x = bank.position_x[index];
+			float &local_position_y = bank.position_y[index];
+			float &local_position_z = bank.position_z[index];
+			float &roll = bank.local_rotations_z[index];
+			float &velocity_normal_x = bank.velocity_normal_x[index];
+			float &velocity_normal_y = bank.velocity_normal_y[index];
+			float &velocity_normal_z = bank.velocity_normal_z[index];
+			float &velocity_normal_w = bank.velocity_normal_w[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
 			const float lookup_velocity = work_entry->graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity.lookup.last_frame)];
@@ -10888,9 +11065,9 @@ namespace tfx {
 
 				float noise_offset = base_noise_offset * overal_scale;
 
-				float x = local_position.x / lookup_noise_resolution + noise_offset;
-				float y = local_position.y / lookup_noise_resolution + noise_offset;
-				float z = local_position.z / lookup_noise_resolution + noise_offset;
+				float x = local_position_x / lookup_noise_resolution + noise_offset;
+				float y = local_position_y / lookup_noise_resolution + noise_offset;
+				float z = local_position_z / lookup_noise_resolution + noise_offset;
 
 				__m128 x4 = _mm_set1_ps(x);
 				__m128 y4 = _mm_set1_ps(y);
@@ -10938,10 +11115,10 @@ namespace tfx {
 
 			//----Velocity Changes
 			float velocity_scalar = base_velocity * lookup_velocity;
-			tfxVec3 current_velocity = velocity_normal.xyz() * velocity_scalar;
+			tfxVec3 current_velocity = tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z) * velocity_scalar;
 			current_velocity += mr_vec;
 			current_velocity.y -= weight_acceleration;
-			velocity_normal.w = lookup_stretch * stretch;
+			velocity_normal_w = lookup_stretch * stretch;
 			current_velocity *= tfxUPDATE_TIME * velocity_adjuster;
 
 			//----Spin and angle Changes
@@ -10952,15 +11129,17 @@ namespace tfx {
 
 			//----Rotation
 			if (flags & tfxEmitterStateFlags_align_with_velocity) {
-				tfxVec3 vd = current_velocity.IsNill() ? velocity_normal.xyz() : current_velocity;
-				local_rotations.roll = GetVectorAngle(vd.x, vd.y) + angle_offsets.roll;
+				tfxVec3 vd = current_velocity.IsNill() ? tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z) : current_velocity;
+				roll = GetVectorAngle(vd.x, vd.y) + angle_offsets.roll;
 			}
 			else {
-				local_rotations.roll += spin * tfxUPDATE_TIME;
+				roll += spin * tfxUPDATE_TIME;
 			}
 
 			//----Position
-			local_position += current_velocity * overal_scale;
+			local_position_x += current_velocity.x * overal_scale;
+			local_position_y += current_velocity.y * overal_scale;
+			local_position_z += current_velocity.z * overal_scale;
 
 		}
 
@@ -10971,18 +11150,22 @@ namespace tfx {
 		if (emitter_flags & tfxEmitterStateFlags_is_line_loop_or_kill){
 			for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 				const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-				tfxVec4 &velocity_normal = bank.velocity_normal[index];
-				tfxVec3 &local_position = bank.position[index];
+				float &velocity_normal_x = bank.velocity_normal_x[index];
+				float &velocity_normal_y = bank.velocity_normal_y[index];
+				float &velocity_normal_z = bank.velocity_normal_z[index];
+				float &local_position_x = bank.position_x[index];
+				float &local_position_y = bank.position_y[index];
+				float &local_position_z = bank.position_z[index];
 				tfxParticleFlags &flags = bank.flags[index];
 
 				//Lines - Reposition if the particle is travelling along a line
-				tfxVec3 offset = velocity_normal.xyz() * emitter_size.y;
-				float length = std::fabsf(local_position.y);
+				tfxVec3 offset = tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z) * emitter_size.y;
+				float length = std::fabsf(local_position_y);
 				float emitter_length = emitter_size.y;
 				bool kill = emitter_flags & tfxEmitterStateFlags_kill && length > emitter_length;
 				bool loop = emitter_flags & tfxEmitterStateFlags_loop && length > emitter_length;
 				if (loop) {
-					local_position.y -= offset.y;
+					local_position_y -= offset.y;
 					flags |= tfxParticleFlags_capture_after_transform;
 				}
 				else if (kill) {
@@ -11007,37 +11190,52 @@ namespace tfx {
 
 		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const tfxVec3 local_position = bank.position[index];
-			const tfxVec3 local_rotations = bank.local_rotations[index];
-			tfxVec4 &velocity_normal = bank.velocity_normal[index];
-			tfxVec3 &captured_position = bank.captured_position[index];
+			const float local_position_x = bank.position_x[index];
+			const float local_position_y = bank.position_y[index];
+			const float local_position_z = bank.position_z[index];
+			const float local_rotations_x = bank.local_rotations_x[index];
+			const float local_rotations_y = bank.local_rotations_y[index];
+			const float local_rotations_z = bank.local_rotations_z[index];
+			const float velocity_normal_x = bank.velocity_normal_x[index];
+			const float velocity_normal_y = bank.velocity_normal_y[index];
+			const float velocity_normal_z = bank.velocity_normal_z[index];
+			float &velocity_normal_w = bank.velocity_normal_w[index];
+			float &captured_position_x = bank.captured_position_x[index];
+			float &captured_position_y = bank.captured_position_y[index];
+			float &captured_position_z = bank.captured_position_z[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
 			tfxU32 s = running_sprite_index++;
 
 			if (flags & tfxParticleFlags_capture_after_transform) {
-				transform_particle_callback3d(local_position, local_rotations, sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_captured_position);
-				captured_position = sprites.transform[s].position;
-				transform_particle_callback3d(local_position, local_rotations, sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_world_position);
+				transform_particle_callback3d(local_position_x, local_position_y, local_position_z, tfxVec3(local_rotations_x, local_rotations_y, local_rotations_z), sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_captured_position);
+				captured_position_x = sprites.transform[s].position.x;
+				captured_position_y = sprites.transform[s].position.y;
+				captured_position_z = sprites.transform[s].position.z;
+				transform_particle_callback3d(local_position_x, local_position_y, local_position_z, tfxVec3(local_rotations_x, local_rotations_y, local_rotations_z), sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_world_position);
 				flags &= ~tfxParticleFlags_capture_after_transform;
 			}
 			else {
-				transform_particle_callback3d(local_position, local_rotations, sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_world_position);
+				transform_particle_callback3d(local_position_x, local_position_y, local_position_z, tfxVec3(local_rotations_x, local_rotations_y, local_rotations_z), sprites.transform[s].position, sprites.transform[s].rotations, e_world_rotations, e_matrix, e_handle, e_scale, e_world_position);
 			}
 
 			tfxVec3 alignment_vector;
 			bool line = property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 			if (vector_align_type == tfxVectorAlignType_motion) {
-				alignment_vector = sprites.transform[s].position - captured_position;
+				alignment_vector.x = sprites.transform[s].position.x - captured_position_x;
+				alignment_vector.y = sprites.transform[s].position.y - captured_position_y;
+				alignment_vector.z = sprites.transform[s].position.z - captured_position_z;
 				float l = FastLength(alignment_vector);
-				velocity_normal.w *= l * 10.f;
+				velocity_normal_w *= l * 10.f;
 				alignment_vector = FastNormalizeVec(alignment_vector);
 			}
 			else if (vector_align_type == tfxVectorAlignType_emission && property_flags & tfxEmitterPropertyFlags_relative_position) {
-				alignment_vector = mmTransformVector3(e_matrix, velocity_normal.xyz());
+				alignment_vector = mmTransformVector3(e_matrix, tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z));
 			}
 			else if (vector_align_type == tfxVectorAlignType_emission) {
-				alignment_vector = velocity_normal.xyz();
+				alignment_vector.x = velocity_normal_x;
+				alignment_vector.y = velocity_normal_y;
+				alignment_vector.z = velocity_normal_z;
 			}
 			else if (vector_align_type == tfxVectorAlignType_emitter) {
 				alignment_vector = mmTransformVector(e_matrix, tfxVec4(0.f, 1.f, 0.f, 0.f)).xyz();
@@ -11046,9 +11244,11 @@ namespace tfx {
 			//sprites.transform.captured_position = captured_position;
 			alignment_vector.y += 0.002f;	//We don't want a 0 alignment normal
 			sprites.alignment[s] = Pack10bit(alignment_vector, billboard_option & 0x00000003);
-			sprites.stretch[s] = velocity_normal.w;
+			sprites.stretch[s] = velocity_normal_w;
 
-			captured_position = sprites.transform[s].position;
+			captured_position_x = sprites.transform[s].position.x;
+			captured_position_y = sprites.transform[s].position.y;
+			captured_position_z = sprites.transform[s].position.z;
 
 		}
 	}
