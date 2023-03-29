@@ -1,4 +1,4 @@
-#define tfxENABLE_PROFILING
+﻿#define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 //#define tfxTRACK_MEMORY
 /*
@@ -236,7 +236,7 @@ union tfxUInt10bit
 typedef __m256 tfxWideFloat;
 typedef __m256i tfxWideInt;
 #define tfxWideLoad _mm256_load_ps
-#define tfxWideLoadi _mm256_load_si128
+#define tfxWideLoadi _mm256_load_si256
 #define tfxWideSet _mm256_set_ps
 #define tfxWideSetSingle _mm256_set1_ps
 #define tfxWideSeti _mm256_set_epi32
@@ -253,12 +253,20 @@ typedef __m256i tfxWideInt;
 #define tfxWideStorei _mm256_store_si256
 #define tfxWideCasti _mm256_castsi256_ps 
 #define tfxWideConverti _mm256_cvttps_epi32 
+#define tfxWideConvert	_mm256_cvtepi32_ps 
 #define tfxWideMin _mm256_min_ps
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
 #define tfxWideMaxi _mm256_max_epi32
 #define tfxWideOr _mm256_or_ps
+#define tfxWideOri _mm256_or_si256
 #define tfxWideAnd _mm256_and_ps
+#define tfxWideAndi _mm256_and_si256
+#define tfxWideAndNot _mm256_andnot_ps
+#define tfxWideAndNoti _mm256_andnot_si256
+#define tfxWideSetZero _mm256_setzero_si256
+#define tfxWideEquals _mm256_cmpeq_epi32 
+#define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
@@ -272,6 +280,16 @@ const __m256 tfxWIDEZERO = _mm256_set1_ps(0.f);
 const __m256 tfxWIDETHIRTYTWO = _mm256_set1_ps(32.f);
 const __m256i tfxWIDEFF = _mm256_set1_epi32(0xFF);
 const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
+
+typedef union {
+	__m256i m;
+	int a[8];
+} tfxWideArrayi;
+
+typedef union {
+	__m256 m;
+	float a[8];
+} tfxWideArray;
 
 #else
 #define tfxDataWidth 4	
@@ -295,12 +313,19 @@ typedef __m128i tfxWideInt;
 #define tfxWideStorei _mm_store_si128
 #define tfxWideCasti _mm_castps_si128 
 #define tfxWideConverti _mm_cvttps_epi32 
+#define tfxWideConvert _mm_cvtepi32_ps 
 #define tfxWideMin _mm_min_ps
 #define tfxWideMax _mm_max_ps
 #define tfxWideMini _mm_min_epi32
 #define tfxWideMaxi _mm_max_epi32
 #define tfxWideOr _mm_or_ps
+#define tfxWideOri _mm_or_si128
 #define tfxWideAnd _mm_and_ps
+#define tfxWideAndi _mm_and_si128
+#define tfxWideAndNot _mm_andnot_ps
+#define tfxWideAndNoti _mm_andnot_si128
+#define tfxWideSetZero _mm_setzero_si128
+#define tfxWideEquals _mm_cmpeq_epi32 
 #define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
@@ -315,8 +340,30 @@ const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
 const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
 const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
+typedef union {
+	__m128i m;
+	int a[4];
+} tfxWideArrayi;
+
+typedef union {
+	__m128 m;
+	float a[4];
+} tfxWideArray;
+
 #endif
 
+typedef __m128 tfx128;
+typedef __m128i tfx128i;
+
+typedef union {
+	__m128i m;
+	int a[4];
+} tfx128iArray;
+
+typedef union {
+	__m128 m;
+	float a[4];
+} tfx128Array;
 
 	//----------------------------------------------------------
 	//enums/state_flags
@@ -765,6 +812,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxEmitterStateFlags_no_tween = 1 << 20,
 		tfxEmitterStateFlags_align_with_velocity = 1 << 21,
 		tfxEmitterStateFlags_is_sub_emitter = 1 << 22,
+		tfxEmitterStateFlags_has_noise = 1 << 23
 	};
 
 	enum tfxEffectStateFlags_ : unsigned int {
@@ -3526,16 +3574,6 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return to * tween + from * (1.f - tween);
 	}
 
-	typedef union {
-		__m128i m;
-		int a[4];
-	} m128i;
-
-	typedef union {
-		__m128 m;
-		float a[4];
-	} m128;
-
 	const float gradX[] =
 	{
 		1,-1, 1,-1,
@@ -3726,6 +3764,18 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		return value * 32.69428253173828125f;
 	}
 
+	inline tfxWideFloat tfxWideFloor(const tfxWideFloat& x) {
+		tfxWideInt v_int = tfxWideConverti(x);
+		tfxWideFloat v_floor = tfxWideConvert(v_int);
+		return v_floor;
+	}
+
+	inline tfx128 tfxFloor128(const tfx128& x) {
+		tfx128i v_int = _mm_cvttps_epi32(x);
+		tfx128 v_floor = _mm_cvtepi32_ps(v_int);
+		return v_floor;
+	}
+
 	/**
 	Start of simple noise code that encompasses the following license
 	 * @file    SimplexNoise.h
@@ -3749,7 +3799,7 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		// 3D Perlin simplex noise
 		static float noise(float x, float y, float z);
 		// 4 noise samples using simd
-		static tfxVec4 noise4(const __m128 &x4, const __m128 &y4, const __m128 &z4);
+		static tfx128Array noise4(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
 
 		// Fractal/Fractional Brownian Motion (fBm) noise summation
 		float fractal(size_t octaves, float x) const;
@@ -4885,7 +4935,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 	tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
 	float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
 	float GetDistance(float fromx, float fromy, float tox, float toy);
-	float GetVectorAngle(float, float);
+	inline float GetVectorAngle(float x, float y) {
+		return atan2f(x, -y);
+	}
 	static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
 	void CompileGraph(tfxGraph &graph);
 	void CompileGraphOvertime(tfxGraph &graph);
@@ -6087,6 +6139,19 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		tfxU32 single_loop_count;
 	};
 
+	struct tfxVec3SoA {
+		float *x;
+		float *y;
+		float *z;
+	};
+
+	inline void InitVec3SoA(tfxSoABuffer *buffer, tfxVec3SoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(float), offsetof(tfxVec3SoA, x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxVec3SoA, y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxVec3SoA, z));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
 	//These all point into a tfxSoABuffer, initialised with InitParticleSoA
 	struct tfxParticleSoA {
 		tfxU32 *parent_index;
@@ -6104,6 +6169,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		float *local_rotations_x;
 		float *local_rotations_y;
 		float *local_rotations_z;
+		float *noise_x;
+		float *noise_y;
+		float *noise_z;
 		float *velocity_normal_x;
 		float *velocity_normal_y;
 		float *velocity_normal_z;
@@ -6143,6 +6211,9 @@ const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_y));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_z));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_z));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_y));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_z));
