@@ -7670,7 +7670,7 @@ namespace tfx {
 
 			float &image_frame = bank.image_frame[index];
 			tfxU32 &sprites_index = bank.sprite_index[index];
-			sprites.captured_index[running_sprite_index] = sprites_index & 0x0FFFFFFF;
+			sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + sprites_index;
 			sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index;
 
 			//----Image animation
