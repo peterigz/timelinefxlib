@@ -11084,35 +11084,38 @@ namespace tfx {
 					tfx128 xeps4 = _mm_set_ps(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);
 					tfx128 xeps4r = _mm_set_ps(x.a[n], x.a[n], x.a[n] - eps, x.a[n] + eps);
 					tfx128 yeps4 = _mm_set_ps(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);
-					tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
 					tfx128 zeps4 = _mm_set_ps(z.a[n] - eps, z.a[n] + eps, z.a[n], z.a[n]);
 					tfx128 zeps4r = _mm_set_ps(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);
 
 					//Find rate of change in YZ plane
 					tfx128Array sample = tfxSimplexNoise::noise4(x4, yeps4, zeps4);
-					//Average to find approximate derivative
 					float a = (sample.a[0] - sample.a[1]) / eps2;
 					//Average to find approximate derivative
 					float b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_x.a[n] = a - b;
+					if (noise_x.a[n] < -10.f || noise_x.a[n] > 10.f) {
+						int d = 1;
+					}
 
 					y.a[n] += 100.f;
-					yeps4 = _mm_set_ps(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);
-					yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
+					tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
 					//Find rate of change in XZ plane
 					sample = tfxSimplexNoise::noise4(xeps4, y4, zeps4r);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_y.a[n] = a - b;
+					if (noise_y.a[n] < -10.f || noise_y.a[n] > 10.f) {
+						int d = 1;
+					}
 
-					z.a[n] += 100.f;
-					zeps4 = _mm_set_ps(z.a[n] - eps, z.a[n] + eps, z.a[n], z.a[n]);
-					zeps4r = _mm_set_ps(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);
 					//Find rate of change in XY plane
 					sample = tfxSimplexNoise::noise4(xeps4r, yeps4r, z4);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_z.a[n] = a - b;
+					if (noise_z.a[n] < -10.f || noise_z.a[n] > 10.f) {
+						int d = 1;
+					}
 				}
 
 				noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
@@ -11123,6 +11126,7 @@ namespace tfx {
 				tfxWideStore(&bank.noise_y[index], noise_y.m);
 				tfxWideStore(&bank.noise_z[index], noise_z.m);
 			}
+
 		}
 
 		const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
@@ -11204,9 +11208,6 @@ namespace tfx {
 			tfxWideStore(&bank.position_y[index], local_position_y);
 			tfxWideStore(&bank.position_z[index], local_position_z);
 			tfxWideStore(&bank.local_rotations_z[index], roll.m);
-			tfxWideStore(&bank.velocity_normal_x[index], velocity_normal_x);
-			tfxWideStore(&bank.velocity_normal_y[index], velocity_normal_y);
-			tfxWideStore(&bank.velocity_normal_z[index], velocity_normal_z);
 			tfxWideStore(&bank.velocity_normal_w[index], velocity_normal_w);
 		}
 
