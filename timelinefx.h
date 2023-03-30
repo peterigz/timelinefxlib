@@ -160,6 +160,7 @@ namespace tfx {
 #define tfxMAX_FRAME 20000.f
 #define tfxNullParent 0xFFFFFFFF
 #define tfxINVALID 0xFFFFFFFF
+#define tfxINVALID_SPRITE 0x0FFFFFFF
 #define tfxEmitterPropertiesCount 26
 
 #define tfxDel << "=" <<
@@ -6754,7 +6755,7 @@ typedef union {
 			return sprites3d[!current_sprite_buffer][layer].transform[index].position;
 		}
 		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
-			return sprites3d[!current_sprite_buffer][layer].transform[index];
+			return sprites3d[(index & 0xF0000000) >> 28][layer].transform[index & 0x0FFFFFFF];
 		}
 
 		//Internal use only
@@ -6906,6 +6907,8 @@ typedef union {
 	void ControlParticleColor2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame2d(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleStretch3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleColor3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data);
