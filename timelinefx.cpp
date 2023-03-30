@@ -6589,7 +6589,7 @@ namespace tfx {
 							work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size :  running_start_index + particles_to_update;
 							tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[emitters.particles_index[index]], work_entry.start_index);
 							tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
-							work_entry.wide_end_index = (work_entry.end_index / tfxDataWidth + 1) * tfxDataWidth;
+							work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
 							work_entry.start_diff = circular_start - block_start_index;
 							work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
 							particles_to_update -= mt_batch_size;
@@ -9097,11 +9097,9 @@ namespace tfx {
 			float &local_position_y = entry->particle_data->position_y[index];
 			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position_x = local_position_y = 0;
+			local_position_x = local_position_y = local_position_z = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
-			if (property_flags & tfxEmitterPropertyFlags_relative_position)
-				local_position_x = local_position_y = 0;
-			else {
+			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				if (property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
 					local_position_x = lerp_position.x;
 					local_position_y = lerp_position.y;
@@ -10497,9 +10495,9 @@ namespace tfx {
 				velocity_normal_w = first_stretch_value * l * 10.f;
 			}
 			current_velocity *= micro_time;
-			local_position_x += current_velocity.x;
-			local_position_y += current_velocity.y;
-			local_position_z += current_velocity.z;
+			//local_position_x += current_velocity.x;
+			//local_position_y += current_velocity.y;
+			//local_position_z += current_velocity.z;
 			if (line || property_flags & tfxEmitterPropertyFlags_relative_position) {
 
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
@@ -11127,7 +11125,6 @@ namespace tfx {
 			}
 		}
 
-		/*
 		const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
 		const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
 		const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
@@ -11195,13 +11192,14 @@ namespace tfx {
 
 			//----Spin and angle Changes
 			if (emitter_flags & tfxEmitterStateFlags_can_spin) {
-				//roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, tfxUPDATE_TIME_WIDE));
+				roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, tfxUPDATE_TIME_WIDE));
 			}
 
 			//----Position
 			local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale));
 			local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale));
 			local_position_z = tfxWideAdd(local_position_z, tfxWideMul(current_velocity_z, overal_scale));
+
 			tfxWideStore(&bank.position_x[index], local_position_x);
 			tfxWideStore(&bank.position_y[index], local_position_y);
 			tfxWideStore(&bank.position_z[index], local_position_z);
@@ -11211,8 +11209,8 @@ namespace tfx {
 			tfxWideStore(&bank.velocity_normal_z[index], velocity_normal_z);
 			tfxWideStore(&bank.velocity_normal_w[index], velocity_normal_w);
 		}
-		*/
 
+		/*
 		const float stretch = pm.emitters.stretch[emitter_index];
 		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
 		const float angle_offsets_z = pm.emitters.angle_offsets[emitter_index].roll;
@@ -11280,6 +11278,7 @@ namespace tfx {
 			local_position_z += current_velocity.z * overal_scale;
 
 		}
+		*/
 
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmissionType emission_type = work_entry->properties->emission_type[property_index];
