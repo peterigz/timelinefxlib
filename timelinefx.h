@@ -365,6 +365,22 @@ typedef union {
 	float a[4];
 } tfx128Array;
 
+	//simd floor function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
+	inline tfx128 tfxFloor128(const tfx128& x) {
+		//__m128i v0 = _mm_setzero_si128();
+		//__m128i v1 = _mm_cmpeq_epi32(v0, v0);
+		//__m128i ji = _mm_srli_epi32(v1, 25);
+		//__m128 j = *(__m128*)&_mm_slli_epi32(ji, 23); //create vector 1.0f
+		//I'm not entirely sure why original code had above lines to create a vector of 1.f. It seems to me that the below works fine
+		//Worth noting that we only need to floor small numbers for the noise algorithm so can get away with this function.
+		__m128 j = _mm_set1_ps(1.f); //create vector 1.0f
+		__m128i i = _mm_cvttps_epi32(x);
+		__m128 fi = _mm_cvtepi32_ps(i);
+		__m128 igx = _mm_cmpgt_ps(fi, x);
+		j = _mm_and_ps(igx, j);
+		return _mm_sub_ps(fi, j);
+	}
+
 	//----------------------------------------------------------
 	//enums/state_flags
 
@@ -3304,24 +3320,24 @@ typedef union {
 	static inline tfxMatrix4 mmTransform(const tfxMatrix4 &in, const tfxMatrix4 &m) {
 		tfxMatrix4 res = M4(0.f);
 
-		__m128 in_row[4];
+		tfx128 in_row[4];
 		in_row[0] = _mm_load_ps(&in.v[0].x);
 		in_row[1] = _mm_load_ps(&in.v[1].x);
 		in_row[2] = _mm_load_ps(&in.v[2].x);
 		in_row[3] = _mm_load_ps(&in.v[3].x);
 
-		__m128 m_row1 = _mm_set_ps(m.v[3].x, m.v[2].x, m.v[1].x, m.v[0].x);
-		__m128 m_row2 = _mm_set_ps(m.v[3].y, m.v[2].y, m.v[1].y, m.v[0].y);
-		__m128 m_row3 = _mm_set_ps(m.v[3].z, m.v[2].z, m.v[1].z, m.v[0].z);
-		__m128 m_row4 = _mm_set_ps(m.v[3].w, m.v[2].w, m.v[1].w, m.v[0].w);
+		tfx128 m_row1 = _mm_set_ps(m.v[3].x, m.v[2].x, m.v[1].x, m.v[0].x);
+		tfx128 m_row2 = _mm_set_ps(m.v[3].y, m.v[2].y, m.v[1].y, m.v[0].y);
+		tfx128 m_row3 = _mm_set_ps(m.v[3].z, m.v[2].z, m.v[1].z, m.v[0].z);
+		tfx128 m_row4 = _mm_set_ps(m.v[3].w, m.v[2].w, m.v[1].w, m.v[0].w);
 
 		for (int r = 0; r <= 3; ++r)
 		{
 
-			__m128 row1result = _mm_mul_ps(in_row[r], m_row1);
-			__m128 row2result = _mm_mul_ps(in_row[r], m_row2);
-			__m128 row3result = _mm_mul_ps(in_row[r], m_row3);
-			__m128 row4result = _mm_mul_ps(in_row[r], m_row4);
+			tfx128 row1result = _mm_mul_ps(in_row[r], m_row1);
+			tfx128 row2result = _mm_mul_ps(in_row[r], m_row2);
+			tfx128 row3result = _mm_mul_ps(in_row[r], m_row3);
+			tfx128 row4result = _mm_mul_ps(in_row[r], m_row4);
 
 			float tmp[4];
 			_mm_store_ps(tmp, row1result);
@@ -3352,17 +3368,17 @@ typedef union {
 	static inline tfxVec4 mmTransformVector(const tfxMatrix4 &mat, const tfxVec4 vec) {
 		tfxVec4 v;
 
-		__m128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
-		__m128 mrow1 = _mm_load_ps(&mat.v[0].x);
-		__m128 mrow2 = _mm_load_ps(&mat.v[1].x);
-		__m128 mrow3 = _mm_load_ps(&mat.v[2].x);
-		__m128 mrow4 = _mm_load_ps(&mat.v[3].x);
+		tfx128 mrow1 = _mm_load_ps(&mat.v[0].x);
+		tfx128 mrow2 = _mm_load_ps(&mat.v[1].x);
+		tfx128 mrow3 = _mm_load_ps(&mat.v[2].x);
+		tfx128 mrow4 = _mm_load_ps(&mat.v[3].x);
 
-		__m128 row1result = _mm_mul_ps(v4, mrow1);
-		__m128 row2result = _mm_mul_ps(v4, mrow2);
-		__m128 row3result = _mm_mul_ps(v4, mrow3);
-		__m128 row4result = _mm_mul_ps(v4, mrow4);
+		tfx128 row1result = _mm_mul_ps(v4, mrow1);
+		tfx128 row2result = _mm_mul_ps(v4, mrow2);
+		tfx128 row3result = _mm_mul_ps(v4, mrow3);
+		tfx128 row4result = _mm_mul_ps(v4, mrow4);
 
 		float tmp[4];
 		_mm_store_ps(tmp, row1result);
@@ -3377,15 +3393,15 @@ typedef union {
 		return v;
 	}
 
-	static inline tfxVec4 mmTransformVector(const __m128 &row1, const __m128 &row2, const __m128 &row3, const __m128 &row4, const tfxVec4 vec) {
+	static inline tfxVec4 mmTransformVector(const tfx128 &row1, const tfx128 &row2, const tfx128 &row3, const tfx128 &row4, const tfxVec4 vec) {
 		tfxVec4 v;
 
-		__m128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
-		__m128 row1result = _mm_mul_ps(v4, row1);
-		__m128 row2result = _mm_mul_ps(v4, row2);
-		__m128 row3result = _mm_mul_ps(v4, row3);
-		__m128 row4result = _mm_mul_ps(v4, row4);
+		tfx128 row1result = _mm_mul_ps(v4, row1);
+		tfx128 row2result = _mm_mul_ps(v4, row2);
+		tfx128 row3result = _mm_mul_ps(v4, row3);
+		tfx128 row4result = _mm_mul_ps(v4, row4);
 
 		float tmp[4];
 		_mm_store_ps(tmp, row1result);
@@ -3403,17 +3419,17 @@ typedef union {
 	static inline tfxVec3 mmTransformVector3(const tfxMatrix4 &mat, const tfxVec4 vec) {
 		tfxVec3 v;
 
-		__m128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
-		__m128 mrow1 = _mm_load_ps(&mat.v[0].x);
-		__m128 mrow2 = _mm_load_ps(&mat.v[1].x);
-		__m128 mrow3 = _mm_load_ps(&mat.v[2].x);
-		__m128 mrow4 = _mm_load_ps(&mat.v[3].x);
+		tfx128 mrow1 = _mm_load_ps(&mat.v[0].x);
+		tfx128 mrow2 = _mm_load_ps(&mat.v[1].x);
+		tfx128 mrow3 = _mm_load_ps(&mat.v[2].x);
+		tfx128 mrow4 = _mm_load_ps(&mat.v[3].x);
 
-		__m128 row1result = _mm_mul_ps(v4, mrow1);
-		__m128 row2result = _mm_mul_ps(v4, mrow2);
-		__m128 row3result = _mm_mul_ps(v4, mrow3);
-		__m128 row4result = _mm_mul_ps(v4, mrow4);
+		tfx128 row1result = _mm_mul_ps(v4, mrow1);
+		tfx128 row2result = _mm_mul_ps(v4, mrow2);
+		tfx128 row3result = _mm_mul_ps(v4, mrow3);
+		tfx128 row4result = _mm_mul_ps(v4, mrow4);
 
 		float tmp[4];
 		_mm_store_ps(tmp, row1result);
@@ -3550,13 +3566,13 @@ typedef union {
 	}
 
 	inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &to) {
-		__m128 l4 = _mm_set_ps1(tween);
-		__m128 l4minus1 = _mm_set_ps1(1.f - tween);
-		__m128 f4 = _mm_set_ps(from.x, from.y, from.z, from.w);
-		__m128 t4 = _mm_set_ps(to.x, to.y, to.z, to.w);
-		__m128 from_lerp = _mm_mul_ps(f4, l4);
-		__m128 to_lerp = _mm_mul_ps(f4, l4minus1);
-		__m128 result = _mm_add_ps(from_lerp, to_lerp);
+		tfx128 l4 = _mm_set_ps1(tween);
+		tfx128 l4minus1 = _mm_set_ps1(1.f - tween);
+		tfx128 f4 = _mm_set_ps(from.x, from.y, from.z, from.w);
+		tfx128 t4 = _mm_set_ps(to.x, to.y, to.z, to.w);
+		tfx128 from_lerp = _mm_mul_ps(f4, l4);
+		tfx128 to_lerp = _mm_mul_ps(f4, l4minus1);
+		tfx128 result = _mm_add_ps(from_lerp, to_lerp);
 		tfxVec4 vec;
 		_mm_store_ps(&vec.x, result);
 		return vec;
@@ -3595,16 +3611,16 @@ typedef union {
 		1, 1,-1,-1
 	};
 
-	const __m128 tfxF3_4 = _mm_set_ps1(1.0f / 3.0f);
-	const __m128 tfxG3_4 = _mm_set_ps1(1.0f / 6.0f);
-	const __m128 tfxG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
-	const __m128 tfxG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
-	const __m128i tfxONE = _mm_set1_epi32(1);
-	const __m128 tfxONEF = _mm_set1_ps(1.f);
-	const __m128 tfxZERO = _mm_set1_ps(0.f);
-	const __m128 tfxTHIRTYTWO = _mm_set1_ps(32.f);
-	const __m128i tfxFF = _mm_set1_epi32(0xFF);
-	const __m128 tfxPSIX = _mm_set_ps1(0.6f);
+	const tfx128 tfxF3_4 = _mm_set_ps1(1.0f / 3.0f);
+	const tfx128 tfxG3_4 = _mm_set_ps1(1.0f / 6.0f);
+	const tfx128 tfxG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
+	const tfx128 tfxG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
+	const tfx128i tfxONE = _mm_set1_epi32(1);
+	const tfx128 tfxONEF = _mm_set1_ps(1.f);
+	const tfx128 tfxZERO = _mm_set1_ps(0.f);
+	const tfx128 tfxTHIRTYTWO = _mm_set1_ps(32.f);
+	const tfx128i tfxFF = _mm_set1_epi32(0xFF);
+	const tfx128 tfxPSIX = _mm_set_ps1(0.6f);
 
 	static inline float Dot(float x1, float y1, float z1, float x2, float y2, float z2)
 	{
@@ -3616,11 +3632,11 @@ typedef union {
 		return x1 * x2 + y1 * y2;
 	}
 
-	static inline __m128 DotProductSIMD(const __m128 &x1, const __m128 &y1, const __m128 &z1, const __m128 &x2, const __m128 &y2, const __m128 &z2)
+	static inline tfx128 DotProductSIMD(const tfx128 &x1, const tfx128 &y1, const tfx128 &z1, const tfx128 &x2, const tfx128 &y2, const tfx128 &z2)
 	{
-		__m128 xx = _mm_mul_ps(x1, x2);
-		__m128 yy = _mm_mul_ps(y1, y2);
-		__m128 zz = _mm_mul_ps(z1, z2);
+		tfx128 xx = _mm_mul_ps(x1, x2);
+		tfx128 yy = _mm_mul_ps(y1, y2);
+		tfx128 zz = _mm_mul_ps(z1, z2);
 		return _mm_add_ps(xx, _mm_add_ps(yy, zz));
 	}
 
@@ -3762,18 +3778,6 @@ typedef union {
 		}
 
 		return value * 32.69428253173828125f;
-	}
-
-	inline tfxWideFloat tfxWideFloor(const tfxWideFloat& x) {
-		tfxWideInt v_int = tfxWideConverti(x);
-		tfxWideFloat v_floor = tfxWideConvert(v_int);
-		return v_floor;
-	}
-
-	inline tfx128 tfxFloor128(const tfx128& x) {
-		tfx128i v_int = _mm_cvttps_epi32(x);
-		tfx128 v_floor = _mm_cvtepi32_ps(v_int);
-		return v_floor;
 	}
 
 	/**
