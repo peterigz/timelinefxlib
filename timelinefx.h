@@ -246,13 +246,16 @@ typedef __m256i tfxWideInt;
 #define tfxWideSub _mm256_sub_ps
 #define tfxWideMul _mm256_mul_ps
 #define tfxWideDiv _mm256_div_ps
+#define tfxWideShiftRight _mm256_srli_epi32
+#define tfxWideShiftLeft _mm256_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
 #define tfxWideGreater(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GT_OS)
 #define tfxWideLess(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LT_OS)
 #define tfxWideLessEqeual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LE_OS)
 #define tfxWideStore _mm256_store_ps
 #define tfxWideStorei _mm256_store_si256
-#define tfxWideCasti _mm256_castsi256_ps 
+#define tfxWideCasti _mm256_castps_si256
+#define tfxWideCast _mm256_castsi256_ps 
 #define tfxWideConverti _mm256_cvttps_epi32 
 #define tfxWideConvert	_mm256_cvtepi32_ps 
 #define tfxWideMin _mm256_min_ps
@@ -306,6 +309,8 @@ typedef __m128i tfxWideInt;
 #define tfxWideSub _mm_sub_ps
 #define tfxWideMul _mm_mul_ps
 #define tfxWideDiv _mm_div_ps
+#define tfxWideShiftRight _mm_srli_epi32
+#define tfxWideShiftLeft _mm_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
 #define tfxWideGreater(v1, v2) _mm_cmpgt_ps(v1, v2)
 #define tfxWideLessEqual(v1, v2) _mm_cmple_ps(v1, v2)
@@ -313,6 +318,7 @@ typedef __m128i tfxWideInt;
 #define tfxWideStore _mm_store_ps
 #define tfxWideStorei _mm_store_si128
 #define tfxWideCasti _mm_castps_si128 
+#define tfxWideCast _mm_castsi128_ps
 #define tfxWideConverti _mm_cvttps_epi32 
 #define tfxWideConvert _mm_cvtepi32_ps 
 #define tfxWideMin _mm_min_ps
@@ -380,6 +386,10 @@ typedef union {
 		__m128 igx = _mm_cmpgt_ps(fi, x);
 		j = _mm_and_ps(igx, j);
 		return _mm_sub_ps(fi, j);
+	}
+
+	inline tfxWideFloat tfxWideAbs(tfxWideFloat v) {
+		return tfxWideAnd(tfxWideCast(tfxWideShiftRight(tfxWideSetSinglei(-1), 1)), v);
 	}
 
 	//----------------------------------------------------------
