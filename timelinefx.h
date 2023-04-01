@@ -246,6 +246,10 @@ typedef __m256i tfxWideInt;
 #define tfxWideSub _mm256_sub_ps
 #define tfxWideMul _mm256_mul_ps
 #define tfxWideDiv _mm256_div_ps
+#define tfxWideAddi _mm256_add_epi32
+#define tfxWideSubi _mm256_sub_epi32
+#define tfxWideMuli _mm256_mul_epi32
+#define tfxWideSqrt _mm256_sqrt_ps
 #define tfxWideShiftRight _mm256_srli_epi32
 #define tfxWideShiftLeft _mm256_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
@@ -309,6 +313,10 @@ typedef __m128i tfxWideInt;
 #define tfxWideSub _mm_sub_ps
 #define tfxWideMul _mm_mul_ps
 #define tfxWideDiv _mm_div_ps
+#define tfxWideAddi _mm_add_epi32
+#define tfxWideSubi _mm_sub_epi32
+#define tfxWideMuli _mm_mul_epi32
+#define tfxWideSqrt _mm_sqrt_ps
 #define tfxWideShiftRight _mm_srli_epi32
 #define tfxWideShiftLeft _mm_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
@@ -390,6 +398,10 @@ typedef union {
 
 	inline tfxWideFloat tfxWideAbs(tfxWideFloat v) {
 		return tfxWideAnd(tfxWideCast(tfxWideShiftRight(tfxWideSetSinglei(-1), 1)), v);
+	}
+
+	inline tfxWideInt tfxWideAbsi(tfxWideInt v) {
+		return tfxWideAndi(tfxWideShiftRight(tfxWideSetSinglei(-1), 1), v);
 	}
 
 	//----------------------------------------------------------
@@ -2809,7 +2821,10 @@ typedef union {
 	};
 
 	struct tfxVec4 {
-		float x, y, z, w;
+		union {
+			struct { float x, y, z, w; };
+			struct { float c0, c1, c2, c3; };
+		};
 
 		tfxVec4() { x = y = z = w = 0.f; }
 		tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
@@ -3166,8 +3181,8 @@ typedef union {
 		tfxVec4 v[4];
 
 		inline void Set2(float aa, float ab, float ba, float bb) {
-			v[0].x = aa; v[0].y = ab;
-			v[1].x = ba; v[1].y = bb;
+			v[0].c0 = aa; v[0].c1 = ab;
+			v[1].c0 = ba; v[1].c1 = bb;
 		}
 
 	};
@@ -3364,16 +3379,19 @@ typedef union {
 		return res;
 	}
 
-	static inline void mmTransformRow(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
-		x = tfxWideMul(x, tfxWideSetSingle(mat.v[0].x));
-		x = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].x)), x);
-		x = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].x)), x);
-		y = tfxWideMul(x, tfxWideSetSingle(mat.v[0].y));
-		y = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].y)), y);
-		y = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].y)), y);
-		z = tfxWideMul(x, tfxWideSetSingle(mat.v[0].z));
-		z = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].z)), z);
-		z = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].z)), z);
+	static inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
+		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
+		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[0].c1)), xr);
+		xr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[0].c2)), xr);
+		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[1].c0));
+		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
+		yr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[1].c2)), yr);
+		tfxWideFloat zr = tfxWideMul(x, tfxWideSetSingle(mat.v[2].c0));
+		zr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[2].c1)), zr);
+		zr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].c2)), zr);
+		x = xr;
+		y = yr;
+		z = zr;
 	}
 
 	static inline tfxVec4 mmTransformVector(const tfxMatrix4 &mat, const tfxVec4 vec) {
@@ -3381,10 +3399,10 @@ typedef union {
 
 		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
-		tfx128 mrow1 = _mm_load_ps(&mat.v[0].x);
-		tfx128 mrow2 = _mm_load_ps(&mat.v[1].x);
-		tfx128 mrow3 = _mm_load_ps(&mat.v[2].x);
-		tfx128 mrow4 = _mm_load_ps(&mat.v[3].x);
+		tfx128 mrow1 = _mm_load_ps(&mat.v[0].c0);
+		tfx128 mrow2 = _mm_load_ps(&mat.v[1].c0);
+		tfx128 mrow3 = _mm_load_ps(&mat.v[2].c0);
+		tfx128 mrow4 = _mm_load_ps(&mat.v[3].c0);
 
 		tfx128 row1result = _mm_mul_ps(v4, mrow1);
 		tfx128 row2result = _mm_mul_ps(v4, mrow2);
@@ -3505,11 +3523,28 @@ typedef union {
 	inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
 		tfxVec3 converted =  v * 511.f;
 		tfxUInt10bit result;
+		result.pack = 0;
 		result.data.x = (tfxU32)converted.z;
 		result.data.y = (tfxU32)converted.y;
 		result.data.z = (tfxU32)converted.x;
 		result.data.w = extra;
 		return result.pack;
+	}
+
+	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x,tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
+		tfxWideFloat w511 = tfxWideSetSingle(511.f);
+		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+		converted_x = tfxWideAndi(converted_x, bits10);
+		converted_x = tfxWideShiftLeft(converted_x, 20);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+		converted_y = tfxWideAndi(converted_y, bits10);
+		converted_y = tfxWideShiftLeft(converted_y, 10);
+		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+		converted_z = tfxWideAndi(converted_z, bits10);
+		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
+		tfxWideInt result = tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+		return result;
 	}
 
 	inline tfxVec4 UnPack10bit(tfxU32 in) {
@@ -7392,6 +7427,15 @@ typedef union {
 	}
 	static inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_rotations = local_rotations;
+		tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+		world_position = from_position + rotatevec.xyz() * scale;
+	}
+
+	static inline void TransformWideParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
+		tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
+		world_position = from_position + rotatevec.xyz() * scale;
+	}
+	static inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
