@@ -2573,10 +2573,19 @@ typedef union {
 #define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
 	typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
 
+	struct tfxSignaller {
+		tfxU32 signal_slots[256];
+	};
+
 	struct tfxWorkQueueEntry {
 		tfxWorkQueueCallback *call_back;
 		void *data;
 	};
+
+/*
+	in_signal GetSignalSlot();
+	AddWorkQueueEntry(dependencies, out_signal);
+*/
 
 	typedef tfxU32 tfxWorkQueueFlags;
 
