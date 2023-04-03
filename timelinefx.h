@@ -2568,180 +2568,267 @@ typedef union {
 	//Some multithreading functions - TODO: currently this is windows only, needs linux/mac etc added
 	//Might end up just using std::thread but will see how the Mac API is
 	//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue.
+#define tfxQueueEntryCount 256
+
 	struct tfxWorkQueue;
+	extern int tfxNumberOfThreadsInAdditionToMain;
 
 #define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
-	typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
+typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
 
-	struct tfxSignaller {
-		tfxU32 signal_slots[256];
+	typedef tfxU32 tfxThreadSignal;
+	typedef tfxU32 tfxWorkEntryFlags;
+
+	enum tfxWorkEntryFlag_ {
+		tfxWorkEntryFlag_none = 0,
+		tfxWorkEntryFlag_claimed = 1 << 0
+	};
+
+	enum tfxThreadSignal_ {
+		tfxThreadSignal_none = 0,
+		tfxThreadSignal_sleep = 1 << 0,
+		tfxThreadSignal_exit = 1 << 1
+	};
+
+	struct tfxSignalSlot {
+		tfxU32 wait_count;
+		tfxU32 signals_to_wait_for;
 	};
 
 	struct tfxWorkQueueEntry {
 		tfxWorkQueueCallback *call_back;
 		void *data;
+		tfxThreadSignal finish_signal = tfxThreadSignal_none;
+		tfxU32 send_signal_index = tfxINVALID;
+		tfxU32 receive_signal_index = tfxINVALID;
+		tfxWorkEntryFlags flags;
+		tfxU32 next_entry = tfxINVALID;
+		tfxU32 prev_entry = tfxINVALID;
 	};
-
-/*
-	in_signal GetSignalSlot();
-	AddWorkQueueEntry(dependencies, out_signal);
-*/
-
-	typedef tfxU32 tfxWorkQueueFlags;
-
-	enum tfxWorkQueueFlag_ {
-		tfxWorkQueueFlag_none = 0
-	};
-
-	extern HANDLE tfxThreadSemaphore;
-	extern int tfxNumberOfThreadsInAdditionToMain;
 
 	struct tfxWorkQueue {
-		tfxU32 volatile entry_completion_goal = 0;
-		tfxU32 volatile entry_completion_count = 0;
-		tfxU32 volatile next_read_entry = 0;
-		tfxU32 volatile next_write_entry = 0;
-		tfxWorkQueueEntry entries[256];
+		tfxU32 volatile next_signal_index = 0;
+		tfxU32 volatile free_signals_count = 0;
+		tfxU32 volatile free_entries_count = 0;
+		tfxU32 volatile entry_count = 0;
+		tfxU32 volatile entry_iterator = tfxINVALID;
+		HANDLE semaphore_handle;
+		tfxWorkQueueEntry entries[tfxQueueEntryCount];
+		tfxU32 free_entry_indexes[tfxQueueEntryCount];
+		tfxU32 volatile first_entry = tfxINVALID;
+		tfxU32 volatile last_entry = tfxINVALID;
+		tfxSignalSlot signals[tfxQueueEntryCount];
+		tfxU32 free_signals[tfxQueueEntryCount];
+		std::mutex entry_mutex;
+		std::mutex free_signal_mutex;
+		tfxU32 tmp_count = 0;
 	};
 
-	struct tfxQueueProcessor {
-		std::mutex mutex;
-		HANDLE empty_semaphore;
-		HANDLE full_semaphore;
-		tfxU32 count;
-		tfxWorkQueue *queues[256];
-	};
-
-	extern tfxQueueProcessor tfxThreadQueues;
-
-	inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
-		queues->count = 0;
-		queues->empty_semaphore = CreateSemaphoreEx(0, 64, 64, 0, 0, SEMAPHORE_ALL_ACCESS);
-		queues->full_semaphore = CreateSemaphoreEx(0, 0, 64, 0, 0, SEMAPHORE_ALL_ACCESS);
-		memset(queues->queues, 0, 64 * sizeof(void*));
+	inline void tfxSendSignal(tfxWorkQueue *queue, tfxU32 index) {
+		assert(index < tfxQueueEntryCount);
+		InterlockedIncrement(&queue->signals[index].wait_count);
 	}
 
-	inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
-		WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
-		std::unique_lock<std::mutex> lock(thread_processor->mutex);
-		tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
-		ReleaseSemaphore(thread_processor->empty_semaphore, 1, 0);
-		return queue;
+	inline void tfxAddSignalWait(tfxWorkQueue *queue, tfxU32 index) {
+		assert(index < tfxQueueEntryCount);
+		InterlockedIncrement(&queue->signals[index].signals_to_wait_for);
 	}
 
-	inline void tfxPushQueueWork(tfxQueueProcessor *thread_processor, tfxWorkQueue *queue) {
-		WaitForSingleObject(thread_processor->empty_semaphore, INFINITE);
-		std::unique_lock<std::mutex> lock(thread_processor->mutex);
-		thread_processor->queues[thread_processor->count++] = queue;
-		ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
+	inline tfxU32 tfxCreateSignal(tfxWorkQueue *queue) {
+		if (queue->free_signals_count) {
+			return queue->free_signals[--queue->free_signals_count];
+		}
+		assert(queue->next_signal_index < tfxQueueEntryCount);
+		return queue->next_signal_index++;
 	}
 
-	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
-		assert(tfxNumberOfThreadsInAdditionToMain > 0);
-
-		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
-		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
-		queue->entries[queue->next_write_entry].data = data;
-		queue->entries[queue->next_write_entry].call_back = call_back;
-		InterlockedIncrement(&queue->entry_completion_goal);
-
-		_WriteBarrier();
-
-		tfxPushQueueWork(&tfxThreadQueues, queue);
-		queue->next_write_entry = new_entry_to_write;
-
-		ReleaseSemaphore(tfxThreadSemaphore, 1, 0);
+	inline void tfxFreeSignal(tfxWorkQueue *queue, tfxU32 index) {
+		std::lock_guard<std::mutex> lock(queue->free_signal_mutex);
+		queue->free_signals[queue->free_signals_count++] = index;
+		queue->signals[index].signals_to_wait_for = 0;
+		queue->signals[index].wait_count = 0;
 	}
 
-	static bool tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
-		bool sleep = false;
+	inline void VerifyList(tfxWorkQueue *queue) {
+		tfxU32 current = queue->first_entry;
+		tfxU32 count = 0;
+		while (current != tfxINVALID) {
+			count++;
+			current = queue->entries[current].next_entry;
+		}
+		assert(count == queue->entry_count);
+	}
 
-		tfxWorkQueue *queue = tfxGetQueueWithWork(queue_processor);
+	inline void tfxRemoveEntry(tfxWorkQueue *queue, tfxU32 entry_index) {
+		std::lock_guard<std::mutex> lock(queue->entry_mutex);
+		assert(queue->entry_count > 0);				//No entries to remove.
+		assert(entry_index < tfxQueueEntryCount);	//entry_index is out of bounds
+		queue->free_entry_indexes[queue->free_entries_count++] = entry_index;
+		tfxWorkQueueEntry *entry = &queue->entries[entry_index];
+		if (entry->prev_entry != tfxINVALID) {
+			queue->entries[entry->prev_entry].next_entry = entry->next_entry;
+		}
+		else if (queue->first_entry == entry_index) {
+			if (queue->entry_count > 1) assert(entry->next_entry != tfxINVALID);
+			queue->first_entry = entry->next_entry;
+		}
+		if (entry->next_entry != tfxINVALID) {
+			queue->entries[entry->next_entry].prev_entry = entry->prev_entry;
+		}
+		else {
+			queue->last_entry = entry->prev_entry;
+		}
+		queue->entry_count--;
+		if (queue->entry_count > 0) assert(queue->first_entry != tfxINVALID);
+	}
 
-		if (queue) {
-			tfxU32 original_read_entry = queue->next_read_entry;
-			tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
+	inline tfxU32 tfxAcquireNextWorkEntry(tfxWorkQueue *queue) {
+		std::lock_guard<std::mutex> lock(queue->entry_mutex);
 
-			if (original_read_entry != queue->next_write_entry) {
-				tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
-				if (index == original_read_entry) {
-					tfxWorkQueueEntry entry = queue->entries[index];
-					entry.call_back(queue, entry.data);
-					InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+		if (queue->entry_count == 0) return tfxINVALID;
+
+		queue->entry_iterator = queue->entry_iterator == tfxINVALID ? queue->first_entry : queue->entries[queue->entry_iterator].next_entry;
+
+		return queue->entry_iterator;
+	}
+
+	static tfxThreadSignal tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
+		tfxThreadSignal finish_signal = tfxThreadSignal_none;
+
+		tfxU32 entry_index = tfxAcquireNextWorkEntry(queue);
+		if (entry_index != tfxINVALID) {
+			tfxWorkQueueEntry *entry = &queue->entries[entry_index];
+			tfxWorkEntryFlags original_entry_flags = entry->flags;
+			tfxWorkEntryFlags new_entry_flags = original_entry_flags | tfxWorkEntryFlag_claimed;
+			if (!(original_entry_flags & tfxWorkEntryFlag_claimed)) {
+				//Is the work ready yet?
+				if (entry->receive_signal_index == tfxINVALID || (entry->receive_signal_index != tfxINVALID && queue->signals[entry->receive_signal_index].wait_count == queue->signals[entry->receive_signal_index].signals_to_wait_for)) {
+					//Try and claim the work, another process may beat us to this
+					tfxWorkEntryFlags claimed_flag = InterlockedCompareExchange(&entry->flags, new_entry_flags, original_entry_flags);
+					if (claimed_flag == original_entry_flags) {
+						//We claimed the work, so go ahead and do the work
+						entry->call_back(queue, entry->data);
+						if (entry->send_signal_index != tfxINVALID) {
+							tfxSendSignal(queue, entry->send_signal_index);
+						}
+						else if (entry->receive_signal_index != tfxINVALID) {
+							tfxFreeSignal(queue, entry->receive_signal_index);
+						}
+						finish_signal = entry->finish_signal;
+						tfxRemoveEntry(queue, entry_index);
+					}
 				}
 			}
 			else {
-				sleep = true;
+				finish_signal = tfxThreadSignal_sleep;
 			}
 		}
-		else {
-			sleep = false;
-		}
 
-		return sleep;
+		return finish_signal;
 	}
 
-	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
-		bool sleep = false;
-
-		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
-
-		if (original_read_entry != queue->next_write_entry) {
-			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
-			if (index == original_read_entry) {
-				tfxWorkQueueEntry entry = queue->entries[index];
-				entry.call_back(queue, entry.data);
-				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+	//This function should be called from the main thread only
+	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back, tfxU32 receiver = tfxINVALID, tfxU32 sender = tfxINVALID, tfxThreadSignal finish_signal = 0) {
+		if (queue->entry_count == tfxQueueEntryCount) {
+			while (queue->entry_count == tfxQueueEntryCount) {
+				queue->tmp_count++;
+				std::cout << "queue is full so main thread is helping with the work: " << queue->tmp_count << std::endl;
+				tfxDoNextWorkQueueEntry(queue);
 			}
 		}
-		else {
-			sleep = true;
+		std::lock_guard<std::mutex> lock(queue->entry_mutex);
+		assert(queue->entry_count < tfxQueueEntryCount);
+		tfxU32 new_entry = tfxINVALID;
+		if (queue->entry_count == 0) {
+			queue->free_entries_count = 0;
+			queue->entry_count++;
+			queue->first_entry = 0;
+			queue->last_entry = 0;
+			new_entry = 0;
+			queue->entries[new_entry].prev_entry = tfxINVALID;
 		}
+		else if (queue->free_entries_count > 0) {
+			new_entry = queue->free_entry_indexes[--queue->free_entries_count];
+			assert(queue->last_entry != tfxINVALID);
+			queue->entries[new_entry].prev_entry = queue->last_entry;
+			queue->entries[queue->last_entry].next_entry = new_entry;
+			queue->last_entry = new_entry;
+			queue->entry_count++;
+		}
+		else {
+			new_entry = queue->entry_count++;
+			assert(queue->last_entry != tfxINVALID);
+			queue->entries[new_entry].prev_entry = queue->last_entry;
+			queue->entries[queue->last_entry].next_entry = new_entry;
+			queue->last_entry = new_entry;
+		}
+		assert(new_entry != tfxINVALID);
+		queue->entries[new_entry].next_entry = tfxINVALID;
+		queue->entries[new_entry].data = data;
+		queue->entries[new_entry].call_back = call_back;
+		queue->entries[new_entry].receive_signal_index = receiver;
+		queue->entries[new_entry].send_signal_index = sender;
+		queue->entries[new_entry].finish_signal = finish_signal;
+		queue->entries[new_entry].flags = tfxWorkEntryFlag_none;
+		if (sender != tfxINVALID)
+			tfxAddSignalWait(queue, sender);
 
-		return sleep;
+		_WriteBarrier();
+
+		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
 	}
 
 	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
 
-		tfxQueueProcessor *thread_processor = (tfxQueueProcessor*)lpParameter;
+		tfxWorkQueue *queue = (tfxWorkQueue*)lpParameter;
 
 		for (;;) {
-			if (tfxDoNextWorkQueue(thread_processor)) {
+			tfxThreadSignal signal = tfxDoNextWorkQueueEntry(queue);
+			if (signal == tfxThreadSignal_sleep) {
 				//Suspend the thread
-				WaitForSingleObjectEx(tfxThreadSemaphore, INFINITE, false);
+				WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, false);
+			}
+			else if (signal == tfxThreadSignal_exit) {
+				break;
 			}
 		}
 
+		return 0;
 	}
 
 	static void tfxCompleteAllWork(tfxWorkQueue *queue) {
 		tfxWorkQueueEntry entry = {};
-		while (queue->entry_completion_goal != queue->entry_completion_count) {
+		while (queue->entry_count > 0) {
 			tfxDoNextWorkQueueEntry(queue);
 		}
-		queue->entry_completion_count = 0;
-		queue->entry_completion_goal = 0;
 	}
 
 	inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue) {
-		queue->entry_completion_count = 0;
-		queue->entry_completion_goal = 0;
-		queue->next_read_entry = 0;
-		queue->next_write_entry = 0;
+		queue->semaphore_handle = CreateSemaphoreEx(0, 0, tfxNumberOfThreadsInAdditionToMain, 0, 0, SEMAPHORE_ALL_ACCESS);
 	}
 
-	inline void tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
-		InitialiseThreadQueues(&tfxThreadQueues);
+	inline void tfxExitThread(tfxWorkQueue *queue, void *data) {
+		char buffer[256];
+		OutputDebugStringA(buffer);
+	}
 
-		tfxThreadSemaphore = CreateSemaphoreEx(0, 0, tfxNumberOfThreadsInAdditionToMain, 0, 0, SEMAPHORE_ALL_ACCESS);
+	inline void tfxExitAllThreads(tfxWorkQueue *queue) {
+		for (int t = 0; t != tfxNumberOfThreadsInAdditionToMain; ++t) {
+			tfxAddWorkQueueEntry(queue, NULL, tfxExitThread, tfxINVALID, tfxINVALID, tfxThreadSignal_exit);
+		}
+		while (queue->entry_count > 0) {
+		}
+	}
+
+	inline void tfxInitialiseThreads(tfxWorkQueue *queue) {
 		for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
 			DWORD thread_id;
-			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, thread_queues, 0, &thread_id);
+			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, queue, 0, &thread_id);
 			CloseHandle(thread_handle);
 		}
-
 	}
+
+	extern tfxWorkQueue tfxMainQueue;
 
 	//Just the very basic vector types that we need
 	struct tfxVec2 {
@@ -6649,8 +6736,6 @@ typedef union {
 		tfxEffectSoA effects;
 		tfxSoABuffer emitter_buffers;
 		tfxEmitterSoA emitters;
-
-		tfxWorkQueue work_queue;
 
 		//Banks of sprites for drawing in unordered mode
 		tfxSoABuffer sprites3d_buffer[2][tfxLAYERS];
