@@ -2568,7 +2568,7 @@ typedef union {
 	//Might end up just using std::thread but will see how the Mac API is
 	//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue.
 	struct tfxWorkQueue;
-#define tfxQueueEntryCount 256
+#define tfxQueueEntryCount 1024
 
 #define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
 	typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
@@ -6898,9 +6898,9 @@ typedef union {
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
-		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 2048);
+		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 2048);
+		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 2048);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void CreateParticleBanksForEachLayer();
