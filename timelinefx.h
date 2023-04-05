@@ -719,7 +719,8 @@ typedef union {
 		tfxEffectManagerFlags_ordered_by_age = 1 << 10,
 		tfxEffectManagerFlags_update_age_only = 1 << 11,
 		tfxEffectManagerFlags_single_threaded = 1 << 12,
-		tfxEffectManagerFlags_double_buffer_sprites = 1 << 13
+		tfxEffectManagerFlags_double_buffer_sprites = 1 << 13,
+		tfxEffectManagerFlags_initialised = 1 << 14
 	};
 
 	enum tfxVectorAlignType {
@@ -2498,8 +2499,6 @@ typedef union {
 
 		//You must called InitialiseTimelineFX() before doing anything!
 #define tmpStack(type, name) assert(tfxSTACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxSTACK_ALLOCATOR)
-		//You must called InitialiseTimelineFX() before doing anything!
-#define tmpMTStack(type, name) assert(tfxMT_STACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxMT_STACK_ALLOCATOR)
 
 	template <typename T>
 	static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
@@ -2729,7 +2728,7 @@ typedef union {
 		else if (tfxIsFenceEntry(queue, queue->first_entry)) {
 			if (queue->entries[queue->first_entry].next_entry != tfxINVALID) {
 				tfxRemoveEntryNoLock(queue, queue->first_entry);
-				queue->entry_iterator = queue->first_entry;
+				queue->entry_iterator = tfxINVALID;
 			}
 			else {
 				queue->first_entry = queue->last_entry = queue->entry_iterator = tfxINVALID;
@@ -2748,13 +2747,14 @@ typedef union {
 			tfxWorkQueueEntry *entry = &queue->entries[entry_index];
 			tfxWorkEntryFlags original_entry_flags = entry->flags;
 			tfxWorkEntryFlags new_entry_flags = original_entry_flags | tfxWorkEntryFlag_claimed;
-			if (!(original_entry_flags & tfxWorkEntryFlag_claimed)) {
+			if (!(original_entry_flags & tfxWorkEntryFlag_claimed) && !(original_entry_flags & tfxWorkEntryFlag_fence)) {
 				//Is the work ready yet?
 				if (entry->receive_signal_index == tfxINVALID || (entry->receive_signal_index != tfxINVALID && queue->signals[entry->receive_signal_index].wait_count == queue->signals[entry->receive_signal_index].signals_to_wait_for)) {
 					//Try and claim the work, another process may beat us to this
 					tfxWorkEntryFlags claimed_flag = InterlockedCompareExchange(&entry->flags, new_entry_flags, original_entry_flags);
 					if (claimed_flag == original_entry_flags) {
 						//We claimed the work, so go ahead and do the work
+						assert(!tfxIsFenceEntry(queue, entry_index));
 						entry->call_back(queue, entry->data);
 						if (entry->send_signal_index != tfxINVALID) {
 							tfxSendSignal(queue, entry->send_signal_index);
@@ -2767,9 +2767,9 @@ typedef union {
 					}
 				}
 			}
-			else {
-				finish_signal = tfxThreadSignal_sleep;
-			}
+		}
+		else {
+			finish_signal = tfxThreadSignal_sleep;
 		}
 
 		return finish_signal;
@@ -2840,6 +2840,9 @@ typedef union {
 				tfxDoNextWorkQueueEntry(queue);
 			}
 		}
+		else if (queue->entry_count == 0) {
+			return;
+		}
 		std::lock_guard<std::mutex> lock(queue->entry_mutex);
 		assert(queue->entry_count < tfxQueueEntryCount);
 		tfxU32 new_entry = tfxAddListItem(queue);
@@ -2899,6 +2902,7 @@ typedef union {
 	}
 
 	inline void tfxInitialiseThreads(tfxWorkQueue *queue) {
+		tfxInitialiseWorkQueue(queue);
 
 		for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
 			DWORD thread_id;
@@ -6800,6 +6804,11 @@ typedef union {
 		tfxBucketArray<tfxParticleSoA> particle_arrays;
 
 		tfxMemoryArenaManager particle_array_allocator;
+		tfxMemoryArenaManager work_allocator;
+		tfxStack<tfxSpawnWorkEntry> spawn_work;
+		tfxStack<tfxControlWorkEntry> control_work;
+		tfxStack<tfxControlWorkEntryOrdered> control_work_ordered;
+		tfxStack<tfxParticleAgeWorkEntry> age_work_ordered;
 		//In unordered mode emitters that expire have their particle banks added here to be reused
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
@@ -6812,8 +6821,6 @@ typedef union {
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> free_effects;
 		tfxvec<tfxU32> free_emitters;
-		tfxvec<tfxU32> spawn_signals_a;
-		tfxvec<tfxU32> spawn_signals_b;
 
 		tfxSoABuffer effect_buffers;
 		tfxEffectSoA effects;
@@ -7855,7 +7862,6 @@ typedef union {
 	tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
 
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
-	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
 	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);

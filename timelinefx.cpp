@@ -6234,6 +6234,11 @@ namespace tfx {
 	}
 
 	tfxParticleManager::~tfxParticleManager() {
+		spawn_work.free();
+		control_work.free();
+		control_work_ordered.free();
+		age_work_ordered.free();
+		work_allocator.FreeAll();
 		FreeSoABuffer(&effect_buffers);
 		FreeSoABuffer(&emitter_buffers);
 		particle_array_allocator.FreeAll();
@@ -6483,6 +6488,11 @@ namespace tfx {
 	void tfxParticleManager::Update() {
 		tfxPROFILE;
 		tfxCompleteAllWork(&tfxMainQueue);
+		spawn_work.clear();
+		control_work.clear();
+		control_work_ordered.clear();
+		age_work_ordered.clear();
+
 		new_compute_particle_index = 0;
 
 		unsigned int next_buffer = !current_ebuff;
@@ -6516,7 +6526,6 @@ namespace tfx {
 			emitter_start_size[depth] = emitters_in_use[depth][current_ebuff].current_size;
 		}
 
-		tmpMTStack(tfxSpawnWorkEntry, spawn_work);
 		//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 			effects_in_use[depth][next_buffer].clear();
@@ -6564,25 +6573,23 @@ namespace tfx {
 			}
 		}
 
-		tfxCompleteAllWork(&tfxMainQueue);
+		tfxAddWorkQueueFence(&tfxMainQueue);
 
 		for (auto &work_entry : spawn_work) {
 			tfxU32 index = work_entry.emitter_index;
 			emitters.highest_particle_age[index] = std::fmaxf(emitters.highest_particle_age[index], work_entry.highest_particle_age);
 			effects.highest_particle_age[emitters.parent_index[index]] = emitters.highest_particle_age[index] + tfxFRAME_LENGTH;
 		}
-		spawn_work.free();
 
 		if (flags & tfxEffectManagerFlags_unordered) {
 			for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 				if(!(flags & tfxEffectManagerFlags_update_age_only)) {
-					tmpMTStack(tfxControlWorkEntry, work);
 					for (int index : emitters_in_use[depth][next_buffer]) {
 						tfxSoABuffer &bank = particle_array_buffers[emitters.particles_index[index]];
 						int particles_to_update = bank.current_size;
 						tfxU32 running_start_index = 0;
 						while (particles_to_update > 0) {
-							tfxControlWorkEntry &work_entry = work.next();
+							tfxControlWorkEntry &work_entry = control_work.next();
 							work_entry.properties = &emitters.library[index]->emitter_properties;
 							work_entry.emitter_index = index;
 							work_entry.start_index = running_start_index;
@@ -6600,14 +6607,12 @@ namespace tfx {
 								ControlParticles2d(*this, index, work_entry);
 						}
 					}
-					tfxCompleteAllWork(&tfxMainQueue);
-					work.free();
 				}
+				tfxAddWorkQueueFence(&tfxMainQueue);
 				{
-					tmpMTStack(tfxParticleAgeWorkEntry, work);
 					for (int index : emitters_in_use[depth][next_buffer]) {
 						tfxSoABuffer &bank = particle_array_buffers[emitters.particles_index[index]];
-						tfxParticleAgeWorkEntry &work_entry = work.next();
+						tfxParticleAgeWorkEntry &work_entry = age_work_ordered.next();
 						work_entry.properties = &emitters.library[index]->emitter_properties;
 						work_entry.start_index = bank.current_size - 1;
 						work_entry.emitter_index = index;
@@ -6619,9 +6624,8 @@ namespace tfx {
 							ControlParticleAge(&tfxMainQueue, &work_entry);
 						}
 					}
-					tfxCompleteAllWork(&tfxMainQueue);
-					work.free();
 				}
+				tfxAddWorkQueueFence(&tfxMainQueue);
 			}
 		}
 		else if (flags & tfxEffectManagerFlags_ordered_by_age) {
@@ -6633,12 +6637,11 @@ namespace tfx {
 			//else
 
 			if(!(flags & tfxEffectManagerFlags_update_age_only)) {
-				tmpMTStack(tfxControlWorkEntryOrdered, work);
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 					int particles_to_update = particle_array_buffers[layer].current_size;
 					tfxU32 running_start_index = 0;
 					while(particles_to_update > 0) {
-						tfxControlWorkEntryOrdered &work_entry = work.next();
+						tfxControlWorkEntryOrdered &work_entry = control_work_ordered.next();
 						work_entry.pm = this;
 						work_entry.sprite_layer = layer;
 						work_entry.current_buffer_index = layer;
@@ -6653,9 +6656,7 @@ namespace tfx {
 							ControlParticlesOrdered2d(*this, work_entry);
 					}
 				}
-		
-				tfxCompleteAllWork(&tfxMainQueue);
-				work.free();
+				tfxAddWorkQueueFence(&tfxMainQueue);
 			}
 			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 				tfxControlWorkEntryOrdered &work_entry = ordered_age_work_entry[layer];
@@ -6706,7 +6707,6 @@ namespace tfx {
 			current_pbuff = next_particle_buffer;
 
 			if(!(flags & tfxEffectManagerFlags_update_age_only)) {
-				tmpMTStack(tfxControlWorkEntryOrdered, work);
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 					int layer_offset = layer * 2;
 					int current_buffer_index = current_pbuff + layer_offset;
@@ -6714,7 +6714,7 @@ namespace tfx {
 					sprites3d_buffer[current_sprite_buffer][layer].current_size = particles_to_update;
 					tfxU32 running_start_index = 0;
 					while (particles_to_update > 0) {
-						tfxControlWorkEntryOrdered &work_entry = work.next();
+						tfxControlWorkEntryOrdered &work_entry = control_work_ordered.next();
 						work_entry.pm = this;
 						work_entry.sprite_layer = layer;
 						work_entry.current_buffer_index = current_buffer_index;
@@ -6727,8 +6727,7 @@ namespace tfx {
 					}
 				}
 
-				tfxCompleteAllWork(&tfxMainQueue);
-				work.free();
+				tfxAddWorkQueueFence(&tfxMainQueue);
 
 				if (flags & tfxEffectManagerFlags_guarantee_order) {
 					for (tfxEachLayer) {
@@ -7699,10 +7698,11 @@ namespace tfx {
 	}
 
 	void tfxParticleManager::InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
+		assert(!(flags & tfxEffectManagerFlags_initialised));		//Particle manager already initialised! Try reconfigure if you need to alter the setup of the particle manager
 		assert(mode == tfxParticleManagerMode_unordered || mode == tfxParticleManagerMode_ordered_by_age);	//Only these 2 modes are available for 2d effects
 		max_effects = effects_limit;
 		mt_batch_size = multi_threaded_batch_size;
-		tfxInitialiseWorkQueue(&tfxMainQueue);
+		work_allocator = CreateArenaManager(tfxMegabyte(4));
 
 		if (particle_array_allocator.arenas.current_size == 0) {
 			//todo need to be able to adjust the arena size
@@ -7755,12 +7755,18 @@ namespace tfx {
 		free_effects.reserve(max_effects);
 		InitEffectSoA(&effect_buffers, &effects, max_effects);
 		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
+		flags |= tfxEffectManagerFlags_initialised;
 	}
 
 	void tfxParticleManager::InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
+		assert(!(flags & tfxEffectManagerFlags_initialised));		//Particle manager already initialised!
 		max_effects = effects_limit;
 		mt_batch_size = multi_threaded_batch_size;
-		tfxInitialiseWorkQueue(&tfxMainQueue);
+		work_allocator = CreateArenaManager(tfxMegabyte(4));
+		spawn_work = tfxStack<tfxSpawnWorkEntry>(&work_allocator);
+		control_work = tfxStack<tfxControlWorkEntry>(&work_allocator);
+		control_work_ordered = tfxStack<tfxControlWorkEntryOrdered>(&work_allocator);
+		age_work_ordered = tfxStack<tfxParticleAgeWorkEntry>(&work_allocator);
 
 		if (particle_array_allocator.arenas.current_size == 0) {
 			//todo need to be able to adjust the arena size
@@ -7830,6 +7836,7 @@ namespace tfx {
 		free_effects.reserve(max_effects);
 		InitEffectSoA(&effect_buffers, &effects, max_effects);
 		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
+		flags |= tfxEffectManagerFlags_initialised;
 	}
 
 	void tfxParticleManager::InitFor2d(unsigned int effects_limit, tfxParticleManagerModes mode) {
@@ -7867,6 +7874,14 @@ namespace tfx {
 	}
 
 	void tfxParticleManager::Reconfigure(tfxParticleManagerModes mode, tfxU32 req_sort_passes, bool is_3d) {
+		if (!work_allocator.arenas.data) {
+			work_allocator = CreateArenaManager(tfxMegabyte(4));
+			spawn_work = tfxStack<tfxSpawnWorkEntry>(&work_allocator);
+			control_work = tfxStack<tfxControlWorkEntry>(&work_allocator);
+			control_work_ordered = tfxStack<tfxControlWorkEntryOrdered>(&work_allocator);
+			age_work_ordered = tfxStack<tfxParticleAgeWorkEntry>(&work_allocator);
+		}
+
 		if (flags & tfxEffectManagerFlags_unordered && mode != tfxParticleManagerMode_unordered) {
 			FreeParticleBanks();
 			CreateParticleBanksForEachLayer();
@@ -8035,6 +8050,7 @@ namespace tfx {
 		free_particle_indexes.clear();
 		ClearSoABuffer(&emitter_buffers);
 		ClearSoABuffer(&effect_buffers);
+		work_allocator.FreeAll();
 		particle_id = 0;
 	}
 
@@ -8682,35 +8698,36 @@ namespace tfx {
 
 		if (!(pm.flags & tfxEffectManagerFlags_update_age_only) && !(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			if (work_entry.amount_to_spawn > 0) {
+				tfxU32 spawn_signal = tfxCreateSignal(&tfxMainQueue);
 				if (emission_type == tfxPoint) {
-					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticlePoint3d);
+					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticlePoint3d, tfxINVALID, spawn_signal);
 				}
 				else if (emission_type == tfxArea) {
-					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleArea3d);
+					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleArea3d, tfxINVALID, spawn_signal);
 				}
 				else if (emission_type == tfxEllipse) {
-					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleEllipse3d);
+					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleEllipse3d, tfxINVALID, spawn_signal);
 				}
 				else if (emission_type == tfxLine) {
-					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleLine3d);
+					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleLine3d, tfxINVALID, spawn_signal);
 				}
 				else if (emission_type == tfxCylinder) {
-					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleCylinder3d);
+					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleCylinder3d, tfxINVALID, spawn_signal);
 				}
 				else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleIcosphereRandom3d);
+					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleIcosphereRandom3d, tfxINVALID, spawn_signal);
 				}
 				else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
-					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleIcosphere3d);
+					tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleIcosphere3d, tfxINVALID, spawn_signal);
 				}
-				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleWeight);
-				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleVelocity);
-				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleRoll);
+				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleWeight, tfxINVALID, spawn_signal);
+				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleVelocity, tfxINVALID, spawn_signal);
+				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleRoll, tfxINVALID, spawn_signal);
 				//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
 				//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
 				//fine and is stable
-				tfxCompleteAllWork(&tfxMainQueue);
-				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleMicroUpdate3d);
+				//tfxCompleteAllWork(&tfxMainQueue);
+				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleMicroUpdate3d, spawn_signal);
 				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleAge);
 				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleNoise);
 				tfxAddWorkQueueEntry(&tfxMainQueue, &work_entry, SpawnParticleImageFrame);
@@ -12196,13 +12213,11 @@ namespace tfx {
 	int tfxNumberOfThreadsInAdditionToMain;
 	tfxWorkQueue tfxMainQueue;
 	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
-	tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
 	//Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
 	//max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
 	void InitialiseTimelineFX(int max_threads) {
 		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
-		tfxMT_STACK_ALLOCATOR = CreateArenaManager(tfxMT_STACK_SIZE, 8);
 		tfxNumberOfThreadsInAdditionToMain = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 		lookup_callback = LookupFast;
 		lookup_overtime_callback = LookupFastOvertime;
