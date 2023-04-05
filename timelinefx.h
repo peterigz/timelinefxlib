@@ -152,8 +152,8 @@ namespace tfx {
 	struct tfxStr256;
 	struct tfxStr512;
 
-//--------------------------------------------------------------
-//macros
+	//--------------------------------------------------------------
+	//macros
 #define TFX_VERSION "Alpha"
 #define TFX_VERSION_NUMBER 3.29.2022
 
@@ -174,11 +174,11 @@ namespace tfx {
 #define tfxMin(a, b) (((a) < (b)) ? (a) : (b))
 #define tfxMax(a, b) (((a) > (b)) ? (a) : (b))
 
-typedef std::chrono::high_resolution_clock tfxClock;
+	typedef std::chrono::high_resolution_clock tfxClock;
 
 #define tfxAPI				//Function marker for any functions meant for external/api use
 
-//Override this for more layers, although currently the editor is fixed at 4
+	//Override this for more layers, although currently the editor is fixed at 4
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
 
@@ -193,49 +193,49 @@ You can then use layer inside the loop to get the current layer
 #define tfxEachLayerDB int layer = 0; layer != tfxLAYERS * 2; ++layer
 #endif 
 //type defs
-typedef unsigned int tfxU32;
-typedef unsigned int tfxEmitterID;
-typedef int tfxS32;
-typedef unsigned long long tfxU64;
-typedef long long tfxS64;
-typedef tfxU32 tfxEffectID;
-typedef unsigned long long tfxKey;
-typedef tfxU32 tfxParticleID;
-typedef short tfxShort;
-typedef unsigned short tfxUShort;
+	typedef unsigned int tfxU32;
+	typedef unsigned int tfxEmitterID;
+	typedef int tfxS32;
+	typedef unsigned long long tfxU64;
+	typedef long long tfxS64;
+	typedef tfxU32 tfxEffectID;
+	typedef unsigned long long tfxKey;
+	typedef tfxU32 tfxParticleID;
+	typedef short tfxShort;
+	typedef unsigned short tfxUShort;
 
-inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index) {
-	return ((bank_index & 0x00000FFF) << 20) + particle_index;
-}
+	inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index) {
+		return ((bank_index & 0x00000FFF) << 20) + particle_index;
+	}
 
-inline tfxU32 ParticleIndex(tfxParticleID id) {
-	return id & 0x000FFFFF;
-}
+	inline tfxU32 ParticleIndex(tfxParticleID id) {
+		return id & 0x000FFFFF;
+	}
 
-inline tfxU32 ParticleBank(tfxParticleID id) {
-	return (id & 0xFFF00000) >> 20;
-}
+	inline tfxU32 ParticleBank(tfxParticleID id) {
+		return (id & 0xFFF00000) >> 20;
+	}
 
-union tfxUInt10bit
-{
-	struct
+	union tfxUInt10bit
 	{
-		int x : 10;
-		int y : 10;
-		int z : 10;
-		int w : 2;
-	} data;
-	tfxU32 pack;
-};
+		struct
+		{
+			int x : 10;
+			int y : 10;
+			int z : 10;
+			int w : 2;
+		} data;
+		tfxU32 pack;
+	};
 
-//#define tfxUSEAVX
+	//#define tfxUSEAVX
 
-//Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
-//used by default
+	//Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
+	//used by default
 #ifdef tfxUSEAVX
 #define tfxDataWidth 8	
-typedef __m256 tfxWideFloat;
-typedef __m256i tfxWideInt;
+	typedef __m256 tfxWideFloat;
+	typedef __m256i tfxWideInt;
 #define tfxWideLoad _mm256_load_ps
 #define tfxWideLoadi _mm256_load_si256
 #define tfxWideSet _mm256_set_ps
@@ -277,32 +277,32 @@ typedef __m256i tfxWideInt;
 #define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
-const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
-const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
-const __m256 tfxWIDEG32_4 = _mm256_set1_ps((1.0f / 6.0f) * 2.f);
-const __m256 tfxWIDEG33_4 = _mm256_set1_ps((1.0f / 6.0f) * 3.f);
-const __m256i tfxWIDEONEi = _mm256_set1_epi32(1);
-const __m256 tfxWIDEONE = _mm256_set1_ps(1.f);
-const __m256 tfxWIDE255 = _mm256_set1_ps(255.f);
-const __m256 tfxWIDEZERO = _mm256_set1_ps(0.f);
-const __m256 tfxWIDETHIRTYTWO = _mm256_set1_ps(32.f);
-const __m256i tfxWIDEFF = _mm256_set1_epi32(0xFF);
-const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
+	const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
+	const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
+	const __m256 tfxWIDEG32_4 = _mm256_set1_ps((1.0f / 6.0f) * 2.f);
+	const __m256 tfxWIDEG33_4 = _mm256_set1_ps((1.0f / 6.0f) * 3.f);
+	const __m256i tfxWIDEONEi = _mm256_set1_epi32(1);
+	const __m256 tfxWIDEONE = _mm256_set1_ps(1.f);
+	const __m256 tfxWIDE255 = _mm256_set1_ps(255.f);
+	const __m256 tfxWIDEZERO = _mm256_set1_ps(0.f);
+	const __m256 tfxWIDETHIRTYTWO = _mm256_set1_ps(32.f);
+	const __m256i tfxWIDEFF = _mm256_set1_epi32(0xFF);
+	const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
 
-typedef union {
-	__m256i m;
-	int a[8];
-} tfxWideArrayi;
+	typedef union {
+		__m256i m;
+		int a[8];
+	} tfxWideArrayi;
 
-typedef union {
-	__m256 m;
-	float a[8];
-} tfxWideArray;
+	typedef union {
+		__m256 m;
+		float a[8];
+	} tfxWideArray;
 
 #else
 #define tfxDataWidth 4	
-typedef __m128 tfxWideFloat;
-typedef __m128i tfxWideInt;
+	typedef __m128 tfxWideFloat;
+	typedef __m128i tfxWideInt;
 #define tfxWideLoad _mm_load_ps
 #define tfxWideLoadi _mm_load_si128
 #define tfxWideSet _mm_set_ps
@@ -343,42 +343,42 @@ typedef __m128i tfxWideInt;
 #define tfxWideEquals _mm_cmpeq_epi32 
 #define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
-const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
-const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
-const __m128 tfxWIDEG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
-const __m128 tfxWIDEG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
-const __m128i tfxWIDEONEi = _mm_set1_epi32(1);
-const __m128 tfxWIDEONE = _mm_set1_ps(1.f);
-const __m128 tfxWIDE255 = _mm_set1_ps(255.f);
-const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
-const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
-const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
-const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
+	const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
+	const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
+	const __m128 tfxWIDEG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
+	const __m128 tfxWIDEG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
+	const __m128i tfxWIDEONEi = _mm_set1_epi32(1);
+	const __m128 tfxWIDEONE = _mm_set1_ps(1.f);
+	const __m128 tfxWIDE255 = _mm_set1_ps(255.f);
+	const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
+	const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
+	const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
+	const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
 
-typedef union {
-	__m128i m;
-	int a[4];
-} tfxWideArrayi;
+	typedef union {
+		__m128i m;
+		int a[4];
+	} tfxWideArrayi;
 
-typedef union {
-	__m128 m;
-	float a[4];
-} tfxWideArray;
+	typedef union {
+		__m128 m;
+		float a[4];
+	} tfxWideArray;
 
 #endif
 
-typedef __m128 tfx128;
-typedef __m128i tfx128i;
+	typedef __m128 tfx128;
+	typedef __m128i tfx128i;
 
-typedef union {
-	__m128i m;
-	int a[4];
-} tfx128iArray;
+	typedef union {
+		__m128i m;
+		int a[4];
+	} tfx128iArray;
 
-typedef union {
-	__m128 m;
-	float a[4];
-} tfx128Array;
+	typedef union {
+		__m128 m;
+		float a[4];
+	} tfx128Array;
 
 	//simd floor function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
 	inline tfx128 tfxFloor128(const tfx128& x) {
@@ -562,8 +562,8 @@ typedef union {
 
 	inline bool IsGraphParticleSize(tfxGraphType type) {
 		return	type == tfxBase_width || type == tfxBase_height ||
-				type == tfxVariation_width || type == tfxVariation_height ||
-				type == tfxOvertime_width || type == tfxOvertime_height;
+			type == tfxVariation_width || type == tfxVariation_height ||
+			type == tfxOvertime_width || type == tfxOvertime_height;
 	}
 
 	//tfxEffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
@@ -628,7 +628,7 @@ typedef union {
 		tfxDouble,
 		tfxBool
 	};
-	
+
 	//Block designators for loading effects library
 	//The values of existing enums below must never change or older files won't load anymore!
 	enum tfxEffectLibraryStream : uint32_t {
@@ -702,7 +702,7 @@ typedef union {
 		tfxBillboarding = 0,
 		tfxBillboarding_disabled = 1 << 0,
 		tfxBillboarding_disabled_align = 1 << 1,
-		tfxBillboarding_align = 1 << 2 
+		tfxBillboarding_align = 1 << 2
 	};
 
 	enum tfxParticleManagerFlags_ {
@@ -719,8 +719,7 @@ typedef union {
 		tfxEffectManagerFlags_ordered_by_age = 1 << 10,
 		tfxEffectManagerFlags_update_age_only = 1 << 11,
 		tfxEffectManagerFlags_single_threaded = 1 << 12,
-		tfxEffectManagerFlags_double_buffer_sprites = 1 << 13,
-		tfxEffectManagerFlags_initialised = 1 << 14
+		tfxEffectManagerFlags_double_buffer_sprites = 1 << 13
 	};
 
 	enum tfxVectorAlignType {
@@ -867,7 +866,7 @@ typedef union {
 		tfxEffectStateFlags_no_tween = 1 << 20
 	};
 
-	enum tfxVectorFieldFlags_: unsigned char {
+	enum tfxVectorFieldFlags_ : unsigned char {
 		tfxVectorFieldFlags_none = 0,
 		tfxVectorFieldFlags_repeat_horizontal = 1 << 0,						//Field will repeat horizontally
 		tfxVectorFieldFlags_repeat_vertical = 1 << 1						//Field will repeat vertically
@@ -977,7 +976,7 @@ typedef union {
 	const float tfxMAX_DIRECTION_VARIATION = 22.5f;
 	const float tfxMAX_VELOCITY_VARIATION = 30.f;
 	const int tfxMOTION_VARIATION_INTERVAL = 30;
-	
+
 	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
 	extern float tfxUPDATE_FREQUENCY;
 	extern float tfxUPDATE_TIME;
@@ -996,7 +995,7 @@ typedef union {
 
 	//-----------------------------------------------------------
 	//Utility things:
-	
+
 	struct tfxMemoryTrackerEntry {
 		char name[64];
 		tfxU64 amount_allocated;
@@ -1040,7 +1039,7 @@ typedef union {
 
 	};
 
-	struct tfxMemoryTrackerLog{
+	struct tfxMemoryTrackerLog {
 
 		tfxLogList log;
 		std::mutex insert_mutex;
@@ -1058,7 +1057,7 @@ typedef union {
 				std::lock_guard<std::mutex> lock(insert_mutex);
 				log.insert(it, tfxMemoryTrackerPair(key, value));
 				return;
-			} 
+			}
 			it->log = value;
 			memcpy(last_entry, value.name, 64);
 		}
@@ -1180,9 +1179,9 @@ typedef union {
 		typedef const value_type*   const_iterator;
 
 		inline tfxvec() { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME; }
-		inline tfxvec(const char *name_init) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
+		inline tfxvec(const char *name_init) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init); }
 		inline tfxvec(const tfxvec<T> &src) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
-		inline tfxvec<T>& operator=( const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
+		inline tfxvec<T>& operator=(const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
 		inline ~tfxvec() { if (data) { tfxFREE(data) }; data = NULL; current_size = capacity = 0; }
 
 		inline bool			empty() { return current_size == 0; }
@@ -1214,10 +1213,10 @@ typedef union {
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 		inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
-		inline void         reserve(tfxU32 new_capacity) { 
-			if (new_capacity <= capacity) 
-				return; 
-			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity; 
+		inline void         reserve(tfxU32 new_capacity) {
+			if (new_capacity <= capacity)
+				return;
+			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity;
 		}
 
 		inline T&	        grab() {
@@ -1230,21 +1229,21 @@ typedef union {
 			while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
 			if (current_size == capacity)
 				reserve(_grow_capacity(current_size + 1));
-			new((void*)(data + current_size)) T(v); 
+			new((void*)(data + current_size)) T(v);
 			tfxU32 index = current_size++;
 			InterlockedExchange((LONG volatile*)&locked, 0);
 			return index;
 		}
-		inline T&	        push_back(const T& v) { 
-			if (current_size == capacity) 
-				reserve(_grow_capacity(current_size + 1)); 
-			new((void*)(data + current_size)) T(v); 
-			current_size++; return data[current_size - 1]; 
+		inline T&	        push_back(const T& v) {
+			if (current_size == capacity)
+				reserve(_grow_capacity(current_size + 1));
+			new((void*)(data + current_size)) T(v);
+			current_size++; return data[current_size - 1];
 		}
 		inline T&	        push_back_copy(const T& v) {
 			if (current_size == capacity)
 				reserve(_grow_capacity(current_size + 1));
-			memcpy(&data[current_size], &v, sizeof(v)); 
+			memcpy(&data[current_size], &v, sizeof(v));
 			current_size++; return data[current_size - 1];
 		}
 		inline void			zero() { assert(capacity > 0); memset(data, 0, capacity * sizeof(T)); }
@@ -1284,7 +1283,7 @@ typedef union {
 		tfxring *pair;
 
 		inline tfxring() : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME; }
-		inline tfxring(const char *name_init) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init);  }
+		inline tfxring(const char *name_init) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init); }
 		inline tfxring(unsigned int qty) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); tfxINIT_VEC_NAME; }
 		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 
@@ -1868,7 +1867,7 @@ typedef union {
 		assert(buffer->data);		//Must be a valid SoA buffer
 		GrowArrays(buffer, buffer->capacity, buffer->capacity + extra_size);
 	}
-	
+
 	//Increase current size of a SoA Buffer and grow if necessary.
 	static inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
 		assert(buffer->data);			//No data allocated in buffer
@@ -1877,7 +1876,7 @@ typedef union {
 			GrowArrays(buffer, buffer->capacity);
 		}
 	}
-	
+
 	//Increase current size of a SoA Buffer and grow if necessary.
 	static inline void SetCapacity(tfxSoABuffer *buffer, tfxU32 new_size) {
 		assert(buffer->data);			//No data allocated in buffer
@@ -1885,7 +1884,7 @@ typedef union {
 			GrowArrays(buffer, buffer->capacity, new_size);
 		}
 	}
-	
+
 	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
 	static inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
 		assert(buffer->data);			//No data allocated in buffer
@@ -1896,7 +1895,7 @@ typedef union {
 		assert(buffer->current_size <= buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return buffer->current_size - 1;
 	}
-	
+
 	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
 	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow = false) {
 		assert(buffer->data);			//No data allocated in buffer
@@ -1908,34 +1907,34 @@ typedef union {
 		assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return first_new_index;
 	}
-	
+
 	//Decrease the current size of a SoA Buffer.
 	static inline void PopRow(tfxSoABuffer *buffer, bool grow = false) {
 		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 		buffer->current_size--;
 	}
-	
+
 	//Bump the start index of the SoA buffer (ring buffer usage)
 	static inline void Bump(tfxSoABuffer *buffer) {
 		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
-		if (buffer->current_size == 0) 
-			return; 
-		buffer->start_index++; buffer->start_index %= buffer->capacity; buffer->current_size--; 
+		if (buffer->current_size == 0)
+			return;
+		buffer->start_index++; buffer->start_index %= buffer->capacity; buffer->current_size--;
 	}
 
 	//Bump the start index of the SoA buffer (ring buffer usage)
 	static inline void Bump(tfxSoABuffer *buffer, tfxU32 amount) {
 		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
-		if (buffer->current_size == 0) 
-			return; 
-		if (amount > buffer->current_size) 
-			amount = buffer->current_size; 
-		buffer->start_index += amount; 
-		buffer->start_index %= buffer->capacity; 
-		buffer->current_size -= amount; 
+		if (buffer->current_size == 0)
+			return;
+		if (amount > buffer->current_size)
+			amount = buffer->current_size;
+		buffer->start_index += amount;
+		buffer->start_index %= buffer->capacity;
+		buffer->current_size -= amount;
 		buffer->last_bump = amount;
 	}
-	
+
 	//Free the SoA buffer
 	static inline void FreeSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
@@ -1944,7 +1943,7 @@ typedef union {
 		buffer->data = NULL;
 		buffer->array_ptrs.free_all();
 	}
-	
+
 	//Clear the SoA buffer
 	static inline void ClearSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_size = buffer->start_index = 0;
@@ -2398,7 +2397,7 @@ typedef union {
 				capacity -= freed_blocks * size_of_each_bucket;
 				allocator->CutOffBlock(block, first_empty_block);
 			}
-			if (block == first_empty_block) 
+			if (block == first_empty_block)
 				block = tfxINVALID;
 		}
 	};
@@ -2445,14 +2444,14 @@ typedef union {
 			new((void*)(block + current_size)) T();
 			return block[current_size++];
 		}
-		inline void			pop() { 
+		inline void			pop() {
 			assert(current_size > 0);		//Can't pop back if the stack is empty
-			current_size--; 
+			current_size--;
 		}
-		inline T&			pop_back() { 
+		inline T&			pop_back() {
 			assert(current_size > 0);		//Can't pop back if the stack is empty
-			current_size--; 
-			return block[current_size]; 
+			current_size--;
+			return block[current_size];
 		}
 		inline T&	        push_back(const T& v) {
 			if (current_size == capacity)
@@ -2463,7 +2462,7 @@ typedef union {
 		inline T&	        push_back_copy(const T& v) {
 			if (current_size == capacity)
 				assert(resize(_grow_capacity(current_size + 1), true));	//Stack overflow, try increasing the stack size
-			memcpy(&block[current_size], &v, sizeof(v)); 
+			memcpy(&block[current_size], &v, sizeof(v));
 			return block[current_size++];
 		}
 		inline bool			reserve(tfxU32 size) {
@@ -2497,8 +2496,10 @@ typedef union {
 
 	};
 
-		//You must called InitialiseTimelineFX() before doing anything!
+	//You must called InitialiseTimelineFX() before doing anything!
 #define tmpStack(type, name) assert(tfxSTACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxSTACK_ALLOCATOR)
+		//You must called InitialiseTimelineFX() before doing anything!
+#define tmpMTStack(type, name) assert(tfxMT_STACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxMT_STACK_ALLOCATOR)
 
 	template <typename T>
 	static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
@@ -2518,9 +2519,9 @@ typedef union {
 		inline tfxstream(tfxU64 qty) { size = position = 0; data = NULL; Resize(qty); }
 
 		inline bool Read(char* dst, tfxU64 count) {
-			if (count + position <= size) { 
-				memcpy(dst, data + position, count); 
-				position += count; 
+			if (count + position <= size) {
+				memcpy(dst, data + position, count);
+				position += count;
 				return true;
 			}
 			return false;
@@ -2549,16 +2550,16 @@ typedef union {
 		inline void			FreeAll() { if (data) { size = size = 0; tfxFREE(data); data = NULL; } }
 		inline void         Clear() { if (data) { size = 0; } }
 
-		inline void         Resize(tfxU64 new_capacity) { 
-			if (new_capacity <= size) 
-				return; 
-			char* new_data = (char*)tfxALLOCATE("Stream", new_data, (tfxU64)new_capacity * sizeof(char)); 
-			if (data) { 
-				memcpy(new_data, data, (tfxU64)size * sizeof(char)); 
-				free(data); 
-			} 
-			data = new_data; size = new_capacity; 
-			position = 0; 
+		inline void         Resize(tfxU64 new_capacity) {
+			if (new_capacity <= size)
+				return;
+			char* new_data = (char*)tfxALLOCATE("Stream", new_data, (tfxU64)new_capacity * sizeof(char));
+			if (data) {
+				memcpy(new_data, data, (tfxU64)size * sizeof(char));
+				free(data);
+			}
+			data = new_data; size = new_capacity;
+			position = 0;
 		}
 		inline void			NullTerminate() { *(data + size) = NULL; }
 
@@ -2568,351 +2569,178 @@ typedef union {
 	//Might end up just using std::thread but will see how the Mac API is
 	//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue.
 	struct tfxWorkQueue;
-#define tfxQueueEntryCount 1024
 
 #define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
 	typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
 
-	extern int tfxNumberOfThreadsInAdditionToMain;
-
-	typedef tfxU32 tfxThreadSignal;
-	typedef tfxU32 tfxWorkEntryFlags;
-
-	enum tfxWorkEntryFlag_ {
-		tfxWorkEntryFlag_none = 0,
-		tfxWorkEntryFlag_fence = 1 << 0,
-		tfxWorkEntryFlag_claimed = 1 << 1
-	};
-
-	enum tfxThreadSignal_ {
-		tfxThreadSignal_none = 0,
-		tfxThreadSignal_sleep = 1 << 0,
-		tfxThreadSignal_exit = 1 << 1
-	};
-
-	struct tfxSignalSlot {
-		tfxU32 wait_count;
-		tfxU32 signals_to_wait_for;
+	struct tfxSignaller {
+		tfxU32 signal_slots[256];
 	};
 
 	struct tfxWorkQueueEntry {
 		tfxWorkQueueCallback *call_back;
 		void *data;
-		tfxThreadSignal finish_signal = tfxThreadSignal_none;
-		tfxU32 send_signal_index = tfxINVALID;
-		tfxU32 receive_signal_index = tfxINVALID;
-		tfxWorkEntryFlags flags;
-		tfxU32 next_entry = tfxINVALID;
-		tfxU32 prev_entry = tfxINVALID;
 	};
+
+	/*
+		in_signal GetSignalSlot();
+		AddWorkQueueEntry(dependencies, out_signal);
+	*/
+
+	typedef tfxU32 tfxWorkQueueFlags;
+
+	enum tfxWorkQueueFlag_ {
+		tfxWorkQueueFlag_none = 0
+	};
+
+	extern HANDLE tfxThreadSemaphore;
+	extern int tfxNumberOfThreadsInAdditionToMain;
 
 	struct tfxWorkQueue {
-		tfxU32 volatile next_signal_index = 0;
-		tfxU32 volatile free_signals_count = 0;
-		tfxU32 volatile free_entries_count = 0;
-		tfxU32 volatile entry_count = 0;
-		tfxU32 volatile entry_iterator = tfxINVALID;
-		HANDLE semaphore_handle;
-		tfxWorkQueueEntry entries[tfxQueueEntryCount];
-		tfxU32 free_entry_indexes[tfxQueueEntryCount];
-		tfxU32 volatile first_entry = tfxINVALID;
-		tfxU32 volatile last_entry = tfxINVALID;
-		tfxSignalSlot signals[tfxQueueEntryCount];
-		tfxU32 free_signals[tfxQueueEntryCount];
-		std::mutex entry_mutex;
-		std::mutex free_signal_mutex;
-		tfxU32 tmp_count = 0;
+		tfxU32 volatile entry_completion_goal = 0;
+		tfxU32 volatile entry_completion_count = 0;
+		tfxU32 volatile next_read_entry = 0;
+		tfxU32 volatile next_write_entry = 0;
+		tfxWorkQueueEntry entries[256];
 	};
 
-	inline void tfxSendSignal(tfxWorkQueue *queue, tfxU32 index) {
-		assert(index < tfxQueueEntryCount);
-		InterlockedIncrement(&queue->signals[index].wait_count);
+	struct tfxQueueProcessor {
+		std::mutex mutex;
+		HANDLE empty_semaphore;
+		HANDLE full_semaphore;
+		tfxU32 count;
+		tfxWorkQueue *queues[256];
+	};
+
+	extern tfxQueueProcessor tfxThreadQueues;
+
+	inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
+		queues->count = 0;
+		queues->empty_semaphore = CreateSemaphoreEx(0, 64, 64, 0, 0, SEMAPHORE_ALL_ACCESS);
+		queues->full_semaphore = CreateSemaphoreEx(0, 0, 64, 0, 0, SEMAPHORE_ALL_ACCESS);
+		memset(queues->queues, 0, 64 * sizeof(void*));
 	}
 
-	inline void tfxAddSignalWait(tfxWorkQueue *queue, tfxU32 index) {
-		assert(index < tfxQueueEntryCount);
-		InterlockedIncrement(&queue->signals[index].signals_to_wait_for);
+	inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
+		WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
+		std::unique_lock<std::mutex> lock(thread_processor->mutex);
+		tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
+		ReleaseSemaphore(thread_processor->empty_semaphore, 1, 0);
+		return queue;
 	}
 
-	inline tfxU32 tfxCreateSignal(tfxWorkQueue *queue) {
-		if (queue->free_signals_count) {
-			return queue->free_signals[--queue->free_signals_count];
-		}
-		assert(queue->next_signal_index < tfxQueueEntryCount);
-		return queue->next_signal_index++;
+	inline void tfxPushQueueWork(tfxQueueProcessor *thread_processor, tfxWorkQueue *queue) {
+		WaitForSingleObject(thread_processor->empty_semaphore, INFINITE);
+		std::unique_lock<std::mutex> lock(thread_processor->mutex);
+		thread_processor->queues[thread_processor->count++] = queue;
+		ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
 	}
 
-	inline void tfxFreeSignal(tfxWorkQueue *queue, tfxU32 index) {
-		std::lock_guard<std::mutex> lock(queue->free_signal_mutex);
-		queue->free_signals[queue->free_signals_count++] = index;
-		queue->signals[index].signals_to_wait_for = 0;
-		queue->signals[index].wait_count = 0;
+	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+		assert(tfxNumberOfThreadsInAdditionToMain > 0);
+
+		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
+		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
+		queue->entries[queue->next_write_entry].data = data;
+		queue->entries[queue->next_write_entry].call_back = call_back;
+		InterlockedIncrement(&queue->entry_completion_goal);
+
+		_WriteBarrier();
+
+		tfxPushQueueWork(&tfxThreadQueues, queue);
+		queue->next_write_entry = new_entry_to_write;
+
+		ReleaseSemaphore(tfxThreadSemaphore, 1, 0);
 	}
 
-	inline void VerifyList(tfxWorkQueue *queue) {
-		tfxU32 current = queue->first_entry;
-		tfxU32 count = 0;
-		tfxU32 hits[tfxQueueEntryCount];
-		memset(hits, 0, 4 * tfxQueueEntryCount);
-		while (current != tfxINVALID) {
-			count++;
-			hits[current]++;
-			current = queue->entries[current].next_entry;
-		}
-		for (int i = 0; i != tfxQueueEntryCount; ++i) {
-			assert(hits[i] <= 1);
-		}
-		assert(count == queue->entry_count);
-	}
+	static bool tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
+		bool sleep = false;
 
-	inline void tfxRemoveEntryNoLock(tfxWorkQueue *queue, tfxU32 entry_index) {
-		assert(queue->entry_count > 0);				//No entries to remove.
-		assert(entry_index < tfxQueueEntryCount);	//entry_index is out of bounds
-		queue->free_entry_indexes[queue->free_entries_count++] = entry_index;
-		tfxWorkQueueEntry *entry = &queue->entries[entry_index];
-		if (entry->prev_entry != tfxINVALID) {
-			queue->entries[entry->prev_entry].next_entry = entry->next_entry;
-		}
-		else if (queue->first_entry == entry_index) {
-			if (queue->entry_count > 1) assert(entry->next_entry != tfxINVALID);
-			queue->first_entry = entry->next_entry;
-		}
-		if (entry->next_entry != tfxINVALID) {
-			queue->entries[entry->next_entry].prev_entry = entry->prev_entry;
-		}
-		else {
-			queue->last_entry = entry->prev_entry;
-		}
-		queue->entry_count--;
-		if (queue->entry_count > 0) assert(queue->first_entry != tfxINVALID);
-	}
+		tfxWorkQueue *queue = tfxGetQueueWithWork(queue_processor);
 
-	inline void tfxRemoveEntry(tfxWorkQueue *queue, tfxU32 entry_index) {
-		std::lock_guard<std::mutex> lock(queue->entry_mutex);
-		assert(queue->entry_count > 0);				//No entries to remove.
-		assert(entry_index < tfxQueueEntryCount);	//entry_index is out of bounds
-		queue->free_entry_indexes[queue->free_entries_count++] = entry_index;
-		tfxWorkQueueEntry *entry = &queue->entries[entry_index];
-		if (entry->prev_entry != tfxINVALID) {
-			queue->entries[entry->prev_entry].next_entry = entry->next_entry;
-		}
-		else if (queue->first_entry == entry_index) {
-			if (queue->entry_count > 1) assert(entry->next_entry != tfxINVALID);
-			queue->first_entry = entry->next_entry;
-		}
-		if (entry->next_entry != tfxINVALID) {
-			queue->entries[entry->next_entry].prev_entry = entry->prev_entry;
-		}
-		else {
-			queue->last_entry = entry->prev_entry;
-		}
-		queue->entry_count--;
-		if (queue->entry_iterator == entry_index) queue->entry_iterator = tfxINVALID;
-		if (queue->entry_count > 0) assert(queue->first_entry != tfxINVALID);
-	}
+		if (queue) {
+			tfxU32 original_read_entry = queue->next_read_entry;
+			tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
 
-	inline bool tfxIsFenceEntry(tfxWorkQueue *queue, tfxU32 index) {
-		return index != tfxINVALID && queue->entries[index].flags & tfxWorkEntryFlag_fence;
-	}
-
-	inline tfxU32 tfxAcquireNextWorkEntry(tfxWorkQueue *queue) {
-		std::lock_guard<std::mutex> lock(queue->entry_mutex);
-
-		if (queue->entry_count == 0) return tfxINVALID;
-
-		queue->entry_iterator = queue->entry_iterator == tfxINVALID ? queue->first_entry : queue->entries[queue->entry_iterator].next_entry;
-
-		if (tfxIsFenceEntry(queue, queue->entry_iterator) && !tfxIsFenceEntry(queue, queue->first_entry)) {
-			queue->entry_iterator = queue->first_entry;
-		}
-		else if (tfxIsFenceEntry(queue, queue->first_entry)) {
-			if (queue->entries[queue->first_entry].next_entry != tfxINVALID) {
-				tfxRemoveEntryNoLock(queue, queue->first_entry);
-				queue->entry_iterator = tfxINVALID;
-			}
-			else {
-				queue->first_entry = queue->last_entry = queue->entry_iterator = tfxINVALID;
-				queue->entry_count = 0;
-			}
-		}
-
-		return queue->entry_iterator;
-	}
-
-	static tfxThreadSignal tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
-		tfxThreadSignal finish_signal = tfxThreadSignal_none;
-
-		tfxU32 entry_index = tfxAcquireNextWorkEntry(queue);
-		if (entry_index != tfxINVALID) {
-			tfxWorkQueueEntry *entry = &queue->entries[entry_index];
-			tfxWorkEntryFlags original_entry_flags = entry->flags;
-			tfxWorkEntryFlags new_entry_flags = original_entry_flags | tfxWorkEntryFlag_claimed;
-			if (!(original_entry_flags & tfxWorkEntryFlag_claimed) && !(original_entry_flags & tfxWorkEntryFlag_fence)) {
-				//Is the work ready yet?
-				if (entry->receive_signal_index == tfxINVALID || (entry->receive_signal_index != tfxINVALID && queue->signals[entry->receive_signal_index].wait_count == queue->signals[entry->receive_signal_index].signals_to_wait_for)) {
-					//Try and claim the work, another process may beat us to this
-					tfxWorkEntryFlags claimed_flag = InterlockedCompareExchange(&entry->flags, new_entry_flags, original_entry_flags);
-					if (claimed_flag == original_entry_flags) {
-						//We claimed the work, so go ahead and do the work
-						assert(!tfxIsFenceEntry(queue, entry_index));
-						entry->call_back(queue, entry->data);
-						if (entry->send_signal_index != tfxINVALID) {
-							tfxSendSignal(queue, entry->send_signal_index);
-						}
-						else if (entry->receive_signal_index != tfxINVALID) {
-							tfxFreeSignal(queue, entry->receive_signal_index);
-						}
-						finish_signal = entry->finish_signal;
-						tfxRemoveEntry(queue, entry_index);
-					}
+			if (original_read_entry != queue->next_write_entry) {
+				tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
+				if (index == original_read_entry) {
+					tfxWorkQueueEntry entry = queue->entries[index];
+					entry.call_back(queue, entry.data);
+					InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
 				}
 			}
-		}
-		else {
-			finish_signal = tfxThreadSignal_sleep;
-		}
-
-		return finish_signal;
-	}
-
-	inline tfxU32 tfxAddListItem(tfxWorkQueue *queue) {
-		assert(queue->entry_count < tfxQueueEntryCount);
-		tfxU32 new_entry = tfxINVALID;
-		if (queue->entry_count == 0) {
-			queue->free_entries_count = 0;
-			queue->entry_count++;
-			queue->first_entry = 0;
-			queue->last_entry = 0;
-			new_entry = 0;
-			queue->entries[new_entry].prev_entry = tfxINVALID;
-			queue->entries[new_entry].next_entry = tfxINVALID;
-		}
-		else if (queue->free_entries_count > 0) {
-			new_entry = queue->free_entry_indexes[--queue->free_entries_count];
-			assert(queue->last_entry != tfxINVALID);
-			queue->entries[new_entry].prev_entry = queue->last_entry;
-			queue->entries[new_entry].next_entry = tfxINVALID;
-			queue->entries[queue->last_entry].next_entry = new_entry;
-			if (new_entry == 26)
-				int d = 1;
-			queue->last_entry = new_entry;
-			queue->entry_count++;
-		}
-		else {
-			new_entry = queue->entry_count++;
-			assert(queue->last_entry != tfxINVALID);
-			queue->entries[new_entry].prev_entry = queue->last_entry;
-			queue->entries[new_entry].next_entry = tfxINVALID;
-			queue->entries[queue->last_entry].next_entry = new_entry;
-			queue->last_entry = new_entry;
-		}
-		return new_entry;
-	}
-
-	//This function should be called from the main thread only
-	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back, tfxU32 receiver = tfxINVALID, tfxU32 sender = tfxINVALID, tfxThreadSignal finish_signal = 0) {
-		if (queue->entry_count == tfxQueueEntryCount) {
-			while (queue->entry_count == tfxQueueEntryCount) {
-				queue->tmp_count++;
-				tfxDoNextWorkQueueEntry(queue);
+			else {
+				sleep = true;
 			}
 		}
-		std::lock_guard<std::mutex> lock(queue->entry_mutex);
-		tfxU32 new_entry = tfxAddListItem(queue);
-		assert(new_entry != tfxINVALID);
-		queue->entries[new_entry].next_entry = tfxINVALID;
-		queue->entries[new_entry].data = data;
-		queue->entries[new_entry].call_back = call_back;
-		queue->entries[new_entry].receive_signal_index = receiver;
-		queue->entries[new_entry].send_signal_index = sender;
-		queue->entries[new_entry].finish_signal = finish_signal;
-		queue->entries[new_entry].flags = tfxWorkEntryFlag_none;
-		if (sender != tfxINVALID)
-			tfxAddSignalWait(queue, sender);
+		else {
+			sleep = false;
+		}
 
-		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
+		return sleep;
 	}
 
-	inline void tfxAddWorkQueueFence(tfxWorkQueue *queue) {
-		if (queue->entry_count == tfxQueueEntryCount) {
-			while (queue->entry_count == tfxQueueEntryCount) {
-				queue->tmp_count++;
-				tfxDoNextWorkQueueEntry(queue);
+	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
+		bool sleep = false;
+
+		tfxU32 original_read_entry = queue->next_read_entry;
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
+
+		if (original_read_entry != queue->next_write_entry) {
+			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
+			if (index == original_read_entry) {
+				tfxWorkQueueEntry entry = queue->entries[index];
+				entry.call_back(queue, entry.data);
+				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
 			}
 		}
-		else if (queue->entry_count == 0) {
-			return;
+		else {
+			sleep = true;
 		}
-		std::lock_guard<std::mutex> lock(queue->entry_mutex);
-		assert(queue->entry_count < tfxQueueEntryCount);
-		tfxU32 new_entry = tfxAddListItem(queue);
-		assert(new_entry != tfxINVALID);
-		queue->entries[new_entry].next_entry = tfxINVALID;
-		queue->entries[new_entry].data = NULL;
-		queue->entries[new_entry].call_back = NULL;
-		queue->entries[new_entry].receive_signal_index = tfxINVALID;
-		queue->entries[new_entry].send_signal_index = tfxINVALID;
-		queue->entries[new_entry].finish_signal = 0;
-		queue->entries[new_entry].flags = tfxWorkEntryFlag_fence;
 
-		ReleaseSemaphore(queue->semaphore_handle, 1, 0);
+		return sleep;
 	}
 
 	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
 
-		tfxWorkQueue *queue = (tfxWorkQueue*)lpParameter;
+		tfxQueueProcessor *thread_processor = (tfxQueueProcessor*)lpParameter;
 
 		for (;;) {
-			tfxThreadSignal signal = tfxDoNextWorkQueueEntry(queue);
-			if (signal == tfxThreadSignal_sleep) {
+			if (tfxDoNextWorkQueue(thread_processor)) {
 				//Suspend the thread
-				WaitForSingleObjectEx(queue->semaphore_handle, INFINITE, false);
-			}
-			else if (signal == tfxThreadSignal_exit) {
-				break;
+				WaitForSingleObjectEx(tfxThreadSemaphore, INFINITE, false);
 			}
 		}
 
-		return 0;
 	}
 
 	static void tfxCompleteAllWork(tfxWorkQueue *queue) {
 		tfxWorkQueueEntry entry = {};
-		while (queue->entry_count > 0) {
+		while (queue->entry_completion_goal != queue->entry_completion_count) {
 			tfxDoNextWorkQueueEntry(queue);
 		}
+		queue->entry_completion_count = 0;
+		queue->entry_completion_goal = 0;
 	}
 
 	inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue) {
-		queue->semaphore_handle = CreateSemaphoreEx(0, 0, tfxNumberOfThreadsInAdditionToMain, 0, 0, SEMAPHORE_ALL_ACCESS);
+		queue->entry_completion_count = 0;
+		queue->entry_completion_goal = 0;
+		queue->next_read_entry = 0;
+		queue->next_write_entry = 0;
 	}
 
-	inline void tfxExitThread(tfxWorkQueue *queue, void *data) {
-		char buffer[256];
-		wsprintf(buffer, "Thread: %u, Exiting\n", GetCurrentThreadId());
-		OutputDebugStringA(buffer);
-	}
+	inline void tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
+		InitialiseThreadQueues(&tfxThreadQueues);
 
-	inline void tfxExitAllThreads(tfxWorkQueue *queue) {
-		for (int t = 0; t != tfxNumberOfThreadsInAdditionToMain; ++t) {
-			tfxAddWorkQueueEntry(queue, NULL, tfxExitThread, tfxINVALID, tfxINVALID, tfxThreadSignal_exit);
-		}
-		while (queue->entry_count > 0) {
-		}
-	}
-
-	inline void tfxInitialiseThreads(tfxWorkQueue *queue) {
-		tfxInitialiseWorkQueue(queue);
-
+		tfxThreadSemaphore = CreateSemaphoreEx(0, 0, tfxNumberOfThreadsInAdditionToMain, 0, 0, SEMAPHORE_ALL_ACCESS);
 		for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
 			DWORD thread_id;
-			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, queue, 0, &thread_id);
+			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, thread_queues, 0, &thread_id);
 			CloseHandle(thread_handle);
 		}
-
 	}
-
-	extern tfxWorkQueue tfxMainQueue;
 
 	//Just the very basic vector types that we need
 	struct tfxVec2 {
@@ -3016,7 +2844,7 @@ typedef union {
 		inline tfxVec2 zw() { return tfxVec2(z, w); }
 		inline tfxVec3 xyz() { return tfxVec3(x, y, z); }
 
-		inline tfxVec2 xy() const{ return tfxVec2(x, y); }
+		inline tfxVec2 xy() const { return tfxVec2(x, y); }
 		inline tfxVec2 zw() const { return tfxVec2(z, w); }
 		inline tfxVec3 xyz() const { return tfxVec3(x, y, z); }
 
@@ -3096,7 +2924,7 @@ typedef union {
 	};
 
 	struct tfxWideVec2 {
-		tfxWideFloat x, y; 
+		tfxWideFloat x, y;
 
 		tfxWideVec2() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); }
 		tfxWideVec2(tfxWideFloat _x, tfxWideFloat _y) { x = _x; y = _y; }
@@ -3454,7 +3282,7 @@ typedef union {
 			{1, 0, 0, 0},
 			{0, c,-s, 0},
 			{0, s, c, 0},
-			{0, 0, 0, 1}}, 
+			{0, 0, 0, 1}},
 		};
 		return r;
 	}
@@ -3467,7 +3295,7 @@ typedef union {
 			{ c, 0, s, 0},
 			{ 0, 1, 0, 0},
 			{-s, 0, c, 0},
-			{ 0, 0, 0, 1}}, 
+			{ 0, 0, 0, 1}},
 		};
 		return r;
 	}
@@ -3480,7 +3308,7 @@ typedef union {
 			{c, -s, 0, 0},
 			{s,  c, 0, 0},
 			{0,  0, 1, 0},
-			{0,  0, 0, 1}}, 
+			{0,  0, 0, 1}},
 		};
 		return r;
 	}
@@ -3701,7 +3529,7 @@ typedef union {
 	}
 
 	inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
-		tfxVec3 converted =  v * 511.f;
+		tfxVec3 converted = v * 511.f;
 		tfxUInt10bit result;
 		result.pack = 0;
 		result.data.x = (tfxU32)converted.z;
@@ -3711,7 +3539,7 @@ typedef union {
 		return result.pack;
 	}
 
-	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x,tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
+	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
 		tfxWideFloat w511 = tfxWideSetSingle(511.f);
 		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
 		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
@@ -4308,19 +4136,19 @@ typedef union {
 
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
-		inline void         reserve(tfxU32 new_capacity) { 
-			if (new_capacity <= capacity) return; 
-			char* new_data = (char*)tfxALLOCATE(0, 0, (size_t)new_capacity * sizeof(char)); 
-			if (data && !is_local_buffer) { 
-				memcpy(new_data, data, (size_t)current_size * sizeof(char)); 
-				free(data); 
+		inline void         reserve(tfxU32 new_capacity) {
+			if (new_capacity <= capacity) return;
+			char* new_data = (char*)tfxALLOCATE(0, 0, (size_t)new_capacity * sizeof(char));
+			if (data && !is_local_buffer) {
+				memcpy(new_data, data, (size_t)current_size * sizeof(char));
+				free(data);
 			}
 			else if (is_local_buffer) {
-				memcpy(new_data, strbuffer(), (size_t)current_size * sizeof(char)); 
+				memcpy(new_data, strbuffer(), (size_t)current_size * sizeof(char));
 			}
-			data = new_data; 
+			data = new_data;
 			is_local_buffer = false;
-			capacity = new_capacity; 
+			capacity = new_capacity;
 		}
 
 		tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
@@ -4340,23 +4168,23 @@ typedef union {
 		void AddLine(const char *format, ...);
 		void Appendf(const char *format, ...);
 		void Appendv(const char *format, va_list args);
-		inline void Append(char c) { 
+		inline void Append(char c) {
 			if (current_size) {
 				pop();
 			}
-			push_back(c); 
+			push_back(c);
 			NullTerminate();
 		}
 		inline void Pop() {
 			if (!Length()) return;
-			if(back() == NULL)
+			if (back() == NULL)
 				pop();
 			pop();
 			NullTerminate();
 		}
 		inline void Trim(char c = ' ') {
 			if (!Length()) return;
-			if(back() == NULL)
+			if (back() == NULL)
 				pop();
 			while (back() == c && current_size) {
 				pop();
@@ -4448,7 +4276,7 @@ typedef union {
 	/*
 	//Unwrapped for convenience when debugging. Can be removed at some point
 	struct tfxStr64 : public tfxStr {
-		char buffer[64]; 
+		char buffer[64];
 		tfxStr64() { data = buffer; capacity = 64; current_size = 0; is_local_buffer = true; NullTerminate(); }
 		inline void operator=(const tfxStr& src) {
 			data = buffer;
@@ -4476,17 +4304,17 @@ typedef union {
 		}
 		inline void operator=(const char *text) { data = buffer; is_local_buffer = true; capacity = 64; size_t length = strnlen_s(text, 64); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 		tfxStr64(const char *text) { data = buffer; is_local_buffer = true; capacity = 64; size_t length = strnlen_s(text, 64); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-		tfxStr64(const tfxStr &src) { 
-			data = buffer; 
-			is_local_buffer = true; 
-			capacity = 64; size_t length = src.Length(); 
-			if (!length) { 
-				Clear(); return; 
-			}; 
+		tfxStr64(const tfxStr &src) {
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 64; size_t length = src.Length();
+			if (!length) {
+				Clear(); return;
+			};
 			resize(src.current_size);
-			memcpy(data, src.strbuffer(), length); 
-			current_size = (tfxU32)length; 
-			NullTerminate(); 
+			memcpy(data, src.strbuffer(), length);
+			current_size = (tfxU32)length;
+			NullTerminate();
 		}
 		tfxStr64(const tfxStr64 &src) {
 			data = buffer;
@@ -4524,23 +4352,23 @@ typedef union {
 			current_size = (tfxU32)length;
 			NullTerminate();
 		}
-		teststr(const tfxStr &src) { 
+		teststr(const tfxStr &src) {
 			data = buffer;
 			is_local_buffer = true;
 			capacity = 64;
-			size_t length = src.Length(); 
-			if (!length) { 
-				Clear(); 
-				return; 
-			}; 
+			size_t length = src.Length();
+			if (!length) {
+				Clear();
+				return;
+			};
 			if (capacity < length) {
 				memcpy(data, src.data, capacity - 1);
 			}
 			else {
 				memcpy(data, src.data, length);
 			}
-			current_size = (tfxU32)length; 
-			NullTerminate(); 
+			current_size = (tfxU32)length;
+			NullTerminate();
 		}
 		int Find(const char *needle) {
 
@@ -4914,7 +4742,7 @@ typedef union {
 		tfxU64 offset_from_start_of_file;			//Offset from the start of the file to where the file is located
 		tfxU64 file_size;							//The size of the file
 		tfxstream data;								//The file data
-		
+
 		void FreeData();
 	};
 
@@ -4943,7 +4771,7 @@ typedef union {
 		void Free();
 
 	};
-	
+
 	tfxstream ReadEntireFile(const char *file_name, bool terminate = false);
 	tfxErrorFlags LoadPackage(const char *file_name, tfxPackage &package);
 	tfxErrorFlags LoadPackage(tfxstream &stream, tfxPackage &package);
@@ -4989,7 +4817,7 @@ typedef union {
 			Toggle whether this attribute node is curved or linear
 		*/
 		void ToggleCurve() {
-			flags  =~ tfxAttributeNodeFlags_is_curve;
+			flags = ~tfxAttributeNodeFlags_is_curve;
 		}
 
 		bool IsCurve() {
@@ -5017,8 +4845,8 @@ typedef union {
 			ReSeed();
 		}
 
-		void ReSeed() { 
-			seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; Generate(); 
+		void ReSeed() {
+			seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; Generate();
 		}
 		void ReSeed(uint64_t seed1, uint64_t seed2);
 
@@ -5078,7 +4906,7 @@ typedef union {
 		float max_life;
 		float padding1;
 	};
-	
+
 	//This struct is used to store indexing data in order to index into large lists containing either the node data of graphs
 	//or the lookup data of compiled graphs. This is so that we can upload that data into a buffer on the GPU to get the particles
 	//updating in a compute shader.
@@ -5685,7 +5513,7 @@ typedef union {
 		bool camera_isometric;
 		bool camera_hide_floor;
 	};
-	
+
 	struct tfxPreviewCameraSettings {
 		tfxCameraSettings camera_settings;
 		float effect_z_offset;
@@ -5758,7 +5586,7 @@ typedef union {
 		tfxCUSTOM_IMAGE_DATA
 #endif // tfxCUSTOM_IMAGE_DATA
 
-		tfxImageData() :
+			tfxImageData() :
 			ptr(nullptr),
 			animation_frames(1.f),
 			shape_index(0),
@@ -5818,7 +5646,7 @@ typedef union {
 	};
 
 	inline void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i) {
-		properties.angle_offsets[i] = {0.f, 0.f, tfx360Radians};
+		properties.angle_offsets[i] = { 0.f, 0.f, tfx360Radians };
 		properties.image[i] = nullptr;
 		properties.image_handle[i] = tfxVec2();
 		properties.spawn_amount[i] = 1;
@@ -5896,11 +5724,11 @@ typedef union {
 
 
 	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
-	tfxVec3 GetEmissionDirection3d( tfxParticleManager &pm,	tfxLibrary *library, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
+	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffectEmitterInfo {
 		//Name of the effect
-		tfxStr64 name;				
+		tfxStr64 name;
 		//Every effect and emitter in the library gets a unique id
 		tfxU32 uid;
 		//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
@@ -6340,9 +6168,9 @@ typedef union {
 		float position_x;
 		float position_y;
 		float position_z;
-		float captured_position_x;	
-		float captured_position_y;	
-		float captured_position_z;	
+		float captured_position_x;
+		float captured_position_y;
+		float captured_position_z;
 		float local_rotations_x;
 		float local_rotations_y;
 		float local_rotations_z;
@@ -6356,12 +6184,12 @@ typedef union {
 		float base_weight;
 		float base_velocity;
 		float base_spin;
-		float noise_offset;	
+		float noise_offset;
 		float noise_resolution;
-		float red;	
-		float green;	
-		float blue;	
-		float alpha;	
+		float red;
+		float green;
+		float blue;
+		float alpha;
 		float intensity;
 		float image_frame;
 		float base_size_x;
@@ -6393,9 +6221,9 @@ typedef union {
 		float *position_x;
 		float *position_y;
 		float *position_z;
-		float *captured_position_x;	
-		float *captured_position_y;	
-		float *captured_position_z;	
+		float *captured_position_x;
+		float *captured_position_y;
+		float *captured_position_z;
 		float *local_rotations_x;
 		float *local_rotations_y;
 		float *local_rotations_z;
@@ -6412,7 +6240,7 @@ typedef union {
 		float *base_weight;
 		float *base_velocity;
 		float *base_spin;
-		float *noise_offset;	
+		float *noise_offset;
 		float *noise_resolution;
 		float *red;
 		float *green;
@@ -6431,13 +6259,13 @@ typedef union {
 		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxParticleSoA, particle_index));
 		AddStructArray(buffer, sizeof(tfxParticleFlags), offsetof(tfxParticleSoA, flags));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, age));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, max_age));						
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_x));			
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_y));			
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_z));			
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_x));			
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_y));			
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_z));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, max_age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_z));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_z));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_y));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_z));
@@ -6450,21 +6278,21 @@ typedef union {
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_w));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, depth));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, weight_acceleration));			
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, weight_acceleration));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_velocity));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_spin));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_offset));				
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_resolution));			
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, red));					
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, green));					
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, blue));					
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, alpha));					
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_offset));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_resolution));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, red));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, green));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, blue));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, alpha));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, intensity));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));					
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_y));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, single_loop_count));			
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, single_loop_count));
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
@@ -6507,7 +6335,7 @@ typedef union {
 		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
 		float stretch;
-		float intensity;			
+		float intensity;
 	};
 
 	struct tfxSprite3dSoA {	//56 bytes
@@ -6517,7 +6345,7 @@ typedef union {
 		tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 		tfxRGBA8 *color;				//The color tint of the sprite and blend factor in a
 		float *stretch;
-		float *intensity;			
+		float *intensity;
 	};
 
 	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSprite3dSoA *soa, tfxU32 reserve_amount) {
@@ -6544,7 +6372,7 @@ typedef union {
 		float padding[2];
 	};
 
-	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured ) {
+	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured) {
 #ifdef tfxUSEAVX
 		tfxWideFloat to = tfxWideLoad(&current.position.x);
 		tfxWideFloat from = tfxWideLoad(&captured.position.x);
@@ -6580,7 +6408,7 @@ typedef union {
 		tfxWideInt alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 		tfxWideInt color;				//The color tint of the sprite and blend factor in a
 		tfxWideFloat stretch;
-		tfxWideFloat intensity;			
+		tfxWideFloat intensity;
 		tfxWideVec3 position;
 		tfxWideVec3 rotations;
 		tfxWideVec2 scale;
@@ -6804,11 +6632,6 @@ typedef union {
 		tfxBucketArray<tfxParticleSoA> particle_arrays;
 
 		tfxMemoryArenaManager particle_array_allocator;
-		tfxMemoryArenaManager work_allocator;
-		tfxStack<tfxSpawnWorkEntry> spawn_work;
-		tfxStack<tfxControlWorkEntry> control_work;
-		tfxStack<tfxControlWorkEntryOrdered> control_work_ordered;
-		tfxStack<tfxParticleAgeWorkEntry> age_work_ordered;
 		//In unordered mode emitters that expire have their particle banks added here to be reused
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
@@ -6821,17 +6644,19 @@ typedef union {
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> free_effects;
 		tfxvec<tfxU32> free_emitters;
-
 		tfxSoABuffer effect_buffers;
 		tfxEffectSoA effects;
 		tfxSoABuffer emitter_buffers;
 		tfxEmitterSoA emitters;
+
+		tfxWorkQueue work_queue;
 
 		//Banks of sprites for drawing in unordered mode
 		tfxSoABuffer sprites3d_buffer[2][tfxLAYERS];
 		tfxSprite3dSoA sprites3d[2][tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
 		tfxU32 current_sprite_buffer;
+
 		tfxU32 sprite_index_2d[tfxLAYERS];
 		tfxU32 sprite_index_3d[tfxLAYERS];
 
@@ -6898,9 +6723,9 @@ typedef union {
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
-		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 2048);
-		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 2048);
-		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 2048);
+		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
 		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void CreateParticleBanksForEachLayer();
@@ -6975,9 +6800,9 @@ typedef union {
 				flags &= ~tfxEffectManagerFlags_disable_spawning;
 		}
 		void SoftExpireAll();
-		tfxAPI inline tfxU32 PreviousSpriteBuffer() { 
+		tfxAPI inline tfxU32 PreviousSpriteBuffer() {
 			assert(flags & tfxEffectManagerFlags_double_buffer_sprites);		//Particle manager must have double buffered sprites activated
-			return !current_sprite_buffer; 
+			return !current_sprite_buffer;
 		}
 		tfxAPI inline tfxVec3 &GetCapturedSprite3dPosition(tfxU32 layer, tfxU32 index) {
 			return sprites3d[!current_sprite_buffer][layer].transform[index].position;
@@ -6995,7 +6820,7 @@ typedef union {
 
 		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index[ParticleIndex(id)]; }
 
-		tfxComputeParticle &GrabComputeParticle(unsigned int layer); 
+		tfxComputeParticle &GrabComputeParticle(unsigned int layer);
 		void ResetParticlePtr(void *ptr);
 		void ResetControllerPtr(void *ptr);
 		inline unsigned int GetControllerMemoryUsage() { return highest_compute_controller_index * sizeof(tfxComputeController); }
@@ -7069,7 +6894,7 @@ typedef union {
 		inline bool FreeEffectCapacity() {
 			return emitter_buffers.current_size < max_effects;
 		}
-		inline tfxU32 ParticleCount() { 
+		inline tfxU32 ParticleCount() {
 			tfxU32 count = 0;
 			for (tfxEachLayer) {
 				count += sprites2d[layer].current_size;
@@ -7174,7 +6999,7 @@ typedef union {
 		tfxU32 reserved7;
 	};
 
-	struct tfxEffectsStage{
+	struct tfxEffectsStage {
 		tfxvec<tfxEffectEmitter> effects;
 	};
 
@@ -7390,7 +7215,7 @@ typedef union {
 		tfxAPI inline void SetEffectUpdateCallback(void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index)) {
 			effect.update_callback = update_callback;
 		}
-		tfxAPI inline void SetEffectUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index)) { 
+		tfxAPI inline void SetEffectUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index)) {
 			assert(paths.ValidName(path));						//Path does not exist in library
 			assert(paths.At(path)->type == tfxEffectType);		//Path must be path to an effect type
 		}
@@ -7432,7 +7257,7 @@ typedef union {
 		/*
 		Scale all nodes on a global graph graph of the effect
 		* @param global_type		tfxGraphType of the global graph that you want to scale. Must be a global graph or an assert will be called
-		* @param amount				A float of the amount that you want to scale the multiplier by. 
+		* @param amount				A float of the amount that you want to scale the multiplier by.
 		*/
 		tfxAPI inline void ScaleGlobalMultiplier(tfxGraphType global_type, float amount) {
 			assert(IsGlobalGraph(global_type));
@@ -7496,7 +7321,7 @@ typedef union {
 		bool initialised = false;
 		tfxStorageMap<tfxDataType> names_and_types;
 
-		tfxDataTypesDictionary() : 
+		tfxDataTypesDictionary() :
 			names_and_types("Data Types Storage Map", "Data Types Storage Data")
 		{}
 		void Init();
@@ -7792,7 +7617,7 @@ typedef union {
 	static inline int QuickSortPartition(tfxParticleSoA &particles, int start_index, int end_index)
 	{
 		float depth = particles.depth[end_index];
-		int i = start_index - 1; 
+		int i = start_index - 1;
 		for (int j = start_index; j < end_index; j++)
 		{
 			if (particles.depth[j] >= depth)
@@ -7862,6 +7687,7 @@ typedef union {
 	tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
 
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
+	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
 	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
@@ -7927,7 +7753,7 @@ typedef union {
 	//[Particle Manager functions]
 
 	/*
-	Initialise a tfxParticleManager for 3d usage	
+	Initialise a tfxParticleManager for 3d usage
 	* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
 	* @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
 	* @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
@@ -8057,7 +7883,7 @@ typedef union {
 
 	/*
 	Get the total number of 2d sprites within the layer of the particle manager
-	* @param pm					A pointer to an initialised tfxParticleManager. 
+	* @param pm					A pointer to an initialised tfxParticleManager.
 	* @param layer				The layer of the sprites to the count of
 	*/
 	tfxAPI inline tfxU32 SpritesInLayer2d(tfxParticleManager *pm, tfxU32 layer) {
@@ -8079,7 +7905,7 @@ typedef union {
 	*/
 	tfxAPI inline tfxU32 TotalSpriteCount2d(tfxParticleManager *pm) {
 		tfxU32 count = 0;
-		for(tfxEachLayer) {
+		for (tfxEachLayer) {
 			count += pm->sprites2d[layer].current_size;
 		}
 		return count;
@@ -8091,7 +7917,7 @@ typedef union {
 	*/
 	tfxAPI inline tfxU32 TotalSpriteCount3d(tfxParticleManager *pm) {
 		tfxU32 count = 0;
-		for(tfxEachLayer) {
+		for (tfxEachLayer) {
 			count += pm->sprites3d_buffer[pm->current_sprite_buffer][layer].current_size;
 		}
 		return count;
@@ -8143,7 +7969,7 @@ typedef union {
 	* @param user_data		A void* pointing to the user_data that you want to store in the effect
 	*/
 	tfxAPI inline void SetEffectUserData(tfxParticleManager *pm, tfxEffectID effect_index, void* user_data) {
-		 pm->effects.user_data[effect_index] = user_data;
+		pm->effects.user_data[effect_index] = user_data;
 	}
 
 	/*
@@ -8151,7 +7977,7 @@ typedef union {
 	a for loop to iterate over the sprites in a pre-recorded effect
 	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
 	* @param frame			The index of the frame you want the offset for
-	* @param layer			The sprite layer 
+	* @param layer			The sprite layer
 	* @returns				tfxU32 containing the index offset
 	*/
 	tfxAPI inline tfxU32 SpriteDataIndexOffset(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
@@ -8165,7 +7991,7 @@ typedef union {
 	a for loop to iterate over the sprites in a pre-recorded effect
 	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
 	* @param frame			The index of the frame you want the end index for
-	* @param layer			The sprite layer 
+	* @param layer			The sprite layer
 	* @returns				tfxU32 containing the end offset
 	*/
 	tfxAPI inline tfxU32 SpriteDataEndIndex(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
@@ -8397,7 +8223,7 @@ typedef union {
 
 	/*
 	Set the base noise offset for an effect
-	* @param pm				A pointer to a tfxParticleManager where the effect is being managed. 
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed.
 	* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 	* @param noise_offset	A float of the amount that you want to set the effect noise offset to. By default when an effect is added to a particle manager a random noise offset will be set based on the Base Noise Offset Range property. Here you can override that
 							value by setting it here. The most ideal time to set this would be immediately after you have added the effect to the particle manager, but you could call it any time you wanted for a constantly changing noise offset.
