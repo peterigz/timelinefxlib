@@ -2636,23 +2636,6 @@ You can then use layer inside the loop to get the current layer
 		ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
 	}
 
-	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
-		assert(tfxNumberOfThreadsInAdditionToMain > 0);
-
-		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
-		assert(new_entry_to_write != queue->next_read_entry);		//Not enough room in work queue
-		queue->entries[queue->next_write_entry].data = data;
-		queue->entries[queue->next_write_entry].call_back = call_back;
-		InterlockedIncrement(&queue->entry_completion_goal);
-
-		_WriteBarrier();
-
-		tfxPushQueueWork(&tfxThreadQueues, queue);
-		queue->next_write_entry = new_entry_to_write;
-
-		ReleaseSemaphore(tfxThreadSemaphore, 1, 0);
-	}
-
 	static bool tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
 		bool sleep = false;
 
@@ -2700,6 +2683,26 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		return sleep;
+	}
+
+	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+		assert(tfxNumberOfThreadsInAdditionToMain > 0);
+
+		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
+		while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
+			//We can do this because we're single producer
+			tfxDoNextWorkQueueEntry(queue);
+		}
+		queue->entries[queue->next_write_entry].data = data;
+		queue->entries[queue->next_write_entry].call_back = call_back;
+		InterlockedIncrement(&queue->entry_completion_goal);
+
+		_WriteBarrier();
+
+		tfxPushQueueWork(&tfxThreadQueues, queue);
+		queue->next_write_entry = new_entry_to_write;
+
+		ReleaseSemaphore(tfxThreadSemaphore, 1, 0);
 	}
 
 	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
