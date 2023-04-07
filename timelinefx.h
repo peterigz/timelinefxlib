@@ -275,6 +275,7 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideSetZero _mm256_setzero_si256
 #define tfxWideEquals _mm256_cmpeq_epi32 
 #define tfxWideAndNot _mm256_andnot_ps
+#define tfxWideNotEquals _mm256_cmpeq_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 	const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
@@ -321,8 +322,10 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideShiftLeft _mm_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
 #define tfxWideGreater(v1, v2) _mm_cmpgt_ps(v1, v2)
+#define tfxWideGreateri(v1, v2) _mm_cmpgt_epi32(v1, v2)
 #define tfxWideLessEqual(v1, v2) _mm_cmple_ps(v1, v2)
 #define tfxWideLess(v1, v2) _mm_cmplt_ps(v1, v2)
+#define tfxWideLessi(v1, v2) _mm_cmplt_epi32(v1, v2)
 #define tfxWideStore _mm_store_ps
 #define tfxWideStorei _mm_store_si128
 #define tfxWideCasti _mm_castps_si128 
@@ -335,12 +338,14 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideMaxi _mm_max_epi32
 #define tfxWideOr _mm_or_ps
 #define tfxWideOri _mm_or_si128
+#define tfxWideXOri _mm_xor_si128
 #define tfxWideAnd _mm_and_ps
 #define tfxWideAndi _mm_and_si128
 #define tfxWideAndNot _mm_andnot_ps
 #define tfxWideAndNoti _mm_andnot_si128
 #define tfxWideSetZero _mm_setzero_si128
-#define tfxWideEquals _mm_cmpeq_epi32 
+#define tfxWideEqualsi _mm_cmpeq_epi32 
+#define tfxWideNotEquals _mm_cmpeq_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 	const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
@@ -656,7 +661,7 @@ You can then use layer inside the loop to get the current layer
 	typedef tfxU32 tfxEmitterPropertyFlags;
 	typedef tfxU32 tfxEffectPropertyFlags;
 	typedef tfxU32 tfxVectorFieldFlags;
-	typedef unsigned char tfxParticleFlags;
+	typedef tfxU32 tfxParticleFlags;
 	typedef tfxU32 tfxEmitterStateFlags;
 	typedef tfxU32 tfxEffectStateFlags;
 	typedef tfxU32 tfxParticleControlFlags;
@@ -982,6 +987,7 @@ You can then use layer inside the loop to get the current layer
 	extern float tfxUPDATE_TIME;
 	extern tfxWideFloat tfxUPDATE_TIME_WIDE;
 	extern float tfxFRAME_LENGTH;
+	extern tfxWideFloat tfxFRAME_LENGTH_WIDE;
 
 	//Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 	static float tfxLOOKUP_FREQUENCY = 10.f;
@@ -6567,6 +6573,8 @@ You can then use layer inside the loop to get the current layer
 	struct tfxParticleAgeWorkEntry {
 		tfxU32 start_index;
 		tfxU32 emitter_index;
+		tfxU32 wide_end_index;
+		tfxU32 start_diff;
 		tfxEmitterPropertiesSoA *properties;
 		tfxParticleManager *pm;
 	};
@@ -6625,6 +6633,7 @@ You can then use layer inside the loop to get the current layer
 		for (int i = index; i != buffer->capacity; ++i) {
 			particles->max_age[i] = 1.f;
 			particles->age[i] = 1.f;
+			particles->flags[i] = 0;
 		}
 	}
 
