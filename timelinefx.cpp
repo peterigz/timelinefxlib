@@ -10776,9 +10776,9 @@ namespace tfx {
 			tfxWideInt loop_limit = tfxWideEqualsi(single_loop_count, single_shot_limit);
 			tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(single, expired), tfxWideSetSinglei(-1));
 			age = tfxWideAnd(age, tfxWideCast(loop_age));
-			//flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideGreateri(state_flags_no_spawning, tfxWideSetSinglei(0))));
+			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideGreateri(state_flags_no_spawning, tfxWideSetSinglei(0))));
 			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(not_single, expired)));
-			//flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideAndi(single, loop_limit), expired)));
+			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideAndi(single, loop_limit), expired)));
 
 			tfxWideStore(&bank.age[index], age);
 			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
