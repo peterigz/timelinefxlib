@@ -254,8 +254,10 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideShiftLeft _mm256_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
 #define tfxWideGreater(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GT_OS)
+#define tfxWideGreateri(v1, v2) _mm256_cmpgt_epi32(v1, v2)
 #define tfxWideLess(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LT_OS)
 #define tfxWideLessEqeual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LE_OS)
+#define tfxWideEqualsi _mm256_cmpeq_epi32 
 #define tfxWideStore _mm256_store_ps
 #define tfxWideStorei _mm256_store_si256
 #define tfxWideCasti _mm256_castps_si256
@@ -268,6 +270,7 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideMaxi _mm256_max_epi32
 #define tfxWideOr _mm256_or_ps
 #define tfxWideOri _mm256_or_si256
+#define tfxWideXOri _mm256_xor_si256
 #define tfxWideAnd _mm256_and_ps
 #define tfxWideAndi _mm256_and_si256
 #define tfxWideAndNot _mm256_andnot_ps
@@ -6566,6 +6569,8 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 amount_to_update;
 		tfxU32 start_index;
 		tfxU32 end_index;
+		tfxU32 wide_end_index;
+		tfxU32 start_diff;
 		tfxring<tfxParticleSprite2d> *sprites2d;
 		tfxSprite3dSoA *sprites3d;
 	};
