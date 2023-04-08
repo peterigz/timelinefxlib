@@ -137,7 +137,6 @@ namespace tfx {
 	struct tfxEffectEmitter;
 	struct tfxParticleManager;
 	struct tfxEffectTemplate;
-	struct tfxParticle;
 	struct tfxParticleData;
 	struct tfxComputeSprite;
 	struct tfxComputeParticle;
@@ -271,6 +270,7 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideOr _mm256_or_ps
 #define tfxWideOri _mm256_or_si256
 #define tfxWideXOri _mm256_xor_si256
+#define tfxWideXOr _mm256_xor_ps
 #define tfxWideAnd _mm256_and_ps
 #define tfxWideAndi _mm256_and_si256
 #define tfxWideAndNot _mm256_andnot_ps
@@ -280,6 +280,7 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideNotEquals _mm256_cmpeq_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
+#define tfxWideLookupSeti(lookup, index) tfxWideSeti(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
 	const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
 	const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
@@ -341,6 +342,7 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideMaxi _mm_max_epi32
 #define tfxWideOr _mm_or_ps
 #define tfxWideOri _mm_or_si128
+#define tfxWideXOr _mm_xor_ps
 #define tfxWideXOri _mm_xor_si128
 #define tfxWideAnd _mm_and_ps
 #define tfxWideAndi _mm_and_si128
@@ -349,7 +351,11 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideSetZero _mm_setzero_si128
 #define tfxWideEqualsi _mm_cmpeq_epi32 
 #define tfxWideNotEquals _mm_cmpeq_ps
-#define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
+#define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetMember(lookup, member, index) tfxWideSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
+#define tfxWideLookupSeti(lookup, index) tfxWideSeti( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 
 	const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
 	const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
@@ -5823,7 +5829,6 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 *sprites_count;
 		tfxU32 *sprites_index;
 		tfxKey *path_hash;
-		tfxLibrary **library;
 
 		//Spawn controls
 		float *life;
@@ -5898,7 +5903,6 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, info_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, hierarchy_depth));
 		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
-		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, library));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life_variation));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_size));
@@ -6665,6 +6669,7 @@ You can then use layer inside the loop to get the current layer
 		tfxEffectSoA effects;
 		tfxSoABuffer emitter_buffers;
 		tfxEmitterSoA emitters;
+		tfxLibrary *library;
 
 		tfxWorkQueue work_queue;
 
@@ -6723,15 +6728,16 @@ You can then use layer inside the loop to get the current layer
 			current_ebuff(0),
 			current_pbuff(0),
 			highest_compute_controller_index(0),
-			new_compute_particle_ptr(nullptr),
-			compute_controller_ptr(nullptr),
+			new_compute_particle_ptr(NULL),
+			compute_controller_ptr(NULL),
 			max_compute_controllers(10000),
 			max_new_compute_particles(10000),
 			new_compute_particle_index(0),
 			new_particles_count(0),
 			mt_batch_size(512),
 			current_sprite_buffer(0),
-			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers"))
+			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers")),
+			library(NULL)
 		{
 			memset(sprite_index_2d, 0, tfxLAYERS * 4);
 			memset(sprite_index_3d, 0, tfxLAYERS * 4);
@@ -6740,11 +6746,14 @@ You can then use layer inside the loop to get the current layer
 
 		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
 		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
-		void InitForBoth(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor2d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor3d(tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor2d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
-		void InitFor3d(unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void InitForBoth(tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor2d(tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor3d(tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+		void InitFor2d(tfxLibrary *lib, unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void InitFor3d(tfxLibrary *lib, unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		inline void SetLibrary(tfxLibrary *lib) {
+			library = lib;
+		}
 		void CreateParticleBanksForEachLayer();
 		//Update the particle manager. Call this once per frame in your logic udpate.
 		void Update();
@@ -6833,7 +6842,6 @@ You can then use layer inside the loop to get the current layer
 		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
 		void EnableCompute() { flags |= tfxEffectManagerFlags_use_compute_shader; }
 		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
-		//inline tfxParticle& GrabCPUParticle(unsigned int index) { return 0; }
 
 		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index[ParticleIndex(id)]; }
 
@@ -7698,7 +7706,6 @@ You can then use layer inside the loop to get the current layer
 
 	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
-	void ReloadBaseValues(tfxParticle &p, tfxEffectEmitter &e);
 
 	//Get a graph by tfxGraphID
 	tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
