@@ -7863,6 +7863,65 @@ namespace tfx {
 
 	void ControlParticleImageFrameOrdered3d(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
+		tfxParticleManager &pm = *work_entry->pm;
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
+		tfxLibrary *library = pm.library;
+		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
+
+		tfxWideInt play_once_flag = tfxWideSetSinglei(tfxEmitterStateFlags_play_once);
+		tfxU32 running_sprite_index = work_entry->start_index;
+		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxU32 start_diff = work_entry->start_diff;
+
+		tfxWideArrayi parent_index;
+		tfxWideArrayi property_index;
+		tfxWideArrayi billboard_option;
+		tfxWideArray image_frame;
+
+		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
+			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
+
+			property_index.m = tfxWideLookupSeti(pm.emitters.properties_index, parent_index);
+			billboard_option.m = tfxWideLookupSeti(library->emitter_properties.billboard_option, property_index);
+			tfxWideInt emitter_flags = tfxWideLookupSeti(pm.emitters.state_flags, parent_index);
+			tfxWideInt play_once = tfxWideGreateri(tfxWideAndi(emitter_flags, play_once_flag), tfxWideSetSinglei(0));
+			tfxWideInt xor_play_once = tfxWideXOri(play_once, tfxWideSetSinglei(-1));
+			tfxWideFloat image_frame_rate = tfxWideLookupSet(pm.emitters.image_frame_rate, parent_index);
+			image_frame_rate = tfxWideMul(image_frame_rate, tfxUPDATE_TIME_WIDE);
+			const tfxWideFloat end_frame = tfxWideLookupSet(pm.emitters.end_frame, parent_index);
+			const tfxWideFloat frames = tfxWideAdd(end_frame, tfxWideSetSingle(1.f));
+			image_frame.m = tfxWideLoad(&bank.image_frame[index]);
+
+			//----Image animation
+			image_frame.m = tfxWideAdd(image_frame.m, image_frame_rate);
+			image_frame.m = tfxWideAdd(
+								tfxWideAnd(tfxWideCast(xor_play_once), tfxWideSub(image_frame.m, tfxWideAnd(tfxWideGreater(image_frame.m, frames), frames))), 
+								tfxWideAnd(tfxWideCast(play_once), tfxWideMax(tfxWideMin(image_frame.m, end_frame), tfxWideSetSingle(0.f)))
+							);
+
+			tfxWideStore(&bank.image_frame[index], image_frame.m);
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->end_index ? work_entry->end_index - running_sprite_index : tfxDataWidth;
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				sprites.image_frame_plus[running_sprite_index++] = (billboard_option.a[j] << 24) + ((tfxU32)image_frame.a[j] << 16) + (property_index.a[j]);
+			}
+			start_diff = 0;
+		}
+
+		//todo: does this have to be separate? Investigate
+		running_sprite_index = work_entry->start_index;
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			const tfxU32 index = GetCircularIndex(buffer, i);
+			tfxU32 &sprites_index = bank.sprite_index[index];
+			sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + sprites_index;
+			sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index++;
+		}
+
+	}
+
+	/*
+	void ControlParticleImageFrameOrdered3d(tfxWorkQueue *queue, void *data) {
+		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = pm.particle_arrays[work_entry->current_buffer_index];
@@ -7898,6 +7957,65 @@ namespace tfx {
 			//s.image_ptr = image->ptr;
 		}
 
+	}
+	*/
+
+	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxU32 emitter_index = work_entry->emitter_index;
+		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
+		const tfxU32 property_index = work_entry->pm->emitters.properties_index[emitter_index];
+		tfxParticleManager &pm = *work_entry->pm;
+		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
+		tfxImageData *image = work_entry->properties->image[property_index];
+		const tfxBillboardingOptions billboard_option = work_entry->properties->billboard_option[property_index];
+
+		tfxU32 start_diff = work_entry->start_diff;
+		float image_frames[tfxDataWidth];
+
+		tfxWideFloat image_frame_rate = tfxWideSetSingle(pm.emitters.image_frame_rate[emitter_index]);
+		image_frame_rate = tfxWideMul(image_frame_rate, tfxUPDATE_TIME_WIDE);
+		tfxWideFloat end_frame = tfxWideSetSingle(pm.emitters.end_frame[emitter_index]);
+		tfxWideFloat frames = tfxWideSetSingle(pm.emitters.end_frame[emitter_index] + 1);
+		tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
+
+		tfxU32 running_sprite_index = work_entry->sprites_index;
+		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+
+		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+			tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
+
+			//----Image animation
+			image_frame = tfxWideAdd(image_frame, image_frame_rate);
+			if (emitter_flags & tfxEmitterStateFlags_play_once) {
+				image_frame = tfxWideMin(image_frame, end_frame);
+				image_frame = tfxWideMax(image_frame, tfxWIDEZERO);
+			}
+			else {
+				tfxWideFloat mask = tfxWideGreater(image_frame, frames);
+				image_frame = tfxWideSub(image_frame, tfxWideAnd(mask, frames));
+			}
+
+			tfxWideStore(&bank.image_frame[index], image_frame);
+			tfxWideStore(image_frames, image_frame);
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				sprites.image_frame_plus[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
+			}
+			start_diff = 0;
+		}
+
+		//todo: does this have to be separate? Investigate
+		running_sprite_index = work_entry->sprites_index;
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
+			tfxU32 &sprites_index = bank.sprite_index[index];
+			sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + sprites_index;
+			sprites_index = (work_entry->layer << 28) + running_sprite_index++;
+		}
 	}
 
 	void tfxParticleManager::UpdateParticleOrderOnly() {
@@ -11794,64 +11912,6 @@ namespace tfx {
 			s.image_ptr = image->ptr;
 		}
 
-	}
-
-	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data) {
-		tfxPROFILE;
-		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
-		tfxU32 emitter_index = work_entry->emitter_index;
-		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
-		const tfxU32 property_index = work_entry->pm->emitters.properties_index[emitter_index];
-		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
-		tfxImageData *image = work_entry->properties->image[property_index];
-		const tfxBillboardingOptions billboard_option = work_entry->properties->billboard_option[property_index];
-
-		tfxU32 start_diff = work_entry->start_diff;
-		float image_frames[tfxDataWidth];
-
-		tfxWideFloat image_frame_rate = tfxWideSetSingle(pm.emitters.image_frame_rate[emitter_index]);
-		image_frame_rate = tfxWideMul(image_frame_rate, tfxUPDATE_TIME_WIDE);
-		tfxWideFloat end_frame = tfxWideSetSingle(pm.emitters.end_frame[emitter_index]);
-		tfxWideFloat frames = tfxWideSetSingle(pm.emitters.end_frame[emitter_index] + 1);
-		tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
-
-		tfxU32 running_sprite_index = work_entry->sprites_index;
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
-
-		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-			tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
-
-			//----Image animation
-			image_frame = tfxWideAdd(image_frame, image_frame_rate);
-			if (emitter_flags & tfxEmitterStateFlags_play_once) {
-				image_frame = tfxWideMin(image_frame, end_frame);
-				image_frame = tfxWideMax(image_frame, tfxWIDEZERO);
-			}
-			else {
-				tfxWideFloat mask = tfxWideGreater(image_frame, frames);
-				image_frame = tfxWideSub(image_frame, tfxWideAnd(mask, frames));
-			}
-
-			tfxWideStore(&bank.image_frame[index], image_frame);
-			tfxWideStore(image_frames, image_frame);
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.image_frame_plus[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
-			}
-			start_diff = 0;
-		}
-
-		//todo: does this have to be separate? Investigate
-		running_sprite_index = work_entry->sprites_index;
-		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			tfxU32 &sprites_index = bank.sprite_index[index];
-			sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + sprites_index;
-			sprites_index = (work_entry->layer << 28) + running_sprite_index++;
-		}
 	}
 
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry) {
