@@ -7903,18 +7903,12 @@ namespace tfx {
 			tfxWideStore(&bank.image_frame[index], image_frame.m);
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->end_index ? work_entry->end_index - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				tfxU32 &sprites_index = bank.sprite_index[index + j];
+				sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + sprites_index;
+				sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index;
 				sprites.image_frame_plus[running_sprite_index++] = (billboard_option.a[j] << 24) + ((tfxU32)image_frame.a[j] << 16) + (property_index.a[j]);
 			}
 			start_diff = 0;
-		}
-
-		//todo: does this have to be separate? Investigate
-		running_sprite_index = work_entry->start_index;
-		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			const tfxU32 index = GetCircularIndex(buffer, i);
-			tfxU32 &sprites_index = bank.sprite_index[index];
-			sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + sprites_index;
-			sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index++;
 		}
 
 	}
@@ -8003,19 +7997,14 @@ namespace tfx {
 			tfxWideStore(image_frames, image_frame);
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				tfxU32 &sprites_index = bank.sprite_index[index + j];
+				sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + sprites_index;
+				sprites_index = (work_entry->layer << 28) + running_sprite_index;
 				sprites.image_frame_plus[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 			}
 			start_diff = 0;
 		}
 
-		//todo: does this have to be separate? Investigate
-		running_sprite_index = work_entry->sprites_index;
-		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			tfxU32 &sprites_index = bank.sprite_index[index];
-			sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + sprites_index;
-			sprites_index = (work_entry->layer << 28) + running_sprite_index++;
-		}
 	}
 
 	void tfxParticleManager::UpdateParticleOrderOnly() {
