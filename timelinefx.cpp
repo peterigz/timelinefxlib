@@ -7529,40 +7529,28 @@ namespace tfx {
 			tfxWideStore(&bank.local_rotations_z[index], roll.m);
 		}
 
-		if (emitter_flags & tfxEmitterStateFlags_kill) {
-			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-				tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
-				parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
+		tfxWideInt loop_flag = tfxWideSetSinglei(tfxEmitterStateFlags_loop);
+		tfxWideInt kill_flag = tfxWideSetSinglei(tfxEmitterStateFlags_kill);
+		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
+			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
 
-				const tfxWideFloat emitter_size_y = tfxWideLookupSetMember(pm.emitters.emitter_size, y, parent_index);
-				const tfxWideInt emitter_flags_wide = tfxWideSetSinglei(emitter_flags);
+			const tfxWideFloat emitter_size_y = tfxWideLookupSetMember(pm.emitters.emitter_size, y, parent_index);
+			const tfxWideInt emitter_flags_wide = tfxWideLookupSeti(pm.emitters.state_flags, parent_index);
+			const tfxWideInt loop = tfxWideGreateri(tfxWideAndi(emitter_flags_wide, loop_flag), tfxWideSetSinglei(0));
+			const tfxWideInt kill = tfxWideGreateri(tfxWideAndi(emitter_flags_wide, kill_flag), tfxWideSetSinglei(0));
+			tfxWideFloat offset_y = tfxWideMul(tfxWideLoad(&bank.velocity_normal_y[index]), emitter_size_y);
+			tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
-				const tfxWideFloat offset_y = tfxWideMul(tfxWideLoad(&bank.velocity_normal_y[index]), emitter_size_y);
-				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
-
-				//Lines - Reposition if the particle is travelling along a line
-				tfxWideFloat length = tfxWideAbs(local_position_y);
-				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(length, emitter_size_y)));
-				flags = tfxWideOri(flags, remove_flags);
-				tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
-			}
-		}
-		else {
-			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-				tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
-				tfxWideFloat offset_y = tfxWideMul(tfxWideLoad(&bank.velocity_normal_y[index]), emitter_size_y);
-				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
-
-				//Lines - Reposition if the particle is travelling along a line
-				tfxWideFloat length = tfxWideAbs(local_position_y);
-				tfxWideFloat at_end = tfxWideGreater(length, emitter_size_y);
-				local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, offset_y));
-				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-				tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
-				tfxWideStore(&bank.position_y[index], local_position_y);
-			}
+			//Lines - Reposition if the particle is travelling along a line
+			tfxWideFloat length = tfxWideAbs(local_position_y);
+			tfxWideFloat at_end = tfxWideAnd(tfxWideGreater(length, emitter_size_y), tfxWideCast(loop));
+			local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, offset_y));
+			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
+			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideAndi(tfxWideCasti(tfxWideGreater(length, emitter_size_y)), kill)));
+			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+			tfxWideStore(&bank.position_y[index], local_position_y);
 		}
 
 		ControlParticleStretchOrdered3d(queue, data);
