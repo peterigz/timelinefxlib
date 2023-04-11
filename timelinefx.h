@@ -3213,6 +3213,13 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
+	struct tfxMatrix4Wide {
+		float x[4];
+		float y[4];
+		float z[4];
+		float w[4];
+	};
+
 	//Very simple 2D Matix
 	struct tfxMatrix2 {
 
@@ -6995,6 +7002,7 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleStretchOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleColorOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrameOrdered2d(tfxWorkQueue *queue, void *data);
