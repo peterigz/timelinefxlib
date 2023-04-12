@@ -6268,8 +6268,6 @@ You can then use layer inside the loop to get the current layer
 		float *red;
 		float *green;
 		float *blue;
-		float *alpha;
-		float *intensity;
 		float *image_frame;
 		float *base_size_x;
 		float *base_size_y;
@@ -6310,8 +6308,6 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, red));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, green));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, blue));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, alpha));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, intensity));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_y));
@@ -6532,8 +6528,8 @@ You can then use layer inside the loop to get the current layer
 		pf.stretch = bank.velocity_normal_w[index];
 		pf.alignment_type = billboard_option;
 		pf.handle = handle;
-		pf.color = tfxRGBA8(bank.red[index], bank.green[index], bank.blue[index], bank.alpha[index]);
-		pf.intensity = bank.intensity[index];
+		pf.color = tfxRGBA8(bank.red[index], bank.green[index], bank.blue[index], 0.f);
+		pf.intensity = 1.f;
 		pf.image_ptr = image_ptr;
 		pf.image_frame = (tfxU32)bank.image_frame[index];
 		return pf;
@@ -6898,8 +6894,6 @@ You can then use layer inside the loop to get the current layer
 			to_bank.red[index] = from_bank.red[other_index];
 			to_bank.green[index] = from_bank.green[other_index];
 			to_bank.blue[index] = from_bank.blue[other_index];
-			to_bank.alpha[index] = from_bank.alpha[other_index];
-			to_bank.intensity[index] = from_bank.intensity[other_index];
 			to_bank.image_frame[index] = from_bank.image_frame[other_index];
 			to_bank.base_size_x[index] = from_bank.base_size_x[other_index];
 			to_bank.base_size_y[index] = from_bank.base_size_y[other_index];
@@ -7524,8 +7518,6 @@ You can then use layer inside the loop to get the current layer
 		std::swap(particles.red[from], particles.red[to]);
 		std::swap(particles.green[from], particles.green[to]);
 		std::swap(particles.blue[from], particles.blue[to]);
-		std::swap(particles.alpha[from], particles.alpha[to]);
-		std::swap(particles.intensity[from], particles.intensity[to]);
 		std::swap(particles.image_frame[from], particles.image_frame[to]);
 		std::swap(particles.base_size_x[from], particles.base_size_x[to]);
 		std::swap(particles.base_size_y[from], particles.base_size_y[to]);
@@ -7563,8 +7555,6 @@ You can then use layer inside the loop to get the current layer
 		temp.red = particles.red[from];
 		temp.green = particles.green[from];
 		temp.blue = particles.blue[from];
-		temp.alpha = particles.alpha[from];
-		temp.intensity = particles.intensity[from];
 		temp.image_frame = particles.image_frame[from];
 		temp.base_size_x = particles.base_size_x[from];
 		temp.base_size_y = particles.base_size_y[from];
@@ -7602,8 +7592,6 @@ You can then use layer inside the loop to get the current layer
 		particles.red[from] = temp.red;
 		particles.green[from] = temp.green;
 		particles.blue[from] = temp.blue;
-		particles.alpha[from] = temp.alpha;
-		particles.intensity[from] = temp.intensity;
 		particles.image_frame[from] = temp.image_frame;
 		particles.base_size_x[from] = temp.base_size_x;
 		particles.base_size_y[from] = temp.base_size_y;
