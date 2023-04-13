@@ -3427,6 +3427,21 @@ You can then use layer inside the loop to get the current layer
 		z = zr;
 	}
 
+	static inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
+		tfxWideFloat xr = tfxWideMul(x, r0c[0]);
+		xr = tfxWideAdd(tfxWideMul(y, r0c[1]), xr);
+		xr = tfxWideAdd(tfxWideMul(z, r0c[2]), xr);
+		tfxWideFloat yr = tfxWideMul(x, r1c[0]);
+		yr = tfxWideAdd(tfxWideMul(y, r1c[1]), yr);
+		yr = tfxWideAdd(tfxWideMul(z, r1c[2]), yr);
+		tfxWideFloat zr = tfxWideMul(x, r2c[0]);
+		zr = tfxWideAdd(tfxWideMul(y, r2c[1]), zr);
+		zr = tfxWideAdd(tfxWideMul(z, r2c[2]), zr);
+		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
+		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
+		z = tfxWideAdd(tfxWideAnd(z, xor_mask), tfxWideAnd(zr, mask));
+	}
+
 	static inline tfxVec4 mmTransformVector(const tfxMatrix4 &mat, const tfxVec4 vec) {
 		tfxVec4 v;
 
@@ -3576,6 +3591,22 @@ You can then use layer inside the loop to get the current layer
 		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
 		converted_z = tfxWideAndi(converted_z, bits10);
 		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
+		tfxWideInt result = tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+		return result;
+	}
+
+	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra) {
+		tfxWideFloat w511 = tfxWideSetSingle(511.f);
+		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+		converted_x = tfxWideAndi(converted_x, bits10);
+		converted_x = tfxWideShiftLeft(converted_x, 20);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+		converted_y = tfxWideAndi(converted_y, bits10);
+		converted_y = tfxWideShiftLeft(converted_y, 10);
+		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+		converted_z = tfxWideAndi(converted_z, bits10);
+		tfxWideInt extra_bits = tfxWideShiftLeft(extra, 30);
 		tfxWideInt result = tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
 		return result;
 	}
@@ -6996,15 +7027,17 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleStretchOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleColorOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrameOrdered2d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePositionOrdered3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleTransformOrdered3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleStretchOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleColorOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrameOrdered3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleTransformOrdered3dOld(tfxWorkQueue *queue, void *data);
 
 
 
