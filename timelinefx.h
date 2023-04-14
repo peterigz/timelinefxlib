@@ -276,9 +276,9 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideAndNoti _mm256_andnot_si256
 #define tfxWideSetZero _mm256_setzero_si256
-#define tfxWideEquals _mm256_cmpeq_epi32 
+#define tfxWideEqualsi _mm256_cmpeq_epi32 
 #define tfxWideAndNot _mm256_andnot_ps
-#define tfxWideNotEquals _mm256_cmpeq_ps
+#define tfxWideEquals _mm256_cmpeq_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 #define tfxWideLookupSeti(lookup, index) tfxWideSeti(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
 
@@ -348,9 +348,10 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideAndi _mm_and_si128
 #define tfxWideAndNot _mm_andnot_ps
 #define tfxWideAndNoti _mm_andnot_si128
-#define tfxWideSetZero _mm_setzero_si128
+#define tfxWideSetZeroi _mm_setzero_si128
+#define tfxWideSetZero _mm_setzero_ps
 #define tfxWideEqualsi _mm_cmpeq_epi32 
-#define tfxWideNotEquals _mm_cmpeq_ps
+#define tfxWideEquals _mm_cmpeq_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSetMember(lookup, member, index) tfxWideSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
 #define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )

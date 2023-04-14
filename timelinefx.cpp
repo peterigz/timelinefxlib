@@ -7790,25 +7790,19 @@ namespace tfx {
 			r2c[1] = tfxWideLookupSetMember(pm.emitters.matrix, v[2].c1, parent_index);
 			r2c[2] = tfxWideLookupSetMember(pm.emitters.matrix, v[2].c2, parent_index);
 
-			tfxWideInt is_align_type_motioni = tfxWideEqualsi(vector_align_type, tfxWideSetSinglei(tfxVectorAlignType_motion));
-			tfxWideFloat is_align_type_motion = tfxWideCast(is_align_type_motioni);
-			tfxWideFloat xor_is_align_type_motion = tfxWideCast(tfxWideXOri(is_align_type_motioni, tfxWideSetSinglei(-1)));
-			tfxWideInt is_align_type_emitteri = tfxWideEqualsi(vector_align_type, tfxWideSetSinglei(tfxVectorAlignType_emitter));
-			tfxWideInt is_relative_maski = tfxWideGreateri(tfxWideAndi(property_flags, relative_flag), tfxWideSetSinglei(0));
-			tfxWideFloat xor_is_relative_mask = tfxWideCast(tfxWideXOri(is_relative_maski, tfxWideSetSinglei(-1)));
-			tfxWideFloat is_relative_mask = tfxWideCast(is_relative_maski);
+			tfxWideFloat is_align_type_motion = tfxWideEquals(tfxWideConvert(vector_align_type), tfxWideSetSingle((float)tfxVectorAlignType_motion));
+			tfxWideFloat xor_is_align_type_motion = tfxWideEquals(is_align_type_motion, tfxWideSetZero());
+			tfxWideFloat is_align_type_emitter = tfxWideEquals(tfxWideConvert(vector_align_type), tfxWideSetSingle((float)tfxVectorAlignType_emitter));
+			tfxWideFloat is_relative_mask = tfxWideCast(tfxWideGreateri(tfxWideAndi(property_flags, relative_flag), tfxWideSetSinglei(0)));
+			tfxWideFloat xor_is_relative_mask = tfxWideEquals(is_relative_mask, tfxWideSetZero());
 			tfxWideFloat is_relative_angle_mask = tfxWideCast(tfxWideGreateri(tfxWideAndi(property_flags, relative_angle_flag), tfxWideSetSinglei(0)));
-			tfxWideInt emission_maski = tfxWideEqualsi(vector_align_type, tfxWideSetSinglei(tfxVectorAlignType_emission));
-			tfxWideInt emission_or_relative_maski = tfxWideOri(is_relative_maski, emission_maski);
-			tfxWideInt emission_and_relative_maski = tfxWideAndi(is_relative_maski, emission_maski);
-			emission_or_relative_maski = tfxWideAndi(emission_or_relative_maski, tfxWideEqualsi(is_align_type_motioni, tfxWideSetSinglei(0)));
-			tfxWideFloat emission_or_relative_mask = tfxWideCast(emission_or_relative_maski);
-			tfxWideFloat emission_and_relative_mask = tfxWideCast(emission_and_relative_maski);
-			tfxWideFloat xor_emission_or_relative_mask = tfxWideCast(tfxWideXOri(emission_or_relative_maski, tfxWideSetSinglei(-1)));
-			tfxWideFloat xor_emission_and_relative_mask = tfxWideCast(tfxWideXOri(emission_and_relative_maski, tfxWideSetSinglei(-1)));
-			tfxWideInt emission_not_relativei = tfxWideAndNoti(emission_maski, is_relative_maski);
-			tfxWideFloat is_align_type_emitter = tfxWideCast(is_align_type_emitteri);
-			tfxWideFloat xor_is_align_type_emitter = tfxWideCast(tfxWideXOri(is_align_type_emitteri, tfxWideSetSinglei(-1)));
+			tfxWideFloat emission_mask = tfxWideEquals(tfxWideConvert(vector_align_type), tfxWideSetSingle((float)tfxVectorAlignType_emission));
+			tfxWideFloat emission_or_relative_mask = tfxWideOr(is_relative_mask, emission_mask);
+			tfxWideFloat emission_and_relative_mask = tfxWideAnd(is_relative_mask, emission_mask);
+			emission_or_relative_mask = tfxWideAnd(emission_or_relative_mask, tfxWideEquals(is_align_type_motion, tfxWideSetZero()));
+			tfxWideFloat xor_emission_or_relative_mask = tfxWideEquals(emission_or_relative_mask, tfxWideSetZero());
+			tfxWideFloat xor_emission_and_relative_mask = tfxWideEquals(emission_and_relative_mask, tfxWideSetZero());
+			tfxWideFloat xor_is_align_type_emitter = tfxWideEquals(is_align_type_emitter, tfxWideSetZero());
 
 			position_x.m = tfxWideAdd(position_x.m, tfxWideAnd(e_handle_x, is_relative_mask));
 			position_y.m = tfxWideAdd(position_y.m, tfxWideAnd(e_handle_y, is_relative_mask));
