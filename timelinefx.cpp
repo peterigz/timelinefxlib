@@ -8539,7 +8539,7 @@ namespace tfx {
 			image_frame = tfxWideAdd(image_frame, image_frame_rate);
 			if (emitter_flags & tfxEmitterStateFlags_play_once) {
 				image_frame = tfxWideMin(image_frame, end_frame);
-				image_frame = tfxWideMax(image_frame, tfxWIDEZERO);
+				image_frame = tfxWideMax(image_frame, tfxWideSetZero());
 			}
 			else {
 				tfxWideFloat mask = tfxWideGreater(image_frame, frames);
@@ -9025,14 +9025,16 @@ namespace tfx {
 				tfxU32 sprite_id = pm.GetParticleSpriteIndex(parent_particle_id);
 				tfxU32 sprite_layer = (sprite_id & 0xF0000000) >> 28;
 				tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
-				if (property_flags & tfxEmitterPropertyFlags_is_3d)
-					TransformEffector3d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites3d[!pm.current_sprite_buffer][sprite_layer].transform[sprite_index], true, property_flags & tfxEmitterPropertyFlags_relative_angle);
-				else
-					TransformEffector2d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites2d[sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
+				if (sprite_id != tfxINVALID) {
+					if (property_flags & tfxEmitterPropertyFlags_is_3d)
+						TransformEffector3d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites3d[!pm.current_sprite_buffer][sprite_layer].transform[sprite_index], true, property_flags & tfxEmitterPropertyFlags_relative_angle);
+					else
+						TransformEffector2d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites2d[sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
 
-				world_position += properties.emitter_handle[property_index] * overal_scale;
-				if (state_flags & tfxEffectStateFlags_no_tween_this_update || state_flags & tfxEffectStateFlags_no_tween) {
-					captured_position = world_position;
+					world_position += properties.emitter_handle[property_index] * overal_scale;
+					if (state_flags & tfxEffectStateFlags_no_tween_this_update || state_flags & tfxEffectStateFlags_no_tween) {
+						captured_position = world_position;
+					}
 				}
 			}
 			else {
