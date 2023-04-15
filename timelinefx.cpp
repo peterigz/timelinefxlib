@@ -6734,6 +6734,11 @@ namespace tfx {
 						work_entry.start_index = running_start_index;
 						work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size : running_start_index + particles_to_update;
 						work_entry.amount_to_update = work_entry.end_index - work_entry.start_index;
+						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], work_entry.start_index);
+						tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+						work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
+						work_entry.start_diff = circular_start - block_start_index;
+						work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
 						particles_to_update -= mt_batch_size;
 						running_start_index += mt_batch_size;
 						ControlParticlesOrdered3d(*this, work_entry);

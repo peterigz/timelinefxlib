@@ -1778,7 +1778,7 @@ You can then use layer inside the loop to get the current layer
 		void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
 	};
 
-	//Get the index based on the buffer being a ring buffer
+	//Get the amount of free space in the buffer
 	static inline tfxU32 FreeSpace(tfxSoABuffer *buffer) {
 		return buffer->capacity - buffer->current_size;
 	}
