@@ -6674,6 +6674,12 @@ namespace tfx {
 				work_entry.current_buffer_index = layer;
 				work_entry.start_index = work_entry.amount_to_update - 1;
 				work_entry.end_index = 0;
+				tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], work_entry.amount_to_update);
+				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+				work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.amount_to_update / tfxDataWidth)) * tfxDataWidth;
+				work_entry.start_diff = circular_start - block_start_index;
+				work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.amount_to_update ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
+				work_entry.pm = this;
 				if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 					tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleOrderedAge);
 				}
@@ -11611,11 +11617,11 @@ namespace tfx {
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxU32 property_flags = pm.emitters.property_flags[emitter_index];
 		tfxWideInt single_shot_limit = tfxWideSetSinglei(work_entry->properties->single_shot_limit[property_index]);
-		const tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 
+		const tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 		const tfxWideInt remove = tfxWideSetSinglei(pm.emitters.state_flags[emitter_index] & tfxParticleFlags_remove);
-		tfxWideInt state_flags_no_spawning = tfxWideOri(tfxWideSetSinglei(pm.emitters.state_flags[emitter_index] & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning));
-		state_flags_no_spawning = tfxWideOri(state_flags_no_spawning, remove);
+		//tfxWideInt state_flags_no_spawning = tfxWideOri(tfxWideSetSinglei(pm.emitters.state_flags[emitter_index] & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning));
+		//state_flags_no_spawning = tfxWideOri(state_flags_no_spawning, remove);
 		const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_single), tfxWideSetSinglei(0));
 		const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
 
@@ -11626,7 +11632,6 @@ namespace tfx {
 			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 			tfxWideInt single_loop_count = tfxWideLoadi((tfxWideInt*)&bank.single_loop_count[index]);
 			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
-			tfxWideInt o_flags = flags;
 			age = tfxWideAdd(age, tfxFRAME_LENGTH_WIDE);
 
 			tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
@@ -11706,38 +11711,53 @@ namespace tfx {
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
+		tfxSoABuffer *buffer = &work_entry->pm->particle_array_buffers[work_entry->current_buffer_index];
+		tfxLibrary *library = pm.library;
+
+		const tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
+		const tfxWideInt single_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_single);
+		tfxWideArrayi parent_index;
+		tfxWideArrayi property_index;
+
+		for (int i = 0; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
+			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
+
+			property_index.m = tfxWideLookupSeti(pm.emitters.properties_index, parent_index);
+			const tfxWideInt property_flags = tfxWideLookupSeti(pm.emitters.property_flags, parent_index);
+			const tfxWideInt state_flags = tfxWideLookupSeti(pm.emitters.state_flags, parent_index);
+			const tfxWideInt single_shot_limit = tfxWideLookupSeti(library->emitter_properties.single_shot_limit, property_index);
+
+			const tfxWideInt remove = tfxWideAndi(state_flags, remove_flag);
+			//tfxWideInt state_flags_no_spawning = tfxWideOri(tfxWideSetSinglei(pm.emitters.state_flags[emitter_index] & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning));
+			//state_flags_no_spawning = tfxWideOri(state_flags_no_spawning, remove);
+			const tfxWideInt single = tfxWideGreateri(tfxWideAndi(property_flags, single_flag), tfxWideSetSinglei(0));
+			const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
+
+			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+			tfxWideInt single_loop_count = tfxWideLoadi((tfxWideInt*)&bank.single_loop_count[index]);
+			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+			age = tfxWideAdd(age, tfxFRAME_LENGTH_WIDE);
+
+			tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
+			single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWideSetSinglei(1), expired));
+			tfxWideInt loop_limit = tfxWideEqualsi(single_loop_count, single_shot_limit);
+			tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(single, expired), tfxWideSetSinglei(-1));
+			age = tfxWideAnd(age, tfxWideCast(loop_age));
+			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetZeroi())));
+			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(not_single, expired)));
+			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideAndi(single, loop_limit), expired)));
+
+			tfxWideStore(&bank.age[index], age);
+			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+			tfxWideStorei((tfxWideInt*)&bank.single_loop_count[index], single_loop_count);
+		}
 
 		tfxU32 offset = 0;
 		for (int i = work_entry->start_index; i >= 0; --i) {
-			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[work_entry->current_buffer_index], i);
-			const tfxU32 parent_index = bank.parent_index[index];
-			tfxLibrary *library = pm.library;
-
-			const tfxU32 property_index = pm.emitters.properties_index[parent_index];
-			const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[parent_index];
-			const tfxEmitterStateFlags state_flags = pm.emitters.state_flags[parent_index];
-			const tfxU32 single_shot_limit = library->emitter_properties.single_shot_limit[property_index];
-
-			float &age = bank.age[index];
-			const float max_age = bank.max_age[index];
-			tfxU32 &single_loop_count = bank.single_loop_count[index];
+			const tfxU32 index = GetCircularIndex(buffer, i);
 			tfxParticleFlags &flags = bank.flags[index];
-			age += tfxFRAME_LENGTH;
-			flags |= state_flags & tfxParticleFlags_remove;
-
-			if (flags & tfxParticleFlags_remove || age >= max_age) {
-				if (property_flags & tfxEmitterPropertyFlags_single && !(state_flags & tfxEmitterStateFlags_stop_spawning) && !(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning))
-					if (++single_loop_count != single_shot_limit) {
-						age = 0;
-					}
-					else {
-						flags |= tfxParticleFlags_remove;
-					}
-				else {
-					flags |= tfxParticleFlags_remove;
-				}
-			}
-
 			if (flags & tfxParticleFlags_remove) {
 				offset++;
 				if (flags & tfxParticleFlags_has_sub_effects) {
@@ -11745,7 +11765,7 @@ namespace tfx {
 				}
 			}
 			else if (offset > 0) {
-				tfxU32 next_index = GetCircularIndex(&work_entry->pm->particle_array_buffers[work_entry->current_buffer_index], i + offset);
+				tfxU32 next_index = GetCircularIndex(buffer, i + offset);
 				if (flags & tfxParticleFlags_has_sub_effects) {
 					pm.particle_indexes[bank.particle_index[index]] = MakeParticleID(work_entry->current_buffer_index, next_index);
 				}
@@ -11788,7 +11808,7 @@ namespace tfx {
 		}
 
 		if (offset) {
-			Bump(&work_entry->pm->particle_array_buffers[work_entry->current_buffer_index], offset);
+			Bump(buffer, offset);
 		}
 
 
