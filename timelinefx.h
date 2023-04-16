@@ -6541,31 +6541,15 @@ You can then use layer inside the loop to get the current layer
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation so probably not needed here really!
 	struct tfxParticleFrame {
-		tfxVec3 position;
-		tfxVec2 scale;
-		tfxVec2 handle;
-		tfxVec3 rotations;
-		tfxU32 alignment;
+		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
+		tfxU32 captured_index;
+		tfxSpriteTransform3d transform;
+		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
+		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
 		float stretch;
-		tfxU32 image_frame;
-		float depth;
-		void *image_ptr;
-		tfxRGBA8 color;
 		float intensity;
-		tfxU32 alignment_type;
+		float depth;
 	};
-
-	static inline tfxParticleFrame ConvertToParticleFrame(tfxParticleSoA &bank, tfxU32 index, const tfxU32 &billboard_option, void *image_ptr, tfxVec2 &handle) {
-		tfxParticleFrame pf;
-		pf.stretch = bank.velocity_normal_w[index];
-		pf.alignment_type = billboard_option;
-		pf.handle = handle;
-		pf.color = tfxRGBA8(bank.red[index], bank.green[index], bank.blue[index], 0.f);
-		pf.intensity = 1.f;
-		pf.image_ptr = image_ptr;
-		pf.image_frame = (tfxU32)bank.image_frame[index];
-		return pf;
-	}
 
 	struct tfxSpawnWorkEntry {
 		tfxParticleManager *pm;
