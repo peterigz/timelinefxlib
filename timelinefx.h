@@ -6610,6 +6610,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 end_index;
 		tfxU32 wide_end_index;
 		tfxU32 start_diff;
+		bool calculate_depth = false;
 		tfxring<tfxParticleSprite2d> *sprites2d;
 		tfxSprite3dSoA *sprites3d;
 	};

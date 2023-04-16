@@ -6840,6 +6840,7 @@ namespace tfx {
 		//-------------------------------------------------------
 
 		work_entry.sprites3d = &pm.sprites3d[pm.current_sprite_buffer][work_entry.sprite_layer];
+		work_entry.calculate_depth = true;
 
 		if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered3d);
@@ -7775,6 +7776,8 @@ namespace tfx {
 				bank.captured_position_x[index + j] = sprites.transform[running_sprite_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform[running_sprite_index].position.y;
 				bank.captured_position_z[index + j] = sprites.transform[running_sprite_index].position.z;
+				if(work_entry->calculate_depth)
+					bank.depth[index + j] = LengthVec3NoSqR(sprites.transform[running_sprite_index].position - pm.camera_position);
 				running_sprite_index++;
 			}
 			start_diff = 0;
