@@ -6029,7 +6029,7 @@ namespace tfx {
 			pm.effects.matrix[preview_effect_index]
 		);
 
-		/*tfxU32 total_sprites = 0;
+		tfxU32 total_sprites = 0;
 		tfxvec<tfxFrameMeta> tmp_frame_meta;
 		tfxU32 sprites_in_layers = 0;
 		while (frame < frames && offset < 99999) {
@@ -6045,11 +6045,11 @@ namespace tfx {
 						memset(&meta, 0, sizeof(tfxFrameMeta));
 						tmp_frame_meta.push_back(meta);
 					}
-					tmp_frame_meta[frame].sprite_count[layer] += pm.sprites3d[pm.current_sprite_buffer][layer].size();
-					total_sprites += pm.sprites3d[pm.current_sprite_buffer][layer].size();
-					sprites_in_layers += pm.sprites3d[pm.current_sprite_buffer][layer].size();
+					tmp_frame_meta[frame].sprite_count[layer] += pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size;
+					total_sprites += pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size;
+					sprites_in_layers += pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size;
 					particles_started = total_sprites > 0;
-					particles_processed_last_frame |= pm.sprites3d[pm.current_sprite_buffer][layer].size() > 0;
+					particles_processed_last_frame |= pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size > 0;
 				}
 			}
 
@@ -6137,10 +6137,12 @@ namespace tfx {
 		);
 
 		sprite_data->total_sprites = total_sprites;
-		sprite_data->total_memory_for_sprites = total_sprites * sizeof(tfxSprite3dSoA);
-		sprite_data->sprites = (tfxSprite3dSoA*)tfxALLOCATE(0, 0, sprite_data->total_memory_for_sprites);
+		sprite_data->total_memory_for_sprites = total_sprites * sizeof(tfxSprite3d); 
+		InitSpriteData3dSoA(&sprite_data->sprites_buffer, &sprite_data->sprites, total_sprites);
 
-		tfxvec<tfxSprite3dSoA> temp_sprites;
+		tfxSoABuffer temp_sprites_buffer;
+		tfxSpriteData3dSoA temp_sprites;
+		InitSpriteData3dSoA(&temp_sprites_buffer, &temp_sprites, 100);
 		tfxvec<tfxU32> running_count[tfxLAYERS];
 
 		for (tfxEachLayer) {
@@ -6163,37 +6165,57 @@ namespace tfx {
 			bool particles_processed_last_frame = false;
 
 			if (offset >= start_frame) {
-				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-					if (running_count[layer][frame] > 0 && pm.sprites3d[pm.current_sprite_buffer][layer].size() > 0) {
-						temp_sprites.reserve(running_count[layer][frame]);
-						memcpy(temp_sprites.data, sprite_data->sprites + frame_meta[frame].index_offset[layer], sizeof(tfxSprite3dSoA) * running_count[layer][frame]);
-						temp_sprites.current_size = running_count[layer][frame];
+				for (tfxEachLayer) {
+					if (running_count[layer][frame] > 0 && pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size > 0) {
+						Resize(&temp_sprites_buffer, running_count[layer][frame]);
+						memcpy(temp_sprites.alignment, sprite_data->sprites.alignment + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
+						memcpy(temp_sprites.captured_index, sprite_data->sprites.captured_index + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
+						memcpy(temp_sprites.color, sprite_data->sprites.color + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
+						memcpy(temp_sprites.image_frame_plus, sprite_data->sprites.image_frame_plus + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
+						memcpy(temp_sprites.intensity, sprite_data->sprites.intensity + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
+						memcpy(temp_sprites.stretch, sprite_data->sprites.stretch + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
+						memcpy(temp_sprites.transform, sprite_data->sprites.transform + frame_meta[frame].index_offset[layer], sizeof(tfxSpriteTransform3d) * running_count[layer][frame]);
 						if (captured_offset[layer] > 0) {
-							for (auto &s : temp_sprites) {
-								if(s.captured_index != tfxINVALID)
-									s.captured_index += captured_offset[layer];
+							for (int temp_i = 0; temp_i != temp_sprites_buffer.current_size; ++temp_i) {
+								if(pm.current_sprite_buffer != (temp_sprites.captured_index[temp_i] & 0xF0000000) >> 28)
+									temp_sprites.captured_index[temp_i] += captured_offset[layer];
+								else
+									temp_sprites.captured_index[temp_i] = tfxINVALID;
 							}
 						}
 					}
-					else if (captured_offset[layer] > 0 && pm.sprites3d[pm.current_sprite_buffer][layer].size() == 0) {
+					else if (captured_offset[layer] > 0 && pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size == 0) {
 						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
-							tfxSprite3dSoA &s = SpriteDataSprite3d(sprite_data, index);
-							if(s.captured_index != tfxINVALID)
-								SpriteDataSprite3d(sprite_data, index).captured_index += captured_offset[layer];
+							if(pm.current_sprite_buffer != (sprite_data->sprites.captured_index[index] & 0xF0000000) >> 28)
+								sprite_data->sprites.captured_index[index] += captured_offset[layer];
+							else
+								sprite_data->sprites.captured_index[index] = tfxINVALID;
 						}
 					}
-					memcpy(sprite_data->sprites + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].data, sizeof(tfxSprite3dSoA) * pm.sprites3d[pm.current_sprite_buffer][layer].size());
-					if (running_count[layer][frame] > 0 && pm.sprites3d[pm.current_sprite_buffer][layer].size() > 0) {
-						memcpy(sprite_data->sprites + frame_meta[frame].index_offset[layer] + pm.sprites3d[pm.current_sprite_buffer][layer].size(), temp_sprites.data, temp_sprites.size_in_bytes());
-						captured_offset[layer] = pm.sprites3d[pm.current_sprite_buffer][layer].size();
+					memcpy(sprite_data->sprites.alignment + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->sprites.captured_index + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].captured_index, sizeof(tfxU32) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->sprites.color + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].color, sizeof(tfxU32) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->sprites.image_frame_plus + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].image_frame_plus, sizeof(tfxU32) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->sprites.intensity + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].intensity, sizeof(float) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->sprites.stretch + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].stretch, sizeof(float) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->sprites.transform + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].transform, sizeof(tfxSpriteTransform3d) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
+					if (running_count[layer][frame] > 0 && pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size > 0) {
+						memcpy(sprite_data->sprites.alignment + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.alignment, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->sprites.captured_index + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->sprites.color + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.color, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->sprites.image_frame_plus + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.image_frame_plus, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->sprites.intensity + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.intensity, sizeof(float) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->sprites.stretch + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.stretch, sizeof(float) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->sprites.transform + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.transform, sizeof(tfxSpriteTransform3d) * temp_sprites_buffer.current_size);
+						captured_offset[layer] = pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size;
 					}
-					else if (pm.sprites3d[pm.current_sprite_buffer][layer].size() == 0) {
+					else if (pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size == 0) {
 						captured_offset[layer] = 0;
 					}
-					running_count[layer][frame] += pm.sprites3d[pm.current_sprite_buffer][layer].size();
-					total_sprites += pm.sprites3d[pm.current_sprite_buffer][layer].size();
+					running_count[layer][frame] += pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size;
+					total_sprites += pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size;
 					particles_started = total_sprites > 0;
-					particles_processed_last_frame |= pm.sprites3d[pm.current_sprite_buffer][layer].size() > 0;
+					particles_processed_last_frame |= pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size > 0;
 				}
 			}
 
@@ -6216,8 +6238,8 @@ namespace tfx {
 
 		//std::cout << "Total Sprites: " << total_sprites << std::endl;
 
+		FreeSoABuffer(&temp_sprites_buffer);
 		SetUpdateFrequency(update_freq);
-		*/
 		pm.DisableSpawning(false);
 		pm.ForceSingleThreaded(false);
 	}
@@ -8555,6 +8577,7 @@ namespace tfx {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + (sprites_index & 0x0FFFFFFF);
+				//sprites.captured_index[running_sprite_index] = sprites_index == tfxINVALID ? tfxINVALID : (!pm.current_sprite_buffer << 28) + (sprites_index & 0x0FFFFFFF);
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
 				sprites.image_frame_plus[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 			}
