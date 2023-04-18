@@ -5984,6 +5984,17 @@ namespace tfx {
 		}
 	}
 
+	void InvalidateNewSpriteCapturedIndex(tfxParticleManager &pm) {
+		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+			tfxSprite3dSoA &sprites = pm.sprites3d[pm.current_sprite_buffer][layer];
+			for (int i = 0; i != pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size; ++i) {
+				if ((sprites.captured_index[i] & 0xF0000000) >> 28 == pm.current_sprite_buffer) {
+					sprites.captured_index[i] = tfxINVALID;
+				}
+			}
+		}
+	}
+
 	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect) {
 
 	}
@@ -6162,6 +6173,7 @@ namespace tfx {
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
 			pm.Update();
+			InvalidateNewSpriteCapturedIndex(pm);
 			bool particles_processed_last_frame = false;
 
 			if (offset >= start_frame) {
@@ -6177,19 +6189,21 @@ namespace tfx {
 						memcpy(temp_sprites.transform, sprite_data->sprites.transform + frame_meta[frame].index_offset[layer], sizeof(tfxSpriteTransform3d) * running_count[layer][frame]);
 						if (captured_offset[layer] > 0) {
 							for (int temp_i = 0; temp_i != temp_sprites_buffer.current_size; ++temp_i) {
-								if(pm.current_sprite_buffer != (temp_sprites.captured_index[temp_i] & 0xF0000000) >> 28)
+								//if(pm.current_sprite_buffer != (temp_sprites.captured_index[temp_i] & 0xF0000000) >> 28)
+								if(temp_sprites.captured_index[temp_i] != tfxINVALID)
 									temp_sprites.captured_index[temp_i] += captured_offset[layer];
-								else
-									temp_sprites.captured_index[temp_i] = tfxINVALID;
+								//else
+								//	temp_sprites.captured_index[temp_i] = tfxINVALID;
 							}
 						}
 					}
 					else if (captured_offset[layer] > 0 && pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size == 0) {
 						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
-							if(pm.current_sprite_buffer != (sprite_data->sprites.captured_index[index] & 0xF0000000) >> 28)
+							//if(pm.current_sprite_buffer != (sprite_data->sprites.captured_index[index] & 0xF0000000) >> 28)
+							if(temp_sprites.captured_index[index] != tfxINVALID)
 								sprite_data->sprites.captured_index[index] += captured_offset[layer];
-							else
-								sprite_data->sprites.captured_index[index] = tfxINVALID;
+							//else
+								//sprite_data->sprites.captured_index[index] = tfxINVALID;
 						}
 					}
 					memcpy(sprite_data->sprites.alignment + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);

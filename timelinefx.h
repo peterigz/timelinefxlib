@@ -7250,6 +7250,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 CountOfFreeGraphs();
 	};
 
+	void InvalidateNewSpriteCapturedIndex(tfxParticleManager &pm);
 	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect);
 	void RecordSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect);
 
