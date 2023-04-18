@@ -6879,6 +6879,9 @@ You can then use layer inside the loop to get the current layer
 		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
 			return sprites3d[(index & 0xF0000000) >> 28][layer].transform[index & 0x0FFFFFFF];
 		}
+		tfxAPI inline float &GetCapturedSprite3dIntensity(tfxU32 layer, tfxU32 index) {
+			return sprites3d[(index & 0xF0000000) >> 28][layer].intensity[index & 0x0FFFFFFF];
+		}
 
 		//Internal use only
 		int AddComputeController();
@@ -7743,7 +7746,6 @@ You can then use layer inside the loop to get the current layer
 		return tweened;
 	}
 
-	float Interpolatef(float tween, float, float);
 	int ValidateEffectPackage(const char *filename);
 
 	//Get a graph by tfxGraphID
