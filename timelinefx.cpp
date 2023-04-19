@@ -6686,8 +6686,6 @@ namespace tfx {
 						work_entry.sprite_start_index = running_sprite_start_index;
 						work_entry.amount_to_update = particle_array_buffers[layer].current_size;
 						work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size : running_start_index + particles_to_update;
-						if (particles_to_update == 2049)
-							int d = 0;
 						//work_entry.amount_to_update = work_entry.end_index - work_entry.start_index;
 						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], work_entry.start_index);
 						tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
@@ -7290,9 +7288,6 @@ namespace tfx {
 
 		tfxWideArrayi parent_index;
 		tfxWideArrayi emitter_attributes;
-
-		if (work_entry->end_index == 2049)
-			int d = 0;
 
 		//Weight 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
@@ -8556,8 +8551,6 @@ namespace tfx {
 								tfxWideAnd(tfxWideCast(play_once), tfxWideMax(tfxWideMin(image_frame.m, end_frame), tfxWideSetSingle(0.f)))
 							);
 
-			if (i == work_entry->wide_end_index - tfxDataWidth)
-				int d = 0;
 			tfxWideStore(&bank.image_frame[index], image_frame.m);
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
