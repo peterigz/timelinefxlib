@@ -6676,21 +6676,29 @@ namespace tfx {
 				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 					int particles_to_update = particle_array_buffers[layer].current_size;
 					tfxU32 running_start_index = 0;
+					tfxU32 running_sprite_start_index = 0;
 					while (particles_to_update > 0) {
 						tfxControlWorkEntryOrdered &work_entry = work.next();
 						work_entry.pm = this;
 						work_entry.sprite_layer = layer;
 						work_entry.current_buffer_index = layer;
 						work_entry.start_index = running_start_index;
+						work_entry.sprite_start_index = running_sprite_start_index;
+						work_entry.amount_to_update = particle_array_buffers[layer].current_size;
 						work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size : running_start_index + particles_to_update;
-						work_entry.amount_to_update = work_entry.end_index - work_entry.start_index;
+						if (particles_to_update == 2049)
+							int d = 0;
+						//work_entry.amount_to_update = work_entry.end_index - work_entry.start_index;
 						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], work_entry.start_index);
 						tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 						work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
-						work_entry.start_diff = circular_start - block_start_index;
-						work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
-						particles_to_update -= mt_batch_size;
+						work_entry.start_diff = running_start_index == 0 ? circular_start - block_start_index : 0;
+						//work_entry.start_diff = circular_start - block_start_index;
+						tfxU32 additional_updates = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? tfxDataWidth : 0;
 						running_start_index += mt_batch_size;
+						running_sprite_start_index += mt_batch_size - work_entry.start_diff;
+						particles_to_update -= (mt_batch_size - work_entry.start_diff);
+						work_entry.wide_end_index += particles_to_update <= 0 ? additional_updates : 0;
 						if (flags & tfxEffectManagerFlags_3d_effects)
 							ControlParticlesOrdered3d(*this, work_entry);
 						else
@@ -7283,6 +7291,9 @@ namespace tfx {
 		tfxWideArrayi parent_index;
 		tfxWideArrayi emitter_attributes;
 
+		if (work_entry->end_index == 2049)
+			int d = 0;
+
 		//Weight 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
@@ -7535,7 +7546,7 @@ namespace tfx {
 		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->current_buffer_index], i);
+			tfxU32 index = GetCircularIndex(buffer, i);
 			const tfxU32 parent_index = bank.parent_index[index];
 
 			tfxVec3 &e_captured_position = pm.emitters.captured_position[parent_index];
@@ -7617,7 +7628,7 @@ namespace tfx {
 		tfxParticleSoA &bank = pm.particle_arrays[work_entry->current_buffer_index];
 		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
 		tfxLibrary *library = pm.library;
-		tfxU32 running_sprite_index = work_entry->start_index;
+		tfxU32 running_sprite_index = work_entry->sprite_start_index;
 
 		tfxU32 start_diff = work_entry->start_diff;
 
@@ -7649,7 +7660,7 @@ namespace tfx {
 
 			tfxWideStore(&bank.velocity_normal_w[index], tfxWideMul(lookup_stretch, stretch));
 
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->end_index ? work_entry->end_index - running_sprite_index : tfxDataWidth;
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.stretch[running_sprite_index++] = bank.velocity_normal_w[index + j];
 			}
@@ -7665,7 +7676,7 @@ namespace tfx {
 		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
 		tfxLibrary *library = pm.library;
 
-		tfxU32 running_sprite_index = work_entry->start_index;
+		tfxU32 running_sprite_index = work_entry->sprite_start_index;
 
 		const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 		const tfxWideInt relative_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_relative_position);
@@ -7687,6 +7698,9 @@ namespace tfx {
 		tfxWideFloat r0c[3];
 		tfxWideFloat r1c[3];
 		tfxWideFloat r2c[3];
+
+		float temp_distance = 0.f;
+		tfxU32 furthest_sprite = tfxINVALID;
 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
@@ -7800,7 +7814,7 @@ namespace tfx {
 			tfxWideArrayi packed;
 			packed.m = PackWide10bit(alignment_vector_x.m, alignment_vector_y.m, alignment_vector_z.m, tfxWideAndi(billboard_option.m, tfxWideSetSinglei(0x00000003)));
 
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->end_index ? work_entry->end_index - running_sprite_index : tfxDataWidth;
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.stretch[running_sprite_index] = velocity_normal_w.a[j];
 				sprites.transform[running_sprite_index].rotations.x = rotations_x.a[j];
@@ -7809,6 +7823,13 @@ namespace tfx {
 				sprites.transform[running_sprite_index].position.x = position_x.a[j];
 				sprites.transform[running_sprite_index].position.y = position_y.a[j];
 				sprites.transform[running_sprite_index].position.z = position_z.a[j];
+				float distance = LengthVec(tfxVec3(sprites.transform[running_sprite_index].position.x, 
+																		sprites.transform[running_sprite_index].position.y, 
+																		sprites.transform[running_sprite_index].position.z));
+				if (distance > temp_distance) {
+					furthest_sprite = running_sprite_index;
+					temp_distance = distance;
+				}
 				sprites.alignment[running_sprite_index] = packed.a[j];
 				bank.captured_position_x[index + j] = sprites.transform[running_sprite_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform[running_sprite_index].position.y;
@@ -7819,6 +7840,7 @@ namespace tfx {
 			}
 			start_diff = 0;
 		}
+		std::cout << furthest_sprite << std::endl;
 	}
 
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data) {
@@ -8214,7 +8236,7 @@ namespace tfx {
 		tfxWideInt lifetime_uniform_flag = tfxWideSetSinglei(tfxEmitterStateFlags_lifetime_uniform_size);
 		tfxWideInt base_uniform_flag = tfxWideSetSinglei(tfxEmitterStateFlags_base_uniform_size);
 
-		tfxU32 running_sprite_index = work_entry->start_index;
+		tfxU32 running_sprite_index = work_entry->sprite_start_index;
 		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
 		tfxWideArrayi parent_index;
 		tfxWideArrayi emitter_attributes;
@@ -8266,7 +8288,7 @@ namespace tfx {
 			scale_x.m = tfxWideMul(scale_x.m, overal_scale);
 			scale_y.m = tfxWideMul(scale_y.m, overal_scale);
 
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->end_index ? work_entry->end_index - running_sprite_index : tfxDataWidth;
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.transform[running_sprite_index].scale.x = scale_x.a[j];
 				sprites.transform[running_sprite_index++].scale.y = scale_y.a[j];
@@ -8348,7 +8370,7 @@ namespace tfx {
 		tfxLibrary *library = pm.library;
 		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
 
-		tfxU32 running_sprite_index = work_entry->start_index;
+		tfxU32 running_sprite_index = work_entry->sprite_start_index;
 		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
 		tfxWideInt random_color_flag = tfxWideSetSinglei(tfxEmitterStateFlags_random_color);
 
@@ -8406,7 +8428,7 @@ namespace tfx {
 			wide_green.m = tfxWideAdd(tfxWideAnd(tfxWideCast(random_color), tfxWideLoad(&bank.green[index])), tfxWideAnd(tfxWideCast(xor_random_color), tfxWideMul(tfxWIDE255, lookup_green)));
 			wide_blue.m = tfxWideAdd(tfxWideAnd(tfxWideCast(random_color), tfxWideLoad(&bank.blue[index])), tfxWideAnd(tfxWideCast(xor_random_color), tfxWideMul(tfxWIDE255, lookup_blue)));
 
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->end_index ? work_entry->end_index - running_sprite_index : tfxDataWidth;
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.color[running_sprite_index] = tfxRGBA8(wide_red.a[j], wide_green.a[j], wide_blue.a[j], wide_alpha.a[j]);
 				sprites.intensity[running_sprite_index++] = wide_intensity.a[j];
@@ -8503,7 +8525,7 @@ namespace tfx {
 		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
 
 		tfxWideInt play_once_flag = tfxWideSetSinglei(tfxEmitterStateFlags_play_once);
-		tfxU32 running_sprite_index = work_entry->start_index;
+		tfxU32 running_sprite_index = work_entry->sprite_start_index;
 		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
 		tfxU32 start_diff = work_entry->start_diff;
 
@@ -8534,8 +8556,10 @@ namespace tfx {
 								tfxWideAnd(tfxWideCast(play_once), tfxWideMax(tfxWideMin(image_frame.m, end_frame), tfxWideSetSingle(0.f)))
 							);
 
+			if (i == work_entry->wide_end_index - tfxDataWidth)
+				int d = 0;
 			tfxWideStore(&bank.image_frame[index], image_frame.m);
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->end_index ? work_entry->end_index - running_sprite_index : tfxDataWidth;
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];

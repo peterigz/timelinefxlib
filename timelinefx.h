@@ -6614,6 +6614,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 next_buffer_index;
 		tfxU32 amount_to_update;
 		tfxU32 start_index;
+		tfxU32 sprite_start_index;
 		tfxU32 end_index;
 		tfxU32 wide_end_index;
 		tfxU32 start_diff;
