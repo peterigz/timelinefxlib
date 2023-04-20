@@ -7741,7 +7741,8 @@ namespace tfx {
 			captured_position_y.m = tfxWideLoad(&bank.captured_position_y[index]);
 			captured_position_z.m = tfxWideLoad(&bank.captured_position_z[index]);
 			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
-			tfxWideInt capture_flag = tfxWideAndi(flags, capture_after_transform);
+			tfxWideFloat capture_flag = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi()));
+			tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag, tfxWideSetZero());
 			_ReadBarrier();
 
 			r0c[0] = tfxWideLookupSetMember(pm.emitters.matrix, v[0].c0, parent_index);
@@ -7783,6 +7784,12 @@ namespace tfx {
 			rotations_x.m = tfxWideAdd(rotations_x.m, tfxWideAnd(e_world_rotations_x, is_relative_angle_mask));
 			rotations_y.m = tfxWideAdd(rotations_y.m, tfxWideAnd(e_world_rotations_y, is_relative_angle_mask));
 			rotations_z.m = tfxWideAdd(rotations_z.m, tfxWideAnd(e_world_rotations_z, is_relative_angle_mask));
+
+			captured_position_x.m = tfxWideAdd(tfxWideAnd(position_x.m, capture_flag), tfxWideAnd(captured_position_x.m, xor_capture_flag));
+			captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
+			captured_position_z.m = tfxWideAdd(tfxWideAnd(position_z.m, capture_flag), tfxWideAnd(captured_position_z.m, xor_capture_flag));
+
+			flags = tfxWideXOri(flags, capture_after_transform);
 
 			alignment_vector_x.m = tfxWideSub(position_x.m, captured_position_x.m);
 			alignment_vector_y.m = tfxWideAdd(tfxWideSub(position_y.m, captured_position_y.m), tfxWideSetSingle(0.0001f));
@@ -8138,7 +8145,8 @@ namespace tfx {
 			captured_position_y.m = tfxWideLoad(&bank.captured_position_y[index]);
 			captured_position_z.m = tfxWideLoad(&bank.captured_position_z[index]);
 			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
-			tfxWideInt capture_flag = tfxWideAndi(flags, capture_after_transform);
+			tfxWideFloat capture_flag = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi()));
+			tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag, tfxWideSetZero());
 			_ReadBarrier();
 
 			if (property_flags & tfxEmitterPropertyFlags_relative_position || (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine)) {
@@ -8155,6 +8163,12 @@ namespace tfx {
 				rotations_y.m = tfxWideAdd(rotations_y.m, e_world_rotations_y);
 				rotations_z.m = tfxWideAdd(rotations_z.m, e_world_rotations_z);
 			}
+
+			captured_position_x.m = tfxWideAdd(tfxWideAnd(position_x.m, capture_flag), tfxWideAnd(captured_position_x.m, xor_capture_flag));
+			captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
+			captured_position_z.m = tfxWideAdd(tfxWideAnd(position_z.m, capture_flag), tfxWideAnd(captured_position_z.m, xor_capture_flag));
+
+			flags = tfxWideXOri(flags, capture_after_transform);
 
 			tfxWideArray alignment_vector_x;
 			tfxWideArray alignment_vector_y;
@@ -8210,6 +8224,7 @@ namespace tfx {
 				bank.captured_position_z[index + j] = sprites.transform[running_sprite_index].position.z;
 				running_sprite_index++;
 			}
+			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
 			start_diff = 0;
 		}
 	}
