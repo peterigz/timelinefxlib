@@ -7774,9 +7774,12 @@ namespace tfx {
 			position_y.m = tfxWideAdd(position_y.m, tfxWideAnd(e_handle_y, is_relative_mask));
 			position_z.m = tfxWideAdd(position_z.m, tfxWideAnd(e_handle_z, is_relative_mask));
 			mmWideTransformVector(r0c, r1c, r2c, position_x.m, position_y.m, position_z.m, is_relative_mask, xor_is_relative_mask);
-			position_x.m = tfxWideMul(tfxWideAdd(position_x.m, tfxWideAnd(e_world_position_x, is_relative_mask)), tfxWideAdd(tfxWideAnd(tfxWideSetSingle(1.f), xor_is_relative_mask), tfxWideAnd(e_scale_x, is_relative_mask)));
-			position_y.m = tfxWideMul(tfxWideAdd(position_y.m, tfxWideAnd(e_world_position_y, is_relative_mask)), tfxWideAdd(tfxWideAnd(tfxWideSetSingle(1.f), xor_is_relative_mask), tfxWideAnd(e_scale_y, is_relative_mask)));
-			position_z.m = tfxWideMul(tfxWideAdd(position_z.m, tfxWideAnd(e_world_position_z, is_relative_mask)), tfxWideAdd(tfxWideAnd(tfxWideSetSingle(1.f), xor_is_relative_mask), tfxWideAnd(e_scale_z, is_relative_mask)));
+			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, tfxWideAnd(e_scale_x, is_relative_mask)), tfxWideAnd(position_x.m, xor_is_relative_mask));
+			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, tfxWideAnd(e_scale_y, is_relative_mask)), tfxWideAnd(position_y.m, xor_is_relative_mask));
+			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, tfxWideAnd(e_scale_z, is_relative_mask)), tfxWideAnd(position_z.m, xor_is_relative_mask));
+			position_x.m = tfxWideAdd(position_x.m, tfxWideAnd(e_world_position_x, is_relative_mask));
+			position_y.m = tfxWideAdd(position_y.m, tfxWideAnd(e_world_position_y, is_relative_mask));
+			position_z.m = tfxWideAdd(position_z.m, tfxWideAnd(e_world_position_z, is_relative_mask));
 			rotations_x.m = tfxWideAdd(rotations_x.m, tfxWideAnd(e_world_rotations_x, is_relative_angle_mask));
 			rotations_y.m = tfxWideAdd(rotations_y.m, tfxWideAnd(e_world_rotations_y, is_relative_angle_mask));
 			rotations_z.m = tfxWideAdd(rotations_z.m, tfxWideAnd(e_world_rotations_z, is_relative_angle_mask));
@@ -7968,7 +7971,6 @@ namespace tfx {
 		const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
 		const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
 		const tfxWideFloat velocity_adjuster = tfxWideSetSingle(pm.emitters.velocity_adjuster[emitter_index]);
-		const tfxWideFloat overal_scale = tfxWideSetSingle(pm.emitters.overal_scale[emitter_index]);
 		const tfxWideFloat angle_offsets_z = tfxWideSetSingle(pm.emitters.angle_offsets[emitter_index].roll);
 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
@@ -8027,9 +8029,9 @@ namespace tfx {
 			}
 
 			//----Position
-			local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale));
-			local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale));
-			local_position_z = tfxWideAdd(local_position_z, tfxWideMul(current_velocity_z, overal_scale));
+			local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale_wide));
+			local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale_wide));
+			local_position_z = tfxWideAdd(local_position_z, tfxWideMul(current_velocity_z, overal_scale_wide));
 
 			tfxWideStore(&bank.position_x[index], local_position_x);
 			tfxWideStore(&bank.position_y[index], local_position_y);
@@ -8144,9 +8146,9 @@ namespace tfx {
 				position_y.m = tfxWideAdd(position_y.m, e_handle_y);
 				position_z.m = tfxWideAdd(position_z.m, e_handle_z);
 				mmWideTransformVector(e_matrix, position_x.m, position_y.m, position_z.m);
-				position_x.m = tfxWideMul(tfxWideAdd(position_x.m, e_world_position_x), e_scale_x);
-				position_y.m = tfxWideMul(tfxWideAdd(position_y.m, e_world_position_y), e_scale_y);
-				position_z.m = tfxWideMul(tfxWideAdd(position_z.m, e_world_position_z), e_scale_z);
+				position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale_x), e_world_position_x);
+				position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale_y), e_world_position_y);
+				position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale_z), e_world_position_z);
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_relative_angle) {
 				rotations_x.m = tfxWideAdd(rotations_x.m, e_world_rotations_x);
