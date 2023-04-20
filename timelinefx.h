@@ -7835,7 +7835,7 @@ You can then use layer inside the loop to get the current layer
 	* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512
 
 	*/
-	tfxAPI void InitParticleManagerFor3d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+	tfxAPI void InitParticleManagerFor3d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 	/*
 	Initialise a tfxParticleManager for 2d usage
@@ -7852,7 +7852,7 @@ You can then use layer inside the loop to get the current layer
 	* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
 
 	*/
-	tfxAPI void InitParticleManagerFor2d(tfxParticleManager *pm, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+	tfxAPI void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 	/*
 	Enable or disable double buffering of sprites in a particle manager. When double buffered, you can used the previous frame of sprites to interpolated sprites each frame for smoother animation. You can disable it to save memory.

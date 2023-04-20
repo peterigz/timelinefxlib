@@ -7694,9 +7694,6 @@ namespace tfx {
 		tfxWideFloat r1c[3];
 		tfxWideFloat r2c[3];
 
-		float temp_distance = 0.f;
-		tfxU32 furthest_sprite = tfxINVALID;
-
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
 			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
@@ -7821,10 +7818,6 @@ namespace tfx {
 				float distance = LengthVec(tfxVec3(sprites.transform[running_sprite_index].position.x, 
 																		sprites.transform[running_sprite_index].position.y, 
 																		sprites.transform[running_sprite_index].position.z));
-				if (distance > temp_distance) {
-					furthest_sprite = running_sprite_index;
-					temp_distance = distance;
-				}
 				sprites.alignment[running_sprite_index] = packed.a[j];
 				bank.captured_position_x[index + j] = sprites.transform[running_sprite_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform[running_sprite_index].position.y;
@@ -7835,7 +7828,6 @@ namespace tfx {
 			}
 			start_diff = 0;
 		}
-		std::cout << furthest_sprite << std::endl;
 	}
 
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data) {
@@ -8738,9 +8730,12 @@ namespace tfx {
 				tfxParticleSoA lists;
 				tfxU32 index = particle_arrays.locked_push_back(lists);
 				tfxSoABuffer buffer;
+				buffer.resize_callback = tfxResizeParticleSoACallback;
+				buffer.user_data = &particle_arrays.back();
 				particle_array_buffers.push_back(buffer);
 				assert(index == particle_array_buffers.current_size - 1);
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer]);
+				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
 			}
 		}
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
@@ -8748,9 +8743,12 @@ namespace tfx {
 				tfxParticleSoA lists;
 				tfxU32 index = particle_arrays.locked_push_back(lists);
 				tfxSoABuffer buffer;
+				buffer.resize_callback = tfxResizeParticleSoACallback;
+				buffer.user_data = &particle_arrays.back();
 				particle_array_buffers.push_back(buffer);
 				assert(index == particle_array_buffers.current_size - 1);
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer / 2]);
+				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
 			}
 		}
 
@@ -12400,11 +12398,13 @@ namespace tfx {
 
 	void InitParticleManagerFor3d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_allocation, tfxU32 mt_batch_size) {
 		assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
+		pm->SetLibrary(library);
 		pm->InitFor3d(library, layer_max_values, effects_limit, mode, double_buffered_sprites, dynamic_allocation, mt_batch_size);
 	}
 
 	void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_allocation, tfxU32 mt_batch_size) {
 		assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
+		pm->SetLibrary(library);
 		pm->InitFor2d(library, layer_max_values, effects_limit, mode, double_buffered_sprites, dynamic_allocation, mt_batch_size);
 	}
 
