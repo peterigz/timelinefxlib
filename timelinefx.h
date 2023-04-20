@@ -6781,7 +6781,8 @@ You can then use layer inside the loop to get the current layer
 			mt_batch_size(512),
 			current_sprite_buffer(0),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers")),
-			library(NULL)
+			library(NULL),
+			sort_passes(0)
 		{
 			memset(sprite_index_2d, 0, tfxLAYERS * 4);
 			memset(sprite_index_3d, 0, tfxLAYERS * 4);

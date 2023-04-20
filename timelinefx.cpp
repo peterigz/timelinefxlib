@@ -9009,6 +9009,7 @@ namespace tfx {
 		if (pm.free_particle_lists.ValidKey(emitter_hash)) {
 			tfxvec<tfxU32> &free_banks = pm.free_particle_lists.At(emitter_hash);
 			if (free_banks.current_size) {
+				pm.particle_array_buffers[free_banks.back()].current_size = 0;
 				return free_banks.pop_back();
 			}
 		}
