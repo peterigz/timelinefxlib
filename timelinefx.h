@@ -6824,8 +6824,9 @@ You can then use layer inside the loop to get the current layer
 			if (!free_emitters.empty()) {
 				return free_emitters.pop_back();
 			}
-			if (emitter_buffers.current_size == emitter_buffers.capacity)
+			if (emitter_buffers.current_size == emitter_buffers.capacity) {
 				return tfxINVALID;
+			}
 			AddRow(&emitter_buffers);
 			return emitter_buffers.current_size - 1;
 		}
