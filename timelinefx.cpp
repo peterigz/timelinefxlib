@@ -7676,6 +7676,7 @@ namespace tfx {
 		const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 		const tfxWideInt relative_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_relative_position);
 		const tfxWideInt relative_angle_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_relative_angle);
+		const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 
 		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
 
@@ -7789,7 +7790,7 @@ namespace tfx {
 			captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
 			captured_position_z.m = tfxWideAdd(tfxWideAnd(position_z.m, capture_flag), tfxWideAnd(captured_position_z.m, xor_capture_flag));
 
-			flags = tfxWideXOri(flags, capture_after_transform);
+			flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
 
 			alignment_vector_x.m = tfxWideSub(position_x.m, captured_position_x.m);
 			alignment_vector_y.m = tfxWideAdd(tfxWideSub(position_y.m, captured_position_y.m), tfxWideSetSingle(0.0001f));
@@ -8111,6 +8112,7 @@ namespace tfx {
 		const tfxWideFloat e_scale_y = tfxWideSetSingle(pm.emitters.scale[emitter_index].y);
 		const tfxWideFloat e_scale_z = tfxWideSetSingle(pm.emitters.scale[emitter_index].z);
 		const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
+		const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 		tfxMatrix4 &e_matrix = pm.emitters.matrix[emitter_index];
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 		const tfxVectorAlignType vector_align_type = work_entry->properties->vector_align_type[property_index];
@@ -8168,7 +8170,7 @@ namespace tfx {
 			captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
 			captured_position_z.m = tfxWideAdd(tfxWideAnd(position_z.m, capture_flag), tfxWideAnd(captured_position_z.m, xor_capture_flag));
 
-			flags = tfxWideXOri(flags, capture_after_transform);
+			flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
 
 			tfxWideArray alignment_vector_x;
 			tfxWideArray alignment_vector_y;
