@@ -3451,6 +3451,7 @@ namespace tfx {
 		//Animation settings
 		names_and_types.Insert("playback_speed", tfxFloat);
 		names_and_types.Insert("animation_magenta_mask", tfxBool);
+		names_and_types.Insert("animation_magenta_mask_always", tfxBool);
 		names_and_types.Insert("frames", tfxUint);
 		names_and_types.Insert("current_frame", tfxUint);
 		names_and_types.Insert("frame_offset", tfxUint);
