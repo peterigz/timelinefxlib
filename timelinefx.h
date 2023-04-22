@@ -5594,6 +5594,7 @@ You can then use layer inside the loop to get the current layer
 		float max_radius;
 		tfxU32 largest_frame;
 		float playback_speed;
+		float effect_z_offset = 5.f;
 		tfxExportColorOptions color_option;
 		tfxExportOptions export_option;
 		tfxCameraSettings camera_settings;
