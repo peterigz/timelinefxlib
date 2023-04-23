@@ -6372,6 +6372,10 @@ namespace tfx {
 				state_flags |= properties.emission_type[e.property_index] == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 				state_flags |= e.library->emitter_attributes[e.emitter_attributes].overtime.velocity_turbulance.GetMaxValue() > 0 ? tfxEmitterStateFlags_has_noise : 0;
 
+				if (state_flags & tfxEmitterStateFlags_is_line_traversal) {
+					emitters.property_flags[index] |= tfxEmitterPropertyFlags_relative_position;
+				}
+
 				if (is_sub_emitter) {
 					state_flags |= tfxEmitterStateFlags_is_sub_emitter;
 				}
