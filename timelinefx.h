@@ -2617,7 +2617,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 volatile entry_completion_count = 0;
 		tfxU32 volatile next_read_entry = 0;
 		tfxU32 volatile next_write_entry = 0;
-		tfxWorkQueueEntry entries[256];
+		tfxWorkQueueEntry entries[512];
 	};
 
 	struct tfxQueueProcessor {
@@ -2625,7 +2625,7 @@ You can then use layer inside the loop to get the current layer
 		HANDLE empty_semaphore;
 		HANDLE full_semaphore;
 		tfxU32 count;
-		tfxWorkQueue *queues[256];
+		tfxWorkQueue *queues[512];
 	};
 
 	extern tfxQueueProcessor tfxThreadQueues;

@@ -6190,21 +6190,15 @@ namespace tfx {
 						memcpy(temp_sprites.transform, sprite_data->sprites.transform + frame_meta[frame].index_offset[layer], sizeof(tfxSpriteTransform3d) * running_count[layer][frame]);
 						if (captured_offset[layer] > 0) {
 							for (int temp_i = 0; temp_i != temp_sprites_buffer.current_size; ++temp_i) {
-								//if(pm.current_sprite_buffer != (temp_sprites.captured_index[temp_i] & 0xF0000000) >> 28)
 								if(temp_sprites.captured_index[temp_i] != tfxINVALID)
 									temp_sprites.captured_index[temp_i] += captured_offset[layer];
-								//else
-								//	temp_sprites.captured_index[temp_i] = tfxINVALID;
 							}
 						}
 					}
 					else if (captured_offset[layer] > 0 && pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size == 0) {
 						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
-							//if(pm.current_sprite_buffer != (sprite_data->sprites.captured_index[index] & 0xF0000000) >> 28)
-							if(temp_sprites.captured_index[index] != tfxINVALID)
+							if(sprite_data->sprites.captured_index[index] != tfxINVALID)
 								sprite_data->sprites.captured_index[index] += captured_offset[layer];
-							//else
-								//sprite_data->sprites.captured_index[index] = tfxINVALID;
 						}
 					}
 					memcpy(sprite_data->sprites.alignment + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
@@ -6340,6 +6334,7 @@ namespace tfx {
 				emitters.property_flags[index] = e.property_flags;
 				emitters.image_size[index] = properties.image[e.property_index]->image_size;
 				emitters.image_frame_rate[index] = properties.image[e.property_index]->animation_frames > 1 && e.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate[e.property_index] : 0.f;
+				emitters.image_frame_rate[index] = e.property_flags & tfxEmitterPropertyFlags_reverse_animation ? -emitters.image_frame_rate[index] : emitters.image_frame_rate[index];
 				emitters.end_frame[index] = properties.end_frame[e.property_index];
 				emitters.angle_offsets[index] = properties.angle_offsets[e.property_index];
 				emitters.timeout[index] = 100.f;
@@ -8514,6 +8509,7 @@ namespace tfx {
 		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
 
 		tfxWideInt play_once_flag = tfxWideSetSinglei(tfxEmitterStateFlags_play_once);
+		tfxWideInt reverse_animation_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_reverse_animation);
 		tfxU32 running_sprite_index = work_entry->sprite_start_index;
 		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
 		tfxU32 start_diff = work_entry->start_diff;
@@ -8530,20 +8526,20 @@ namespace tfx {
 			property_index.m = tfxWideLookupSeti(pm.emitters.properties_index, parent_index);
 			billboard_option.m = tfxWideLookupSeti(library->emitter_properties.billboard_option, property_index);
 			tfxWideInt emitter_flags = tfxWideLookupSeti(pm.emitters.state_flags, parent_index);
-			tfxWideInt play_once = tfxWideGreateri(tfxWideAndi(emitter_flags, play_once_flag), tfxWideSetSinglei(0));
-			tfxWideInt xor_play_once = tfxWideXOri(play_once, tfxWideSetSinglei(-1));
+			tfxWideInt property_flags = tfxWideLookupSeti(pm.emitters.property_flags, parent_index);
+			tfxWideFloat play_once = tfxWideCast(tfxWideGreateri(tfxWideAndi(emitter_flags, play_once_flag), tfxWideSetSinglei(0)));
+			tfxWideFloat xor_play_once = tfxWideEquals(play_once, tfxWideSetZero());
 			tfxWideFloat image_frame_rate = tfxWideLookupSet(pm.emitters.image_frame_rate, parent_index);
 			image_frame_rate = tfxWideMul(image_frame_rate, tfxUPDATE_TIME_WIDE);
 			const tfxWideFloat end_frame = tfxWideLookupSet(pm.emitters.end_frame, parent_index);
-			const tfxWideFloat frames = tfxWideAdd(end_frame, tfxWideSetSingle(1.f));
+			const tfxWideFloat frames =  tfxWideAdd(end_frame, tfxWideSetSingle(1.f));
 			image_frame.m = tfxWideLoad(&bank.image_frame[index]);
 
 			//----Image animation
 			image_frame.m = tfxWideAdd(image_frame.m, image_frame_rate);
-			image_frame.m = tfxWideAdd(
-								tfxWideAnd(tfxWideCast(xor_play_once), tfxWideSub(image_frame.m, tfxWideAnd(tfxWideGreater(image_frame.m, frames), frames))), 
-								tfxWideAnd(tfxWideCast(play_once), tfxWideMax(tfxWideMin(image_frame.m, end_frame), tfxWideSetSingle(0.f)))
-							);
+			image_frame.m = tfxWideAdd(tfxWideAnd(xor_play_once, image_frame.m), tfxWideAnd(play_once, tfxWideMax(tfxWideMin(image_frame.m, end_frame), tfxWideSetSingle(0.f))));
+			image_frame.m = tfxWideSub(image_frame.m, tfxWideAnd(tfxWideGreater(image_frame.m, frames), frames));
+			image_frame.m = tfxWideAdd(image_frame.m, tfxWideAnd(tfxWideLess(image_frame.m, tfxWideSetZero()), frames));
 
 			tfxWideStore(&bank.image_frame[index], image_frame.m);
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
@@ -8578,6 +8574,7 @@ namespace tfx {
 		tfxWideFloat end_frame = tfxWideSetSingle(pm.emitters.end_frame[emitter_index]);
 		tfxWideFloat frames = tfxWideSetSingle(pm.emitters.end_frame[emitter_index] + 1);
 		tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
+		tfxEmitterStateFlags property_flags = pm.emitters.property_flags[emitter_index];
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
 		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
@@ -8592,6 +8589,10 @@ namespace tfx {
 			if (emitter_flags & tfxEmitterStateFlags_play_once) {
 				image_frame = tfxWideMin(image_frame, end_frame);
 				image_frame = tfxWideMax(image_frame, tfxWideSetZero());
+			}
+			else if(property_flags & tfxEmitterPropertyFlags_reverse_animation) {
+				tfxWideFloat mask = tfxWideLess(image_frame, tfxWideSetZero());
+				image_frame = tfxWideAdd(image_frame, tfxWideAnd(mask, frames));
 			}
 			else {
 				tfxWideFloat mask = tfxWideGreater(image_frame, frames);
