@@ -6351,26 +6351,23 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	struct tfxSpriteTransform2d {
-		tfxVec2 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
+		tfxVec2 position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
 		tfxVec2 captured_position;
-		tfxVec2 scale;				//Scale
+		tfxVec2 scale;						//Scale
 		float rotation;
 	};
 
-	struct tfxParticleSprite2d {	//56 bytes
-		tfxU32 image_frame;			//The image image of animation index. Set to tfxINVALID when the particle expires
-		void *image_ptr;
+	struct tfxParticleSprite2d {			//40 bytes
+		tfxU32 image_frame_plus;			//The image image of animation index. Set to tfxINVALID when the particle expires
 		tfxSpriteTransform2d transform;
-		tfxVec2 handle;				//Image handle offset of the sprite
-		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
+		tfxRGBA8 color;						//The color tint of the sprite and blend factor in a
 		float intensity;
 	};
 
 	struct tfxSpriteTransform3d {
-		tfxVec3 position;			//The position of the sprite, x, y - world, z, w = captured for interpolating
-		//tfxVec3 captured_position;	//For interpolation
-		tfxVec3 rotations;			//Rotations of the sprite
-		tfxVec2 scale;				//Scale
+		tfxVec3 position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
+		tfxVec3 rotations;					//Rotations of the sprite
+		tfxVec2 scale;						//Scale
 	};
 
 	//When exporting effects as sprite data each frame gets frame meta containing information about the frame such as bounding box and sprite count/offset into the buffer

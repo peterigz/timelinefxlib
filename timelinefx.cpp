@@ -7231,7 +7231,6 @@ namespace tfx {
 
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
 			s.transform.scale = scale * overal_scale;
-			s.handle = image_handle;
 		}
 	}
 
@@ -7310,8 +7309,7 @@ namespace tfx {
 			image_frame = (emitter_flags & tfxEmitterStateFlags_play_once) && image_frame < 0 ? image_frame = 0 : image_frame;
 			image_frame = std::fmodf(image_frame, end_frame + 1);
 
-			s.image_frame = (tfxU32)image_frame;
-			s.image_ptr = image->ptr;
+			s.image_frame_plus = ((tfxU32)image_frame << 16) + property_index;
 		}
 
 	}
@@ -12103,7 +12101,6 @@ namespace tfx {
 
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
 			s.transform.scale = scale * overal_scale;
-			s.handle = image_handle;
 		}
 
 	}
@@ -12186,8 +12183,7 @@ namespace tfx {
 			image_frame = (emitter_flags & tfxEmitterStateFlags_play_once) && image_frame < 0 ? image_frame = 0 : image_frame;
 			image_frame = std::fmodf(image_frame, end_frame + 1);
 
-			s.image_frame = (tfxU32)image_frame;
-			s.image_ptr = image->ptr;
+			s.image_frame_plus = ((tfxU32)image_frame << 16) + property_index;
 		}
 
 	}
