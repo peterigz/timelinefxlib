@@ -3872,11 +3872,11 @@ namespace tfx {
 		if (field == "export_with_transparency")
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
 		if (field == "camera_isometric")
-			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings.camera_isometric = value;
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings.camera_isometric = false;
 		if (field == "camera_hide_floor")
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings.camera_hide_floor = value;
 		if (field == "orthographic_camera_isometric")
-			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric = value;
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric = true;
 		if (field == "orthographic_camera_hide_floor")
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_hide_floor = value;
 		if (field == "preview_attach_effect_to_camera")
