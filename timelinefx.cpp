@@ -7045,8 +7045,6 @@ namespace tfx {
 			float &weight_acceleration = bank.weight_acceleration[index];
 			float &local_position_x = bank.position_x[index];
 			float &local_position_y = bank.position_y[index];
-			float &captured_position_x = bank.captured_position_x[index];
-			float &captured_position_y = bank.captured_position_y[index];
 			float &roll = bank.local_rotations_z[index];
 			tfxParticleFlags &flags = bank.flags[index];
 
@@ -7173,7 +7171,7 @@ namespace tfx {
 				transform_particle_callback2d(local_position_x, local_position_y, roll, s.transform.position, s.transform.rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
 			}
 			s.transform.captured_position.x = captured_position_x;
-			s.transform.captured_position.x = captured_position_y;
+			s.transform.captured_position.y = captured_position_y;
 			captured_position_x = s.transform.position.x;
 			captured_position_y = s.transform.position.y;
 
