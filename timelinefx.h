@@ -6479,24 +6479,6 @@ You can then use layer inside the loop to get the current layer
 #endif
 	}
 
-	struct tfxSIMDSprite3d {			//60 bytes
-		tfxWideInt image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
-		tfxWideInt captured_index;
-		tfxWideInt alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-		tfxWideInt color;				//The color tint of the sprite and blend factor in a
-		tfxWideFloat stretch;
-		tfxWideFloat intensity;
-		tfxWideVec3 position;
-		tfxWideVec3 rotations;
-		tfxWideVec2 scale;
-		tfxWideInt captured_color;
-		tfxWideFloat captured_stretch;
-		tfxWideFloat captured_intensity;
-		tfxWideVec3 captured_position;
-		tfxWideVec3 captured_rotations;
-		tfxWideVec2 captured_scale;
-	};
-
 	struct tfxSpriteData {
 		tfxU32 frame_count;
 		float frame_compression;
