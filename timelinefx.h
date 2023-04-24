@@ -901,7 +901,8 @@ You can then use layer inside the loop to get the current layer
 		tfxAnimationFlags_seamless = 1 << 1,
 		tfxAnimationFlags_needs_recording = 1 << 2,
 		tfxAnimationFlags_export_with_transparency = 1 << 3,
-		tfxAnimationFlags_auto_set_length = 1 << 4
+		tfxAnimationFlags_auto_set_length = 1 << 4,
+		tfxAnimationFlags_orthographic = 1 << 5
 	};
 
 	//-----------------------------------------------------------
@@ -5598,6 +5599,7 @@ You can then use layer inside the loop to get the current layer
 		tfxExportColorOptions color_option;
 		tfxExportOptions export_option;
 		tfxCameraSettings camera_settings;
+		tfxCameraSettings camera_settings_orthographic;
 	};
 
 	//This struct has the settings for recording sprite data frames so that they can be played back as an alternative to dynamic particle updating

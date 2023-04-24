@@ -2813,6 +2813,14 @@ namespace tfx {
 		a.camera_settings.camera_isometric = false;
 		a.camera_settings.camera_isometric_scale = 5.f;
 		a.camera_settings.camera_hide_floor = false;
+		a.camera_settings_orthographic.camera_floor_height = -10.f;
+		a.camera_settings_orthographic.camera_fov = tfxRadians(60);
+		a.camera_settings_orthographic.camera_pitch = tfxRadians(-30.f);
+		a.camera_settings_orthographic.camera_yaw = tfxRadians(-90.f);
+		a.camera_settings_orthographic.camera_position = tfxVec3(0.f, 3.5f, 7.5f);
+		a.camera_settings_orthographic.camera_isometric = true;
+		a.camera_settings_orthographic.camera_isometric_scale = 5.f;
+		a.camera_settings_orthographic.camera_hide_floor = false;
 		sprite_sheet_settings.push_back(a);
 		effect.GetInfo().sprite_sheet_settings_index = sprite_sheet_settings.size() - 1;
 		return effect.GetInfo().sprite_sheet_settings_index;
@@ -3489,6 +3497,18 @@ namespace tfx {
 		names_and_types.Insert("camera_hide_floor", tfxBool);
 		names_and_types.Insert("camera_free_speed", tfxFloat);
 		names_and_types.Insert("camera_ray_offset", tfxFloat);
+		names_and_types.Insert("orthographic_camera_position_x", tfxFloat);
+		names_and_types.Insert("orthographic_camera_position_y", tfxFloat);
+		names_and_types.Insert("orthographic_camera_position_z", tfxFloat);
+		names_and_types.Insert("orthographic_camera_pitch", tfxFloat);
+		names_and_types.Insert("orthographic_camera_yaw", tfxFloat);
+		names_and_types.Insert("orthographic_camera_fov", tfxFloat);
+		names_and_types.Insert("orthographic_camera_floor_height", tfxFloat);
+		names_and_types.Insert("orthographic_camera_isometric", tfxBool);
+		names_and_types.Insert("orthographic_camera_isometric_scale", tfxFloat);
+		names_and_types.Insert("orthographic_camera_hide_floor", tfxBool);
+		names_and_types.Insert("orthographic_camera_free_speed", tfxFloat);
+		names_and_types.Insert("orthographic_camera_ray_offset", tfxFloat);
 		names_and_types.Insert("preview_camera_position_x", tfxFloat);
 		names_and_types.Insert("preview_camera_position_y", tfxFloat);
 		names_and_types.Insert("preview_camera_position_z", tfxFloat);
@@ -3771,6 +3791,22 @@ namespace tfx {
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings.camera_floor_height = value;
 		if (field == "camera_isometric_scale")
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings.camera_isometric_scale = value;
+		if (field == "orthographic_camera_position_x")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_position.x = value;
+		if (field == "orthographic_camera_position_y")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_position.y = value;
+		if (field == "orthographic_camera_position_z")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_position.z = value;
+		if (field == "orthographic_camera_pitch")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_pitch = value;
+		if (field == "orthographic_camera_yaw")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_yaw = value;
+		if (field == "orthographic_camera_fov")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_fov = value;
+		if (field == "orthographic_camera_floor_height")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_floor_height = value;
+		if (field == "orthographic_camera_isometric_scale")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric_scale = value;
 		if (field == "preview_camera_position_x")
 			effect.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].camera_settings.camera_position.x = value;
 		if (field == "preview_camera_position_y")
@@ -3839,6 +3875,10 @@ namespace tfx {
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings.camera_isometric = value;
 		if (field == "camera_hide_floor")
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings.camera_hide_floor = value;
+		if (field == "orthographic_camera_isometric")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric = value;
+		if (field == "orthographic_camera_hide_floor")
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].camera_settings_orthographic.camera_hide_floor = value;
 		if (field == "preview_attach_effect_to_camera")
 			effect.library->preview_camera_settings[effect.GetInfo().preview_camera_settings].attach_effect_to_camera = value;
 		if (field == "preview_camera_hide_floor")
