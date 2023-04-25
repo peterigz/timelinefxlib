@@ -9482,7 +9482,7 @@ namespace tfx {
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSpin2d);
 			}
 		}
-		else if (!(state_flags & tfxEffectManagerFlags_update_age_only)) {
+		else if (!(pm.flags & tfxEffectManagerFlags_update_age_only)) {
 			if (work_entry.amount_to_spawn > 0) {
 				work_entry.end_index = work_entry.amount_to_spawn;
 				if (emission_type == tfxPoint) {
