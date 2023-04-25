@@ -6958,6 +6958,18 @@ You can then use layer inside the loop to get the current layer
 		}
 	};
 
+	inline void DumpSprites(tfxParticleManager &pm, tfxU32 layer) {
+		for (int i = 0; i != pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size; ++i) {
+			printf("%i:\t%f\t%f\t%f\t%u\n",
+				i,
+				pm.sprites3d[pm.current_sprite_buffer][layer].transform[i].position.x,
+				pm.sprites3d[pm.current_sprite_buffer][layer].transform[i].position.y,
+				pm.sprites3d[pm.current_sprite_buffer][layer].transform[i].position.z,
+				pm.sprites3d[pm.current_sprite_buffer][layer].image_frame_plus[i]
+			);
+		}
+	}
+
 	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 	void StopSpawning(tfxParticleManager &pm);

@@ -4700,7 +4700,8 @@ namespace tfx {
 			AddNode(0.f, v);
 		switch (preset) {
 		case tfxGraphPreset::tfxGlobalPercentPreset:
-			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 20.f };
+			//We have a epsilon to prevent divide by 0 here
+			min = { 0.f, 0.0001f }; max = { tfxMAX_FRAME, 20.f };
 			break;
 		case tfxGraphPreset::tfxGlobalOpacityPreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 1.f };
@@ -4724,7 +4725,8 @@ namespace tfx {
 			min = { 0.f, -4000.f }; max = { tfxMAX_FRAME, 4000.f };
 			break;
 		case tfxGraphPreset::tfxLifePreset:
-			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 100000.f };
+			//We have a epsilon to prevent divide by 0 here. The divide by zero occurrs in control functions (ControlParticleImageFrame3d etc.) when the current % life of the particle is calculated
+			min = { 0.f, 0.0001f }; max = { tfxMAX_FRAME, 100000.f };
 			break;
 		case tfxGraphPreset::tfxAmountPreset:
 			min = { 0.f, 0.f }; max = { tfxMAX_FRAME, 5000.f };
@@ -6061,7 +6063,7 @@ namespace tfx {
 		}
 
 		//First pass to count the number of sprites in each frame
-		pm.UpdateAgeOnly(false);
+		//pm.UpdateAgeOnly(false);
 		pm.ForceSingleThreaded(true);
 
 		pm.ClearAll();
@@ -6169,7 +6171,7 @@ namespace tfx {
 			//std::cout << meta.index_offset[0] << ", " << meta.sprite_count[0] << std::endl;
 		//}
 
-		pm.UpdateAgeOnly(false);
+		//pm.UpdateAgeOnly(false);
 
 		pm.ClearAll();
 		effect.ReSeed(anim.seed);
@@ -6726,12 +6728,10 @@ namespace tfx {
 						work_entry.sprite_start_index = running_sprite_start_index;
 						work_entry.amount_to_update = particle_array_buffers[layer].current_size;
 						work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size : running_start_index + particles_to_update;
-						//work_entry.amount_to_update = work_entry.end_index - work_entry.start_index;
 						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], work_entry.start_index);
 						tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 						work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
 						work_entry.start_diff = running_start_index == 0 ? circular_start - block_start_index : 0;
-						//work_entry.start_diff = circular_start - block_start_index;
 						tfxU32 additional_updates = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? tfxDataWidth : 0;
 						running_start_index += mt_batch_size;
 						running_sprite_start_index += mt_batch_size - work_entry.start_diff;
@@ -6809,21 +6809,25 @@ namespace tfx {
 					int particles_to_update = particle_array_buffers[current_buffer_index].current_size;
 					sprites3d_buffer[current_sprite_buffer][layer].current_size = particles_to_update;
 					tfxU32 running_start_index = 0;
+					tfxU32 running_sprite_start_index = 0;
 					while (particles_to_update > 0) {
 						tfxControlWorkEntryOrdered &work_entry = work.next();
 						work_entry.pm = this;
 						work_entry.sprite_layer = layer;
 						work_entry.current_buffer_index = current_buffer_index;
 						work_entry.start_index = running_start_index;
+						work_entry.sprite_start_index = running_sprite_start_index;
 						work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size : running_start_index + particles_to_update;
-						work_entry.amount_to_update = work_entry.end_index - work_entry.start_index;
-						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], work_entry.start_index);
+						work_entry.amount_to_update = particle_array_buffers[current_buffer_index].current_size;
+						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[current_buffer_index], work_entry.start_index);
 						tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 						work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
-						work_entry.start_diff = circular_start - block_start_index;
-						work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
-						particles_to_update -= mt_batch_size;
+						work_entry.start_diff = running_start_index == 0 ? circular_start - block_start_index : 0;
+						tfxU32 additional_updates = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? tfxDataWidth : 0;
 						running_start_index += mt_batch_size;
+						running_sprite_start_index += mt_batch_size - work_entry.start_diff;
+						particles_to_update -= (mt_batch_size - work_entry.start_diff);
+						work_entry.wide_end_index += particles_to_update <= 0 ? additional_updates : 0;
 						ControlParticlesOrdered3d(*this, work_entry);
 					}
 				}
@@ -6866,6 +6870,7 @@ namespace tfx {
 						}
 					}
 				}
+
 			}
 		}
 
@@ -9450,7 +9455,6 @@ namespace tfx {
 		if (!(pm.flags & tfxEffectManagerFlags_update_age_only) && tfxNumberOfThreadsInAdditionToMain) {
 			if (work_entry.amount_to_spawn > 0) {
 				work_entry.end_index = work_entry.amount_to_spawn;
-				//tfxBumpCompletionCount(&pm.work_queue);
 				if (emission_type == tfxPoint) {
 					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint2d);
 				}
@@ -9479,28 +9483,30 @@ namespace tfx {
 			}
 		}
 		else if (!(state_flags & tfxEffectManagerFlags_update_age_only)) {
-			SpawnParticleAge(&pm.work_queue, &work_entry);
-
-			if (emission_type == tfxPoint) {
-				SpawnParticlePoint2d(&pm.work_queue, &work_entry);
+			if (work_entry.amount_to_spawn > 0) {
+				work_entry.end_index = work_entry.amount_to_spawn;
+				if (emission_type == tfxPoint) {
+					SpawnParticlePoint2d(&pm.work_queue, &work_entry);
+				}
+				else if (emission_type == tfxArea) {
+					SpawnParticleArea2d(&pm.work_queue, &work_entry);
+				}
+				else if (emission_type == tfxEllipse) {
+					SpawnParticleEllipse2d(&pm.work_queue, &work_entry);
+				}
+				else if (emission_type == tfxLine) {
+					SpawnParticleLine2d(&pm.work_queue, &work_entry);
+				}
+				SpawnParticleWeight(&pm.work_queue, &work_entry);
+				SpawnParticleVelocity(&pm.work_queue, &work_entry);
+				SpawnParticleRoll(&pm.work_queue, &work_entry);
+				SpawnParticleMicroUpdate2d(&pm.work_queue, &work_entry);
+				SpawnParticleAge(&pm.work_queue, &work_entry);
+				SpawnParticleNoise(&pm.work_queue, &work_entry);
+				SpawnParticleImageFrame(&pm.work_queue, &work_entry);
+				SpawnParticleSize2d(&pm.work_queue, &work_entry);
+				SpawnParticleSpin2d(&pm.work_queue, &work_entry);
 			}
-			else if (emission_type == tfxArea) {
-				SpawnParticleArea2d(&pm.work_queue, &work_entry);
-			}
-			else if (emission_type == tfxEllipse) {
-				SpawnParticleEllipse2d(&pm.work_queue, &work_entry);
-			}
-			else if (emission_type == tfxLine) {
-				SpawnParticleLine2d(&pm.work_queue, &work_entry);
-			}
-			SpawnParticleWeight(&pm.work_queue, &work_entry);
-			SpawnParticleVelocity(&pm.work_queue, &work_entry);
-			SpawnParticleRoll(&pm.work_queue, &work_entry);
-			SpawnParticleMicroUpdate2d(&pm.work_queue, &work_entry);
-			SpawnParticleNoise(&pm.work_queue, &work_entry);
-			SpawnParticleImageFrame(&pm.work_queue, &work_entry);
-			SpawnParticleSize2d(&pm.work_queue, &work_entry);
-			SpawnParticleSpin2d(&pm.work_queue, &work_entry);
 		}
 		else {
 			SpawnParticleAge(&pm.work_queue, &work_entry);
