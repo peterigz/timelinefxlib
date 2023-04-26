@@ -6338,9 +6338,6 @@ You can then use layer inside the loop to get the current layer
 		float *local_rotations_x;
 		float *local_rotations_y;
 		float *local_rotations_z;
-		float *noise_x;
-		float *noise_y;
-		float *noise_z;
 		float *velocity_normal_x;
 		float *velocity_normal_y;
 		float *velocity_normal_z;
@@ -6373,9 +6370,6 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_y));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_z));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_x));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_y));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_z));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_y));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_z));
