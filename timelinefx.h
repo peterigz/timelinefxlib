@@ -6237,7 +6237,6 @@ You can then use layer inside the loop to get the current layer
 		float velocity_normal_z;
 		float velocity_normal_w;
 		float depth;
-		float stretch;
 		float weight_acceleration;
 		float base_weight;
 		float base_velocity;
@@ -6248,7 +6247,6 @@ You can then use layer inside the loop to get the current layer
 		float green;
 		float blue;
 		float alpha;
-		float intensity;
 		float image_frame;
 		float base_size_x;
 		float base_size_y;
@@ -6293,7 +6291,6 @@ You can then use layer inside the loop to get the current layer
 		float *velocity_normal_z;
 		float *velocity_normal_w;
 		float *depth;
-		float *stretch;
 		float *weight_acceleration;
 		float *base_weight;
 		float *base_velocity;
@@ -6333,7 +6330,6 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_z));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_w));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, depth));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, stretch));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, weight_acceleration));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_velocity));
@@ -6912,7 +6908,6 @@ You can then use layer inside the loop to get the current layer
 			to_bank.velocity_normal_z[index] = from_bank.velocity_normal_z[other_index];
 			to_bank.velocity_normal_w[index] = from_bank.velocity_normal_w[other_index];
 			to_bank.depth[index] = from_bank.depth[other_index];
-			to_bank.stretch[index] = from_bank.stretch[other_index];
 			to_bank.weight_acceleration[index] = from_bank.weight_acceleration[other_index];
 			to_bank.base_weight[index] = from_bank.base_weight[other_index];
 			to_bank.base_velocity[index] = from_bank.base_velocity[other_index];
@@ -7551,7 +7546,6 @@ You can then use layer inside the loop to get the current layer
 		std::swap(particles.velocity_normal_y[from], particles.velocity_normal_y[to]);
 		std::swap(particles.velocity_normal_z[from], particles.velocity_normal_z[to]);
 		std::swap(particles.velocity_normal_w[from], particles.velocity_normal_w[to]);
-		std::swap(particles.stretch[from], particles.stretch[to]);
 		std::swap(particles.weight_acceleration[from], particles.weight_acceleration[to]);
 		std::swap(particles.base_weight[from], particles.base_weight[to]);
 		std::swap(particles.base_velocity[from], particles.base_velocity[to]);
@@ -7588,7 +7582,6 @@ You can then use layer inside the loop to get the current layer
 		temp.velocity_normal_y = particles.velocity_normal_y[from];
 		temp.velocity_normal_z = particles.velocity_normal_z[from];
 		temp.velocity_normal_w = particles.velocity_normal_w[from];
-		temp.stretch = particles.stretch[from];
 		temp.weight_acceleration = particles.weight_acceleration[from];
 		temp.base_weight = particles.base_weight[from];
 		temp.base_velocity = particles.base_velocity[from];
@@ -7625,7 +7618,6 @@ You can then use layer inside the loop to get the current layer
 		particles.velocity_normal_y[from] = temp.velocity_normal_y;
 		particles.velocity_normal_z[from] = temp.velocity_normal_z;
 		particles.velocity_normal_w[from] = temp.velocity_normal_w;
-		particles.stretch[from] = temp.stretch;
 		particles.weight_acceleration[from] = temp.weight_acceleration;
 		particles.base_weight[from] = temp.base_weight;
 		particles.base_velocity[from] = temp.base_velocity;
