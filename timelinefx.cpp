@@ -7480,56 +7480,8 @@ namespace tfx {
 			tfxWideStore(&bank.position_y[index], local_position_y);
 		}
 
-		ControlParticleStretchOrdered3d(queue, data);
 		ControlParticleTransformOrdered3d(queue, data);
 
-	}
-
-	void ControlParticleStretchOrdered3d(tfxWorkQueue *queue, void *data) {
-		tfxPROFILE;
-		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
-		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = pm.particle_arrays[work_entry->current_buffer_index];
-		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
-		tfxLibrary *library = pm.library;
-		tfxU32 running_sprite_index = work_entry->sprite_start_index;
-
-		tfxU32 start_diff = work_entry->start_diff;
-
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
-		tfxWideArrayi parent_index;
-		tfxWideArrayi emitter_attributes;
-
-		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
-			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
-			emitter_attributes.m = tfxWideLookupSeti(pm.emitters.emitter_attributes, parent_index);
-
-			const tfxWideInt stretch_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.stretch.lookup.last_frame, emitter_attributes);
-			const tfxWideInt width_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.width.lookup.last_frame, emitter_attributes);
-			const tfxWideInt height_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.height.lookup.last_frame, emitter_attributes);
-			const tfxWideFloat stretch = tfxWideLookupSet(pm.emitters.stretch, parent_index);
-
-			const tfxWideFloat max_life = tfxWideLookupSetMember(library->emitter_attributes, overtime.velocity.lookup.life, emitter_attributes);
-			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
-			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			_ReadBarrier();
-			tfxWideFloat life = tfxWideDiv(age, max_age);
-			life = tfxWideMul(life, max_life);
-			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
-
-			tfxWideArrayi lookup_frame;
-			lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
-			const tfxWideFloat lookup_stretch = tfxWideLookupSet2(library->emitter_attributes, overtime.stretch.lookup.values, emitter_attributes, lookup_frame);
-
-			tfxWideStore(&bank.velocity_normal_w[index], tfxWideMul(lookup_stretch, stretch));
-
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.stretch[running_sprite_index++] = bank.velocity_normal_w[index + j];
-			}
-			start_diff = 0;
-		}
 	}
 
 	void ControlParticleTransformOrdered3d(tfxWorkQueue *queue, void *data) {
@@ -7551,6 +7503,7 @@ namespace tfx {
 
 		tfxU32 start_diff = work_entry->start_diff;
 		tfxWideArrayi parent_index;
+		tfxWideArrayi emitter_attributes;
 		tfxWideArrayi property_index;
 		tfxWideInt property_flags;
 		tfxWideInt vector_align_type;
@@ -7559,6 +7512,7 @@ namespace tfx {
 		tfxWideArray alignment_vector_x;
 		tfxWideArray alignment_vector_y;
 		tfxWideArray alignment_vector_z;
+		tfxWideArray p_stretch;
 
 		tfxWideFloat r0c[3];
 		tfxWideFloat r1c[3];
@@ -7567,6 +7521,21 @@ namespace tfx {
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
 			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
+			emitter_attributes.m = tfxWideLookupSeti(pm.emitters.emitter_attributes, parent_index);
+
+			const tfxWideInt stretch_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.stretch.lookup.last_frame, emitter_attributes);
+			const tfxWideFloat max_life = tfxWideLookupSetMember(library->emitter_attributes, overtime.velocity.lookup.life, emitter_attributes);
+			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+			_ReadBarrier();
+			tfxWideFloat life = tfxWideDiv(age, max_age);
+			life = tfxWideMul(life, max_life);
+			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+			tfxWideArrayi lookup_frame;
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
+			const tfxWideFloat lookup_stretch = tfxWideLookupSet2(library->emitter_attributes, overtime.stretch.lookup.values, emitter_attributes, lookup_frame);
+			const tfxWideFloat stretch = tfxWideLookupSet(pm.emitters.stretch, parent_index);
+			p_stretch.m = tfxWideMul(lookup_stretch, stretch);
 
 			const tfxWideFloat e_world_position_x = tfxWideLookupSetMember(pm.emitters.world_position, x, parent_index);
 			const tfxWideFloat e_world_position_y = tfxWideLookupSetMember(pm.emitters.world_position, y, parent_index);
@@ -7602,8 +7571,6 @@ namespace tfx {
 			const tfxWideFloat velocity_normal_x = tfxWideLoad(&bank.velocity_normal_x[index]);
 			const tfxWideFloat velocity_normal_y = tfxWideLoad(&bank.velocity_normal_y[index]);
 			const tfxWideFloat velocity_normal_z = tfxWideLoad(&bank.velocity_normal_z[index]);
-			tfxWideArray velocity_normal_w;
-			velocity_normal_w.m = tfxWideLoad(&bank.velocity_normal_w[index]);
 			tfxWideArray captured_position_x;
 			tfxWideArray captured_position_y;
 			tfxWideArray captured_position_z;
@@ -7668,7 +7635,7 @@ namespace tfx {
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_y.m, alignment_vector_y.m));
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_z.m, alignment_vector_z.m));
 			l = tfxWideSqrt(l);
-			velocity_normal_w.m =  tfxWideAdd(tfxWideAnd(velocity_normal_w.m, xor_is_align_type_motion), tfxWideAnd(tfxWideMul(velocity_normal_w.m, tfxWideMul(l, tfxWideSetSingle(10.f))), is_align_type_motion));	//This is too arbitrary, think up a better solution!
+			p_stretch.m =  tfxWideAdd(tfxWideAnd(tfxWideSetZero(), xor_is_align_type_motion), tfxWideAnd(tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(10.f))), is_align_type_motion));	//This is too arbitrary, think up a better solution!
 			alignment_vector_x.m = tfxWideDiv(alignment_vector_x.m, l);
 			alignment_vector_y.m = tfxWideDiv(alignment_vector_y.m, l);
 			alignment_vector_z.m = tfxWideDiv(alignment_vector_z.m, l);
@@ -7688,7 +7655,7 @@ namespace tfx {
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.stretch[running_sprite_index] = velocity_normal_w.a[j];
+				sprites.stretch[running_sprite_index] = p_stretch.a[j];
 				sprites.transform[running_sprite_index].rotations.x = rotations_x.a[j];
 				sprites.transform[running_sprite_index].rotations.y = rotations_y.a[j];
 				sprites.transform[running_sprite_index].rotations.z = rotations_z.a[j];
@@ -7944,7 +7911,6 @@ namespace tfx {
 			}
 		}
 
-		ControlParticleStretch3d(&pm.work_queue, data);
 		ControlParticleTransform3d(&pm.work_queue, data);
 	}
 
@@ -7971,6 +7937,10 @@ namespace tfx {
 		const tfxWideFloat e_scale_x = tfxWideSetSingle(pm.emitters.scale[emitter_index].x);
 		const tfxWideFloat e_scale_y = tfxWideSetSingle(pm.emitters.scale[emitter_index].y);
 		const tfxWideFloat e_scale_z = tfxWideSetSingle(pm.emitters.scale[emitter_index].z);
+		tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+		const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
+		const tfxWideFloat stretch = tfxWideSetSingle(pm.emitters.stretch[emitter_index]);
+
 		const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 		const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 		tfxMatrix4 &e_matrix = pm.emitters.matrix[emitter_index];
@@ -7980,9 +7950,23 @@ namespace tfx {
 		const tfxEmissionType emission_type = work_entry->properties->emission_type[property_index];
 		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
 		tfxU32 start_diff = work_entry->start_diff;
+		tfxWideArray p_stretch;
 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+			_ReadBarrier();
+			tfxWideFloat life = tfxWideDiv(age, max_age);
+			life = tfxWideMul(life, max_life);
+			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+
+			tfxWideArrayi lookup_frame;
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
+			const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->stretch.lookup.values, lookup_frame);
+			p_stretch.m = tfxWideMul(lookup_stretch, stretch);
+
 			tfxWideArray position_x;
 			tfxWideArray position_y;
 			tfxWideArray position_z;
@@ -7999,7 +7983,6 @@ namespace tfx {
 			const tfxWideFloat velocity_normal_y = tfxWideLoad(&bank.velocity_normal_y[index]);
 			const tfxWideFloat velocity_normal_z = tfxWideLoad(&bank.velocity_normal_z[index]);
 			tfxWideArray velocity_normal_w;
-			velocity_normal_w.m = tfxWideLoad(&bank.velocity_normal_w[index]);
 			tfxWideArray captured_position_x;
 			tfxWideArray captured_position_y;
 			tfxWideArray captured_position_z;
@@ -8037,13 +8020,13 @@ namespace tfx {
 			tfxWideArray alignment_vector_z;
 			if (vector_align_type == tfxVectorAlignType_motion) {
 				alignment_vector_x.m = tfxWideSub(position_x.m, captured_position_x.m);
-				alignment_vector_y.m = tfxWideAdd(tfxWideSub(position_y.m, captured_position_y.m), tfxWideSetSingle(0.0001f));
+				alignment_vector_y.m = tfxWideAdd(tfxWideSub(position_y.m, captured_position_y.m), tfxWideSetSingle(0.0001f)); //epsilon to prevent divide by 0
 				alignment_vector_z.m = tfxWideSub(position_z.m, captured_position_z.m);
 				tfxWideFloat l = tfxWideMul(alignment_vector_x.m, alignment_vector_x.m);
 				l = tfxWideAdd(l, tfxWideMul(alignment_vector_y.m, alignment_vector_y.m));
 				l = tfxWideAdd(l, tfxWideMul(alignment_vector_z.m, alignment_vector_z.m));
 				l = tfxWideSqrt(l);
-				velocity_normal_w.m = tfxWideMul(velocity_normal_w.m, tfxWideMul(l, tfxWideSetSingle(10.f)));	//This is too arbitrary, think up a better solution!
+				p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(10.f)));	//This is too arbitrary, think up a better solution!
 				alignment_vector_x.m = tfxWideDiv(alignment_vector_x.m, l);
 				alignment_vector_y.m = tfxWideDiv(alignment_vector_y.m, l);
 				alignment_vector_z.m = tfxWideDiv(alignment_vector_z.m, l);
@@ -8073,7 +8056,7 @@ namespace tfx {
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.stretch[running_sprite_index] = velocity_normal_w.a[j];
+				sprites.stretch[running_sprite_index] = p_stretch.a[j];
 				sprites.transform[running_sprite_index].rotations.x = rotations_x.a[j];
 				sprites.transform[running_sprite_index].rotations.y = rotations_y.a[j];
 				sprites.transform[running_sprite_index].rotations.z = rotations_z.a[j];
@@ -11268,7 +11251,6 @@ namespace tfx {
 			float &velocity_normal_x = entry->particle_data->velocity_normal_x[index];
 			float &velocity_normal_y = entry->particle_data->velocity_normal_y[index];
 			float &velocity_normal_z = entry->particle_data->velocity_normal_z[index];
-			float &velocity_normal_w = entry->particle_data->velocity_normal_w[index];
 			const float base_velocity = entry->particle_data->base_velocity[index];
 
 			tfxVec3 world_position;
@@ -11312,10 +11294,6 @@ namespace tfx {
 			//----Velocity Changes
 			tfxVec3 current_velocity = tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z) * base_velocity * first_velocity_value;
 			current_velocity.y -= weight_acceleration;
-			if (vector_align_type == tfxVectorAlignType_motion) {
-				float l = FastLength(current_velocity * tfxUPDATE_TIME);
-				velocity_normal_w = first_stretch_value * l * 10.f;
-			}
 			current_velocity *= micro_time;
 			//local_position_x += current_velocity.x;
 			//local_position_y += current_velocity.y;
@@ -11633,7 +11611,6 @@ namespace tfx {
 				bank.velocity_normal_x[next_index] = bank.velocity_normal_x[index];
 				bank.velocity_normal_y[next_index] = bank.velocity_normal_y[index];
 				bank.velocity_normal_z[next_index] = bank.velocity_normal_z[index];
-				bank.velocity_normal_w[next_index] = bank.velocity_normal_w[index];
 				bank.weight_acceleration[next_index] = bank.weight_acceleration[index];
 				bank.base_weight[next_index] = bank.base_weight[index];
 				bank.base_velocity[next_index] = bank.base_velocity[index];
@@ -11743,7 +11720,6 @@ namespace tfx {
 				bank.velocity_normal_x[next_index] = bank.velocity_normal_x[index];
 				bank.velocity_normal_y[next_index] = bank.velocity_normal_y[index];
 				bank.velocity_normal_z[next_index] = bank.velocity_normal_z[index];
-				bank.velocity_normal_w[next_index] = bank.velocity_normal_w[index];
 				bank.weight_acceleration[next_index] = bank.weight_acceleration[index];
 				bank.base_weight[next_index] = bank.base_weight[index];
 				bank.base_velocity[next_index] = bank.base_velocity[index];
@@ -12004,52 +11980,6 @@ namespace tfx {
 			s.transform.captured_position.y = captured_position_y;
 			captured_position_x = s.transform.position.x;
 			captured_position_y = s.transform.position.y;
-
-		}
-	}
-
-	void ControlParticleStretch3d(tfxWorkQueue *queue, void *data) {
-		tfxPROFILE;
-		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
-		tfxU32 emitter_index = work_entry->emitter_index;
-		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
-		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
-
-		const tfxWideInt width_last_frame = tfxWideSetSinglei(work_entry->graphs->width.lookup.last_frame);
-		const tfxWideInt height_last_frame = tfxWideSetSinglei(work_entry->graphs->height.lookup.last_frame);
-
-		tfxU32 running_sprite_index = work_entry->sprites_index;
-
-		tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-
-		tfxU32 start_diff = work_entry->start_diff;
-		const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
-		const tfxWideFloat stretch = tfxWideSetSingle(pm.emitters.stretch[emitter_index]);
-
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
-
-		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
-			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-			_ReadBarrier();
-			tfxWideFloat life = tfxWideDiv(age, max_age);
-			life = tfxWideMul(life, max_life);
-			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
-
-			tfxWideArrayi lookup_frame;
-			lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
-			const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->stretch.lookup.values, lookup_frame);
-
-			tfxWideStore(&bank.velocity_normal_w[index], tfxWideMul(lookup_stretch, stretch));
-
-			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.stretch[running_sprite_index++] = bank.velocity_normal_w[index + j];
-			}
-			start_diff = 0;
 
 		}
 	}
