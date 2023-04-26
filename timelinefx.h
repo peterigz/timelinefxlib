@@ -2990,11 +2990,16 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	struct tfxRGBA8 {
-		unsigned char r, g, b, a;
+		union {
+			struct { unsigned char r, g, b, a; };
+			struct { tfxU32 color; };
+		};
 
 		tfxRGBA8() { r = g = b = a = 0; }
 		tfxRGBA8(unsigned char _r, unsigned char _g, unsigned char _b, unsigned char _a) : r(_r), g(_g), b(_b), a(_a) { }
 		tfxRGBA8(float _r, float _g, float _b, float _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
+		tfxRGBA8(tfxU32 _r, tfxU32 _g, tfxU32 _b, tfxU32 _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
+		tfxRGBA8(tfxRGBA8 _c, char _a) : r(_c.r), g(_c.g), b(_c.b), a((char)_a) { }
 	};
 
 	struct tfxRGB {
@@ -3595,6 +3600,14 @@ You can then use layer inside the loop to get the current layer
 		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
 		tfxWideInt result = tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
 		return result;
+	}
+
+	inline tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a) {
+		tfxWideInt color = tfxWideShiftLeft(tfxWideConverti(v_a), 24);
+		color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_b), 16));
+		color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_g), 8));
+		color = tfxWideAddi(color, tfxWideConverti(v_r));
+		return color;
 	}
 
 	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra) {
@@ -4929,7 +4942,52 @@ You can then use layer inside the loop to get the current layer
 		};
 
 		inline int RangeInt(float from, float to) {
-			float a = (to - from) * Generate() + (to - from);
+			float a = (to - from) * Generate() - (to - from) * .5f;
+			return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
+		};
+
+		inline tfxU32 RangeUInt(tfxU32 max) {
+			float g = Generate();
+			float a = g * (float)max;
+			return tfxU32(a);
+		};
+
+	};
+
+	struct tfxRandom2 {
+		tfxU32 seeds[2];
+
+		tfxRandom2() {
+			ReSeed();
+		}
+
+		void ReSeed() {
+			seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; Generate();
+		}
+		void ReSeed(tfxU32 seed1, tfxU32 seed2);
+
+		inline float Generate() {
+			tfxU32 s1 = seeds[0];
+			tfxU32 s0 = seeds[1];
+			tfxU32 result = s0 + s1;
+			seeds[0] = s0;
+			s1 ^= s1 << 23; // a
+			seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+			return float((float)result / tfxMAX_UINT);
+		}
+
+		inline float Range(float max) {
+			return Generate() * max;
+		};
+
+		inline float Range(float from, float to) {
+			float a = Generate();
+			float range = to - from;
+			return to - range * a;
+		};
+
+		inline int RangeInt(float from, float to) {
+			float a = (to - from) * Generate() - (to - from) * .5f;
 			return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
 		};
 
@@ -6243,9 +6301,7 @@ You can then use layer inside the loop to get the current layer
 		float base_spin;
 		float noise_offset;
 		float noise_resolution;
-		float red;
-		float green;
-		float blue;
+		tfxRGBA8 color;
 		float alpha;
 		float image_frame;
 		float base_size_x;
@@ -6294,14 +6350,12 @@ You can then use layer inside the loop to get the current layer
 		float *base_weight;
 		float *base_velocity;
 		float *base_spin;
-		float *noise_offset;
-		float *noise_resolution;
-		float *red;
-		float *green;
-		float *blue;
-		float *image_frame;
 		float *base_size_x;
 		float *base_size_y;
+		float *noise_offset;
+		float *noise_resolution;
+		tfxRGBA8 *color;
+		float *image_frame;
 		tfxU32 *single_loop_count;
 	};
 
@@ -6334,9 +6388,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_spin));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_offset));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_resolution));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, red));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, green));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, blue));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxParticleSoA, color));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_y));
@@ -6911,9 +6963,7 @@ You can then use layer inside the loop to get the current layer
 			to_bank.base_spin[index] = from_bank.base_spin[other_index];
 			to_bank.noise_offset[index] = from_bank.noise_offset[other_index];
 			to_bank.noise_resolution[index] = from_bank.noise_resolution[other_index];
-			to_bank.red[index] = from_bank.red[other_index];
-			to_bank.green[index] = from_bank.green[other_index];
-			to_bank.blue[index] = from_bank.blue[other_index];
+			to_bank.color[index] = from_bank.color[other_index];
 			to_bank.image_frame[index] = from_bank.image_frame[other_index];
 			to_bank.base_size_x[index] = from_bank.base_size_x[other_index];
 			to_bank.base_size_y[index] = from_bank.base_size_y[other_index];
@@ -7548,9 +7598,7 @@ You can then use layer inside the loop to get the current layer
 		std::swap(particles.base_spin[from], particles.base_spin[to]);
 		std::swap(particles.noise_offset[from], particles.noise_offset[to]);
 		std::swap(particles.noise_resolution[from], particles.noise_resolution[to]);
-		std::swap(particles.red[from], particles.red[to]);
-		std::swap(particles.green[from], particles.green[to]);
-		std::swap(particles.blue[from], particles.blue[to]);
+		std::swap(particles.color[from], particles.color[to]);
 		std::swap(particles.image_frame[from], particles.image_frame[to]);
 		std::swap(particles.base_size_x[from], particles.base_size_x[to]);
 		std::swap(particles.base_size_y[from], particles.base_size_y[to]);
@@ -7583,9 +7631,7 @@ You can then use layer inside the loop to get the current layer
 		temp.base_spin = particles.base_spin[from];
 		temp.noise_offset = particles.noise_offset[from];
 		temp.noise_resolution = particles.noise_resolution[from];
-		temp.red = particles.red[from];
-		temp.green = particles.green[from];
-		temp.blue = particles.blue[from];
+		temp.color = particles.color[from];
 		temp.image_frame = particles.image_frame[from];
 		temp.base_size_x = particles.base_size_x[from];
 		temp.base_size_y = particles.base_size_y[from];
@@ -7618,9 +7664,7 @@ You can then use layer inside the loop to get the current layer
 		particles.base_spin[from] = temp.base_spin;
 		particles.noise_offset[from] = temp.noise_offset;
 		particles.noise_resolution[from] = temp.noise_resolution;
-		particles.red[from] = temp.red;
-		particles.green[from] = temp.green;
-		particles.blue[from] = temp.blue;
+		particles.color[from] = temp.color;
 		particles.image_frame[from] = temp.image_frame;
 		particles.base_size_x[from] = temp.base_size_x;
 		particles.base_size_y[from] = temp.base_size_y;
