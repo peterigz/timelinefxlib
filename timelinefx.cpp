@@ -7586,7 +7586,7 @@ namespace tfx {
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_y.m, alignment_vector_y.m));
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_z.m, alignment_vector_z.m));
 			l = tfxWideSqrt(l);
-			p_stretch.m =  tfxWideAdd(tfxWideAnd(tfxWideSetZero(), xor_is_align_type_motion), tfxWideAnd(tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(10.f))), is_align_type_motion));	//This is too arbitrary, think up a better solution!
+			p_stretch.m =  tfxWideAdd(tfxWideAnd(p_stretch.m, xor_is_align_type_motion), tfxWideAnd(tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(10.f))), is_align_type_motion));	//This is too arbitrary, think up a better solution!
 			alignment_vector_x.m = tfxWideDiv(alignment_vector_x.m, l);
 			alignment_vector_y.m = tfxWideDiv(alignment_vector_y.m, l);
 			alignment_vector_z.m = tfxWideDiv(alignment_vector_z.m, l);
