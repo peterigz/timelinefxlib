@@ -1482,7 +1482,7 @@ namespace tfx {
 		return GetInfo().sub_effectors.back();
 	}
 
-	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 property_index, tfxU32 emitter_index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size) {
+	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 &seed, tfxU32 property_index, tfxU32 emitter_index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size) {
 		//float (*effect_lookup_callback)(tfxGraph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
 		const float frame = pm.emitters.frame[emitter_index];
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
@@ -1495,7 +1495,7 @@ namespace tfx {
 		tfxEmissionDirection emission_direction = library->emitter_properties.emission_direction[property_index];
 
 		if (emission_type == tfxPoint)
-			return direction + emission_angle + random_generation.Range(-range, range);
+			return direction + emission_angle + FastRandomRange(seed, -range, range);
 
 		const tfxVec3 &handle = pm.emitters.handle[emitter_index];
 		const tfxEmitterPropertyFlags &property_flags = pm.emitters.property_flags[emitter_index];
@@ -1566,10 +1566,10 @@ namespace tfx {
 
 		if (std::isnan(direction))
 			direction = 0.f;
-		return direction + emission_angle + random_generation.Range(-range, range);
+		return direction + emission_angle + FastRandomRange(seed, -range, range);
 	}
 
-	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 property_index, tfxU32 emitter_index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size) {
+	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 &seed, tfxU32 property_index, tfxU32 emitter_index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size) {
 		//float (*effect_lookup_callback)(tfxGraph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
 		const float frame = pm.emitters.frame[emitter_index];
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
@@ -1655,8 +1655,8 @@ namespace tfx {
 		direction.x = sin(emission_yaw + yaw) * cos(emission_pitch + pitch);
 		tfxVec3 v = direction;
 		if (range != 0) {
-			result.y = random_generation.Range(1.f) * (1.f - cos(range)) + cos(range);
-			float phi = random_generation.Range(1.f) * 2.f * tfxPI;
+			result.y = FastRandom(seed) * (1.f - cos(range)) + cos(range);
+			float phi = FastRandom(seed) * 2.f * tfxPI;
 			float s = sqrt(1.f - (result.y * result.y));
 			result.x = s * cos(phi);
 			result.z = s * sin(phi);
@@ -1873,13 +1873,6 @@ namespace tfx {
 		library->emitter_attributes[emitter_attributes].overtime.red.AddNode(frame, color.r);
 		library->emitter_attributes[emitter_attributes].overtime.green.AddNode(frame, color.g);
 		library->emitter_attributes[emitter_attributes].overtime.blue.AddNode(frame, color.b);
-	}
-
-	void tfxEffectEmitter::ReSeed(uint64_t seed) {
-		if (seed == 0) {
-			seed = 0xFFFFFFFFFFF;
-		}
-		random_generation.ReSeed(seed, seed / 2);
 	}
 
 	void tfxEffectEmitter::SetUserData(void *data) {
@@ -4008,18 +4001,6 @@ namespace tfx {
 
 	}
 
-	void tfxRandom::ReSeed(uint64_t seed1, uint64_t seed2) {
-		seeds[0] = seed1;
-		seeds[1] = seed2;
-		Generate();
-	}
-
-	void tfxRandom2::ReSeed(tfxU32 seed1, tfxU32 seed2) {
-		seeds[0] = seed1;
-		seeds[1] = seed2;
-		Generate();
-	}
-
 	static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right) {
 		return left.frame < right.frame;
 	}
@@ -4542,7 +4523,7 @@ namespace tfx {
 		return &nodes.back();
 	}
 
-	float tfxGraph::GetRandomValue(float age) {
+	float tfxGraph::GetRandomValue(float age, tfxU32 &seed) {
 		float lastv = 0;
 		float lastf = 0;
 		float p = 0;
@@ -4554,10 +4535,10 @@ namespace tfx {
 					p = (age - lastf) / (a.frame - lastf);
 					float bezier_value = GetBezierValue(lastec, a, p, min.y, max.y);
 					if (bezier_value) {
-						return random_generation.Range(bezier_value);
+						return FastRandomRange(seed, bezier_value);
 					}
 					else {
-						return random_generation.Range(lastv - p * (lastv - a.value));
+						return FastRandomRange(seed, lastv - p * (lastv - a.value));
 					}
 				}
 				lastv = a.value;
@@ -4565,7 +4546,7 @@ namespace tfx {
 				lastec = &a;
 			}
 		} while (!nodes.EndOfBuckets());
-		return random_generation.Range(lastv);
+		return FastRandomRange(seed, lastv);
 
 	}
 
@@ -5236,16 +5217,16 @@ namespace tfx {
 		return lastv;
 	}
 
-	float GetRandomFast(tfxGraph &graph, float frame) {
+	float GetRandomFast(tfxGraph &graph, float frame, tfxU32 &seed) {
 		float value = 0;
 		if ((tfxU32)frame < graph.lookup.last_frame)
 			value = graph.lookup.values[(tfxU32)frame];
 		value = graph.lookup.values[graph.lookup.last_frame];
-		return random_generation.Range(value);
+		return FastRandomRange(seed, value);
 	}
 
-	float GetRandomPrecise(tfxGraph &graph, float frame) {
-		return graph.GetRandomValue(frame);
+	float GetRandomPrecise(tfxGraph &graph, float frame, tfxU32 &seed) {
+		return graph.GetRandomValue(frame, seed);
 	}
 
 	float GetMaxLife(tfxEffectEmitter &e) {
@@ -6075,7 +6056,7 @@ namespace tfx {
 		pm.ForceSingleThreaded(true);
 
 		pm.ClearAll();
-		effect.ReSeed(anim.seed);
+		SetSeed(&pm, anim.seed);
 		tfxU32 preview_effect_index = pm.AddEffect(effect, pm.current_ebuff);
 		SetEffectPosition(&pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
 		Transform3d(pm.effects.world_rotations[preview_effect_index],
@@ -6182,7 +6163,7 @@ namespace tfx {
 		//pm.UpdateAgeOnly(false);
 
 		pm.ClearAll();
-		effect.ReSeed(anim.seed);
+		SetSeed(&pm, anim.seed);
 		preview_effect_index = pm.AddEffect(effect, pm.current_ebuff);
 		SetEffectPosition(&pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
 		Transform3d(pm.effects.world_rotations[preview_effect_index],
@@ -6347,7 +6328,7 @@ namespace tfx {
 		effects.user_data[parent_index] = effect.user_data;
 		effects.update_callback[parent_index] = effect.update_callback;
 		float range = properties.noise_base_offset_range[effect.property_index];
-		effects.noise_base_offset[parent_index] = random_generation.Range(range);
+		effects.noise_base_offset[parent_index] = FastRandomRange(base_seed, range);
 		effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
 		effect.pm_index = parent_index;
 		sort_passes = tfxMax(effect.sort_passes, sort_passes);
@@ -6370,7 +6351,7 @@ namespace tfx {
 				else {
 					emitters.particles_index[index] = properties.layer[e.property_index];
 				}
-				emitters.seed[index] = base_seed; FastRandom(base_seed);
+				emitters.seed[index] = base_seed; AdvanceSeed(base_seed);
 				emitters.path_hash[index] = e.path_hash;
 				emitters.info_index[index] = e.info_index;
 				emitters.properties_index[index] = e.property_index;
@@ -7191,7 +7172,7 @@ namespace tfx {
 			float intensity = lookup_intensity * global_intensity;
 			tfxParticleSprite2d &s = (*work_entry->sprites2d)[running_sprite_index++];
 			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
-				color = tfxRGBA8(255.f * lookup_red, 255.f * lookup_green, 255.f * lookup_blue, alpha);
+				s.color = tfxRGBA8(255.f * lookup_red, 255.f * lookup_green, 255.f * lookup_blue, alpha);
 			}
 			else {
 				s.color = tfxRGBA8(color.r, color.g, color.b, (char)alpha);
@@ -8959,7 +8940,7 @@ namespace tfx {
 			state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
 			state_flags |= parent_state_flags & tfxEffectStateFlags_stop_spawning;
 			state_flags |= parent_state_flags & tfxEffectStateFlags_remove;
-			UpdateEmitterState(pm, index, parent_index, pm.effects.spawn_controls[parent_index]);
+			UpdateEmitterState(pm, index, parent_index, pm.effects.spawn_controls[parent_index], spawn_work_entry);
 
 			bool is_compute = property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm.flags & tfxEffectManagerFlags_use_compute_shader;
 			tfxU32 amount_spawned = 0;
@@ -9498,14 +9479,14 @@ namespace tfx {
 			//Max age
 			//Todo: should age be set to the tween value?
 			age = 0.f;
-			max_age = life + random_generation.Range(life_variation);
+			max_age = life + FastRandomRange(entry->seed, life_variation);
 			single_loop_count = 0;
 
 			float alpha = 255.f * first_alpha_value;
 			float intensity = first_intensity_value * emitter_intensity;
 			//intensity = 0.f;
 			if (emitter_flags & tfxEmitterStateFlags_random_color) {
-				float age = random_generation.Range(max_age);
+				float age = FastRandomRange(entry->seed, max_age);
 				color = tfxRGBA8(	255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.red, age, max_age),
 									255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.green, age, max_age),
 									255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.blue, age, max_age), alpha);
@@ -9552,7 +9533,7 @@ namespace tfx {
 			//----Image
 			//data.image = GetProperties().image;
 			if (property_flags & tfxEmitterPropertyFlags_random_start_frame && properties.image[property_index]->animation_frames > 1) {
-				image_frame = random_generation.Range(properties.image[property_index]->animation_frames);
+				image_frame = FastRandomRange(entry->seed, properties.image[property_index]->animation_frames);
 			}
 			else {
 				image_frame = properties.start_frame[property_index];
@@ -9585,13 +9566,13 @@ namespace tfx {
 
 			//----Size
 			if (!(property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-				float random_size_x = random_generation.Range(size_variation.x);
-				float random_size_y = random_generation.Range(size_variation.y);
+				float random_size_x = FastRandomRange(entry->seed, size_variation.x);
+				float random_size_y = FastRandomRange(entry->seed, size_variation.y);
 				base_size_y = random_size_y + size.y;
 				base_size_x = (random_size_x + size.x) / image_size.x;
 			}
 			else {
-				float random_size_x = random_generation.Range(size_variation.x);
+				float random_size_x = FastRandomRange(entry->seed, size_variation.x);
 				float random_size_y = random_size_x;
 				base_size_y = random_size_y + size.y;
 				base_size_x = (random_size_x + size.x) / image_size.x;
@@ -9623,13 +9604,13 @@ namespace tfx {
 
 			//----Size
 			if (!(property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-				float random_size_x = random_generation.Range(size_variation.x);
-				float random_size_y = random_generation.Range(size_variation.y);
+				float random_size_x = FastRandomRange(entry->seed, size_variation.x);
+				float random_size_y = FastRandomRange(entry->seed, size_variation.y);
 				base_size_y = random_size_y + size.y;
 				base_size_x = random_size_x + size.x;
 			}
 			else {
-				float random_size_x = random_generation.Range(size_variation.x);
+				float random_size_x = FastRandomRange(entry->seed, size_variation.x);
 				float random_size_y = random_size_x;
 				base_size_y = random_size_y + size.y;
 				base_size_x = random_size_x + size.x;
@@ -9658,7 +9639,7 @@ namespace tfx {
 			float &noise_resolution = entry->particle_data->noise_resolution[index];
 
 			//----Motion randomness
-			noise_offset = random_generation.Range(emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
+			noise_offset = FastRandomRange(entry->seed, emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
 			noise_resolution = emitter_noise_resolution + 0.01f;
 
 		}
@@ -9681,7 +9662,7 @@ namespace tfx {
 			float &base_spin = entry->particle_data->base_spin[index];
 
 			//----Spin
-			base_spin = random_generation.Range(-spin_variation, spin_variation) + spin;
+			base_spin = FastRandomRange(entry->seed, -spin_variation, spin_variation) + spin;
 
 		}
 
@@ -9711,7 +9692,7 @@ namespace tfx {
 			float &local_rotations_z = entry->particle_data->local_rotations_z[index];
 
 			//----Spin
-			base_spin = random_generation.Range(-spin_variation, spin_variation) + spin;
+			base_spin = FastRandomRange(entry->seed, -spin_variation, spin_variation) + spin;
 			if (angle_settings & tfxAngleSettingFlags_specify_roll)
 				local_rotations_z = angle_offsets.roll;
 			if (angle_settings & tfxAngleSettingFlags_specify_pitch)
@@ -9719,11 +9700,11 @@ namespace tfx {
 			if (angle_settings & tfxAngleSettingFlags_specify_yaw)
 				local_rotations_y = angle_offsets.yaw;
 			if (angle_settings & tfxAngleSettingFlags_random_pitch)
-				local_rotations_x = random_generation.Range(angle_offsets.pitch);
+				local_rotations_x = FastRandomRange(entry->seed, angle_offsets.pitch);
 			if (angle_settings & tfxAngleSettingFlags_random_yaw)
-				local_rotations_y = random_generation.Range(angle_offsets.yaw);
+				local_rotations_y = FastRandomRange(entry->seed, angle_offsets.yaw);
 			if (angle_settings & tfxAngleSettingFlags_random_roll)
-				local_rotations_z = random_generation.Range(angle_offsets.roll);
+				local_rotations_z = FastRandomRange(entry->seed, angle_offsets.roll);
 
 		}
 
@@ -9857,7 +9838,7 @@ namespace tfx {
 			}
 			else {
 				local_position_x = 0.f;
-				local_position_y = random_generation.Range(-emitter_size.y, 0.f);
+				local_position_y = FastRandomRange(entry->seed, -emitter_size.y, 0.f);
 
 			}
 
@@ -9907,7 +9888,7 @@ namespace tfx {
 				grid_coords.z = 0.f;
 
 				if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+					grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
 					local_position_x = grid_coords.x * grid_segment_size.x;
 					local_position_y = grid_coords.y * grid_segment_size.y;
 					local_position_z = grid_coords.z * grid_segment_size.z;
@@ -9936,7 +9917,7 @@ namespace tfx {
 			}
 			else {
 				local_position_x = 0.f;
-				local_position_y = random_generation.Range(0.f, emitter_size.y);
+				local_position_y = FastRandomRange(entry->seed, 0.f, emitter_size.y);
 				local_position_z = 0.f;
 			}
 
@@ -9987,8 +9968,8 @@ namespace tfx {
 
 				if (property_flags & tfxEmitterPropertyFlags_fill_area) {
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-						grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
-						grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+						grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
+						grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
 						local_position_x = grid_coords.x * grid_segment_size.x;
 						local_position_y = grid_coords.y * grid_segment_size.y;
 					}
@@ -10019,25 +10000,25 @@ namespace tfx {
 				}
 				else {
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-						tfxU32 side = random_generation.RangeUInt(4);
+						tfxU32 side = FastRandomRange(entry->seed, (tfxU32)4);
 						if (side == 0) {
 							//left side
 							grid_coords.x = 0.f;
-							grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+							grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
 						}
 						else if (side == 1) {
 							//right side
 							grid_coords.x = grid_points.x - 1;
-							grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+							grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
 						}
 						else if (side == 2) {
 							//top side
-							grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
 							grid_coords.y = 0.f;
 						}
 						else if (side == 3) {
 							//bottom side
-							grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
 							grid_coords.y = grid_points.y - 1;
 						}
 						local_position_x = grid_coords.x * grid_segment_size.x;
@@ -10090,30 +10071,30 @@ namespace tfx {
 			}
 			else {
 				if (property_flags & tfxEmitterPropertyFlags_fill_area) {
-					position.x = random_generation.Range(emitter_size.x);
-					position.y = random_generation.Range(emitter_size.y);
+					position.x = FastRandomRange(entry->seed, emitter_size.x);
+					position.y = FastRandomRange(entry->seed, emitter_size.y);
 				}
 				else {
 					//Spawn on one of 4 edges of the area
-					tfxU32 side = random_generation.RangeUInt(4);
+					tfxU32 side = FastRandomRange(entry->seed, (tfxU32)4);
 					if (side == 0) {
 						//left side
 						position.x = 0.f;
-						position.y = random_generation.Range(emitter_size.y);
+						position.y = FastRandomRange(entry->seed, emitter_size.y);
 					}
 					else if (side == 1) {
 						//right side
 						position.x = emitter_size.x;
-						position.y = random_generation.Range(emitter_size.y);
+						position.y = FastRandomRange(entry->seed, emitter_size.y);
 					}
 					else if (side == 2) {
 						//top side
-						position.x = random_generation.Range(emitter_size.x);
+						position.x = FastRandomRange(entry->seed, emitter_size.x);
 						position.y = 0.f;
 					}
 					else if (side == 3) {
 						//bottom side
-						position.x = random_generation.Range(emitter_size.x);
+						position.x = FastRandomRange(entry->seed, emitter_size.x);
 						position.y = emitter_size.y;
 					}
 				}
@@ -10170,9 +10151,9 @@ namespace tfx {
 				if (property_flags & tfxEmitterPropertyFlags_fill_area) {
 
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-						grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
-						grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
-						grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
+						grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
+						grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
+						grid_coords.z = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.z);
 
 						local_position_x = grid_coords.x * grid_segment_size.x;
 						local_position_y = grid_coords.y * grid_segment_size.y;
@@ -10216,41 +10197,41 @@ namespace tfx {
 				else {
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 						//Spawn on one of 6 edges of the cuboid
-						tfxU32 side = random_generation.RangeUInt((property_flags & tfxEmitterPropertyFlags_area_open_ends) ? 4 : 6);
+						tfxU32 side = FastRandomRange(entry->seed, (property_flags & tfxEmitterPropertyFlags_area_open_ends) ? (tfxU32)4 : (tfxU32)6);
 						if (side == 0) {
 							//left side
 							grid_coords.x = 0.f;
-							grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
-							grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
+							grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
+							grid_coords.z = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.z);
 						}
 						else if (side == 1) {
 							//right side
 							grid_coords.x = grid_points.x - 1;
-							grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
-							grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
+							grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
+							grid_coords.z = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.z);
 						}
 						else if (side == 2) {
 							//top side
-							grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
 							grid_coords.y = 0.f;
-							grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
+							grid_coords.z = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.z);
 						}
 						else if (side == 3) {
 							//bottom side
-							grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
+							grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
 							grid_coords.y = grid_points.y - 1;
-							grid_coords.z = (float)random_generation.RangeUInt((tfxU32)grid_points.z);
+							grid_coords.z = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.z);
 						}
 						else if (side == 4) {
 							//End far
-							grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
-							grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+							grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
+							grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
 							grid_coords.z = grid_points.z - 1;
 						}
 						else if (side == 5) {
 							//End near
-							grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
-							grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+							grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
+							grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
 							grid_coords.z = 0.f;
 						}
 						local_position_x = grid_coords.x * grid_segment_size.x;
@@ -10434,47 +10415,47 @@ namespace tfx {
 			}
 			else {
 				if (property_flags & tfxEmitterPropertyFlags_fill_area) {
-					position.x = random_generation.Range(emitter_size.x);
-					position.y = random_generation.Range(emitter_size.y);
-					position.z = random_generation.Range(emitter_size.z);
+					position.x = FastRandomRange(entry->seed, emitter_size.x);
+					position.y = FastRandomRange(entry->seed, emitter_size.y);
+					position.z = FastRandomRange(entry->seed, emitter_size.z);
 				}
 				else {
 					//Spawn on one of 6 edges of the cuboid
-					tfxU32 side = random_generation.RangeUInt((property_flags & tfxEmitterPropertyFlags_area_open_ends) ? 4 : 6);
+					tfxU32 side = FastRandomRange(entry->seed, (property_flags & tfxEmitterPropertyFlags_area_open_ends) ? (tfxU32)4 : (tfxU32)6);
 					if (side == 0) {
 						//left side
 						position.x = 0.f;
-						position.y = random_generation.Range(emitter_size.y);
-						position.z = random_generation.Range(emitter_size.z);
+						position.y = FastRandomRange(entry->seed, emitter_size.y);
+						position.z = FastRandomRange(entry->seed, emitter_size.z);
 					}
 					else if (side == 1) {
 						//right side
 						position.x = emitter_size.x;
-						position.y = random_generation.Range(emitter_size.y);
-						position.z = random_generation.Range(emitter_size.z);
+						position.y = FastRandomRange(entry->seed, emitter_size.y);
+						position.z = FastRandomRange(entry->seed, emitter_size.z);
 					}
 					else if (side == 2) {
 						//top side
-						position.x = random_generation.Range(emitter_size.x);
+						position.x = FastRandomRange(entry->seed, emitter_size.x);
 						position.y = 0.f;
-						position.z = random_generation.Range(emitter_size.z);
+						position.z = FastRandomRange(entry->seed, emitter_size.z);
 					}
 					else if (side == 3) {
 						//bottom side
-						position.x = random_generation.Range(emitter_size.x);
+						position.x = FastRandomRange(entry->seed, emitter_size.x);
 						position.y = emitter_size.y;
-						position.z = random_generation.Range(emitter_size.z);
+						position.z = FastRandomRange(entry->seed, emitter_size.z);
 					}
 					else if (side == 4) {
 						//End far
-						position.x = random_generation.Range(emitter_size.x);
-						position.y = random_generation.Range(emitter_size.y);
+						position.x = FastRandomRange(entry->seed, emitter_size.x);
+						position.y = FastRandomRange(entry->seed, emitter_size.y);
 						position.z = emitter_size.z;
 					}
 					else if (side == 5) {
 						//End near
-						position.x = random_generation.Range(emitter_size.x);
-						position.y = random_generation.Range(emitter_size.y);
+						position.x = FastRandomRange(entry->seed, emitter_size.x);
+						position.y = FastRandomRange(entry->seed, emitter_size.y);
 						position.z = 0.f;
 					}
 				}
@@ -10553,24 +10534,24 @@ namespace tfx {
 
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(property_flags & tfxEmitterPropertyFlags_fill_area) && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-				float th = (float)random_generation.RangeUInt((tfxU32)grid_points.x) * grid_segment_size.x + arc_offset;
+				float th = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x) * grid_segment_size.x + arc_offset;
 				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
 				local_position_x = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
 			}
 			else if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
-				float th = random_generation.Range(arc_size) + arc_offset;
+				float th = FastRandomRange(entry->seed, arc_size) + arc_offset;
 
 				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
 				local_position_y = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
 
 			}
 			else {
-				local_position_x = random_generation.Range(0, emitter_size.x);
-				local_position_y = random_generation.Range(0, emitter_size.y);
+				local_position_x = FastRandomRange(entry->seed, 0.f, emitter_size.x);
+				local_position_y = FastRandomRange(entry->seed, 0.f, emitter_size.y);
 
 				while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_y - half_emitter_size.y, 2) / std::pow(half_emitter_size.y, 2)) > 1) {
-					local_position_x = random_generation.Range(0, emitter_size.x);
-					local_position_y = random_generation.Range(0, emitter_size.y);
+					local_position_x = FastRandomRange(entry->seed, 0.f, emitter_size.x);
+					local_position_y = FastRandomRange(entry->seed, 0.f, emitter_size.y);
 				}
 			}
 
@@ -10621,8 +10602,8 @@ namespace tfx {
 			tfxVec3 position;
 
 			if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
-				float u = random_generation.Range(1.f);
-				float v = random_generation.Range(1.f);
+				float u = FastRandomRange(entry->seed, 1.f);
+				float v = FastRandomRange(entry->seed, 1.f);
 				float theta = u * 2.f * tfxPI;
 				float phi = std::acosf(2.f * v - 1.f);
 				float sin_theta = std::sinf(theta);
@@ -10634,14 +10615,14 @@ namespace tfx {
 				local_position_z = half_emitter_size.z * cos_phi;
 			}
 			else {
-				position.x = random_generation.Range(-half_emitter_size.x, half_emitter_size.x);
-				position.y = random_generation.Range(-half_emitter_size.y, half_emitter_size.y);
-				position.z = random_generation.Range(-half_emitter_size.z, half_emitter_size.z);
+				position.x = FastRandomRange(entry->seed, -half_emitter_size.x, half_emitter_size.x);
+				position.y = FastRandomRange(entry->seed, -half_emitter_size.y, half_emitter_size.y);
+				position.z = FastRandomRange(entry->seed, -half_emitter_size.z, half_emitter_size.z);
 
 				while (std::powf(position.x / half_emitter_size.x, 2.f) + std::powf(position.y / half_emitter_size.y, 2.f) + std::powf(position.z / half_emitter_size.z, 2.f) > 1.f) {
-					position.x = random_generation.Range(-half_emitter_size.x, half_emitter_size.x);
-					position.y = random_generation.Range(-half_emitter_size.y, half_emitter_size.y);
-					position.z = random_generation.Range(-half_emitter_size.z, half_emitter_size.z);
+					position.x = FastRandomRange(entry->seed, -half_emitter_size.x, half_emitter_size.x);
+					position.y = FastRandomRange(entry->seed, -half_emitter_size.y, half_emitter_size.y);
+					position.z = FastRandomRange(entry->seed, -half_emitter_size.z, half_emitter_size.z);
 				}
 
 				local_position_x = position.x;
@@ -10742,7 +10723,7 @@ namespace tfx {
 			tfxVec3 emitter_size = emitter_size * .5f;
 			tfxU32 sub_division = (tfxU32)grid_points.x;
 			assert(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
-			int ico_point = random_generation.RangeUInt(tfxIcospherePoints[sub_division].current_size);
+			int ico_point = FastRandomRange(entry->seed, tfxIcospherePoints[sub_division].current_size);
 			local_position_x = tfxIcospherePoints[sub_division][ico_point].x * emitter_size.x;
 			local_position_y = tfxIcospherePoints[sub_division][ico_point].y * emitter_size.y;
 			local_position_z = tfxIcospherePoints[sub_division][ico_point].z * emitter_size.z;
@@ -10794,8 +10775,8 @@ namespace tfx {
 				grid_coords.z = 0.f;
 
 				if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					grid_coords.x = (float)random_generation.RangeUInt((tfxU32)grid_points.x);
-					grid_coords.y = (float)random_generation.RangeUInt((tfxU32)grid_points.y);
+					grid_coords.x = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.x);
+					grid_coords.y = (float)FastRandomRange(entry->seed, (tfxU32)grid_points.y);
 
 					float th = grid_coords.x * grid_segment_size.x + arc_offset;
 					local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
@@ -10833,20 +10814,20 @@ namespace tfx {
 
 			}
 			else if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
-				float th = random_generation.Range(arc_size) + arc_offset;
+				float th = FastRandomRange(entry->seed, arc_size) + arc_offset;
 
 				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
-				local_position_y = random_generation.Range(half_emitter_size.y);
+				local_position_y = FastRandomRange(entry->seed, half_emitter_size.y);
 				local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
 			}
 			else {
-				local_position_x = random_generation.Range(0, half_emitter_size.x);
-				local_position_y = random_generation.Range(0, half_emitter_size.y);
-				local_position_z = random_generation.Range(0, half_emitter_size.z);
+				local_position_x = FastRandomRange(entry->seed, 0.f, half_emitter_size.x);
+				local_position_y = FastRandomRange(entry->seed, 0.f, half_emitter_size.y);
+				local_position_z = FastRandomRange(entry->seed, 0.f, half_emitter_size.z);
 
 				while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_z - half_emitter_size.z, 2) / std::pow(half_emitter_size.z, 2)) > 1) {
-					local_position_x = random_generation.Range(0, half_emitter_size.x);
-					local_position_z = random_generation.Range(0, half_emitter_size.z);
+					local_position_x = FastRandomRange(entry->seed, 0.f, half_emitter_size.x);
+					local_position_z = FastRandomRange(entry->seed, 0.f, half_emitter_size.z);
 				}
 			}
 
@@ -10882,7 +10863,7 @@ namespace tfx {
 			if (weight) {
 				base_weight = weight;
 				if (weight_variation > 0) {
-					base_weight += random_generation.Range(-weight_variation, weight_variation);
+					base_weight += FastRandomRange(entry->seed, -weight_variation, weight_variation);
 				}
 			}
 			else {
@@ -10910,7 +10891,7 @@ namespace tfx {
 
 			//----Velocity
 			float velocity_scale = first_velocity_value * velocity_adjuster;
-			base_velocity = velocity + random_generation.Range(-velocity_variation, velocity_variation);
+			base_velocity = velocity + FastRandomRange(entry->seed, -velocity_variation, velocity_variation);
 		}
 
 	}
@@ -10931,7 +10912,7 @@ namespace tfx {
 
 			roll = 0;
 			if (angle_settings & tfxAngleSettingFlags_random_roll) {
-				roll = random_generation.Range(angle_roll_offset);
+				roll = FastRandomRange(entry->seed, angle_roll_offset);
 			}
 			else if (angle_settings & tfxAngleSettingFlags_specify_roll) {
 				roll = angle_roll_offset;
@@ -10964,12 +10945,12 @@ namespace tfx {
 
 				//----Splatter
 				float splattertemp = splatter;
-				float splatx = random_generation.Range(-splatter, splatter);
-				float splaty = random_generation.Range(-splatter, splatter);
+				float splatx = FastRandomRange(entry->seed, -splatter, splatter);
+				float splaty = FastRandomRange(entry->seed, -splatter, splatter);
 
 				while (GetDistance(0, 0, splatx, splaty) >= splattertemp && splattertemp > 0) {
-					splatx = random_generation.Range(-splatter, splatter);
-					splaty = random_generation.Range(-splatter, splatter);
+					splatx = FastRandomRange(entry->seed, -splatter, splatter);
+					splaty = FastRandomRange(entry->seed, -splatter, splatter);
 				}
 
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -11028,7 +11009,7 @@ namespace tfx {
 			}
 
 			if (!line) {
-				direction = velocity_normal = GetEmissionDirection2d(pm, library, property_index, emitter_index, tfxVec2(local_position_x, local_position_y), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
+				direction = velocity_normal = GetEmissionDirection2d(pm, library, entry->seed, property_index, emitter_index, tfxVec2(local_position_x, local_position_y), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
 			}
 
 			float weight_acceleration = base_weight * first_weight_value * micro_time;
@@ -11076,14 +11057,14 @@ namespace tfx {
 
 				//----Splatter
 				if (splatter) {
-					float splatx = random_generation.Range(-splatter, splatter);
-					float splaty = random_generation.Range(-splatter, splatter);
-					float splatz = random_generation.Range(-splatter, splatter);
+					float splatx = FastRandomRange(entry->seed, -splatter, splatter);
+					float splaty = FastRandomRange(entry->seed, -splatter, splatter);
+					float splatz = FastRandomRange(entry->seed, -splatter, splatter);
 
 					while (std::powf(splatx / splatter, 2.f) + std::powf(splaty / splatter, 2.f) + std::powf(splatz / splatter, 2.f) > 1.f) {
-						splatx = random_generation.Range(-splatter, splatter);
-						splaty = random_generation.Range(-splatter, splatter);
-						splatz = random_generation.Range(-splatter, splatter);
+						splatx = FastRandomRange(entry->seed, -splatter, splatter);
+						splaty = FastRandomRange(entry->seed, -splatter, splatter);
+						splatz = FastRandomRange(entry->seed, -splatter, splatter);
 					}
 
 					if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -11153,7 +11134,7 @@ namespace tfx {
 
 			tfxVec3 velocity_normal;
 			if (!(property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
-				tfxVec3 velocity_normal = GetEmissionDirection3d(pm, library, property_index, emitter_index, emission_pitch, emission_yaw, tfxVec3(local_position_x, local_position_y, local_position_z), world_position, emitter_size);
+				tfxVec3 velocity_normal = GetEmissionDirection3d(pm, library, entry->seed, property_index, emitter_index, emission_pitch, emission_yaw, tfxVec3(local_position_x, local_position_y, local_position_z), world_position, emitter_size);
 				velocity_normal_packed = Pack10bitUnsigned(velocity_normal);
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
@@ -11200,7 +11181,7 @@ namespace tfx {
 		}
 	}
 
-	void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls &parent_spawn_controls) {
+	void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls &parent_spawn_controls, tfxSpawnWorkEntry *entry) {
 		tfxPROFILE;
 		tfxLibrary *library = pm.library;
 		tfxEmitterPropertiesSoA &properties = library->emitter_properties;
@@ -11268,7 +11249,7 @@ namespace tfx {
 		if (!(property_flags & tfxEmitterPropertyFlags_single)) {
 			spawn_quantity = lookup_callback(library->emitter_attributes[emitter_attributes].base.amount, frame);
 			float amount_variation = lookup_callback(library->emitter_attributes[emitter_attributes].variation.amount, frame);
-			spawn_quantity += amount_variation > 0.f ? random_generation.Range(1.f, amount_variation) : 0.f;
+			spawn_quantity += amount_variation > 0.f ? FastRandomRange(entry->seed, 1.f, amount_variation) : 0.f;
 
 			spawn_quantity *= lookup_callback(library->global_graphs[global_attributes].amount, frame);
 		}
