@@ -6978,7 +6978,7 @@ namespace tfx {
 			const float base_spin = bank.base_spin[index];
 			const float noise_offset = bank.noise_offset[index];
 			const float noise_resolution = bank.noise_resolution[index];
-			const float angle = bank.velocity_normal_x[index];
+			const float angle = bank.local_rotations_x[index];
 			float &local_position_x = bank.position_x[index];
 			float &local_position_y = bank.position_y[index];
 			float &roll = bank.local_rotations_z[index];
@@ -7293,9 +7293,11 @@ namespace tfx {
 			tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
 			tfxWideArray roll;
 			roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
-			tfxWideFloat velocity_normal_x = tfxWideLoad(&bank.velocity_normal_x[index]);
-			tfxWideFloat velocity_normal_y = tfxWideLoad(&bank.velocity_normal_y[index]);
-			tfxWideFloat velocity_normal_z = tfxWideLoad(&bank.velocity_normal_z[index]);
+			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index]);
+			tfxWideFloat velocity_normal_x;
+			tfxWideFloat velocity_normal_y;
+			tfxWideFloat velocity_normal_z;
+			UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 
 			tfxWideArrayi lookup_frame;
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
@@ -7413,7 +7415,7 @@ namespace tfx {
 			const tfxWideInt emitter_flags_wide = tfxWideLookupSeti(pm.emitters.state_flags, parent_index);
 			const tfxWideInt loop = tfxWideEqualsi(tfxWideAndi(emitter_flags_wide, loop_flag), loop_flag);
 			const tfxWideInt kill = tfxWideEqualsi(tfxWideAndi(emitter_flags_wide, kill_flag), kill_flag);
-			tfxWideFloat offset_y = tfxWideMul(tfxWideLoad(&bank.velocity_normal_y[index]), emitter_size_y);
+			tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
 			tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
@@ -7515,9 +7517,11 @@ namespace tfx {
 			rotations_x.m = tfxWideLoad(&bank.local_rotations_x[index]);
 			rotations_y.m = tfxWideLoad(&bank.local_rotations_y[index]);
 			rotations_z.m = tfxWideLoad(&bank.local_rotations_z[index]);
-			const tfxWideFloat velocity_normal_x = tfxWideLoad(&bank.velocity_normal_x[index]);
-			const tfxWideFloat velocity_normal_y = tfxWideLoad(&bank.velocity_normal_y[index]);
-			const tfxWideFloat velocity_normal_z = tfxWideLoad(&bank.velocity_normal_z[index]);
+			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index]);
+			tfxWideFloat velocity_normal_x;
+			tfxWideFloat velocity_normal_y;
+			tfxWideFloat velocity_normal_z;
+			UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 			tfxWideArray captured_position_x;
 			tfxWideArray captured_position_y;
 			tfxWideArray captured_position_z;
@@ -7666,9 +7670,11 @@ namespace tfx {
 			tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
 			tfxWideArray roll;
 			roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
-			tfxWideFloat velocity_normal_x = tfxWideLoad(&bank.velocity_normal_x[index]);
-			tfxWideFloat velocity_normal_y = tfxWideLoad(&bank.velocity_normal_y[index]);
-			tfxWideFloat velocity_normal_z = tfxWideLoad(&bank.velocity_normal_z[index]);
+			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index]);
+			tfxWideFloat velocity_normal_x;
+			tfxWideFloat velocity_normal_y;
+			tfxWideFloat velocity_normal_z;
+			UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 
 			tfxWideArray noise_x;
 			tfxWideArray noise_y;
@@ -7781,7 +7787,7 @@ namespace tfx {
 			if (emitter_flags & tfxEmitterStateFlags_kill) {
 				for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 					tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
-					const tfxWideFloat offset_y = tfxWideMul(tfxWideLoad(&bank.velocity_normal_y[index]), emitter_size_y);
+					const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
 					tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 					tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
@@ -7795,7 +7801,7 @@ namespace tfx {
 			else {
 				for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 					tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
-					tfxWideFloat offset_y = tfxWideMul(tfxWideLoad(&bank.velocity_normal_y[index]), emitter_size_y);
+					const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
 					tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 					tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
@@ -7878,9 +7884,11 @@ namespace tfx {
 			rotations_x.m = tfxWideLoad(&bank.local_rotations_x[index]);
 			rotations_y.m = tfxWideLoad(&bank.local_rotations_y[index]);
 			rotations_z.m = tfxWideLoad(&bank.local_rotations_z[index]);
-			const tfxWideFloat velocity_normal_x = tfxWideLoad(&bank.velocity_normal_x[index]);
-			const tfxWideFloat velocity_normal_y = tfxWideLoad(&bank.velocity_normal_y[index]);
-			const tfxWideFloat velocity_normal_z = tfxWideLoad(&bank.velocity_normal_z[index]);
+			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index]);
+			tfxWideFloat velocity_normal_x;
+			tfxWideFloat velocity_normal_y;
+			tfxWideFloat velocity_normal_z;
+			UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 			tfxWideArray captured_position_x;
 			tfxWideArray captured_position_y;
 			tfxWideArray captured_position_z;
@@ -9268,6 +9276,9 @@ namespace tfx {
 				//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
 				//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
 				//fine and is stable
+				//Update: I did try this and had a work queue that you could have sempahores and get jobs to run when specific jobs had finished, but it was actually slower.
+				//This is probably because my implementation was bad and the fact that I had to use mutexes into order to manage adding jobs working in a thread friendly manner
+				//(multi producer/worker). Back to the drawing board, will give it another go at some point.
 				tfxCompleteAllWork(&pm.work_queue);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleMicroUpdate2d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);
@@ -11007,7 +11018,7 @@ namespace tfx {
 			float &local_position_y = entry->particle_data->position_y[index];
 			float &captured_position_x = entry->particle_data->captured_position_x[index];
 			float &captured_position_y = entry->particle_data->captured_position_y[index];
-			float &velocity_normal = entry->particle_data->velocity_normal_x[index];
+			float &velocity_normal = entry->particle_data->local_rotations_x[index];
 			float &base_velocity = entry->particle_data->base_velocity[index];
 
 			float micro_time = tfxUPDATE_TIME * (1.f - tween);
@@ -11128,9 +11139,7 @@ namespace tfx {
 			float &captured_position_x = entry->particle_data->captured_position_x[index];
 			float &captured_position_y = entry->particle_data->captured_position_y[index];
 			float &captured_position_z = entry->particle_data->captured_position_z[index];
-			float &velocity_normal_x = entry->particle_data->velocity_normal_x[index];
-			float &velocity_normal_y = entry->particle_data->velocity_normal_y[index];
-			float &velocity_normal_z = entry->particle_data->velocity_normal_z[index];
+			tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 			const float base_velocity = entry->particle_data->base_velocity[index];
 
 			tfxVec3 world_position;
@@ -11153,16 +11162,13 @@ namespace tfx {
 			float emission_pitch = lookup_callback(library->emitter_attributes[emitter_attributes].properties.emission_pitch, frame);
 			float emission_yaw = lookup_callback(library->emitter_attributes[emitter_attributes].properties.emission_yaw, frame);
 
+			tfxVec3 velocity_normal;
 			if (!(property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
 				tfxVec3 velocity_normal = GetEmissionDirection3d(pm, library, property_index, emitter_index, emission_pitch, emission_yaw, tfxVec3(local_position_x, local_position_y, local_position_z), world_position, emitter_size);
-				velocity_normal_x = velocity_normal.x;
-				velocity_normal_y = velocity_normal.y;
-				velocity_normal_z = velocity_normal.z;
+				velocity_normal_packed = Pack10bitUnsigned(velocity_normal);
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
-				velocity_normal_x = 0.f;
-				velocity_normal_y = 1.f;
-				velocity_normal_z = 0.f;
+				velocity_normal_packed = tfxPACKED_Y_NORMAL;
 			}
 			float velocity_scale = first_velocity_value * velocity_adjuster * base_velocity;
 
@@ -11172,7 +11178,7 @@ namespace tfx {
 			float micro_time = tfxUPDATE_TIME * (1.f - tween + 0.001f);
 			float weight_acceleration = base_weight * first_weight_value * micro_time;
 			//----Velocity Changes
-			tfxVec3 current_velocity = tfxVec3(velocity_normal_x, velocity_normal_y, velocity_normal_z) * base_velocity * first_velocity_value;
+			tfxVec3 current_velocity = tfxVec3(velocity_normal.x, velocity_normal.y, velocity_normal.z) * base_velocity * first_velocity_value;
 			current_velocity.y -= weight_acceleration;
 			current_velocity *= micro_time;
 			//local_position_x += current_velocity.x;
@@ -11488,9 +11494,7 @@ namespace tfx {
 				bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
 				bank.local_rotations_y[next_index] = bank.local_rotations_y[index];
 				bank.local_rotations_z[next_index] = bank.local_rotations_z[index];
-				bank.velocity_normal_x[next_index] = bank.velocity_normal_x[index];
-				bank.velocity_normal_y[next_index] = bank.velocity_normal_y[index];
-				bank.velocity_normal_z[next_index] = bank.velocity_normal_z[index];
+				bank.velocity_normal[next_index] = bank.velocity_normal[index];
 				bank.base_weight[next_index] = bank.base_weight[index];
 				bank.base_velocity[next_index] = bank.base_velocity[index];
 				bank.base_spin[next_index] = bank.base_spin[index];
@@ -11594,9 +11598,7 @@ namespace tfx {
 				bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
 				bank.local_rotations_y[next_index] = bank.local_rotations_y[index];
 				bank.local_rotations_z[next_index] = bank.local_rotations_z[index];
-				bank.velocity_normal_x[next_index] = bank.velocity_normal_x[index];
-				bank.velocity_normal_y[next_index] = bank.velocity_normal_y[index];
-				bank.velocity_normal_z[next_index] = bank.velocity_normal_z[index];
+				bank.velocity_normal[next_index] = bank.velocity_normal[index];
 				bank.base_weight[next_index] = bank.base_weight[index];
 				bank.base_velocity[next_index] = bank.base_velocity[index];
 				bank.base_spin[next_index] = bank.base_spin[index];
@@ -11720,7 +11722,7 @@ namespace tfx {
 			const float base_spin = bank.base_spin[index];
 			const float noise_offset = bank.noise_offset[index];
 			const float noise_resolution = bank.noise_resolution[index];
-			const float angle = bank.velocity_normal_x[index];
+			const float angle = bank.local_rotations_x[index];
 			float &local_position_x = bank.position_x[index];
 			float &local_position_y = bank.position_y[index];
 			float &captured_position_x = bank.captured_position_x[index];

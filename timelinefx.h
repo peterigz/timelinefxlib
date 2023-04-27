@@ -3016,6 +3016,8 @@ You can then use layer inside the loop to get the current layer
 
 	const float one_div_255 = 1 / 255.f;
 	const float one_div_511 = 1 / 511.f;
+	const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
+	#define tfxPACKED_Y_NORMAL 0x1FFFF9FF
 
 	struct tfxRGBA {
 		float r, g, b, a;
@@ -3586,6 +3588,17 @@ You can then use layer inside the loop to get the current layer
 		return result.pack;
 	}
 
+	inline tfxU32 Pack10bitUnsigned(tfxVec3 const &v) {
+		tfxVec3 converted = v * 511.f + 511.f;
+		tfxUInt10bit result;
+		result.pack = 0;
+		result.data.x = (tfxU32)converted.z;
+		result.data.y = (tfxU32)converted.y;
+		result.data.z = (tfxU32)converted.x;
+		result.data.w = 0;
+		return result.pack;
+	}
+
 	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
 		tfxWideFloat w511 = tfxWideSetSingle(511.f);
 		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
@@ -3598,8 +3611,35 @@ You can then use layer inside the loop to get the current layer
 		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
 		converted_z = tfxWideAndi(converted_z, bits10);
 		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
-		tfxWideInt result = tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
-		return result;
+		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+	}
+
+	inline tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
+		tfxWideFloat w511 = tfxWideSetSingle(511.f);
+		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w511), w511));
+		converted_x = tfxWideAndi(converted_x, bits10);
+		converted_x = tfxWideShiftLeft(converted_x, 20);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w511), w511));
+		converted_y = tfxWideAndi(converted_y, bits10);
+		converted_y = tfxWideShiftLeft(converted_y, 10);
+		tfxWideInt converted_z = tfxWideConverti(tfxWideAdd(tfxWideMul(v_z, w511), w511));
+		converted_z = tfxWideAndi(converted_z, bits10);
+		return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+	}
+
+	inline void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
+		tfxWideInt w511 = tfxWideSetSinglei(511);
+		x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
+		y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
+		z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
+		x = tfxWideMul(x, one_div_511_wide);
+		y = tfxWideMul(y, one_div_511_wide);
+		z = tfxWideMul(z, one_div_511_wide);
+	}
+
+	inline tfxWideFloat UnPackWide10bitY(tfxWideInt in) {
+		return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide);
 	}
 
 	inline tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a) {
@@ -3622,8 +3662,7 @@ You can then use layer inside the loop to get the current layer
 		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
 		converted_z = tfxWideAndi(converted_z, bits10);
 		tfxWideInt extra_bits = tfxWideShiftLeft(extra, 30);
-		tfxWideInt result = tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
-		return result;
+		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
 	}
 
 	inline tfxVec4 UnPack10bit(tfxU32 in) {
@@ -6290,10 +6329,7 @@ You can then use layer inside the loop to get the current layer
 		float local_rotations_x;
 		float local_rotations_y;
 		float local_rotations_z;
-		float velocity_normal_x;
-		float velocity_normal_y;
-		float velocity_normal_z;
-		float velocity_normal_w;
+		tfxU32 velocity_normal;
 		float depth;
 		float base_weight;
 		float base_velocity;
@@ -6338,9 +6374,7 @@ You can then use layer inside the loop to get the current layer
 		float *local_rotations_x;
 		float *local_rotations_y;
 		float *local_rotations_z;
-		float *velocity_normal_x;
-		float *velocity_normal_y;
-		float *velocity_normal_z;
+		tfxU32 *velocity_normal;
 		float *depth;
 		float *base_weight;
 		float *base_velocity;
@@ -6370,9 +6404,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_x));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_y));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_z));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_x));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_y));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, velocity_normal_z));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, velocity_normal));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, depth));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_velocity));
@@ -6943,9 +6975,7 @@ You can then use layer inside the loop to get the current layer
 			to_bank.local_rotations_x[index] = from_bank.local_rotations_x[other_index];
 			to_bank.local_rotations_y[index] = from_bank.local_rotations_y[other_index];
 			to_bank.local_rotations_z[index] = from_bank.local_rotations_z[other_index];
-			to_bank.velocity_normal_x[index] = from_bank.velocity_normal_x[other_index];
-			to_bank.velocity_normal_y[index] = from_bank.velocity_normal_y[other_index];
-			to_bank.velocity_normal_z[index] = from_bank.velocity_normal_z[other_index];
+			to_bank.velocity_normal[index] = from_bank.velocity_normal[other_index];
 			to_bank.depth[index] = from_bank.depth[other_index];
 			to_bank.base_weight[index] = from_bank.base_weight[other_index];
 			to_bank.base_velocity[index] = from_bank.base_velocity[other_index];
@@ -7578,9 +7608,7 @@ You can then use layer inside the loop to get the current layer
 		std::swap(particles.local_rotations_x[from], particles.local_rotations_x[to]);
 		std::swap(particles.local_rotations_y[from], particles.local_rotations_y[to]);
 		std::swap(particles.local_rotations_z[from], particles.local_rotations_z[to]);
-		std::swap(particles.velocity_normal_x[from], particles.velocity_normal_x[to]);
-		std::swap(particles.velocity_normal_y[from], particles.velocity_normal_y[to]);
-		std::swap(particles.velocity_normal_z[from], particles.velocity_normal_z[to]);
+		std::swap(particles.velocity_normal[from], particles.velocity_normal[to]);
 		std::swap(particles.base_weight[from], particles.base_weight[to]);
 		std::swap(particles.base_velocity[from], particles.base_velocity[to]);
 		std::swap(particles.base_spin[from], particles.base_spin[to]);
@@ -7610,9 +7638,7 @@ You can then use layer inside the loop to get the current layer
 		temp.local_rotations_x = particles.local_rotations_x[from];
 		temp.local_rotations_y = particles.local_rotations_y[from];
 		temp.local_rotations_z = particles.local_rotations_z[from];
-		temp.velocity_normal_x = particles.velocity_normal_x[from];
-		temp.velocity_normal_y = particles.velocity_normal_y[from];
-		temp.velocity_normal_z = particles.velocity_normal_z[from];
+		temp.velocity_normal = particles.velocity_normal[from];
 		temp.base_weight = particles.base_weight[from];
 		temp.base_velocity = particles.base_velocity[from];
 		temp.base_spin = particles.base_spin[from];
@@ -7642,9 +7668,7 @@ You can then use layer inside the loop to get the current layer
 		particles.local_rotations_x[from] = temp.local_rotations_x;
 		particles.local_rotations_y[from] = temp.local_rotations_y;
 		particles.local_rotations_z[from] = temp.local_rotations_z;
-		particles.velocity_normal_x[from] = temp.velocity_normal_x;
-		particles.velocity_normal_y[from] = temp.velocity_normal_y;
-		particles.velocity_normal_z[from] = temp.velocity_normal_z;
+		particles.velocity_normal[from] = temp.velocity_normal;
 		particles.base_weight[from] = temp.base_weight;
 		particles.base_velocity[from] = temp.base_velocity;
 		particles.base_spin[from] = temp.base_spin;
