@@ -6370,6 +6370,7 @@ namespace tfx {
 				else {
 					emitters.particles_index[index] = properties.layer[e.property_index];
 				}
+				emitters.seed[index] = base_seed; FastRandom(base_seed);
 				emitters.path_hash[index] = e.path_hash;
 				emitters.info_index[index] = e.info_index;
 				emitters.properties_index[index] = e.property_index;
@@ -6433,21 +6434,7 @@ namespace tfx {
 					emitters.highest_particle_age[index] = tfxFRAME_LENGTH * 2.f;
 				}
 
-				if (effect.Is3DEffect()) {
-					if (e.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type[e.property_index] == tfxLine) {
-						emitters.transform_particle_callback3d[index] = TransformParticlePositionRelativeLine3d;
-					}
-					else if (e.property_flags & tfxEmitterPropertyFlags_relative_position) {
-						emitters.transform_particle_callback3d[index] = TransformParticlePositionRelative3d;
-					}
-					else if (e.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-						emitters.transform_particle_callback3d[index] = TransformParticlePositionAngle3d;
-					}
-					else {
-						emitters.transform_particle_callback3d[index] = TransformParticlePosition3d;
-					}
-				}
-				else {
+				if (!effect.Is3DEffect()) {
 					if (e.property_flags & tfxEmitterPropertyFlags_relative_position && (e.property_flags & tfxEmitterPropertyFlags_relative_angle || (e.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type[e.property_index] == tfxLine))) {
 						emitters.transform_particle_callback2d[index] = TransformParticlePositionRelativeLine;
 					}
@@ -6630,6 +6617,7 @@ namespace tfx {
 				spawn_work_entry->amount_to_spawn = 0;
 				spawn_work_entry->end_index = 0;
 				spawn_work_entry->highest_particle_age = 0;
+				spawn_work_entry->seed = emitters.seed[current_index];
 
 				float &timeout_counter = emitters.timeout_counter[current_index];
 
@@ -6653,6 +6641,7 @@ namespace tfx {
 		for (auto &work_entry : spawn_work) {
 			tfxU32 index = work_entry.emitter_index;
 			emitters.highest_particle_age[index] = std::fmaxf(emitters.highest_particle_age[index], work_entry.highest_particle_age);
+			emitters.seed[index] = work_entry.seed;
 			effects.highest_particle_age[emitters.parent_index[index]] = emitters.highest_particle_age[index] + tfxFRAME_LENGTH;
 		}
 		spawn_work.free();

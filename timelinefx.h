@@ -5045,6 +5045,36 @@ You can then use layer inside the loop to get the current layer
 		return (float)rand_seed / 0x7fffffff; // return value between 0 and 1
 	}
 
+	inline void AdvanceSeed(tfxU32 &rand_seed) {
+		rand_seed = (rand_seed * 1103515245 + 12345) & 0x7fffffff; // simple linear congruential generator
+	}
+
+	inline float FastRandomRange(tfxU32 &rand_seed, float max) {
+		rand_seed = (rand_seed * 1103515245 + 12345) & 0x7fffffff; // simple linear congruential generator
+		return ((float)rand_seed / 0x7fffffff) * max; // return value between 0 and 1
+	}
+
+	inline float FastRandomRange(tfxU32 &rand_seed, float from, float to) {
+		rand_seed = (rand_seed * 1103515245 + 12345) & 0x7fffffff; // simple linear congruential generator
+		float a = ((float)rand_seed / 0x7fffffff); // return value between 0 and 1
+		float range = to - from;
+		return to - range * a;
+	}
+
+	inline float FastRandomRange(tfxU32 &rand_seed, int from, int to) {
+		rand_seed = (rand_seed * 1103515245 + 12345) & 0x7fffffff; // simple linear congruential generator
+		float a = ((float)rand_seed / 0x7fffffff); // return value between 0 and 1
+		a = (to - from) * a - (to - from) * .5f;
+		return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
+	}
+
+	inline float FastRandomRange(tfxU32 &rand_seed, tfxU32 max) {
+		rand_seed = (rand_seed * 1103515245 + 12345) & 0x7fffffff; // simple linear congruential generator
+		float a = ((float)rand_seed / 0x7fffffff); // return value between 0 and 1
+		a = a * (float)max;
+		return tfxU32(a);
+	}
+
 	inline tfxWideFloat FastRandomWide(tfxWideInt &rand_seed) {
 		tfxWideFloat max_value = tfxWideSetSingle((float)0x7fffffff);
 		rand_seed = tfxWideMuli(rand_seed, tfxWideSetSinglei(1103515245));
@@ -5946,7 +5976,6 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxEmitterSoA {
 		void(**transform_particle_callback2d)(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
-		void(**transform_particle_callback3d)(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotation, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
 
 		//State data
 		float *frame;
@@ -5966,7 +5995,7 @@ You can then use layer inside the loop to get the current layer
 		tfxVec3 *local_rotations;
 		tfxVec3 *world_rotations;
 		tfxVec3 *scale;
-		//Todo: save space and use a quaternion here
+		//Todo: save space and use a quaternion here... maybe
 		tfxMatrix4 *matrix;
 		tfxVec2 *image_handle;
 		float *amount_remainder;
@@ -5986,6 +6015,7 @@ You can then use layer inside the loop to get the current layer
 		tfxKey *path_hash;
 
 		//Spawn controls
+		tfxU32 *seed;
 		float *life;
 		float *life_variation;
 		float *arc_size;
@@ -6024,7 +6054,6 @@ You can then use layer inside the loop to get the current layer
 
 	inline void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, transform_particle_callback2d));
-		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, transform_particle_callback3d));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, frame));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, age));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, highest_particle_age));
@@ -6058,6 +6087,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, info_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, hierarchy_depth));
 		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, seed));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life_variation));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_size));
@@ -6646,6 +6676,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 emitter_index;
 		tfxParticleSoA *particle_data;
 		tfxvec<tfxEffectEmitter> *sub_effects;
+		tfxU32 seed;
 		float tween;
 		tfxU32 max_spawn_count;
 		tfxU32 amount_to_spawn = 0;
@@ -6818,6 +6849,7 @@ You can then use layer inside the loop to get the current layer
 
 		int mt_batch_size;
 
+		tfxU32 base_seed;
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
 		tfxComputeFXGlobalState compute_global_state;
@@ -7924,6 +7956,15 @@ You can then use layer inside the loop to get the current layer
 			}
 			pm->flags |= tfxEffectManagerFlags_double_buffer_sprites;
 		}
+	}
+
+	/*
+	Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles
+	* @param pm							A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param seed						An unsigned int representing the seed
+	*/
+	tfxAPI inline bool SetSeed(tfxParticleManager *pm, tfxU32 seed) {
+		pm->base_seed = seed;
 	}
 
 	/*
