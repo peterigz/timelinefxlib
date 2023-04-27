@@ -320,7 +320,7 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideDiv _mm_div_ps
 #define tfxWideAddi _mm_add_epi32
 #define tfxWideSubi _mm_sub_epi32
-#define tfxWideMuli _mm_mul_epi32
+#define tfxWideMuli _mm_mul_epu32
 #define tfxWideSqrt _mm_sqrt_ps
 #define tfxWideShiftRight _mm_srli_epi32
 #define tfxWideShiftLeft _mm_slli_epi32
@@ -352,6 +352,8 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideSetZero _mm_setzero_ps
 #define tfxWideEqualsi _mm_cmpeq_epi32 
 #define tfxWideEquals _mm_cmpeq_ps
+#define tfxWideShufflei _mm_shuffle_epi32
+
 #define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSetMember(lookup, member, index) tfxWideSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
 #define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
@@ -5038,6 +5040,20 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
+	inline float FastRandom(tfxU32 &rand_seed) {
+		rand_seed = (rand_seed * 1103515245 + 12345) & 0x7fffffff; // simple linear congruential generator
+		return (float)rand_seed / 0x7fffffff; // return value between 0 and 1
+	}
+
+	inline tfxWideFloat FastRandomWide(tfxWideInt &rand_seed) {
+		tfxWideFloat max_value = tfxWideSetSingle((float)0x7fffffff);
+		rand_seed = tfxWideMuli(rand_seed, tfxWideSetSinglei(1103515245));
+		rand_seed = tfxWideShufflei(rand_seed, _MM_SHUFFLE(0, 0, 2, 0));
+		rand_seed = tfxWideAddi(rand_seed, tfxWideSetSinglei(12345));
+		rand_seed = tfxWideAndi(rand_seed, tfxWideSetSinglei(0x7fffffff));
+		return tfxWideDiv(tfxWideConvert(rand_seed), max_value); 
+	}
+
 	static tfxRandom random_generation;
 
 	struct tfxGraphLookup {
@@ -6357,7 +6373,7 @@ You can then use layer inside the loop to get the current layer
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	//These all point into a tfxSoABuffer, initialised with InitParticleSoA
+	//These all point into a tfxSoABuffer, initialised with InitParticleSoA. Current Size: 108
 	struct tfxParticleSoA {
 		tfxU32 *parent_index;
 		tfxU32 *sprite_index;
