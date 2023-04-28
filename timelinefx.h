@@ -393,6 +393,11 @@ You can then use layer inside the loop to get the current layer
 	} tfx128iArray;
 
 	typedef union {
+		__m128i m;
+		tfxU64 a[2];
+	} tfx128iArray64;
+
+	typedef union {
 		__m128 m;
 		float a[4];
 	} tfx128Array;
@@ -4746,10 +4751,10 @@ You can then use layer inside the loop to get the current layer
 	int VertexForEdge(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, int first, int second);
 	tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, tfxvec<tfxFace> &triangles);
 
-	static inline uint32_t Millisecs() {
+	static inline tfxU32 Millisecs() {
 		auto now = tfxClock::now().time_since_epoch();
 		auto m = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-		return (uint32_t)m;
+		return (tfxU32)m;
 	}
 	static inline uint64_t Microsecs() {
 		auto now = tfxClock::now().time_since_epoch();
@@ -4951,56 +4956,74 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
-	inline float FastRandom(tfxU32 &rand_seed) {
-		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
-		return (float)rand_seed / 0xffffffff; 
-	}
+	struct tfxRandom {
+		uint64_t seeds[2];
 
-	inline void AdvanceSeed(tfxU32 &rand_seed) {
-		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
-	}
+		tfxRandom() {
+			ReSeed();
+		}
 
-	inline float FastRandomRange(tfxU32 &rand_seed, float max) {
-		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
-		return ((float)rand_seed / 0xffffffff) * max;
-	}
+		tfxRandom(tfxU32 &seed) {
+			ReSeed(seed);
+			seed = Range(tfxMAX_UINT);
+		}
 
-	inline float FastRandomRange(tfxU32 &rand_seed, float from, float to) {
-		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
-		float a = ((float)rand_seed / 0xffffffff); 
-		float range = to - from;
-		return to - range * a;
-	}
+		void ReSeed() {
+			seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; Generate();
+		}
 
-	inline int FastRandomRange(tfxU32 &rand_seed, int from, int to) {
-		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
-		float a = ((float)rand_seed / 0xffffffff);
-		a = (to - from) * a - (to - from) * .5f;
-		return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
-	}
+		void ReSeed(uint64_t seed1, uint64_t seed2) {
+			seeds[0] = seed1;
+			seeds[1] = seed2;
+			Advance();
+		}
 
-	inline tfxU32 FastRandomRange(tfxU32 &rand_seed, tfxU32 max) {
-		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
-		float a = ((float)rand_seed / 0xffffffff);
-		a = a * (float)max;
-		return tfxU32(a);
-	}
+		void ReSeed(uint64_t seed) {
+			seeds[0] = seed;
+			seeds[1] = seed * 2;
+			Advance();
+		}
 
-	inline tfxU32 FastRandomRangeOnce(tfxU32 rand_seed, tfxU32 max) {
-		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
-		float a = ((float)rand_seed / 0xffffffff); 
-		a = a * (float)max;
-		return tfxU32(a);
-	}
+		inline void Advance() {
+			uint64_t s1 = seeds[0];
+			uint64_t s0 = seeds[1];
+			seeds[0] = s0;
+			s1 ^= s1 << 23; // a
+			seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+		}
 
-	inline tfxWideFloat FastRandomWide(tfxWideInt &rand_seed) {
-		tfxWideFloat max_value = tfxWideSetSingle((float)0x7fffffff);
-		rand_seed = tfxWideMuli(rand_seed, tfxWideSetSinglei(1103515245));
-		rand_seed = tfxWideShufflei(rand_seed, _MM_SHUFFLE(0, 0, 2, 0));
-		rand_seed = tfxWideAddi(rand_seed, tfxWideSetSinglei(12345));
-		rand_seed = tfxWideAndi(rand_seed, tfxWideSetSinglei(0x7fffffff));
-		return tfxWideDiv(tfxWideConvert(rand_seed), max_value); 
-	}
+		inline float Generate() {
+			uint64_t s1 = seeds[0];
+			uint64_t s0 = seeds[1];
+			uint64_t result = s0 + s1;
+			seeds[0] = s0;
+			s1 ^= s1 << 23; // a
+			seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+			return float((double)result / TWO64f);
+		}
+
+		inline float Range(float max) {
+			return Generate() * max;
+		};
+
+		inline float Range(float from, float to) {
+			float a = Generate();
+			float range = to - from;
+			return to - range * a;
+		};
+
+		inline int Range(int from, int to) {
+			float a = (to - from) * Generate() - (to - from) * .5f;
+			return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
+		};
+
+		inline tfxU32 Range(tfxU32 max) {
+			float g = Generate();
+			float a = g * (float)max;
+			return tfxU32(a);
+		};
+
+	};
 
 	struct tfxGraphLookup {
 		tfxArray<float> values;
@@ -5066,7 +5089,7 @@ You can then use layer inside the loop to get the current layer
 		void AddNode(tfxAttributeNode &node);
 		void SetNode(uint32_t index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 		float GetValue(float age);
-		float GetRandomValue(float age, tfxU32 &seed);
+		float GetRandomValue(float age, tfxRandom &seed);
 		float GetValue(float age, float life);
 		tfxAttributeNode *GetNextNode(tfxAttributeNode &node);
 		tfxAttributeNode *GetPrevNode(tfxAttributeNode &node);
@@ -5121,8 +5144,8 @@ You can then use layer inside the loop to get the current layer
 	float LookupFast(tfxGraph &graph, float frame);
 	float LookupPreciseOvertime(tfxGraph &graph, float age, float lifetime);
 	float LookupPrecise(tfxGraph &graph, float frame);
-	float GetRandomFast(tfxGraph &graph, float frame, tfxU32 &seed);
-	float GetRandomPrecise(tfxGraph &graph, float frame, tfxU32 &seed);
+	float GetRandomFast(tfxGraph &graph, float frame, tfxRandom &seed);
+	float GetRandomPrecise(tfxGraph &graph, float frame, tfxRandom &seed);
 
 	//Node Manipluation
 	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
@@ -5602,7 +5625,7 @@ You can then use layer inside the loop to get the current layer
 
 	static float(*lookup_overtime_callback)(tfxGraph &graph, float age, float lifetime);
 	static float(*lookup_callback)(tfxGraph &graph, float age);
-	static float(*lookup_random_callback)(tfxGraph &graph, float age, tfxU32 &seed);
+	static float(*lookup_random_callback)(tfxGraph &graph, float age, tfxRandom &seed);
 
 	struct tfxShapeData {
 		char name[64];
@@ -5842,8 +5865,8 @@ You can then use layer inside the loop to get the current layer
 	};
 
 
-	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 &seed, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
-	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 &seed, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
+	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
+	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffectEmitterInfo {
 		//Name of the effect
@@ -6591,7 +6614,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 emitter_index;
 		tfxParticleSoA *particle_data;
 		tfxvec<tfxEffectEmitter> *sub_effects;
-		tfxU32 seed;
+		tfxRandom random;
 		float tween;
 		tfxU32 max_spawn_count;
 		tfxU32 amount_to_spawn = 0;
@@ -6764,6 +6787,7 @@ You can then use layer inside the loop to get the current layer
 
 		int mt_batch_size;
 
+		tfxRandom random;
 		tfxU32 base_seed;
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
@@ -6796,7 +6820,7 @@ You can then use layer inside the loop to get the current layer
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers")),
 			library(NULL),
 			sort_passes(0),
-			base_seed(1)
+			base_seed(tfxMAX_UINT)
 		{
 			memset(sprite_index_2d, 0, tfxLAYERS * 4);
 			memset(sprite_index_3d, 0, tfxLAYERS * 4);
@@ -7881,7 +7905,7 @@ You can then use layer inside the loop to get the current layer
 	* @param seed						An unsigned int representing the seed (Any value other then 0)
 	*/
 	tfxAPI inline void SetSeed(tfxParticleManager *pm, tfxU32 seed) {
-		pm->base_seed = seed != 0 ? seed : 0xFFCD4511;
+		pm->random.ReSeed(seed == 0 ? tfxMAX_UINT : seed);
 	}
 
 	/*
