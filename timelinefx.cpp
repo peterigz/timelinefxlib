@@ -12128,7 +12128,7 @@ namespace tfx {
 		profile = tfxProfileArray + id;
 		profile->name = name;
 		snapshot = profile->snapshots + tfxCurrentSnapshot;
-		snapshot->run_time -= Microsecs();
+		start_time = Microsecs();
 		start_cycles = __rdtsc();
 		AtomicAdd32(&snapshot->hit_count, 1);
 	}

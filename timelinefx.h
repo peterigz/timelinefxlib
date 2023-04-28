@@ -4786,11 +4786,12 @@ You can then use layer inside the loop to get the current layer
 		tfxProfile *profile;
 		tfxProfileSnapshot *snapshot;
 		tfxU64 start_cycles;
+		tfxU64 start_time;
 
 		tfxProfileTag(tfxU32 id, const char *name);
 
 		~tfxProfileTag() {
-			snapshot->run_time += Microsecs();
+			AtomicAdd64(&snapshot->run_time, Microsecs() - start_time);
 			AtomicAdd64(&snapshot->cycle_count, (__rdtsc() - start_cycles));
 		}
 
