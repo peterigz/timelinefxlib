@@ -4951,54 +4951,44 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
-	inline tfxU32 GenerateSeed(tfxU32 rand_seed) {
-		return (rand_seed * 1103515245 + 12345);
-		//rand_seed -= 1;
-		//rand_seed ^= rand_seed << 13;
-		//rand_seed ^= rand_seed >> 17;
-		//rand_seed ^= rand_seed << 5;
-		//return rand_seed;
-	}
-
 	inline float FastRandom(tfxU32 &rand_seed) {
-		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
-		return (float)rand_seed / 0xffffffff; // return value between 0 and 1
+		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
+		return (float)rand_seed / 0xffffffff; 
 	}
 
 	inline void AdvanceSeed(tfxU32 &rand_seed) {
-		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
+		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
 	}
 
 	inline float FastRandomRange(tfxU32 &rand_seed, float max) {
-		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
-		return ((float)rand_seed / 0xffffffff) * max; // return value between 0 and 1
+		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
+		return ((float)rand_seed / 0xffffffff) * max;
 	}
 
 	inline float FastRandomRange(tfxU32 &rand_seed, float from, float to) {
-		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
-		float a = ((float)rand_seed / 0xffffffff); // return value between 0 and 1
+		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
+		float a = ((float)rand_seed / 0xffffffff); 
 		float range = to - from;
-		std::cout << (to - range * a) << std::endl;
 		return to - range * a;
 	}
 
 	inline int FastRandomRange(tfxU32 &rand_seed, int from, int to) {
-		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
-		float a = ((float)rand_seed / 0xffffffff); // return value between 0 and 1
+		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
+		float a = ((float)rand_seed / 0xffffffff);
 		a = (to - from) * a - (to - from) * .5f;
 		return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
 	}
 
 	inline tfxU32 FastRandomRange(tfxU32 &rand_seed, tfxU32 max) {
-		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
-		float a = ((float)rand_seed / 0xffffffff); // return value between 0 and 1
+		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
+		float a = ((float)rand_seed / 0xffffffff);
 		a = a * (float)max;
 		return tfxU32(a);
 	}
 
 	inline tfxU32 FastRandomRangeOnce(tfxU32 rand_seed, tfxU32 max) {
-		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
-		float a = ((float)rand_seed / 0xffffffff); // return value between 0 and 1
+		rand_seed ^= rand_seed << 13; rand_seed ^= rand_seed >> 17; rand_seed ^= rand_seed << 5;
+		float a = ((float)rand_seed / 0xffffffff); 
 		a = a * (float)max;
 		return tfxU32(a);
 	}
@@ -6805,7 +6795,8 @@ You can then use layer inside the loop to get the current layer
 			current_sprite_buffer(0),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers")),
 			library(NULL),
-			sort_passes(0)
+			sort_passes(0),
+			base_seed(1)
 		{
 			memset(sprite_index_2d, 0, tfxLAYERS * 4);
 			memset(sprite_index_3d, 0, tfxLAYERS * 4);
@@ -7885,12 +7876,12 @@ You can then use layer inside the loop to get the current layer
 
 	/*
 	Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
-	then the effect will look the same each time
+	then the effect will look the same each time. Note that seed of 0 is invalid, it must be 1 or greater.
 	* @param pm							A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param seed						An unsigned int representing the seed
+	* @param seed						An unsigned int representing the seed (Any value other then 0)
 	*/
 	tfxAPI inline void SetSeed(tfxParticleManager *pm, tfxU32 seed) {
-		pm->base_seed = seed;
+		pm->base_seed = seed != 0 ? seed : 0xFFCD4511;
 	}
 
 	/*
