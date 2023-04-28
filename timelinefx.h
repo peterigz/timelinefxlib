@@ -2529,13 +2529,13 @@ You can then use layer inside the loop to get the current layer
 	//A char buffer you can use to load a file into and read from
 	//Has no deconstructor so make sure you call FreeAll() when done
 	//This is meant for limited usage in timeline fx only and not recommended for use outside!
-	struct tfxstream {
+	struct tfxStream {
 		tfxU64 size = 0;
 		tfxU64 position = 0;
 		char* data = NULL;
 
-		inline tfxstream() { size = position = 0; data = NULL; }
-		inline tfxstream(tfxU64 qty) { size = position = 0; data = NULL; Resize(qty); }
+		inline tfxStream() { size = position = 0; data = NULL; }
+		inline tfxStream(tfxU64 qty) { size = position = 0; data = NULL; Resize(qty); }
 
 		inline bool Read(char* dst, tfxU64 count) {
 			if (count + position <= size) {
@@ -4853,7 +4853,7 @@ You can then use layer inside the loop to get the current layer
 		tfxStr file_name;							//The file name of the name stored in the package
 		tfxU64 offset_from_start_of_file;			//Offset from the start of the file to where the file is located
 		tfxU64 file_size;							//The size of the file
-		tfxstream data;								//The file data
+		tfxStream data;								//The file data
 
 		void FreeData();
 	};
@@ -4873,23 +4873,23 @@ You can then use layer inside the loop to get the current layer
 		tfxHeader header;
 		tfxInventory inventory;
 		tfxU64 file_size;							//The total file size of the package, should match file size on disk
-		tfxstream file_data;						//Dump of the data from the package file on disk
+		tfxStream file_data;						//Dump of the data from the package file on disk
 
 		~tfxPackage();
 
 		tfxEntryInfo *GetFile(const char *name);
 		void AddFile(tfxEntryInfo file);
-		void AddFile(const char *file_name, tfxstream &data);
+		void AddFile(const char *file_name, tfxStream &data);
 		void Free();
 
 	};
 
-	tfxstream ReadEntireFile(const char *file_name, bool terminate = false);
+	tfxStream ReadEntireFile(const char *file_name, bool terminate = false);
 	tfxErrorFlags LoadPackage(const char *file_name, tfxPackage &package);
-	tfxErrorFlags LoadPackage(tfxstream &stream, tfxPackage &package);
+	tfxErrorFlags LoadPackage(tfxStream &stream, tfxPackage &package);
 	tfxPackage CreatePackage(const char *file_path);
 	bool SavePackageDisk(tfxPackage &package);
-	tfxstream SavePackageMemory(tfxPackage &package);
+	tfxStream SavePackageMemory(tfxPackage &package);
 	tfxU64 GetPackageSize(tfxPackage &package);
 	bool ValidatePackage(tfxPackage &package);
 
@@ -7873,7 +7873,8 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles
+	Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
+	then the effect will look the same each time
 	* @param pm							A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 	* @param seed						An unsigned int representing the seed
 	*/

@@ -990,7 +990,7 @@ namespace tfx {
 		va_end(args);
 	}
 
-	tfxStr512 tfxstream::ReadLine() {
+	tfxStr512 tfxStream::ReadLine() {
 		tfxStr512 line;
 		if (EoF()) return line;
 
@@ -1080,7 +1080,7 @@ namespace tfx {
 		inventory.entry_count++;
 	}
 
-	void tfxPackage::AddFile(const char *file_name, tfxstream &data) {
+	void tfxPackage::AddFile(const char *file_name, tfxStream &data) {
 		tfxEntryInfo entry;
 		entry.file_name = file_name;
 		entry.data = data;
@@ -1100,8 +1100,8 @@ namespace tfx {
 	}
 
 	// Reads the whole file on disk into memory and returns the pointer
-	tfxstream ReadEntireFile(const char *file_name, bool terminate) {
-		tfxstream buffer;
+	tfxStream ReadEntireFile(const char *file_name, bool terminate) {
+		tfxStream buffer;
 		FILE *file = fopen(file_name, "rb");
 		if (!file) {
 			return buffer;
@@ -1180,13 +1180,13 @@ namespace tfx {
 		return true;
 	}
 
-	tfxstream SavePackageMemory(tfxPackage &package) {
+	tfxStream SavePackageMemory(tfxPackage &package) {
 		if (!package.file_path.Length()) return false;											//Package must have a file path
 		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;						//Header of package must contain correct magic number. CreatePackage to correctly initialise a package.
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;			//Inventory of package must contain correct magic number
 
 		//char *file = (char*)malloc(GetPackageSize(package));
-		tfxstream file(GetPackageSize(package));
+		tfxStream file(GetPackageSize(package));
 		if (!file.Size())
 			return file;
 
@@ -1288,8 +1288,8 @@ namespace tfx {
 		return 0;
 	}
 
-	tfxErrorFlags LoadPackage(tfxstream &stream, tfxPackage &package) {
-		//Note: tfxstream does not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
+	tfxErrorFlags LoadPackage(tfxStream &stream, tfxPackage &package) {
+		//Note: tfxStream does not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
 		package.file_data = stream;
 		package.file_data.Seek(0);
 		if (package.file_data.Size() == 0)
