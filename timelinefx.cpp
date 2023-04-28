@@ -6053,7 +6053,7 @@ namespace tfx {
 
 		//First pass to count the number of sprites in each frame
 		//pm.UpdateAgeOnly(false);
-		pm.ForceSingleThreaded(true);
+		//pm.ForceSingleThreaded(true);
 
 		pm.ClearAll();
 		SetSeed(&pm, anim.seed);
@@ -6281,7 +6281,7 @@ namespace tfx {
 		FreeSoABuffer(&temp_sprites_buffer);
 		SetUpdateFrequency(update_freq);
 		pm.DisableSpawning(false);
-		pm.ForceSingleThreaded(false);
+		//pm.ForceSingleThreaded(false);
 	}
 
 	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager &pm) {
