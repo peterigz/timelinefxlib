@@ -7905,7 +7905,9 @@ You can then use layer inside the loop to get the current layer
 	* @param seed						An unsigned int representing the seed (Any value other then 0)
 	*/
 	tfxAPI inline void SetSeed(tfxParticleManager *pm, tfxU32 seed) {
-		pm->random.ReSeed(seed == 0 ? tfxMAX_UINT : seed);
+		pm->base_seed = seed == 0 ? tfxMAX_UINT : seed;
+		pm->random.ReSeed(pm->base_seed);
+		pm->base_seed = pm->random.Range(tfxMAX_UINT);
 	}
 
 	/*
