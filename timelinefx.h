@@ -4794,6 +4794,7 @@ You can then use layer inside the loop to get the current layer
 			AtomicAdd64(&snapshot->run_time, Microsecs() - start_time);
 			AtomicAdd64(&snapshot->cycle_count, (__rdtsc() - start_cycles));
 		}
+
 	};
 
 	inline void GatherStats(tfxProfile *profile, tfxProfileStats *stat) {
@@ -4950,48 +4951,54 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
-#define tfxRANDMULTIPLIER 6364136223846793005
-#define tfxRANDINCREMENT 1442695040888963407
-
-
-	inline float FastRandom(tfxU64 &rand_seed) {
-		rand_seed = (rand_seed * tfxRANDMULTIPLIER + tfxRANDINCREMENT); // simple linear congruential generator
-		return (float)rand_seed / MAXUINT64; // return value between 0 and 1
+	inline tfxU32 GenerateSeed(tfxU32 rand_seed) {
+		return (rand_seed * 1103515245 + 12345);
+		//rand_seed -= 1;
+		//rand_seed ^= rand_seed << 13;
+		//rand_seed ^= rand_seed >> 17;
+		//rand_seed ^= rand_seed << 5;
+		//return rand_seed;
 	}
 
-	inline void AdvanceSeed(tfxU64 &rand_seed) {
-		rand_seed = (rand_seed * tfxRANDMULTIPLIER + tfxRANDINCREMENT); // simple linear congruential generator
+	inline float FastRandom(tfxU32 &rand_seed) {
+		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
+		return (float)rand_seed / 0xffffffff; // return value between 0 and 1
 	}
 
-	inline float FastRandomRange(tfxU64 &rand_seed, float max) {
-		rand_seed = (rand_seed * tfxRANDMULTIPLIER + tfxRANDINCREMENT); // simple linear congruential generator
-		return ((float)rand_seed / MAXUINT64) * max; // return value between 0 and 1
+	inline void AdvanceSeed(tfxU32 &rand_seed) {
+		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
 	}
 
-	inline float FastRandomRange(tfxU64 &rand_seed, float from, float to) {
-		rand_seed = (rand_seed * tfxRANDMULTIPLIER + tfxRANDINCREMENT); // simple linear congruential generator
-		float a = ((float)rand_seed / MAXUINT64); // return value between 0 and 1
+	inline float FastRandomRange(tfxU32 &rand_seed, float max) {
+		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
+		return ((float)rand_seed / 0xffffffff) * max; // return value between 0 and 1
+	}
+
+	inline float FastRandomRange(tfxU32 &rand_seed, float from, float to) {
+		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
+		float a = ((float)rand_seed / 0xffffffff); // return value between 0 and 1
 		float range = to - from;
+		std::cout << (to - range * a) << std::endl;
 		return to - range * a;
 	}
 
-	inline int FastRandomRange(tfxU64 &rand_seed, int from, int to) {
-		rand_seed = (rand_seed * tfxRANDMULTIPLIER + tfxRANDINCREMENT); // simple linear congruential generator
-		float a = ((float)rand_seed / MAXUINT64); // return value between 0 and 1
+	inline int FastRandomRange(tfxU32 &rand_seed, int from, int to) {
+		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
+		float a = ((float)rand_seed / 0xffffffff); // return value between 0 and 1
 		a = (to - from) * a - (to - from) * .5f;
 		return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
 	}
 
-	inline tfxU32 FastRandomRange(tfxU64 &rand_seed, tfxU32 max) {
-		rand_seed = (rand_seed * tfxRANDMULTIPLIER + tfxRANDINCREMENT); // simple linear congruential generator
-		float a = ((float)rand_seed / MAXUINT64); // return value between 0 and 1
+	inline tfxU32 FastRandomRange(tfxU32 &rand_seed, tfxU32 max) {
+		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
+		float a = ((float)rand_seed / 0xffffffff); // return value between 0 and 1
 		a = a * (float)max;
 		return tfxU32(a);
 	}
 
-	inline tfxU32 FastRandomRangeOnce(tfxU64 rand_seed, tfxU32 max) {
-		rand_seed = (rand_seed * tfxRANDMULTIPLIER + tfxRANDINCREMENT); // simple linear congruential generator
-		float a = ((float)rand_seed / MAXUINT64); // return value between 0 and 1
+	inline tfxU32 FastRandomRangeOnce(tfxU32 rand_seed, tfxU32 max) {
+		rand_seed = rand_seed * 1103515245 + 12345; // simple linear congruential generator
+		float a = ((float)rand_seed / 0xffffffff); // return value between 0 and 1
 		a = a * (float)max;
 		return tfxU32(a);
 	}
@@ -5069,7 +5076,7 @@ You can then use layer inside the loop to get the current layer
 		void AddNode(tfxAttributeNode &node);
 		void SetNode(uint32_t index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 		float GetValue(float age);
-		float GetRandomValue(float age, tfxU64 &seed);
+		float GetRandomValue(float age, tfxU32 &seed);
 		float GetValue(float age, float life);
 		tfxAttributeNode *GetNextNode(tfxAttributeNode &node);
 		tfxAttributeNode *GetPrevNode(tfxAttributeNode &node);
@@ -5124,8 +5131,8 @@ You can then use layer inside the loop to get the current layer
 	float LookupFast(tfxGraph &graph, float frame);
 	float LookupPreciseOvertime(tfxGraph &graph, float age, float lifetime);
 	float LookupPrecise(tfxGraph &graph, float frame);
-	float GetRandomFast(tfxGraph &graph, float frame, tfxU64 &seed);
-	float GetRandomPrecise(tfxGraph &graph, float frame, tfxU64 &seed);
+	float GetRandomFast(tfxGraph &graph, float frame, tfxU32 &seed);
+	float GetRandomPrecise(tfxGraph &graph, float frame, tfxU32 &seed);
 
 	//Node Manipluation
 	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
@@ -5605,7 +5612,7 @@ You can then use layer inside the loop to get the current layer
 
 	static float(*lookup_overtime_callback)(tfxGraph &graph, float age, float lifetime);
 	static float(*lookup_callback)(tfxGraph &graph, float age);
-	static float(*lookup_random_callback)(tfxGraph &graph, float age, tfxU64 &seed);
+	static float(*lookup_random_callback)(tfxGraph &graph, float age, tfxU32 &seed);
 
 	struct tfxShapeData {
 		char name[64];
@@ -5845,8 +5852,8 @@ You can then use layer inside the loop to get the current layer
 	};
 
 
-	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU64 &seed, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
-	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxU64 &seed, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
+	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 &seed, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
+	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 &seed, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffectEmitterInfo {
 		//Name of the effect
@@ -5934,7 +5941,7 @@ You can then use layer inside the loop to get the current layer
 		tfxKey *path_hash;
 
 		//Spawn controls
-		tfxU64 *seed;
+		tfxU32 *seed;
 		float *life;
 		float *life_variation;
 		float *arc_size;
@@ -6006,7 +6013,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, info_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, hierarchy_depth));
 		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
-		AddStructArray(buffer, sizeof(tfxU64), offsetof(tfxEmitterSoA, seed));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, seed));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life_variation));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_size));
@@ -6594,7 +6601,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 emitter_index;
 		tfxParticleSoA *particle_data;
 		tfxvec<tfxEffectEmitter> *sub_effects;
-		tfxU64 seed;
+		tfxU32 seed;
 		float tween;
 		tfxU32 max_spawn_count;
 		tfxU32 amount_to_spawn = 0;
@@ -6767,7 +6774,7 @@ You can then use layer inside the loop to get the current layer
 
 		int mt_batch_size;
 
-		tfxU64 base_seed;
+		tfxU32 base_seed;
 		unsigned int max_compute_controllers;
 		unsigned int highest_compute_controller_index;
 		tfxComputeFXGlobalState compute_global_state;

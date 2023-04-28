@@ -1482,7 +1482,7 @@ namespace tfx {
 		return GetInfo().sub_effectors.back();
 	}
 
-	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU64 &seed, tfxU32 property_index, tfxU32 emitter_index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size) {
+	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 &seed, tfxU32 property_index, tfxU32 emitter_index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size) {
 		//float (*effect_lookup_callback)(tfxGraph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
 		const float frame = pm.emitters.frame[emitter_index];
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
@@ -1569,7 +1569,7 @@ namespace tfx {
 		return direction + emission_angle + FastRandomRange(seed, -range, range);
 	}
 
-	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxU64 &seed, tfxU32 property_index, tfxU32 emitter_index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size) {
+	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxU32 &seed, tfxU32 property_index, tfxU32 emitter_index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size) {
 		//float (*effect_lookup_callback)(tfxGraph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
 		const float frame = pm.emitters.frame[emitter_index];
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
@@ -4523,7 +4523,7 @@ namespace tfx {
 		return &nodes.back();
 	}
 
-	float tfxGraph::GetRandomValue(float age, tfxU64 &seed) {
+	float tfxGraph::GetRandomValue(float age, tfxU32 &seed) {
 		float lastv = 0;
 		float lastf = 0;
 		float p = 0;
@@ -5217,7 +5217,7 @@ namespace tfx {
 		return lastv;
 	}
 
-	float GetRandomFast(tfxGraph &graph, float frame, tfxU64 &seed) {
+	float GetRandomFast(tfxGraph &graph, float frame, tfxU32 &seed) {
 		float value = 0;
 		if ((tfxU32)frame < graph.lookup.last_frame)
 			value = graph.lookup.values[(tfxU32)frame];
@@ -5225,7 +5225,7 @@ namespace tfx {
 		return FastRandomRange(seed, value);
 	}
 
-	float GetRandomPrecise(tfxGraph &graph, float frame, tfxU64 &seed) {
+	float GetRandomPrecise(tfxGraph &graph, float frame, tfxU32 &seed) {
 		return graph.GetRandomValue(frame, seed);
 	}
 
