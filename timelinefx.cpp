@@ -1122,7 +1122,7 @@ namespace tfx {
 		}
 
 		if (terminate)
-			buffer.Resize(length + 1);
+			buffer.Resize((tfxU64)length + 1);
 		else
 			buffer.Resize(length);
 		if (buffer.data == NULL || fread(buffer.data, 1, length, file) != length) {
@@ -1791,7 +1791,7 @@ namespace tfx {
 		if (library->transform_attributes[transform_attributes].pitch.nodes.size() == 0) library->transform_attributes[transform_attributes].pitch.Reset(0.f, tfxAnglePreset);
 		if (library->transform_attributes[transform_attributes].yaw.nodes.size() == 0) library->transform_attributes[transform_attributes].yaw.Reset(0.f, tfxAnglePreset);
 
-		if (type == tfxEffectType) {
+		if (type == tfxEffectType && global != tfxINVALID) {
 			if (library->global_graphs[global].life.nodes.size() == 0) library->global_graphs[global].life.Reset(1.f, tfxGlobalPercentPreset);
 			if (library->global_graphs[global].amount.nodes.size() == 0) library->global_graphs[global].amount.Reset(1.f, tfxGlobalPercentPreset);
 			if (library->global_graphs[global].velocity.nodes.size() == 0) library->global_graphs[global].velocity.Reset(1.f, tfxGlobalPercentPreset);
@@ -1809,7 +1809,7 @@ namespace tfx {
 			if (library->global_graphs[global].emitter_depth.nodes.size() == 0) library->global_graphs[global].emitter_depth.Reset(1.f, tfxGlobalPercentPreset);
 		}
 
-		if (type == tfxEmitterType) {
+		if (type == tfxEmitterType && emitter_attributes != tfxINVALID) {
 			if (library->emitter_attributes[emitter_attributes].base.life.nodes.size() == 0) library->emitter_attributes[emitter_attributes].base.life.Reset(1000.f, tfxLifePreset);
 			if (library->emitter_attributes[emitter_attributes].base.amount.nodes.size() == 0) library->emitter_attributes[emitter_attributes].base.amount.Reset(1.f, tfxAmountPreset);
 			if (library->emitter_attributes[emitter_attributes].base.velocity.nodes.size() == 0) library->emitter_attributes[emitter_attributes].base.velocity.Reset(0.f, tfxVelocityPreset);
@@ -2286,7 +2286,7 @@ namespace tfx {
 				count += library->CountEmitterLookUpValues(emitter.emitter_attributes);
 			}
 		}
-		else if (type = tfxEmitterType) {
+		else if (type == tfxEmitterType) {
 			count += library->CountEmitterLookUpValues(emitter_attributes);
 		}
 		return count;
@@ -10720,13 +10720,13 @@ namespace tfx {
 			local_position_x = local_position_y = local_position_z = 0;
 			tfxVec3 lerp_position = InterpolateVec3(tween, emitter_captured_position, emitter_world_position);
 
-			tfxVec3 emitter_size = emitter_size * .5f;
+			tfxVec3 half_emitter_size = emitter_size * .5f;
 			tfxU32 sub_division = (tfxU32)grid_points.x;
 			assert(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
 			int ico_point = entry->random.Range(tfxIcospherePoints[sub_division].current_size);
-			local_position_x = tfxIcospherePoints[sub_division][ico_point].x * emitter_size.x;
-			local_position_y = tfxIcospherePoints[sub_division][ico_point].y * emitter_size.y;
-			local_position_z = tfxIcospherePoints[sub_division][ico_point].z * emitter_size.z;
+			local_position_x = tfxIcospherePoints[sub_division][ico_point].x * half_emitter_size.x;
+			local_position_y = tfxIcospherePoints[sub_division][ico_point].y * half_emitter_size.y;
+			local_position_z = tfxIcospherePoints[sub_division][ico_point].z * half_emitter_size.z;
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				tfxVec3 pos = mmTransformVector3(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
 				local_position_x = lerp_position.x + local_position_x * scale.x;

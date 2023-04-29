@@ -923,6 +923,11 @@ You can then use layer inside the loop to get the current layer
 	const tfxS64 tfxMAX_64i = LLONG_MAX;
 	const tfxS64 tfxMIN_64i = LLONG_MIN;
 	const tfxU64 tfxMAX_64u = ULLONG_MAX;
+#if defined(__x86_64__) || defined(_M_X64)
+	typedef tfxU64 tfxAddress;
+#else
+	typedef tfxU32 tfxAddress;
+#endif
 
 	const float tfxLIFE_MIN = 0.f;
 	const float tfxLIFE_MAX = 100000.f;
@@ -1055,7 +1060,16 @@ You can then use layer inside the loop to get the current layer
 
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
-		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; tfxMemoryTrackerPair* new_data = (tfxMemoryTrackerPair*)malloc((size_t)new_capacity * sizeof(tfxMemoryTrackerPair)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(tfxMemoryTrackerPair)); free(data); } data = new_data; capacity = new_capacity; }
+		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; 
+			tfxMemoryTrackerPair* new_data = (tfxMemoryTrackerPair*)malloc((size_t)new_capacity * sizeof(tfxMemoryTrackerPair)); 
+			assert(new_data);	//Unable to allocate memory for new_data
+			if (data) { 
+				memcpy(new_data, data, (size_t)current_size * sizeof(tfxMemoryTrackerPair)); 
+				free(data); 
+			} 
+			data = new_data; 
+			capacity = new_capacity; 
+		}
 
 		inline tfxMemoryTrackerPair*           erase(const tfxMemoryTrackerPair* it) { assert(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(tfxMemoryTrackerPair)); current_size--; return data + off; }
 		inline tfxMemoryTrackerPair*           erase(const tfxMemoryTrackerPair* it, const tfxMemoryTrackerPair* it_last) { assert(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove(data + off, data + off + count, ((size_t)current_size - (size_t)off - count) * sizeof(tfxMemoryTrackerPair)); current_size -= (tfxU32)count; return data + off; }
@@ -1240,7 +1254,9 @@ You can then use layer inside the loop to get the current layer
 		inline void         reserve(tfxU32 new_capacity) {
 			if (new_capacity <= capacity)
 				return;
-			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity;
+			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); 
+			assert(new_data);	//Unable to allocate memory. todo: better handling
+			if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity;
 		}
 
 		inline T&	        grab() {
@@ -1306,7 +1322,7 @@ You can then use layer inside the loop to get the current layer
 		unsigned int bank_index;
 		tfxring *pair;
 
-		inline tfxring() : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME; }
+		inline tfxring() : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = bank_index = 0; data = NULL; tfxINIT_VEC_NAME; }
 		inline tfxring(const char *name_init) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init); }
 		inline tfxring(unsigned int qty) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); tfxINIT_VEC_NAME; }
 		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
@@ -1355,6 +1371,7 @@ You can then use layer inside the loop to get the current layer
 		inline void         reserve(tfxU32 new_capacity, bool use_callback = true) {
 			if (new_capacity <= capacity) return;
 			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T));
+			assert(new_data);	//Unable to allocate memory. todo: better handling
 			if (data) {
 				if (last_index() < start_index) {
 					memcpy(new_data, data + start_index, (size_t)(capacity - start_index) * sizeof(T));
@@ -1471,7 +1488,7 @@ You can then use layer inside the loop to get the current layer
 		size_t memory_remaining;
 		size_t total_memory;
 
-		tfxMemoryArena() { data = end_of_allocated = NULL; memory_remaining = 0; }
+		tfxMemoryArena() { data = end_of_allocated = NULL; memory_remaining = total_memory = 0; }
 
 		inline void FreeAll() {
 			if (data) {
@@ -1499,7 +1516,9 @@ You can then use layer inside the loop to get the current layer
 		tfxMemoryArenaManager() :
 			arenas(tfxCONSTRUCTOR_VEC_INIT("Memory Arena arenas")),
 			blocks(tfxCONSTRUCTOR_VEC_INIT("Memory Arena blocks")),
-			free_blocks(tfxCONSTRUCTOR_VEC_INIT("Memory Arena free_blocks"))
+			free_blocks(tfxCONSTRUCTOR_VEC_INIT("Memory Arena free_blocks")),
+			arena_size(0),
+			size_diff_threshold(0)
 		{}
 
 		inline void FreeAll() {
@@ -1670,18 +1689,18 @@ You can then use layer inside the loop to get the current layer
 
 		inline void CopyBlockToBlock(tfxU32 from, tfxU32 to) {
 			assert(blocks[from].capacity && blocks[from].capacity <= blocks[to].capacity);		//must have valid capacities
-			memcpy(blocks[to].data, blocks[from].data, blocks[from].capacity * blocks[from].unit_size);
+			memcpy(blocks[to].data, blocks[from].data, (tfxAddress)blocks[from].capacity * blocks[from].unit_size);
 			auto &src = blocks[from];
 			auto &dst = blocks[to];
 			dst.current_size = src.current_size;
-			dst.end_ptr = (char*)dst.data + (dst.unit_size * dst.current_size);
+			dst.end_ptr = (char*)dst.data + ((tfxAddress)dst.unit_size * dst.current_size);
 		}
 
 		inline void CopyBlockToBlock(tfxMemoryBucket *from, tfxMemoryBucket *to) {
 			assert(from->capacity && from->capacity <= to->capacity);		//must have valid capacities
-			memcpy(to->data, from->data, from->capacity * from->unit_size);
+			memcpy(to->data, from->data, (tfxAddress)from->capacity * from->unit_size);
 			to->current_size = from->current_size;
-			to->end_ptr = (char*)to->data + (to->unit_size * to->current_size);
+			to->end_ptr = (char*)to->data + ((tfxAddress)to->unit_size * to->current_size);
 		}
 
 		inline tfxMemoryArena *AddArena() {
@@ -1689,6 +1708,7 @@ You can then use layer inside the loop to get the current layer
 			arena.total_memory = arena_size;
 			arena.memory_remaining = arena_size;
 			arena.data = tfxALLOCATE(0, 0, arena_size);
+			assert(arena.data); //Unable to allocate memory. Todo: proper handling of out of memory
 			arena.end_of_allocated = arena.data;
 			memset(arena.data, 0, arena_size);
 			arenas.push_back(arena);
@@ -1728,11 +1748,11 @@ You can then use layer inside the loop to get the current layer
 
 	inline void CopyBlockToBlock(tfxMemoryArenaManager &from_allocator, tfxMemoryArenaManager &to_allocator, tfxU32 from, tfxU32 to) {
 		assert(from_allocator.blocks[from].capacity && from_allocator.blocks[from].capacity <= to_allocator.blocks[to].capacity);		//must have valid capacities
-		memcpy(to_allocator.blocks[to].data, from_allocator.blocks[from].data, from_allocator.blocks[from].capacity * from_allocator.blocks[from].unit_size);
+		memcpy(to_allocator.blocks[to].data, from_allocator.blocks[from].data, (tfxAddress)from_allocator.blocks[from].capacity * from_allocator.blocks[from].unit_size);
 		auto &src = from_allocator.blocks[from];
 		auto &dst = to_allocator.blocks[to];
 		dst.current_size = src.current_size;
-		dst.end_ptr = (char*)dst.data + (dst.unit_size * dst.current_size);
+		dst.end_ptr = (char*)dst.data + ((tfxAddress)dst.unit_size * dst.current_size);
 	}
 
 	inline tfxU64 NearestMultiple(tfxU64 numToRound, tfxU64 multiple)
@@ -1752,6 +1772,7 @@ You can then use layer inside the loop to get the current layer
 		assert(size_in_bytes > 1024 * 1024);	//minimum 1mb allocation
 		tfxMemoryArena allocator;
 		void* new_data = tfxALLOCATE(0, 0, size_in_bytes);
+		assert(new_data);	//Unable to allocate memory. Todo: better handling
 		allocator.data = new_data;
 		allocator.end_of_allocated = allocator.data;
 		allocator.memory_remaining = size_in_bytes;
@@ -1762,8 +1783,8 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxSoAData {
 		void *ptr = NULL;
-		size_t offset;
-		size_t unit_size;
+		size_t offset = 0;
+		size_t unit_size = 0;
 	};
 
 	//A buffer designed to contain structs of arrays. If the arrays need to grow then a new memory block is made and all copied over
@@ -1780,9 +1801,9 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 capacity = 0;				//capacity of each array
 		tfxU32 block_size = tfxDataWidth;	//Keep the capacity to the nearest block size
 		tfxvec<tfxSoAData> array_ptrs;		//Container for all the pointers into the arena
-		void *user_data;
+		void *user_data = NULL;
 		void(*resize_callback)(tfxSoABuffer *ring, tfxU32 new_index_start) = NULL;
-		void *struct_of_arrays;				//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
+		void *struct_of_arrays = NULL;				//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
 		void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
 	};
 
@@ -1822,6 +1843,7 @@ You can then use layer inside the loop to get the current layer
 		reserve_amount = (reserve_amount / buffer->block_size + 1) * buffer->block_size;
 		buffer->current_arena_size = reserve_amount * buffer->struct_size;
 		buffer->data = tfxALLOCATE(0, 0, buffer->current_arena_size);
+		assert(buffer->data);	//Unable to allocate memory. Todo: better handling
 		memset(buffer->data, 0, buffer->current_arena_size);
 		buffer->capacity = reserve_amount;
 		buffer->struct_of_arrays = struct_of_arrays;
@@ -1850,6 +1872,7 @@ You can then use layer inside the loop to get the current layer
 		}
 		new_capacity = (new_capacity / buffer->block_size + 1) * buffer->block_size;
 		void *new_data = tfxALLOCATE(0, 0, new_capacity * buffer->struct_size);
+		assert(new_data);	//Unable to allocate memory. Todo: better handling
 		memset(new_data, 0, new_capacity * buffer->struct_size);
 		size_t running_offset = 0;
 		if (keep_data) {
@@ -2301,7 +2324,7 @@ You can then use layer inside the loop to get the current layer
 			bool initial_inserted = false;
 			do {
 				T* insert_point = &ValueAt<T>(allocator->blocks[index_block], insert_index);
-				size_t move_size = size_of_each_bucket - insert_index - (allocator->blocks[index_block].current_size == allocator->blocks[index_block].capacity ? 1 : 0);
+				size_t move_size = (tfxAddress)size_of_each_bucket - insert_index - (allocator->blocks[index_block].current_size == allocator->blocks[index_block].capacity ? 1 : 0);
 				T value_at_back = BlockBack<T>(allocator->blocks[index_block]);
 				if (move_size > 0) {
 					memmove(insert_point + 1, insert_point, move_size * sizeof(T));
@@ -2578,6 +2601,7 @@ You can then use layer inside the loop to get the current layer
 			if (new_capacity <= size)
 				return;
 			char* new_data = (char*)tfxALLOCATE("Stream", new_data, (tfxU64)new_capacity * sizeof(char));
+			assert(new_data);	//Unable to allocate memory. Todo: better handling
 			if (data) {
 				memcpy(new_data, data, (tfxU64)size * sizeof(char));
 				free(data);
@@ -2602,8 +2626,8 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	struct tfxWorkQueueEntry {
-		tfxWorkQueueCallback *call_back;
-		void *data;
+		tfxWorkQueueCallback *call_back = NULL;
+		void *data = NULL;
 	};
 
 	/*
@@ -2667,7 +2691,7 @@ You can then use layer inside the loop to get the current layer
 
 		if (queue) {
 			tfxU32 original_read_entry = queue->next_read_entry;
-			tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
+			tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 
 			if (original_read_entry != queue->next_write_entry) {
 				tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -2692,7 +2716,7 @@ You can then use layer inside the loop to get the current layer
 		bool sleep = false;
 
 		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxArrayCount(queue->entries);
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 
 		if (original_read_entry != queue->next_write_entry) {
 			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -2712,7 +2736,7 @@ You can then use layer inside the loop to get the current layer
 	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
 		assert(tfxNumberOfThreadsInAdditionToMain > 0);
 
-		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxArrayCount(queue->entries);
+		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 		while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
 			//We can do this because we're single producer
 			tfxDoNextWorkQueueEntry(queue);
@@ -2758,15 +2782,22 @@ You can then use layer inside the loop to get the current layer
 		queue->next_write_entry = 0;
 	}
 
-	inline void tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
+	inline bool tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
 		InitialiseThreadQueues(&tfxThreadQueues);
 
+		//todo: create a function to close all the threads 
+
 		tfxThreadSemaphore = CreateSemaphoreEx(0, 0, tfxNumberOfThreadsInAdditionToMain, 0, 0, SEMAPHORE_ALL_ACCESS);
+		tfxU32 threads_initialised = 0;
 		for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
 			DWORD thread_id;
 			HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, thread_queues, 0, &thread_id);
-			CloseHandle(thread_handle);
+			if (!thread_handle) {
+				tfxNumberOfThreadsInAdditionToMain = threads_initialised;
+				return false;
+			}
 		}
+		return true;
 	}
 
 	//Just the very basic vector types that we need
@@ -4046,7 +4077,7 @@ You can then use layer inside the loop to get the current layer
 	class tfxXXHash64
 	{
 	public:
-		/// create new XXHash (64 bit)
+		// create new XXHash (64 bit)
 		/** @param seed your seed value, even zero is a valid seed **/
 		explicit tfxXXHash64(uint64_t seed)
 		{
@@ -4056,6 +4087,7 @@ You can then use layer inside the loop to get the current layer
 			state[3] = seed - Prime1;
 			bufferSize = 0;
 			totalLength = 0;
+			memset(buffer, 0, MaxBufferSize);
 		}
 
 		/// add a chunk of bytes
@@ -4256,6 +4288,7 @@ You can then use layer inside the loop to get the current layer
 		inline void         reserve(tfxU32 new_capacity) {
 			if (new_capacity <= capacity) return;
 			char* new_data = (char*)tfxALLOCATE(0, 0, (size_t)new_capacity * sizeof(char));
+			assert(new_data);	//unable to allocate memory. Todo: proper handling
 			if (data && !is_local_buffer) {
 				memcpy(new_data, data, (size_t)current_size * sizeof(char));
 				free(data);
@@ -4268,9 +4301,9 @@ You can then use layer inside the loop to get the current layer
 			capacity = new_capacity;
 		}
 
-		tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-		tfxStr(const tfxStr &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
-		inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+		tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+		tfxStr(const tfxStr &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
+		inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 		inline void operator=(const tfxStr& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 		inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
 		inline bool operator==(const tfxStr string) { return !strcmp(c_str(), string.c_str()); }
@@ -4328,7 +4361,7 @@ You can then use layer inside the loop to get the current layer
 #define tfxStrType(type, size)		\
 	struct type : public tfxStr { \
 	char buffer[size]; \
-	type() { data = buffer; capacity = size; current_size = 0; is_local_buffer = true; NullTerminate(); } \
+	type() { memset(buffer, 0, size); data = buffer; capacity = size; current_size = 0; is_local_buffer = true; NullTerminate(); } \
 	inline void operator=(const tfxStr& src) { \
 		data = buffer; \
 		is_local_buffer = true; \
@@ -4354,8 +4387,9 @@ You can then use layer inside the loop to get the current layer
 		NullTerminate(); \
 	} \
 	inline void operator=(const char *text) { data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
-	type(const char *text) { data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
+	type(const char *text) { memset(buffer, 0, size); data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
 	type(const tfxStr &src) { \
+		memset(buffer, 0, size); \
 		data = buffer; \
 		is_local_buffer = true; \
 		capacity = size; size_t length = src.Length(); \
@@ -4368,6 +4402,7 @@ You can then use layer inside the loop to get the current layer
 		NullTerminate(); \
 	} \
 	type(const type &src) { \
+		memset(buffer, 0, size); \
 		data = buffer; \
 		is_local_buffer = true; \
 		capacity = size; size_t length = src.Length(); \
@@ -4857,8 +4892,8 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxEntryInfo {
 		tfxStr file_name;							//The file name of the name stored in the package
-		tfxU64 offset_from_start_of_file;			//Offset from the start of the file to where the file is located
-		tfxU64 file_size;							//The size of the file
+		tfxU64 offset_from_start_of_file = 0;		//Offset from the start of the file to where the file is located
+		tfxU64 file_size = 0;						//The size of the file
 		tfxStream data;								//The file data
 
 		void FreeData();
@@ -4870,7 +4905,9 @@ You can then use layer inside the loop to get the current layer
 		tfxStorageMap<tfxEntryInfo> entries;		//The inventory list
 
 		tfxInventory() :
-			entries("Inventory Map", "Inventory Data")
+			entries("Inventory Map", "Inventory Data"),
+			magic_number(0),
+			entry_count(0)
 		{}
 	};
 
@@ -4878,7 +4915,7 @@ You can then use layer inside the loop to get the current layer
 		tfxStr file_path;
 		tfxHeader header;
 		tfxInventory inventory;
-		tfxU64 file_size;							//The total file size of the package, should match file size on disk
+		tfxU64 file_size = 0;						//The total file size of the package, should match file size on disk
 		tfxStream file_data;						//Dump of the data from the package file on disk
 
 		~tfxPackage();
@@ -4915,7 +4952,7 @@ You can then use layer inside the loop to get the current layer
 		tfxAttributeNodeFlags flags;
 		tfxU32 index;
 
-		tfxAttributeNode() : frame(0.f), value(0.f), flags(0) { }
+		tfxAttributeNode() : frame(0.f), value(0.f), flags(0), index(0) { }
 		inline bool operator==(const tfxAttributeNode& n) { return n.frame == frame && n.value == value; }
 
 		/*
@@ -4957,45 +4994,47 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	struct tfxRandom {
-		uint64_t seeds[2];
+		tfxU64 seeds[2];
 
 		tfxRandom() {
+			memset(seeds, 0, sizeof(tfxU64) * 2);
 			ReSeed();
 		}
 
 		tfxRandom(tfxU32 &seed) {
+			memset(seeds, 0, sizeof(tfxU64) * 2);
 			ReSeed(seed);
 			seed = Range(tfxMAX_UINT);
 		}
 
 		void ReSeed() {
-			seeds[0] = Millisecs(); seeds[1] = Millisecs() * 2; Generate();
+			seeds[0] = Millisecs(); seeds[1] = (tfxU64)Millisecs() * 2; Generate();
 		}
 
-		void ReSeed(uint64_t seed1, uint64_t seed2) {
+		void ReSeed(tfxU64 seed1, tfxU64 seed2) {
 			seeds[0] = seed1;
 			seeds[1] = seed2;
 			Advance();
 		}
 
-		void ReSeed(uint64_t seed) {
+		void ReSeed(tfxU64 seed) {
 			seeds[0] = seed;
 			seeds[1] = seed * 2;
 			Advance();
 		}
 
 		inline void Advance() {
-			uint64_t s1 = seeds[0];
-			uint64_t s0 = seeds[1];
+			tfxU64 s1 = seeds[0];
+			tfxU64 s0 = seeds[1];
 			seeds[0] = s0;
 			s1 ^= s1 << 23; // a
 			seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
 		}
 
 		inline float Generate() {
-			uint64_t s1 = seeds[0];
-			uint64_t s0 = seeds[1];
-			uint64_t result = s0 + s1;
+			tfxU64 s1 = seeds[0];
+			tfxU64 s0 = seeds[1];
+			tfxU64 result = s0 + s1;
 			seeds[0] = s0;
 			s1 ^= s1 << 23; // a
 			seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
@@ -5728,12 +5767,14 @@ You can then use layer inside the loop to get the current layer
 		tfxCUSTOM_IMAGE_DATA
 #endif // tfxCUSTOM_IMAGE_DATA
 
-			tfxImageData() :
+		tfxImageData() :
+			image_index(0),
 			ptr(nullptr),
 			animation_frames(1.f),
 			shape_index(0),
 			max_radius(0),
-			import_filter(0)
+			import_filter(0),
+			compute_shape_index(0)
 		{ }
 	};
 
@@ -5785,6 +5826,8 @@ You can then use layer inside the loop to get the current layer
 		float *start_frame;
 		//Base noise offset random range so that noise patterns don't repeat so much over multiple effects
 		float *noise_base_offset_range;
+
+		tfxEmitterPropertiesSoA() { memset(this, 0, sizeof(tfxEmitterPropertiesSoA)); }
 	};
 
 	inline void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i) {
@@ -5895,9 +5938,15 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 max_sub_emitters;
 
 		tfxEffectEmitterInfo() :
+			lookup_node_index(0),
+			lookup_value_index(0),
+			sprite_data_settings_index(0),
+			uid(0),
+			max_radius(0),
 			sprite_sheet_settings_index(0),
 			preview_camera_settings(0),
 			max_sub_emitters(0),
+			max_life(0),
 			max_sub_emitter_life(0.f),
 			sub_effectors(tfxCONSTRUCTOR_VEC_INIT("sub_effectors"))
 		{
@@ -5909,9 +5958,6 @@ You can then use layer inside the loop to get the current layer
 
 #define tfx2DTRANSFORMCALLBACK(name) void *name(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position)
 	typedef tfx2DTRANSFORMCALLBACK(tfxParticleTransformCallback2d);
-
-#define tfx3DTRANSFORMCALLBACK(name) void *name(tfxParticleData &data, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position)
-	typedef tfx3DTRANSFORMCALLBACK(tfxParticleTransformCallback3d);
 
 	struct tfxEmitterSoA {
 		void(**transform_particle_callback2d)(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
@@ -6181,6 +6227,8 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 pm_index;
 
 		tfxEffectEmitter() :
+			buffer_index(0),
+			pm_index(0),
 			parent(nullptr),
 			user_data(nullptr),
 			update_callback(nullptr),
@@ -6188,6 +6236,9 @@ You can then use layer inside the loop to get the current layer
 			sort_passes(1),
 			info_index(tfxINVALID),
 			property_index(tfxINVALID),
+			global(tfxINVALID),
+			emitter_attributes(tfxINVALID),
+			transform_attributes(tfxINVALID),
 			property_flags(tfxEmitterPropertyFlags_image_handle_auto_center |
 				tfxEmitterPropertyFlags_grid_spawn_clockwise |
 				tfxEmitterPropertyFlags_emitter_handle_auto_center |
@@ -6591,8 +6642,8 @@ You can then use layer inside the loop to get the current layer
 	struct tfxComputeImageData {
 		tfxVec4 uv;
 		tfxVec2 image_size;
-		tfxU32 image_index;
-		float animation_frames;
+		tfxU32 image_index = 0;
+		float animation_frames = 0;
 		//float max_radius;
 	};
 
@@ -6653,7 +6704,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 end_index;
 		tfxU32 wide_end_index;
 		tfxU32 start_diff;
-		bool calculate_depth = false;
+		bool calculate_depth;
 		tfxring<tfxParticleSprite2d> *sprites2d;
 		tfxSprite3dSoA *sprites3d;
 	};
@@ -7166,6 +7217,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 uid;
 
 		tfxLibrary() :
+			uid(0),
 			effect_paths("EffectLib effect paths map", "EffectLib effect paths data"),
 			particle_shapes("EffectLib shapes map", "EffectLib shapes data"),
 			effects(tfxCONSTRUCTOR_VEC_INIT("effects")),
@@ -7309,6 +7361,7 @@ You can then use layer inside the loop to get the current layer
 		tfxKey original_effect_hash;
 
 		tfxEffectTemplate() :
+			original_effect_hash(0),
 			paths("Effect template paths map", "Effect template paths data")
 		{}
 		void AddPath(tfxEffectEmitter &effect_emitter, tfxStr256 path) {
@@ -7427,13 +7480,13 @@ You can then use layer inside the loop to get the current layer
 	*/
 
 	struct tfxDataEntry {
-		tfxDataType type;
+		tfxDataType type = tfxSInt;
 		tfxStr32 key;
 		tfxStr str_value;
-		int int_value;
-		bool bool_value;
-		float float_value;
-		double double_value;
+		int int_value = 0;
+		bool bool_value = 0;
+		float float_value = 0;
+		double double_value = 0;
 	};
 
 	struct tfxDataTypesDictionary {
@@ -7970,8 +8023,8 @@ You can then use layer inside the loop to get the current layer
 	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 	* @param layer				The layer to Reset the sprite indexes of
 	*/
-	tfxAPI inline bool ResetSpriteIndexes2d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprite_index_2d[layer] = 0;
+	tfxAPI inline void ResetSpriteIndexes2d(tfxParticleManager *pm, tfxU32 layer) {
+		pm->sprite_index_2d[layer] = 0;
 	}
 
 	/*
@@ -7979,8 +8032,8 @@ You can then use layer inside the loop to get the current layer
 	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 	* @param layer				The layer to Reset the sprite indexes of
 	*/
-	tfxAPI inline bool ResetSpriteIndexes2d(tfxParticleManager *pm) {
-		return memset(pm->sprite_index_2d, 0, tfxLAYERS * sizeof(tfxU32));
+	tfxAPI inline void ResetSpriteIndexes2d(tfxParticleManager *pm) {
+		memset(pm->sprite_index_2d, 0, tfxLAYERS * sizeof(tfxU32));
 	}
 
 	/*
