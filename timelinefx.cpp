@@ -10674,12 +10674,14 @@ namespace tfx {
 			tfxU32 sub_division = (tfxU32)grid_points.x;
 			assert(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
 
+			if (grid_coords.x >= tfxIcospherePoints[sub_division].current_size) {
+				grid_coords.x = 0;
+			}
 			local_position_x = tfxIcospherePoints[sub_division][(tfxU32)grid_coords.x].x * half_emitter_size.x;
 			local_position_y = tfxIcospherePoints[sub_division][(tfxU32)grid_coords.x].y * half_emitter_size.y;
 			local_position_z = tfxIcospherePoints[sub_division][(tfxU32)grid_coords.x].z * half_emitter_size.z;
-			if (++grid_coords.x >= tfxIcospherePoints[sub_division].current_size) {
-				grid_coords.x = 0;
-			}
+			grid_coords.x++;
+
 			if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				tfxVec3 pos = mmTransformVector3(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
 				local_position_x = lerp_position.x + local_position_x * scale.x;
