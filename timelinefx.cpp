@@ -10882,8 +10882,6 @@ namespace tfx {
 		const float weight = pm.emitters.weight[emitter_index];
 		const float weight_variation = pm.emitters.weight_variation[emitter_index];
 		tfxLibrary *library = pm.library;
-		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
-		const float first_weight_value = library->emitter_attributes[emitter_attributes].overtime.weight.GetFirstValue() * tfxUPDATE_TIME;
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
@@ -10913,15 +10911,12 @@ namespace tfx {
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
 		const float velocity = pm.emitters.velocity[emitter_index];
 		const float velocity_variation = pm.emitters.velocity_variation[emitter_index];
-		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
-		const float first_velocity_value = library->emitter_attributes[emitter_attributes].overtime.velocity.GetFirstValue() * tfxUPDATE_TIME;
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			float &base_velocity = entry->particle_data->base_velocity[index];
 
 			//----Velocity
-			float velocity_scale = first_velocity_value * velocity_adjuster;
 			base_velocity = velocity + random.Range(-velocity_variation, velocity_variation);
 		}
 
