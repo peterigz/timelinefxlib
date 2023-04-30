@@ -6210,6 +6210,9 @@ namespace tfx {
 
 			if (offset >= start_frame) {
 				for (tfxEachLayer) {
+					tfxU32 meta_count = frame_meta[frame].sprite_count[layer];
+					tfxU32 pm_count = pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size;
+					//assert(frame_meta[frame].sprite_count[layer] == pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
 					if (running_count[layer][frame] > 0 && pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size > 0) {
 						Resize(&temp_sprites_buffer, running_count[layer][frame]);
 						memcpy(temp_sprites.alignment, sprite_data->sprites.alignment + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
@@ -6351,7 +6354,7 @@ namespace tfx {
 				else {
 					emitters.particles_index[index] = properties.layer[e.property_index];
 				}
-				emitters.seed[index] = base_seed; base_seed = random.Range(tfxMAX_UINT);
+				emitters.random[index] = random;
 				emitters.path_hash[index] = e.path_hash;
 				emitters.info_index[index] = e.info_index;
 				emitters.properties_index[index] = e.property_index;
@@ -6598,8 +6601,8 @@ namespace tfx {
 				spawn_work_entry->amount_to_spawn = 0;
 				spawn_work_entry->end_index = 0;
 				spawn_work_entry->highest_particle_age = 0;
-				spawn_work_entry->random = tfxRandom(emitters.seed[current_index]);
 
+				emitters.random[current_index].Advance();
 				float &timeout_counter = emitters.timeout_counter[current_index];
 
 				UpdatePMEmitter(*this, spawn_work_entry);
@@ -6622,7 +6625,9 @@ namespace tfx {
 		for (auto &work_entry : spawn_work) {
 			tfxU32 index = work_entry.emitter_index;
 			emitters.highest_particle_age[index] = std::fmaxf(emitters.highest_particle_age[index], work_entry.highest_particle_age);
-			emitters.seed[index] = (tfxU32)work_entry.random.seeds[0];
+			tfxU64 s0 = emitters.random[index].seeds[0];
+			emitters.random[index].seeds[0] = emitters.random[index].seeds[1];
+			emitters.random[index].seeds[1] = s0;
 			effects.highest_particle_age[emitters.parent_index[index]] = emitters.highest_particle_age[index] + tfxFRAME_LENGTH;
 		}
 		spawn_work.free();
@@ -9305,6 +9310,7 @@ namespace tfx {
 		const tfxU32 layer = properties.layer[property_index];
 		float &qty_step_size = pm.emitters.qty_step_size[work_entry.emitter_index];
 		float &amount_remainder = pm.emitters.amount_remainder[work_entry.emitter_index];
+		tfxRandom &random = pm.emitters.random[work_entry.emitter_index];
 
 		if (state_flags & tfxEmitterStateFlags_single_shot_done || parent_state_flags & tfxEffectStateFlags_stop_spawning)
 			return 0;
@@ -9359,72 +9365,73 @@ namespace tfx {
 		if (!(pm.flags & tfxEffectManagerFlags_update_age_only) && !(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			if (work_entry.amount_to_spawn > 0) {
 				if (emission_type == tfxPoint) {
-					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint3d);
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticlePoint3d); 
 				}
 				else if (emission_type == tfxArea) {
-					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleArea3d);
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleArea3d); 
 				}
 				else if (emission_type == tfxEllipse) {
-					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleEllipse3d);
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleEllipse3d); 
 				}
 				else if (emission_type == tfxLine) {
-					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleLine3d);
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleLine3d); 
 				}
 				else if (emission_type == tfxCylinder) {
-					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleCylinder3d);
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleCylinder3d); 
 				}
 				else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleIcosphereRandom3d);
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleIcosphereRandom3d); 
 				}
 				else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
-					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleIcosphere3d);
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleIcosphere3d); 
 				}
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleWeight);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleVelocity);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleRoll);
-				//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
+					
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleWeight);  
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleVelocity);  
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleRoll);  
+				//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threadsrandom.Advance();
 				//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
 				//fine and is stable
 				tfxCompleteAllWork(&pm.work_queue);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleMicroUpdate3d);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleNoise);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleImageFrame);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSize3d);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSpin3d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleMicroUpdate3d);  
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);  
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleNoise);  
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleImageFrame);  
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSize3d);  
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleSpin3d);  
 			}
 		}
 		else if (!(pm.flags & tfxEffectManagerFlags_update_age_only)) {
-			SpawnParticleAge(&pm.work_queue, &work_entry);
+			SpawnParticleAge(&pm.work_queue, &work_entry); 
 			if (emission_type == tfxPoint) {
-				SpawnParticlePoint3d(&pm.work_queue, &work_entry);
+				SpawnParticlePoint3d(&pm.work_queue, &work_entry); 
 			}
 			else if (emission_type == tfxArea) {
-				SpawnParticleArea3d(&pm.work_queue, &work_entry);
+				SpawnParticleArea3d(&pm.work_queue, &work_entry); 
 			}
 			else if (emission_type == tfxEllipse) {
-				SpawnParticleEllipse3d(&pm.work_queue, &work_entry);
+				SpawnParticleEllipse3d(&pm.work_queue, &work_entry); 
 			}
 			else if (emission_type == tfxLine) {
-				SpawnParticleLine3d(&pm.work_queue, &work_entry);
+				SpawnParticleLine3d(&pm.work_queue, &work_entry); 
 			}
 			else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-				SpawnParticleIcosphereRandom3d(&pm.work_queue, &work_entry);
+				SpawnParticleIcosphereRandom3d(&pm.work_queue, &work_entry); 
 			}
 			else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
-				SpawnParticleIcosphere3d(&pm.work_queue, &work_entry);
+				SpawnParticleIcosphere3d(&pm.work_queue, &work_entry); 
 			}
 			else if (emission_type == tfxCylinder) {
-				SpawnParticleCylinder3d(&pm.work_queue, &work_entry);
+				SpawnParticleCylinder3d(&pm.work_queue, &work_entry); 
 			}
-			SpawnParticleWeight(&pm.work_queue, &work_entry);
-			SpawnParticleVelocity(&pm.work_queue, &work_entry);
-			SpawnParticleRoll(&pm.work_queue, &work_entry);
-			SpawnParticleMicroUpdate3d(&pm.work_queue, &work_entry);
-			SpawnParticleNoise(&pm.work_queue, &work_entry);
-			SpawnParticleImageFrame(&pm.work_queue, &work_entry);
-			SpawnParticleSize3d(&pm.work_queue, &work_entry);
-			SpawnParticleSpin3d(&pm.work_queue, &work_entry);
+			SpawnParticleWeight(&pm.work_queue, &work_entry); 
+			SpawnParticleVelocity(&pm.work_queue, &work_entry); 
+			SpawnParticleRoll(&pm.work_queue, &work_entry); 
+			SpawnParticleMicroUpdate3d(&pm.work_queue, &work_entry); 
+			SpawnParticleNoise(&pm.work_queue, &work_entry); 
+			SpawnParticleImageFrame(&pm.work_queue, &work_entry); 
+			SpawnParticleSize3d(&pm.work_queue, &work_entry); 
+			SpawnParticleSpin3d(&pm.work_queue, &work_entry); 
 		}
 		else {
 			SpawnParticleAge(&pm.work_queue, &work_entry);
@@ -9439,6 +9446,7 @@ namespace tfx {
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
@@ -9461,6 +9469,8 @@ namespace tfx {
 		const float first_alpha_value = library->emitter_attributes[emitter_attributes].overtime.blendfactor.GetFirstValue();
 		const float first_intensity_value = library->emitter_attributes[emitter_attributes].overtime.intensity.GetFirstValue();
 
+		assert(random.seeds[0] > 0);
+
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			float &age = entry->particle_data->age[index];
@@ -9479,14 +9489,14 @@ namespace tfx {
 			//Max age
 			//Todo: should age be set to the tween value?
 			age = 0.f;
-			max_age = life + entry->random.Range(life_variation);
+			max_age = life + random.Range(life_variation);
 			single_loop_count = 0;
 
 			float alpha = 255.f * first_alpha_value;
 			float intensity = first_intensity_value * emitter_intensity;
 			//intensity = 0.f;
 			if (emitter_flags & tfxEmitterStateFlags_random_color) {
-				float age = entry->random.Range(max_age);
+				float age = random.Range(max_age);
 				color = tfxRGBA8(	255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.red, age, max_age),
 									255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.green, age, max_age),
 									255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.blue, age, max_age), alpha);
@@ -9515,6 +9525,7 @@ namespace tfx {
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		const tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9533,7 +9544,7 @@ namespace tfx {
 			//----Image
 			//data.image = GetProperties().image;
 			if (property_flags & tfxEmitterPropertyFlags_random_start_frame && properties.image[property_index]->animation_frames > 1) {
-				image_frame = entry->random.Range(properties.image[property_index]->animation_frames);
+				image_frame = random.Range(properties.image[property_index]->animation_frames);
 			}
 			else {
 				image_frame = properties.start_frame[property_index];
@@ -9546,6 +9557,7 @@ namespace tfx {
 	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9566,13 +9578,13 @@ namespace tfx {
 
 			//----Size
 			if (!(property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-				float random_size_x = entry->random.Range(size_variation.x);
-				float random_size_y = entry->random.Range(size_variation.y);
+				float random_size_x = random.Range(size_variation.x);
+				float random_size_y = random.Range(size_variation.y);
 				base_size_y = random_size_y + size.y;
 				base_size_x = (random_size_x + size.x) / image_size.x;
 			}
 			else {
-				float random_size_x = entry->random.Range(size_variation.x);
+				float random_size_x = random.Range(size_variation.x);
 				float random_size_y = random_size_x;
 				base_size_y = random_size_y + size.y;
 				base_size_x = (random_size_x + size.x) / image_size.x;
@@ -9584,6 +9596,7 @@ namespace tfx {
 	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9604,13 +9617,13 @@ namespace tfx {
 
 			//----Size
 			if (!(property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-				float random_size_x = entry->random.Range(size_variation.x);
-				float random_size_y = entry->random.Range(size_variation.y);
+				float random_size_x = random.Range(size_variation.x);
+				float random_size_y = random.Range(size_variation.y);
 				base_size_y = random_size_y + size.y;
 				base_size_x = random_size_x + size.x;
 			}
 			else {
-				float random_size_x = entry->random.Range(size_variation.x);
+				float random_size_x = random.Range(size_variation.x);
 				float random_size_y = random_size_x;
 				base_size_y = random_size_y + size.y;
 				base_size_x = random_size_x + size.x;
@@ -9623,6 +9636,7 @@ namespace tfx {
 	void SpawnParticleNoise(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9639,7 +9653,7 @@ namespace tfx {
 			float &noise_resolution = entry->particle_data->noise_resolution[index];
 
 			//----Motion randomness
-			noise_offset = entry->random.Range(emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
+			noise_offset = random.Range(emitter_noise_offset_variation) + emitter_noise_offset + parent_noise_base_offset;
 			noise_resolution = emitter_noise_resolution + 0.01f;
 
 		}
@@ -9648,6 +9662,7 @@ namespace tfx {
 	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9662,7 +9677,7 @@ namespace tfx {
 			float &base_spin = entry->particle_data->base_spin[index];
 
 			//----Spin
-			base_spin = entry->random.Range(-spin_variation, spin_variation) + spin;
+			base_spin = random.Range(-spin_variation, spin_variation) + spin;
 
 		}
 
@@ -9671,6 +9686,7 @@ namespace tfx {
 	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9692,7 +9708,7 @@ namespace tfx {
 			float &local_rotations_z = entry->particle_data->local_rotations_z[index];
 
 			//----Spin
-			base_spin = entry->random.Range(-spin_variation, spin_variation) + spin;
+			base_spin = random.Range(-spin_variation, spin_variation) + spin;
 			if (angle_settings & tfxAngleSettingFlags_specify_roll)
 				local_rotations_z = angle_offsets.roll;
 			if (angle_settings & tfxAngleSettingFlags_specify_pitch)
@@ -9700,11 +9716,11 @@ namespace tfx {
 			if (angle_settings & tfxAngleSettingFlags_specify_yaw)
 				local_rotations_y = angle_offsets.yaw;
 			if (angle_settings & tfxAngleSettingFlags_random_pitch)
-				local_rotations_x = entry->random.Range(angle_offsets.pitch);
+				local_rotations_x = random.Range(angle_offsets.pitch);
 			if (angle_settings & tfxAngleSettingFlags_random_yaw)
-				local_rotations_y = entry->random.Range(angle_offsets.yaw);
+				local_rotations_y = random.Range(angle_offsets.yaw);
 			if (angle_settings & tfxAngleSettingFlags_random_roll)
-				local_rotations_z = entry->random.Range(angle_offsets.roll);
+				local_rotations_z = random.Range(angle_offsets.roll);
 
 		}
 
@@ -9712,6 +9728,7 @@ namespace tfx {
 
 	void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9750,6 +9767,7 @@ namespace tfx {
 
 	void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9789,6 +9807,7 @@ namespace tfx {
 
 	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9838,7 +9857,7 @@ namespace tfx {
 			}
 			else {
 				local_position_x = 0.f;
-				local_position_y = entry->random.Range(-emitter_size.y, 0.f);
+				local_position_y = random.Range(-emitter_size.y, 0.f);
 
 			}
 
@@ -9856,6 +9875,7 @@ namespace tfx {
 
 	void SpawnParticleLine3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9888,7 +9908,7 @@ namespace tfx {
 				grid_coords.z = 0.f;
 
 				if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.x);
+					grid_coords.y = (float)random.Range((tfxU32)grid_points.x);
 					local_position_x = grid_coords.x * grid_segment_size.x;
 					local_position_y = grid_coords.y * grid_segment_size.y;
 					local_position_z = grid_coords.z * grid_segment_size.z;
@@ -9917,7 +9937,7 @@ namespace tfx {
 			}
 			else {
 				local_position_x = 0.f;
-				local_position_y = entry->random.Range(0.f, emitter_size.y);
+				local_position_y = random.Range(0.f, emitter_size.y);
 				local_position_z = 0.f;
 			}
 
@@ -9936,6 +9956,7 @@ namespace tfx {
 
 	void SpawnParticleArea2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9968,8 +9989,8 @@ namespace tfx {
 
 				if (property_flags & tfxEmitterPropertyFlags_fill_area) {
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-						grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
-						grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
+						grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
+						grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
 						local_position_x = grid_coords.x * grid_segment_size.x;
 						local_position_y = grid_coords.y * grid_segment_size.y;
 					}
@@ -10000,25 +10021,25 @@ namespace tfx {
 				}
 				else {
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-						tfxU32 side = entry->random.Range((tfxU32)4);
+						tfxU32 side = random.Range((tfxU32)4);
 						if (side == 0) {
 							//left side
 							grid_coords.x = 0.f;
-							grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
+							grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
 						}
 						else if (side == 1) {
 							//right side
 							grid_coords.x = grid_points.x - 1;
-							grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
+							grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
 						}
 						else if (side == 2) {
 							//top side
-							grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
+							grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
 							grid_coords.y = 0.f;
 						}
 						else if (side == 3) {
 							//bottom side
-							grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
+							grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
 							grid_coords.y = grid_points.y - 1;
 						}
 						local_position_x = grid_coords.x * grid_segment_size.x;
@@ -10071,30 +10092,30 @@ namespace tfx {
 			}
 			else {
 				if (property_flags & tfxEmitterPropertyFlags_fill_area) {
-					position.x = entry->random.Range(emitter_size.x);
-					position.y = entry->random.Range(emitter_size.y);
+					position.x = random.Range(emitter_size.x);
+					position.y = random.Range(emitter_size.y);
 				}
 				else {
 					//Spawn on one of 4 edges of the area
-					tfxU32 side = entry->random.Range((tfxU32)4);
+					tfxU32 side = random.Range((tfxU32)4);
 					if (side == 0) {
 						//left side
 						position.x = 0.f;
-						position.y = entry->random.Range(emitter_size.y);
+						position.y = random.Range(emitter_size.y);
 					}
 					else if (side == 1) {
 						//right side
 						position.x = emitter_size.x;
-						position.y = entry->random.Range(emitter_size.y);
+						position.y = random.Range(emitter_size.y);
 					}
 					else if (side == 2) {
 						//top side
-						position.x = entry->random.Range(emitter_size.x);
+						position.x = random.Range(emitter_size.x);
 						position.y = 0.f;
 					}
 					else if (side == 3) {
 						//bottom side
-						position.x = entry->random.Range(emitter_size.x);
+						position.x = random.Range(emitter_size.x);
 						position.y = emitter_size.y;
 					}
 				}
@@ -10117,6 +10138,7 @@ namespace tfx {
 
 	void SpawnParticleArea3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10151,9 +10173,9 @@ namespace tfx {
 				if (property_flags & tfxEmitterPropertyFlags_fill_area) {
 
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-						grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
-						grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
-						grid_coords.z = (float)entry->random.Range((tfxU32)grid_points.z);
+						grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
+						grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
+						grid_coords.z = (float)random.Range((tfxU32)grid_points.z);
 
 						local_position_x = grid_coords.x * grid_segment_size.x;
 						local_position_y = grid_coords.y * grid_segment_size.y;
@@ -10197,41 +10219,41 @@ namespace tfx {
 				else {
 					if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 						//Spawn on one of 6 edges of the cuboid
-						tfxU32 side = entry->random.Range((property_flags & tfxEmitterPropertyFlags_area_open_ends) ? (tfxU32)4 : (tfxU32)6);
+						tfxU32 side = random.Range((property_flags & tfxEmitterPropertyFlags_area_open_ends) ? (tfxU32)4 : (tfxU32)6);
 						if (side == 0) {
 							//left side
 							grid_coords.x = 0.f;
-							grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
-							grid_coords.z = (float)entry->random.Range((tfxU32)grid_points.z);
+							grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
+							grid_coords.z = (float)random.Range((tfxU32)grid_points.z);
 						}
 						else if (side == 1) {
 							//right side
 							grid_coords.x = grid_points.x - 1;
-							grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
-							grid_coords.z = (float)entry->random.Range((tfxU32)grid_points.z);
+							grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
+							grid_coords.z = (float)random.Range((tfxU32)grid_points.z);
 						}
 						else if (side == 2) {
 							//top side
-							grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
+							grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
 							grid_coords.y = 0.f;
-							grid_coords.z = (float)entry->random.Range((tfxU32)grid_points.z);
+							grid_coords.z = (float)random.Range((tfxU32)grid_points.z);
 						}
 						else if (side == 3) {
 							//bottom side
-							grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
+							grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
 							grid_coords.y = grid_points.y - 1;
-							grid_coords.z = (float)entry->random.Range((tfxU32)grid_points.z);
+							grid_coords.z = (float)random.Range((tfxU32)grid_points.z);
 						}
 						else if (side == 4) {
 							//End far
-							grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
-							grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
+							grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
+							grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
 							grid_coords.z = grid_points.z - 1;
 						}
 						else if (side == 5) {
 							//End near
-							grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
-							grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
+							grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
+							grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
 							grid_coords.z = 0.f;
 						}
 						local_position_x = grid_coords.x * grid_segment_size.x;
@@ -10415,47 +10437,47 @@ namespace tfx {
 			}
 			else {
 				if (property_flags & tfxEmitterPropertyFlags_fill_area) {
-					position.x = entry->random.Range(emitter_size.x);
-					position.y = entry->random.Range(emitter_size.y);
-					position.z = entry->random.Range(emitter_size.z);
+					position.x = random.Range(emitter_size.x);
+					position.y = random.Range(emitter_size.y);
+					position.z = random.Range(emitter_size.z);
 				}
 				else {
 					//Spawn on one of 6 edges of the cuboid
-					tfxU32 side = entry->random.Range((property_flags & tfxEmitterPropertyFlags_area_open_ends) ? (tfxU32)4 : (tfxU32)6);
+					tfxU32 side = random.Range((property_flags & tfxEmitterPropertyFlags_area_open_ends) ? (tfxU32)4 : (tfxU32)6);
 					if (side == 0) {
 						//left side
 						position.x = 0.f;
-						position.y = entry->random.Range(emitter_size.y);
-						position.z = entry->random.Range(emitter_size.z);
+						position.y = random.Range(emitter_size.y);
+						position.z = random.Range(emitter_size.z);
 					}
 					else if (side == 1) {
 						//right side
 						position.x = emitter_size.x;
-						position.y = entry->random.Range(emitter_size.y);
-						position.z = entry->random.Range(emitter_size.z);
+						position.y = random.Range(emitter_size.y);
+						position.z = random.Range(emitter_size.z);
 					}
 					else if (side == 2) {
 						//top side
-						position.x = entry->random.Range(emitter_size.x);
+						position.x = random.Range(emitter_size.x);
 						position.y = 0.f;
-						position.z = entry->random.Range(emitter_size.z);
+						position.z = random.Range(emitter_size.z);
 					}
 					else if (side == 3) {
 						//bottom side
-						position.x = entry->random.Range(emitter_size.x);
+						position.x = random.Range(emitter_size.x);
 						position.y = emitter_size.y;
-						position.z = entry->random.Range(emitter_size.z);
+						position.z = random.Range(emitter_size.z);
 					}
 					else if (side == 4) {
 						//End far
-						position.x = entry->random.Range(emitter_size.x);
-						position.y = entry->random.Range(emitter_size.y);
+						position.x = random.Range(emitter_size.x);
+						position.y = random.Range(emitter_size.y);
 						position.z = emitter_size.z;
 					}
 					else if (side == 5) {
 						//End near
-						position.x = entry->random.Range(emitter_size.x);
-						position.y = entry->random.Range(emitter_size.y);
+						position.x = random.Range(emitter_size.x);
+						position.y = random.Range(emitter_size.y);
 						position.z = 0.f;
 					}
 				}
@@ -10480,6 +10502,7 @@ namespace tfx {
 
 	void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10534,24 +10557,24 @@ namespace tfx {
 
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(property_flags & tfxEmitterPropertyFlags_fill_area) && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-				float th = (float)entry->random.Range((tfxU32)grid_points.x) * grid_segment_size.x + arc_offset;
+				float th = (float)random.Range((tfxU32)grid_points.x) * grid_segment_size.x + arc_offset;
 				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
 				local_position_x = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
 			}
 			else if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
-				float th = entry->random.Range(arc_size) + arc_offset;
+				float th = random.Range(arc_size) + arc_offset;
 
 				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
 				local_position_y = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
 
 			}
 			else {
-				local_position_x = entry->random.Range(0.f, emitter_size.x);
-				local_position_y = entry->random.Range(0.f, emitter_size.y);
+				local_position_x = random.Range(0.f, emitter_size.x);
+				local_position_y = random.Range(0.f, emitter_size.y);
 
 				while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_y - half_emitter_size.y, 2) / std::pow(half_emitter_size.y, 2)) > 1) {
-					local_position_x = entry->random.Range(0.f, emitter_size.x);
-					local_position_y = entry->random.Range(0.f, emitter_size.y);
+					local_position_x = random.Range(0.f, emitter_size.x);
+					local_position_y = random.Range(0.f, emitter_size.y);
 				}
 			}
 
@@ -10570,6 +10593,7 @@ namespace tfx {
 
 	void SpawnParticleEllipse3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10602,8 +10626,8 @@ namespace tfx {
 			tfxVec3 position;
 
 			if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
-				float u = entry->random.Range(1.f);
-				float v = entry->random.Range(1.f);
+				float u = random.Range(1.f);
+				float v = random.Range(1.f);
 				float theta = u * 2.f * tfxPI;
 				float phi = std::acosf(2.f * v - 1.f);
 				float sin_theta = std::sinf(theta);
@@ -10615,14 +10639,14 @@ namespace tfx {
 				local_position_z = half_emitter_size.z * cos_phi;
 			}
 			else {
-				position.x = entry->random.Range(-half_emitter_size.x, half_emitter_size.x);
-				position.y = entry->random.Range(-half_emitter_size.y, half_emitter_size.y);
-				position.z = entry->random.Range(-half_emitter_size.z, half_emitter_size.z);
+				position.x = random.Range(-half_emitter_size.x, half_emitter_size.x);
+				position.y = random.Range(-half_emitter_size.y, half_emitter_size.y);
+				position.z = random.Range(-half_emitter_size.z, half_emitter_size.z);
 
 				while (std::powf(position.x / half_emitter_size.x, 2.f) + std::powf(position.y / half_emitter_size.y, 2.f) + std::powf(position.z / half_emitter_size.z, 2.f) > 1.f) {
-					position.x = entry->random.Range(-half_emitter_size.x, half_emitter_size.x);
-					position.y = entry->random.Range(-half_emitter_size.y, half_emitter_size.y);
-					position.z = entry->random.Range(-half_emitter_size.z, half_emitter_size.z);
+					position.x = random.Range(-half_emitter_size.x, half_emitter_size.x);
+					position.y = random.Range(-half_emitter_size.y, half_emitter_size.y);
+					position.z = random.Range(-half_emitter_size.z, half_emitter_size.z);
 				}
 
 				local_position_x = position.x;
@@ -10645,6 +10669,7 @@ namespace tfx {
 
 	void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10696,6 +10721,7 @@ namespace tfx {
 
 	void SpawnParticleIcosphereRandom3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10725,7 +10751,7 @@ namespace tfx {
 			tfxVec3 half_emitter_size = emitter_size * .5f;
 			tfxU32 sub_division = (tfxU32)grid_points.x;
 			assert(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
-			int ico_point = entry->random.Range(tfxIcospherePoints[sub_division].current_size);
+			int ico_point = random.Range(tfxIcospherePoints[sub_division].current_size);
 			local_position_x = tfxIcospherePoints[sub_division][ico_point].x * half_emitter_size.x;
 			local_position_y = tfxIcospherePoints[sub_division][ico_point].y * half_emitter_size.y;
 			local_position_z = tfxIcospherePoints[sub_division][ico_point].z * half_emitter_size.z;
@@ -10743,6 +10769,7 @@ namespace tfx {
 
 	void SpawnParticleCylinder3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10777,8 +10804,8 @@ namespace tfx {
 				grid_coords.z = 0.f;
 
 				if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-					grid_coords.x = (float)entry->random.Range((tfxU32)grid_points.x);
-					grid_coords.y = (float)entry->random.Range((tfxU32)grid_points.y);
+					grid_coords.x = (float)random.Range((tfxU32)grid_points.x);
+					grid_coords.y = (float)random.Range((tfxU32)grid_points.y);
 
 					float th = grid_coords.x * grid_segment_size.x + arc_offset;
 					local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
@@ -10816,20 +10843,20 @@ namespace tfx {
 
 			}
 			else if (!(property_flags & tfxEmitterPropertyFlags_fill_area)) {
-				float th = entry->random.Range(arc_size) + arc_offset;
+				float th = random.Range(arc_size) + arc_offset;
 
 				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
-				local_position_y = entry->random.Range(half_emitter_size.y);
+				local_position_y = random.Range(half_emitter_size.y);
 				local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
 			}
 			else {
-				local_position_x = entry->random.Range(0.f, half_emitter_size.x);
-				local_position_y = entry->random.Range(0.f, half_emitter_size.y);
-				local_position_z = entry->random.Range(0.f, half_emitter_size.z);
+				local_position_x = random.Range(0.f, half_emitter_size.x);
+				local_position_y = random.Range(0.f, half_emitter_size.y);
+				local_position_z = random.Range(0.f, half_emitter_size.z);
 
 				while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_z - half_emitter_size.z, 2) / std::pow(half_emitter_size.z, 2)) > 1) {
-					local_position_x = entry->random.Range(0.f, half_emitter_size.x);
-					local_position_z = entry->random.Range(0.f, half_emitter_size.z);
+					local_position_x = random.Range(0.f, half_emitter_size.x);
+					local_position_z = random.Range(0.f, half_emitter_size.z);
 				}
 			}
 
@@ -10848,6 +10875,7 @@ namespace tfx {
 
 	void SpawnParticleWeight(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
@@ -10865,7 +10893,7 @@ namespace tfx {
 			if (weight) {
 				base_weight = weight;
 				if (weight_variation > 0) {
-					base_weight += entry->random.Range(-weight_variation, weight_variation);
+					base_weight += random.Range(-weight_variation, weight_variation);
 				}
 			}
 			else {
@@ -10877,6 +10905,7 @@ namespace tfx {
 
 	void SpawnParticleVelocity(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
@@ -10893,13 +10922,14 @@ namespace tfx {
 
 			//----Velocity
 			float velocity_scale = first_velocity_value * velocity_adjuster;
-			base_velocity = velocity + entry->random.Range(-velocity_variation, velocity_variation);
+			base_velocity = velocity + random.Range(-velocity_variation, velocity_variation);
 		}
 
 	}
 
 	void SpawnParticleRoll(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
@@ -10914,7 +10944,7 @@ namespace tfx {
 
 			roll = 0;
 			if (angle_settings & tfxAngleSettingFlags_random_roll) {
-				roll = entry->random.Range(angle_roll_offset);
+				roll = random.Range(angle_roll_offset);
 			}
 			else if (angle_settings & tfxAngleSettingFlags_specify_roll) {
 				roll = angle_roll_offset;
@@ -10928,6 +10958,7 @@ namespace tfx {
 
 	void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10947,12 +10978,12 @@ namespace tfx {
 
 				//----Splatter
 				float splattertemp = splatter;
-				float splatx = entry->random.Range(-splatter, splatter);
-				float splaty = entry->random.Range(-splatter, splatter);
+				float splatx = random.Range(-splatter, splatter);
+				float splaty = random.Range(-splatter, splatter);
 
 				while (GetDistance(0, 0, splatx, splaty) >= splattertemp && splattertemp > 0) {
-					splatx = entry->random.Range(-splatter, splatter);
-					splaty = entry->random.Range(-splatter, splatter);
+					splatx = random.Range(-splatter, splatter);
+					splaty = random.Range(-splatter, splatter);
 				}
 
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -11011,7 +11042,7 @@ namespace tfx {
 			}
 
 			if (!line) {
-				direction = velocity_normal = GetEmissionDirection2d(pm, library, entry->random, property_index, emitter_index, tfxVec2(local_position_x, local_position_y), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
+				direction = velocity_normal = GetEmissionDirection2d(pm, library, random, property_index, emitter_index, tfxVec2(local_position_x, local_position_y), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
 			}
 
 			float weight_acceleration = base_weight * first_weight_value * micro_time;
@@ -11040,6 +11071,7 @@ namespace tfx {
 
 	void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
+		tfxRandom random = entry->pm->emitters.random[entry->emitter_index];
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -11059,14 +11091,14 @@ namespace tfx {
 
 				//----Splatter
 				if (splatter) {
-					float splatx = entry->random.Range(-splatter, splatter);
-					float splaty = entry->random.Range(-splatter, splatter);
-					float splatz = entry->random.Range(-splatter, splatter);
+					float splatx = random.Range(-splatter, splatter);
+					float splaty = random.Range(-splatter, splatter);
+					float splatz = random.Range(-splatter, splatter);
 
 					while (std::powf(splatx / splatter, 2.f) + std::powf(splaty / splatter, 2.f) + std::powf(splatz / splatter, 2.f) > 1.f) {
-						splatx = entry->random.Range(-splatter, splatter);
-						splaty = entry->random.Range(-splatter, splatter);
-						splatz = entry->random.Range(-splatter, splatter);
+						splatx = random.Range(-splatter, splatter);
+						splaty = random.Range(-splatter, splatter);
+						splatz = random.Range(-splatter, splatter);
 					}
 
 					if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -11136,7 +11168,7 @@ namespace tfx {
 
 			tfxVec3 velocity_normal;
 			if (!(property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
-				tfxVec3 velocity_normal = GetEmissionDirection3d(pm, library, entry->random, property_index, emitter_index, emission_pitch, emission_yaw, tfxVec3(local_position_x, local_position_y, local_position_z), world_position, emitter_size);
+				tfxVec3 velocity_normal = GetEmissionDirection3d(pm, library, random, property_index, emitter_index, emission_pitch, emission_yaw, tfxVec3(local_position_x, local_position_y, local_position_z), world_position, emitter_size);
 				velocity_normal_packed = Pack10bitUnsigned(velocity_normal);
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
@@ -11251,7 +11283,7 @@ namespace tfx {
 		if (!(property_flags & tfxEmitterPropertyFlags_single)) {
 			spawn_quantity = lookup_callback(library->emitter_attributes[emitter_attributes].base.amount, frame);
 			float amount_variation = lookup_callback(library->emitter_attributes[emitter_attributes].variation.amount, frame);
-			spawn_quantity += amount_variation > 0.f ? entry->random.Range(1.f, amount_variation) : 0.f;
+			spawn_quantity += amount_variation > 0.f ? pm.random.Range(1.f, amount_variation) : 0.f;
 
 			spawn_quantity *= lookup_callback(library->global_graphs[global_attributes].amount, frame);
 		}
