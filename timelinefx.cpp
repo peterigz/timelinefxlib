@@ -5947,8 +5947,10 @@ namespace tfx {
 						}
 						tmp = effect_stack.parent().property_flags;
 					}
+					else if (effect_stack.parent().type == tfxEmitterType) {
+						effect_stack.back().global = current_global_graph;
+					}
 					effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
-					effect_stack.back().InitialiseUninitialisedGraphs();
 				}
 				else {
 					lib.effects.push_back(effect_stack.back());
@@ -11174,9 +11176,9 @@ namespace tfx {
 			tfxVec3 current_velocity = tfxVec3(velocity_normal.x, velocity_normal.y, velocity_normal.z) * base_velocity * first_velocity_value;
 			current_velocity.y -= weight_acceleration;
 			current_velocity *= micro_time;
-			//local_position_x += current_velocity.x;
-			//local_position_y += current_velocity.y;
-			//local_position_z += current_velocity.z;
+			local_position_x += current_velocity.x;
+			local_position_y += current_velocity.y;
+			local_position_z += current_velocity.z;
 			if (line || property_flags & tfxEmitterPropertyFlags_relative_position) {
 
 				if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
