@@ -6053,7 +6053,7 @@ namespace tfx {
 
 		//First pass to count the number of sprites in each frame
 		//pm.UpdateAgeOnly(false);
-		//pm.ForceSingleThreaded(true);
+		pm.ForceSingleThreaded(true);
 
 		pm.ClearAll();
 		SetSeed(&pm, anim.seed);
@@ -6284,7 +6284,7 @@ namespace tfx {
 		FreeSoABuffer(&temp_sprites_buffer);
 		SetUpdateFrequency(update_freq);
 		pm.DisableSpawning(false);
-		//pm.ForceSingleThreaded(false);
+		pm.ForceSingleThreaded(false);
 	}
 
 	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager &pm) {
@@ -6665,11 +6665,11 @@ namespace tfx {
 						work_entry.properties = &library->emitter_properties;
 						work_entry.start_index = bank.current_size - 1;
 						work_entry.emitter_index = index;
-						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[emitters.particles_index[index]], bank.current_size);
+						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[emitters.particles_index[index]], 0);
 						tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 						work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
 						work_entry.start_diff = circular_start - block_start_index;
-						work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
+						work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
 						work_entry.pm = this;
 						if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 							tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleAge);
@@ -6735,11 +6735,11 @@ namespace tfx {
 				work_entry.current_buffer_index = layer;
 				work_entry.start_index = work_entry.amount_to_update - 1;
 				work_entry.end_index = 0;
-				tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], work_entry.amount_to_update);
+				tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], 0);
 				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 				work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.amount_to_update / tfxDataWidth)) * tfxDataWidth;
 				work_entry.start_diff = circular_start - block_start_index;
-				work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.amount_to_update ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
+				work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < work_entry.amount_to_update ? tfxDataWidth : 0;
 				work_entry.pm = this;
 				if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 					tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleOrderedAge);

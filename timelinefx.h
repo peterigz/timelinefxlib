@@ -7770,7 +7770,7 @@ You can then use layer inside the loop to get the current layer
 		int i = start_index - 1;
 		for (int j = start_index; j < end_index; j++)
 		{
-			if (particles.depth[j] >= depth)
+			if (particles.depth[j] > depth)
 			{
 				i++;
 				SwapSoAParticle(particles, i, j);
