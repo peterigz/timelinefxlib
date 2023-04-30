@@ -5062,10 +5062,9 @@ You can then use layer inside the loop to get the current layer
 			return tfxU32(a);
 		};
 
-		inline tfxU64 NewSeed() {
-			float g = Generate();
-			float a = g * (float)tfxMAX_UINT;
-			return tfxU64(a);
+		inline void AlterSeed(tfxU64 amount) {
+			seeds[0] *= amount;
+			seeds[1] += amount;
 		};
 
 	};

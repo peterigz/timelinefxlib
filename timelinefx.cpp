@@ -6055,7 +6055,7 @@ namespace tfx {
 
 		//First pass to count the number of sprites in each frame
 		//pm.UpdateAgeOnly(false);
-		pm.ForceSingleThreaded(true);
+		//pm.ForceSingleThreaded(true);
 
 		pm.ClearAll();
 		SetSeed(&pm, anim.seed);
@@ -6286,7 +6286,7 @@ namespace tfx {
 		FreeSoABuffer(&temp_sprites_buffer);
 		SetUpdateFrequency(update_freq);
 		pm.DisableSpawning(false);
-		pm.ForceSingleThreaded(false);
+		//pm.ForceSingleThreaded(false);
 	}
 
 	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager &pm) {
@@ -6621,6 +6621,7 @@ namespace tfx {
 		}
 
 		tfxCompleteAllWork(&work_queue);
+		random.Advance();
 
 		for (auto &work_entry : spawn_work) {
 			tfxU32 index = work_entry.emitter_index;
@@ -9442,7 +9443,8 @@ namespace tfx {
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(2);
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
@@ -9521,7 +9523,8 @@ namespace tfx {
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(3);
 		float tween = entry->tween;
 		const tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9553,7 +9556,8 @@ namespace tfx {
 	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(4);
 		float tween = entry->tween;
 		tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9592,7 +9596,8 @@ namespace tfx {
 	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(5);
 		float tween = entry->tween;
 		tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9632,7 +9637,8 @@ namespace tfx {
 	void SpawnParticleNoise(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(6);
 		float tween = entry->tween;
 		tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9658,7 +9664,8 @@ namespace tfx {
 	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(7);
 		float tween = entry->tween;
 		tfxU32 index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9682,7 +9689,8 @@ namespace tfx {
 	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data) {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(8);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9724,7 +9732,8 @@ namespace tfx {
 
 	void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(9);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9763,7 +9772,8 @@ namespace tfx {
 
 	void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(10);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9803,7 +9813,8 @@ namespace tfx {
 
 	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(11);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9871,7 +9882,8 @@ namespace tfx {
 
 	void SpawnParticleLine3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(12);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -9952,7 +9964,8 @@ namespace tfx {
 
 	void SpawnParticleArea2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(13);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10134,7 +10147,8 @@ namespace tfx {
 
 	void SpawnParticleArea3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(14);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10498,7 +10512,8 @@ namespace tfx {
 
 	void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(15);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10589,7 +10604,8 @@ namespace tfx {
 
 	void SpawnParticleEllipse3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(16);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10665,7 +10681,8 @@ namespace tfx {
 
 	void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(17);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10717,7 +10734,8 @@ namespace tfx {
 
 	void SpawnParticleIcosphereRandom3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(18);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10765,7 +10783,8 @@ namespace tfx {
 
 	void SpawnParticleCylinder3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(19);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -10871,7 +10890,8 @@ namespace tfx {
 
 	void SpawnParticleWeight(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(20);
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
@@ -10899,7 +10919,8 @@ namespace tfx {
 
 	void SpawnParticleVelocity(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(21);
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
@@ -10920,7 +10941,8 @@ namespace tfx {
 
 	void SpawnParticleRoll(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(22);
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
@@ -10949,7 +10971,8 @@ namespace tfx {
 
 	void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(23);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
@@ -11062,7 +11085,8 @@ namespace tfx {
 
 	void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data) {
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
-		tfxRandom &random = entry->pm->random;
+		tfxRandom random = entry->pm->random;
+		random.AlterSeed(24);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
