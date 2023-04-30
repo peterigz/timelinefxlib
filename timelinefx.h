@@ -6006,7 +6006,6 @@ You can then use layer inside the loop to get the current layer
 		tfxKey *path_hash;
 
 		//Spawn controls
-		tfxRandom *random;
 		float *life;
 		float *life_variation;
 		float *arc_size;
@@ -6079,7 +6078,6 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, hierarchy_depth));
 		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
 
-		AddStructArray(buffer, sizeof(tfxRandom), offsetof(tfxEmitterSoA, random));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life_variation));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_size));
