@@ -6243,7 +6243,7 @@ namespace tfx {
 					memcpy(sprite_data->sprites.image_frame_plus + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].image_frame_plus, sizeof(tfxU32) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->sprites.intensity + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].intensity, sizeof(float) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->sprites.stretch + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].stretch, sizeof(float) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->sprites.transform + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].transform, sizeof(tfxSpriteTransform3d) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->sprites.transform + frame_meta[frame].index_offset[layer], pm.sprites3d[pm.current_sprite_buffer][layer].transform_3d, sizeof(tfxSpriteTransform3d) * pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size);
 					if (running_count[layer][frame] > 0 && pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size > 0) {
 						memcpy(sprite_data->sprites.alignment + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.alignment, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->sprites.captured_index + frame_meta[frame].index_offset[layer] + pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
@@ -7580,21 +7580,21 @@ namespace tfx {
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.stretch[running_sprite_index] = p_stretch.a[j];
-				sprites.transform[running_sprite_index].rotations.x = rotations_x.a[j];
-				sprites.transform[running_sprite_index].rotations.y = rotations_y.a[j];
-				sprites.transform[running_sprite_index].rotations.z = rotations_z.a[j];
-				sprites.transform[running_sprite_index].position.x = position_x.a[j];
-				sprites.transform[running_sprite_index].position.y = position_y.a[j];
-				sprites.transform[running_sprite_index].position.z = position_z.a[j];
-				float distance = LengthVec(tfxVec3(sprites.transform[running_sprite_index].position.x, 
-																		sprites.transform[running_sprite_index].position.y, 
-																		sprites.transform[running_sprite_index].position.z));
+				sprites.transform_3d[running_sprite_index].rotations.x = rotations_x.a[j];
+				sprites.transform_3d[running_sprite_index].rotations.y = rotations_y.a[j];
+				sprites.transform_3d[running_sprite_index].rotations.z = rotations_z.a[j];
+				sprites.transform_3d[running_sprite_index].position.x = position_x.a[j];
+				sprites.transform_3d[running_sprite_index].position.y = position_y.a[j];
+				sprites.transform_3d[running_sprite_index].position.z = position_z.a[j];
+				float distance = LengthVec(tfxVec3(sprites.transform_3d[running_sprite_index].position.x, 
+																		sprites.transform_3d[running_sprite_index].position.y, 
+																		sprites.transform_3d[running_sprite_index].position.z));
 				sprites.alignment[running_sprite_index] = packed.a[j];
-				bank.captured_position_x[index + j] = sprites.transform[running_sprite_index].position.x;
-				bank.captured_position_y[index + j] = sprites.transform[running_sprite_index].position.y;
-				bank.captured_position_z[index + j] = sprites.transform[running_sprite_index].position.z;
+				bank.captured_position_x[index + j] = sprites.transform_3d[running_sprite_index].position.x;
+				bank.captured_position_y[index + j] = sprites.transform_3d[running_sprite_index].position.y;
+				bank.captured_position_z[index + j] = sprites.transform_3d[running_sprite_index].position.z;
 				if(work_entry->calculate_depth)
-					bank.depth[index + j] = LengthVec3NoSqR(sprites.transform[running_sprite_index].position - pm.camera_position);
+					bank.depth[index + j] = LengthVec3NoSqR(sprites.transform_3d[running_sprite_index].position - pm.camera_position);
 				running_sprite_index++;
 			}
 			start_diff = 0;
@@ -7928,7 +7928,7 @@ namespace tfx {
 				mmWideTransformVector(e_matrix, alignment_vector_x.m, alignment_vector_y.m, alignment_vector_z.m);
 			}
 
-			//sprites.transform.captured_position = captured_position;
+			//sprites.transform_3d.captured_position = captured_position;
 			//alignment_vector_y.m = tfxWideAdd(alignment_vector_y.m, tfxWideSetSingle(0.002f));	//We don't want a 0 alignment normal
 			tfxWideArrayi packed;
 			packed.m = PackWide10bit(alignment_vector_x.m, alignment_vector_y.m, alignment_vector_z.m, billboard_option & 0x00000003);
@@ -7936,16 +7936,16 @@ namespace tfx {
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.stretch[running_sprite_index] = p_stretch.a[j];
-				sprites.transform[running_sprite_index].rotations.x = rotations_x.a[j];
-				sprites.transform[running_sprite_index].rotations.y = rotations_y.a[j];
-				sprites.transform[running_sprite_index].rotations.z = rotations_z.a[j];
-				sprites.transform[running_sprite_index].position.x = position_x.a[j];
-				sprites.transform[running_sprite_index].position.y = position_y.a[j];
-				sprites.transform[running_sprite_index].position.z = position_z.a[j];
+				sprites.transform_3d[running_sprite_index].rotations.x = rotations_x.a[j];
+				sprites.transform_3d[running_sprite_index].rotations.y = rotations_y.a[j];
+				sprites.transform_3d[running_sprite_index].rotations.z = rotations_z.a[j];
+				sprites.transform_3d[running_sprite_index].position.x = position_x.a[j];
+				sprites.transform_3d[running_sprite_index].position.y = position_y.a[j];
+				sprites.transform_3d[running_sprite_index].position.z = position_z.a[j];
 				sprites.alignment[running_sprite_index] = packed.a[j];
-				bank.captured_position_x[index + j] = sprites.transform[running_sprite_index].position.x;
-				bank.captured_position_y[index + j] = sprites.transform[running_sprite_index].position.y;
-				bank.captured_position_z[index + j] = sprites.transform[running_sprite_index].position.z;
+				bank.captured_position_x[index + j] = sprites.transform_3d[running_sprite_index].position.x;
+				bank.captured_position_y[index + j] = sprites.transform_3d[running_sprite_index].position.y;
+				bank.captured_position_z[index + j] = sprites.transform_3d[running_sprite_index].position.z;
 				running_sprite_index++;
 			}
 			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
@@ -8018,8 +8018,8 @@ namespace tfx {
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.transform[running_sprite_index].scale.x = scale_x.a[j];
-				sprites.transform[running_sprite_index++].scale.y = scale_y.a[j];
+				sprites.transform_3d[running_sprite_index].scale.x = scale_x.a[j];
+				sprites.transform_3d[running_sprite_index++].scale.y = scale_y.a[j];
 			}
 			start_diff = 0;
 		}
@@ -8084,8 +8084,8 @@ namespace tfx {
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.transform[running_sprite_index].scale.x = scale_x.a[j];
-				sprites.transform[running_sprite_index++].scale.y = scale_y.a[j];
+				sprites.transform_3d[running_sprite_index].scale.x = scale_x.a[j];
+				sprites.transform_3d[running_sprite_index++].scale.y = scale_y.a[j];
 			}
 			start_diff = 0;
 		}
@@ -8822,7 +8822,7 @@ namespace tfx {
 				tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
 				if (sprite_id != tfxINVALID) {
 					if (property_flags & tfxEmitterPropertyFlags_is_3d)
-						TransformEffector3d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites3d[!pm.current_sprite_buffer][sprite_layer].transform[sprite_index], true, property_flags & tfxEmitterPropertyFlags_relative_angle);
+						TransformEffector3d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites3d[!pm.current_sprite_buffer][sprite_layer].transform_3d[sprite_index], true, property_flags & tfxEmitterPropertyFlags_relative_angle);
 					else
 						TransformEffector2d(world_rotations, local_rotations, world_position, local_position, matrix, pm.sprites2d[sprite_layer][sprite_index].transform, true, property_flags & tfxEmitterPropertyFlags_relative_angle);
 

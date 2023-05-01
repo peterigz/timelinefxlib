@@ -49,7 +49,7 @@
 	//Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using
 	//I should think that you could quite easily multi-thread this as well, as long as your renderer is happy with that
 	void TfxExample::RenderParticles(float tween) {
-		//In this example, a compute shader is used to transform all the vertices into the right place by sending a batch of quads. A quad just has the size, orientation, color and UV coords, the compute
+		//In this example, a compute shader is used to transform_3d all the vertices into the right place by sending a batch of quads. A quad just has the size, orientation, color and UV coords, the compute
 		//shader then builds the vertex buffer by doing all the transforms to save the CPU having to do it.
 		render_layer->StartQuadBatch(&particle_textures->PipelineIndex(qulkan::BlendMode::Alpha, 1));
 
@@ -6497,24 +6497,36 @@ You can then use layer inside the loop to get the current layer
 		float intensity;
 	};
 
-	struct tfxSpriteSoA {	//56 bytes
-		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
-		tfxU32 *captured_index;
-		tfxSpriteTransform3d *transform;
-		tfxSpriteTransform2d *transform_2d;
-		tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-		tfxRGBA8 *color;				//The color tint of the sprite and blend factor in a
-		float *stretch;
-		float *intensity;
+	//This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
+	//InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
+	//3d in one struct like this as it makes it a lot easier to use the same control functions where we can.
+	struct tfxSpriteSoA {	//3d takes 56 bytes of bandwidth, 2d takes 32 bytes of bandwidth
+		tfxU32 *image_frame_plus;				//The image frame of animation index packed with alignment option flag and property_index
+		tfxU32 *captured_index;					//The index of the sprite in the previous frame so that it can be looked up and interpolated with
+		tfxSpriteTransform3d *transform_3d;		//Transform data for 3d sprites
+		tfxSpriteTransform2d *transform_2d;		//Transform data for 2d sprites
+		tfxU32 *alignment;						//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over (3d only)
+		tfxRGBA8 *color;						//The color tint of the sprite and blend factor in a channel
+		float *stretch;							//Multiplier for how much the particle is stretched in the shader (3d only)	
+		float *intensity;						//The multiplier for the sprite color
 	};
 
 	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	inline void InitSprite2dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
@@ -6971,10 +6983,10 @@ You can then use layer inside the loop to get the current layer
 			return !current_sprite_buffer;
 		}
 		tfxAPI inline tfxVec3 &GetCapturedSprite3dPosition(tfxU32 layer, tfxU32 index) {
-			return sprites3d[!current_sprite_buffer][layer].transform[index].position;
+			return sprites3d[!current_sprite_buffer][layer].transform_3d[index].position;
 		}
 		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
-			return sprites3d[(index & 0xF0000000) >> 28][layer].transform[index & 0x0FFFFFFF];
+			return sprites3d[(index & 0xF0000000) >> 28][layer].transform_3d[index & 0x0FFFFFFF];
 		}
 		tfxAPI inline float &GetCapturedSprite3dIntensity(tfxU32 layer, tfxU32 index) {
 			return sprites3d[(index & 0xF0000000) >> 28][layer].intensity[index & 0x0FFFFFFF];
@@ -7067,9 +7079,9 @@ You can then use layer inside the loop to get the current layer
 		for (int i = 0; i != pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size; ++i) {
 			printf("%i:\t%f\t%f\t%f\t%u\n",
 				i,
-				pm.sprites3d[pm.current_sprite_buffer][layer].transform[i].position.x,
-				pm.sprites3d[pm.current_sprite_buffer][layer].transform[i].position.y,
-				pm.sprites3d[pm.current_sprite_buffer][layer].transform[i].position.z,
+				pm.sprites3d[pm.current_sprite_buffer][layer].transform_3d[i].position.x,
+				pm.sprites3d[pm.current_sprite_buffer][layer].transform_3d[i].position.y,
+				pm.sprites3d[pm.current_sprite_buffer][layer].transform_3d[i].position.z,
 				pm.sprites3d[pm.current_sprite_buffer][layer].image_frame_plus[i]
 			);
 		}
@@ -7568,7 +7580,7 @@ You can then use layer inside the loop to get the current layer
 		out_position = in_position + rotatevec;
 	}
 	//-------------------------------------------------
-	//--New transform particle functions for SoA data--
+	//--New transform_3d particle functions for SoA data--
 	//--------------------------2d---------------------
 	static inline void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_position.x = local_position_x;
@@ -7591,7 +7603,7 @@ You can then use layer inside the loop to get the current layer
 		world_position = from_position.xy() + rotatevec * scale.xy();
 	}
 	//-------------------------------------------------
-	//--New transform particle functions for SoA data--
+	//--New transform_3d particle functions for SoA data--
 	//--------------------------3d---------------------
 	static inline void TransformParticlePosition3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		world_position.x = local_position_x;
