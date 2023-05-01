@@ -6020,7 +6020,7 @@ namespace tfx {
 
 	void InvalidateNewSpriteCapturedIndex(tfxParticleManager &pm) {
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			tfxSprite3dSoA &sprites = pm.sprites3d[pm.current_sprite_buffer][layer];
+			tfxSpriteSoA &sprites = pm.sprites3d[pm.current_sprite_buffer][layer];
 			for (int i = 0; i != pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size; ++i) {
 				if ((sprites.captured_index[i] & 0xF0000000) >> 28 == pm.current_sprite_buffer) {
 					sprites.captured_index[i] = tfxINVALID;
@@ -7421,7 +7421,7 @@ namespace tfx {
 		const tfxWideInt relative_angle_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_relative_angle);
 		const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxSpriteSoA &sprites = *work_entry->sprites3d;
 
 		tfxU32 start_diff = work_entry->start_diff;
 		tfxWideArrayi parent_index;
@@ -7826,7 +7826,7 @@ namespace tfx {
 		const tfxVectorAlignType vector_align_type = work_entry->properties->vector_align_type[property_index];
 		const tfxBillboardingOptions billboard_option = work_entry->properties->billboard_option[property_index];
 		const tfxEmissionType emission_type = work_entry->properties->emission_type[property_index];
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxSpriteSoA &sprites = *work_entry->sprites3d;
 		tfxU32 start_diff = work_entry->start_diff;
 		tfxWideArray p_stretch;
 
@@ -7965,7 +7965,7 @@ namespace tfx {
 		tfxWideInt base_uniform_flag = tfxWideSetSinglei(tfxEmitterStateFlags_base_uniform_size);
 
 		tfxU32 running_sprite_index = work_entry->sprite_start_index;
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxSpriteSoA &sprites = *work_entry->sprites3d;
 		tfxWideArrayi parent_index;
 		tfxWideArrayi emitter_attributes;
 		tfxWideArrayi lookup_frame;
@@ -8045,7 +8045,7 @@ namespace tfx {
 		tfxU32 start_diff = work_entry->start_diff;
 
 		tfxWideArrayi lookup_frame;
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxSpriteSoA &sprites = *work_entry->sprites3d;
 		tfxWideArray scale_x;
 		tfxWideArray scale_y;
 
@@ -8099,7 +8099,7 @@ namespace tfx {
 		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
 
 		tfxU32 running_sprite_index = work_entry->sprite_start_index;
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxSpriteSoA &sprites = *work_entry->sprites3d;
 		tfxWideInt random_color_flag = tfxWideSetSinglei(tfxEmitterStateFlags_random_color);
 
 		tfxU32 start_diff = work_entry->start_diff;
@@ -8186,7 +8186,7 @@ namespace tfx {
 		tfxWideArray wide_intensity;
 		tfxWideArrayi lookup_frame;
 		tfxWideArrayi packed_color;
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxSpriteSoA &sprites = *work_entry->sprites3d;
 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -8245,7 +8245,7 @@ namespace tfx {
 		tfxWideInt play_once_flag = tfxWideSetSinglei(tfxEmitterStateFlags_play_once);
 		tfxWideInt reverse_animation_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_reverse_animation);
 		tfxU32 running_sprite_index = work_entry->sprite_start_index;
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxSpriteSoA &sprites = *work_entry->sprites3d;
 		tfxU32 start_diff = work_entry->start_diff;
 
 		tfxWideArrayi parent_index;
@@ -8311,7 +8311,7 @@ namespace tfx {
 		tfxEmitterStateFlags property_flags = pm.emitters.property_flags[emitter_index];
 
 		tfxU32 running_sprite_index = work_entry->sprites_index;
-		tfxSprite3dSoA &sprites = *work_entry->sprites3d;
+		tfxSpriteSoA &sprites = *work_entry->sprites3d;
 
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;

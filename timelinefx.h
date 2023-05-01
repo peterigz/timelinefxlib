@@ -6497,24 +6497,25 @@ You can then use layer inside the loop to get the current layer
 		float intensity;
 	};
 
-	struct tfxSprite3dSoA {	//56 bytes
+	struct tfxSpriteSoA {	//56 bytes
 		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;
 		tfxSpriteTransform3d *transform;
+		tfxSpriteTransform2d *transform_2d;
 		tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 		tfxRGBA8 *color;				//The color tint of the sprite and blend factor in a
 		float *stretch;
 		float *intensity;
 	};
 
-	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSprite3dSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSprite3dSoA, image_frame_plus));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSprite3dSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSprite3dSoA, transform));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSprite3dSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSprite3dSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSprite3dSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSprite3dSoA, intensity));
+	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
@@ -6694,7 +6695,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 layer;
 		tfxEmitterPropertiesSoA *properties;
 		tfxring<tfxParticleSprite2d> *sprites2d;
-		tfxSprite3dSoA *sprites3d;
+		tfxSpriteSoA *sprites3d;
 	};
 
 	struct tfxControlWorkEntryOrdered {
@@ -6710,7 +6711,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 start_diff;
 		bool calculate_depth;
 		tfxring<tfxParticleSprite2d> *sprites2d;
-		tfxSprite3dSoA *sprites3d;
+		tfxSpriteSoA *sprites3d;
 	};
 
 	struct tfxParticleAgeWorkEntry {
@@ -6809,7 +6810,7 @@ You can then use layer inside the loop to get the current layer
 
 		//Banks of sprites for drawing in unordered mode
 		tfxSoABuffer sprites3d_buffer[2][tfxLAYERS];
-		tfxSprite3dSoA sprites3d[2][tfxLAYERS];
+		tfxSpriteSoA sprites3d[2][tfxLAYERS];
 		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
 		tfxU32 current_sprite_buffer;
 
@@ -8162,7 +8163,7 @@ You can then use layer inside the loop to get the current layer
 	a for loop to iterate over the sprites in a pre-recorded effect
 	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
 	* @param index			The index of the sprite you want to retrieve
-	* @returns				tfxSprite3dSoA reference containing the sprite data for drawing
+	* @returns				tfxSpriteSoA reference containing the sprite data for drawing
 	*/
 	tfxAPI inline tfxSpriteTransform3d &GetSpriteData3dTransform(tfxSpriteData3dSoA &sprites, tfxU32 index) {
 		return sprites.transform[index];
