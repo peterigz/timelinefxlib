@@ -7128,30 +7128,26 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleAge(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleColor2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame2d(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleStretch3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleColor3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data);
+
+	void ControlParticleColor(tfxWorkQueue *queue, void *data);
 
 	void ControlParticleOrderedAge(tfxWorkQueue *queue, void *data);
 	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleColorOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrameOrdered2d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePositionOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransformOrdered3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleStretchOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleColorOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrameOrdered3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleTransformOrdered3dOld(tfxWorkQueue *queue, void *data);
 
 
 

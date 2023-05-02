@@ -8163,7 +8163,7 @@ namespace tfx {
 		}
 	}
 
-	void ControlParticleColor3d(tfxWorkQueue *queue, void *data) {
+	void ControlParticleColor(tfxWorkQueue *queue, void *data) {
 		tfxPROFILE;
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxU32 emitter_index = work_entry->emitter_index;
@@ -12043,6 +12043,7 @@ namespace tfx {
 
 		work_entry.pm = &pm;
 		work_entry.sprites_index = sprites_index + work_entry.start_index;
+		work_entry.sprite_buffer_end_index = work_entry.sprites_index + work_entry.end_index;
 		work_entry.layer = properties.layer[property_index];
 		work_entry.sprites = &pm.sprites[pm.current_sprite_buffer][work_entry.layer];
 
@@ -12050,7 +12051,7 @@ namespace tfx {
 			if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition2d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize2d);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor2d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor3d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame2d);
 			}
 			else {
