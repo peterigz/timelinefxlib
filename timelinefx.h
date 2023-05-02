@@ -6396,7 +6396,7 @@ You can then use layer inside the loop to get the current layer
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	//These all point into a tfxSoABuffer, initialised with InitParticleSoA. Current Size: 108
+	//These all point into a tfxSoABuffer, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
 	struct tfxParticleSoA {
 		tfxU32 *parent_index;
 		tfxU32 *sprite_index;
@@ -6465,13 +6465,6 @@ You can then use layer inside the loop to get the current layer
 		float rotation;
 	};
 
-	struct tfxParticleSprite2d {			//40 bytes
-		tfxU32 image_frame_plus;			//The image image of animation index. Set to tfxINVALID when the particle expires
-		tfxSpriteTransform2d transform;
-		tfxRGBA8 color;						//The color tint of the sprite and blend factor in a
-		float intensity;
-	};
-
 	struct tfxSpriteTransform3d {
 		tfxVec3 position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
 		tfxVec3 rotations;					//Rotations of the sprite
@@ -6514,6 +6507,18 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	inline void InitSpriteBothSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
@@ -6706,8 +6711,7 @@ You can then use layer inside the loop to get the current layer
 		tfxOvertimeAttributes *graphs;
 		tfxU32 layer;
 		tfxEmitterPropertiesSoA *properties;
-		tfxring<tfxParticleSprite2d> *sprites2d;
-		tfxSpriteSoA *sprites3d;
+		tfxSpriteSoA *sprites;
 	};
 
 	struct tfxControlWorkEntryOrdered {
@@ -6722,8 +6726,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 wide_end_index;
 		tfxU32 start_diff;
 		bool calculate_depth;
-		tfxring<tfxParticleSprite2d> *sprites2d;
-		tfxSpriteSoA *sprites3d;
+		tfxSpriteSoA *sprites;
 	};
 
 	struct tfxParticleAgeWorkEntry {
@@ -6821,13 +6824,9 @@ You can then use layer inside the loop to get the current layer
 		tfxWorkQueue work_queue;
 
 		//Banks of sprites for drawing in unordered mode
-		tfxSoABuffer sprites3d_buffer[2][tfxLAYERS];
-		tfxSpriteSoA sprites3d[2][tfxLAYERS];
-		tfxring<tfxParticleSprite2d> sprites2d[tfxLAYERS];
+		tfxSoABuffer sprite_buffer[2][tfxLAYERS];
+		tfxSpriteSoA sprites[2][tfxLAYERS];
 		tfxU32 current_sprite_buffer;
-
-		tfxU32 sprite_index_2d[tfxLAYERS];
-		tfxU32 sprite_index_3d[tfxLAYERS];
 
 		//todo: document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
@@ -6890,8 +6889,6 @@ You can then use layer inside the loop to get the current layer
 			library(NULL),
 			sort_passes(0)
 		{
-			memset(sprite_index_2d, 0, tfxLAYERS * 4);
-			memset(sprite_index_3d, 0, tfxLAYERS * 4);
 		}
 		~tfxParticleManager();
 
@@ -6983,13 +6980,13 @@ You can then use layer inside the loop to get the current layer
 			return !current_sprite_buffer;
 		}
 		tfxAPI inline tfxVec3 &GetCapturedSprite3dPosition(tfxU32 layer, tfxU32 index) {
-			return sprites3d[!current_sprite_buffer][layer].transform_3d[index].position;
+			return sprites[!current_sprite_buffer][layer].transform_3d[index].position;
 		}
 		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
-			return sprites3d[(index & 0xF0000000) >> 28][layer].transform_3d[index & 0x0FFFFFFF];
+			return sprites[(index & 0xF0000000) >> 28][layer].transform_3d[index & 0x0FFFFFFF];
 		}
 		tfxAPI inline float &GetCapturedSprite3dIntensity(tfxU32 layer, tfxU32 index) {
-			return sprites3d[(index & 0xF0000000) >> 28][layer].intensity[index & 0x0FFFFFFF];
+			return sprites[(index & 0xF0000000) >> 28][layer].intensity[index & 0x0FFFFFFF];
 		}
 
 		//Internal use only
@@ -7046,17 +7043,9 @@ You can then use layer inside the loop to get the current layer
 			return MakeParticleID(next_index, index);
 		}
 
-		inline bool FreeCapacity2d(int index, bool compute) {
+		inline bool FreeCapacity(int index, bool compute) {
 			if (!compute) {
-				return sprites2d[index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
-			}
-			else
-				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
-		}
-
-		inline bool FreeCapacity3d(int index, bool compute) {
-			if (!compute) {
-				return sprites3d_buffer[current_sprite_buffer][index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
+				return sprite_buffer[current_sprite_buffer][index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
 			}
 			else
 				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
@@ -7068,21 +7057,20 @@ You can then use layer inside the loop to get the current layer
 		inline tfxU32 ParticleCount() {
 			tfxU32 count = 0;
 			for (tfxEachLayer) {
-				count += sprites2d[layer].current_size;
-				count += sprites3d_buffer[current_sprite_buffer][layer].current_size;
+				count += sprite_buffer[current_sprite_buffer][layer].current_size;
 			}
 			return count;
 		}
 	};
 
 	inline void DumpSprites(tfxParticleManager &pm, tfxU32 layer) {
-		for (int i = 0; i != pm.sprites3d_buffer[pm.current_sprite_buffer][layer].current_size; ++i) {
+		for (int i = 0; i != pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size; ++i) {
 			printf("%i:\t%f\t%f\t%f\t%u\n",
 				i,
-				pm.sprites3d[pm.current_sprite_buffer][layer].transform_3d[i].position.x,
-				pm.sprites3d[pm.current_sprite_buffer][layer].transform_3d[i].position.y,
-				pm.sprites3d[pm.current_sprite_buffer][layer].transform_3d[i].position.z,
-				pm.sprites3d[pm.current_sprite_buffer][layer].image_frame_plus[i]
+				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.x,
+				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.y,
+				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.z,
+				pm.sprites[pm.current_sprite_buffer][layer].image_frame_plus[i]
 			);
 		}
 	}
@@ -7956,13 +7944,13 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI inline void DoubleBufferSprites(tfxParticleManager *pm, bool double_buffer_sprites) {
 		if (!double_buffer_sprites && pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
 			for (tfxEachLayer) {
-				FreeSoABuffer(&pm->sprites3d_buffer[1][layer]);
+				FreeSoABuffer(&pm->sprite_buffer[1][layer]);
 			}
 			pm->flags &= ~tfxEffectManagerFlags_double_buffer_sprites;
 		}
 		else if (double_buffer_sprites && !(pm->flags & tfxEffectManagerFlags_double_buffer_sprites)) {
 			for (tfxEachLayer) {
-				InitSprite3dSoA(&pm->sprites3d_buffer[1][layer], &pm->sprites3d[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8));
+				InitSprite3dSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8));
 			}
 			pm->flags |= tfxEffectManagerFlags_double_buffer_sprites;
 		}
@@ -8007,78 +7995,12 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Get the next 2d sprite for rendering. To be used in a while loop with EndOfSprites2d. Make sure you also call ResetSpriteIndexes2d for the loop as well. You can also use the helper macro tfxEachLayer to
-	create a for loop to loop over each layer.
-
-	ResetSpriteIndexes2d(&pm);
-	for (tfxEachLayer) {
-		while(!EndOfSprites2d(&pm, layer)) {
-			tfxParticleSprite2d *s = Next2dSprite(&pm, layer);
-		}
-	}
-
-	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param layer				The layer to get the next sprite of
-	*/
-	tfxAPI inline tfxParticleSprite2d *Next2dSprite(tfxParticleManager *pm, tfxU32 layer) {
-		return &pm->sprites2d[layer][pm->sprite_index_2d[layer]++];
-	}
-
-	/*
-	Test if the end of the 2d sprites in the layer has been reached. See Next2dSprite for an example
-	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param layer				The layer index in the sprites list
-	*/
-	tfxAPI inline bool EndOfSprites2d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprite_index_2d[layer] >= pm->sprites2d[layer].current_size;
-	}
-
-	/*
-	Reset the 2d sprite indexes of the specific layer to 0. Important to use this each time you want to loop over all of the sprites in the particle manager. See Next2dSprite for an example.
-	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param layer				The layer to Reset the sprite indexes of
-	*/
-	tfxAPI inline void ResetSpriteIndexes2d(tfxParticleManager *pm, tfxU32 layer) {
-		pm->sprite_index_2d[layer] = 0;
-	}
-
-	/*
-	Reset the 2d sprite indexes for all layers. Important to use this each time you want to loop over all of the sprites in the particle manager. See Next2dSprite for an example.
-	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param layer				The layer to Reset the sprite indexes of
-	*/
-	tfxAPI inline void ResetSpriteIndexes2d(tfxParticleManager *pm) {
-		memset(pm->sprite_index_2d, 0, tfxLAYERS * sizeof(tfxU32));
-	}
-
-	/*
-	Get the total number of 2d sprites within the layer of the particle manager
-	* @param pm					A pointer to an initialised tfxParticleManager.
-	* @param layer				The layer of the sprites to the count of
-	*/
-	tfxAPI inline tfxU32 SpritesInLayer2d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprites2d[layer].current_size;
-	}
-
-	/*
 	Get the total number of 3d sprites within the layer of the particle manager
 	* @param pm					A pointer to an initialised tfxParticleManager.
 	* @param layer				The layer of the sprites to the count of
 	*/
 	tfxAPI inline tfxU32 SpritesInLayer3d(tfxParticleManager *pm, tfxU32 layer) {
-		return pm->sprites3d_buffer[pm->current_sprite_buffer][layer].current_size;
-	}
-
-	/*
-	Get the total number of 2d sprites ready for rendering in the particle manager
-	* @param pm					A pointer to an initialised tfxParticleManager.
-	*/
-	tfxAPI inline tfxU32 TotalSpriteCount2d(tfxParticleManager *pm) {
-		tfxU32 count = 0;
-		for (tfxEachLayer) {
-			count += pm->sprites2d[layer].current_size;
-		}
-		return count;
+		return pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 	}
 
 	/*
@@ -8088,7 +8010,7 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI inline tfxU32 TotalSpriteCount3d(tfxParticleManager *pm) {
 		tfxU32 count = 0;
 		for (tfxEachLayer) {
-			count += pm->sprites3d_buffer[pm->current_sprite_buffer][layer].current_size;
+			count += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 		}
 		return count;
 	}
