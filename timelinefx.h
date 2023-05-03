@@ -3492,6 +3492,15 @@ You can then use layer inside the loop to get the current layer
 		z = zr;
 	}
 
+	static inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y) {
+		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
+		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[0].c1)), xr);
+		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[1].c0));
+		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
+		x = xr;
+		y = yr;
+	}
+
 	static inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
 		tfxWideFloat xr = tfxWideMul(x, r0c[0]);
 		xr = tfxWideAdd(tfxWideMul(y, r0c[1]), xr);
@@ -3665,8 +3674,8 @@ You can then use layer inside the loop to get the current layer
 		x *= 32767.f;
 		y *= 32767.f;
 
-		u.in[0] = x;
-		u.in[1] = y;
+		u.in[0] = (signed short)x;
+		u.in[1] = (signed short)y;
 
 		return u.out;
 	}
@@ -3681,10 +3690,21 @@ You can then use layer inside the loop to get the current layer
 		u.out = in;
 		float one_div_32k = 1.f / 32767.f;
 
-		u.in[0] = u.in[0] * one_div_32k;
-		u.in[1] = u.in[1] * one_div_32k;
+		u.in[0] = u.in[0] * (signed short)one_div_32k;
+		u.in[1] = u.in[1] * (signed short)one_div_32k;
 
 		return tfxVec2(u.in[0], u.in[1]);
+	}
+
+	inline tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
+		tfxWideFloat w32k = tfxWideSetSingle(32767.f);
+		tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
+		converted_y = tfxWideAndi(converted_y, bits16);
+		converted_y = tfxWideShiftLeft(converted_y, 16);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
+		converted_x = tfxWideAndi(converted_x, bits16);
+		return tfxWideOri(converted_x, converted_y);
 	}
 
 	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
@@ -7190,6 +7210,8 @@ You can then use layer inside the loop to get the current layer
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleTransform2dOld(tfxWorkQueue *queue, void *data);
+	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);

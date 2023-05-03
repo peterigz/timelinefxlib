@@ -7818,44 +7818,44 @@ namespace tfx {
 
 			flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
 
-			tfxWideArray alignment_vector_x;
-			tfxWideArray alignment_vector_y;
-			tfxWideArray alignment_vector_z;
+			tfxWideFloat alignment_vector_x;
+			tfxWideFloat alignment_vector_y;
+			tfxWideFloat alignment_vector_z;
 			if (vector_align_type == tfxVectorAlignType_motion) {
-				alignment_vector_x.m = tfxWideSub(position_x.m, captured_position_x.m);
-				alignment_vector_y.m = tfxWideAdd(tfxWideSub(position_y.m, captured_position_y.m), tfxWideSetSingle(0.0001f)); //epsilon to prevent divide by 0
-				alignment_vector_z.m = tfxWideSub(position_z.m, captured_position_z.m);
-				tfxWideFloat l = tfxWideMul(alignment_vector_x.m, alignment_vector_x.m);
-				l = tfxWideAdd(l, tfxWideMul(alignment_vector_y.m, alignment_vector_y.m));
-				l = tfxWideAdd(l, tfxWideMul(alignment_vector_z.m, alignment_vector_z.m));
+				alignment_vector_x = tfxWideSub(position_x.m, captured_position_x.m);
+				alignment_vector_y = tfxWideAdd(tfxWideSub(position_y.m, captured_position_y.m), tfxWideSetSingle(0.000001f)); //epsilon to prevent divide by 0
+				alignment_vector_z = tfxWideSub(position_z.m, captured_position_z.m);
+				tfxWideFloat l = tfxWideMul(alignment_vector_x, alignment_vector_x);
+				l = tfxWideAdd(l, tfxWideMul(alignment_vector_y, alignment_vector_y));
+				l = tfxWideAdd(l, tfxWideMul(alignment_vector_z, alignment_vector_z));
 				l = tfxWideSqrt(l);
 				p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(10.f)));	//This is too arbitrary, think up a better solution!
-				alignment_vector_x.m = tfxWideDiv(alignment_vector_x.m, l);
-				alignment_vector_y.m = tfxWideDiv(alignment_vector_y.m, l);
-				alignment_vector_z.m = tfxWideDiv(alignment_vector_z.m, l);
+				alignment_vector_x = tfxWideDiv(alignment_vector_x, l);
+				alignment_vector_y = tfxWideDiv(alignment_vector_y, l);
+				alignment_vector_z = tfxWideDiv(alignment_vector_z, l);
 			}
 			else if (vector_align_type == tfxVectorAlignType_emission && property_flags & tfxEmitterPropertyFlags_relative_position) {
-				alignment_vector_x.m = velocity_normal_x;
-				alignment_vector_y.m = velocity_normal_y;
-				alignment_vector_z.m = velocity_normal_z;
-				mmWideTransformVector(e_matrix, alignment_vector_x.m, alignment_vector_y.m, alignment_vector_z.m);
+				alignment_vector_x = velocity_normal_x;
+				alignment_vector_y = velocity_normal_y;
+				alignment_vector_z = velocity_normal_z;
+				mmWideTransformVector(e_matrix, alignment_vector_x, alignment_vector_y, alignment_vector_z);
 			}
 			else if (vector_align_type == tfxVectorAlignType_emission) {
-				alignment_vector_x.m = velocity_normal_x;
-				alignment_vector_y.m = velocity_normal_y;
-				alignment_vector_z.m = velocity_normal_z;
+				alignment_vector_x = velocity_normal_x;
+				alignment_vector_y = velocity_normal_y;
+				alignment_vector_z = velocity_normal_z;
 			}
 			else if (vector_align_type == tfxVectorAlignType_emitter) {
-				alignment_vector_x.m = tfxWideSetSingle(0.f);
-				alignment_vector_y.m = tfxWideSetSingle(1.f);
-				alignment_vector_z.m = tfxWideSetSingle(0.f);
-				mmWideTransformVector(e_matrix, alignment_vector_x.m, alignment_vector_y.m, alignment_vector_z.m);
+				alignment_vector_x = tfxWideSetSingle(0.f);
+				alignment_vector_y = tfxWideSetSingle(1.f);
+				alignment_vector_z = tfxWideSetSingle(0.f);
+				mmWideTransformVector(e_matrix, alignment_vector_x, alignment_vector_y, alignment_vector_z);
 			}
 
 			//sprites.transform_3d.captured_position = captured_position;
 			//alignment_vector_y.m = tfxWideAdd(alignment_vector_y.m, tfxWideSetSingle(0.002f));	//We don't want a 0 alignment normal
 			tfxWideArrayi packed;
-			packed.m = PackWide10bit(alignment_vector_x.m, alignment_vector_y.m, alignment_vector_z.m, billboard_option & 0x00000003);
+			packed.m = PackWide10bit(alignment_vector_x, alignment_vector_y, alignment_vector_z, billboard_option & 0x00000003);
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
@@ -7870,6 +7870,169 @@ namespace tfx {
 				bank.captured_position_x[index + j] = sprites.transform_3d[running_sprite_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform_3d[running_sprite_index].position.y;
 				bank.captured_position_z[index + j] = sprites.transform_3d[running_sprite_index].position.z;
+				running_sprite_index++;
+			}
+			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+			start_diff = 0;
+		}
+	}
+
+	void ControlParticleTransform2dOld(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxU32 emitter_index = work_entry->emitter_index;
+		tfxParticleManager &pm = *work_entry->pm;
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[particles_index];
+
+		tfxSpriteSoA &sprites = *work_entry->sprites;
+		tfxU32 running_sprite_index = work_entry->sprites_index;
+
+		tfxVec3 &e_captured_position = pm.emitters.captured_position[emitter_index];
+		tfxVec3 &e_world_position = pm.emitters.world_position[emitter_index];
+		tfxVec3 &e_world_rotations = pm.emitters.world_rotations[emitter_index];
+		tfxVec3 &e_handle = pm.emitters.handle[emitter_index];
+		tfxMatrix4 &e_matrix = pm.emitters.matrix[emitter_index];
+		tfxVec3 &e_scale = pm.emitters.scale[emitter_index];
+		const float e_stretch = pm.emitters.stretch[emitter_index];
+
+		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
+			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
+			const float local_position_x = bank.position_x[index];
+			const float local_position_y = bank.position_y[index];
+			const float roll = bank.local_rotations_z[index];
+			float &captured_position_x = bank.captured_position_x[index];
+			float &captured_position_y = bank.captured_position_y[index];
+			tfxParticleFlags &flags = bank.flags[index];
+
+			const float age = bank.age[index];
+			const float max_age = bank.max_age[index];
+			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+			float lookup_stretch = work_entry->graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->stretch.lookup.last_frame)] * e_stretch;
+
+			auto transform_particle_callback2d = pm.emitters.transform_particle_callback2d[emitter_index];
+			if (flags & tfxParticleFlags_capture_after_transform) {
+				transform_particle_callback2d(local_position_x, local_position_y, roll, sprites.transform_2d[running_sprite_index].position, sprites.transform_2d[running_sprite_index].rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_captured_position.x, e_captured_position.y, 0.f));
+				captured_position_x = sprites.transform_2d[running_sprite_index].position.x;
+				captured_position_y = sprites.transform_2d[running_sprite_index].position.y;
+				transform_particle_callback2d(local_position_x, local_position_y, roll, sprites.transform_2d[running_sprite_index].position, sprites.transform_2d[running_sprite_index].rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
+				flags &= ~tfxParticleFlags_capture_after_transform;
+			}
+			else {
+				transform_particle_callback2d(local_position_x, local_position_y, roll, sprites.transform_2d[running_sprite_index].position, sprites.transform_2d[running_sprite_index].rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
+			}
+			tfxVec2 alignment(sprites.transform_2d[running_sprite_index].position.x - captured_position_x, sprites.transform_2d[running_sprite_index].position.y - captured_position_y);
+			alignment.y += 0.000001f;
+			float length = FastLength(alignment);
+			alignment = NormalizeVec(alignment, length);
+			sprites.transform_2d[running_sprite_index].captured_position.x = captured_position_x;
+			sprites.transform_2d[running_sprite_index].captured_position.y = captured_position_y;
+			sprites.alignment[running_sprite_index] = Pack16bit(alignment.x, alignment.y);
+			sprites.stretch[running_sprite_index] = length * lookup_stretch;
+			captured_position_x = sprites.transform_2d[running_sprite_index].position.x;
+			captured_position_y = sprites.transform_2d[running_sprite_index].position.y;
+			running_sprite_index++;
+		}
+	}
+
+	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxU32 emitter_index = work_entry->emitter_index;
+		tfxParticleManager &pm = *work_entry->pm;
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[particles_index];
+
+		tfxSpriteSoA &sprites = *work_entry->sprites;
+		tfxU32 running_sprite_index = work_entry->sprites_index;
+
+		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
+		const tfxWideFloat e_world_position_x = tfxWideSetSingle(pm.emitters.world_position[emitter_index].x);
+		const tfxWideFloat e_world_position_y = tfxWideSetSingle(pm.emitters.world_position[emitter_index].y);
+		const tfxWideFloat e_world_rotations_roll = tfxWideSetSingle(pm.emitters.world_rotations[emitter_index].roll);
+		const tfxWideFloat e_handle_x = tfxWideSetSingle(pm.emitters.handle[emitter_index].x);
+		const tfxWideFloat e_handle_y = tfxWideSetSingle(pm.emitters.handle[emitter_index].y);
+		const tfxWideFloat e_scale_x = tfxWideSetSingle(pm.emitters.scale[emitter_index].x);
+		const tfxWideFloat e_scale_y = tfxWideSetSingle(pm.emitters.scale[emitter_index].y);
+		const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
+		const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
+		tfxMatrix4 &e_matrix = pm.emitters.matrix[emitter_index];
+		tfxVec3 &e_scale = pm.emitters.scale[emitter_index];
+		const float e_stretch = pm.emitters.stretch[emitter_index];
+		tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+		const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
+		const tfxWideFloat stretch = tfxWideSetSingle(pm.emitters.stretch[emitter_index]);
+		tfxWideArray p_stretch;
+
+		tfxU32 start_diff = work_entry->start_diff;
+
+		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+			tfxWideArray position_x;
+			tfxWideArray position_y;
+			tfxWideArray captured_position_x;
+			tfxWideArray captured_position_y;
+			tfxWideArray roll;
+			position_x.m = tfxWideLoad(&bank.position_x[index]);
+			position_y.m = tfxWideLoad(&bank.position_y[index]);
+			roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
+			captured_position_x.m = tfxWideLoad(&bank.captured_position_x[index]);
+			captured_position_y.m = tfxWideLoad(&bank.captured_position_y[index]);
+			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+			tfxWideFloat capture_flag = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi()));
+			tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag, tfxWideSetZero());
+
+			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+			_ReadBarrier();
+			tfxWideFloat life = tfxWideDiv(age, max_age);
+			life = tfxWideMul(life, max_life);
+			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+
+			tfxWideArrayi lookup_frame;
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
+			const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->stretch.lookup.values, lookup_frame);
+			p_stretch.m = tfxWideMul(lookup_stretch, stretch);
+
+			if (property_flags & tfxEmitterPropertyFlags_relative_position) {
+				position_x.m = tfxWideAdd(position_x.m, e_handle_x);
+				position_y.m = tfxWideAdd(position_y.m, e_handle_y);
+				mmWideTransformVector(e_matrix, position_x.m, position_y.m);
+				position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale_x), e_world_position_x);
+				position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale_y), e_world_position_y);
+			}
+			else if (property_flags & tfxEmitterPropertyFlags_relative_angle) {
+				roll.m = tfxWideAdd(roll.m, e_world_rotations_roll);
+			}
+
+			flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
+
+			captured_position_x.m = tfxWideAdd(tfxWideAnd(position_x.m, capture_flag), tfxWideAnd(captured_position_x.m, xor_capture_flag));
+			captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
+
+			tfxWideFloat alignment_x = tfxWideSub(position_x.m, captured_position_x.m);
+			tfxWideFloat alignment_y = tfxWideSub(position_y.m, captured_position_y.m);
+			alignment_y = tfxWideAdd(alignment_y, tfxWideSetSingle(0.000001f));
+			tfxWideFloat l = tfxWideMul(alignment_x, alignment_x);
+			l = tfxWideAdd(l, tfxWideMul(alignment_y, alignment_y));
+			l = tfxWideSqrt(l);
+			p_stretch.m = tfxWideMul(p_stretch.m, l);
+			alignment_x = tfxWideDiv(alignment_x, l);
+			alignment_y = tfxWideDiv(alignment_y, l);
+
+			tfxWideArrayi packed;
+			packed.m = PackWide16bit(alignment_x, alignment_y);
+
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				sprites.stretch[running_sprite_index] = p_stretch.a[j];
+				sprites.transform_2d[running_sprite_index].rotation = roll.a[j];
+				sprites.transform_2d[running_sprite_index].position.x = position_x.a[j];
+				sprites.transform_2d[running_sprite_index].position.y = position_y.a[j];
+				sprites.alignment[running_sprite_index] = packed.a[j];
+				bank.captured_position_x[index + j] = sprites.transform_2d[running_sprite_index].position.x;
+				bank.captured_position_y[index + j] = sprites.transform_2d[running_sprite_index].position.y;
 				running_sprite_index++;
 			}
 			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
@@ -11786,54 +11949,7 @@ namespace tfx {
 
 		}
 
-		tfxSpriteSoA &sprites = *work_entry->sprites;
-		tfxU32 running_sprite_index = work_entry->sprites_index;
-
-		tfxVec3 &e_captured_position = pm.emitters.captured_position[emitter_index];
-		tfxVec3 &e_world_position = pm.emitters.world_position[emitter_index];
-		tfxVec3 &e_world_rotations = pm.emitters.world_rotations[emitter_index];
-		tfxVec3 &e_handle = pm.emitters.handle[emitter_index];
-		tfxMatrix4 &e_matrix = pm.emitters.matrix[emitter_index];
-		tfxVec3 &e_scale = pm.emitters.scale[emitter_index];
-		const float e_stretch = pm.emitters.stretch[emitter_index];
-
-		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const float local_position_x = bank.position_x[index];
-			const float local_position_y = bank.position_y[index];
-			const float roll = bank.local_rotations_z[index];
-			float &captured_position_x = bank.captured_position_x[index];
-			float &captured_position_y = bank.captured_position_y[index];
-			tfxParticleFlags &flags = bank.flags[index];
-
-			const float age = bank.age[index];
-			const float max_age = bank.max_age[index];
-			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
-			float lookup_stretch = work_entry->graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->stretch.lookup.last_frame)] * e_stretch;
-
-			auto transform_particle_callback2d = pm.emitters.transform_particle_callback2d[emitter_index];
-			if (flags & tfxParticleFlags_capture_after_transform) {
-				transform_particle_callback2d(local_position_x, local_position_y, roll, sprites.transform_2d[running_sprite_index].position, sprites.transform_2d[running_sprite_index].rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_captured_position.x, e_captured_position.y, 0.f));
-				captured_position_x = sprites.transform_2d[running_sprite_index].position.x;
-				captured_position_y = sprites.transform_2d[running_sprite_index].position.y;
-				transform_particle_callback2d(local_position_x, local_position_y, roll, sprites.transform_2d[running_sprite_index].position, sprites.transform_2d[running_sprite_index].rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
-				flags &= ~tfxParticleFlags_capture_after_transform;
-			}
-			else {
-				transform_particle_callback2d(local_position_x, local_position_y, roll, sprites.transform_2d[running_sprite_index].position, sprites.transform_2d[running_sprite_index].rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
-			}
-			tfxVec2 alignment(sprites.transform_2d[running_sprite_index].position.x - captured_position_x, sprites.transform_2d[running_sprite_index].position.y - captured_position_y);
-			alignment.y += 0.000001f;
-			float length = FastLength(alignment);
-			alignment = NormalizeVec(alignment, length);
-			sprites.transform_2d[running_sprite_index].captured_position.x = captured_position_x;
-			sprites.transform_2d[running_sprite_index].captured_position.y = captured_position_y;
-			sprites.alignment[running_sprite_index] = Pack16bit(alignment.x, alignment.y);
-			sprites.stretch[running_sprite_index] = length * lookup_stretch;
-			captured_position_x = sprites.transform_2d[running_sprite_index].position.x;
-			captured_position_y = sprites.transform_2d[running_sprite_index].position.y;
-			running_sprite_index++;
-		}
+		ControlParticleTransform2d(queue, data);
 	}
 
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry) {
