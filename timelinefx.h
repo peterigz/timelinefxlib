@@ -3211,6 +3211,11 @@ You can then use layer inside the loop to get the current layer
 		return (a.x * b.x + a.y * b.y + a.z * b.z);
 	}
 
+	static inline float DotProduct(const tfxVec2 &a, const tfxVec2 &b)
+	{
+		return (a.x * b.x + a.y * b.y);
+	}
+
 	//Quake 3 inverse square root
 	static inline float tfxSqrt(float number)
 	{
@@ -3241,12 +3246,25 @@ You can then use layer inside the loop to get the current layer
 		return (nibble << 28) + index;
 	}
 
+	static inline float FastLength(tfxVec2 const &v) {
+		return 1.f / tfxSqrt(DotProduct(v, v));
+	}
+
 	static inline float FastLength(tfxVec3 const &v) {
 		return 1.f / tfxSqrt(DotProduct(v, v));
 	}
 
 	static inline tfxVec3 FastNormalizeVec(tfxVec3 const &v) {
 		return v * tfxSqrt(DotProduct(v, v));
+	}
+
+	static inline tfxVec2 NormalizeVec(tfxVec2 const &v) {
+		float length = FastLength(v);
+		return tfxVec2(v.x / length, v.y / length);
+	}
+
+	static inline tfxVec2 NormalizeVec(tfxVec2 const &v, const float length) {
+		return tfxVec2(v.x / length, v.y / length);
 	}
 
 	struct tfxMatrix4 {
@@ -3635,6 +3653,38 @@ You can then use layer inside the loop to get the current layer
 		result.data.z = (tfxU32)converted.x;
 		result.data.w = 0;
 		return result.pack;
+	}
+
+	inline tfxU32 Pack16bit(float x, float y) {
+		union
+		{
+			signed short in[2];
+			tfxU32 out;
+		} u;
+
+		x *= 32767.f;
+		y *= 32767.f;
+
+		u.in[0] = x;
+		u.in[1] = y;
+
+		return u.out;
+	}
+
+	inline tfxVec2 UnPack16bit(tfxU32 in) {
+		union
+		{
+			signed short in[2];
+			tfxU32 out;
+		} u;
+
+		u.out = in;
+		float one_div_32k = 1.f / 32767.f;
+
+		u.in[0] = u.in[0] * one_div_32k;
+		u.in[1] = u.in[1] * one_div_32k;
+
+		return tfxVec2(u.in[0], u.in[1]);
 	}
 
 	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
@@ -6531,7 +6581,9 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
@@ -7126,28 +7178,26 @@ You can then use layer inside the loop to get the current layer
 	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticleAge(tfxWorkQueue *queue, void *data);
-	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleSize2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleImageFrame2d(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
 
 	void ControlParticleColor(tfxWorkQueue *queue, void *data);
 
 	void ControlParticleOrderedAge(tfxWorkQueue *queue, void *data);
 	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
 
+	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleSize2d(tfxWorkQueue *queue, void *data);
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleImageFrameOrdered2d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePositionOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransformOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleColorOrdered3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleImageFrameOrdered3d(tfxWorkQueue *queue, void *data);
+	void ControlParticleColorOrdered(tfxWorkQueue *queue, void *data);
+	void ControlParticleImageFrameOrdered(tfxWorkQueue *queue, void *data);
 
 
 

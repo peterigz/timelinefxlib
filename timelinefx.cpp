@@ -1570,7 +1570,6 @@ namespace tfx {
 	}
 
 	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 emitter_index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size) {
-		//float (*effect_lookup_callback)(tfxGraph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
 		const float frame = pm.emitters.frame[emitter_index];
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
 		float emission_angle_variation = lookup_callback(library->emitter_attributes[emitter_attributes].properties.emission_range, frame);
@@ -6888,14 +6887,14 @@ namespace tfx {
 		if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered2d);
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSizeOrdered2d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered2d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrameOrdered2d);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrameOrdered);
 		}
 		else {
 			ControlParticlePositionOrdered2d(&pm.work_queue, &work_entry);
 			ControlParticleSizeOrdered2d(&pm.work_queue, &work_entry);
-			ControlParticleColorOrdered2d(&pm.work_queue, &work_entry);
-			ControlParticleImageFrameOrdered2d(&pm.work_queue, &work_entry);
+			ControlParticleColorOrdered(&pm.work_queue, &work_entry);
+			ControlParticleImageFrameOrdered(&pm.work_queue, &work_entry);
 		}
 	}
 
@@ -6913,14 +6912,14 @@ namespace tfx {
 		if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePositionOrdered3d);
 			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSizeOrdered3d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered3d);
-			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrameOrdered3d);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColorOrdered);
+			tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrameOrdered);
 		}
 		else {
 			ControlParticlePositionOrdered3d(&pm.work_queue, &work_entry);
 			ControlParticleSizeOrdered3d(&pm.work_queue, &work_entry);
-			ControlParticleColorOrdered3d(&pm.work_queue, &work_entry);
-			ControlParticleImageFrameOrdered3d(&pm.work_queue, &work_entry);
+			ControlParticleColorOrdered(&pm.work_queue, &work_entry);
+			ControlParticleImageFrameOrdered(&pm.work_queue, &work_entry);
 		}
 	}
 
@@ -7181,40 +7180,6 @@ namespace tfx {
 				sprites.color[running_sprite_index] = tfxRGBA8(color.r, color.g, color.b, (char)alpha);
 			}
 			sprites.intensity[running_sprite_index++] = intensity;
-		}
-
-	}
-
-	void ControlParticleImageFrameOrdered2d(tfxWorkQueue *queue, void *data) {
-		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
-		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
-		tfxLibrary *library = pm.library;
-		tfxSpriteSoA &sprites = *work_entry->sprites;
-
-		tfxU32 running_sprite_index = work_entry->start_index;
-
-		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->current_buffer_index], i);
-			const tfxU32 parent_index = bank.parent_index[index];
-
-			const tfxU32 property_index = pm.emitters.properties_index[parent_index];
-			const float image_frame_rate = pm.emitters.image_frame_rate[parent_index];
-			const float end_frame = pm.emitters.end_frame[parent_index];
-			const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[parent_index];
-			const tfxImageData *image = library->emitter_properties.image[property_index];
-
-			float &image_frame = bank.image_frame[index];
-			tfxU32 &sprites_index = bank.sprite_index[index];
-			sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index;
-
-			//----Image animation
-			image_frame += image_frame_rate * tfxUPDATE_TIME;
-			image_frame = (emitter_flags & tfxEmitterStateFlags_play_once) && image_frame > end_frame ? image_frame = end_frame : image_frame;
-			image_frame = (emitter_flags & tfxEmitterStateFlags_play_once) && image_frame < 0 ? image_frame = 0 : image_frame;
-			image_frame = std::fmodf(image_frame, end_frame + 1);
-
-			sprites.image_frame_plus[running_sprite_index++] = ((tfxU32)image_frame << 16) + property_index;
 		}
 
 	}
@@ -8091,7 +8056,7 @@ namespace tfx {
 		}
 	}
 
-	void ControlParticleColorOrdered3d(tfxWorkQueue *queue, void *data) {
+	void ControlParticleColorOrdered(tfxWorkQueue *queue, void *data) {
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
@@ -8234,7 +8199,7 @@ namespace tfx {
 
 	}
 
-	void ControlParticleImageFrameOrdered3d(tfxWorkQueue *queue, void *data) {
+	void ControlParticleImageFrameOrdered(tfxWorkQueue *queue, void *data) {
 		tfxPROFILE;
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
@@ -8289,7 +8254,7 @@ namespace tfx {
 
 	}
 
-	void ControlParticleImageFrame3d(tfxWorkQueue *queue, void *data) {
+	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data) {
 		tfxPROFILE;
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxU32 emitter_index = work_entry->emitter_index;
@@ -11850,6 +11815,7 @@ namespace tfx {
 		tfxVec3 &e_handle = pm.emitters.handle[emitter_index];
 		tfxMatrix4 &e_matrix = pm.emitters.matrix[emitter_index];
 		tfxVec3 &e_scale = pm.emitters.scale[emitter_index];
+		const float e_stretch = pm.emitters.stretch[emitter_index];
 
 		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
@@ -11859,6 +11825,11 @@ namespace tfx {
 			float &captured_position_x = bank.captured_position_x[index];
 			float &captured_position_y = bank.captured_position_y[index];
 			tfxParticleFlags &flags = bank.flags[index];
+
+			const float age = bank.age[index];
+			const float max_age = bank.max_age[index];
+			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
+			float lookup_stretch = work_entry->graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->stretch.lookup.last_frame)] * e_stretch;
 
 			auto transform_particle_callback2d = pm.emitters.transform_particle_callback2d[emitter_index];
 			if (flags & tfxParticleFlags_capture_after_transform) {
@@ -11871,8 +11842,14 @@ namespace tfx {
 			else {
 				transform_particle_callback2d(local_position_x, local_position_y, roll, sprites.transform_2d[running_sprite_index].position, sprites.transform_2d[running_sprite_index].rotation, e_world_rotations, e_matrix, e_handle, e_scale, tfxVec3(e_world_position.x, e_world_position.y, 0.f));
 			}
+			tfxVec2 alignment(sprites.transform_2d[running_sprite_index].position.x - captured_position_x, sprites.transform_2d[running_sprite_index].position.y - captured_position_y);
+			alignment.y += 0.000001f;
+			float length = FastLength(alignment);
+			alignment = NormalizeVec(alignment, length);
 			sprites.transform_2d[running_sprite_index].captured_position.x = captured_position_x;
 			sprites.transform_2d[running_sprite_index].captured_position.y = captured_position_y;
+			sprites.alignment[running_sprite_index] = Pack16bit(alignment.x, alignment.y);
+			sprites.stretch[running_sprite_index] = length * lookup_stretch;
 			captured_position_x = sprites.transform_2d[running_sprite_index].position.x;
 			captured_position_y = sprites.transform_2d[running_sprite_index].position.y;
 			running_sprite_index++;
@@ -11889,7 +11866,6 @@ namespace tfx {
 
 		const float overal_scale = pm.emitters.overal_scale[emitter_index];
 		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
-		const float stretch = pm.emitters.stretch[emitter_index];
 		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
 		const tfxVec2 image_size = pm.emitters.image_size[emitter_index];
 		const tfxVec2 image_handle = pm.emitters.image_handle[emitter_index];
@@ -11909,7 +11885,6 @@ namespace tfx {
 			const float base_weight = bank.base_weight[index];
 
 			float lookup_velocity = work_entry->graphs->velocity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->velocity.lookup.last_frame)] * velocity_adjuster;
-			float lookup_stretch = work_entry->graphs->stretch.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->stretch.lookup.last_frame)];
 			float lookup_width = work_entry->graphs->width.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->width.lookup.last_frame)];
 			float lookup_height = work_entry->graphs->height.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->height.lookup.last_frame)];
 			float lookup_weight = work_entry->graphs->weight.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->weight.lookup.last_frame)];
@@ -11924,93 +11899,14 @@ namespace tfx {
 			float weight_acceleration = base_weight * lookup_weight * tfxUPDATE_TIME;
 			float velocity = std::fabsf(lookup_velocity * base_velocity + weight_acceleration);
 			if (emitter_flags & tfxEmitterStateFlags_lifetime_uniform_size) {
-				scale.y = (lookup_width * (base_size_y + (velocity * lookup_stretch * stretch))) / image_size.y;
+				scale.y = (lookup_width * base_size_y) / image_size.y;
 				if (emitter_flags & tfxEmitterPropertyFlags_base_uniform_size && scale.y < scale.x)
 					scale.y = scale.x;
 			}
 			else
-				scale.y = (lookup_height * (base_size_y + (velocity * lookup_stretch * stretch))) / image_size.y;
+				scale.y = (lookup_height * base_size_y) / image_size.y;
 
 			sprites.transform_2d[running_sprite_index++].scale = scale * overal_scale;
-		}
-
-	}
-
-	void ControlParticleColor2d(tfxWorkQueue *queue, void *data) {
-		tfxPROFILE;
-		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
-		tfxU32 emitter_index = work_entry->emitter_index;
-		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
-		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = work_entry->pm->particle_arrays[particles_index];
-
-		const float global_intensity = pm.emitters.intensity[emitter_index];
-		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
-
-		tfxSpriteSoA &sprites = *work_entry->sprites;
-		tfxU32 running_sprite_index = work_entry->sprites_index;
-
-		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const float age = bank.age[index];
-			const float max_age = bank.max_age[index];
-			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
-
-			const float lookup_opacity = work_entry->graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blendfactor.lookup.last_frame)];
-			const float lookup_intensity = work_entry->graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->intensity.lookup.last_frame)];
-
-			tfxRGBA8 &color = bank.color[index];
-
-			//----Color changes
-			float alpha = 255.f * lookup_opacity;
-			float intensity = lookup_intensity * global_intensity;
-			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
-				const float lookup_red = work_entry->graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->red.lookup.last_frame)];
-				const float lookup_green = work_entry->graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->green.lookup.last_frame)];
-				const float lookup_blue = work_entry->graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, work_entry->graphs->blue.lookup.last_frame)];
-				color = tfxRGBA8(255.f * lookup_red, 255.f * lookup_green, 255.f * lookup_blue, alpha);
-			}
-
-			sprites.color[running_sprite_index] = color;
-			sprites.intensity[running_sprite_index++] = intensity;
-		}
-
-	}
-
-	void ControlParticleImageFrame2d(tfxWorkQueue *queue, void *data) {
-		tfxPROFILE;
-		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
-		tfxU32 emitter_index = work_entry->emitter_index;
-		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
-		const tfxU32 property_index = work_entry->pm->emitters.properties_index[emitter_index];
-		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
-		tfxImageData *image = work_entry->properties->image[property_index];
-
-		float image_frame_rate = pm.emitters.image_frame_rate[emitter_index];
-		float end_frame = pm.emitters.end_frame[emitter_index];
-		tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
-
-		tfxSpriteSoA &sprites = *work_entry->sprites;
-		tfxU32 running_sprite_index = work_entry->sprites_index;
-
-		for (int i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
-			const float age = bank.age[index];
-			const float max_age = bank.max_age[index];
-			const tfxU32 lookup_frame = static_cast<tfxU32>((age / max_age * work_entry->graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
-
-			float &image_frame = bank.image_frame[index];
-			tfxU32 &sprites_index = bank.sprite_index[index];
-			sprites_index = (work_entry->layer << 28) + running_sprite_index;
-
-			//----Image animation
-			image_frame += image_frame_rate * tfxUPDATE_TIME;
-			image_frame = (emitter_flags & tfxEmitterStateFlags_play_once) && image_frame > end_frame ? image_frame = end_frame : image_frame;
-			image_frame = (emitter_flags & tfxEmitterStateFlags_play_once) && image_frame < 0 ? image_frame = 0 : image_frame;
-			image_frame = std::fmodf(image_frame, end_frame + 1);
-
-			sprites.image_frame_plus[running_sprite_index++] = ((tfxU32)image_frame << 16) + property_index;
 		}
 
 	}
@@ -12051,14 +11947,14 @@ namespace tfx {
 			if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition2d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize2d);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor3d);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame2d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame);
 			}
 			else {
 				ControlParticlePosition2d(&pm.work_queue, &work_entry);
 				ControlParticleSize2d(&pm.work_queue, &work_entry);
-				ControlParticleColor2d(&pm.work_queue, &work_entry);
-				ControlParticleImageFrame2d(&pm.work_queue, &work_entry);
+				ControlParticleColor(&pm.work_queue, &work_entry);
+				ControlParticleImageFrame(&pm.work_queue, &work_entry);
 			}
 		}
 
@@ -12100,14 +11996,14 @@ namespace tfx {
 			if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition3d);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize3d);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor3d);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame3d);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor);
+				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame);
 			}
 			else {
 				ControlParticlePosition3d(&pm.work_queue, &work_entry);
 				ControlParticleSize3d(&pm.work_queue, &work_entry);
-				ControlParticleColor3d(&pm.work_queue, &work_entry);
-				ControlParticleImageFrame3d(&pm.work_queue, &work_entry);
+				ControlParticleColor(&pm.work_queue, &work_entry);
+				ControlParticleImageFrame(&pm.work_queue, &work_entry);
 			}
 		}
 	}
