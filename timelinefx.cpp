@@ -6337,9 +6337,7 @@ namespace tfx {
 		effect.pm_index = parent_index;
 		sort_passes = tfxMax(effect.sort_passes, sort_passes);
 		sort_passes = tfxMin(5, sort_passes);
-		if (!effect.Is3DEffect()) {
-			flags &= ~tfxEffectManagerFlags_3d_effects;
-		}
+
 		for (auto &e : effect.GetInfo().sub_effectors) {
 			if (e.property_flags & tfxEmitterPropertyFlags_enabled) {
 				unsigned int index = GetEmitterSlot();
@@ -8533,6 +8531,9 @@ namespace tfx {
 
 		if (is_3d)
 			flags |= tfxEffectManagerFlags_3d_effects;
+		else
+			flags &= ~tfxEffectManagerFlags_3d_effects;
+
 
 		flags |= current_flags;
 
