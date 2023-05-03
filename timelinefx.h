@@ -6543,13 +6543,13 @@ You can then use layer inside the loop to get the current layer
 	//This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
 	//InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
 	//3d in one struct like this as it makes it a lot easier to use the same control functions where we can.
-	struct tfxSpriteSoA {	//3d takes 56 bytes of bandwidth, 2d takes 32 bytes of bandwidth
+	struct tfxSpriteSoA {	//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
 		tfxU32 *image_frame_plus;				//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;					//The index of the sprite in the previous frame so that it can be looked up and interpolated with
 		tfxSpriteTransform3d *transform_3d;		//Transform data for 3d sprites
 		tfxSpriteTransform2d *transform_2d;		//Transform data for 2d sprites
-		tfxU32 *alignment;						//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over (3d only)
-		tfxRGBA8 *color;						//The color tint of the sprite and blend factor in a channel
+		tfxU32 *alignment;						//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over or 2 packed 16bit floats for 2d
+		tfxRGBA8 *color;						//The color tint of the sprite and blend factor in alpha channel
 		float *stretch;							//Multiplier for how much the particle is stretched in the shader (3d only)	
 		float *intensity;						//The multiplier for the sprite color
 	};
@@ -7180,22 +7180,22 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleAge(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleSize3d(tfxWorkQueue *queue, void *data);
+	
 	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
-
 	void ControlParticleColor(tfxWorkQueue *queue, void *data);
+	void ControlParticleSize(tfxWorkQueue *queue, void *data);
 
 	void ControlParticleOrderedAge(tfxWorkQueue *queue, void *data);
 	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
+	void ControlParticleSizeOrdered(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleSize2d(tfxWorkQueue *queue, void *data);
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered2d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePositionOrdered3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransformOrdered3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleSizeOrdered3d(tfxWorkQueue *queue, void *data);
+
 	void ControlParticleColorOrdered(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrameOrdered(tfxWorkQueue *queue, void *data);
 
