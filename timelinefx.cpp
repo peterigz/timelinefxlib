@@ -1482,7 +1482,7 @@ namespace tfx {
 		return GetInfo().sub_effectors.back();
 	}
 
-	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 emitter_index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size) {
+	tfxVec2 GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 emitter_index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size) {
 		//float (*effect_lookup_callback)(tfxGraph &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
 		const float frame = pm.emitters.frame[emitter_index];
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
@@ -1490,12 +1490,16 @@ namespace tfx {
 		float emission_angle_variation = lookup_callback(library->emitter_attributes[emitter_attributes].properties.emission_range, frame);
 		//----Emission
 		float range = emission_angle_variation * .5f;
-		float direction = 0;
+		tfxVec2 direction;
 		tfxEmissionType emission_type = library->emitter_properties.emission_type[property_index];
 		tfxEmissionDirection emission_direction = library->emitter_properties.emission_direction[property_index];
 
-		if (emission_type == tfxPoint)
-			return direction + emission_angle + random.Range(-range, range);
+		float angle = emission_angle + random.Range(-range, range);
+		if (emission_type == tfxPoint) {
+			direction.x = std::sinf(angle);
+			direction.y = -std::cosf(angle);
+			return direction;
+		}
 
 		const tfxVec3 &handle = pm.emitters.handle[emitter_index];
 		const tfxEmitterPropertyFlags &property_flags = pm.emitters.property_flags[emitter_index];
@@ -1509,64 +1513,40 @@ namespace tfx {
 			tmp_position = local_position + handle.xy();
 
 		if (emission_direction == tfxEmissionDirection::tfxOutwards) {
-
-			tfxVec2 to_handle;
-
 			if (property_flags & tfxEmitterPropertyFlags_relative_position)
-				to_handle = tmp_position;
+				direction = tmp_position;
 			else
-				to_handle = world_position - emitter_world_position.xy();
-
-			direction = GetVectorAngle(to_handle.x, to_handle.y);
-
+				direction = world_position - emitter_world_position.xy();
 		}
 		else if (emission_direction == tfxEmissionDirection::tfxInwards) {
 
-			tfxVec2 to_handle;
-
 			if (property_flags & tfxEmitterPropertyFlags_relative_position)
-				to_handle = -tmp_position;
+				direction = -tmp_position;
 
 			else
-				to_handle = emitter_world_position.xy() - world_position;
-
-			direction = GetVectorAngle(to_handle.x, to_handle.y);
-
+				direction = emitter_world_position.xy() - world_position;
 		}
 		else if (emission_direction == tfxEmissionDirection::tfxBothways) {
-
 			//todo: replace these if statements
 			if (emission_alternator) {
-
-				tfxVec2 to_handle;
-
 				if (property_flags & tfxEmitterPropertyFlags_relative_position)
-					to_handle = (tmp_position);
+					direction = (tmp_position);
 				else
-					to_handle = world_position - emitter_world_position.xy();
-
-				direction = GetVectorAngle(to_handle.x, to_handle.y);
-
+					direction = world_position - emitter_world_position.xy();
 			}
 			else {
-
-				tfxVec2 to_handle;
-
 				if (property_flags & tfxEmitterPropertyFlags_relative_position)
-					to_handle = -tmp_position;
+					direction = -tmp_position;
 				else
-					to_handle = (emitter_world_position.xy() - world_position);
-
-				direction = GetVectorAngle(to_handle.x, to_handle.y);
-
+					direction = (emitter_world_position.xy() - world_position);
 			}
-
 			emission_alternator = !emission_alternator;
 		}
 
-		if (std::isnan(direction))
-			direction = 0.f;
-		return direction + emission_angle + random.Range(-range, range);
+		angle += GetVectorAngle(direction.x, direction.y);
+		direction.x = std::sinf(angle);
+		direction.y = -std::cosf(angle);
+		return NormalizeVec(direction);
 	}
 
 	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 emitter_index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size) {
@@ -6417,6 +6397,7 @@ namespace tfx {
 				}
 
 				if (!effect.Is3DEffect()) {
+					properties.billboard_option[e.property_index] = properties.angle_settings[e.property_index] == tfxAngleSettingFlags_align_roll ? (tfxBillboardingOptions)1 : (tfxBillboardingOptions)0;
 					if (e.property_flags & tfxEmitterPropertyFlags_relative_position && (e.property_flags & tfxEmitterPropertyFlags_relative_angle || (e.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type[e.property_index] == tfxLine))) {
 						emitters.transform_particle_callback2d[index] = TransformParticlePositionRelativeLine;
 					}
@@ -6948,6 +6929,7 @@ namespace tfx {
 			const float noise_offset = bank.noise_offset[index];
 			const float noise_resolution = bank.noise_resolution[index];
 			const float angle = bank.local_rotations_x[index];
+			const tfxU32 velocity_normal_packed = bank.velocity_normal[index];
 			float &local_position_x = bank.position_x[index];
 			float &local_position_y = bank.position_y[index];
 			float &roll = bank.local_rotations_z[index];
@@ -6960,12 +6942,7 @@ namespace tfx {
 			const float lookup_weight = graphs->weight.lookup.values[std::min<tfxU32>(lookup_frame, graphs->weight.lookup.last_frame)];
 			const float lookup_spin = graphs->spin.lookup.values[std::min<tfxU32>(lookup_frame, graphs->spin.lookup.last_frame)] * base_spin;
 
-			float direction = 0;
-
 			tfxVec2 mr_vec;
-			if (emitter_flags & tfxEmitterStateFlags_not_line) {
-				direction = lookup_direction;
-			}
 
 			if (lookup_velocity_turbulance) {
 				float eps = 0.0001f;
@@ -7000,9 +6977,7 @@ namespace tfx {
 			float weight_acceleration = base_weight * lookup_weight * tfxUPDATE_TIME;
 
 			//----Velocity Changes
-			tfxVec2 velocity_normal;
-			velocity_normal.x = std::sinf(direction);
-			velocity_normal.y = -std::cosf(direction);
+			tfxVec2 velocity_normal = UnPack16bit(velocity_normal_packed);
 
 			tfxVec2 current_velocity = (base_velocity * lookup_velocity) * velocity_normal;
 			current_velocity += mr_vec;
@@ -7010,18 +6985,8 @@ namespace tfx {
 			current_velocity *= tfxUPDATE_TIME * velocity_adjuster;
 
 			//----Spin and angle Changes
-			float spin = 0;
 			if (emitter_flags & tfxEmitterStateFlags_can_spin) {
-				spin = lookup_spin;
-			}
-
-			//----Rotation
-			if (emitter_flags & tfxEmitterStateFlags_align_with_velocity) {
-				tfxVec2 vd = current_velocity.IsNill() ? velocity_normal : current_velocity;
-				roll = GetVectorAngle(vd.x, vd.y) + angle_offset;
-			}
-			else {
-				roll += spin * tfxUPDATE_TIME;
+				roll += lookup_spin * tfxUPDATE_TIME;
 			}
 
 			local_position_x += current_velocity.x * overal_scale;
@@ -8002,7 +7967,7 @@ namespace tfx {
 				position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale_x), e_world_position_x);
 				position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale_y), e_world_position_y);
 			}
-			else if (property_flags & tfxEmitterPropertyFlags_relative_angle) {
+			if (property_flags & tfxEmitterPropertyFlags_relative_angle) {
 				roll.m = tfxWideAdd(roll.m, e_world_rotations_roll);
 			}
 
@@ -8103,7 +8068,7 @@ namespace tfx {
 			scale_x.m = tfxWideMul(scale_x.m, overal_scale);
 			scale_y.m = tfxWideMul(scale_y.m, overal_scale);
 
-			if (pm.flags & tfxEffectManagerFlags_3d_effects) { //Should be 100% predictable
+			if (pm.flags & tfxEffectManagerFlags_3d_effects) { //Predictable
 				tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					sprites.transform_3d[running_sprite_index].scale.x = scale_x.a[j];
@@ -8178,7 +8143,7 @@ namespace tfx {
 			scale_x.m = tfxWideMul(scale_x.m, overal_scale);
 			scale_y.m = tfxWideMul(scale_y.m, overal_scale);
 
-			if (pm.flags & tfxEffectManagerFlags_3d_effects) { //Should be 100% predictable
+			if (pm.flags & tfxEffectManagerFlags_3d_effects) { //Predictable
 				tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					sprites.transform_3d[running_sprite_index].scale.x = scale_x.a[j];
@@ -11144,16 +11109,15 @@ namespace tfx {
 			float &local_position_y = entry->particle_data->position_y[index];
 			float &captured_position_x = entry->particle_data->captured_position_x[index];
 			float &captured_position_y = entry->particle_data->captured_position_y[index];
-			float &velocity_normal = entry->particle_data->local_rotations_x[index];
+			tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 			float &base_velocity = entry->particle_data->base_velocity[index];
 
 			float micro_time = tfxUPDATE_TIME * (1.f - tween);
 
 			tfxVec2 sprite_transform_position;
 			float sprite_transform_rotation;
-			float direction = 0;
 
-			if (angle_settings & tfxAngleSettingFlags_align_roll && property_flags & tfxEmitterPropertyFlags_edge_traversal)
+			if (angle_settings & tfxAngleSettingFlags_align_roll)
 				roll = angle_roll_offset;
 
 			bool line = property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
@@ -11164,15 +11128,16 @@ namespace tfx {
 				captured_position_y = sprite_transform_position.y;
 			}
 
+			tfxVec2 velocity_normal_tmp;
 			if (!line) {
-				direction = velocity_normal = GetEmissionDirection2d(pm, library, random, property_index, emitter_index, tfxVec2(local_position_x, local_position_y), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
+				velocity_normal_tmp = GetEmissionDirection2d(pm, library, random, property_index, emitter_index, tfxVec2(local_position_x, local_position_y), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
+				velocity_normal_packed = Pack16bit(velocity_normal_tmp.x, velocity_normal_tmp.y);
 			}
+
+			tfxVec2 unpacked_test = UnPack16bit(velocity_normal_packed);
 
 			float weight_acceleration = base_weight * first_weight_value * micro_time;
 			//----Velocity Changes
-			tfxVec2 velocity_normal_tmp;
-			velocity_normal_tmp.x = std::sinf(direction);
-			velocity_normal_tmp.y = -std::cosf(direction);
 			tfxVec2 current_velocity = base_velocity * first_velocity_value * velocity_normal_tmp;
 			current_velocity.y += weight_acceleration;
 			local_position_x += current_velocity.x * micro_time;
@@ -11184,7 +11149,7 @@ namespace tfx {
 			}
 			//end micro update
 
-			if ((angle_settings & tfxAngleSettingFlags_align_roll || angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
+			if (angle_settings & tfxAngleSettingFlags_align_with_emission && !line) {
 				roll = GetVectorAngle(velocity_normal_tmp.x, velocity_normal_tmp.y) + angle_roll_offset;
 			}
 
@@ -11825,6 +11790,135 @@ namespace tfx {
 	}
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
+		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
+		tfxU32 emitter_index = work_entry->emitter_index;
+		tfxParticleManager &pm = *work_entry->pm;
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[particles_index];
+
+		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
+		const tfxWideFloat overal_scale_wide = tfxWideSetSingle(pm.emitters.overal_scale[emitter_index]);
+
+		tfxU32 running_sprite_index = work_entry->sprites_index;
+
+		tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+		const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
+		const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
+
+		//Noise
+		const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
+		const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
+		const tfxWideFloat velocity_adjuster = tfxWideSetSingle(pm.emitters.velocity_adjuster[emitter_index]);
+		const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
+		const tfxWideInt direction_last_frame = tfxWideSetSinglei(work_entry->graphs->direction.lookup.last_frame);
+
+		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+			_ReadBarrier();
+			tfxWideFloat life = tfxWideDiv(age, max_age);
+			life = tfxWideMul(life, max_life);
+			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+
+			const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
+			const tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
+			const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
+			tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
+			tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+			tfxWideFloat angle = tfxWideLoad(&bank.local_rotations_x[index]);
+			tfxWideArray roll;
+			roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
+			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index]);
+			tfxWideFloat velocity_normal_x;
+			tfxWideFloat velocity_normal_y;
+			UnPackWide16bit(velocity_normal, velocity_normal_x, velocity_normal_y);
+
+			tfxWideArray noise_x;
+			tfxWideArray noise_y;
+
+			if (emitter_flags & tfxEmitterStateFlags_has_noise) {
+
+			}
+
+			tfxWideArrayi lookup_frame;
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
+			const tfxWideFloat lookup_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
+			const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+			tfxWideArrayi lookup_frame_weight;
+			lookup_frame_weight.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);
+			const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->weight.lookup.values, lookup_frame_weight);
+
+			//----Velocity Changes
+			tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
+			tfxWideFloat current_velocity_x = tfxWideMul(velocity_normal_x, velocity_scalar);
+			tfxWideFloat current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
+			//if (emitter_flags & tfxEmitterStateFlags_has_noise) {
+				//current_velocity_x = tfxWideAdd(current_velocity_x, noise_x.m);
+				//current_velocity_y = tfxWideAdd(current_velocity_y, noise_y.m);
+			//}
+			current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, tfxWideMul(lookup_weight, tfxUPDATE_TIME_WIDE)));
+			current_velocity_x = tfxWideMul(tfxWideMul(current_velocity_x, tfxUPDATE_TIME_WIDE), velocity_adjuster);
+			current_velocity_y = tfxWideMul(tfxWideMul(current_velocity_y, tfxUPDATE_TIME_WIDE), velocity_adjuster);
+
+			//----Spin and angle Changes
+			if (emitter_flags & tfxEmitterStateFlags_can_spin) {
+				roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, tfxUPDATE_TIME_WIDE));
+			}
+
+			//----Position
+			local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale_wide));
+			local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale_wide));
+
+			tfxWideStore(&bank.position_x[index], local_position_x);
+			tfxWideStore(&bank.position_y[index], local_position_y);
+			tfxWideStore(&bank.local_rotations_z[index], roll.m);
+		}
+
+		const tfxWideFloat emitter_size_y = tfxWideSetSingle(pm.emitters.emitter_size[emitter_index].y);
+		const tfxWideInt emitter_flags_wide = tfxWideSetSinglei(emitter_flags);
+
+		if (emitter_flags & tfxEmitterStateFlags_is_line_loop_or_kill) {
+			//Todo: this should also update the captured position as well solving the issue of interpolating from the end back to the beginning
+			if (emitter_flags & tfxEmitterStateFlags_kill) {
+				for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+					tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
+					const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
+					tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+					tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+
+					//Lines - Reposition if the particle is travelling along a line
+					tfxWideFloat length = tfxWideAbs(local_position_y);
+					tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(length, emitter_size_y)));
+					flags = tfxWideOri(flags, remove_flags);
+					tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+				}
+			}
+			else {
+				for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+					tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
+					const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
+					tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+					tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+
+					//Lines - Reposition if the particle is travelling along a line
+					tfxWideFloat length = tfxWideAbs(local_position_y);
+					tfxWideFloat at_end = tfxWideGreater(length, emitter_size_y);
+					local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, offset_y));
+					flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
+					tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+					tfxWideStore(&bank.position_y[index], local_position_y);
+				}
+			}
+		}
+
+		ControlParticleTransform2d(&pm.work_queue, data);
+	}
+
+	void ControlParticlePosition2dOld(tfxWorkQueue *queue, void *data) {
 		tfxPROFILE;
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxU32 emitter_index = work_entry->emitter_index;

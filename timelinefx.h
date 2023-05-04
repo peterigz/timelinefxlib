@@ -3055,6 +3055,7 @@ You can then use layer inside the loop to get the current layer
 	const float one_div_255 = 1 / 255.f;
 	const float one_div_511 = 1 / 511.f;
 	const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
+	const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
 	#define tfxPACKED_Y_NORMAL 0x1FFFF9FF
 
 	struct tfxRGBA {
@@ -3494,8 +3495,8 @@ You can then use layer inside the loop to get the current layer
 
 	static inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y) {
 		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
-		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[0].c1)), xr);
-		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[1].c0));
+		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c0)), xr);
+		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c1));
 		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
 		x = xr;
 		y = yr;
@@ -3671,8 +3672,8 @@ You can then use layer inside the loop to get the current layer
 			tfxU32 out;
 		} u;
 
-		x *= 32767.f;
-		y *= 32767.f;
+		x = x * 32767.f;
+		y = y * 32767.f;
 
 		u.in[0] = (signed short)x;
 		u.in[1] = (signed short)y;
@@ -3681,30 +3682,32 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	inline tfxVec2 UnPack16bit(tfxU32 in) {
-		union
-		{
-			signed short in[2];
-			tfxU32 out;
-		} u;
-
-		u.out = in;
 		float one_div_32k = 1.f / 32767.f;
 
-		u.in[0] = u.in[0] * (signed short)one_div_32k;
-		u.in[1] = u.in[1] * (signed short)one_div_32k;
+		tfxVec2 result;
+		result.x = ((signed short)(in & 0x0000FFFF)) * one_div_32k;
+		result.y = ((signed short)((in & 0xFFFF0000) >> 16)) * one_div_32k;
 
-		return tfxVec2(u.in[0], u.in[1]);
+		return result;
 	}
 
 	inline tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
 		tfxWideFloat w32k = tfxWideSetSingle(32767.f);
 		tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
-		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
+		tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w32k), w32k));
 		converted_y = tfxWideAndi(converted_y, bits16);
 		converted_y = tfxWideShiftLeft(converted_y, 16);
-		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
+		tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w32k), w32k));
 		converted_x = tfxWideAndi(converted_x, bits16);
 		return tfxWideOri(converted_x, converted_y);
+	}
+
+	inline void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y) {
+		tfxWideInt w32k = tfxWideSetSinglei(32767);
+		x = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x0000FFFF)), w32k));
+		y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0xFFFF0000)), 16), w32k));
+		x = tfxWideMul(x, one_div_32k_wide);
+		y = tfxWideMul(y, one_div_32k_wide);
 	}
 
 	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
@@ -5983,7 +5986,7 @@ You can then use layer inside the loop to get the current layer
 	};
 
 
-	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
+	tfxVec2 GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
 	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffectEmitterInfo {
@@ -7209,6 +7212,7 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleImageFrameOrdered(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
+	void ControlParticlePosition2dOld(tfxWorkQueue *queue, void *data);
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform2dOld(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
