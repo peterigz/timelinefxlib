@@ -21,211 +21,7 @@ namespace tfx {
 		return (fp < i) ? (i - 1) : (i);
 	}
 
-	/**
-	 * Permutation table. This is just a random jumble of all numbers 0-255.
-	 *
-	 * This produce a repeatable pattern of 256, but Ken Perlin stated
-	 * that it is not a problem for graphic texture as the noise features disappear
-	 * at a distance far enough to be able to see a repeatable pattern of 256.
-	 *
-	 * This needs to be exactly the same for all instances on all platforms,
-	 * so it's easiest to just keep it as static explicit data.
-	 * This also removes the need for any initialisation of this class.
-	 *
-	 * Note that making this an uint32_t[] instead of a uint8_t[] might make the
-	 * code run faster on platforms with a high penalty for unaligned single
-	 * byte addressing. Intel x86 is generally single-byte-friendly, but
-	 * some other CPUs are faster with 4-aligned reads.
-	 * However, a char[] is smaller, which avoids cache trashing, and that
-	 * is probably the most important aspect on most architectures.
-	 * This array is accessed a *lot* by the noise functions.
-	 * A vector-valued noise over 3D accesses it 96 times, and a
-	 * float-valued 4D noise 64 times. We want this to fit in the cache!
-	 */
-	const uint8_t perm[] =
-	{ 151,160,137,91,90,15,
-	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-	190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-	88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-	77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-	102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-	135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-	5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-	223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-	129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-	251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-	49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180,
-	151,160,137,91,90,15,
-	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
-	190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
-	88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
-	77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
-	102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
-	135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
-	5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
-	223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
-	129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
-	251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
-	49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
-	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
-	};
-
-	static const uint8_t permMOD12[] =
-	{
-	7, 4, 5, 7, 6, 3, 11, 1, 9, 11, 0, 5, 2, 5, 7, 9, 8, 0, 7, 6, 9, 10, 8, 3,
-	1, 0, 9, 10, 11, 10, 6, 4, 7, 0, 6, 3, 0, 2, 5, 2, 10, 0, 3, 11, 9, 11, 11,
-	8, 9, 9, 9, 4, 9, 5, 8, 3, 6, 8, 5, 4, 3, 0, 8, 7, 2, 9, 11, 2, 7, 0, 3, 10,
-	5, 2, 2, 3, 11, 3, 1, 2, 0, 7, 1, 2, 4, 9, 8, 5, 7, 10, 5, 4, 4, 6, 11, 6,
-	5, 1, 3, 5, 1, 0, 8, 1, 5, 4, 0, 7, 4, 5, 6, 1, 8, 4, 3, 10, 8, 8, 3, 2, 8,
-	4, 1, 6, 5, 6, 3, 4, 4, 1, 10, 10, 4, 3, 5, 10, 2, 3, 10, 6, 3, 10, 1, 8, 3,
-	2, 11, 11, 11, 4, 10, 5, 2, 9, 4, 6, 7, 3, 2, 9, 11, 8, 8, 2, 8, 10, 7, 10, 5,
-	9, 5, 11, 11, 7, 4, 9, 9, 10, 3, 1, 7, 2, 0, 2, 7, 5, 8, 4, 10, 5, 4, 8, 2, 6,
-	1, 0, 11, 10, 2, 1, 10, 6, 0, 0, 11, 11, 6, 1, 9, 3, 1, 7, 9, 2, 11, 11, 1, 0,
-	10, 7, 1, 7, 10, 1, 4, 0, 0, 8, 7, 1, 2, 9, 7, 4, 6, 2, 6, 8, 1, 9, 6, 6, 7, 5,
-	0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0,
-	7, 4, 5, 7, 6, 3, 11, 1, 9, 11, 0, 5, 2, 5, 7, 9, 8, 0, 7, 6, 9, 10, 8, 3,
-	1, 0, 9, 10, 11, 10, 6, 4, 7, 0, 6, 3, 0, 2, 5, 2, 10, 0, 3, 11, 9, 11, 11,
-	8, 9, 9, 9, 4, 9, 5, 8, 3, 6, 8, 5, 4, 3, 0, 8, 7, 2, 9, 11, 2, 7, 0, 3, 10,
-	5, 2, 2, 3, 11, 3, 1, 2, 0, 7, 1, 2, 4, 9, 8, 5, 7, 10, 5, 4, 4, 6, 11, 6,
-	5, 1, 3, 5, 1, 0, 8, 1, 5, 4, 0, 7, 4, 5, 6, 1, 8, 4, 3, 10, 8, 8, 3, 2, 8,
-	4, 1, 6, 5, 6, 3, 4, 4, 1, 10, 10, 4, 3, 5, 10, 2, 3, 10, 6, 3, 10, 1, 8, 3,
-	2, 11, 11, 11, 4, 10, 5, 2, 9, 4, 6, 7, 3, 2, 9, 11, 8, 8, 2, 8, 10, 7, 10, 5,
-	9, 5, 11, 11, 7, 4, 9, 9, 10, 3, 1, 7, 2, 0, 2, 7, 5, 8, 4, 10, 5, 4, 8, 2, 6,
-	1, 0, 11, 10, 2, 1, 10, 6, 0, 0, 11, 11, 6, 1, 9, 3, 1, 7, 9, 2, 11, 11, 1, 0,
-	10, 7, 1, 7, 10, 1, 4, 0, 0, 8, 7, 1, 2, 9, 7, 4, 6, 2, 6, 8, 1, 9, 6, 6, 7, 5,
-	0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0
-	};
-
-	/**
-	 * Helper function to hash an integer using the above permutation table
-	 *
-	 *  This inline function costs around 1ns, and is called N+1 times for a noise of N dimension.
-	 *
-	 *  Using a real hash function would be better to improve the "repeatability of 256" of the above permutation table,
-	 * but fast integer Hash functions uses more time and have bad random GetProperties().
-	 *
-	 * @param[in] i Integer value to hash
-	 *
-	 * @return 8-bits hashed value
-	 */
-	static inline uint8_t hash(int32_t i) {
-		return perm[static_cast<uint8_t>(i)];
-	}
-
-	/* NOTE Gradient table to test if lookup-table are more efficient than calculs
-	static const float gradients1D[16] = {
-			-8.f, -7.f, -6.f, -5.f, -4.f, -3.f, -2.f, -1.f,
-			 1.f,  2.f,  3.f,  4.f,  5.f,  6.f,  7.f,  8.f
-	};
-	*/
-
-	/**
-	 * Helper function to compute gradients-dot-residual vectors (1D)
-	 *
-	 * @note that these generate gradients of more than unit length. To make
-	 * a close match with the value range of classic Perlin noise, the final
-	 * noise values need to be rescaled to fit nicely within [-1,1].
-	 * (The simplex noise functions as such also have different scaling.)
-	 * Note also that these noise functions are the most practical and useful
-	 * signed version of Perlin noise.
-	 *
-	 * @param[in] hash  hash value
-	 * @param[in] x     distance to the corner
-	 *
-	 * @return gradient value
-	 */
-	static float grad(int32_t hash, float x) {
-		const int32_t h = hash & 0x0F;  // Convert low 4 bits of hash code
-		float grad = 1.0f + (h & 7);    // Gradient value 1.0, 2.0, ..., 8.0
-		if ((h & 8) != 0) grad = -grad; // Set a random sign for the gradient
-	//  float grad = gradients1D[h];    // NOTE : Test of Gradient look-up table instead of the above
-		return (grad * x);              // Multiply the gradient with the distance
-	}
-
-	/**
-	 * Helper functions to compute gradients-dot-residual vectors (2D)
-	 *
-	 * @param[in] hash  hash value
-	 * @param[in] x     x coord of the distance to the corner
-	 * @param[in] y     y coord of the distance to the corner
-	 *
-	 * @return gradient value
-	 */
-	static float grad(int32_t hash, float x, float y) {
-		const int32_t h = hash & 0x3F;  // Convert low 3 bits of hash code
-		const float u = h < 4 ? x : y;  // into 8 simple gradient directions,
-		const float v = h < 4 ? y : x;
-		return ((h & 1) ? -u : u) + ((h & 2) ? -2.0f * v : 2.0f * v); // and compute the dot product with (x,y).
-	}
-
-	/**
-	 * Helper functions to compute gradients-dot-residual vectors (3D)
-	 *
-	 * @param[in] hash  hash value
-	 * @param[in] x     x coord of the distance to the corner
-	 * @param[in] y     y coord of the distance to the corner
-	 * @param[in] z     z coord of the distance to the corner
-	 *
-	 * @return gradient value
-	 */
-	static float grad(int32_t hash, float x, float y, float z) {
-		int h = hash & 15;     // Convert low 4 bits of hash code into 12 simple
-		float u = h < 8 ? x : y; // gradient directions, and compute dot product.
-		float v = h < 4 ? y : h == 12 || h == 14 ? x : z; // Fix repeats at h = 12 to 15
-		float test = ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
-		return ((h & 1) ? -u : u) + ((h & 2) ? -v : v);
-	}
-
-	/**
-	 * 1D Perlin simplex noise
-	 *
-	 *  Takes around 74ns on an AMD APU.
-	 *
-	 * @param[in] x float coordinate
-	 *
-	 * @return Noise value in the range[-1; 1], value of 0 on all integer coordinates.
-	 */
-	float tfxSimplexNoise::noise(float x) {
-		float n0, n1;   // Noise contributions from the two "corners"
-
-		// No need to skew the input space in 1D
-
-		// Corners coordinates (nearest integer values):
-		int32_t i0 = fastfloor(x);
-		int32_t i1 = i0 + 1;
-		// Distances to corners (between 0 and 1):
-		float x0 = x - i0;
-		float x1 = x0 - 1.0f;
-
-		// Calculate the contribution from the first corner
-		float t0 = 1.0f - x0 * x0;
-		//  if(t0 < 0.0f) t0 = 0.0f; // not possible
-		t0 *= t0;
-		n0 = t0 * t0 * grad(hash(i0), x0);
-
-		// Calculate the contribution from the second corner
-		float t1 = 1.0f - x1 * x1;
-		//  if(t1 < 0.0f) t1 = 0.0f; // not possible
-		t1 *= t1;
-		n1 = t1 * t1 * grad(hash(i1), x1);
-
-		// The maximum value of this noise is 8*(3/4)^4 = 2.53125
-		// A factor of 0.395 scales to fit exactly within [-1,1]
-		return 0.395f * (n0 + n1);
-	}
-
-	/**
-	 * 2D Perlin simplex noise
-	 *
-	 *  Takes around 150ns on an AMD APU.
-	 *
-	 * @param[in] x float coordinate
-	 * @param[in] y float coordinate
-	 *
-	 * @return Noise value in the range[-1; 1], value of 0 on all integer coordinates.
-	 */
-	float tfxSimplexNoise::noise(float x, float y) {
+	float tfxNoise(float x, float y) {
 		tfxPROFILE;
 		float n0, n1, n2;   // Noise contributions from the three corners
 
@@ -311,7 +107,7 @@ namespace tfx {
 	}
 
 	//A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfx128Array tfxSimplexNoise::noise4(const tfx128 x4, const tfx128 y4) {
+	tfx128Array tfxNoise4(const tfx128 x4, const tfx128 y4) {
 		tfxPROFILE;
 
 		tfx128 s4 = _mm_mul_ps(_mm_add_ps(x4, y4), tfxF2_4);
@@ -341,23 +137,23 @@ namespace tfx {
 		ii.m = _mm_and_si128(_mm_cvttps_epi32(i), tfxFF);
 		jj.m = _mm_and_si128(_mm_cvttps_epi32(j), tfxFF);
 
-		tfx128iArray gi0, gi1, gi2;
+		int gi0[4], gi1[4], gi2[4];
 
 		for (int i = 0; i < 4; ++i)
 		{
-			gi0.a[i] = permMOD12[perm[ii.a[i] + perm[jj.a[i]]]];
-			gi1.a[i] = permMOD12[perm[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i]]]];
-			gi2.a[i] = permMOD12[perm[ii.a[i] + 1 + perm[jj.a[i] + 1]]];
+			gi0[i] = permMOD12[perm[ii.a[i] + perm[jj.a[i]]]];
+			gi1[i] = permMOD12[perm[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i]]]];
+			gi2[i] = permMOD12[perm[ii.a[i] + 1 + perm[jj.a[i] + 1]]];
 		}
 
 		tfx128 n0, n1, n2;
 		tfx128 gx0, gy0, gx1, gy1, gx2, gy2;
-		gx0 = _mm_set_ps(gradX[gi0.a[3]], gradX[gi0.a[2]], gradX[gi0.a[1]], gradX[gi0.a[0]]);
-		gy0 = _mm_set_ps(gradY[gi0.a[3]], gradY[gi0.a[2]], gradY[gi0.a[1]], gradY[gi0.a[0]]);
-		gx1 = _mm_set_ps(gradX[gi1.a[3]], gradX[gi1.a[2]], gradX[gi1.a[1]], gradX[gi1.a[0]]);
-		gy1 = _mm_set_ps(gradY[gi1.a[3]], gradY[gi1.a[2]], gradY[gi1.a[1]], gradY[gi1.a[0]]);
-		gx2 = _mm_set_ps(gradX[gi2.a[3]], gradX[gi2.a[2]], gradX[gi2.a[1]], gradX[gi2.a[0]]);
-		gy2 = _mm_set_ps(gradY[gi2.a[3]], gradY[gi2.a[2]], gradY[gi2.a[1]], gradY[gi2.a[0]]);
+		gx0 = _mm_set_ps(gradX[gi0[3]], gradX[gi0[2]], gradX[gi0[1]], gradX[gi0[0]]);
+		gy0 = _mm_set_ps(gradY[gi0[3]], gradY[gi0[2]], gradY[gi0[1]], gradY[gi0[0]]);
+		gx1 = _mm_set_ps(gradX[gi1[3]], gradX[gi1[2]], gradX[gi1[1]], gradX[gi1[0]]);
+		gy1 = _mm_set_ps(gradY[gi1[3]], gradY[gi1[2]], gradY[gi1[1]], gradY[gi1[0]]);
+		gx2 = _mm_set_ps(gradX[gi2[3]], gradX[gi2[2]], gradX[gi2[1]], gradX[gi2[0]]);
+		gy2 = _mm_set_ps(gradY[gi2[3]], gradY[gi2[2]], gradY[gi2[1]], gradY[gi2[0]]);
 
 		tfx128 t0 = _mm_sub_ps(_mm_sub_ps(_mm_set1_ps(0.5f), _mm_mul_ps(x0, x0)), _mm_mul_ps(y0, y0));
 		tfx128 t02 = _mm_mul_ps(t0, t0);
@@ -377,7 +173,7 @@ namespace tfx {
 	}
 
 	//A 3d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfx128Array tfxSimplexNoise::noise4(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
+	tfx128Array tfxNoise4(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
 		tfxPROFILE;
 		// Skewing/Unskewing factors for 3D
 
@@ -603,58 +399,6 @@ namespace tfx {
 		}
 		// Add contributions from each corner to get the final noise value.	
 		return 32.f * (n0 + n1 + n2 + n3);
-	}
-
-
-	/**
-	 * Fractal/Fractional Brownian Motion (fBm) summation of 1D Perlin Simplex noise
-	 *
-	 * @param[in] octaves   number of fraction of noise to sum
-	 * @param[in] x         float coordinate
-	 *
-	 * @return Noise value in the range[-1; 1], value of 0 on all integer coordinates.
-	 */
-	float tfxSimplexNoise::fractal(size_t octaves, float x) const {
-		float output = 0.f;
-		float denom = 0.f;
-		float frequency = mFrequency;
-		float amplitude = mAmplitude;
-
-		for (size_t i = 0; i < octaves; i++) {
-			output += (amplitude * noise(x * frequency));
-			denom += amplitude;
-
-			frequency *= mLacunarity;
-			amplitude *= mPersistence;
-		}
-
-		return (output / denom);
-	}
-
-	/**
-	 * Fractal/Fractional Brownian Motion (fBm) summation of 2D Perlin Simplex noise
-	 *
-	 * @param[in] octaves   number of fraction of noise to sum
-	 * @param[in] x         x float coordinate
-	 * @param[in] v1.y         y float coordinate
-	 *
-	 * @return Noise value in the range[-1; 1], value of 0 on all integer coordinates.
-	 */
-	float tfxSimplexNoise::fractal(size_t octaves, float x, float y) const {
-		float output = 0.f;
-		float denom = 0.f;
-		float frequency = mFrequency;
-		float amplitude = mAmplitude;
-
-		for (size_t i = 0; i < octaves; i++) {
-			output += (amplitude * noise(x * frequency, y * frequency));
-			denom += amplitude;
-
-			frequency *= mLacunarity;
-			amplitude *= mPersistence;
-		}
-
-		return (output / denom);
 	}
 
 	tfxvec<tfxVec3> tfxIcospherePoints[6];
@@ -6860,7 +6604,7 @@ namespace tfx {
 				tfx128 yeps4 = _mm_set_ps(y, y, y - eps, y + eps);
 
 				//Find rate of change in YZ plane
-				tfx128Array n = tfxSimplexNoise::noise4(_mm_set1_ps(x), yeps4);
+				tfx128Array n = tfxNoise4(_mm_set1_ps(x), yeps4);
 				//Average to find approximate derivative
 				float a = (n.a[0] - n.a[1]) / eps2;
 				float b = (n.a[2] - n.a[3]) / eps2;
@@ -6870,7 +6614,7 @@ namespace tfx {
 				if (mr_vec.x * lookup_velocity_turbulance > 10000.f)
 					int d = 0;
 
-				n = tfxSimplexNoise::noise4(xeps4, _mm_set1_ps(y));
+				n = tfxNoise4(xeps4, _mm_set1_ps(y));
 				//Find rate of change in XZ plane
 				a = (n.a[0] - n.a[1]) / eps2;
 				b = (n.a[2] - n.a[3]) / eps2;
@@ -7124,7 +6868,7 @@ namespace tfx {
 					tfx128 zeps4r = _mm_set_ps(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);
 
 					//Find rate of change in YZ plane
-					tfx128Array sample = tfxSimplexNoise::noise4(x4, yeps4, zeps4);
+					tfx128Array sample = tfxNoise4(x4, yeps4, zeps4);
 					float a = (sample.a[0] - sample.a[1]) / eps2;
 					//Average to find approximate derivative
 					float b = (sample.a[2] - sample.a[3]) / eps2;
@@ -7133,13 +6877,13 @@ namespace tfx {
 					y.a[n] += 100.f;
 					tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
 					//Find rate of change in XZ plane
-					sample = tfxSimplexNoise::noise4(xeps4, y4, zeps4r);
+					sample = tfxNoise4(xeps4, y4, zeps4r);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_y.a[n] = a - b;
 
 					//Find rate of change in XY plane
-					sample = tfxSimplexNoise::noise4(xeps4r, yeps4r, z4);
+					sample = tfxNoise4(xeps4r, yeps4r, z4);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_z.a[n] = a - b;
@@ -7496,7 +7240,7 @@ namespace tfx {
 					tfx128 zeps4r = _mm_set_ps(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);
 
 					//Find rate of change in YZ plane
-					tfx128Array sample = tfxSimplexNoise::noise4(x4, yeps4, zeps4);
+					tfx128Array sample = tfxNoise4(x4, yeps4, zeps4);
 					float a = (sample.a[0] - sample.a[1]) / eps2;
 					//Average to find approximate derivative
 					float b = (sample.a[2] - sample.a[3]) / eps2;
@@ -7505,13 +7249,13 @@ namespace tfx {
 					y.a[n] += 100.f;
 					tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
 					//Find rate of change in XZ plane
-					sample = tfxSimplexNoise::noise4(xeps4, y4, zeps4r);
+					sample = tfxNoise4(xeps4, y4, zeps4r);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_y.a[n] = a - b;
 
 					//Find rate of change in XY plane
-					sample = tfxSimplexNoise::noise4(xeps4r, yeps4r, z4);
+					sample = tfxNoise4(xeps4r, yeps4r, z4);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_z.a[n] = a - b;
@@ -11906,22 +11650,22 @@ namespace tfx {
 				float y = local_position_y / lookup_noise_resolution + noise_offset;
 
 				//Find rate of change in YZ plane
-				float n1 = tfxSimplexNoise::noise(x, y + eps);
-				float n2 = tfxSimplexNoise::noise(x, y - eps);
+				float n1 = tfxNoise(x, y + eps);
+				float n2 = tfxNoise(x, y - eps);
 				//Average to find approximate derivative
 				float a = (n1 - n2) / eps2;
-				n1 = tfxSimplexNoise::noise(x, y);
-				n2 = tfxSimplexNoise::noise(x, y);
+				n1 = tfxNoise(x, y);
+				n2 = tfxNoise(x, y);
 				//Average to find approximate derivative
 				float b = (n1 - n2) / eps2;
 				mr_vec.x = a - b;
 
 				//Find rate of change in XZ plane
-				n1 = tfxSimplexNoise::noise(x, y);
-				n2 = tfxSimplexNoise::noise(x, y);
+				n1 = tfxNoise(x, y);
+				n2 = tfxNoise(x, y);
 				a = (n1 - n2) / eps2;
-				n1 = tfxSimplexNoise::noise(x + eps, y);
-				n2 = tfxSimplexNoise::noise(x - eps, y);
+				n1 = tfxNoise(x + eps, y);
+				n2 = tfxNoise(x - eps, y);
 				b = (n1 - n2) / eps2;
 				mr_vec.y = a - b;
 				mr_vec *= lookup_velocity_turbulance;

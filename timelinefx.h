@@ -4096,60 +4096,87 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/**
-	Start of simple noise code that encompasses the following license
-	 * @file    SimplexNoise.h
-	 * @brief   A Perlin Simplex Noise C++ Implementation (1D, 2D, 3D).
-	 *
-	 * Copyright (c) 2014-2018 Sebastien Rombauts (sebastien.rombauts@gmail.com)
-	 *
-	 * Distributed under the MIT License (MIT) (See accompanying file LICENSE.txt
-	 * or copy at http://opensource.org/licenses/MIT)
-	 */
-
-	 /**
-	  * @brief A Perlin Simplex Noise C++ Implementation (1D, 2D, 3D, 4D).
-	  */
-	class tfxSimplexNoise {
-	public:
-		// 1D Perlin simplex noise
-		static float noise(float x);
-		// 2D Perlin simplex noise
-		static float noise(float x, float y);
-		// 4 noise samples using simd
-		static tfx128Array noise4(const tfx128 x4, const tfx128 y4);
-		static tfx128Array noise4(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
-
-		// Fractal/Fractional Brownian Motion (fBm) noise summation
-		float fractal(size_t octaves, float x) const;
-		float fractal(size_t octaves, float x, float y) const;
-		float fractal(size_t octaves, float x, float y, float z) const;
-
-		/**
-		 * Constructor of to initialize a fractal noise summation
-		 *
-		 * @param[in] frequency    Frequency ("width") of the first octave of noise (default to 1.0)
-		 * @param[in] amplitude    Amplitude ("height") of the first octave of noise (default to 1.0)
-		 * @param[in] lacunarity   Lacunarity specifies the frequency multiplier between successive octaves (default to 2.0).
-		 * @param[in] persistence  Persistence is the loss of amplitude between successive octaves (usually 1/lacunarity)
-		 */
-		explicit tfxSimplexNoise(float frequency = 1.0f,
-			float amplitude = 1.0f,
-			float lacunarity = 2.0f,
-			float persistence = 0.5f) :
-			mFrequency(frequency),
-			mAmplitude(amplitude),
-			mLacunarity(lacunarity),
-			mPersistence(persistence) {
-		}
-
-	private:
-		// Parameters of Fractional Brownian Motion (fBm) : sum of N "octaves" of noise
-		float mFrequency;   ///< Frequency ("width") of the first octave of noise (default to 1.0)
-		float mAmplitude;   ///< Amplitude ("height") of the first octave of noise (default to 1.0)
-		float mLacunarity;  ///< Lacunarity specifies the frequency multiplier between successive octaves (default to 2.0).
-		float mPersistence; ///< Persistence is the loss of amplitude between successive octaves (usually 1/lacunarity)
+ * Permutation table. This is just a random jumble of all numbers 0-255.
+ *
+ * This produce a repeatable pattern of 256, but Ken Perlin stated
+ * that it is not a problem for graphic texture as the noise features disappear
+ * at a distance far enough to be able to see a repeatable pattern of 256.
+ *
+ * This needs to be exactly the same for all instances on all platforms,
+ * so it's easiest to just keep it as static explicit data.
+ * This also removes the need for any initialisation of this class.
+ *
+ * Note that making this an uint32_t[] instead of a uint8_t[] might make the
+ * code run faster on platforms with a high penalty for unaligned single
+ * byte addressing. Intel x86 is generally single-byte-friendly, but
+ * some other CPUs are faster with 4-aligned reads.
+ * However, a char[] is smaller, which avoids cache trashing, and that
+ * is probably the most important aspect on most architectures.
+ * This array is accessed a *lot* by the noise functions.
+ * A vector-valued noise over 3D accesses it 96 times, and a
+ * float-valued 4D noise 64 times. We want this to fit in the cache!
+ */
+	const uint8_t perm[] =
+	{ 
+		151,160,137,91,90,15,
+		131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
+		190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
+		88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
+		77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
+		102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
+		135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
+		5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
+		223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
+		129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
+		251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
+		49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
+		138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180,
+		151,160,137,91,90,15,
+		131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
+		190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
+		88,237,149,56,87,174,20,125,136,171,168, 68,175,74,165,71,134,139,48,27,166,
+		77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,
+		102,143,54, 65,25,63,161, 1,216,80,73,209,76,132,187,208, 89,18,169,200,196,
+		135,130,116,188,159,86,164,100,109,198,173,186, 3,64,52,217,226,250,124,123,
+		5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,
+		223,183,170,213,119,248,152, 2,44,154,163, 70,221,153,101,155,167, 43,172,9,
+		129,22,39,253, 19,98,108,110,79,113,224,232,178,185, 112,104,218,246,97,228,
+		251,34,242,193,238,210,144,12,191,179,162,241, 81,51,145,235,249,14,239,107,
+		49,192,214, 31,181,199,106,157,184, 84,204,176,115,121,50,45,127, 4,150,254,
+		138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
 	};
-	//End of simplenoise code
+
+	static const uint8_t permMOD12[] =
+	{
+		7, 4, 5, 7, 6, 3, 11, 1, 9, 11, 0, 5, 2, 5, 7, 9, 8, 0, 7, 6, 9, 10, 8, 3,
+		1, 0, 9, 10, 11, 10, 6, 4, 7, 0, 6, 3, 0, 2, 5, 2, 10, 0, 3, 11, 9, 11, 11,
+		8, 9, 9, 9, 4, 9, 5, 8, 3, 6, 8, 5, 4, 3, 0, 8, 7, 2, 9, 11, 2, 7, 0, 3, 10,
+		5, 2, 2, 3, 11, 3, 1, 2, 0, 7, 1, 2, 4, 9, 8, 5, 7, 10, 5, 4, 4, 6, 11, 6,
+		5, 1, 3, 5, 1, 0, 8, 1, 5, 4, 0, 7, 4, 5, 6, 1, 8, 4, 3, 10, 8, 8, 3, 2, 8,
+		4, 1, 6, 5, 6, 3, 4, 4, 1, 10, 10, 4, 3, 5, 10, 2, 3, 10, 6, 3, 10, 1, 8, 3,
+		2, 11, 11, 11, 4, 10, 5, 2, 9, 4, 6, 7, 3, 2, 9, 11, 8, 8, 2, 8, 10, 7, 10, 5,
+		9, 5, 11, 11, 7, 4, 9, 9, 10, 3, 1, 7, 2, 0, 2, 7, 5, 8, 4, 10, 5, 4, 8, 2, 6,
+		1, 0, 11, 10, 2, 1, 10, 6, 0, 0, 11, 11, 6, 1, 9, 3, 1, 7, 9, 2, 11, 11, 1, 0,
+		10, 7, 1, 7, 10, 1, 4, 0, 0, 8, 7, 1, 2, 9, 7, 4, 6, 2, 6, 8, 1, 9, 6, 6, 7, 5,
+		0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0,
+		7, 4, 5, 7, 6, 3, 11, 1, 9, 11, 0, 5, 2, 5, 7, 9, 8, 0, 7, 6, 9, 10, 8, 3,
+		1, 0, 9, 10, 11, 10, 6, 4, 7, 0, 6, 3, 0, 2, 5, 2, 10, 0, 3, 11, 9, 11, 11,
+		8, 9, 9, 9, 4, 9, 5, 8, 3, 6, 8, 5, 4, 3, 0, 8, 7, 2, 9, 11, 2, 7, 0, 3, 10,
+		5, 2, 2, 3, 11, 3, 1, 2, 0, 7, 1, 2, 4, 9, 8, 5, 7, 10, 5, 4, 4, 6, 11, 6,
+		5, 1, 3, 5, 1, 0, 8, 1, 5, 4, 0, 7, 4, 5, 6, 1, 8, 4, 3, 10, 8, 8, 3, 2, 8,
+		4, 1, 6, 5, 6, 3, 4, 4, 1, 10, 10, 4, 3, 5, 10, 2, 3, 10, 6, 3, 10, 1, 8, 3,
+		2, 11, 11, 11, 4, 10, 5, 2, 9, 4, 6, 7, 3, 2, 9, 11, 8, 8, 2, 8, 10, 7, 10, 5,
+		9, 5, 11, 11, 7, 4, 9, 9, 10, 3, 1, 7, 2, 0, 2, 7, 5, 8, 4, 10, 5, 4, 8, 2, 6,
+		1, 0, 11, 10, 2, 1, 10, 6, 0, 0, 11, 11, 6, 1, 9, 3, 1, 7, 9, 2, 11, 11, 1, 0,
+		10, 7, 1, 7, 10, 1, 4, 0, 0, 8, 7, 1, 2, 9, 7, 4, 6, 2, 6, 8, 1, 9, 6, 6, 7, 5,
+		0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0
+	};
+
+	// 2D Perlin simplex noise (here for reference only)
+	float tfxNoise(float x, float y);
+	// 4 noise samples using simd
+	tfx128Array tfxNoise4(const tfx128 x4, const tfx128 y4);
+	tfx128Array tfxNoise4(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
 
 	/*
 		Start of xxHash code that encompasses the following license
