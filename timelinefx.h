@@ -3056,7 +3056,8 @@ You can then use layer inside the loop to get the current layer
 	const float one_div_511 = 1 / 511.f;
 	const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
 	const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
-	#define tfxPACKED_Y_NORMAL 0x1FFFF9FF
+	#define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
+	#define tfxPACKED_Y_NORMAL_2D 32767
 
 	struct tfxRGBA {
 		float r, g, b, a;
@@ -3681,6 +3682,25 @@ You can then use layer inside the loop to get the current layer
 		return u.out;
 	}
 
+	inline tfxU32 Pack16bitUnsigned(float x, float y) {
+		union
+		{
+			struct {
+				tfxU32 x : 16;
+				tfxU32 y : 16;
+			} data;
+			tfxU32 out;
+		} u;
+
+		x = x * 32767.f + 32767.f;
+		y = y * 32767.f + 32767.f;
+
+		u.data.x = (tfxU32)x;
+		u.data.y = (tfxU32)y;
+
+		return u.out;
+	}
+
 	inline tfxVec2 UnPack16bit(tfxU32 in) {
 		float one_div_32k = 1.f / 32767.f;
 
@@ -3691,13 +3711,23 @@ You can then use layer inside the loop to get the current layer
 		return result;
 	}
 
+	inline tfxVec2 UnPack16bitUnsigned(tfxU32 in) {
+		float one_div_32k = 1.f / 32767.f;
+
+		tfxVec2 result;
+		result.x = ((int)(in & 0x0000FFFF) - 32767) * one_div_32k;
+		result.y = ((int)((in & 0xFFFF0000) >> 16) - 32767) * one_div_32k;
+
+		return result;
+	}
+
 	inline tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
 		tfxWideFloat w32k = tfxWideSetSingle(32767.f);
 		tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
-		tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w32k), w32k));
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
 		converted_y = tfxWideAndi(converted_y, bits16);
 		converted_y = tfxWideShiftLeft(converted_y, 16);
-		tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w32k), w32k));
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
 		converted_x = tfxWideAndi(converted_x, bits16);
 		return tfxWideOri(converted_x, converted_y);
 	}
@@ -3887,6 +3917,9 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	const tfx128 tfxF3_4 = _mm_set_ps1(1.0f / 3.0f);
+	const tfx128 tfxF2_4 = _mm_set_ps1(.366025403f);
+	const tfx128 tfxG2_4 = _mm_set_ps1(0.211324865f);
+	const tfx128 tfxG2_4x2 = _mm_set_ps1(0.42264973f);
 	const tfx128 tfxG3_4 = _mm_set_ps1(1.0f / 6.0f);
 	const tfx128 tfxG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
 	const tfx128 tfxG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
@@ -3907,12 +3940,19 @@ You can then use layer inside the loop to get the current layer
 		return x1 * x2 + y1 * y2;
 	}
 
-	static inline tfx128 DotProductSIMD(const tfx128 &x1, const tfx128 &y1, const tfx128 &z1, const tfx128 &x2, const tfx128 &y2, const tfx128 &z2)
+	static inline tfx128 Dot128XYZ(const tfx128 &x1, const tfx128 &y1, const tfx128 &z1, const tfx128 &x2, const tfx128 &y2, const tfx128 &z2)
 	{
 		tfx128 xx = _mm_mul_ps(x1, x2);
 		tfx128 yy = _mm_mul_ps(y1, y2);
 		tfx128 zz = _mm_mul_ps(z1, z2);
 		return _mm_add_ps(xx, _mm_add_ps(yy, zz));
+	}
+
+	static inline tfx128 Dot128XY(const tfx128 &x1, const tfx128 &y1, const tfx128 &x2, const tfx128 &y2)
+	{
+		tfx128 xx = _mm_mul_ps(x1, x2);
+		tfx128 yy = _mm_mul_ps(y1, y2);
+		return _mm_add_ps(xx, yy);
 	}
 
 	static const int tfxPRIME_X = 501125321;
@@ -4075,9 +4115,8 @@ You can then use layer inside the loop to get the current layer
 		static float noise(float x);
 		// 2D Perlin simplex noise
 		static float noise(float x, float y);
-		// 3D Perlin simplex noise
-		static float noise(float x, float y, float z);
 		// 4 noise samples using simd
+		static tfx128Array noise4(const tfx128 x4, const tfx128 y4);
 		static tfx128Array noise4(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
 
 		// Fractal/Fractional Brownian Motion (fBm) noise summation
@@ -5986,7 +6025,7 @@ You can then use layer inside the loop to get the current layer
 	};
 
 
-	tfxVec2 GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
+	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
 	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffectEmitterInfo {
@@ -6533,7 +6572,6 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxSpriteTransform2d {
 		tfxVec2 position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
-		tfxVec2 captured_position;
 		tfxVec2 scale;						//Scale
 		float rotation;
 	};
@@ -7059,6 +7097,9 @@ You can then use layer inside the loop to get the current layer
 		}
 		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
 			return sprites[(index & 0xF0000000) >> 28][layer].transform_3d[index & 0x0FFFFFFF];
+		}
+		tfxAPI inline tfxSpriteTransform2d &GetCapturedSprite2dTransform(tfxU32 layer, tfxU32 index) {
+			return sprites[(index & 0xF0000000) >> 28][layer].transform_2d[index & 0x0FFFFFFF];
 		}
 		tfxAPI inline float &GetCapturedSprite3dIntensity(tfxU32 layer, tfxU32 index) {
 			return sprites[(index & 0xF0000000) >> 28][layer].intensity[index & 0x0FFFFFFF];
