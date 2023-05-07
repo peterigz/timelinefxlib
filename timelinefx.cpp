@@ -6620,29 +6620,6 @@ namespace tfx {
 				b = (n.a[2] - n.a[3]) / eps2;
 				mr_vec.y = a - b;
 				mr_vec *= lookup_velocity_turbulance;
-
-				/*
-				//Find rate of change in YZ plane
-				float n1 = tfxSimplexNoise::noise(x, y + eps);
-				float n2 = tfxSimplexNoise::noise(x, y - eps);
-				//Average to find approximate derivative
-				float a = (n1 - n2) / eps2;
-				n1 = tfxSimplexNoise::noise(x, y);
-				n2 = tfxSimplexNoise::noise(x, y);
-				//Average to find approximate derivative
-				float b = (n1 - n2) / eps2;
-				mr_vec.x = a - b;
-
-				//Find rate of change in XZ plane
-				n1 = tfxSimplexNoise::noise(x, y);
-				n2 = tfxSimplexNoise::noise(x, y);
-				a = (n1 - n2) / eps2;
-				n1 = tfxSimplexNoise::noise(x + eps, y);
-				n2 = tfxSimplexNoise::noise(x - eps, y);
-				b = (n1 - n2) / eps2;
-				mr_vec.y = a - b;
-				mr_vec *= lookup_velocity_turbulance;
-				*/
 			}
 
 			//----Velocity Changes
@@ -6727,50 +6704,6 @@ namespace tfx {
 			running_sprite_index++;
 
 		}
-	}
-
-
-	void ControlParticleColorOrdered2d(tfxWorkQueue *queue, void *data) {
-		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
-		tfxParticleManager &pm = *work_entry->pm;
-		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
-		tfxLibrary *library = pm.library;
-		tfxSpriteSoA &sprites = *work_entry->sprites;
-
-		tfxU32 running_sprite_index = work_entry->start_index;
-
-		for (tfxU32 i = work_entry->start_index; i != work_entry->end_index; ++i) {
-			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[work_entry->current_buffer_index], i);
-			const tfxU32 parent_index = bank.parent_index[index];
-
-			const float global_intensity = pm.emitters.intensity[parent_index];
-			const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[parent_index];
-			const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[parent_index];
-
-			const float life = bank.age[index] / bank.max_age[index];
-			tfxOvertimeAttributes *graphs = &library->emitter_attributes[emitter_attributes].overtime;
-			const tfxU32 lookup_frame = static_cast<tfxU32>((life * graphs->velocity.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
-
-			const float lookup_red = graphs->red.lookup.values[std::min<tfxU32>(lookup_frame, graphs->red.lookup.last_frame)];
-			const float lookup_green = graphs->green.lookup.values[std::min<tfxU32>(lookup_frame, graphs->green.lookup.last_frame)];
-			const float lookup_blue = graphs->blue.lookup.values[std::min<tfxU32>(lookup_frame, graphs->blue.lookup.last_frame)];
-			const float lookup_opacity = graphs->blendfactor.lookup.values[std::min<tfxU32>(lookup_frame, graphs->blendfactor.lookup.last_frame)];
-			const float lookup_intensity = graphs->intensity.lookup.values[std::min<tfxU32>(lookup_frame, graphs->intensity.lookup.last_frame)];
-
-			tfxRGBA8 &color = bank.color[index];
-
-			//----Color changes
-			float alpha = 255.f * lookup_opacity;
-			float intensity = lookup_intensity * global_intensity;
-			if (!(emitter_flags & tfxEmitterStateFlags_random_color)) {
-				sprites.color[running_sprite_index] = tfxRGBA8(255.f * lookup_red, 255.f * lookup_green, 255.f * lookup_blue, alpha);
-			}
-			else {
-				sprites.color[running_sprite_index] = tfxRGBA8(color.r, color.g, color.b, (char)alpha);
-			}
-			sprites.intensity[running_sprite_index++] = intensity;
-		}
-
 	}
 
 	void ControlParticlePositionOrdered3d(tfxWorkQueue *queue, void *data) {
