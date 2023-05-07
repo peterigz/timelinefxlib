@@ -7298,10 +7298,7 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleImageFrameOrdered(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
-	void ControlParticlePosition2dOld(tfxWorkQueue *queue, void *data);
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
-	void ControlParticlePositionOrdered2dOld(tfxWorkQueue *queue, void *data);
-	void ControlParticleTransform2dOld(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransformOrdered2d(tfxWorkQueue *queue, void *data);
 
