@@ -6542,6 +6542,221 @@ namespace tfx {
 	}
 
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
+		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
+		tfxParticleManager &pm = *work_entry->pm;
+		tfxParticleSoA &bank = pm.particle_arrays[work_entry->current_buffer_index];
+		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
+		tfxLibrary *library = pm.library;
+
+		tfxU32 running_sprite_index = work_entry->sprite_start_index;
+		tfxSpriteSoA &sprites = *work_entry->sprites;
+		const tfxWideInt can_spin_flag = tfxWideSetSinglei(tfxEmitterStateFlags_can_spin);
+		const tfxWideInt relative_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_relative_position);
+
+		tfxWideArray p_stretch;
+		tfxWideArrayi parent_index;
+		tfxWideArrayi emitter_attributes;
+		tfxWideArrayi emitter_flags;
+
+		tfxU32 start_diff = work_entry->start_diff;
+
+		const float eps = 0.0001f;
+		const float eps2 = 0.0002f;
+
+		tfxWideFloat r0c[2];
+		tfxWideFloat r1c[2];
+
+		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
+			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
+			emitter_attributes.m = tfxWideLookupSeti(pm.emitters.emitter_attributes, parent_index);
+
+			const tfxWideInt spin_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.spin.lookup.last_frame, emitter_attributes);
+			const tfxWideInt velocity_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.velocity.lookup.last_frame, emitter_attributes);
+			const tfxWideFloat velocity_adjuster = tfxWideLookupSet(pm.emitters.velocity_adjuster, parent_index);
+			const tfxWideFloat overal_scale_wide = tfxWideLookupSet(pm.emitters.overal_scale, parent_index);
+			const tfxWideFloat stretch = tfxWideLookupSet(pm.emitters.stretch, parent_index);
+			const tfxWideInt velocity_turbulance_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.velocity_turbulance.lookup.last_frame, emitter_attributes);
+			const tfxWideInt noise_resolution_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.noise_resolution.lookup.last_frame, emitter_attributes);
+			const tfxWideInt stretch_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.stretch.lookup.last_frame, emitter_attributes);
+			const tfxWideInt direction_last_frame = tfxWideLookupSetMemberi(library->emitter_attributes, overtime.direction.lookup.last_frame, emitter_attributes);
+			emitter_flags.m = tfxWideLookupSeti(pm.emitters.state_flags, parent_index);
+			const tfxWideInt property_flags = tfxWideLookupSeti(pm.emitters.property_flags, parent_index);
+
+			const tfxWideFloat max_life = tfxWideLookupSetMember(library->emitter_attributes, overtime.velocity.lookup.life, emitter_attributes);
+			const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+			const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+
+			_ReadBarrier();
+			tfxWideFloat life = tfxWideDiv(age, max_age);
+			life = tfxWideMul(life, max_life);
+			life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+
+			const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
+			const tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
+			const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
+			const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
+			const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
+			tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
+			tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+			tfxWideFloat angle = tfxWideLoad(&bank.local_rotations_x[index]);
+			tfxWideArray roll;
+			roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
+
+			tfxWideArrayi lookup_frame;
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
+			const tfxWideFloat lookup_spin = tfxWideMul(tfxWideLookupSet2(library->emitter_attributes, overtime.spin.lookup.values, emitter_attributes, lookup_frame), base_spin);
+
+			const tfxWideInt weight_last_frame = tfxWideLookupSetMemberi(pm.library->emitter_attributes, overtime.weight.lookup.last_frame, emitter_attributes);
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
+			const tfxWideFloat lookup_velocity = tfxWideLookupSet2(library->emitter_attributes, overtime.velocity.lookup.values, emitter_attributes, lookup_frame);
+
+			tfxWideArrayi lookup_frame_weight;
+			lookup_frame_weight.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);
+			const tfxWideFloat lookup_weight = tfxWideLookupSet2(pm.library->emitter_attributes, overtime.weight.lookup.values, emitter_attributes, lookup_frame_weight);
+
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_turbulance_last_frame);
+			const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet2(library->emitter_attributes, overtime.velocity_turbulance.lookup.values, emitter_attributes, lookup_frame);
+
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), noise_resolution_last_frame);
+			const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet2(library->emitter_attributes, overtime.noise_resolution.lookup.values, emitter_attributes, lookup_frame), noise_resolution);
+
+			tfxWideArray lookup_direction;
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), direction_last_frame);
+			lookup_direction.m = tfxWideLookupSet2(library->emitter_attributes, overtime.direction.lookup.values, emitter_attributes, lookup_frame);
+			lookup_direction.m = tfxWideAdd(lookup_direction.m, angle);
+
+			lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
+			const tfxWideFloat lookup_stretch = tfxWideLookupSet2(library->emitter_attributes, overtime.stretch.lookup.values, emitter_attributes, lookup_frame);
+			p_stretch.m = tfxWideMul(lookup_stretch, stretch);
+
+			tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, overal_scale_wide);
+
+			tfxWideArray x, y;
+			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
+			y.m = tfxWideAdd(tfxWideDiv(local_position_y, lookup_noise_resolution), noise_offset);
+
+			tfxWideArray noise_x;
+			tfxWideArray noise_y;
+
+			for (int n = 0; n != tfxDataWidth; ++n) {
+				if (emitter_flags.a[n] & tfxEmitterStateFlags_has_noise) {
+					tfx128 x4 = _mm_set1_ps(x.a[n]);
+					tfx128 y4 = _mm_set1_ps(y.a[n]);
+
+					tfx128 xeps4 = _mm_set_ps(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);
+					tfx128 yeps4 = _mm_set_ps(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);
+
+					tfx128Array sample = tfxNoise4(x4, yeps4);
+					float a = (sample.a[0] - sample.a[1]) / eps2;
+					float b = (sample.a[2] - sample.a[3]) / eps2;
+					noise_x.a[n] = a - b;
+
+					y.a[n] += 100.f;
+					tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
+					sample = tfxNoise4(xeps4, y4);
+					a = (sample.a[0] - sample.a[1]) / eps2;
+					b = (sample.a[2] - sample.a[3]) / eps2;
+					noise_y.a[n] = a - b;
+				}
+				else {
+					noise_x.a[n] = 0.f;
+					noise_y.a[n] = 0.f;
+				}
+			}
+
+			noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
+			noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
+
+			//----Velocity Changes
+			tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
+			tfxWideArray current_velocity_x;
+			tfxWideArray current_velocity_y;
+			for (int j = 0; j != tfxDataWidth; ++j) {
+				current_velocity_x.a[j] = sinf(lookup_direction.a[j]);
+				current_velocity_y.a[j] = -cosf(lookup_direction.a[j]);
+			}
+			current_velocity_x.m = tfxWideMul(current_velocity_x.m, velocity_scalar);
+			current_velocity_y.m = tfxWideMul(current_velocity_y.m, velocity_scalar);
+			current_velocity_x.m = tfxWideAdd(current_velocity_x.m, noise_x.m);
+			current_velocity_y.m = tfxWideAdd(current_velocity_y.m, noise_y.m);
+			current_velocity_y.m = tfxWideAdd(current_velocity_y.m, tfxWideMul(lookup_weight, base_weight));
+			current_velocity_x.m = tfxWideMul(tfxWideMul(current_velocity_x.m, tfxUPDATE_TIME_WIDE), velocity_adjuster);
+			current_velocity_y.m = tfxWideMul(tfxWideMul(current_velocity_y.m, tfxUPDATE_TIME_WIDE), velocity_adjuster);
+
+			//----Spin and angle Changes
+			tfxWideInt can_spin = tfxWideGreateri(tfxWideAndi(emitter_flags.m, can_spin_flag), tfxWideSetSinglei(0));
+
+			//----Spin and angle Changes
+			roll.m = tfxWideAdd(roll.m, tfxWideAnd(tfxWideCast(can_spin), tfxWideMul(lookup_spin, tfxUPDATE_TIME_WIDE)));
+
+			//----Position
+			local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x.m, overal_scale_wide));
+			local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y.m, overal_scale_wide));
+
+			tfxWideStore(&bank.position_x[index], local_position_x);
+			tfxWideStore(&bank.position_y[index], local_position_y);
+			tfxWideStore(&bank.local_rotations_z[index], roll.m);
+
+			current_velocity_y.m = tfxWideAdd(current_velocity_y.m, tfxWideSetSingle(0.000001f));
+			tfxWideFloat l = tfxWideMul(current_velocity_x.m, current_velocity_x.m);
+			l = tfxWideAdd(l, tfxWideMul(current_velocity_y.m, current_velocity_y.m));
+			l = tfxWideSqrt(l);
+			p_stretch.m = tfxWideMul(p_stretch.m, l);
+			current_velocity_x.m = tfxWideDiv(current_velocity_x.m, l);
+			current_velocity_y.m = tfxWideDiv(current_velocity_y.m, l);
+
+			r0c[0] = tfxWideLookupSetMember(pm.emitters.matrix, v[0].c0, parent_index);
+			r0c[1] = tfxWideLookupSetMember(pm.emitters.matrix, v[0].c1, parent_index);
+
+			r1c[0] = tfxWideLookupSetMember(pm.emitters.matrix, v[1].c0, parent_index);
+			r1c[1] = tfxWideLookupSetMember(pm.emitters.matrix, v[1].c1, parent_index);
+
+			tfxWideFloat is_relative_mask = tfxWideCast(tfxWideGreateri(tfxWideAndi(property_flags, relative_flag), tfxWideSetSinglei(0)));
+			tfxWideFloat xor_is_relative_mask = tfxWideEquals(is_relative_mask, tfxWideSetZero());
+			mmWideTransformVector(r0c, r1c, current_velocity_x.m, current_velocity_y.m, is_relative_mask, xor_is_relative_mask);
+
+			tfxWideArrayi packed;
+			packed.m = PackWide16bit(current_velocity_x.m, current_velocity_y.m);
+
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				sprites.stretch[running_sprite_index] = p_stretch.a[j];
+				sprites.alignment[running_sprite_index++] = packed.a[j];
+			}
+			start_diff = 0;
+		}
+
+		tfxWideInt loop_flag = tfxWideSetSinglei(tfxEmitterStateFlags_loop | tfxEmitterStateFlags_is_line_traversal);
+		tfxWideInt kill_flag = tfxWideSetSinglei(tfxEmitterStateFlags_kill | tfxEmitterStateFlags_is_line_traversal);
+		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
+			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
+
+			const tfxWideFloat emitter_size_y = tfxWideLookupSetMember(pm.emitters.emitter_size, y, parent_index);
+			const tfxWideInt emitter_flags_wide = tfxWideLookupSeti(pm.emitters.state_flags, parent_index);
+			const tfxWideInt loop = tfxWideEqualsi(tfxWideAndi(emitter_flags_wide, loop_flag), loop_flag);
+			const tfxWideInt kill = tfxWideEqualsi(tfxWideAndi(emitter_flags_wide, kill_flag), kill_flag);
+			tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
+			tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+
+			//Lines - Reposition if the particle is travelling along a line
+			tfxWideFloat length = tfxWideAbs(local_position_y);
+			tfxWideFloat at_end = tfxWideAnd(tfxWideGreater(length, emitter_size_y), tfxWideCast(loop));
+			local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, offset_y));
+			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
+			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideAndi(tfxWideCasti(tfxWideGreater(length, emitter_size_y)), kill)));
+			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+			tfxWideStore(&bank.position_y[index], local_position_y);
+		}
+
+		ControlParticleTransformOrdered2d(&pm.work_queue, data);
+	}
+
+	void ControlParticlePositionOrdered2dOld(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
@@ -7519,7 +7734,6 @@ namespace tfx {
 		const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 		tfxMatrix4 &e_matrix = pm.emitters.matrix[emitter_index];
 		tfxVec3 &e_scale = pm.emitters.scale[emitter_index];
-		const float e_stretch = pm.emitters.stretch[emitter_index];
 		tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 
 		tfxU32 start_diff = work_entry->start_diff;
@@ -7565,6 +7779,96 @@ namespace tfx {
 			captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				sprites.transform_2d[running_sprite_index].rotation = roll.a[j];
+				sprites.transform_2d[running_sprite_index].position.x = position_x.a[j];
+				sprites.transform_2d[running_sprite_index].position.y = position_y.a[j];
+				bank.captured_position_x[index + j] = sprites.transform_2d[running_sprite_index].position.x;
+				bank.captured_position_y[index + j] = sprites.transform_2d[running_sprite_index].position.y;
+				running_sprite_index++;
+			}
+			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+			start_diff = 0;
+		}
+	}
+
+	void ControlParticleTransformOrdered2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
+		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
+		tfxParticleManager &pm = *work_entry->pm;
+		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];
+		tfxSoABuffer *buffer = &pm.particle_array_buffers[work_entry->current_buffer_index];
+		tfxLibrary *library = pm.library;
+
+		tfxU32 running_sprite_index = work_entry->sprite_start_index;
+
+		tfxSpriteSoA &sprites = *work_entry->sprites;
+
+		const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
+		const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
+		const tfxWideInt relative_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_relative_position);
+		const tfxWideInt relative_angle_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_relative_angle);
+
+		tfxU32 start_diff = work_entry->start_diff;
+		tfxWideArrayi parent_index;
+		tfxWideArrayi emitter_attributes;
+		tfxWideFloat r0c[2];
+		tfxWideFloat r1c[2];
+
+		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+			tfxU32 index = GetCircularIndex(buffer, i) / tfxDataWidth * tfxDataWidth;
+			parent_index.m = tfxWideLoadi((tfxWideInt*)&bank.parent_index[index]);
+			emitter_attributes.m = tfxWideLookupSeti(pm.emitters.emitter_attributes, parent_index);
+
+			const tfxWideFloat e_world_position_x = tfxWideLookupSetMember(pm.emitters.world_position, x, parent_index);
+			const tfxWideFloat e_world_position_y = tfxWideLookupSetMember(pm.emitters.world_position, y, parent_index);
+			const tfxWideFloat e_world_rotations_x = tfxWideLookupSetMember(pm.emitters.world_rotations, x, parent_index);
+			const tfxWideFloat e_world_rotations_roll = tfxWideLookupSetMember(pm.emitters.world_rotations, roll, parent_index);
+			const tfxWideFloat e_handle_x = tfxWideLookupSetMember(pm.emitters.handle, x, parent_index);
+			const tfxWideFloat e_handle_y = tfxWideLookupSetMember(pm.emitters.handle, y, parent_index);
+			const tfxWideFloat e_scale_x = tfxWideLookupSetMember(pm.emitters.scale, x, parent_index);
+			const tfxWideFloat e_scale_y = tfxWideLookupSetMember(pm.emitters.scale, y, parent_index);
+			const tfxWideInt property_flags = tfxWideLookupSeti(pm.emitters.property_flags, parent_index);
+
+			tfxWideArray position_x;
+			tfxWideArray position_y;
+			tfxWideArray captured_position_x;
+			tfxWideArray captured_position_y;
+			tfxWideArray roll;
+			position_x.m = tfxWideLoad(&bank.position_x[index]);
+			position_y.m = tfxWideLoad(&bank.position_y[index]);
+			roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
+			captured_position_x.m = tfxWideLoad(&bank.captured_position_x[index]);
+			captured_position_y.m = tfxWideLoad(&bank.captured_position_y[index]);
+			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+			tfxWideFloat capture_flag = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi()));
+			tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag, tfxWideSetZero());
+
+			r0c[0] = tfxWideLookupSetMember(pm.emitters.matrix, v[0].c0, parent_index);
+			r0c[1] = tfxWideLookupSetMember(pm.emitters.matrix, v[0].c1, parent_index);
+
+			r1c[0] = tfxWideLookupSetMember(pm.emitters.matrix, v[1].c0, parent_index);
+			r1c[1] = tfxWideLookupSetMember(pm.emitters.matrix, v[1].c1, parent_index);
+
+			tfxWideFloat is_relative_mask = tfxWideCast(tfxWideGreateri(tfxWideAndi(property_flags, relative_flag), tfxWideSetSinglei(0)));
+			tfxWideFloat xor_is_relative_mask = tfxWideEquals(is_relative_mask, tfxWideSetZero());
+			tfxWideFloat is_relative_angle_mask = tfxWideCast(tfxWideGreateri(tfxWideAndi(property_flags, relative_angle_flag), tfxWideSetSinglei(0)));
+
+			position_x.m = tfxWideAdd(position_x.m, tfxWideAnd(e_handle_x, is_relative_mask));
+			position_y.m = tfxWideAdd(position_y.m, tfxWideAnd(e_handle_y, is_relative_mask));
+			mmWideTransformVector(r0c, r1c, position_x.m, position_y.m, is_relative_mask, xor_is_relative_mask);
+			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, tfxWideAnd(e_scale_x, is_relative_mask)), tfxWideAnd(position_x.m, xor_is_relative_mask));
+			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, tfxWideAnd(e_scale_y, is_relative_mask)), tfxWideAnd(position_y.m, xor_is_relative_mask));
+			position_x.m = tfxWideAdd(position_x.m, tfxWideAnd(e_world_position_x, is_relative_mask));
+			position_y.m = tfxWideAdd(position_y.m, tfxWideAnd(e_world_position_y, is_relative_mask));
+			roll.m = tfxWideAdd(roll.m, tfxWideAnd(e_world_rotations_roll, is_relative_angle_mask));
+
+			captured_position_x.m = tfxWideAdd(tfxWideAnd(position_x.m, capture_flag), tfxWideAnd(captured_position_x.m, xor_capture_flag));
+			captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
+
+			flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
+
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->amount_to_update ? work_entry->amount_to_update - running_sprite_index : tfxDataWidth;
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.transform_2d[running_sprite_index].rotation = roll.a[j];
 				sprites.transform_2d[running_sprite_index].position.x = position_x.a[j];

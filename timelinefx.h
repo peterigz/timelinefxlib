@@ -3503,6 +3503,24 @@ You can then use layer inside the loop to get the current layer
 		y = yr;
 	}
 
+	static inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
+		tfxWideFloat xr = tfxWideMul(x, r0c[0]);
+		xr = tfxWideAdd(tfxWideMul(y, r1c[0]), xr);
+		tfxWideFloat yr = tfxWideMul(x, r0c[1]);
+		yr = tfxWideAdd(tfxWideMul(y, r1c[1]), yr);
+		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
+		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
+	}
+
+	static inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
+		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
+		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c0)), xr);
+		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c1));
+		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
+		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
+		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
+	}
+
 	static inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
 		tfxWideFloat xr = tfxWideMul(x, r0c[0]);
 		xr = tfxWideAdd(tfxWideMul(y, r0c[1]), xr);
@@ -7282,8 +7300,10 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
 	void ControlParticlePosition2dOld(tfxWorkQueue *queue, void *data);
 	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
+	void ControlParticlePositionOrdered2dOld(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform2dOld(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
+	void ControlParticleTransformOrdered2d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
