@@ -11458,6 +11458,9 @@ namespace tfx {
 
 		tfxU32 start_diff = work_entry->start_diff;
 
+		const float eps = 0.0001f;
+		const float eps2 = 0.0002f;
+
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
 
@@ -11477,14 +11480,47 @@ namespace tfx {
 			tfxWideArray roll;
 			roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
 
+			tfxWideArrayi lookup_frame;
 			tfxWideArray noise_x;
 			tfxWideArray noise_y;
 
 			if (emitter_flags & tfxEmitterStateFlags_has_noise) {
+				const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
+				const tfxWideFloat noise_offset = tfxWideLoad(&bank.noise_offset[index]);
 
+				lookup_frame.m = tfxWideMini(tfxWideConverti(life), noise_resolution_last_frame);
+				const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->noise_resolution.lookup.values, lookup_frame), noise_resolution);
+				lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_turbulance_last_frame);
+				const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->velocity_turbulance.lookup.values, lookup_frame);
+
+				tfxWideArray x, y;
+				x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
+				y.m = tfxWideAdd(tfxWideDiv(local_position_y, lookup_noise_resolution), noise_offset);
+
+				for (int n = 0; n != tfxDataWidth; ++n) {
+					tfx128 x4 = _mm_set1_ps(x.a[n]);
+					tfx128 y4 = _mm_set1_ps(y.a[n]);
+
+					tfx128 xeps4 = _mm_set_ps(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);
+					tfx128 yeps4 = _mm_set_ps(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);
+
+					tfx128Array sample = tfxNoise4(x4, yeps4);
+					float a = (sample.a[0] - sample.a[1]) / eps2;
+					float b = (sample.a[2] - sample.a[3]) / eps2;
+					noise_x.a[n] = a - b;
+
+					y.a[n] += 100.f;
+					tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
+					sample = tfxNoise4(xeps4, y4);
+					a = (sample.a[0] - sample.a[1]) / eps2;
+					b = (sample.a[2] - sample.a[3]) / eps2;
+					noise_y.a[n] = a - b;
+				}
+
+				noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
+				noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
 			}
 
-			tfxWideArrayi lookup_frame;
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
 			const tfxWideFloat lookup_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
@@ -11509,10 +11545,10 @@ namespace tfx {
 			}
 			current_velocity_x.m = tfxWideMul(current_velocity_x.m, velocity_scalar);
 			current_velocity_y.m = tfxWideMul(current_velocity_y.m, velocity_scalar);
-			//if (emitter_flags & tfxEmitterStateFlags_has_noise) {
-				//current_velocity_x = tfxWideAdd(current_velocity_x, noise_x.m);
-				//current_velocity_y = tfxWideAdd(current_velocity_y, noise_y.m);
-			//}
+			if (emitter_flags & tfxEmitterStateFlags_has_noise) {
+				current_velocity_x.m = tfxWideAdd(current_velocity_x.m, noise_x.m);
+				current_velocity_y.m = tfxWideAdd(current_velocity_y.m, noise_y.m);
+			}
 			current_velocity_y.m = tfxWideAdd(current_velocity_y.m, tfxWideMul(lookup_weight, base_weight));
 			current_velocity_x.m = tfxWideMul(tfxWideMul(current_velocity_x.m, tfxUPDATE_TIME_WIDE), velocity_adjuster);
 			current_velocity_y.m = tfxWideMul(tfxWideMul(current_velocity_y.m, tfxUPDATE_TIME_WIDE), velocity_adjuster);
