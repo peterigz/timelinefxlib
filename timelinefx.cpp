@@ -7997,7 +7997,7 @@ namespace tfx {
 			//----Image animation
 			image_frame.m = tfxWideAdd(image_frame.m, image_frame_rate);
 			image_frame.m = tfxWideAdd(tfxWideAnd(xor_play_once, image_frame.m), tfxWideAnd(play_once, tfxWideMax(tfxWideMin(image_frame.m, end_frame), tfxWideSetSingle(0.f))));
-			image_frame.m = tfxWideSub(image_frame.m, tfxWideAnd(tfxWideGreater(image_frame.m, frames), frames));
+			image_frame.m = tfxWideSub(image_frame.m, tfxWideAnd(tfxWideGreaterEqual(image_frame.m, frames), frames));
 			image_frame.m = tfxWideAdd(image_frame.m, tfxWideAnd(tfxWideLess(image_frame.m, tfxWideSetZero()), frames));
 
 			tfxWideStore(&bank.image_frame[index], image_frame.m);
@@ -8054,7 +8054,7 @@ namespace tfx {
 				image_frame = tfxWideAdd(image_frame, tfxWideAnd(mask, frames));
 			}
 			else {
-				tfxWideFloat mask = tfxWideGreater(image_frame, frames);
+				tfxWideFloat mask = tfxWideGreaterEqual(image_frame, frames);
 				image_frame = tfxWideSub(image_frame, tfxWideAnd(mask, frames));
 			}
 
