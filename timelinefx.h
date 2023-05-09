@@ -5312,6 +5312,7 @@ You can then use layer inside the loop to get the current layer
 		void DeleteNodeAtFrame(float frame);
 		void Reset(float first_node_value, tfxGraphPreset preset, bool add_node = true);
 		void DragValues(tfxGraphPreset preset, float &frame, float &value);
+		void ClearToOne(float value);
 		void Clear();
 		void Free();
 		void Copy(tfxGraph &to, bool compile = true);

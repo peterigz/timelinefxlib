@@ -4361,8 +4361,14 @@ namespace tfx {
 	void tfxGraph::Reset(float v, tfxGraphPreset preset, bool add_node) {
 		nodes.clear();
 		nodes.TrimBuckets();
-		if (add_node)
+		if (add_node && preset == tfxWeightOvertimePreset) {
+			AddNode(0.f, 0.f, 0);
+			tfxAttributeNode *node = AddNode(1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
+			node->SetCurveInitialised();
+		}
+		else if (add_node) {
 			AddNode(0.f, v);
+		}
 		switch (preset) {
 		case tfxGraphPreset::tfxGlobalPercentPreset:
 			//We have a epsilon to prevent divide by 0 here
@@ -4598,6 +4604,11 @@ namespace tfx {
 			value = 0.1f;
 			break;
 		}
+	}
+
+	void tfxGraph::ClearToOne(float value) {
+		nodes.clear();
+		AddNode(0.f, v);
 	}
 
 	void tfxGraph::Clear() {
