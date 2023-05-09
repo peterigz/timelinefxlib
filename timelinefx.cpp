@@ -2035,6 +2035,17 @@ namespace tfx {
 		}
 	}
 
+	tfxEffectEmitter &tfxLibrary::InsertEffect(tfxEffectEmitter &effect, tfxEffectEmitter *position) {
+		effect.library_index = effects.current_size;
+		effect.type = tfxEffectType;
+		effect.GetInfo().uid = ++uid;
+		effect.library = this;
+		tfxEffectEmitter *inserted_effect = effects.insert_after(position, effect);
+		ReIndex();
+		UpdateEffectPaths();
+		return *inserted_effect;
+	}
+
 	tfxEffectEmitter &tfxLibrary::AddEffect(tfxEffectEmitter &effect) {
 		effect.library_index = effects.current_size;
 		effect.type = tfxEffectType;
