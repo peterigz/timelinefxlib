@@ -10753,8 +10753,8 @@ namespace tfx {
 
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
 		tfxLibrary *library = pm.library;
-		const float first_velocity_value = library->emitter_attributes[emitter_attributes].overtime.velocity.GetFirstValue() * tfxUPDATE_TIME;
-		const float first_weight_value = library->emitter_attributes[emitter_attributes].overtime.weight.GetFirstValue() * tfxUPDATE_TIME;
+		const float first_velocity_value = library->emitter_attributes[emitter_attributes].overtime.velocity.GetFirstValue();
+		const float first_weight_value = library->emitter_attributes[emitter_attributes].overtime.weight.GetFirstValue();
 		const tfxAngleSettingFlags angle_settings = properties.angle_settings[property_index];
 		const float angle_roll_offset = properties.angle_offsets[property_index].roll;
 		const tfxVec3 emitter_captured_position = pm.emitters.captured_position[emitter_index];
@@ -10766,7 +10766,6 @@ namespace tfx {
 		const tfxVec2 emitter_size = pm.emitters.emitter_size[emitter_index].xy();
 		auto transform_particle_callback2d = pm.emitters.transform_particle_callback2d[emitter_index];
 
-		//Micro Update
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			const float base_weight = entry->particle_data->base_weight[index];
@@ -10791,17 +10790,17 @@ namespace tfx {
 				captured_position_y = sprite_transform_position.y;
 			}
 
-			tfxVec2 velocity_normal_tmp;
 			direction = 0;
 			if (!line) {
 				direction = GetEmissionDirection2d(pm, library, random, property_index, emitter_index, tfxVec2(local_position_x, local_position_y), sprite_transform_position, emitter_size) + library->emitter_attributes[emitter_attributes].overtime.direction.GetFirstValue();
 			}
 
-			velocity_normal_tmp.x = sinf(direction);
-			velocity_normal_tmp.y = -cosf(direction);
-			float weight_acceleration = base_weight * first_weight_value * micro_time;
+			tfxVec2 velocity_normal;
+			velocity_normal.x = sinf(direction);
+			velocity_normal.y = -cosf(direction);
+			float weight_acceleration = base_weight * first_weight_value;
 			//----Velocity Changes
-			tfxVec2 current_velocity = base_velocity * first_velocity_value * velocity_normal_tmp;
+			tfxVec2 current_velocity = velocity_normal * (base_velocity * first_velocity_value);
 			current_velocity.y += weight_acceleration;
 			local_position_x += current_velocity.x * micro_time;
 			local_position_y += current_velocity.y * micro_time;
@@ -10810,10 +10809,9 @@ namespace tfx {
 				captured_position_x = emitter_captured_position.x + rotatevec.x * scale.x;
 				captured_position_y = emitter_captured_position.y + rotatevec.y * scale.y;
 			}
-			//end micro update
 
 			if ((angle_settings & tfxAngleSettingFlags_align_roll || angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
-				roll = GetVectorAngle(velocity_normal_tmp.x, velocity_normal_tmp.y) + angle_roll_offset;
+				roll = GetVectorAngle(velocity_normal.x, velocity_normal.y) + angle_roll_offset;
 			}
 
 			tween += entry->qty_step_size;
@@ -10870,9 +10868,8 @@ namespace tfx {
 
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
 		tfxLibrary *library = pm.library;
-		const float first_velocity_value = library->emitter_attributes[emitter_attributes].overtime.velocity.GetFirstValue() * tfxUPDATE_TIME;
-		const float first_weight_value = library->emitter_attributes[emitter_attributes].overtime.weight.GetFirstValue() * tfxUPDATE_TIME;
-		const float first_stretch_value = library->emitter_attributes[emitter_attributes].overtime.stretch.GetFirstValue() * tfxUPDATE_TIME;
+		const float first_velocity_value = library->emitter_attributes[emitter_attributes].overtime.velocity.GetFirstValue();
+		const float first_weight_value = library->emitter_attributes[emitter_attributes].overtime.weight.GetFirstValue();
 		const tfxVec3 emitter_world_position = pm.emitters.world_position[emitter_index];
 		const tfxVec3 emitter_captured_position = pm.emitters.captured_position[emitter_index];
 		const tfxVec3 emitter_size = pm.emitters.emitter_size[emitter_index];
@@ -10920,7 +10917,7 @@ namespace tfx {
 
 			tfxVec3 velocity_normal;
 			if (!(property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
-				tfxVec3 velocity_normal = GetEmissionDirection3d(pm, library, random, property_index, emitter_index, emission_pitch, emission_yaw, tfxVec3(local_position_x, local_position_y, local_position_z), world_position, emitter_size);
+				velocity_normal = GetEmissionDirection3d(pm, library, random, property_index, emitter_index, emission_pitch, emission_yaw, tfxVec3(local_position_x, local_position_y, local_position_z), world_position, emitter_size);
 				velocity_normal_packed = Pack10bitUnsigned(velocity_normal);
 			}
 			else if (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
@@ -10932,7 +10929,7 @@ namespace tfx {
 			//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
 			//the alignment on the first frame can be calculated
 			float micro_time = tfxUPDATE_TIME * (1.f - tween + 0.001f);
-			float weight_acceleration = base_weight * first_weight_value * micro_time;
+			float weight_acceleration = base_weight * first_weight_value;
 			//----Velocity Changes
 			tfxVec3 current_velocity = tfxVec3(velocity_normal.x, velocity_normal.y, velocity_normal.z) * base_velocity * first_velocity_value;
 			current_velocity.y -= weight_acceleration;
