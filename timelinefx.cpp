@@ -4608,7 +4608,7 @@ namespace tfx {
 
 	void tfxGraph::ClearToOne(float value) {
 		nodes.clear();
-		AddNode(0.f, v);
+		AddNode(0.f, value);
 	}
 
 	void tfxGraph::Clear() {
