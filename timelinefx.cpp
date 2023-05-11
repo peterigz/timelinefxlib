@@ -3231,6 +3231,7 @@ namespace tfx {
 		names_and_types.Insert("autorecovery_file", tfxString);
 		names_and_types.Insert("draw_outlines", tfxBool);
 		names_and_types.Insert("max_threads", tfxSInt);
+		names_and_types.Insert("use_texture_filtering", tfxBool);
 		initialised = true;
 	}
 
