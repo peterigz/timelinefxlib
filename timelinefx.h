@@ -1,5 +1,7 @@
 ﻿#define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
+//#define tfxUSEAVX
+
 //#define tfxTRACK_MEMORY
 /*
 	Timeline FX C++ library
@@ -227,10 +229,9 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 pack;
 	};
 
-	//#define tfxUSEAVX
-
 	//Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
-	//used by default
+	//used by defaul
+	//Note that avx is currently slowly then SSE, probably because memory bandwidth becomes more of an issue at that point. But also I could be doing it wrong!
 #ifdef tfxUSEAVX
 #define tfxDataWidth 8	
 	typedef __m256 tfxWideFloat;
@@ -253,9 +254,10 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideShiftLeft _mm256_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
 #define tfxWideGreater(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GT_OS)
-#define tfxWideGreateri(v1, v2) _mm256_cmpgt_epi32(v1, v2)
+#define tfxWideGreateri _mm256_cmpgt_epi32
 #define tfxWideLess(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LT_OS)
 #define tfxWideLessEqeual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LE_OS)
+#define tfxWideEquals(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_EQ_OS)
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
 #define tfxWideStore _mm256_store_ps
 #define tfxWideStorei _mm256_store_si256
@@ -275,12 +277,15 @@ You can then use layer inside the loop to get the current layer
 #define tfxWideAndi _mm256_and_si256
 #define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideAndNoti _mm256_andnot_si256
-#define tfxWideSetZero _mm256_setzero_si256
+#define tfxWideSetZero _mm256_setzero_ps
+#define tfxWideSetZeroi _mm256_setzero_si256
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
 #define tfxWideAndNot _mm256_andnot_ps
-#define tfxWideEquals _mm256_cmpeq_ps
-#define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
-#define tfxWideLookupSeti(lookup, index) tfxWideSeti(lookup[index[7]], lookup[index[6]], lookup[index[5]], lookup[index[4]], lookup[index[3]], lookup[index[2]], lookup[index[1]], lookup[index[0]] )
+#define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSeti(lookup, index) tfxWideSeti(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetMember(lookup, member, index) tfxWideSet(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet(lookup1[index1.a[7]].lookup2[index2.a[7]], lookup1[index1.a[6]].lookup2[index2.a[6]], lookup1[index1.a[5]].lookup2[index2.a[5]], lookup1[index1.a[4]].lookup2[index2.a[4]], lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
 
 	const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
 	const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
