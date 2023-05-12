@@ -3802,6 +3802,8 @@ namespace tfx {
 			node.left.x += node.frame - old_frame;
 			node.right.y += node.value - old_value;
 			node.right.x += node.frame - old_frame;
+			ClampCurve(graph, node.right, node);
+			ClampCurve(graph, node.left, node);
 		}
 
 		frame = node.frame;
@@ -3858,6 +3860,8 @@ namespace tfx {
 			node.left.x += node.frame - old_frame;
 			node.right.y += node.value - old_value;
 			node.right.x += node.frame - old_frame;
+			ClampCurve(graph, node.right, node);
+			ClampCurve(graph, node.left, node);
 		}
 
 		if (sort) {
@@ -6068,7 +6072,7 @@ namespace tfx {
 				emitters.emitter_size[index] = 0.f;
 				emitters.hierarchy_depth[index] = hierarchy_depth;
 				emitters.world_rotations[index] = 0.f;
-				e.pm_index = index;
+				e.pm_index = index;		//Doesn't have much use beyond the editor?
 				//----Handle
 				if (e.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 					emitters.image_handle[index] = tfxVec2(0.5f, 0.5f);
