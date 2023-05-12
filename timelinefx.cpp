@@ -11790,7 +11790,7 @@ namespace tfx {
 
 		work_entry.pm = &pm;
 		work_entry.sprites_index = sprites_index + work_entry.start_index;
-		work_entry.sprite_buffer_end_index = work_entry.sprites_index + work_entry.end_index;
+		work_entry.sprite_buffer_end_index = work_entry.sprites_index + (work_entry.end_index - work_entry.start_index);
 		work_entry.layer = properties.layer[property_index];
 		work_entry.sprites = &pm.sprites[pm.current_sprite_buffer][work_entry.layer];
 
