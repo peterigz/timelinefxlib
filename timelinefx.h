@@ -6560,6 +6560,11 @@ You can then use layer inside the loop to get the current layer
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
+	struct tfxDepthIndex {
+		float depth;
+		tfxU32 sprite_index;
+	};
+
 	//These all point into a tfxSoABuffer, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
 	struct tfxParticleSoA {
 		tfxU32 *parent_index;
