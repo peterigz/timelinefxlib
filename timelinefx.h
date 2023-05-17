@@ -8160,19 +8160,28 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Get the total number of 3d sprites within the layer of the particle manager
+	Get the total number of sprites within the layer of the particle manager
 	* @param pm					A pointer to an initialised tfxParticleManager.
 	* @param layer				The layer of the sprites to the count of
 	*/
-	tfxAPI inline tfxU32 SpritesInLayer3d(tfxParticleManager *pm, tfxU32 layer) {
+	tfxAPI inline tfxU32 SpritesInLayerCount(tfxParticleManager *pm, tfxU32 layer) {
 		return pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+	}
+
+	/*
+	Get the total number of sprites within the layer of the particle manager
+	* @param pm					A pointer to an initialised tfxParticleManager.
+	* @param layer				The layer of the sprites to the count of
+	*/
+	tfxAPI inline tfxSpriteSoA &SpritesInLayer(tfxParticleManager *pm, tfxU32 layer) {
+		return pm->sprites[pm->current_sprite_buffer][layer];
 	}
 
 	/*
 	Get the total number of 3d sprites ready for rendering in the particle manager
 	* @param pm					A pointer to an initialised tfxParticleManager.
 	*/
-	tfxAPI inline tfxU32 TotalSpriteCount3d(tfxParticleManager *pm) {
+	tfxAPI inline tfxU32 TotalSpriteCount(tfxParticleManager *pm) {
 		tfxU32 count = 0;
 		for (tfxEachLayer) {
 			count += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
