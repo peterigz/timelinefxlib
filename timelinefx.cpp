@@ -11413,6 +11413,7 @@ namespace tfx {
 	}
 
 	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = work_entry->pm->particle_arrays[work_entry->current_buffer_index];

@@ -1261,7 +1261,12 @@ You can then use layer inside the loop to get the current layer
 				return;
 			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); 
 			assert(new_data);	//Unable to allocate memory. todo: better handling
-			if (data) { memcpy(new_data, data, (size_t)current_size * sizeof(T)); tfxFREE(data); } data = new_data; capacity = new_capacity;
+			if (data) { 
+				memcpy(new_data, data, (size_t)current_size * sizeof(T)); 
+				tfxFREE(data); 
+			} 
+			data = new_data; 
+			capacity = new_capacity;
 		}
 
 		inline T&	        grab() {
@@ -4780,6 +4785,7 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		inline bool ValidName(const char *name) {
+			assert(name);	//Can't search for anything that's null
 			return GetIndex(name) > -1;
 		}
 
@@ -4971,9 +4977,9 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	struct tfxProfileSnapshot {
-		tfxU32 hit_count;
-		tfxU64 run_time;
-		tfxU64 cycle_count;
+		tfxU32 hit_count = 0;
+		tfxU64 run_time = 0;
+		tfxU64 cycle_count = 0;
 	};
 
 	struct tfxProfile {
@@ -5023,24 +5029,36 @@ You can then use layer inside the loop to get the current layer
 		stat->hit_count /= tfxPROFILER_SAMPLES;
 	}
 
+	inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
+		snapshot->cycle_count = 0;
+		snapshot->hit_count = 0;
+		snapshot->run_time = 0;
+	}
+
+	inline void ResetSnapshots() {
+		for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
+			tfxProfile *profile = tfxProfileArray + i;
+			memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfxProfileSnapshot));
+		}
+	}
+
 	inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>> &profile_snapshots, tfxU32 amount) {
 		for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
 			tfxProfile *profile = tfxProfileArray + i;
+			if (!profile->name) {
+				ResetSnapshot(profile->snapshots + i);
+				continue;
+			}
 			if (!profile_snapshots.ValidName(profile->name)) {
 				tfxvec<tfxProfileSnapshot> snapshots;
 				profile_snapshots.Insert(profile->name, snapshots);
 			}
 			tfxvec<tfxProfileSnapshot> &snapshots = profile_snapshots.At(profile->name);
-			snapshots.resize(snapshots.capacity + tfxPROFILER_SAMPLES);
-			snapshots.current_size += amount;
-			memcpy(snapshots.data, profile->snapshots, amount * sizeof(tfxProfileSnapshot));
+			tfxU32 offset = snapshots.current_size;
+			snapshots.resize(snapshots.current_size + tfxPROFILER_SAMPLES);
+			memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfxProfileSnapshot));
+			memset(profile->snapshots, 0, sizeof(tfxProfileSnapshot) * tfxPROFILER_SAMPLES);
 		}
-	}
-
-	inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
-		snapshot->cycle_count = 0;
-		snapshot->hit_count = 0;
-		snapshot->run_time = 0;
 	}
 
 #ifdef tfxENABLE_PROFILING 
@@ -7961,6 +7979,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	static inline void QuickSortSoAParticles(tfxParticleSoA &particles, int start_index, int end_index) {
+		tfxPROFILE;
 		if (start_index >= end_index || start_index < 0)
 			return;
 
