@@ -9197,6 +9197,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
@@ -9277,6 +9278,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
@@ -9310,6 +9312,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
@@ -9350,6 +9353,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
@@ -9391,6 +9395,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleNoise(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
@@ -9418,6 +9423,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
@@ -9443,6 +9449,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
@@ -9487,6 +9494,7 @@ namespace tfx {
 	}
 
 	void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(9);
@@ -9527,6 +9535,7 @@ namespace tfx {
 	}
 
 	void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(10);
@@ -9568,6 +9577,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(11);
@@ -9637,6 +9647,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleLine3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(12);
@@ -9719,6 +9730,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleArea2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(13);
@@ -9902,6 +9914,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleArea3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(14);
@@ -10267,6 +10280,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(15);
@@ -10359,6 +10373,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleEllipse3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(16);
@@ -10436,6 +10451,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(17);
@@ -10489,6 +10505,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleIcosphereRandom3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(18);
@@ -10538,6 +10555,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleCylinder3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(19);
@@ -10645,6 +10663,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleWeight(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(20);
@@ -10674,6 +10693,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleVelocity(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(21);
@@ -10696,6 +10716,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleRoll(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(22);
@@ -10726,6 +10747,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(23);
@@ -10835,6 +10857,7 @@ namespace tfx {
 	}
 
 	void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data) {
+		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
 		random.AlterSeed(24);

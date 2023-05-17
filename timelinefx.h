@@ -5023,6 +5023,20 @@ You can then use layer inside the loop to get the current layer
 		stat->hit_count /= tfxPROFILER_SAMPLES;
 	}
 
+	inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>> &profile_snapshots, tfxU32 amount) {
+		for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
+			tfxProfile *profile = tfxProfileArray + i;
+			if (!profile_snapshots.ValidName(profile->name)) {
+				tfxvec<tfxProfileSnapshot> snapshots;
+				profile_snapshots.Insert(profile->name, snapshots);
+			}
+			tfxvec<tfxProfileSnapshot> &snapshots = profile_snapshots.At(profile->name);
+			snapshots.resize(snapshots.capacity + tfxPROFILER_SAMPLES);
+			snapshots.current_size += amount;
+			memcpy(snapshots.data, profile->snapshots, amount * sizeof(tfxProfileSnapshot));
+		}
+	}
+
 	inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
 		snapshot->cycle_count = 0;
 		snapshot->hit_count = 0;
