@@ -6565,7 +6565,7 @@ You can then use layer inside the loop to get the current layer
 		float local_rotations_y;
 		float local_rotations_z;
 		tfxU32 velocity_normal;
-		float depth;
+		tfxU32 depth_index;
 		float base_weight;
 		float base_velocity;
 		float base_spin;
@@ -6593,6 +6593,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	struct tfxDepthIndex {
+		tfxParticleID particle_id;
 		float depth;
 		tfxU32 sprite_index;
 	};
@@ -6615,7 +6616,7 @@ You can then use layer inside the loop to get the current layer
 		float *local_rotations_y;
 		float *local_rotations_z;
 		tfxU32 *velocity_normal;
-		float *depth;
+		tfxU32 *depth_index;
 		float *base_weight;
 		float *base_velocity;
 		float *base_spin;
@@ -6645,7 +6646,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_y));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_z));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, velocity_normal));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, depth));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, depth_index));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_velocity));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_spin));
@@ -7013,6 +7014,7 @@ You can then use layer inside the loop to get the current layer
 
 		tfxvec<tfxParticleID> particle_indexes;
 		tfxvec<tfxU32> free_particle_indexes;
+		tfxvec<tfxDepthIndex> depth_indexes[2];
 		tfxvec<tfxU32> effects_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> free_effects;
@@ -7029,6 +7031,7 @@ You can then use layer inside the loop to get the current layer
 		tfxSoABuffer sprite_buffer[2][tfxLAYERS];
 		tfxSpriteSoA sprites[2][tfxLAYERS];
 		tfxU32 current_sprite_buffer;
+		tfxU32 current_depth_index_buffer;
 
 		//todo: document compute controllers once we've established this is how we'll be doing it.
 		void *compute_controller_ptr;
@@ -7087,6 +7090,7 @@ You can then use layer inside the loop to get the current layer
 			new_particles_count(0),
 			mt_batch_size(512),
 			current_sprite_buffer(0),
+			current_depth_index_buffer(0),
 			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers")),
 			library(NULL),
 			sort_passes(0)
@@ -7147,6 +7151,10 @@ You can then use layer inside the loop to get the current layer
 			particle_indexes[index] = tfxINVALID;
 			free_particle_indexes.push_back(index);
 			index = tfxINVALID;
+		}
+		inline tfxU32 PushDepthIndex(tfxDepthIndex depth_index) {
+			depth_indexes[current_depth_index_buffer].push_back(depth_index);
+			return depth_indexes[current_depth_index_buffer].current_size - 1;
 		}
 		void FreeParticleList(tfxU32 index);
 		//Clear all effects and particles in the particle manager
@@ -7234,7 +7242,7 @@ You can then use layer inside the loop to get the current layer
 			to_bank.local_rotations_y[index] = from_bank.local_rotations_y[other_index];
 			to_bank.local_rotations_z[index] = from_bank.local_rotations_z[other_index];
 			to_bank.velocity_normal[index] = from_bank.velocity_normal[other_index];
-			to_bank.depth[index] = from_bank.depth[other_index];
+			to_bank.depth_index[index] = from_bank.depth_index[other_index];
 			to_bank.base_weight[index] = from_bank.base_weight[other_index];
 			to_bank.base_velocity[index] = from_bank.base_velocity[other_index];
 			to_bank.base_spin[index] = from_bank.base_spin[other_index];
@@ -7336,7 +7344,7 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleColor(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize(tfxWorkQueue *queue, void *data);
 	void ControlParticleOrderedAge(tfxWorkQueue *queue, void *data);
-	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
+	//void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
 	void ControlParticleSizeOrdered(tfxWorkQueue *queue, void *data);
 	void ControlParticleColorOrdered(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrameOrdered(tfxWorkQueue *queue, void *data);
@@ -7835,7 +7843,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	static inline void SwapSoAParticle(tfxParticleSoA &particles, tfxU32 from, tfxU32 to) {
-		std::swap(particles.depth[from], particles.depth[to]);
+		std::swap(particles.depth_index[from], particles.depth_index[to]);
 		std::swap(particles.age[from], particles.age[to]);
 		std::swap(particles.parent_index[from], particles.parent_index[to]);
 		std::swap(particles.sprite_index[from], particles.sprite_index[to]);
@@ -7865,7 +7873,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	static inline void StoreSoAParticle(tfxParticleSoA &particles, tfxU32 from, tfxParticleTemp &temp) {
-		temp.depth = particles.depth[from];
+		temp.depth_index = particles.depth_index[from];
 		temp.age = particles.age[from];
 		temp.parent_index = particles.parent_index[from];
 		temp.sprite_index = particles.sprite_index[from];
@@ -7895,7 +7903,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	static inline void LoadSoAParticle(tfxParticleSoA &particles, tfxU32 from, tfxParticleTemp &temp) {
-		particles.depth[from] = temp.depth;
+		particles.depth_index[from] = temp.depth_index;
 		particles.age[from] = temp.age;
 		particles.parent_index[from] = temp.parent_index;
 		particles.sprite_index[from] = temp.sprite_index;
@@ -7935,7 +7943,7 @@ You can then use layer inside the loop to get the current layer
 		for (tfxU32 i = 1; i < size; ++i) {
 			StoreSoAParticle(particles, i, key);
 			int j = i - 1;
-			while (j >= 0 && key.depth > particles.depth[j]) {
+			while (j >= 0 && key.depth_index > particles.depth_index[j]) {
 				SwapSoAParticle(particles, j + 1, j);
 				if (particles.flags[j + 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j + 1]] = MakeParticleID(current_buffer_index, j + 1);
 				if (particles.flags[j] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j]] = MakeParticleID(current_buffer_index, j);
@@ -7953,7 +7961,7 @@ You can then use layer inside the loop to get the current layer
 		for (int i = si + 1; i < end_index; ++i) {
 			StoreSoAParticle(particles, i, key);
 			int j = i - 1;
-			while (j >= si && key.depth > particles.depth[j]) {
+			while (j >= si && key.depth_index > particles.depth_index[j]) {
 				SwapSoAParticle(particles, j + 1, j);
 				--j;
 			}
@@ -7963,11 +7971,11 @@ You can then use layer inside the loop to get the current layer
 
 	static inline int QuickSortPartition(tfxParticleSoA &particles, int start_index, int end_index)
 	{
-		float depth = particles.depth[end_index];
+		float depth_index = particles.depth_index[end_index];
 		int i = start_index - 1;
 		for (int j = start_index; j < end_index; j++)
 		{
-			if (particles.depth[j] > depth)
+			if (particles.depth_index[j] > depth_index)
 			{
 				i++;
 				SwapSoAParticle(particles, i, j);

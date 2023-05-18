@@ -6446,6 +6446,64 @@ namespace tfx {
 
 		}
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
+			if (!(flags & tfxEffectManagerFlags_update_age_only)) {
+				tmpMTStack(tfxControlWorkEntryOrdered, work);
+				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+					int particles_to_update = particle_array_buffers[layer].current_size;
+					tfxU32 running_start_index = 0;
+					tfxU32 running_sprite_start_index = 0;
+					while (particles_to_update > 0) {
+						tfxControlWorkEntryOrdered &work_entry = work.next();
+						work_entry.pm = this;
+						work_entry.sprite_layer = layer;
+						work_entry.current_buffer_index = layer;
+						work_entry.start_index = running_start_index;
+						work_entry.sprite_start_index = running_sprite_start_index;
+						work_entry.amount_to_update = particle_array_buffers[layer].current_size;
+						work_entry.end_index = particles_to_update > mt_batch_size ? running_start_index + mt_batch_size : running_start_index + particles_to_update;
+						tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], work_entry.start_index);
+						tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+						work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
+						work_entry.start_diff = running_start_index == 0 ? circular_start - block_start_index : 0;
+						tfxU32 additional_updates = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? tfxDataWidth : 0;
+						running_start_index += mt_batch_size;
+						running_sprite_start_index += mt_batch_size - work_entry.start_diff;
+						particles_to_update -= (mt_batch_size - work_entry.start_diff);
+						work_entry.wide_end_index += particles_to_update <= 0 ? additional_updates : 0;
+						if (flags & tfxEffectManagerFlags_3d_effects)
+							ControlParticlesOrdered3d(*this, work_entry);
+						else
+							ControlParticlesOrdered2d(*this, work_entry);
+					}
+				}
+
+				tfxCompleteAllWork(&work_queue);
+				work.free();
+			}
+			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+				tfxControlWorkEntryOrdered &work_entry = ordered_age_work_entry[layer];
+				work_entry.amount_to_update = particle_array_buffers[layer].current_size;
+				if (work_entry.amount_to_update == 0)
+					continue;
+				work_entry.pm = this;
+				work_entry.sprite_layer = layer;
+				work_entry.current_buffer_index = layer;
+				work_entry.start_index = work_entry.amount_to_update - 1;
+				work_entry.end_index = 0;
+				tfxU32 circular_start = GetCircularIndex(&particle_array_buffers[layer], 0);
+				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+				work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.amount_to_update / tfxDataWidth)) * tfxDataWidth;
+				work_entry.start_diff = circular_start - block_start_index;
+				work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < work_entry.amount_to_update ? tfxDataWidth : 0;
+				work_entry.pm = this;
+				if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
+					tfxAddWorkQueueEntry(&work_queue, &work_entry, ControlParticleOrderedAge);
+				}
+				else {
+					ControlParticleOrderedAge(&work_queue, &work_entry);
+				}
+			}
+		/*
 			int next_particle_buffer = !current_pbuff;
 
 			for (tfxEachLayer) {
@@ -6470,7 +6528,7 @@ namespace tfx {
 				work_entry.next_buffer_index = next_buffer_index;
 				work_entry.start_index = work_entry.amount_to_update - 1;
 				work_entry.end_index = 0;
-				ControlParticleOrderedDepth(&work_queue, &work_entry);
+				//ControlParticleOrderedDepth(&work_queue, &work_entry);
 			}
 			current_pbuff = next_particle_buffer;
 
@@ -6529,22 +6587,23 @@ namespace tfx {
 					for (tfxEachLayer) {
 						int layer_offset = layer * 2;
 						int current_buffer_index = current_pbuff + layer_offset;
+						tfxParticleSoA &bank = particle_arrays[current_buffer_index];
 						for (tfxU32 sorts = 0; sorts != sort_passes; ++sorts) {
-							tfxParticleSoA &bank = particle_arrays[current_buffer_index];
+							tfxvec<tfxDepthIndex> &depth_index = depth_indexes[current_depth_index_buffer];
 							for (tfxU32 i = 1; i < sprite_buffer[current_sprite_buffer][layer].current_size; ++i) {
-								float depth1 = bank.depth[i - 1];
-								float depth2 = bank.depth[i];
+								float depth1 = depth_index[i - 1].depth;
+								float depth2 = depth_index[i].depth;
 								if (depth1 < depth2) {
 									SwapSoAParticle(bank, i, i - 1);
-									if (bank.flags[i - 1] & tfxParticleFlags_has_sub_effects) particle_indexes[bank.particle_index[i - 1]] = MakeParticleID(current_buffer_index, i - 1);
-									if (bank.flags[i] & tfxParticleFlags_has_sub_effects) particle_indexes[bank.particle_index[i]] = MakeParticleID(current_buffer_index, i);
+									ParticleIndex(depth_index[i].particle_id);
+									std::swap(depth_index[i], depth_index[i - 1]);
 								}
 							}
 						}
 					}
 				}
-
 			}
+			*/
 		}
 
 		//Add Subeffects to the next buffer
@@ -7156,8 +7215,8 @@ namespace tfx {
 				bank.captured_position_x[index + j] = sprites.transform_3d[running_sprite_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform_3d[running_sprite_index].position.y;
 				bank.captured_position_z[index + j] = sprites.transform_3d[running_sprite_index].position.z;
-				if(work_entry->calculate_depth)
-					bank.depth[index + j] = LengthVec3NoSqR(sprites.transform_3d[running_sprite_index].position - pm.camera_position);
+				//if(work_entry->calculate_depth)
+					//bank.depth[index + j] = LengthVec3NoSqR(sprites.transform_3d[running_sprite_index].position - pm.camera_position);
 				running_sprite_index++;
 			}
 			start_diff = 0;
@@ -8217,32 +8276,34 @@ namespace tfx {
 
 		}
 
-		if (flags & tfxEffectManagerFlags_ordered_by_age) {
+		if (flags & tfxEffectManagerFlags_ordered_by_age || flags & tfxEffectManagerFlags_order_by_depth) {
+			FreeParticleBanks();
 			for (tfxEachLayer) {
 				tfxParticleSoA lists;
 				tfxU32 index = particle_arrays.locked_push_back(lists);
 				tfxSoABuffer buffer;
-				buffer.resize_callback = tfxResizeParticleSoACallback;
-				buffer.user_data = &particle_arrays.back();
 				particle_array_buffers.push_back(buffer);
 				assert(index == particle_array_buffers.current_size - 1);
-				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer]);
+				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), tfxMax(max_cpu_particles_per_layer[layer], 8));
+				particle_array_buffers[index].user_data = &particle_arrays.back();
 				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
 			}
 		}
+		/*
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
+			FreeParticleBanks();
 			for (tfxEachLayerDB) {
 				tfxParticleSoA lists;
 				tfxU32 index = particle_arrays.locked_push_back(lists);
 				tfxSoABuffer buffer;
-				buffer.resize_callback = tfxResizeParticleSoACallback;
-				buffer.user_data = &particle_arrays.back();
 				particle_array_buffers.push_back(buffer);
 				assert(index == particle_array_buffers.current_size - 1);
-				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), max_cpu_particles_per_layer[layer / 2]);
+				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), tfxMax(max_cpu_particles_per_layer[layer / 2], 8));
+				particle_array_buffers[index].user_data = &particle_arrays.back();
 				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
 			}
 		}
+		*/
 
 		flags |= dynamic_sprite_allocation ? tfxEffectManagerFlags_dynamic_sprite_allocation : 0;
 
@@ -8312,7 +8373,7 @@ namespace tfx {
 		else if (mode == tfxParticleManagerMode_ordered_by_age)
 			flags = tfxEffectManagerFlags_ordered_by_age;
 
-		if (flags & tfxEffectManagerFlags_ordered_by_age) {
+		if (flags & tfxEffectManagerFlags_ordered_by_age || flags & tfxEffectManagerFlags_order_by_depth) {
 			FreeParticleBanks();
 			for (tfxEachLayer) {
 				tfxParticleSoA lists;
@@ -8325,6 +8386,7 @@ namespace tfx {
 				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
 			}
 		}
+		/*
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
 			FreeParticleBanks();
 			for (tfxEachLayerDB) {
@@ -8338,6 +8400,7 @@ namespace tfx {
 				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
 			}
 		}
+		*/
 
 		if (is_3d)
 			flags |= tfxEffectManagerFlags_3d_effects;
@@ -10997,7 +11060,11 @@ namespace tfx {
 				captured_position_z = world_position.z;
 			}
 			if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
-				entry->particle_data->depth[index] = LengthVec3NoSqR(world_position - pm.camera_position);
+				tfxDepthIndex depth_index;
+				depth_index.particle_id = MakeParticleID(particles_index, index);
+				depth_index.sprite_index = tfxINVALID;
+				depth_index.depth = LengthVec3NoSqR(world_position - pm.camera_position);
+				entry->particle_data->depth_index[index] = pm.PushDepthIndex(depth_index);
 			}
 			tween += entry->qty_step_size;
 		}
@@ -11412,6 +11479,7 @@ namespace tfx {
 
 	}
 
+	/*
 	void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data) {
 		tfxPROFILE;
 		tfxControlWorkEntryOrdered *work_entry = static_cast<tfxControlWorkEntryOrdered*>(data);
@@ -11488,6 +11556,7 @@ namespace tfx {
 		}
 
 	}
+	*/
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data) {
 		tfxPROFILE;
