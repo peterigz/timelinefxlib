@@ -6251,6 +6251,8 @@ namespace tfx {
 				int current_buffer_index = current_pbuff + layer_offset;
 				sprite_index_point[layer] = particle_array_buffers[current_buffer_index].current_size;
 			}
+			depth_indexes[current_depth_index_buffer].clear();
+			current_depth_index_buffer = !current_depth_index_buffer;
 		}
 
 		for (tfxEachLayer) {
@@ -11340,6 +11342,7 @@ namespace tfx {
 
 				bank.parent_index[next_index] = bank.parent_index[index];
 				bank.sprite_index[next_index] = bank.sprite_index[index];
+				bank.depth_index[next_index] = bank.depth_index[index];
 				bank.particle_index[next_index] = bank.particle_index[index];
 				bank.flags[next_index] = bank.flags[index];
 				bank.age[next_index] = bank.age[index];
@@ -11435,6 +11438,9 @@ namespace tfx {
 				if (flags & tfxParticleFlags_has_sub_effects) {
 					pm.FreeParticleIndex(bank.particle_index[index]);
 				}
+				if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
+					pm.depth_indexes[pm.current_depth_index_buffer][bank.depth_index[index]].particle_id = tfxINVALID;
+				}
 			}
 			else if (offset > 0) {
 				tfxU32 next_index = GetCircularIndex(buffer, i + offset);
@@ -11442,8 +11448,13 @@ namespace tfx {
 					pm.particle_indexes[bank.particle_index[index]] = MakeParticleID(work_entry->current_buffer_index, next_index);
 				}
 
+				if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
+					pm.depth_indexes[pm.current_depth_index_buffer][bank.depth_index[index]].particle_id = MakeParticleID(work_entry->current_buffer_index, next_index);
+				}
+
 				bank.parent_index[next_index] = bank.parent_index[index];
 				bank.sprite_index[next_index] = bank.sprite_index[index];
+				bank.depth_index[next_index] = bank.depth_index[index];
 				bank.particle_index[next_index] = bank.particle_index[index];
 				bank.flags[next_index] = bank.flags[index];
 				bank.age[next_index] = bank.age[index];
@@ -11476,6 +11487,17 @@ namespace tfx {
 			Bump(buffer, offset);
 		}
 
+		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
+			for (auto &depth_index : pm.depth_indexes[pm.current_depth_index_buffer]) {
+				if (depth_index.particle_id != tfxINVALID) {
+					bank.depth_index[ParticleIndex(depth_index.particle_id)] = pm.depth_indexes[!pm.current_depth_index_buffer].current_size;
+					pm.depth_indexes[!pm.current_depth_index_buffer].push_back(depth_index);
+				}
+			}
+			assert(pm.depth_indexes[!pm.current_depth_index_buffer].current_size == buffer->current_size);	//depth index size must equal the particle buffer size
+		}
+
+		
 
 	}
 
