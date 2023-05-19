@@ -6476,10 +6476,6 @@ namespace tfx {
 				assert(depth_indexes[next_depth_buffer].current_size == depth_indexes[current_depth_index_buffer].current_size);
 				depth_indexes[current_depth_index_buffer].clear();
 				current_depth_index_buffer = next_depth_buffer;
-				//for (auto &depth_index : depth_indexes[current_depth_index_buffer]) {
-					//std::cout << depth_index.depth << std::endl;
-				//}
-				//std::cout << " ------- " << std::endl;
 			}
 
 			if (!(flags & tfxEffectManagerFlags_update_age_only)) {
@@ -6512,10 +6508,10 @@ namespace tfx {
 							ControlParticlesOrdered2d(*this, work_entry);
 					}
 				}
-
 				tfxCompleteAllWork(&work_queue);
 				work.free();
 			}
+
 			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 				tfxControlWorkEntryOrdered &work_entry = ordered_age_work_entry[layer];
 				work_entry.amount_to_update = particle_array_buffers[layer].current_size;
@@ -6539,6 +6535,43 @@ namespace tfx {
 					ControlParticleOrderedAge(&work_queue, &work_entry);
 				}
 			}
+
+			tfxCompleteAllWork(&work_queue);
+
+			if (flags & tfxEffectManagerFlags_guarantee_order) {
+				/*
+				for (tfxEachLayer) {
+					tfxSortWorkEntry &work_entry = sorting_work_entry[layer];
+					int layer_offset = layer * 2;
+					int current_buffer_index = current_pbuff + layer_offset;
+					work_entry.current_buffer_index = current_buffer_index;
+					work_entry.pm = this;
+					work_entry.size = sprite_buffer[current_sprite_buffer][layer].current_size;
+					work_entry.particles = &particle_arrays[current_buffer_index];
+					if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
+						tfxAddWorkQueueEntry(&work_queue, &work_entry, InsertionSortSoAParticles);
+					}
+					else {
+						InsertionSortSoAParticles(&work_queue, &work_entry);
+					}
+				}
+				*/
+			}
+			else if (sort_passes > 0) {
+				tfxvec<tfxDepthIndex> &depth_index = depth_indexes[current_depth_index_buffer];
+				for (tfxU32 sorts = 0; sorts != sort_passes; ++sorts) {
+					for (tfxU32 i = 1; i < depth_index.current_size; ++i) {
+						float depth1 = depth_index[i - 1].depth;
+						float depth2 = depth_index[i].depth;
+						if (depth1 < depth2) {
+							particle_arrays[ParticleBank(depth_index[i].particle_id)].depth_index[ParticleIndex(depth_index[i].particle_id)] = i - 1;
+							particle_arrays[ParticleBank(depth_index[i - 1].particle_id)].depth_index[ParticleIndex(depth_index[i - 1].particle_id)] = i;
+							std::swap(depth_index[i], depth_index[i - 1]);
+						}
+					}
+				}
+			}
+
 		/*
 			int next_particle_buffer = !current_pbuff;
 
