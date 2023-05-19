@@ -6252,8 +6252,6 @@ namespace tfx {
 				int current_buffer_index = current_pbuff + layer_offset;
 				sprite_index_point[layer] = particle_array_buffers[current_buffer_index].current_size;
 			}
-			depth_indexes[current_depth_index_buffer].clear();
-			current_depth_index_buffer = !current_depth_index_buffer;
 			depth_starting_index = depth_indexes[current_depth_index_buffer].current_size;
 		}
 
@@ -6538,24 +6536,18 @@ namespace tfx {
 
 			tfxCompleteAllWork(&work_queue);
 
+			depth_indexes[current_depth_index_buffer].clear();
+			current_depth_index_buffer = !current_depth_index_buffer;
+
 			if (flags & tfxEffectManagerFlags_guarantee_order) {
-				/*
-				for (tfxEachLayer) {
-					tfxSortWorkEntry &work_entry = sorting_work_entry[layer];
-					int layer_offset = layer * 2;
-					int current_buffer_index = current_pbuff + layer_offset;
-					work_entry.current_buffer_index = current_buffer_index;
-					work_entry.pm = this;
-					work_entry.size = sprite_buffer[current_sprite_buffer][layer].current_size;
-					work_entry.particles = &particle_arrays[current_buffer_index];
-					if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
-						tfxAddWorkQueueEntry(&work_queue, &work_entry, InsertionSortSoAParticles);
-					}
-					else {
-						InsertionSortSoAParticles(&work_queue, &work_entry);
-					}
+				tfxSortWorkEntry &work_entry = sorting_work_entry[0];
+				work_entry.pm = this;
+				if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
+					tfxAddWorkQueueEntry(&work_queue, &work_entry, InsertionSortDepth);
 				}
-				*/
+				else {
+					InsertionSortDepth(&work_queue, &work_entry);
+				}
 			}
 			else if (sort_passes > 0) {
 				tfxvec<tfxDepthIndex> &depth_index = depth_indexes[current_depth_index_buffer];
@@ -7283,7 +7275,7 @@ namespace tfx {
 					bank.captured_position_x[index + j] = sprites.transform_3d[sprite_depth_index].position.x;
 					bank.captured_position_y[index + j] = sprites.transform_3d[sprite_depth_index].position.y;
 					bank.captured_position_z[index + j] = sprites.transform_3d[sprite_depth_index].position.z;
-					//bank.depth_index[index + j] = LengthVec3NoSqR(sprites.transform_3d[sprite_depth_index].position - pm.camera_position);
+					pm.depth_indexes[pm.current_depth_index_buffer][sprite_depth_index].depth = LengthVec3NoSqR(sprites.transform_3d[sprite_depth_index].position - pm.camera_position);
 					running_sprite_index++;
 				}
 			}

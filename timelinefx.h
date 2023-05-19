@@ -6943,11 +6943,6 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxSortWorkEntry {
 		tfxParticleManager *pm;
-		tfxParticleSoA *particles;
-		tfxU32 current_buffer_index;
-		tfxU32 size;
-		int start_index;
-		int end_index;
 	};
 
 	struct tfxEffectData {
@@ -7926,28 +7921,6 @@ You can then use layer inside the loop to get the current layer
 		particles.single_loop_count[from] = temp.single_loop_count;
 	}
 
-	static inline void InsertionSortSoAParticles(tfxWorkQueue *queue, void *data) {
-		tfxPROFILE;
-		tfxSortWorkEntry *work_entry = static_cast<tfxSortWorkEntry*>(data);
-		tfxParticleManager &pm = *work_entry->pm;
-		tfxU32 size = work_entry->size;
-		tfxU32 current_buffer_index = work_entry->current_buffer_index;
-		tfxParticleSoA &particles = *work_entry->particles;
-		tfxParticleTemp key;
-		for (tfxU32 i = 1; i < size; ++i) {
-			StoreSoAParticle(particles, i, key);
-			int j = i - 1;
-			while (j >= 0 && key.depth_index > particles.depth_index[j]) {
-				SwapSoAParticle(particles, j + 1, j);
-				if (particles.flags[j + 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j + 1]] = MakeParticleID(current_buffer_index, j + 1);
-				if (particles.flags[j] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j]] = MakeParticleID(current_buffer_index, j);
-				--j;
-			}
-			LoadSoAParticle(particles, j + 1, key);
-			if (particles.flags[j + 1] & tfxParticleFlags_has_sub_effects) pm.particle_indexes[particles.particle_index[j + 1]] = MakeParticleID(current_buffer_index, j + 1);
-		}
-	}
-
 	static inline void InsertionSortSoAParticles2(tfxParticleSoA &particles, int start_index, int end_index) {
 		tfxPROFILE;
 		tfxParticleTemp key;
@@ -8004,11 +7977,27 @@ You can then use layer inside the loop to get the current layer
 		QuickSortSoAParticles(particles, pivot + 1, end_index);
 	}
 
+	static inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry) {
+		tfxParticleManager &pm = *static_cast<tfxSortWorkEntry*>(work_entry)->pm;
+		tfxBucketArray<tfxParticleSoA> &bank = pm.particle_arrays;
+		tfxvec<tfxDepthIndex> &depth_indexes = pm.depth_indexes[pm.current_depth_index_buffer];
+		for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
+			tfxDepthIndex key = depth_indexes[i];
+			int j = i - 1;
+			while (j >= 0 && key.depth > depth_indexes[j].depth) {
+				depth_indexes[j + 1] = depth_indexes[j];
+				bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
+				--j;
+			}
+			depth_indexes[j + 1] = key;
+			bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
+		}
+	}
+
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticleFrame key = particles[i];
 			int j = i - 1;
-
 			while (j >= 0 && key.depth > particles[j].depth) {
 				particles[j + 1] = particles[j];
 				--j;
