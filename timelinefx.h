@@ -2777,7 +2777,7 @@ You can then use layer inside the loop to get the current layer
 
 	}
 
-	static void tfxCompleteAllWork(tfxWorkQueue *queue) {
+	inline void tfxCompleteAllWork(tfxWorkQueue *queue) {
 		tfxWorkQueueEntry entry = {};
 		while (queue->entry_completion_goal != queue->entry_completion_count) {
 			tfxDoNextWorkQueueEntry(queue);
@@ -7830,12 +7830,6 @@ You can then use layer inside the loop to get the current layer
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
 
-	static inline int SortDepth(void const *left, void const *right) {
-		float d1 = *static_cast<const float*>(left);
-		float d2 = *static_cast<const float*>(right);
-		return (d2 > d1) - (d2 < d1);
-	}
-
 	static inline int SortIcospherePoints(void const *left, void const *right) {
 		float d1 = static_cast<const tfxVec3*>(left)->y;
 		float d2 = static_cast<const tfxVec3*>(right)->y;
@@ -7967,6 +7961,12 @@ You can then use layer inside the loop to get the current layer
 			}
 			LoadSoAParticle(particles, j + 1, key);
 		}
+	}
+
+	static inline int SortDepth(void const *left, void const *right) {
+		float d1 = static_cast<const tfxDepthIndex*>(left)->depth;
+		float d2 = static_cast<const tfxDepthIndex*>(right)->depth;
+		return (d2 > d1) - (d2 < d1);
 	}
 
 	static inline int QuickSortPartition(tfxParticleSoA &particles, int start_index, int end_index)
