@@ -6235,10 +6235,9 @@ namespace tfx {
 		new_compute_particle_index = 0;
 
 		tfxU32 next_buffer = !current_ebuff;
-		tfxU32 depth_starting_index = 0;
+		tfxU32 depth_starting_index[tfxLAYERS];
 		current_sprite_buffer = flags & tfxEffectManagerFlags_double_buffer_sprites ? !current_sprite_buffer : 0;
 
-		memset(new_particles_index_start, tfxMAX_UINT, sizeof(tfxU32) * tfxLAYERS);
 		memset(sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 
 		if (flags & tfxEffectManagerFlags_ordered_by_age) {
@@ -6248,11 +6247,9 @@ namespace tfx {
 		}
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
 			for (tfxEachLayer) {
-				int layer_offset = layer * 2;
-				int current_buffer_index = current_pbuff + layer_offset;
-				sprite_index_point[layer] = particle_array_buffers[current_buffer_index].current_size;
+				sprite_index_point[layer] = particle_array_buffers[layer].current_size;
+				depth_starting_index[layer] = depth_indexes[layer][current_depth_index_buffer].current_size;
 			}
-			depth_starting_index = depth_indexes[current_depth_index_buffer].current_size;
 		}
 
 		for (tfxEachLayer) {
@@ -6448,37 +6445,39 @@ namespace tfx {
 
 		}
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
-			if (depth_starting_index < depth_indexes[current_depth_index_buffer].current_size) {
-				std::qsort(&depth_indexes[current_depth_index_buffer][depth_starting_index], depth_indexes[current_depth_index_buffer].current_size - depth_starting_index, sizeof(tfxDepthIndex), SortDepth);
-				tfxU32 next_depth_buffer = !current_depth_index_buffer;
-				tfxU32 current_depth_index = 0;
-				tfxU32 second_index = depth_starting_index;
-				for (auto &depth_index : depth_indexes[current_depth_index_buffer]) {
-					if (depth_starting_index != 0) {
-						while (second_index < depth_indexes[current_depth_index_buffer].current_size && depth_index.depth < depth_indexes[current_depth_index_buffer][second_index].depth) {
-							particle_arrays[ParticleBank(depth_indexes[current_depth_index_buffer][second_index].particle_id)].depth_index[ParticleIndex(depth_indexes[current_depth_index_buffer][second_index].particle_id)] = depth_indexes[next_depth_buffer].current_size;
-							depth_indexes[next_depth_buffer].push_back(depth_indexes[current_depth_index_buffer][second_index++]);
+			for (tfxEachLayer) {
+				if (depth_starting_index[layer] < depth_indexes[layer][current_depth_index_buffer].current_size) {
+					std::qsort(&depth_indexes[layer][current_depth_index_buffer][depth_starting_index[layer]], depth_indexes[layer][current_depth_index_buffer].current_size - depth_starting_index[layer], sizeof(tfxDepthIndex), SortDepth);
+					tfxU32 next_depth_buffer = !current_depth_index_buffer;
+					tfxU32 current_depth_index = 0;
+					tfxU32 second_index = depth_starting_index[layer];
+					for (auto &depth_index : depth_indexes[layer][current_depth_index_buffer]) {
+						if (depth_starting_index[layer] != 0) {
+							while (second_index < depth_indexes[layer][current_depth_index_buffer].current_size && depth_index.depth < depth_indexes[layer][current_depth_index_buffer][second_index].depth) {
+								particle_arrays[ParticleBank(depth_indexes[layer][current_depth_index_buffer][second_index].particle_id)].depth_index[ParticleIndex(depth_indexes[layer][current_depth_index_buffer][second_index].particle_id)] = depth_indexes[layer][next_depth_buffer].current_size;
+								depth_indexes[layer][next_depth_buffer].push_back(depth_indexes[layer][current_depth_index_buffer][second_index++]);
+							}
+						}
+						particle_arrays[ParticleBank(depth_index.particle_id)].depth_index[ParticleIndex(depth_index.particle_id)] = depth_indexes[layer][next_depth_buffer].current_size;
+						depth_indexes[layer][next_depth_buffer].push_back(depth_index);
+						if (++current_depth_index == depth_starting_index[layer])
+							break;
+					}
+					if (depth_starting_index[layer] != 0 && second_index < depth_indexes[layer][current_depth_index_buffer].current_size) {
+						while (second_index < depth_indexes[layer][current_depth_index_buffer].current_size) {
+							particle_arrays[ParticleBank(depth_indexes[layer][current_depth_index_buffer][second_index].particle_id)].depth_index[ParticleIndex(depth_indexes[layer][current_depth_index_buffer][second_index].particle_id)] = depth_indexes[layer][next_depth_buffer].current_size;
+							depth_indexes[layer][next_depth_buffer].push_back(depth_indexes[layer][current_depth_index_buffer][second_index++]);
 						}
 					}
-					particle_arrays[ParticleBank(depth_index.particle_id)].depth_index[ParticleIndex(depth_index.particle_id)] = depth_indexes[next_depth_buffer].current_size;
-					depth_indexes[next_depth_buffer].push_back(depth_index);
-					if (++current_depth_index == depth_starting_index)
-						break;
+					assert(depth_indexes[layer][next_depth_buffer].current_size == depth_indexes[layer][current_depth_index_buffer].current_size);
+					depth_indexes[layer][current_depth_index_buffer].clear();
+					current_depth_index_buffer = next_depth_buffer;
 				}
-				if (depth_starting_index != 0 && second_index < depth_indexes[current_depth_index_buffer].current_size) {
-					while (second_index < depth_indexes[current_depth_index_buffer].current_size) {
-						particle_arrays[ParticleBank(depth_indexes[current_depth_index_buffer][second_index].particle_id)].depth_index[ParticleIndex(depth_indexes[current_depth_index_buffer][second_index].particle_id)] = depth_indexes[next_depth_buffer].current_size;
-						depth_indexes[next_depth_buffer].push_back(depth_indexes[current_depth_index_buffer][second_index++]);
-					}
-				}
-				assert(depth_indexes[next_depth_buffer].current_size == depth_indexes[current_depth_index_buffer].current_size);
-				depth_indexes[current_depth_index_buffer].clear();
-				current_depth_index_buffer = next_depth_buffer;
 			}
 
 			if (!(flags & tfxEffectManagerFlags_update_age_only)) {
 				tmpMTStack(tfxControlWorkEntryOrdered, work);
-				for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+				for (tfxEachLayer) {
 					int particles_to_update = particle_array_buffers[layer].current_size;
 					tfxU32 running_start_index = 0;
 					tfxU32 running_sprite_start_index = 0;
@@ -6510,7 +6509,7 @@ namespace tfx {
 				work.free();
 			}
 
-			for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+			for (tfxEachLayer) {
 				tfxControlWorkEntryOrdered &work_entry = ordered_age_work_entry[layer];
 				work_entry.amount_to_update = particle_array_buffers[layer].current_size;
 				if (work_entry.amount_to_update == 0)
@@ -6536,29 +6535,36 @@ namespace tfx {
 
 			tfxCompleteAllWork(&work_queue);
 
-			depth_indexes[current_depth_index_buffer].clear();
+			for (tfxEachLayer) {
+				depth_indexes[layer][current_depth_index_buffer].clear();
+			}
 			current_depth_index_buffer = !current_depth_index_buffer;
 
 			if (flags & tfxEffectManagerFlags_guarantee_order) {
-				tfxSortWorkEntry &work_entry = sorting_work_entry[0];
-				work_entry.pm = this;
-				if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
-					tfxAddWorkQueueEntry(&work_queue, &work_entry, InsertionSortDepth);
-				}
-				else {
-					InsertionSortDepth(&work_queue, &work_entry);
+				for (tfxEachLayer) {
+					tfxSortWorkEntry &work_entry = sorting_work_entry[layer];
+					work_entry.bank = &particle_arrays;
+					work_entry.depth_indexes = &depth_indexes[layer][current_depth_index_buffer];
+					if (!(flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
+						tfxAddWorkQueueEntry(&work_queue, &work_entry, InsertionSortDepth);
+					}
+					else {
+						InsertionSortDepth(&work_queue, &work_entry);
+					}
 				}
 			}
 			else if (sort_passes > 0) {
-				tfxvec<tfxDepthIndex> &depth_index = depth_indexes[current_depth_index_buffer];
-				for (tfxU32 sorts = 0; sorts != sort_passes; ++sorts) {
-					for (tfxU32 i = 1; i < depth_index.current_size; ++i) {
-						float depth1 = depth_index[i - 1].depth;
-						float depth2 = depth_index[i].depth;
-						if (depth1 < depth2) {
-							particle_arrays[ParticleBank(depth_index[i].particle_id)].depth_index[ParticleIndex(depth_index[i].particle_id)] = i - 1;
-							particle_arrays[ParticleBank(depth_index[i - 1].particle_id)].depth_index[ParticleIndex(depth_index[i - 1].particle_id)] = i;
-							std::swap(depth_index[i], depth_index[i - 1]);
+				for (tfxEachLayer) {
+					tfxvec<tfxDepthIndex> &depth_index = depth_indexes[layer][current_depth_index_buffer];
+					for (tfxU32 sorts = 0; sorts != sort_passes; ++sorts) {
+						for (tfxU32 i = 1; i < depth_index.current_size; ++i) {
+							float depth1 = depth_index[i - 1].depth;
+							float depth2 = depth_index[i].depth;
+							if (depth1 < depth2) {
+								particle_arrays[ParticleBank(depth_index[i].particle_id)].depth_index[ParticleIndex(depth_index[i].particle_id)] = i - 1;
+								particle_arrays[ParticleBank(depth_index[i - 1].particle_id)].depth_index[ParticleIndex(depth_index[i - 1].particle_id)] = i;
+								std::swap(depth_index[i], depth_index[i - 1]);
+							}
 						}
 					}
 				}
@@ -7098,6 +7104,7 @@ namespace tfx {
 		tfxLibrary *library = pm.library;
 
 		tfxU32 running_sprite_index = work_entry->sprite_start_index;
+		tfxU32 sprite_layer = work_entry->sprite_layer;
 
 		const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 		const tfxWideInt relative_flag = tfxWideSetSinglei(tfxEmitterPropertyFlags_relative_position);
@@ -7275,7 +7282,7 @@ namespace tfx {
 					bank.captured_position_x[index + j] = sprites.transform_3d[sprite_depth_index].position.x;
 					bank.captured_position_y[index + j] = sprites.transform_3d[sprite_depth_index].position.y;
 					bank.captured_position_z[index + j] = sprites.transform_3d[sprite_depth_index].position.z;
-					pm.depth_indexes[pm.current_depth_index_buffer][sprite_depth_index].depth = LengthVec3NoSqR(sprites.transform_3d[sprite_depth_index].position - pm.camera_position);
+					pm.depth_indexes[sprite_layer][pm.current_depth_index_buffer][sprite_depth_index].depth = LengthVec3NoSqR(sprites.transform_3d[sprite_depth_index].position - pm.camera_position);
 					running_sprite_index++;
 				}
 			}
@@ -8200,6 +8207,7 @@ namespace tfx {
 					tfxU32 &sprites_index = bank.sprite_index[index + j];
 					float &age = bank.age[index + j];
 					sprites.captured_index[running_sprite_index] = age == 0.f ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + (sprites_index & 0x0FFFFFFF);
+					tfxU32 captured_index = sprites.captured_index[running_sprite_index];
 					sprites_index = (work_entry->sprite_layer << 28) + running_sprite_index;
 					sprites.image_frame_plus[running_sprite_index++] = (billboard_option.a[j] << 24) + ((tfxU32)image_frame.a[j] << 16) + (property_index.a[j]);
 				}
@@ -8482,35 +8490,6 @@ namespace tfx {
 		else if (mode == tfxParticleManagerMode_ordered_by_age)
 			flags = tfxEffectManagerFlags_ordered_by_age;
 
-		if (flags & tfxEffectManagerFlags_ordered_by_age || flags & tfxEffectManagerFlags_order_by_depth) {
-			FreeParticleBanks();
-			for (tfxEachLayer) {
-				tfxParticleSoA lists;
-				tfxU32 index = particle_arrays.locked_push_back(lists);
-				tfxSoABuffer buffer;
-				particle_array_buffers.push_back(buffer);
-				assert(index == particle_array_buffers.current_size - 1);
-				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), tfxMax(max_cpu_particles_per_layer[layer], 8));
-				particle_array_buffers[index].user_data = &particle_arrays.back();
-				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
-			}
-		}
-		/*
-		else if (flags & tfxEffectManagerFlags_order_by_depth) {
-			FreeParticleBanks();
-			for (tfxEachLayerDB) {
-				tfxParticleSoA lists;
-				tfxU32 index = particle_arrays.locked_push_back(lists);
-				tfxSoABuffer buffer;
-				particle_array_buffers.push_back(buffer);
-				assert(index == particle_array_buffers.current_size - 1);
-				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), tfxMax(max_cpu_particles_per_layer[layer / 2], 8));
-				particle_array_buffers[index].user_data = &particle_arrays.back();
-				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
-			}
-		}
-		*/
-
 		if (is_3d)
 			flags |= tfxEffectManagerFlags_3d_effects;
 		else
@@ -8526,7 +8505,6 @@ namespace tfx {
 			}
 		}
 
-		memset(new_particles_index_start, tfxMAX_UINT, 4 * tfxLAYERS);
 		memset(sprite_index_point, 0, 4 * tfxLAYERS);
 
 		ClearSoABuffer(&emitter_buffers);
@@ -8605,6 +8583,8 @@ namespace tfx {
 				ClearSoABuffer(&particle_array_buffers[layer * 2]);
 				ClearSoABuffer(&particle_array_buffers[layer * 2 + 1]);
 			}
+			depth_indexes[layer][0].clear();
+			depth_indexes[layer][1].clear();
 		}
 		if (flags & tfxEffectManagerFlags_unordered) {
 			if (free_memory) {
@@ -8632,8 +8612,6 @@ namespace tfx {
 		free_emitters.clear();
 		particle_indexes.clear();
 		free_particle_indexes.clear();
-		depth_indexes[0].clear();
-		depth_indexes[1].clear();
 		ClearSoABuffer(&emitter_buffers);
 		ClearSoABuffer(&effect_buffers);
 		particle_id = 0;
@@ -8839,7 +8817,7 @@ namespace tfx {
 		float &highest_particle_age = pm.emitters.highest_particle_age[index];
 		tfxEmitterPropertyFlags &property_flags = pm.emitters.property_flags[index];
 		tfxEmitterStateFlags &state_flags = pm.emitters.state_flags[index];
-		tfxU32 &particles_index = pm.emitters.particles_index[index];
+		const tfxU32 particles_index = pm.emitters.particles_index[index];
 		tfxLibrary *library = pm.library;
 
 		captured_position = world_position;
@@ -8896,23 +8874,24 @@ namespace tfx {
 					}
 
 					sprites_count = pm.particle_array_buffers[particles_index].current_size;
-					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && sprites_count + max_spawn_count > FreeSpace(&sprite_buffer)) {
-						AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
-						sprite_buffer.current_size += sprites_count;
+					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
+						if (sprites_count + max_spawn_count > FreeSpace(&sprite_buffer)) {
+							AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
+							sprite_buffer.current_size -= sprite_buffer.current_size - (sprites_count + max_spawn_count);
+						}
+						else {
+							sprite_buffer.current_size += max_spawn_count + sprites_count;
+						}
 					}
-					else if (!(pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation)) {
+					else {
 						sprites_count = sprites_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : sprites_count;
 						sprite_buffer.current_size += sprites_count;
 						max_spawn_count = max_spawn_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : max_spawn_count;
-					}
-					else {
-						sprite_buffer.current_size += sprites_count;
 					}
 
 					sprites_count += max_spawn_count;
 					sprites_index = pm.sprite_index_point[layer];
 					pm.sprite_index_point[layer] += sprites_count;
-					sprite_buffer.current_size += max_spawn_count;
 
 					if (state_flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
@@ -8935,23 +8914,24 @@ namespace tfx {
 					}
 
 					sprites_count = pm.particle_array_buffers[particles_index].current_size;
-					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && sprites_count + max_spawn_count > FreeSpace(&sprite_buffer)) {
-						AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
-						sprite_buffer.current_size += sprites_count;
+					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
+						if (sprites_count + max_spawn_count > FreeSpace(&sprite_buffer)) {
+							AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
+							sprite_buffer.current_size -= sprite_buffer.current_size - (sprites_count + max_spawn_count);
+						}
+						else {
+							sprite_buffer.current_size += max_spawn_count + sprites_count;
+						}
 					}
-					else if (!(pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation)) {
+					else {
 						sprites_count = sprites_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : sprites_count;
 						sprite_buffer.current_size += sprites_count;
 						max_spawn_count = max_spawn_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : max_spawn_count;
-					}
-					else {
-						sprite_buffer.current_size += sprites_count;
 					}
 
 					sprites_count += max_spawn_count;
 					sprites_index = pm.sprite_index_point[layer];
 					pm.sprite_index_point[layer] += sprites_count;
-					sprite_buffer.current_size += max_spawn_count;
 
 					if (state_flags & tfxEmitterStateFlags_is_sub_emitter) {
 						if (age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning)) {
@@ -8970,7 +8950,6 @@ namespace tfx {
 			else {
 				sprites_index = pm.sprite_index_point[layer];
 				pm.sprite_index_point[layer] += max_spawn_count;
-				particles_index = pm.flags & tfxEffectManagerFlags_order_by_depth ? layer * 2 + pm.current_pbuff : layer;
 				if (property_flags & tfxEmitterPropertyFlags_is_3d) {
 					Transform3d(world_rotations, local_rotations, scale, world_position, local_position, translation, matrix, parent_world_rotations, parent_scale, parent_world_position, parent_matrix);
 
@@ -8980,7 +8959,7 @@ namespace tfx {
 
 					tfxSoABuffer &sprite_buffer = pm.sprite_buffer[pm.current_sprite_buffer][layer];
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[layer] > FreeSpace(&sprite_buffer)) {
-						AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
+						AddRows(&sprite_buffer, sprite_buffer.capacity + (pm.sprite_index_point[layer] - FreeSpace(&sprite_buffer)) + 1, true);
 					}
 					else if (sprites_index + max_spawn_count > sprite_buffer.capacity) {
 						pm.sprite_index_point[layer] = sprite_buffer.capacity;
@@ -9008,7 +8987,7 @@ namespace tfx {
 
 					tfxSoABuffer &sprite_buffer = pm.sprite_buffer[pm.current_sprite_buffer][layer];
 					if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation && pm.sprite_index_point[layer] > FreeSpace(&sprite_buffer)) {
-						AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
+						AddRows(&sprite_buffer, sprite_buffer.capacity + (pm.sprite_index_point[layer] - FreeSpace(&sprite_buffer)) + 1, true);
 					}
 					else if (sprites_index + max_spawn_count > sprite_buffer.capacity) {
 						pm.sprite_index_point[layer] = sprite_buffer.capacity;
@@ -9263,8 +9242,6 @@ namespace tfx {
 		work_entry.qty_step_size = step_size;
 		work_entry.amount_to_spawn = 0;
 		work_entry.particle_data = &pm.particle_arrays[particles_index];
-		if (pm.flags & tfxEffectManagerFlags_order_by_depth)
-			pm.new_particles_index_start[layer] = tfxMin(pm.new_particles_index_start[layer], pm.particle_array_buffers[particles_index].current_size);
 
 		if (tween >= 1) {
 			amount_remainder = tween - 1.f;
@@ -9319,6 +9296,8 @@ namespace tfx {
 				//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threadsrandom.Advance();
 				//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
 				//fine and is stable
+				//Another idea: We could split this into 2 functions where where we push all the above spawn functions to the queue for all emitters, then in the second function
+				//we do all of the micro updates for all particles
 				tfxCompleteAllWork(&pm.work_queue);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleMicroUpdate3d);  
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, SpawnParticleAge);  
@@ -11093,6 +11072,7 @@ namespace tfx {
 		const bool line = property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 		const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
 		const float frame = pm.emitters.frame[emitter_index];
+		const tfxU32 layer = properties.layer[property_index];
 
 		//Micro Update
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -11173,9 +11153,8 @@ namespace tfx {
 			if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
 				tfxDepthIndex depth_index;
 				depth_index.particle_id = MakeParticleID(particles_index, index);
-				depth_index.sprite_index = tfxINVALID;
 				depth_index.depth = LengthVec3NoSqR(world_position - pm.camera_position);
-				entry->particle_data->depth_index[index] = pm.PushDepthIndex(depth_index);
+				entry->particle_data->depth_index[index] = pm.PushDepthIndex(layer, depth_index);
 			}
 			tween += entry->qty_step_size;
 		}
@@ -11539,6 +11518,7 @@ namespace tfx {
 		}
 
 		tfxU32 offset = 0;
+		tfxU32 layer = work_entry->sprite_layer;
 		for (int i = work_entry->start_index; i >= 0; --i) {
 			const tfxU32 index = GetCircularIndex(buffer, i);
 			tfxParticleFlags &flags = bank.flags[index];
@@ -11548,7 +11528,7 @@ namespace tfx {
 					pm.FreeParticleIndex(bank.particle_index[index]);
 				}
 				if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
-					pm.depth_indexes[pm.current_depth_index_buffer][bank.depth_index[index]].particle_id = tfxINVALID;
+					pm.depth_indexes[layer][pm.current_depth_index_buffer][bank.depth_index[index]].particle_id = tfxINVALID;
 				}
 			}
 			else if (offset > 0) {
@@ -11558,7 +11538,7 @@ namespace tfx {
 				}
 
 				if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
-					pm.depth_indexes[pm.current_depth_index_buffer][bank.depth_index[index]].particle_id = MakeParticleID(work_entry->current_buffer_index, next_index);
+					pm.depth_indexes[layer][pm.current_depth_index_buffer][bank.depth_index[index]].particle_id = MakeParticleID(work_entry->current_buffer_index, next_index);
 				}
 
 				bank.parent_index[next_index] = bank.parent_index[index];
@@ -11591,20 +11571,18 @@ namespace tfx {
 			}
 		}
 
-		assert(pm.depth_indexes[pm.current_depth_index_buffer].current_size == buffer->current_size);	//depth index size must equal the particle buffer size
-
 		if (offset) {
 			Bump(buffer, offset);
 		}
 
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
-			for (auto &depth_index : pm.depth_indexes[pm.current_depth_index_buffer]) {
+			for (auto &depth_index : pm.depth_indexes[layer][pm.current_depth_index_buffer]) {
 				if (depth_index.particle_id != tfxINVALID) {
-					bank.depth_index[ParticleIndex(depth_index.particle_id)] = pm.depth_indexes[!pm.current_depth_index_buffer].current_size;
-					pm.depth_indexes[!pm.current_depth_index_buffer].push_back(depth_index);
+					bank.depth_index[ParticleIndex(depth_index.particle_id)] = pm.depth_indexes[layer][!pm.current_depth_index_buffer].current_size;
+					pm.depth_indexes[layer][!pm.current_depth_index_buffer].push_back(depth_index);
 				}
 			}
-			assert(pm.depth_indexes[!pm.current_depth_index_buffer].current_size == buffer->current_size);	//depth index size must equal the particle buffer size
+			assert(pm.depth_indexes[layer][!pm.current_depth_index_buffer].current_size == buffer->current_size);	//depth index size must equal the particle buffer size
 		}
 	}
 

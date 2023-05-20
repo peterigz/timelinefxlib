@@ -191,7 +191,6 @@ You can then use layer inside the loop to get the current layer
 #define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
 
 //Internal use macro
-#define tfxEachLayerDB int layer = 0; layer != tfxLAYERS * 2; ++layer
 #endif 
 //type defs
 	typedef unsigned int tfxU32;
@@ -6595,7 +6594,6 @@ You can then use layer inside the loop to get the current layer
 	struct tfxDepthIndex {
 		tfxParticleID particle_id;
 		float depth;
-		tfxU32 sprite_index;
 	};
 
 	//These all point into a tfxSoABuffer, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
@@ -6921,7 +6919,6 @@ You can then use layer inside the loop to get the current layer
 		tfxParticleManager *pm;
 		tfxU32 sprite_layer;
 		tfxU32 current_buffer_index;
-		tfxU32 next_buffer_index;
 		tfxU32 amount_to_update;
 		tfxU32 start_index;
 		tfxU32 sprite_start_index;
@@ -6942,7 +6939,8 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	struct tfxSortWorkEntry {
-		tfxParticleManager *pm;
+		tfxBucketArray<tfxParticleSoA> *bank;
+		tfxvec<tfxDepthIndex> *depth_indexes;
 	};
 
 	struct tfxEffectData {
@@ -7009,7 +7007,7 @@ You can then use layer inside the loop to get the current layer
 
 		tfxvec<tfxParticleID> particle_indexes;
 		tfxvec<tfxU32> free_particle_indexes;
-		tfxvec<tfxDepthIndex> depth_indexes[2];
+		tfxvec<tfxDepthIndex> depth_indexes[tfxLAYERS][2];
 		tfxvec<tfxU32> effects_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> free_effects;
@@ -7044,13 +7042,11 @@ You can then use layer inside the loop to get the current layer
 		//The current effect buffer in use, can be either 0 or 1
 		unsigned int current_ebuff;
 		unsigned int next_ebuff;
-		//When using depth sorting in 3d, the particles are double buffered
-		unsigned int current_pbuff;
+
 		tfxU32 effects_start_size[tfxMAXDEPTH];
 		tfxU32 emitter_start_size[tfxMAXDEPTH];
 
 		tfxU32 sprite_index_point[tfxLAYERS];
-		tfxU32 new_particles_index_start[tfxLAYERS];
 
 		int mt_batch_size;
 
@@ -7075,7 +7071,6 @@ You can then use layer inside the loop to get the current layer
 			lookup_mode(tfxFast),
 			max_effects(10000),
 			current_ebuff(0),
-			current_pbuff(0),
 			highest_compute_controller_index(0),
 			new_compute_particle_ptr(NULL),
 			compute_controller_ptr(NULL),
@@ -7147,9 +7142,9 @@ You can then use layer inside the loop to get the current layer
 			free_particle_indexes.push_back(index);
 			index = tfxINVALID;
 		}
-		inline tfxU32 PushDepthIndex(tfxDepthIndex depth_index) {
-			depth_indexes[current_depth_index_buffer].push_back(depth_index);
-			return depth_indexes[current_depth_index_buffer].current_size - 1;
+		inline tfxU32 PushDepthIndex(tfxU32 layer, tfxDepthIndex depth_index) {
+			depth_indexes[layer][current_depth_index_buffer].push_back(depth_index);
+			return depth_indexes[layer][current_depth_index_buffer].current_size - 1;
 		}
 		void FreeParticleList(tfxU32 index);
 		//Clear all effects and particles in the particle manager
@@ -7978,9 +7973,8 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	static inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry) {
-		tfxParticleManager &pm = *static_cast<tfxSortWorkEntry*>(work_entry)->pm;
-		tfxBucketArray<tfxParticleSoA> &bank = pm.particle_arrays;
-		tfxvec<tfxDepthIndex> &depth_indexes = pm.depth_indexes[pm.current_depth_index_buffer];
+		tfxBucketArray<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
+		tfxvec<tfxDepthIndex> &depth_indexes = *static_cast<tfxSortWorkEntry*>(work_entry)->depth_indexes;
 		for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
 			tfxDepthIndex key = depth_indexes[i];
 			int j = i - 1;
