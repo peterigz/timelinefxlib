@@ -6997,6 +6997,7 @@ You can then use layer inside the loop to get the current layer
 		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxSoABuffer> particle_array_buffers;
 		tfxBucketArray<tfxParticleSoA> particle_arrays;
+		tfxU32 temp;
 
 		tfxMemoryArenaManager particle_array_allocator;
 		//In unordered mode emitters that expire have their particle banks added here to be reused
@@ -7984,6 +7985,9 @@ You can then use layer inside the loop to get the current layer
 				--j;
 			}
 			depth_indexes[j + 1] = key;
+			tfxU32 id = depth_indexes[j + 1].particle_id;
+			tfxU32 bank_id = ParticleBank(depth_indexes[j + 1].particle_id);
+			tfxU32 index = ParticleIndex(depth_indexes[j + 1].particle_id);
 			bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
 		}
 	}
