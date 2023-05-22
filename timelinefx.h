@@ -1869,12 +1869,12 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
-	static inline void GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_size = 0, bool keep_data = true) {
+	static inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_size = 0, bool keep_data = true) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
 		tfxU32 new_capacity = 0;
 		if (new_size > 0) {
 			if (new_size < buffer->capacity)
-				return;
+				return false;
 			new_capacity = new_size;
 		}
 		else {
@@ -1917,6 +1917,8 @@ You can then use layer inside the loop to get the current layer
 		if (buffer->resize_callback) {
 			buffer->resize_callback(buffer, first_new_index);
 		}
+
+		return true;
 	}
 
 	static inline void GrowArraysBySpecificAmount(tfxSoABuffer *buffer, tfxU32 extra_size) {
@@ -1954,7 +1956,19 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
-	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow = false) {
+	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow, bool &grew) {
+		assert(buffer->data);			//No data allocated in buffer
+		tfxU32 first_new_index = buffer->current_size;
+		buffer->current_size += amount;
+		if (grow && buffer->current_size >= buffer->capacity) {
+			grew = GrowArrays(buffer, buffer->capacity);
+		}
+		assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
+		return first_new_index;
+	}
+
+	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
+	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 first_new_index = buffer->current_size;
 		buffer->current_size += amount;
@@ -1966,7 +1980,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Decrease the current size of a SoA Buffer.
-	static inline void PopRow(tfxSoABuffer *buffer, bool grow = false) {
+	static inline void PopRow(tfxSoABuffer *buffer) {
 		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 		buffer->current_size--;
 	}
@@ -6997,7 +7011,6 @@ You can then use layer inside the loop to get the current layer
 		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxSoABuffer> particle_array_buffers;
 		tfxBucketArray<tfxParticleSoA> particle_arrays;
-		tfxU32 temp;
 
 		tfxMemoryArenaManager particle_array_allocator;
 		//In unordered mode emitters that expire have their particle banks added here to be reused
