@@ -6033,6 +6033,7 @@ namespace tfx {
 		sort_passes = tfxMax(effect.sort_passes, sort_passes);
 		sort_passes = tfxMin(5, sort_passes);
 
+		tfxU32 seed_index = 0;
 		for (auto &e : effect.GetInfo().sub_effectors) {
 			if (e.property_flags & tfxEmitterPropertyFlags_enabled) {
 				unsigned int index = GetEmitterSlot();
@@ -6069,6 +6070,7 @@ namespace tfx {
 				emitters.emitter_size[index] = 0.f;
 				emitters.hierarchy_depth[index] = hierarchy_depth;
 				emitters.world_rotations[index] = 0.f;
+				emitters.seed_index[index] = seed_index++;
 				e.pm_index = index;		//Doesn't have much use beyond the editor?
 				//----Handle
 				if (e.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
@@ -9128,11 +9130,11 @@ namespace tfx {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(2);
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(2 + pm.emitters.seed_index[emitter_index]);
 
 		const float life = pm.emitters.life[emitter_index];
 		const float life_variation = pm.emitters.life_variation[emitter_index];
@@ -9209,14 +9211,14 @@ namespace tfx {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(3);
 		float tween = entry->tween;
-		const tfxU32 index = entry->emitter_index;
+		const tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(3 + pm.emitters.seed_index[emitter_index]);
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
-		const tfxU32 particles_index = pm.emitters.particles_index[index];
-		const tfxU32 property_index = pm.emitters.properties_index[index];
-		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[index];
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
+		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9243,17 +9245,17 @@ namespace tfx {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(4);
 		float tween = entry->tween;
-		tfxU32 index = entry->emitter_index;
+		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(4 + pm.emitters.seed_index[emitter_index]);
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 
-		const tfxVec2 size = pm.emitters.size[index];
-		const tfxVec2 size_variation = pm.emitters.size_variation[index];
-		const tfxU32 particles_index = pm.emitters.particles_index[index];
-		const tfxU32 property_index = pm.emitters.properties_index[index];
-		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[index];
+		const tfxVec2 size = pm.emitters.size[emitter_index];
+		const tfxVec2 size_variation = pm.emitters.size_variation[emitter_index];
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
+		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 		tfxVec2 &image_size = properties.image[property_index]->image_size;
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -9284,17 +9286,17 @@ namespace tfx {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(5);
 		float tween = entry->tween;
-		tfxU32 index = entry->emitter_index;
+		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(5 + pm.emitters.seed_index[emitter_index]);
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 
-		const tfxVec2 size = pm.emitters.size[index];
-		const tfxVec2 size_variation = pm.emitters.size_variation[index];
-		const tfxU32 particles_index = pm.emitters.particles_index[index];
-		const tfxU32 property_index = pm.emitters.properties_index[index];
-		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[index];
+		const tfxVec2 size = pm.emitters.size[emitter_index];
+		const tfxVec2 size_variation = pm.emitters.size_variation[emitter_index];
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
+		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 		tfxVec2 &image_size = properties.image[property_index]->image_size;
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -9326,15 +9328,15 @@ namespace tfx {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(6);
 		float tween = entry->tween;
-		tfxU32 index = entry->emitter_index;
+		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
-		const float emitter_noise_offset_variation = pm.emitters.noise_offset_variation[index];
-		const float emitter_noise_offset = pm.emitters.noise_offset[index];
-		const float emitter_noise_resolution = pm.emitters.noise_resolution[index];
-		const float parent_noise_base_offset = pm.effects.noise_base_offset[pm.emitters.parent_index[index]];
-		const tfxU32 particles_index = pm.emitters.particles_index[index];
+		random.AlterSeed(6 + pm.emitters.seed_index[emitter_index]);
+		const float emitter_noise_offset_variation = pm.emitters.noise_offset_variation[emitter_index];
+		const float emitter_noise_offset = pm.emitters.noise_offset[emitter_index];
+		const float emitter_noise_resolution = pm.emitters.noise_resolution[emitter_index];
+		const float parent_noise_base_offset = pm.effects.noise_base_offset[pm.emitters.parent_index[emitter_index]];
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9354,14 +9356,14 @@ namespace tfx {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(7);
 		float tween = entry->tween;
-		tfxU32 index = entry->emitter_index;
+		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(7 + pm.emitters.seed_index[emitter_index]);
 
-		const float spin_variation = pm.emitters.spin_variation[index];
-		const float spin = pm.emitters.spin[index];
-		const tfxU32 particles_index = pm.emitters.particles_index[index];
+		const float spin_variation = pm.emitters.spin_variation[emitter_index];
+		const float spin = pm.emitters.spin[emitter_index];
+		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9380,10 +9382,10 @@ namespace tfx {
 
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(8);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(8 + pm.emitters.seed_index[emitter_index]);
 
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const float spin_variation = pm.emitters.spin_variation[emitter_index];
@@ -9424,10 +9426,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(9);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(9 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 		const tfxVec3 emitter_captured_position = pm.emitters.captured_position[emitter_index];
@@ -9465,10 +9467,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(10);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(10 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 		const tfxVec3 emitter_captured_position = pm.emitters.captured_position[emitter_index];
@@ -9507,10 +9509,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(11);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(11 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
@@ -9577,10 +9579,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(12);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(12 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
@@ -9660,10 +9662,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(13);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(13 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
@@ -9844,10 +9846,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(14);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(14 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
@@ -10210,10 +10212,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(15);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(15 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
@@ -10305,9 +10307,9 @@ namespace tfx {
 		tfxRandom random = entry->pm->random;
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
-		random.AlterSeed(16 + emitter_index);
 		tfxParticleManager &pm = *entry->pm;
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
+		random.AlterSeed(16 + pm.emitters.seed_index[emitter_index]);
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 		const tfxVec3 emitter_captured_position = pm.emitters.captured_position[emitter_index];
@@ -10381,10 +10383,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(17);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(17 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
@@ -10435,10 +10437,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(18);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(18 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
@@ -10485,10 +10487,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(19);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(19 + pm.emitters.seed_index[emitter_index]);
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
@@ -10593,10 +10595,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(20);
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		random.AlterSeed(20 + pm.emitters.seed_index[emitter_index]);
 		const float weight = pm.emitters.weight[emitter_index];
 		const float weight_variation = pm.emitters.weight_variation[emitter_index];
 		tfxLibrary *library = pm.library;
@@ -10623,10 +10625,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(21);
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		random.AlterSeed(21 + pm.emitters.seed_index[emitter_index]);
 		tfxLibrary *library = pm.library;
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
 		const float velocity = pm.emitters.velocity[emitter_index];
@@ -10646,10 +10648,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(22);
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
+		random.AlterSeed(22 + pm.emitters.seed_index[emitter_index]);
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
 		const tfxAngleSettingFlags angle_settings = properties.angle_settings[property_index];
@@ -10677,10 +10679,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(23);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(23 + pm.emitters.seed_index[emitter_index]);
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
@@ -10786,10 +10788,10 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(24);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
 		tfxParticleManager &pm = *entry->pm;
+		random.AlterSeed(24 + pm.emitters.seed_index[emitter_index]);
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;

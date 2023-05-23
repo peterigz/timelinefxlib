@@ -6206,6 +6206,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 *hierarchy_depth;
 		tfxU32 *sprites_count;
 		tfxU32 *sprites_index;
+		tfxU32 *seed_index;
 		tfxKey *path_hash;
 
 		//Spawn controls
@@ -6275,6 +6276,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, parent_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_count));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, seed_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, properties_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, info_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, hierarchy_depth));
