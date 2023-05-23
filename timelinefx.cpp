@@ -6000,7 +6000,6 @@ namespace tfx {
 
 	tfxU32 tfxParticleManager::AddEffect(tfxEffectEmitter &effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning) {
 		tfxPROFILE;
-		SetSeed(this, 11);
 		assert(effect.type == tfxEffectType);
 		assert(effect.library == library);	//The effect must belong to the same library that is assigned to the particle manager
 		if (flags & tfxEffectManagerFlags_use_compute_shader && highest_compute_controller_index >= max_compute_controllers && free_compute_controllers.empty())
@@ -6410,7 +6409,6 @@ namespace tfx {
 		}
 		current_depth_index_buffer = !current_depth_index_buffer;
 
-		/*
 		if (flags & tfxEffectManagerFlags_order_by_depth) {
 			if (flags & tfxEffectManagerFlags_guarantee_order) {
 				for (tfxEachLayer) {
@@ -6443,7 +6441,6 @@ namespace tfx {
 				}
 			}
 		}
-		*/
 
 		//Add Subeffects to the next buffer
 		for (int depth = 1; depth != tfxMAXDEPTH; ++depth) {

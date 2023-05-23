@@ -7788,6 +7788,22 @@ You can then use layer inside the loop to get the current layer
 		return (d2 > d1) - (d2 < d1);
 	}
 
+	static inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry) {
+		tfxBucketArray<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
+		tfxvec<tfxDepthIndex> &depth_indexes = *static_cast<tfxSortWorkEntry*>(work_entry)->depth_indexes;
+		for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
+			tfxDepthIndex key = depth_indexes[i];
+			int j = i - 1;
+			while (j >= 0 && key.depth > depth_indexes[j].depth) {
+				depth_indexes[j + 1] = depth_indexes[j];
+				bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
+				--j;
+			}
+			depth_indexes[j + 1] = key;
+			bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
+		}
+	}
+
 	static inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
 		for (tfxU32 i = 1; i < particles.current_size; ++i) {
 			tfxParticleFrame key = particles[i];
