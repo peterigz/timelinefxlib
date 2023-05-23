@@ -7099,6 +7099,9 @@ You can then use layer inside the loop to get the current layer
 			index = tfxINVALID;
 		}
 		inline tfxU32 PushDepthIndex(tfxU32 layer, tfxDepthIndex depth_index) {
+			if (depth_indexes[layer][current_depth_index_buffer].current_size == 5000) {
+				int d = 0;
+			}
 			depth_indexes[layer][current_depth_index_buffer].push_back(depth_index);
 			return depth_indexes[layer][current_depth_index_buffer].current_size - 1;
 		}

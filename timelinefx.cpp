@@ -6299,11 +6299,14 @@ namespace tfx {
 		if (!(flags & tfxEffectManagerFlags_unordered)) {
 			for (tfxEachLayer) {
 				if (depth_starting_index[layer] < depth_indexes[layer][current_depth_index_buffer].current_size) {
+					tfxU32 next_depth_buffer = !current_depth_index_buffer;
+					if (depth_indexes[layer][next_depth_buffer].capacity < depth_indexes[layer][current_depth_index_buffer].capacity) {
+						depth_indexes[layer][next_depth_buffer].reserve(depth_indexes[layer][current_depth_index_buffer].capacity);
+					}
 					if (flags & tfxEffectManagerFlags_order_by_depth) {
 						//No need to qsort ordered by age as the depth with all be 0 (depth is particle age)
 						std::qsort(&depth_indexes[layer][current_depth_index_buffer][depth_starting_index[layer]], depth_indexes[layer][current_depth_index_buffer].current_size - depth_starting_index[layer], sizeof(tfxDepthIndex), SortDepth);
 					}
-					tfxU32 next_depth_buffer = !current_depth_index_buffer;
 					tfxU32 current_depth_index = 0;
 					tfxU32 second_index = depth_starting_index[layer];
 					for (auto &depth_index : depth_indexes[layer][current_depth_index_buffer]) {
@@ -6320,6 +6323,8 @@ namespace tfx {
 					}
 					if (depth_starting_index[layer] != 0 && second_index < depth_indexes[layer][current_depth_index_buffer].current_size) {
 						while (second_index < depth_indexes[layer][current_depth_index_buffer].current_size) {
+							tfxU32 bank = ParticleBank(depth_indexes[layer][current_depth_index_buffer][second_index].particle_id);
+							tfxU32 index = ParticleIndex(depth_indexes[layer][current_depth_index_buffer][second_index].particle_id);
 							particle_arrays[ParticleBank(depth_indexes[layer][current_depth_index_buffer][second_index].particle_id)].depth_index[ParticleIndex(depth_indexes[layer][current_depth_index_buffer][second_index].particle_id)] = depth_indexes[layer][next_depth_buffer].current_size;
 							depth_indexes[layer][next_depth_buffer].push_back(depth_indexes[layer][current_depth_index_buffer][second_index++]);
 						}
@@ -8686,7 +8691,7 @@ namespace tfx {
 				if (sprites_count + max_spawn_count > FreeSpace(&sprite_buffer)) {
 					AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
 					if (!(pm.flags & tfxEffectManagerFlags_unordered)) {
-						pm.depth_indexes[layer][pm.current_depth_index_buffer].resize(sprite_buffer.capacity);
+						pm.depth_indexes[layer][pm.current_depth_index_buffer].reserve(sprite_buffer.capacity);
 					}
 					sprite_buffer.current_size -= sprite_buffer.current_size - (sprites_count + max_spawn_count);
 				}
@@ -8729,7 +8734,7 @@ namespace tfx {
 				if (sprites_count + max_spawn_count > FreeSpace(&sprite_buffer)) {
 					AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
 					if (!(pm.flags & tfxEffectManagerFlags_unordered)) {
-						pm.depth_indexes[layer][pm.current_depth_index_buffer].resize(sprite_buffer.capacity);
+						pm.depth_indexes[layer][pm.current_depth_index_buffer].reserve(sprite_buffer.capacity);
 					}
 					sprite_buffer.current_size -= sprite_buffer.current_size - (sprites_count + max_spawn_count);
 				}
