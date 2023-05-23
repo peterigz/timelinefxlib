@@ -6170,12 +6170,7 @@ You can then use layer inside the loop to get the current layer
 		}
 	};
 
-#define tfx2DTRANSFORMCALLBACK(name) void *name(const tfxVec2 local_position, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position)
-	typedef tfx2DTRANSFORMCALLBACK(tfxParticleTransformCallback2d);
-
 	struct tfxEmitterSoA {
-		void(**transform_particle_callback2d)(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position);
-
 		//State data
 		float *frame;
 		float *age;
@@ -6251,7 +6246,6 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	inline void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(void*), offsetof(tfxEmitterSoA, transform_particle_callback2d));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, frame));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, age));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, highest_particle_age));

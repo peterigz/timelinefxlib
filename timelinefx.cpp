@@ -6108,22 +6108,6 @@ namespace tfx {
 					emitters.highest_particle_age[index] = tfxFRAME_LENGTH * 2.f;
 				}
 
-				if (!effect.Is3DEffect()) {
-					properties.billboard_option[e.property_index] = properties.angle_settings[e.property_index] == tfxAngleSettingFlags_align_roll ? (tfxBillboardingOptions)1 : (tfxBillboardingOptions)0;
-					if (e.property_flags & tfxEmitterPropertyFlags_relative_position && (e.property_flags & tfxEmitterPropertyFlags_relative_angle || (e.property_flags & tfxEmitterPropertyFlags_edge_traversal && properties.emission_type[e.property_index] == tfxLine))) {
-						emitters.transform_particle_callback2d[index] = TransformParticlePositionRelativeLine;
-					}
-					else if (e.property_flags & tfxEmitterPropertyFlags_relative_position) {
-						emitters.transform_particle_callback2d[index] = TransformParticlePositionRelative;
-					}
-					else if (e.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-						emitters.transform_particle_callback2d[index] = TransformParticlePositionAngle;
-					}
-					else {
-						emitters.transform_particle_callback2d[index] = TransformParticlePosition;
-					}
-				}
-
 				/*if (flags & tfxEffectManagerFlags_use_compute_shader && e.GetInfo().sub_effectors.empty()) {
 					int free_slot = AddComputeController();
 					if (free_slot != -1) {
@@ -10319,9 +10303,9 @@ namespace tfx {
 		tfxPROFILE;
 		tfxSpawnWorkEntry *entry = static_cast<tfxSpawnWorkEntry*>(data);
 		tfxRandom random = entry->pm->random;
-		random.AlterSeed(16);
 		float tween = entry->tween;
 		tfxU32 emitter_index = entry->emitter_index;
+		random.AlterSeed(16 + emitter_index);
 		tfxParticleManager &pm = *entry->pm;
 		tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertiesSoA &properties = *entry->properties;
@@ -10745,7 +10729,6 @@ namespace tfx {
 		const tfxMatrix4 matrix = pm.emitters.matrix[emitter_index];
 		const tfxEmissionType emission_type = properties.emission_type[property_index];
 		const tfxVec2 emitter_size = pm.emitters.emitter_size[emitter_index].xy();
-		auto transform_particle_callback2d = pm.emitters.transform_particle_callback2d[emitter_index];
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
