@@ -1869,17 +1869,10 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
-	static inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_size = 0, bool keep_data = true) {
+	static inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
 		tfxU32 new_capacity = 0;
-		if (new_size > 0) {
-			if (new_size < buffer->capacity)
-				return false;
-			new_capacity = new_size;
-		}
-		else {
-			new_capacity = buffer->current_size > buffer->capacity ? buffer->current_size + buffer->current_size / 2 : buffer->capacity + buffer->capacity / 2;
-		}
+		new_capacity = new_target_size > buffer->capacity ? new_target_size + new_target_size / 2 : buffer->capacity + buffer->capacity / 2;
 		new_capacity = (new_capacity / buffer->block_size + 1) * buffer->block_size;
 		void *new_data = tfxALLOCATE(0, 0, new_capacity * buffer->struct_size);
 		assert(new_data);	//Unable to allocate memory. Todo: better handling
@@ -1887,14 +1880,14 @@ You can then use layer inside the loop to get the current layer
 		size_t running_offset = 0;
 		if (keep_data) {
 			for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
-				if (((buffer->start_index + buffer->current_size - 1) % buffer->capacity) < buffer->start_index) {
-					size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
-					size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
+				size_t capacity = buffer->capacity * buffer->array_ptrs[i].unit_size;
+				size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
+				if ((buffer->start_index + buffer->current_size - 1) > buffer->capacity) {
 					memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 					memcpy((char*)new_data + (capacity - start_index) + running_offset, (char*)buffer->array_ptrs[i].ptr, (size_t)(start_index));
 				}
 				else {
-					memcpy((char*)new_data + running_offset, buffer->array_ptrs[i].ptr, buffer->array_ptrs[i].unit_size * buffer->capacity);
+					memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 				}
 				running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
 
@@ -1905,7 +1898,6 @@ You can then use layer inside the loop to get the current layer
 		buffer->data = new_data;
 		buffer->capacity = new_capacity;
 		buffer->current_arena_size = new_capacity * buffer->struct_size;
-		buffer->start_index = 0;
 		running_offset = 0;
 		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
@@ -1915,25 +1907,21 @@ You can then use layer inside the loop to get the current layer
 		free(old_data);
 
 		if (buffer->resize_callback) {
-			buffer->resize_callback(buffer, first_new_index);
+			buffer->resize_callback(buffer, first_new_index - buffer->start_index);
 		}
 
-		return true;
-	}
+		buffer->start_index = 0;
 
-	static inline void GrowArraysBySpecificAmount(tfxSoABuffer *buffer, tfxU32 extra_size) {
-		assert(extra_size > 0);		//Must specify a size
-		assert(buffer->data);		//Must be a valid SoA buffer
-		GrowArrays(buffer, buffer->capacity, buffer->capacity + extra_size);
+		return true;
 	}
 
 	//Increase current size of a SoA Buffer and grow if necessary.
 	static inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
 		assert(buffer->data);			//No data allocated in buffer
-		buffer->current_size = new_size;
-		if (buffer->current_size >= buffer->capacity) {
-			GrowArrays(buffer, buffer->capacity);
+		if (new_size >= buffer->capacity) {
+			GrowArrays(buffer, buffer->capacity, new_size);
 		}
+		buffer->current_size = new_size;
 	}
 
 	//Increase current size of a SoA Buffer and grow if necessary.
@@ -1947,10 +1935,11 @@ You can then use layer inside the loop to get the current layer
 	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
 	static inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
 		assert(buffer->data);			//No data allocated in buffer
-		buffer->current_size++;
-		if (grow && buffer->current_size == buffer->capacity) {
-			GrowArrays(buffer, buffer->capacity);
+		tfxU32 new_size = ++buffer->current_size;
+		if (grow && new_size == buffer->capacity) {
+			GrowArrays(buffer, buffer->capacity, new_size);
 		}
+		buffer->current_size = new_size;
 		assert(buffer->current_size <= buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return buffer->current_size - 1;
 	}
@@ -1959,10 +1948,11 @@ You can then use layer inside the loop to get the current layer
 	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow, bool &grew) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 first_new_index = buffer->current_size;
-		buffer->current_size += amount;
-		if (grow && buffer->current_size >= buffer->capacity) {
-			grew = GrowArrays(buffer, buffer->capacity);
+		tfxU32 new_size = buffer->current_size += amount;
+		if (grow && new_size >= buffer->capacity) {
+			grew = GrowArrays(buffer, buffer->capacity, new_size);
 		}
+		buffer->current_size = new_size;
 		assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return first_new_index;
 	}
@@ -1971,10 +1961,11 @@ You can then use layer inside the loop to get the current layer
 	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 first_new_index = buffer->current_size;
-		buffer->current_size += amount;
-		if (grow && buffer->current_size >= buffer->capacity) {
-			GrowArrays(buffer, buffer->capacity);
+		tfxU32 new_size = buffer->current_size += amount;
+		if (grow && new_size >= buffer->capacity) {
+			GrowArrays(buffer, buffer->capacity, new_size);
 		}
+		buffer->current_size = new_size;
 		assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 		return first_new_index;
 	}
@@ -7432,7 +7423,7 @@ You can then use layer inside the loop to get the current layer
 
 		inline void MaybeGrowProperties(tfxU32 size_offset) {
 			if (emitter_properties_buffer.current_size >= emitter_properties_buffer.capacity - size_offset) {
-				GrowArrays(&emitter_properties_buffer, emitter_properties_buffer.capacity);
+				GrowArrays(&emitter_properties_buffer, emitter_properties_buffer.capacity, emitter_properties_buffer.capacity + 1);
 			}
 		}
 

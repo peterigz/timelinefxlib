@@ -6000,6 +6000,7 @@ namespace tfx {
 
 	tfxU32 tfxParticleManager::AddEffect(tfxEffectEmitter &effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning) {
 		tfxPROFILE;
+		SetSeed(this, 11);
 		assert(effect.type == tfxEffectType);
 		assert(effect.library == library);	//The effect must belong to the same library that is assigned to the particle manager
 		if (flags & tfxEffectManagerFlags_use_compute_shader && highest_compute_controller_index >= max_compute_controllers && free_compute_controllers.empty())
@@ -9028,14 +9029,17 @@ namespace tfx {
 			tfxCompleteAllWork(&pm.work_queue);
 		}
 		bool grew = false;
+		tfxU32 start_index = pm.particle_array_buffers[particles_index].start_index;
 		work_entry.spawn_start_index = AddRows(&pm.particle_array_buffers[particles_index], work_entry.amount_to_spawn, true, grew);
-		if (grew && !(pm.flags & tfxEffectManagerFlags_unordered)) {
+		if (grew && !(pm.flags & tfxEffectManagerFlags_unordered) && start_index > 0) {
 			//Todo: This should be avoided by allocating the correct amount for the particle buffer ahead of time
 			//If the particle buffer is allocated a larger memory size then the ring buffer index has to be reset in the depth buffer list
 			//to align them to the correct particle ids again.
 			tfxParticleSoA &bank = pm.particle_arrays[particles_index];
-			assert(pm.particle_array_buffers[particles_index].start_index == 0); //If start_index isn't 0 after the arrays grew then something went wrong with the allocation
-			for (int i = 0; i != work_entry.spawn_start_index; ++i) {
+			//assert(pm.particle_array_buffers[particles_index].start_index == 0); //If start_index isn't 0 after the arrays grew then something went wrong with the allocation
+			for (int i = 0; i != pm.particle_array_buffers[particles_index].current_size - work_entry.amount_to_spawn; ++i) {
+				tfxU32 depth_index = bank.depth_index[i];
+				tfxU32 depth_id = pm.depth_indexes[layer][pm.current_depth_index_buffer][bank.depth_index[i]].particle_id;
 				pm.depth_indexes[layer][pm.current_depth_index_buffer][bank.depth_index[i]].particle_id = MakeParticleID(particles_index, i);
 			}
 		}
