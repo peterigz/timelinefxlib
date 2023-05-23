@@ -8722,11 +8722,11 @@ namespace tfx {
 
 			if (state_flags & tfxEmitterStateFlags_is_sub_emitter) {
 				if (age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning))
-					amount_spawned = SpawnWideParticles3d(pm, *spawn_work_entry, max_spawn_count);
+					amount_spawned = SpawnParticles3d(pm, *spawn_work_entry, max_spawn_count);
 			}
 			else {
 				if (!(pm.flags & tfxEffectManagerFlags_disable_spawning))
-					amount_spawned = SpawnWideParticles3d(pm, *spawn_work_entry, max_spawn_count);
+					amount_spawned = SpawnParticles3d(pm, *spawn_work_entry, max_spawn_count);
 			}
 			sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 			pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
@@ -8765,12 +8765,12 @@ namespace tfx {
 
 			if (state_flags & tfxEmitterStateFlags_is_sub_emitter) {
 				if (age > 0 && !(pm.flags & tfxEffectManagerFlags_disable_spawning)) {
-					amount_spawned = SpawnWideParticles2d(pm, *spawn_work_entry, max_spawn_count);
+					amount_spawned = SpawnParticles2d(pm, *spawn_work_entry, max_spawn_count);
 				}
 			}
 			else {
 				if (!(pm.flags & tfxEffectManagerFlags_disable_spawning)) {
-					amount_spawned = SpawnWideParticles2d(pm, *spawn_work_entry, max_spawn_count);
+					amount_spawned = SpawnParticles2d(pm, *spawn_work_entry, max_spawn_count);
 				}
 			}
 			sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
@@ -8848,7 +8848,7 @@ namespace tfx {
 		tfxCompleteAllWork(&pm.work_queue);
 	}
 
-	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &work_entry, tfxU32 max_spawn_count) {
+	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &work_entry, tfxU32 max_spawn_count) {
 		const tfxEmitterPropertiesSoA &properties = *work_entry.properties;
 		const tfxEmitterStateFlags state_flags = pm.emitters.state_flags[work_entry.emitter_index];
 		const tfxEmitterStateFlags parent_state_flags = pm.emitters.state_flags[work_entry.emitter_index];
@@ -8984,7 +8984,7 @@ namespace tfx {
 		return work_entry.amount_to_spawn;
 	}
 
-	tfxU32 SpawnWideParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &work_entry, tfxU32 max_spawn_count) {
+	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &work_entry, tfxU32 max_spawn_count) {
 		const tfxEmitterPropertiesSoA &properties = *work_entry.properties;
 		const tfxEmitterStateFlags state_flags = pm.emitters.state_flags[work_entry.emitter_index];
 		const tfxEmitterStateFlags parent_state_flags = pm.emitters.state_flags[work_entry.emitter_index];

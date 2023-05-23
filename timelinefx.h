@@ -7310,7 +7310,7 @@ You can then use layer inside the loop to get the current layer
 
 	void CompletePMWork(tfxParticleManager &pm);
 	//Wide mt versions
-	tfxU32 SpawnWideParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
+	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
 	void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleArea2d(tfxWorkQueue *queue, void *data);
@@ -7326,7 +7326,7 @@ You can then use layer inside the loop to get the current layer
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
 
-	tfxU32 SpawnWideParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
+	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
 	void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleLine3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleArea3d(tfxWorkQueue *queue, void *data);
