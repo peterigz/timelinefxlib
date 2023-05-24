@@ -6871,20 +6871,6 @@ You can then use layer inside the loop to get the current layer
 		tfxSpriteSoA *sprites;
 	};
 
-	struct tfxControlWorkEntryOrdered {
-		tfxParticleManager *pm;
-		tfxU32 sprite_layer;
-		tfxU32 current_buffer_index;
-		tfxU32 amount_to_update;
-		tfxU32 start_index;
-		tfxU32 sprite_start_index;
-		tfxU32 end_index;
-		tfxU32 wide_end_index;
-		tfxU32 start_diff;
-		bool calculate_depth;
-		tfxSpriteSoA *sprites;
-	};
-
 	struct tfxParticleAgeWorkEntry {
 		tfxU32 start_index;
 		tfxU32 emitter_index;
@@ -6958,7 +6944,6 @@ You can then use layer inside the loop to get the current layer
 		//In unordered mode emitters that expire have their particle banks added here to be reused
 		tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 		//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
-		tfxControlWorkEntryOrdered ordered_age_work_entry[tfxLAYERS * 2];
 		tfxSortWorkEntry sorting_work_entry[tfxLAYERS];
 
 		tfxvec<tfxParticleID> particle_indexes;
@@ -7037,7 +7022,7 @@ You can then use layer inside the loop to get the current layer
 			mt_batch_size(512),
 			current_sprite_buffer(0),
 			current_depth_index_buffer(0),
-			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_comput_controllers")),
+			free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_compute_controllers")),
 			library(NULL),
 			sort_passes(0)
 		{
@@ -7285,28 +7270,17 @@ You can then use layer inside the loop to get the current layer
 
 	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
-	void ControlParticlesOrdered2d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
-	void ControlParticlesOrdered3d(tfxParticleManager &pm, tfxControlWorkEntryOrdered &work_entry);
 
 	void ControlParticleAge(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
 	void ControlParticleColor(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize(tfxWorkQueue *queue, void *data);
-	void ControlParticleOrderedAge(tfxWorkQueue *queue, void *data);
-	//void ControlParticleOrderedDepth(tfxWorkQueue *queue, void *data);
-	void ControlParticleSizeOrdered(tfxWorkQueue *queue, void *data);
-	void ControlParticleColorOrdered(tfxWorkQueue *queue, void *data);
-	void ControlParticleImageFrameOrdered(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
-	void ControlParticlePositionOrdered2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleTransformOrdered2d(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
-	void ControlParticlePositionOrdered3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleTransformOrdered3d(tfxWorkQueue *queue, void *data);
 
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
