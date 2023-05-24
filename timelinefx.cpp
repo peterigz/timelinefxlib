@@ -7780,7 +7780,7 @@ namespace tfx {
 			}
 			else {
 				sprites_count = sprites_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : sprites_count;
-				sprite_buffer.current_size += sprites_count;
+				sprite_buffer.current_size += max_spawn_count + sprites_count;
 				max_spawn_count = max_spawn_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : max_spawn_count;
 			}
 
@@ -7823,7 +7823,7 @@ namespace tfx {
 			}
 			else {
 				sprites_count = sprites_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : sprites_count;
-				sprite_buffer.current_size += sprites_count;
+				sprite_buffer.current_size += max_spawn_count + sprites_count;
 				max_spawn_count = max_spawn_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : max_spawn_count;
 			}
 
