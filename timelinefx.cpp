@@ -6414,7 +6414,7 @@ namespace tfx {
 		}
 		current_depth_index_buffer = !current_depth_index_buffer;
 
-		if (flags & tfxEffectManagerFlags_order_by_depth) {
+		if (flags & tfxEffectManagerFlags_order_by_depth && flags & tfxEffectManagerFlags_3d_effects) {
 			if (flags & tfxEffectManagerFlags_guarantee_order) {
 				for (tfxEachLayer) {
 					tfxSortWorkEntry &work_entry = sorting_work_entry[layer];
@@ -7518,13 +7518,26 @@ namespace tfx {
 			captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.transform_2d[running_sprite_index].rotation = roll.a[j];
-				sprites.transform_2d[running_sprite_index].position.x = position_x.a[j];
-				sprites.transform_2d[running_sprite_index].position.y = position_y.a[j];
-				bank.captured_position_x[index + j] = sprites.transform_2d[running_sprite_index].position.x;
-				bank.captured_position_y[index + j] = sprites.transform_2d[running_sprite_index].position.y;
-				running_sprite_index++;
+			if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					tfxU32 sprite_depth_index = bank.depth_index[index + j];
+					sprites.transform_2d[sprite_depth_index].rotation = roll.a[j];
+					sprites.transform_2d[sprite_depth_index].position.x = position_x.a[j];
+					sprites.transform_2d[sprite_depth_index].position.y = position_y.a[j];
+					bank.captured_position_x[index + j] = sprites.transform_2d[sprite_depth_index].position.x;
+					bank.captured_position_y[index + j] = sprites.transform_2d[sprite_depth_index].position.y;
+					running_sprite_index++;
+				}
+			}
+			else {
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					sprites.transform_2d[running_sprite_index].rotation = roll.a[j];
+					sprites.transform_2d[running_sprite_index].position.x = position_x.a[j];
+					sprites.transform_2d[running_sprite_index].position.y = position_y.a[j];
+					bank.captured_position_x[index + j] = sprites.transform_2d[running_sprite_index].position.x;
+					bank.captured_position_y[index + j] = sprites.transform_2d[running_sprite_index].position.y;
+					running_sprite_index++;
+				}
 			}
 			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
 			start_diff = 0;
@@ -7769,8 +7782,8 @@ namespace tfx {
 			scale_x.m = tfxWideMul(scale_x.m, overal_scale);
 			scale_y.m = tfxWideMul(scale_y.m, overal_scale);
 
+			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			if (pm.flags & tfxEffectManagerFlags_3d_effects) { //Predictable
-				tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 				if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
 					for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 						tfxU32 sprite_depth_index = bank.depth_index[index + j];
@@ -7787,10 +7800,19 @@ namespace tfx {
 				}
 			}
 			else {
-				tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-					sprites.transform_2d[running_sprite_index].scale.x = scale_x.a[j];
-					sprites.transform_2d[running_sprite_index++].scale.y = scale_y.a[j];
+				if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
+					for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+						tfxU32 sprite_depth_index = bank.depth_index[index + j];
+						sprites.transform_2d[sprite_depth_index].scale.x = scale_x.a[j];
+						sprites.transform_2d[sprite_depth_index].scale.y = scale_y.a[j];
+						running_sprite_index++;
+					}
+				}
+				else {
+					for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+						sprites.transform_2d[running_sprite_index].scale.x = scale_x.a[j];
+						sprites.transform_2d[running_sprite_index++].scale.y = scale_y.a[j];
+					}
 				}
 			}
 			start_diff = 0;
@@ -8083,7 +8105,8 @@ namespace tfx {
 					float &age = bank.age[index + j];
 					sprites.captured_index[sprite_depth_index] = age == 0.f ? (pm.current_sprite_buffer << 28) + sprite_depth_index : (!pm.current_sprite_buffer << 28) + (sprites_index & 0x0FFFFFFF);
 					sprites_index = (work_entry->layer << 28) + sprite_depth_index;
-					sprites.image_frame_plus[sprite_depth_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
+					sprites.image_frame_plus[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
+					tfxU32 ifp = sprites.image_frame_plus[sprite_depth_index];
 					running_sprite_index++;
 				}
 			}
@@ -10737,6 +10760,7 @@ namespace tfx {
 		const tfxMatrix4 matrix = pm.emitters.matrix[emitter_index];
 		const tfxEmissionType emission_type = properties.emission_type[property_index];
 		const tfxVec2 emitter_size = pm.emitters.emitter_size[emitter_index].xy();
+		const tfxU32 layer = properties.layer[property_index];
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
@@ -10784,6 +10808,13 @@ namespace tfx {
 
 			if ((angle_settings & tfxAngleSettingFlags_align_roll || angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
 				roll = GetVectorAngle(velocity_normal.x, velocity_normal.y) + angle_roll_offset;
+			}
+
+			if (pm.flags & tfxEffectManagerFlags_ordered_by_age) {
+				tfxDepthIndex depth_index;
+				depth_index.particle_id = MakeParticleID(particles_index, index);
+				depth_index.depth = 0.f;
+				entry->particle_data->depth_index[index] = pm.PushDepthIndex(layer, depth_index);
 			}
 
 			tween += entry->qty_step_size;
@@ -11623,9 +11654,18 @@ namespace tfx {
 			packed.m = PackWide16bit(current_velocity_x.m, current_velocity_y.m);
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.stretch[running_sprite_index] = p_stretch.a[j];
-				sprites.alignment[running_sprite_index++] = packed.a[j];
+			if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					tfxU32 sprite_depth_index = bank.depth_index[index + j];
+					sprites.stretch[sprite_depth_index] = p_stretch.a[j];
+					sprites.alignment[sprite_depth_index] = packed.a[j];
+					running_sprite_index++;
+				}
+			}else {
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					sprites.stretch[running_sprite_index] = p_stretch.a[j];
+					sprites.alignment[running_sprite_index++] = packed.a[j];
+				}
 			}
 			start_diff = 0;
 		}
