@@ -4205,8 +4205,6 @@ You can then use layer inside the loop to get the current layer
 		0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0
 	};
 
-	// 2D Perlin simplex noise (here for reference only)
-	float tfxNoise(float x, float y);
 	// 4 noise samples using simd
 	tfx128Array tfxNoise4(const tfx128 x4, const tfx128 y4);
 	tfx128Array tfxNoise4(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
@@ -6696,7 +6694,6 @@ You can then use layer inside the loop to get the current layer
 	struct tfxSpriteData3dSoA {	//56 bytes
 		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;
-		tfxU32 *captured_index_offset;
 		tfxSpriteTransform3d *transform;
 		tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 		tfxRGBA8 *color;				//The color tint of the sprite and blend factor in a
@@ -6707,7 +6704,6 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteData3dSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteData3dSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteData3dSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteData3dSoA, captured_index_offset));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteData3dSoA, transform));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteData3dSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteData3dSoA, color));
@@ -7252,8 +7248,8 @@ You can then use layer inside the loop to get the current layer
 	void SpawnParticleVelocity(tfxWorkQueue *queue, void *data);
 	void SpawnParticleRoll(tfxWorkQueue *queue, void *data);
 	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
+	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
 
 	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
