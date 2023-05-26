@@ -1868,7 +1868,7 @@ You can then use layer inside the loop to get the current layer
 		}
 	}
 
-	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved.
+	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved if keep_data passed as true (default).
 	static inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
 		tfxU32 new_capacity = 0;
@@ -1924,7 +1924,8 @@ You can then use layer inside the loop to get the current layer
 		buffer->current_size = new_size;
 	}
 
-	//Increase current size of a SoA Buffer and grow if necessary.
+	//Increase current size of a SoA Buffer and grow if necessary. This will not shrink the capacity so if new_size is not bigger than the
+	//current capacity then nothing will happen
 	static inline void SetCapacity(tfxSoABuffer *buffer, tfxU32 new_size) {
 		assert(buffer->data);			//No data allocated in buffer
 		if (new_size >= buffer->capacity) {
@@ -1932,7 +1933,7 @@ You can then use layer inside the loop to get the current layer
 		}
 	}
 
-	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
+	//Increase current size of a SoA Buffer by 1 and grow if grow is true. Returns the last index.
 	static inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 new_size = ++buffer->current_size;
@@ -1944,7 +1945,8 @@ You can then use layer inside the loop to get the current layer
 		return buffer->current_size - 1;
 	}
 
-	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
+	//Increase current size of a SoA Buffer by a specific amount and grow if grow is true. Returns the last index.
+	//You can also pass in a boolean to know if the buffer had to be increased in size or not. Returns the index where the new rows start.
 	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow, bool &grew) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 first_new_index = buffer->current_size;
@@ -1957,7 +1959,7 @@ You can then use layer inside the loop to get the current layer
 		return first_new_index;
 	}
 
-	//Increase current size of a SoA Buffer and grow if grow is true. Returns the last index.
+	//Increase current size of a SoA Buffer and grow if grow is true. Returns the index where the new rows start.
 	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 first_new_index = buffer->current_size;
@@ -1970,7 +1972,7 @@ You can then use layer inside the loop to get the current layer
 		return first_new_index;
 	}
 
-	//Decrease the current size of a SoA Buffer.
+	//Decrease the current size of a SoA Buffer by 1.
 	static inline void PopRow(tfxSoABuffer *buffer) {
 		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 		buffer->current_size--;
@@ -6631,17 +6633,22 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxSpriteData {
 		tfxU32 frame_count;
+		tfxU32 compressed_frame_count;
 		float frame_compression;
 		float animation_length_in_time;		//measured in millesecs
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
-		tfxSoABuffer sprites_buffer;
-		tfxSpriteData3dSoA sprites;
+		tfxSoABuffer real_time_sprites_buffer;
+		tfxSpriteData3dSoA real_time_sprites;
+		tfxSoABuffer compressed_sprites_buffer;
+		tfxSpriteData3dSoA compressed_sprites;
 		tfxArray<tfxFrameMeta> frame_meta;
+		tfxArray<tfxFrameMeta> compressed_frame_meta;
 	};
 
 	inline void FreeSpriteData(tfxSpriteData &sprite_data) {
-		FreeSoABuffer(&sprite_data.sprites_buffer);
+		FreeSoABuffer(&sprite_data.compressed_sprites_buffer);
+		FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
 		sprite_data.frame_meta.free();
 	}
 
@@ -7357,6 +7364,7 @@ You can then use layer inside the loop to get the current layer
 	void InvalidateNewSpriteCapturedIndex(tfxParticleManager &pm);
 	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect);
 	void RecordSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect);
+	void CompressSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect);
 
 	struct tfxEffectTemplate {
 		tfxStorageMap<tfxEffectEmitter*> paths;
