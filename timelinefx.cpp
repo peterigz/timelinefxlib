@@ -5677,11 +5677,11 @@ namespace tfx {
 
 		sprite_data->total_sprites = total_sprites;
 		sprite_data->total_memory_for_sprites = total_sprites * sizeof(tfxSprite3d); 
-		InitSpriteData3dSoA(&sprite_data->real_time_sprites_buffer, &sprite_data->real_time_sprites, total_sprites);
+		InitSpriteData3dSoACompression(&sprite_data->real_time_sprites_buffer, &sprite_data->real_time_sprites, total_sprites);
 		InitSpriteData3dSoA(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, total_sprites);
 
 		tfxSoABuffer temp_sprites_buffer;
-		tfxSpriteData3dSoA temp_sprites;
+		tfxSpriteDataSoA temp_sprites;
 		InitSpriteData3dSoA(&temp_sprites_buffer, &temp_sprites, 100);
 		tfxvec<tfxU32> running_count[tfxLAYERS];
 
@@ -5718,7 +5718,7 @@ namespace tfx {
 						memcpy(temp_sprites.image_frame_plus, sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
 						memcpy(temp_sprites.intensity, sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
 						memcpy(temp_sprites.stretch, sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
-						memcpy(temp_sprites.transform, sprite_data->real_time_sprites.transform + frame_meta[frame].index_offset[layer], sizeof(tfxSpriteTransform3d) * running_count[layer][frame]);
+						memcpy(temp_sprites.transform_3d, sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], sizeof(tfxSpriteTransform3d) * running_count[layer][frame]);
 						if (captured_offset[layer] > 0) {
 							for (int temp_i = 0; temp_i != temp_sprites_buffer.current_size; ++temp_i) {
 								if(temp_sprites.captured_index[temp_i] != tfxINVALID)
@@ -5738,7 +5738,7 @@ namespace tfx {
 					memcpy(sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].image_frame_plus, sizeof(tfxU32) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].intensity, sizeof(float) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].stretch, sizeof(float) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.transform + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].transform_3d, sizeof(tfxSpriteTransform3d) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].transform_3d, sizeof(tfxSpriteTransform3d) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
 					if (running_count[layer][frame] > 0 && pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size > 0) {
 						memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.alignment, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
@@ -5746,7 +5746,7 @@ namespace tfx {
 						memcpy(sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.image_frame_plus, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.intensity, sizeof(float) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.stretch, sizeof(float) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.transform + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.transform, sizeof(tfxSpriteTransform3d) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.transform_3d, sizeof(tfxSpriteTransform3d) * temp_sprites_buffer.current_size);
 						captured_offset[layer] = pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
 					}
 					else if (pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size == 0) {
@@ -5797,8 +5797,8 @@ namespace tfx {
 		int compressed_frame = 0;
 
 		int f = 0;
-		tfxSpriteData3dSoA &sprites = sprite_data->real_time_sprites;
-		tfxSpriteData3dSoA &c_sprites = sprite_data->compressed_sprites;
+		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
+		tfxSpriteDataSoA &c_sprites = sprite_data->compressed_sprites;
 		int ci = 0;
 		while (f < anim.frames) {
 			real_time = f * tfxFRAME_LENGTH;
@@ -5819,7 +5819,7 @@ namespace tfx {
 						c_sprites.image_frame_plus[ci] = sprites.image_frame_plus[i];
 						c_sprites.intensity[ci] = sprites.intensity[i];
 						c_sprites.stretch[ci] = sprites.stretch[i];
-						c_sprites.transform[ci] = sprites.transform[i];
+						c_sprites.transform_3d[ci] = sprites.transform_3d[i];
 						ci++;
 					}
 					f++;
@@ -5835,7 +5835,7 @@ namespace tfx {
 							c_sprites.image_frame_plus[ci] = sprites.image_frame_plus[i];
 							c_sprites.intensity[ci] = sprites.intensity[i];
 							c_sprites.stretch[ci] = sprites.stretch[i];
-							c_sprites.transform[ci] = sprites.transform[i];
+							c_sprites.transform_3d[ci] = sprites.transform_3d[i];
 							ci++;
 						}
 					}
@@ -5845,27 +5845,6 @@ namespace tfx {
 					compressed_time += frequency;
 					compressed_frame++;
 				}
-			}
-		}
-
-		for (tfxEachLayer) {
-			while (current_time < sprite_data->animation_length_in_time) {
-				tfxSpriteData3dSoA &sprites = sprite_data->real_time_sprites;
-				float frame_time = (current_time / sprite_data->animation_length_in_time) * (float)sprite_data->frame_count;
-				tfxU32 frame = tfxU32(frame_time);
-				float lerp = frame_time - frame;
-				tfxU32 frame_pair[2];
-				frame++;
-				frame_pair[0] = frame >= sprite_data->frame_count ? 0 : frame;
-				frame_pair[1] = frame >= sprite_data->frame_count ? sprite_data->frame_count - 1 : frame - 1;
-				tfxWideFloat lerp_wide = tfxWideSetSingle(lerp);
-				tfxU32 captured_data_offset = SpriteDataIndexOffset(sprite_data, frame_pair[1], layer);
-				for (int i = SpriteDataIndexOffset(sprite_data, frame_pair[0], layer); i != SpriteDataEndIndex(sprite_data, frame_pair[0], layer); ++i) {
-					if (sprites.captured_index[i] == tfxINVALID) continue;
-					const tfxSpriteTransform3d &captured = GetSpriteData3dTransform(sprites, captured_data_offset + (sprites.captured_index[i] & 0x0FFFFFFF));
-					tfxWideLerpTransformResult lerped = InterpolateSpriteTransform(lerp_wide, sprites.transform[i], captured);
-				}
-				current_time += frequency;
 			}
 		}
 

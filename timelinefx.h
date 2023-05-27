@@ -6567,24 +6567,61 @@ You can then use layer inside the loop to get the current layer
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	struct tfxSpriteData3dSoA {	//56 bytes
+	struct tfxSpriteDataSoA {	//56 bytes
 		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;
-		tfxSpriteTransform3d *transform;
+		tfxU32 *compressed_captured_index;
+		tfxSpriteTransform3d *transform_3d;
+		tfxSpriteTransform2d *transform_2d;
 		tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-		tfxRGBA8 *color;				//The color tint of the sprite and blend factor in a
+		tfxRGBA8 *color;			//The color tint of the sprite and blend factor in a
 		float *stretch;
 		float *intensity;
 	};
 
-	inline void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteData3dSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteData3dSoA, image_frame_plus));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteData3dSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteData3dSoA, transform));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteData3dSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteData3dSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteData3dSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteData3dSoA, intensity));
+	inline void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, compressed_captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	inline void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	inline void InitSpriteData2dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, compressed_captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	inline void InitSpriteData2dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
@@ -6639,9 +6676,9 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
 		tfxSoABuffer real_time_sprites_buffer;
-		tfxSpriteData3dSoA real_time_sprites;
+		tfxSpriteDataSoA real_time_sprites;
 		tfxSoABuffer compressed_sprites_buffer;
-		tfxSpriteData3dSoA compressed_sprites;
+		tfxSpriteDataSoA compressed_sprites;
 		tfxArray<tfxFrameMeta> frame_meta;
 		tfxArray<tfxFrameMeta> compressed_frame_meta;
 	};
@@ -7968,8 +8005,8 @@ You can then use layer inside the loop to get the current layer
 	* @param index			The index of the sprite you want to retrieve
 	* @returns				tfxSpriteSoA reference containing the sprite data for drawing
 	*/
-	tfxAPI inline tfxSpriteTransform3d &GetSpriteData3dTransform(tfxSpriteData3dSoA &sprites, tfxU32 index) {
-		return sprites.transform[index];
+	tfxAPI inline tfxSpriteTransform3d &GetSpriteData3dTransform(tfxSpriteDataSoA &sprites, tfxU32 index) {
+		return sprites.transform_3d[index];
 	}
 
 	/*
