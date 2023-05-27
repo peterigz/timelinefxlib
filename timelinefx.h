@@ -745,7 +745,9 @@ You can then use layer inside the loop to get the current layer
 		tfxEffectManagerFlags_ordered_by_age = 1 << 10,
 		tfxEffectManagerFlags_update_age_only = 1 << 11,
 		tfxEffectManagerFlags_single_threaded = 1 << 12,
-		tfxEffectManagerFlags_double_buffer_sprites = 1 << 13
+		tfxEffectManagerFlags_double_buffer_sprites = 1 << 13,
+		tfxEffectManagerFlags_recording_sprites = 1 << 14,
+		tfxEffectManagerFlags_using_uids = 1 << 15
 	};
 
 	enum tfxVectorAlignType {
@@ -6428,6 +6430,7 @@ You can then use layer inside the loop to get the current layer
 
 	//These all point into a tfxSoABuffer, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
 	struct tfxParticleSoA {
+		tfxU32 *uid;
 		tfxU32 *parent_index;
 		tfxU32 *sprite_index;
 		tfxU32 *particle_index;
@@ -6458,6 +6461,7 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	inline void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, uid));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, parent_index));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, sprite_index));
 		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxParticleSoA, particle_index));
@@ -6525,6 +6529,7 @@ You can then use layer inside the loop to get the current layer
 	struct tfxSpriteSoA {	//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
 		tfxU32 *image_frame_plus;				//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;					//The index of the sprite in the previous frame so that it can be looked up and interpolated with
+		tfxU32 *uid;							//Unique particle id of the sprite, only used when recording sprite data
 		tfxSpriteTransform3d *transform_3d;		//Transform data for 3d sprites
 		tfxSpriteTransform2d *transform_2d;		//Transform data for 2d sprites
 		tfxU32 *alignment;						//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over or 2 packed 16bit floats for 2d
@@ -6533,9 +6538,11 @@ You can then use layer inside the loop to get the current layer
 		float *intensity;						//The multiplier for the sprite color
 	};
 
-	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount) {
+	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
+		if(use_uid)
+			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
@@ -6544,9 +6551,11 @@ You can then use layer inside the loop to get the current layer
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	inline void InitSpriteBothSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount) {
+	inline void InitSpriteBothSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
+		if(use_uid)
+			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
@@ -6556,9 +6565,11 @@ You can then use layer inside the loop to get the current layer
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	inline void InitSprite2dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount) {
+	inline void InitSprite2dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
+		if(use_uid)
+			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
@@ -6915,7 +6926,7 @@ You can then use layer inside the loop to get the current layer
 		tfxVec3 camera_front;
 		tfxVec3 camera_position;
 
-		tfxU32 temp_count = 100;
+		tfxU32 unique_particle_id = 0;	//Used when recording sprite data
 
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
@@ -6950,6 +6961,7 @@ You can then use layer inside the loop to get the current layer
 		void InitFor3d(tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
 		void InitFor2d(tfxLibrary *lib, unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
 		void InitFor3d(tfxLibrary *lib, unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
+		void ToggleSpritesWithUID(bool switch_on);
 		inline void SetLibrary(tfxLibrary *lib) {
 			library = lib;
 		}
@@ -7189,6 +7201,7 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
 	void ControlParticleColor(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize(tfxWorkQueue *queue, void *data);
+	void ControlParticleUID(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
