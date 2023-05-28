@@ -6581,7 +6581,7 @@ You can then use layer inside the loop to get the current layer
 	struct tfxSpriteDataSoA {	//56 bytes
 		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;
-		tfxU32 *compressed_captured_index;
+		tfxU32 *uid;
 		tfxSpriteTransform3d *transform_3d;
 		tfxSpriteTransform2d *transform_2d;
 		tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
@@ -6593,7 +6593,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, compressed_captured_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
@@ -6605,6 +6605,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
@@ -6616,7 +6617,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData2dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, compressed_captured_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
@@ -6628,6 +6629,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData2dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
