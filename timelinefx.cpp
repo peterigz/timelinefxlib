@@ -5871,7 +5871,7 @@ namespace tfx {
 		tfxU32 compressed_sprite_count = ci;
 		f = 0;
 		//Second pass, link up the captured indexes using the UIDs
-		tfxU32 total_compressed_frames = compressed_frame + 1;
+		int total_compressed_frames = compressed_frame + 1;
 		while (f < total_compressed_frames) {
 			int frame = f - 1;
 			int frame_pair[2];
@@ -6277,12 +6277,7 @@ namespace tfx {
 					work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
 					particles_to_update -= mt_batch_size;
 					running_start_index += mt_batch_size;
-					if (flags & tfxEffectManagerFlags_3d_effects) {
-						ControlParticles3d(*this, index, work_entry);
-					}
-					else {
-						ControlParticles2d(*this, index, work_entry);
-					}
+					ControlParticles(*this, index, work_entry);
 				}
 			}
 
@@ -10557,62 +10552,7 @@ namespace tfx {
 		ControlParticleTransform2d(&pm.work_queue, data);
 	}
 
-	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry) {
-		tfxPROFILE;
-
-		tfxLibrary *library = pm.library;
-		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
-		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
-		const tfxU32 sprites_count = pm.emitters.sprites_count[emitter_index];
-		const tfxU32 sprites_index = pm.emitters.sprites_index[emitter_index];
-		tfxEmitterPropertiesSoA &properties = library->emitter_properties;
-
-		//-------------------------------------------------------
-		//Controll what the particle does over the course of
-		//it's lifetime
-		//-------------------------------------------------------
-
-		work_entry.graphs = &library->emitter_attributes[emitter_attributes].overtime;
-		//work_entry.c.particle_update_callback = e.particle_update_callback;
-		//work_entry.c.user_data = e.user_data;
-
-		tfxSoABuffer &buffer = pm.particle_array_buffers[pm.emitters.particles_index[emitter_index]];
-		int offset = 0;
-		tfxU32 amount_to_update = buffer.current_size;
-		if (sprites_count < buffer.current_size) {
-			amount_to_update = sprites_count;
-		}
-
-		work_entry.pm = &pm;
-		work_entry.sprites_index = sprites_index + work_entry.start_index;
-		work_entry.sprite_buffer_end_index = work_entry.sprites_index + work_entry.end_index;
-		work_entry.layer = properties.layer[property_index];
-		work_entry.sprites = &pm.sprites[pm.current_sprite_buffer][work_entry.layer];
-
-		if (amount_to_update > 0) {
-			if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition2d);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor);
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame);
-				if (pm.flags & tfxEffectManagerFlags_recording_sprites) {
-					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleUID);
-				}
-			}
-			else {
-				ControlParticlePosition2d(&pm.work_queue, &work_entry);
-				ControlParticleSize(&pm.work_queue, &work_entry);
-				ControlParticleColor(&pm.work_queue, &work_entry);
-				ControlParticleImageFrame(&pm.work_queue, &work_entry);
-				if (pm.flags & tfxEffectManagerFlags_recording_sprites) {
-					ControlParticleUID(&pm.work_queue, &work_entry);
-				}
-			}
-		}
-
-	}
-
-	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry) {
+	void ControlParticles(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry) {
 		tfxPROFILE;
 
 		tfxLibrary *library = pm.library;
@@ -10646,7 +10586,12 @@ namespace tfx {
 
 		if (amount_to_update > 0) {
 			if (!(pm.flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition3d);
+				if (pm.flags & tfxEffectManagerFlags_3d_effects) {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition3d);
+				}
+				else {
+					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticlePosition2d);
+				}
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame);
@@ -10655,7 +10600,12 @@ namespace tfx {
 				}
 			}
 			else {
-				ControlParticlePosition3d(&pm.work_queue, &work_entry);
+				if (pm.flags & tfxEffectManagerFlags_3d_effects) {
+					ControlParticlePosition3d(&pm.work_queue, &work_entry);
+				}
+				else {
+					ControlParticlePosition2d(&pm.work_queue, &work_entry);
+				}
 				ControlParticleSize(&pm.work_queue, &work_entry);
 				ControlParticleColor(&pm.work_queue, &work_entry);
 				ControlParticleImageFrame(&pm.work_queue, &work_entry);

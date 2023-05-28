@@ -7196,8 +7196,7 @@ You can then use layer inside the loop to get the current layer
 	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
 
-	void ControlParticles2d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
-	void ControlParticles3d(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
+	void ControlParticles(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
 
 	void ControlParticleAge(tfxWorkQueue *queue, void *data);
 	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
