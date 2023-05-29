@@ -5806,7 +5806,8 @@ You can then use layer inside the loop to get the current layer
 
 	//This struct has the settings for recording sprite data frames so that they can be played back as an alternative to dynamic particle updating
 	struct tfxSpriteDataSettings {
-		int frames;
+		int real_frames;
+		int frames_after_compression;
 		int current_frame;
 		float current_time;
 		float animation_time;
@@ -6428,9 +6429,14 @@ You can then use layer inside the loop to get the current layer
 		float depth;
 	};
 
+	struct tfxUniqueSpriteID{
+		tfxU32 uid;
+		tfxU32 age;
+	};
+
 	//These all point into a tfxSoABuffer, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
 	struct tfxParticleSoA {
-		tfxU32 *uid;
+		tfxU32 *uid;		//Only used for recording sprite data
 		tfxU32 *parent_index;
 		tfxU32 *sprite_index;
 		tfxU32 *particle_index;
@@ -6529,7 +6535,7 @@ You can then use layer inside the loop to get the current layer
 	struct tfxSpriteSoA {	//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
 		tfxU32 *image_frame_plus;				//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;					//The index of the sprite in the previous frame so that it can be looked up and interpolated with
-		tfxU32 *uid;							//Unique particle id of the sprite, only used when recording sprite data
+		tfxUniqueSpriteID *uid;					//Unique particle id of the sprite, only used when recording sprite data
 		tfxSpriteTransform3d *transform_3d;		//Transform data for 3d sprites
 		tfxSpriteTransform2d *transform_2d;		//Transform data for 2d sprites
 		tfxU32 *alignment;						//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over or 2 packed 16bit floats for 2d
@@ -6542,7 +6548,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
 		if(use_uid)
-			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, uid));
+			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
@@ -6555,7 +6561,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
 		if(use_uid)
-			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, uid));
+			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
@@ -6569,7 +6575,7 @@ You can then use layer inside the loop to get the current layer
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
 		if(use_uid)
-			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, uid));
+			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
@@ -6581,7 +6587,7 @@ You can then use layer inside the loop to get the current layer
 	struct tfxSpriteDataSoA {	//56 bytes
 		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;
-		tfxU32 *uid;
+		tfxUniqueSpriteID *uid;
 		tfxSpriteTransform3d *transform_3d;
 		tfxSpriteTransform2d *transform_2d;
 		tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
@@ -6593,7 +6599,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, uid));
+		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
@@ -6605,7 +6611,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, uid));
+		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
@@ -6617,7 +6623,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData2dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, uid));
+		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
@@ -6629,7 +6635,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteData2dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, uid));
+		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
@@ -6681,25 +6687,37 @@ You can then use layer inside the loop to get the current layer
 #endif
 	}
 
-	struct tfxSpriteData {
+	struct tfxSpriteDataMetrics {
 		tfxU32 frame_count;
-		tfxU32 compressed_frame_count;
-		float frame_compression;
-		float animation_length_in_time;		//measured in millesecs
+		float animation_length_in_time;
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
+		tfxArray<tfxFrameMeta> frame_meta;
+	};
+
+	struct tfxSpriteData {
+		float frame_compression;
+		tfxSpriteDataMetrics normal;
+		tfxSpriteDataMetrics compressed;
 		tfxSoABuffer real_time_sprites_buffer;
 		tfxSpriteDataSoA real_time_sprites;
 		tfxSoABuffer compressed_sprites_buffer;
 		tfxSpriteDataSoA compressed_sprites;
-		tfxArray<tfxFrameMeta> frame_meta;
-		tfxArray<tfxFrameMeta> compressed_frame_meta;
 	};
 
 	inline void FreeSpriteData(tfxSpriteData &sprite_data) {
-		FreeSoABuffer(&sprite_data.compressed_sprites_buffer);
-		FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
-		sprite_data.frame_meta.free();
+		if (sprite_data.compressed_sprites_buffer.data == sprite_data.real_time_sprites_buffer.data) {
+			FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
+			sprite_data.normal.frame_meta.free();
+			sprite_data.compressed_sprites_buffer = tfxSoABuffer();
+			sprite_data.compressed.frame_meta = tfxArray<tfxFrameMeta>();
+		}
+		else {
+			FreeSoABuffer(&sprite_data.compressed_sprites_buffer);
+			FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
+			sprite_data.normal.frame_meta.free();
+			sprite_data.compressed.frame_meta.free();
+		}
 	}
 
 	struct tfxComputeFXGlobalState {
@@ -7993,13 +8011,27 @@ You can then use layer inside the loop to get the current layer
 	* @returns				tfxU32 containing the index offset
 	*/
 	tfxAPI inline tfxU32 SpriteDataIndexOffset(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
-		assert(frame < sprite_data->frame_meta.size());			//frame is outside index range
+		assert(frame < sprite_data->normal.frame_meta.size());			//frame is outside index range
 		assert(layer < tfxLAYERS);								//layer is outside index range
-		return sprite_data->frame_meta[frame].index_offset[layer];
+		return sprite_data->normal.frame_meta[frame].index_offset[layer];
 	}
 
 	/*
-	Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side SpriteDataIndexOffset to create
+	Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation that has been compresssed into fewer frames. Can be used along side SpriteDataIndexOffset to create
+	a for loop to iterate over the sprites in a pre-recorded effect
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param frame			The index of the frame you want the offset for
+	* @param layer			The sprite layer
+	* @returns				tfxU32 containing the index offset
+	*/
+	tfxAPI inline tfxU32 CompressedSpriteDataIndexOffset(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+		assert(frame < sprite_data->compressed.frame_meta.size());			//frame is outside index range
+		assert(layer < tfxLAYERS);								//layer is outside index range
+		return sprite_data->compressed.frame_meta[frame].index_offset[layer];
+	}
+
+	/*
+	Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side SpriteDataEndIndex to create
 	a for loop to iterate over the sprites in a pre-recorded effect
 	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
 	* @param frame			The index of the frame you want the end index for
@@ -8007,9 +8039,23 @@ You can then use layer inside the loop to get the current layer
 	* @returns				tfxU32 containing the end offset
 	*/
 	tfxAPI inline tfxU32 SpriteDataEndIndex(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
-		assert(frame < sprite_data->frame_meta.size());			//frame is outside index range
+		assert(frame < sprite_data->normal.frame_meta.size());			//frame is outside index range
 		assert(layer < tfxLAYERS);								//layer is outside index range
-		return sprite_data->frame_meta[frame].index_offset[layer] + sprite_data->frame_meta[frame].sprite_count[layer];
+		return sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer];
+	}
+
+	/*
+	Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation that has been compressed into fewer frames. Can be used along side CompressedSpriteDataIndexOffset to create
+	a for loop to iterate over the sprites in a pre-recorded effect
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param frame			The index of the frame you want the end index for
+	* @param layer			The sprite layer
+	* @returns				tfxU32 containing the end offset
+	*/
+	tfxAPI inline tfxU32 CompressedSpriteDataEndIndex(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+		assert(frame < sprite_data->compressed.frame_meta.size());			//frame is outside index range
+		assert(layer < tfxLAYERS);								//layer is outside index range
+		return sprite_data->compressed.frame_meta[frame].index_offset[layer] + sprite_data->compressed.frame_meta[frame].sprite_count[layer];
 	}
 
 	/*
