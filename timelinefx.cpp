@@ -5524,6 +5524,15 @@ namespace tfx {
 		}
 	}
 
+	void ResetSpriteDataLerpOffset(tfxSpriteData &sprite_data) {
+		tfxSpriteDataSoA &sprites = sprite_data.real_time_sprites;
+		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+			for (int i = 0; i != sprite_data.real_time_sprites_buffer.current_size; ++i) {
+				sprites.lerp_offset[i] = 1.f;
+			}
+		}
+	}
+
 	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect) {
 
 	}
@@ -5652,14 +5661,6 @@ namespace tfx {
 			}
 		}
 
-		//std::cout << "Total Sprites: " << total_sprites << std::endl;
-
-		//for (auto &meta : frame_meta) {
-			//std::cout << meta.index_offset[0] << ", " << meta.sprite_count[0] << std::endl;
-		//}
-
-		//pm.UpdateAgeOnly(false);
-
 		pm.ClearAll();
 		SetSeed(&pm, anim.seed);
 		preview_effect_index = pm.AddEffect(effect, pm.current_ebuff);
@@ -5711,7 +5712,6 @@ namespace tfx {
 				for (tfxEachLayer) {
 					tfxU32 meta_count = frame_meta[frame].sprite_count[layer];
 					tfxU32 pm_count = pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
-					//assert(frame_meta[frame].sprite_count[layer] == pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
 					if (running_count[layer][frame] > 0 && pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size > 0) {
 						Resize(&temp_sprites_buffer, running_count[layer][frame]);
 						memcpy(temp_sprites.alignment, sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
@@ -5781,6 +5781,8 @@ namespace tfx {
 				pm.DisableSpawning(true);
 		}
 
+		sprite_data->real_time_sprites_buffer.current_size = total_sprites;
+		ResetSpriteDataLerpOffset(*sprite_data);
 		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
 
 		for (int i = 0; i != anim.real_frames; ++i) {
@@ -5835,6 +5837,7 @@ namespace tfx {
 			real_time = f * tfxFRAME_LENGTH;
 			tfxU32 next_compressed_frame = compressed_frame + 1;
 			float next_compressed_time = next_compressed_frame * frequency;
+			float lerp_offset = (next_compressed_time - real_time) / (next_compressed_time - compressed_time);
 			if (real_time >= compressed_time && frame_done == false) {
 				for (tfxEachLayer) {
 					for (int i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
@@ -5843,6 +5846,7 @@ namespace tfx {
 						c_sprites.alignment[ci] = sprites.alignment[i];
 						c_sprites.captured_index[ci] = sprites.captured_index[i];
 						c_sprites.uid[ci] = sprites.uid[i];
+						c_sprites.lerp_offset[ci] = sprites.captured_index[i] == tfxINVALID ? lerp_offset : 1.f;
 						c_sprites.color[ci] = sprites.color[i];
 						c_sprites.image_frame_plus[ci] = sprites.image_frame_plus[i];
 						c_sprites.intensity[ci] = sprites.intensity[i];
@@ -5863,6 +5867,7 @@ namespace tfx {
 							c_sprites.alignment[ci] = sprites.alignment[i];
 							c_sprites.captured_index[ci] = tfxINVALID;
 							c_sprites.uid[ci] = sprites.uid[i];
+							c_sprites.lerp_offset[ci] = lerp_offset;
 							c_sprites.color[ci] = sprites.color[i];
 							c_sprites.image_frame_plus[ci] = sprites.image_frame_plus[i];
 							c_sprites.intensity[ci] = sprites.intensity[i];
@@ -5891,6 +5896,8 @@ namespace tfx {
 		}
 
 		sprite_data->compressed.total_sprites = ci;
+		sprite_data->compressed_sprites_buffer.current_size = ci;
+
 		f = 0;
 		//Second pass, link up the captured indexes using the UIDs
 		sprite_data->compressed.frame_count = compressed_frame + 1;
@@ -5911,6 +5918,7 @@ namespace tfx {
 		}
 		tfxCompleteAllWork(&pm.work_queue);
 		compress_entry.free();
+
 	}
 
 	void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *work_entry) {
@@ -5922,7 +5930,6 @@ namespace tfx {
 		int frame_pair[2];
 		frame_pair[0] = entry->frame;
 		frame_pair[1] = frame < 0 ? sprite_data->compressed.frame_count - 1 : frame;
-		std::cout << entry->frame << std::endl;
 		for (tfxEachLayer) {
 			for (int i = sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer]; i != sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer]; ++i) {
 				if (c_sprites.captured_index[i] != tfxINVALID) {
