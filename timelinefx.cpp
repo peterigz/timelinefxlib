@@ -5896,31 +5896,48 @@ namespace tfx {
 		sprite_data->compressed.frame_count = compressed_frame + 1;
 		anim.animation_time = sprite_data->compressed.animation_length_in_time = sprite_data->compressed.frame_count * frequency;
 		anim.frames_after_compression = sprite_data->compressed.frame_count;
+		tmpMTStack(tfxCompressWorkEntry, compress_entry);
 		while (f < (int)sprite_data->compressed.frame_count) {
-			int frame = f - 1;
-			int frame_pair[2];
-			frame_pair[0] = f;
-			frame_pair[1] = frame < 0 ? sprite_data->compressed.frame_count - 1 : frame;
-			for (tfxEachLayer) {
-				for (int i = sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer]; i != sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer]; ++i) {
-					if (c_sprites.captured_index[i] != tfxINVALID) {
-						tfxU32 age_diff = 0xFFFFFFFF;
-						for (int j = sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer]; j != sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[1]].sprite_count[layer]; ++j) {
-							if (c_sprites.uid[j].uid == c_sprites.uid[i].uid) {
-								tfxU32 diff = c_sprites.uid[i].age - c_sprites.uid[j].age;
-								age_diff = diff < age_diff ? diff : age_diff;
-								c_sprites.captured_index[i] = age_diff == diff ? j : c_sprites.captured_index[i];
-								if (age_diff < 2) break;
-							}
+			tfxCompressWorkEntry *entry = &compress_entry.next();
+			entry->sprite_data = sprite_data;
+			entry->frame = f;
+			if (tfxNumberOfThreadsInAdditionToMain > 0) {
+				tfxAddWorkQueueEntry(&pm.work_queue, entry, LinkUpSpriteCapturedIndexes);
+			}
+			else {
+				LinkUpSpriteCapturedIndexes(&pm.work_queue, &entry);
+			}
+			f++;
+		}
+		tfxCompleteAllWork(&pm.work_queue);
+		compress_entry.free();
+	}
+
+	void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *work_entry) {
+		tfxCompressWorkEntry *entry = static_cast<tfxCompressWorkEntry*>(work_entry);
+		tfxSpriteData *sprite_data = static_cast<tfxSpriteData*>(entry->sprite_data);
+		tfxSpriteDataSoA &c_sprites = sprite_data->compressed_sprites;
+
+		int frame = entry->frame - 1;
+		int frame_pair[2];
+		frame_pair[0] = entry->frame;
+		frame_pair[1] = frame < 0 ? sprite_data->compressed.frame_count - 1 : frame;
+		std::cout << entry->frame << std::endl;
+		for (tfxEachLayer) {
+			for (int i = sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer]; i != sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer]; ++i) {
+				if (c_sprites.captured_index[i] != tfxINVALID) {
+					tfxU32 age_diff = 0xFFFFFFFF;
+					for (int j = sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer]; j != sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[1]].sprite_count[layer]; ++j) {
+						if (c_sprites.uid[j].uid == c_sprites.uid[i].uid) {
+							tfxU32 diff = c_sprites.uid[i].age - c_sprites.uid[j].age;
+							age_diff = diff < age_diff ? diff : age_diff;
+							c_sprites.captured_index[i] = age_diff == diff ? j : c_sprites.captured_index[i];
+							if (age_diff < 2) break;
 						}
 					}
 				}
 			}
-			f++;
 		}
-
-		f = 0;
-
 	}
 
 	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager &pm) {

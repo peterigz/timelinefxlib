@@ -6830,6 +6830,11 @@ You can then use layer inside the loop to get the current layer
 		tfxvec<tfxDepthIndex> *depth_indexes;
 	};
 
+	struct tfxCompressWorkEntry {
+		tfxSpriteData *sprite_data;
+		tfxU32 frame;
+	};
+
 	struct tfxEffectData {
 		tfxU32 *global_attributes;
 		tfxU32 *transform_attributes;
@@ -7434,6 +7439,7 @@ You can then use layer inside the loop to get the current layer
 	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect);
 	void RecordSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect);
 	void CompressSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect);
+	void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
 
 	struct tfxEffectTemplate {
 		tfxStorageMap<tfxEffectEmitter*> paths;
