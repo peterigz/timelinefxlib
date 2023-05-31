@@ -5809,6 +5809,7 @@ namespace tfx {
 			sprite_data->compressed_sprites = sprite_data->real_time_sprites;
 			sprite_data->compressed_sprites_buffer = sprite_data->real_time_sprites_buffer;
 			sprite_data->compressed = sprite_data->normal;
+			anim.frames_after_compression = sprite_data->normal.frame_count;
 		}
 	}
 
@@ -5817,10 +5818,9 @@ namespace tfx {
 		tfxSpriteData *sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
 
 		sprite_data->compressed.frame_meta.free();
-		sprite_data->compressed.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
+		sprite_data->compressed.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, tfxU32((float)anim.real_frames * anim.playback_speed));
 		sprite_data->compressed.frame_meta.zero();
 
-		//float frequency = tfxFRAME_LENGTH * (anim.playback_speed ? anim.playback_speed : 1.f);
 		float frequency = tfxFRAME_LENGTH * (1.f / anim.playback_speed);
 		float real_time = 0.f;
 		float compressed_time = 0.f;
@@ -5897,6 +5897,7 @@ namespace tfx {
 
 		sprite_data->compressed.total_sprites = ci;
 		sprite_data->compressed_sprites_buffer.current_size = ci;
+		sprite_data->compressed.total_memory_for_sprites = ci * sprite_data->compressed_sprites_buffer.struct_size;
 
 		f = 0;
 		//Second pass, link up the captured indexes using the UIDs
