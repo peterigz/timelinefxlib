@@ -5834,7 +5834,7 @@ namespace tfx {
 		bool frame_done = false;
 		tfxU32 running_offset = 0;
 		tfxU32 layer = 0;
-		tfxU32 start_frame = 0;
+		int start_frame = 0;
 		bool finished = false;
 		do {
 			real_time = f * tfxFRAME_LENGTH;
@@ -5925,6 +5925,9 @@ namespace tfx {
 		}
 		tfxCompleteAllWork(&pm.work_queue);
 		compress_entry.free();
+
+		TrimSoABuffer(&sprite_data->compressed_sprites_buffer);
+		sprite_data->compressed.total_memory_for_sprites = (tfxU32)sprite_data->compressed_sprites_buffer.current_arena_size;
 
 	}
 

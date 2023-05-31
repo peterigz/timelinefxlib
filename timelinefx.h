@@ -1815,28 +1815,42 @@ You can then use layer inside the loop to get the current layer
 		tfxvec<tfxSoAData> array_ptrs;		//Container for all the pointers into the arena
 		void *user_data = NULL;
 		void(*resize_callback)(tfxSoABuffer *ring, tfxU32 new_index_start) = NULL;
-		void *struct_of_arrays = NULL;				//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
+		void *struct_of_arrays = NULL;		//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
 		void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
 	};
 
+	inline void ResetSoABuffer(tfxSoABuffer *buffer) {
+		buffer->current_arena_size = 0;
+		buffer->struct_size = 0;	
+		buffer->current_size = 0;
+		buffer->start_index = 0;
+		buffer->last_bump = 0;
+		buffer->capacity = 0;
+		buffer->block_size = tfxDataWidth;
+		buffer->user_data = NULL;
+		buffer->resize_callback = NULL;
+		buffer->struct_of_arrays = NULL;
+		buffer->data = NULL;
+	}
+
 	//Get the amount of free space in the buffer
-	static inline tfxU32 FreeSpace(tfxSoABuffer *buffer) {
+	inline tfxU32 FreeSpace(tfxSoABuffer *buffer) {
 		return buffer->capacity - buffer->current_size;
 	}
 
 	//Get the index based on the buffer being a ring buffer
-	static inline tfxU32 GetCircularIndex(tfxSoABuffer *buffer, tfxU32 index) {
+	inline tfxU32 GetCircularIndex(tfxSoABuffer *buffer, tfxU32 index) {
 		return (buffer->start_index + index) % buffer->capacity;
 	}
 
 	//Get the index based on the buffer being a ring buffer
-	static inline tfxU32 GetAbsoluteIndex(tfxSoABuffer *buffer, tfxU32 circular_index) {
+	inline tfxU32 GetAbsoluteIndex(tfxSoABuffer *buffer, tfxU32 circular_index) {
 		return buffer->capacity - (circular_index % buffer->capacity);
 	}
 
 	//Add an array to a SoABuffer. parse in the size of the data type and the offset to the member variable within the struct.
 	//You must add all the member veriables in the struct before calling FinishSoABufferSetup
-	static inline void AddStructArray(tfxSoABuffer *buffer, size_t unit_size, size_t offset) {
+	inline void AddStructArray(tfxSoABuffer *buffer, size_t unit_size, size_t offset) {
 		tfxSoAData data;
 		data.unit_size = unit_size;
 		data.offset = offset;
@@ -1846,7 +1860,7 @@ You can then use layer inside the loop to get the current layer
 	//Once you have called AddStructArray for all your member variables you must call this function in order to 
 	//set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 	//inside the space
-	static inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
+	inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
 		assert(buffer->data == NULL && buffer->array_ptrs.current_size > 0);
 		assert(reserve_amount > buffer->block_size);		//reserve amount must be greater than the block_size
 		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
@@ -1871,7 +1885,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved if keep_data passed as true (default).
-	static inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true) {
+	inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true) {
 		assert(buffer->capacity);			//buffer must already have a capacity!
 		tfxU32 new_capacity = 0;
 		new_capacity = new_target_size > buffer->capacity ? new_target_size + new_target_size / 2 : buffer->capacity + buffer->capacity / 2;
@@ -1918,7 +1932,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Increase current size of a SoA Buffer and grow if necessary.
-	static inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
+	inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
 		assert(buffer->data);			//No data allocated in buffer
 		if (new_size >= buffer->capacity) {
 			GrowArrays(buffer, buffer->capacity, new_size);
@@ -1928,7 +1942,7 @@ You can then use layer inside the loop to get the current layer
 
 	//Increase current size of a SoA Buffer and grow if necessary. This will not shrink the capacity so if new_size is not bigger than the
 	//current capacity then nothing will happen
-	static inline void SetCapacity(tfxSoABuffer *buffer, tfxU32 new_size) {
+	inline void SetCapacity(tfxSoABuffer *buffer, tfxU32 new_size) {
 		assert(buffer->data);			//No data allocated in buffer
 		if (new_size >= buffer->capacity) {
 			GrowArrays(buffer, buffer->capacity, new_size);
@@ -1936,7 +1950,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Increase current size of a SoA Buffer by 1 and grow if grow is true. Returns the last index.
-	static inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
+	inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 new_size = ++buffer->current_size;
 		if (grow && new_size == buffer->capacity) {
@@ -1949,7 +1963,7 @@ You can then use layer inside the loop to get the current layer
 
 	//Increase current size of a SoA Buffer by a specific amount and grow if grow is true. Returns the last index.
 	//You can also pass in a boolean to know if the buffer had to be increased in size or not. Returns the index where the new rows start.
-	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow, bool &grew) {
+	inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow, bool &grew) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 first_new_index = buffer->current_size;
 		tfxU32 new_size = buffer->current_size += amount;
@@ -1962,7 +1976,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Increase current size of a SoA Buffer and grow if grow is true. Returns the index where the new rows start.
-	static inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow) {
+	inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 first_new_index = buffer->current_size;
 		tfxU32 new_size = buffer->current_size += amount;
@@ -1975,13 +1989,13 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Decrease the current size of a SoA Buffer by 1.
-	static inline void PopRow(tfxSoABuffer *buffer) {
+	inline void PopRow(tfxSoABuffer *buffer) {
 		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 		buffer->current_size--;
 	}
 
 	//Bump the start index of the SoA buffer (ring buffer usage)
-	static inline void Bump(tfxSoABuffer *buffer) {
+	inline void Bump(tfxSoABuffer *buffer) {
 		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 		if (buffer->current_size == 0)
 			return;
@@ -1989,7 +2003,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Bump the start index of the SoA buffer (ring buffer usage)
-	static inline void Bump(tfxSoABuffer *buffer, tfxU32 amount) {
+	inline void Bump(tfxSoABuffer *buffer, tfxU32 amount) {
 		assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 		if (buffer->current_size == 0)
 			return;
@@ -2002,17 +2016,59 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//Free the SoA buffer
-	static inline void FreeSoABuffer(tfxSoABuffer *buffer) {
+	inline void FreeSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
 		if (buffer->data)
 			free(buffer->data);
-		buffer->data = NULL;
 		buffer->array_ptrs.free_all();
+		ResetSoABuffer(buffer);
 	}
 
 	//Clear the SoA buffer
-	static inline void ClearSoABuffer(tfxSoABuffer *buffer) {
+	inline void ClearSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_size = buffer->start_index = 0;
+	}
+
+	//Trim an SoA buffer to the current size. This is a bit rough and ready and I just created it for trimming compressed sprite data down to size
+	inline void TrimSoABuffer(tfxSoABuffer *buffer) {
+		if (buffer->current_size == buffer->capacity) {
+			return;
+		}
+		if (buffer->current_size == 0) {
+			FreeSoABuffer(buffer);
+			return;
+		}
+		assert(buffer->current_size < buffer->capacity);
+		tfxU32 new_capacity = buffer->current_size;
+		void *new_data = tfxALLOCATE(0, 0, new_capacity * buffer->struct_size);
+		assert(new_data);	//Unable to allocate memory. Todo: better handling
+		memset(new_data, 0, new_capacity * buffer->struct_size);
+		size_t running_offset = 0;
+		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+			size_t capacity = new_capacity * buffer->array_ptrs[i].unit_size;
+			size_t start_index = buffer->start_index * buffer->array_ptrs[i].unit_size;
+			if ((buffer->start_index + buffer->current_size - 1) > buffer->capacity) {
+				memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
+				memcpy((char*)new_data + (capacity - start_index) + running_offset, (char*)buffer->array_ptrs[i].ptr, (size_t)(start_index));
+			}
+			else {
+				memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
+			}
+			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
+
+		}
+		void *old_data = buffer->data;
+
+		buffer->data = new_data;
+		buffer->capacity = new_capacity;
+		buffer->current_arena_size = new_capacity * buffer->struct_size;
+		running_offset = 0;
+		for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+			buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
+			memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
+			running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
+		}
+		free(old_data);
 	}
 
 	template <typename T>
