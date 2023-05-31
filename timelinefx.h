@@ -6663,33 +6663,21 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured) {
-#ifdef tfxUSEAVX
-		tfxWideFloat to = tfxWideLoad(&current.position.x);
-		tfxWideFloat from = tfxWideLoad(&captured.position.x);
-		tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
-		tfxWideFloat to_lerp = tfxWideMul(to, tween);
-		tfxWideFloat from_lerp = tfxWideMul(from, one_minus_tween);
-		tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
+		tfxWideFloat to1 = _mm_load_ps(&current.position.x);
+		tfxWideFloat from1 = _mm_load_ps(&captured.position.x);
+		tfxWideFloat to2 = _mm_load_ps(&current.rotations.y);
+		tfxWideFloat from2 = _mm_load_ps(&captured.rotations.y);
+		tfxWideFloat one_minus_tween = _mm_sub_ps(tfxWIDEONE, tween);
+		tfxWideFloat to_lerp1 = _mm_mul_ps(to1, tween);
+		tfxWideFloat from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
+		tfxWideFloat result = _mm_add_ps(from_lerp1, to_lerp1);
 		tfxWideLerpTransformResult out;
-		tfxWideStore(out.position, result);
+		_mm_store_ps(out.position, result);
+		to_lerp1 = _mm_mul_ps(to2, tween);
+		from_lerp1 = _mm_mul_ps(from2, one_minus_tween);
+		result = _mm_add_ps(from_lerp1, to_lerp1);
+		_mm_store_ps(&out.rotations[1], result);
 		return out;
-#else
-		tfxWideFloat to1 = tfxWideLoad(&current.position.x);
-		tfxWideFloat from1 = tfxWideLoad(&captured.position.x);
-		tfxWideFloat to2 = tfxWideLoad(&current.rotations.y);
-		tfxWideFloat from2 = tfxWideLoad(&captured.rotations.y);
-		tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
-		tfxWideFloat to_lerp1 = tfxWideMul(to1, tween);
-		tfxWideFloat from_lerp1 = tfxWideMul(from1, one_minus_tween);
-		tfxWideFloat result = tfxWideAdd(from_lerp1, to_lerp1);
-		tfxWideLerpTransformResult out;
-		tfxWideStore(out.position, result);
-		to_lerp1 = tfxWideMul(to2, tween);
-		from_lerp1 = tfxWideMul(from2, one_minus_tween);
-		result = tfxWideAdd(from_lerp1, to_lerp1);
-		tfxWideStore(&out.rotations[1], result);
-		return out;
-#endif
 	}
 
 	struct tfxSpriteDataMetrics {
@@ -7770,6 +7758,10 @@ You can then use layer inside the loop to get the current layer
 		return tweened;
 	}
 
+	inline float Tween(float tween, const float current, const float captured) {
+		return current * tween + captured * (1.f - tween);
+	}
+
 	int ValidateEffectPackage(const char *filename);
 
 	//Get a graph by tfxGraphID
@@ -8071,14 +8063,43 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Get the sprite by index from sprite data containing a pre-recorded effect. Can be used along side SpriteDataIndexOffset and SpriteDataEndIndex to create
-	a for loop to iterate over the sprites in a pre-recorded effect
+	Get the 3d transform struct of a sprite data by its index in the sprite data struct of arrays
 	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
 	* @param index			The index of the sprite you want to retrieve
-	* @returns				tfxSpriteSoA reference containing the sprite data for drawing
+	* @returns				tfxSpriteTransform3d reference
 	*/
 	tfxAPI inline tfxSpriteTransform3d &GetSpriteData3dTransform(tfxSpriteDataSoA &sprites, tfxU32 index) {
 		return sprites.transform_3d[index];
+	}
+
+	/*
+	Get the 2d transform struct of a sprite data by its index in the sprite data struct of arrays
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param index			The index of the sprite you want to retrieve
+	* @returns				tfxSpriteTransform2d reference
+	*/
+	tfxAPI inline tfxSpriteTransform2d &GetSpriteData2dTransform(tfxSpriteDataSoA &sprites, tfxU32 index) {
+		return sprites.transform_2d[index];
+	}
+
+	/*
+	Get the intensity of a sprite data by its index in the sprite data struct of arrays
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param index			The index of the sprite you want to retrieve
+	* @returns				float of the intensity value
+	*/
+	tfxAPI inline float GetSpriteDataIntensity(tfxSpriteDataSoA &sprites, tfxU32 index) {
+		return sprites.intensity[index];
+	}
+
+	/*
+	Get the alignment of a sprite data by its index in the sprite data struct of arrays
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param index			The index of the sprite you want to retrieve
+	* @returns				tfxU32 of the alignment value
+	*/
+	tfxAPI inline tfxU32 GetSpriteDataAlignment(tfxSpriteDataSoA &sprites, tfxU32 index) {
+		return sprites.alignment[index];
 	}
 
 	/*

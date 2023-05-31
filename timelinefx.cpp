@@ -5835,7 +5835,8 @@ namespace tfx {
 		tfxU32 running_offset = 0;
 		tfxU32 layer = 0;
 		tfxU32 start_frame = 0;
-		while (f < anim.real_frames) {
+		bool finished = false;
+		do {
 			real_time = f * tfxFRAME_LENGTH;
 			tfxU32 next_compressed_frame = compressed_frame + 1;
 			float next_compressed_time = next_compressed_frame * frequency;
@@ -5858,7 +5859,7 @@ namespace tfx {
 				frame_done = true;
 				f++;
 			}
-			else if (real_time > compressed_time && real_time < next_compressed_time) {
+			else if (real_time > compressed_time && real_time < next_compressed_time && f < anim.real_frames) {
 				for (int i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
 					if (sprites.captured_index[i] == tfxINVALID) {
 						//Add to compressed sprites frame but add the lerp offset
@@ -5884,24 +5885,25 @@ namespace tfx {
 				if (layer == tfxLAYERS) {
 					layer = 0;
 					start_frame = f;
-					compressed_frame++;
-					compressed_time = frequency * compressed_frame;
+					if (start_frame >= anim.real_frames) {
+						finished = true;
+					}
+					else {
+						std::cout << "frame: " << f << "(" << tfxFRAME_LENGTH << ")- compressed frame: " << compressed_frame << "(" << frequency << ")" << std::endl;
+						compressed_frame++;
+						compressed_time = frequency * compressed_frame;
+					}
 				}
 				else {
 					f = start_frame;
 				}
 				frame_done = false;
 			}
-		}
-
-		for (tfxEachLayer) {
-			sprite_data->compressed.frame_meta[compressed_frame].index_offset[layer] = running_offset;
-			running_offset += sprite_data->compressed.frame_meta[compressed_frame].sprite_count[layer];
-		}
+		} while(!finished);
 
 		sprite_data->compressed.total_sprites = ci;
 		sprite_data->compressed_sprites_buffer.current_size = ci;
-		sprite_data->compressed.total_memory_for_sprites = ci * sprite_data->compressed_sprites_buffer.struct_size;
+		sprite_data->compressed.total_memory_for_sprites = ci * (tfxU32)sprite_data->compressed_sprites_buffer.struct_size;
 
 		f = 0;
 		//Second pass, link up the captured indexes using the UIDs
