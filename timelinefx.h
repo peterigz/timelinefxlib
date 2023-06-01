@@ -6640,7 +6640,7 @@ You can then use layer inside the loop to get the current layer
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
-	struct tfxSpriteDataSoA {	//56 bytes
+	struct tfxSpriteDataSoA {	//64 bytes or 60 after uid is removed as it's only needed for compressing the sprite data down to size.
 		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;
 		tfxUniqueSpriteID *uid;

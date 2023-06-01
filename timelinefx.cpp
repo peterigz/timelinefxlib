@@ -5680,8 +5680,7 @@ namespace tfx {
 
 		sprite_data->normal.total_sprites = total_sprites;
 		sprite_data->normal.total_memory_for_sprites = total_sprites * sizeof(tfxSprite3d); 
-		InitSpriteData3dSoACompression(&sprite_data->real_time_sprites_buffer, &sprite_data->real_time_sprites, total_sprites);
-		InitSpriteData3dSoA(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, total_sprites);
+		InitSpriteData3dSoA(&sprite_data->real_time_sprites_buffer, &sprite_data->real_time_sprites, total_sprites);
 
 		tfxSoABuffer temp_sprites_buffer;
 		tfxSpriteDataSoA temp_sprites;
@@ -5816,6 +5815,7 @@ namespace tfx {
 	void CompressSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect) {
 		tfxSpriteDataSettings &anim = effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index];
 		tfxSpriteData *sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
+		InitSpriteData3dSoACompression(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, sprite_data->real_time_sprites_buffer.current_size);
 
 		sprite_data->compressed.frame_meta.free();
 		sprite_data->compressed.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
