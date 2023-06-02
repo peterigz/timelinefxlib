@@ -7939,7 +7939,56 @@ namespace tfx {
 			spawn_quantity *= tfxUPDATE_TIME;
 			step_size = 1.f / spawn_quantity;
 		}
-		else {
+		else if (property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points) {
+			if (property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points && property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
+				float x = tfxMax(properties.grid_points[property_index].x, 1.f);
+				float y = tfxMax(properties.grid_points[property_index].y, 1.f);
+				float z = tfxMax(properties.grid_points[property_index].z, 1.f);
+				if (properties.emission_type[property_index] == tfxArea) {
+				}
+				else if (properties.emission_type[property_index] == tfxCylinder) {
+					spawn_quantity = x * y;
+				}
+				switch (properties.emission_type[property_index]) {
+				case tfxEmissionType::tfxArea:
+					if (property_flags & tfxEmitterPropertyFlags_is_3d) {
+						if (property_flags & tfxEmitterPropertyFlags_fill_area) {
+							spawn_quantity = x * y * z;
+						}
+						else if (property_flags & tfxEmitterPropertyFlags_area_open_ends) {
+							spawn_quantity = x * z * 2 + y * z * 2 - 4 * z;
+						}
+						else {
+							spawn_quantity = x * z * 2 + (y - 2) * (x * 2 + z * 2 - 4);
+						}
+					}
+					else {
+						if (property_flags & tfxEmitterPropertyFlags_fill_area) {
+							spawn_quantity = x * y;
+						}
+						else {
+							spawn_quantity = x * 2 + (y - 2) * 2;
+						}
+					}
+					break;
+				case tfxEmissionType::tfxCylinder:
+					spawn_quantity = x * y;
+					break;
+				case tfxEmissionType::tfxEllipse:
+					if (!(property_flags & tfxEmitterPropertyFlags_is_3d)) {
+						spawn_quantity = x;
+					}
+					break;
+				case tfxEmissionType::tfxLine:
+					spawn_quantity = x;
+					break;
+				case tfxEmissionType::tfxIcosphere:
+					spawn_quantity = (float)tfxIcospherePoints[tfxMin((tfxU32)x, 5)].current_size;
+					break;
+				}
+			}
+			step_size = 1.f / spawn_quantity;
+		} else {
 			step_size = 1.f / spawn_quantity;
 		}
 
@@ -8127,7 +8176,7 @@ namespace tfx {
 		if (tween >= 1) {
 			amount_remainder = tween - 1.f;
 		}
-		else {
+		else if(!(property_flags & tfxEmitterPropertyFlags_single)) {
 			float amount_that_will_spawn = (1.f - tween) / step_size;
 			work_entry.amount_to_spawn = (tfxU32)std::ceilf(amount_that_will_spawn);
 			if (work_entry.amount_to_spawn > max_spawn_count) {
@@ -8138,6 +8187,9 @@ namespace tfx {
 				amount_remainder = amount_that_will_spawn - (tfxU32)amount_that_will_spawn;
 				amount_remainder = (1.f - amount_remainder) * step_size;
 			}
+		}
+		else {
+			work_entry.amount_to_spawn = (tfxU32)pm.emitters.spawn_quantity[work_entry.emitter_index];
 		}
 
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
@@ -9020,7 +9072,7 @@ namespace tfx {
 									grid_coords.z--;
 									grid_coords.y = grid_points.y - 1;
 									if (grid_coords.z < 0.f)
-										grid_coords.z = grid_points.z;
+										grid_coords.z = grid_points.z - 1;
 								}
 							}
 						}
@@ -9090,176 +9142,67 @@ namespace tfx {
 						local_position_z = grid_coords.z * grid_segment_size.z;
 					}
 					else {
-						if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
-							if (grid_direction.z == 0) {
-								//right side
-								grid_coords.z--;
-								grid_coords.x = 0.f;
-								if (grid_coords.z < 0.f) {
-									grid_coords.y++;
-									grid_coords.z = grid_points.z - 1;
-									if (grid_coords.y >= grid_points.y - 1) {
-										grid_coords.y = grid_points.y - 1;
-										grid_direction.z = 2;
-									}
-								}
-							}
-							else if (grid_direction.z == 1) {
-								//left side
-								grid_coords.z--;
-								grid_coords.x = grid_points.x - 1;
-								if (grid_coords.z < 0.f) {
-									grid_coords.y--;
-									grid_coords.z = grid_points.z - 1;
-									if (grid_coords.y < 0) {
-										grid_coords.y = 0;
-										grid_coords.x--;
-										grid_direction.z = 3;
-									}
-								}
-							}
-							else if (grid_direction.z == 2) {
-								//top side
-								grid_coords.z--;
-								grid_coords.y = grid_points.y - 1;
-								if (grid_coords.z < 0.f) {
-									grid_coords.x++;
-									grid_coords.z = grid_points.z - 1;
-									if (grid_coords.x >= grid_points.x - 1) {
-										grid_coords.x = grid_points.x - 1;
-										grid_direction.z = 1;
-									}
-								}
-							}
-							else if (grid_direction.z == 3) {
-								//bottom side
-								grid_coords.z--;
-								grid_coords.y = 0.f;
-								if (grid_coords.z < 0.f) {
-									grid_coords.x--;
-									grid_coords.z = grid_points.z - 1;
-									if (grid_coords.x < 0) {
-										grid_coords.x = 0.f;
-										grid_coords.y = 1.f;
-										grid_direction.z = (property_flags & tfxEmitterPropertyFlags_area_open_ends) ? 0.f : 4.f;
-									}
-								}
-							}
-							else if (grid_direction.z == 4) {
-								//End far
-								grid_coords.x++;
-								grid_coords.z = 0.f;
-								if (grid_coords.x >= grid_points.x) {
-									grid_coords.y++;
-									grid_coords.x = 0.f;
-									if (grid_coords.y >= grid_points.y - 1) {
-										grid_coords.y = grid_points.y - 1;
-										grid_coords.x = grid_points.x - 1;
-										grid_direction.z = 5;
-									}
-								}
-							}
-							else if (grid_direction.z == 5) {
-								//End near
-								grid_coords.x--;
-								grid_coords.z = grid_points.z - 1;
+						if (!(property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
+							if ((grid_coords.z > 0 && grid_coords.z < grid_points.z - 1) || property_flags & tfxEmitterPropertyFlags_area_open_ends) {
+								grid_coords.x -= grid_coords.y == 0 || grid_coords.y == grid_points.y - 1 ? 1.f : grid_points.x - 1;
 								if (grid_coords.x < 0.f) {
 									grid_coords.y--;
 									grid_coords.x = grid_points.x - 1;
 									if (grid_coords.y < 0.f) {
-										grid_coords.y = 0.f;
-										grid_direction.z = 0;
-									}
-								}
-							}
-						}
-						else {
-							if (grid_direction.z == 0) {
-								//right side
-								grid_coords.z--;
-								grid_coords.x = 0.f;
-								if (grid_coords.z < 0.f) {
-									grid_coords.y--;
-									grid_coords.z = grid_points.z - 1;
-									if (grid_coords.y < 1) {
-										grid_coords.y = 0;
-										grid_direction.z = 3;
-									}
-								}
-							}
-							else if (grid_direction.z == 1) {
-								//left side
-								grid_coords.z--;
-								grid_coords.x = grid_points.x - 1;
-								if (grid_coords.z < 0.f) {
-									grid_coords.y++;
-									grid_coords.z = grid_points.z - 1;
-									if (grid_coords.y >= grid_points.y) {
+										grid_coords.z--;
 										grid_coords.y = grid_points.y - 1;
-										grid_coords.x--;
-										grid_direction.z = 2;
+										if (grid_coords.z < 0.f)
+											grid_coords.z = grid_points.z - 1;
 									}
 								}
 							}
-							else if (grid_direction.z == 2) {
-								//top side
-								grid_coords.z--;
-								grid_coords.y = grid_points.y - 1;
-								if (grid_coords.z < 0.f) {
-									grid_coords.x--;
-									grid_coords.z = grid_points.z - 1;
-									if (grid_coords.x < 1) {
-										grid_coords.x = 0.f;
-										grid_direction.z = (property_flags & tfxEmitterPropertyFlags_area_open_ends) ? 0.f : 4.f;
-									}
-								}
-							}
-							else if (grid_direction.z == 3) {
-								//bottom side
-								grid_coords.z--;
-								grid_coords.y = 0.f;
-								if (grid_coords.z < 0.f) {
-									grid_coords.x++;
-									grid_coords.z = grid_points.z - 1;
-									if (grid_coords.x >= grid_points.x - 1) {
-										grid_coords.x = grid_points.x - 1;
-										grid_coords.y = 0.f;
-										grid_direction.z = 1;
-									}
-								}
-							}
-							else if (grid_direction.z == 4) {
-								//End far
-								grid_coords.x++;
-								grid_coords.z = 0.f;
-								if (grid_coords.x >= grid_points.x) {
-									grid_coords.y--;
-									grid_coords.x = 0.f;
-									if (grid_coords.y < 0) {
-										grid_coords.y = 0.f;
-										grid_coords.x = grid_points.x - 1;
-										grid_direction.z = 5;
-									}
-								}
-							}
-							else if (grid_direction.z == 5) {
-								//End near
+							else {
 								grid_coords.x--;
-								grid_coords.z = grid_points.z - 1;
 								if (grid_coords.x < 0.f) {
-									grid_coords.y++;
+									grid_coords.y--;
 									grid_coords.x = grid_points.x - 1;
-									if (grid_coords.y >= grid_points.y - 1) {
+									if (grid_coords.y < 0.f) {
+										grid_coords.z--;
 										grid_coords.y = grid_points.y - 1;
-										grid_direction.z = 0.f;
+										if (grid_coords.z < 0.f)
+											grid_coords.z = grid_points.z - 1;
 									}
 								}
 							}
 						}
-						tfxBound3d(grid_coords, grid_points);
+
 						local_position_x = position.x + (grid_coords.x * grid_segment_size.x);
 						local_position_y = position.y + (grid_coords.y * grid_segment_size.y);
 						local_position_z = position.z + (grid_coords.z * grid_segment_size.z);
+
+						if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+							if ((grid_coords.z > 0 && grid_coords.z < grid_points.z - 1) || property_flags & tfxEmitterPropertyFlags_area_open_ends) {
+								grid_coords.x += grid_coords.y == 0 || grid_coords.y == grid_points.y - 1 ? 1.f : grid_points.x - 1;
+								if (grid_coords.x >= grid_points.x) {
+									grid_coords.y++;
+									grid_coords.x = 0.f;
+									if (grid_coords.y >= grid_points.y) {
+										grid_coords.z++;
+										grid_coords.y = 0.f;
+										if (grid_coords.z >= grid_points.z)
+											grid_coords.z = 0.f;
+									}
+								}
+							}
+							else {
+								grid_coords.x++;
+								if (grid_coords.x == grid_points.x) {
+									grid_coords.y++;
+									grid_coords.x = 0.f;
+									if (grid_coords.y >= grid_points.y) {
+										grid_coords.z++;
+										grid_coords.y = 0.f;
+										if (grid_coords.z >= grid_points.z)
+											grid_coords.z = 0.f;
+									}
+								}
+							}
+						}
 					}
 
 				}
@@ -9685,13 +9628,13 @@ namespace tfx {
 				float th = random.Range(arc_size) + arc_offset;
 
 				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
-				local_position_y = random.Range(half_emitter_size.y);
+				local_position_y = random.Range(emitter_size.y);
 				local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
 			}
 			else {
-				local_position_x = random.Range(0.f, half_emitter_size.x);
-				local_position_y = random.Range(0.f, half_emitter_size.y);
-				local_position_z = random.Range(0.f, half_emitter_size.z);
+				local_position_x = random.Range(0.f, emitter_size.x);
+				local_position_y = random.Range(0.f, emitter_size.y);
+				local_position_z = random.Range(0.f, emitter_size.z);
 
 				while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_z - half_emitter_size.z, 2) / std::pow(half_emitter_size.z, 2)) > 1) {
 					local_position_x = random.Range(0.f, half_emitter_size.x);

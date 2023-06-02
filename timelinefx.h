@@ -837,12 +837,13 @@ You can then use layer inside the loop to get the current layer
 		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 		tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
 		tfxEmitterPropertyFlags_can_grow_particle_memory = 1 << 23,			//Allows for expanding the memory used for particle emitters if the amount spawned is changed dynamically
-		tfxEmitterPropertyFlags_is_3d = 1 << 24,							//Makes the effect run in 3d mode for 3d effects
+		tfxEmitterPropertyFlags_is_3d = 1 << 24,							//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
 		tfxEmitterPropertyFlags_use_dynamic = 1 << 25,						//Use a dynamic particle storage rather then a fixed one
 		tfxEmitterPropertyFlags_grid_spawn_random = 1 << 26,				//Spawn on grid points but randomly rather then in sequence
 		tfxEmitterPropertyFlags_area_open_ends = 1 << 27,					//Only sides of the area/cylinder are spawned on when fill area is not checked
 		tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 28,		//Emitter will be excluded from effect hue adjustments if this flag is checked
-		tfxEmitterPropertyFlags_enabled = 1 << 29							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
+		tfxEmitterPropertyFlags_enabled = 1 << 29,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
+		tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 30		//Match the amount to spawn with a single emitter to the number of grid points in the effect
 	};
 
 	enum tfxParticleFlags_ : unsigned char {
@@ -3112,6 +3113,7 @@ You can then use layer inside the loop to get the current layer
 		tfxRGBA8(unsigned char _r, unsigned char _g, unsigned char _b, unsigned char _a) : r(_r), g(_g), b(_b), a(_a) { }
 		tfxRGBA8(float _r, float _g, float _b, float _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
 		tfxRGBA8(tfxU32 _r, tfxU32 _g, tfxU32 _b, tfxU32 _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
+		tfxRGBA8(int _r, int _g, int _b, int _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
 		tfxRGBA8(tfxRGBA8 _c, char _a) : r(_c.r), g(_c.g), b(_c.b), a((char)_a) { }
 	};
 
@@ -6719,14 +6721,14 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured) {
-		tfxWideFloat to1 = _mm_load_ps(&current.position.x);
-		tfxWideFloat from1 = _mm_load_ps(&captured.position.x);
-		tfxWideFloat to2 = _mm_load_ps(&current.rotations.y);
-		tfxWideFloat from2 = _mm_load_ps(&captured.rotations.y);
-		tfxWideFloat one_minus_tween = _mm_sub_ps(tfxWIDEONE, tween);
-		tfxWideFloat to_lerp1 = _mm_mul_ps(to1, tween);
-		tfxWideFloat from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
-		tfxWideFloat result = _mm_add_ps(from_lerp1, to_lerp1);
+		__m128 to1 = _mm_load_ps(&current.position.x);
+		__m128 from1 = _mm_load_ps(&captured.position.x);
+		__m128 to2 = _mm_load_ps(&current.rotations.y);
+		__m128 from2 = _mm_load_ps(&captured.rotations.y);
+		__m128 one_minus_tween = _mm_sub_ps(tfxWIDEONE, tween);
+		__m128 to_lerp1 = _mm_mul_ps(to1, tween);
+		__m128 from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
+		__m128 result = _mm_add_ps(from_lerp1, to_lerp1);
 		tfxWideLerpTransformResult out;
 		_mm_store_ps(out.position, result);
 		to_lerp1 = _mm_mul_ps(to2, tween);
@@ -7802,6 +7804,22 @@ You can then use layer inside the loop to get the current layer
 		return tweened;
 	}
 
+	inline tfxRGBA8 Tween(float tween, const tfxRGBA8 current, const tfxRGBA8 captured) {
+		__m128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
+		__m128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
+		__m128 wide_tween = _mm_set1_ps(tween);
+		__m128 wide_tween_m1 = _mm_sub_ps(_mm_set1_ps(1.f), wide_tween);
+		color1 = _mm_div_ps(color1, _mm_set1_ps(255.f));
+		color2 = _mm_div_ps(color2, _mm_set1_ps(255.f));
+		color1 = _mm_mul_ps(color1, wide_tween);
+		color2 = _mm_mul_ps(color2, wide_tween_m1);
+		color1 = _mm_add_ps(color1, color2);
+		color1 = _mm_mul_ps(color1, _mm_set1_ps(255.f));
+		tfx128iArray packed;
+		packed.m = _mm_cvtps_epi32(color1);
+		return tfxRGBA8(packed.a[0], packed.a[1], packed.a[2], packed.a[3]);
+	}
+
 	inline tfxVec2 Tween2d(float tween, const tfxVec4 &world) {
 		tfxVec2 tweened;
 		tweened = world.xy() * tween + world.zw() * (1.f - tween);
@@ -8156,6 +8174,26 @@ You can then use layer inside the loop to get the current layer
 	*/
 	tfxAPI inline tfxU32 GetSpriteDataAlignment(tfxSpriteDataSoA &sprites, tfxU32 index) {
 		return sprites.alignment[index];
+	}
+
+	/*
+	Get the image frame of a sprite data by its index in the sprite data struct of arrays
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param index			The index of the sprite you want to retrieve
+	* @returns				tfxU32 of the frame value
+	*/
+	tfxAPI inline tfxU32 GetSpriteDataFrame(tfxSpriteDataSoA &sprites, tfxU32 index) {
+		return (sprites.image_frame_plus[index] & 0x00FF0000) >> 16;
+	}
+
+	/*
+	Get the color of a sprite data by its index in the sprite data struct of arrays
+	* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+	* @param index			The index of the sprite you want to retrieve
+	* @returns				tfxRGBA8 of the frame value
+	*/
+	tfxAPI inline tfxRGBA8 GetSpriteDataColor(tfxSpriteDataSoA &sprites, tfxU32 index) {
+		return sprites.color[index];
 	}
 
 	/*
