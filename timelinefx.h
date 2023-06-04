@@ -6954,6 +6954,7 @@ You can then use layer inside the loop to get the current layer
 		tfxvec<tfxDepthIndex> depth_indexes[tfxLAYERS][2];
 		tfxvec<tfxU32> effects_in_use[tfxMAXDEPTH][2];
 		tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
+		tfxvec<tfxU32> emitters_check_capture;
 		tfxvec<tfxU32> free_effects;
 		tfxvec<tfxU32> free_emitters;
 		tfxSoABuffer effect_buffers;
@@ -7279,6 +7280,7 @@ You can then use layer inside the loop to get the current layer
 	void ControlParticleColor(tfxWorkQueue *queue, void *data);
 	void ControlParticleSize(tfxWorkQueue *queue, void *data);
 	void ControlParticleUID(tfxWorkQueue *queue, void *data);
+	void ControlParticleCaptureFlag(tfxWorkQueue *queue, void *data);
 
 	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
 	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
