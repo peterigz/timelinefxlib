@@ -6442,6 +6442,8 @@ You can then use layer inside the loop to get the current layer
 		tfxParticleManagerModes GetRequiredParticleManagerMode();
 		tfxPreviewCameraSettings &GetCameraSettings();
 		tfxU32 GetCameraSettingsIndex();
+		float GetLoopLength();
+		float GetHighestLoopLength();
 
 	};
 

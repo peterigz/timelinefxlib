@@ -899,6 +899,18 @@ namespace tfx {
 		return GetInfo().preview_camera_settings;
 	}
 
+	float tfxEffectEmitter::GetLoopLength() {
+		return GetProperties().loop_length[property_index];
+	}
+
+	float tfxEffectEmitter::GetHighestLoopLength() {
+		float loop_length = GetLoopLength();
+		for (auto &sub : GetInfo().sub_effectors) {
+			loop_length = tfxMax(sub.GetHighestLoopLength(), loop_length);
+		}
+		return loop_length;
+	}
+
 	tfxEffectEmitter& tfxEffectEmitter::AddEmitter(tfxEffectEmitter &e) {
 		assert(e.GetInfo().name.Length());				//Emitter must have a name so that a hash can be generated
 		e.type = tfxEffectEmitterType::tfxEmitterType;
