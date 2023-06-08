@@ -5439,6 +5439,7 @@ namespace tfx {
 				if (effect_stack.back().property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 					lib.emitter_properties.image_handle[effect_stack.back().property_index] = { .5f, .5f };
 				}
+				effect_stack.back().property_flags |= tfxEmitterPropertyFlags_enabled;
 				effect_stack.parent().GetInfo().sub_effectors.push_back(effect_stack.back());
 				effect_stack.pop();
 			}
