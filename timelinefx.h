@@ -706,7 +706,6 @@ You can then use layer inside the loop to get the current layer
 		tfxErrorCode_invalid_format = 1 << 8,
 		tfxErrorCode_no_inventory = 1 << 9,
 		tfxErrorCode_invalid_inventory = 1 << 10
-
 	};
 
 	enum tfxEffectCloningFlags_ {
@@ -2621,7 +2620,7 @@ You can then use layer inside the loop to get the current layer
 
 	//You must called InitialiseTimelineFX() before doing anything!
 #define tmpStack(type, name) assert(tfxSTACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxSTACK_ALLOCATOR)
-		//You must called InitialiseTimelineFX() before doing anything!
+	//You must called InitialiseTimelineFX() before doing anything!
 #define tmpMTStack(type, name) assert(tfxMT_STACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxMT_STACK_ALLOCATOR)
 
 	template <typename T>

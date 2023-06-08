@@ -5249,6 +5249,9 @@ namespace tfx {
 		}
 
 		int first_shape_index = -1;
+
+		//You must call InitialiseTimelineFX() before doing anything!	
+		assert(tfxSTACK_ALLOCATOR.arena_size > 0);
 		tmpStack(tfxEffectEmitter, effect_stack);
 		tmpStack(tfxStr256, pair);
 
@@ -7405,6 +7408,7 @@ namespace tfx {
 				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
 			}
 		}
+
 		/*
 		else if (flags & tfxEffectManagerFlags_order_by_depth) {
 			FreeParticleBanks();
