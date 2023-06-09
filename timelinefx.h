@@ -199,6 +199,7 @@ You can then use layer inside the loop to get the current layer
 	typedef unsigned long long tfxU64;
 	typedef long long tfxS64;
 	typedef tfxU32 tfxEffectID;
+	typedef tfxU32 tfxAnimationID;
 	typedef unsigned long long tfxKey;
 	typedef tfxU32 tfxParticleID;
 	typedef short tfxShort;
@@ -692,6 +693,7 @@ You can then use layer inside the loop to get the current layer
 	typedef tfxU32 tfxErrorFlags;
 	typedef tfxU32 tfxEffectCloningFlags;
 	typedef tfxU32 tfxAnimationFlags;
+	typedef tfxU32 tfxAnimationInstanceFlags;
 
 	enum tfxErrorFlags_ {
 		tfxErrorCode_success = 0,
@@ -916,6 +918,11 @@ You can then use layer inside the loop to get the current layer
 		tfxAnimationFlags_export_with_transparency = 1 << 3,
 		tfxAnimationFlags_auto_set_length = 1 << 4,
 		tfxAnimationFlags_orthographic = 1 << 5
+	};
+
+	enum tfxAnimationInstanceFlags_ {
+		tfxAnimationInstanceFlags_none = 0,
+		tfxAnimationInstanceFlags_loop = 1 << 0,
 	};
 
 	//-----------------------------------------------------------
@@ -6573,19 +6580,10 @@ You can then use layer inside the loop to get the current layer
 	struct tfxFrameMeta {
 		tfxU32 frame_index;					//The index of the frame of animation
 		tfxU32 index_offset[tfxLAYERS];		//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
-		tfxU32 sprite_count[tfxLAYERS];		//The number of sprites in the frame
+		tfxU32 sprite_count[tfxLAYERS];		//The number of sprites in the frame for each layer
+		tfxU32 total_sprites;				//The total number of sprites for all layers in the frame
 		tfxVec3 corner1;					//Bounding box corner
 		tfxVec3 corner2;					//The bounding box can be used to decide if this frame needs to be drawn
-	};
-
-	struct tfxSprite3d {	//56 bytes
-		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
-		tfxU32 captured_index;
-		tfxSpriteTransform3d transform;
-		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-		tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
-		float stretch;
-		float intensity;
 	};
 
 	//This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
@@ -6643,6 +6641,30 @@ You can then use layer inside the loop to get the current layer
 		FinishSoABufferSetup(buffer, soa, reserve_amount);
 	}
 
+	//These structs are for animation sprite data that you can upload to the gpu
+	struct tfxSpriteData3d {
+		tfxU32 image_frame_plus;
+		tfxU32 captured_index;
+		float lerp_offset;
+		tfxSpriteTransform3d transform_3d;
+		tfxU32 alignment;		
+		tfxRGBA8 color;		
+		float stretch;
+		float intensity;
+	};
+
+	struct tfxSpriteData2d {
+		tfxU32 image_frame_plus;
+		tfxU32 captured_index;
+		float lerp_offset;
+		tfxSpriteTransform3d transform_3d;
+		tfxU32 alignment;		
+		tfxRGBA8 color;		
+		float stretch;
+		float intensity;
+	};
+
+	//Animation sprite data that is used on the cpu to bake the data
 	struct tfxSpriteDataSoA {	//64 bytes or 60 after uid is removed as it's only needed for compressing the sprite data down to size.
 		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;
@@ -6740,6 +6762,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	struct tfxSpriteDataMetrics {
+		tfxU32 start_offset;	//Only applies to animation manager
 		tfxU32 frame_count;
 		float animation_length_in_time;
 		tfxU32 total_sprites;
@@ -6935,6 +6958,86 @@ You can then use layer inside the loop to get the current layer
 			particles->flags[i] = 0;
 		}
 	}
+
+	//An anim instance is used to let the gpu know where to draw an animation with sprite data.
+	struct tfxAnimationInstance {
+		tfxVec3 position;					//position that the instance should be played at
+		tfxU32 sprite_count;				//The number of sprites to be drawn
+		tfxU32 offset_into_sprite_data;		//The starting ofset in the buffer that contains all the sprite data
+		tfxU32 info_index;					//Index into the effect_animation_info storage map to get at the frame meta
+		float current_time;					//Current point of time in the animation
+		float animation_time;				//Total time that the animation lasts for
+		float tween;						//The point time within the frame (0..1)
+		tfxAnimationInstanceFlags flags;	//Flags associated with the instance
+	};
+
+	struct tfxAnimationBufferMetrics {
+		size_t sprite_data_size;
+		size_t offsets_size;
+		size_t instances_size;
+
+		tfxAnimationBufferMetrics() : sprite_data_size(0), offsets_size(0), instances_size(0) {}
+	};
+
+	//Use the animation manager to control playing of pre-recorded effects
+	struct tfxAnimationManager {
+		//All of the sprite data for all the animations that you might want to play on the GPU.
+		//This could be deleted once it's uploaded to the GPU
+		tfxvec<tfxSpriteData3d> sprite_data;
+		//List of active instances that are currently playing
+		tfxvec<tfxAnimationInstance> instances;
+		//List of instances in use. These index into the instances list above
+		tfxvec<tfxU32> instances_in_use[2];
+		tfxU32 current_in_use_buffer;
+		//List of free instance indexes
+		tfxvec<tfxU32> free_instances;
+		//List of indexes into the instances list that will actually be sent to the GPU next frame
+		//Any instances deemed not in view can be culled for example by not adding them to the queue
+		tfxvec<tfxAnimationInstance> render_queue;
+		//The compute shader needs to know when to switch from one animation instance to another as it
+		//progresses through all the sprites that need to be rendered. So this array of offsets tells
+		//it when to do this. So 0 will always be in the first slot, then the second element will be 
+		//the total number of sprites to be drawn for the first animation instance and so on. When the
+		//global index is more than or equal to the next element then we start on the next animation
+		//instance and draw those sprites.
+		tfxvec<tfxU32> offsets;
+		//Every animation that gets added to the animation manager gets info added here that describes
+		//where to find the relevent sprite data in the buffer and contains other frame meta about the 
+		//animation
+		tfxStorageMap<tfxSpriteDataMetrics> effect_animation_info;
+		//This struct contains the size of the buffers that need to be uploaded to the GPU. Offsets and 
+		//animation instances need to be uploaded every frame, but the sprite data only once before you
+		//start drawing anything
+		tfxAnimationBufferMetrics buffer_metrics;
+
+		inline tfxU32 AddInstance() {
+			if (free_instances.current_size > 0) {
+				tfxU32 index = free_instances.pop_back();
+				instances_in_use[current_in_use_buffer].push_back(index);
+				return index;
+			}
+			tfxAnimationInstance instance;
+			tfxU32 index = instances.current_size;
+			instances.push_back(instance);
+			instances_in_use[current_in_use_buffer].push_back(index);
+			return index;
+		}
+
+		inline void FreeInstance(tfxU32 index) {
+			free_instances.push_back(index);
+		}
+
+		void Update();
+	};
+
+	void InitialiseAnimationManager(tfxAnimationManager &animation_manager, tfxU32 max_instances);
+
+	//Add sprite data to an animation manager sprite data buffer from an effect. This will record the
+	//animation if necessary and then convert the sprite data to tfxSpriteData3d ready for uploading
+	//to the GPU
+	void AddSpriteData(tfxAnimationManager &animation_manager, tfxEffectEmitter &effect, tfxParticleManager *pm = NULL);
+	tfxU32 AddAnimationInstance(tfxAnimationManager &animation_manager, tfxEffectEmitter &effect, tfxU32 start_frame);
+	void UpdateAnimationManager(tfxAnimationManager &animation_manager);
 
 	//Use the particle manager to add multiple effects to your scene 
 	struct tfxParticleManager {
@@ -8417,6 +8520,14 @@ You can then use layer inside the loop to get the current layer
 							value by setting it here. The most ideal time to set this would be immediately after you have added the effect to the particle manager, but you could call it any time you wanted for a constantly changing noise offset.
 	*/
 	tfxAPI void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxEffectID effect_index, float noise_offset);
+
+	/*
+	Set the position of a 3d animation
+	* @param pm				A pointer to a tfxAnimationManager where the effect animatoin is being managed
+	* @param effect_index	The index of the effect. This is the index returned when calling AddAnimationInstance
+	* @param position		A tfxVec3 vector object containing the x, y and z coordinates
+	*/
+	tfxAPI void SetAnimationPosition(tfxAnimationManager *pm, tfxAnimationID effect_index, tfxVec3 position);
 
 }
 

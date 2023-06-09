@@ -5612,6 +5612,7 @@ namespace tfx {
 						tmp_frame_meta.push_back(meta);
 					}
 					tmp_frame_meta[frame].sprite_count[layer] += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
+					tmp_frame_meta[frame].total_sprites += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
 					total_sprites += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
 					sprites_in_layers += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
 					particles_started = total_sprites > 0;
@@ -5695,8 +5696,8 @@ namespace tfx {
 		);
 
 		sprite_data->normal.total_sprites = total_sprites;
-		sprite_data->normal.total_memory_for_sprites = total_sprites * sizeof(tfxSprite3d); 
 		InitSpriteData3dSoA(&sprite_data->real_time_sprites_buffer, &sprite_data->real_time_sprites, total_sprites);
+		sprite_data->normal.total_memory_for_sprites = total_sprites * (tfxU32)sprite_data->real_time_sprites_buffer.struct_size; 
 
 		tfxSoABuffer temp_sprites_buffer;
 		tfxSpriteDataSoA temp_sprites;
@@ -5861,6 +5862,7 @@ namespace tfx {
 				for (int i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
 					//Add to compress sprites but make invalid captured indexed create the offset
 					sprite_data->compressed.frame_meta[compressed_frame].sprite_count[layer]++;
+					sprite_data->compressed.frame_meta[compressed_frame].total_sprites++;
 					c_sprites.alignment[ci] = sprites.alignment[i];
 					c_sprites.captured_index[ci] = sprites.captured_index[i];
 					c_sprites.uid[ci] = sprites.uid[i];
@@ -5880,6 +5882,7 @@ namespace tfx {
 					if (sprites.captured_index[i] == tfxINVALID) {
 						//Add to compressed sprites frame but add the lerp offset
 						sprite_data->compressed.frame_meta[compressed_frame].sprite_count[layer]++;
+						sprite_data->compressed.frame_meta[compressed_frame].total_sprites++;
 						c_sprites.alignment[ci] = sprites.alignment[i];
 						c_sprites.captured_index[ci] = tfxINVALID;
 						c_sprites.uid[ci] = sprites.uid[i];
@@ -5971,6 +5974,98 @@ namespace tfx {
 				}
 			}
 		}
+	}
+
+	void InitialiseAnimationManager(tfxAnimationManager &animation_manager, tfxU32 max_instances) {
+		animation_manager.instances.reserve(max_instances);
+		animation_manager.free_instances.reserve(max_instances);
+		animation_manager.render_queue.reserve(max_instances);
+		animation_manager.instances_in_use[0].reserve(max_instances);
+		animation_manager.instances_in_use[1].reserve(max_instances);
+		animation_manager.current_in_use_buffer = 0;
+	}
+
+	void AddSpriteData(tfxAnimationManager &animation_manager, tfxEffectEmitter &effect, tfxParticleManager *pm) {
+		tfxSpriteDataSettings &anim = effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index];
+		if (!effect.library->pre_recorded_effects.ValidKey(effect.path_hash)) {
+			assert(pm);		//You must pass an appropriate particle manager if the animation needs recording
+			RecordSpriteData3d(*pm, effect);
+		}
+
+		tfxSpriteData &sprite_data = effect.library->pre_recorded_effects.At(effect.path_hash);
+		animation_manager.effect_animation_info.Insert(effect.path_hash, sprite_data.compressed);
+		tfxSpriteDataMetrics &metrics = animation_manager.effect_animation_info.At(effect.path_hash);
+		tfxSpriteDataSoA &sprites = sprite_data.compressed_sprites;
+		metrics.start_offset = animation_manager.sprite_data.current_size;
+		for (int i = 0; i != metrics.total_sprites; ++i) {
+			tfxSpriteData3d sprite;
+			sprite.alignment = sprites.alignment[i];
+			sprite.captured_index = sprites.captured_index[i];
+			sprite.color = sprites.color[i];
+			sprite.image_frame_plus = sprites.image_frame_plus[i];
+			sprite.intensity = sprites.intensity[i];
+			sprite.lerp_offset = sprites.lerp_offset[i];
+			sprite.stretch = sprites.stretch[i];
+			sprite.transform_3d = sprites.transform_3d[i];
+			animation_manager.sprite_data.push_back(sprite);
+		}
+		metrics.total_memory_for_sprites = sizeof(tfxSpriteData3d) * metrics.total_sprites;
+
+		//Update the index offset frame meta in the metrics depending on where this sprite data is being inserted into
+		//the list (the list may contain many different effect animations)
+		for (tfxEachLayer) {
+			for (auto &meta : metrics.frame_meta) {
+				meta.index_offset[layer] += metrics.start_offset;
+			}
+		}
+
+		animation_manager.buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
+	}
+
+	tfxU32 AddAnimationInstance(tfxAnimationManager &animation_manager, tfxEffectEmitter &effect, tfxU32 start_frame) {
+		assert(animation_manager.effect_animation_info.ValidKey(effect.path_hash));	//You must have added the effect sprite data to the animation manager
+																		//Call AddSpriteData to do so
+		tfxSpriteDataSettings &anim = effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index];
+		tfxSpriteData &sprite_data = effect.library->pre_recorded_effects.At(effect.path_hash);
+		tfxU32 index = animation_manager.AddInstance();
+		tfxAnimationInstance &instance = animation_manager.instances[index];
+		instance.current_time = 0.f;
+		instance.animation_time = anim.animation_time;
+		instance.tween = 0.f;
+		instance.flags = 0;
+		instance.info_index = animation_manager.effect_animation_info.GetIndex(effect.path_hash);
+		tfxSpriteDataMetrics &metrics = animation_manager.effect_animation_info.data[instance.info_index];
+		instance.offset_into_sprite_data = metrics.start_offset;
+		instance.sprite_count = metrics.frame_meta[start_frame].total_sprites;
+		return index;
+	}
+
+	void tfxAnimationManager::Update() {
+		assert(instances_in_use[current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
+		tfxU32 next_buffer = !current_in_use_buffer;
+		instances_in_use[next_buffer].clear();
+		for (auto i : instances_in_use[current_in_use_buffer]) {
+			auto &instance = instances[i];
+			instance.current_time += tfxFRAME_LENGTH;
+			if (instance.current_time >= instance.animation_time) {
+				if (instance.flags & tfxAnimationInstanceFlags_loop) {
+					instance.current_time = 0.f;
+					instances_in_use[next_buffer].push_back(i);
+				}
+				else {
+					FreeInstance(i);
+				}
+			}
+			else {
+				instances_in_use[next_buffer].push_back(i);
+			}
+		}
+
+		current_in_use_buffer = !current_in_use_buffer;
+	}
+
+	void UpdateAnimationManager(tfxAnimationManager &animation_manager) {
+		animation_manager.Update();
 	}
 
 	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager &pm) {
@@ -10818,6 +10913,10 @@ namespace tfx {
 
 	void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 position) {
 		pm->effects.local_position[effect_index] = position;
+	}
+
+	void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, tfxVec3 position) {
+		animation_manager->instances[effect_index].position = position;
 	}
 
 	void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 amount) {
