@@ -6044,6 +6044,7 @@ namespace tfx {
 		assert(instances_in_use[current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
 		tfxU32 next_buffer = !current_in_use_buffer;
 		instances_in_use[next_buffer].clear();
+		render_queue.clear();
 		for (auto i : instances_in_use[current_in_use_buffer]) {
 			auto &instance = instances[i];
 			instance.current_time += tfxFRAME_LENGTH;
@@ -6051,6 +6052,8 @@ namespace tfx {
 				if (instance.flags & tfxAnimationInstanceFlags_loop) {
 					instance.current_time = 0.f;
 					instances_in_use[next_buffer].push_back(i);
+					render_queue.push_back(instance);
+					UpdateBufferMetrics();
 				}
 				else {
 					FreeInstance(i);
@@ -6058,10 +6061,17 @@ namespace tfx {
 			}
 			else {
 				instances_in_use[next_buffer].push_back(i);
+				render_queue.push_back(instance);
+				UpdateBufferMetrics();
 			}
 		}
 
 		current_in_use_buffer = !current_in_use_buffer;
+	}
+
+	void tfxAnimationManager::UpdateBufferMetrics() {
+		buffer_metrics.instances_size = render_queue.current_size;
+		buffer_metrics.offsets_size = offsets.current_size;
 	}
 
 	void UpdateAnimationManager(tfxAnimationManager &animation_manager) {

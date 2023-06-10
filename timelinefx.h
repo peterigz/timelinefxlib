@@ -7028,6 +7028,7 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void Update();
+		void UpdateBufferMetrics();
 	};
 
 	void InitialiseAnimationManager(tfxAnimationManager &animation_manager, tfxU32 max_instances);
