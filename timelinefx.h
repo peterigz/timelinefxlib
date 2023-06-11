@@ -6975,6 +6975,8 @@ You can then use layer inside the loop to get the current layer
 		size_t sprite_data_size;
 		size_t offsets_size;
 		size_t instances_size;
+		size_t offsets_size_in_bytes;
+		size_t instances_size_in_bytes;
 
 		tfxAnimationBufferMetrics() : sprite_data_size(0), offsets_size(0), instances_size(0) {}
 	};

@@ -6072,6 +6072,8 @@ namespace tfx {
 	void tfxAnimationManager::UpdateBufferMetrics() {
 		buffer_metrics.instances_size = render_queue.current_size;
 		buffer_metrics.offsets_size = offsets.current_size;
+		buffer_metrics.instances_size_in_bytes = buffer_metrics.instances_size * sizeof(tfxAnimationInstance) * buffer_metrics.instances_size;
+		buffer_metrics.offsets_size_in_bytes = buffer_metrics.offsets_size * sizeof(tfxU32) * buffer_metrics.instances_size;
 	}
 
 	void UpdateAnimationManager(tfxAnimationManager &animation_manager) {
