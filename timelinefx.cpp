@@ -5529,11 +5529,11 @@ namespace tfx {
 		}
 	}
 
-	void InvalidateNewSpriteCapturedIndex(tfxParticleManager &pm) {
+	void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm) {
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			tfxSpriteSoA &sprites = pm.sprites[pm.current_sprite_buffer][layer];
-			for (int i = 0; i != pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size; ++i) {
-				if ((sprites.captured_index[i] & 0xF0000000) >> 28 == pm.current_sprite_buffer) {
+			tfxSpriteSoA &sprites = pm->sprites[pm->current_sprite_buffer][layer];
+			for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
+				if ((sprites.captured_index[i] & 0xF0000000) >> 28 == pm->current_sprite_buffer) {
 					sprites.captured_index[i] = tfxINVALID;
 				}
 			}
@@ -5549,12 +5549,12 @@ namespace tfx {
 		}
 	}
 
-	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect) {
+	void RecordSpriteData2d(tfxParticleManager *pm, tfxEffectEmitter *effect) {
 
 	}
 
-	void RecordSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect) {
-		tfxSpriteDataSettings &anim = effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index];
+	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect) {
+		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
 		tfxU32 frames = anim.real_frames;
 		tfxU32 start_frame = anim.frame_offset;
 		int extra_frames = anim.extra_frames_count;
@@ -5568,31 +5568,31 @@ namespace tfx {
 		//SetUpdateFrequency(60.f * (anim.playback_speed ? anim.playback_speed : 1.f));
 
 		bool auto_set_length = false;
-		if (anim.animation_flags & tfxAnimationFlags_auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && effect.IsFinite()) {
+		if (anim.animation_flags & tfxAnimationFlags_auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && effect->IsFinite()) {
 			frames = 99999;
 			auto_set_length = true;
 		}
 
 		//First pass to count the number of sprites in each frame
-		pm.flags |= tfxEffectManagerFlags_recording_sprites;
-		pm.ClearAll();
-		if (!(pm.flags & tfxEffectManagerFlags_using_uids)) {
-			pm.ToggleSpritesWithUID(true);
+		pm->flags |= tfxEffectManagerFlags_recording_sprites;
+		pm->ClearAll();
+		if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
+			pm->ToggleSpritesWithUID(true);
 		}
-		SetSeed(&pm, anim.seed);
-		tfxU32 preview_effect_index = pm.AddEffect(effect, pm.current_ebuff);
-		SetEffectPosition(&pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
-		Transform3d(pm.effects.world_rotations[preview_effect_index],
-			pm.effects.local_rotations[preview_effect_index],
-			pm.effects.scale[preview_effect_index],
-			pm.effects.world_position[preview_effect_index],
-			pm.effects.local_position[preview_effect_index],
-			pm.effects.translation[preview_effect_index],
-			pm.effects.matrix[preview_effect_index],
-			pm.effects.world_rotations[preview_effect_index],
-			pm.effects.scale[preview_effect_index],
-			pm.effects.world_position[preview_effect_index],
-			pm.effects.matrix[preview_effect_index]
+		SetSeed(pm, anim.seed);
+		tfxU32 preview_effect_index = pm->AddEffect(*effect, pm->current_ebuff);
+		SetEffectPosition(pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
+		Transform3d(pm->effects.world_rotations[preview_effect_index],
+			pm->effects.local_rotations[preview_effect_index],
+			pm->effects.scale[preview_effect_index],
+			pm->effects.world_position[preview_effect_index],
+			pm->effects.local_position[preview_effect_index],
+			pm->effects.translation[preview_effect_index],
+			pm->effects.matrix[preview_effect_index],
+			pm->effects.world_rotations[preview_effect_index],
+			pm->effects.scale[preview_effect_index],
+			pm->effects.world_position[preview_effect_index],
+			pm->effects.matrix[preview_effect_index]
 		);
 
 		tfxU32 total_sprites = 0;
@@ -5600,7 +5600,7 @@ namespace tfx {
 		tfxU32 sprites_in_layers = 0;
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
-			pm.Update();
+			pm->Update();
 			bool particles_processed_last_frame = false;
 
 			if (offset >= start_frame) {
@@ -5611,12 +5611,12 @@ namespace tfx {
 						memset(&meta, 0, sizeof(tfxFrameMeta));
 						tmp_frame_meta.push_back(meta);
 					}
-					tmp_frame_meta[frame].sprite_count[layer] += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
-					tmp_frame_meta[frame].total_sprites += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
-					total_sprites += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
-					sprites_in_layers += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
+					tmp_frame_meta[frame].sprite_count[layer] += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+					tmp_frame_meta[frame].total_sprites += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+					total_sprites += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+					sprites_in_layers += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 					particles_started = total_sprites > 0;
-					particles_processed_last_frame |= pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size > 0;
+					particles_processed_last_frame |= pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0;
 				}
 			}
 
@@ -5638,28 +5638,28 @@ namespace tfx {
 					break;
 			}
 			if (start_counting_extra_frames && extra_frame_count++ >= extra_frames)
-				pm.DisableSpawning(true);
+				pm->DisableSpawning(true);
 		}
 
 		frames = tmp_frame_meta.size();
 
 		tfxSpriteData *sprite_data = nullptr;
-		if (effect.library->pre_recorded_effects.ValidKey(effect.path_hash)) {
-			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
+		if (effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
+			sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 			FreeSpriteData(*sprite_data);
 			sprite_data->normal.frame_count = frames;
 			sprite_data->normal.animation_length_in_time = frames * tfxFRAME_LENGTH;
-			sprite_data->normal.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
+			sprite_data->normal.frame_meta = tfxArray<tfxFrameMeta>(&effect->library->sprite_data_allocator, frames);
 			sprite_data->normal.frame_meta.zero();
 		}
 		else {
 			tfxSpriteData data;
 			data.normal.frame_count = frames;
 			data.normal.animation_length_in_time = frames * tfxFRAME_LENGTH;
-			data.normal.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, frames);
+			data.normal.frame_meta = tfxArray<tfxFrameMeta>(&effect->library->sprite_data_allocator, frames);
 			data.normal.frame_meta.zero();
-			effect.library->pre_recorded_effects.Insert(effect.path_hash, data);
-			sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
+			effect->library->pre_recorded_effects.Insert(effect->path_hash, data);
+			sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 		}
 
 		anim.real_frames = frames;
@@ -5678,21 +5678,21 @@ namespace tfx {
 			}
 		}
 
-		pm.ClearAll();
-		SetSeed(&pm, anim.seed);
-		preview_effect_index = pm.AddEffect(effect, pm.current_ebuff);
-		SetEffectPosition(&pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
-		Transform3d(pm.effects.world_rotations[preview_effect_index],
-			pm.effects.local_rotations[preview_effect_index],
-			pm.effects.scale[preview_effect_index],
-			pm.effects.world_position[preview_effect_index],
-			pm.effects.local_position[preview_effect_index],
-			pm.effects.translation[preview_effect_index],
-			pm.effects.matrix[preview_effect_index],
-			pm.effects.world_rotations[preview_effect_index],
-			pm.effects.scale[preview_effect_index],
-			pm.effects.world_position[preview_effect_index],
-			pm.effects.matrix[preview_effect_index]
+		pm->ClearAll();
+		SetSeed(pm, anim.seed);
+		preview_effect_index = pm->AddEffect(*effect, pm->current_ebuff);
+		SetEffectPosition(pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
+		Transform3d(pm->effects.world_rotations[preview_effect_index],
+			pm->effects.local_rotations[preview_effect_index],
+			pm->effects.scale[preview_effect_index],
+			pm->effects.world_position[preview_effect_index],
+			pm->effects.local_position[preview_effect_index],
+			pm->effects.translation[preview_effect_index],
+			pm->effects.matrix[preview_effect_index],
+			pm->effects.world_rotations[preview_effect_index],
+			pm->effects.scale[preview_effect_index],
+			pm->effects.world_position[preview_effect_index],
+			pm->effects.matrix[preview_effect_index]
 		);
 
 		sprite_data->normal.total_sprites = total_sprites;
@@ -5714,21 +5714,21 @@ namespace tfx {
 		extra_frame_count = 0;
 		particles_started = false;
 		start_counting_extra_frames = false;
-		pm.DisableSpawning(false);
+		pm->DisableSpawning(false);
 		total_sprites = 0;
 		tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
 
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
-			pm.Update();
+			pm->Update();
 			InvalidateNewSpriteCapturedIndex(pm);
 			bool particles_processed_last_frame = false;
 
 			if (offset >= start_frame) {
 				for (tfxEachLayer) {
 					tfxU32 meta_count = frame_meta[frame].sprite_count[layer];
-					tfxU32 pm_count = pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
-					if (running_count[layer][frame] > 0 && pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size > 0) {
+					tfxU32 pm_count = pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+					if (running_count[layer][frame] > 0 && pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0) {
 						Resize(&temp_sprites_buffer, running_count[layer][frame]);
 						memcpy(temp_sprites.alignment, sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
 						memcpy(temp_sprites.captured_index, sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
@@ -5745,38 +5745,38 @@ namespace tfx {
 							}
 						}
 					}
-					else if (captured_offset[layer] > 0 && pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size == 0) {
+					else if (captured_offset[layer] > 0 && pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size == 0) {
 						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
 							if(sprite_data->real_time_sprites.captured_index[index] != tfxINVALID)
 								sprite_data->real_time_sprites.captured_index[index] += captured_offset[layer];
 						}
 					}
-					memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].captured_index, sizeof(tfxU32) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].uid, sizeof(tfxUniqueSpriteID) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].color, sizeof(tfxU32) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].image_frame_plus, sizeof(tfxU32) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].intensity, sizeof(float) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].stretch, sizeof(float) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], pm.sprites[pm.current_sprite_buffer][layer].transform_3d, sizeof(tfxSpriteTransform3d) * pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size);
-					if (running_count[layer][frame] > 0 && pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size > 0) {
-						memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.alignment, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.uid, sizeof(tfxUniqueSpriteID) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.color, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.image_frame_plus, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.intensity, sizeof(float) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.stretch, sizeof(float) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer] + pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size, temp_sprites.transform_3d, sizeof(tfxSpriteTransform3d) * temp_sprites_buffer.current_size);
-						captured_offset[layer] = pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
+					memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].captured_index, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].uid, sizeof(tfxUniqueSpriteID) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].color, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].image_frame_plus, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensity, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].stretch, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].transform_3d, sizeof(tfxSpriteTransform3d) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					if (running_count[layer][frame] > 0 && pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0) {
+						memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.alignment, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.uid, sizeof(tfxUniqueSpriteID) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.color, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.image_frame_plus, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.intensity, sizeof(float) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.stretch, sizeof(float) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.transform_3d, sizeof(tfxSpriteTransform3d) * temp_sprites_buffer.current_size);
+						captured_offset[layer] = pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 					}
-					else if (pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size == 0) {
+					else if (pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size == 0) {
 						captured_offset[layer] = 0;
 					}
-					running_count[layer][frame] += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
-					total_sprites += pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size;
+					running_count[layer][frame] += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+					total_sprites += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 					particles_started = total_sprites > 0;
-					particles_processed_last_frame |= pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size > 0;
+					particles_processed_last_frame |= pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0;
 				}
 			}
 
@@ -5794,7 +5794,7 @@ namespace tfx {
 					break;
 			}
 			if (start_counting_extra_frames && extra_frame_count++ >= extra_frames)
-				pm.DisableSpawning(true);
+				pm->DisableSpawning(true);
 		}
 
 		sprite_data->real_time_sprites_buffer.current_size = total_sprites;
@@ -5814,9 +5814,9 @@ namespace tfx {
 
 		FreeSoABuffer(&temp_sprites_buffer);
 		SetUpdateFrequency(update_freq);
-		pm.DisableSpawning(false);
-		pm.flags &= ~tfxEffectManagerFlags_recording_sprites;
-		//pm.ForceSingleThreaded(false);
+		pm->DisableSpawning(false);
+		pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
+		//pm->ForceSingleThreaded(false);
 
 		if (anim.playback_speed < 1.f) {
 			CompressSpriteData3d(pm, effect);
@@ -5829,13 +5829,13 @@ namespace tfx {
 		}
 	}
 
-	void CompressSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect) {
-		tfxSpriteDataSettings &anim = effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index];
-		tfxSpriteData *sprite_data = &effect.library->pre_recorded_effects.At(effect.path_hash);
+	void CompressSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect) {
+		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
+		tfxSpriteData *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 		InitSpriteData3dSoACompression(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, sprite_data->real_time_sprites_buffer.current_size);
 
 		sprite_data->compressed.frame_meta.free();
-		sprite_data->compressed.frame_meta = tfxArray<tfxFrameMeta>(&effect.library->sprite_data_allocator, tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
+		sprite_data->compressed.frame_meta = tfxArray<tfxFrameMeta>(&effect->library->sprite_data_allocator, tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
 		sprite_data->compressed.frame_meta.zero();
 
 		float frequency = tfxFRAME_LENGTH * (1.f / anim.playback_speed);
@@ -5935,14 +5935,14 @@ namespace tfx {
 			entry->sprite_data = sprite_data;
 			entry->frame = f;
 			if (tfxNumberOfThreadsInAdditionToMain > 0) {
-				tfxAddWorkQueueEntry(&pm.work_queue, entry, LinkUpSpriteCapturedIndexes);
+				tfxAddWorkQueueEntry(&pm->work_queue, entry, LinkUpSpriteCapturedIndexes);
 			}
 			else {
-				LinkUpSpriteCapturedIndexes(&pm.work_queue, &entry);
+				LinkUpSpriteCapturedIndexes(&pm->work_queue, &entry);
 			}
 			f++;
 		}
-		tfxCompleteAllWork(&pm.work_queue);
+		tfxCompleteAllWork(&pm->work_queue);
 		compress_entry.free();
 
 		TrimSoABuffer(&sprite_data->compressed_sprites_buffer);
@@ -5976,27 +5976,27 @@ namespace tfx {
 		}
 	}
 
-	void InitialiseAnimationManager(tfxAnimationManager &animation_manager, tfxU32 max_instances) {
-		animation_manager.instances.reserve(max_instances);
-		animation_manager.free_instances.reserve(max_instances);
-		animation_manager.render_queue.reserve(max_instances);
-		animation_manager.instances_in_use[0].reserve(max_instances);
-		animation_manager.instances_in_use[1].reserve(max_instances);
-		animation_manager.current_in_use_buffer = 0;
+	void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances) {
+		animation_manager->instances.reserve(max_instances);
+		animation_manager->free_instances.reserve(max_instances);
+		animation_manager->render_queue.reserve(max_instances);
+		animation_manager->instances_in_use[0].reserve(max_instances);
+		animation_manager->instances_in_use[1].reserve(max_instances);
+		animation_manager->current_in_use_buffer = 0;
 	}
 
-	void AddSpriteData(tfxAnimationManager &animation_manager, tfxEffectEmitter &effect, tfxParticleManager *pm) {
-		tfxSpriteDataSettings &anim = effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index];
-		if (!effect.library->pre_recorded_effects.ValidKey(effect.path_hash)) {
+	void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm) {
+		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
+		if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 			assert(pm);		//You must pass an appropriate particle manager if the animation needs recording
-			RecordSpriteData3d(*pm, effect);
+			RecordSpriteData3d(pm, effect);
 		}
 
-		tfxSpriteData &sprite_data = effect.library->pre_recorded_effects.At(effect.path_hash);
-		animation_manager.effect_animation_info.Insert(effect.path_hash, sprite_data.compressed);
-		tfxSpriteDataMetrics &metrics = animation_manager.effect_animation_info.At(effect.path_hash);
+		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
+		animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
+		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.At(effect->path_hash);
 		tfxSpriteDataSoA &sprites = sprite_data.compressed_sprites;
-		metrics.start_offset = animation_manager.sprite_data.current_size;
+		metrics.start_offset = animation_manager->sprite_data.current_size;
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfxSpriteData3d sprite;
 			sprite.alignment = sprites.alignment[i];
@@ -6007,7 +6007,7 @@ namespace tfx {
 			sprite.lerp_offset = sprites.lerp_offset[i];
 			sprite.stretch = sprites.stretch[i];
 			sprite.transform_3d = sprites.transform_3d[i];
-			animation_manager.sprite_data.push_back(sprite);
+			animation_manager->sprite_data.push_back(sprite);
 		}
 		metrics.total_memory_for_sprites = sizeof(tfxSpriteData3d) * metrics.total_sprites;
 
@@ -6019,22 +6019,22 @@ namespace tfx {
 			}
 		}
 
-		animation_manager.buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
+		animation_manager->buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
 	}
 
-	tfxU32 AddAnimationInstance(tfxAnimationManager &animation_manager, tfxEffectEmitter &effect, tfxU32 start_frame) {
-		assert(animation_manager.effect_animation_info.ValidKey(effect.path_hash));	//You must have added the effect sprite data to the animation manager
+	tfxU32 AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxU32 start_frame) {
+		assert(animation_manager->effect_animation_info.ValidKey(effect->path_hash));	//You must have added the effect sprite data to the animation manager
 																		//Call AddSpriteData to do so
-		tfxSpriteDataSettings &anim = effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index];
-		tfxSpriteData &sprite_data = effect.library->pre_recorded_effects.At(effect.path_hash);
-		tfxU32 index = animation_manager.AddInstance();
-		tfxAnimationInstance &instance = animation_manager.instances[index];
+		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
+		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
+		tfxU32 index = animation_manager->AddInstance();
+		tfxAnimationInstance &instance = animation_manager->instances[index];
 		instance.current_time = 0.f;
 		instance.animation_time = anim.animation_time;
 		instance.tween = 0.f;
 		instance.flags = 0;
-		instance.info_index = animation_manager.effect_animation_info.GetIndex(effect.path_hash);
-		tfxSpriteDataMetrics &metrics = animation_manager.effect_animation_info.data[instance.info_index];
+		instance.info_index = animation_manager->effect_animation_info.GetIndex(effect->path_hash);
+		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 		instance.offset_into_sprite_data = metrics.start_offset;
 		instance.sprite_count = metrics.frame_meta[start_frame].total_sprites;
 		return index;
@@ -6076,16 +6076,16 @@ namespace tfx {
 		buffer_metrics.offsets_size_in_bytes = buffer_metrics.offsets_size * sizeof(tfxU32) * buffer_metrics.instances_size;
 	}
 
-	void UpdateAnimationManager(tfxAnimationManager &animation_manager) {
-		animation_manager.Update();
+	void UpdateAnimationManager(tfxAnimationManager *animation_manager) {
+		animation_manager->Update();
 	}
 
-	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager &pm) {
+	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager *pm) {
 		if (effect.Is3DEffect()) {
-			RecordSpriteData3d(pm, effect);
+			RecordSpriteData3d(pm, &effect);
 		}
 		else {
-			RecordSpriteData2d(pm, effect);
+			RecordSpriteData2d(pm, &effect);
 		}
 	}
 

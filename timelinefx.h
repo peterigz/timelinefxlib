@@ -7033,14 +7033,14 @@ You can then use layer inside the loop to get the current layer
 		void UpdateBufferMetrics();
 	};
 
-	void InitialiseAnimationManager(tfxAnimationManager &animation_manager, tfxU32 max_instances);
+	void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances);
 
 	//Add sprite data to an animation manager sprite data buffer from an effect. This will record the
 	//animation if necessary and then convert the sprite data to tfxSpriteData3d ready for uploading
 	//to the GPU
-	void AddSpriteData(tfxAnimationManager &animation_manager, tfxEffectEmitter &effect, tfxParticleManager *pm = NULL);
-	tfxU32 AddAnimationInstance(tfxAnimationManager &animation_manager, tfxEffectEmitter &effect, tfxU32 start_frame);
-	void UpdateAnimationManager(tfxAnimationManager &animation_manager);
+	void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm = NULL);
+	tfxU32 AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxU32 start_frame);
+	void UpdateAnimationManager(tfxAnimationManager *animation_manager);
 
 	//Use the particle manager to add multiple effects to your scene 
 	struct tfxParticleManager {
@@ -7595,11 +7595,11 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 CountOfFreeGraphs();
 	};
 
-	void InvalidateNewSpriteCapturedIndex(tfxParticleManager &pm);
+	void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
 	void ResetSpriteDataLerpOffset(tfxSpriteData &sprites);
-	void RecordSpriteData2d(tfxParticleManager &pm, tfxEffectEmitter &effect);
-	void RecordSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect);
-	void CompressSpriteData3d(tfxParticleManager &pm, tfxEffectEmitter &effect);
+	void RecordSpriteData2d(tfxParticleManager *pm, tfxEffectEmitter *effect);
+	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect);
+	void CompressSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect);
 	void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
 
 	struct tfxEffectTemplate {
@@ -7649,7 +7649,7 @@ You can then use layer inside the loop to get the current layer
 			* @param path		const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
 			* / void RecordSpriteData3d(tfxParticleManager &pm, u32 frames, u32 start_frame, int extra_frames, u32 &largest_frame);
 		*/
-		tfxAPI void RecordSpriteData(tfxParticleManager &pm);
+		tfxAPI void RecordSpriteData(tfxParticleManager *pm);
 
 		/*
 		Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager
