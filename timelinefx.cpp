@@ -6037,19 +6037,25 @@ namespace tfx {
 		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 		instance.offset_into_sprite_data = metrics.start_offset;
 		instance.sprite_count = metrics.frame_meta[start_frame].total_sprites;
+		instance.frame_count = metrics.frame_count;
 		return index;
 	}
 
-	void tfxAnimationManager::Update() {
+	void tfxAnimationManager::Update(float elapsed) {
 		assert(instances_in_use[current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
 		tfxU32 next_buffer = !current_in_use_buffer;
 		instances_in_use[next_buffer].clear();
 		render_queue.clear();
 		for (auto i : instances_in_use[current_in_use_buffer]) {
 			auto &instance = instances[i];
-			instance.current_time += tfxFRAME_LENGTH;
+			tfxSpriteDataMetrics &metrics = effect_animation_info.data[instance.info_index];
+			instance.current_time += elapsed;
+			float frame_time = (instance.current_time / instance.animation_time) * (float)instance.frame_count;
+			tfxU32 frame = tfxU32(frame_time);
 			if (instance.current_time >= instance.animation_time) {
 				if (instance.flags & tfxAnimationInstanceFlags_loop) {
+					instance.sprite_count = metrics.frame_meta[0].total_sprites;
+					instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
 					instance.current_time = 0.f;
 					instances_in_use[next_buffer].push_back(i);
 					render_queue.push_back(instance);
@@ -6060,12 +6066,13 @@ namespace tfx {
 				}
 			}
 			else {
+				instance.sprite_count = metrics.frame_meta[frame].total_sprites;
+				instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
 				instances_in_use[next_buffer].push_back(i);
 				render_queue.push_back(instance);
 				UpdateBufferMetrics();
 			}
 		}
-
 		current_in_use_buffer = !current_in_use_buffer;
 	}
 
@@ -6076,8 +6083,8 @@ namespace tfx {
 		buffer_metrics.offsets_size_in_bytes = buffer_metrics.offsets_size * sizeof(tfxU32) * buffer_metrics.instances_size;
 	}
 
-	void UpdateAnimationManager(tfxAnimationManager *animation_manager) {
-		animation_manager->Update();
+	void UpdateAnimationManager(tfxAnimationManager *animation_manager, float elapsed) {
+		animation_manager->Update(elapsed);
 	}
 
 	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager *pm) {

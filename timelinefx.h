@@ -6963,6 +6963,7 @@ You can then use layer inside the loop to get the current layer
 	struct tfxAnimationInstance {
 		tfxVec3 position;					//position that the instance should be played at
 		tfxU32 sprite_count;				//The number of sprites to be drawn
+		tfxU32 frame_count;					//The number of sprites to be drawn
 		tfxU32 offset_into_sprite_data;		//The starting ofset in the buffer that contains all the sprite data
 		tfxU32 info_index;					//Index into the effect_animation_info storage map to get at the frame meta
 		float current_time;					//Current point of time in the animation
@@ -7029,7 +7030,7 @@ You can then use layer inside the loop to get the current layer
 			free_instances.push_back(index);
 		}
 
-		void Update();
+		void Update(float elapsed);
 		void UpdateBufferMetrics();
 	};
 
@@ -7349,7 +7350,7 @@ You can then use layer inside the loop to get the current layer
 	void UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
 
 	void CompletePMWork(tfxParticleManager &pm);
-	//Wide mt versions
+
 	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
 	void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data);
 	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data);
