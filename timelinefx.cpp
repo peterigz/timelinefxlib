@@ -1989,8 +1989,7 @@ namespace tfx {
 		return nullptr;
 	}
 
-	void tfxLibrary::BuildComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData &image_data, int offset)) {
-		assert(dst);	//must be a valid pointer to a space in memory
+	void tfxLibrary::BuildComputeShapeData(tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData *image_data, int offset)) {
 		assert(particle_shapes.Size());		//There are no shapes to copy!
 		tfxU32 index = 0;
 		for (auto &shape : particle_shapes.data) {
@@ -1998,7 +1997,7 @@ namespace tfx {
 				tfxComputeImageData cs;
 				cs.animation_frames = shape.animation_frames;
 				cs.image_size = shape.image_size;
-				cs.uv = uv_lookup(shape.ptr, cs, 0);
+				cs.uv = uv_lookup(shape.ptr, &cs, 0);
 				shape_data.push_back(cs);
 				shape.compute_shape_index = index++;
 			}
@@ -2008,17 +2007,12 @@ namespace tfx {
 					tfxComputeImageData cs;
 					cs.animation_frames = shape.animation_frames;
 					cs.image_size = shape.image_size;
-					cs.uv = uv_lookup(shape.ptr, cs, f);
+					cs.uv = uv_lookup(shape.ptr, &cs, f);
 					shape_data.push_back(cs);
 					index++;
 				}
 			}
 		}
-	}
-
-	void tfxLibrary::CopyComputeShapeData(void* dst) {
-		assert(shape_data.size());	//You must call BuildComputeShapeData first
-		memcpy(dst, shape_data.data, shape_data.size() * sizeof(tfxComputeImageData));
 	}
 
 	void tfxLibrary::CopyLookupIndexesData(void* dst) {
@@ -6022,10 +6016,11 @@ namespace tfx {
 		animation_manager->buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
 	}
 
-	tfxU32 AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxU32 start_frame) {
+	tfxU32 AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame) {
 		assert(animation_manager->effect_animation_info.ValidKey(effect->path_hash));	//You must have added the effect sprite data to the animation manager
-																		//Call AddSpriteData to do so
+																						//Call AddSpriteData to do so
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
+		assert(start_frame < anim.frames_after_compression);
 		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
 		tfxU32 index = animation_manager->AddInstance();
 		tfxAnimationInstance &instance = animation_manager->instances[index];
@@ -6046,6 +6041,8 @@ namespace tfx {
 		tfxU32 next_buffer = !current_in_use_buffer;
 		instances_in_use[next_buffer].clear();
 		render_queue.clear();
+		offsets.clear();
+		tfxU32 running_sprite_count = 0;
 		for (auto i : instances_in_use[current_in_use_buffer]) {
 			auto &instance = instances[i];
 			tfxSpriteDataMetrics &metrics = effect_animation_info.data[instance.info_index];
@@ -6058,6 +6055,8 @@ namespace tfx {
 					instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
 					instance.current_time = 0.f;
 					instances_in_use[next_buffer].push_back(i);
+					running_sprite_count += instance.sprite_count;
+					offsets.push_back(running_sprite_count);
 					render_queue.push_back(instance);
 					UpdateBufferMetrics();
 				}
@@ -6070,9 +6069,12 @@ namespace tfx {
 				instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
 				instances_in_use[next_buffer].push_back(i);
 				render_queue.push_back(instance);
+				running_sprite_count += instance.sprite_count;
+				offsets.push_back(running_sprite_count);
 				UpdateBufferMetrics();
 			}
 		}
+		buffer_metrics.total_sprites_to_draw = running_sprite_count;
 		current_in_use_buffer = !current_in_use_buffer;
 	}
 

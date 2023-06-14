@@ -6841,7 +6841,7 @@ You can then use layer inside the loop to get the current layer
 	struct tfxComputeImageData {
 		tfxVec4 uv;
 		tfxVec2 image_size;
-		tfxU32 image_index = 0;
+		tfxU32 texture_array_index = 0;
 		float animation_frames = 0;
 		//float max_radius;
 	};
@@ -6978,6 +6978,7 @@ You can then use layer inside the loop to get the current layer
 		size_t instances_size;
 		size_t offsets_size_in_bytes;
 		size_t instances_size_in_bytes;
+		tfxU32 total_sprites_to_draw;
 
 		tfxAnimationBufferMetrics() : sprite_data_size(0), offsets_size(0), instances_size(0) {}
 	};
@@ -7033,15 +7034,6 @@ You can then use layer inside the loop to get the current layer
 		void Update(float elapsed);
 		void UpdateBufferMetrics();
 	};
-
-	void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances);
-
-	//Add sprite data to an animation manager sprite data buffer from an effect. This will record the
-	//animation if necessary and then convert the sprite data to tfxSpriteData3d ready for uploading
-	//to the GPU
-	void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm = NULL);
-	tfxU32 AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxU32 start_frame);
-	void UpdateAnimationManager(tfxAnimationManager *animation_manager);
 
 	//Use the particle manager to add multiple effects to your scene 
 	struct tfxParticleManager {
@@ -7499,7 +7491,7 @@ You can then use layer inside the loop to get the current layer
 		void PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect);
 		void PrepareEffectTemplate(tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
-		void BuildComputeShapeData(void* dst, tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData &image_data, int offset));
+		void BuildComputeShapeData(tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData *image_data, int offset));
 		void CopyComputeShapeData(void* dst);
 		void CopyLookupIndexesData(void* dst);
 		void CopyLookupValuesData(void* dst);
@@ -8525,13 +8517,91 @@ You can then use layer inside the loop to get the current layer
 	*/
 	tfxAPI void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxEffectID effect_index, float noise_offset);
 
+	//-------Functions related to tfxAnimationManager--------
+
 	/*
 	Set the position of a 3d animation
-	* @param pm				A pointer to a tfxAnimationManager where the effect animatoin is being managed
-	* @param effect_index	The index of the effect. This is the index returned when calling AddAnimationInstance
-	* @param position		A tfxVec3 vector object containing the x, y and z coordinates
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
+	* @param position				A tfxVec3 vector object containing the x, y and z coordinates
 	*/
-	tfxAPI void SetAnimationPosition(tfxAnimationManager *pm, tfxAnimationID effect_index, tfxVec3 position);
+	tfxAPI void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, tfxVec3 position);
+
+	/*
+	Initialise an Animation Manager. This must be run before using an animation manager. An animation manager is used
+	to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in 
+	real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work 
+	to calculate the state of particles between frames for smooth animation.
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param max_instances			The maximum number of animation instances that you want to be able to play at one time.
+	*/
+	tfxAPI void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances);
+
+	/*
+	Add sprite data to an animation manager sprite data buffer from an effect. This will record the
+	animation if necessary and then convert the sprite data to tfxSpriteData3d ready for uploading
+	to the GPU
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
+	* @param position				A tfxVec3 vector object containing the x, y and z coordinates
+	*/
+	tfxAPI void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm = NULL);
+
+	/*
+	Add an animation instance to the animation manager.
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param effect					A pointer to the effect linking to the pre-recorded sprite data you want to add
+	* @param start_frame			Starting frame of the animation
+	*/
+	tfxAPI tfxU32 AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame = 0);
+
+	/*
+	Update an animation manager to advance the time and frames of all instances currently playing.
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param start_frame			Starting frame of the animation
+	*/
+	tfxAPI void UpdateAnimationManager(tfxAnimationManager *animation_manager, float elapsed);
+
+	/*
+	Get the tfxAnimationBufferMetrics from an animation manager. This will contain the info you need to upload the sprite data, 
+	offsets and animation instances to the GPU. Only offsets and animation instances need to be uploaded to the GPU each frame. Sprite
+	data can be done ahead of time.
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @returns						tfxAnimationBufferMetrics containing buffer sizes
+	*/
+	tfxAPI inline tfxAnimationBufferMetrics GetAnimationBufferMetrics(tfxAnimationManager *animation_manager) {
+		return animation_manager->buffer_metrics;
+	}
+
+	/*
+	Get the total number of sprites that need to be drawn by an animation manager this frame. You can use this in your renderer
+	to draw your sprite instances
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @returns						tfxU32 of the number of sprites
+	*/
+	tfxAPI inline tfxU32 GetTotalSpritesThatNeedDrawing(tfxAnimationManager *animation_manager) {
+		return animation_manager->total_sprites_to_be_drawn;
+	}
+
+	/*
+	Create the image data required for compute shaders such as animation viewer. The image data will contain data such as uv coordinates
+	that the shaders can use to create the sprite data. Once you have built the data you can use GetLibraryImageData to get the buffer
+	and upload it to the gpu.
+	* @param library				A pointer to a tfxLibrary where the image data will be created.
+	* @param uv_lookup				A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
+	*/
+	tfxAPI inline void BuildComputeShapeData(tfxLibrary *library, tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData *image_data, int offset)) {
+		library->BuildComputeShapeData(uv_lookup);
+	}
+
+	/*
+	Get the number of shapes in the Compute Shape Data buffer. Make sure you call BuildComputeShapeData first or they'll be nothing to return
+	* @param library				A pointer to a tfxLibrary where the image data will be created.
+	* @returns tfxU32				The number of shapes in the buffer
+	*/
+	tfxAPI inline tfxU32 GetComputeShapeCount(tfxLibrary *library) {
+		return library->shape_data.current_size;
+	}
 
 }
 
