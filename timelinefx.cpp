@@ -5974,6 +5974,7 @@ namespace tfx {
 		animation_manager->instances.reserve(max_instances);
 		animation_manager->free_instances.reserve(max_instances);
 		animation_manager->render_queue.reserve(max_instances);
+		animation_manager->offsets.reserve(max_instances);
 		animation_manager->instances_in_use[0].reserve(max_instances);
 		animation_manager->instances_in_use[1].reserve(max_instances);
 		animation_manager->current_in_use_buffer = 0;

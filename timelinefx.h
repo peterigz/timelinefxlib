@@ -1293,8 +1293,9 @@ You can then use layer inside the loop to get the current layer
 			return index;
 		}
 		inline T&	        push_back(const T& v) {
-			if (current_size == capacity)
+			if (current_size == capacity) {
 				reserve(_grow_capacity(current_size + 1));
+			}
 			new((void*)(data + current_size)) T(v);
 			current_size++; return data[current_size - 1];
 		}
@@ -6643,23 +6644,24 @@ You can then use layer inside the loop to get the current layer
 
 	//These structs are for animation sprite data that you can upload to the gpu
 	struct tfxSpriteData3d {
+		tfxSpriteTransform3d transform_3d;
 		tfxU32 image_frame_plus;
 		tfxU32 captured_index;
-		float lerp_offset;
-		tfxSpriteTransform3d transform_3d;
 		tfxU32 alignment;		
 		tfxRGBA8 color;		
+		float lerp_offset;
 		float stretch;
 		float intensity;
+		float padding1;
 	};
 
 	struct tfxSpriteData2d {
+		tfxSpriteTransform3d transform_3d;
 		tfxU32 image_frame_plus;
 		tfxU32 captured_index;
-		float lerp_offset;
-		tfxSpriteTransform3d transform_3d;
 		tfxU32 alignment;		
 		tfxRGBA8 color;		
+		float lerp_offset;
 		float stretch;
 		float intensity;
 	};
@@ -6961,7 +6963,7 @@ You can then use layer inside the loop to get the current layer
 
 	//An anim instance is used to let the gpu know where to draw an animation with sprite data.
 	struct tfxAnimationInstance {
-		tfxVec3 position;					//position that the instance should be played at
+		tfxVec4 position;					//position that the instance should be played at
 		tfxU32 sprite_count;				//The number of sprites to be drawn
 		tfxU32 frame_count;					//The number of sprites to be drawn
 		tfxU32 offset_into_sprite_data;		//The starting ofset in the buffer that contains all the sprite data
@@ -7022,6 +7024,7 @@ You can then use layer inside the loop to get the current layer
 			}
 			tfxAnimationInstance instance;
 			tfxU32 index = instances.current_size;
+			assert(instances.capacity != instances.current_size);		//At capacity! not enough room to add another instance.
 			instances.push_back(instance);
 			instances_in_use[current_in_use_buffer].push_back(index);
 			return index;
@@ -8580,7 +8583,7 @@ You can then use layer inside the loop to get the current layer
 	* @returns						tfxU32 of the number of sprites
 	*/
 	tfxAPI inline tfxU32 GetTotalSpritesThatNeedDrawing(tfxAnimationManager *animation_manager) {
-		return animation_manager->total_sprites_to_be_drawn;
+		return animation_manager->buffer_metrics.total_sprites_to_draw;
 	}
 
 	/*
@@ -8601,6 +8604,69 @@ You can then use layer inside the loop to get the current layer
 	*/
 	tfxAPI inline tfxU32 GetComputeShapeCount(tfxLibrary *library) {
 		return library->shape_data.current_size;
+	}
+
+	/*
+	Get the size in bytes of the compute image data in a tfxLibrary
+	* @param library				A pointer to a tfxLibrary where the image data exists.
+	* @returns size_t				The size in bytes of the image data
+	*/
+	tfxAPI inline size_t GetComputeShapesSizeInBytes(tfxLibrary *library) {
+		return library->shape_data.current_size * sizeof(tfxComputeImageData);
+	}
+
+	/*
+	Get a pointer to the location of the compute image data which you can use to copy to a staging buffer to upload to the GPU
+	* @param library				A pointer to a tfxLibrary where the image data exists.
+	* @returns void*				A pointer to the image data
+	*/
+	tfxAPI inline void* GetComputeShapesPointer(tfxLibrary *library) {
+		return library->shape_data.data;
+	}
+
+	/*
+	Get the total number of sprites in an animation manger's sprite data buffer
+	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+	* @returns tfxU32				The number of sprites in the buffer
+	*/
+	tfxAPI inline tfxU32 GetTotalSpritesInBuffer(tfxAnimationManager *animation_manager) {
+		return animation_manager->sprite_data.current_size;
+	}
+
+	/*
+	Get the total number of sprites in an animation manger's sprite data buffer
+	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+	* @returns tfxU32				The number of sprites in the buffer
+	*/
+	tfxAPI inline size_t GetSpriteDataSizeInBytes(tfxAnimationManager *animation_manager) {
+		return animation_manager->sprite_data.current_size * sizeof(tfxSpriteData3d);
+	}
+
+	/*
+	Get the buffer memory address for the sprite data in an animation manager
+	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+	* @returns void*				A pointer to the sprite data memory
+	*/
+	tfxAPI inline void* GetSpriteDataBufferPointer(tfxAnimationManager *animation_manager) {
+		return animation_manager->sprite_data.data;
+	}
+
+	/*
+	Get the size in bytes of the offsets buffer in an animation manager
+	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+	* @returns size_t				Size in bytes of the offsets buffer
+	*/
+	tfxAPI inline size_t GetOffsetsSizeInBytes(tfxAnimationManager *animation_manager) {
+		return animation_manager->offsets.current_size * sizeof(tfxU32);
+	}
+
+	/*
+	Get the size in bytes of the render queue of animation instances buffer in an animation manager
+	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+	* @returns size_t				Size in bytes of the instances buffer
+	*/
+	tfxAPI inline size_t GetAnimationInstancesSizeInBytes(tfxAnimationManager *animation_manager) {
+		return animation_manager->render_queue.current_size * sizeof(tfxAnimationInstance);
 	}
 
 }
