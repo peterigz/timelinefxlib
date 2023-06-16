@@ -3857,7 +3857,7 @@ You can then use layer inside the loop to get the current layer
 		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
 	}
 
-	inline tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
+	inline tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
 		tfxWideFloat w511 = tfxWideSetSingle(511.f);
 		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
 		tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w511), w511));
@@ -3868,7 +3868,8 @@ You can then use layer inside the loop to get the current layer
 		converted_y = tfxWideShiftLeft(converted_y, 10);
 		tfxWideInt converted_z = tfxWideConverti(tfxWideAdd(tfxWideMul(v_z, w511), w511));
 		converted_z = tfxWideAndi(converted_z, bits10);
-		return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
+		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
 	}
 
 	inline void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
@@ -6649,10 +6650,10 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 captured_index;
 		tfxU32 alignment;		
 		tfxRGBA8 color;		
+		tfxU32 lookup_indexes;
 		float lerp_offset;
 		float stretch;
 		float intensity;
-		float padding1;
 	};
 
 	struct tfxSpriteData2d {

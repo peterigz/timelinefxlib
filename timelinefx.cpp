@@ -5995,9 +5995,13 @@ namespace tfx {
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfxSpriteData3d sprite;
 			sprite.alignment = sprites.alignment[i];
+			//sprite.alignment = Pack10bitUnsigned(tfxVec3(0.f, 1.f, 0.f));
 			sprite.captured_index = sprites.captured_index[i];
 			sprite.color = sprites.color[i];
 			sprite.image_frame_plus = sprites.image_frame_plus[i];
+			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
+			tfxImageData &image = *effect->library->emitter_properties.image[property_index];
+			sprite.lookup_indexes = image.compute_shape_index;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
 			sprite.stretch = sprites.stretch[i];
