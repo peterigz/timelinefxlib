@@ -2409,6 +2409,7 @@ namespace tfx {
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, loop_length));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, start_frame));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, noise_base_offset_range));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterPropertiesSoA, animation_property_index));
 		FinishSoABufferSetup(&emitter_properties_buffer, &emitter_properties, 100);
 	}
 
@@ -5980,12 +5981,30 @@ namespace tfx {
 		animation_manager->current_in_use_buffer = 0;
 	}
 
+	void tfxAnimationManager::AddEffectEmitterProperties(tfxEffectEmitter *effect) {
+		if (effect->type != tfxEmitterType) {
+			for (auto &sub : effect->GetInfo().sub_effectors) {
+				AddEffectEmitterProperties(&sub);
+			}
+		}
+		else {
+			if (effect->library->emitter_properties.animation_property_index[effect->property_index] != tfxINVALID) {
+				tfxAnimationEmitterProperties properties;
+				properties.handle = effect->library->emitter_properties.image_handle[effect->property_index];
+				effect->library->emitter_properties.animation_property_index[effect->property_index] = emitter_properties.current_size;
+				emitter_properties.push_back(properties);
+			}
+		}
+	}
+
 	void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm) {
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
 		if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 			assert(pm);		//You must pass an appropriate particle manager if the animation needs recording
 			RecordSpriteData3d(pm, effect);
 		}
+
+		animation_manager->AddEffectEmitterProperties(effect);
 
 		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
 		animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
@@ -5995,13 +6014,14 @@ namespace tfx {
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfxSpriteData3d sprite;
 			sprite.alignment = sprites.alignment[i];
-			//sprite.alignment = Pack10bitUnsigned(tfxVec3(0.f, 1.f, 0.f));
 			sprite.captured_index = sprites.captured_index[i];
 			sprite.color = sprites.color[i];
 			sprite.image_frame_plus = sprites.image_frame_plus[i];
 			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
 			tfxImageData &image = *effect->library->emitter_properties.image[property_index];
 			sprite.lookup_indexes = image.compute_shape_index;
+			sprite.image_frame_plus &= ~0x0000FFFF;
+			sprite.image_frame_plus += effect->library->emitter_properties.animation_property_index[property_index];
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
 			sprite.stretch = sprites.stretch[i];

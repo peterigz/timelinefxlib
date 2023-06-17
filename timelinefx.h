@@ -5974,8 +5974,12 @@ You can then use layer inside the loop to get the current layer
 		float *start_frame;
 		//Base noise offset random range so that noise patterns don't repeat so much over multiple effects
 		float *noise_base_offset_range;
+		//This is only used for the animation manager when sprite data is added to the animation manager. This is used to map
+		//the property_index to the animation property index so the sprite data can point to a new index where some emitter properties
+		//are stored on the GPU for looking up from the sprite data
+		tfxU32 *animation_property_index;
 
-		tfxEmitterPropertiesSoA() { memset(this, 0, sizeof(tfxEmitterPropertiesSoA)); }
+		tfxEmitterPropertiesSoA() { memset(this, 0, sizeof(tfxEmitterPropertiesSoA)); } 
 	};
 
 	inline void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i) {
@@ -6000,6 +6004,7 @@ You can then use layer inside the loop to get the current layer
 		properties.angle_settings[i] = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
 		properties.delay_spawning[i] = 0.f;
 		properties.noise_base_offset_range[i] = 1000.f;
+		properties.animation_property_index[i] = tfxINVALID;
 	}
 
 	//Use with care, no checks for out of bounds
@@ -6025,6 +6030,7 @@ You can then use layer inside the loop to get the current layer
 		to_properties.angle_settings[to_i] = from_properties.angle_settings[from_i];
 		to_properties.delay_spawning[to_i] = from_properties.delay_spawning[from_i];
 		to_properties.noise_base_offset_range[to_i] = from_properties.noise_base_offset_range[from_i];
+		to_properties.animation_property_index[to_i] = from_properties.animation_property_index[from_i];
 	}
 
 	struct tfxEmitterTransform {
@@ -6986,6 +6992,10 @@ You can then use layer inside the loop to get the current layer
 		tfxAnimationBufferMetrics() : sprite_data_size(0), offsets_size(0), instances_size(0) {}
 	};
 
+	struct tfxAnimationEmitterProperties {
+		tfxVec2 handle;
+	};
+
 	//Use the animation manager to control playing of pre-recorded effects
 	struct tfxAnimationManager {
 		//All of the sprite data for all the animations that you might want to play on the GPU.
@@ -7008,6 +7018,10 @@ You can then use layer inside the loop to get the current layer
 		//global index is more than or equal to the next element then we start on the next animation
 		//instance and draw those sprites.
 		tfxvec<tfxU32> offsets;
+		//We also need to upload some emitter properties to the GPU as well such as the sprite handle.
+		//These can be looked up byt the sprite in the compute shader and the values applied to the sprite
+		//before going to the vertex shader
+		tfxvec<tfxAnimationEmitterProperties> emitter_properties;
 		//Every animation that gets added to the animation manager gets info added here that describes
 		//where to find the relevent sprite data in the buffer and contains other frame meta about the 
 		//animation
@@ -7035,6 +7049,7 @@ You can then use layer inside the loop to get the current layer
 			free_instances.push_back(index);
 		}
 
+		void AddEffectEmitterProperties(tfxEffectEmitter *effect);
 		void Update(float elapsed);
 		void UpdateBufferMetrics();
 	};
@@ -8668,6 +8683,33 @@ You can then use layer inside the loop to get the current layer
 	*/
 	tfxAPI inline size_t GetAnimationInstancesSizeInBytes(tfxAnimationManager *animation_manager) {
 		return animation_manager->render_queue.current_size * sizeof(tfxAnimationInstance);
+	}
+
+	/*
+	Get the size in bytes of the animation emitter properties list
+	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+	* @returns size_t				Size in bytes of the properties bufffer
+	*/
+	tfxAPI inline size_t GetAnimationEmitterPropertySizeInBytes(tfxAnimationManager *animation_manager) {
+		return animation_manager->emitter_properties.current_size * sizeof(tfxAnimationEmitterProperties);
+	}
+
+	/*
+	Get the number of emitter properties being using by the animation manager
+	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+	* @returns tfxU32				Number of emitter properties
+	*/
+	tfxAPI inline tfxU32 GetAnimationEmitterPropertyCount(tfxAnimationManager *animation_manager) {
+		return animation_manager->emitter_properties.current_size;
+	}
+
+	/*
+	Get the buffer memory address for the sprite data in an animation manager
+	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+	* @returns void*				A pointer to the sprite data memory
+	*/
+	tfxAPI inline void* GetAnimationEmitterPropertiesBufferPointer(tfxAnimationManager *animation_manager) {
+		return animation_manager->emitter_properties.data;
 	}
 
 }
