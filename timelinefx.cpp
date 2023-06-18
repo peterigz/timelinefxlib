@@ -5537,10 +5537,12 @@ namespace tfx {
 
 	void ResetSpriteDataLerpOffset(tfxSpriteData &sprite_data) {
 		tfxSpriteDataSoA &sprites = sprite_data.real_time_sprites;
-		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
-			for (int i = 0; i != sprite_data.real_time_sprites_buffer.current_size; ++i) {
-				sprites.lerp_offset[i] = 1.f;
-			}
+		for (int i = 0; i != sprite_data.real_time_sprites_buffer.current_size; ++i) {
+			tfxSpriteTransform3d t = sprites.transform_3d[i];
+			sprites.lerp_offset[i] = 1.f;
+			t = sprites.transform_3d[i];
+			if(t.position.x == 1.f)
+				int d = 0;
 		}
 	}
 
@@ -5796,6 +5798,12 @@ namespace tfx {
 		ResetSpriteDataLerpOffset(*sprite_data);
 		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
 
+		tfxSpriteDataSoA &test_sprites = sprite_data->real_time_sprites;
+		for (int i = 0; i != total_sprites; ++i) {
+			tfxSpriteTransform3d t = test_sprites.transform_3d[i];
+			int d = 0;
+		}
+
 		for (int i = 0; i != anim.real_frames; ++i) {
 			for (tfxEachLayer) {
 				for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
@@ -5822,6 +5830,7 @@ namespace tfx {
 			sprite_data->compressed = sprite_data->normal;
 			anim.frames_after_compression = sprite_data->normal.frame_count;
 		}
+
 	}
 
 	void CompressSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect) {
@@ -5903,7 +5912,6 @@ namespace tfx {
 						finished = true;
 					}
 					else {
-						std::cout << "frame: " << f << "(" << tfxFRAME_LENGTH << ")- compressed frame: " << compressed_frame << "(" << frequency << ")" << std::endl;
 						compressed_frame++;
 						compressed_time = frequency * compressed_frame;
 					}
@@ -6019,7 +6027,7 @@ namespace tfx {
 			sprite.image_frame_plus = sprites.image_frame_plus[i];
 			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
 			tfxImageData &image = *effect->library->emitter_properties.image[property_index];
-			sprite.lookup_indexes = image.compute_shape_index;
+			sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
 			sprite.image_frame_plus &= ~0x0000FFFF;
 			sprite.image_frame_plus += effect->library->emitter_properties.animation_property_index[property_index];
 			sprite.intensity = sprites.intensity[i];
@@ -7478,6 +7486,8 @@ namespace tfx {
 				particle_array_buffers.push_back(buffer);
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), layer_max_values[layer]);
 				assert(index == particle_array_buffers.current_size - 1);
+				depth_indexes[layer][0].reserve(max_cpu_particles_per_layer[layer]);
+				depth_indexes[layer][1].reserve(max_cpu_particles_per_layer[layer]);
 			}
 		}
 
@@ -7548,6 +7558,8 @@ namespace tfx {
 				InitParticleSoA(&particle_array_buffers[index], &particle_arrays.back(), tfxMax(max_cpu_particles_per_layer[layer], 8));
 				particle_array_buffers[index].user_data = &particle_arrays.back();
 				tfxResizeParticleSoACallback(&particle_array_buffers[index], 0);
+				depth_indexes[layer][0].reserve(max_cpu_particles_per_layer[layer]);
+				depth_indexes[layer][1].reserve(max_cpu_particles_per_layer[layer]);
 			}
 		}
 
@@ -7674,8 +7686,16 @@ namespace tfx {
 			if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
 				ClearSoABuffer(&sprite_buffer[1][layer]);
 			}
-			depth_indexes[layer][0].clear();
-			depth_indexes[layer][1].clear();
+			if (flags & tfxEffectManagerFlags_ordered_by_age || flags & tfxEffectManagerFlags_order_by_depth) {
+				if (depth_indexes[layer][0].capacity < max_cpu_particles_per_layer[layer]) {
+					depth_indexes[layer][0].reserve(max_cpu_particles_per_layer[layer]);
+				}
+				if (depth_indexes[layer][1].capacity < max_cpu_particles_per_layer[layer]) {
+					depth_indexes[layer][1].reserve(max_cpu_particles_per_layer[layer]);
+				}
+				depth_indexes[layer][0].clear();
+				depth_indexes[layer][1].clear();
+			}
 		}
 
 		memset(sprite_index_point, 0, 4 * tfxLAYERS);

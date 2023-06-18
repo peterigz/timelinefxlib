@@ -3912,8 +3912,9 @@ You can then use layer inside the loop to get the current layer
 	inline tfxVec4 UnPack10bit(tfxU32 in) {
 		tfxUInt10bit unpack;
 		unpack.pack = in;
+		int test = unpack.data.y;
 		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-		result = result * tfxVec3(1.f * one_div_511, 1.f * one_div_511, 1.f * one_div_511);
+		result = result * tfxVec3(one_div_511, one_div_511, one_div_511);
 		return tfxVec4(result, (float)unpack.data.w);
 	}
 
@@ -7206,9 +7207,6 @@ You can then use layer inside the loop to get the current layer
 			index = tfxINVALID;
 		}
 		inline tfxU32 PushDepthIndex(tfxU32 layer, tfxDepthIndex depth_index) {
-			if (depth_indexes[layer][current_depth_index_buffer].current_size == 5000) {
-				int d = 0;
-			}
 			depth_indexes[layer][current_depth_index_buffer].push_back(depth_index);
 			return depth_indexes[layer][current_depth_index_buffer].current_size - 1;
 		}
