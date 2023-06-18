@@ -5798,12 +5798,6 @@ namespace tfx {
 		ResetSpriteDataLerpOffset(*sprite_data);
 		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
 
-		tfxSpriteDataSoA &test_sprites = sprite_data->real_time_sprites;
-		for (int i = 0; i != total_sprites; ++i) {
-			tfxSpriteTransform3d t = test_sprites.transform_3d[i];
-			int d = 0;
-		}
-
 		for (int i = 0; i != anim.real_frames; ++i) {
 			for (tfxEachLayer) {
 				for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
