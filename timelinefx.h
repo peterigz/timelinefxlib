@@ -7032,7 +7032,7 @@ You can then use layer inside the loop to get the current layer
 		//start drawing anything
 		tfxAnimationBufferMetrics buffer_metrics;
 
-		inline tfxU32 AddInstance() {
+		inline tfxAnimationID AddInstance() {
 			if (free_instances.current_size > 0) {
 				tfxU32 index = free_instances.pop_back();
 				instances_in_use[current_in_use_buffer].push_back(index);
@@ -7214,7 +7214,6 @@ You can then use layer inside the loop to get the current layer
 		//Clear all effects and particles in the particle manager
 		void ClearAll(bool free_memory = false);
 		void FreeParticleBanks();
-		//Soft expire all the effects so that the particles complete their animation first
 		inline void SetCamera(float front_x, float	front_y, float front_z, float pos_x, float pos_y, float pos_z) {
 			camera_front.x = front_x;
 			camera_front.y = front_y;
@@ -7238,6 +7237,7 @@ You can then use layer inside the loop to get the current layer
 			else
 				flags &= ~tfxEffectManagerFlags_disable_spawning;
 		}
+		//Soft expire all the effects so that the particles complete their animation first
 		void SoftExpireAll();
 		tfxAPI inline tfxU32 PreviousSpriteBuffer() {
 			assert(flags & tfxEffectManagerFlags_double_buffer_sprites);		//Particle manager must have double buffered sprites activated
@@ -7608,7 +7608,7 @@ You can then use layer inside the loop to get the current layer
 	void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
 	void ResetSpriteDataLerpOffset(tfxSpriteData &sprites);
 	void RecordSpriteData2d(tfxParticleManager *pm, tfxEffectEmitter *effect);
-	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect);
+	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect, tfxVec3 camera_position);
 	void CompressSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect);
 	void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
 
@@ -7659,7 +7659,7 @@ You can then use layer inside the loop to get the current layer
 			* @param path		const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
 			* / void RecordSpriteData3d(tfxParticleManager &pm, u32 frames, u32 start_frame, int extra_frames, u32 &largest_frame);
 		*/
-		tfxAPI void RecordSpriteData(tfxParticleManager *pm);
+		tfxAPI void RecordSpriteData(tfxParticleManager *pm, tfxVec3 camera_position = {});
 
 		/*
 		Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager
@@ -8545,6 +8545,14 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, tfxVec3 position);
 
 	/*
+	Set the scale of a 3d animation
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
+	* @param scale					A multiplier that will determine the overal size/scale of the effect
+	*/
+	tfxAPI void SetAnimationScale(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float scale);
+
+	/*
 	Initialise an Animation Manager. This must be run before using an animation manager. An animation manager is used
 	to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in 
 	real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work 
@@ -8562,15 +8570,16 @@ You can then use layer inside the loop to get the current layer
 	* @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 	* @param position				A tfxVec3 vector object containing the x, y and z coordinates
 	*/
-	tfxAPI void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm = NULL);
+	tfxAPI void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm = NULL, tfxVec3 camera_position = { 0.f, 0.f, 0.f });
 
 	/*
 	Add an animation instance to the animation manager.
 	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
 	* @param effect					A pointer to the effect linking to the pre-recorded sprite data you want to add
 	* @param start_frame			Starting frame of the animation
+	* @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 	*/
-	tfxAPI tfxU32 AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame = 0);
+	tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame = 0);
 
 	/*
 	Update an animation manager to advance the time and frames of all instances currently playing.

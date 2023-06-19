@@ -5541,8 +5541,6 @@ namespace tfx {
 			tfxSpriteTransform3d t = sprites.transform_3d[i];
 			sprites.lerp_offset[i] = 1.f;
 			t = sprites.transform_3d[i];
-			if(t.position.x == 1.f)
-				int d = 0;
 		}
 	}
 
@@ -5550,7 +5548,7 @@ namespace tfx {
 
 	}
 
-	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect) {
+	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect, tfxVec3 camera_position) {
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
 		tfxU32 frames = anim.real_frames;
 		tfxU32 start_frame = anim.frame_offset;
@@ -5578,6 +5576,8 @@ namespace tfx {
 		}
 		SetSeed(pm, anim.seed);
 		tfxU32 preview_effect_index = pm->AddEffect(*effect, pm->current_ebuff);
+		tfxVec3 pm_camera_position = pm->camera_position;
+		pm->camera_position = camera_position;
 		SetEffectPosition(pm, preview_effect_index, tfxVec3(0.f, 0.f, 0.f));
 		Transform3d(pm->effects.world_rotations[preview_effect_index],
 			pm->effects.local_rotations[preview_effect_index],
@@ -5748,6 +5748,7 @@ namespace tfx {
 								sprite_data->real_time_sprites.captured_index[index] += captured_offset[layer];
 						}
 					}
+
 					memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].captured_index, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].uid, sizeof(tfxUniqueSpriteID) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
@@ -5756,6 +5757,7 @@ namespace tfx {
 					memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensity, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].stretch, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].transform_3d, sizeof(tfxSpriteTransform3d) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+
 					if (running_count[layer][frame] > 0 && pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0) {
 						memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.alignment, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
@@ -5794,6 +5796,15 @@ namespace tfx {
 				pm->DisableSpawning(true);
 		}
 
+		/*
+		for (int i = 0; i != total_sprites; ++i) {
+			tfxU32 property_index = sprite_data->real_time_sprites.image_frame_plus[i] & 0x0000FFFF;
+			if (property_index == 0) {
+				int d = 0;
+			}
+		}
+		*/
+
 		sprite_data->real_time_sprites_buffer.current_size = total_sprites;
 		ResetSpriteDataLerpOffset(*sprite_data);
 		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
@@ -5825,6 +5836,7 @@ namespace tfx {
 			anim.frames_after_compression = sprite_data->normal.frame_count;
 		}
 
+		pm->camera_position = pm_camera_position;
 	}
 
 	void CompressSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect) {
@@ -5999,11 +6011,11 @@ namespace tfx {
 		}
 	}
 
-	void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm) {
+	void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm, tfxVec3 camera_position) {
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
 		if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 			assert(pm);		//You must pass an appropriate particle manager if the animation needs recording
-			RecordSpriteData3d(pm, effect);
+			RecordSpriteData3d(pm, effect, camera_position);
 		}
 
 		animation_manager->AddEffectEmitterProperties(effect);
@@ -6020,8 +6032,11 @@ namespace tfx {
 			sprite.color = sprites.color[i];
 			sprite.image_frame_plus = sprites.image_frame_plus[i];
 			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
+			if (property_index == 0)
+				continue;
 			tfxImageData &image = *effect->library->emitter_properties.image[property_index];
 			sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
+			sprite.lookup_indexes += (sprite.image_frame_plus & 0x0000FFFF) << 16;
 			sprite.image_frame_plus &= ~0x0000FFFF;
 			sprite.image_frame_plus += effect->library->emitter_properties.animation_property_index[property_index];
 			sprite.intensity = sprites.intensity[i];
@@ -6043,14 +6058,15 @@ namespace tfx {
 		animation_manager->buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
 	}
 
-	tfxU32 AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame) {
+	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame) {
 		assert(animation_manager->effect_animation_info.ValidKey(effect->path_hash));	//You must have added the effect sprite data to the animation manager
 																						//Call AddSpriteData to do so
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
 		assert(start_frame < anim.frames_after_compression);
 		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
-		tfxU32 index = animation_manager->AddInstance();
+		tfxAnimationID index = animation_manager->AddInstance();
 		tfxAnimationInstance &instance = animation_manager->instances[index];
+		instance.position.w = 1.f;
 		instance.current_time = 0.f;
 		instance.animation_time = anim.animation_time;
 		instance.tween = 0.f;
@@ -6116,9 +6132,9 @@ namespace tfx {
 		animation_manager->Update(elapsed);
 	}
 
-	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager *pm) {
+	tfxAPI void tfxEffectTemplate::RecordSpriteData(tfxParticleManager *pm, tfxVec3 camera_position) {
 		if (effect.Is3DEffect()) {
-			RecordSpriteData3d(pm, &effect);
+			RecordSpriteData3d(pm, &effect, camera_position);
 		}
 		else {
 			RecordSpriteData2d(pm, &effect);
@@ -8071,8 +8087,8 @@ namespace tfx {
 			}
 			else {
 				sprites_count = sprites_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : sprites_count;
-				sprite_buffer.current_size += max_spawn_count + sprites_count;
 				max_spawn_count = max_spawn_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : max_spawn_count;
+				sprite_buffer.current_size += max_spawn_count + sprites_count;
 			}
 
 			sprites_count += max_spawn_count;
@@ -10527,8 +10543,6 @@ namespace tfx {
 		for (int i = work_entry->start_index; i >= 0; --i) {
 			const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i);
 			tfxParticleFlags &flags = bank.flags[index];
-			if (index == 16)
-				int d = 0;
 			if (flags & tfxParticleFlags_remove) {
 				offset++;
 				if (flags & tfxParticleFlags_has_sub_effects) {
@@ -10977,6 +10991,10 @@ namespace tfx {
 
 	void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, tfxVec3 position) {
 		animation_manager->instances[effect_index].position = position;
+	}
+
+	void SetAnimationScale(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float scale) {
+		animation_manager->instances[effect_index].position.w = scale;
 	}
 
 	void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 amount) {
