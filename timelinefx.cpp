@@ -3176,7 +3176,7 @@ namespace tfx {
 		}
 	}
 
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value) {
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value, tfxU32 file_version) {
 		tfxEmitterPropertiesSoA &emitter_properties = effect.library->emitter_properties;
 		if (field == "image_index")
 			emitter_properties.shape_index[effect.property_index] = value;
@@ -3194,8 +3194,19 @@ namespace tfx {
 			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].frame_offset = value;
 		if (field == "single_shot_limit")
 			emitter_properties.single_shot_limit[effect.property_index] = value;
-		if (field == "billboard_option")
+		if (field == "billboard_option") {
+			//billboard options were changed so I added this to at least update the align to camera and vector values.
+			//0 and 1 should still be ok, 4 now maps to 2, and 2 should now be 3 but I'll just manually update the effect
+			//libs for that. This can be removed at some point.
+			if (file_version == 1) {
+				if (value == 4)
+					value = 2;
+				else if (value == 2) {
+					value = 3;
+				}
+			}
 			emitter_properties.billboard_option[effect.property_index] = (tfxBillboardingOptions)value;
+		}
 		if (field == "vector_align_type")
 			emitter_properties.vector_align_type[effect.property_index] = value >= 0 && value < tfxVectorAlignType_max ? (tfxVectorAlignType)value : (tfxVectorAlignType)0;
 		if (field == "angle_setting")
@@ -5331,7 +5342,7 @@ namespace tfx {
 					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
 						switch (tfxDataTypes.names_and_types.At(pair[0])) {
 						case tfxUint:
-							AssignEffectorProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()));
+							AssignEffectorProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
 							break;
 						case tfxFloat:
 							AssignEffectorProperty(effect_stack.back(), pair[0], (float)atof(pair[1].c_str()));
@@ -6067,7 +6078,8 @@ namespace tfx {
 		tfxAnimationID index = animation_manager->AddInstance();
 		tfxAnimationInstance &instance = animation_manager->instances[index];
 		instance.position.w = 1.f;
-		instance.current_time = 0.f;
+		float frame_length = float(anim.real_frames) / float(anim.frames_after_compression) * tfxFRAME_LENGTH;
+		instance.current_time = start_frame * frame_length;
 		instance.animation_time = anim.animation_time;
 		instance.tween = 0.f;
 		instance.flags = 0;
@@ -6092,11 +6104,13 @@ namespace tfx {
 			instance.current_time += elapsed;
 			float frame_time = (instance.current_time / instance.animation_time) * (float)instance.frame_count;
 			tfxU32 frame = tfxU32(frame_time);
+			frame++;
+			frame = frame >= metrics.frame_count ? 0 : frame;
 			if (instance.current_time >= instance.animation_time) {
 				if (instance.flags & tfxAnimationInstanceFlags_loop) {
 					instance.sprite_count = metrics.frame_meta[0].total_sprites;
 					instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
-					instance.current_time = 0.f;
+					instance.current_time -= instance.animation_time;
 					instances_in_use[next_buffer].push_back(i);
 					running_sprite_count += instance.sprite_count;
 					offsets.push_back(running_sprite_count);

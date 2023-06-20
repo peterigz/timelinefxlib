@@ -726,10 +726,10 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	enum tfxBillboardingOptions {
-		tfxBillboarding = 0,
-		tfxBillboarding_disabled = 1 << 0,
-		tfxBillboarding_disabled_align = 1 << 1,
-		tfxBillboarding_align = 1 << 2
+		tfxBillboarding_align_to_camera = 0,			//Align to Camera only
+		tfxBillboarding_free_align = 1,					//Free align
+		tfxBillboarding_align_to_camera_and_vector = 2,	//Align to camera and vector
+		tfxBillboarding_align_to_vector = 3				//Align to vector
 	};
 
 	enum tfxParticleManagerFlags_ {
@@ -5016,7 +5016,7 @@ You can then use layer inside the loop to get the current layer
 
 	const tfxU32 tfxMAGIC_NUMBER = '!XFT';
 	const tfxU32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
-	const tfxU32 tfxFILE_VERSION = 1;	//Not doing anything with this yet
+	const tfxU32 tfxFILE_VERSION = 2;	
 
 	//Basic package manager used for reading/writing effects files
 	struct tfxHeader {
@@ -5990,7 +5990,7 @@ You can then use layer inside the loop to get the current layer
 		properties.spawn_amount[i] = 1;
 		properties.single_shot_limit[i] = 0;
 		properties.emission_type[i] = tfxEmissionType::tfxPoint;
-		properties.billboard_option[i] = tfxBillboarding;
+		properties.billboard_option[i] = tfxBillboarding_align_to_camera;
 		properties.vector_align_type[i] = tfxVectorAlignType_motion;
 		properties.emission_direction[i] = tfxEmissionDirection::tfxOutwards;
 		properties.grid_points[i] = { 10.f, 10.f, 10.f };
@@ -7783,7 +7783,7 @@ You can then use layer inside the loop to get the current layer
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value);
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value, tfxU32 file_version);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
