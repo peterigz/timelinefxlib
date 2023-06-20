@@ -8024,6 +8024,17 @@ You can then use layer inside the loop to get the current layer
 	*/
 	tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
+	/*
+	Out all the effect names in a library to the console
+	* @param tfxLibrary				A valid pointer to a tfxLibrary
+	*/
+	inline tfxAPI void ListEffectNames(tfxLibrary *library) {
+		tfxU32 index = 0;
+		for (auto &effect : library->effects) {
+			printf("%i) %s\n", index++, effect.GetInfo().name.c_str());
+		}
+	}
+
 	//[Particle Manager functions]
 
 	/*
