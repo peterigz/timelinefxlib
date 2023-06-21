@@ -6004,6 +6004,12 @@ namespace tfx {
 		animation_manager->instances_in_use[0].reserve(max_instances);
 		animation_manager->instances_in_use[1].reserve(max_instances);
 		animation_manager->current_in_use_buffer = 0;
+		animation_manager->buffer_metrics.instances_size = 0;
+		animation_manager->buffer_metrics.instances_size_in_bytes = 0;
+		animation_manager->buffer_metrics.offsets_size = 0;
+		animation_manager->buffer_metrics.offsets_size_in_bytes = 0;
+		animation_manager->buffer_metrics.sprite_data_size = 0;
+		animation_manager->buffer_metrics.total_sprites_to_draw = 0;
 	}
 
 	void tfxAnimationManager::AddEffectEmitterProperties(tfxEffectEmitter *effect) {
@@ -6043,13 +6049,14 @@ namespace tfx {
 			sprite.color = sprites.color[i];
 			sprite.image_frame_plus = sprites.image_frame_plus[i];
 			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
-			if (property_index == 0)
-				continue;
 			tfxImageData &image = *effect->library->emitter_properties.image[property_index];
 			sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
+			//Temporary while debugging:
 			sprite.lookup_indexes += (sprite.image_frame_plus & 0x0000FFFF) << 16;
+			//-------
 			sprite.image_frame_plus &= ~0x0000FFFF;
 			sprite.image_frame_plus += effect->library->emitter_properties.animation_property_index[property_index];
+			tfxU32 alignment = (sprite.image_frame_plus & 0xFF000000) >> 24;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
 			sprite.stretch = sprites.stretch[i];
@@ -6082,7 +6089,7 @@ namespace tfx {
 		instance.current_time = start_frame * frame_length;
 		instance.animation_time = anim.animation_time;
 		instance.tween = 0.f;
-		instance.flags = 0;
+		instance.flags = anim.animation_flags;
 		instance.info_index = animation_manager->effect_animation_info.GetIndex(effect->path_hash);
 		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 		instance.offset_into_sprite_data = metrics.start_offset;
@@ -6133,6 +6140,13 @@ namespace tfx {
 		}
 		buffer_metrics.total_sprites_to_draw = running_sprite_count;
 		current_in_use_buffer = !current_in_use_buffer;
+	}
+
+	void ClearAllAnimationInstances(tfxAnimationManager *animation_manager) {
+		animation_manager->free_instances.clear();
+		animation_manager->instances_in_use->clear();
+		animation_manager->render_queue.clear();
+		animation_manager->instances.clear();
 	}
 
 	void tfxAnimationManager::UpdateBufferMetrics() {
@@ -6995,7 +7009,7 @@ namespace tfx {
 			//sprites.transform_3d.captured_position = captured_position;
 			//alignment_vector_y.m = tfxWideAdd(alignment_vector_y.m, tfxWideSetSingle(0.002f));	//We don't want a 0 alignment normal
 			tfxWideArrayi packed;
-			packed.m = PackWide10bit(alignment_vector_x, alignment_vector_y, alignment_vector_z, billboard_option & 0x00000003);
+			packed.m = PackWide10bit(alignment_vector_x, alignment_vector_y, alignment_vector_z);
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
