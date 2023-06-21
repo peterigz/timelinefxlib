@@ -3842,6 +3842,20 @@ You can then use layer inside the loop to get the current layer
 		y = tfxWideMul(y, one_div_32k_wide);
 	}
 
+	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
+		tfxWideFloat w511 = tfxWideSetSingle(511.f);
+		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+		converted_x = tfxWideAndi(converted_x, bits10);
+		converted_x = tfxWideShiftLeft(converted_x, 20);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+		converted_y = tfxWideAndi(converted_y, bits10);
+		converted_y = tfxWideShiftLeft(converted_y, 10);
+		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+		converted_z = tfxWideAndi(converted_z, bits10);
+		return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+	}
+
 	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
 		tfxWideFloat w511 = tfxWideSetSingle(511.f);
 		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
@@ -7006,6 +7020,7 @@ You can then use layer inside the loop to get the current layer
 		tfxvec<tfxAnimationInstance> instances;
 		//List of instances in use. These index into the instances list above
 		tfxvec<tfxU32> instances_in_use[2];
+		//Flips between 1 and 0 each frame to be used when accessing instances_in_use
 		tfxU32 current_in_use_buffer;
 		//List of free instance indexes
 		tfxvec<tfxU32> free_instances;
@@ -8594,10 +8609,17 @@ You can then use layer inside the loop to get the current layer
 
 	/*
 	Update an animation manager to advance the time and frames of all instances currently playing.
-	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param animation_manager		A pointer to a tfxAnimationManager that you want to update
 	* @param start_frame			Starting frame of the animation
 	*/
 	tfxAPI void UpdateAnimationManager(tfxAnimationManager *animation_manager, float elapsed);
+
+	/*
+	Clears all animation instances currently in play in an animation manager, resulting in all currently running animations
+	from being drawn
+	* @param animation_manager		A pointer to a tfxAnimationManager that you want to clear
+	*/
+	tfxAPI void ClearAllAnimationInstances(tfxAnimationManager *animation_manager);
 
 	/*
 	Get the tfxAnimationBufferMetrics from an animation manager. This will contain the info you need to upload the sprite data, 
