@@ -6011,12 +6011,13 @@ namespace tfx {
 		animation_manager->buffer_metrics.offsets_size_in_bytes = 0;
 		animation_manager->buffer_metrics.sprite_data_size = 0;
 		animation_manager->buffer_metrics.total_sprites_to_draw = 0;
+		animation_manager->flags = 0;
 	}
 
-	void tfxAnimationManager::AddEffectEmitterProperties(tfxEffectEmitter *effect) {
+	void tfxAnimationManager::AddEffectEmitterProperties(tfxEffectEmitter *effect, bool *has_animated_shape) {
 		if (effect->type != tfxEmitterType) {
 			for (auto &sub : effect->GetInfo().sub_effectors) {
-				AddEffectEmitterProperties(&sub);
+				AddEffectEmitterProperties(&sub, has_animated_shape);
 			}
 		}
 		else {
@@ -6026,9 +6027,15 @@ namespace tfx {
 				properties.flags = effect->property_flags;
 				tfxImageData &image = *effect->library->emitter_properties.image[effect->property_index];
 				properties.animation_frames = image.animation_frames;
+				if (properties.animation_frames > 1 && effect->property_flags & tfxEmitterPropertyFlags_animate) {
+					*has_animated_shape = true;
+				}
 				properties.start_frame_index = image.compute_shape_index;
 				effect->library->emitter_properties.animation_property_index[effect->property_index] = emitter_properties.current_size;
 				emitter_properties.push_back(properties);
+				for (auto &sub : effect->GetInfo().sub_effectors) {
+					AddEffectEmitterProperties(&sub, has_animated_shape);
+				}
 			}
 		}
 	}
@@ -6040,11 +6047,13 @@ namespace tfx {
 			RecordSpriteData3d(pm, effect, camera_position);
 		}
 
-		animation_manager->AddEffectEmitterProperties(effect);
+		bool has_animated_shape = false;
+		animation_manager->AddEffectEmitterProperties(effect, &has_animated_shape);
 
 		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
 		animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
 		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.At(effect->path_hash);
+		metrics.flags = has_animated_shape ? tfxAnimationManagerFlags_has_animated_shapes : 0;
 		tfxSpriteDataSoA &sprites = sprite_data.compressed_sprites;
 		metrics.start_offset = animation_manager->sprite_data.current_size;
 		for (int i = 0; i != metrics.total_sprites; ++i) {
@@ -6110,6 +6119,7 @@ namespace tfx {
 		render_queue.clear();
 		offsets.clear();
 		tfxU32 running_sprite_count = 0;
+		flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
 		for (auto i : instances_in_use[current_in_use_buffer]) {
 			auto &instance = instances[i];
 			tfxSpriteDataMetrics &metrics = effect_animation_info.data[instance.info_index];
@@ -6126,6 +6136,7 @@ namespace tfx {
 					instances_in_use[next_buffer].push_back(i);
 					running_sprite_count += instance.sprite_count;
 					offsets.push_back(running_sprite_count);
+					flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
 					render_queue.push_back(instance);
 					UpdateBufferMetrics();
 				}
@@ -6139,6 +6150,7 @@ namespace tfx {
 				instances_in_use[next_buffer].push_back(i);
 				render_queue.push_back(instance);
 				running_sprite_count += instance.sprite_count;
+				flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
 				offsets.push_back(running_sprite_count);
 				UpdateBufferMetrics();
 			}

@@ -694,6 +694,7 @@ You can then use layer inside the loop to get the current layer
 	typedef tfxU32 tfxEffectCloningFlags;
 	typedef tfxU32 tfxAnimationFlags;
 	typedef tfxU32 tfxAnimationInstanceFlags;
+	typedef tfxU32 tfxAnimationManagerFlags;
 
 	enum tfxErrorFlags_ {
 		tfxErrorCode_success = 0,
@@ -923,6 +924,11 @@ You can then use layer inside the loop to get the current layer
 	enum tfxAnimationInstanceFlags_ {
 		tfxAnimationInstanceFlags_none = 0,
 		tfxAnimationInstanceFlags_loop = 1 << 0,
+	};
+
+	enum tfxAnimationManagerFlags_ {
+		tfxAnimationManagerFlags_none = 0,
+		tfxAnimationManagerFlags_has_animated_shapes = 1 << 0,
 	};
 
 	//-----------------------------------------------------------
@@ -6792,6 +6798,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
 		tfxArray<tfxFrameMeta> frame_meta;
+		tfxAnimationManagerFlags flags;
 	};
 
 	struct tfxSpriteData {
@@ -7050,6 +7057,8 @@ You can then use layer inside the loop to get the current layer
 		//animation instances need to be uploaded every frame, but the sprite data only once before you
 		//start drawing anything
 		tfxAnimationBufferMetrics buffer_metrics;
+		//Bit flag field
+		tfxAnimationManagerFlags flags;
 
 		inline tfxAnimationID AddInstance() {
 			if (free_instances.current_size > 0) {
@@ -7069,7 +7078,7 @@ You can then use layer inside the loop to get the current layer
 			free_instances.push_back(index);
 		}
 
-		void AddEffectEmitterProperties(tfxEffectEmitter *effect);
+		void AddEffectEmitterProperties(tfxEffectEmitter *effect, bool *has_animated_shape);
 		void Update(float elapsed);
 		void UpdateBufferMetrics();
 	};
