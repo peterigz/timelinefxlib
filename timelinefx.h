@@ -6671,7 +6671,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 captured_index;
 		tfxU32 alignment;		
 		tfxRGBA8 color;		
-		tfxU32 lookup_indexes;
+		tfxU32 lookup_indexes;	//temporary
 		float lerp_offset;
 		float stretch;
 		float intensity;
@@ -7009,6 +7009,10 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxAnimationEmitterProperties {
 		tfxVec2 handle;
+		tfxU32 flags;
+		tfxU32 start_frame_index;
+		float animation_frames;
+		float padding;
 	};
 
 	//Use the animation manager to control playing of pre-recorded effects

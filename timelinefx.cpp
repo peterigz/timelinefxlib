@@ -5560,6 +5560,7 @@ namespace tfx {
 	}
 
 	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect, tfxVec3 camera_position) {
+		pm->Reconfigure(effect->GetRequiredParticleManagerMode(), effect->sort_passes, effect->Is3DEffect());
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
 		tfxU32 frames = anim.real_frames;
 		tfxU32 start_frame = anim.frame_offset;
@@ -6022,6 +6023,10 @@ namespace tfx {
 			if (effect->library->emitter_properties.animation_property_index[effect->property_index] != tfxINVALID) {
 				tfxAnimationEmitterProperties properties;
 				properties.handle = effect->library->emitter_properties.image_handle[effect->property_index];
+				properties.flags = effect->property_flags;
+				tfxImageData &image = *effect->library->emitter_properties.image[effect->property_index];
+				properties.animation_frames = image.animation_frames;
+				properties.start_frame_index = image.compute_shape_index;
 				effect->library->emitter_properties.animation_property_index[effect->property_index] = emitter_properties.current_size;
 				emitter_properties.push_back(properties);
 			}
@@ -6050,10 +6055,10 @@ namespace tfx {
 			sprite.image_frame_plus = sprites.image_frame_plus[i];
 			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
 			tfxImageData &image = *effect->library->emitter_properties.image[property_index];
-			sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
 			//Temporary while debugging:
+			sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
 			sprite.lookup_indexes += (sprite.image_frame_plus & 0x0000FFFF) << 16;
-			//-------
+			//-------------------------
 			sprite.image_frame_plus &= ~0x0000FFFF;
 			sprite.image_frame_plus += effect->library->emitter_properties.animation_property_index[property_index];
 			tfxU32 alignment = (sprite.image_frame_plus & 0xFF000000) >> 24;
