@@ -5059,7 +5059,7 @@ namespace tfx {
 	//API Functions
 	//Get the number of shapes that are stored in an effects library saved on disk. This can be useful if you need to reserve the space in 
 	//a list to store them in your custom ShapeLoader function.
-	int GetShapesInPackage(const char *filename) {
+	int GetShapeCountInLibrary(const char *filename) {
 		int context = 0;
 		int error = 0;
 

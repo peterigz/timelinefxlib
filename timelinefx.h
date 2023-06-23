@@ -7991,7 +7991,6 @@ You can then use layer inside the loop to get the current layer
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
-	int GetShapesInPackage(const char *filename);
 	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
 	tfxEffectLibraryStats CreateLibraryStats(tfxLibrary &lib);
 	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
@@ -8013,6 +8012,13 @@ You can then use layer inside the loop to get the current layer
 	*						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
 	*/
 	tfxAPI void InitialiseTimelineFX(int max_threads = 0);
+
+	/*
+	Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
+	* @param max_threads	Pass the number of threads that you want to use in addition to the main thread.
+	*						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
+	*/
+	tfxAPI int GetShapeCountInLibrary(const char *filename);
 
 	/*
 	Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
