@@ -7005,8 +7005,8 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxAnimationBufferMetrics {
 		size_t sprite_data_size;
-		size_t offsets_size;
-		size_t instances_size;
+		tfxU32 offsets_size;
+		tfxU32 instances_size;
 		size_t offsets_size_in_bytes;
 		size_t instances_size_in_bytes;
 		tfxU32 total_sprites_to_draw;
