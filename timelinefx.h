@@ -6869,7 +6869,7 @@ You can then use layer inside the loop to get the current layer
 		float local_rotation;
 	};
 
-	struct tfxComputeImageData {
+	struct tfxGPUImageData {
 		tfxVec4 uv;
 		tfxVec2 image_size;
 		tfxU32 texture_array_index = 0;
@@ -7476,7 +7476,7 @@ You can then use layer inside the loop to get the current layer
 		tfxvec<tfxEffectLookUpData> node_lookup_indexes;
 		tfxvec<float> compiled_lookup_values;
 		tfxvec<tfxGraphLookupIndex> compiled_lookup_indexes;
-		tfxvec<tfxComputeImageData> shape_data;
+		tfxvec<tfxGPUImageData> shape_data;
 		//This could probably be stored globally
 		tfxvec<tfxVec4> graph_min_max;
 
@@ -8662,7 +8662,7 @@ You can then use layer inside the loop to get the current layer
 	* @param library				A pointer to a tfxLibrary where the image data will be created.
 	* @param uv_lookup				A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 	*/
-	tfxAPI inline void BuildComputeShapeData(tfxLibrary *library, tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData *image_data, int offset)) {
+	tfxAPI inline void BuildComputeShapeData(tfxLibrary *library, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
 		library->BuildComputeShapeData(uv_lookup);
 	}
 
@@ -8681,7 +8681,7 @@ You can then use layer inside the loop to get the current layer
 	* @returns size_t				The size in bytes of the image data
 	*/
 	tfxAPI inline size_t GetComputeShapesSizeInBytes(tfxLibrary *library) {
-		return library->shape_data.current_size * sizeof(tfxComputeImageData);
+		return library->shape_data.current_size * sizeof(tfxGPUImageData);
 	}
 
 	/*

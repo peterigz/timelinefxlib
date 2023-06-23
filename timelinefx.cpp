@@ -1989,12 +1989,12 @@ namespace tfx {
 		return nullptr;
 	}
 
-	void tfxLibrary::BuildComputeShapeData(tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData *image_data, int offset)) {
+	void tfxLibrary::BuildComputeShapeData(tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
 		assert(particle_shapes.Size());		//There are no shapes to copy!
 		tfxU32 index = 0;
 		for (auto &shape : particle_shapes.data) {
 			if (shape.animation_frames == 1) {
-				tfxComputeImageData cs;
+				tfxGPUImageData cs;
 				cs.animation_frames = shape.animation_frames;
 				cs.image_size = shape.image_size;
 				cs.uv = uv_lookup(shape.ptr, &cs, 0);
@@ -2004,7 +2004,7 @@ namespace tfx {
 			else {
 				shape.compute_shape_index = index;
 				for (int f = 0; f != shape.animation_frames; ++f) {
-					tfxComputeImageData cs;
+					tfxGPUImageData cs;
 					cs.animation_frames = shape.animation_frames;
 					cs.image_size = shape.image_size;
 					cs.uv = uv_lookup(shape.ptr, &cs, f);
@@ -2033,7 +2033,7 @@ namespace tfx {
 		for (auto &shape : particle_shapes.data) {
 			frame_count += (tfxU32)shape.animation_frames;
 		}
-		return frame_count * sizeof(tfxComputeImageData);
+		return frame_count * sizeof(tfxGPUImageData);
 	}
 
 	tfxU32 tfxLibrary::GetComputeShapeCount() {
