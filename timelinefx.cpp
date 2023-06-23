@@ -7711,6 +7711,7 @@ namespace tfx {
 	}
 
 	void tfxParticleManager::Reconfigure(tfxParticleManagerModes mode, tfxU32 req_sort_passes, bool is_3d) {
+		ClearAll();
 		FreeParticleBanks();
 		for (auto &bank : free_particle_lists.data) {
 			bank.free_all();
