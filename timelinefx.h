@@ -7536,7 +7536,7 @@ You can then use layer inside the loop to get the current layer
 		void PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect);
 		void PrepareEffectTemplate(tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
-		void BuildComputeShapeData(tfxVec4(uv_lookup)(void *ptr, tfxComputeImageData *image_data, int offset));
+		void BuildComputeShapeData(tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset));
 		void CopyComputeShapeData(void* dst);
 		void CopyLookupIndexesData(void* dst);
 		void CopyLookupValuesData(void* dst);
