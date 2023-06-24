@@ -6671,7 +6671,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//These structs are for animation sprite data that you can upload to the gpu
-	struct alignas(16) tfxSpriteData3d {
+	struct alignas(16) tfxSpriteData3d {	//60 bytes aligning to 64
 		tfxVec3 position;
 		float lerp_offset;
 		tfxVec3 rotations;
@@ -6878,6 +6878,9 @@ You can then use layer inside the loop to get the current layer
 		tfxVec2 image_size;
 		tfxU32 texture_array_index = 0;
 		float animation_frames = 0;
+#ifdef tfxCUSTOM_GPU_IMAGE_DATA
+		//add addition image data if needed
+#endif
 		//float max_radius;
 	};
 
