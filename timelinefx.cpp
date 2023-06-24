@@ -6060,6 +6060,7 @@ namespace tfx {
 			tfxSpriteData3d sprite;
 			sprite.alignment = sprites.alignment[i];
 			sprite.captured_index = sprites.captured_index[i];
+			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.color = sprites.color[i];
 			sprite.image_frame_plus = sprites.image_frame_plus[i];
 			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
