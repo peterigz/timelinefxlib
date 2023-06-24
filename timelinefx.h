@@ -6685,8 +6685,10 @@ You can then use layer inside the loop to get the current layer
 		//Free space for extra 4 bytes if needed
 	};
 
-	struct tfxSpriteData2d {
-		tfxSpriteTransform3d transform_3d;
+	struct alignas(16) tfxSpriteData2d {	//48 bytes
+		tfxVec2 position;
+		tfxVec2 scale;
+		float rotation;
 		tfxU32 image_frame_plus;
 		tfxU32 captured_index;
 		tfxU32 alignment;		
