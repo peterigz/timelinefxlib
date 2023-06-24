@@ -3214,9 +3214,9 @@ namespace tfx {
 		if (field == "sort_passes")
 			effect.sort_passes = tfxMin(5, value);
 		if (field == "animation_flags")
-			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].animation_flags = value;
+			effect.library->sprite_sheet_settings[effect.GetInfo().sprite_sheet_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
 		if (field == "sprite_data_flags")
-			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].animation_flags = value;
+			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
 		if (field == "sprite_data_seed")
 			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].seed = value;
 		if (field == "sprite_data_frame_offset")
