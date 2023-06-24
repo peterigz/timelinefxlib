@@ -8613,8 +8613,11 @@ You can then use layer inside the loop to get the current layer
 	to calculate the state of particles between frames for smooth animation.
 	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
 	* @param max_instances			The maximum number of animation instances that you want to be able to play at one time.
+	* @param initial_capacity		Optionally, you can set an initial capacity for the sprite data. The data will grow if you add
+									beyond this amount but it gives you a chance to reserve a decent amount to start with to 
+									save too much mem copies as the data grows
 	*/
-	tfxAPI void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances);
+	tfxAPI void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
 
 	/*
 	Add sprite data to an animation manager sprite data buffer from an effect. This will record the
@@ -8649,6 +8652,14 @@ You can then use layer inside the loop to get the current layer
 	* @param animation_manager		A pointer to a tfxAnimationManager that you want to clear
 	*/
 	tfxAPI void ClearAllAnimationInstances(tfxAnimationManager *animation_manager);
+
+	/*
+	Clears all data from the animation manager including sprite data, metrics and instances. Essentially resetting everything back to 
+	it's initialisation point
+	from being drawn
+	* @param animation_manager		A pointer to a tfxAnimationManager that you want to reset
+	*/
+	tfxAPI void ResetAnimationManager(tfxAnimationManager *animation_manager);
 
 	/*
 	Get the tfxAnimationBufferMetrics from an animation manager. This will contain the info you need to upload the sprite data, 

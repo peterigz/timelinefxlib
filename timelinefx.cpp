@@ -5997,13 +5997,14 @@ namespace tfx {
 		}
 	}
 
-	void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances) {
+	void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
 		animation_manager->instances.reserve(max_instances);
 		animation_manager->free_instances.reserve(max_instances);
 		animation_manager->render_queue.reserve(max_instances);
 		animation_manager->offsets.reserve(max_instances);
 		animation_manager->instances_in_use[0].reserve(max_instances);
 		animation_manager->instances_in_use[1].reserve(max_instances);
+		animation_manager->sprite_data.reserve(initial_sprite_data_capacity);
 		animation_manager->current_in_use_buffer = 0;
 		animation_manager->buffer_metrics.instances_size = 0;
 		animation_manager->buffer_metrics.instances_size_in_bytes = 0;
@@ -6167,9 +6168,31 @@ namespace tfx {
 
 	void ClearAllAnimationInstances(tfxAnimationManager *animation_manager) {
 		animation_manager->free_instances.clear();
-		animation_manager->instances_in_use->clear();
+		animation_manager->instances_in_use[0].clear();
+		animation_manager->instances_in_use[1].clear();
 		animation_manager->render_queue.clear();
 		animation_manager->instances.clear();
+		animation_manager->offsets.clear();
+	}
+
+	tfxAPI void ResetAnimationManager(tfxAnimationManager *animation_manager) {
+		animation_manager->free_instances.clear();
+		animation_manager->instances_in_use[0].clear();
+		animation_manager->instances_in_use[1].clear();
+		animation_manager->render_queue.clear();
+		animation_manager->instances.clear();
+		animation_manager->offsets.clear();
+		animation_manager->sprite_data.clear();
+		animation_manager->emitter_properties.clear();
+		animation_manager->effect_animation_info.Clear();
+
+		animation_manager->buffer_metrics.instances_size = 0;
+		animation_manager->buffer_metrics.instances_size_in_bytes = 0;
+		animation_manager->buffer_metrics.offsets_size = 0;
+		animation_manager->buffer_metrics.offsets_size_in_bytes = 0;
+		animation_manager->buffer_metrics.sprite_data_size = 0;
+		animation_manager->buffer_metrics.total_sprites_to_draw = 0;
+		animation_manager->flags = 0;
 	}
 
 	void tfxAnimationManager::UpdateBufferMetrics() {
