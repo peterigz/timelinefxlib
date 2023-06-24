@@ -1989,7 +1989,7 @@ namespace tfx {
 		return nullptr;
 	}
 
-	void tfxLibrary::BuildComputeShapeData(tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
+	void tfxLibrary::BuildGPUShapeData(tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
 		assert(particle_shapes.Size());		//There are no shapes to copy!
 		tfxU32 index = 0;
 		for (auto &shape : particle_shapes.data) {
@@ -6065,8 +6065,8 @@ namespace tfx {
 			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
 			tfxImageData &image = *effect->library->emitter_properties.image[property_index];
 			//Temporary while debugging:
-			sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
-			sprite.lookup_indexes += (sprite.image_frame_plus & 0x0000FFFF) << 16;
+			//sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
+			//sprite.lookup_indexes += (sprite.image_frame_plus & 0x0000FFFF) << 16;
 			//-------------------------
 			sprite.image_frame_plus &= ~0x0000FFFF;
 			sprite.image_frame_plus += effect->library->emitter_properties.animation_property_index[property_index];
@@ -6074,7 +6074,9 @@ namespace tfx {
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
 			sprite.stretch = sprites.stretch[i];
-			sprite.transform_3d = sprites.transform_3d[i];
+			sprite.position = sprites.transform_3d[i].position;
+			sprite.rotations = sprites.transform_3d[i].rotations;
+			sprite.scale = sprites.transform_3d[i].scale;
 			animation_manager->sprite_data.push_back(sprite);
 		}
 		metrics.total_memory_for_sprites = sizeof(tfxSpriteData3d) * metrics.total_sprites;
@@ -6093,6 +6095,9 @@ namespace tfx {
 	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame) {
 		assert(animation_manager->effect_animation_info.ValidKey(effect->path_hash));	//You must have added the effect sprite data to the animation manager
 																						//Call AddSpriteData to do so
+		if(animation_manager->instances_in_use->current_size >= animation_manager->instances_in_use->capacity) {
+			return tfxINVALID;
+		}
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
 		assert(start_frame < anim.frames_after_compression);
 		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);

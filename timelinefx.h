@@ -6671,16 +6671,18 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	//These structs are for animation sprite data that you can upload to the gpu
-	struct tfxSpriteData3d {
-		tfxSpriteTransform3d transform_3d;
+	struct alignas(16) tfxSpriteData3d {
+		tfxVec3 position;
+		float lerp_offset;
+		tfxVec3 rotations;
+		float stretch;
+		tfxVec2 scale;
 		tfxU32 image_frame_plus;
 		tfxU32 captured_index;
 		tfxU32 alignment;		
 		tfxRGBA8 color;		
-		tfxU32 lookup_indexes;	//temporary
-		float lerp_offset;
-		float stretch;
 		float intensity;
+		//Free space for extra 4 bytes if needed
 	};
 
 	struct tfxSpriteData2d {
@@ -6869,8 +6871,10 @@ You can then use layer inside the loop to get the current layer
 		float local_rotation;
 	};
 
-	struct tfxGPUImageData {
+	struct alignas(16) tfxGPUImageData {
 		tfxVec4 uv;
+		tfxU32 uv_xy;
+		tfxU32 uv_zw;
 		tfxVec2 image_size;
 		tfxU32 texture_array_index = 0;
 		float animation_frames = 0;
@@ -7536,7 +7540,7 @@ You can then use layer inside the loop to get the current layer
 		void PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect);
 		void PrepareEffectTemplate(tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
-		void BuildComputeShapeData(tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset));
+		void BuildGPUShapeData(tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset));
 		void CopyComputeShapeData(void* dst);
 		void CopyLookupIndexesData(void* dst);
 		void CopyLookupValuesData(void* dst);
@@ -8623,6 +8627,7 @@ You can then use layer inside the loop to get the current layer
 	* @param effect					A pointer to the effect linking to the pre-recorded sprite data you want to add
 	* @param start_frame			Starting frame of the animation
 	* @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
+									Return tfxINVALID if there is no room in the animation manager
 	*/
 	tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame = 0);
 
@@ -8668,12 +8673,12 @@ You can then use layer inside the loop to get the current layer
 	* @param library				A pointer to a tfxLibrary where the image data will be created.
 	* @param uv_lookup				A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 	*/
-	tfxAPI inline void BuildComputeShapeData(tfxLibrary *library, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
-		library->BuildComputeShapeData(uv_lookup);
+	tfxAPI inline void BuildGPUShapeData(tfxLibrary *library, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
+		library->BuildGPUShapeData(uv_lookup);
 	}
 
 	/*
-	Get the number of shapes in the Compute Shape Data buffer. Make sure you call BuildComputeShapeData first or they'll be nothing to return
+	Get the number of shapes in the Compute Shape Data buffer. Make sure you call BuildGPUShapeData first or they'll be nothing to return
 	* @param library				A pointer to a tfxLibrary where the image data will be created.
 	* @returns tfxU32				The number of shapes in the buffer
 	*/
