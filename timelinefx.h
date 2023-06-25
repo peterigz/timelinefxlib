@@ -653,7 +653,8 @@ You can then use layer inside the loop to get the current layer
 		tfxUint,
 		tfxFloat,
 		tfxDouble,
-		tfxBool
+		tfxBool,
+		tfxUInt64
 	};
 
 	//Block designators for loading effects library
@@ -5840,6 +5841,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 width = 0;
 		tfxU32 height = 0;
 		tfxU32 shape_index = 0;
+		tfxKey image_hash = 0;
 		int import_filter = 0;
 	};
 
@@ -5916,9 +5918,10 @@ You can then use layer inside the loop to get the current layer
 	struct tfxImageData {
 		//This can be a ptr to the image texture for rendering. You must assign this in your ShapeLoader function
 		void *ptr;
-
-		//Each particle shape saved in an effect library has a unique index
+		//Index of the image, deprecated, image hash should be used now instead.
 		tfxU32 shape_index;
+		//A hash of the image data for a unique and which can also be used to see if an image has already been loaded
+		tfxU64 image_hash;
 		//The size of one frame of the image
 		tfxVec2 image_size;
 		//Image index refers to any index that helps you look up the correct image to use. this could be an index in a texture array for example.
@@ -5940,7 +5943,7 @@ You can then use layer inside the loop to get the current layer
 			image_index(0),
 			ptr(nullptr),
 			animation_frames(1.f),
-			shape_index(0),
+			image_hash(0),
 			max_radius(0),
 			import_filter(0),
 			compute_shape_index(0)
@@ -5987,8 +5990,10 @@ You can then use layer inside the loop to get the current layer
 		tfxVec3 *emitter_handle;
 		//When single flag is set, spawn this amount of particles in one go
 		tfxU32 *spawn_amount;
+		//The shape being used for all particles spawned from the emitter (deprecated, hash now used instead)
+		tfxU32 *image_index;
 		//The shape being used for all particles spawned from the emitter
-		tfxU32 *shape_index;
+		tfxKey *image_hash;
 		//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
 		float *loop_length;
 		//The start frame index of the animation
@@ -6018,7 +6023,7 @@ You can then use layer inside the loop to get the current layer
 		properties.end_behaviour[i] = tfxLineTraversalEndBehaviour::tfxLoop;
 		properties.loop_length[i] = 0.f;
 		properties.layer[i] = 0;
-		properties.shape_index[i] = 1;
+		properties.image_hash[i] = 1;
 		properties.start_frame[i] = 0;
 		properties.end_frame[i] = 0;
 		properties.frame_rate[i] = 30.f;
@@ -6044,7 +6049,7 @@ You can then use layer inside the loop to get the current layer
 		to_properties.end_behaviour[to_i] = from_properties.end_behaviour[from_i];
 		to_properties.loop_length[to_i] = from_properties.loop_length[from_i];
 		to_properties.layer[to_i] = from_properties.layer[from_i];
-		to_properties.shape_index[to_i] = from_properties.shape_index[from_i];
+		to_properties.image_hash[to_i] = from_properties.image_hash[from_i];
 		to_properties.start_frame[to_i] = from_properties.start_frame[from_i];
 		to_properties.end_frame[to_i] = from_properties.end_frame[from_i];
 		to_properties.frame_rate[to_i] = from_properties.frame_rate[from_i];
@@ -7579,7 +7584,7 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		//Mainly internal functions
-		void RemoveShape(tfxU32 shape_index);
+		void RemoveShape(tfxKey image_hash);
 		tfxEffectEmitter &InsertEffect(tfxEffectEmitter &effect, tfxEffectEmitter *position);
 		tfxEffectEmitter &AddEffect(tfxEffectEmitter &effect);
 		tfxEffectEmitter &AddFolder(tfxStr64 &name);
@@ -7592,7 +7597,7 @@ You can then use layer inside the loop to get the current layer
 		bool NameExists(tfxEffectEmitter &effect, const char *name);
 		bool NameExists2(tfxEffectEmitter &effect, const char *name);
 		void ReIndex();
-		void UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, tfxU32 default_index);
+		void UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash);
 		tfxEffectEmitter* MoveUp(tfxEffectEmitter &effect);
 		tfxEffectEmitter* MoveDown(tfxEffectEmitter &effect);
 		tfxU32 AddGlobal();
@@ -7820,6 +7825,7 @@ You can then use layer inside the loop to get the current layer
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU64 value, tfxU32 file_version);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value, tfxU32 file_version);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);

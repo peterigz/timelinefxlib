@@ -1946,22 +1946,36 @@ namespace tfx {
 		}
 	}
 
-	void tfxLibrary::UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, tfxU32 default_index) {
+	void tfxLibrary::UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash) {
 		for (auto &effect : effects) {
 			if (effect.type == tfxFolder || effect.type == tfxStage) {
-				UpdateParticleShapeReferences(effect.GetInfo().sub_effectors, default_index);
+				UpdateParticleShapeReferences(effect.GetInfo().sub_effectors, default_hash);
 			}
 			else {
 				for (auto &emitter : effect.GetInfo().sub_effectors) {
-					if (particle_shapes.ValidIntName(emitter_properties.shape_index[emitter.property_index])) {
-						emitter_properties.image[emitter.property_index] = &particle_shapes.AtInt(emitter_properties.shape_index[emitter.property_index]);
-						emitter_properties.end_frame[emitter.property_index] = particle_shapes.AtInt(emitter_properties.shape_index[emitter.property_index]).animation_frames - 1;
+					bool shape_found = false;
+					tfxKey hash = emitter_properties.image_hash[emitter.property_index];
+					if (particle_shapes.ValidKey(emitter_properties.image_hash[emitter.property_index])) {
+						emitter_properties.image[emitter.property_index] = &particle_shapes.At(emitter_properties.image_hash[emitter.property_index]);
+						emitter_properties.end_frame[emitter.property_index] = particle_shapes.At(emitter_properties.image_hash[emitter.property_index]).animation_frames - 1;
+						shape_found = true;
 					}
 					else {
-						emitter_properties.image[emitter.property_index] = &particle_shapes.AtInt(default_index);
-						emitter_properties.end_frame[emitter.property_index] = particle_shapes.AtInt(default_index).animation_frames - 1;
+						for (auto &shape : particle_shapes.data) {
+							if (shape.shape_index == emitter_properties.image_index[emitter.property_index]) {
+								emitter_properties.image_hash[emitter.property_index] = shape.image_hash;
+								emitter_properties.image[emitter.property_index] = &particle_shapes.At(emitter_properties.image_hash[emitter.property_index]);
+								emitter_properties.end_frame[emitter.property_index] = particle_shapes.At(emitter_properties.image_hash[emitter.property_index]).animation_frames - 1;
+								shape_found = true;
+								break;
+							}
+						}
 					}
-					UpdateParticleShapeReferences(emitter.GetInfo().sub_effectors, default_index);
+					if(!shape_found) {
+						emitter_properties.image[emitter.property_index] = &particle_shapes.At(default_hash);
+						emitter_properties.end_frame[emitter.property_index] = particle_shapes.At(default_hash).animation_frames - 1;
+					}
+					UpdateParticleShapeReferences(emitter.GetInfo().sub_effectors, default_hash);
 				}
 			}
 		}
@@ -2060,10 +2074,10 @@ namespace tfx {
 		return sizeof(float) * compiled_lookup_values.size();
 	}
 
-	void tfxLibrary::RemoveShape(tfxU32 shape_index) {
-		particle_shapes.RemoveInt(shape_index);
+	void tfxLibrary::RemoveShape(tfxKey image_hash) {
+		particle_shapes.Remove(image_hash);
 		for (auto &m : particle_shapes.map) {
-			particle_shapes[m.index].shape_index = (tfxU32)m.key;
+			particle_shapes[m.index].image_hash = m.key;
 		}
 	}
 
@@ -2405,7 +2419,8 @@ namespace tfx {
 		AddStructArray(&emitter_properties_buffer, sizeof(tfxVec2), offsetof(tfxEmitterPropertiesSoA, image_handle));
 		AddStructArray(&emitter_properties_buffer, sizeof(tfxVec3), offsetof(tfxEmitterPropertiesSoA, emitter_handle));
 		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterPropertiesSoA, spawn_amount));
-		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterPropertiesSoA, shape_index));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxU32), offsetof(tfxEmitterPropertiesSoA, image_index));
+		AddStructArray(&emitter_properties_buffer, sizeof(tfxKey), offsetof(tfxEmitterPropertiesSoA, image_hash));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, loop_length));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, start_frame));
 		AddStructArray(&emitter_properties_buffer, sizeof(float), offsetof(tfxEmitterPropertiesSoA, noise_base_offset_range));
@@ -2878,6 +2893,7 @@ namespace tfx {
 		names_and_types.map.reserve(200);
 		names_and_types.Insert("name", tfxString);
 		names_and_types.Insert("image_index", tfxUint);
+		names_and_types.Insert("image_hash", tfxUInt64);
 		names_and_types.Insert("image_handle_x", tfxFloat);
 		names_and_types.Insert("image_handle_y", tfxFloat);
 		names_and_types.Insert("spawn_amount", tfxUint);
@@ -3176,10 +3192,16 @@ namespace tfx {
 		}
 	}
 
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU64 value, tfxU32 file_version) {
+		tfxEmitterPropertiesSoA &emitter_properties = effect.library->emitter_properties;
+		if (field == "image_hash")
+			emitter_properties.image_hash[effect.property_index] = value;
+	}
+
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value, tfxU32 file_version) {
 		tfxEmitterPropertiesSoA &emitter_properties = effect.library->emitter_properties;
 		if (field == "image_index")
-			emitter_properties.shape_index[effect.property_index] = value;
+			emitter_properties.image_index[effect.property_index] = value;
 		if (field == "spawn_amount")
 			emitter_properties.spawn_amount[effect.property_index] = value;
 		if (field == "frames")
@@ -3430,7 +3452,7 @@ namespace tfx {
 
 	void StreamProperties(tfxEmitterPropertiesSoA &property, tfxU32 index, tfxEmitterPropertyFlags &flags, tfxStr &file) {
 
-		file.AddLine("image_index=%i", property.shape_index[index]);
+		file.AddLine("image_hash=%llu", property.image_hash[index]);
 		file.AddLine("image_handle_x=%f", property.image_handle[index].x);
 		file.AddLine("image_handle_y=%f", property.image_handle[index].y);
 		file.AddLine("image_start_frame=%f", property.start_frame[index]);
@@ -5254,7 +5276,7 @@ namespace tfx {
 			return error;
 		}
 
-		int first_shape_index = -1;
+		tfxKey first_shape_hash = 0;
 
 		//You must call InitialiseTimelineFX() before doing anything!	
 		assert(tfxSTACK_ALLOCATOR.arena_size > 0);
@@ -5341,6 +5363,9 @@ namespace tfx {
 				if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
 					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
 						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+						case tfxUInt64:
+							AssignEffectorProperty(effect_stack.back(), pair[0], (tfxU64)strtoull(pair[1].c_str(), NULL, 10), package.header.file_version);
+							break;
 						case tfxUint:
 							AssignEffectorProperty(effect_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
 							break;
@@ -5402,18 +5427,26 @@ namespace tfx {
 						s.frame_count = atoi(pair[2].c_str());
 						s.width = atoi(pair[3].c_str());
 						s.height = atoi(pair[4].c_str());
-						if (pair.size() > 5)
-							s.import_filter = atoi(pair[5].c_str());
-						if (s.import_filter < 0 || s.import_filter>1)
+						s.import_filter = atoi(pair[5].c_str());
+						if (pair.current_size > 6) {
+							s.image_hash = strtoull(pair[6].c_str(), NULL, 10);
+						}
+						if (s.import_filter < 0 || s.import_filter>1) {
 							s.import_filter = 0;
+						}
 
 						tfxEntryInfo *shape_entry = package.GetFile(s.name);
 						if (shape_entry) {
 							tfxImageData image_data;
+							image_data.shape_index = s.shape_index;
 							image_data.animation_frames = (float)s.frame_count;
 							image_data.image_size = tfxVec2((float)s.width, (float)s.height);
-							image_data.shape_index = s.shape_index;
 							image_data.import_filter = s.import_filter;
+							image_data.image_hash = tfxXXHash64::hash(shape_entry->data.data, shape_entry->file_size, 0);
+							if (s.image_hash == 0) {
+								s.image_hash = image_data.image_hash;
+							}
+							assert(s.image_hash == image_data.image_hash);
 
 							shape_loader(s.name, image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
@@ -5421,9 +5454,9 @@ namespace tfx {
 								//uid = -6;
 							}
 							else {
-								lib.particle_shapes.InsertByInt(s.shape_index, image_data);
-								if (first_shape_index == -1)
-									first_shape_index = s.shape_index;
+								lib.particle_shapes.Insert(image_data.image_hash, image_data);
+								if (first_shape_hash == 0)
+									first_shape_hash = s.image_hash;
 							}
 						}
 						else {
@@ -5496,8 +5529,8 @@ namespace tfx {
 			//Effects were loaded so let's compile them
 			lib.CompileAllGraphs();
 			lib.ReIndex();
-			if (first_shape_index != -1)
-				lib.UpdateParticleShapeReferences(lib.effects, first_shape_index);
+			if (first_shape_hash != 0)
+				lib.UpdateParticleShapeReferences(lib.effects, first_shape_hash);
 			lib.UpdateEffectPaths();
 			lib.UpdateComputeNodes();
 			lib.SetMinMaxData();
