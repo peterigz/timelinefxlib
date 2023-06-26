@@ -8669,6 +8669,13 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void ResetAnimationManager(tfxAnimationManager *animation_manager);
 
 	/*
+	Frees all data from the animation manager including sprite data, metrics and instances.
+	from being drawn
+	* @param animation_manager		A pointer to a tfxAnimationManager that you want to reset
+	*/
+	tfxAPI void FreeAnimationManager(tfxAnimationManager *animation_manager);
+
+	/*
 	Get the tfxAnimationBufferMetrics from an animation manager. This will contain the info you need to upload the sprite data, 
 	offsets and animation instances to the GPU. Only offsets and animation instances need to be uploaded to the GPU each frame. Sprite
 	data can be done ahead of time.

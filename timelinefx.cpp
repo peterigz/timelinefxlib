@@ -6215,7 +6215,7 @@ namespace tfx {
 		animation_manager->offsets.clear();
 	}
 
-	tfxAPI void ResetAnimationManager(tfxAnimationManager *animation_manager) {
+	void ResetAnimationManager(tfxAnimationManager *animation_manager) {
 		animation_manager->free_instances.clear();
 		animation_manager->instances_in_use[0].clear();
 		animation_manager->instances_in_use[1].clear();
@@ -6233,6 +6233,18 @@ namespace tfx {
 		animation_manager->buffer_metrics.sprite_data_size = 0;
 		animation_manager->buffer_metrics.total_sprites_to_draw = 0;
 		animation_manager->flags = 0;
+	}
+
+	void FreeAnimationManager(tfxAnimationManager *animation_manager) {
+		animation_manager->free_instances.free_all();
+		animation_manager->instances_in_use[0].free_all();
+		animation_manager->instances_in_use[1].free_all();
+		animation_manager->render_queue.free_all();
+		animation_manager->instances.free_all();
+		animation_manager->offsets.free_all();
+		animation_manager->sprite_data.free_all();
+		animation_manager->emitter_properties.free_all();
+		animation_manager->effect_animation_info.FreeAll();
 	}
 
 	void tfxAnimationManager::UpdateBufferMetrics() {
