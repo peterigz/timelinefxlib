@@ -5054,7 +5054,7 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	struct tfxEntryInfo {
-		tfxStr file_name;							//The file name of the name stored in the package
+		tfxStr file_name;							//The name of the file stored in the package
 		tfxU64 offset_from_start_of_file = 0;		//Offset from the start of the file to where the file is located
 		tfxU64 file_size = 0;						//The size of the file
 		tfxStream data;								//The file data
@@ -5086,6 +5086,7 @@ You can then use layer inside the loop to get the current layer
 		tfxEntryInfo *GetFile(const char *name);
 		void AddFile(tfxEntryInfo file);
 		void AddFile(const char *file_name, tfxStream &data);
+		bool FileExists(const char *file_name);
 		void Free();
 
 	};

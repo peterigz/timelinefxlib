@@ -543,6 +543,13 @@ namespace tfx {
 		return entry;
 	}
 
+	bool tfxPackage::FileExists(const char *file_name) {
+		if (!inventory.entries.ValidName(file_name)) {
+			return true;
+		}
+		return false;
+	}
+
 	void tfxPackage::AddFile(tfxEntryInfo file) {
 		inventory.entries.Insert(file.file_name, file);
 		inventory.entry_count++;
