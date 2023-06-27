@@ -5448,6 +5448,7 @@ namespace tfx {
 							image_data.shape_index = s.shape_index;
 							image_data.animation_frames = (float)s.frame_count;
 							image_data.image_size = tfxVec2((float)s.width, (float)s.height);
+							image_data.name = s.name;
 							image_data.import_filter = s.import_filter;
 							image_data.image_hash = tfxXXHash64::hash(shape_entry->data.data, shape_entry->file_size, 0);
 							if (s.image_hash == 0) {
@@ -5698,14 +5699,14 @@ namespace tfx {
 			FreeSpriteData(*sprite_data);
 			sprite_data->normal.frame_count = frames;
 			sprite_data->normal.animation_length_in_time = frames * tfxFRAME_LENGTH;
-			sprite_data->normal.frame_meta = tfxArray<tfxFrameMeta>(&effect->library->sprite_data_allocator, frames);
+			sprite_data->normal.frame_meta.resize( frames);
 			sprite_data->normal.frame_meta.zero();
 		}
 		else {
 			tfxSpriteData data;
 			data.normal.frame_count = frames;
 			data.normal.animation_length_in_time = frames * tfxFRAME_LENGTH;
-			data.normal.frame_meta = tfxArray<tfxFrameMeta>(&effect->library->sprite_data_allocator, frames);
+			data.normal.frame_meta.resize(frames);
 			data.normal.frame_meta.zero();
 			effect->library->pre_recorded_effects.Insert(effect->path_hash, data);
 			sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
@@ -5715,8 +5716,8 @@ namespace tfx {
 		anim.animation_time = sprite_data->normal.animation_length_in_time;
 		sprite_data->frame_compression = anim.playback_speed;
 
-		tfxArray<tfxFrameMeta> &frame_meta = sprite_data->normal.frame_meta;
-		memcpy(frame_meta.block, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
+		tfxvec<tfxFrameMeta> &frame_meta = sprite_data->normal.frame_meta;
+		memcpy(frame_meta.data, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
 		tmp_frame_meta.free_all();
 
 		tfxU32 last_count = 0;
@@ -5896,8 +5897,7 @@ namespace tfx {
 		tfxSpriteData *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 		InitSpriteData3dSoACompression(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, sprite_data->real_time_sprites_buffer.current_size);
 
-		sprite_data->compressed.frame_meta.free();
-		sprite_data->compressed.frame_meta = tfxArray<tfxFrameMeta>(&effect->library->sprite_data_allocator, tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
+		sprite_data->compressed.frame_meta.resize(tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
 		sprite_data->compressed.frame_meta.zero();
 
 		float frequency = tfxFRAME_LENGTH * (1.f / anim.playback_speed);
@@ -6081,6 +6081,18 @@ namespace tfx {
 		}
 	}
 
+	void tfxAnimationManager::AddEffectShapes(tfxEffectEmitter *effect) {
+		if (effect->type == tfxEmitterType) {
+			tfxImageData *image_data = effect->GetProperties().image[effect->property_index];
+			particle_shapes.Insert(image_data->name, *image_data);
+		}
+		else {
+			for (auto &sub : effect->GetInfo().sub_effectors) {
+				AddEffectShapes(&sub);
+			}
+		}
+	}
+
 	void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm, tfxVec3 camera_position) {
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
 		if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
@@ -6094,6 +6106,10 @@ namespace tfx {
 		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
 		animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
 		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.At(effect->path_hash);
+		metrics.frames_after_compression = anim.frames_after_compression;
+		metrics.real_frames = anim.real_frames;
+		metrics.animation_time = anim.animation_time;
+		metrics.animation_flags = anim.animation_flags;
 		metrics.flags = has_animated_shape ? tfxAnimationManagerFlags_has_animated_shapes : 0;
 		tfxSpriteDataSoA &sprites = sprite_data.compressed_sprites;
 		metrics.start_offset = animation_manager->sprite_data.current_size;
@@ -6134,25 +6150,24 @@ namespace tfx {
 		animation_manager->buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
 	}
 
-	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame) {
-		assert(animation_manager->effect_animation_info.ValidKey(effect->path_hash));	//You must have added the effect sprite data to the animation manager
+	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, const char *name, tfxU32 start_frame) {
+		assert(animation_manager->effect_animation_info.ValidName(name));	//You must have added the effect sprite data to the animation manager
 																						//Call AddSpriteData to do so
 		if(animation_manager->instances_in_use->current_size >= animation_manager->instances_in_use->capacity) {
 			return tfxINVALID;
 		}
-		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[effect->GetInfo().sprite_data_settings_index];
-		assert(start_frame < anim.frames_after_compression);
-		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
+		tfxU32 info_index = animation_manager->effect_animation_info.GetIndex(name);
+		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[info_index];
+		assert(start_frame < metrics.frames_after_compression);
 		tfxAnimationID index = animation_manager->AddInstance();
 		tfxAnimationInstance &instance = animation_manager->instances[index];
 		instance.position.w = 1.f;
-		float frame_length = float(anim.real_frames) / float(anim.frames_after_compression) * tfxFRAME_LENGTH;
+		float frame_length = float(metrics.real_frames) / float(metrics.frames_after_compression) * tfxFRAME_LENGTH;
 		instance.current_time = start_frame * frame_length;
-		instance.animation_time = anim.animation_time;
+		instance.animation_time = metrics.animation_time;
 		instance.tween = 0.f;
-		instance.flags = anim.animation_flags;
-		instance.info_index = animation_manager->effect_animation_info.GetIndex(effect->path_hash);
-		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[instance.info_index];
+		instance.flags = metrics.animation_flags;
+		instance.info_index = info_index;
 		instance.offset_into_sprite_data = metrics.start_offset;
 		instance.sprite_count = metrics.frame_meta[start_frame].total_sprites;
 		instance.frame_count = metrics.frame_count;

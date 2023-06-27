@@ -811,7 +811,8 @@ You can then use layer inside the loop to get the current layer
 		tfxEffectPropertyFlags_depth_draw_order = 1 << 1,
 		tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
 		tfxEffectPropertyFlags_age_order = 1 << 3,
-		tfxEffectPropertyFlags_use_keyframes = 1 << 4
+		tfxEffectPropertyFlags_use_keyframes = 1 << 4,
+		tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5		//In the editor you can specify which effects you want to be included in a spritedata export
 	};
 
 	enum tfxEmitterPropertyFlags_ {
@@ -5921,6 +5922,8 @@ You can then use layer inside the loop to get the current layer
 		void *ptr;
 		//Index of the image, deprecated, image hash should be used now instead.
 		tfxU32 shape_index;
+		//Name of the image
+		tfxStr name;
 		//A hash of the image data for a unique and which can also be used to see if an image has already been loaded
 		tfxU64 image_hash;
 		//The size of one frame of the image
@@ -6803,12 +6806,16 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxSpriteDataMetrics {
 		tfxU32 start_offset;	//Only applies to animation manager
+		tfxU32 frames_after_compression;
+		tfxU32 real_frames;
+		float animation_time;
 		tfxU32 frame_count;
 		float animation_length_in_time;
 		tfxU32 total_sprites;
 		tfxU32 total_memory_for_sprites;
-		tfxArray<tfxFrameMeta> frame_meta;
+		tfxvec<tfxFrameMeta> frame_meta;
 		tfxAnimationManagerFlags flags;
+		tfxAnimationFlags animation_flags;
 	};
 
 	struct tfxSpriteData {
@@ -6824,15 +6831,14 @@ You can then use layer inside the loop to get the current layer
 	inline void FreeSpriteData(tfxSpriteData &sprite_data) {
 		if (sprite_data.compressed_sprites_buffer.data == sprite_data.real_time_sprites_buffer.data) {
 			FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
-			sprite_data.normal.frame_meta.free();
+			sprite_data.normal.frame_meta.free_all();
 			sprite_data.compressed_sprites_buffer = tfxSoABuffer();
-			sprite_data.compressed.frame_meta = tfxArray<tfxFrameMeta>();
 		}
 		else {
 			FreeSoABuffer(&sprite_data.compressed_sprites_buffer);
 			FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
-			sprite_data.normal.frame_meta.free();
-			sprite_data.compressed.frame_meta.free();
+			sprite_data.normal.frame_meta.free_all();
+			sprite_data.compressed.frame_meta.free_all();
 		}
 	}
 
@@ -7064,10 +7070,16 @@ You can then use layer inside the loop to get the current layer
 		//These can be looked up byt the sprite in the compute shader and the values applied to the sprite
 		//before going to the vertex shader
 		tfxvec<tfxAnimationEmitterProperties> emitter_properties;
+		//Each animation has a 
+		tfxvec<tfxSpriteDataSettings> sprite_data_settings;
 		//Every animation that gets added to the animation manager gets info added here that describes
 		//where to find the relevent sprite data in the buffer and contains other frame meta about the 
 		//animation
 		tfxStorageMap<tfxSpriteDataMetrics> effect_animation_info;
+		//When loading in a tfxsd file the shapes are put here and can then be used to upload to the GPU
+		//Other wise if you're adding sprite data from an effect library then the shapes will just be
+		//referenced from there instead
+		tfxStorageMap<tfxImageData> particle_shapes;
 		//This struct contains the size of the buffers that need to be uploaded to the GPU. Offsets and 
 		//animation instances need to be uploaded every frame, but the sprite data only once before you
 		//start drawing anything
@@ -7094,6 +7106,7 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void AddEffectEmitterProperties(tfxEffectEmitter *effect, bool *has_animated_shape);
+		void AddEffectShapes(tfxEffectEmitter *effect);
 		void Update(float elapsed);
 		void UpdateBufferMetrics();
 	};
@@ -8644,7 +8657,7 @@ You can then use layer inside the loop to get the current layer
 	* @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 									Return tfxINVALID if there is no room in the animation manager
 	*/
-	tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, int start_frame = 0);
+	tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, const char *effect_name, tfxU32 start_frame = 0);
 
 	/*
 	Update an animation manager to advance the time and frames of all instances currently playing.
