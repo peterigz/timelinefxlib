@@ -5876,8 +5876,8 @@ namespace tfx {
 		FreeSoABuffer(&temp_sprites_buffer);
 		SetUpdateFrequency(update_freq);
 		pm->DisableSpawning(false);
+		pm->ClearAll();
 		pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
-		//pm->ForceSingleThreaded(false);
 
 		if (anim.playback_speed < 1.f) {
 			CompressSpriteData3d(pm, effect);
