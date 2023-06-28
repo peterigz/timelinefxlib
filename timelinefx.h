@@ -657,7 +657,7 @@ You can then use layer inside the loop to get the current layer
 		tfxUInt64
 	};
 
-	//Block designators for loading effects library
+	//Block designators for loading effects library and other files like animation sprite data
 	//The values of existing enums below must never change or older files won't load anymore!
 	enum tfxEffectLibraryStream : uint32_t {
 		tfxStartEffect = 0x00FFFF00,
@@ -678,7 +678,11 @@ You can then use layer inside the loop to get the current layer
 		tfxStartPreviewCameraSettings,
 		tfxEndPreviewCameraSettings,
 		tfxStartStage,
-		tfxEndStage
+		tfxEndStage,
+		tfxStartEffectAnimationInfo,
+		tfxEndEffectAnimationInfo,
+		tfxStartFrameMeta,
+		tfxEndFrameMeta
 	};
 
 	typedef tfxU32 tfxEmitterPropertyFlags;
@@ -6616,7 +6620,6 @@ You can then use layer inside the loop to get the current layer
 
 	//When exporting effects as sprite data each frame gets frame meta containing information about the frame such as bounding box and sprite count/offset into the buffer
 	struct tfxFrameMeta {
-		tfxU32 frame_index;					//The index of the frame of animation
 		tfxU32 index_offset[tfxLAYERS];		//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
 		tfxU32 sprite_count[tfxLAYERS];		//The number of sprites in the frame for each layer
 		tfxU32 total_sprites;				//The total number of sprites for all layers in the frame
@@ -6805,6 +6808,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	struct tfxSpriteDataMetrics {
+		tfxStr64 name;
 		tfxU32 start_offset;	//Only applies to animation manager
 		tfxU32 frames_after_compression;
 		tfxU32 real_frames;

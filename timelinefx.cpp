@@ -6106,6 +6106,7 @@ namespace tfx {
 		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
 		animation_manager->effect_animation_info.Insert(effect->path_hash, sprite_data.compressed);
 		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.At(effect->path_hash);
+		metrics.name = effect->GetInfo().name;
 		metrics.frames_after_compression = anim.frames_after_compression;
 		metrics.real_frames = anim.real_frames;
 		metrics.animation_time = anim.animation_time;
