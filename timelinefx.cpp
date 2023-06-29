@@ -1800,7 +1800,7 @@ namespace tfx {
 		}
 	}
 
-	tfxEffectEmitter& tfxLibrary::operator[] (uint32_t index) {
+	tfxEffectEmitter& tfxLibrary::operator[] (tfxU32 index) {
 		return effects[index];
 	}
 
@@ -2958,6 +2958,24 @@ namespace tfx {
 		names_and_types.Insert("draw_order_by_depth", tfxBool);
 		names_and_types.Insert("guaranteed_draw_order", tfxBool);
 
+		//Sprite data settings
+		names_and_types.Insert("start_offset", tfxUint);
+		names_and_types.Insert("frames_after_compression", tfxUint);
+		names_and_types.Insert("real_frames", tfxUint);
+		names_and_types.Insert("frame_count", tfxUint);
+		names_and_types.Insert("total_sprites", tfxUint);
+		names_and_types.Insert("total_memory_for_sprites", tfxUint);
+		names_and_types.Insert("flags", tfxUint);
+		names_and_types.Insert("animation_flags", tfxUint);
+		names_and_types.Insert("animation_time", tfxFloat);
+		names_and_types.Insert("animation_length_in_time", tfxFloat);
+		names_and_types.Insert("name", tfxString);
+
+		//Frame meta
+		names_and_types.Insert("total_sprites", tfxUint);
+		names_and_types.Insert("corner1_3d", tfxFloat3);
+		names_and_types.Insert("corner2_3d", tfxFloat3);
+
 		//Animation settings
 		names_and_types.Insert("playback_speed", tfxFloat);
 		names_and_types.Insert("animation_magenta_mask", tfxBool);
@@ -3181,7 +3199,7 @@ namespace tfx {
 			n.flags |= tfxAttributeNodeFlags_curves_initialised;
 	}
 
-	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value) {
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value) {
 	}
 
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, float value) {
@@ -3199,13 +3217,59 @@ namespace tfx {
 		}
 	}
 
+	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version) {
+		if (field == "total_sprites")
+			metrics.total_sprites = value;
+	}
+
+	tfxVec3 StrToVec3(tfxStack<tfxStr256> &str) {
+		assert(str.size() == 3);	//array must be size 3
+		return tfxVec3((float)atof(str[0].c_str()), (float)atof(str[0].c_str()), (float)atof(str[0].c_str()));
+	}
+
+	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxVec3 value, tfxU32 file_version) {
+		if (field == "corner1")
+			metrics.corner1 = value;
+		if (field == "corner2")
+			metrics.corner2 = value;
+	}
+
+	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version) {
+		if (field == "start_offset")
+			metrics.start_offset = value;
+		if (field == "frames_after_compression")
+			metrics.frames_after_compression = value;
+		if (field == "real_frames")
+			metrics.real_frames = value;
+		if (field == "frame_count")
+			metrics.frame_count = value;
+		if (field == "total_sprites")
+			metrics.total_sprites = value;
+		if (field == "total_memory_for_sprites")
+			metrics.total_memory_for_sprites = value;
+		if (field == "flags")
+			metrics.flags = value;
+		if (field == "animation_flags")
+			metrics.animation_flags = value;
+	}
+
+	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, float value, tfxU32 file_version) {
+		if (field == "animation_length_in_time")
+			metrics.animation_length_in_time = value;
+	}
+
+	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxStr value, tfxU32 file_version) {
+		if (field == "name")
+			metrics.name = value;
+	}
+
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU64 value, tfxU32 file_version) {
 		tfxEmitterPropertiesSoA &emitter_properties = effect.library->emitter_properties;
 		if (field == "image_hash")
 			emitter_properties.image_hash[effect.property_index] = value;
 	}
 
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value, tfxU32 file_version) {
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value, tfxU32 file_version) {
 		tfxEmitterPropertiesSoA &emitter_properties = effect.library->emitter_properties;
 		if (field == "image_index")
 			emitter_properties.image_index[effect.property_index] = value;
@@ -3989,7 +4053,7 @@ namespace tfx {
 		return r_value;
 	}
 
-	void tfxGraph::SetNode(uint32_t i, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
+	void tfxGraph::SetNode(tfxU32 i, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
 		if (!nodes.empty() && i < nodes.size()) {
 			nodes[i].frame = _frame;
 			nodes[i].value = _value;
@@ -5237,11 +5301,203 @@ namespace tfx {
 		return stats;
 	}
 
+	tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager &animation_manager, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+		assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
+		if (!tfxDataTypes.initialised)
+			tfxDataTypes.Init();
+
+		tfxPackage package;
+		tfxErrorFlags error = LoadPackage(filename, package);
+		if (error != 0) {
+			package.Free();
+			return error;
+		}
+
+		tfxEntryInfo *data = package.GetFile("data.txt");
+
+		if (!data) {
+			error |= tfxErrorCode_data_could_not_be_loaded;
+		}
+
+		tfxEntryInfo *sprite_data = package.GetFile("sprite_data");
+
+		if (!sprite_data) {
+			error |= tfxErrorCode_data_could_not_be_loaded;
+		}
+
+		if (error != 0) {
+			package.Free();
+			return error;
+		}
+
+		animation_manager.sprite_data.resize((tfxU32)(sprite_data->file_size / package.header.user_data1));
+		memcpy(animation_manager.sprite_data.data, sprite_data->data.data, sprite_data->file_size);
+
+		tmpStack(tfxSpriteDataMetrics, metrics_stack);
+		tmpStack(tfxFrameMeta, frame_meta_stack);
+		tmpStack(tfxStr256, pair);
+		tmpStack(tfxStr256, multi);
+
+		tfxKey first_shape_hash = 0;
+		int context = 0;
+
+		while (!data->data.EoF()) {
+			tfxStr512 line = data->data.ReadLine();
+			bool context_set = false;
+
+			if (StringIsUInt(line.c_str())) {
+				context = atoi(line.c_str());
+				if (context == tfxEndOfFile) {
+					break;
+				}
+
+				context_set = true;
+				if (context == tfxStartEffectAnimationInfo) {
+					tfxSpriteDataMetrics metrics;
+					metrics_stack.push_back(metrics);
+				}
+				else if (context == tfxStartFrameMeta) {
+					tfxFrameMeta frame_meta;
+					frame_meta_stack.push_back(frame_meta);
+				}
+			}
+
+			pair.clear();
+			SplitStringStack(line.c_str(), pair);
+			if (pair.size() != 2) {
+				pair.clear();
+				SplitStringStack(line.c_str(), pair, ',');
+				if (pair.size() < 2) {
+					error |= tfxErrorCode_some_data_not_loaded;
+					continue;
+				}
+			}
+
+			if (context_set == false) {
+				if (context == tfxStartEffectAnimationInfo) {
+					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
+						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+						case tfxUint:
+							AssignSpriteDataMetricsProperty(metrics_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
+							break;
+						case tfxFloat:
+							AssignSpriteDataMetricsProperty(metrics_stack.back(), pair[0], (float)atof(pair[1].c_str()), package.header.file_version);
+							break;
+						case tfxString:
+							AssignSpriteDataMetricsProperty(metrics_stack.back(), pair[0], pair[1], package.header.file_version);
+							break;
+						}
+					}
+					else {
+						error |= tfxErrorCode_some_data_not_loaded;
+					}
+				}
+				else if (context == tfxStartFrameMeta) {
+					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
+						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+						case tfxUint:
+							AssignFrameMetaProperty(frame_meta_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
+							break;
+						case tfxFloat3:
+							multi.clear();
+							SplitStringStack(pair[1], multi, ',');
+							AssignFrameMetaProperty(frame_meta_stack.back(), pair[0], StrToVec3(multi), package.header.file_version);
+							break;
+						}
+					}
+				}
+				else if (context == tfxStartFrameOffsets) {
+					if (pair.size() == tfxLAYERS + 1) {
+						if (pair[0] == "index_offset") {
+							for (int i = 1; i != tfxLAYERS + 1; ++i) {
+								frame_meta_stack.back().index_offset[i - 1] = atoi(pair[i].c_str());
+							}
+						}
+						else if (pair[0] == "sprite_count") {
+							for (int i = 1; i != tfxLAYERS + 1; ++i) {
+								frame_meta_stack.back().sprite_count[i - 1] = atoi(pair[i].c_str());
+							}
+						}
+					}
+					else {
+						//Not enougn layers, set tfxLAYERS to the required amount. The default is 4.
+					}
+				}
+
+				if (context == tfxStartShapes) {
+					if (pair.size() >= 5) {
+						tfxShapeData s;
+						strcpy_s(s.name, pair[0].c_str());
+						s.shape_index = atoi(pair[1].c_str());
+						s.frame_count = atoi(pair[2].c_str());
+						s.width = atoi(pair[3].c_str());
+						s.height = atoi(pair[4].c_str());
+						s.import_filter = atoi(pair[5].c_str());
+						if (pair.current_size > 6) {
+							s.image_hash = strtoull(pair[6].c_str(), NULL, 10);
+						}
+						if (s.import_filter < 0 || s.import_filter>1) {
+							s.import_filter = 0;
+						}
+
+						tfxEntryInfo *shape_entry = package.GetFile(s.name);
+						if (shape_entry) {
+							tfxImageData image_data;
+							image_data.shape_index = s.shape_index;
+							image_data.animation_frames = (float)s.frame_count;
+							image_data.image_size = tfxVec2((float)s.width, (float)s.height);
+							image_data.name = s.name;
+							image_data.import_filter = s.import_filter;
+							image_data.image_hash = tfxXXHash64::hash(shape_entry->data.data, shape_entry->file_size, 0);
+							if (s.image_hash == 0) {
+								s.image_hash = image_data.image_hash;
+							}
+							assert(s.image_hash == image_data.image_hash);
+
+							shape_loader(s.name, image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
+
+							if (!image_data.ptr) {
+								//uid = -6;
+							}
+							else {
+								animation_manager.particle_shapes.Insert(image_data.image_hash, image_data);
+								if (first_shape_hash == 0)
+									first_shape_hash = s.image_hash;
+							}
+						}
+						else {
+							//Maybe don't actually need to break here, just means for some a reason a shaped couldn't be loaded, but no reason not to load the effects anyway
+							//uid = -7;
+							//break;
+						}
+					}
+				}
+			}
+
+			if (context == tfxEndFrameOffsets) {
+				context = tfxStartFrameMeta;
+			}
+			else if (context == tfxEndFrameMeta) {
+				metrics_stack.back().frame_meta.push_back(frame_meta_stack.pop_back());
+			}
+			else if (context == tfxEndEffectAnimationInfo) {
+				animation_manager.effect_animation_info.Insert(metrics_stack.back().name, metrics_stack.back());
+				metrics_stack.pop();
+			}
+
+		}
+
+		package.Free();
+
+		return error;
+	}
+
 	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 
 		assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 		if (!tfxDataTypes.initialised)
 			tfxDataTypes.Init();
+
 		lib.Clear();
 		if (tfxIcospherePoints[0].current_size == 0) {
 			MakeIcospheres();
@@ -5713,7 +5969,7 @@ namespace tfx {
 		}
 
 		anim.real_frames = frames;
-		anim.animation_time = sprite_data->normal.animation_length_in_time;
+		anim.animation_length_in_time = sprite_data->normal.animation_length_in_time;
 		sprite_data->frame_compression = anim.playback_speed;
 
 		tfxvec<tfxFrameMeta> &frame_meta = sprite_data->normal.frame_meta;
@@ -5988,7 +6244,7 @@ namespace tfx {
 		f = 0;
 		//Second pass, link up the captured indexes using the UIDs
 		sprite_data->compressed.frame_count = compressed_frame + 1;
-		anim.animation_time = sprite_data->compressed.animation_length_in_time = sprite_data->compressed.frame_count * frequency;
+		anim.animation_length_in_time = sprite_data->compressed.animation_length_in_time = sprite_data->compressed.frame_count * frequency;
 		anim.frames_after_compression = sprite_data->compressed.frame_count;
 		tmpMTStack(tfxCompressWorkEntry, compress_entry);
 		while (f < (int)sprite_data->compressed.frame_count) {
@@ -6052,7 +6308,7 @@ namespace tfx {
 		animation_manager->buffer_metrics.offsets_size_in_bytes = 0;
 		animation_manager->buffer_metrics.sprite_data_size = 0;
 		animation_manager->buffer_metrics.total_sprites_to_draw = 0;
-		animation_manager->flags = 0;
+		animation_manager->flags = tfxAnimationManagerFlags_initialised;
 	}
 
 	void tfxAnimationManager::AddEffectEmitterProperties(tfxEffectEmitter *effect, bool *has_animated_shape) {
@@ -6109,7 +6365,7 @@ namespace tfx {
 		metrics.name = effect->GetInfo().name;
 		metrics.frames_after_compression = anim.frames_after_compression;
 		metrics.real_frames = anim.real_frames;
-		metrics.animation_time = anim.animation_time;
+		metrics.animation_length_in_time = anim.animation_length_in_time;
 		metrics.animation_flags = anim.animation_flags;
 		metrics.flags = has_animated_shape ? tfxAnimationManagerFlags_has_animated_shapes : 0;
 		tfxSpriteDataSoA &sprites = sprite_data.compressed_sprites;
@@ -6165,7 +6421,7 @@ namespace tfx {
 		instance.position.w = 1.f;
 		float frame_length = float(metrics.real_frames) / float(metrics.frames_after_compression) * tfxFRAME_LENGTH;
 		instance.current_time = start_frame * frame_length;
-		instance.animation_time = metrics.animation_time;
+		instance.animation_length_in_time = metrics.animation_length_in_time;
 		instance.tween = 0.f;
 		instance.flags = metrics.animation_flags;
 		instance.info_index = info_index;
@@ -6187,15 +6443,15 @@ namespace tfx {
 			auto &instance = instances[i];
 			tfxSpriteDataMetrics &metrics = effect_animation_info.data[instance.info_index];
 			instance.current_time += elapsed;
-			float frame_time = (instance.current_time / instance.animation_time) * (float)instance.frame_count;
+			float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
 			tfxU32 frame = tfxU32(frame_time);
 			frame++;
 			frame = frame >= metrics.frame_count ? 0 : frame;
-			if (instance.current_time >= instance.animation_time) {
+			if (instance.current_time >= instance.animation_length_in_time) {
 				if (instance.flags & tfxAnimationInstanceFlags_loop) {
 					instance.sprite_count = metrics.frame_meta[0].total_sprites;
 					instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
-					instance.current_time -= instance.animation_time;
+					instance.current_time -= instance.animation_length_in_time;
 					instances_in_use[next_buffer].push_back(i);
 					running_sprite_count += instance.sprite_count;
 					offsets.push_back(running_sprite_count);

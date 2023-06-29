@@ -83,7 +83,7 @@
 				else {
 					//Multiple frames of animation
 					//Get the current frame of animation that the particle is using
-					uint32_t frame = uint32_t(p.image_frame);
+					tfxU32 frame = tfxU32(p.image_frame);
 					//frame must be within the bounds of the animation
 					assert(frame >= 0 && frame < e.properties.image->animation_frames);
 					//Cast the image->ptr to the appropriate type for the renderer to get at the animation frames. In this case it's an AnimationFrames struct which contains a list of indexes
@@ -654,12 +654,14 @@ You can then use layer inside the loop to get the current layer
 		tfxFloat,
 		tfxDouble,
 		tfxBool,
-		tfxUInt64
+		tfxUInt64,
+		tfxFloat3,
+		tfxFloat2
 	};
 
 	//Block designators for loading effects library and other files like animation sprite data
 	//The values of existing enums below must never change or older files won't load anymore!
-	enum tfxEffectLibraryStream : uint32_t {
+	enum tfxEffectLibraryStream : tfxU32 {
 		tfxStartEffect = 0x00FFFF00,
 		tfxEndEffect,
 		tfxStartEmitter,
@@ -682,7 +684,9 @@ You can then use layer inside the loop to get the current layer
 		tfxStartEffectAnimationInfo,
 		tfxEndEffectAnimationInfo,
 		tfxStartFrameMeta,
-		tfxEndFrameMeta
+		tfxEndFrameMeta,
+		tfxStartFrameOffsets,
+		tfxEndFrameOffsets,
 	};
 
 	typedef tfxU32 tfxEmitterPropertyFlags;
@@ -935,6 +939,7 @@ You can then use layer inside the loop to get the current layer
 	enum tfxAnimationManagerFlags_ {
 		tfxAnimationManagerFlags_none = 0,
 		tfxAnimationManagerFlags_has_animated_shapes = 1 << 0,
+		tfxAnimationManagerFlags_initialised = 1 << 1,
 	};
 
 	//-----------------------------------------------------------
@@ -1274,6 +1279,7 @@ You can then use layer inside the loop to get the current layer
 		inline const T&     parent() const { assert(current_size > 1); return data[current_size - 2]; }
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
+		inline void         resize_bytes(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 		inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 		inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
 		inline void         reserve(tfxU32 new_capacity) {
@@ -5051,8 +5057,8 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 flags;								//Any state_flags for the file
 		tfxU32 reserved0;							//Reserved for future if needed
 		tfxU64 offset_to_inventory;					//Memory offset for the inventory of files
-		tfxU64 reserved1;							//More reserved space
-		tfxU64 reserved2;							//More reserved space
+		tfxU64 user_data1;							//Any data you might find useful
+		tfxU64 user_data2;							//Any data you might find useful
 		tfxU64 reserved3;							//More reserved space
 		tfxU64 reserved4;							//More reserved space
 		tfxU64 reserved5;							//More reserved space
@@ -5300,7 +5306,7 @@ You can then use layer inside the loop to get the current layer
 
 		tfxAttributeNode* AddNode(float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 		void AddNode(tfxAttributeNode &node);
-		void SetNode(uint32_t index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+		void SetNode(tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 		float GetValue(float age);
 		float GetRandomValue(float age, tfxRandom &seed);
 		float GetValue(float age, float life);
@@ -5905,7 +5911,7 @@ You can then use layer inside the loop to get the current layer
 		int frames_after_compression;
 		int current_frame;
 		float current_time;
-		float animation_time;
+		float animation_length_in_time;
 		int frame_offset;
 		int extra_frames_count;
 		tfxU32 seed;
@@ -6812,7 +6818,6 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 start_offset;	//Only applies to animation manager
 		tfxU32 frames_after_compression;
 		tfxU32 real_frames;
-		float animation_time;
 		tfxU32 frame_count;
 		float animation_length_in_time;
 		tfxU32 total_sprites;
@@ -7023,7 +7028,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 offset_into_sprite_data;		//The starting ofset in the buffer that contains all the sprite data
 		tfxU32 info_index;					//Index into the effect_animation_info storage map to get at the frame meta
 		float current_time;					//Current point of time in the animation
-		float animation_time;				//Total time that the animation lasts for
+		float animation_length_in_time;				//Total time that the animation lasts for
 		float tween;						//The point time within the frame (0..1)
 		tfxAnimationInstanceFlags flags;	//Flags associated with the instance
 	};
@@ -7522,7 +7527,7 @@ You can then use layer inside the loop to get the current layer
 		tfxvec<tfxU32> free_keyframes;
 
 		//Get an effect from the library by index
-		tfxEffectEmitter& operator[] (uint32_t index);
+		tfxEffectEmitter& operator[] (tfxU32 index);
 		tfxStr64 name;
 		bool open_library = false;
 		bool dirty = false;
@@ -7838,19 +7843,25 @@ You can then use layer inside the loop to get the current layer
 	void SplitStringVec(const tfxStr &s, tfxvec<tfxStr256> &pair, char delim = 61);
 	bool StringIsUInt(const tfxStr &s);
 	int GetDataType(const tfxStr &s);
-	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value);
+	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
 	void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU64 value, tfxU32 file_version);
-	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, uint32_t value, tfxU32 file_version);
+	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value, tfxU32 file_version);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
+	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version);
+	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, float value, tfxU32 file_version);
+	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxStr value, tfxU32 file_version);
+	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version);
+	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxVec3 value, tfxU32 file_version);
 	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr256> &values);
 	void AssignNodeData(tfxAttributeNode &node, tfxStack<tfxStr256> &values);
+	tfxVec3 StrToVec3(tfxStr &str);
 	static inline void Transform2d(tfxVec3 &out_rotations, tfxVec3 &out_local_rotations, tfxVec3 &out_scale, tfxVec3 &out_position, tfxVec3 &out_local_position, tfxVec3 &out_translation, tfxMatrix4 &out_matrix, const tfxVec3 &in_rotations, const tfxVec3 &in_scale, const tfxVec3 &in_position, const tfxMatrix4 &in_matrix) {
 		float s = sin(out_local_rotations.roll);
 		float c = cos(out_local_rotations.roll);
@@ -8090,6 +8101,31 @@ You can then use layer inside the loop to get the current layer
 		tfxErrorCode_invalid_inventory
 	*/
 	tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+
+	/**
+	* Loads a sprite data file into an animation manager
+	*
+	* @param filename		A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
+	* @param lib			A reference to a tfxAnimationManager object that will hold the loaded sprite data.
+	* @param shape_loader	A pointer to a function that will be used to load image data into the effect library package.
+	*						The function has the following signature: void shape_loader(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data).
+	* @param user_data		A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
+	*
+	* @return A tfxErrorFlags value that indicates whether the function succeeded or failed. The possible return values are:
+		tfxErrorCode_success = 0
+		tfxErrorCode_incorrect_package_format
+		tfxErrorCode_data_could_not_be_loaded
+		tfxErrorCode_could_not_add_shape
+		tfxErrorCode_error_loading_shapes
+		tfxErrorCode_some_data_not_loaded
+		tfxErrorCode_unable_to_open_file
+		tfxErrorCode_unable_to_read_file
+		tfxErrorCode_wrong_file_size
+		tfxErrorCode_invalid_format
+		tfxErrorCode_no_inventory
+		tfxErrorCode_invalid_inventory
+	*/
+	tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager &animation_manager, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr);
 
 	/*
 	Out all the effect names in a library to the console
@@ -8714,7 +8750,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Create the image data required for compute shaders such as animation viewer. The image data will contain data such as uv coordinates
+	Create the image data required for GPU shaders such as animation viewer. The image data will contain data such as uv coordinates
 	that the shaders can use to create the sprite data. Once you have built the data you can use GetLibraryImageData to get the buffer
 	and upload it to the gpu.
 	* @param library				A pointer to a tfxLibrary where the image data will be created.
@@ -8725,7 +8761,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Get the number of shapes in the Compute Shape Data buffer. Make sure you call BuildGPUShapeData first or they'll be nothing to return
+	Get the number of shapes in the GPU Shape Data buffer. Make sure you call BuildGPUShapeData first or they'll be nothing to return
 	* @param library				A pointer to a tfxLibrary where the image data will be created.
 	* @returns tfxU32				The number of shapes in the buffer
 	*/
@@ -8734,7 +8770,16 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Get the size in bytes of the compute image data in a tfxLibrary
+	Get the number of shapes in the GPU Shape Data buffer. Make sure you call BuildGPUShapeData first or they'll be nothing to return
+	* @param library				A pointer to a tfxAnimationManager where the image data will be created.
+	* @returns tfxU32				The number of shapes in the buffer
+	*/
+	tfxAPI inline tfxU32 GetComputeShapeCount(tfxAnimationManager *animation_manager) {
+		return animation_manager->particle_shapes.data.current_size;
+	}
+
+	/*
+	Get the size in bytes of the GPU image data in a tfxLibrary
 	* @param library				A pointer to a tfxLibrary where the image data exists.
 	* @returns size_t				The size in bytes of the image data
 	*/
@@ -8743,12 +8788,30 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Get a pointer to the location of the compute image data which you can use to copy to a staging buffer to upload to the GPU
+	Get the size in bytes of the GPU image data in a tfxLibrary
+	* @param animation_mananger		A pointer to a tfxAnimationManager where the image data exists.
+	* @returns size_t				The size in bytes of the image data
+	*/
+	tfxAPI inline size_t GetComputeShapesSizeInBytes(tfxAnimationManager *animation_manager) {
+		return animation_manager->particle_shapes.data.current_size * sizeof(tfxGPUImageData);
+	}
+
+	/*
+	Get a pointer to the location of the GPU image data which you can use to copy to a staging buffer to upload to the GPU
 	* @param library				A pointer to a tfxLibrary where the image data exists.
 	* @returns void*				A pointer to the image data
 	*/
 	tfxAPI inline void* GetComputeShapesPointer(tfxLibrary *library) {
 		return library->shape_data.data;
+	}
+
+	/*
+	Get a pointer to the location of the GPU image data which you can use to copy to a staging buffer to upload to the GPU
+	* @param library				A pointer to a tfxAnimationManager where the image data exists.
+	* @returns void*				A pointer to the image data
+	*/
+	tfxAPI inline void* GetComputeShapesPointer(tfxAnimationManager *animation_manager) {
+		return animation_manager->particle_shapes.data.data;
 	}
 
 	/*
