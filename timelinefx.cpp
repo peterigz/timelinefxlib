@@ -544,7 +544,7 @@ namespace tfx {
 	}
 
 	bool tfxPackage::FileExists(const char *file_name) {
-		if (!inventory.entries.ValidName(file_name)) {
+		if (inventory.entries.ValidName(file_name)) {
 			return true;
 		}
 		return false;
@@ -2010,10 +2010,11 @@ namespace tfx {
 		return nullptr;
 	}
 
-	void tfxLibrary::BuildGPUShapeData(tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
-		assert(particle_shapes.Size());		//There are no shapes to copy!
+	tfxvec<tfxGPUImageData> BuildGPUShapeData(tfxvec<tfxImageData> *particle_shapes, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
+		assert(particle_shapes->size());		//There are no shapes to copy!
 		tfxU32 index = 0;
-		for (auto &shape : particle_shapes.data) {
+		tfxvec<tfxGPUImageData> shape_data;
+		for (auto &shape : *particle_shapes) {
 			if (shape.animation_frames == 1) {
 				tfxGPUImageData cs;
 				cs.animation_frames = shape.animation_frames;
@@ -2034,6 +2035,7 @@ namespace tfx {
 				}
 			}
 		}
+		return shape_data;
 	}
 
 	void tfxLibrary::CopyLookupIndexesData(void* dst) {
@@ -2452,7 +2454,6 @@ namespace tfx {
 		compiled_lookup_indexes.free_all();
 		compiled_lookup_values.free_all();
 		FreeSoABuffer(&emitter_properties_buffer);
-		shape_data.free_all();
 		graph_min_max.free_all();
 		for (auto &info : effect_infos) {
 			info.sub_effectors.free_all();
@@ -2976,6 +2977,11 @@ namespace tfx {
 		names_and_types.Insert("corner1_3d", tfxFloat3);
 		names_and_types.Insert("corner2_3d", tfxFloat3);
 
+		//Sprite data emitter properties
+		names_and_types.Insert("animation_frames", tfxFloat);
+		names_and_types.Insert("handle", tfxFloat2);
+		names_and_types.Insert("start_frame_index", tfxUint);
+
 		//Animation settings
 		names_and_types.Insert("playback_speed", tfxFloat);
 		names_and_types.Insert("animation_magenta_mask", tfxBool);
@@ -3227,11 +3233,33 @@ namespace tfx {
 		return tfxVec3((float)atof(str[0].c_str()), (float)atof(str[0].c_str()), (float)atof(str[0].c_str()));
 	}
 
+	tfxVec2 StrToVec2(tfxStack<tfxStr256> &str) {
+		assert(str.size() == 2);	//array must be size 2
+		return tfxVec2((float)atof(str[0].c_str()), (float)atof(str[0].c_str()));
+	}
+
 	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxVec3 value, tfxU32 file_version) {
 		if (field == "corner1")
 			metrics.corner1 = value;
 		if (field == "corner2")
 			metrics.corner2 = value;
+	}
+
+	void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, tfxVec2 value, tfxU32 file_version) {
+		if (field == "handle")
+			properties.handle = value;
+	}
+
+	void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, float value, tfxU32 file_version) {
+		if (field == "animation_frames")
+			properties.animation_frames = value;
+	}
+
+	void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, tfxU32 value, tfxU32 file_version) {
+		if (field == "flags")
+			properties.flags = value;
+		if (field == "start_frame_index")
+			properties.start_frame_index = value;
 	}
 
 	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version) {
@@ -5335,6 +5363,7 @@ namespace tfx {
 
 		tmpStack(tfxSpriteDataMetrics, metrics_stack);
 		tmpStack(tfxFrameMeta, frame_meta_stack);
+		tmpStack(tfxAnimationEmitterProperties, emitter_properties_stack);
 		tmpStack(tfxStr256, pair);
 		tmpStack(tfxStr256, multi);
 
@@ -5360,20 +5389,24 @@ namespace tfx {
 					tfxFrameMeta frame_meta;
 					frame_meta_stack.push_back(frame_meta);
 				}
-			}
-
-			pair.clear();
-			SplitStringStack(line.c_str(), pair);
-			if (pair.size() != 2) {
-				pair.clear();
-				SplitStringStack(line.c_str(), pair, ',');
-				if (pair.size() < 2) {
-					error |= tfxErrorCode_some_data_not_loaded;
-					continue;
+				else if (context == tfxStartEmitter) {
+					tfxAnimationEmitterProperties emitter_properties;
+					emitter_properties_stack.push_back(emitter_properties);
 				}
 			}
 
 			if (context_set == false) {
+				pair.clear();
+				SplitStringStack(line.c_str(), pair);
+				if (pair.size() != 2) {
+					pair.clear();
+					SplitStringStack(line.c_str(), pair, ',');
+					if (pair.size() < 2) {
+						error |= tfxErrorCode_some_data_not_loaded;
+						continue;
+					}
+				}
+
 				if (context == tfxStartEffectAnimationInfo) {
 					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
 						switch (tfxDataTypes.names_and_types.At(pair[0])) {
@@ -5402,6 +5435,23 @@ namespace tfx {
 							multi.clear();
 							SplitStringStack(pair[1], multi, ',');
 							AssignFrameMetaProperty(frame_meta_stack.back(), pair[0], StrToVec3(multi), package.header.file_version);
+							break;
+						}
+					}
+				}
+				else if (context == tfxStartEmitter) {
+					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
+						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+						case tfxUint:
+							AssignAnimationEmitterProperty(emitter_properties_stack.back(), pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
+							break;
+						case tfxFloat:
+							AssignAnimationEmitterProperty(emitter_properties_stack.back(), pair[0], (float)atof(pair[1].c_str()), package.header.file_version);
+							break;
+						case tfxFloat2:
+							multi.clear();
+							SplitStringStack(pair[1], multi, ',');
+							AssignAnimationEmitterProperty(emitter_properties_stack.back(), pair[0], StrToVec2(multi), package.header.file_version);
 							break;
 						}
 					}
@@ -5478,11 +5528,18 @@ namespace tfx {
 				context = tfxStartFrameMeta;
 			}
 			else if (context == tfxEndFrameMeta) {
+				assert(metrics_stack.current_size);	
+				assert(frame_meta_stack.current_size);
 				metrics_stack.back().frame_meta.push_back(frame_meta_stack.pop_back());
 			}
 			else if (context == tfxEndEffectAnimationInfo) {
+				assert(metrics_stack.current_size);
 				animation_manager.effect_animation_info.Insert(metrics_stack.back().name, metrics_stack.back());
 				metrics_stack.pop();
+			}
+			else if (context == tfxEndEmitter) {
+				assert(emitter_properties_stack.current_size);
+				animation_manager.emitter_properties.push_back(emitter_properties_stack.pop_back());
 			}
 
 		}

@@ -7079,7 +7079,7 @@ You can then use layer inside the loop to get the current layer
 		//These can be looked up byt the sprite in the compute shader and the values applied to the sprite
 		//before going to the vertex shader
 		tfxvec<tfxAnimationEmitterProperties> emitter_properties;
-		//Each animation has a 
+		//Each animation has sprite data settings that contains properties about each animation
 		tfxvec<tfxSpriteDataSettings> sprite_data_settings;
 		//Every animation that gets added to the animation manager gets info added here that describes
 		//where to find the relevent sprite data in the buffer and contains other frame meta about the 
@@ -7513,7 +7513,6 @@ You can then use layer inside the loop to get the current layer
 		tfxvec<tfxEffectLookUpData> node_lookup_indexes;
 		tfxvec<float> compiled_lookup_values;
 		tfxvec<tfxGraphLookupIndex> compiled_lookup_indexes;
-		tfxvec<tfxGPUImageData> shape_data;
 		//This could probably be stored globally
 		tfxvec<tfxVec4> graph_min_max;
 
@@ -7548,7 +7547,6 @@ You can then use layer inside the loop to get the current layer
 			node_lookup_indexes(tfxCONSTRUCTOR_VEC_INIT("nodes_lookup_indexes")),
 			compiled_lookup_values(tfxCONSTRUCTOR_VEC_INIT("compiled_lookup_values")),
 			compiled_lookup_indexes(tfxCONSTRUCTOR_VEC_INIT("compiled_lookup_indexes")),
-			shape_data(tfxCONSTRUCTOR_VEC_INIT("shape_data")),
 			graph_min_max(tfxCONSTRUCTOR_VEC_INIT("graph_min_max")),
 			free_global_graphs(tfxCONSTRUCTOR_VEC_INIT("free_global_graphs")),
 			free_keyframe_graphs(tfxCONSTRUCTOR_VEC_INIT("free_keyframe_graphs")),
@@ -7573,8 +7571,6 @@ You can then use layer inside the loop to get the current layer
 		void PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect);
 		void PrepareEffectTemplate(tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
 		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
-		void BuildGPUShapeData(tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset));
-		void CopyComputeShapeData(void* dst);
 		void CopyLookupIndexesData(void* dst);
 		void CopyLookupValuesData(void* dst);
 		tfxU32 GetComputeShapeDataSizeInBytes();
@@ -7859,9 +7855,13 @@ You can then use layer inside the loop to get the current layer
 	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxStr value, tfxU32 file_version);
 	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version);
 	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxVec3 value, tfxU32 file_version);
+	void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, tfxU32 value, tfxU32 file_version);
+	void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, float value, tfxU32 file_version);
+	void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, tfxVec2 value, tfxU32 file_version);
 	void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr256> &values);
 	void AssignNodeData(tfxAttributeNode &node, tfxStack<tfxStr256> &values);
-	tfxVec3 StrToVec3(tfxStr &str);
+	tfxVec3 StrToVec3(tfxStack<tfxStr256> &str);
+	tfxVec2 StrToVec2(tfxStack<tfxStr256> &str);
 	static inline void Transform2d(tfxVec3 &out_rotations, tfxVec3 &out_local_rotations, tfxVec3 &out_scale, tfxVec3 &out_position, tfxVec3 &out_local_position, tfxVec3 &out_translation, tfxMatrix4 &out_matrix, const tfxVec3 &in_rotations, const tfxVec3 &in_scale, const tfxVec3 &in_position, const tfxMatrix4 &in_matrix) {
 		float s = sin(out_local_rotations.roll);
 		float c = cos(out_local_rotations.roll);
@@ -8753,11 +8753,25 @@ You can then use layer inside the loop to get the current layer
 	Create the image data required for GPU shaders such as animation viewer. The image data will contain data such as uv coordinates
 	that the shaders can use to create the sprite data. Once you have built the data you can use GetLibraryImageData to get the buffer
 	and upload it to the gpu.
-	* @param library				A pointer to a tfxLibrary where the image data will be created.
+	* @param library				A pointer to some image data where the image data is. You can use GetParticleShapes with a tfxLibrary or tfxAnimationManager for this
 	* @param uv_lookup				A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 	*/
-	tfxAPI inline void BuildGPUShapeData(tfxLibrary *library, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
-		library->BuildGPUShapeData(uv_lookup);
+	tfxAPI tfxvec<tfxGPUImageData> BuildGPUShapeData(tfxvec<tfxImageData> *particle_shapes, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset));
+
+	/*
+	Get a pointer to the particle shapes data in the animation manager. This can be used with BuildGPUShapeData when you want to upload the data to the GPU
+	* @param animation_manager		A pointer the tfxAnimationManager
+	*/
+	tfxAPI inline tfxvec<tfxImageData> *GetParticleShapes(tfxAnimationManager *animation_manager) {
+		return &animation_manager->particle_shapes.data;
+	}
+
+	/*
+	Get a pointer to the particle shapes data in the animation manager. This can be used with BuildGPUShapeData when you want to upload the data to the GPU
+	* @param animation_manager		A pointer the tfxAnimationManager
+	*/
+	tfxAPI inline tfxvec<tfxImageData> *GetParticleShapes(tfxLibrary *library) {
+		return &library->particle_shapes.data;
 	}
 
 	/*
@@ -8766,7 +8780,7 @@ You can then use layer inside the loop to get the current layer
 	* @returns tfxU32				The number of shapes in the buffer
 	*/
 	tfxAPI inline tfxU32 GetComputeShapeCount(tfxLibrary *library) {
-		return library->shape_data.current_size;
+		return library->particle_shapes.Size();
 	}
 
 	/*
@@ -8775,7 +8789,7 @@ You can then use layer inside the loop to get the current layer
 	* @returns tfxU32				The number of shapes in the buffer
 	*/
 	tfxAPI inline tfxU32 GetComputeShapeCount(tfxAnimationManager *animation_manager) {
-		return animation_manager->particle_shapes.data.current_size;
+		return animation_manager->particle_shapes.Size();
 	}
 
 	/*
@@ -8784,7 +8798,7 @@ You can then use layer inside the loop to get the current layer
 	* @returns size_t				The size in bytes of the image data
 	*/
 	tfxAPI inline size_t GetComputeShapesSizeInBytes(tfxLibrary *library) {
-		return library->shape_data.current_size * sizeof(tfxGPUImageData);
+		return library->particle_shapes.Size() * sizeof(tfxGPUImageData);
 	}
 
 	/*
@@ -8793,25 +8807,7 @@ You can then use layer inside the loop to get the current layer
 	* @returns size_t				The size in bytes of the image data
 	*/
 	tfxAPI inline size_t GetComputeShapesSizeInBytes(tfxAnimationManager *animation_manager) {
-		return animation_manager->particle_shapes.data.current_size * sizeof(tfxGPUImageData);
-	}
-
-	/*
-	Get a pointer to the location of the GPU image data which you can use to copy to a staging buffer to upload to the GPU
-	* @param library				A pointer to a tfxLibrary where the image data exists.
-	* @returns void*				A pointer to the image data
-	*/
-	tfxAPI inline void* GetComputeShapesPointer(tfxLibrary *library) {
-		return library->shape_data.data;
-	}
-
-	/*
-	Get a pointer to the location of the GPU image data which you can use to copy to a staging buffer to upload to the GPU
-	* @param library				A pointer to a tfxAnimationManager where the image data exists.
-	* @returns void*				A pointer to the image data
-	*/
-	tfxAPI inline void* GetComputeShapesPointer(tfxAnimationManager *animation_manager) {
-		return animation_manager->particle_shapes.data.data;
+		return animation_manager->particle_shapes.Size() * sizeof(tfxGPUImageData);
 	}
 
 	/*
