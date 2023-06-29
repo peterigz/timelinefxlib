@@ -6384,7 +6384,12 @@ namespace tfx {
 				if (properties.animation_frames > 1 && effect->property_flags & tfxEmitterPropertyFlags_animate) {
 					*has_animated_shape = true;
 				}
-				properties.start_frame_index = image.compute_shape_index;
+				if (particle_shapes.ValidKey(image.image_hash)) {
+					properties.start_frame_index = particle_shapes.At(image.image_hash).compute_shape_index;
+				}
+				else {
+					properties.start_frame_index = image.compute_shape_index;
+				}
 				effect->library->emitter_properties.animation_property_index[effect->property_index] = emitter_properties.current_size;
 				emitter_properties.push_back(properties);
 				for (auto &sub : effect->GetInfo().sub_effectors) {
@@ -6397,7 +6402,9 @@ namespace tfx {
 	void tfxAnimationManager::AddEffectShapes(tfxEffectEmitter *effect) {
 		if (effect->type == tfxEmitterType) {
 			tfxImageData *image_data = effect->GetProperties().image[effect->property_index];
-			particle_shapes.Insert(image_data->name, *image_data);
+			if (!particle_shapes.ValidKey(image_data->image_hash)) {
+				particle_shapes.Insert(image_data->image_hash, *image_data);
+			}
 		}
 		else {
 			for (auto &sub : effect->GetInfo().sub_effectors) {
@@ -6435,7 +6442,7 @@ namespace tfx {
 			sprite.color = sprites.color[i];
 			sprite.image_frame_plus = sprites.image_frame_plus[i];
 			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
-			tfxImageData &image = *effect->library->emitter_properties.image[property_index];
+			//tfxImageData &image = *effect->library->emitter_properties.image[property_index];
 			//Temporary while debugging:
 			//sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
 			//sprite.lookup_indexes += (sprite.image_frame_plus & 0x0000FFFF) << 16;
