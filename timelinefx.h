@@ -1173,6 +1173,7 @@ You can then use layer inside the loop to get the current layer
 
 #ifdef tfxTRACK_MEMORY
 #define tfxALLOCATE(tracker_name, dst, size) malloc(size); tfxMemoryTrackerEntry tracker; memset(&tracker, '\0', sizeof(tfxMemoryTrackerEntry)); memcpy(tracker.name, tracker_name, strlen(tracker_name)); tracker.amount_allocated = size; tracker.address = dst; tfxU32 allocations = 0; if (data &&tfxMEMORY_TRACKER.ValidKey((tfxKey)data)) { tfxMemoryTrackerEntry *entry = tfxMEMORY_TRACKER.At((tfxKey)data); if(entry->is_alive) allocations = tfxMEMORY_TRACKER.At((tfxKey)data)->allocations; } tracker.allocations = allocations + 1; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker);
+#define tfxREALLOCATE(tracker_name, dst, data, size) realloc(data, size); tfxMemoryTrackerEntry tracker; memset(&tracker, '\0', sizeof(tfxMemoryTrackerEntry)); memcpy(tracker.name, tracker_name, strlen(tracker_name)); tracker.amount_allocated = size; tracker.address = dst; tfxU32 allocations = 0; if (data &&tfxMEMORY_TRACKER.ValidKey((tfxKey)data)) { tfxMemoryTrackerEntry *entry = tfxMEMORY_TRACKER.At((tfxKey)data); if(entry->is_alive) allocations = tfxMEMORY_TRACKER.At((tfxKey)data)->allocations; } tracker.allocations = allocations + 1; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker);
 #define tfxFREE(dst) free(dst); assert(tfxMEMORY_TRACKER.ValidKey((tfxKey)dst)); tfxMEMORY_TRACKER.At((tfxKey)dst)->is_alive = false;
 #define tfxINIT_VEC_NAME if(name[0] < 41 || name[0] > 90) { memset(name, '\0', 64); name[0] = 'X'; }
 #define tfxINIT_VEC_NAME_INIT memset(name, '\0', 64); memcpy(name, name_init, strlen(name_init));
@@ -1182,6 +1183,7 @@ You can then use layer inside the loop to get the current layer
 #define tfxCONSTRUCTOR_VEC_INIT2(name) name
 #else
 #define tfxALLOCATE(tracker_name, dst, size) malloc(size);
+#define tfxREALLOCATE(tracker_name, dst, data, size) realloc(data, size);
 #define tfxFREE(dst) free(dst); 
 #define tfxINIT_VEC_NAME 
 #define tfxINIT_VEC_NAME_INIT 
@@ -1342,94 +1344,6 @@ You can then use layer inside the loop to get the current layer
 		inline void			create_pool(tfxU32 amount) { assert(current_size == 0); T base; reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 		inline void			create_pool_with(tfxU32 amount, const T &base) { assert(current_size == 0);  reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 
-	};
-
-	//Ring/Circular buffer
-	template<typename T>
-	struct tfxring {
-#ifdef tfxTRACK_MEMORY
-		char name[64];
-#endif
-		T* data;
-		unsigned int current_size;
-		unsigned int capacity;
-		unsigned int start_index;
-		int last_bump;
-		void *user_data;
-		void(*resize_callback)(tfxring<T> *ring, T *new_data, void *user_data);
-		unsigned int bank_index;
-		tfxring *pair;
-
-		inline tfxring() : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = bank_index = 0; data = NULL; tfxINIT_VEC_NAME; }
-		inline tfxring(const char *name_init) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init); }
-		inline tfxring(unsigned int qty) : resize_callback(nullptr), user_data(NULL), pair(nullptr) { start_index = current_size = capacity = last_bump = 0; data = NULL; reserve(qty); tfxINIT_VEC_NAME; }
-		inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
-
-		inline bool			empty() { return current_size == 0; }
-		inline bool			full() { return current_size == capacity; }
-		inline unsigned int	free_space() { return capacity - current_size; }
-
-		inline void         clear() { start_index = current_size = last_bump = 0; }
-		inline unsigned int			size() { return current_size; }
-		inline const unsigned int	size() const { return current_size; }
-		inline T&           operator[](unsigned int i) { return data[(i + start_index) % capacity]; }
-		inline const T&     operator[](unsigned int i) const { return data[(i + start_index) % capacity]; }
-		inline T&           AtAbs(unsigned int i) { return data[i]; }
-		inline const T&     AtAbs(unsigned int i) const { return data[i]; }
-
-		inline unsigned int end_index() { return (start_index + current_size) % capacity; }
-		inline unsigned int before_start_index() { return start_index == 0 ? capacity - 1 : start_index - 1; }
-		inline unsigned int last_index() { return (start_index + current_size - 1) % capacity; }
-		inline T*			eob_ptr() { return data + (start_index + current_size) % capacity; }
-		inline T&           front() { assert(current_size > 0); return data[start_index]; }
-		inline const T&     front() const { assert(current_size > 0); return data[start_index]; }
-		inline T&           back() { assert(current_size > 0); return data[last_index()]; }
-		inline const T&     back() const { assert(current_size > 0); return data[last_index()]; }
-
-		inline void         pop() { assert(current_size > 0); current_size--; }
-		inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[last_index()]; }
-		inline T&	        pop_front() { assert(current_size > 0); tfxU32 front_index = start_index++; start_index %= capacity; current_size--; return data[front_index]; }
-
-		inline T&	        emplace_back(const T& v) {
-			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
-			new((void*)(data + end_index())) T(v);
-			current_size++; return data[current_size - 1];
-		}
-		inline T&	        push_back(const T& v) {
-			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
-			memcpy(&data[end_index()], &v, sizeof(v));
-			current_size++; return data[current_size - 1];
-		}
-		inline T&	        grab() {
-			if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
-			return data[(++current_size - 1 + start_index) % capacity];
-		}
-
-		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
-		inline void         reserve(tfxU32 new_capacity, bool use_callback = true) {
-			if (new_capacity <= capacity) return;
-			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T));
-			assert(new_data);	//Unable to allocate memory. todo: better handling
-			if (data) {
-				if (last_index() < start_index) {
-					memcpy(new_data, data + start_index, (size_t)(capacity - start_index) * sizeof(T));
-					memcpy(new_data + (capacity - start_index), data, (size_t)(start_index) * sizeof(T));
-				}
-				else {
-					memcpy(new_data, data + start_index, (size_t)current_size * sizeof(T));
-				}
-				if (resize_callback && use_callback)
-					resize_callback(this, new_data, user_data);
-				tfxFREE(data);
-			}
-			data = new_data;
-			capacity = new_capacity;
-			start_index = 0;
-		}
-
-		inline void			bump() { if (current_size == 0) return; start_index++; start_index %= capacity; current_size--; }
-		inline void			bump(unsigned int amount) { if (current_size == 0) return; if (amount > current_size) amount = current_size; start_index += amount; start_index %= capacity; current_size -= amount; last_bump = amount; }
-		inline void			shrink(unsigned int amount) { if (amount > current_size) current_size = 0; else current_size -= amount; }
 	};
 
 #define tfxKilobyte(Value) ((Value)*1024LL)
