@@ -6904,7 +6904,10 @@ You can then use layer inside the loop to get the current layer
 #ifdef tfxCUSTOM_GPU_IMAGE_DATA
 		//add addition image data if needed
 #endif
-		//float max_radius;
+	};
+
+	struct tfxGPUShapes {
+		tfxvec<tfxGPUImageData> list;
 	};
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation so probably not needed here really!
@@ -8756,7 +8759,15 @@ You can then use layer inside the loop to get the current layer
 	* @param library				A pointer to some image data where the image data is. You can use GetParticleShapes with a tfxLibrary or tfxAnimationManager for this
 	* @param uv_lookup				A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 	*/
-	tfxAPI tfxvec<tfxGPUImageData> BuildGPUShapeData(tfxvec<tfxImageData> *particle_shapes, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset));
+	tfxAPI tfxGPUShapes BuildGPUShapeData(tfxvec<tfxImageData> *particle_shapes, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset));
+
+	/*
+	Get a pointer to the GPU shapes which you can use in a memcpy
+	* @param particle_shapes		A pointer the tfxGPUShapes
+	*/
+	tfxAPI inline void *GetGPUShapesPointer(tfxGPUShapes *particle_shapes) {
+		return particle_shapes->list.data;
+	}
 
 	/*
 	Get a pointer to the particle shapes data in the animation manager. This can be used with BuildGPUShapeData when you want to upload the data to the GPU
@@ -8776,20 +8787,11 @@ You can then use layer inside the loop to get the current layer
 
 	/*
 	Get the number of shapes in the GPU Shape Data buffer. Make sure you call BuildGPUShapeData first or they'll be nothing to return
-	* @param library				A pointer to a tfxLibrary where the image data will be created.
-	* @returns tfxU32				The number of shapes in the buffer
-	*/
-	tfxAPI inline tfxU32 GetComputeShapeCount(tfxLibrary *library) {
-		return library->particle_shapes.Size();
-	}
-
-	/*
-	Get the number of shapes in the GPU Shape Data buffer. Make sure you call BuildGPUShapeData first or they'll be nothing to return
 	* @param library				A pointer to a tfxAnimationManager where the image data will be created.
 	* @returns tfxU32				The number of shapes in the buffer
 	*/
-	tfxAPI inline tfxU32 GetComputeShapeCount(tfxAnimationManager *animation_manager) {
-		return animation_manager->particle_shapes.Size();
+	tfxAPI inline tfxU32 GetGPUShapeCount(tfxGPUShapes *particle_shapes) {
+		return particle_shapes->list.size();
 	}
 
 	/*
@@ -8797,17 +8799,8 @@ You can then use layer inside the loop to get the current layer
 	* @param library				A pointer to a tfxLibrary where the image data exists.
 	* @returns size_t				The size in bytes of the image data
 	*/
-	tfxAPI inline size_t GetComputeShapesSizeInBytes(tfxLibrary *library) {
-		return library->particle_shapes.Size() * sizeof(tfxGPUImageData);
-	}
-
-	/*
-	Get the size in bytes of the GPU image data in a tfxLibrary
-	* @param animation_mananger		A pointer to a tfxAnimationManager where the image data exists.
-	* @returns size_t				The size in bytes of the image data
-	*/
-	tfxAPI inline size_t GetComputeShapesSizeInBytes(tfxAnimationManager *animation_manager) {
-		return animation_manager->particle_shapes.Size() * sizeof(tfxGPUImageData);
+	tfxAPI inline size_t GetGPUShapesSizeInBytes(tfxGPUShapes *particle_shapes) {
+		return particle_shapes->list.size_in_bytes();
 	}
 
 	/*

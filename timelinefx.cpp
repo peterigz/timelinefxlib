@@ -2010,17 +2010,17 @@ namespace tfx {
 		return nullptr;
 	}
 
-	tfxvec<tfxGPUImageData> BuildGPUShapeData(tfxvec<tfxImageData> *particle_shapes, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
+	tfxGPUShapes BuildGPUShapeData(tfxvec<tfxImageData> *particle_shapes, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset)) {
 		assert(particle_shapes->size());		//There are no shapes to copy!
 		tfxU32 index = 0;
-		tfxvec<tfxGPUImageData> shape_data;
+		tfxGPUShapes shape_data;
 		for (auto &shape : *particle_shapes) {
 			if (shape.animation_frames == 1) {
 				tfxGPUImageData cs;
 				cs.animation_frames = shape.animation_frames;
 				cs.image_size = shape.image_size;
 				cs.uv = uv_lookup(shape.ptr, &cs, 0);
-				shape_data.push_back(cs);
+				shape_data.list.push_back(cs);
 				shape.compute_shape_index = index++;
 			}
 			else {
@@ -2030,7 +2030,7 @@ namespace tfx {
 					cs.animation_frames = shape.animation_frames;
 					cs.image_size = shape.image_size;
 					cs.uv = uv_lookup(shape.ptr, &cs, f);
-					shape_data.push_back(cs);
+					shape_data.list.push_back(cs);
 					index++;
 				}
 			}
