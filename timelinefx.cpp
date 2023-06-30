@@ -6405,6 +6405,9 @@ namespace tfx {
 			if (!particle_shapes.ValidKey(image_data->image_hash)) {
 				particle_shapes.Insert(image_data->image_hash, *image_data);
 			}
+			for (auto &sub : effect->GetInfo().sub_effectors) {
+				AddEffectShapes(&sub);
+			}
 		}
 		else {
 			for (auto &sub : effect->GetInfo().sub_effectors) {
