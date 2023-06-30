@@ -2464,7 +2464,6 @@ namespace tfx {
 
 		graph_node_allocator.FreeAll();
 		graph_lookup_allocator.FreeAll();
-		sprite_data_allocator.FreeAll();
 
 		free_global_graphs.free_all();
 		free_keyframe_graphs.free_all();
@@ -5569,7 +5568,6 @@ namespace tfx {
 		tfxU32 current_global_graph = 0;
 
 		lib.InitEmitterProperties();
-		lib.sprite_data_allocator = CreateArenaManager(tfxMegabyte(4));
 
 		if (!stats_struct) {
 			lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);

@@ -1713,14 +1713,14 @@ You can then use layer inside the loop to get the current layer
 		return ((numToRound + multiple - 1) / multiple) * multiple;
 	}
 
-	static inline tfxMemoryArenaManager CreateArenaManager(size_t size_of_each_arena, tfxU32 size_diff_threshold = 8) {
+	inline tfxMemoryArenaManager CreateArenaManager(size_t size_of_each_arena, tfxU32 size_diff_threshold = 8) {
 		tfxMemoryArenaManager manager;
 		manager.arena_size = size_of_each_arena;
 		manager.size_diff_threshold = size_diff_threshold;
 		return manager;
 	}
 
-	static inline tfxMemoryArena CreateMemoryArena(size_t size_in_bytes, tfxU32 size_diff_threshold = 8) {
+	inline tfxMemoryArena CreateMemoryArena(size_t size_in_bytes, tfxU32 size_diff_threshold = 8) {
 		assert(size_in_bytes > 1024 * 1024);	//minimum 1mb allocation
 		tfxMemoryArena allocator;
 		void* new_data = tfxALLOCATE(0, 0, size_in_bytes);
@@ -7039,7 +7039,6 @@ You can then use layer inside the loop to get the current layer
 
 	//Use the particle manager to add multiple effects to your scene 
 	struct tfxParticleManager {
-		//In unordered mode, emitters get their own list of particles to update
 		tfxvec<tfxSoABuffer> particle_array_buffers;
 		tfxBucketArray<tfxParticleSoA> particle_arrays;
 
@@ -7410,7 +7409,6 @@ You can then use layer inside the loop to get the current layer
 	struct tfxLibrary {
 		tfxMemoryArenaManager graph_node_allocator;
 		tfxMemoryArenaManager graph_lookup_allocator;
-		tfxMemoryArenaManager sprite_data_allocator;
 		tfxSoABuffer emitter_properties_buffer;
 
 		tfxStorageMap<tfxEffectEmitter*> effect_paths;
