@@ -4503,6 +4503,7 @@ You can then use layer inside the loop to get the current layer
 		tfxStr Lower();
 		inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
 		void AddLine(const char *format, ...);
+		void Setf(const char *format, ...);
 		void Appendf(const char *format, ...);
 		void Appendv(const char *format, va_list args);
 		inline void Append(char c) {

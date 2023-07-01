@@ -429,6 +429,36 @@ namespace tfx {
 		return dot_count == 1;
 	}
 
+	void tfxStr::Setf(const char *format, ...) {
+		Clear();
+		va_list args;
+		va_start(args, format);
+
+		va_list args_copy;
+		va_copy(args_copy, args);
+
+		int len = FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		if (len <= 0)
+		{
+			va_end(args_copy);
+			return;
+		}
+
+		const int write_off = (current_size != 0) ? current_size : 1;
+		const int needed_sz = write_off + len;
+		if (write_off + (tfxU32)len >= capacity)
+		{
+			int new_capacity = capacity * 2;
+			reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
+		}
+
+		resize(needed_sz);
+		FormatString(&strbuffer()[write_off - 1], (size_t)len + 1, format, args_copy);
+		va_end(args_copy);
+
+		va_end(args);
+	}
+
 	void tfxStr::Appendf(const char *format, ...) {
 		va_list args;
 		va_start(args, format);
@@ -2957,6 +2987,7 @@ namespace tfx {
 		names_and_types.Insert("draw_order_by_age", tfxBool);
 		names_and_types.Insert("draw_order_by_depth", tfxBool);
 		names_and_types.Insert("guaranteed_draw_order", tfxBool);
+		names_and_types.Insert("include_in_sprite_data_export", tfxBool);
 
 		//Sprite data settings
 		names_and_types.Insert("start_offset", tfxUint);
@@ -3546,6 +3577,8 @@ namespace tfx {
 			if (value) effect.effect_flags |= tfxEffectPropertyFlags_depth_draw_order; else effect.effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order;
 		if (field == "guaranteed_draw_order")
 			if (value) effect.effect_flags |= tfxEffectPropertyFlags_guaranteed_order; else effect.effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order;
+		if (field == "include_in_sprite_data_export")
+			if (value) effect.effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; else effect.effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export;
 	}
 
 	void StreamProperties(tfxEmitterPropertiesSoA &property, tfxU32 index, tfxEmitterPropertyFlags &flags, tfxStr &file) {
@@ -3605,6 +3638,7 @@ namespace tfx {
 		file.AddLine("draw_order_by_age=%i", effect.effect_flags & tfxEffectPropertyFlags_age_order);
 		file.AddLine("draw_order_by_depth=%i", effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order);
 		file.AddLine("guaranteed_draw_order=%i", effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order);
+		file.AddLine("include_in_sprite_data_export=%i", effect.effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
 		file.AddLine("sort_passes=%i", effect.sort_passes);
 	}
 
