@@ -8571,6 +8571,15 @@ You can then use layer inside the loop to get the current layer
 	*/
 	tfxAPI void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxEffectID effect_index, float noise_offset);
 
+	/*
+	Get the name of an effect
+	* @param pm				A pointer to the effect
+	* @returns				const char * name
+	*/
+	tfxAPI void GetEffectName(tfxEffectEmitter *effect) {
+		effect->GetInfo().name.c_str();
+	}
+
 	//-------Functions related to tfxAnimationManager--------
 
 	/*
