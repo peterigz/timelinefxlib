@@ -7036,6 +7036,7 @@ You can then use layer inside the loop to get the current layer
 		void AddEffectEmitterProperties(tfxEffectEmitter *effect, bool *has_animated_shape);
 		void AddEffectShapes(tfxEffectEmitter *effect);
 		void Update(float elapsed);
+		void Cycle();
 		void UpdateBufferMetrics();
 	};
 

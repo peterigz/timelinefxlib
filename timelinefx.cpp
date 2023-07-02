@@ -6578,6 +6578,34 @@ namespace tfx {
 		current_in_use_buffer = !current_in_use_buffer;
 	}
 
+	void tfxAnimationManager::Cycle() {
+		assert(instances_in_use[current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
+		tfxU32 next_buffer = !current_in_use_buffer;
+		instances_in_use[next_buffer].clear();
+		render_queue.clear();
+		offsets.clear();
+		tfxU32 running_sprite_count = 0;
+		flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
+		for (auto i : instances_in_use[current_in_use_buffer]) {
+			auto &instance = instances[i];
+			tfxSpriteDataMetrics &metrics = effect_animation_info.data[instance.info_index];
+			float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
+			tfxU32 frame = tfxU32(frame_time);
+			frame++;
+			frame = frame >= metrics.frame_count ? 0 : frame;
+			instance.sprite_count = metrics.frame_meta[frame].total_sprites;
+			instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
+			instances_in_use[next_buffer].push_back(i);
+			render_queue.push_back(instance);
+			running_sprite_count += instance.sprite_count;
+			flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
+			offsets.push_back(running_sprite_count);
+			UpdateBufferMetrics();
+		}
+		buffer_metrics.total_sprites_to_draw = running_sprite_count;
+		current_in_use_buffer = !current_in_use_buffer;
+	}
+
 	void ClearAllAnimationInstances(tfxAnimationManager *animation_manager) {
 		animation_manager->free_instances.clear();
 		animation_manager->instances_in_use[0].clear();
