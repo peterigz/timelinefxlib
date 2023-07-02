@@ -6129,7 +6129,7 @@ namespace tfx {
 						memcpy(temp_sprites.captured_index, sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
 						memcpy(temp_sprites.uid, sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], sizeof(tfxUniqueSpriteID) * running_count[layer][frame]);
 						memcpy(temp_sprites.color, sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
-						memcpy(temp_sprites.image_frame_plus, sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
+						memcpy(temp_sprites.property_indexes, sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
 						memcpy(temp_sprites.intensity, sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
 						memcpy(temp_sprites.stretch, sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
 						memcpy(temp_sprites.transform_3d, sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], sizeof(tfxSpriteTransform3d) * running_count[layer][frame]);
@@ -6151,7 +6151,7 @@ namespace tfx {
 					memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].captured_index, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].uid, sizeof(tfxUniqueSpriteID) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].color, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-					memcpy(sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].image_frame_plus, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+					memcpy(sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].property_indexes, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensity, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].stretch, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 					memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].transform_3d, sizeof(tfxSpriteTransform3d) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
@@ -6161,7 +6161,7 @@ namespace tfx {
 						memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.uid, sizeof(tfxUniqueSpriteID) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.color, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-						memcpy(sprite_data->real_time_sprites.image_frame_plus + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.image_frame_plus, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+						memcpy(sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.property_indexes, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.intensity, sizeof(float) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.stretch, sizeof(float) * temp_sprites_buffer.current_size);
 						memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.transform_3d, sizeof(tfxSpriteTransform3d) * temp_sprites_buffer.current_size);
@@ -6196,7 +6196,7 @@ namespace tfx {
 
 		/*
 		for (int i = 0; i != total_sprites; ++i) {
-			tfxU32 property_index = sprite_data->real_time_sprites.image_frame_plus[i] & 0x0000FFFF;
+			tfxU32 property_index = sprite_data->real_time_sprites.property_indexes[i] & 0x0000FFFF;
 			if (property_index == 0) {
 				int d = 0;
 			}
@@ -6275,7 +6275,7 @@ namespace tfx {
 					c_sprites.uid[ci] = sprites.uid[i];
 					c_sprites.lerp_offset[ci] = sprites.captured_index[i] == tfxINVALID ? lerp_offset : 1.f;
 					c_sprites.color[ci] = sprites.color[i];
-					c_sprites.image_frame_plus[ci] = sprites.image_frame_plus[i];
+					c_sprites.property_indexes[ci] = sprites.property_indexes[i];
 					c_sprites.intensity[ci] = sprites.intensity[i];
 					c_sprites.stretch[ci] = sprites.stretch[i];
 					c_sprites.transform_3d[ci] = sprites.transform_3d[i];
@@ -6295,7 +6295,7 @@ namespace tfx {
 						c_sprites.uid[ci] = sprites.uid[i];
 						c_sprites.lerp_offset[ci] = lerp_offset;
 						c_sprites.color[ci] = sprites.color[i];
-						c_sprites.image_frame_plus[ci] = sprites.image_frame_plus[i];
+						c_sprites.property_indexes[ci] = sprites.property_indexes[i];
 						c_sprites.intensity[ci] = sprites.intensity[i];
 						c_sprites.stretch[ci] = sprites.stretch[i];
 						c_sprites.transform_3d[ci] = sprites.transform_3d[i];
@@ -6423,6 +6423,7 @@ namespace tfx {
 					properties.start_frame_index = image.compute_shape_index;
 				}
 				effect->library->emitter_properties.animation_property_index[effect->property_index] = emitter_properties.current_size;
+				properties.image_ptr = image.ptr;
 				emitter_properties.push_back(properties);
 				for (auto &sub : effect->GetInfo().sub_effectors) {
 					AddEffectEmitterProperties(&sub, has_animated_shape);
@@ -6475,16 +6476,16 @@ namespace tfx {
 			sprite.captured_index = sprites.captured_index[i];
 			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.color = sprites.color[i];
-			sprite.image_frame_plus = sprites.image_frame_plus[i];
-			tfxU32 property_index = sprite.image_frame_plus & 0x0000FFFF;
+			sprite.property_indexes = sprites.property_indexes[i];
+			tfxU32 property_index = sprite.property_indexes & 0x0000FFFF;
 			//tfxImageData &image = *effect->library->emitter_properties.image[property_index];
 			//Temporary while debugging:
-			//sprite.lookup_indexes = image.compute_shape_index + ((sprites.image_frame_plus[i] & 0x00FF0000) >> 16);
-			//sprite.lookup_indexes += (sprite.image_frame_plus & 0x0000FFFF) << 16;
+			//sprite.lookup_indexes = image.compute_shape_index + ((sprites.property_indexes[i] & 0x00FF0000) >> 16);
+			//sprite.lookup_indexes += (sprite.property_indexes & 0x0000FFFF) << 16;
 			//-------------------------
-			sprite.image_frame_plus &= ~0x0000FFFF;
-			sprite.image_frame_plus += effect->library->emitter_properties.animation_property_index[property_index];
-			tfxU32 alignment = (sprite.image_frame_plus & 0xFF000000) >> 24;
+			sprite.property_indexes &= ~0x0000FFFF;
+			sprite.property_indexes += effect->library->emitter_properties.animation_property_index[property_index];
+			tfxU32 alignment = (sprite.property_indexes & 0xFF000000) >> 24;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
 			sprite.stretch = sprites.stretch[i];
@@ -7843,7 +7844,7 @@ namespace tfx {
 					float &age = bank.age[index + j];
 					sprites.captured_index[sprite_depth_index] = age == 0.f ? (pm.current_sprite_buffer << 28) + sprite_depth_index : (!pm.current_sprite_buffer << 28) + (sprites_index & 0x0FFFFFFF);
 					sprites_index = (work_entry->layer << 28) + sprite_depth_index;
-					sprites.image_frame_plus[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
+					sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 					running_sprite_index++;
 				}
 			}
@@ -7853,7 +7854,7 @@ namespace tfx {
 					float &age = bank.age[index + j];
 					sprites.captured_index[running_sprite_index] = age == 0.f ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + (sprites_index & 0x0FFFFFFF);
 					sprites_index = (work_entry->layer << 28) + running_sprite_index;
-					sprites.image_frame_plus[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
+					sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 				}
 			}
 

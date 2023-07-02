@@ -6552,7 +6552,7 @@ You can then use layer inside the loop to get the current layer
 	//InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
 	//3d in one struct like this as it makes it a lot easier to use the same control functions where we can.
 	struct tfxSpriteSoA {	//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
-		tfxU32 *image_frame_plus;				//The image frame of animation index packed with alignment option flag and property_index
+		tfxU32 *property_indexes;				//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;					//The index of the sprite in the previous frame so that it can be looked up and interpolated with
 		tfxUniqueSpriteID *uid;					//Unique particle id of the sprite, only used when recording sprite data
 		tfxSpriteTransform3d *transform_3d;		//Transform data for 3d sprites
@@ -6564,7 +6564,7 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
 		if(use_uid)
 			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
@@ -6577,7 +6577,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	inline void InitSpriteBothSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
 		if(use_uid)
 			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
@@ -6591,7 +6591,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	inline void InitSprite2dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
 		if(use_uid)
 			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
@@ -6610,7 +6610,7 @@ You can then use layer inside the loop to get the current layer
 		tfxVec3 rotations;
 		float stretch;
 		tfxVec2 scale;
-		tfxU32 image_frame_plus;
+		tfxU32 property_indexes;
 		tfxU32 captured_index;
 		tfxU32 alignment;		
 		tfxRGBA8 color;		
@@ -6622,7 +6622,7 @@ You can then use layer inside the loop to get the current layer
 		tfxVec2 position;
 		tfxVec2 scale;
 		float rotation;
-		tfxU32 image_frame_plus;
+		tfxU32 property_indexes;
 		tfxU32 captured_index;
 		tfxU32 alignment;		
 		tfxRGBA8 color;		
@@ -6633,7 +6633,7 @@ You can then use layer inside the loop to get the current layer
 
 	//Animation sprite data that is used on the cpu to bake the data
 	struct tfxSpriteDataSoA {	//64 bytes or 60 after uid is removed as it's only needed for compressing the sprite data down to size.
-		tfxU32 *image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
+		tfxU32 *property_indexes;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 *captured_index;
 		tfxUniqueSpriteID *uid;
 		float *lerp_offset;
@@ -6646,7 +6646,7 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	inline void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
 		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
@@ -6659,7 +6659,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	inline void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
 		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
@@ -6672,7 +6672,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	inline void InitSpriteData2dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
 		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
@@ -6685,7 +6685,7 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	inline void InitSpriteData2dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, image_frame_plus));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
 		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
@@ -6827,7 +6827,7 @@ You can then use layer inside the loop to get the current layer
 
 	//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation so probably not needed here really!
 	struct tfxParticleFrame {
-		tfxU32 image_frame_plus;	//The image frame of animation index packed with alignment option flag and property_index
+		tfxU32 property_indexes;	//The image frame of animation index packed with alignment option flag and property_index
 		tfxU32 captured_index;
 		tfxSpriteTransform3d transform;
 		tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
@@ -6968,6 +6968,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 start_frame_index;
 		float animation_frames;
 		float padding;
+		void *image_ptr;		//Note: not needed on the GPU, only used if you interpolate and render on the cpu for whatever reason
 	};
 
 	//Use the animation manager to control playing of pre-recorded effects
@@ -7319,7 +7320,7 @@ You can then use layer inside the loop to get the current layer
 				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.x,
 				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.y,
 				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.z,
-				pm.sprites[pm.current_sprite_buffer][layer].image_frame_plus[i]
+				pm.sprites[pm.current_sprite_buffer][layer].property_indexes[i]
 			);
 		}
 	}
@@ -7911,6 +7912,12 @@ You can then use layer inside the loop to get the current layer
 		return tweened;
 	}
 
+	inline tfxVec2 Tween(float tween, const tfxVec2 &world, const tfxVec2 &captured) {
+		tfxVec2 tweened;
+		tweened = world * tween + captured * (1.f - tween);
+		return tweened;
+	}
+
 	inline tfxRGBA8 Tween(float tween, const tfxRGBA8 current, const tfxRGBA8 captured) {
 		__m128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
 		__m128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
@@ -8332,7 +8339,7 @@ You can then use layer inside the loop to get the current layer
 	* @returns				tfxU32 of the frame value
 	*/
 	tfxAPI inline tfxU32 GetSpriteDataFrame(tfxSpriteDataSoA &sprites, tfxU32 index) {
-		return (sprites.image_frame_plus[index] & 0x00FF0000) >> 16;
+		return (sprites.property_indexes[index] & 0x00FF0000) >> 16;
 	}
 
 	/*
