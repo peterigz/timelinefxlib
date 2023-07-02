@@ -8576,8 +8576,8 @@ You can then use layer inside the loop to get the current layer
 	* @param pm				A pointer to the effect
 	* @returns				const char * name
 	*/
-	tfxAPI void GetEffectName(tfxEffectEmitter *effect) {
-		effect->GetInfo().name.c_str();
+	inline tfxAPI const char *GetEffectName(tfxEffectEmitter *effect) {
+		return effect->GetInfo().name.c_str();
 	}
 
 	//-------Functions related to tfxAnimationManager--------
