@@ -6962,12 +6962,11 @@ You can then use layer inside the loop to get the current layer
 		tfxAnimationBufferMetrics() : sprite_data_size(0), offsets_size(0), instances_size(0) {}
 	};
 
-	struct tfxAnimationEmitterProperties {
+	struct alignas(16) tfxAnimationEmitterProperties {
 		tfxVec2 handle;
 		tfxU32 flags;
 		tfxU32 start_frame_index;
 		float animation_frames;
-		float padding;
 		void *image_ptr;		//Note: not needed on the GPU, only used if you interpolate and render on the cpu for whatever reason
 	};
 
@@ -8738,7 +8737,7 @@ You can then use layer inside the loop to get the current layer
 	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
 	* @returns tfxU32				The number of sprites in the buffer
 	*/
-	tfxAPI inline tfxU32 GetTotalSpritesInBuffer(tfxAnimationManager *animation_manager) {
+	tfxAPI inline tfxU32 GetTotalSpriteDataCount(tfxAnimationManager *animation_manager) {
 		return animation_manager->sprite_data.current_size;
 	}
 
