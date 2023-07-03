@@ -6940,7 +6940,8 @@ You can then use layer inside the loop to get the current layer
 
 	//An anim instance is used to let the gpu know where to draw an animation with sprite data.
 	struct tfxAnimationInstance {
-		tfxVec4 position;					//position that the instance should be played at
+		tfxVec3 position;					//position that the instance should be played at
+		float scale;						//Scales the overal size of the animation
 		tfxU32 sprite_count;				//The number of sprites to be drawn
 		tfxU32 frame_count;					//The number of sprites to be drawn
 		tfxU32 offset_into_sprite_data;		//The starting ofset in the buffer that contains all the sprite data

@@ -3117,6 +3117,7 @@ namespace tfx {
 		names_and_types.Insert("draw_outlines", tfxBool);
 		names_and_types.Insert("max_threads", tfxSInt);
 		names_and_types.Insert("use_texture_filtering", tfxBool);
+		names_and_types.Insert("sprite_data_tab_use_compute", tfxSInt);
 		initialised = true;
 	}
 
@@ -6518,7 +6519,7 @@ namespace tfx {
 		assert(start_frame < metrics.frames_after_compression);
 		tfxAnimationID index = animation_manager->AddInstance();
 		tfxAnimationInstance &instance = animation_manager->instances[index];
-		instance.position.w = 1.f;
+		instance.scale = 1.f;
 		float frame_length = float(metrics.real_frames) / float(metrics.frames_after_compression) * tfxFRAME_LENGTH;
 		instance.current_time = start_frame * frame_length;
 		instance.animation_length_in_time = metrics.animation_length_in_time;
@@ -11521,7 +11522,7 @@ namespace tfx {
 	}
 
 	void SetAnimationScale(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float scale) {
-		animation_manager->instances[effect_index].position.w = scale;
+		animation_manager->instances[effect_index].scale = scale;
 	}
 
 	void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 amount) {
