@@ -1822,7 +1822,12 @@ namespace tfx {
 				CompileGraph(*GetGraphByType((tfxGraphType)t));
 			}
 			for (tfxU32 t = (tfxU32)tfxOvertime_velocity; t != (tfxU32)tfxTransform_translate_x; ++t) {
-				CompileGraphOvertime(*GetGraphByType((tfxGraphType)t));
+				if (IsColorGraph((tfxGraphType)t)) {
+					CompileColorOvertime(*GetGraphByType((tfxGraphType)t));
+				}
+				else {
+					CompileGraphOvertime(*GetGraphByType((tfxGraphType)t));
+				}
 			}
 		}
 		for (auto &sub : GetInfo().sub_effectors) {
@@ -2720,9 +2725,9 @@ namespace tfx {
 			CompileGraph(g.variation.velocity);
 			CompileGraph(g.variation.weight);
 
-			CompileGraphOvertime(g.overtime.red);
-			CompileGraphOvertime(g.overtime.green);
-			CompileGraphOvertime(g.overtime.blue);
+			CompileColorOvertime(g.overtime.red);
+			CompileColorOvertime(g.overtime.green);
+			CompileColorOvertime(g.overtime.blue);
 			CompileGraphOvertime(g.overtime.blendfactor);
 			CompileGraphOvertime(g.overtime.intensity);
 			CompileGraphOvertime(g.overtime.velocity_turbulance);
@@ -2813,9 +2818,9 @@ namespace tfx {
 	}
 	void tfxLibrary::CompileOvertimeGraph(tfxU32 index) {
 		tfxOvertimeAttributes &g = emitter_attributes[index].overtime;
-		CompileGraphOvertime(g.red);
-		CompileGraphOvertime(g.green);
-		CompileGraphOvertime(g.blue);
+		CompileColorOvertime(g.red);
+		CompileColorOvertime(g.green);
+		CompileColorOvertime(g.blue);
 		CompileGraphOvertime(g.blendfactor);
 		CompileGraphOvertime(g.intensity);
 		CompileGraphOvertime(g.velocity_turbulance);
@@ -2832,9 +2837,9 @@ namespace tfx {
 	}
 	void tfxLibrary::CompileColorGraphs(tfxU32 index) {
 		tfxOvertimeAttributes &g = emitter_attributes[index].overtime;
-		CompileGraphOvertime(g.red);
-		CompileGraphOvertime(g.green);
-		CompileGraphOvertime(g.blue);
+		CompileColorOvertime(g.red);
+		CompileColorOvertime(g.green);
+		CompileColorOvertime(g.blue);
 	}
 
 	void tfxLibrary::SetMinMaxData() {
@@ -3725,6 +3730,10 @@ namespace tfx {
 
 	bool tfxGraph::IsOvertimeGraph() {
 		return type >= tfxOvertime_velocity && type <= tfxOvertime_noise_resolution && type != tfxOvertime_velocity_adjuster;
+	}
+
+	bool tfxGraph::IsColorGraph() {
+		return type >= tfxOvertime_red && type <= tfxOvertime_blue;
 	}
 
 	bool tfxGraph::IsGlobalGraph() {
@@ -4673,7 +4682,9 @@ namespace tfx {
 			}
 		} while (!nodes.EndOfBuckets());
 		if (compile) {
-			if (IsOvertimeGraph())
+			if (IsColorGraph())
+				CompileColorOvertime(to);
+			else if (IsOvertimeGraph())
 				CompileGraphOvertime(to);
 			else
 				CompileGraph(to);
@@ -4885,6 +4896,22 @@ namespace tfx {
 		}
 	}
 
+	void CompileColorOvertime(tfxGraph &graph, float gamma) {
+		if (graph.nodes.size() > 1) {
+			graph.lookup.last_frame = tfxU32(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
+			assert(graph.lookup.values.resize(graph.lookup.last_frame + 1));
+			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
+				graph.lookup.values[f] = GammaCorrect(graph.GetValue((float)f * tfxLOOKUP_FREQUENCY_OVERTIME, graph.lookup.life), gamma);
+			}
+			graph.lookup.values[graph.lookup.last_frame] = GammaCorrect(graph.GetLastValue(), gamma);
+		}
+		else {
+			graph.lookup.last_frame = 0;
+			graph.lookup.values.resize(1);
+			graph.lookup.values[0] = GammaCorrect(graph.GetFirstValue(), gamma);
+		}
+	}
+
 	float LookupFastOvertime(tfxGraph &graph, float age, float lifetime) {
 		tfxU32 frame = static_cast<tfxU32>((age / lifetime * graph.lookup.life) / tfxLOOKUP_FREQUENCY_OVERTIME);
 		frame = std::min<tfxU32>(frame, graph.lookup.last_frame);
@@ -4989,6 +5016,10 @@ namespace tfx {
 
 	bool IsOvertimeGraph(tfxGraphType type) {
 		return type >= tfxOvertime_velocity && type != tfxOvertime_noise_resolution && type <= tfxOvertime_noise_resolution;
+	}
+
+	bool IsColorGraph(tfxGraphType type) {
+		return type >= tfxOvertime_red && type <= tfxOvertime_blue;
 	}
 
 	bool IsOvertimePercentageGraph(tfxGraphType type) {

@@ -953,6 +953,7 @@ You can then use layer inside the loop to get the current layer
 	const tfxS64 tfxMAX_64i = LLONG_MAX;
 	const tfxS64 tfxMIN_64i = LLONG_MIN;
 	const tfxU64 tfxMAX_64u = ULLONG_MAX;
+	const float tfxGAMMA = 1.f;
 #if defined(__x86_64__) || defined(_M_X64)
 	typedef tfxU64 tfxAddress;
 #else
@@ -3914,6 +3915,10 @@ You can then use layer inside the loop to get the current layer
 		return out;
 	}
 
+	inline float GammaCorrect(float color, float gamma = tfxGAMMA) {
+		return powf(color, gamma);
+	}
+
 	inline tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to) {
 		tfxVec3 fromf = UnPack10bitVec3(from);
 		tfxVec3 tof = UnPack10bitVec3(to);
@@ -5214,6 +5219,7 @@ You can then use layer inside the loop to get the current layer
 		tfxBucketArray<tfxAttributeNode> nodes;
 		tfxGraphLookup lookup;
 		tfxU32 index;
+		float gamma;
 
 		tfxGraph();
 		tfxGraph(tfxMemoryArenaManager *node_allocator, tfxU32 bucket_size);
@@ -5252,6 +5258,7 @@ You can then use layer inside the loop to get the current layer
 		void ReIndex();
 		tfxVec2 GetInitialZoom();
 		tfxVec2 GetInitialZoom3d();
+		bool IsColorGraph();
 		bool IsOvertimeGraph();
 		bool IsGlobalGraph();
 		bool IsAngleGraph();
@@ -5274,6 +5281,7 @@ You can then use layer inside the loop to get the current layer
 	static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
 	void CompileGraph(tfxGraph &graph);
 	void CompileGraphOvertime(tfxGraph &graph);
+	void CompileColorOvertime(tfxGraph &graph, float gamma = tfxGAMMA);
 	float GetMaxLife(tfxEffectEmitter &e);
 	float LookupFastOvertime(tfxGraph &graph, float age, float lifetime);
 	float LookupFast(tfxGraph &graph, float frame);
@@ -5293,6 +5301,7 @@ You can then use layer inside the loop to get the current layer
 	void ClampCurve(tfxGraph &graph, tfxVec2 &curve, tfxAttributeNode &node);
 	void ClampGraph(tfxGraph &graph);
 	bool IsOvertimeGraph(tfxGraphType type);
+	bool IsColorGraph(tfxGraphType type);
 	bool IsOvertimePercentageGraph(tfxGraphType type);
 	bool IsGlobalGraph(tfxGraphType type);
 	bool IsEmitterGraph(tfxGraphType type);
