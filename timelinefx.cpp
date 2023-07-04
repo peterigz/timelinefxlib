@@ -2356,6 +2356,49 @@ namespace tfx {
 		return effect.GetInfo().sprite_sheet_settings_index;
 	}
 
+	void tfxLibrary::AddSpriteSheetSettingsSub(tfxEffectEmitter& effect) {
+		if (effect.type == tfxEffectType) {
+			tfxSpriteSheetSettings a;
+			a.frames = 32;
+			a.current_frame = 1;
+			a.frame_offset = 0;
+			a.extra_frames_count = 0;
+			a.position = tfxVec2(0.f, 0.f);
+			a.frame_size = tfxVec2(256.f, 256.f);
+			a.playback_speed = 1.f;
+			a.animation_flags = tfxAnimationFlags_needs_recording | tfxAnimationFlags_export_with_transparency;
+			a.seed = 0;
+			a.zoom = 1.f;
+			a.scale = 1.f;
+			a.needs_exporting = 0;
+			a.color_option = tfxExportColorOptions::tfxFullColor;
+			a.export_option = tfxExportOptions::tfxSpriteSheet;
+			a.camera_settings.camera_floor_height = -10.f;
+			a.camera_settings.camera_fov = tfxRadians(60);
+			a.camera_settings.camera_pitch = tfxRadians(-30.f);
+			a.camera_settings.camera_yaw = tfxRadians(-90.f);
+			a.camera_settings.camera_position = tfxVec3(0.f, 3.5f, 7.5f);
+			a.camera_settings.camera_isometric = false;
+			a.camera_settings.camera_isometric_scale = 5.f;
+			a.camera_settings.camera_hide_floor = false;
+			a.camera_settings_orthographic.camera_floor_height = -10.f;
+			a.camera_settings_orthographic.camera_fov = tfxRadians(60);
+			a.camera_settings_orthographic.camera_pitch = tfxRadians(-30.f);
+			a.camera_settings_orthographic.camera_yaw = tfxRadians(-90.f);
+			a.camera_settings_orthographic.camera_position = tfxVec3(0.f, 3.5f, 7.5f);
+			a.camera_settings_orthographic.camera_isometric = true;
+			a.camera_settings_orthographic.camera_isometric_scale = 5.f;
+			a.camera_settings_orthographic.camera_hide_floor = false;
+			sprite_sheet_settings.push_back(a);
+			effect.GetInfo().sprite_sheet_settings_index = sprite_sheet_settings.size() - 1;
+		}
+		else {
+			for (auto &sub : effect.GetInfo().sub_effectors) {
+				effect.library->AddSpriteSheetSettingsSub(sub);
+			}
+		}
+	}
+
 	tfxU32 tfxLibrary::AddSpriteDataSettings(tfxEffectEmitter& effect) {
 		assert(effect.type == tfxEffectType);
 		tfxSpriteDataSettings a;
@@ -2379,6 +2422,28 @@ namespace tfx {
 		sprite_data_settings.push_back(a);
 		effect.GetInfo().sprite_data_settings_index = sprite_data_settings.size() - 1;
 		return effect.GetInfo().sprite_data_settings_index;
+	}
+
+	void tfxLibrary::AddSpriteDataSettingsSub(tfxEffectEmitter& effect) {
+		if (effect.type == tfxEffectType) {
+			tfxSpriteDataSettings a;
+			a.real_frames = 32;
+			a.frames_after_compression = 32;
+			a.current_frame = 1;
+			a.frame_offset = 0;
+			a.extra_frames_count = 0;
+			a.playback_speed = 1.f;
+			a.animation_flags = tfxAnimationFlags_needs_recording | tfxAnimationFlags_export_with_transparency;
+			a.seed = 0;
+			a.needs_exporting = 0;
+			sprite_data_settings.push_back(a);
+			effect.GetInfo().sprite_data_settings_index = sprite_data_settings.size() - 1;
+		}
+		else {
+			for (auto &sub : effect.GetInfo().sub_effectors) {
+				effect.library->AddSpriteDataSettingsSub(sub);
+			}
+		}
 	}
 
 	tfxU32 tfxLibrary::AddPreviewCameraSettings(tfxEffectEmitter& effect) {

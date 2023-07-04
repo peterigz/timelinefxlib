@@ -7557,6 +7557,8 @@ You can then use layer inside the loop to get the current layer
 		void AddTransformGraphs(tfxEffectEmitter &effect);
 		tfxU32 AddSpriteSheetSettings(tfxEffectEmitter& effect);
 		tfxU32 AddSpriteDataSettings(tfxEffectEmitter& effect);
+		void AddSpriteSheetSettingsSub(tfxEffectEmitter& effect);
+		void AddSpriteDataSettingsSub(tfxEffectEmitter& effect);
 		tfxU32 AddPreviewCameraSettings(tfxEffectEmitter& effect);
 		tfxU32 AddPreviewCameraSettings();
 		tfxU32 AddEffectEmitterInfo();
