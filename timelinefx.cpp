@@ -11554,7 +11554,6 @@ namespace tfx {
 	tfxDataTypesDictionary tfxDataTypes;
 	void *tfxDeferred_data_for_freeing[256];
 	tfxU32 tfxDeferred_index = 0;
-	HANDLE tfxThreadSemaphore;
 	int tfxNumberOfThreadsInAdditionToMain;
 	tfxQueueProcessor tfxThreadQueues;
 	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;

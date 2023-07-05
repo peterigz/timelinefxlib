@@ -2662,15 +2662,22 @@ You can then use layer inside the loop to get the current layer
 		tfxWorkQueueFlag_none = 0
 	};
 
-	extern HANDLE tfxThreadSemaphore;
 	extern int tfxNumberOfThreadsInAdditionToMain;
+
+#ifndef tfxMAX_WORK_QUEUES
+	#define tfxMAX_WORK_QUEUES 64
+#endif
+
+#ifndef tfxMAX_WORK_ENTRIES_PER_QUEUE
+	#define tfxMAX_WORK_ENTRIES_PER_QUEUE 512
+#endif
 
 	struct tfxWorkQueue {
 		tfxU32 volatile entry_completion_goal = 0;
 		tfxU32 volatile entry_completion_count = 0;
 		tfxU32 volatile next_read_entry = 0;
 		tfxU32 volatile next_write_entry = 0;
-		tfxWorkQueueEntry entries[512];
+		tfxWorkQueueEntry entries[tfxMAX_WORK_ENTRIES_PER_QUEUE];
 	};
 
 	struct tfxQueueProcessor {
@@ -2678,19 +2685,20 @@ You can then use layer inside the loop to get the current layer
 		HANDLE empty_semaphore;
 		HANDLE full_semaphore;
 		tfxU32 count;
-		tfxWorkQueue *queues[512];
+		tfxWorkQueue *queues[tfxMAX_WORK_QUEUES];
 	};
 
 	extern tfxQueueProcessor tfxThreadQueues;
 
 	inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
 		queues->count = 0;
-		queues->empty_semaphore = CreateSemaphoreEx(0, 64, 64, 0, 0, SEMAPHORE_ALL_ACCESS);
-		queues->full_semaphore = CreateSemaphoreEx(0, 0, 64, 0, 0, SEMAPHORE_ALL_ACCESS);
-		memset(queues->queues, 0, 64 * sizeof(void*));
+		queues->empty_semaphore = CreateSemaphoreEx(0, tfxMAX_WORK_QUEUES, tfxMAX_WORK_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
+		queues->full_semaphore = CreateSemaphoreEx(0, 0, tfxMAX_WORK_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
+		memset(queues->queues, 0, tfxMAX_WORK_QUEUES * sizeof(void*));
 	}
 
 	inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
+		//This is where threads sleep until a queue with work is pushed in tfxPushQueueWork
 		WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
 		std::unique_lock<std::mutex> lock(thread_processor->mutex);
 		tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
@@ -2705,14 +2713,12 @@ You can then use layer inside the loop to get the current layer
 		ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
 	}
 
-	static bool tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
-		bool sleep = false;
-
+	inline void tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
 		tfxWorkQueue *queue = tfxGetQueueWithWork(queue_processor);
 
 		if (queue) {
 			tfxU32 original_read_entry = queue->next_read_entry;
-			tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+			tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_WORK_ENTRIES_PER_QUEUE;
 
 			if (original_read_entry != queue->next_write_entry) {
 				tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -2722,22 +2728,14 @@ You can then use layer inside the loop to get the current layer
 					InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
 				}
 			}
-			else {
-				sleep = true;
-			}
 		}
-		else {
-			sleep = false;
-		}
-
-		return sleep;
 	}
 
 	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
 		bool sleep = false;
 
 		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_WORK_ENTRIES_PER_QUEUE;
 
 		if (original_read_entry != queue->next_write_entry) {
 			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -2755,9 +2753,9 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
-		assert(tfxNumberOfThreadsInAdditionToMain > 0);
+		assert(tfxNumberOfThreadsInAdditionToMain > 0);		//This should never be called if there is only a main thread
 
-		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_WORK_ENTRIES_PER_QUEUE;
 		while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
 			//We can do this because we're single producer
 			tfxDoNextWorkQueueEntry(queue);
@@ -2770,8 +2768,6 @@ You can then use layer inside the loop to get the current layer
 
 		tfxPushQueueWork(&tfxThreadQueues, queue);
 		queue->next_write_entry = new_entry_to_write;
-
-		ReleaseSemaphore(tfxThreadSemaphore, 1, 0);
 	}
 
 	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
@@ -2779,10 +2775,7 @@ You can then use layer inside the loop to get the current layer
 		tfxQueueProcessor *thread_processor = (tfxQueueProcessor*)lpParameter;
 
 		for (;;) {
-			if (tfxDoNextWorkQueue(thread_processor)) {
-				//Suspend the thread
-				WaitForSingleObjectEx(tfxThreadSemaphore, INFINITE, false);
-			}
+			tfxDoNextWorkQueue(thread_processor);
 		}
 
 	}
@@ -2808,7 +2801,6 @@ You can then use layer inside the loop to get the current layer
 
 		//todo: create a function to close all the threads 
 
-		tfxThreadSemaphore = CreateSemaphoreEx(0, 0, tfxNumberOfThreadsInAdditionToMain, 0, 0, SEMAPHORE_ALL_ACCESS);
 		tfxU32 threads_initialised = 0;
 		for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
 			DWORD thread_id;
