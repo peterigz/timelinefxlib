@@ -6210,6 +6210,8 @@ namespace tfx {
 		total_sprites = 0;
 		tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
 
+		//std::cout << " ----------------- " << std::endl;
+
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
 			pm->Update();
@@ -6301,6 +6303,8 @@ namespace tfx {
 		*/
 
 		sprite_data->real_time_sprites_buffer.current_size = total_sprites;
+		//total sprites should not exceed the capacity of the sprite buffer
+		assert(sprite_data->real_time_sprites_buffer.current_size <= sprite_data->real_time_sprites_buffer.capacity);
 		ResetSpriteDataLerpOffset(*sprite_data);
 		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
 
@@ -6441,7 +6445,7 @@ namespace tfx {
 				tfxAddWorkQueueEntry(&pm->work_queue, entry, LinkUpSpriteCapturedIndexes);
 			}
 			else {
-				LinkUpSpriteCapturedIndexes(&pm->work_queue, &entry);
+				LinkUpSpriteCapturedIndexes(&pm->work_queue, entry);
 			}
 			f++;
 		}
@@ -11161,7 +11165,6 @@ namespace tfx {
 			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
 			tfxWideStorei((tfxWideInt*)&bank.single_loop_count[index], single_loop_count);
 		}
-
 
 		tfxU32 offset = 0;
 		for (int i = work_entry->start_index; i >= 0; --i) {

@@ -1774,6 +1774,11 @@ You can then use layer inside the loop to get the current layer
 		buffer->data = NULL;
 	}
 
+	inline void* GetEndOfBufferPtr(tfxSoABuffer *buffer) {
+		assert(buffer->data);
+		return (char*)buffer->data + buffer->current_arena_size;
+	}
+
 	//Get the amount of free space in the buffer
 	inline tfxU32 FreeSpace(tfxSoABuffer *buffer) {
 		return buffer->capacity - buffer->current_size;
@@ -1864,7 +1869,7 @@ You can then use layer inside the loop to get the current layer
 		free(old_data);
 
 		if (buffer->resize_callback) {
-			buffer->resize_callback(buffer, first_new_index - buffer->start_index);
+			buffer->resize_callback(buffer, first_new_index);
 		}
 
 		buffer->start_index = 0;
