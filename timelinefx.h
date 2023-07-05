@@ -7107,6 +7107,11 @@ You can then use layer inside the loop to get the current layer
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
 		tfxParticleManagerFlags flags;
+		//The length of time that passed since the last time Update() was called
+		float frame_length;
+		tfxWideFloat frame_length_wide;
+		float update_time;
+		tfxWideFloat update_time_wide;
 
 		tfxParticleManager() :
 			flags(0),
@@ -7143,7 +7148,7 @@ You can then use layer inside the loop to get the current layer
 		}
 		void CreateParticleBanksForEachLayer();
 		//Update the particle manager. Call this once per frame in your logic udpate.
-		void Update();
+		void Update(float elapsed);
 		//When paused you still might want to keep the particles in order:
 		void UpdateParticleOrderOnly();
 		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
@@ -8151,8 +8156,8 @@ You can then use layer inside the loop to get the current layer
 	Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
 	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 	*/
-	tfxAPI inline void UpdateParticleManager(tfxParticleManager *pm) {
-		pm->Update();
+	tfxAPI inline void UpdateParticleManager(tfxParticleManager *pm, float elapsed) {
+		pm->Update(elapsed);
 	}
 
 	/*

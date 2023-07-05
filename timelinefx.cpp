@@ -6092,7 +6092,7 @@ namespace tfx {
 		tfxU32 sprites_in_layers = 0;
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
-			pm->Update();
+			pm->Update(tfxFRAME_LENGTH);
 			bool particles_processed_last_frame = false;
 
 			if (offset >= start_frame) {
@@ -6214,7 +6214,7 @@ namespace tfx {
 
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
-			pm->Update();
+			pm->Update(tfxFRAME_LENGTH);
 			InvalidateNewSpriteCapturedIndex(pm);
 			bool particles_processed_last_frame = false;
 
@@ -6784,7 +6784,7 @@ namespace tfx {
 		if (parent_index == tfxINVALID)
 			return tfxINVALID;
 		if (!is_sub_emitter) {
-			effects.highest_particle_age[parent_index] = tfxFRAME_LENGTH * 3.f;
+			effects.highest_particle_age[parent_index] = frame_length * 3.f;
 		}
 		tfxEmitterPropertiesSoA &properties = effect.library->emitter_properties;
 		effects.global_attributes[parent_index] = effect.global;
@@ -6883,7 +6883,7 @@ namespace tfx {
 					state_flags |= tfxEmitterStateFlags_is_sub_emitter;
 				}
 				else {
-					emitters.highest_particle_age[index] = tfxFRAME_LENGTH * 2.f;
+					emitters.highest_particle_age[index] = frame_length * 2.f;
 				}
 
 				/*if (flags & tfxEffectManagerFlags_use_compute_shader && e.GetInfo().sub_effectors.empty()) {
@@ -6988,8 +6988,12 @@ namespace tfx {
 		}
 	}
 
-	void tfxParticleManager::Update() {
+	void tfxParticleManager::Update(float elapsed_time) {
 		tfxPROFILE;
+		frame_length = elapsed_time;
+		frame_length_wide = tfxWideSetSingle(frame_length);
+		update_time = 1.f / (1000.f / elapsed_time);
+		update_time_wide = tfxWideSetSingle(update_time);
 		tfxCompleteAllWork(&work_queue);
 		new_compute_particle_index = 0;
 
@@ -7068,7 +7072,7 @@ namespace tfx {
 		for (auto &work_entry : spawn_work) {
 			tfxU32 index = work_entry.emitter_index;
 			emitters.highest_particle_age[index] = std::fmaxf(emitters.highest_particle_age[index], work_entry.highest_particle_age);
-			effects.highest_particle_age[emitters.parent_index[index]] = emitters.highest_particle_age[index] + tfxFRAME_LENGTH;
+			effects.highest_particle_age[emitters.parent_index[index]] = emitters.highest_particle_age[index] + frame_length;
 		}
 		spawn_work.free();
 
@@ -7409,14 +7413,14 @@ namespace tfx {
 				current_velocity_y = tfxWideAdd(current_velocity_y, noise_y.m);
 				current_velocity_z = tfxWideAdd(current_velocity_z, noise_z.m);
 			}
-			current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, tfxWideMul(lookup_weight, tfxUPDATE_TIME_WIDE)));
-			current_velocity_x = tfxWideMul(tfxWideMul(current_velocity_x, tfxUPDATE_TIME_WIDE), velocity_adjuster);
-			current_velocity_y = tfxWideMul(tfxWideMul(current_velocity_y, tfxUPDATE_TIME_WIDE), velocity_adjuster);
-			current_velocity_z = tfxWideMul(tfxWideMul(current_velocity_z, tfxUPDATE_TIME_WIDE), velocity_adjuster);
+			current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, tfxWideMul(lookup_weight, pm.update_time_wide)));
+			current_velocity_x = tfxWideMul(tfxWideMul(current_velocity_x, pm.update_time_wide), velocity_adjuster);
+			current_velocity_y = tfxWideMul(tfxWideMul(current_velocity_y, pm.update_time_wide), velocity_adjuster);
+			current_velocity_z = tfxWideMul(tfxWideMul(current_velocity_z, pm.update_time_wide), velocity_adjuster);
 
 			//----Spin and angle Changes
 			if (emitter_flags & tfxEmitterStateFlags_can_spin) {
-				roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, tfxUPDATE_TIME_WIDE));
+				roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, pm.update_time_wide));
 			}
 
 			//----Position
@@ -7934,7 +7938,7 @@ namespace tfx {
 		float image_frames[tfxDataWidth];
 
 		tfxWideFloat image_frame_rate = tfxWideSetSingle(pm.emitters.image_frame_rate[emitter_index]);
-		image_frame_rate = tfxWideMul(image_frame_rate, tfxUPDATE_TIME_WIDE);
+		image_frame_rate = tfxWideMul(image_frame_rate, pm.update_time_wide);
 		tfxWideFloat end_frame = tfxWideSetSingle(pm.emitters.end_frame[emitter_index]);
 		tfxWideFloat frames = tfxWideSetSingle(pm.emitters.end_frame[emitter_index] + 1);
 		tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
@@ -8051,14 +8055,14 @@ namespace tfx {
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
 					sprites.uid[sprite_depth_index].uid = bank.uid[index + j];
-					sprites.uid[sprite_depth_index].age = tfxU32((bank.age[index + j] + 0.1f) / tfxFRAME_LENGTH);
+					sprites.uid[sprite_depth_index].age = tfxU32((bank.age[index + j] + 0.1f) / pm.frame_length);
 					running_sprite_index++;
 				}
 			}
 			else {
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					sprites.uid[running_sprite_index].uid = bank.uid[index + j];
-					sprites.uid[running_sprite_index++].age = tfxU32((bank.age[index + j] + 0.1f) / tfxFRAME_LENGTH);
+					sprites.uid[running_sprite_index++].age = tfxU32((bank.age[index + j] + 0.1f) / pm.frame_length);
 				}
 			}
 			start_diff = 0;
@@ -8597,13 +8601,13 @@ namespace tfx {
 			}
 		}
 
-		age += tfxFRAME_LENGTH;
-		highest_particle_age -= tfxFRAME_LENGTH;
+		age += pm.frame_length;
+		highest_particle_age -= pm.frame_length;
 
 		if (properties.loop_length && age > properties.loop_length[property_index])
 			age -= properties.loop_length[property_index];
 
-		if (highest_particle_age <= 0 && age > tfxFRAME_LENGTH * 5.f) {
+		if (highest_particle_age <= 0 && age > pm.frame_length * 5.f) {
 			timeout_counter++;
 		}
 		else {
@@ -8669,7 +8673,7 @@ namespace tfx {
 		if (parent_age < delay_spawning) {
 			return;
 		}
-		delay_spawning = -tfxFRAME_LENGTH;
+		delay_spawning = -pm.frame_length;
 
 		//e.state_flags |= e.parent->state_flags & tfxEmitterStateFlags_stop_spawning;
 		state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
@@ -8780,16 +8784,16 @@ namespace tfx {
 			pm.sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 		}
 
-		age += tfxFRAME_LENGTH;
+		age += pm.frame_length;
 		if (!(property_flags & tfxEmitterPropertyFlags_single) || (property_flags & tfxEmitterPropertyFlags_single && properties.single_shot_limit[property_index] > 0) || state_flags & tfxEmitterStateFlags_stop_spawning) {
-			highest_particle_age -= tfxFRAME_LENGTH;
-			spawn_work_entry->highest_particle_age -= tfxFRAME_LENGTH;
+			highest_particle_age -= pm.frame_length;
+			spawn_work_entry->highest_particle_age -= pm.frame_length;
 		}
 
 		if (properties.loop_length && age > properties.loop_length[property_index])
 			age -= properties.loop_length[property_index];
 
-		if (highest_particle_age <= 0 && age > tfxFRAME_LENGTH * 5.f) {
+		if (highest_particle_age <= 0 && age > pm.frame_length * 5.f) {
 			timeout_counter++;
 		}
 		else {
@@ -8836,7 +8840,7 @@ namespace tfx {
 				spawn_quantity = (spawn_quantity / 100.f) * emitter_size.y;
 			}
 
-			spawn_quantity *= tfxUPDATE_TIME;
+			spawn_quantity *= pm.update_time;
 			step_size = 1.f / spawn_quantity;
 		}
 		else if (property_flags & tfxEmitterPropertyFlags_match_amount_to_grid_points) {
@@ -9262,7 +9266,7 @@ namespace tfx {
 				color = tfxRGBA8(255.f * first_red_value, 255.f * first_green_value, 255.f * first_blue_value, alpha);
 			}
 
-			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + tfxFRAME_LENGTH + 1);
+			entry->highest_particle_age = std::fmaxf(highest_particle_age, (max_age * loop_count) + pm.frame_length + 1);
 
 			if (entry->sub_effects->current_size > 0) {
 				particle_index = pm.GetParticleIndexSlot(MakeParticleID(particles_index, index));
@@ -10708,7 +10712,7 @@ namespace tfx {
 			float &direction = entry->particle_data->local_rotations_x[index];
 			float &base_velocity = entry->particle_data->base_velocity[index];
 
-			float micro_time = tfxUPDATE_TIME * (1.f - tween);
+			float micro_time = pm.update_time * (1.f - tween);
 
 			tfxVec2 sprite_transform_position;
 			float sprite_transform_rotation;
@@ -10868,7 +10872,7 @@ namespace tfx {
 			//Do a micro update
 			//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
 			//the alignment on the first frame can be calculated
-			float micro_time = tfxUPDATE_TIME * (1.f - tween + 0.001f);
+			float micro_time = pm.update_time * (1.f - tween + 0.001f);
 			float weight_acceleration = base_weight * first_weight_value;
 			//----Velocity Changes
 			tfxVec3 current_velocity = tfxVec3(velocity_normal.x, velocity_normal.y, velocity_normal.z) * base_velocity * first_velocity_value;
@@ -11150,7 +11154,7 @@ namespace tfx {
 			tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 			tfxWideInt single_loop_count = tfxWideLoadi((tfxWideInt*)&bank.single_loop_count[index]);
 			tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
-			age = tfxWideAdd(age, tfxFRAME_LENGTH_WIDE);
+			age = tfxWideAdd(age, pm.frame_length_wide);
 
 			tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
 			single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWideSetSinglei(1), expired));
@@ -11357,12 +11361,12 @@ namespace tfx {
 				current_velocity_y.m = tfxWideAdd(current_velocity_y.m, noise_y.m);
 			}
 			current_velocity_y.m = tfxWideAdd(current_velocity_y.m, tfxWideMul(lookup_weight, base_weight));
-			current_velocity_x.m = tfxWideMul(tfxWideMul(current_velocity_x.m, tfxUPDATE_TIME_WIDE), velocity_adjuster);
-			current_velocity_y.m = tfxWideMul(tfxWideMul(current_velocity_y.m, tfxUPDATE_TIME_WIDE), velocity_adjuster);
+			current_velocity_x.m = tfxWideMul(tfxWideMul(current_velocity_x.m, pm.update_time_wide), velocity_adjuster);
+			current_velocity_y.m = tfxWideMul(tfxWideMul(current_velocity_y.m, pm.update_time_wide), velocity_adjuster);
 
 			//----Spin and angle Changes
 			if (emitter_flags & tfxEmitterStateFlags_can_spin) {
-				roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, tfxUPDATE_TIME_WIDE));
+				roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, pm.update_time_wide));
 			}
 
 			//----Position
