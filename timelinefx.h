@@ -1170,7 +1170,6 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	extern tfxMemoryTrackerLog tfxMEMORY_TRACKER;
-	extern char tfxMEMORY_CONTEXT[64];
 
 #ifdef tfxTRACK_MEMORY
 #define tfxALLOCATE(tracker_name, dst, size) malloc(size); tfxMemoryTrackerEntry tracker; memset(&tracker, '\0', sizeof(tfxMemoryTrackerEntry)); memcpy(tracker.name, tracker_name, strlen(tracker_name)); tracker.amount_allocated = size; tracker.address = dst; tfxU32 allocations = 0; if (data &&tfxMEMORY_TRACKER.ValidKey((tfxKey)data)) { tfxMemoryTrackerEntry *entry = tfxMEMORY_TRACKER.At((tfxKey)data); if(entry->is_alive) allocations = tfxMEMORY_TRACKER.At((tfxKey)data)->allocations; } tracker.allocations = allocations + 1; tracker.is_alive = true; tfxMEMORY_TRACKER.Insert((tfxKey)dst, tracker);
@@ -2664,12 +2663,8 @@ You can then use layer inside the loop to get the current layer
 
 	extern int tfxNumberOfThreadsInAdditionToMain;
 
-#ifndef tfxMAX_WORK_QUEUES
-	#define tfxMAX_WORK_QUEUES 64
-#endif
-
-#ifndef tfxMAX_WORK_ENTRIES_PER_QUEUE
-	#define tfxMAX_WORK_ENTRIES_PER_QUEUE 512
+#ifndef tfxMAX_QUEUES
+#define tfxMAX_QUEUES 512
 #endif
 
 	struct tfxWorkQueue {
@@ -2677,7 +2672,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 volatile entry_completion_count = 0;
 		tfxU32 volatile next_read_entry = 0;
 		tfxU32 volatile next_write_entry = 0;
-		tfxWorkQueueEntry entries[tfxMAX_WORK_ENTRIES_PER_QUEUE];
+		tfxWorkQueueEntry entries[tfxMAX_QUEUES];
 	};
 
 	struct tfxQueueProcessor {
@@ -2685,20 +2680,20 @@ You can then use layer inside the loop to get the current layer
 		HANDLE empty_semaphore;
 		HANDLE full_semaphore;
 		tfxU32 count;
-		tfxWorkQueue *queues[tfxMAX_WORK_QUEUES];
+		//These point to the queues stored in particle managers and anything else that needs a queue with multithreading
+		tfxWorkQueue *queues[tfxMAX_QUEUES];
 	};
 
 	extern tfxQueueProcessor tfxThreadQueues;
 
 	inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
 		queues->count = 0;
-		queues->empty_semaphore = CreateSemaphoreEx(0, tfxMAX_WORK_QUEUES, tfxMAX_WORK_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
-		queues->full_semaphore = CreateSemaphoreEx(0, 0, tfxMAX_WORK_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
-		memset(queues->queues, 0, tfxMAX_WORK_QUEUES * sizeof(void*));
+		queues->empty_semaphore = CreateSemaphoreEx(0, tfxMAX_QUEUES, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
+		queues->full_semaphore = CreateSemaphoreEx(0, 0, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
+		memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void*));
 	}
 
 	inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
-		//This is where threads sleep until a queue with work is pushed in tfxPushQueueWork
 		WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
 		std::unique_lock<std::mutex> lock(thread_processor->mutex);
 		tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
@@ -2718,7 +2713,7 @@ You can then use layer inside the loop to get the current layer
 
 		if (queue) {
 			tfxU32 original_read_entry = queue->next_read_entry;
-			tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_WORK_ENTRIES_PER_QUEUE;
+			tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 
 			if (original_read_entry != queue->next_write_entry) {
 				tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -2731,11 +2726,9 @@ You can then use layer inside the loop to get the current layer
 		}
 	}
 
-	static bool tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
-		bool sleep = false;
-
+	inline void tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
 		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_WORK_ENTRIES_PER_QUEUE;
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 
 		if (original_read_entry != queue->next_write_entry) {
 			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -2745,17 +2738,12 @@ You can then use layer inside the loop to get the current layer
 				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
 			}
 		}
-		else {
-			sleep = true;
-		}
-
-		return sleep;
 	}
 
 	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
 		assert(tfxNumberOfThreadsInAdditionToMain > 0);		//This should never be called if there is only a main thread
 
-		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_WORK_ENTRIES_PER_QUEUE;
+		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 		while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
 			//We can do this because we're single producer
 			tfxDoNextWorkQueueEntry(queue);
@@ -2768,6 +2756,7 @@ You can then use layer inside the loop to get the current layer
 
 		tfxPushQueueWork(&tfxThreadQueues, queue);
 		queue->next_write_entry = new_entry_to_write;
+
 	}
 
 	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {

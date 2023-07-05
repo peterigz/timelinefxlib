@@ -11550,10 +11550,7 @@ namespace tfx {
 	tfxU32 tfxCurrentSnapshot = 0;
 	tfxProfile tfxProfileArray[tfxPROFILE_COUNT];
 	tfxMemoryTrackerLog tfxMEMORY_TRACKER;
-	char tfxMEMORY_CONTEXT[64];
 	tfxDataTypesDictionary tfxDataTypes;
-	void *tfxDeferred_data_for_freeing[256];
-	tfxU32 tfxDeferred_index = 0;
 	int tfxNumberOfThreadsInAdditionToMain;
 	tfxQueueProcessor tfxThreadQueues;
 	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
