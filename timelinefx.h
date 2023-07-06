@@ -855,7 +855,8 @@ You can then use layer inside the loop to get the current layer
 		tfxEmitterPropertyFlags_area_open_ends = 1 << 27,					//Only sides of the area/cylinder are spawned on when fill area is not checked
 		tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 28,		//Emitter will be excluded from effect hue adjustments if this flag is checked
 		tfxEmitterPropertyFlags_enabled = 1 << 29,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
-		tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 30		//Match the amount to spawn with a single emitter to the number of grid points in the effect
+		tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 30,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
+		tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 31	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
 	};
 
 	enum tfxParticleFlags_ : unsigned char {

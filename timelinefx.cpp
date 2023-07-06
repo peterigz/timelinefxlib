@@ -9296,7 +9296,7 @@ namespace tfx {
 			//Max age
 			//Todo: should age be set to the tween value?
 			age = 0.f;
-			if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) {
+			if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 				max_age = pm.animation_length_in_time;
 			}
 			else {
@@ -11195,7 +11195,7 @@ namespace tfx {
 		const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_single), tfxWideSetZeroi());
 		const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
 		tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei(pm.emitters.state_flags[emitter_index] & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning)), tfxWideSetZeroi());
-		if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) {
+		if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 			state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_wrap_single_sprite), tfxWideSetZeroi());
 		}
 		const tfxWideInt xor_state_flags_no_spawning = tfxWideXOri(state_flags_no_spawning, tfxWideSetSinglei(-1));
