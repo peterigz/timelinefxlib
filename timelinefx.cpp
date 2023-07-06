@@ -6022,9 +6022,9 @@ namespace tfx {
 		for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 			tfxSpriteSoA &sprites = pm->sprites[pm->current_sprite_buffer][layer];
 			for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
-				if ((sprites.captured_index[i] & 0xF0000000) >> 28 == pm->current_sprite_buffer) {
+				if ((sprites.captured_index[i] & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(sprites.captured_index[i] & 0x10000000)) {
 					sprites.captured_index[i] = tfxINVALID;
-				}
+				} 
 			}
 		}
 	}
@@ -6053,6 +6053,7 @@ namespace tfx {
 		tfxU32 offset = 0;
 		bool particles_started = false;
 		bool start_counting_extra_frames = false;
+		pm->animation_length_in_time = (float)frames * tfxFRAME_LENGTH - 1.f;
 
 		float update_freq = tfxUPDATE_FREQUENCY;
 		//SetUpdateFrequency(60.f * (anim.playback_speed ? anim.playback_speed : 1.f));
@@ -6210,8 +6211,6 @@ namespace tfx {
 		total_sprites = 0;
 		tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
 
-		//std::cout << " ----------------- " << std::endl;
-
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
 			pm->Update(tfxFRAME_LENGTH);
@@ -6314,10 +6313,15 @@ namespace tfx {
 					if (sprites.captured_index[j] == tfxINVALID) continue;
 					int frame = i - 1;
 					frame = frame < 0 ? anim.real_frames - 1 : frame;
+					tfxU32 wrap_bit = sprites.captured_index[j] & 0x10000000;
 					sprites.captured_index[j] = (sprites.captured_index[j] & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
+					sprites.captured_index[j] |= wrap_bit;
 				}
 			}
 		}
+
+		WrapSingleParticleSprites(sprite_data);
+		ClearWrapBit(sprite_data);
 
 		FreeSoABuffer(&temp_sprites_buffer);
 		SetUpdateFrequency(update_freq);
@@ -6478,6 +6482,34 @@ namespace tfx {
 							if (age_diff < 2) break;
 						}
 					}
+				}
+			}
+		}
+	}
+
+	void WrapSingleParticleSprites(tfxSpriteData *sprite_data) {
+		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
+		for (tfxEachLayer) {
+			for (int i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
+				if (sprites.captured_index[i] & 0x10000000) {
+					for (int j = sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer]; j != sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer] + sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].sprite_count[layer]; ++j) {
+						if (sprites.uid[j].uid == sprites.uid[i].uid) {
+							sprites.captured_index[i] = j;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	void ClearWrapBit(tfxSpriteData *sprite_data) {
+		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
+		for (int i = 0; i != sprite_data->normal.frame_count; ++i) {
+			for (tfxEachLayer) {
+				for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
+					if (sprites.captured_index[j] == tfxINVALID) continue;
+					tfxU32 wrap_bit = 0x10000000;
+					sprites.captured_index[j] &= ~wrap_bit;
 				}
 			}
 		}
@@ -7975,7 +8007,13 @@ namespace tfx {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
 					tfxU32 &sprites_index = bank.sprite_index[index + j];
 					float &age = bank.age[index + j];
-					sprites.captured_index[sprite_depth_index] = age == 0.f ? (pm.current_sprite_buffer << 28) + sprite_depth_index : (!pm.current_sprite_buffer << 28) + (sprites_index & 0x0FFFFFFF);
+					if (property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid) {
+						sprites.captured_index[sprite_depth_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+						sprites.captured_index[sprite_depth_index] |= 0x10000000;
+					}
+					else {
+						sprites.captured_index[sprite_depth_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+					}
 					sprites_index = (work_entry->layer << 28) + sprite_depth_index;
 					sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 					running_sprite_index++;
@@ -7985,7 +8023,13 @@ namespace tfx {
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 &sprites_index = bank.sprite_index[index + j];
 					float &age = bank.age[index + j];
-					sprites.captured_index[running_sprite_index] = age == 0.f ? (pm.current_sprite_buffer << 28) + running_sprite_index : (!pm.current_sprite_buffer << 28) + (sprites_index & 0x0FFFFFFF);
+					if (property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid) {
+						sprites.captured_index[running_sprite_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+						sprites.captured_index[running_sprite_index] |= 0x10000000;
+					}
+					else {
+						sprites.captured_index[running_sprite_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+					}
 					sprites_index = (work_entry->layer << 28) + running_sprite_index;
 					sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 				}
@@ -8019,12 +8063,12 @@ namespace tfx {
 			if (!(pm.flags & tfxEffectManagerFlags_unordered)) {				//Predictable
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
-					sprites.captured_index[sprite_depth_index] = (flags.a[j] & tfxParticleFlags_capture_after_transform) ? (pm.current_sprite_buffer << 28) + sprite_depth_index : sprites.captured_index[sprite_depth_index];
+					sprites.captured_index[sprite_depth_index] = (flags.a[j] & tfxParticleFlags_capture_after_transform) ? (pm.current_sprite_buffer << 30) + sprite_depth_index : sprites.captured_index[sprite_depth_index];
 				}
 			}
 			else {
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-					sprites.captured_index[running_sprite_index] = (flags.a[j] & tfxParticleFlags_capture_after_transform) ? (pm.current_sprite_buffer << 28) + running_sprite_index : sprites.captured_index[running_sprite_index];
+					sprites.captured_index[running_sprite_index] = (flags.a[j] & tfxParticleFlags_capture_after_transform) ? (pm.current_sprite_buffer << 30) + running_sprite_index : sprites.captured_index[running_sprite_index];
 					running_sprite_index++;
 				}
 			}
@@ -8039,6 +8083,7 @@ namespace tfx {
 		tfxControlWorkEntry *work_entry = static_cast<tfxControlWorkEntry*>(data);
 		tfxU32 emitter_index = work_entry->emitter_index;
 		const tfxU32 particles_index = work_entry->pm->emitters.particles_index[emitter_index];
+		tfxEmitterPropertyFlags emitter_flags = work_entry->pm->emitters.property_flags[emitter_index];
 		tfxParticleManager &pm = *work_entry->pm;
 		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
 
@@ -9221,7 +9266,8 @@ namespace tfx {
 		const tfxU32 loop_count = entry->properties->single_shot_limit[property_index] + 1;
 		tfxLibrary *library = pm.library;
 		const tfxU32 emitter_attributes = pm.emitters.emitter_attributes[emitter_index];
-		const tfxEmitterStateFlags emitter_flags = pm.emitters.state_flags[emitter_index];
+		const tfxEmitterStateFlags state_flags = pm.emitters.state_flags[emitter_index];
+		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
 		const float emitter_intensity = pm.emitters.intensity[emitter_index];
 		const float first_red_value = library->emitter_attributes[emitter_attributes].overtime.red.GetFirstValue();
 		const float first_green_value = library->emitter_attributes[emitter_attributes].overtime.green.GetFirstValue();
@@ -9250,13 +9296,18 @@ namespace tfx {
 			//Max age
 			//Todo: should age be set to the tween value?
 			age = 0.f;
-			max_age = life + random.Range(life_variation);
+			if (property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid) {
+				max_age = pm.animation_length_in_time;
+			}
+			else {
+				max_age = life + random.Range(life_variation);
+			}
 			single_loop_count = 0;
 
 			float alpha = 255.f * first_alpha_value;
 			float intensity = first_intensity_value * emitter_intensity;
 			//intensity = 0.f;
-			if (emitter_flags & tfxEmitterStateFlags_random_color) {
+			if (state_flags & tfxEmitterStateFlags_random_color) {
 				float age = random.Range(max_age);
 				color = tfxRGBA8(	255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.red, age, max_age),
 									255.f * lookup_overtime_callback(library->emitter_attributes[emitter_attributes].overtime.green, age, max_age),
@@ -11134,7 +11185,6 @@ namespace tfx {
 		tfxU32 emitter_index = work_entry->emitter_index;
 		tfxParticleManager &pm = *work_entry->pm;
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
-		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxU32 property_flags = pm.emitters.property_flags[emitter_index];
 		const tfxWideInt single_shot_limit = tfxWideSetSinglei(work_entry->properties->single_shot_limit[property_index]);
@@ -11145,7 +11195,12 @@ namespace tfx {
 		const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_single), tfxWideSetZeroi());
 		const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
 		tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei(pm.emitters.state_flags[emitter_index] & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning)), tfxWideSetZeroi());
+		if (property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid) {
+			state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid), tfxWideSetZeroi());
+		}
 		const tfxWideInt xor_state_flags_no_spawning = tfxWideXOri(state_flags_no_spawning, tfxWideSetSinglei(-1));
+
+		tfxParticleSoA &bank = pm.particle_arrays[particles_index];
 
 		for (int i = 0; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;

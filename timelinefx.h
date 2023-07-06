@@ -844,7 +844,7 @@ You can then use layer inside the loop to get the current layer
 		tfxEmitterPropertyFlags_play_once = 1 << 16,						//Play the animation once only
 		tfxEmitterPropertyFlags_random_start_frame = 1 << 17,				//Start the animation of the image from a random frame
 		tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
-		tfxEmitterPropertyFlags_unused = 1 << 19,							//Unused
+		tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid = 1 << 19,	//When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
 		tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
 		tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 		tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
@@ -7103,6 +7103,9 @@ You can then use layer inside the loop to get the current layer
 		tfxVec3 camera_position;
 
 		tfxU32 unique_particle_id = 0;	//Used when recording sprite data
+		//When using single particles, you can flag the emitter to set the max_age of the particle to the 
+		//length in time of the animation so that it maps nicely to the animation
+		float animation_length_in_time;		
 
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
@@ -7592,6 +7595,8 @@ You can then use layer inside the loop to get the current layer
 	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect, tfxVec3 camera_position);
 	void CompressSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect);
 	void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
+	void WrapSingleParticleSprites(tfxSpriteData *sprite_data);
+	void ClearWrapBit(tfxSpriteData *sprite_data);
 
 	struct tfxEffectTemplate {
 		tfxStorageMap<tfxEffectEmitter*> paths;
