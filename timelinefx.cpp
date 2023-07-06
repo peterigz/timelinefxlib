@@ -8007,7 +8007,7 @@ namespace tfx {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
 					tfxU32 &sprites_index = bank.sprite_index[index + j];
 					float &age = bank.age[index + j];
-					if (property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid) {
+					if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) {
 						sprites.captured_index[sprite_depth_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 						sprites.captured_index[sprite_depth_index] |= 0x10000000;
 					}
@@ -8023,7 +8023,7 @@ namespace tfx {
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 &sprites_index = bank.sprite_index[index + j];
 					float &age = bank.age[index + j];
-					if (property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid) {
+					if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) {
 						sprites.captured_index[running_sprite_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 						sprites.captured_index[running_sprite_index] |= 0x10000000;
 					}
@@ -9296,7 +9296,7 @@ namespace tfx {
 			//Max age
 			//Todo: should age be set to the tween value?
 			age = 0.f;
-			if (property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid) {
+			if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) {
 				max_age = pm.animation_length_in_time;
 			}
 			else {
@@ -11195,8 +11195,8 @@ namespace tfx {
 		const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_single), tfxWideSetZeroi());
 		const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
 		tfxWideInt state_flags_no_spawning = tfxWideGreateri(tfxWideOri(tfxWideSetSinglei(pm.emitters.state_flags[emitter_index] & tfxEmitterStateFlags_stop_spawning), tfxWideSetSinglei(work_entry->pm->flags & tfxEffectManagerFlags_disable_spawning)), tfxWideSetZeroi());
-		if (property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid) {
-			state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_captured_index_behaviour_no_invalid), tfxWideSetZeroi());
+		if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) {
+			state_flags_no_spawning = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_wrap_single_sprite), tfxWideSetZeroi());
 		}
 		const tfxWideInt xor_state_flags_no_spawning = tfxWideXOri(state_flags_no_spawning, tfxWideSetSinglei(-1));
 
