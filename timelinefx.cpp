@@ -3037,6 +3037,7 @@ namespace tfx {
 		names_and_types.Insert("relative_angle", tfxBool);
 		names_and_types.Insert("image_handle_auto_center", tfxBool);
 		names_and_types.Insert("single", tfxBool);
+		names_and_types.Insert("wrap_single_sprite", tfxBool);
 		names_and_types.Insert("one_shot", tfxBool);
 		names_and_types.Insert("spawn_on_grid", tfxBool);
 		names_and_types.Insert("grid_spawn_clockwise", tfxBool);
@@ -3608,8 +3609,8 @@ namespace tfx {
 			if (value) effect.property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; else effect.property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center;
 		if (field == "single")
 			if (value) effect.property_flags |= tfxEmitterPropertyFlags_single; else effect.property_flags &= ~tfxEmitterPropertyFlags_single;
-		//if (field == "one_shot")
-			//if(value) effect.property_flags |= tfxEmitterPropertyFlags_one_shot; else effect.property_flags &= ~tfxEmitterPropertyFlags_one_shot;
+		if (field == "wrap_single_sprite")
+			if (value) effect.property_flags |= tfxEmitterPropertyFlags_wrap_single_sprite; else effect.property_flags &= ~tfxEmitterPropertyFlags_wrap_single_sprite;
 		if (field == "spawn_on_grid")
 			if (value) effect.property_flags |= tfxEmitterPropertyFlags_spawn_on_grid; else effect.property_flags &= ~tfxEmitterPropertyFlags_spawn_on_grid;
 		if (field == "grid_spawn_clockwise")
@@ -3682,6 +3683,7 @@ namespace tfx {
 		file.AddLine("relative_position=%i", (flags & tfxEmitterPropertyFlags_relative_position));
 		file.AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
 		file.AddLine("single=%i", (flags & tfxEmitterPropertyFlags_single));
+		file.AddLine("wrap_single_sprite=%i", (flags & tfxEmitterPropertyFlags_wrap_single_sprite));
 		file.AddLine("single_shot_limit=%i", property.single_shot_limit[index]);
 		file.AddLine("spawn_on_grid=%i", (flags & tfxEmitterPropertyFlags_spawn_on_grid));
 		file.AddLine("grid_spawn_clockwise=%i", (flags & tfxEmitterPropertyFlags_grid_spawn_clockwise));
@@ -6340,6 +6342,7 @@ namespace tfx {
 		}
 
 		pm->camera_position = pm_camera_position;
+		pm->ToggleSpritesWithUID(false);
 	}
 
 	void CompressSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect) {
@@ -6491,7 +6494,7 @@ namespace tfx {
 		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
 		for (tfxEachLayer) {
 			for (int i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
-				if (sprites.captured_index[i] & 0x10000000) {
+				if (sprites.captured_index[i] != tfxINVALID && sprites.captured_index[i] & 0x10000000) {
 					for (int j = sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer]; j != sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer] + sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].sprite_count[layer]; ++j) {
 						if (sprites.uid[j].uid == sprites.uid[i].uid) {
 							sprites.captured_index[i] = j;
@@ -8007,13 +8010,8 @@ namespace tfx {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
 					tfxU32 &sprites_index = bank.sprite_index[index + j];
 					float &age = bank.age[index + j];
-					if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) {
-						sprites.captured_index[sprite_depth_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-						sprites.captured_index[sprite_depth_index] |= 0x10000000;
-					}
-					else {
-						sprites.captured_index[sprite_depth_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-					}
+					sprites.captured_index[sprite_depth_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+					sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
 					sprites_index = (work_entry->layer << 28) + sprite_depth_index;
 					sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 					running_sprite_index++;
@@ -8023,13 +8021,8 @@ namespace tfx {
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 &sprites_index = bank.sprite_index[index + j];
 					float &age = bank.age[index + j];
-					if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) {
-						sprites.captured_index[running_sprite_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-						sprites.captured_index[running_sprite_index] |= 0x10000000;
-					}
-					else {
-						sprites.captured_index[running_sprite_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-					}
+					sprites.captured_index[running_sprite_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+					sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
 					sprites_index = (work_entry->layer << 28) + running_sprite_index;
 					sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
 				}
@@ -8294,31 +8287,31 @@ namespace tfx {
 	}
 
 	void tfxParticleManager::ToggleSpritesWithUID(bool switch_on) {
-		for (tfxEachLayer) {
-			FreeSoABuffer(&sprite_buffer[0][layer]);
-			if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-				FreeSoABuffer(&sprite_buffer[1][layer]);
-			}
+		if (switch_on) {
+			for (tfxEachLayer) {
+				FreeSoABuffer(&sprite_buffer[0][layer]);
+				if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
+					FreeSoABuffer(&sprite_buffer[1][layer]);
+				}
 
 #ifdef tfxTRACK_MEMORY
-			memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
+				memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
 #endif
 
-			if (flags & tfxEffectManagerFlags_3d_effects) {
-				InitSprite3dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
-				if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-					InitSprite3dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+				if (flags & tfxEffectManagerFlags_3d_effects) {
+					InitSprite3dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
+						InitSprite3dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					}
 				}
-			}
-			else {
-				InitSprite2dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
-				if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-					InitSprite2dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+				else {
+					InitSprite2dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
+						InitSprite2dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					}
 				}
+				flags |= tfxEffectManagerFlags_using_uids;
 			}
-		}
-		if (switch_on) {
-			flags |= tfxEffectManagerFlags_using_uids;
 		}
 		else {
 			flags &= ~tfxEffectManagerFlags_using_uids;
@@ -9299,6 +9292,13 @@ namespace tfx {
 			if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 				max_age = pm.animation_length_in_time;
 			}
+			//Remove this unless I change my mind about it:
+			//Only makes sense for single particles
+			//else if(property_flags & tfxEmitterPropertyFlags_life_proportional_to_animation && pm.flags & tfxEffectManagerFlags_recording_sprites) {
+			//	float life_proportion = life / (life + life_variation);
+			//	float life_variation_proportion = life_variation / (life + life_variation);
+			//	max_age = life_proportion * pm.animation_length_in_time + random.Range(life_variation_proportion * pm.animation_length_in_time);
+			//}
 			else {
 				max_age = life + random.Range(life_variation);
 			}
@@ -11547,7 +11547,7 @@ namespace tfx {
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleSize);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleColor);
 				tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleImageFrame);
-				if (pm.flags & tfxEffectManagerFlags_recording_sprites) {
+				if (pm.flags & tfxEffectManagerFlags_recording_sprites && pm.flags & tfxEffectManagerFlags_using_uids) {
 					tfxAddWorkQueueEntry(&pm.work_queue, &work_entry, ControlParticleUID);
 				}
 			}
@@ -11561,7 +11561,7 @@ namespace tfx {
 				ControlParticleSize(&pm.work_queue, &work_entry);
 				ControlParticleColor(&pm.work_queue, &work_entry);
 				ControlParticleImageFrame(&pm.work_queue, &work_entry);
-				if (pm.flags & tfxEffectManagerFlags_recording_sprites) {
+				if (pm.flags & tfxEffectManagerFlags_recording_sprites && pm.flags & tfxEffectManagerFlags_using_uids) {
 					ControlParticleUID(&pm.work_queue, &work_entry);
 				}
 			}
