@@ -941,6 +941,7 @@ You can then use layer inside the loop to get the current layer
 		tfxAnimationManagerFlags_none = 0,
 		tfxAnimationManagerFlags_has_animated_shapes = 1 << 0,
 		tfxAnimationManagerFlags_initialised = 1 << 1,
+		tfxAnimationManagerFlags_is_3d = 1 << 2,
 	};
 
 	//-----------------------------------------------------------
@@ -6971,7 +6972,9 @@ You can then use layer inside the loop to get the current layer
 	struct tfxAnimationManager {
 		//All of the sprite data for all the animations that you might want to play on the GPU.
 		//This could be deleted once it's uploaded to the GPU
-		tfxvec<tfxSpriteData3d> sprite_data;
+		//An animation manager can only be used for either 2d or 3d not both
+		tfxvec<tfxSpriteData3d> sprite_data_3d;
+		tfxvec<tfxSpriteData2d> sprite_data_2d;
 		//List of active instances that are currently playing
 		tfxvec<tfxAnimationInstance> instances;
 		//List of instances in use. These index into the instances list above
@@ -7235,13 +7238,13 @@ You can then use layer inside the loop to get the current layer
 			return sprites[!current_sprite_buffer][layer].transform_3d[index].position;
 		}
 		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
-			return sprites[(index & 0xF0000000) >> 28][layer].transform_3d[index & 0x0FFFFFFF];
+			return sprites[(index & 0xC0000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
 		}
 		tfxAPI inline tfxSpriteTransform2d &GetCapturedSprite2dTransform(tfxU32 layer, tfxU32 index) {
-			return sprites[(index & 0xF0000000) >> 28][layer].transform_2d[index & 0x0FFFFFFF];
+			return sprites[(index & 0xC0000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
 		}
 		tfxAPI inline float &GetCapturedSprite3dIntensity(tfxU32 layer, tfxU32 index) {
-			return sprites[(index & 0xF0000000) >> 28][layer].intensity[index & 0x0FFFFFFF];
+			return sprites[(index & 0xC0000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
 		}
 
 		//Internal use only
@@ -7592,9 +7595,8 @@ You can then use layer inside the loop to get the current layer
 
 	void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
 	void ResetSpriteDataLerpOffset(tfxSpriteData &sprites);
-	void RecordSpriteData2d(tfxParticleManager *pm, tfxEffectEmitter *effect);
-	void RecordSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect, tfxVec3 camera_position);
-	void CompressSpriteData3d(tfxParticleManager *pm, tfxEffectEmitter *effect);
+	void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, tfxVec3 camera_position);
+	void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d);
 	void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
 	void WrapSingleParticleSprites(tfxSpriteData *sprite_data);
 	void ClearWrapBit(tfxSpriteData *sprite_data);
@@ -7646,7 +7648,7 @@ You can then use layer inside the loop to get the current layer
 			* @param path		const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
 			* / void RecordSpriteData3d(tfxParticleManager &pm, u32 frames, u32 start_frame, int extra_frames, u32 &largest_frame);
 		*/
-		tfxAPI void RecordSpriteData(tfxParticleManager *pm, tfxVec3 camera_position = {});
+		tfxAPI void Record(tfxParticleManager *pm, tfxVec3 camera_position = {});
 
 		/*
 		Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager
@@ -8608,7 +8610,7 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void SetAnimationScale(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float scale);
 
 	/*
-	Initialise an Animation Manager. This must be run before using an animation manager. An animation manager is used
+	Initialise an Animation Manager for use with 3d sprites. This must be run before using an animation manager. An animation manager is used
 	to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in 
 	real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work 
 	to calculate the state of particles between frames for smooth animation.
@@ -8618,7 +8620,20 @@ You can then use layer inside the loop to get the current layer
 									beyond this amount but it gives you a chance to reserve a decent amount to start with to 
 									save too much mem copies as the data grows
 	*/
-	tfxAPI void InitialiseAnimationManager(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
+	tfxAPI void InitialiseAnimationManagerFor3d(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
+
+	/*
+	Initialise an Animation Manager for use with 2d sprites. This must be run before using an animation manager. An animation manager is used
+	to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in 
+	real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work 
+	to calculate the state of particles between frames for smooth animation.
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param max_instances			The maximum number of animation instances that you want to be able to play at one time.
+	* @param initial_capacity		Optionally, you can set an initial capacity for the sprite data. The data will grow if you add
+									beyond this amount but it gives you a chance to reserve a decent amount to start with to 
+									save too much mem copies as the data grows
+	*/
+	tfxAPI void InitialiseAnimationManagerFor2d(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
 
 	/*
 	Add sprite data to an animation manager sprite data buffer from an effect. This will record the
@@ -8747,7 +8762,10 @@ You can then use layer inside the loop to get the current layer
 	* @returns tfxU32				The number of sprites in the buffer
 	*/
 	tfxAPI inline tfxU32 GetTotalSpriteDataCount(tfxAnimationManager *animation_manager) {
-		return animation_manager->sprite_data.current_size;
+		if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
+			return animation_manager->sprite_data_3d.current_size;
+		}
+		return animation_manager->sprite_data_2d.current_size;
 	}
 
 	/*
@@ -8756,7 +8774,10 @@ You can then use layer inside the loop to get the current layer
 	* @returns tfxU32				The number of sprites in the buffer
 	*/
 	tfxAPI inline size_t GetSpriteDataSizeInBytes(tfxAnimationManager *animation_manager) {
-		return animation_manager->sprite_data.current_size * sizeof(tfxSpriteData3d);
+		if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
+			return animation_manager->sprite_data_3d.size_in_bytes();
+		}
+		return animation_manager->sprite_data_2d.size_in_bytes();
 	}
 
 	/*
@@ -8765,7 +8786,10 @@ You can then use layer inside the loop to get the current layer
 	* @returns void*				A pointer to the sprite data memory
 	*/
 	tfxAPI inline void* GetSpriteDataBufferPointer(tfxAnimationManager *animation_manager) {
-		return animation_manager->sprite_data.data;
+		if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
+			return animation_manager->sprite_data_3d.data;
+		}
+		return animation_manager->sprite_data_2d.data;
 	}
 
 	/*
