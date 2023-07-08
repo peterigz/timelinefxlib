@@ -8602,6 +8602,15 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, tfxVec3 position);
 
 	/*
+	Set the position of a 2d animation
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
+	* @param x						A float of the x position
+	* @param y						A float of the y position
+	*/
+	tfxAPI void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float x, float y);
+
+	/*
 	Set the scale of a 3d animation
 	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
 	* @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance

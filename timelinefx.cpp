@@ -9729,7 +9729,6 @@ namespace tfx {
 		const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 		const tfxU32 property_index = pm.emitters.properties_index[emitter_index];
 		const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
-		tfxVec2 &image_size = properties.image[property_index]->image_size;
 
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -9741,14 +9740,14 @@ namespace tfx {
 			if (!(property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
 				float random_size_x = random.Range(size_variation.x);
 				float random_size_y = random.Range(size_variation.y);
-				base_size_y = (random_size_y + size.y) / image_size.y;
-				base_size_x = (random_size_x + size.x) / image_size.x;
+				base_size_y = (random_size_y + size.y);
+				base_size_x = (random_size_x + size.x);
 			}
 			else {
 				float random_size_x = random.Range(size_variation.x);
 				float random_size_y = random_size_x;
-				base_size_y = (random_size_y + size.y) / image_size.y;
-				base_size_x = (random_size_x + size.x) / image_size.x;
+				base_size_y = (random_size_y + size.y);
+				base_size_x = (random_size_x + size.x);
 			}
 		}
 
@@ -11806,6 +11805,11 @@ namespace tfx {
 
 	void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, tfxVec3 position) {
 		animation_manager->instances[effect_index].position = position;
+	}
+
+	void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float x, float y) {
+		animation_manager->instances[effect_index].position.x = x;
+		animation_manager->instances[effect_index].position.y = y;
 	}
 
 	void SetAnimationScale(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float scale) {
