@@ -6919,7 +6919,6 @@ namespace tfx {
 		animation_manager->buffer_metrics.offsets_size_in_bytes = 0;
 		animation_manager->buffer_metrics.sprite_data_size = 0;
 		animation_manager->buffer_metrics.total_sprites_to_draw = 0;
-		animation_manager->flags = 0;
 	}
 
 	void FreeAnimationManager(tfxAnimationManager *animation_manager) {
