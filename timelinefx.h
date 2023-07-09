@@ -7528,6 +7528,8 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		//Mainly internal functions
+		bool IsShapeUsed(tfxKey image_hash);
+		bool ShapeExists(tfxKey image_hash);
 		void RemoveShape(tfxKey image_hash);
 		tfxEffectEmitter &InsertEffect(tfxEffectEmitter &effect, tfxEffectEmitter *position);
 		tfxEffectEmitter &AddEffect(tfxEffectEmitter &effect);

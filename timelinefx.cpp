@@ -2118,6 +2118,29 @@ namespace tfx {
 		return sizeof(float) * compiled_lookup_values.size();
 	}
 
+	bool tfxLibrary::IsShapeUsed(tfxKey image_hash) {
+		tmpStack(tfxEffectEmitter*, effect_stack);
+		for (auto &effect : effects) {
+			effect_stack.push_back(&effect);
+		}
+		while (effect_stack.size()) {
+			auto current = effect_stack.pop_back();
+			if (current->type == tfxEmitterType) {
+				if (current->GetProperties().image[current->property_index]->image_hash == image_hash) {
+					return true;
+				}
+			}
+			for (auto &sub : current->GetInfo().sub_effectors) {
+				effect_stack.push_back(&sub);
+			}
+		}
+		return false;
+	}
+
+	bool tfxLibrary::ShapeExists(tfxKey image_hash) {
+		return particle_shapes.ValidKey(image_hash);
+	}
+
 	void tfxLibrary::RemoveShape(tfxKey image_hash) {
 		particle_shapes.Remove(image_hash);
 		for (auto &m : particle_shapes.map) {
