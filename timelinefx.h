@@ -6451,39 +6451,27 @@ You can then use layer inside the loop to get the current layer
 		float *intensity;						//The multiplier for the sprite color
 	};
 
-	inline void InitSprite3dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
-		if(use_uid)
-			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
+	enum tfxSpriteBufferMode {
+		tfxSpriteBufferMode_2d,
+		tfxSpriteBufferMode_3d,
+		tfxSpriteBufferMode_both,
+	};
 
-	inline void InitSpriteBothSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
+	inline void InitSpriteBufferSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
 		if(use_uid)
 			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
-
-	inline void InitSprite2dSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, bool use_uid = false) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
-		if(use_uid)
-			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
+		if (mode == tfxSpriteBufferMode_2d) {
+			AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
+		}
+		else if (mode == tfxSpriteBufferMode_3d) {
+			AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
+		}
+		else {
+			AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
+			AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
+		}
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
 		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
 		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
@@ -8004,6 +7992,7 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 	/*
+	This is dubious and needs testing
 	Enable or disable double buffering of sprites in a particle manager. When double buffered, you can used the previous frame of sprites to interpolated sprites each frame for smoother animation. You can disable it to save memory.
 	* @param pm							A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 	* @param double_buffer_sprites	True or False to activate or deactivate double buffering of sprites
@@ -8017,7 +8006,15 @@ You can then use layer inside the loop to get the current layer
 		}
 		else if (double_buffer_sprites && !(pm->flags & tfxEffectManagerFlags_double_buffer_sprites)) {
 			for (tfxEachLayer) {
-				InitSprite3dSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8));
+				if (pm->flags & tfxEffectManagerFlags_2d_and_3d) {
+					InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8), tfxSpriteBufferMode_both);
+				}
+				else if (pm->flags & tfxEffectManagerFlags_3d_effects) {
+					InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8), tfxSpriteBufferMode_3d);
+				}
+				else {
+					InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8), tfxSpriteBufferMode_2d);
+				}
 			}
 			pm->flags |= tfxEffectManagerFlags_double_buffer_sprites;
 		}

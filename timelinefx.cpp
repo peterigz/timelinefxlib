@@ -8517,9 +8517,9 @@ namespace tfx {
 			memcpy(sprites2d[layer].name, "ParticleManager::sprites2d\0", 27);
 #endif
 
-			InitSprite2dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8));
+			InitSpriteBufferSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d);
 			if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-				InitSprite2dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8));
+				InitSpriteBufferSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d);
 			}
 		}
 
@@ -8585,9 +8585,9 @@ namespace tfx {
 			memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
 #endif
 
-			InitSprite3dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8));
+			InitSpriteBufferSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d);
 			if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-				InitSprite3dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8));
+				InitSpriteBufferSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d);
 			}
 
 		}
@@ -8665,21 +8665,21 @@ namespace tfx {
 #endif
 
 				if (flags & tfxEffectManagerFlags_2d_and_3d) {
-					InitSpriteBothSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					InitSpriteBufferSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_both, true);
 					if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-						InitSpriteBothSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+						InitSpriteBufferSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_both, true);
 					}
 				}
 				else if (flags & tfxEffectManagerFlags_3d_effects) {
-					InitSprite3dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					InitSpriteBufferSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d, true);
 					if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-						InitSprite3dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+						InitSpriteBufferSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d, true);
 					}
 				}
 				else {
-					InitSprite2dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					InitSpriteBufferSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d, true);
 					if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-						InitSprite2dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+						InitSpriteBufferSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d, true);
 					}
 				}
 				flags |= tfxEffectManagerFlags_using_uids;
@@ -8793,9 +8793,9 @@ namespace tfx {
 			memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
 #endif
 
-			InitSpriteBothSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, tfxDataWidth * 2));
+			InitSpriteBufferSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, tfxDataWidth * 2), tfxSpriteBufferMode_both);
 			if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
-				InitSpriteBothSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, tfxDataWidth * 2));
+				InitSpriteBufferSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, tfxDataWidth * 2), tfxSpriteBufferMode_both);
 			}
 
 			depth_indexes[layer][0].reserve(layer_max_values[layer]);
