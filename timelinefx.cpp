@@ -7017,7 +7017,7 @@ namespace tfx {
 				emitters.property_flags[index] = e.property_flags;
 				emitters.image_size[index] = properties.image[e.property_index]->image_size;
 				emitters.image_frame_rate[index] = properties.image[e.property_index]->animation_frames > 1 && e.property_flags & tfxEmitterPropertyFlags_animate ? properties.frame_rate[e.property_index] : 0.f;
-				emitters.image_frame_rate[index] = e.property_flags & tfxEmitterPropertyFlags_reverse_animation ? -emitters.image_frame_rate[index] : emitters.image_frame_rate[index];
+				//emitters.image_frame_rate[index] = e.property_flags & tfxEmitterPropertyFlags_reverse_animation ? -emitters.image_frame_rate[index] : emitters.image_frame_rate[index];
 				emitters.end_frame[index] = properties.end_frame[e.property_index];
 				emitters.angle_offsets[index] = properties.angle_offsets[e.property_index];
 				emitters.timeout[index] = 100.f;
@@ -8337,7 +8337,6 @@ namespace tfx {
 		const tfxBillboardingOptions billboard_option = work_entry->properties->billboard_option[property_index];
 
 		tfxU32 start_diff = work_entry->start_diff;
-		float image_frames[tfxDataWidth];
 
 		tfxWideFloat image_frame_rate = tfxWideSetSingle(pm.emitters.image_frame_rate[emitter_index]);
 		image_frame_rate = tfxWideMul(image_frame_rate, pm.update_time_wide);
@@ -8352,25 +8351,24 @@ namespace tfx {
 		for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 			tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
 
-			tfxWideFloat image_frame = tfxWideLoad(&bank.image_frame[index]);
+			tfxWideArray image_frame;
+			image_frame.m = tfxWideLoad(&bank.image_frame[index]);
 
 			//----Image animation
-			image_frame = tfxWideAdd(image_frame, image_frame_rate);
+			image_frame.m = tfxWideAdd(image_frame.m, image_frame_rate);
+			tfxWideStore(&bank.image_frame[index], image_frame.m);
 			if (emitter_flags & tfxEmitterStateFlags_play_once) {
-				image_frame = tfxWideMin(image_frame, end_frame);
-				image_frame = tfxWideMax(image_frame, tfxWideSetZero());
+				image_frame.m = tfxWideMin(image_frame.m, end_frame);
+				image_frame.m = tfxWideMax(image_frame.m, tfxWideSetZero());
 			}
 			else if(property_flags & tfxEmitterPropertyFlags_reverse_animation) {
-				tfxWideFloat mask = tfxWideLess(image_frame, tfxWideSetZero());
-				image_frame = tfxWideAdd(image_frame, tfxWideAnd(mask, frames));
+				image_frame.m = tfxWideMod(image_frame.m, frames);
+				image_frame.m = tfxWideSub(end_frame, image_frame.m);
 			}
 			else {
-				tfxWideFloat mask = tfxWideGreaterEqual(image_frame, frames);
-				image_frame = tfxWideSub(image_frame, tfxWideAnd(mask, frames));
+				image_frame.m = tfxWideMod(image_frame.m, frames);
 			}
 
-			tfxWideStore(&bank.image_frame[index], image_frame);
-			tfxWideStore(image_frames, image_frame);
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			if (!(pm.flags & tfxEffectManagerFlags_unordered)) {				//Predictable
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
@@ -8380,7 +8378,7 @@ namespace tfx {
 					sprites.captured_index[sprite_depth_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 					sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
 					sprites_index = (work_entry->layer << 28) + sprite_depth_index;
-					sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
+					sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (property_index);
 					running_sprite_index++;
 				}
 			}
@@ -8391,7 +8389,7 @@ namespace tfx {
 					sprites.captured_index[running_sprite_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 					sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
 					sprites_index = (work_entry->layer << 28) + running_sprite_index;
-					sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frames[j] << 16) + (property_index);
+					sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (property_index);
 				}
 			}
 

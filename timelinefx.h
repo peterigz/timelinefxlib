@@ -423,6 +423,16 @@ You can then use layer inside the loop to get the current layer
 		return _mm_sub_ps(fi, j);
 	}
 
+	//simd mod function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
+	inline tfxWideFloat tfxWideMod(const tfxWideFloat &a, const tfxWideFloat &aDiv) {
+		tfxWideFloat c = tfxWideDiv(a, aDiv);
+		tfxWideInt i = tfxWideConverti(c);
+		tfxWideFloat cTrunc = tfxWideConvert(i);
+		tfxWideFloat base = tfxWideMul(cTrunc, aDiv);
+		tfxWideFloat r = tfxWideSub(a, base);
+		return r;
+	}
+
 	inline tfxWideFloat tfxWideAbs(tfxWideFloat v) {
 		return tfxWideAnd(tfxWideCast(tfxWideShiftRight(tfxWideSetSinglei(-1), 1)), v);
 	}
@@ -3998,12 +4008,6 @@ You can then use layer inside the loop to get the current layer
 		return _mm_add_ps(xx, yy);
 	}
 
-	static const int tfxPRIME_X = 501125321;
-	static const int tfxPRIME_Y = 1136930381;
-	static const int tfxPRIME_Z = 1720413743;
-
-	static inline int _fnlFastRound(float f) { return (f >= 0) ? (int)(f + 0.5f) : (int)(f - 0.5f); }
-
 	static const float tfxGRADIENTS_3D[] =
 	{
 		0, 1, 1, 0,  0,-1, 1, 0,  0, 1,-1, 0,  0,-1,-1, 0,
@@ -4023,120 +4027,6 @@ You can then use layer inside the loop to get the current layer
 		1, 1, 0, 0, -1, 1, 0, 0,  1,-1, 0, 0, -1,-1, 0, 0,
 		1, 1, 0, 0,  0,-1, 1, 0, -1, 1, 0, 0,  0,-1,-1, 0
 	};
-
-	static inline int _fnlHash3D(int seed, int xPrimed, int yPrimed, int zPrimed)
-	{
-		int hash = seed ^ xPrimed ^ yPrimed ^ zPrimed;
-
-		hash *= 0x27d4eb2d;
-		return hash;
-	}
-
-	static inline float _fnlGradCoord3D(int seed, int xPrimed, int yPrimed, int zPrimed, float xd, float yd, float zd)
-	{
-		int hash = _fnlHash3D(seed, xPrimed, yPrimed, zPrimed);
-		hash ^= hash >> 15;
-		hash &= 63 << 2;
-		return xd * tfxGRADIENTS_3D[hash] + yd * tfxGRADIENTS_3D[hash | 1] + zd * tfxGRADIENTS_3D[hash | 2];
-	}
-
-	static float _fnlSingleOpenSimplex23D(int seed, float x, float y, float z)
-	{
-		// 3D OpenSimplex2 case uses two offset rotated cube grids.
-
-		/*
-		 * --- Rotation moved to TransformNoiseCoordinate method ---
-		 * const float R3 = (float)(2.0 / 3.0);
-		 * float r = (x + y + z) * R3; // Rotation, not skew
-		 * x = r - x; y = r - y; z = r - z;
-		 */
-
-		int i = _fnlFastRound(x);
-		int j = _fnlFastRound(y);
-		int k = _fnlFastRound(z);
-		float x0 = (float)(x - i);
-		float y0 = (float)(y - j);
-		float z0 = (float)(z - k);
-
-		int xNSign = (int)(-1.0f - x0) | 1;
-		int yNSign = (int)(-1.0f - y0) | 1;
-		int zNSign = (int)(-1.0f - z0) | 1;
-
-		float ax0 = xNSign * -x0;
-		float ay0 = yNSign * -y0;
-		float az0 = zNSign * -z0;
-
-		i *= tfxPRIME_X;
-		j *= tfxPRIME_Y;
-		k *= tfxPRIME_Z;
-
-		float value = 0;
-		float a = (0.6f - x0 * x0) - (y0 * y0 + z0 * z0);
-
-		for (int l = 0; ; l++)
-		{
-			if (a > 0)
-			{
-				value += (a * a) * (a * a) * _fnlGradCoord3D(seed, i, j, k, x0, y0, z0);
-			}
-
-			float b = a + 1;
-			int i1 = i;
-			int j1 = j;
-			int k1 = k;
-			float x1 = x0;
-			float y1 = y0;
-			float z1 = z0;
-			if (ax0 >= ay0 && ax0 >= az0)
-			{
-				x1 += xNSign;
-				b -= xNSign * 2 * x1;
-				i1 -= xNSign * tfxPRIME_X;
-			}
-			else if (ay0 > ax0 && ay0 >= az0)
-			{
-				y1 += yNSign;
-				b -= yNSign * 2 * y1;
-				j1 -= yNSign * tfxPRIME_Y;
-			}
-			else
-			{
-				z1 += zNSign;
-				b -= zNSign * 2 * z1;
-				k1 -= zNSign * tfxPRIME_Z;
-			}
-
-			if (b > 0)
-			{
-				value += (b * b) * (b * b) * _fnlGradCoord3D(seed, i1, j1, k1, x1, y1, z1);
-			}
-
-			if (l == 1)
-				break;
-
-			ax0 = 0.5f - ax0;
-			ay0 = 0.5f - ay0;
-			az0 = 0.5f - az0;
-
-			x0 = xNSign * ax0;
-			y0 = yNSign * ay0;
-			z0 = zNSign * az0;
-
-			a += (0.75f - ax0) - (ay0 + az0);
-
-			i += (xNSign >> 1) & tfxPRIME_X;
-			j += (yNSign >> 1) & tfxPRIME_Y;
-			k += (zNSign >> 1) & tfxPRIME_Z;
-
-			xNSign = -xNSign;
-			yNSign = -yNSign;
-			zNSign = -zNSign;
-
-			seed = ~seed;
-		}
-
-		return value * 32.69428253173828125f;
-	}
 
 	/**
  * Permutation table. This is just a random jumble of all numbers 0-255.
