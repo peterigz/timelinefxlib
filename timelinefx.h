@@ -768,7 +768,8 @@ You can then use layer inside the loop to get the current layer
 		tfxEffectManagerFlags_single_threaded = 1 << 12,
 		tfxEffectManagerFlags_double_buffer_sprites = 1 << 13,
 		tfxEffectManagerFlags_recording_sprites = 1 << 14,
-		tfxEffectManagerFlags_using_uids = 1 << 15
+		tfxEffectManagerFlags_using_uids = 1 << 15,
+		tfxEffectManagerFlags_2d_and_3d = 1 << 16
 	};
 
 	enum tfxVectorAlignType {
@@ -6834,7 +6835,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 offset_into_sprite_data;		//The starting ofset in the buffer that contains all the sprite data
 		tfxU32 info_index;					//Index into the effect_animation_info storage map to get at the frame meta
 		float current_time;					//Current point of time in the animation
-		float animation_length_in_time;				//Total time that the animation lasts for
+		float animation_length_in_time;		//Total time that the animation lasts for
 		float tween;						//The point time within the frame (0..1)
 		tfxAnimationInstanceFlags flags;	//Flags associated with the instance
 	};

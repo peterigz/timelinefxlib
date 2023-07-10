@@ -6752,6 +6752,7 @@ namespace tfx {
 				sprite.scale = sprites.transform_3d[i].scale;
 				animation_manager->sprite_data_3d.push_back(sprite);
 			}
+			metrics.total_memory_for_sprites = sizeof(tfxSpriteData3d) * metrics.total_sprites;
 		}
 		else {
 			metrics.start_offset = animation_manager->sprite_data_2d.current_size;
@@ -6779,8 +6780,8 @@ namespace tfx {
 				sprite.scale = sprites.transform_2d[i].scale;
 				animation_manager->sprite_data_2d.push_back(sprite);
 			}
+			metrics.total_memory_for_sprites = sizeof(tfxSpriteData2d) * metrics.total_sprites;
 		}
-		metrics.total_memory_for_sprites = sizeof(tfxSpriteData3d) * metrics.total_sprites;
 
 		//Update the index offset frame meta in the metrics depending on where this sprite data is being inserted into
 		//the list (the list may contain many different effect animations)
@@ -8663,7 +8664,13 @@ namespace tfx {
 				memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
 #endif
 
-				if (flags & tfxEffectManagerFlags_3d_effects) {
+				if (flags & tfxEffectManagerFlags_2d_and_3d) {
+					InitSpriteBothSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
+						InitSpriteBothSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
+					}
+				}
+				else if (flags & tfxEffectManagerFlags_3d_effects) {
 					InitSprite3dSoA(&sprite_buffer[0][layer], &sprites[0][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
 					if (flags & tfxEffectManagerFlags_double_buffer_sprites) {
 						InitSprite3dSoA(&sprite_buffer[1][layer], &sprites[1][layer], tfxMax((max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), true);
@@ -8707,7 +8714,7 @@ namespace tfx {
 		}
 		free_particle_lists.FreeAll();
 
-		tfxParticleManagerFlags current_flags = flags & tfxEffectManagerFlags_dynamic_sprite_allocation | flags & tfxEffectManagerFlags_double_buffer_sprites;
+		tfxParticleManagerFlags current_flags = flags & tfxEffectManagerFlags_dynamic_sprite_allocation | flags & tfxEffectManagerFlags_double_buffer_sprites | flags & tfxEffectManagerFlags_2d_and_3d;
 
 		if (mode == tfxParticleManagerMode_unordered)
 			flags = tfxEffectManagerFlags_unordered;
@@ -8775,6 +8782,8 @@ namespace tfx {
 
 		if (double_buffer_sprites)
 			flags |= tfxEffectManagerFlags_double_buffer_sprites;
+
+		flags |= tfxEffectManagerFlags_2d_and_3d;
 
 		for (tfxEachLayer) {
 			max_cpu_particles_per_layer[layer] = layer_max_values[layer];
