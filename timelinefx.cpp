@@ -9669,8 +9669,6 @@ namespace tfx {
 			parent = emitter_index;
 			particle_index = tfxINVALID;
 
-			std::cout << pm.emitters.age[emitter_index] << std::endl;
-
 			flags = 0;
 
 			//Max age
