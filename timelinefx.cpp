@@ -2003,7 +2003,7 @@ namespace tfx {
 					emitter_properties.end_frame[current.property_index] = particle_shapes.At(emitter_properties.image_hash[current.property_index]).animation_frames - 1;
 					shape_found = true;
 				}
-				/*else {
+				else {
 					for (auto &shape : particle_shapes.data) {
 						if (shape.shape_index == emitter_properties.image_index[current.property_index]) {
 							emitter_properties.image_hash[current.property_index] = shape.image_hash;
@@ -2013,7 +2013,7 @@ namespace tfx {
 							break;
 						}
 					}
-				}*/
+				}
 				if (!shape_found) {
 					emitter_properties.image[current.property_index] = &particle_shapes.At(default_hash);
 					emitter_properties.end_frame[current.property_index] = particle_shapes.At(default_hash).animation_frames - 1;
@@ -3357,12 +3357,12 @@ namespace tfx {
 
 	tfxVec3 StrToVec3(tfxStack<tfxStr256> &str) {
 		assert(str.size() == 3);	//array must be size 3
-		return tfxVec3((float)atof(str[0].c_str()), (float)atof(str[0].c_str()), (float)atof(str[0].c_str()));
+		return tfxVec3((float)atof(str[0].c_str()), (float)atof(str[1].c_str()), (float)atof(str[2].c_str()));
 	}
 
 	tfxVec2 StrToVec2(tfxStack<tfxStr256> &str) {
 		assert(str.size() == 2);	//array must be size 2
-		return tfxVec2((float)atof(str[0].c_str()), (float)atof(str[0].c_str()));
+		return tfxVec2((float)atof(str[0].c_str()), (float)atof(str[1].c_str()));
 	}
 
 	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxVec3 value, tfxU32 file_version) {
