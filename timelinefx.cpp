@@ -1989,36 +1989,38 @@ namespace tfx {
 	}
 
 	void tfxLibrary::UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash) {
+		tfxvec<tfxEffectEmitter*> stack;
 		for (auto &effect : effects) {
-			if (effect.type == tfxFolder || effect.type == tfxStage) {
-				UpdateParticleShapeReferences(effect.GetInfo().sub_effectors, default_hash);
-			}
-			else {
-				for (auto &emitter : effect.GetInfo().sub_effectors) {
-					bool shape_found = false;
-					tfxKey hash = emitter_properties.image_hash[emitter.property_index];
-					if (particle_shapes.ValidKey(emitter_properties.image_hash[emitter.property_index])) {
-						emitter_properties.image[emitter.property_index] = &particle_shapes.At(emitter_properties.image_hash[emitter.property_index]);
-						emitter_properties.end_frame[emitter.property_index] = particle_shapes.At(emitter_properties.image_hash[emitter.property_index]).animation_frames - 1;
-						shape_found = true;
-					}
-					else {
-						for (auto &shape : particle_shapes.data) {
-							if (shape.shape_index == emitter_properties.image_index[emitter.property_index]) {
-								emitter_properties.image_hash[emitter.property_index] = shape.image_hash;
-								emitter_properties.image[emitter.property_index] = &particle_shapes.At(emitter_properties.image_hash[emitter.property_index]);
-								emitter_properties.end_frame[emitter.property_index] = particle_shapes.At(emitter_properties.image_hash[emitter.property_index]).animation_frames - 1;
-								shape_found = true;
-								break;
-							}
+			stack.push_back(&effect);
+		}
+		while (stack.size()) {
+			tfxEffectEmitter &current = *stack.pop_back();
+			if (current.type == tfxEmitterType) {
+				bool shape_found = false;
+				tfxKey hash = emitter_properties.image_hash[current.property_index];
+				if (particle_shapes.ValidKey(emitter_properties.image_hash[current.property_index])) {
+					emitter_properties.image[current.property_index] = &particle_shapes.At(emitter_properties.image_hash[current.property_index]);
+					emitter_properties.end_frame[current.property_index] = particle_shapes.At(emitter_properties.image_hash[current.property_index]).animation_frames - 1;
+					shape_found = true;
+				}
+				/*else {
+					for (auto &shape : particle_shapes.data) {
+						if (shape.shape_index == emitter_properties.image_index[current.property_index]) {
+							emitter_properties.image_hash[current.property_index] = shape.image_hash;
+							emitter_properties.image[current.property_index] = &particle_shapes.At(emitter_properties.image_hash[current.property_index]);
+							emitter_properties.end_frame[current.property_index] = particle_shapes.At(emitter_properties.image_hash[current.property_index]).animation_frames - 1;
+							shape_found = true;
+							break;
 						}
 					}
-					if(!shape_found) {
-						emitter_properties.image[emitter.property_index] = &particle_shapes.At(default_hash);
-						emitter_properties.end_frame[emitter.property_index] = particle_shapes.At(default_hash).animation_frames - 1;
-					}
-					UpdateParticleShapeReferences(emitter.GetInfo().sub_effectors, default_hash);
+				}*/
+				if (!shape_found) {
+					emitter_properties.image[current.property_index] = &particle_shapes.At(default_hash);
+					emitter_properties.end_frame[current.property_index] = particle_shapes.At(default_hash).animation_frames - 1;
 				}
+			}
+			for (auto &sub : current.GetInfo().sub_effectors) {
+				stack.push_back(&sub);
 			}
 		}
 	}
