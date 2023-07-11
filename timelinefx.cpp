@@ -5513,6 +5513,14 @@ namespace tfx {
 			return error;
 		}
 
+		if (package.header.user_data2 == 1 && !(animation_manager.flags & tfxAnimationManagerFlags_is_3d)) {
+			return tfxErrorCode_sprite_data_is_3d_but_animation_manager_is_2d;
+		}
+
+		if (package.header.user_data2 == 0 && animation_manager.flags & tfxAnimationManagerFlags_is_3d) {
+			return tfxErrorCode_sprite_data_is_2d_but_animation_manager_is_3d;
+		}
+
 		if (animation_manager.flags & tfxAnimationManagerFlags_is_3d) {
 			animation_manager.sprite_data_3d.resize((tfxU32)(sprite_data->file_size / package.header.user_data1));
 			memcpy(animation_manager.sprite_data_3d.data, sprite_data->data.data, sprite_data->file_size);

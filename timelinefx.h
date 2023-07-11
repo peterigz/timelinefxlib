@@ -727,7 +727,9 @@ You can then use layer inside the loop to get the current layer
 		tfxErrorCode_wrong_file_size = 1 << 7,
 		tfxErrorCode_invalid_format = 1 << 8,
 		tfxErrorCode_no_inventory = 1 << 9,
-		tfxErrorCode_invalid_inventory = 1 << 10
+		tfxErrorCode_invalid_inventory = 1 << 10,
+		tfxErrorCode_sprite_data_is_3d_but_animation_manager_is_2d = 1 << 11,
+		tfxErrorCode_sprite_data_is_2d_but_animation_manager_is_3d = 1 << 12
 	};
 
 	enum tfxEffectCloningFlags_ {
