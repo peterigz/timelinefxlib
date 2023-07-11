@@ -7000,6 +7000,7 @@ You can then use layer inside the loop to get the current layer
 		tfxWideFloat frame_length_wide;
 		float update_time;
 		tfxWideFloat update_time_wide;
+		float update_frequency;
 
 		tfxParticleManager() :
 			flags(0),

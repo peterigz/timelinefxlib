@@ -7031,7 +7031,7 @@ namespace tfx {
 				//emitters.image_frame_rate[index] = e.property_flags & tfxEmitterPropertyFlags_reverse_animation ? -emitters.image_frame_rate[index] : emitters.image_frame_rate[index];
 				emitters.end_frame[index] = properties.end_frame[e.property_index];
 				emitters.angle_offsets[index] = properties.angle_offsets[e.property_index];
-				emitters.timeout[index] = 100.f;
+				emitters.timeout[index] = 2000.f;
 				emitters.amount_remainder[index] = 0.f;
 				emitters.qty_step_size[index] = 0.f;
 				emitters.timeout_counter[index] = 0;
@@ -7187,7 +7187,8 @@ namespace tfx {
 
 		frame_length = elapsed_time;
 		frame_length_wide = tfxWideSetSingle(frame_length);
-		update_time = 1.f / (1000.f / elapsed_time);
+		update_frequency = 1000.f / elapsed_time;
+		update_time = 1.f / update_frequency;
 		update_time_wide = tfxWideSetSingle(update_time);
 		new_compute_particle_index = 0;
 
@@ -9216,7 +9217,7 @@ namespace tfx {
 			age -= properties.loop_length[property_index];
 
 		if (highest_particle_age <= 0 && age > pm.frame_length * 5.f) {
-			timeout_counter++;
+			timeout_counter += pm.frame_length;
 		}
 		else {
 			timeout_counter = 0;
@@ -9375,7 +9376,7 @@ namespace tfx {
 			}
 			else {
 				amount_remainder = amount_that_will_spawn - (tfxU32)amount_that_will_spawn;
-				amount_remainder = (1.f - amount_remainder) * step_size;
+				amount_remainder += step_size;
 			}
 		}
 
@@ -9511,7 +9512,7 @@ namespace tfx {
 			}
 			else {
 				amount_remainder = amount_that_will_spawn - (tfxU32)amount_that_will_spawn;
-				amount_remainder = (1.f - amount_remainder) * step_size;
+				amount_remainder += step_size;
 			}
 		}
 		else {
@@ -9667,6 +9668,8 @@ namespace tfx {
 			tfxU32 &particle_index = entry->particle_data->particle_index[index];
 			parent = emitter_index;
 			particle_index = tfxINVALID;
+
+			std::cout << pm.emitters.age[emitter_index] << std::endl;
 
 			flags = 0;
 
