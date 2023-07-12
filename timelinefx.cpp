@@ -9382,7 +9382,8 @@ namespace tfx {
 			}
 			else {
 				amount_remainder = amount_that_will_spawn - (tfxU32)amount_that_will_spawn;
-				amount_remainder += step_size;
+				//amount_remainder += step_size;
+				amount_remainder = (1.f - amount_remainder) * step_size;
 			}
 		}
 
@@ -9518,7 +9519,7 @@ namespace tfx {
 			}
 			else {
 				amount_remainder = amount_that_will_spawn - (tfxU32)amount_that_will_spawn;
-				amount_remainder += step_size;
+				amount_remainder = (1.f - amount_remainder) * step_size;
 			}
 		}
 		else {
