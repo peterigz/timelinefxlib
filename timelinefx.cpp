@@ -2441,6 +2441,7 @@ namespace tfx {
 		a.animation_flags = tfxAnimationFlags_needs_recording | tfxAnimationFlags_export_with_transparency;
 		a.seed = 0;
 		a.needs_exporting = 0;
+		a.recording_frame_rate = 60.f;
 		//a.camera_settings.camera_floor_height = -10.f;
 		//a.camera_settings.camera_fov = tfxRadians(60);
 		//a.camera_settings.camera_pitch = tfxRadians(-30.f);
@@ -2463,6 +2464,7 @@ namespace tfx {
 			a.frame_offset = 0;
 			a.extra_frames_count = 0;
 			a.playback_speed = 1.f;
+			a.recording_frame_rate = 60.f;
 			a.animation_flags = tfxAnimationFlags_needs_recording | tfxAnimationFlags_export_with_transparency;
 			a.seed = 0;
 			a.needs_exporting = 0;
@@ -3134,6 +3136,7 @@ namespace tfx {
 		names_and_types.Insert("sprite_data_frame_offset", tfxUint);
 		names_and_types.Insert("sprite_data_extra_frames_count", tfxUint);
 		names_and_types.Insert("sprite_data_playback_speed", tfxFloat);
+		names_and_types.Insert("sprite_data_recording_frame_rate", tfxFloat);
 		names_and_types.Insert("color_option", tfxSInt);
 		names_and_types.Insert("export_option", tfxSInt);
 		names_and_types.Insert("export_with_transparency", tfxBool);
@@ -3602,6 +3605,8 @@ namespace tfx {
 			emitter_properties.angle_offsets[effect.property_index].yaw = value;
 		if (field == "sprite_data_playback_speed")
 			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].playback_speed = value;
+		if (field == "sprite_data_recording_frame_rate")
+			effect.library->sprite_data_settings[effect.GetInfo().sprite_data_settings_index].recording_frame_rate = value;
 	}
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value) {
 		if (field == "loop")
@@ -6092,7 +6097,8 @@ namespace tfx {
 		bool is_3d = effect->Is3DEffect();
 
 		float update_freq = tfxUPDATE_FREQUENCY;
-		//SetUpdateFrequency(60.f * (anim.playback_speed ? anim.playback_speed : 1.f));
+		anim.recording_frame_rate = tfxMin(tfxMax(30.f, anim.recording_frame_rate), 240.f);
+		SetUpdateFrequency(anim.recording_frame_rate);
 
 		bool auto_set_length = false;
 		if (anim.animation_flags & tfxAnimationFlags_auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && effect->IsFinite()) {

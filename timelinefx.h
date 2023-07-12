@@ -5725,6 +5725,7 @@ You can then use layer inside the loop to get the current layer
 		float max_radius;
 		tfxU32 largest_frame;
 		float playback_speed;
+		float recording_frame_rate;
 	};
 
 	//------------------------------------------------------------
