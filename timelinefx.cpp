@@ -3099,6 +3099,7 @@ namespace tfx {
 		names_and_types.Insert("animation_time", tfxFloat);
 		names_and_types.Insert("animation_length_in_time", tfxFloat);
 		names_and_types.Insert("name", tfxString);
+		names_and_types.Insert("path_hash", tfxUInt64);
 
 		//Frame meta
 		names_and_types.Insert("total_sprites", tfxUint);
@@ -3409,6 +3410,11 @@ namespace tfx {
 			metrics.flags = value;
 		if (field == "animation_flags")
 			metrics.animation_flags = value;
+	}
+
+	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxU64 value, tfxU32 file_version) {
+		if (field == "path_hash")
+			metrics.path_hash = value;
 	}
 
 	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, float value, tfxU32 file_version) {
@@ -5492,7 +5498,7 @@ namespace tfx {
 	}
 
 	tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager &animation_manager, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
-		assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
+		//assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 		if (!tfxDataTypes.initialised)
 			tfxDataTypes.Init();
 
@@ -5650,7 +5656,7 @@ namespace tfx {
 					}
 				}
 
-				if (context == tfxStartShapes) {
+				if (context == tfxStartShapes && shape_loader != nullptr) {
 					if (pair.size() >= 5) {
 						tfxShapeData s;
 						strcpy_s(s.name, pair[0].c_str());
@@ -5721,6 +5727,10 @@ namespace tfx {
 		}
 
 		package.Free();
+
+		if (!shape_loader) {
+			error |= tfxErrorCode_library_loaded_without_shape_loader;
+		}
 
 		return error;
 	}
@@ -6810,13 +6820,13 @@ namespace tfx {
 		animation_manager->buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
 	}
 
-	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, const char *name, tfxU32 start_frame) {
-		assert(animation_manager->effect_animation_info.ValidName(name));	//You must have added the effect sprite data to the animation manager
+	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxKey path, tfxU32 start_frame) {
+		assert(animation_manager->effect_animation_info.ValidKey(path));	//You must have added the effect sprite data to the animation manager
 																						//Call AddSpriteData to do so
 		if(animation_manager->instances_in_use->current_size >= animation_manager->instances_in_use->capacity) {
 			return tfxINVALID;
 		}
-		tfxU32 info_index = animation_manager->effect_animation_info.GetIndex(name);
+		tfxU32 info_index = animation_manager->effect_animation_info.GetIndex(path);
 		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[info_index];
 		assert(start_frame < metrics.frames_after_compression);
 		tfxAnimationID index = animation_manager->AddInstance();
@@ -6832,6 +6842,11 @@ namespace tfx {
 		instance.sprite_count = metrics.frame_meta[start_frame].total_sprites;
 		instance.frame_count = metrics.frame_count;
 		return index;
+	}
+
+	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, const char *path, tfxU32 start_frame) {
+		tfxKey path_hash = tfxXXHash64::hash(path, strlen(path), 0);
+		return AddAnimationInstance(animation_manager, path_hash, start_frame);
 	}
 
 	void tfxAnimationManager::Update(float elapsed) {
@@ -6949,6 +6964,7 @@ namespace tfx {
 		animation_manager->sprite_data_3d.free_all();
 		animation_manager->emitter_properties.free_all();
 		animation_manager->effect_animation_info.FreeAll();
+		animation_manager->flags = 0;
 	}
 
 	void tfxAnimationManager::UpdateBufferMetrics() {

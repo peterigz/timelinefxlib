@@ -729,7 +729,8 @@ You can then use layer inside the loop to get the current layer
 		tfxErrorCode_no_inventory = 1 << 9,
 		tfxErrorCode_invalid_inventory = 1 << 10,
 		tfxErrorCode_sprite_data_is_3d_but_animation_manager_is_2d = 1 << 11,
-		tfxErrorCode_sprite_data_is_2d_but_animation_manager_is_3d = 1 << 12
+		tfxErrorCode_sprite_data_is_2d_but_animation_manager_is_3d = 1 << 12,
+		tfxErrorCode_library_loaded_without_shape_loader = 1 << 13
 	};
 
 	enum tfxEffectCloningFlags_ {
@@ -6609,6 +6610,7 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxSpriteDataMetrics {
 		tfxStr64 name;
+		tfxKey path_hash;
 		tfxU32 start_offset;	//Only applies to animation manager
 		tfxU32 frames_after_compression;
 		tfxU32 real_frames;
@@ -7664,6 +7666,7 @@ You can then use layer inside the loop to get the current layer
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
 	void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
 	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version);
+	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxU64 value, tfxU32 file_version);
 	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, float value, tfxU32 file_version);
 	void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxStr value, tfxU32 file_version);
 	void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version);
@@ -8551,12 +8554,22 @@ You can then use layer inside the loop to get the current layer
 	/*
 	Add an animation instance to the animation manager.
 	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
-	* @param effect					A pointer to the effect linking to the pre-recorded sprite data you want to add
+	* @param path					tfxKey path hash of the effect name and path: effect.path_hash
 	* @param start_frame			Starting frame of the animation
 	* @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 									Return tfxINVALID if there is no room in the animation manager
 	*/
-	tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, const char *effect_name, tfxU32 start_frame = 0);
+	tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxKey path, tfxU32 start_frame = 0);
+
+	/*
+	Add an animation instance to the animation manager.
+	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+	* @param path					const char * name of the effect. If the effect was in a folder then specify the whole path
+	* @param start_frame			Starting frame of the animation
+	* @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
+									Return tfxINVALID if there is no room in the animation manager
+	*/
+	tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, const char *path, tfxU32 start_frame = 0);
 
 	/*
 	Update an animation manager to advance the time and frames of all instances currently playing.
