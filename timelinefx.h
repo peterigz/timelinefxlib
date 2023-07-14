@@ -6979,6 +6979,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 sprite_index_point[tfxLAYERS];
 
 		int mt_batch_size;
+		std::mutex particle_index_mutex;
 
 		tfxRandom random;
 		unsigned int max_compute_controllers;
@@ -7070,6 +7071,8 @@ You can then use layer inside the loop to get the current layer
 			return emitter_buffers.current_size - 1;
 		}
 		inline tfxU32 GetParticleIndexSlot(tfxParticleID particle_id) {
+			//Todo: ideally we want a better thread safe container for this
+			std::lock_guard<std::mutex> lock(particle_index_mutex);
 			if (!free_particle_indexes.empty()) {
 				particle_indexes[free_particle_indexes.back()] = particle_id;
 				return free_particle_indexes.pop_back();
@@ -7078,6 +7081,8 @@ You can then use layer inside the loop to get the current layer
 			return particle_indexes.current_size - 1;
 		}
 		inline void FreeParticleIndex(tfxU32 &index) {
+			//Todo: ideally we want a better thread safe container for this
+			std::lock_guard<std::mutex> lock(particle_index_mutex);
 			particle_indexes[index] = tfxINVALID;
 			free_particle_indexes.push_back(index);
 			index = tfxINVALID;
