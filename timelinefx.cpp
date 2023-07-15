@@ -8580,6 +8580,7 @@ namespace tfx {
 		}
 
 		free_effects.reserve(max_effects);
+		particle_indexes.reserve(1000);	//todo: Handle this better.
 		InitEffectSoA(&effect_buffers, &effects, max_effects);
 		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
 	}
@@ -8666,6 +8667,7 @@ namespace tfx {
 			emitters_in_use[depth][0].reserve(max_effects);
 			emitters_in_use[depth][1].reserve(max_effects);
 		}
+		particle_indexes.reserve(1000);	//todo: Handle this better.
 		free_effects.reserve(max_effects);
 		InitEffectSoA(&effect_buffers, &effects, max_effects);
 		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
@@ -8846,6 +8848,7 @@ namespace tfx {
 		}
 
 		free_effects.reserve(max_effects);
+		particle_indexes.reserve(1000);	//todo: Handle this better.
 		InitEffectSoA(&effect_buffers, &effects, max_effects);
 		InitEmitterSoA(&emitter_buffers, &emitters, max_effects);
 	}
