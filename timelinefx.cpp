@@ -8056,7 +8056,6 @@ namespace tfx {
 		const tfxWideInt emitter_flags_wide = tfxWideSetSinglei(emitter_flags);
 
 		if (emitter_flags & tfxEmitterStateFlags_is_line_loop_or_kill) {
-			//Todo: this should also update the captured position as well solving the issue of interpolating from the end back to the beginning
 			if (emitter_flags & tfxEmitterStateFlags_kill) {
 				for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 					tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[particles_index], i) / tfxDataWidth * tfxDataWidth;
