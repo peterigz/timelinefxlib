@@ -2824,6 +2824,7 @@ You can then use layer inside the loop to get the current layer
 
 		tfxVec2() { x = y = 0.f; }
 		tfxVec2(float _x, float _y) : x(_x), y(_y) {}
+		tfxVec2(tfxVec3 v) { x = v.x; y = v.y; }
 
 		inline void operator=(float v) { x = v; y = v; }
 
@@ -3305,6 +3306,55 @@ You can then use layer inside the loop to get the current layer
 		float z[4];
 		float w[4];
 	};
+
+	struct tfxMatrix3 {
+
+		tfxVec3 v[3];
+
+		inline tfxVec3 operator*(const tfxVec3 &vec) const {
+			return tfxVec3(
+				v[0].x * vec.x + v[1].x * vec.y + v[2].x * vec.z,
+				v[0].y * vec.x + v[1].y * vec.y + v[2].y * vec.z,
+				v[0].z * vec.x + v[1].z * vec.y + v[2].z * vec.z);
+		}
+
+	};
+
+	inline tfxMatrix3 M3(float v = 1.f) {
+		tfxMatrix3 R =
+		{ {
+			{v, 0, 0},
+			{0, v, 0},
+			{0, 0, v}},
+		};
+		return(R);
+	}
+
+	static inline tfxMatrix3 mmTranslate(tfxMatrix3 const &m, tfxVec3 const &v) {
+		tfxMatrix3 result;
+		result.v[2] = m.v[0] * v.x + m.v[1] * v.y + m.v[2];
+		return result;
+	}
+
+	static inline tfxMatrix3 mmRotate(tfxMatrix3 const &m, float r) {
+		float const a = r;
+		float const c = cosf(a);
+		float const s = sinf(a);
+
+		tfxMatrix3 result;
+		result.v[0] = m.v[0] * c + m.v[1] * s;
+		result.v[1] = m.v[0] * -s + m.v[1] * c;
+		result.v[2] = m.v[2];
+		return result;
+	}
+
+	static inline tfxMatrix3 mmScale(tfxMatrix3 const &m, tfxVec2 const &v) {
+		tfxMatrix3 result;
+		result.v[0] = m.v[0] * v.x;
+		result.v[1] = m.v[1] * v.y;
+		result.v[2] = m.v[2];
+		return result;
+	}
 
 	//Very simple 2D Matix
 	struct tfxMatrix2 {
