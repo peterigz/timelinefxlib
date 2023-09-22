@@ -2824,7 +2824,6 @@ You can then use layer inside the loop to get the current layer
 
 		tfxVec2() { x = y = 0.f; }
 		tfxVec2(float _x, float _y) : x(_x), y(_y) {}
-		tfxVec2(tfxVec3 v) { x = v.x; y = v.y; }
 
 		inline void operator=(float v) { x = v; y = v; }
 
