@@ -2,6 +2,22 @@
 
 namespace tfx {
 
+#ifdef _WIN32
+	FILE *tfx__open_file(const char *file_name, const char *mode) {
+		FILE *file = NULL;
+		errno_t err = fopen_s(&file, file_name, mode);
+		if (err != 0 || file == NULL) {
+			printf("strerror says open failed: %s\n", strerror(err));
+			return NULL;
+		}
+		return file;
+	}
+#else
+	FILE *tfx__open_file(const char *file_name, const char *mode) {
+		return fopen(file_name, mode);
+	}
+#endif
+
 	//A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
 	tfx128Array tfxNoise4(const tfx128 x4, const tfx128 y4) {
 		tfxPROFILE;

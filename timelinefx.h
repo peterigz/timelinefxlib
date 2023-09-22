@@ -230,19 +230,9 @@ You can then use layer inside the loop to get the current layer
 	};
 
 #ifdef _WIN32
-	FILE *tfx__open_file(const char *file_name, const char *mode) {
-		FILE *file = NULL;
-		errno_t err = fopen_s(&file, file_name, mode);
-		if (err != 0 || file == NULL) {
-			printf("strerror says open failed: %s\n", strerror(err));
-			return NULL;
-		}
-		return file;
-	}
+	FILE *tfx__open_file(const char *file_name, const char *mode);
 #else
-	FILE *tfx__open_file(const char *file_name, const char *mode) {
-		return fopen(file_name, mode);
-	}
+	FILE *tfx__open_file(const char *file_name, const char *mode);
 #endif
 
 	//Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
