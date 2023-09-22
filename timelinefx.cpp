@@ -389,7 +389,7 @@ namespace tfx {
 	}
 
 	bool tfxStr::SaveToFile(const char *file_name) {
-		FILE *file = fopen(file_name, "wb");
+		FILE *file = tfx__open_file(file_name, "wb");
 		if (!file)
 			return false;
 
@@ -521,7 +521,7 @@ namespace tfx {
 	bool ValidatePackage(tfxPackage &package) {
 		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;			//Package hasn't been initialised
 
-		FILE *file = fopen(package.file_path.c_str(), "rb");
+		FILE *file = tfx__open_file(package.file_path.c_str(), "rb");
 		if (!file) {
 			return false;
 		}
@@ -558,12 +558,8 @@ namespace tfx {
 		assert(ValidatePackage(*this));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
 		tfxEntryInfo *entry = &inventory.entries.At(name);
 		if (entry->data.Size() != entry->file_size) {
-			//FILE *file = fopen(file_path.c_str(), "rb");
-			FILE *file;
-			errno_t error = fopen_s(&file, file_path.c_str(), "rb");
-			if (error != 0) {
-				printf("strerror says open failed: %s\n", strerror(error));
-			}
+			//FILE *file = tfx__open_file(file_path.c_str(), "rb");
+			FILE *file = tfx__open_file(file_path.c_str(), "rb");
 			assert(file);		//couldn't open the file!
 			_fseeki64(file, entry->offset_from_start_of_file, SEEK_SET);
 			entry->data.Resize(entry->file_size);
@@ -607,7 +603,7 @@ namespace tfx {
 	// Reads the whole file on disk into memory and returns the pointer
 	tfxStream ReadEntireFile(const char *file_name, bool terminate) {
 		tfxStream buffer;
-		FILE *file = fopen(file_name, "rb");
+		FILE *file = tfx__open_file(file_name, "rb");
 		if (!file) {
 			return buffer;
 		}
@@ -647,7 +643,7 @@ namespace tfx {
 		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;						//Header of package must contain correct magic number. Use CreatePackage to correctly initialise a package.
 		if (package.inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;			//Inventory of package must contain correct magic number
 
-		FILE * file = fopen(package.file_path.c_str(), "wb");
+		FILE * file = tfx__open_file(package.file_path.c_str(), "wb");
 		if (!file)
 			return false;
 
@@ -5176,7 +5172,7 @@ namespace tfx {
 	}
 
 	bool SaveDataFile(tfxStorageMap<tfxDataEntry> &map, const char* path) {
-		FILE *file = fopen(path, "w");
+		FILE *file = tfx__open_file(path, "w");
 
 		if (file == NULL)
 			return false;
@@ -5211,11 +5207,7 @@ namespace tfx {
 
 	bool LoadDataFile(tfxStorageMap<tfxDataEntry> &map, const char* path) {
 		if (!tfxDataTypes.initialised) tfxDataTypes.Init();
-		FILE* fp;
-		errno_t error = fopen_s(&fp, path, "r");
-		if (error != 0) {
-			printf("strerror says open failed: %s\n", strerror(error));
-		}
+		FILE* fp = tfx__open_file(path, "r");
 		if (fp == NULL) {
 			return false;
 		}

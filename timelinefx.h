@@ -229,6 +229,22 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 pack;
 	};
 
+#ifdef _WIN32
+	FILE *tfx__open_file(const char *file_name, const char *mode) {
+		FILE *file = NULL;
+		errno_t err = fopen_s(&file, file_name, mode);
+		if (err != 0 || file == NULL) {
+			printf("strerror says open failed: %s\n", strerror(err));
+			return NULL;
+		}
+		return file;
+	}
+#else
+	FILE *tfx__open_file(const char *file_name, const char *mode) {
+		return fopen(file_name, mode);
+	}
+#endif
+
 	//Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 	//used by defaul
 	//Note that avx is currently slowly then SSE, probably because memory bandwidth becomes more of an issue at that point. But also I could be doing it wrong!
