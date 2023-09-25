@@ -7,7 +7,13 @@ namespace tfx {
 		FILE *file = NULL;
 		errno_t err = fopen_s(&file, file_name, mode);
 		if (err != 0 || file == NULL) {
-			printf("strerror says open failed: %s\n", strerror(err));
+			char errMessage[100];
+			if (strerror_s(errMessage, sizeof(errMessage), err) == 0) {
+				printf("strerror_s says open failed: %s\n", errMessage);
+			}
+			else {
+				printf("Error retrieving error message\n");
+			}
 			return NULL;
 		}
 		return file;
