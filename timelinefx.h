@@ -1062,6 +1062,7 @@ You can then use layer inside the loop to get the current layer
 	extern float tfxUPDATE_FREQUENCY;
 	extern float tfxUPDATE_TIME;
 	extern tfxWideFloat tfxUPDATE_TIME_WIDE;
+	extern float tfxFRAME_LENGTH_MICRO_SECONDS;
 	extern float tfxFRAME_LENGTH;
 	extern tfxWideFloat tfxFRAME_LENGTH_WIDE;
 

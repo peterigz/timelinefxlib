@@ -332,6 +332,7 @@ namespace tfx {
 	float tfxUPDATE_TIME = 1.f / tfxUPDATE_FREQUENCY;
 	tfxWideFloat tfxUPDATE_TIME_WIDE = tfxWideSetSingle(tfxUPDATE_TIME);
 	float tfxFRAME_LENGTH = 1000.f / tfxUPDATE_FREQUENCY;
+	float tfxFRAME_LENGTH_MICRO_SECONDS = 1000.f * tfxFRAME_LENGTH;
 	tfxWideFloat tfxFRAME_LENGTH_WIDE = tfxWideSetSingle(1000.f / tfxUPDATE_FREQUENCY);
 
 	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
@@ -3236,6 +3237,7 @@ namespace tfx {
 		names_and_types.Insert("max_threads", tfxSInt);
 		names_and_types.Insert("use_texture_filtering", tfxBool);
 		names_and_types.Insert("sprite_data_tab_use_compute", tfxSInt);
+		names_and_types.Insert("update_mode", tfxSInt);
 		initialised = true;
 	}
 
