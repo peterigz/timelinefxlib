@@ -2162,11 +2162,15 @@ namespace tfx {
 		return particle_shapes.ValidKey(image_hash);
 	}
 
-	void tfxLibrary::RemoveShape(tfxKey image_hash) {
+	bool tfxLibrary::RemoveShape(tfxKey image_hash) {
+		if (!particle_shapes.ValidKey(image_hash)) {
+			return false;
+		}
 		particle_shapes.Remove(image_hash);
 		for (auto &m : particle_shapes.map) {
 			particle_shapes[m.index].image_hash = m.key;
 		}
+		return true;
 	}
 
 	void tfxLibrary::DeleteEffect(tfxEffectEmitter *effect) {
