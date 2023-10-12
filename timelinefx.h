@@ -1114,15 +1114,16 @@ You can then use layer inside the loop to get the current layer
 
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
-		inline void         reserve(tfxU32 new_capacity) { if (new_capacity <= capacity) return; 
-			tfxMemoryTrackerPair* new_data = (tfxMemoryTrackerPair*)malloc((size_t)new_capacity * sizeof(tfxMemoryTrackerPair)); 
+		inline void         reserve(tfxU32 new_capacity) {
+			if (new_capacity <= capacity) return;
+			tfxMemoryTrackerPair* new_data = (tfxMemoryTrackerPair*)malloc((size_t)new_capacity * sizeof(tfxMemoryTrackerPair));
 			assert(new_data);	//Unable to allocate memory for new_data
-			if (data) { 
-				memcpy(new_data, data, (size_t)current_size * sizeof(tfxMemoryTrackerPair)); 
-				free(data); 
-			} 
-			data = new_data; 
-			capacity = new_capacity; 
+			if (data) {
+				memcpy(new_data, data, (size_t)current_size * sizeof(tfxMemoryTrackerPair));
+				free(data);
+			}
+			data = new_data;
+			capacity = new_capacity;
 		}
 
 		inline tfxMemoryTrackerPair*           erase(const tfxMemoryTrackerPair* it) { assert(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(tfxMemoryTrackerPair)); current_size--; return data + off; }
@@ -1310,13 +1311,13 @@ You can then use layer inside the loop to get the current layer
 		inline void         reserve(tfxU32 new_capacity) {
 			if (new_capacity <= capacity)
 				return;
-			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T)); 
+			T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T));
 			assert(new_data);	//Unable to allocate memory. todo: better handling
-			if (data) { 
-				memcpy(new_data, data, (size_t)current_size * sizeof(T)); 
-				tfxFREE(data); 
-			} 
-			data = new_data; 
+			if (data) {
+				memcpy(new_data, data, (size_t)current_size * sizeof(T));
+				tfxFREE(data);
+			}
+			data = new_data;
 			capacity = new_capacity;
 		}
 
@@ -1784,7 +1785,7 @@ You can then use layer inside the loop to get the current layer
 
 	inline void ResetSoABuffer(tfxSoABuffer *buffer) {
 		buffer->current_arena_size = 0;
-		buffer->struct_size = 0;	
+		buffer->struct_size = 0;
 		buffer->current_size = 0;
 		buffer->start_index = 0;
 		buffer->last_bump = 0;
@@ -2263,7 +2264,7 @@ You can then use layer inside the loop to get the current layer
 			if (src.capacity == 0) {
 				return *this;
 			}
-			assert(reserve(src.capacity / src.size_of_each_bucket));
+			reserve(src.capacity / src.size_of_each_bucket);
 			current_bucket = block;
 			tfxU32 src_block = src.block;
 			while (current_bucket != tfxINVALID && src_block != tfxINVALID) {
@@ -2316,7 +2317,7 @@ You can then use layer inside the loop to get the current layer
 				number_of_buckets = (int)number_of_buckets - block_count;
 			}
 			for (int i = 0; i < number_of_buckets; ++i) {
-				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
+				AllocateBucket<T>(*allocator, size_of_each_bucket, block);		//Out of memory!
 				capacity += size_of_each_bucket;
 			}
 			return true;
@@ -2325,7 +2326,7 @@ You can then use layer inside the loop to get the current layer
 			while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
 
 			if (current_size == capacity) {
-				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
+				AllocateBucket<T>(*allocator, size_of_each_bucket, block);		//Out of memory!
 				capacity += size_of_each_bucket;
 				ResetIteratorIndex();
 			}
@@ -2341,7 +2342,7 @@ You can then use layer inside the loop to get the current layer
 		inline T&	        push_back(const T& v) {
 			assert(allocator);	//Must assign an allocator before doing anything with a tfxBucketArray
 			if (current_size == capacity) {
-				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
+				AllocateBucket<T>(*allocator, size_of_each_bucket, block);		//Out of memory!
 				capacity += size_of_each_bucket;
 				ResetIteratorIndex();
 			}
@@ -2355,7 +2356,7 @@ You can then use layer inside the loop to get the current layer
 		inline T*	insert(tfxU32 insert_index, const T &v) {
 			assert(insert_index < current_size);
 			if (current_size == capacity) {
-				assert(AllocateBucket<T>(*allocator, size_of_each_bucket, block));		//Out of memory!
+				AllocateBucket<T>(*allocator, size_of_each_bucket, block);		//Out of memory!
 				capacity += size_of_each_bucket;
 				ResetIteratorIndex();
 			}
@@ -2530,7 +2531,7 @@ You can then use layer inside the loop to get the current layer
 		inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 		inline T&			next() {
 			if (current_size == capacity)
-				assert(resize(_grow_capacity(current_size + 1), true));	//Stack overflow, try increasing the stack size
+				resize(_grow_capacity(current_size + 1), true);	//Stack overflow, try increasing the stack size
 			new((void*)(block + current_size)) T();
 			return block[current_size++];
 		}
@@ -2544,14 +2545,18 @@ You can then use layer inside the loop to get the current layer
 			return block[current_size];
 		}
 		inline T&	        push_back(const T& v) {
-			if (current_size == capacity)
-				assert(resize(_grow_capacity(current_size + 1), true));	//Stack overflow, try increasing the stack size
+			if (current_size == capacity) {
+				bool result = resize(_grow_capacity(current_size + 1), true);	//Stack overflow, try increasing the stack size
+				assert(result);
+			}
 			new((void*)(block + current_size)) T(v);
 			return block[current_size++];
 		}
 		inline T&	        push_back_copy(const T& v) {
-			if (current_size == capacity)
-				assert(resize(_grow_capacity(current_size + 1), true));	//Stack overflow, try increasing the stack size
+			if (current_size == capacity) {
+				bool result = resize(_grow_capacity(current_size + 1), true);	//Stack overflow, try increasing the stack size
+				assert(result);
+			}
 			memcpy(&block[current_size], &v, sizeof(v));
 			return block[current_size++];
 		}
@@ -3082,8 +3087,8 @@ You can then use layer inside the loop to get the current layer
 	const float one_div_511 = 1 / 511.f;
 	const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
 	const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
-	#define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
-	#define tfxPACKED_Y_NORMAL_2D 32767
+#define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
+#define tfxPACKED_Y_NORMAL_2D 32767
 
 	struct tfxRGBA {
 		float r, g, b, a;
@@ -4110,7 +4115,7 @@ You can then use layer inside the loop to get the current layer
  * float-valued 4D noise 64 times. We want this to fit in the cache!
  */
 	const uint8_t perm[] =
-	{ 
+	{
 		151,160,137,91,90,15,
 		131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
 		190, 6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,
@@ -4395,7 +4400,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 capacity;
 		bool is_local_buffer;
 
-		inline tfxStr() { current_size = capacity = 0; data = NULL; is_local_buffer = false; }
+		inline tfxStr() : current_size(0), capacity(0), data(NULL), is_local_buffer(false) {}
 		inline ~tfxStr() { if (data && !is_local_buffer) { free(data); data = NULL; } current_size = capacity = 0; }
 
 		inline bool			empty() { return current_size == 0; }
@@ -4549,8 +4554,76 @@ You can then use layer inside the loop to get the current layer
 	inline type Lower() { type convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; } \
 	};
 
+	struct tfxStr256 : public tfxStr {
+
+		char buffer[256];
+		tfxStr256() { memset(buffer, 0, 256); data = buffer; capacity = 256; current_size = 0; is_local_buffer = true; NullTerminate(); }
+		inline void operator=(const tfxStr& src) {
+
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 256; size_t length = src.Length();
+			if (!length) {
+
+				Clear(); return;
+			};
+			resize(src.current_size);
+			memcpy(data, src.strbuffer(), length);
+			current_size = (tfxU32)length;
+			NullTerminate();
+		}
+		inline void operator=(const tfxStr256& src) {
+
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 256; size_t length = src.Length();
+			if (!length) {
+
+				Clear(); return;
+			};
+			resize(src.current_size);
+			memcpy(data, src.strbuffer(), length);
+			current_size = (tfxU32)length;
+			NullTerminate();
+		}
+		inline void operator=(const char *text) { data = buffer; is_local_buffer = true; capacity = 256; size_t length = strnlen_s(text, 256); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+		tfxStr256(const char *text) { memset(buffer, 0, 256); data = buffer; is_local_buffer = true; capacity = 256; size_t length = strnlen_s(text, 256); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+		tfxStr256(const tfxStr &src) {
+
+			memset(buffer, 0, 256);
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 256; size_t length = src.Length();
+			if (!length) {
+
+				Clear(); return;
+			};
+			resize(src.current_size);
+			memcpy(data, src.strbuffer(), length);
+			current_size = (tfxU32)length;
+			NullTerminate();
+		}
+		tfxStr256(const tfxStr256 &src) {
+
+			memset(buffer, 0, 256);
+			data = buffer;
+			is_local_buffer = true;
+			capacity = 256; size_t length = src.Length();
+			if (!length) {
+
+				Clear(); return;
+			};
+			resize(src.current_size);
+			memcpy(data, src.strbuffer(), length);
+			current_size = (tfxU32)length;
+			NullTerminate();
+		}
+		inline int Find(const char *needle) { tfxStr256 compare = needle; tfxStr256 lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; }
+		inline tfxStr256 Lower() { tfxStr256 convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; }
+	};
+
 	tfxStrType(tfxStr512, 512);
-	tfxStrType(tfxStr256, 256);
+	//tfxStrType(tfxStr256, 256);
 	tfxStrType(tfxStr128, 128);
 	tfxStrType(tfxStr64, 64);
 	tfxStrType(tfxStr32, 32);
@@ -4906,7 +4979,7 @@ You can then use layer inside the loop to get the current layer
 
 	const tfxU32 tfxMAGIC_NUMBER = '!XFT';
 	const tfxU32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
-	const tfxU32 tfxFILE_VERSION = 2;	
+	const tfxU32 tfxFILE_VERSION = 2;
 
 	//Basic package manager used for reading/writing effects files
 	struct tfxHeader {
@@ -5040,7 +5113,7 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void ReSeed() {
-			seeds[0] = Millisecs(); seeds[1] = (tfxU64)Millisecs() * 2; 
+			seeds[0] = Millisecs(); seeds[1] = (tfxU64)Millisecs() * 2;
 			Advance();
 		}
 
@@ -5816,7 +5889,7 @@ You can then use layer inside the loop to get the current layer
 		tfxCUSTOM_IMAGE_DATA
 #endif // tfxCUSTOM_IMAGE_DATA
 
-		tfxImageData() :
+			tfxImageData() :
 			image_index(0),
 			ptr(nullptr),
 			animation_frames(1.f),
@@ -5882,7 +5955,7 @@ You can then use layer inside the loop to get the current layer
 		//are stored on the GPU for looking up from the sprite data
 		tfxU32 *animation_property_index;
 
-		tfxEmitterPropertiesSoA() { memset(this, 0, sizeof(tfxEmitterPropertiesSoA)); } 
+		tfxEmitterPropertiesSoA() { memset(this, 0, sizeof(tfxEmitterPropertiesSoA)); }
 	};
 
 	inline void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i) {
@@ -6406,7 +6479,7 @@ You can then use layer inside the loop to get the current layer
 		float depth;
 	};
 
-	struct tfxUniqueSpriteID{
+	struct tfxUniqueSpriteID {
 		tfxU32 uid;
 		tfxU32 age;
 	};
@@ -6520,7 +6593,7 @@ You can then use layer inside the loop to get the current layer
 	inline void InitSpriteBufferSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false) {
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
-		if(use_uid)
+		if (use_uid)
 			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
 		if (mode == tfxSpriteBufferMode_2d) {
 			AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
@@ -6548,8 +6621,8 @@ You can then use layer inside the loop to get the current layer
 		tfxVec2 scale;
 		tfxU32 property_indexes;
 		tfxU32 captured_index;
-		tfxU32 alignment;		
-		tfxRGBA8 color;		
+		tfxU32 alignment;
+		tfxRGBA8 color;
 		float intensity;
 		//Free space for extra 4 bytes if needed
 	};
@@ -6560,8 +6633,8 @@ You can then use layer inside the loop to get the current layer
 		float rotation;
 		tfxU32 property_indexes;
 		tfxU32 captured_index;
-		tfxU32 alignment;		
-		tfxRGBA8 color;		
+		tfxU32 alignment;
+		tfxRGBA8 color;
 		float lerp_offset;
 		float stretch;
 		float intensity;
@@ -7050,7 +7123,7 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 unique_particle_id = 0;	//Used when recording sprite data
 		//When using single particles, you can flag the emitter to set the max_age of the particle to the 
 		//length in time of the animation so that it maps nicely to the animation
-		float animation_length_in_time;		
+		float animation_length_in_time;
 
 		//These can possibly be removed at some point, they're debugging variables
 		unsigned int particle_id;
@@ -8578,26 +8651,26 @@ You can then use layer inside the loop to get the current layer
 
 	/*
 	Initialise an Animation Manager for use with 3d sprites. This must be run before using an animation manager. An animation manager is used
-	to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in 
-	real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work 
+	to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in
+	real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work
 	to calculate the state of particles between frames for smooth animation.
 	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
 	* @param max_instances			The maximum number of animation instances that you want to be able to play at one time.
 	* @param initial_capacity		Optionally, you can set an initial capacity for the sprite data. The data will grow if you add
-									beyond this amount but it gives you a chance to reserve a decent amount to start with to 
+									beyond this amount but it gives you a chance to reserve a decent amount to start with to
 									save too much mem copies as the data grows
 	*/
 	tfxAPI void InitialiseAnimationManagerFor3d(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
 
 	/*
 	Initialise an Animation Manager for use with 2d sprites. This must be run before using an animation manager. An animation manager is used
-	to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in 
-	real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work 
+	to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in
+	real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work
 	to calculate the state of particles between frames for smooth animation.
 	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
 	* @param max_instances			The maximum number of animation instances that you want to be able to play at one time.
 	* @param initial_capacity		Optionally, you can set an initial capacity for the sprite data. The data will grow if you add
-									beyond this amount but it gives you a chance to reserve a decent amount to start with to 
+									beyond this amount but it gives you a chance to reserve a decent amount to start with to
 									save too much mem copies as the data grows
 	*/
 	tfxAPI void InitialiseAnimationManagerFor2d(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
@@ -8647,7 +8720,7 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void ClearAllAnimationInstances(tfxAnimationManager *animation_manager);
 
 	/*
-	Clears all data from the animation manager including sprite data, metrics and instances. Essentially resetting everything back to 
+	Clears all data from the animation manager including sprite data, metrics and instances. Essentially resetting everything back to
 	it's initialisation point
 	from being drawn
 	* @param animation_manager		A pointer to a tfxAnimationManager that you want to reset
@@ -8662,7 +8735,7 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void FreeAnimationManager(tfxAnimationManager *animation_manager);
 
 	/*
-	Get the tfxAnimationBufferMetrics from an animation manager. This will contain the info you need to upload the sprite data, 
+	Get the tfxAnimationBufferMetrics from an animation manager. This will contain the info you need to upload the sprite data,
 	offsets and animation instances to the GPU. Only offsets and animation instances need to be uploaded to the GPU each frame. Sprite
 	data can be done ahead of time.
 	* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed

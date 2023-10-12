@@ -342,6 +342,7 @@ namespace tfx {
 		tfxUPDATE_TIME_WIDE = tfxWideSetSingle(tfxUPDATE_TIME);
 		tfxFRAME_LENGTH_WIDE = tfxWideSetSingle(1000.f / tfxUPDATE_FREQUENCY);
 		tfxFRAME_LENGTH = 1000.f / tfxUPDATE_FREQUENCY;
+		tfxFRAME_LENGTH_MICRO_SECONDS = 1000.f * tfxFRAME_LENGTH;
 	}
 
 	int FormatString(char* buf, size_t buf_size, const char* fmt, va_list args) {
