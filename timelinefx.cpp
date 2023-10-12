@@ -4931,7 +4931,7 @@ namespace tfx {
 		float last_frame = graph.GetLastFrame();
 		graph.lookup.last_frame = tfxU32(last_frame / tfxLOOKUP_FREQUENCY);
 		if (graph.lookup.last_frame) {
-			assert(graph.lookup.values.resize(graph.lookup.last_frame + 1));
+			graph.lookup.values.resize(graph.lookup.last_frame + 1);
 			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
 				graph.lookup.values[f] = graph.GetValue((float)f * tfxLOOKUP_FREQUENCY);
 			}
@@ -4946,7 +4946,7 @@ namespace tfx {
 	void CompileGraphOvertime(tfxGraph &graph) {
 		if (graph.nodes.size() > 1) {
 			graph.lookup.last_frame = tfxU32(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
-			assert(graph.lookup.values.resize(graph.lookup.last_frame + 1));
+			graph.lookup.values.resize(graph.lookup.last_frame + 1);
 			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
 				graph.lookup.values[f] = graph.GetValue((float)f * tfxLOOKUP_FREQUENCY_OVERTIME, graph.lookup.life);
 			}
@@ -4962,7 +4962,7 @@ namespace tfx {
 	void CompileColorOvertime(tfxGraph &graph, float gamma) {
 		if (graph.nodes.size() > 1) {
 			graph.lookup.last_frame = tfxU32(graph.lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
-			assert(graph.lookup.values.resize(graph.lookup.last_frame + 1));
+			graph.lookup.values.resize(graph.lookup.last_frame + 1);
 			for (tfxU32 f = 0; f != graph.lookup.last_frame + 1; ++f) {
 				graph.lookup.values[f] = GammaCorrect(graph.GetValue((float)f * tfxLOOKUP_FREQUENCY_OVERTIME, graph.lookup.life), gamma);
 			}
