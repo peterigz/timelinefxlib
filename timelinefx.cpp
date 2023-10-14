@@ -7382,8 +7382,8 @@ namespace tfx {
 			if(emitters_check_capture.current_size > 0) {
 				tmpMTStack(tfxControlWorkEntry, work);
 				for (int index : emitters_check_capture) {
-					//Really don't like this but is fine for now. For any line emitters where the particle loop back round to the beginning we need to set the captured index of the sprites
-					//so that they don't interplate the frame that they loop
+					//Really don't like this but is fine for now. For any line emitters where the particles loop back round to the beginning we need to set the captured index of the sprites
+					//so that they don't interpolate the frame that they loop
 					tfxSoABuffer &bank = particle_array_buffers[emitters.particles_index[index]];
 					int particles_to_update = bank.current_size;
 					tfxU32 running_start_index = 0;
@@ -7793,6 +7793,10 @@ namespace tfx {
 			capture_flag.m = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi()));
 			tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag.m, tfxWideSetZero());
 			_ReadBarrier();
+
+			if ((tfxU32)capture_flag.a[0] & tfxParticleFlags_capture_after_transform) {
+				int d = 0;
+			}
 
 			if (property_flags & tfxEmitterPropertyFlags_relative_position || (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine)) {
 				position_x.m = tfxWideAdd(position_x.m, e_handle_x);
@@ -9150,6 +9154,10 @@ namespace tfx {
 		UpdateEmitterState(pm, index, parent_index, pm.effects.spawn_controls[parent_index], spawn_work_entry);
 
 		if (state_flags & tfxEmitterStateFlags_is_line_loop_or_kill && state_flags & tfxEmitterStateFlags_loop) {
+			pm.emitters_check_capture.push_back(index);
+		}
+
+		if (state_flags & tfxEmitterStateFlags_is_single && properties.single_shot_limit[property_index] > 1) {
 			pm.emitters_check_capture.push_back(index);
 		}
 
@@ -11621,6 +11629,7 @@ namespace tfx {
 		const tfxU32 layer = work_entry->properties->layer[property_index];
 
 		const tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
+		const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 		const tfxWideInt remove = tfxWideSetSinglei(pm.emitters.state_flags[emitter_index] & tfxParticleFlags_remove);
 		const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(property_flags & tfxEmitterPropertyFlags_single), tfxWideSetZeroi());
 		const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
@@ -11649,6 +11658,7 @@ namespace tfx {
 			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetSinglei(0))));
 			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(not_single, expired)));
 			flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideOri(tfxWideAndi(single, loop_limit), state_flags_no_spawning), expired)));
+			flags = tfxWideOri(flags, tfxWideAndi(capture_after_transform, expired));
 
 			tfxWideStore(&bank.age[index], age);
 			tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
