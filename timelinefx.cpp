@@ -3215,6 +3215,9 @@ namespace tfx {
 		names_and_types.Insert("background_color_red", tfxFloat);
 		names_and_types.Insert("background_color_green", tfxFloat);
 		names_and_types.Insert("background_color_blue", tfxFloat);
+		names_and_types.Insert("background_image_tint_red", tfxFloat);
+		names_and_types.Insert("background_image_tint_green", tfxFloat);
+		names_and_types.Insert("background_image_tint_blue", tfxFloat);
 		names_and_types.Insert("use_checker_background", tfxBool);
 		names_and_types.Insert("preview_zoom", tfxFloat);
 		names_and_types.Insert("updates_per_second", tfxFloat);
