@@ -1948,7 +1948,7 @@ You can then use layer inside the loop to get the current layer
 	inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow) {
 		assert(buffer->data);			//No data allocated in buffer
 		tfxU32 first_new_index = buffer->current_size;
-		tfxU32 new_size = buffer->current_size += amount;
+		tfxU32 new_size = buffer->current_size + amount;
 		if (grow && new_size >= buffer->capacity) {
 			GrowArrays(buffer, buffer->capacity, new_size);
 		}
