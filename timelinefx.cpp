@@ -3246,6 +3246,7 @@ namespace tfx {
 		names_and_types.Insert("use_texture_filtering", tfxBool);
 		names_and_types.Insert("sprite_data_tab_use_compute", tfxSInt);
 		names_and_types.Insert("update_mode", tfxSInt);
+		names_and_types.Insert("camera_mouse_sensitivity", tfxFloat);
 		initialised = true;
 	}
 
@@ -9186,21 +9187,17 @@ namespace tfx {
 			sprites_count = pm.particle_array_buffers[particles_index].current_size;
 			if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
 				if (sprites_count + max_spawn_count > FreeSpace(&sprite_buffer)) {
-					AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
+					GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1);
 					if (!(pm.flags & tfxEffectManagerFlags_unordered)) {
 						pm.depth_indexes[layer][pm.current_depth_index_buffer].reserve(sprite_buffer.capacity);
 					}
-					sprite_buffer.current_size -= sprite_buffer.current_size - (sprites_count + max_spawn_count);
-				}
-				else {
-					sprite_buffer.current_size += max_spawn_count + sprites_count;
 				}
 			}
 			else {
 				sprites_count = sprites_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : sprites_count;
 				max_spawn_count = max_spawn_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : max_spawn_count;
-				sprite_buffer.current_size += max_spawn_count + sprites_count;
 			}
+			sprite_buffer.current_size += max_spawn_count + sprites_count;
 
 			sprites_count += max_spawn_count;
 			sprites_index = pm.sprite_index_point[layer];
@@ -9229,21 +9226,17 @@ namespace tfx {
 			sprites_count = pm.particle_array_buffers[particles_index].current_size;
 			if (pm.flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
 				if (sprites_count + max_spawn_count > FreeSpace(&sprite_buffer)) {
-					AddRows(&sprite_buffer, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1, true);
+					GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (sprites_count + max_spawn_count - FreeSpace(&sprite_buffer)) + 1);
 					if (!(pm.flags & tfxEffectManagerFlags_unordered)) {
 						pm.depth_indexes[layer][pm.current_depth_index_buffer].reserve(sprite_buffer.capacity);
 					}
-					sprite_buffer.current_size -= sprite_buffer.current_size - (sprites_count + max_spawn_count);
-				}
-				else {
-					sprite_buffer.current_size += max_spawn_count + sprites_count;
 				}
 			}
 			else {
 				sprites_count = sprites_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : sprites_count;
-				sprite_buffer.current_size += max_spawn_count + sprites_count;
 				max_spawn_count = max_spawn_count > FreeSpace(&sprite_buffer) ? FreeSpace(&sprite_buffer) : max_spawn_count;
 			}
+			sprite_buffer.current_size += max_spawn_count + sprites_count;
 
 			sprites_count += max_spawn_count;
 			sprites_index = pm.sprite_index_point[layer];
