@@ -721,7 +721,7 @@ You can then use layer inside the loop to get the current layer
 	typedef tfxU32 tfxAnimationInstanceFlags;
 	typedef tfxU32 tfxAnimationManagerFlags;
 
-	enum tfxErrorFlags_ {
+	enum tfxErrorFlags_bits {
 		tfxErrorCode_success = 0,
 		tfxErrorCode_incorrect_package_format = 1 << 0,
 		tfxErrorCode_data_could_not_be_loaded = 1 << 1,
@@ -739,7 +739,7 @@ You can then use layer inside the loop to get the current layer
 		tfxErrorCode_library_loaded_without_shape_loader = 1 << 13
 	};
 
-	enum tfxEffectCloningFlags_ {
+	enum tfxEffectCloningFlags_bits {
 		tfxEffectCloningFlags_none = 0,
 		tfxEffectCloningFlags_keep_user_data = 1 << 0,
 		tfxEffectCloningFlags_force_clone_global = 1 << 1,
@@ -761,7 +761,7 @@ You can then use layer inside the loop to get the current layer
 		tfxBillboarding_align_to_vector = 3				//Align to vector
 	};
 
-	enum tfxParticleManagerFlags_ {
+	enum tfxParticleManagerFlags_bits {
 		tfxEffectManagerFlags_none = 0,
 		tfxEffectManagerFlags_disable_spawning = 1,
 		tfxEffectManagerFlags_force_capture = 2,
@@ -791,7 +791,7 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	//Particle property that defines how a particle will rotate
-	enum tfxAngleSettingFlags_ {
+	enum tfxAngleSettingFlags_bits {
 		tfxAngleSettingFlags_none = 0,														//No flag
 		tfxAngleSettingFlags_align_roll = 1 << 0,											//Align the particle with it's direction of travel in 2d
 		tfxAngleSettingFlags_random_roll = 1 << 1,											//Chose a random angle at spawn time/state_flags
@@ -804,7 +804,7 @@ You can then use layer inside the loop to get the current layer
 	};
 
 	//All the state_flags needed by the ControlParticle function put into one enum to save space
-	enum tfxParticleControlFlags_ {
+	enum tfxParticleControlFlags_bits {
 		tfxParticleControlFlags_none = 0,
 		tfxParticleControlFlags_random_color = 1 << 0,
 		tfxParticleControlFlags_relative_position = 1 << 1,
@@ -833,7 +833,7 @@ You can then use layer inside the loop to get the current layer
 		tfxParticleControlFlags_specify_yaw = 1 << 24,
 	};
 
-	enum tfxEffectPropertyFlags_ {
+	enum tfxEffectPropertyFlags_bits {
 		tfxEffectPropertyFlags_none = 0,
 		tfxEffectPropertyFlags_is_3d = 1 << 0,
 		tfxEffectPropertyFlags_depth_draw_order = 1 << 1,
@@ -843,7 +843,7 @@ You can then use layer inside the loop to get the current layer
 		tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5		//In the editor you can specify which effects you want to be included in a spritedata export
 	};
 
-	enum tfxEmitterPropertyFlags_ {
+	enum tfxEmitterPropertyFlags_bits {
 		tfxEmitterPropertyFlags_none = 0,
 		tfxEmitterPropertyFlags_random_color = 1 << 0,						//Pick a random color from the color overtime gradient rather then change the color over the lifetime of the particle
 		tfxEmitterPropertyFlags_relative_position = 1 << 1,					//Keep the particles position relative to the current position of the emitter
@@ -879,7 +879,7 @@ You can then use layer inside the loop to get the current layer
 		tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 31	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
 	};
 
-	enum tfxParticleFlags_ : unsigned char {
+	enum tfxParticleFlags_bits : unsigned char {
 		tfxParticleFlags_none = 0,
 		tfxParticleFlags_fresh = 1 << 0,									//Particle has just spawned this frame	
 		tfxParticleFlags_capture_after_transform = 1 << 3,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
@@ -888,7 +888,7 @@ You can then use layer inside the loop to get the current layer
 		tfxParticleFlags_has_sub_effects = 1 << 6,							//Flagged if the particle has sub effects
 	};
 
-	enum tfxEmitterStateFlags_ : unsigned int {
+	enum tfxEmitterStateFlags_bits : unsigned int {
 		tfxEmitterStateFlags_none = 0,
 		tfxEmitterStateFlags_random_color = 1 << 0,
 		tfxEmitterStateFlags_relative_position = 1 << 1,					//Keep the particles position relative to the current position of the emitter
@@ -916,7 +916,7 @@ You can then use layer inside the loop to get the current layer
 		tfxEmitterStateFlags_has_noise = 1 << 23
 	};
 
-	enum tfxEffectStateFlags_ : unsigned int {
+	enum tfxEffectStateFlags_bits : unsigned int {
 		tfxEffectStateFlags_none = 0,
 		tfxEffectStateFlags_stop_spawning = 1 << 3,							//Tells the emitter to stop spawning
 		tfxEffectStateFlags_remove = 1 << 4,								//Tells the effect/emitter to remove itself from the particle manager immediately
@@ -928,13 +928,13 @@ You can then use layer inside the loop to get the current layer
 		tfxEffectStateFlags_no_tween = 1 << 20
 	};
 
-	enum tfxVectorFieldFlags_ : unsigned char {
+	enum tfxVectorFieldFlags_bits : unsigned char {
 		tfxVectorFieldFlags_none = 0,
 		tfxVectorFieldFlags_repeat_horizontal = 1 << 0,						//Field will repeat horizontally
 		tfxVectorFieldFlags_repeat_vertical = 1 << 1						//Field will repeat vertically
 	};
 
-	enum tfxAttributeNodeFlags_ {
+	enum tfxAttributeNodeFlags_bits {
 		tfxAttributeNodeFlags_none = 0,
 		tfxAttributeNodeFlags_is_curve = 1 << 0,
 		tfxAttributeNodeFlags_is_left_curve = 1 << 1,
@@ -942,7 +942,7 @@ You can then use layer inside the loop to get the current layer
 		tfxAttributeNodeFlags_curves_initialised = 1 << 3
 	};
 
-	enum tfxAnimationFlags_ {
+	enum tfxAnimationFlags_bits {
 		tfxAnimationFlags_none = 0,
 		tfxAnimationFlags_loop = 1 << 0,
 		tfxAnimationFlags_seamless = 1 << 1,
@@ -952,12 +952,12 @@ You can then use layer inside the loop to get the current layer
 		tfxAnimationFlags_orthographic = 1 << 5
 	};
 
-	enum tfxAnimationInstanceFlags_ {
+	enum tfxAnimationInstanceFlags_bits {
 		tfxAnimationInstanceFlags_none = 0,
 		tfxAnimationInstanceFlags_loop = 1 << 0,
 	};
 
-	enum tfxAnimationManagerFlags_ {
+	enum tfxAnimationManagerFlags_bits {
 		tfxAnimationManagerFlags_none = 0,
 		tfxAnimationManagerFlags_has_animated_shapes = 1 << 0,
 		tfxAnimationManagerFlags_initialised = 1 << 1,
