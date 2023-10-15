@@ -11832,7 +11832,6 @@ namespace tfx {
 	const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
 	tfxU32 tfxCurrentSnapshot = 0;
 	tfxProfile tfxProfileArray[tfxPROFILE_COUNT];
-	tfxMemoryTrackerLog tfxMEMORY_TRACKER;
 	tfxDataTypesDictionary tfxDataTypes;
 	int tfxNumberOfThreadsInAdditionToMain;
 	tfxQueueProcessor tfxThreadQueues;
