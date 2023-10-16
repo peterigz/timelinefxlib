@@ -3128,7 +3128,7 @@ You can then use layer inside the loop to get the current layer
 		x2 = number * 0.5F;
 		y = number;
 		i = *(long *)&y;                       // evil floating point bit level hacking
-		i = 0x5f3759df - (i >> 1);               // what the fuck? 
+		i = 0x5f3759df - (i >> 1);             // what the fuck? 
 		y = *(float *)&i;
 		y = y * (threehalfs - (x2 * y * y));   // 1st iteration
 
@@ -4423,76 +4423,8 @@ You can then use layer inside the loop to get the current layer
 	inline type Lower() { type convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; } \
 	};
 
-	struct tfxStr256 : public tfxStr {
-
-		char buffer[256];
-		tfxStr256() { memset(buffer, 0, 256); data = buffer; capacity = 256; current_size = 0; is_local_buffer = true; NullTerminate(); }
-		inline void operator=(const tfxStr& src) {
-
-			data = buffer;
-			is_local_buffer = true;
-			capacity = 256; size_t length = src.Length();
-			if (!length) {
-
-				Clear(); return;
-			};
-			resize(src.current_size);
-			memcpy(data, src.strbuffer(), length);
-			current_size = (tfxU32)length;
-			NullTerminate();
-		}
-		inline void operator=(const tfxStr256& src) {
-
-			data = buffer;
-			is_local_buffer = true;
-			capacity = 256; size_t length = src.Length();
-			if (!length) {
-
-				Clear(); return;
-			};
-			resize(src.current_size);
-			memcpy(data, src.strbuffer(), length);
-			current_size = (tfxU32)length;
-			NullTerminate();
-		}
-		inline void operator=(const char *text) { data = buffer; is_local_buffer = true; capacity = 256; size_t length = strnlen_s(text, 256); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-		tfxStr256(const char *text) { memset(buffer, 0, 256); data = buffer; is_local_buffer = true; capacity = 256; size_t length = strnlen_s(text, 256); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-		tfxStr256(const tfxStr &src) {
-
-			memset(buffer, 0, 256);
-			data = buffer;
-			is_local_buffer = true;
-			capacity = 256; size_t length = src.Length();
-			if (!length) {
-
-				Clear(); return;
-			};
-			resize(src.current_size);
-			memcpy(data, src.strbuffer(), length);
-			current_size = (tfxU32)length;
-			NullTerminate();
-		}
-		tfxStr256(const tfxStr256 &src) {
-
-			memset(buffer, 0, 256);
-			data = buffer;
-			is_local_buffer = true;
-			capacity = 256; size_t length = src.Length();
-			if (!length) {
-
-				Clear(); return;
-			};
-			resize(src.current_size);
-			memcpy(data, src.strbuffer(), length);
-			current_size = (tfxU32)length;
-			NullTerminate();
-		}
-		inline int Find(const char *needle) { tfxStr256 compare = needle; tfxStr256 lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; }
-		inline tfxStr256 Lower() { tfxStr256 convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; }
-	};
-
 	tfxStrType(tfxStr512, 512);
-	//tfxStrType(tfxStr256, 256);
+	tfxStrType(tfxStr256, 256);
 	tfxStrType(tfxStr128, 128);
 	tfxStrType(tfxStr64, 64);
 	tfxStrType(tfxStr32, 32);
@@ -5105,52 +5037,51 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph(tfxMemoryArenaManager *node_allocator, tfxU32 bucket_size);
 		~tfxGraph();
 
-		tfxAttributeNode* AddNode(float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
-		void AddNode(tfxAttributeNode &node);
-		void SetNode(tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
-		float GetValue(float age);
-		float GetRandomValue(float age, tfxRandom &seed);
-		float GetValue(float age, float life);
-		tfxAttributeNode *GetNextNode(tfxAttributeNode &node);
-		tfxAttributeNode *GetPrevNode(tfxAttributeNode &node);
-		tfxAttributeNode *GetLastNode();
-		float GetFirstValue();
-		tfxAttributeNode* AddCoordNode(float, float);
-		tfxAttributeNode* InsertCoordNode(float, float);
-		tfxAttributeNode* InsertNode(float, float);
-		float *LinkFirstValue();
-		float GetLastValue();
-		float GetMaxValue();
-		float GetMinValue();
-		float GetLastFrame();
-		tfxBucketArray<tfxAttributeNode>& Nodes();
-		tfxAttributeNode* FindNode(const tfxAttributeNode &n);
-		void ValidateCurves();
-		void DeleteNode(const tfxAttributeNode &n);
-		void DeleteNodeAtFrame(float frame);
-		void Reset(float first_node_value, tfxGraphPreset preset, bool add_node = true);
-		void DragValues(tfxGraphPreset preset, float &frame, float &value);
-		void ClearToOne(float value);
-		void Clear();
-		void Free();
-		void Copy(tfxGraph &to, bool compile = true);
-		bool Sort();
-		void ReIndex();
-		tfxVec2 GetInitialZoom();
-		tfxVec2 GetInitialZoom3d();
-		bool IsColorGraph();
-		bool IsOvertimeGraph();
-		bool IsGlobalGraph();
-		bool IsAngleGraph();
-		bool IsTranslationGraph();
-		void MultiplyAllValues(float scalar);
-		void CopyToNoLookups(tfxGraph *graph);
-
 	};
 
+	tfxAttributeNode* AddGraphNode(tfxGraph *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+	void AddGraphNode(tfxGraph *graph, tfxAttributeNode &node);
+	void SetGraphNode(tfxGraph *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+	float GetGraphValue(tfxGraph *graph, float age);
+	float GetGraphRandomValue(tfxGraph *graph, float age, tfxRandom &seed);
+	float GetGraphValue(tfxGraph *graph, float age, float life);
+	tfxAttributeNode *GetGraphNextNode(tfxGraph *graph, tfxAttributeNode &node);
+	tfxAttributeNode *GetGraphPrevNode(tfxGraph *graph, tfxAttributeNode &node);
+	tfxAttributeNode *GetGraphLastNode(tfxGraph *graph);
+	float GetGraphFirstValue(tfxGraph *graph);
+	tfxAttributeNode* AddGraphCoordNode(tfxGraph *graph, float, float);
+	tfxAttributeNode* InsertGraphCoordNode(tfxGraph *graph, float, float);
+	tfxAttributeNode* InsertGraphNode(tfxGraph *graph, float, float);
+	float *LinkGraphFirstValue(tfxGraph *graph);
+	float GetGraphLastValue(tfxGraph *graph);
+	float GetGraphMaxValue(tfxGraph *graph);
+	float GetGraphMinValue(tfxGraph *graph);
+	float GetGraphLastFrame(tfxGraph *graph);
+	tfxBucketArray<tfxAttributeNode>& GraphNodes(tfxGraph *graph);
+	tfxAttributeNode* FindGraphNode(tfxGraph *graph, const tfxAttributeNode &n);
+	void ValidateGraphCurves(tfxGraph *graph);
+	void DeleteGraphNode(tfxGraph *graph, const tfxAttributeNode &n);
+	void DeleteGraphNodeAtFrame(tfxGraph *graph, float frame);
+	void ResetGraph(tfxGraph *graph, float first_node_value, tfxGraphPreset preset, bool add_node = true);
+	void ClearGraphToOne(tfxGraph *graph, float value);
+	void ClearGraph(tfxGraph *graph);
+	void FreeGraph(tfxGraph *graph);
+	void CopyGraph(tfxGraph *graph, tfxGraph *to, bool compile = true);
+	bool SortGraph(tfxGraph *graph);
+	void ReIndexGraph(tfxGraph *graph);
+	tfxVec2 GetGraphInitialZoom(tfxGraph *graph);
+	tfxVec2 GetGraphInitialZoom3d(tfxGraph *graph);
+	bool IsColorGraph(tfxGraph *graph);
+	bool IsOvertimeGraph(tfxGraph *graph);
+	bool IsGlobalGraph(tfxGraph *graph);
+	bool IsAngleGraph(tfxGraph *graph);
+	bool IsTranslationGraph(tfxGraph *graph);
+	void MultiplyAllGraphValues(tfxGraph *graph, float scalar);
+	void CopyGraphNoLookups(tfxGraph *src_graph, tfxGraph *dst_graph);
+
+	void DragGraphValues(tfxGraphPreset preset, float &frame, float &value);
 	tfxVec4 GetMinMaxGraphValues(tfxGraphPreset preset);
 
-	//todo:: Inline a lot of these.
 	tfxVec2 GetQuadBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, float t, float ymin, float ymax, bool clamp = true);
 	tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
 	float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
@@ -5170,7 +5101,7 @@ You can then use layer inside the loop to get the current layer
 	float GetRandomFast(tfxGraph &graph, float frame, tfxRandom &seed);
 	float GetRandomPrecise(tfxGraph &graph, float frame, tfxRandom &seed);
 
-	//Node Manipluation
+	//Node Manipulation
 	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
 	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float &frame, float &value);
 	void SetCurve(tfxGraph &graph, tfxAttributeNode &node, bool is_left_curve, float &frame, float &value);
@@ -5255,39 +5186,39 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void Free() {
-			life.Free();
-			amount.Free();
-			velocity.Free();
-			width.Free();
-			height.Free();
-			weight.Free();
-			spin.Free();
-			stretch.Free();
-			overal_scale.Free();
-			intensity.Free();
-			frame_rate.Free();
-			splatter.Free();
-			emitter_width.Free();
-			emitter_height.Free();
-			emitter_depth.Free();
+			FreeGraph(&life);
+			FreeGraph(&amount);
+			FreeGraph(&velocity);
+			FreeGraph(&width);
+			FreeGraph(&height);
+			FreeGraph(&weight);
+			FreeGraph(&spin);
+			FreeGraph(&stretch);
+			FreeGraph(&overal_scale);
+			FreeGraph(&intensity);
+			FreeGraph(&frame_rate);
+			FreeGraph(&splatter);
+			FreeGraph(&emitter_width);
+			FreeGraph(&emitter_height);
+			FreeGraph(&emitter_depth);
 		}
 
 		void CopyToNoLookups(tfxGlobalAttributes *dst) {
-			life.CopyToNoLookups(&dst->life);
-			amount.CopyToNoLookups(&dst->amount);
-			velocity.CopyToNoLookups(&dst->velocity);
-			width.CopyToNoLookups(&dst->width);
-			height.CopyToNoLookups(&dst->height);
-			weight.CopyToNoLookups(&dst->weight);
-			spin.CopyToNoLookups(&dst->spin);
-			stretch.CopyToNoLookups(&dst->stretch);
-			overal_scale.CopyToNoLookups(&dst->overal_scale);
-			intensity.CopyToNoLookups(&dst->intensity);
-			frame_rate.CopyToNoLookups(&dst->frame_rate);
-			splatter.CopyToNoLookups(&dst->splatter);
-			emitter_width.CopyToNoLookups(&dst->emitter_width);
-			emitter_height.CopyToNoLookups(&dst->emitter_height);
-			emitter_depth.CopyToNoLookups(&dst->emitter_depth);
+			CopyGraphNoLookups(&life, &dst->life);
+			CopyGraphNoLookups(&amount, &dst->amount);
+			CopyGraphNoLookups(&velocity, &dst->velocity);
+			CopyGraphNoLookups(&width, &dst->width);
+			CopyGraphNoLookups(&height, &dst->height);
+			CopyGraphNoLookups(&weight, &dst->weight);
+			CopyGraphNoLookups(&spin, &dst->spin);
+			CopyGraphNoLookups(&stretch, &dst->stretch);
+			CopyGraphNoLookups(&overal_scale, &dst->overal_scale);
+			CopyGraphNoLookups(&intensity, &dst->intensity);
+			CopyGraphNoLookups(&frame_rate, &dst->frame_rate);
+			CopyGraphNoLookups(&splatter, &dst->splatter);
+			CopyGraphNoLookups(&emitter_width, &dst->emitter_width);
+			CopyGraphNoLookups(&emitter_height, &dst->emitter_height);
+			CopyGraphNoLookups(&emitter_depth, &dst->emitter_depth);
 		}
 
 	};
@@ -5317,21 +5248,21 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void Free() {
-			roll.Free();
-			pitch.Free();
-			yaw.Free();
-			translation_x.Free();
-			translation_y.Free();
-			translation_z.Free();
+			FreeGraph(&roll);
+			FreeGraph(&pitch);
+			FreeGraph(&yaw);
+			FreeGraph(&translation_x);
+			FreeGraph(&translation_y);
+			FreeGraph(&translation_z);
 		}
 
 		void CopyToNoLookups(tfxTransformAttributes *dst) {
-			roll.CopyToNoLookups(&dst->roll);
-			pitch.CopyToNoLookups(&dst->pitch);
-			yaw.CopyToNoLookups(&dst->yaw);
-			translation_x.CopyToNoLookups(&dst->translation_x);
-			translation_y.CopyToNoLookups(&dst->translation_y);
-			translation_z.CopyToNoLookups(&dst->translation_z);
+			CopyGraphNoLookups(&roll, &dst->roll);
+			CopyGraphNoLookups(&pitch, &dst->pitch);
+			CopyGraphNoLookups(&yaw, &dst->yaw);
+			CopyGraphNoLookups(&translation_x, &dst->translation_x);
+			CopyGraphNoLookups(&translation_y, &dst->translation_y);
+			CopyGraphNoLookups(&translation_z, &dst->translation_z);
 		}
 	};
 
@@ -5342,20 +5273,20 @@ You can then use layer inside the loop to get the current layer
 	inline void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame) {
 		if (keyframes.translation_x.nodes.size()) {
 			if (!HasNodeAtFrame(keyframes.translation_x, frame))
-				keyframes.translation_x.AddCoordNode(frame, 0.f);
+				AddGraphCoordNode(&keyframes.translation_x, frame, 0.f);
 			if (!HasNodeAtFrame(keyframes.translation_y, frame))
-				keyframes.translation_y.AddCoordNode(frame, 0.f);
+				AddGraphCoordNode(&keyframes.translation_y, frame, 0.f);
 			if (!HasNodeAtFrame(keyframes.translation_z, frame))
-				keyframes.translation_z.AddCoordNode(frame, 0.f);
+				AddGraphCoordNode(&keyframes.translation_z, frame, 0.f);
 		}
 		else {
-			keyframes.translation_x.AddCoordNode(0.f, 0.f);
-			keyframes.translation_y.AddCoordNode(0.f, 0.f);
-			keyframes.translation_z.AddCoordNode(0.f, 0.f);
+			AddGraphCoordNode(&keyframes.translation_x, 0.f, 0.f);
+			AddGraphCoordNode(&keyframes.translation_y, 0.f, 0.f);
+			AddGraphCoordNode(&keyframes.translation_z, 0.f, 0.f);
 			if (frame != 0) {
-				keyframes.translation_x.AddCoordNode(frame, 0.f);
-				keyframes.translation_y.AddCoordNode(frame, 0.f);
-				keyframes.translation_z.AddCoordNode(frame, 0.f);
+				AddGraphCoordNode(&keyframes.translation_x, frame, 0.f);
+				AddGraphCoordNode(&keyframes.translation_y, frame, 0.f);
+				AddGraphCoordNode(&keyframes.translation_z, frame, 0.f);
 			}
 		}
 	}
@@ -5394,27 +5325,27 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void Free() {
-			emission_pitch.Free();
-			emission_yaw.Free();
-			emission_range.Free();
-			splatter.Free();
-			emitter_width.Free();
-			emitter_height.Free();
-			emitter_depth.Free();
-			arc_size.Free();
-			arc_offset.Free();
+			FreeGraph(&emission_pitch);
+			FreeGraph(&emission_yaw);
+			FreeGraph(&emission_range);
+			FreeGraph(&splatter);
+			FreeGraph(&emitter_width);
+			FreeGraph(&emitter_height);
+			FreeGraph(&emitter_depth);
+			FreeGraph(&arc_size);
+			FreeGraph(&arc_offset);
 		}
 
 		void CopyToNoLookups(tfxPropertyAttributes *dst) {
-			emission_pitch.CopyToNoLookups(&dst->emission_pitch);
-			emission_yaw.CopyToNoLookups(&dst->emission_yaw);
-			emission_range.CopyToNoLookups(&dst->emission_range);
-			splatter.CopyToNoLookups(&dst->splatter);
-			emitter_width.CopyToNoLookups(&dst->emitter_width);
-			emitter_height.CopyToNoLookups(&dst->emitter_height);
-			emitter_depth.CopyToNoLookups(&dst->emitter_depth);
-			arc_size.CopyToNoLookups(&dst->arc_size);
-			arc_offset.CopyToNoLookups(&dst->arc_offset);
+			CopyGraphNoLookups(&emission_pitch, &dst->emission_pitch);
+			CopyGraphNoLookups(&emission_yaw, &dst->emission_yaw);
+			CopyGraphNoLookups(&emission_range, &dst->emission_range);
+			CopyGraphNoLookups(&splatter, &dst->splatter);
+			CopyGraphNoLookups(&emitter_width, &dst->emitter_width);
+			CopyGraphNoLookups(&emitter_height, &dst->emitter_height);
+			CopyGraphNoLookups(&emitter_depth, &dst->emitter_depth);
+			CopyGraphNoLookups(&arc_size, &dst->arc_size);
+			CopyGraphNoLookups(&arc_offset, &dst->arc_offset);
 		}
 
 	};
@@ -5450,25 +5381,25 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void Free() {
-			life.Free();
-			amount.Free();
-			velocity.Free();
-			width.Free();
-			height.Free();
-			weight.Free();
-			spin.Free();
-			noise_offset.Free();
+			FreeGraph(&life);
+			FreeGraph(&amount);
+			FreeGraph(&velocity);
+			FreeGraph(&width);
+			FreeGraph(&height);
+			FreeGraph(&weight);
+			FreeGraph(&spin);
+			FreeGraph(&noise_offset);
 		}
 
 		void CopyToNoLookups(tfxBaseAttributes *dst) {
-			life.CopyToNoLookups(&dst->life);
-			amount.CopyToNoLookups(&dst->amount);
-			velocity.CopyToNoLookups(&dst->velocity);
-			width.CopyToNoLookups(&dst->width);
-			height.CopyToNoLookups(&dst->height);
-			weight.CopyToNoLookups(&dst->weight);
-			spin.CopyToNoLookups(&dst->spin);
-			noise_offset.CopyToNoLookups(&dst->noise_offset);
+			CopyGraphNoLookups(&life, &dst->life);
+			CopyGraphNoLookups(&amount, &dst->amount);
+			CopyGraphNoLookups(&velocity, &dst->velocity);
+			CopyGraphNoLookups(&width, &dst->width);
+			CopyGraphNoLookups(&height, &dst->height);
+			CopyGraphNoLookups(&weight, &dst->weight);
+			CopyGraphNoLookups(&spin, &dst->spin);
+			CopyGraphNoLookups(&noise_offset, &dst->noise_offset);
 		}
 
 	};
@@ -5507,27 +5438,27 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void Free() {
-			life.Free();
-			amount.Free();
-			velocity.Free();
-			width.Free();
-			height.Free();
-			weight.Free();
-			spin.Free();
-			noise_offset.Free();
-			noise_resolution.Free();
+			FreeGraph(&life);
+			FreeGraph(&amount);
+			FreeGraph(&velocity);
+			FreeGraph(&width);
+			FreeGraph(&height);
+			FreeGraph(&weight);
+			FreeGraph(&spin);
+			FreeGraph(&noise_offset);
+			FreeGraph(&noise_resolution);
 		}
 
 		void CopyToNoLookups(tfxVariationAttributes *dst) {
-			life.CopyToNoLookups(&dst->life);
-			amount.CopyToNoLookups(&dst->amount);
-			velocity.CopyToNoLookups(&dst->velocity);
-			width.CopyToNoLookups(&dst->width);
-			height.CopyToNoLookups(&dst->height);
-			weight.CopyToNoLookups(&dst->weight);
-			spin.CopyToNoLookups(&dst->spin);
-			noise_offset.CopyToNoLookups(&dst->noise_offset);
-			noise_resolution.CopyToNoLookups(&dst->noise_resolution);
+			CopyGraphNoLookups(&life, &dst->life);
+			CopyGraphNoLookups(&amount, &dst->amount);
+			CopyGraphNoLookups(&velocity, &dst->velocity);
+			CopyGraphNoLookups(&width, &dst->width);
+			CopyGraphNoLookups(&height, &dst->height);
+			CopyGraphNoLookups(&weight, &dst->weight);
+			CopyGraphNoLookups(&spin, &dst->spin);
+			CopyGraphNoLookups(&noise_offset, &dst->noise_offset);
+			CopyGraphNoLookups(&noise_resolution, &dst->noise_resolution);
 		}
 
 	};
@@ -5587,41 +5518,41 @@ You can then use layer inside the loop to get the current layer
 		}
 
 		void Free() {
-			velocity.Free();
-			width.Free();
-			height.Free();
-			weight.Free();
-			spin.Free();
-			stretch.Free();
-			red.Free();
-			green.Free();
-			blue.Free();
-			blendfactor.Free();
-			velocity_turbulance.Free();
-			direction_turbulance.Free();
-			velocity_adjuster.Free();
-			intensity.Free();
-			direction.Free();
-			noise_resolution.Free();
+			FreeGraph(&velocity);
+			FreeGraph(&width);
+			FreeGraph(&height);
+			FreeGraph(&weight);
+			FreeGraph(&spin);
+			FreeGraph(&stretch);
+			FreeGraph(&red);
+			FreeGraph(&green);
+			FreeGraph(&blue);
+			FreeGraph(&blendfactor);
+			FreeGraph(&velocity);
+			FreeGraph(&direction_turbulance);
+			FreeGraph(&velocity_adjuster);
+			FreeGraph(&intensity);
+			FreeGraph(&direction);
+			FreeGraph(&noise_resolution);
 		}
 
 		void CopyToNoLookups(tfxOvertimeAttributes *dst) {
-			velocity.CopyToNoLookups(&dst->velocity);
-			width.CopyToNoLookups(&dst->width);
-			height.CopyToNoLookups(&dst->height);
-			weight.CopyToNoLookups(&dst->weight);
-			spin.CopyToNoLookups(&dst->spin);
-			stretch.CopyToNoLookups(&dst->stretch);
-			red.CopyToNoLookups(&dst->red);
-			green.CopyToNoLookups(&dst->green);
-			blue.CopyToNoLookups(&dst->blue);
-			blendfactor.CopyToNoLookups(&dst->blendfactor);
-			velocity_turbulance.CopyToNoLookups(&dst->velocity_turbulance);
-			direction_turbulance.CopyToNoLookups(&dst->direction_turbulance);
-			velocity_adjuster.CopyToNoLookups(&dst->velocity_adjuster);
-			intensity.CopyToNoLookups(&dst->intensity);
-			direction.CopyToNoLookups(&dst->direction);
-			noise_resolution.CopyToNoLookups(&dst->noise_resolution);
+			CopyGraphNoLookups(&velocity, &dst->velocity);
+			CopyGraphNoLookups(&width, &dst->width);
+			CopyGraphNoLookups(&height, &dst->height);
+			CopyGraphNoLookups(&weight, &dst->weight);
+			CopyGraphNoLookups(&spin, &dst->spin);
+			CopyGraphNoLookups(&stretch, &dst->stretch);
+			CopyGraphNoLookups(&red, &dst->red);
+			CopyGraphNoLookups(&green, &dst->green);
+			CopyGraphNoLookups(&blue, &dst->blue);
+			CopyGraphNoLookups(&blendfactor, &dst->blendfactor);
+			CopyGraphNoLookups(&velocity_turbulance, &dst->velocity_turbulance);
+			CopyGraphNoLookups(&direction_turbulance, &dst->direction_turbulance);
+			CopyGraphNoLookups(&velocity_adjuster, &dst->velocity_adjuster);
+			CopyGraphNoLookups(&intensity, &dst->intensity);
+			CopyGraphNoLookups(&direction, &dst->direction);
+			CopyGraphNoLookups(&noise_resolution, &dst->noise_resolution);
 		}
 
 	};
@@ -7572,8 +7503,8 @@ You can then use layer inside the loop to get the current layer
 			tfxGraph *graph = effect.GetGraphByType(global_type);
 			tfxEffectEmitter *original_effect = effect.library->GetEffect(original_effect_hash);
 			tfxGraph *original_graph = original_effect->GetGraphByType(global_type);
-			original_graph->Copy(*graph, false);
-			graph->MultiplyAllValues(amount);
+			CopyGraph(original_graph, graph, false);
+			MultiplyAllGraphValues(graph, amount);
 			CompileGraph(*graph);
 		}
 
@@ -7590,8 +7521,8 @@ You can then use layer inside the loop to get the current layer
 			tfxGraph *graph = emitter->GetGraphByType(graph_type);
 			tfxEffectEmitter *original_emitter = effect.library->GetEffect(emitter_path);
 			tfxGraph *original_graph = original_emitter->GetGraphByType(graph_type);
-			original_graph->Copy(*graph, false);
-			graph->MultiplyAllValues(amount);
+			CopyGraph(original_graph, graph, false);
+			MultiplyAllGraphValues(graph, amount);
 			CompileGraph(*graph);
 		}
 
