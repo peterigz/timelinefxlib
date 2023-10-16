@@ -5039,6 +5039,7 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
+	//Mainly used by the editor to edit graphs so these are kind of API functions but you wouldn't generally use these outside of the particle editor
 	tfxAttributeNode* AddGraphNode(tfxGraph *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 	void AddGraphNode(tfxGraph *graph, tfxAttributeNode &node);
 	void SetGraphNode(tfxGraph *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
@@ -5078,17 +5079,13 @@ You can then use layer inside the loop to get the current layer
 	bool IsTranslationGraph(tfxGraph *graph);
 	void MultiplyAllGraphValues(tfxGraph *graph, float scalar);
 	void CopyGraphNoLookups(tfxGraph *src_graph, tfxGraph *dst_graph);
-
 	void DragGraphValues(tfxGraphPreset preset, float &frame, float &value);
 	tfxVec4 GetMinMaxGraphValues(tfxGraphPreset preset);
-
 	tfxVec2 GetQuadBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, float t, float ymin, float ymax, bool clamp = true);
 	tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
 	float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
 	float GetDistance(float fromx, float fromy, float tox, float toy);
-	inline float GetVectorAngle(float x, float y) {
-		return atan2f(x, -y);
-	}
+	inline float GetVectorAngle(float x, float y) { return atan2f(x, -y); }
 	static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
 	void CompileGraph(tfxGraph &graph);
 	void CompileGraphOvertime(tfxGraph &graph);
@@ -5121,19 +5118,12 @@ You can then use layer inside the loop to get the current layer
 	bool IsAngleGraph(tfxGraphType type);
 	bool IsAngleOvertimeGraph(tfxGraphType type);
 	bool IsEverythingElseGraph(tfxGraphType type);
-	inline bool HasNodeAtFrame(tfxGraph &graph, float frame) {
-		graph.nodes.ResetIteratorIndex();
-		do {
-			for (auto &node : graph.nodes) {
-				if (node.frame == frame) return true;
-			}
-		} while (!graph.nodes.EndOfBuckets());
-		return false;
-	}
+	bool HasNodeAtFrame(tfxGraph &graph, float frame);
 	bool HasKeyframes(tfxEffectEmitter &e);
 	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
 	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
 
+	//The following structs group graphs together under the attribute categories Global, Transform, Properties, Base, Variation and Overtime
 	struct tfxGlobalAttributes {
 		tfxGraph life;
 		tfxGraph amount;
@@ -5150,78 +5140,11 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph emitter_width;
 		tfxGraph emitter_height;
 		tfxGraph emitter_depth;
-
-		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			stretch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			overal_scale.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			intensity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			frame_rate.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-			life.lookup.values.allocator = value_allocator;
-			amount.lookup.values.allocator = value_allocator;
-			velocity.lookup.values.allocator = value_allocator;
-			width.lookup.values.allocator = value_allocator;
-			height.lookup.values.allocator = value_allocator;
-			weight.lookup.values.allocator = value_allocator;
-			spin.lookup.values.allocator = value_allocator;
-			stretch.lookup.values.allocator = value_allocator;
-			overal_scale.lookup.values.allocator = value_allocator;
-			intensity.lookup.values.allocator = value_allocator;
-			frame_rate.lookup.values.allocator = value_allocator;
-			splatter.lookup.values.allocator = value_allocator;
-			emitter_width.lookup.values.allocator = value_allocator;
-			emitter_height.lookup.values.allocator = value_allocator;
-			emitter_depth.lookup.values.allocator = value_allocator;
-		}
-
-		void Free() {
-			FreeGraph(&life);
-			FreeGraph(&amount);
-			FreeGraph(&velocity);
-			FreeGraph(&width);
-			FreeGraph(&height);
-			FreeGraph(&weight);
-			FreeGraph(&spin);
-			FreeGraph(&stretch);
-			FreeGraph(&overal_scale);
-			FreeGraph(&intensity);
-			FreeGraph(&frame_rate);
-			FreeGraph(&splatter);
-			FreeGraph(&emitter_width);
-			FreeGraph(&emitter_height);
-			FreeGraph(&emitter_depth);
-		}
-
-		void CopyToNoLookups(tfxGlobalAttributes *dst) {
-			CopyGraphNoLookups(&life, &dst->life);
-			CopyGraphNoLookups(&amount, &dst->amount);
-			CopyGraphNoLookups(&velocity, &dst->velocity);
-			CopyGraphNoLookups(&width, &dst->width);
-			CopyGraphNoLookups(&height, &dst->height);
-			CopyGraphNoLookups(&weight, &dst->weight);
-			CopyGraphNoLookups(&spin, &dst->spin);
-			CopyGraphNoLookups(&stretch, &dst->stretch);
-			CopyGraphNoLookups(&overal_scale, &dst->overal_scale);
-			CopyGraphNoLookups(&intensity, &dst->intensity);
-			CopyGraphNoLookups(&frame_rate, &dst->frame_rate);
-			CopyGraphNoLookups(&splatter, &dst->splatter);
-			CopyGraphNoLookups(&emitter_width, &dst->emitter_width);
-			CopyGraphNoLookups(&emitter_height, &dst->emitter_height);
-			CopyGraphNoLookups(&emitter_depth, &dst->emitter_depth);
-		}
-
 	};
+
+	void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	void FreeGlobalAttributes(tfxGlobalAttributes *attributes);
+	void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes *dst);
 
 	struct tfxTransformAttributes {
 		tfxGraph roll;
@@ -5230,41 +5153,11 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph translation_x;
 		tfxGraph translation_y;
 		tfxGraph translation_z;
-
-		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			roll.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			translation_x.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			translation_y.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			translation_z.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-			roll.lookup.values.allocator = value_allocator;
-			pitch.lookup.values.allocator = value_allocator;
-			yaw.lookup.values.allocator = value_allocator;
-			translation_x.lookup.values.allocator = value_allocator;
-			translation_y.lookup.values.allocator = value_allocator;
-			translation_z.lookup.values.allocator = value_allocator;
-		}
-
-		void Free() {
-			FreeGraph(&roll);
-			FreeGraph(&pitch);
-			FreeGraph(&yaw);
-			FreeGraph(&translation_x);
-			FreeGraph(&translation_y);
-			FreeGraph(&translation_z);
-		}
-
-		void CopyToNoLookups(tfxTransformAttributes *dst) {
-			CopyGraphNoLookups(&roll, &dst->roll);
-			CopyGraphNoLookups(&pitch, &dst->pitch);
-			CopyGraphNoLookups(&yaw, &dst->yaw);
-			CopyGraphNoLookups(&translation_x, &dst->translation_x);
-			CopyGraphNoLookups(&translation_y, &dst->translation_y);
-			CopyGraphNoLookups(&translation_z, &dst->translation_z);
-		}
 	};
+
+	void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	void FreeTransformAttributes(tfxTransformAttributes *attributes);
+	void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst);
 
 	inline bool HasTranslationKeyframes(tfxTransformAttributes &graphs) {
 		return graphs.translation_x.nodes.size() || graphs.translation_y.nodes.size() || graphs.translation_z.nodes.size();
@@ -5301,54 +5194,11 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph emitter_depth;
 		tfxGraph arc_size;
 		tfxGraph arc_offset;
-
-		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			emission_pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emission_yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emission_range.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			arc_size.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			arc_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-			emission_pitch.lookup.values.allocator = value_allocator;
-			emission_yaw.lookup.values.allocator = value_allocator;
-			emission_range.lookup.values.allocator = value_allocator;
-			splatter.lookup.values.allocator = value_allocator;
-			emitter_width.lookup.values.allocator = value_allocator;
-			emitter_height.lookup.values.allocator = value_allocator;
-			emitter_depth.lookup.values.allocator = value_allocator;
-			arc_size.lookup.values.allocator = value_allocator;
-			arc_offset.lookup.values.allocator = value_allocator;
-		}
-
-		void Free() {
-			FreeGraph(&emission_pitch);
-			FreeGraph(&emission_yaw);
-			FreeGraph(&emission_range);
-			FreeGraph(&splatter);
-			FreeGraph(&emitter_width);
-			FreeGraph(&emitter_height);
-			FreeGraph(&emitter_depth);
-			FreeGraph(&arc_size);
-			FreeGraph(&arc_offset);
-		}
-
-		void CopyToNoLookups(tfxPropertyAttributes *dst) {
-			CopyGraphNoLookups(&emission_pitch, &dst->emission_pitch);
-			CopyGraphNoLookups(&emission_yaw, &dst->emission_yaw);
-			CopyGraphNoLookups(&emission_range, &dst->emission_range);
-			CopyGraphNoLookups(&splatter, &dst->splatter);
-			CopyGraphNoLookups(&emitter_width, &dst->emitter_width);
-			CopyGraphNoLookups(&emitter_height, &dst->emitter_height);
-			CopyGraphNoLookups(&emitter_depth, &dst->emitter_depth);
-			CopyGraphNoLookups(&arc_size, &dst->arc_size);
-			CopyGraphNoLookups(&arc_offset, &dst->arc_offset);
-		}
-
 	};
+
+	void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	void FreePropertyAttributes(tfxPropertyAttributes *attributes);
+	void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttributes *dst);
 
 	struct tfxBaseAttributes {
 		tfxGraph life;
@@ -5359,50 +5209,11 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph weight;
 		tfxGraph spin;
 		tfxGraph noise_offset;
-
-		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			noise_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-			life.lookup.values.allocator = value_allocator;
-			amount.lookup.values.allocator = value_allocator;
-			velocity.lookup.values.allocator = value_allocator;
-			width.lookup.values.allocator = value_allocator;
-			height.lookup.values.allocator = value_allocator;
-			weight.lookup.values.allocator = value_allocator;
-			spin.lookup.values.allocator = value_allocator;
-			noise_offset.lookup.values.allocator = value_allocator;
-		}
-
-		void Free() {
-			FreeGraph(&life);
-			FreeGraph(&amount);
-			FreeGraph(&velocity);
-			FreeGraph(&width);
-			FreeGraph(&height);
-			FreeGraph(&weight);
-			FreeGraph(&spin);
-			FreeGraph(&noise_offset);
-		}
-
-		void CopyToNoLookups(tfxBaseAttributes *dst) {
-			CopyGraphNoLookups(&life, &dst->life);
-			CopyGraphNoLookups(&amount, &dst->amount);
-			CopyGraphNoLookups(&velocity, &dst->velocity);
-			CopyGraphNoLookups(&width, &dst->width);
-			CopyGraphNoLookups(&height, &dst->height);
-			CopyGraphNoLookups(&weight, &dst->weight);
-			CopyGraphNoLookups(&spin, &dst->spin);
-			CopyGraphNoLookups(&noise_offset, &dst->noise_offset);
-		}
-
 	};
+
+	void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	void FreeBaseAttributes(tfxBaseAttributes *attributes);
+	void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst);
 
 	struct tfxVariationAttributes {
 		tfxGraph life;
@@ -5414,54 +5225,11 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph spin;
 		tfxGraph noise_offset;
 		tfxGraph noise_resolution;
-
-		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			noise_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			noise_resolution.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-			life.lookup.values.allocator = value_allocator;
-			amount.lookup.values.allocator = value_allocator;
-			velocity.lookup.values.allocator = value_allocator;
-			width.lookup.values.allocator = value_allocator;
-			height.lookup.values.allocator = value_allocator;
-			weight.lookup.values.allocator = value_allocator;
-			spin.lookup.values.allocator = value_allocator;
-			noise_offset.lookup.values.allocator = value_allocator;
-			noise_resolution.lookup.values.allocator = value_allocator;
-		}
-
-		void Free() {
-			FreeGraph(&life);
-			FreeGraph(&amount);
-			FreeGraph(&velocity);
-			FreeGraph(&width);
-			FreeGraph(&height);
-			FreeGraph(&weight);
-			FreeGraph(&spin);
-			FreeGraph(&noise_offset);
-			FreeGraph(&noise_resolution);
-		}
-
-		void CopyToNoLookups(tfxVariationAttributes *dst) {
-			CopyGraphNoLookups(&life, &dst->life);
-			CopyGraphNoLookups(&amount, &dst->amount);
-			CopyGraphNoLookups(&velocity, &dst->velocity);
-			CopyGraphNoLookups(&width, &dst->width);
-			CopyGraphNoLookups(&height, &dst->height);
-			CopyGraphNoLookups(&weight, &dst->weight);
-			CopyGraphNoLookups(&spin, &dst->spin);
-			CopyGraphNoLookups(&noise_offset, &dst->noise_offset);
-			CopyGraphNoLookups(&noise_resolution, &dst->noise_resolution);
-		}
-
 	};
+
+	void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	void FreeVariationAttributes(tfxVariationAttributes *attributes);
+	void CopyVariationAttributesNoLookups(tfxVariationAttributes *src, tfxVariationAttributes *dst);
 
 	struct tfxOvertimeAttributes {
 		tfxGraph velocity;
@@ -5480,82 +5248,11 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph intensity;
 		tfxGraph direction;
 		tfxGraph noise_resolution;
-
-		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			stretch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			red.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			blue.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			green.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			blendfactor.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			velocity_turbulance.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			direction_turbulance.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			velocity_adjuster.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			intensity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			direction.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-			noise_resolution.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-			velocity.lookup.values.allocator = value_allocator;
-			width.lookup.values.allocator = value_allocator;
-			height.lookup.values.allocator = value_allocator;
-			weight.lookup.values.allocator = value_allocator;
-			spin.lookup.values.allocator = value_allocator;
-			stretch.lookup.values.allocator = value_allocator;
-			red.lookup.values.allocator = value_allocator;
-			blue.lookup.values.allocator = value_allocator;
-			green.lookup.values.allocator = value_allocator;
-			blendfactor.lookup.values.allocator = value_allocator;
-			velocity_turbulance.lookup.values.allocator = value_allocator;
-			direction_turbulance.lookup.values.allocator = value_allocator;
-			velocity_adjuster.lookup.values.allocator = value_allocator;
-			intensity.lookup.values.allocator = value_allocator;
-			direction.lookup.values.allocator = value_allocator;
-			noise_resolution.lookup.values.allocator = value_allocator;
-		}
-
-		void Free() {
-			FreeGraph(&velocity);
-			FreeGraph(&width);
-			FreeGraph(&height);
-			FreeGraph(&weight);
-			FreeGraph(&spin);
-			FreeGraph(&stretch);
-			FreeGraph(&red);
-			FreeGraph(&green);
-			FreeGraph(&blue);
-			FreeGraph(&blendfactor);
-			FreeGraph(&velocity);
-			FreeGraph(&direction_turbulance);
-			FreeGraph(&velocity_adjuster);
-			FreeGraph(&intensity);
-			FreeGraph(&direction);
-			FreeGraph(&noise_resolution);
-		}
-
-		void CopyToNoLookups(tfxOvertimeAttributes *dst) {
-			CopyGraphNoLookups(&velocity, &dst->velocity);
-			CopyGraphNoLookups(&width, &dst->width);
-			CopyGraphNoLookups(&height, &dst->height);
-			CopyGraphNoLookups(&weight, &dst->weight);
-			CopyGraphNoLookups(&spin, &dst->spin);
-			CopyGraphNoLookups(&stretch, &dst->stretch);
-			CopyGraphNoLookups(&red, &dst->red);
-			CopyGraphNoLookups(&green, &dst->green);
-			CopyGraphNoLookups(&blue, &dst->blue);
-			CopyGraphNoLookups(&blendfactor, &dst->blendfactor);
-			CopyGraphNoLookups(&velocity_turbulance, &dst->velocity_turbulance);
-			CopyGraphNoLookups(&direction_turbulance, &dst->direction_turbulance);
-			CopyGraphNoLookups(&velocity_adjuster, &dst->velocity_adjuster);
-			CopyGraphNoLookups(&intensity, &dst->intensity);
-			CopyGraphNoLookups(&direction, &dst->direction);
-			CopyGraphNoLookups(&noise_resolution, &dst->noise_resolution);
-		}
-
 	};
+
+	void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);
+	void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst);
 
 	struct tfxEmitterAttributes {
 		tfxPropertyAttributes properties;
@@ -5564,17 +5261,17 @@ You can then use layer inside the loop to get the current layer
 		tfxOvertimeAttributes overtime;
 
 		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			properties.Initialise(allocator, value_allocator, bucket_size);
-			base.Initialise(allocator, value_allocator, bucket_size);
-			variation.Initialise(allocator, value_allocator, bucket_size);
-			overtime.Initialise(allocator, value_allocator, bucket_size);
+			InitialisePropertyAttributes(&properties, allocator, value_allocator, bucket_size);
+			InitialiseBaseAttributes(&base, allocator, value_allocator, bucket_size);
+			InitialiseVariationAttributes(&variation, allocator, value_allocator, bucket_size);
+			InitialiseOvertimeAttributes(&overtime, allocator, value_allocator, bucket_size);
 		}
 
 		void Free() {
-			properties.Free();
-			base.Free();
-			variation.Free();
-			overtime.Free();
+			FreePropertyAttributes(&properties);
+			FreeBaseAttributes(&base);
+			FreeVariationAttributes(&variation);
+			FreeOvertimeAttributes(&overtime);
 		}
 	};
 
