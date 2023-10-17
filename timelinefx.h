@@ -767,7 +767,7 @@ You can then use layer inside the loop to get the current layer
 	enum tfxParticleManagerFlags_bits {
 		tfxEffectManagerFlags_none = 0,
 		tfxEffectManagerFlags_disable_spawning = 1,
-		tfxEffectManagerFlags_force_capture = 2,
+		tfxEffectManagerFlags_force_capture = 2,			//Unused
 		tfxEffectManagerFlags_use_compute_shader = 1 << 3,
 		tfxEffectManagerFlags_order_by_depth = 1 << 4,
 		tfxEffectManagerFlags_guarantee_order = 1 << 5,
@@ -6633,207 +6633,22 @@ You can then use layer inside the loop to get the current layer
 		{
 		}
 		~tfxParticleManager();
-
-		//Initialise the particle manager with the maximum number of particles and effects that you want the manager to update per frame
-		void Reconfigure(tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
-		void InitForBoth(tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor2d(tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor3d(tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
-		void InitFor2d(tfxLibrary *lib, unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
-		void InitFor3d(tfxLibrary *lib, unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered);
-		void ToggleSpritesWithUID(bool switch_on);
-		inline void SetLibrary(tfxLibrary *lib) {
-			library = lib;
-		}
-		void CreateParticleBanksForEachLayer();
-		//Update the particle manager. Call this once per frame in your logic udpate.
-		void Update(float elapsed);
-		//When paused you still might want to keep the particles in order:
-		void UpdateParticleOrderOnly();
-		//Add an effect to the particle manager. Pass a tfxEffectEmitter pointer if you want to change the effect on the fly. Once you add the effect to the particle manager
-		//then it's location in the buffer will keep changing as effects are updated and added and removed. The tracker will be updated accordingly each frame so you will always
-		//have access to the effect if you need it.
-		tfxU32 AddEffect(tfxEffectEmitter &effect, int buffer, int depth = 0, bool is_sub_effect = false, float add_delayed_spawning = 0);
-		tfxU32 AddEffect(tfxEffectTemplate &effect);
-		inline void UpdateAgeOnly(bool switch_on) { if (switch_on) flags |= tfxEffectManagerFlags_update_age_only; else flags &= ~tfxEffectManagerFlags_update_age_only; }
-		inline void ForceSingleThreaded(bool switch_on) { if (switch_on) flags |= tfxEffectManagerFlags_single_threaded; else flags &= ~tfxEffectManagerFlags_single_threaded; }
-		inline tfxU32 GetEffectSlot() {
-			if (!free_effects.empty()) {
-				return free_effects.pop_back();
-			}
-			if (effect_buffers.current_size == effect_buffers.capacity)
-				return tfxINVALID;
-			AddRow(&effect_buffers);
-			return effect_buffers.current_size - 1;
-		}
-		inline tfxU32 GetEmitterSlot() {
-			if (!free_emitters.empty()) {
-				return free_emitters.pop_back();
-			}
-			if (emitter_buffers.current_size == emitter_buffers.capacity) {
-				return tfxINVALID;
-			}
-			AddRow(&emitter_buffers);
-			return emitter_buffers.current_size - 1;
-		}
-		inline tfxU32 GetParticleIndexSlot(tfxParticleID particle_id) {
-			//Todo: ideally we want a better thread safe container for this
-			std::lock_guard<std::mutex> lock(particle_index_mutex);
-			if (!free_particle_indexes.empty()) {
-				particle_indexes[free_particle_indexes.back()] = particle_id;
-				return free_particle_indexes.pop_back();
-			}
-			particle_indexes.push_back(particle_id);
-			return particle_indexes.current_size - 1;
-		}
-		inline void FreeParticleIndex(tfxU32 &index) {
-			//Todo: ideally we want a better thread safe container for this
-			std::lock_guard<std::mutex> lock(particle_index_mutex);
-			particle_indexes[index] = tfxINVALID;
-			free_particle_indexes.push_back(index);
-			index = tfxINVALID;
-		}
-		inline tfxU32 PushDepthIndex(tfxU32 layer, tfxDepthIndex depth_index) {
-			depth_indexes[layer][current_depth_index_buffer].push_back(depth_index);
-			return depth_indexes[layer][current_depth_index_buffer].current_size - 1;
-		}
-		void FreeParticleList(tfxU32 index);
-		//Clear all effects and particles in the particle manager
-		void ClearAll(bool free_memory = false);
-		void FreeParticleBanks();
-		inline void SetCamera(float front_x, float	front_y, float front_z, float pos_x, float pos_y, float pos_z) {
-			camera_front.x = front_x;
-			camera_front.y = front_y;
-			camera_front.z = front_z;
-			camera_position.x = pos_x;
-			camera_position.y = pos_y;
-			camera_position.z = pos_z;
-		}
-		inline void ResetFlags() { flags = 0; }
-
-		inline void ForceCapture(bool state) {
-			if (state)
-				flags |= tfxEffectManagerFlags_force_capture;
-			else
-				flags &= ~tfxEffectManagerFlags_force_capture;
-		}
-
-		inline void DisableSpawning(bool state) {
-			if (state)
-				flags |= tfxEffectManagerFlags_disable_spawning;
-			else
-				flags &= ~tfxEffectManagerFlags_disable_spawning;
-		}
-		//Soft expire all the effects so that the particles complete their animation first
-		void SoftExpireAll();
-		tfxAPI inline tfxU32 PreviousSpriteBuffer() {
-			assert(flags & tfxEffectManagerFlags_double_buffer_sprites);		//Particle manager must have double buffered sprites activated
-			return !current_sprite_buffer;
-		}
-		tfxAPI inline tfxVec3 &GetCapturedSprite3dPosition(tfxU32 layer, tfxU32 index) {
-			return sprites[!current_sprite_buffer][layer].transform_3d[index].position;
-		}
-		tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxU32 layer, tfxU32 index) {
-			return sprites[(index & 0xC0000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
-		}
-		tfxAPI inline tfxSpriteTransform2d &GetCapturedSprite2dTransform(tfxU32 layer, tfxU32 index) {
-			return sprites[(index & 0xC0000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
-		}
-		tfxAPI inline float &GetCapturedSprite3dIntensity(tfxU32 layer, tfxU32 index) {
-			return sprites[(index & 0xC0000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
-		}
-
-		//Internal use only
-		int AddComputeController();
-		inline void FreeComputeSlot(unsigned int slot_id) { free_compute_controllers.push_back(slot_id); }
-		void EnableCompute() { flags |= tfxEffectManagerFlags_use_compute_shader; }
-		void DisableCompute() { flags &= ~tfxEffectManagerFlags_use_compute_shader; }
-
-		inline tfxU32 &GetParticleSpriteIndex(tfxParticleID id) { return particle_arrays[ParticleBank(id)].sprite_index[ParticleIndex(id)]; }
-
-		tfxComputeParticle &GrabComputeParticle(unsigned int layer);
-		void ResetParticlePtr(void *ptr);
-		void ResetControllerPtr(void *ptr);
-		inline unsigned int GetControllerMemoryUsage() { return highest_compute_controller_index * sizeof(tfxComputeController); }
-		inline unsigned int GetParticleMemoryUsage() { return new_compute_particle_index * sizeof(tfxComputeParticle); }
-		void UpdateCompute(void *sampled_particles, unsigned int sample_size = 100);
-		//float Record(unsigned int frames, unsigned int start_frame, std::array<tfxvec<ParticleFrame>, 1000> &particle_frames);
-		void UpdateBaseValues();
-		tfxvec<tfxU32> *GetEffectBuffer(tfxU32 depth = 0);
-		tfxvec<tfxU32> *GetEmitterBuffer(tfxU32 depth = 0);
-		void SetLookUpMode(tfxLookupMode mode);
-		inline tfxParticleID SetNextParticle(tfxU32 next_index, tfxU32 current_index, tfxU32 other_index) {
-			tfxParticleSoA &to_bank = particle_arrays[next_index];
-			tfxParticleSoA &from_bank = particle_arrays[current_index];
-			tfxU32 index = particle_array_buffers[next_index].current_size++;
-			assert(index < particle_array_buffers[next_index].capacity);
-			to_bank.parent_index[index] = from_bank.parent_index[other_index];
-			to_bank.sprite_index[index] = from_bank.sprite_index[other_index];
-			to_bank.particle_index[index] = from_bank.particle_index[other_index];
-			to_bank.flags[index] = from_bank.flags[other_index];
-			to_bank.age[index] = from_bank.age[other_index];
-			to_bank.max_age[index] = from_bank.max_age[other_index];
-			to_bank.position_x[index] = from_bank.position_x[other_index];
-			to_bank.position_y[index] = from_bank.position_y[other_index];
-			to_bank.position_z[index] = from_bank.position_z[other_index];
-			to_bank.captured_position_x[index] = from_bank.captured_position_x[other_index];
-			to_bank.captured_position_y[index] = from_bank.captured_position_y[other_index];
-			to_bank.captured_position_z[index] = from_bank.captured_position_z[other_index];
-			to_bank.local_rotations_x[index] = from_bank.local_rotations_x[other_index];
-			to_bank.local_rotations_y[index] = from_bank.local_rotations_y[other_index];
-			to_bank.local_rotations_z[index] = from_bank.local_rotations_z[other_index];
-			to_bank.velocity_normal[index] = from_bank.velocity_normal[other_index];
-			to_bank.depth_index[index] = from_bank.depth_index[other_index];
-			to_bank.base_weight[index] = from_bank.base_weight[other_index];
-			to_bank.base_velocity[index] = from_bank.base_velocity[other_index];
-			to_bank.base_spin[index] = from_bank.base_spin[other_index];
-			to_bank.noise_offset[index] = from_bank.noise_offset[other_index];
-			to_bank.noise_resolution[index] = from_bank.noise_resolution[other_index];
-			to_bank.color[index] = from_bank.color[other_index];
-			to_bank.image_frame[index] = from_bank.image_frame[other_index];
-			to_bank.base_size_x[index] = from_bank.base_size_x[other_index];
-			to_bank.base_size_y[index] = from_bank.base_size_y[other_index];
-			to_bank.single_loop_count[index] = from_bank.single_loop_count[other_index];
-			return MakeParticleID(next_index, index);
-		}
-
-		inline bool FreeCapacity(int index, bool compute) {
-			if (!compute) {
-				return sprite_buffer[current_sprite_buffer][index].current_size < max_cpu_particles_per_layer[index] || flags & tfxEffectManagerFlags_dynamic_sprite_allocation;
-			}
-			else
-				return new_compute_particle_index < max_new_compute_particles && new_compute_particle_index < compute_global_state.end_index - compute_global_state.current_length;
-		}
-
-		inline bool FreeEffectCapacity() {
-			return emitter_buffers.current_size < max_effects;
-		}
-		inline tfxU32 ParticleCount() {
-			tfxU32 count = 0;
-			for (tfxEachLayer) {
-				count += sprite_buffer[current_sprite_buffer][layer].current_size;
-			}
-			return count;
-		}
 	};
 
-	inline void DumpSprites(tfxParticleManager &pm, tfxU32 layer) {
-		for (int i = 0; i != pm.sprite_buffer[pm.current_sprite_buffer][layer].current_size; ++i) {
+	inline void DumpSprites(tfxParticleManager *pm, tfxU32 layer) {
+		for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
 			printf("%i:\t%f\t%f\t%f\t%u\n",
 				i,
-				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.x,
-				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.y,
-				pm.sprites[pm.current_sprite_buffer][layer].transform_3d[i].position.z,
-				pm.sprites[pm.current_sprite_buffer][layer].property_indexes[i]
+				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.x,
+				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.y,
+				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.z,
+				pm->sprites[pm->current_sprite_buffer][layer].property_indexes[i]
 			);
 		}
 	}
 
 	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
-	void StopSpawning(tfxParticleManager &pm);
-	void RemoveAllEffects(tfxParticleManager &pm);
-	void AddEffect(tfxParticleManager &pm, tfxEffectEmitter &effect, tfxVec3 position);
 	//Set the user data of an effect in the particle Manager. Not guaranteed that your effect index is actually in use
 	void SetEffectUserData(tfxParticleManager &pm, tfxU32 effect_index, void *data);
 
@@ -7485,6 +7300,33 @@ You can then use layer inside the loop to get the current layer
 	tfxINTERNAL void FreeAnimationInstance(tfxAnimationManager *animation_manager, tfxU32 index);
 	tfxINTERNAL void AddEffectEmitterProperties(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, bool *has_animated_shape);
 	tfxINTERNAL void UpdateAnimationManagerBufferMetrics(tfxAnimationManager *animation_manager);
+	tfxINTERNAL bool FreePMEffectCapacity(tfxParticleManager *pm);
+
+	//Particle manager internal functions
+	tfxINTERNAL tfxU32 GetPMEffectSlot(tfxParticleManager *pm);
+	tfxINTERNAL tfxU32 GetPMEmitterSlot(tfxParticleManager *pm);
+	tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfxParticleManager *pm, tfxParticleID particle_id);
+	tfxINTERNAL void FreePMParticleIndex(tfxParticleManager *pm, tfxU32 &index);
+	tfxINTERNAL tfxU32 PushPMDepthIndex(tfxParticleManager *pm, tfxU32 layer, tfxDepthIndex depth_index);
+	tfxINTERNAL void ResetPMFlags(tfxParticleManager *pm);
+	tfxINTERNAL tfxU32 &GetParticleSpriteIndex(tfxParticleManager *pm, tfxParticleID id);
+	tfxINTERNAL unsigned int GetControllerMemoryUsage(tfxParticleManager *pm);
+	tfxINTERNAL unsigned int GetParticleMemoryUsage(tfxParticleManager *pm);
+	tfxINTERNAL void FreeComputeSlot(tfxParticleManager *pm, unsigned int slot_id);
+	tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectEmitter *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning);
+	tfxINTERNAL void ToggleSpritesWithUID(tfxParticleManager *pm, bool switch_on);
+	tfxINTERNAL void FreeParticleList(tfxParticleManager *pm, tfxU32 index);
+	tfxINTERNAL void FreeParticleBanks(tfxParticleManager *pm);
+
+	//Compute stuff doesn't work currently
+	tfxINTERNAL void EnableCompute(tfxParticleManager *pm) { pm->flags |= tfxEffectManagerFlags_use_compute_shader; }
+	tfxINTERNAL void DisableCompute(tfxParticleManager *pm) { pm->flags &= ~tfxEffectManagerFlags_use_compute_shader; }
+	tfxINTERNAL int AddComputeController(tfxParticleManager *pm);
+	tfxINTERNAL tfxComputeParticle *GrabComputeParticle(tfxParticleManager *pm, unsigned int layer);
+	tfxINTERNAL void ResetParticlePtr(tfxParticleManager *pm, void *ptr);
+	tfxINTERNAL void ResetControllerPtr(tfxParticleManager *pm, void *ptr);
+	tfxINTERNAL void UpdateCompute(tfxParticleManager *pm, void *sampled_particles, unsigned int sample_size = 100);
+
 
 	//[API functions]
 	//All the functions below represent all that you will need to call to implement TimelineFX
@@ -7582,6 +7424,7 @@ You can then use layer inside the loop to get the current layer
 	/*
 	Initialise a tfxParticleManager for 3d usage
 	* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+	* @param library				A pointer to a tfxLibrary that you will be using to add all of the effects from to the particle manager.
 	* @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
 	* @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
 	* @param mode					The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
@@ -7601,6 +7444,7 @@ You can then use layer inside the loop to get the current layer
 	/*
 	Initialise a tfxParticleManager for 2d usage
 	* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+	* @param library				A pointer to a tfxLibrary that you will be using to add all of the effects from to the particle manager.
 	* @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
 	* @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
 	* @param mode					The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
@@ -7616,33 +7460,44 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 	/*
-	This is dubious and needs testing
-	Enable or disable double buffering of sprites in a particle manager. When double buffered, you can used the previous frame of sprites to interpolated sprites each frame for smoother animation. You can disable it to save memory.
-	* @param pm							A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-	* @param double_buffer_sprites	True or False to activate or deactivate double buffering of sprites
+	Initialise a tfxParticleManager for both 2d and 3d. This just allocates buffers for both 2d and 3d anticipating that you'll be using ReconfigureParticleManager to switch between 2d/3d modes. If you want to update
+	both 2d and 3d particles at the same time then just use 2 separate particle managers instead as a particle manager can only update one type of particle 2d or 3d.
+	* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+	* @param library				A pointer to a tfxLibrary that you will be using to add all of the effects from to the particle manager.
+	* @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
+	* @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
+	* @param mode					The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
+		tfxParticleManagerMode_unordered					Particles will be updated by emitter. No ordering is maintained, each emitter will spawn and update their particles in turn and sprites will be ordered
+															according to that sequence.
+		tfxParticleManagerMode_ordered_by_age				Particles will be kept in age order, older particles will be drawn first and newer ones last
+	* @param double_buffer_sprites	True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
+	* @param dynamic_allocation		If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
+									many particles you will need to display while developing you're game/app. Default is false.
+	* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
+
 	*/
-	tfxAPI inline void DoubleBufferSprites(tfxParticleManager *pm, bool double_buffer_sprites) {
-		if (!double_buffer_sprites && pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
-			for (tfxEachLayer) {
-				FreeSoABuffer(&pm->sprite_buffer[1][layer]);
-			}
-			pm->flags &= ~tfxEffectManagerFlags_double_buffer_sprites;
-		}
-		else if (double_buffer_sprites && !(pm->flags & tfxEffectManagerFlags_double_buffer_sprites)) {
-			for (tfxEachLayer) {
-				if (pm->flags & tfxEffectManagerFlags_2d_and_3d) {
-					InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8), tfxSpriteBufferMode_both);
-				}
-				else if (pm->flags & tfxEffectManagerFlags_3d_effects) {
-					InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8), tfxSpriteBufferMode_3d);
-				}
-				else {
-					InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax(pm->max_cpu_particles_per_layer[layer], 8), tfxSpriteBufferMode_2d);
-				}
-			}
-			pm->flags |= tfxEffectManagerFlags_double_buffer_sprites;
-		}
-	}
+	tfxAPI void InitParticleManagerForBoth(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+
+	/*
+	Reconfigure a particle manager to make it work in a different mode. A particle manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
+	in mind that you can just use more than one particle manager and utilised different modes that way as well. The modes that you need will depend on the effects that you're adding to the particle manager.
+	* @param pm						A pointer to an intialised tfxParticleManager. 
+	* @param mode					One of the following modes:
+									tfxParticleManagerMode_unordered
+									tfxParticleManagerMode_ordered_by_age
+									tfxParticleManagerMode_ordered_by_depth
+									tfxParticleManagerMode_ordered_by_depth_guaranteed
+	* @param sort_passes			The number of sort passes if you're using depth sorted effects
+	* @param is_3d					True if the particle manager should be configured for 3d effects.
+	*/
+	void ReconfigureParticleManager(tfxParticleManager *pm, tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
+
+	/*
+	Get the current particle count for a particle manager	
+	* @param pm						A pointer to an tfxParticleManager
+	* @returns tfxU32				The total number of particles currently being updated
+	*/
+	tfxU32 ParticleCount(tfxParticleManager *pm);
 
 	/*
 	Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
@@ -7665,22 +7520,30 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI bool PrepareEffectTemplate(tfxLibrary &library, const char *name, tfxEffectTemplate &effect_template);
 
 	/*
-	Add an effect to a tfxParticleManager
+	Add an effect to a tfxParticleManager from an effect template
 	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 	* @param effect_template	The tfxEffectTemplate object that you want to add to the particle manager. It must have already been prepared by calling PrepareEffectTemplate
 	*
 	* @return					Index of the effect after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
 								For example by calling SetEffectPosition
 	*/
-	tfxAPI tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate &effect);
+	tfxAPI tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate *effect);
+
+	/*
+	Add an effect to a tfxParticleManager. 
+	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+	* @param effect				tfxEffectEmitter object that you want to add to the particle manager. 
+	*
+	* @return					Index of the effect after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
+								For example by calling SetEffectPosition
+	*/
+	tfxAPI tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectEmitter *effect);
 
 	/*
 	Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
 	* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 	*/
-	tfxAPI inline void UpdateParticleManager(tfxParticleManager *pm, float elapsed) {
-		pm->Update(elapsed);
-	}
+	tfxAPI inline void UpdateParticleManager(tfxParticleManager *pm, float elapsed);
 
 	/*
 	Get the total number of sprites within the layer of the particle manager
@@ -7713,12 +7576,11 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
-	Clear all particles and effects in a particle manager
-	* @param pm					A pointer to an initialised tfxParticleManager.
+	Clear all particles, sprites and effects in a particle manager
+	* @param pm						A pointer to an initialised tfxParticleManager.
+	* @param free_particle_banks	Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
 	*/
-	tfxAPI inline void ClearParticleManager(tfxParticleManager *pm) {
-		pm->ClearAll();
-	}
+	tfxAPI void ClearParticleManager(tfxParticleManager *pm, bool free_particle_banks);
 
 	//[Effects functions for altering effects that are currently playing out in a particle manager]
 
@@ -7730,6 +7592,11 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI inline void SoftExpireEffect(tfxParticleManager *pm, tfxEffectID effect_index) {
 		pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
 	}
+
+	/*
+	Soft expire all the effects in a particle manager so that the particles complete their animation first
+	*/
+	tfxAPI void SoftExpireAll(tfxParticleManager *pm);
 
 	/*
 	Expire an effect by telling it to stop spawning particles and remove all associated particles immediately.
@@ -7752,6 +7619,37 @@ You can then use layer inside the loop to get the current layer
 	}
 
 	/*
+	More for use in the editor, this function updates emitter base values for any effects that are currently running after their graph values have been changed.
+	*/
+	tfxAPI void UpdatePMBaseValues(tfxParticleManager *pm);
+
+	/*
+	Set the tfxLibrary that the particle manager will use to render sprites and lookup all of the various properties required to update emitters and particles.
+	This is also set when you initialise a particle manager
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param lib			A pointer to a tfxLibrary
+	*/
+	tfxAPI void SetPMLibrary(tfxParticleManager *pm, tfxLibrary *library);
+
+	/*
+	Set the particle manager camera. This is used to calculate particle depth if you're using depth ordered particles so it needs to be updated each frame.
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param front			An array of 3 floats representing a normalised 3d vector describing the direction that the camera is pointing		
+	* @param position		An array of 3 floats representing the position of the camera in 3d space
+	*/
+	tfxAPI void SetPMCamera(tfxParticleManager *pm, float front[3], float position[3]);
+
+	/*
+	Set the lookup mode for the particle manager. Lookup modes are either calculating the emitter attribute graphs in real time, or looking up arrays of the graphs
+	in pre-compiled lookup tables. Generally tfxFast will be a little bit faster due to less math involved. Having said that more graph nodes could be cached in memory
+	so maybe the extra math wouldn't make much difference but either way it needs more testing and profiling!
+	todo: callbacks should be moved into the particle manager, currently they're global callbacks so having this function is a bit pointless!
+	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+	* @param mode			The look up mode you want to set. tfxFast is the default mode.
+	*/
+	tfxAPI void SetPMLookUpMode(tfxParticleManager *pm, tfxLookupMode mode);
+
+	/*
 	Set the effect user data for an effect already added to a particle manager
 	* @param pm				A pointer to a tfxParticleManager where the effect is being managed
 	* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
@@ -7759,6 +7657,45 @@ You can then use layer inside the loop to get the current layer
 	*/
 	tfxAPI inline void SetEffectUserData(tfxParticleManager *pm, tfxEffectID effect_index, void* user_data) {
 		pm->effects.user_data[effect_index] = user_data;
+	}
+
+	/*
+	Force a particle manager to only run in single threaded mode. In other words, only use the main thread to update particles
+	* @param pm				A pointer to a tfxParticleManager.
+	* @param switch_on		true or false to use a single thread or not
+	*/
+	tfxAPI inline void ForcePMSingleThreaded(tfxParticleManager *pm, bool switch_on) {
+		if (switch_on) pm->flags |= tfxEffectManagerFlags_single_threaded; else pm->flags &= ~tfxEffectManagerFlags_single_threaded;
+	}
+
+	/*
+	Get the transform vectors for a 3d sprite's previous position so that you can use that to interpolate between that and the current sprite position
+	* @param pm				A pointer to a tfxParticleManager.
+	* @param layer			The index of the sprite layer
+	* @param index			The sprite index of the sprite that you want the captured sprite for.
+	*/
+	tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+		return pm->sprites[(index & 0xC0000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
+	}
+
+	/*
+	Get the transform vectors for a 2d sprite's previous position so that you can use that to interpolate between that and the current sprite position
+	* @param pm				A pointer to a tfxParticleManager.
+	* @param layer			The index of the sprite layer
+	* @param index			The sprite index of the sprite that you want the captured sprite for.
+	*/
+	tfxAPI inline tfxSpriteTransform2d &GetCapturedSprite2dTransform(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+		return pm->sprites[(index & 0xC0000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
+	}
+
+	/*
+	Get the intensity for a sprite's previous frame so that you can use that to interpolate between that and the current sprite intensity
+	* @param pm				A pointer to a tfxParticleManager.
+	* @param layer			The index of the sprite layer
+	* @param index			The sprite index of the sprite that you want the captured sprite for.
+	*/
+	tfxAPI inline float &GetCapturedSprite3dIntensity(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+		return pm->sprites[(index & 0xC0000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
 	}
 
 	/*
@@ -7774,6 +7711,36 @@ You can then use layer inside the loop to get the current layer
 		assert(layer < tfxLAYERS);								//layer is outside index range
 		return sprite_data->normal.frame_meta[frame].index_offset[layer];
 	}
+
+	/*
+	Make a particle manager stop spawning. This will mean that all emitters in the particle manager will no longer spawn any particles so all currently running effects will expire
+	as the remaining particles come to the end of their life. Any single particles will also get flagged to expire
+	* @param pm				A pointer to a tfxParticleManager.
+	* @param yesno			True = disable spawning, false = enable spawning
+	*/
+	tfxAPI inline void DisablePMSpawning(tfxParticleManager *pm, bool yesno) {
+		if (yesno) {
+			pm->flags |= tfxEffectManagerFlags_disable_spawning;
+		} else {
+			pm->flags &= ~tfxEffectManagerFlags_disable_spawning;
+		}
+	}
+
+	/*
+	Get the buffer of effect indexes in the particle manager. 
+	* @param pm				A pointer to a tfxParticleManager.
+	* @param depth			The depth of the list that you want. 0 are top level effects and anything higher are sub effects within those effects
+	* @returns				Pointer to the tfxvec of effect indexes
+	*/
+	tfxAPI tfxvec<tfxU32> *GetPMEffectBuffer(tfxParticleManager *pm, tfxU32 depth);
+
+	/*
+	Get the buffer of emitter indexes in the particle manager. 
+	* @param pm				A pointer to a tfxParticleManager.
+	* @param depth			The depth of the list that you want. 0 are top level emitters and anything higher are sub emitters within those effects
+	* @returns				Pointer to the tfxvec of effect indexes
+	*/
+	tfxAPI tfxvec<tfxU32> *GetPMEmitterBuffer(tfxParticleManager *pm, tfxU32 depth);
 
 	/*
 	Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation that has been compresssed into fewer frames. Can be used along side SpriteDataIndexOffset to create
