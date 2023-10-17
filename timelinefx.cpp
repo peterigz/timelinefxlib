@@ -7020,10 +7020,28 @@ namespace tfx {
 		animation_manager->flags = tfxAnimationManagerFlags_initialised;
 	}
 
-	void tfxAnimationManager::AddEffectEmitterProperties(tfxEffectEmitter *effect, bool *has_animated_shape) {
+	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager) {
+		if (animation_manager->free_instances.current_size > 0) {
+			tfxU32 index = animation_manager->free_instances.pop_back();
+			animation_manager->instances_in_use[animation_manager->current_in_use_buffer].push_back(index);
+			return index;
+		}
+		tfxAnimationInstance instance;
+		tfxU32 index = animation_manager->instances.current_size;
+		assert(animation_manager->instances.capacity != animation_manager->instances.current_size);		//At capacity! not enough room to add another instance.
+		animation_manager->instances.push_back(instance);
+		animation_manager->instances_in_use[animation_manager->current_in_use_buffer].push_back(index);
+		return index;
+	}
+
+	void FreeAnimationInstance(tfxAnimationManager *animation_manager, tfxU32 index) {
+		animation_manager->free_instances.push_back(index);
+	}
+
+	void AddEffectEmitterProperties(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, bool *has_animated_shape) {
 		if (effect->type != tfxEmitterType) {
 			for (auto &sub : effect->GetInfo().sub_effectors) {
-				AddEffectEmitterProperties(&sub, has_animated_shape);
+				AddEffectEmitterProperties(animation_manager, &sub, has_animated_shape);
 			}
 		}
 		else {
@@ -7036,35 +7054,35 @@ namespace tfx {
 				if (properties.animation_frames > 1 && effect->property_flags & tfxEmitterPropertyFlags_animate) {
 					*has_animated_shape = true;
 				}
-				if (particle_shapes.ValidKey(image.image_hash)) {
-					properties.start_frame_index = particle_shapes.At(image.image_hash).compute_shape_index;
+				if (animation_manager->particle_shapes.ValidKey(image.image_hash)) {
+					properties.start_frame_index = animation_manager->particle_shapes.At(image.image_hash).compute_shape_index;
 				}
 				else {
 					properties.start_frame_index = image.compute_shape_index;
 				}
-				effect->library->emitter_properties.animation_property_index[effect->property_index] = emitter_properties.current_size;
+				effect->library->emitter_properties.animation_property_index[effect->property_index] = animation_manager->emitter_properties.current_size;
 				properties.image_ptr = image.ptr;
-				emitter_properties.push_back(properties);
+				animation_manager->emitter_properties.push_back(properties);
 				for (auto &sub : effect->GetInfo().sub_effectors) {
-					AddEffectEmitterProperties(&sub, has_animated_shape);
+					AddEffectEmitterProperties(animation_manager, &sub, has_animated_shape);
 				}
 			}
 		}
 	}
 
-	void tfxAnimationManager::AddEffectShapes(tfxEffectEmitter *effect) {
+	void AddEffectShapes(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect) {
 		if (effect->type == tfxEmitterType) {
 			tfxImageData *image_data = effect->GetProperties().image[effect->property_index];
-			if (!particle_shapes.ValidKey(image_data->image_hash)) {
-				particle_shapes.Insert(image_data->image_hash, *image_data);
+			if (!animation_manager->particle_shapes.ValidKey(image_data->image_hash)) {
+				animation_manager->particle_shapes.Insert(image_data->image_hash, *image_data);
 			}
 			for (auto &sub : effect->GetInfo().sub_effectors) {
-				AddEffectShapes(&sub);
+				AddEffectShapes(animation_manager, &sub);
 			}
 		}
 		else {
 			for (auto &sub : effect->GetInfo().sub_effectors) {
-				AddEffectShapes(&sub);
+				AddEffectShapes(animation_manager, &sub);
 			}
 		}
 	}
@@ -7085,7 +7103,7 @@ namespace tfx {
 		}
 
 		bool has_animated_shape = false;
-		animation_manager->AddEffectEmitterProperties(effect, &has_animated_shape);
+		AddEffectEmitterProperties(animation_manager, effect, &has_animated_shape);
 
 		bool is_3d = effect->Is3DEffect();
 		tfxSpriteData &sprite_data = effect->library->pre_recorded_effects.At(effect->path_hash);
@@ -7167,7 +7185,7 @@ namespace tfx {
 	}
 
 	tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxKey path, tfxU32 start_frame) {
-		assert(animation_manager->effect_animation_info.ValidKey(path));	//You must have added the effect sprite data to the animation manager
+		assert(animation_manager->effect_animation_info.ValidKey(path));				//You must have added the effect sprite data to the animation manager
 																						//Call AddSpriteData to do so
 		if(animation_manager->instances_in_use->current_size >= animation_manager->instances_in_use->capacity) {
 			return tfxINVALID;
@@ -7175,7 +7193,7 @@ namespace tfx {
 		tfxU32 info_index = animation_manager->effect_animation_info.GetIndex(path);
 		tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[info_index];
 		assert(start_frame < metrics.frames_after_compression);
-		tfxAnimationID index = animation_manager->AddInstance();
+		tfxAnimationID index = AddAnimationInstance(animation_manager);
 		tfxAnimationInstance &instance = animation_manager->instances[index];
 		instance.scale = 1.f;
 		float frame_length = float(metrics.real_frames) / float(metrics.frames_after_compression) * tfxFRAME_LENGTH;
@@ -7195,17 +7213,17 @@ namespace tfx {
 		return AddAnimationInstance(animation_manager, path_hash, start_frame);
 	}
 
-	void tfxAnimationManager::Update(float elapsed) {
-		assert(instances_in_use[current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
-		tfxU32 next_buffer = !current_in_use_buffer;
-		instances_in_use[next_buffer].clear();
-		render_queue.clear();
-		offsets.clear();
+	void UpdateAnimationManager(tfxAnimationManager *animation_manager, float elapsed) {
+		assert(animation_manager->instances_in_use[animation_manager->current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
+		tfxU32 next_buffer = !animation_manager->current_in_use_buffer;
+		animation_manager->instances_in_use[next_buffer].clear();
+		animation_manager->render_queue.clear();
+		animation_manager->offsets.clear();
 		tfxU32 running_sprite_count = 0;
-		flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
-		for (auto i : instances_in_use[current_in_use_buffer]) {
-			auto &instance = instances[i];
-			tfxSpriteDataMetrics &metrics = effect_animation_info.data[instance.info_index];
+		animation_manager->flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
+		for (auto i : animation_manager->instances_in_use[animation_manager->current_in_use_buffer]) {
+			auto &instance = animation_manager->instances[i];
+			tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 			instance.current_time += elapsed;
 			float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
 			tfxU32 frame = tfxU32(frame_time);
@@ -7216,58 +7234,58 @@ namespace tfx {
 					instance.sprite_count = metrics.frame_meta[0].total_sprites;
 					instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
 					instance.current_time -= instance.animation_length_in_time;
-					instances_in_use[next_buffer].push_back(i);
+					animation_manager->instances_in_use[next_buffer].push_back(i);
 					running_sprite_count += instance.sprite_count;
-					offsets.push_back(running_sprite_count);
-					flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
-					render_queue.push_back(instance);
-					UpdateBufferMetrics();
+					animation_manager->offsets.push_back(running_sprite_count);
+					animation_manager->flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
+					animation_manager->render_queue.push_back(instance);
+					UpdateAnimationManagerBufferMetrics(animation_manager);
 				}
 				else {
-					FreeInstance(i);
+					FreeAnimationInstance(animation_manager, i);
 				}
 			}
 			else {
 				instance.sprite_count = metrics.frame_meta[frame].total_sprites;
 				instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
-				instances_in_use[next_buffer].push_back(i);
-				render_queue.push_back(instance);
+				animation_manager->instances_in_use[next_buffer].push_back(i);
+				animation_manager->render_queue.push_back(instance);
 				running_sprite_count += instance.sprite_count;
-				flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
-				offsets.push_back(running_sprite_count);
-				UpdateBufferMetrics();
+				animation_manager->flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
+				animation_manager->offsets.push_back(running_sprite_count);
+				UpdateAnimationManagerBufferMetrics(animation_manager);
 			}
 		}
-		buffer_metrics.total_sprites_to_draw = running_sprite_count;
-		current_in_use_buffer = !current_in_use_buffer;
+		animation_manager->buffer_metrics.total_sprites_to_draw = running_sprite_count;
+		animation_manager->current_in_use_buffer = !animation_manager->current_in_use_buffer;
 	}
 
-	void tfxAnimationManager::Cycle() {
-		assert(instances_in_use[current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
-		tfxU32 next_buffer = !current_in_use_buffer;
-		instances_in_use[next_buffer].clear();
-		render_queue.clear();
-		offsets.clear();
+	void CycleAnimationManager(tfxAnimationManager *animation_manager) {
+		assert(animation_manager->instances_in_use[animation_manager->current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
+		tfxU32 next_buffer = !animation_manager->current_in_use_buffer;
+		animation_manager->instances_in_use[next_buffer].clear();
+		animation_manager->render_queue.clear();
+		animation_manager->offsets.clear();
 		tfxU32 running_sprite_count = 0;
-		flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
-		for (auto i : instances_in_use[current_in_use_buffer]) {
-			auto &instance = instances[i];
-			tfxSpriteDataMetrics &metrics = effect_animation_info.data[instance.info_index];
+		animation_manager->flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
+		for (auto i : animation_manager->instances_in_use[animation_manager->current_in_use_buffer]) {
+			auto &instance = animation_manager->instances[i];
+			tfxSpriteDataMetrics &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 			float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
 			tfxU32 frame = tfxU32(frame_time);
 			frame++;
 			frame = frame >= metrics.frame_count ? 0 : frame;
 			instance.sprite_count = metrics.frame_meta[frame].total_sprites;
 			instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
-			instances_in_use[next_buffer].push_back(i);
-			render_queue.push_back(instance);
+			animation_manager->instances_in_use[next_buffer].push_back(i);
+			animation_manager->render_queue.push_back(instance);
 			running_sprite_count += instance.sprite_count;
-			flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
-			offsets.push_back(running_sprite_count);
-			UpdateBufferMetrics();
+			animation_manager->flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
+			animation_manager->offsets.push_back(running_sprite_count);
+			UpdateAnimationManagerBufferMetrics(animation_manager);
 		}
-		buffer_metrics.total_sprites_to_draw = running_sprite_count;
-		current_in_use_buffer = !current_in_use_buffer;
+		animation_manager->buffer_metrics.total_sprites_to_draw = running_sprite_count;
+		animation_manager->current_in_use_buffer = !animation_manager->current_in_use_buffer;
 	}
 
 	void ClearAllAnimationInstances(tfxAnimationManager *animation_manager) {
@@ -7313,15 +7331,11 @@ namespace tfx {
 		animation_manager->flags = 0;
 	}
 
-	void tfxAnimationManager::UpdateBufferMetrics() {
-		buffer_metrics.instances_size = render_queue.current_size;
-		buffer_metrics.offsets_size = offsets.current_size;
-		buffer_metrics.instances_size_in_bytes = buffer_metrics.instances_size * sizeof(tfxAnimationInstance) * buffer_metrics.instances_size;
-		buffer_metrics.offsets_size_in_bytes = buffer_metrics.offsets_size * sizeof(tfxU32) * buffer_metrics.instances_size;
-	}
-
-	void UpdateAnimationManager(tfxAnimationManager *animation_manager, float elapsed) {
-		animation_manager->Update(elapsed);
+	void UpdateAnimationManagerBufferMetrics(tfxAnimationManager *animation_manager) {
+		animation_manager->buffer_metrics.instances_size = animation_manager->render_queue.current_size;
+		animation_manager->buffer_metrics.offsets_size = animation_manager->offsets.current_size;
+		animation_manager->buffer_metrics.instances_size_in_bytes = animation_manager->buffer_metrics.instances_size * sizeof(tfxAnimationInstance) * animation_manager->buffer_metrics.instances_size;
+		animation_manager->buffer_metrics.offsets_size_in_bytes = animation_manager->buffer_metrics.offsets_size * sizeof(tfxU32) * animation_manager->buffer_metrics.instances_size;
 	}
 
 	tfxAPI void tfxEffectTemplate::Record(tfxParticleManager *pm, tfxVec3 camera_position) {
@@ -12215,8 +12229,10 @@ namespace tfx {
 		pm->effects.local_position[effect_index] = position;
 	}
 
-	void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, tfxVec3 position) {
-		animation_manager->instances[effect_index].position = position;
+	void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float position[3]) {
+		animation_manager->instances[effect_index].position.x = position[0];
+		animation_manager->instances[effect_index].position.y = position[1];
+		animation_manager->instances[effect_index].position.z = position[2];
 	}
 
 	void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float x, float y) {

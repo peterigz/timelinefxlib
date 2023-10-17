@@ -177,9 +177,12 @@ namespace tfx {
 
 	typedef std::chrono::high_resolution_clock tfxClock;
 
-#define tfxAPI				//Function marker for any functions meant for external/api use
+//Function marker for any functions meant for external/api use
+#define tfxAPI		
+//For internal functions
+#define tfxINTERNAL static	
 
-	//Override this for more layers, although currently the editor is fixed at 4
+//Override this for more layers, although currently the editor is fixed at 4
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
 
@@ -982,6 +985,7 @@ You can then use layer inside the loop to get the current layer
 	typedef tfxU32 tfxAddress;
 #endif
 
+	//These constants are the min an max levels for the emitter attribute graphs
 	const float tfxLIFE_MIN = 0.f;
 	const float tfxLIFE_MAX = 100000.f;
 	const float tfxLIFE_STEPS = 200.f;
@@ -5386,7 +5390,7 @@ You can then use layer inside the loop to get the current layer
 		tfxCUSTOM_IMAGE_DATA
 #endif // tfxCUSTOM_IMAGE_DATA
 
-			tfxImageData() :
+		tfxImageData() :
 			image_index(0),
 			ptr(nullptr),
 			animation_frames(1.f),
@@ -6523,30 +6527,6 @@ You can then use layer inside the loop to get the current layer
 		tfxAnimationBufferMetrics buffer_metrics;
 		//Bit flag field
 		tfxAnimationManagerFlags flags;
-
-		inline tfxAnimationID AddInstance() {
-			if (free_instances.current_size > 0) {
-				tfxU32 index = free_instances.pop_back();
-				instances_in_use[current_in_use_buffer].push_back(index);
-				return index;
-			}
-			tfxAnimationInstance instance;
-			tfxU32 index = instances.current_size;
-			assert(instances.capacity != instances.current_size);		//At capacity! not enough room to add another instance.
-			instances.push_back(instance);
-			instances_in_use[current_in_use_buffer].push_back(index);
-			return index;
-		}
-
-		inline void FreeInstance(tfxU32 index) {
-			free_instances.push_back(index);
-		}
-
-		void AddEffectEmitterProperties(tfxEffectEmitter *effect, bool *has_animated_shape);
-		void AddEffectShapes(tfxEffectEmitter *effect);
-		void Update(float elapsed);
-		void Cycle();
-		void UpdateBufferMetrics();
 	};
 
 	//Use the particle manager to add multiple effects to your scene 
@@ -7500,6 +7480,12 @@ You can then use layer inside the loop to get the current layer
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
 
+	//Animation manager internal functions - animation manager is used to playback pre-recorded effects
+	tfxINTERNAL tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager);
+	tfxINTERNAL void FreeAnimationInstance(tfxAnimationManager *animation_manager, tfxU32 index);
+	tfxINTERNAL void AddEffectEmitterProperties(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, bool *has_animated_shape);
+	tfxINTERNAL void UpdateAnimationManagerBufferMetrics(tfxAnimationManager *animation_manager);
+
 	//[API functions]
 	//All the functions below represent all that you will need to call to implement TimelineFX
 
@@ -8127,7 +8113,7 @@ You can then use layer inside the loop to get the current layer
 	* @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 	* @param position				A tfxVec3 vector object containing the x, y and z coordinates
 	*/
-	tfxAPI void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, tfxVec3 position);
+	tfxAPI void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float position[3]);
 
 	/*
 	Set the position of a 2d animation
@@ -8208,6 +8194,20 @@ You can then use layer inside the loop to get the current layer
 	* @param start_frame			Starting frame of the animation
 	*/
 	tfxAPI void UpdateAnimationManager(tfxAnimationManager *animation_manager, float elapsed);
+
+	/*
+	Add an effect's shapes to an animation manager. You can use this function if you're manually recording particle effects and adding them to an animation
+	manager rather then just using the editor.
+	* @param animation_manager		A pointer to a tfxAnimationManager that you want to update
+	* @param effect					A pointer to the effect whose shapes you want to add
+	*/
+	tfxAPI void AddEffectShapes(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect);
+
+	/*
+	Update an animation manager so that the effects do not expire they just loop forever instead regardless of whether they're a looped effect or not.
+	* @param animation_manager		A pointer to a tfxAnimationManager that you want to update
+	*/
+	tfxAPI void CycleAnimationManager(tfxAnimationManager *animation_manager);
 
 	/*
 	Clears all animation instances currently in play in an animation manager, resulting in all currently running animations
