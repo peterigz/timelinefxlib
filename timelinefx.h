@@ -6794,121 +6794,12 @@ You can then use layer inside the loop to get the current layer
 		{}
 
 		//Free everything in the library
-		void Clear();
-		void Init();
-		void InitEmitterProperties();
-		//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
-		//You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
-		tfxEffectEmitter *GetEffect(tfxStr256 &path);
-		tfxEffectEmitter *GetEffect(const char *path);
-		//Get an effect by it's path hash key
-		tfxEffectEmitter *GetEffect(tfxKey key);
-		//Get and effect by it's index
-		void PrepareEffectTemplate(tfxStr256 path, tfxEffectTemplate &effect);
-		void PrepareEffectTemplate(tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
-		//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
-		void CopyLookupIndexesData(void* dst);
-		void CopyLookupValuesData(void* dst);
-		tfxU32 GetComputeShapeDataSizeInBytes();
-		tfxU32 GetComputeShapeCount();
-		tfxU32 GetLookupIndexCount();
-		tfxU32 GetLookupValueCount();
-		tfxU32 GetLookupIndexesSizeInBytes();
-		tfxU32 GetLookupValuesSizeInBytes();
 
-		inline void MaybeGrowProperties(tfxU32 size_offset) {
-			if (emitter_properties_buffer.current_size >= emitter_properties_buffer.capacity - size_offset) {
-				GrowArrays(&emitter_properties_buffer, emitter_properties_buffer.capacity, emitter_properties_buffer.capacity + 1);
-			}
-		}
-
-		inline void MaybeGrowInfos() {
-			if (effect_infos.current_size >= effect_infos.capacity - 4) {
-				effect_infos.reserve(effect_infos._grow_capacity(effect_infos.current_size + 1));
-			}
-		}
-
-		inline tfxEffectEmitterInfo &GetInfo(tfxEffectEmitter &e) {
-			assert(effect_infos.size() > e.info_index);
-			return effect_infos[e.info_index];
-		}
-
-		inline const tfxEffectEmitterInfo &GetInfo(const tfxEffectEmitter &e) {
-			assert(effect_infos.size() > e.info_index);
-			return effect_infos[e.info_index];
-		}
-
-		//Mainly internal functions
-		bool IsShapeUsed(tfxKey image_hash);
-		bool ShapeExists(tfxKey image_hash);
-		bool RemoveShape(tfxKey image_hash);
-		tfxEffectEmitter &InsertEffect(tfxEffectEmitter &effect, tfxEffectEmitter *position);
-		tfxEffectEmitter &AddEffect(tfxEffectEmitter &effect);
-		tfxEffectEmitter &AddFolder(tfxStr64 &name);
-		tfxEffectEmitter &AddFolder(tfxEffectEmitter &effect);
-		tfxEffectEmitter &AddStage(tfxStr64 &name);
-		void UpdateEffectPaths();
-		void AddPath(tfxEffectEmitter &effect_emitter, tfxStr256 &path);
-		void DeleteEffect(tfxEffectEmitter *effect);
-		bool RenameEffect(tfxEffectEmitter &effect, const char *new_name);
-		bool NameExists(tfxEffectEmitter &effect, const char *name);
-		bool NameExists2(tfxEffectEmitter &effect, const char *name);
-		void ReIndex();
-		void UpdateParticleShapeReferences(tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash);
-		tfxEffectEmitter* MoveUp(tfxEffectEmitter &effect);
-		tfxEffectEmitter* MoveDown(tfxEffectEmitter &effect);
-		tfxU32 AddGlobal();
-		tfxU32 AddEmitterAttributes();
-		void FreeGlobal(tfxU32 index);
-		void FreeKeyframes(tfxU32 index);
-		void FreeEmitterAttributes(tfxU32 index);
-		void FreeProperties(tfxU32 index);
-		void FreeInfo(tfxU32 index);
-		tfxU32 CountKeyframeLookUpValues(tfxU32 index);
-		tfxU32 CountGlobalLookUpValues(tfxU32 index);
-		tfxU32 CountEmitterLookUpValues(tfxU32 index);
-		tfxU32 CloneGlobal(tfxU32 source_index, tfxLibrary *destination_library);
-		tfxU32 CloneKeyframes(tfxU32 source_index, tfxLibrary *destination_library);
-		tfxU32 CloneEmitterAttributes(tfxU32 source_index, tfxLibrary *destination_library);
-		tfxU32 CloneInfo(tfxU32 source_index, tfxLibrary *destination_library);
-		tfxU32 CloneProperties(tfxU32 source_index, tfxLibrary *destination_library);
-		void AddEmitterGraphs(tfxEffectEmitter &effect);
-		void AddEffectGraphs(tfxEffectEmitter &effect);
-		void AddTransformGraphs(tfxEffectEmitter &effect);
-		tfxU32 AddSpriteSheetSettings(tfxEffectEmitter& effect);
-		tfxU32 AddSpriteDataSettings(tfxEffectEmitter& effect);
-		void AddSpriteSheetSettingsSub(tfxEffectEmitter& effect);
-		void AddSpriteDataSettingsSub(tfxEffectEmitter& effect);
-		tfxU32 AddPreviewCameraSettings(tfxEffectEmitter& effect);
-		tfxU32 AddPreviewCameraSettings();
-		tfxU32 AddEffectEmitterInfo();
-		tfxU32 AddEmitterProperties();
-		tfxU32 AddKeyframes();
-		void UpdateComputeNodes();
-		void CompileAllGraphs();
-		void CompileGlobalGraph(tfxU32 index);
-		void CompileKeyframeGraph(tfxU32 index);
-		void CompileEmitterGraphs(tfxU32 index);
-		void CompilePropertyGraph(tfxU32 index);
-		void CompileBaseGraph(tfxU32 index);
-		void CompileVariationGraph(tfxU32 index);
-		void CompileOvertimeGraph(tfxU32 index);
-		void CompileColorGraphs(tfxU32 index);
-		void CompileGraphsOfEffect(tfxEffectEmitter &effect, tfxU32 depth = 0);
-		void SetMinMaxData();
-		float LookupPreciseOvertimeNodeList(tfxGraphType graph_type, int index, float age, float life);
-		float LookupPreciseNodeList(tfxGraphType graph_type, int index, float age);
-		float LookupFastOvertimeValueList(tfxGraphType graph_type, int index, float age, float life);
-		float LookupFastValueList(tfxGraphType graph_type, int index, float age);
-
-		//Debug stuff, used to check graphs are being properly recycled
-		tfxU32 CountOfGraphsInUse();
-		tfxU32 CountOfFreeGraphs();
 	};
 
 	void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
 	void ResetSpriteDataLerpOffset(tfxSpriteData &sprites);
-	void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, tfxVec3 camera_position);
+	void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float camera_position[3]);
 	void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d);
 	void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
 	void WrapSingleParticleSprites(tfxSpriteData *sprite_data);
@@ -6923,113 +6814,6 @@ You can then use layer inside the loop to get the current layer
 			original_effect_hash(0),
 			paths("Effect template paths map", "Effect template paths data")
 		{}
-		void AddPath(tfxEffectEmitter &effect_emitter, tfxStr256 path) {
-			paths.Insert(path, &effect_emitter);
-			for (auto &sub : effect_emitter.library->GetInfo(effect_emitter).sub_effectors) {
-				tfxStr256 sub_path = path;
-				sub_path.Appendf("/%s", sub.library->GetInfo(sub).name.c_str());
-				AddPath(sub, sub_path);
-			}
-		}
-
-		tfxAPI inline void Reset() {
-			if (paths.Size()) {
-				paths.Clear();
-				effect.CleanUp();
-			}
-		}
-		tfxAPI inline tfxEffectEmitter &Effect() { return effect; }
-		tfxAPI inline tfxEffectEmitter *Get(tfxStr256 &path) { if (paths.ValidName(path)) return paths.At(path); return nullptr; }
-		tfxAPI inline void SetUserData(tfxStr256 &path, void *data) { if (paths.ValidName(path)) paths.At(path)->user_data = data; }
-		tfxAPI inline void SetUserData(void *data) { effect.user_data = data; }
-		tfxAPI void SetUserDataAll(void *data);
-		tfxAPI inline void SetEffectUpdateCallback(void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index)) {
-			effect.update_callback = update_callback;
-		}
-		tfxAPI inline void SetEffectUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index)) {
-			assert(paths.ValidName(path));						//Path does not exist in library
-			assert(paths.At(path)->type == tfxEffectType);		//Path must be path to an effect type
-		}
-		tfxAPI inline void SetEmitterUpdateCallback(tfxStr256 path, void(*update_callback)(tfxParticleManager *pm, tfxEffectID emitter_index)) {
-			assert(paths.ValidName(path));						//Path does not exist in library
-			assert(paths.At(path)->type == tfxEmitterType);		//Path must be a path to an emitter type
-		}
-
-		/*
-		Pre-record this effect into a sprite cache so that you can play the effect back without the need to actually caclulate particles in realtime.
-			* @param pm			Reference to a pm that will be used to run the particle simulation and record the sprite data
-			* @param path		const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
-			* / void RecordSpriteData3d(tfxParticleManager &pm, u32 frames, u32 start_frame, int extra_frames, u32 &largest_frame);
-		*/
-		tfxAPI void Record(tfxParticleManager *pm, tfxVec3 camera_position = {});
-
-		/*
-		Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager
-		* @param path		const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
-		*/
-		tfxAPI inline void DisableEmitter(const char *path) {
-			assert(paths.ValidName(path));			//Must be a valid path to the emitter
-			tfxEffectEmitter *emitter = paths.At(path);
-			assert(emitter->type == tfxEmitterType);	//Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those. 
-			emitter->property_flags &= ~tfxEmitterPropertyFlags_enabled;
-		}
-
-		/*
-		Enable an emitter within an effect so that it is added to the particle manager when calling AddEffectToParticleManager. Emitters are enabled by default.
-		* @param path		const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
-		*/
-		tfxAPI inline void EnableEmitter(const char *path) {
-			assert(paths.ValidName(path));			//Must be a valid path to the emitter
-			tfxEffectEmitter *emitter = paths.At(path);
-			assert(emitter->type == tfxEmitterType);	//Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those
-			emitter->property_flags |= tfxEmitterPropertyFlags_enabled;
-		}
-
-		/*
-		Scale all nodes on a global graph graph of the effect
-		* @param global_type		tfxGraphType of the global graph that you want to scale. Must be a global graph or an assert will be called
-		* @param amount				A float of the amount that you want to scale the multiplier by.
-		*/
-		tfxAPI inline void ScaleGlobalMultiplier(tfxGraphType global_type, float amount) {
-			assert(IsGlobalGraph(global_type));
-			tfxGraph *graph = effect.GetGraphByType(global_type);
-			tfxEffectEmitter *original_effect = effect.library->GetEffect(original_effect_hash);
-			tfxGraph *original_graph = original_effect->GetGraphByType(global_type);
-			CopyGraph(original_graph, graph, false);
-			MultiplyAllGraphValues(graph, amount);
-			CompileGraph(*graph);
-		}
-
-		/*
-		Scale all nodes on an emitter graph
-		* @param emitter_path		const *char of the emitter path
-		* @param global_type		tfxGraphType of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
-		* @param amount				A float of the amount that you want to scale the graph by.
-		*/
-		tfxAPI inline void ScaleEmitterGraph(const char *emitter_path, tfxGraphType graph_type, float amount) {
-			assert(IsEmitterGraph(graph_type));		//Must be an emitter graph type. This is any property, base, variaion or overtime graph
-			assert(paths.ValidName(emitter_path));			//Must be a valid path to the emitter
-			tfxEffectEmitter *emitter = paths.At(emitter_path);
-			tfxGraph *graph = emitter->GetGraphByType(graph_type);
-			tfxEffectEmitter *original_emitter = effect.library->GetEffect(emitter_path);
-			tfxGraph *original_graph = original_emitter->GetGraphByType(graph_type);
-			CopyGraph(original_graph, graph, false);
-			MultiplyAllGraphValues(graph, amount);
-			CompileGraph(*graph);
-		}
-
-		/*
-		Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
-		* @param emitter_path		const *char of the emitter path
-		* @param amount				A float of the amount that you want to set the single spawn amount to.
-		*/
-		tfxAPI inline void SetSingleSpawnAmount(const char *emitter_path, tfxU32 amount) {
-			assert(amount >= 0);							//Amount must not be less than 0
-			assert(paths.ValidName(emitter_path));			//Must be a valid path to the emitter
-			tfxEffectEmitter *emitter = paths.At(emitter_path);
-			emitter->GetProperties().spawn_amount[emitter->property_index] = amount;
-		}
-
 	};
 
 	/*
@@ -7295,6 +7079,11 @@ You can then use layer inside the loop to get the current layer
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
 
+	//Library internal functions
+	tfxINTERNAL void MaybeGrowLibraryInfos(tfxLibrary *library);
+	tfxAPI void MaybeGrowLibraryProperties(tfxLibrary *library, tfxU32 size_offset);	//Required by editor
+	tfxAPI tfxEffectEmitterInfo *GetEffectInfo(tfxEffectEmitter *e);					//Required by editor
+
 	//Animation manager internal functions - animation manager is used to playback pre-recorded effects
 	tfxINTERNAL tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager);
 	tfxINTERNAL void FreeAnimationInstance(tfxAnimationManager *animation_manager, tfxU32 index);
@@ -7327,6 +7116,94 @@ You can then use layer inside the loop to get the current layer
 	tfxINTERNAL void ResetControllerPtr(tfxParticleManager *pm, void *ptr);
 	tfxINTERNAL void UpdateCompute(tfxParticleManager *pm, void *sampled_particles, unsigned int sample_size = 100);
 
+	//Effect templates
+	tfxINTERNAL void AddTemplatePath(tfxEffectTemplate *effect_template, tfxEffectEmitter *effect_emitter, tfxStr256 path);
+
+	//Library functions, internal/Editor functions
+	void ClearLibrary(tfxLibrary *library);
+	void InitLibrary(tfxLibrary *library);
+	void InitLibraryEmitterProperties(tfxLibrary *library);
+	//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
+	//You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
+	tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxStr256 &path);
+	tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, const char *path);
+	//Get an effect by it's path hash key
+	tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxKey key);
+	//Get and effect by it's index
+	void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxStr256 path, tfxEffectTemplate &effect);
+	void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
+	//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
+	void CopyLibraryLookupIndexesData(tfxLibrary *library, void* dst);
+	void CopyLibraryLookupValuesData(tfxLibrary *library, void* dst);
+	tfxU32 GetLibraryComputeShapeDataSizeInBytes(tfxLibrary *library);
+	tfxU32 GetLibraryComputeShapeCount(tfxLibrary *library);
+	tfxU32 GetLibraryLookupIndexCount(tfxLibrary *library);
+	tfxU32 GetLibraryLookupValueCount(tfxLibrary *library);
+	tfxU32 GetLibraryLookupIndexesSizeInBytes(tfxLibrary *library);
+	tfxU32 GetLibraryLookupValuesSizeInBytes(tfxLibrary *library);
+	tfxU32 CountOfGraphsInUse(tfxLibrary *library);
+	tfxU32 CountOfFreeGraphs(tfxLibrary *library);
+	bool IsLibraryShapeUsed(tfxLibrary *library, tfxKey image_hash);
+	bool LibraryShapeExists(tfxLibrary *library, tfxKey image_hash);
+	bool RemoveLibraryShape(tfxLibrary *library, tfxKey image_hash);
+	tfxEffectEmitter &InsertLibraryEffect(tfxLibrary *library, tfxEffectEmitter &effect, tfxEffectEmitter *position);
+	tfxEffectEmitter &AddLibraryEffect(tfxLibrary *library, tfxEffectEmitter &effect);
+	tfxEffectEmitter &AddLibraryFolder(tfxLibrary *library, tfxStr64 &name);
+	tfxEffectEmitter &AddLibraryFolder(tfxLibrary *library, tfxEffectEmitter &effect);
+	tfxEffectEmitter &AddLibraryStage(tfxLibrary *library, tfxStr64 &name);
+	void UpdateLibraryEffectPaths(tfxLibrary *library);
+	void AddLibraryPath(tfxLibrary *library, tfxEffectEmitter &effect_emitter, tfxStr256 &path);
+	void DeleteLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect);
+	bool RenameLibraryEffect(tfxLibrary *library, tfxEffectEmitter &effect, const char *new_name);
+	bool LibraryNameExists(tfxLibrary *library, tfxEffectEmitter &effect, const char *name);
+	bool LibraryNameExists2(tfxLibrary *library, tfxEffectEmitter &effect, const char *name);
+	void ReIndexLibrary(tfxLibrary *library);
+	void UpdateLibraryParticleShapeReferences(tfxLibrary *library, tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash);
+	tfxEffectEmitter* LibraryMoveUp(tfxLibrary *library, tfxEffectEmitter &effect);
+	tfxEffectEmitter* LibraryMoveDown(tfxLibrary *library, tfxEffectEmitter &effect);
+	tfxU32 AddLibraryGlobal(tfxLibrary *library);
+	tfxU32 AddLibraryEmitterAttributes(tfxLibrary *library);
+	void FreeLibraryGlobal(tfxLibrary *library, tfxU32 index);
+	void FreeLibraryKeyframes(tfxLibrary *library, tfxU32 index);
+	void FreeLibraryEmitterAttributes(tfxLibrary *library, tfxU32 index);
+	void FreeLibraryProperties(tfxLibrary *library, tfxU32 index);
+	void FreeLibraryInfo(tfxLibrary *library, tfxU32 index);
+	tfxU32 CountLibraryKeyframeLookUpValues(tfxLibrary *library, tfxU32 index);
+	tfxU32 CountLibraryGlobalLookUpValues(tfxLibrary *library, tfxU32 index);
+	tfxU32 CountLibraryEmitterLookUpValues(tfxLibrary *library, tfxU32 index);
+	tfxU32 CloneLibraryGlobal(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
+	tfxU32 CloneLibraryKeyframes(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
+	tfxU32 CloneLibraryEmitterAttributes(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
+	tfxU32 CloneLibraryInfo(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
+	tfxU32 CloneLibraryProperties(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
+	void AddLibraryEmitterGraphs(tfxLibrary *library, tfxEffectEmitter &effect);
+	void AddLibraryEffectGraphs(tfxLibrary *library, tfxEffectEmitter &effect);
+	void AddLibraryTransformGraphs(tfxLibrary *library, tfxEffectEmitter &effect);
+	tfxU32 AddLibrarySpriteSheetSettings(tfxLibrary *library, tfxEffectEmitter& effect);
+	tfxU32 AddLibrarySpriteDataSettings(tfxLibrary *library, tfxEffectEmitter& effect);
+	void AddLibrarySpriteSheetSettingsSub(tfxLibrary *library, tfxEffectEmitter& effect);
+	void AddLibrarySpriteDataSettingsSub(tfxLibrary *library, tfxEffectEmitter& effect);
+	tfxU32 AddLibraryPreviewCameraSettings(tfxLibrary *library, tfxEffectEmitter& effect);
+	tfxU32 AddLibraryPreviewCameraSettings(tfxLibrary *library);
+	tfxU32 AddLibraryEffectEmitterInfo(tfxLibrary *library);
+	tfxU32 AddLibraryEmitterProperties(tfxLibrary *library);
+	tfxU32 AddLibraryKeyframes(tfxLibrary *library);
+	void UpdateLibraryComputeNodes(tfxLibrary *library);
+	void CompileAllLibraryGraphs(tfxLibrary *library);
+	void CompileLibraryGlobalGraph(tfxLibrary *library, tfxU32 index);
+	void CompileLibraryKeyframeGraph(tfxLibrary *library, tfxU32 index);
+	void CompileLibraryEmitterGraphs(tfxLibrary *library, tfxU32 index);
+	void CompileLibraryPropertyGraph(tfxLibrary *library, tfxU32 index);
+	void CompileLibraryBaseGraph(tfxLibrary *library, tfxU32 index);
+	void CompileLibraryVariationGraph(tfxLibrary *library, tfxU32 index);
+	void CompileLibraryOvertimeGraph(tfxLibrary *library, tfxU32 index);
+	void CompileLibraryColorGraphs(tfxLibrary *library, tfxU32 index);
+	void CompileLibraryGraphsOfEffect(tfxLibrary *library, tfxEffectEmitter &effect, tfxU32 depth = 0);
+	void SetLibraryMinMaxData(tfxLibrary *library);
+	float LookupLibraryPreciseOvertimeNodeList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
+	float LookupLibraryPreciseNodeList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
+	float LookupLibraryFastOvertimeValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
+	float LookupLibraryFastValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
 
 	//[API functions]
 	//All the functions below represent all that you will need to call to implement TimelineFX
@@ -7517,7 +7394,7 @@ You can then use layer inside the loop to get the current layer
 	* @param effect_template			The empty tfxEffectTemplate object that you want the effect loading into
 	//Returns true on success.
 	*/
-	tfxAPI bool PrepareEffectTemplate(tfxLibrary &library, const char *name, tfxEffectTemplate &effect_template);
+	tfxAPI bool PrepareEffectTemplate(tfxLibrary *library, const char *name, tfxEffectTemplate *effect_template);
 
 	/*
 	Add an effect to a tfxParticleManager from an effect template
@@ -8347,9 +8224,99 @@ You can then use layer inside the loop to get the current layer
 	* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
 	* @returns void*				A pointer to the sprite data memory
 	*/
-	tfxAPI inline void* GetAnimationEmitterPropertiesBufferPointer(tfxAnimationManager *animation_manager) {
-		return animation_manager->emitter_properties.data;
-	}
+	tfxAPI void* GetAnimationEmitterPropertiesBufferPointer(tfxAnimationManager *animation_manager);
 
+	/*
+	Reset an effect template and make it empty so you can use it to store another effect.
+	* @param t						A pointer to a tfxEffectTemplate
+	*/
+	tfxAPI void ResetTemplate(tfxEffectTemplate *t);
+
+	/*
+	Get the root effect from the template
+	* @param t						A pointer to a tfxEffectTemplate
+	* @returns						A pointer to the root effect
+	*/
+	tfxAPI tfxEffectEmitter *GetEffectFromTemplate(tfxEffectTemplate *t) ;
+
+	/*
+	Get an emitter or sub effect from an effect template. 
+	* @param t						A pointer to a tfxEffectTemplate
+	* @param path					A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
+	* @returns						A pointer to the root effect
+	*/
+	tfxAPI tfxEffectEmitter *GetEmitterFromTemplate(tfxEffectTemplate *t, tfxStr256 &path) ;
+
+	/*
+	Set the user data for any effect or emitter in the effect template. This user data will get passed through to any update callback functions
+	* @param t						A pointer to a tfxEffectTemplate
+	* @param path					A path to the effect or emitter in the effect template
+	* @param data					A pointer to the user data
+	*/
+	tfxAPI void SetTemplateUserData(tfxEffectTemplate *t, tfxStr256 &path, void *data) ;
+
+	/*
+	Set the user data for the root effect in an effect template
+	* @param t						A pointer to a tfxEffectTemplate
+	* @param data					A pointer to the user data
+	*/
+	tfxAPI void SetTemplateEffectUserData(tfxEffectTemplate *t, void *data) ;
+
+	/*
+	Set the same user data for all effects and emitters/sub effects in the effect template
+	* @param t						A pointer to a tfxEffectTemplate
+	* @param data					A pointer to the user data that will be set to all effects and emitters in the template
+	*/
+	tfxAPI void SetTemplateUserDataAll(tfxEffectTemplate *t, void *data);
+
+	/*
+	Set an update callback for the root effect in the effect template. 
+	* @param t						A pointer to a tfxEffectTemplate
+	* @param update_callback		A pointer to the call back function
+	*/
+	tfxAPI void SetTemplateEffectUpdateCallback(tfxEffectTemplate *t, void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index));
+
+	/*
+	Pre-record this effect into a sprite cache so that you can play the effect back without the need to actually caclulate particles in realtime.
+		* @param pm			Reference to a pm that will be used to run the particle simulation and record the sprite data
+		* @param path		const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
+		* @param camera		Array of 3 floats with the camera position (only needed for 3d effects that are sorted by depth
+		* / void RecordSpriteData3d(tfxParticleManager &pm, u32 frames, u32 start_frame, int extra_frames, u32 &largest_frame);
+	*/
+	tfxAPI void RecordTemplateEffect(tfxEffectTemplate *t, tfxParticleManager *pm, float camera_position[3]);
+
+	/*
+	Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager
+	* @param path		const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
+	*/
+	tfxAPI void DisableTemplateEmitter(tfxEffectTemplate *t, const char *path);
+
+	/*
+	Enable an emitter within an effect so that it is added to the particle manager when calling AddEffectToParticleManager. Emitters are enabled by default.
+	* @param path		const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
+	*/
+	tfxAPI void EnableTemplateEmitter(tfxEffectTemplate *t, const char *path);
+
+	/*
+	Scale all nodes on a global graph graph of the effect
+	* @param global_type		tfxGraphType of the global graph that you want to scale. Must be a global graph or an assert will be called
+	* @param amount				A float of the amount that you want to scale the multiplier by.
+	*/
+	tfxAPI void ScaleTemplateGlobalMultiplier(tfxEffectTemplate *t, tfxGraphType global_type, float amount);
+
+	/*
+	Scale all nodes on an emitter graph
+	* @param emitter_path		const *char of the emitter path
+	* @param global_type		tfxGraphType of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
+	* @param amount				A float of the amount that you want to scale the graph by.
+	*/
+	tfxAPI void ScaleTemplateEmitterGraph(tfxEffectTemplate *t, const char *emitter_path, tfxGraphType graph_type, float amount);
+
+	/*
+	Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
+	* @param emitter_path		const *char of the emitter path
+	* @param amount				A float of the amount that you want to set the single spawn amount to.
+	*/
+	tfxAPI void SetTemplateSingleSpawnAmount(tfxEffectTemplate *t, const char *emitter_path, tfxU32 amount);
 }
 
