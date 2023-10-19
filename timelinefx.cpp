@@ -2185,6 +2185,20 @@ namespace tfx {
 		CopyGraphNoLookups(&src->noise_offset, &dst->noise_offset);
 	}
 
+	void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
+		InitialisePropertyAttributes(&attributes->properties, allocator, value_allocator, bucket_size);
+		InitialiseBaseAttributes(&attributes->base, allocator, value_allocator, bucket_size);
+		InitialiseVariationAttributes(&attributes->variation, allocator, value_allocator, bucket_size);
+		InitialiseOvertimeAttributes(&attributes->overtime, allocator, value_allocator, bucket_size);
+	}
+
+	void FreeEmitterAttributes(tfxEmitterAttributes *attributes) {
+		FreePropertyAttributes(&attributes->properties);
+		FreeBaseAttributes(&attributes->base);
+		FreeVariationAttributes(&attributes->variation);
+		FreeOvertimeAttributes(&attributes->overtime);
+	}
+
 	tfxEffectEmitter& tfxLibrary::operator[] (tfxU32 index) {
 		return effects[index];
 	}
@@ -2550,7 +2564,7 @@ namespace tfx {
 		if (library->free_emitter_attributes.size())
 			return library->free_emitter_attributes.pop_back();
 		tfxEmitterAttributes attributes;
-		attributes.Initialise(&library->graph_node_allocator, &library->graph_lookup_allocator);
+		InitialiseEmitterAttributes(&attributes, &library->graph_node_allocator, &library->graph_lookup_allocator);
 		library->emitter_attributes.push_back(attributes);
 		return library->emitter_attributes.size() - 1;
 	}
@@ -2570,7 +2584,7 @@ namespace tfx {
 	void FreeLibraryEmitterAttributes(tfxLibrary *library, tfxU32 index) {
 		assert(index < library->emitter_attributes.size());
 		library->free_emitter_attributes.push_back(index);
-		library->emitter_attributes[index].Free();
+		FreeEmitterAttributes(&library->emitter_attributes[index]);
 	}
 
 	void FreeLibraryProperties(tfxLibrary *library, tfxU32 index) {

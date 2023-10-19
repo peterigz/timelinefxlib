@@ -5069,13 +5069,6 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph translation_z;
 	};
 
-	void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-	void FreeTransformAttributes(tfxTransformAttributes *attributes);
-	void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst);
-
-	bool HasTranslationKeyframes(tfxTransformAttributes &graphs);
-	void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame);
-
 	struct tfxPropertyAttributes {
 		tfxGraph emission_pitch;
 		tfxGraph emission_yaw;
@@ -5088,10 +5081,6 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph arc_offset;
 	};
 
-	void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-	void FreePropertyAttributes(tfxPropertyAttributes *attributes);
-	void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttributes *dst);
-
 	struct tfxBaseAttributes {
 		tfxGraph life;
 		tfxGraph amount;
@@ -5102,10 +5091,6 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph spin;
 		tfxGraph noise_offset;
 	};
-
-	void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-	void FreeBaseAttributes(tfxBaseAttributes *attributes);
-	void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst);
 
 	struct tfxVariationAttributes {
 		tfxGraph life;
@@ -5118,10 +5103,6 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph noise_offset;
 		tfxGraph noise_resolution;
 	};
-
-	void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-	void FreeVariationAttributes(tfxVariationAttributes *attributes);
-	void CopyVariationAttributesNoLookups(tfxVariationAttributes *src, tfxVariationAttributes *dst);
 
 	struct tfxOvertimeAttributes {
 		tfxGraph velocity;
@@ -5142,29 +5123,11 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph noise_resolution;
 	};
 
-	void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-	void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);
-	void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst);
-
 	struct tfxEmitterAttributes {
 		tfxPropertyAttributes properties;
 		tfxBaseAttributes base;
 		tfxVariationAttributes variation;
 		tfxOvertimeAttributes overtime;
-
-		void Initialise(tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8) {
-			InitialisePropertyAttributes(&properties, allocator, value_allocator, bucket_size);
-			InitialiseBaseAttributes(&base, allocator, value_allocator, bucket_size);
-			InitialiseVariationAttributes(&variation, allocator, value_allocator, bucket_size);
-			InitialiseOvertimeAttributes(&overtime, allocator, value_allocator, bucket_size);
-		}
-
-		void Free() {
-			FreePropertyAttributes(&properties);
-			FreeBaseAttributes(&base);
-			FreeVariationAttributes(&variation);
-			FreeOvertimeAttributes(&overtime);
-		}
 	};
 
 	static float(*lookup_overtime_callback)(tfxGraph &graph, float age, float lifetime);
@@ -6907,6 +6870,29 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI_EDITOR bool HasKeyframes(tfxEffectEmitter &e);
 	tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
 	tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
+
+	//--------------------------------
+	//Grouped graph struct functions
+	//--------------------------------
+	tfxINTERNAL void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	tfxINTERNAL void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	tfxINTERNAL void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	tfxINTERNAL void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	tfxINTERNAL void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	tfxINTERNAL void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+	tfxINTERNAL void FreeEmitterAttributes(tfxEmitterAttributes *attributes);
+	tfxAPI_EDITOR void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);
+	tfxAPI_EDITOR void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst);
+	tfxAPI_EDITOR void FreeVariationAttributes(tfxVariationAttributes *attributes);
+	tfxAPI_EDITOR void CopyVariationAttributesNoLookups(tfxVariationAttributes *src, tfxVariationAttributes *dst);
+	tfxAPI_EDITOR void FreeBaseAttributes(tfxBaseAttributes *attributes);
+	tfxAPI_EDITOR void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst);
+	tfxAPI_EDITOR void FreePropertyAttributes(tfxPropertyAttributes *attributes);
+	tfxAPI_EDITOR void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttributes *dst);
+	tfxAPI_EDITOR void FreeTransformAttributes(tfxTransformAttributes *attributes);
+	tfxAPI_EDITOR void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst);
+	tfxAPI_EDITOR bool HasTranslationKeyframes(tfxTransformAttributes &graphs);
+	tfxAPI_EDITOR void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame);
 
 	//Get a graph by tfxGraphID
 	tfxAPI_EDITOR tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
