@@ -12215,6 +12215,280 @@ namespace tfx {
 		AtomicAdd32(&snapshot->hit_count, 1);
 	}
 
+	void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	void InitSpriteData2dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	void InitSpriteBufferSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
+		if (use_uid)
+			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
+		if (mode == tfxSpriteBufferMode_2d) {
+			AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
+		}
+		else if (mode == tfxSpriteBufferMode_3d) {
+			AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
+		}
+		else {
+			AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
+			AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
+		}
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	void InitSpriteData2dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
+		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
+		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, uid));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, parent_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, sprite_index));
+		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxParticleSoA, particle_index));
+		AddStructArray(buffer, sizeof(tfxParticleFlags), offsetof(tfxParticleSoA, flags));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, max_age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_z));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_z));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_y));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_z));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, velocity_normal));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, depth_index));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_velocity));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_spin));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_offset));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_resolution));
+		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxParticleSoA, color));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_x));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_y));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, single_loop_count));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	void InitEffectSoA(tfxSoABuffer *buffer, tfxEffectSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, frame));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, highest_particle_age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, timeout_counter));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, timeout));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, handle));
+		AddStructArray(buffer, sizeof(tfxEmitterPropertyFlags), offsetof(tfxEffectSoA, property_flags));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, loop_length));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, translation));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, local_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, world_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, captured_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, local_rotations));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, world_rotations));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, scale));
+		//Todo: save space and use a quaternion here?
+		AddStructArray(buffer, sizeof(tfxMatrix4), offsetof(tfxEffectSoA, matrix));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, global_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, transform_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, parent_particle_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, properties_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, info_index));
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, library));
+		AddStructArray(buffer, sizeof(tfxParentSpawnControls), offsetof(tfxEffectSoA, spawn_controls));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, emitter_size));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, overal_scale));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, noise_base_offset));
+		AddStructArray(buffer, sizeof(tfxEffectStateFlags), offsetof(tfxEffectSoA, state_flags));
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, user_data));
+		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, update_callback));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount) {
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, frame));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, highest_particle_age));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, delay_spawning));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, timeout_counter));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, timeout));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, handle));
+		AddStructArray(buffer, sizeof(tfxEmitterPropertyFlags), offsetof(tfxEmitterSoA, property_flags));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, loop_length));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, translation));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, local_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, world_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, captured_position));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, local_rotations));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, world_rotations));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, scale));
+		//Todo: save space and use a quaternion here?
+		AddStructArray(buffer, sizeof(tfxMatrix4), offsetof(tfxEmitterSoA, matrix));
+		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, image_handle));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, amount_remainder));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, spawn_quantity));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, qty_step_size));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, emitter_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, transform_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, overtime_attributes));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, parent_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_count));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, seed_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, properties_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, info_index));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, hierarchy_depth));
+		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life_variation));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_size));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_offset));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, weight));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, weight_variation));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, velocity));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, velocity_variation));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, spin));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, spin_variation));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, splatter));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, noise_offset_variation));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, noise_offset));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, noise_resolution));
+		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, size));
+		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, size_variation));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_segment_size));
+		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, particles_index));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, overal_scale));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, velocity_adjuster));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, intensity));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, image_frame_rate));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, stretch));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, end_frame));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_coords));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_direction));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, emitter_size));
+		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, emission_alternator));
+		AddStructArray(buffer, sizeof(tfxEmitterStateFlags), offsetof(tfxEmitterSoA, state_flags));
+		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, image_size));
+		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, angle_offsets));
+		FinishSoABufferSetup(buffer, soa, reserve_amount);
+	}
+
+	void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i) {
+		properties.angle_offsets[i] = { 0.f, 0.f, tfx360Radians };
+		properties.image[i] = nullptr;
+		properties.image_handle[i] = tfxVec2();
+		properties.spawn_amount[i] = 1;
+		properties.single_shot_limit[i] = 0;
+		properties.emission_type[i] = tfxEmissionType::tfxPoint;
+		properties.billboard_option[i] = tfxBillboarding_align_to_camera;
+		properties.vector_align_type[i] = tfxVectorAlignType_motion;
+		properties.emission_direction[i] = tfxEmissionDirection::tfxOutwards;
+		properties.grid_points[i] = { 10.f, 10.f, 10.f };
+		properties.emitter_handle[i] = { 0.f, 0.f, 0.f };
+		properties.end_behaviour[i] = tfxLineTraversalEndBehaviour::tfxLoop;
+		properties.loop_length[i] = 0.f;
+		properties.layer[i] = 0;
+		properties.image_hash[i] = 1;
+		properties.start_frame[i] = 0;
+		properties.end_frame[i] = 0;
+		properties.frame_rate[i] = 30.f;
+		properties.angle_settings[i] = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
+		properties.delay_spawning[i] = 0.f;
+		properties.noise_base_offset_range[i] = 1000.f;
+		properties.animation_property_index[i] = tfxINVALID;
+	}
+
+	//Use with care, no checks for out of bounds
+	void CopyEmitterProperites(tfxEmitterPropertiesSoA &from_properties, tfxU32 from_i, tfxEmitterPropertiesSoA &to_properties, tfxU32 to_i) {
+		to_properties.angle_offsets[to_i] = from_properties.angle_offsets[from_i];
+		to_properties.image[to_i] = from_properties.image[from_i];
+		to_properties.image_handle[to_i] = from_properties.image_handle[from_i];
+		to_properties.spawn_amount[to_i] = from_properties.spawn_amount[from_i];
+		to_properties.single_shot_limit[to_i] = from_properties.single_shot_limit[from_i];
+		to_properties.emission_type[to_i] = from_properties.emission_type[from_i];
+		to_properties.billboard_option[to_i] = from_properties.billboard_option[from_i];
+		to_properties.vector_align_type[to_i] = from_properties.vector_align_type[from_i];
+		to_properties.emission_direction[to_i] = from_properties.emission_direction[from_i];
+		to_properties.grid_points[to_i] = from_properties.grid_points[from_i];
+		to_properties.emitter_handle[to_i] = from_properties.emitter_handle[from_i];
+		to_properties.end_behaviour[to_i] = from_properties.end_behaviour[from_i];
+		to_properties.loop_length[to_i] = from_properties.loop_length[from_i];
+		to_properties.layer[to_i] = from_properties.layer[from_i];
+		to_properties.image_hash[to_i] = from_properties.image_hash[from_i];
+		to_properties.start_frame[to_i] = from_properties.start_frame[from_i];
+		to_properties.end_frame[to_i] = from_properties.end_frame[from_i];
+		to_properties.frame_rate[to_i] = from_properties.frame_rate[from_i];
+		to_properties.angle_settings[to_i] = from_properties.angle_settings[from_i];
+		to_properties.delay_spawning[to_i] = from_properties.delay_spawning[from_i];
+		to_properties.noise_base_offset_range[to_i] = from_properties.noise_base_offset_range[from_i];
+		to_properties.animation_property_index[to_i] = from_properties.animation_property_index[from_i];
+	}
+
+	void FreeSpriteData(tfxSpriteData &sprite_data) {
+		if (sprite_data.compressed_sprites_buffer.data == sprite_data.real_time_sprites_buffer.data) {
+			FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
+			sprite_data.normal.frame_meta.free_all();
+			sprite_data.compressed_sprites_buffer = tfxSoABuffer();
+		}
+		else {
+			FreeSoABuffer(&sprite_data.compressed_sprites_buffer);
+			FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
+			sprite_data.normal.frame_meta.free_all();
+			sprite_data.compressed.frame_meta.free_all();
+		}
+	}
+
 	void InitParticleManagerFor3d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
 		assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
 		pm->max_effects = effects_limit;

@@ -4832,15 +4832,6 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
-	tfxStream ReadEntireFile(const char *file_name, bool terminate = false);
-	tfxErrorFlags LoadPackage(const char *file_name, tfxPackage &package);
-	tfxErrorFlags LoadPackage(tfxStream &stream, tfxPackage &package);
-	tfxPackage CreatePackage(const char *file_path);
-	bool SavePackageDisk(tfxPackage &package);
-	tfxStream SavePackageMemory(tfxPackage &package);
-	tfxU64 GetPackageSize(tfxPackage &package);
-	bool ValidatePackage(tfxPackage &package);
-
 	//------------------------------------------------------------
 
 	//Structs
@@ -5055,10 +5046,6 @@ You can then use layer inside the loop to get the current layer
 		tfxGraph emitter_height;
 		tfxGraph emitter_depth;
 	};
-
-	void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-	void FreeGlobalAttributes(tfxGlobalAttributes *attributes);
-	void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes *dst);
 
 	struct tfxTransformAttributes {
 		tfxGraph roll;
@@ -5310,57 +5297,6 @@ You can then use layer inside the loop to get the current layer
 		tfxEmitterPropertiesSoA() { memset(this, 0, sizeof(tfxEmitterPropertiesSoA)); }
 	};
 
-	inline void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i) {
-		properties.angle_offsets[i] = { 0.f, 0.f, tfx360Radians };
-		properties.image[i] = nullptr;
-		properties.image_handle[i] = tfxVec2();
-		properties.spawn_amount[i] = 1;
-		properties.single_shot_limit[i] = 0;
-		properties.emission_type[i] = tfxEmissionType::tfxPoint;
-		properties.billboard_option[i] = tfxBillboarding_align_to_camera;
-		properties.vector_align_type[i] = tfxVectorAlignType_motion;
-		properties.emission_direction[i] = tfxEmissionDirection::tfxOutwards;
-		properties.grid_points[i] = { 10.f, 10.f, 10.f };
-		properties.emitter_handle[i] = { 0.f, 0.f, 0.f };
-		properties.end_behaviour[i] = tfxLineTraversalEndBehaviour::tfxLoop;
-		properties.loop_length[i] = 0.f;
-		properties.layer[i] = 0;
-		properties.image_hash[i] = 1;
-		properties.start_frame[i] = 0;
-		properties.end_frame[i] = 0;
-		properties.frame_rate[i] = 30.f;
-		properties.angle_settings[i] = tfxAngleSettingFlags_random_roll | tfxAngleSettingFlags_specify_pitch | tfxAngleSettingFlags_specify_yaw;
-		properties.delay_spawning[i] = 0.f;
-		properties.noise_base_offset_range[i] = 1000.f;
-		properties.animation_property_index[i] = tfxINVALID;
-	}
-
-	//Use with care, no checks for out of bounds
-	inline void CopyEmitterProperites(tfxEmitterPropertiesSoA &from_properties, tfxU32 from_i, tfxEmitterPropertiesSoA &to_properties, tfxU32 to_i) {
-		to_properties.angle_offsets[to_i] = from_properties.angle_offsets[from_i];
-		to_properties.image[to_i] = from_properties.image[from_i];
-		to_properties.image_handle[to_i] = from_properties.image_handle[from_i];
-		to_properties.spawn_amount[to_i] = from_properties.spawn_amount[from_i];
-		to_properties.single_shot_limit[to_i] = from_properties.single_shot_limit[from_i];
-		to_properties.emission_type[to_i] = from_properties.emission_type[from_i];
-		to_properties.billboard_option[to_i] = from_properties.billboard_option[from_i];
-		to_properties.vector_align_type[to_i] = from_properties.vector_align_type[from_i];
-		to_properties.emission_direction[to_i] = from_properties.emission_direction[from_i];
-		to_properties.grid_points[to_i] = from_properties.grid_points[from_i];
-		to_properties.emitter_handle[to_i] = from_properties.emitter_handle[from_i];
-		to_properties.end_behaviour[to_i] = from_properties.end_behaviour[from_i];
-		to_properties.loop_length[to_i] = from_properties.loop_length[from_i];
-		to_properties.layer[to_i] = from_properties.layer[from_i];
-		to_properties.image_hash[to_i] = from_properties.image_hash[from_i];
-		to_properties.start_frame[to_i] = from_properties.start_frame[from_i];
-		to_properties.end_frame[to_i] = from_properties.end_frame[from_i];
-		to_properties.frame_rate[to_i] = from_properties.frame_rate[from_i];
-		to_properties.angle_settings[to_i] = from_properties.angle_settings[from_i];
-		to_properties.delay_spawning[to_i] = from_properties.delay_spawning[from_i];
-		to_properties.noise_base_offset_range[to_i] = from_properties.noise_base_offset_range[from_i];
-		to_properties.animation_property_index[to_i] = from_properties.animation_property_index[from_i];
-	}
-
 	struct tfxEmitterTransform {
 		//Position, scale and rotation values
 		tfxVec3 translation;
@@ -5388,10 +5324,6 @@ You can then use layer inside the loop to get the current layer
 		float splatter;
 		float weight;
 	};
-
-
-	float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
-	tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 
 	struct tfxEffectEmitterInfo {
 		//Name of the effect
@@ -5514,78 +5446,6 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
-	inline void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, frame));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, age));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, highest_particle_age));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, delay_spawning));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, timeout_counter));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, timeout));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, handle));
-		AddStructArray(buffer, sizeof(tfxEmitterPropertyFlags), offsetof(tfxEmitterSoA, property_flags));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, loop_length));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, translation));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, local_position));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, world_position));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, captured_position));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, local_rotations));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, world_rotations));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, scale));
-
-		//Todo: save space and use a quaternion here?
-		AddStructArray(buffer, sizeof(tfxMatrix4), offsetof(tfxEmitterSoA, matrix));
-		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, image_handle));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, amount_remainder));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, spawn_quantity));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, qty_step_size));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, emitter_attributes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, transform_attributes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, overtime_attributes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, parent_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_count));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, sprites_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, seed_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, properties_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, info_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, hierarchy_depth));
-		AddStructArray(buffer, sizeof(tfxKey), offsetof(tfxEmitterSoA, path_hash));
-
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, life_variation));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_size));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, arc_offset));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, weight));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, weight_variation));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, velocity));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, velocity_variation));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, spin));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, spin_variation));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, splatter));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, noise_offset_variation));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, noise_offset));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, noise_resolution));
-		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, size));
-		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, size_variation));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_segment_size));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEmitterSoA, particles_index));
-
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, overal_scale));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, velocity_adjuster));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, intensity));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, image_frame_rate));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, end_frame));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_coords));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, grid_direction));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, emitter_size));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEmitterSoA, emission_alternator));
-		AddStructArray(buffer, sizeof(tfxEmitterStateFlags), offsetof(tfxEmitterSoA, state_flags));
-		AddStructArray(buffer, sizeof(tfxVec2), offsetof(tfxEmitterSoA, image_size));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEmitterSoA, angle_offsets));
-
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
-
 	struct tfxEffectSoA {
 		//State data
 		float *frame;
@@ -5626,44 +5486,6 @@ You can then use layer inside the loop to get the current layer
 		void **user_data;
 		void(**update_callback)(tfxParticleManager *pm, tfxEffectID effect_index);
 	};
-
-	inline void InitEffectSoA(tfxSoABuffer *buffer, tfxEffectSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, frame));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, age));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, highest_particle_age));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, timeout_counter));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, timeout));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, handle));
-		AddStructArray(buffer, sizeof(tfxEmitterPropertyFlags), offsetof(tfxEffectSoA, property_flags));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, loop_length));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, translation));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, local_position));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, world_position));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, captured_position));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, local_rotations));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, world_rotations));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, scale));
-
-		//Todo: save space and use a quaternion here?
-		AddStructArray(buffer, sizeof(tfxMatrix4), offsetof(tfxEffectSoA, matrix));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, global_attributes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, transform_attributes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, parent_particle_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, properties_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectSoA, info_index));
-		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, library));
-		AddStructArray(buffer, sizeof(tfxParentSpawnControls), offsetof(tfxEffectSoA, spawn_controls));
-		AddStructArray(buffer, sizeof(tfxVec3), offsetof(tfxEffectSoA, emitter_size));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, overal_scale));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxEffectSoA, noise_base_offset));
-		AddStructArray(buffer, sizeof(tfxEffectStateFlags), offsetof(tfxEffectSoA, state_flags));
-
-		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, user_data));
-		AddStructArray(buffer, sizeof(void*), offsetof(tfxEffectSoA, update_callback));
-
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
 
 	//An tfxEffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 	//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
@@ -5788,38 +5610,6 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 *single_loop_count;
 	};
 
-	inline void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, uid));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, parent_index));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, sprite_index));
-		AddStructArray(buffer, sizeof(tfxParticleID), offsetof(tfxParticleSoA, particle_index));
-		AddStructArray(buffer, sizeof(tfxParticleFlags), offsetof(tfxParticleSoA, flags));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, age));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, max_age));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_x));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_y));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, position_z));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_x));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_y));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, captured_position_z));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_x));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_y));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, local_rotations_z));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, velocity_normal));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, depth_index));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_weight));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_velocity));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_spin));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_offset));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, noise_resolution));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxParticleSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, image_frame));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_x));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxParticleSoA, base_size_y));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxParticleSoA, single_loop_count));
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
-
 	struct tfxSpriteTransform2d {
 		tfxVec2 position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
 		tfxVec2 scale;						//Scale
@@ -5861,28 +5651,6 @@ You can then use layer inside the loop to get the current layer
 		tfxSpriteBufferMode_3d,
 		tfxSpriteBufferMode_both,
 	};
-
-	inline void InitSpriteBufferSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, property_indexes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, captured_index));
-		if (use_uid)
-			AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteSoA, uid));
-		if (mode == tfxSpriteBufferMode_2d) {
-			AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
-		}
-		else if (mode == tfxSpriteBufferMode_3d) {
-			AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
-		}
-		else {
-			AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteSoA, transform_2d));
-			AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteSoA, transform_3d));
-		}
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteSoA, intensity));
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
 
 	//These structs are for animation sprite data that you can upload to the gpu
 	struct alignas(16) tfxSpriteData3d {	//60 bytes aligning to 64
@@ -5926,58 +5694,6 @@ You can then use layer inside the loop to get the current layer
 		float *intensity;
 	};
 
-	inline void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
-
-	inline void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform3d), offsetof(tfxSpriteDataSoA, transform_3d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
-
-	inline void InitSpriteData2dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
-
-	inline void InitSpriteData2dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, property_indexes));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, captured_index));
-		AddStructArray(buffer, sizeof(tfxUniqueSpriteID), offsetof(tfxSpriteDataSoA, uid));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, lerp_offset));
-		AddStructArray(buffer, sizeof(tfxSpriteTransform2d), offsetof(tfxSpriteDataSoA, transform_2d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxSpriteDataSoA, alignment));
-		AddStructArray(buffer, sizeof(tfxRGBA8), offsetof(tfxSpriteDataSoA, color));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, stretch));
-		AddStructArray(buffer, sizeof(float), offsetof(tfxSpriteDataSoA, intensity));
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
-
 	struct tfxWideLerpTransformResult {
 		float position[3];
 		float rotations[3];
@@ -5990,24 +5706,6 @@ You can then use layer inside the loop to get the current layer
 		float color[4];
 		float padding[2];
 	};
-
-	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured) {
-		__m128 to1 = _mm_load_ps(&current.position.x);
-		__m128 from1 = _mm_load_ps(&captured.position.x);
-		__m128 to2 = _mm_load_ps(&current.rotations.y);
-		__m128 from2 = _mm_load_ps(&captured.rotations.y);
-		__m128 one_minus_tween = _mm_sub_ps(tfxWIDEONE, tween);
-		__m128 to_lerp1 = _mm_mul_ps(to1, tween);
-		__m128 from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
-		__m128 result = _mm_add_ps(from_lerp1, to_lerp1);
-		tfxWideLerpTransformResult out;
-		_mm_store_ps(out.position, result);
-		to_lerp1 = _mm_mul_ps(to2, tween);
-		from_lerp1 = _mm_mul_ps(from2, one_minus_tween);
-		result = _mm_add_ps(from_lerp1, to_lerp1);
-		_mm_store_ps(&out.rotations[1], result);
-		return out;
-	}
 
 	struct tfxSpriteDataMetrics {
 		tfxStr64 name;
@@ -6033,20 +5731,6 @@ You can then use layer inside the loop to get the current layer
 		tfxSoABuffer compressed_sprites_buffer;
 		tfxSpriteDataSoA compressed_sprites;
 	};
-
-	inline void FreeSpriteData(tfxSpriteData &sprite_data) {
-		if (sprite_data.compressed_sprites_buffer.data == sprite_data.real_time_sprites_buffer.data) {
-			FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
-			sprite_data.normal.frame_meta.free_all();
-			sprite_data.compressed_sprites_buffer = tfxSoABuffer();
-		}
-		else {
-			FreeSoABuffer(&sprite_data.compressed_sprites_buffer);
-			FreeSoABuffer(&sprite_data.real_time_sprites_buffer);
-			sprite_data.normal.frame_meta.free_all();
-			sprite_data.compressed.frame_meta.free_all();
-		}
-	}
 
 	struct tfxComputeFXGlobalState {
 		tfxU32 start_index = 0;
@@ -6191,25 +5875,6 @@ You can then use layer inside the loop to get the current layer
 		tfxU32 *free_effects[3];
 		tfxU32 *free_emitters[3];
 	};
-
-	inline void InitEffectsInUse(tfxSoABuffer *buffer, tfxEffectsInUseSoA *soa, tfxU32 reserve_amount) {
-
-		for (int i = 0; i != 3; ++i) {
-			for (int j = 0; j != 2; ++j) {
-				AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectsInUseSoA, effects_in_use[i][j]));
-			}
-			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectsInUseSoA, free_effects[i]));
-		}
-
-		for (int i = 0; i != 3; ++i) {
-			for (int j = 0; j != 2; ++j) {
-				AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectsInUseSoA, emitters_in_use[i][j]));
-			}
-			AddStructArray(buffer, sizeof(tfxU32), offsetof(tfxEffectsInUseSoA, free_emitters[i]));
-		}
-
-		FinishSoABufferSetup(buffer, soa, reserve_amount);
-	}
 
 	inline void tfxResizeParticleSoACallback(tfxSoABuffer *buffer, tfxU32 index) {
 		tfxParticleSoA *particles = static_cast<tfxParticleSoA*>(buffer->user_data);
@@ -6556,6 +6221,18 @@ You can then use layer inside the loop to get the current layer
 
 	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
+	//--------------------------------
+	//Reading/Writing files
+	//--------------------------------
+	tfxAPI_EDITOR tfxStream ReadEntireFile(const char *file_name, bool terminate = false);
+	tfxAPI_EDITOR tfxErrorFlags LoadPackage(const char *file_name, tfxPackage &package);
+	tfxAPI_EDITOR tfxErrorFlags LoadPackage(tfxStream &stream, tfxPackage &package);
+	tfxAPI_EDITOR tfxPackage CreatePackage(const char *file_path);
+	tfxAPI_EDITOR bool SavePackageDisk(tfxPackage &package);
+	tfxAPI_EDITOR tfxStream SavePackageMemory(tfxPackage &package);
+	tfxAPI_EDITOR tfxU64 GetPackageSize(tfxPackage &package);
+	tfxAPI_EDITOR bool ValidatePackage(tfxPackage &package);
+
 	//Some file IO functions for the editor
 	tfxAPI_EDITOR bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key);
 	tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, const char *value);
@@ -6729,6 +6406,8 @@ You can then use layer inside the loop to get the current layer
 	//--------------------------------
 	//Particle manager internal functions
 	//--------------------------------
+	tfxINTERNAL float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
+	tfxINTERNAL tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
 	tfxINTERNAL void TransformEffector2d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
 	tfxINTERNAL void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
 	tfxINTERNAL void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
@@ -6781,6 +6460,20 @@ You can then use layer inside the loop to get the current layer
 
 	tfxINTERNAL void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
 	tfxINTERNAL void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
+
+	tfxINTERNAL void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount);
+	tfxINTERNAL void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount);
+	tfxINTERNAL void InitSpriteData2dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount);
+	tfxINTERNAL void InitSpriteData2dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount);
+	tfxINTERNAL void InitSpriteBufferSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
+	tfxINTERNAL void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount);
+	tfxINTERNAL void InitEffectSoA(tfxSoABuffer *buffer, tfxEffectSoA *soa, tfxU32 reserve_amount);
+	tfxINTERNAL void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount);
+
+	tfxAPI_EDITOR void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i);
+	tfxINTERNAL void CopyEmitterProperites(tfxEmitterPropertiesSoA &from_properties, tfxU32 from_i, tfxEmitterPropertiesSoA &to_properties, tfxU32 to_i);
+
+	tfxINTERNAL inline void FreeSpriteData(tfxSpriteData &sprite_data);
 
 	//--------------------------------
 	//Graph functions
@@ -6872,6 +6565,7 @@ You can then use layer inside the loop to get the current layer
 	//--------------------------------
 	//Grouped graph struct functions
 	//--------------------------------
+	tfxINTERNAL void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
 	tfxINTERNAL void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
 	tfxINTERNAL void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
 	tfxINTERNAL void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
@@ -6879,6 +6573,7 @@ You can then use layer inside the loop to get the current layer
 	tfxINTERNAL void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
 	tfxINTERNAL void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
 	tfxINTERNAL void FreeEmitterAttributes(tfxEmitterAttributes *attributes);
+	tfxINTERNAL void FreeGlobalAttributes(tfxGlobalAttributes *attributes);
 	tfxAPI_EDITOR void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);
 	tfxAPI_EDITOR void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst);
 	tfxAPI_EDITOR void FreeVariationAttributes(tfxVariationAttributes *attributes);
@@ -6891,6 +6586,7 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI_EDITOR void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst);
 	tfxAPI_EDITOR bool HasTranslationKeyframes(tfxTransformAttributes &graphs);
 	tfxAPI_EDITOR void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame);
+	tfxAPI_EDITOR void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes *dst);
 
 	//Get a graph by tfxGraphID
 	tfxAPI_EDITOR tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
@@ -7045,7 +6741,6 @@ You can then use layer inside the loop to get the current layer
 	//Effect/Emitter functions
 	void SetEffectUserData(tfxEffectEmitter *e, void *data);
 	void *GetEffectUserData(tfxEffectEmitter *e);
-
 
 	tfxINTERNAL bool IsRootEffect(tfxEffectEmitter *effect);
 	tfxINTERNAL void ResetEffectParents(tfxEffectEmitter *effect);
@@ -8239,6 +7934,31 @@ You can then use layer inside the loop to get the current layer
 		tfx128iArray packed;
 		packed.m = _mm_cvtps_epi32(color1);
 		return tfxRGBA8(packed.a[0], packed.a[1], packed.a[2], packed.a[3]);
+	}
+
+	/*
+	Interpolate all sprite transform data in a single function. This will interpolate position, scale and rotation.
+	* @param tween				The interpolation value between 0 and 1. You should pass in the value from your timing function
+	* @param current			The current transform struct of the sprite
+	* @param captured			The captured transform struct of the sprite
+	* @returns tfxWideLerpTransformResult			The interpolated transform data in a tfxWideLerpTransformResult
+	*/
+	inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured) {
+		__m128 to1 = _mm_load_ps(&current.position.x);
+		__m128 from1 = _mm_load_ps(&captured.position.x);
+		__m128 to2 = _mm_load_ps(&current.rotations.y);
+		__m128 from2 = _mm_load_ps(&captured.rotations.y);
+		__m128 one_minus_tween = _mm_sub_ps(tfxWIDEONE, tween);
+		__m128 to_lerp1 = _mm_mul_ps(to1, tween);
+		__m128 from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
+		__m128 result = _mm_add_ps(from_lerp1, to_lerp1);
+		tfxWideLerpTransformResult out;
+		_mm_store_ps(out.position, result);
+		to_lerp1 = _mm_mul_ps(to2, tween);
+		from_lerp1 = _mm_mul_ps(from2, one_minus_tween);
+		result = _mm_add_ps(from_lerp1, to_lerp1);
+		_mm_store_ps(&out.rotations[1], result);
+		return out;
 	}
 
 	/*
