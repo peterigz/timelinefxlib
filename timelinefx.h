@@ -179,6 +179,8 @@ namespace tfx {
 
 //Function marker for any functions meant for external/api use
 #define tfxAPI		
+//Function marker for any functions meant mainly for use by the TimelineFX editor and are related to editing effects
+#define tfxAPI_EDITOR		
 //For internal functions
 #define tfxINTERNAL static	
 
@@ -5875,57 +5877,6 @@ You can then use layer inside the loop to get the current layer
 		{ }
 		~tfxEffectEmitter();
 
-		//API related functions
-
-
-		tfxEffectEmitter* GetRootEffect();
-		bool IsRootEffect();
-		void ReIndex();
-		void CountChildren(int &emitters, int &effects);
-		void ResetParents();
-		tfxEffectEmitter* MoveUp(tfxEffectEmitter &effect);
-		tfxEffectEmitter* MoveDown(tfxEffectEmitter &effect);
-		void DeleteEmitter(tfxEffectEmitter *effect);
-		void CleanUp();
-
-		void ResetGlobalGraphs(bool add_node = true, bool compile = true);
-		void ResetTransformGraphs(bool add_node = true, bool compile = true);
-		void ResetBaseGraphs(bool add_node = true, bool compile = true);
-		void ResetPropertyGraphs(bool add_node = true, bool compile = true);
-		void ResetVariationGraphs(bool add_node = true, bool compile = true);
-		void ResetOvertimeGraphs(bool add_node = true, bool compile = true);
-		void ResetEffectGraphs(bool add_node = true, bool compile = true);
-		void ResetEmitterGraphs(bool add_node = true, bool compile = true);
-		void UpdateMaxLife();
-		void ResetAllBufferSizes();
-		tfxGraph* GetGraphByType(tfxGraphType type);
-		tfxU32 GetGraphIndexByType(tfxGraphType type);
-		void CompileGraphs();
-		void InitialiseUninitialisedGraphs();
-		void SetName(const char *n);
-
-		bool HasSingle();
-		bool RenameSubEffector(tfxEffectEmitter &effect, const char *new_name);
-		bool NameExists(tfxEffectEmitter &effect, const char *name);
-		void FreeGraphs();
-
-		void ClearColors();
-		void AddColorOvertime(float frame, tfxRGB color);
-		void Clone(tfxEffectEmitter &clone, tfxEffectEmitter *root_parent, tfxLibrary *destination_library, tfxEffectCloningFlags flags = 0);
-		void EnableAllEmitters();
-		void EnableEmitter();
-		void DisableAllEmitters();
-		void DisableAllEmittersExcept(tfxEffectEmitter &emitter);
-		bool IsFinite();
-		void FlagAs3D(bool flag);
-		bool Is3DEffect();
-		tfxU32 CountAllLookupValues();
-		tfxParticleManagerModes GetRequiredParticleManagerMode();
-		tfxPreviewCameraSettings &GetCameraSettings();
-		tfxU32 GetCameraSettingsIndex();
-		float GetLoopLength();
-		float GetHighestLoopLength();
-
 	};
 
 	struct EffectEmitterSnapShot {
@@ -6807,31 +6758,33 @@ You can then use layer inside the loop to get the current layer
 
 	extern tfxDataTypesDictionary tfxDataTypes;
 
-	//Internal functions
+	//--------------------------------
+	//Internal functions used either by the library or editor
+	//--------------------------------
 	//Some file IO functions for the editor
-	tfxAPI bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key);
-	tfxAPI void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, const char *value);
-	tfxAPI void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, int value);
-	tfxAPI void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, bool value);
-	tfxAPI void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, double value);
-	tfxAPI void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, float value);
-	tfxAPI tfxStr &GetDataStrValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
-	tfxAPI int& GetDataIntValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
-	tfxAPI float& GetDataFloatValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
-	tfxAPI bool SaveDataFile(tfxStorageMap<tfxDataEntry> &config, const char* path = "");
-	tfxAPI bool LoadDataFile(tfxStorageMap<tfxDataEntry> &config, const char* path);
-	tfxAPI void StreamProperties(tfxEmitterPropertiesSoA &property, tfxU32 index, tfxEmitterPropertyFlags &flags, tfxStr &file);
-	tfxAPI void StreamProperties(tfxEffectEmitter &effect, tfxStr &file);
-	tfxAPI void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file);
-	tfxAPI void SplitStringStack(const tfxStr &s, tfxStack<tfxStr256> &pair, char delim = 61);
-	tfxAPI bool StringIsUInt(const tfxStr &s);
-	tfxAPI void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU64 value, tfxU32 file_version);
-	tfxAPI void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value, tfxU32 file_version);
-	tfxAPI void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
-	tfxAPI void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
-	tfxAPI void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
-	tfxAPI void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
-	tfxAPI void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr256> &values);
+	tfxAPI_EDITOR bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key);
+	tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, const char *value);
+	tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, int value);
+	tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, bool value);
+	tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, double value);
+	tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, float value);
+	tfxAPI_EDITOR tfxStr &GetDataStrValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
+	tfxAPI_EDITOR int& GetDataIntValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
+	tfxAPI_EDITOR float& GetDataFloatValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
+	tfxAPI_EDITOR bool SaveDataFile(tfxStorageMap<tfxDataEntry> &config, const char* path = "");
+	tfxAPI_EDITOR bool LoadDataFile(tfxStorageMap<tfxDataEntry> &config, const char* path);
+	tfxAPI_EDITOR void StreamProperties(tfxEmitterPropertiesSoA &property, tfxU32 index, tfxEmitterPropertyFlags &flags, tfxStr &file);
+	tfxAPI_EDITOR void StreamProperties(tfxEffectEmitter &effect, tfxStr &file);
+	tfxAPI_EDITOR void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file);
+	tfxAPI_EDITOR void SplitStringStack(const tfxStr &s, tfxStack<tfxStr256> &pair, char delim = 61);
+	tfxAPI_EDITOR bool StringIsUInt(const tfxStr &s);
+	tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU64 value, tfxU32 file_version);
+	tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value, tfxU32 file_version);
+	tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
+	tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
+	tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
+	tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
+	tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr256> &values);
 	tfxINTERNAL void SplitStringVec(const tfxStr &s, tfxvec<tfxStr256> &pair, char delim = 61);
 	tfxINTERNAL int GetDataType(const tfxStr &s);
 	tfxINTERNAL void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value);
@@ -6978,50 +6931,6 @@ You can then use layer inside the loop to get the current layer
 		}
 	}
 
-	tfxAPI inline tfxVec3 Tween(float tween, const tfxVec3 &world, const tfxVec3 &captured) {
-		tfxVec3 tweened;
-		tweened = world * tween + captured * (1.f - tween);
-		return tweened;
-	}
-
-	tfxAPI inline tfxVec2 Tween(float tween, const tfxVec2 &world, const tfxVec2 &captured) {
-		tfxVec2 tweened;
-		tweened = world * tween + captured * (1.f - tween);
-		return tweened;
-	}
-
-	inline tfxRGBA8 Tween(float tween, const tfxRGBA8 current, const tfxRGBA8 captured) {
-		__m128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
-		__m128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
-		__m128 wide_tween = _mm_set1_ps(tween);
-		__m128 wide_tween_m1 = _mm_sub_ps(_mm_set1_ps(1.f), wide_tween);
-		color1 = _mm_div_ps(color1, _mm_set1_ps(255.f));
-		color2 = _mm_div_ps(color2, _mm_set1_ps(255.f));
-		color1 = _mm_mul_ps(color1, wide_tween);
-		color2 = _mm_mul_ps(color2, wide_tween_m1);
-		color1 = _mm_add_ps(color1, color2);
-		color1 = _mm_mul_ps(color1, _mm_set1_ps(255.f));
-		tfx128iArray packed;
-		packed.m = _mm_cvtps_epi32(color1);
-		return tfxRGBA8(packed.a[0], packed.a[1], packed.a[2], packed.a[3]);
-	}
-
-	inline tfxVec2 Tween2d(float tween, const tfxVec4 &world) {
-		tfxVec2 tweened;
-		tweened = world.xy() * tween + world.zw() * (1.f - tween);
-		return tweened;
-	}
-
-	inline tfxVec2 Tween2d(float tween, const tfxVec2 &world, const tfxVec2 &captured) {
-		tfxVec2 tweened;
-		tweened = world * tween + captured * (1.f - tween);
-		return tweened;
-	}
-
-	inline float Tween(float tween, const float current, const float captured) {
-		return current * tween + captured * (1.f - tween);
-	}
-
 	int ValidateEffectPackage(const char *filename);
 
 	//Get a graph by tfxGraphID
@@ -7042,19 +6951,18 @@ You can then use layer inside the loop to get the current layer
 		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
 	}
 
-	//Library internal functions
-	tfxINTERNAL void MaybeGrowLibraryInfos(tfxLibrary *library);
-	tfxAPI void MaybeGrowLibraryProperties(tfxLibrary *library, tfxU32 size_offset);	//Required by editor
-	tfxAPI tfxEffectEmitterInfo *GetEffectInfo(tfxEffectEmitter *e);					//Required by editor
-
+	//--------------------------------
 	//Animation manager internal functions - animation manager is used to playback pre-recorded effects
+	//--------------------------------
 	tfxINTERNAL tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager);
 	tfxINTERNAL void FreeAnimationInstance(tfxAnimationManager *animation_manager, tfxU32 index);
 	tfxINTERNAL void AddEffectEmitterProperties(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, bool *has_animated_shape);
 	tfxINTERNAL void UpdateAnimationManagerBufferMetrics(tfxAnimationManager *animation_manager);
 	tfxINTERNAL bool FreePMEffectCapacity(tfxParticleManager *pm);
 
+	//--------------------------------
 	//Particle manager internal functions
+	//--------------------------------
 	tfxINTERNAL tfxU32 GetPMEffectSlot(tfxParticleManager *pm);
 	tfxINTERNAL tfxU32 GetPMEmitterSlot(tfxParticleManager *pm);
 	tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfxParticleManager *pm, tfxParticleID particle_id);
@@ -7079,26 +6987,37 @@ You can then use layer inside the loop to get the current layer
 	tfxINTERNAL void ResetControllerPtr(tfxParticleManager *pm, void *ptr);
 	tfxINTERNAL void UpdateCompute(tfxParticleManager *pm, void *sampled_particles, unsigned int sample_size = 100);
 
+	//--------------------------------
 	//Effect templates
+	//--------------------------------
 	tfxINTERNAL void AddTemplatePath(tfxEffectTemplate *effect_template, tfxEffectEmitter *effect_emitter, tfxStr256 path);
 
+	//--------------------------------
 	//Library functions, internal/Editor functions
-	tfxAPI void ClearLibrary(tfxLibrary *library);
-	tfxAPI void InitLibrary(tfxLibrary *library);
-	tfxAPI void InitLibraryEmitterProperties(tfxLibrary *library);
-	//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
-	//You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
-	//These are mainly for use by the editor, use effect templates instead, see PrepareEffectTemplate.
-	tfxAPI tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxStr256 &path);
-	tfxAPI tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, const char *path);
-	//Get an effect by it's path hash key
-	tfxAPI tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxKey key);
-	//Get and effect by it's index
+	//--------------------------------
+	tfxAPI tfxEffectEmitterInfo *GetEffectInfo(tfxEffectEmitter *e);					//Required by editor
 	tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxStr256 path, tfxEffectTemplate &effect);
 	tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
 	//Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
 	tfxINTERNAL void CopyLibraryLookupIndexesData(tfxLibrary *library, void* dst);
 	tfxINTERNAL void CopyLibraryLookupValuesData(tfxLibrary *library, void* dst);
+	tfxINTERNAL bool LibraryNameExists2(tfxLibrary *library, tfxEffectEmitter &effect, const char *name);
+	tfxINTERNAL tfxU32 CountLibraryKeyframeLookUpValues(tfxLibrary *library, tfxU32 index);
+	tfxINTERNAL tfxU32 CountLibraryGlobalLookUpValues(tfxLibrary *library, tfxU32 index);
+	tfxINTERNAL tfxU32 CountLibraryEmitterLookUpValues(tfxLibrary *library, tfxU32 index);
+	tfxINTERNAL float LookupLibraryPreciseOvertimeNodeList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
+	tfxINTERNAL float LookupLibraryPreciseNodeList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
+	tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
+	tfxINTERNAL float LookupLibraryFastValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
+	tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
+	tfxINTERNAL void ResetSpriteDataLerpOffset(tfxSpriteData &sprites);
+	tfxINTERNAL void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d);
+	tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void WrapSingleParticleSprites(tfxSpriteData *sprite_data);
+	tfxINTERNAL void ClearWrapBit(tfxSpriteData *sprite_data);
+	tfxINTERNAL void MaybeGrowLibraryInfos(tfxLibrary *library);
+
+	tfxAPI void MaybeGrowLibraryProperties(tfxLibrary *library, tfxU32 size_offset);	//Required by editor
 	tfxAPI tfxU32 GetLibraryComputeShapeDataSizeInBytes(tfxLibrary *library);
 	tfxAPI tfxU32 GetLibraryComputeShapeCount(tfxLibrary *library);
 	tfxAPI tfxU32 GetLibraryLookupIndexCount(tfxLibrary *library);
@@ -7120,7 +7039,6 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void DeleteLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect);
 	tfxAPI bool RenameLibraryEffect(tfxLibrary *library, tfxEffectEmitter &effect, const char *new_name);
 	tfxAPI bool LibraryNameExists(tfxLibrary *library, tfxEffectEmitter &effect, const char *name);
-	tfxINTERNAL bool LibraryNameExists2(tfxLibrary *library, tfxEffectEmitter &effect, const char *name);
 	tfxAPI void ReIndexLibrary(tfxLibrary *library);
 	tfxAPI void UpdateLibraryParticleShapeReferences(tfxLibrary *library, tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash);
 	tfxAPI tfxEffectEmitter* LibraryMoveUp(tfxLibrary *library, tfxEffectEmitter &effect);
@@ -7132,9 +7050,6 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void FreeLibraryEmitterAttributes(tfxLibrary *library, tfxU32 index);
 	tfxAPI void FreeLibraryProperties(tfxLibrary *library, tfxU32 index);
 	tfxAPI void FreeLibraryInfo(tfxLibrary *library, tfxU32 index);
-	tfxINTERNAL tfxU32 CountLibraryKeyframeLookUpValues(tfxLibrary *library, tfxU32 index);
-	tfxINTERNAL tfxU32 CountLibraryGlobalLookUpValues(tfxLibrary *library, tfxU32 index);
-	tfxINTERNAL tfxU32 CountLibraryEmitterLookUpValues(tfxLibrary *library, tfxU32 index);
 	tfxAPI tfxU32 CloneLibraryGlobal(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
 	tfxAPI tfxU32 CloneLibraryKeyframes(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
 	tfxAPI tfxU32 CloneLibraryEmitterAttributes(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
@@ -7164,32 +7079,71 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI void CompileLibraryColorGraphs(tfxLibrary *library, tfxU32 index);
 	tfxAPI void CompileLibraryGraphsOfEffect(tfxLibrary *library, tfxEffectEmitter &effect, tfxU32 depth = 0);
 	tfxAPI void SetLibraryMinMaxData(tfxLibrary *library);
-	tfxINTERNAL float LookupLibraryPreciseOvertimeNodeList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
-	tfxINTERNAL float LookupLibraryPreciseNodeList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
-	tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
-	tfxINTERNAL float LookupLibraryFastValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
-
+	tfxAPI void ClearLibrary(tfxLibrary *library);
+	tfxAPI void InitLibrary(tfxLibrary *library);
+	tfxAPI void InitLibraryEmitterProperties(tfxLibrary *library);
+	//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
+	//You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
+	//These are mainly for use by the editor, use effect templates instead, see PrepareEffectTemplate.
+	tfxAPI tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxStr256 &path);
+	tfxAPI tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, const char *path);
+	//Get an effect by it's path hash key
+	tfxAPI tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxKey key);
 	tfxAPI void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float camera_position[3]);
-	tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
-	tfxINTERNAL void ResetSpriteDataLerpOffset(tfxSpriteData &sprites);
-	tfxINTERNAL void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d);
-	tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
-	tfxINTERNAL void WrapSingleParticleSprites(tfxSpriteData *sprite_data);
-	tfxINTERNAL void ClearWrapBit(tfxSpriteData *sprite_data);
 
 	//Effect/Emitter functions
 	void SetEffectUserData(tfxEffectEmitter *e, void *data);
 	void *GetEffectUserData(tfxEffectEmitter *e);
 
-	tfxEmitterPropertiesSoA *GetEffectProperties(tfxEffectEmitter *e);
 
-	//Internal functions
-	tfxEffectEmitter* AddEmitterToEffect(tfxEffectEmitter *effect, tfxEffectEmitter *e);
-	tfxEffectEmitter* AddEffectToEmitter(tfxEffectEmitter *effect, tfxEffectEmitter *e);
-	tfxEffectEmitter* AddEffect(tfxEffectEmitter *effect);
+	tfxINTERNAL bool IsRootEffect(tfxEffectEmitter *effect);
+	tfxINTERNAL void ResetEffectParents(tfxEffectEmitter *effect);
+	tfxINTERNAL void CompileEffectGraphs(tfxEffectEmitter *effect);
+	tfxINTERNAL void FreeEffectGraphs(tfxEffectEmitter *effect);
+	tfxINTERNAL tfxU32 CountAllEffectLookupValues(tfxEffectEmitter *effect);
+	tfxINTERNAL float GetEffectLoopLength(tfxEffectEmitter *effect);
 
+	tfxAPI tfxEmitterPropertiesSoA *GetEffectProperties(tfxEffectEmitter *e);
+	tfxAPI tfxEffectEmitter* AddEmitterToEffect(tfxEffectEmitter *effect, tfxEffectEmitter *e);
+	tfxAPI tfxEffectEmitter* AddEffectToEmitter(tfxEffectEmitter *effect, tfxEffectEmitter *e);
+	tfxAPI tfxEffectEmitter* AddEffect(tfxEffectEmitter *effect);
 	tfxAPI int GetEffectDepth(tfxEffectEmitter *e);
 	tfxAPI tfxU32 CountAllEffects(tfxEffectEmitter *effect, tfxU32 amount);
+	tfxAPI tfxEffectEmitter* GetRootEffect(tfxEffectEmitter *effect);
+	tfxAPI void ReIndexEffect(tfxEffectEmitter *effect);
+	tfxAPI void CountEffectChildren(tfxEffectEmitter *effect, int *emitters, int *effects);
+	tfxAPI tfxEffectEmitter* MoveEffectUp(tfxEffectEmitter *effect_to_move);
+	tfxAPI tfxEffectEmitter* MoveEffectDown(tfxEffectEmitter *effect_to_move);
+	tfxAPI void DeleteEmitterFromEffect(tfxEffectEmitter *emitter_to_delete);
+	tfxAPI void CleanUpEffect(tfxEffectEmitter *effect);
+	tfxAPI void ResetEffectGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
+	tfxAPI void ResetTransformGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
+	tfxAPI void ResetEmitterBaseGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
+	tfxAPI void ResetEmitterPropertyGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
+	tfxAPI void ResetEmitterVariationGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
+	tfxAPI void ResetEmitterOvertimeGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
+	tfxAPI void ResetEmitterGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
+
+	//API related functions
+	tfxAPI void AddEmitterColorOvertime(tfxEffectEmitter *effect, float frame, tfxRGB color);
+	tfxAPI void UpdateEffectMaxLife(tfxEffectEmitter *effect);
+	tfxAPI tfxGraph* GetEffectGraphByType(tfxEffectEmitter *effect, tfxGraphType type);
+	tfxAPI tfxU32 GetEffectGraphIndexByType(tfxEffectEmitter *effect, tfxGraphType type);
+	tfxAPI void InitialiseUninitialisedGraphs(tfxEffectEmitter *effect);
+	tfxAPI void SetEffectName(tfxEffectEmitter *effect, const char *n);
+	tfxAPI bool RenameSubEffector(tfxEffectEmitter *effect, const char *new_name);
+	tfxAPI bool EffectNameExists(tfxEffectEmitter *in_effect, tfxEffectEmitter *excluding_effect, const char *name);
+	tfxAPI void CloneEffect(tfxEffectEmitter *effect_to_clone, tfxEffectEmitter *clone, tfxEffectEmitter *root_parent, tfxLibrary *destination_library, tfxEffectCloningFlags flags = 0);
+	tfxAPI void EnableAllEmitters(tfxEffectEmitter *effect);
+	tfxAPI void EnableEmitter(tfxEffectEmitter *effect);
+	tfxAPI void DisableAllEmitters(tfxEffectEmitter *effect);
+	tfxAPI void DisableAllEmittersExcept(tfxEffectEmitter *effect, tfxEffectEmitter *emitter);
+	tfxAPI bool IsFiniteEffect(tfxEffectEmitter *effect);
+	tfxAPI void FlagEffectAs3D(tfxEffectEmitter *effect, bool flag);
+	tfxAPI bool Is3DEffect(tfxEffectEmitter *effect);
+	tfxAPI tfxParticleManagerModes GetRequiredParticleManagerMode(tfxEffectEmitter *effect);
+	tfxAPI tfxPreviewCameraSettings *GetEffectCameraSettings(tfxEffectEmitter *effect);
+	tfxAPI float GetEffectHighestLoopLength(tfxEffectEmitter *effect);
 
 	//[API functions]
 	//All the functions below represent all that you will need to call to implement TimelineFX
@@ -8304,5 +8258,64 @@ You can then use layer inside the loop to get the current layer
 	* @param amount				A float of the amount that you want to set the single spawn amount to.
 	*/
 	tfxAPI void SetTemplateSingleSpawnAmount(tfxEffectTemplate *t, const char *emitter_path, tfxU32 amount);
+
+	/*
+	Interpolate between 2 tfxVec3s. You can make use of this in your render function when rendering sprites and interpolating between captured and current positions
+	* @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
+	* @param world		The current tvxVec3 position
+	* @param captured	The captured tvxVec3 position
+	* @returns tfxVec3	The interpolated tfxVec3
+	*/
+	tfxAPI inline tfxVec3 Tween3d(float tween, const tfxVec3 &world, const tfxVec3 &captured) {
+		tfxVec3 tweened;
+		tweened = world * tween + captured * (1.f - tween);
+		return tweened;
+	}
+
+	/*
+	Interpolate between 2 colors in tfxRGBA8 format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
+	* @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
+	* @param current	The current tfxRGBA8 color
+	* @param captured	The captured tfxRGBA8 color
+	* @returns tfxRGBA8	The interpolated tfxRGBA8
+	*/
+	inline tfxRGBA8 TweenColor(float tween, const tfxRGBA8 current, const tfxRGBA8 captured) {
+		__m128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
+		__m128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
+		__m128 wide_tween = _mm_set1_ps(tween);
+		__m128 wide_tween_m1 = _mm_sub_ps(_mm_set1_ps(1.f), wide_tween);
+		color1 = _mm_div_ps(color1, _mm_set1_ps(255.f));
+		color2 = _mm_div_ps(color2, _mm_set1_ps(255.f));
+		color1 = _mm_mul_ps(color1, wide_tween);
+		color2 = _mm_mul_ps(color2, wide_tween_m1);
+		color1 = _mm_add_ps(color1, color2);
+		color1 = _mm_mul_ps(color1, _mm_set1_ps(255.f));
+		tfx128iArray packed;
+		packed.m = _mm_cvtps_epi32(color1);
+		return tfxRGBA8(packed.a[0], packed.a[1], packed.a[2], packed.a[3]);
+	}
+
+	/*
+	Interpolate between 2 tfxVec2s. You can make use of this in your render function when rendering sprites and interpolating between captured and current positions
+	* @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
+	* @param world		The current tvxVec2 position
+	* @param captured	The captured tvxVec2 position
+	* @returns tfxVec2	The interpolated tfxVec2
+	*/
+	inline tfxVec2 Tween2d(float tween, const tfxVec2 &world, const tfxVec2 &captured) {
+		tfxVec2 tweened;
+		tweened = world * tween + captured * (1.f - tween);
+		return tweened;
+	}
+	/*
+	Interpolate between 2 float. You can make use of this in your render function when rendering sprites and interpolating between captured and current float values like intensity
+	* @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
+	* @param world		The current tvxVec2 position
+	* @param captured	The captured tvxVec2 position
+	* @returns tfxVec2	The interpolated tfxVec2
+	*/
+	inline float TweenFloat(float tween, const float current, const float captured) {
+		return current * tween + captured * (1.f - tween);
+	}
 }
 
