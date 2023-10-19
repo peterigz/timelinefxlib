@@ -6408,76 +6408,6 @@ You can then use layer inside the loop to get the current layer
 		~tfxParticleManager();
 	};
 
-	inline void DumpSprites(tfxParticleManager *pm, tfxU32 layer) {
-		for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
-			printf("%i:\t%f\t%f\t%f\t%u\n",
-				i,
-				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.x,
-				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.y,
-				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.z,
-				pm->sprites[pm->current_sprite_buffer][layer].property_indexes[i]
-			);
-		}
-	}
-
-	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
-
-	//Set the user data of an effect in the particle Manager. Not guaranteed that your effect index is actually in use
-	void SetEffectUserData(tfxParticleManager &pm, tfxU32 effect_index, void *data);
-
-	void TransformEffector2d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
-	void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
-	void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
-	void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry);
-	tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxEmitterPropertiesSoA &properties);
-	void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls &parent_spawn_controls, tfxSpawnWorkEntry *entry);
-	void UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
-
-	void CompletePMWork(tfxParticleManager &pm);
-
-	tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
-	void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleLine2d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleArea2d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
-
-	void SpawnParticleWeight(tfxWorkQueue *queue, void *data);
-	void SpawnParticleVelocity(tfxWorkQueue *queue, void *data);
-	void SpawnParticleRoll(tfxWorkQueue *queue, void *data);
-	void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);
-	void SpawnParticleAge(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
-
-	tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
-	void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleLine3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleArea3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleEllipse3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleCylinder3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleIcosphereRandom3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
-	void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
-
-	void ControlParticles(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
-
-	void ControlParticleAge(tfxWorkQueue *queue, void *data);
-	void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
-	void ControlParticleColor(tfxWorkQueue *queue, void *data);
-	void ControlParticleSize(tfxWorkQueue *queue, void *data);
-	void ControlParticleUID(tfxWorkQueue *queue, void *data);
-	void ControlParticleCaptureFlag(tfxWorkQueue *queue, void *data);
-
-	void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
-	void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
-
-	void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
-	void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
-
 	struct tfxEffectLibraryStats {
 		tfxU32 total_effects;
 		tfxU32 total_sub_effects;
@@ -6612,6 +6542,20 @@ You can then use layer inside the loop to get the current layer
 	//--------------------------------
 	//Internal functions used either by the library or editor
 	//--------------------------------
+	inline void DumpSprites(tfxParticleManager *pm, tfxU32 layer) {
+		for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
+			printf("%i:\t%f\t%f\t%f\t%u\n",
+				i,
+				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.x,
+				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.y,
+				pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.z,
+				pm->sprites[pm->current_sprite_buffer][layer].property_indexes[i]
+			);
+		}
+	}
+
+	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
+
 	//Some file IO functions for the editor
 	tfxAPI_EDITOR bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key);
 	tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, const char *value);
@@ -6782,7 +6726,61 @@ You can then use layer inside the loop to get the current layer
 		}
 	}
 
-	int ValidateEffectPackage(const char *filename);
+	//--------------------------------
+	//Particle manager internal functions
+	//--------------------------------
+	tfxINTERNAL void TransformEffector2d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
+	tfxINTERNAL void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
+	tfxINTERNAL void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
+	tfxINTERNAL void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry);
+	tfxINTERNAL tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxEmitterPropertiesSoA &properties);
+	tfxINTERNAL void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls &parent_spawn_controls, tfxSpawnWorkEntry *entry);
+	tfxINTERNAL void UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
+
+	tfxAPI_EDITOR void CompletePMWork(tfxParticleManager &pm);
+
+	tfxINTERNAL tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
+	tfxINTERNAL void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleLine2d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleArea2d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
+
+	tfxINTERNAL void SpawnParticleWeight(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleVelocity(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleRoll(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleAge(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
+
+	tfxINTERNAL tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
+	tfxINTERNAL void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleLine3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleArea3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleEllipse3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleCylinder3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleIcosphereRandom3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
+
+	tfxINTERNAL void ControlParticles(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
+
+	tfxINTERNAL void ControlParticleAge(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void ControlParticleColor(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void ControlParticleSize(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void ControlParticleUID(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void ControlParticleCaptureFlag(tfxWorkQueue *queue, void *data);
+
+	tfxINTERNAL void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
+
+	tfxINTERNAL void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
+	tfxINTERNAL void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
 
 	//--------------------------------
 	//Graph functions
@@ -7110,10 +7108,17 @@ You can then use layer inside the loop to get the current layer
 
 	/*
 	Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
-	* @param max_threads	Pass the number of threads that you want to use in addition to the main thread.
-	*						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
+	* @param filename		The name of the file where you want to count the number of shapes	
+	* @returns int			The number of shapes in the library.
 	*/
 	tfxAPI int GetShapeCountInLibrary(const char *filename);
+
+	/*
+	Validate a timelinefx tfx file to make sure that it's valid.
+	* @param filename		The name of the file where you want to count the number of shapes	
+	* @returns int			Returns 0 if the file successfully validated or a tfxErrorFlags if something went wrong
+	*/
+	tfxAPI int ValidateEffectPackage(const char *filename);
 
 	/**
 	* Loads an effect library package from the specified filename into the provided tfxLibrary object.
@@ -8164,7 +8169,7 @@ You can then use layer inside the loop to get the current layer
 		* @param camera		Array of 3 floats with the camera position (only needed for 3d effects that are sorted by depth
 		* / void RecordSpriteData3d(tfxParticleManager &pm, u32 frames, u32 start_frame, int extra_frames, u32 &largest_frame);
 	*/
-	tfxAPI void RecordTemplateEffect(tfxEffectTemplate *t, tfxParticleManager *pm, float camera_position[3]);
+	tfxAPI void RecordTemplateEffect(tfxEffectTemplate *t, tfxParticleManager *pm, float update_frequency, float camera_position[3]);
 
 	/*
 	Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager
@@ -8202,10 +8207,10 @@ You can then use layer inside the loop to get the current layer
 
 	/*
 	Interpolate between 2 tfxVec3s. You can make use of this in your render function when rendering sprites and interpolating between captured and current positions
-	* @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
-	* @param world		The current tvxVec3 position
-	* @param captured	The captured tvxVec3 position
-	* @returns tfxVec3	The interpolated tfxVec3
+	* @param tween				The interpolation value between 0 and 1. You should pass in the value from your timing function
+	* @param world				The current tvxVec3 position
+	* @param captured			The captured tvxVec3 position
+	* @returns tfxVec3			The interpolated tfxVec3
 	*/
 	tfxAPI inline tfxVec3 Tween3d(float tween, const tfxVec3 &world, const tfxVec3 &captured) {
 		tfxVec3 tweened;
@@ -8215,10 +8220,10 @@ You can then use layer inside the loop to get the current layer
 
 	/*
 	Interpolate between 2 colors in tfxRGBA8 format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
-	* @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
-	* @param current	The current tfxRGBA8 color
-	* @param captured	The captured tfxRGBA8 color
-	* @returns tfxRGBA8	The interpolated tfxRGBA8
+	* @param tween				The interpolation value between 0 and 1. You should pass in the value from your timing function
+	* @param current			The current tfxRGBA8 color
+	* @param captured			The captured tfxRGBA8 color
+	* @returns tfxRGBA8			The interpolated tfxRGBA8
 	*/
 	inline tfxRGBA8 TweenColor(float tween, const tfxRGBA8 current, const tfxRGBA8 captured) {
 		__m128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
@@ -8248,6 +8253,7 @@ You can then use layer inside the loop to get the current layer
 		tweened = world * tween + captured * (1.f - tween);
 		return tweened;
 	}
+
 	/*
 	Interpolate between 2 float. You can make use of this in your render function when rendering sprites and interpolating between captured and current float values like intensity
 	* @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function

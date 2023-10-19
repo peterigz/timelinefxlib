@@ -6490,6 +6490,7 @@ namespace tfx {
 	}
 
 	void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float update_frequency, float camera_position[3]) {
+		assert(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
 		ReconfigureParticleManager(pm, GetRequiredParticleManagerMode(effect), effect->sort_passes, Is3DEffect(effect));
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index];
 		float frame_length = 1000.f / update_frequency;
