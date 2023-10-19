@@ -1064,14 +1064,6 @@ You can then use layer inside the loop to get the current layer
 	const float tfxMAX_VELOCITY_VARIATION = 30.f;
 	const int tfxMOTION_VARIATION_INTERVAL = 30;
 
-	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
-	extern float tfxUPDATE_FREQUENCY;
-	extern float tfxUPDATE_TIME;
-	extern tfxWideFloat tfxUPDATE_TIME_WIDE;
-	extern float tfxFRAME_LENGTH_MICRO_SECONDS;
-	extern float tfxFRAME_LENGTH;
-	extern tfxWideFloat tfxFRAME_LENGTH_WIDE;
-
 	//Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 	static float tfxLOOKUP_FREQUENCY = 10.f;
 	//Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
@@ -5045,90 +5037,6 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
-	//Mainly used by the editor to edit graphs so these are kind of API functions but you wouldn't generally use these outside of the particle editor
-	tfxAttributeNode* AddGraphNode(tfxGraph *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
-	void AddGraphNode(tfxGraph *graph, tfxAttributeNode &node);
-	void SetGraphNode(tfxGraph *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
-	float GetGraphValue(tfxGraph *graph, float age);
-	float GetGraphRandomValue(tfxGraph *graph, float age, tfxRandom &seed);
-	float GetGraphValue(tfxGraph *graph, float age, float life);
-	tfxAttributeNode *GetGraphNextNode(tfxGraph *graph, tfxAttributeNode &node);
-	tfxAttributeNode *GetGraphPrevNode(tfxGraph *graph, tfxAttributeNode &node);
-	tfxAttributeNode *GetGraphLastNode(tfxGraph *graph);
-	float GetGraphFirstValue(tfxGraph *graph);
-	tfxAttributeNode* AddGraphCoordNode(tfxGraph *graph, float, float);
-	tfxAttributeNode* InsertGraphCoordNode(tfxGraph *graph, float, float);
-	tfxAttributeNode* InsertGraphNode(tfxGraph *graph, float, float);
-	float *LinkGraphFirstValue(tfxGraph *graph);
-	float GetGraphLastValue(tfxGraph *graph);
-	float GetGraphMaxValue(tfxGraph *graph);
-	float GetGraphMinValue(tfxGraph *graph);
-	float GetGraphLastFrame(tfxGraph *graph);
-	tfxBucketArray<tfxAttributeNode>& GraphNodes(tfxGraph *graph);
-	tfxAttributeNode* FindGraphNode(tfxGraph *graph, const tfxAttributeNode &n);
-	void ValidateGraphCurves(tfxGraph *graph);
-	void DeleteGraphNode(tfxGraph *graph, const tfxAttributeNode &n);
-	void DeleteGraphNodeAtFrame(tfxGraph *graph, float frame);
-	void ResetGraph(tfxGraph *graph, float first_node_value, tfxGraphPreset preset, bool add_node = true);
-	void ClearGraphToOne(tfxGraph *graph, float value);
-	void ClearGraph(tfxGraph *graph);
-	void FreeGraph(tfxGraph *graph);
-	void CopyGraph(tfxGraph *graph, tfxGraph *to, bool compile = true);
-	bool SortGraph(tfxGraph *graph);
-	void ReIndexGraph(tfxGraph *graph);
-	tfxVec2 GetGraphInitialZoom(tfxGraph *graph);
-	tfxVec2 GetGraphInitialZoom3d(tfxGraph *graph);
-	bool IsColorGraph(tfxGraph *graph);
-	bool IsOvertimeGraph(tfxGraph *graph);
-	bool IsGlobalGraph(tfxGraph *graph);
-	bool IsAngleGraph(tfxGraph *graph);
-	bool IsTranslationGraph(tfxGraph *graph);
-	void MultiplyAllGraphValues(tfxGraph *graph, float scalar);
-	void CopyGraphNoLookups(tfxGraph *src_graph, tfxGraph *dst_graph);
-	void DragGraphValues(tfxGraphPreset preset, float &frame, float &value);
-	tfxVec4 GetMinMaxGraphValues(tfxGraphPreset preset);
-	tfxVec2 GetQuadBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, float t, float ymin, float ymax, bool clamp = true);
-	tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
-	float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
-	float GetDistance(float fromx, float fromy, float tox, float toy);
-	inline float GetVectorAngle(float x, float y) { return atan2f(x, -y); }
-	static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
-	void CompileGraph(tfxGraph &graph);
-	void CompileGraphOvertime(tfxGraph &graph);
-	void CompileColorOvertime(tfxGraph &graph, float gamma = tfxGAMMA);
-	float GetMaxLife(tfxEffectEmitter &e);
-	float LookupFastOvertime(tfxGraph &graph, float age, float lifetime);
-	float LookupFast(tfxGraph &graph, float frame);
-	float LookupPreciseOvertime(tfxGraph &graph, float age, float lifetime);
-	float LookupPrecise(tfxGraph &graph, float frame);
-	float GetRandomFast(tfxGraph &graph, float frame, tfxRandom &seed);
-	float GetRandomPrecise(tfxGraph &graph, float frame, tfxRandom &seed);
-
-	//Node Manipulation
-	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
-	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float &frame, float &value);
-	void SetCurve(tfxGraph &graph, tfxAttributeNode &node, bool is_left_curve, float &frame, float &value);
-	bool MoveNode(tfxGraph &graph, tfxAttributeNode &node, float frame, float value, bool sort = true);
-	bool SetNodeFrame(tfxGraph &graph, tfxAttributeNode &node, float &frame);
-	bool SetNodeValue(tfxGraph &graph, tfxAttributeNode &node, float &value);
-	void ClampNode(tfxGraph &graph, tfxAttributeNode &node);
-	void ClampCurve(tfxGraph &graph, tfxVec2 &curve, tfxAttributeNode &node);
-	void ClampGraph(tfxGraph &graph);
-	bool IsOvertimeGraph(tfxGraphType type);
-	bool IsColorGraph(tfxGraphType type);
-	bool IsOvertimePercentageGraph(tfxGraphType type);
-	bool IsGlobalGraph(tfxGraphType type);
-	bool IsEmitterGraph(tfxGraphType type);
-	bool IsTransformGraph(tfxGraphType type);
-	bool IsGlobalPercentageGraph(tfxGraphType type);
-	bool IsAngleGraph(tfxGraphType type);
-	bool IsAngleOvertimeGraph(tfxGraphType type);
-	bool IsEverythingElseGraph(tfxGraphType type);
-	bool HasNodeAtFrame(tfxGraph &graph, float frame);
-	bool HasKeyframes(tfxEffectEmitter &e);
-	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
-	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
-
 	//The following structs group graphs together under the attribute categories Global, Transform, Properties, Base, Variation and Overtime
 	struct tfxGlobalAttributes {
 		tfxGraph life;
@@ -5165,30 +5073,8 @@ You can then use layer inside the loop to get the current layer
 	void FreeTransformAttributes(tfxTransformAttributes *attributes);
 	void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst);
 
-	inline bool HasTranslationKeyframes(tfxTransformAttributes &graphs) {
-		return graphs.translation_x.nodes.size() || graphs.translation_y.nodes.size() || graphs.translation_z.nodes.size();
-	}
-
-	inline void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame) {
-		if (keyframes.translation_x.nodes.size()) {
-			if (!HasNodeAtFrame(keyframes.translation_x, frame))
-				AddGraphCoordNode(&keyframes.translation_x, frame, 0.f);
-			if (!HasNodeAtFrame(keyframes.translation_y, frame))
-				AddGraphCoordNode(&keyframes.translation_y, frame, 0.f);
-			if (!HasNodeAtFrame(keyframes.translation_z, frame))
-				AddGraphCoordNode(&keyframes.translation_z, frame, 0.f);
-		}
-		else {
-			AddGraphCoordNode(&keyframes.translation_x, 0.f, 0.f);
-			AddGraphCoordNode(&keyframes.translation_y, 0.f, 0.f);
-			AddGraphCoordNode(&keyframes.translation_z, 0.f, 0.f);
-			if (frame != 0) {
-				AddGraphCoordNode(&keyframes.translation_x, frame, 0.f);
-				AddGraphCoordNode(&keyframes.translation_y, frame, 0.f);
-				AddGraphCoordNode(&keyframes.translation_z, frame, 0.f);
-			}
-		}
-	}
+	bool HasTranslationKeyframes(tfxTransformAttributes &graphs);
+	void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame);
 
 	struct tfxPropertyAttributes {
 		tfxGraph emission_pitch;
@@ -6449,6 +6335,8 @@ You can then use layer inside the loop to get the current layer
 		tfxAnimationBufferMetrics buffer_metrics;
 		//Bit flag field
 		tfxAnimationManagerFlags flags;
+		//The update frequency that the animations are recorded at. 60 is the recommended default
+		float update_frequency;
 	};
 
 	//Use the particle manager to add multiple effects to your scene 
@@ -6933,23 +6821,102 @@ You can then use layer inside the loop to get the current layer
 
 	int ValidateEffectPackage(const char *filename);
 
+	//--------------------------------
+	//Graph functions
+	//Mainly used by the editor to edit graphs so these are kind of API functions but you wouldn't generally use these outside of the particle editor
+	//--------------------------------
+	tfxAPI_EDITOR tfxAttributeNode* AddGraphNode(tfxGraph *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+	tfxAPI_EDITOR void AddGraphNode(tfxGraph *graph, tfxAttributeNode &node);
+	tfxAPI_EDITOR void SetGraphNode(tfxGraph *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+	tfxAPI_EDITOR float GetGraphValue(tfxGraph *graph, float age);
+	tfxAPI_EDITOR float GetGraphRandomValue(tfxGraph *graph, float age, tfxRandom &seed);
+	tfxAPI_EDITOR float GetGraphValue(tfxGraph *graph, float age, float life);
+	tfxAPI_EDITOR tfxAttributeNode *GetGraphNextNode(tfxGraph *graph, tfxAttributeNode &node);
+	tfxAPI_EDITOR tfxAttributeNode *GetGraphPrevNode(tfxGraph *graph, tfxAttributeNode &node);
+	tfxAPI_EDITOR tfxAttributeNode *GetGraphLastNode(tfxGraph *graph);
+	tfxAPI_EDITOR float GetGraphFirstValue(tfxGraph *graph);
+	tfxAPI_EDITOR tfxAttributeNode* AddGraphCoordNode(tfxGraph *graph, float, float);
+	tfxAPI_EDITOR tfxAttributeNode* InsertGraphCoordNode(tfxGraph *graph, float, float);
+	tfxAPI_EDITOR tfxAttributeNode* InsertGraphNode(tfxGraph *graph, float, float);
+	tfxAPI_EDITOR float *LinkGraphFirstValue(tfxGraph *graph);
+	tfxAPI_EDITOR float GetGraphLastValue(tfxGraph *graph);
+	tfxAPI_EDITOR float GetGraphMaxValue(tfxGraph *graph);
+	tfxAPI_EDITOR float GetGraphMinValue(tfxGraph *graph);
+	tfxAPI_EDITOR float GetGraphLastFrame(tfxGraph *graph, float udpate_frequence);
+	tfxAPI_EDITOR tfxBucketArray<tfxAttributeNode>& GraphNodes(tfxGraph *graph);
+	tfxAPI_EDITOR tfxAttributeNode* FindGraphNode(tfxGraph *graph, const tfxAttributeNode &n);
+	tfxAPI_EDITOR void ValidateGraphCurves(tfxGraph *graph);
+	tfxAPI_EDITOR void DeleteGraphNode(tfxGraph *graph, const tfxAttributeNode &n);
+	tfxAPI_EDITOR void DeleteGraphNodeAtFrame(tfxGraph *graph, float frame);
+	tfxAPI_EDITOR void ResetGraph(tfxGraph *graph, float first_node_value, tfxGraphPreset preset, bool add_node = true);
+	tfxAPI_EDITOR void ClearGraphToOne(tfxGraph *graph, float value);
+	tfxAPI_EDITOR void ClearGraph(tfxGraph *graph);
+	tfxAPI_EDITOR void FreeGraph(tfxGraph *graph);
+	tfxAPI_EDITOR void CopyGraph(tfxGraph *graph, tfxGraph *to, bool compile = true);
+	tfxAPI_EDITOR bool SortGraph(tfxGraph *graph);
+	tfxAPI_EDITOR void ReIndexGraph(tfxGraph *graph);
+	tfxAPI_EDITOR tfxVec2 GetGraphInitialZoom(tfxGraph *graph);
+	tfxAPI_EDITOR tfxVec2 GetGraphInitialZoom3d(tfxGraph *graph);
+	tfxAPI_EDITOR bool IsColorGraph(tfxGraph *graph);
+	tfxAPI_EDITOR bool IsOvertimeGraph(tfxGraph *graph);
+	tfxAPI_EDITOR bool IsGlobalGraph(tfxGraph *graph);
+	tfxAPI_EDITOR bool IsAngleGraph(tfxGraph *graph);
+	tfxAPI_EDITOR bool IsTranslationGraph(tfxGraph *graph);
+	tfxAPI_EDITOR void MultiplyAllGraphValues(tfxGraph *graph, float scalar);
+	tfxAPI_EDITOR void CopyGraphNoLookups(tfxGraph *src_graph, tfxGraph *dst_graph);
+	tfxAPI_EDITOR void DragGraphValues(tfxGraphPreset preset, float &frame, float &value);
+	tfxAPI_EDITOR tfxVec4 GetMinMaxGraphValues(tfxGraphPreset preset);
+	tfxAPI_EDITOR tfxVec2 GetQuadBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, float t, float ymin, float ymax, bool clamp = true);
+	tfxAPI_EDITOR tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
+	tfxAPI_EDITOR float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
+	tfxAPI_EDITOR float GetDistance(float fromx, float fromy, float tox, float toy);
+	tfxAPI_EDITOR inline float GetVectorAngle(float x, float y) { return atan2f(x, -y); }
+	tfxAPI_EDITOR static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
+	tfxAPI_EDITOR void CompileGraph(tfxGraph &graph);
+	tfxAPI_EDITOR void CompileGraphOvertime(tfxGraph &graph);
+	tfxAPI_EDITOR void CompileColorOvertime(tfxGraph &graph, float gamma = tfxGAMMA);
+	tfxAPI_EDITOR float GetMaxLife(tfxEffectEmitter &e);
+	tfxAPI_EDITOR float LookupFastOvertime(tfxGraph &graph, float age, float lifetime);
+	tfxAPI_EDITOR float LookupFast(tfxGraph &graph, float frame);
+	tfxAPI_EDITOR float LookupPreciseOvertime(tfxGraph &graph, float age, float lifetime);
+	tfxAPI_EDITOR float LookupPrecise(tfxGraph &graph, float frame);
+	tfxAPI_EDITOR float GetRandomFast(tfxGraph &graph, float frame, tfxRandom &seed);
+	tfxAPI_EDITOR float GetRandomPrecise(tfxGraph &graph, float frame, tfxRandom &seed);
+
+	//Node Manipulation
+	tfxAPI_EDITOR bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
+	tfxAPI_EDITOR bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float &frame, float &value);
+	tfxAPI_EDITOR void SetCurve(tfxGraph &graph, tfxAttributeNode &node, bool is_left_curve, float &frame, float &value);
+	tfxAPI_EDITOR bool MoveNode(tfxGraph &graph, tfxAttributeNode &node, float frame, float value, bool sort = true);
+	tfxAPI_EDITOR bool SetNodeFrame(tfxGraph &graph, tfxAttributeNode &node, float &frame);
+	tfxAPI_EDITOR bool SetNodeValue(tfxGraph &graph, tfxAttributeNode &node, float &value);
+	tfxAPI_EDITOR void ClampNode(tfxGraph &graph, tfxAttributeNode &node);
+	tfxAPI_EDITOR void ClampCurve(tfxGraph &graph, tfxVec2 &curve, tfxAttributeNode &node);
+	tfxAPI_EDITOR void ClampGraph(tfxGraph &graph);
+	tfxAPI_EDITOR bool IsOvertimeGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsColorGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsOvertimePercentageGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsGlobalGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsEmitterGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsTransformGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsGlobalPercentageGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsAngleGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsAngleOvertimeGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool IsEverythingElseGraph(tfxGraphType type);
+	tfxAPI_EDITOR bool HasNodeAtFrame(tfxGraph &graph, float frame);
+	tfxAPI_EDITOR bool HasKeyframes(tfxEffectEmitter &e);
+	tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
+	tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
+
 	//Get a graph by tfxGraphID
-	tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
+	tfxAPI_EDITOR tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
 
 	extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 	extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
-	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
-	tfxEffectLibraryStats CreateLibraryStats(tfxLibrary &lib);
-	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
-	inline float GetUpdateTime() { return tfxUPDATE_TIME; }
-	inline float GetFrameLength() { return tfxFRAME_LENGTH; }
-	inline void SetLookUpFrequency(float frequency) {
-		tfxLOOKUP_FREQUENCY = frequency;
-	}
-	inline void SetLookUpFrequencyOvertime(float frequency) {
-		tfxLOOKUP_FREQUENCY_OVERTIME = frequency;
-	}
+	tfxAPI_EDITOR int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
+	tfxAPI_EDITOR tfxEffectLibraryStats CreateLibraryStats(tfxLibrary &lib);
+	tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
 	//--------------------------------
 	//Animation manager internal functions - animation manager is used to playback pre-recorded effects
@@ -7011,7 +6978,7 @@ You can then use layer inside the loop to get the current layer
 	tfxINTERNAL float LookupLibraryFastValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
 	tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
 	tfxINTERNAL void ResetSpriteDataLerpOffset(tfxSpriteData &sprites);
-	tfxINTERNAL void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d);
+	tfxINTERNAL void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d, float frame_lengt);
 	tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
 	tfxINTERNAL void WrapSingleParticleSprites(tfxSpriteData *sprite_data);
 	tfxINTERNAL void ClearWrapBit(tfxSpriteData *sprite_data);
@@ -7089,7 +7056,7 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, const char *path);
 	//Get an effect by it's path hash key
 	tfxAPI tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxKey key);
-	tfxAPI void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float camera_position[3]);
+	tfxAPI void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float update_frequency, float camera_position[3]);
 
 	//Effect/Emitter functions
 	void SetEffectUserData(tfxEffectEmitter *e, void *data);
@@ -7161,18 +7128,6 @@ You can then use layer inside the loop to get the current layer
 	*						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
 	*/
 	tfxAPI int GetShapeCountInLibrary(const char *filename);
-
-	/*
-	Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
-	* @param fps	The target number of frames to be udpated per second. If this does not match the current update rate of your game then the particles may playback slower or faster then they should
-	*/
-	tfxAPI void SetUpdateFrequency(float fps);
-
-	/*
-	Get the current update frequency of timelineFX
-	* @return float of the the current update frequency
-	*/
-	tfxAPI inline float GetUpdateFrequency() { return tfxUPDATE_FREQUENCY; }
 
 	/**
 	* Loads an effect library package from the specified filename into the provided tfxLibrary object.
@@ -8317,5 +8272,6 @@ You can then use layer inside the loop to get the current layer
 	inline float TweenFloat(float tween, const float current, const float captured) {
 		return current * tween + captured * (1.f - tween);
 	}
+
 }
 

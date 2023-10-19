@@ -327,24 +327,6 @@ namespace tfx {
 		return result;
 	}
 
-	//these Variables determine the timing resolution that particles are updated at. So an Update frequency of 60 would mean that the particles are updated at 60 frames per second.
-	float tfxUPDATE_FREQUENCY = 60.f;
-	float tfxUPDATE_TIME = 1.f / tfxUPDATE_FREQUENCY;
-	tfxWideFloat tfxUPDATE_TIME_WIDE = tfxWideSetSingle(tfxUPDATE_TIME);
-	float tfxFRAME_LENGTH = 1000.f / tfxUPDATE_FREQUENCY;
-	float tfxFRAME_LENGTH_MICRO_SECONDS = 1000.f * tfxFRAME_LENGTH;
-	tfxWideFloat tfxFRAME_LENGTH_WIDE = tfxWideSetSingle(1000.f / tfxUPDATE_FREQUENCY);
-
-	//Set the udpate frequency for all particle effects - There may be options in the future for individual effects to be updated at their own specific frequency.
-	void SetUpdateFrequency(float fps) {
-		tfxUPDATE_FREQUENCY = fps;
-		tfxUPDATE_TIME = 1.f / tfxUPDATE_FREQUENCY;
-		tfxUPDATE_TIME_WIDE = tfxWideSetSingle(tfxUPDATE_TIME);
-		tfxFRAME_LENGTH_WIDE = tfxWideSetSingle(1000.f / tfxUPDATE_FREQUENCY);
-		tfxFRAME_LENGTH = 1000.f / tfxUPDATE_FREQUENCY;
-		tfxFRAME_LENGTH_MICRO_SECONDS = 1000.f * tfxFRAME_LENGTH;
-	}
-
 	int FormatString(char* buf, size_t buf_size, const char* fmt, va_list args) {
 		int w = vsnprintf(buf, buf_size, fmt, args);
 		if (buf == NULL)
@@ -1968,6 +1950,31 @@ namespace tfx {
 		CopyGraphNoLookups(&src->translation_x, &dst->translation_x);
 		CopyGraphNoLookups(&src->translation_y, &dst->translation_y);
 		CopyGraphNoLookups(&src->translation_z, &dst->translation_z);
+	}
+
+	bool HasTranslationKeyframes(tfxTransformAttributes &graphs) {
+		return graphs.translation_x.nodes.size() || graphs.translation_y.nodes.size() || graphs.translation_z.nodes.size();
+	}
+
+	void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame) {
+		if (keyframes.translation_x.nodes.size()) {
+			if (!HasNodeAtFrame(keyframes.translation_x, frame))
+				AddGraphCoordNode(&keyframes.translation_x, frame, 0.f);
+			if (!HasNodeAtFrame(keyframes.translation_y, frame))
+				AddGraphCoordNode(&keyframes.translation_y, frame, 0.f);
+			if (!HasNodeAtFrame(keyframes.translation_z, frame))
+				AddGraphCoordNode(&keyframes.translation_z, frame, 0.f);
+		}
+		else {
+			AddGraphCoordNode(&keyframes.translation_x, 0.f, 0.f);
+			AddGraphCoordNode(&keyframes.translation_y, 0.f, 0.f);
+			AddGraphCoordNode(&keyframes.translation_z, 0.f, 0.f);
+			if (frame != 0) {
+				AddGraphCoordNode(&keyframes.translation_x, frame, 0.f);
+				AddGraphCoordNode(&keyframes.translation_y, frame, 0.f);
+				AddGraphCoordNode(&keyframes.translation_z, frame, 0.f);
+			}
+		}
 	}
 
 	void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
@@ -4763,9 +4770,10 @@ namespace tfx {
 		return 0.f;
 	}
 
-	float GetGraphLastFrame(tfxGraph *graph) {
+	float GetGraphLastFrame(tfxGraph *graph, float update_frequency) {
+		float frame_length = 1000.f / update_frequency;
 		if (graph->nodes.size()) {
-			return graph->nodes.size() > 1 && graph->nodes.back().frame == 0 ? tfxFRAME_LENGTH : graph->nodes.back().frame;
+			return graph->nodes.size() > 1 && graph->nodes.back().frame == 0 ? frame_length : graph->nodes.back().frame;
 		}
 
 		return 0.f;
@@ -5271,7 +5279,7 @@ namespace tfx {
 	}
 
 	void CompileGraph(tfxGraph &graph) {
-		float last_frame = GetGraphLastFrame(&graph);
+		float last_frame = GetGraphLastFrame(&graph, 60.f);
 		graph.lookup.last_frame = tfxU32(last_frame / tfxLOOKUP_FREQUENCY);
 		if (graph.lookup.last_frame) {
 			graph.lookup.values.resize(graph.lookup.last_frame + 1);
@@ -5400,8 +5408,8 @@ namespace tfx {
 		tfxGraph &life_variation = *GetEffectGraphByType(&e, tfxVariation_life);
 		float templife = 0;
 		float max_life = 0;
-		float life_last_frame = GetGraphLastFrame(&life);
-		float life_variation_last_frame = GetGraphLastFrame(&life_variation);
+		float life_last_frame = GetGraphLastFrame(&life, 60.f);
+		float life_variation_last_frame = GetGraphLastFrame(&life_variation, 60.f);
 		float global_adjust = 1.f;
 		if (life_last_frame + life_variation_last_frame > 0) {
 			for (float f = 0; f < std::fmaxf(life_last_frame, life_variation_last_frame); ++f) {
@@ -6467,9 +6475,10 @@ namespace tfx {
 		}
 	}
 
-	void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float camera_position[3]) {
+	void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float update_frequency, float camera_position[3]) {
 		ReconfigureParticleManager(pm, GetRequiredParticleManagerMode(effect), effect->sort_passes, Is3DEffect(effect));
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index];
+		float frame_length = 1000.f / update_frequency;
 		tfxU32 frames = anim.real_frames;
 		tfxU32 start_frame = anim.frame_offset;
 		int extra_frames = anim.extra_frames_count;
@@ -6478,12 +6487,10 @@ namespace tfx {
 		tfxU32 offset = 0;
 		bool particles_started = false;
 		bool start_counting_extra_frames = false;
-		pm->animation_length_in_time = (float)frames * tfxFRAME_LENGTH - 1.f;
+		pm->animation_length_in_time = (float)frames * frame_length - 1.f;
 		bool is_3d = Is3DEffect(effect);
 
-		float update_freq = tfxUPDATE_FREQUENCY;
 		anim.recording_frame_rate = tfxMin(tfxMax(30.f, anim.recording_frame_rate), 240.f);
-		SetUpdateFrequency(anim.recording_frame_rate);
 
 		bool auto_set_length = false;
 		if (anim.animation_flags & tfxAnimationFlags_auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && IsFiniteEffect(effect)) {
@@ -6535,7 +6542,7 @@ namespace tfx {
 		tfxU32 sprites_in_layers = 0;
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
-			UpdateParticleManager(pm, tfxFRAME_LENGTH);
+			UpdateParticleManager(pm, frame_length);
 			bool particles_processed_last_frame = false;
 
 			if (offset >= start_frame) {
@@ -6583,14 +6590,14 @@ namespace tfx {
 			sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 			FreeSpriteData(*sprite_data);
 			sprite_data->normal.frame_count = frames;
-			sprite_data->normal.animation_length_in_time = frames * tfxFRAME_LENGTH;
+			sprite_data->normal.animation_length_in_time = frames * frame_length;
 			sprite_data->normal.frame_meta.resize( frames);
 			sprite_data->normal.frame_meta.zero();
 		}
 		else {
 			tfxSpriteData data;
 			data.normal.frame_count = frames;
-			data.normal.animation_length_in_time = frames * tfxFRAME_LENGTH;
+			data.normal.animation_length_in_time = frames * frame_length;
 			data.normal.frame_meta.resize(frames);
 			data.normal.frame_meta.zero();
 			effect->library->pre_recorded_effects.Insert(effect->path_hash, data);
@@ -6680,7 +6687,7 @@ namespace tfx {
 
 		while (frame < frames && offset < 99999) {
 			tfxU32 count_this_frame = 0;
-			UpdateParticleManager(pm, tfxFRAME_LENGTH);
+			UpdateParticleManager(pm, frame_length);
 			InvalidateNewSpriteCapturedIndex(pm);
 			bool particles_processed_last_frame = false;
 
@@ -6806,13 +6813,12 @@ namespace tfx {
 		ClearWrapBit(sprite_data);
 
 		FreeSoABuffer(&temp_sprites_buffer);
-		SetUpdateFrequency(update_freq);
 		DisablePMSpawning(pm, false);
 		ClearParticleManager(pm, false);
 		pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
 
 		if (anim.playback_speed < 1.f) {
-			CompressSpriteData(pm, effect, is_3d);
+			CompressSpriteData(pm, effect, is_3d, frame_length);
 		}
 		else {
 			sprite_data->compressed_sprites = sprite_data->real_time_sprites;
@@ -6825,7 +6831,7 @@ namespace tfx {
 		ToggleSpritesWithUID(pm, false);
 	}
 
-	void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d) {
+	void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d, float frame_length) {
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index];
 		tfxSpriteData *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 		if (is_3d) {
@@ -6838,7 +6844,7 @@ namespace tfx {
 		sprite_data->compressed.frame_meta.resize(tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
 		sprite_data->compressed.frame_meta.zero();
 
-		float frequency = tfxFRAME_LENGTH * (1.f / anim.playback_speed);
+		float frequency = frame_length * (1.f / anim.playback_speed);
 		float real_time = 0.f;
 		float compressed_time = 0.f;
 		int compressed_frame = 0;
@@ -6854,7 +6860,7 @@ namespace tfx {
 		int start_frame = 0;
 		bool finished = false;
 		do {
-			real_time = f * tfxFRAME_LENGTH;
+			real_time = f * frame_length;
 			tfxU32 next_compressed_frame = compressed_frame + 1;
 			float next_compressed_time = next_compressed_frame * frequency;
 			float lerp_offset = (next_compressed_time - real_time) / (next_compressed_time - compressed_time);
@@ -7028,6 +7034,7 @@ namespace tfx {
 		animation_manager->buffer_metrics.offsets_size_in_bytes = 0;
 		animation_manager->buffer_metrics.sprite_data_size = 0;
 		animation_manager->buffer_metrics.total_sprites_to_draw = 0;
+		animation_manager->update_frequency = 60.f;
 		animation_manager->flags = tfxAnimationManagerFlags_initialised | tfxAnimationManagerFlags_is_3d;
 	}
 
@@ -7046,6 +7053,7 @@ namespace tfx {
 		animation_manager->buffer_metrics.offsets_size_in_bytes = 0;
 		animation_manager->buffer_metrics.sprite_data_size = 0;
 		animation_manager->buffer_metrics.total_sprites_to_draw = 0;
+		animation_manager->update_frequency = 60.f;
 		animation_manager->flags = tfxAnimationManagerFlags_initialised;
 	}
 
@@ -7128,7 +7136,7 @@ namespace tfx {
 		tfxSpriteDataSettings &anim = effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index];
 		if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 			assert(pm);		//You must pass an appropriate particle manager if the animation needs recording
-			RecordSpriteData(pm, effect, &camera_position.x);
+			RecordSpriteData(pm, effect, animation_manager->update_frequency, &camera_position.x);
 		}
 
 		bool has_animated_shape = false;
@@ -7225,8 +7233,9 @@ namespace tfx {
 		tfxAnimationID index = AddAnimationInstance(animation_manager);
 		tfxAnimationInstance &instance = animation_manager->instances[index];
 		instance.scale = 1.f;
-		float frame_length = float(metrics.real_frames) / float(metrics.frames_after_compression) * tfxFRAME_LENGTH;
-		instance.current_time = start_frame * frame_length;
+		float frame_length = 1000.f / animation_manager->update_frequency;
+		float frame_length_total = float(metrics.real_frames) / float(metrics.frames_after_compression) * frame_length;
+		instance.current_time = start_frame * frame_length_total;
 		instance.animation_length_in_time = metrics.animation_length_in_time;
 		instance.tween = 0.f;
 		instance.flags = metrics.animation_flags;
@@ -7367,8 +7376,8 @@ namespace tfx {
 		animation_manager->buffer_metrics.offsets_size_in_bytes = animation_manager->buffer_metrics.offsets_size * sizeof(tfxU32) * animation_manager->buffer_metrics.instances_size;
 	}
 
-	void RecordTemplateEffect(tfxEffectTemplate *t, tfxParticleManager *pm, float camera_position[3]) {
-		RecordSpriteData(pm, &t->effect, camera_position);
+	void RecordTemplateEffect(tfxEffectTemplate *t, tfxParticleManager *pm, float update_frequency, float camera_position[3]) {
+		RecordSpriteData(pm, &t->effect, update_frequency, camera_position);
 	}
 
 	void DisableTemplateEmitter(tfxEffectTemplate *t, const char *path) {
