@@ -524,10 +524,10 @@ namespace tfx {
 		return package;
 	}
 
-	bool ValidatePackage(tfxPackage &package) {
-		if (package.header.magic_number != tfxMAGIC_NUMBER) return false;			//Package hasn't been initialised
+	bool ValidatePackage(tfxPackage *package) {
+		if (package->header.magic_number != tfxMAGIC_NUMBER) return false;			//Package hasn't been initialised
 
-		FILE *file = tfx__open_file(package.file_path.c_str(), "rb");
+		FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
 		if (!file) {
 			return false;
 		}
@@ -543,7 +543,7 @@ namespace tfx {
 			return false;
 		}
 
-		if (length != package.file_size) return false;							//The file on disk is no longer the same size as the package file size since it was loaded
+		if (length != package->file_size) return false;							//The file on disk is no longer the same size as the package file size since it was loaded
 
 		//Everything seems ok
 		fclose(file);
@@ -555,17 +555,18 @@ namespace tfx {
 	}
 
 	tfxPackage::~tfxPackage() {
-		Free();
+		FreePackage(this);
 	}
 
-	tfxEntryInfo *tfxPackage::GetFile(const char *name) {
-		if (!inventory.entries.ValidName(name))
+	tfxEntryInfo *GetPackageFile(tfxPackage *package, const char *name) {
+		if (!package->inventory.entries.ValidName(name)) {
 			return nullptr;									//File not found in inventory
-		assert(ValidatePackage(*this));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
-		tfxEntryInfo *entry = &inventory.entries.At(name);
+		}
+		assert(ValidatePackage(package));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
+		tfxEntryInfo *entry = &package->inventory.entries.At(name);
 		if (entry->data.Size() != entry->file_size) {
 			//FILE *file = tfx__open_file(file_path.c_str(), "rb");
-			FILE *file = tfx__open_file(file_path.c_str(), "rb");
+			FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
 			assert(file);		//couldn't open the file!
 			_fseeki64(file, entry->offset_from_start_of_file, SEEK_SET);
 			entry->data.Resize(entry->file_size);
@@ -575,35 +576,35 @@ namespace tfx {
 		return entry;
 	}
 
-	bool tfxPackage::FileExists(const char *file_name) {
-		if (inventory.entries.ValidName(file_name)) {
+	bool FileExists(tfxPackage *package, const char *file_name) {
+		if (package->inventory.entries.ValidName(file_name)) {
 			return true;
 		}
 		return false;
 	}
 
-	void tfxPackage::AddFile(tfxEntryInfo file) {
-		inventory.entries.Insert(file.file_name, file);
-		inventory.entry_count++;
+	void AddEntryToPackage(tfxPackage *package, tfxEntryInfo file) {
+		package->inventory.entries.Insert(file.file_name, file);
+		package->inventory.entry_count++;
 	}
 
-	void tfxPackage::AddFile(const char *file_name, tfxStream &data) {
+	void AddFileToPackage(tfxPackage *package, const char *file_name, tfxStream *data) {
 		tfxEntryInfo entry;
 		entry.file_name = file_name;
-		entry.data = data;
-		entry.file_size = data.size;
+		entry.data = *data;
+		entry.file_size = data->size;
 
-		inventory.entries.Insert(entry.file_name, entry);
-		inventory.entry_count++;
+		package->inventory.entries.Insert(entry.file_name, entry);
+		package->inventory.entry_count++;
 	}
 
-	void tfxPackage::Free() {
-		for (auto &entry : inventory.entries.data) {
+	void FreePackage(tfxPackage *package) {
+		for (auto &entry : package->inventory.entries.data) {
 			entry.data.FreeAll();
 		}
-		inventory.entries.data.free_all();
-		inventory.entries.map.free_all();
-		file_data.FreeAll();
+		package->inventory.entries.data.free_all();
+		package->inventory.entries.map.free_all();
+		package->file_data.FreeAll();
 	}
 
 	// Reads the whole file on disk into memory and returns the pointer
@@ -3614,12 +3615,12 @@ namespace tfx {
 		tfxPackage package;
 		tfxErrorFlags status = LoadPackage(filename, package);
 		if (status) {
-			package.Free();
+			FreePackage(&package);
 			return status;					//returns 1 to 4 if it's an invalid package format
 		}
 
-		tfxEntryInfo *data_txt = package.GetFile("data.txt");
-		package.Free();
+		tfxEntryInfo *data_txt = GetPackageFile(&package, "data.txt");
+		FreePackage(&package);
 		if (!data_txt) return tfxErrorCode_data_could_not_be_loaded;					//Unable to load the the data.txt file in the package
 
 		return 0;
@@ -4198,13 +4199,6 @@ namespace tfx {
 		dst_graph->lookup.life = src_graph->lookup.life;
 	}
 
-	float tfxAttributeNode::GetX() {
-		return frame;
-	}
-	float tfxAttributeNode::GetY() {
-		return value;
-	}
-
 	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
 		node.frame = _frame;
 		node.value = _value;
@@ -4247,6 +4241,18 @@ namespace tfx {
 
 		return false;
 
+	}
+
+	bool IsNodeCurve(tfxAttributeNode *node) {
+		return node->flags & tfxAttributeNodeFlags_is_curve;
+	}
+
+	bool NodeCurvesAreInitialised(tfxAttributeNode *node) {
+		return node->flags & tfxAttributeNodeFlags_curves_initialised;
+	}
+
+	bool SetNodeCurveInitialised(tfxAttributeNode *node) {
+		return node->flags |= tfxAttributeNodeFlags_curves_initialised;
 	}
 
 	bool SetNodeValue(tfxGraph &graph, tfxAttributeNode &node, float &_value) {
@@ -4845,7 +4851,7 @@ namespace tfx {
 		if (add_node && preset == tfxWeightOvertimePreset) {
 			AddGraphNode(graph, 0.f, 0.f, 0);
 			tfxAttributeNode *node = AddGraphNode(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
-			node->SetCurveInitialised();
+			SetNodeCurveInitialised(node);
 		}
 		else if (add_node) {
 			AddGraphNode(graph, 0.f, v);
@@ -5751,14 +5757,14 @@ namespace tfx {
 		tfxPackage package;
 		error = LoadPackage(filename, package);
 
-		tfxEntryInfo *data = package.GetFile("data.txt");
+		tfxEntryInfo *data = GetPackageFile(&package, "data.txt");
 
 		if (!data)
 			error = -5;
 
 
 		if (error < 0) {
-			package.Free();
+			FreePackage(&package);
 			return error;
 		}
 
@@ -5794,7 +5800,7 @@ namespace tfx {
 			}
 		}
 
-		package.Free();
+		FreePackage(&package);
 		return shape_count;
 	}
 
@@ -5805,14 +5811,14 @@ namespace tfx {
 		tfxPackage package;
 		error = LoadPackage(filename, package);
 
-		tfxEntryInfo *data = package.GetFile("data.txt");
+		tfxEntryInfo *data = GetPackageFile(&package, "data.txt");
 
 		if (!data)
 			error = -5;
 
 
 		if (error < 0) {
-			package.Free();
+			FreePackage(&package);
 			return error;
 		}
 
@@ -5901,24 +5907,24 @@ namespace tfx {
 		tfxPackage package;
 		tfxErrorFlags error = LoadPackage(filename, package);
 		if (error != 0) {
-			package.Free();
+			FreePackage(&package);
 			return error;
 		}
 
-		tfxEntryInfo *data = package.GetFile("data.txt");
+		tfxEntryInfo *data = GetPackageFile(&package, "data.txt");
 
 		if (!data) {
 			error |= tfxErrorCode_data_could_not_be_loaded;
 		}
 
-		tfxEntryInfo *sprite_data = package.GetFile("sprite_data");
+		tfxEntryInfo *sprite_data = GetPackageFile(&package, "sprite_data");
 
 		if (!sprite_data) {
 			error |= tfxErrorCode_data_could_not_be_loaded;
 		}
 
 		if (error != 0) {
-			package.Free();
+			FreePackage(&package);
 			return error;
 		}
 
@@ -6068,7 +6074,7 @@ namespace tfx {
 							s.import_filter = 0;
 						}
 
-						tfxEntryInfo *shape_entry = package.GetFile(s.name);
+						tfxEntryInfo *shape_entry = GetPackageFile(&package, s.name);
 						if (shape_entry) {
 							tfxImageData image_data;
 							image_data.shape_index = s.shape_index;
@@ -6122,7 +6128,7 @@ namespace tfx {
 
 		}
 
-		package.Free();
+		FreePackage(&package);
 
 		if (!shape_loader) {
 			error |= tfxErrorCode_library_loaded_without_shape_loader;
@@ -6142,8 +6148,8 @@ namespace tfx {
 			MakeIcospheres();
 		}
 
-		tfxEntryInfo *data = package.GetFile("data.txt");
-		tfxEntryInfo *stats_struct = package.GetFile("stats.struct");
+		tfxEntryInfo *data = GetPackageFile(&package, "data.txt");
+		tfxEntryInfo *stats_struct = GetPackageFile(&package, "stats.struct");
 		tfxErrorFlags error = 0;
 
 		int context = 0;
@@ -6173,7 +6179,7 @@ namespace tfx {
 			error |= tfxErrorCode_data_could_not_be_loaded;
 
 		if (error != 0) {
-			package.Free();
+			FreePackage(&package);
 			return error;
 		}
 
@@ -6336,7 +6342,7 @@ namespace tfx {
 							s.import_filter = 0;
 						}
 
-						tfxEntryInfo *shape_entry = package.GetFile(s.name);
+						tfxEntryInfo *shape_entry = GetPackageFile(&package, s.name);
 						if (shape_entry) {
 							tfxImageData image_data;
 							image_data.shape_index = s.shape_index;
@@ -6425,7 +6431,7 @@ namespace tfx {
 
 		}
 
-		package.Free();
+		FreePackage(&package);
 
 		if (uid >= 0) {
 			//Effects were loaded so let's compile them
@@ -6450,12 +6456,12 @@ namespace tfx {
 		tfxPackage package;
 		error = LoadPackage(filename, package);
 		if (error != 0) {
-			package.Free();
+			FreePackage(&package);
 			return error;
 		}
 		error = LoadEffectLibraryPackage(package, lib, shape_loader, user_data, read_only);
 
-		package.Free();
+		FreePackage(&package);
 		return error;
 	}
 

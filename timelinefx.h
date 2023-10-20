@@ -175,8 +175,15 @@ namespace tfx {
 #define tfxMin(a, b) (((a) < (b)) ? (a) : (b))
 #define tfxMax(a, b) (((a) > (b)) ? (a) : (b))
 
-	typedef std::chrono::high_resolution_clock tfxClock;
+typedef std::chrono::high_resolution_clock tfxClock;
 
+/*	Functions come in 3 flavours: 
+1) INTERNAL where they're only meant for internal use by the library and not for any use outside it. Note that these functions are declared as static.
+2) API where they're meant for access within your games that you're developing
+3) EDITOR where they can be accessed from outside the library but really they're mainly useful for editing the effects such as in in the TimelineFX Editor.
+
+All functions in the library will be marked this way for clarity and naturally the API functions will all be properly documented.
+*/
 //Function marker for any functions meant for external/api use
 #define tfxAPI		
 //Function marker for any functions meant mainly for use by the TimelineFX editor and are related to editing effects
@@ -4824,12 +4831,6 @@ You can then use layer inside the loop to get the current layer
 
 		~tfxPackage();
 
-		tfxEntryInfo *GetFile(const char *name);
-		void AddFile(tfxEntryInfo file);
-		void AddFile(const char *file_name, tfxStream &data);
-		bool FileExists(const char *file_name);
-		void Free();
-
 	};
 
 	//------------------------------------------------------------
@@ -4850,43 +4851,6 @@ You can then use layer inside the loop to get the current layer
 
 		tfxAttributeNode() : frame(0.f), value(0.f), flags(0), index(0) { }
 		inline bool operator==(const tfxAttributeNode& n) { return n.frame == frame && n.value == value; }
-
-		/*
-			Set the curve points for the emitterchange
-			x0 and y0 are the coordinates of the point to the left of the attribute node, x1 and y1 are the coordinates to the right of the attribute node. Setting
-			these will create a bezier curve.The bezier curves are restricted so that they cannot be drawn so that they loop over or behind the frame of the attribute nodes.
-		*/
-		void SetCurvePoints(float x0, float y0, float x1, float y1) {
-			left.x = x0;
-			left.y = y0;
-			right.x = x1;
-			right.y = y1;
-			flags |= tfxAttributeNodeFlags_is_curve;
-		}
-
-		/*
-			Toggle whether this attribute node is curved or linear
-		*/
-		void ToggleCurve() {
-			flags = ~tfxAttributeNodeFlags_is_curve;
-		}
-
-		bool IsCurve() {
-			return flags & tfxAttributeNodeFlags_is_curve;
-		}
-
-		bool CurvesAreInitialised() {
-			return flags & tfxAttributeNodeFlags_curves_initialised;
-		}
-
-		bool SetCurveInitialised() {
-			return flags |= tfxAttributeNodeFlags_curves_initialised;
-		}
-
-		float GetX();
-		float GetY();
-
-
 	};
 
 	struct tfxRandom {
@@ -6231,7 +6195,12 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI_EDITOR bool SavePackageDisk(tfxPackage &package);
 	tfxAPI_EDITOR tfxStream SavePackageMemory(tfxPackage &package);
 	tfxAPI_EDITOR tfxU64 GetPackageSize(tfxPackage &package);
-	tfxAPI_EDITOR bool ValidatePackage(tfxPackage &package);
+	tfxAPI_EDITOR bool ValidatePackage(tfxPackage *package);
+	tfxAPI_EDITOR tfxEntryInfo *GetPackageFile(tfxPackage *package, const char *name);
+	tfxAPI_EDITOR void AddEntryToPackage(tfxPackage *package, tfxEntryInfo file);
+	tfxAPI_EDITOR void AddFileToPackage(tfxPackage *package, const char *file_name, tfxStream *data);
+	tfxAPI_EDITOR bool FileExists(tfxPackage *package, const char *file_name);
+	tfxAPI_EDITOR void FreePackage(tfxPackage *package);
 
 	//Some file IO functions for the editor
 	tfxAPI_EDITOR bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key);
@@ -6561,6 +6530,10 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI_EDITOR bool HasKeyframes(tfxEffectEmitter &e);
 	tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
 	tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
+
+	tfxAPI_EDITOR bool IsNodeCurve(tfxAttributeNode *node);
+	tfxAPI_EDITOR bool NodeCurvesAreInitialised(tfxAttributeNode *node);
+	tfxAPI_EDITOR bool SetNodeCurveInitialised(tfxAttributeNode *node);
 
 	//--------------------------------
 	//Grouped graph struct functions
