@@ -1093,37 +1093,49 @@ You can then use layer inside the loop to get the current layer
 
 	//Intrinsics and multithreading
 
-	inline tfxU64 AtomicExchange64(tfxU64 volatile *value, tfxU64 new_value) {
+	tfxINTERNAL inline tfxU64 AtomicExchange64(tfxU64 volatile *value, tfxU64 new_value) {
 		tfxU64 result = _InterlockedExchange64((__int64 volatile*)value, new_value);
 		return result;
 	}
 
-	inline tfxU64 AtomicAdd64(tfxU64 volatile *value, tfxU64 amount_to_add) {
+	tfxINTERNAL inline tfxU64 AtomicAdd64(tfxU64 volatile *value, tfxU64 amount_to_add) {
 		tfxU64 result = _InterlockedExchangeAdd64((__int64 volatile*)value, amount_to_add);
 		return result;
 	}
 
-	inline tfxU64 AtomicIncrement64(tfxU64 volatile *value) {
+	tfxINTERNAL inline tfxU64 AtomicIncrement64(tfxU64 volatile *value) {
 		return InterlockedIncrement64((__int64 volatile*)value);
 	}
 
-	inline tfxU32 AtomicIncrement32(LONG volatile *value) {
+	tfxINTERNAL inline tfxU32 AtomicIncrement32(LONG volatile *value) {
 		return InterlockedIncrement((LONG volatile*)value);
 	}
 
-	inline tfxU32 AtomicExchange32(tfxU32 volatile *value, tfxU32 new_value) {
+	tfxINTERNAL inline tfxU32 AtomicExchange32(tfxU32 volatile *value, tfxU32 new_value) {
 		tfxU32 result = _InterlockedExchange((LONG*)value, new_value);
 		return result;
 	}
 
-	inline tfxU32 AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
+	tfxINTERNAL inline tfxU32 AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
 		tfxU32 result = _InterlockedExchangeAdd((LONG*)value, amount_to_add);
 		return result;
 	}
 
-	inline tfxU32 AtomicExchangeCompare(tfxU32 volatile *value, tfxU32 exchange, tfxU32 compare) {
+	tfxINTERNAL inline tfxU32 AtomicExchangeCompare(tfxU32 volatile *value, tfxU32 exchange, tfxU32 compare) {
 		tfxU32 result = InterlockedCompareExchange((LONG volatile *)value, exchange, compare);
 		return result;
+	}
+
+	tfxINTERNAL inline tfxU32 Millisecs() {
+		auto now = tfxClock::now().time_since_epoch();
+		auto m = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+		return (tfxU32)m;
+	}
+
+	tfxINTERNAL inline uint64_t Microsecs() {
+		auto now = tfxClock::now().time_since_epoch();
+		auto m = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
+		return m;
 	}
 
 #define tfxArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
@@ -3291,602 +3303,6 @@ You can then use layer inside the loop to get the current layer
 
 	};
 
-	static inline tfxVec2 mmTransformVector(const tfxMatrix4 &mat, const tfxVec2 v) {
-		tfxVec2 tv = tfxVec2(0.f, 0.f);
-		tv.x = v.x * mat.v[0].x + v.y * mat.v[1].x;
-		tv.y = v.x * mat.v[0].y + v.y * mat.v[1].y;
-		return tv;
-	}
-
-	inline tfxMatrix4 M4(float v = 1.f) {
-		tfxMatrix4 R =
-		{ {
-			{v, 0, 0, 0},
-			{0, v, 0, 0},
-			{0, 0, v, 0},
-			{0, 0, 0, v}},
-		};
-		return(R);
-	}
-
-	inline tfxMatrix4 M4(tfxVec4 a, tfxVec4 b, tfxVec4 c, tfxVec4 d) {
-		tfxMatrix4 R =
-		{ {
-			{a.x, a.y, a.z, a.w},
-			{b.x, b.y, b.z, b.w},
-			{c.x, c.y, c.z, c.w},
-			{d.x, d.y, d.z, d.w}},
-		};
-		return(R);
-	}
-
-	static inline tfxMatrix4 mmXRotate(float angle) {
-		float c = std::cos(angle);
-		float s = std::sin(angle);
-		tfxMatrix4 r =
-		{ {
-			{1, 0, 0, 0},
-			{0, c,-s, 0},
-			{0, s, c, 0},
-			{0, 0, 0, 1}},
-		};
-		return r;
-	}
-
-	static inline tfxMatrix4 mmYRotate(float angle) {
-		float c = std::cos(angle);
-		float s = std::sin(angle);
-		tfxMatrix4 r =
-		{ {
-			{ c, 0, s, 0},
-			{ 0, 1, 0, 0},
-			{-s, 0, c, 0},
-			{ 0, 0, 0, 1}},
-		};
-		return r;
-	}
-
-	static inline tfxMatrix4 mmZRotate(float angle) {
-		float c = std::cos(angle);
-		float s = std::sin(angle);
-		tfxMatrix4 r =
-		{ {
-			{c, -s, 0, 0},
-			{s,  c, 0, 0},
-			{0,  0, 1, 0},
-			{0,  0, 0, 1}},
-		};
-		return r;
-	}
-
-	static inline tfxMatrix4 mmTranslate(tfxMatrix4 const &m, tfxVec3 const &v) {
-		tfxMatrix4 result;
-		result.v[3] = m.v[0] * v.x + m.v[1] * v.y + m.v[2] * v.z + m.v[3];
-		return result;
-	}
-
-	static inline tfxMatrix4 mmScale(tfxMatrix4 const &m, tfxVec3 const &v) {
-		tfxMatrix4 result;
-		result.v[0] = m.v[0] * v.x;
-		result.v[1] = m.v[1] * v.y;
-		result.v[2] = m.v[2] * v.z;
-		result.v[3] = m.v[3];
-		return result;
-	}
-
-	static inline tfxMatrix4 Transpose(tfxMatrix4 &mat) {
-		return M4(
-			tfxVec4(mat.v[0].x, mat.v[1].x, mat.v[2].x, mat.v[3].x),
-			tfxVec4(mat.v[0].y, mat.v[1].y, mat.v[2].y, mat.v[3].y),
-			tfxVec4(mat.v[0].z, mat.v[1].z, mat.v[2].z, mat.v[3].z),
-			tfxVec4(mat.v[0].w, mat.v[1].w, mat.v[2].w, mat.v[3].w)
-		);
-	}
-
-	static inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, const tfxMatrix4 &m) {
-		tfxMatrix4 r;
-		r.v[0].x = in.v[0].x * m.v[0].x + in.v[0].y * m.v[1].x; r.v[0].y = in.v[0].x * m.v[0].y + in.v[0].y * m.v[1].y;
-		r.v[1].x = in.v[1].x * m.v[0].x + in.v[1].y * m.v[1].x; r.v[1].y = in.v[1].x * m.v[0].y + in.v[1].y * m.v[1].y;
-		return r;
-	}
-
-	static inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, const tfxMatrix2 &m) {
-		tfxMatrix4 r;
-		r.v[0].x = in.v[0].x * m.aa + in.v[0].y * m.ba; r.v[0].y = in.v[0].x * m.ab + in.v[0].y * m.bb;
-		r.v[1].x = in.v[1].x * m.aa + in.v[1].y * m.ba; r.v[1].y = in.v[1].x * m.ab + in.v[1].y * m.bb;
-		return r;
-	}
-
-	static inline tfxMatrix4 mmTransform(const tfxMatrix4 &in, const tfxMatrix4 &m) {
-		tfxMatrix4 res = M4(0.f);
-
-		tfx128 in_row[4];
-		in_row[0] = _mm_load_ps(&in.v[0].x);
-		in_row[1] = _mm_load_ps(&in.v[1].x);
-		in_row[2] = _mm_load_ps(&in.v[2].x);
-		in_row[3] = _mm_load_ps(&in.v[3].x);
-
-		tfx128 m_row1 = _mm_set_ps(m.v[3].x, m.v[2].x, m.v[1].x, m.v[0].x);
-		tfx128 m_row2 = _mm_set_ps(m.v[3].y, m.v[2].y, m.v[1].y, m.v[0].y);
-		tfx128 m_row3 = _mm_set_ps(m.v[3].z, m.v[2].z, m.v[1].z, m.v[0].z);
-		tfx128 m_row4 = _mm_set_ps(m.v[3].w, m.v[2].w, m.v[1].w, m.v[0].w);
-
-		for (int r = 0; r <= 3; ++r)
-		{
-
-			tfx128 row1result = _mm_mul_ps(in_row[r], m_row1);
-			tfx128 row2result = _mm_mul_ps(in_row[r], m_row2);
-			tfx128 row3result = _mm_mul_ps(in_row[r], m_row3);
-			tfx128 row4result = _mm_mul_ps(in_row[r], m_row4);
-
-			float tmp[4];
-			_mm_store_ps(tmp, row1result);
-			res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			_mm_store_ps(tmp, row2result);
-			res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			_mm_store_ps(tmp, row3result);
-			res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-			_mm_store_ps(tmp, row4result);
-			res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-		}
-		return res;
-	}
-
-	static inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
-		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
-		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[0].c1)), xr);
-		xr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[0].c2)), xr);
-		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[1].c0));
-		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
-		yr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[1].c2)), yr);
-		tfxWideFloat zr = tfxWideMul(x, tfxWideSetSingle(mat.v[2].c0));
-		zr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[2].c1)), zr);
-		zr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].c2)), zr);
-		x = xr;
-		y = yr;
-		z = zr;
-	}
-
-	static inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y) {
-		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
-		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c0)), xr);
-		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c1));
-		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
-		x = xr;
-		y = yr;
-	}
-
-	static inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
-		tfxWideFloat xr = tfxWideMul(x, r0c[0]);
-		xr = tfxWideAdd(tfxWideMul(y, r1c[0]), xr);
-		tfxWideFloat yr = tfxWideMul(x, r0c[1]);
-		yr = tfxWideAdd(tfxWideMul(y, r1c[1]), yr);
-		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
-		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
-	}
-
-	static inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
-		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
-		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c0)), xr);
-		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c1));
-		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
-		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
-		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
-	}
-
-	static inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
-		tfxWideFloat xr = tfxWideMul(x, r0c[0]);
-		xr = tfxWideAdd(tfxWideMul(y, r0c[1]), xr);
-		xr = tfxWideAdd(tfxWideMul(z, r0c[2]), xr);
-		tfxWideFloat yr = tfxWideMul(x, r1c[0]);
-		yr = tfxWideAdd(tfxWideMul(y, r1c[1]), yr);
-		yr = tfxWideAdd(tfxWideMul(z, r1c[2]), yr);
-		tfxWideFloat zr = tfxWideMul(x, r2c[0]);
-		zr = tfxWideAdd(tfxWideMul(y, r2c[1]), zr);
-		zr = tfxWideAdd(tfxWideMul(z, r2c[2]), zr);
-		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
-		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
-		z = tfxWideAdd(tfxWideAnd(z, xor_mask), tfxWideAnd(zr, mask));
-	}
-
-	static inline tfxVec4 mmTransformVector(const tfxMatrix4 &mat, const tfxVec4 vec) {
-		tfxVec4 v;
-
-		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
-
-		tfx128 mrow1 = _mm_load_ps(&mat.v[0].c0);
-		tfx128 mrow2 = _mm_load_ps(&mat.v[1].c0);
-		tfx128 mrow3 = _mm_load_ps(&mat.v[2].c0);
-		tfx128 mrow4 = _mm_load_ps(&mat.v[3].c0);
-
-		tfx128 row1result = _mm_mul_ps(v4, mrow1);
-		tfx128 row2result = _mm_mul_ps(v4, mrow2);
-		tfx128 row3result = _mm_mul_ps(v4, mrow3);
-		tfx128 row4result = _mm_mul_ps(v4, mrow4);
-
-		float tmp[4];
-		_mm_store_ps(tmp, row1result);
-		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row2result);
-		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row3result);
-		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row4result);
-		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-		return v;
-	}
-
-	static inline tfxVec4 mmTransformVector(const tfx128 &row1, const tfx128 &row2, const tfx128 &row3, const tfx128 &row4, const tfxVec4 vec) {
-		tfxVec4 v;
-
-		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
-
-		tfx128 row1result = _mm_mul_ps(v4, row1);
-		tfx128 row2result = _mm_mul_ps(v4, row2);
-		tfx128 row3result = _mm_mul_ps(v4, row3);
-		tfx128 row4result = _mm_mul_ps(v4, row4);
-
-		float tmp[4];
-		_mm_store_ps(tmp, row1result);
-		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row2result);
-		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row3result);
-		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row4result);
-		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-		return v;
-	}
-
-	static inline tfxVec3 mmTransformVector3(const tfxMatrix4 &mat, const tfxVec4 vec) {
-		tfxVec3 v;
-
-		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
-
-		tfx128 mrow1 = _mm_load_ps(&mat.v[0].x);
-		tfx128 mrow2 = _mm_load_ps(&mat.v[1].x);
-		tfx128 mrow3 = _mm_load_ps(&mat.v[2].x);
-		tfx128 mrow4 = _mm_load_ps(&mat.v[3].x);
-
-		tfx128 row1result = _mm_mul_ps(v4, mrow1);
-		tfx128 row2result = _mm_mul_ps(v4, mrow2);
-		tfx128 row3result = _mm_mul_ps(v4, mrow3);
-		tfx128 row4result = _mm_mul_ps(v4, mrow4);
-
-		float tmp[4];
-		_mm_store_ps(tmp, row1result);
-		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row2result);
-		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row3result);
-		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-		return v;
-	}
-
-	static inline tfxMatrix4 mmRotate(tfxMatrix4 const &m, float r, tfxVec3 const &v) {
-		float const a = r;
-		float const c = cosf(a);
-		float const s = sinf(a);
-
-		tfxVec3 axis = NormalizeVec(v);
-		tfxVec3 temp = axis * (1.f - c);
-
-		tfxMatrix4 rotate;
-		rotate.v[0].x = c + temp.x * axis.x;
-		rotate.v[0].y = temp.x * axis.y + s * axis.z;
-		rotate.v[0].z = temp.x * axis.z - s * axis.y;
-
-		rotate.v[1].x = temp.y * axis.x - s * axis.z;
-		rotate.v[1].y = c + temp.y * axis.y;
-		rotate.v[1].z = temp.y * axis.z + s * axis.x;
-
-		rotate.v[2].x = temp.z * axis.x + s * axis.y;
-		rotate.v[2].y = temp.z * axis.y - s * axis.x;
-		rotate.v[2].z = c + temp.z * axis.z;
-
-		tfxMatrix4 result = M4(1.f);
-		result.v[0] = m.v[0] * rotate.v[0].x + m.v[1] * rotate.v[0].y + m.v[2] * rotate.v[0].z;
-		result.v[1] = m.v[0] * rotate.v[1].x + m.v[1] * rotate.v[1].y + m.v[2] * rotate.v[1].z;
-		result.v[2] = m.v[0] * rotate.v[2].x + m.v[1] * rotate.v[2].y + m.v[2] * rotate.v[2].z;
-		result.v[3] = m.v[3];
-		return result;
-	}
-
-	static inline int Clamp(int lower, int upper, int value) {
-		if (value < lower) return lower;
-		if (value > upper) return upper;
-		return value;
-	}
-
-	static inline float Clamp(float lower, float upper, float value) {
-		if (value < lower) return lower;
-		if (value > upper) return upper;
-		return value;
-	}
-
-	inline tfxVec3 Clamp(float lower, float upper, tfxVec3 const &v) {
-		tfxVec3 result;
-		result.x = Clamp(lower, upper, v.x);
-		result.y = Clamp(lower, upper, v.y);
-		result.z = Clamp(lower, upper, v.z);
-		return result;
-	}
-
-	inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
-		tfxVec3 converted = v * 511.f;
-		tfxUInt10bit result;
-		result.pack = 0;
-		result.data.x = (tfxU32)converted.z;
-		result.data.y = (tfxU32)converted.y;
-		result.data.z = (tfxU32)converted.x;
-		result.data.w = extra;
-		return result.pack;
-	}
-
-	inline tfxU32 Pack10bitUnsigned(tfxVec3 const &v) {
-		tfxVec3 converted = v * 511.f + 511.f;
-		tfxUInt10bit result;
-		result.pack = 0;
-		result.data.x = (tfxU32)converted.z;
-		result.data.y = (tfxU32)converted.y;
-		result.data.z = (tfxU32)converted.x;
-		result.data.w = 0;
-		return result.pack;
-	}
-
-	inline tfxU32 Pack16bit(float x, float y) {
-		union
-		{
-			signed short in[2];
-			tfxU32 out;
-		} u;
-
-		x = x * 32767.f;
-		y = y * 32767.f;
-
-		u.in[0] = (signed short)x;
-		u.in[1] = (signed short)y;
-
-		return u.out;
-	}
-
-	inline tfxU32 Pack16bitUnsigned(float x, float y) {
-		union
-		{
-			struct {
-				tfxU32 x : 16;
-				tfxU32 y : 16;
-			} data;
-			tfxU32 out;
-		} u;
-
-		x = x * 32767.f + 32767.f;
-		y = y * 32767.f + 32767.f;
-
-		u.data.x = (tfxU32)x;
-		u.data.y = (tfxU32)y;
-
-		return u.out;
-	}
-
-	inline tfxVec2 UnPack16bit(tfxU32 in) {
-		float one_div_32k = 1.f / 32767.f;
-
-		tfxVec2 result;
-		result.x = ((signed short)(in & 0x0000FFFF)) * one_div_32k;
-		result.y = ((signed short)((in & 0xFFFF0000) >> 16)) * one_div_32k;
-
-		return result;
-	}
-
-	inline tfxVec2 UnPack16bitUnsigned(tfxU32 in) {
-		float one_div_32k = 1.f / 32767.f;
-
-		tfxVec2 result;
-		result.x = ((int)(in & 0x0000FFFF) - 32767) * one_div_32k;
-		result.y = ((int)((in & 0xFFFF0000) >> 16) - 32767) * one_div_32k;
-
-		return result;
-	}
-
-	inline tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
-		tfxWideFloat w32k = tfxWideSetSingle(32767.f);
-		tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
-		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
-		converted_y = tfxWideAndi(converted_y, bits16);
-		converted_y = tfxWideShiftLeft(converted_y, 16);
-		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
-		converted_x = tfxWideAndi(converted_x, bits16);
-		return tfxWideOri(converted_x, converted_y);
-	}
-
-	inline void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y) {
-		tfxWideInt w32k = tfxWideSetSinglei(32767);
-		x = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x0000FFFF)), w32k));
-		y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0xFFFF0000)), 16), w32k));
-		x = tfxWideMul(x, one_div_32k_wide);
-		y = tfxWideMul(y, one_div_32k_wide);
-	}
-
-	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
-		tfxWideFloat w511 = tfxWideSetSingle(511.f);
-		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
-		converted_x = tfxWideAndi(converted_x, bits10);
-		converted_x = tfxWideShiftLeft(converted_x, 20);
-		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
-		converted_y = tfxWideAndi(converted_y, bits10);
-		converted_y = tfxWideShiftLeft(converted_y, 10);
-		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
-		converted_z = tfxWideAndi(converted_z, bits10);
-		return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
-	}
-
-	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
-		tfxWideFloat w511 = tfxWideSetSingle(511.f);
-		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
-		converted_x = tfxWideAndi(converted_x, bits10);
-		converted_x = tfxWideShiftLeft(converted_x, 20);
-		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
-		converted_y = tfxWideAndi(converted_y, bits10);
-		converted_y = tfxWideShiftLeft(converted_y, 10);
-		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
-		converted_z = tfxWideAndi(converted_z, bits10);
-		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
-		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
-	}
-
-	inline tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
-		tfxWideFloat w511 = tfxWideSetSingle(511.f);
-		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-		tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w511), w511));
-		converted_x = tfxWideAndi(converted_x, bits10);
-		converted_x = tfxWideShiftLeft(converted_x, 20);
-		tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w511), w511));
-		converted_y = tfxWideAndi(converted_y, bits10);
-		converted_y = tfxWideShiftLeft(converted_y, 10);
-		tfxWideInt converted_z = tfxWideConverti(tfxWideAdd(tfxWideMul(v_z, w511), w511));
-		converted_z = tfxWideAndi(converted_z, bits10);
-		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
-		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
-	}
-
-	inline void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
-		tfxWideInt w511 = tfxWideSetSinglei(511);
-		x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
-		y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
-		z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
-		x = tfxWideMul(x, one_div_511_wide);
-		y = tfxWideMul(y, one_div_511_wide);
-		z = tfxWideMul(z, one_div_511_wide);
-	}
-
-	inline tfxWideFloat UnPackWide10bitY(tfxWideInt in) {
-		return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide);
-	}
-
-	inline tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a) {
-		tfxWideInt color = tfxWideShiftLeft(tfxWideConverti(v_a), 24);
-		color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_b), 16));
-		color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_g), 8));
-		color = tfxWideAddi(color, tfxWideConverti(v_r));
-		return color;
-	}
-
-	inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra) {
-		tfxWideFloat w511 = tfxWideSetSingle(511.f);
-		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
-		converted_x = tfxWideAndi(converted_x, bits10);
-		converted_x = tfxWideShiftLeft(converted_x, 20);
-		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
-		converted_y = tfxWideAndi(converted_y, bits10);
-		converted_y = tfxWideShiftLeft(converted_y, 10);
-		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
-		converted_z = tfxWideAndi(converted_z, bits10);
-		tfxWideInt extra_bits = tfxWideShiftLeft(extra, 30);
-		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
-	}
-
-	inline tfxVec4 UnPack10bit(tfxU32 in) {
-		tfxUInt10bit unpack;
-		unpack.pack = in;
-		int test = unpack.data.y;
-		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-		result = result * tfxVec3(one_div_511, one_div_511, one_div_511);
-		return tfxVec4(result, (float)unpack.data.w);
-	}
-
-	inline tfxVec3 UnPack10bitVec3(tfxU32 in) {
-		tfxUInt10bit unpack;
-		unpack.pack = in;
-		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-		return result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
-	}
-
-	inline tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
-		return ((in >> 30) & 0x3);
-	}
-
-	static inline size_t ClampStringSize(size_t compare, size_t string_size) {
-		return compare < string_size ? compare : string_size;
-	}
-
-	static inline float Distance(float fromx, float fromy, float tox, float toy) {
-
-		float w = tox - fromx;
-		float h = toy - fromy;
-
-		return std::sqrt(w * w + h * h);
-
-	}
-
-	inline tfxUInt10bit UintToPacked10bit(tfxU32 in) {
-		tfxUInt10bit out;
-		out.data.x = (in & 0x3FF);
-		out.data.y = ((in >> 10) & 0x3FF);
-		out.data.z = ((in >> 20) & 0x3FF);
-		out.data.w = ((in >> 30) & 0x3);
-		return out;
-	}
-
-	inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
-		return to * tween + from * (1.f - tween);
-	}
-
-	inline tfxVec3 InterpolateVec3(float tween, tfxVec3 from, tfxVec3 to) {
-		return to * tween + from * (1.f - tween);
-	}
-
-	inline tfxRGBA8 InterpolateRGBA(float tween, tfxRGBA8 from, tfxRGBA8 to) {
-		tfxRGBA8 out;
-		out.r = char((float)to.r * tween + (float)from.r * (1 - tween));
-		out.g = char((float)to.g * tween + (float)from.g * (1 - tween));
-		out.b = char((float)to.b * tween + (float)from.b * (1 - tween));
-		out.a = char((float)to.a * tween + (float)from.a * (1 - tween));
-		return out;
-	}
-
-	inline float GammaCorrect(float color, float gamma = tfxGAMMA) {
-		return powf(color, gamma);
-	}
-
-	inline tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to) {
-		tfxVec3 fromf = UnPack10bitVec3(from);
-		tfxVec3 tof = UnPack10bitVec3(to);
-		return Pack10bit(InterpolateVec3(tween, fromf, tof), (from >> 30) & 0x3);
-	}
-
-	inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &to) {
-		tfx128 l4 = _mm_set_ps1(tween);
-		tfx128 l4minus1 = _mm_set_ps1(1.f - tween);
-		tfx128 f4 = _mm_set_ps(from.x, from.y, from.z, from.w);
-		tfx128 t4 = _mm_set_ps(to.x, to.y, to.z, to.w);
-		tfx128 from_lerp = _mm_mul_ps(f4, l4);
-		tfx128 to_lerp = _mm_mul_ps(f4, l4minus1);
-		tfx128 result = _mm_add_ps(from_lerp, to_lerp);
-		tfxVec4 vec;
-		_mm_store_ps(&vec.x, result);
-		return vec;
-	}
-
-	inline tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat &from, tfxWideFloat &to) {
-		tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
-		tfxWideFloat to_lerp = tfxWideMul(to, tween);
-		tfxWideFloat from_lerp = tfxWideMul(from, one_minus_tween);
-		tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
-		return result;
-	}
-
-	inline float Interpolatef(float tween, float from, float to) {
-		return to * tween + from * (1.f - tween);
-	}
-
 	const float gradX[] =
 	{
 		1,-1, 1,-1,
@@ -3921,31 +3337,6 @@ You can then use layer inside the loop to get the current layer
 	const tfx128 tfxTHIRTYTWO = _mm_set1_ps(32.f);
 	const tfx128i tfxFF = _mm_set1_epi32(0xFF);
 	const tfx128 tfxPSIX = _mm_set_ps1(0.6f);
-
-	static inline float Dot(float x1, float y1, float z1, float x2, float y2, float z2)
-	{
-		return x1 * x2 + y1 * y2 + z1 * z2;
-	}
-
-	static inline float Dot(float x1, float y1, float x2, float y2)
-	{
-		return x1 * x2 + y1 * y2;
-	}
-
-	static inline tfx128 Dot128XYZ(const tfx128 &x1, const tfx128 &y1, const tfx128 &z1, const tfx128 &x2, const tfx128 &y2, const tfx128 &z2)
-	{
-		tfx128 xx = _mm_mul_ps(x1, x2);
-		tfx128 yy = _mm_mul_ps(y1, y2);
-		tfx128 zz = _mm_mul_ps(z1, z2);
-		return _mm_add_ps(xx, _mm_add_ps(yy, zz));
-	}
-
-	static inline tfx128 Dot128XY(const tfx128 &x1, const tfx128 &y1, const tfx128 &x2, const tfx128 &y2)
-	{
-		tfx128 xx = _mm_mul_ps(x1, x2);
-		tfx128 yy = _mm_mul_ps(y1, y2);
-		return _mm_add_ps(xx, yy);
-	}
 
 	static const float tfxGRADIENTS_3D[] =
 	{
@@ -4671,17 +4062,6 @@ You can then use layer inside the loop to get the current layer
 	int VertexForEdge(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, int first, int second);
 	tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, tfxvec<tfxFace> &triangles);
 
-	static inline tfxU32 Millisecs() {
-		auto now = tfxClock::now().time_since_epoch();
-		auto m = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
-		return (tfxU32)m;
-	}
-	static inline uint64_t Microsecs() {
-		auto now = tfxClock::now().time_since_epoch();
-		auto m = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
-		return m;
-	}
-
 	struct tfxProfileStats {
 		tfxU64 cycle_high;
 		tfxU64 cycle_low;
@@ -4721,61 +4101,6 @@ You can then use layer inside the loop to get the current layer
 		}
 
 	};
-
-	inline void GatherStats(tfxProfile *profile, tfxProfileStats *stat) {
-		stat->cycle_high = 0;
-		stat->cycle_low = tfxMAX_64u;
-		stat->time_high = 0;
-		stat->time_low = tfxMAX_64u;
-		stat->hit_count = 0;
-		stat->cycle_average = 0;
-		stat->time_average = 0;
-		for (int i = 0; i != tfxPROFILER_SAMPLES; ++i) {
-			tfxProfileSnapshot *snap = profile->snapshots + i;
-			stat->cycle_high = tfxMax(snap->cycle_count, stat->cycle_high);
-			stat->cycle_low = tfxMin(snap->cycle_count, stat->cycle_low);
-			stat->cycle_average += snap->cycle_count;
-			stat->time_high = tfxMax(snap->run_time, stat->time_high);
-			stat->time_low = tfxMin(snap->run_time, stat->time_low);
-			stat->time_average += snap->run_time;
-			stat->hit_count += snap->hit_count;
-		}
-		stat->cycle_average /= tfxPROFILER_SAMPLES;
-		stat->time_average /= tfxPROFILER_SAMPLES;
-		stat->hit_count /= tfxPROFILER_SAMPLES;
-	}
-
-	inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
-		snapshot->cycle_count = 0;
-		snapshot->hit_count = 0;
-		snapshot->run_time = 0;
-	}
-
-	inline void ResetSnapshots() {
-		for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
-			tfxProfile *profile = tfxProfileArray + i;
-			memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfxProfileSnapshot));
-		}
-	}
-
-	inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>> &profile_snapshots, tfxU32 amount) {
-		for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
-			tfxProfile *profile = tfxProfileArray + i;
-			if (!profile->name) {
-				ResetSnapshot(profile->snapshots + i);
-				continue;
-			}
-			if (!profile_snapshots.ValidName(profile->name)) {
-				tfxvec<tfxProfileSnapshot> snapshots;
-				profile_snapshots.Insert(profile->name, snapshots);
-			}
-			tfxvec<tfxProfileSnapshot> &snapshots = profile_snapshots.At(profile->name);
-			tfxU32 offset = snapshots.current_size;
-			snapshots.resize(snapshots.current_size + tfxPROFILER_SAMPLES);
-			memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfxProfileSnapshot));
-			memset(profile->snapshots, 0, sizeof(tfxProfileSnapshot) * tfxPROFILER_SAMPLES);
-		}
-	}
 
 #ifdef tfxENABLE_PROFILING 
 #define tfxPROFILE tfxProfileTag tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
@@ -4855,78 +4180,6 @@ You can then use layer inside the loop to get the current layer
 
 	struct tfxRandom {
 		tfxU64 seeds[2];
-
-		tfxRandom() {
-			memset(seeds, 0, sizeof(tfxU64) * 2);
-			ReSeed();
-		}
-
-		tfxRandom(tfxU32 seed) {
-			memset(seeds, 0, sizeof(tfxU64) * 2);
-			ReSeed(seed);
-		}
-
-		void ReSeed() {
-			seeds[0] = Millisecs(); seeds[1] = (tfxU64)Millisecs() * 2;
-			Advance();
-		}
-
-		void ReSeed(tfxU64 seed1, tfxU64 seed2) {
-			seeds[0] = seed1;
-			seeds[1] = seed2;
-			Advance();
-		}
-
-		void ReSeed(tfxU64 seed) {
-			seeds[0] = seed;
-			seeds[1] = seed * 2;
-			Advance();
-		}
-
-		inline void Advance() {
-			tfxU64 s1 = seeds[0];
-			tfxU64 s0 = seeds[1];
-			seeds[0] = s0;
-			s1 ^= s1 << 23; // a
-			seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
-		}
-
-		inline float Generate() {
-			tfxU64 s1 = seeds[0];
-			tfxU64 s0 = seeds[1];
-			tfxU64 result = s0 + s1;
-			seeds[0] = s0;
-			s1 ^= s1 << 23; // a
-			seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
-			return float((double)result / TWO64f);
-		}
-
-		inline float Range(float max) {
-			return Generate() * max;
-		};
-
-		inline float Range(float from, float to) {
-			float a = Generate();
-			float range = to - from;
-			return to - range * a;
-		};
-
-		inline int Range(int from, int to) {
-			float a = (to - from) * Generate() - (to - from) * .5f;
-			return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
-		};
-
-		inline tfxU32 Range(tfxU32 max) {
-			float g = Generate();
-			float a = g * (float)max;
-			return tfxU32(a);
-		};
-
-		inline void AlterSeed(tfxU64 amount) {
-			seeds[0] *= amount;
-			seeds[1] += amount;
-		};
-
 	};
 
 	struct tfxGraphLookup {
@@ -5272,9 +4525,6 @@ You can then use layer inside the loop to get the current layer
 		tfxVec3 scale;
 		//Todo: save space and use a quaternion here
 		tfxMatrix4 matrix;
-		tfxEmitterTransform() :
-			matrix(M4())
-		{}
 	};
 
 	//Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -6183,7 +5433,65 @@ You can then use layer inside the loop to get the current layer
 		}
 	}
 
-	tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
+	tfxINTERNAL tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
+
+	//--------------------------------
+	//Profilings
+	//--------------------------------
+	tfxAPI inline void GatherStats(tfxProfile *profile, tfxProfileStats *stat) {
+		stat->cycle_high = 0;
+		stat->cycle_low = tfxMAX_64u;
+		stat->time_high = 0;
+		stat->time_low = tfxMAX_64u;
+		stat->hit_count = 0;
+		stat->cycle_average = 0;
+		stat->time_average = 0;
+		for (int i = 0; i != tfxPROFILER_SAMPLES; ++i) {
+			tfxProfileSnapshot *snap = profile->snapshots + i;
+			stat->cycle_high = tfxMax(snap->cycle_count, stat->cycle_high);
+			stat->cycle_low = tfxMin(snap->cycle_count, stat->cycle_low);
+			stat->cycle_average += snap->cycle_count;
+			stat->time_high = tfxMax(snap->run_time, stat->time_high);
+			stat->time_low = tfxMin(snap->run_time, stat->time_low);
+			stat->time_average += snap->run_time;
+			stat->hit_count += snap->hit_count;
+		}
+		stat->cycle_average /= tfxPROFILER_SAMPLES;
+		stat->time_average /= tfxPROFILER_SAMPLES;
+		stat->hit_count /= tfxPROFILER_SAMPLES;
+	}
+
+	tfxAPI inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
+		snapshot->cycle_count = 0;
+		snapshot->hit_count = 0;
+		snapshot->run_time = 0;
+	}
+
+	tfxAPI inline void ResetSnapshots() {
+		for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
+			tfxProfile *profile = tfxProfileArray + i;
+			memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfxProfileSnapshot));
+		}
+	}
+
+	tfxAPI inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>> &profile_snapshots, tfxU32 amount) {
+		for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
+			tfxProfile *profile = tfxProfileArray + i;
+			if (!profile->name) {
+				ResetSnapshot(profile->snapshots + i);
+				continue;
+			}
+			if (!profile_snapshots.ValidName(profile->name)) {
+				tfxvec<tfxProfileSnapshot> snapshots;
+				profile_snapshots.Insert(profile->name, snapshots);
+			}
+			tfxvec<tfxProfileSnapshot> &snapshots = profile_snapshots.At(profile->name);
+			tfxU32 offset = snapshots.current_size;
+			snapshots.resize(snapshots.current_size + tfxPROFILER_SAMPLES);
+			memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfxProfileSnapshot));
+			memset(profile->snapshots, 0, sizeof(tfxProfileSnapshot) * tfxPROFILER_SAMPLES);
+		}
+	}
 
 	//--------------------------------
 	//Reading/Writing files
@@ -6245,6 +5553,671 @@ You can then use layer inside the loop to get the current layer
 	tfxINTERNAL void AssignNodeData(tfxAttributeNode &node, tfxStack<tfxStr256> &values);
 	tfxINTERNAL tfxVec3 StrToVec3(tfxStack<tfxStr256> &str);
 	tfxINTERNAL tfxVec2 StrToVec2(tfxStack<tfxStr256> &str);
+
+	//--------------------------------
+	//Inline Math functions
+	//--------------------------------
+	tfxINTERNAL inline int SortIcospherePoints(void const *left, void const *right) {
+		float d1 = static_cast<const tfxVec3*>(left)->y;
+		float d2 = static_cast<const tfxVec3*>(right)->y;
+		return (d2 > d1) - (d2 < d1);
+	}
+
+	tfxINTERNAL inline int SortDepth(void const *left, void const *right) {
+		float d1 = static_cast<const tfxDepthIndex*>(left)->depth;
+		float d2 = static_cast<const tfxDepthIndex*>(right)->depth;
+		return (d2 > d1) - (d2 < d1);
+	}
+
+	tfxINTERNAL inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry) {
+		tfxBucketArray<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
+		tfxvec<tfxDepthIndex> &depth_indexes = *static_cast<tfxSortWorkEntry*>(work_entry)->depth_indexes;
+		for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
+			tfxDepthIndex key = depth_indexes[i];
+			int j = i - 1;
+			while (j >= 0 && key.depth > depth_indexes[j].depth) {
+				depth_indexes[j + 1] = depth_indexes[j];
+				bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
+				--j;
+			}
+			depth_indexes[j + 1] = key;
+			bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
+		}
+	}
+
+	tfxINTERNAL inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
+		for (tfxU32 i = 1; i < particles.current_size; ++i) {
+			tfxParticleFrame key = particles[i];
+			int j = i - 1;
+			while (j >= 0 && key.depth > particles[j].depth) {
+				particles[j + 1] = particles[j];
+				--j;
+			}
+			particles[j + 1] = key;
+		}
+	}
+
+	tfxINTERNAL inline float Dot(float x1, float y1, float z1, float x2, float y2, float z2)
+	{
+		return x1 * x2 + y1 * y2 + z1 * z2;
+	}
+
+	tfxINTERNAL inline float Dot(float x1, float y1, float x2, float y2)
+	{
+		return x1 * x2 + y1 * y2;
+	}
+
+	tfxINTERNAL inline tfx128 Dot128XYZ(const tfx128 &x1, const tfx128 &y1, const tfx128 &z1, const tfx128 &x2, const tfx128 &y2, const tfx128 &z2)
+	{
+		tfx128 xx = _mm_mul_ps(x1, x2);
+		tfx128 yy = _mm_mul_ps(y1, y2);
+		tfx128 zz = _mm_mul_ps(z1, z2);
+		return _mm_add_ps(xx, _mm_add_ps(yy, zz));
+	}
+
+	tfxINTERNAL inline tfx128 Dot128XY(const tfx128 &x1, const tfx128 &y1, const tfx128 &x2, const tfx128 &y2)
+	{
+		tfx128 xx = _mm_mul_ps(x1, x2);
+		tfx128 yy = _mm_mul_ps(y1, y2);
+		return _mm_add_ps(xx, yy);
+	}
+
+	static inline tfxVec2 mmTransformVector(const tfxMatrix4 &mat, const tfxVec2 v) {
+		tfxVec2 tv = tfxVec2(0.f, 0.f);
+		tv.x = v.x * mat.v[0].x + v.y * mat.v[1].x;
+		tv.y = v.x * mat.v[0].y + v.y * mat.v[1].y;
+		return tv;
+	}
+
+	inline tfxMatrix4 M4(float v = 1.f) {
+		tfxMatrix4 R =
+		{ {
+			{v, 0, 0, 0},
+			{0, v, 0, 0},
+			{0, 0, v, 0},
+			{0, 0, 0, v}},
+		};
+		return(R);
+	}
+
+	inline tfxMatrix4 M4(tfxVec4 a, tfxVec4 b, tfxVec4 c, tfxVec4 d) {
+		tfxMatrix4 R =
+		{ {
+			{a.x, a.y, a.z, a.w},
+			{b.x, b.y, b.z, b.w},
+			{c.x, c.y, c.z, c.w},
+			{d.x, d.y, d.z, d.w}},
+		};
+		return(R);
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmXRotate(float angle) {
+		float c = std::cos(angle);
+		float s = std::sin(angle);
+		tfxMatrix4 r =
+		{ {
+			{1, 0, 0, 0},
+			{0, c,-s, 0},
+			{0, s, c, 0},
+			{0, 0, 0, 1}},
+		};
+		return r;
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmYRotate(float angle) {
+		float c = std::cos(angle);
+		float s = std::sin(angle);
+		tfxMatrix4 r =
+		{ {
+			{ c, 0, s, 0},
+			{ 0, 1, 0, 0},
+			{-s, 0, c, 0},
+			{ 0, 0, 0, 1}},
+		};
+		return r;
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmZRotate(float angle) {
+		float c = std::cos(angle);
+		float s = std::sin(angle);
+		tfxMatrix4 r =
+		{ {
+			{c, -s, 0, 0},
+			{s,  c, 0, 0},
+			{0,  0, 1, 0},
+			{0,  0, 0, 1}},
+		};
+		return r;
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmTranslate(tfxMatrix4 const &m, tfxVec3 const &v) {
+		tfxMatrix4 result;
+		result.v[3] = m.v[0] * v.x + m.v[1] * v.y + m.v[2] * v.z + m.v[3];
+		return result;
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmScale(tfxMatrix4 const &m, tfxVec3 const &v) {
+		tfxMatrix4 result;
+		result.v[0] = m.v[0] * v.x;
+		result.v[1] = m.v[1] * v.y;
+		result.v[2] = m.v[2] * v.z;
+		result.v[3] = m.v[3];
+		return result;
+	}
+
+	tfxINTERNAL inline tfxMatrix4 Transpose(tfxMatrix4 &mat) {
+		return M4(
+			tfxVec4(mat.v[0].x, mat.v[1].x, mat.v[2].x, mat.v[3].x),
+			tfxVec4(mat.v[0].y, mat.v[1].y, mat.v[2].y, mat.v[3].y),
+			tfxVec4(mat.v[0].z, mat.v[1].z, mat.v[2].z, mat.v[3].z),
+			tfxVec4(mat.v[0].w, mat.v[1].w, mat.v[2].w, mat.v[3].w)
+		);
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, const tfxMatrix4 &m) {
+		tfxMatrix4 r;
+		r.v[0].x = in.v[0].x * m.v[0].x + in.v[0].y * m.v[1].x; r.v[0].y = in.v[0].x * m.v[0].y + in.v[0].y * m.v[1].y;
+		r.v[1].x = in.v[1].x * m.v[0].x + in.v[1].y * m.v[1].x; r.v[1].y = in.v[1].x * m.v[0].y + in.v[1].y * m.v[1].y;
+		return r;
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, const tfxMatrix2 &m) {
+		tfxMatrix4 r;
+		r.v[0].x = in.v[0].x * m.aa + in.v[0].y * m.ba; r.v[0].y = in.v[0].x * m.ab + in.v[0].y * m.bb;
+		r.v[1].x = in.v[1].x * m.aa + in.v[1].y * m.ba; r.v[1].y = in.v[1].x * m.ab + in.v[1].y * m.bb;
+		return r;
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmTransform(const tfxMatrix4 &in, const tfxMatrix4 &m) {
+		tfxMatrix4 res = M4(0.f);
+
+		tfx128 in_row[4];
+		in_row[0] = _mm_load_ps(&in.v[0].x);
+		in_row[1] = _mm_load_ps(&in.v[1].x);
+		in_row[2] = _mm_load_ps(&in.v[2].x);
+		in_row[3] = _mm_load_ps(&in.v[3].x);
+
+		tfx128 m_row1 = _mm_set_ps(m.v[3].x, m.v[2].x, m.v[1].x, m.v[0].x);
+		tfx128 m_row2 = _mm_set_ps(m.v[3].y, m.v[2].y, m.v[1].y, m.v[0].y);
+		tfx128 m_row3 = _mm_set_ps(m.v[3].z, m.v[2].z, m.v[1].z, m.v[0].z);
+		tfx128 m_row4 = _mm_set_ps(m.v[3].w, m.v[2].w, m.v[1].w, m.v[0].w);
+
+		for (int r = 0; r <= 3; ++r)
+		{
+
+			tfx128 row1result = _mm_mul_ps(in_row[r], m_row1);
+			tfx128 row2result = _mm_mul_ps(in_row[r], m_row2);
+			tfx128 row3result = _mm_mul_ps(in_row[r], m_row3);
+			tfx128 row4result = _mm_mul_ps(in_row[r], m_row4);
+
+			float tmp[4];
+			_mm_store_ps(tmp, row1result);
+			res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			_mm_store_ps(tmp, row2result);
+			res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			_mm_store_ps(tmp, row3result);
+			res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+			_mm_store_ps(tmp, row4result);
+			res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+		}
+		return res;
+	}
+
+	tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
+		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
+		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[0].c1)), xr);
+		xr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[0].c2)), xr);
+		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[1].c0));
+		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
+		yr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[1].c2)), yr);
+		tfxWideFloat zr = tfxWideMul(x, tfxWideSetSingle(mat.v[2].c0));
+		zr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[2].c1)), zr);
+		zr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].c2)), zr);
+		x = xr;
+		y = yr;
+		z = zr;
+	}
+
+	tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y) {
+		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
+		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c0)), xr);
+		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c1));
+		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
+		x = xr;
+		y = yr;
+	}
+
+	tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
+		tfxWideFloat xr = tfxWideMul(x, r0c[0]);
+		xr = tfxWideAdd(tfxWideMul(y, r1c[0]), xr);
+		tfxWideFloat yr = tfxWideMul(x, r0c[1]);
+		yr = tfxWideAdd(tfxWideMul(y, r1c[1]), yr);
+		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
+		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
+	}
+
+	tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
+		tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
+		xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c0)), xr);
+		tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c1));
+		yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
+		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
+		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
+	}
+
+	tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
+		tfxWideFloat xr = tfxWideMul(x, r0c[0]);
+		xr = tfxWideAdd(tfxWideMul(y, r0c[1]), xr);
+		xr = tfxWideAdd(tfxWideMul(z, r0c[2]), xr);
+		tfxWideFloat yr = tfxWideMul(x, r1c[0]);
+		yr = tfxWideAdd(tfxWideMul(y, r1c[1]), yr);
+		yr = tfxWideAdd(tfxWideMul(z, r1c[2]), yr);
+		tfxWideFloat zr = tfxWideMul(x, r2c[0]);
+		zr = tfxWideAdd(tfxWideMul(y, r2c[1]), zr);
+		zr = tfxWideAdd(tfxWideMul(z, r2c[2]), zr);
+		x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
+		y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
+		z = tfxWideAdd(tfxWideAnd(z, xor_mask), tfxWideAnd(zr, mask));
+	}
+
+	tfxINTERNAL inline tfxVec4 mmTransformVector(const tfxMatrix4 &mat, const tfxVec4 vec) {
+		tfxVec4 v;
+
+		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+		tfx128 mrow1 = _mm_load_ps(&mat.v[0].c0);
+		tfx128 mrow2 = _mm_load_ps(&mat.v[1].c0);
+		tfx128 mrow3 = _mm_load_ps(&mat.v[2].c0);
+		tfx128 mrow4 = _mm_load_ps(&mat.v[3].c0);
+
+		tfx128 row1result = _mm_mul_ps(v4, mrow1);
+		tfx128 row2result = _mm_mul_ps(v4, mrow2);
+		tfx128 row3result = _mm_mul_ps(v4, mrow3);
+		tfx128 row4result = _mm_mul_ps(v4, mrow4);
+
+		float tmp[4];
+		_mm_store_ps(tmp, row1result);
+		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row2result);
+		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row3result);
+		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row4result);
+		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+		return v;
+	}
+
+	tfxINTERNAL inline tfxVec4 mmTransformVector(const tfx128 &row1, const tfx128 &row2, const tfx128 &row3, const tfx128 &row4, const tfxVec4 vec) {
+		tfxVec4 v;
+
+		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+		tfx128 row1result = _mm_mul_ps(v4, row1);
+		tfx128 row2result = _mm_mul_ps(v4, row2);
+		tfx128 row3result = _mm_mul_ps(v4, row3);
+		tfx128 row4result = _mm_mul_ps(v4, row4);
+
+		float tmp[4];
+		_mm_store_ps(tmp, row1result);
+		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row2result);
+		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row3result);
+		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row4result);
+		v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+		return v;
+	}
+
+	tfxINTERNAL inline tfxVec3 mmTransformVector3(const tfxMatrix4 &mat, const tfxVec4 vec) {
+		tfxVec3 v;
+
+		tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+		tfx128 mrow1 = _mm_load_ps(&mat.v[0].x);
+		tfx128 mrow2 = _mm_load_ps(&mat.v[1].x);
+		tfx128 mrow3 = _mm_load_ps(&mat.v[2].x);
+		tfx128 mrow4 = _mm_load_ps(&mat.v[3].x);
+
+		tfx128 row1result = _mm_mul_ps(v4, mrow1);
+		tfx128 row2result = _mm_mul_ps(v4, mrow2);
+		tfx128 row3result = _mm_mul_ps(v4, mrow3);
+		tfx128 row4result = _mm_mul_ps(v4, mrow4);
+
+		float tmp[4];
+		_mm_store_ps(tmp, row1result);
+		v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row2result);
+		v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row3result);
+		v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+		return v;
+	}
+
+	tfxINTERNAL inline tfxMatrix4 mmRotate(tfxMatrix4 const &m, float r, tfxVec3 const &v) {
+		float const a = r;
+		float const c = cosf(a);
+		float const s = sinf(a);
+
+		tfxVec3 axis = NormalizeVec(v);
+		tfxVec3 temp = axis * (1.f - c);
+
+		tfxMatrix4 rotate;
+		rotate.v[0].x = c + temp.x * axis.x;
+		rotate.v[0].y = temp.x * axis.y + s * axis.z;
+		rotate.v[0].z = temp.x * axis.z - s * axis.y;
+
+		rotate.v[1].x = temp.y * axis.x - s * axis.z;
+		rotate.v[1].y = c + temp.y * axis.y;
+		rotate.v[1].z = temp.y * axis.z + s * axis.x;
+
+		rotate.v[2].x = temp.z * axis.x + s * axis.y;
+		rotate.v[2].y = temp.z * axis.y - s * axis.x;
+		rotate.v[2].z = c + temp.z * axis.z;
+
+		tfxMatrix4 result = M4(1.f);
+		result.v[0] = m.v[0] * rotate.v[0].x + m.v[1] * rotate.v[0].y + m.v[2] * rotate.v[0].z;
+		result.v[1] = m.v[0] * rotate.v[1].x + m.v[1] * rotate.v[1].y + m.v[2] * rotate.v[1].z;
+		result.v[2] = m.v[0] * rotate.v[2].x + m.v[1] * rotate.v[2].y + m.v[2] * rotate.v[2].z;
+		result.v[3] = m.v[3];
+		return result;
+	}
+
+	tfxINTERNAL inline int Clamp(int lower, int upper, int value) {
+		if (value < lower) return lower;
+		if (value > upper) return upper;
+		return value;
+	}
+
+	tfxINTERNAL inline float Clamp(float lower, float upper, float value) {
+		if (value < lower) return lower;
+		if (value > upper) return upper;
+		return value;
+	}
+
+	tfxINTERNAL inline tfxVec3 Clamp(float lower, float upper, tfxVec3 const &v) {
+		tfxVec3 result;
+		result.x = Clamp(lower, upper, v.x);
+		result.y = Clamp(lower, upper, v.y);
+		result.z = Clamp(lower, upper, v.z);
+		return result;
+	}
+
+	tfxINTERNAL inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
+		tfxVec3 converted = v * 511.f;
+		tfxUInt10bit result;
+		result.pack = 0;
+		result.data.x = (tfxU32)converted.z;
+		result.data.y = (tfxU32)converted.y;
+		result.data.z = (tfxU32)converted.x;
+		result.data.w = extra;
+		return result.pack;
+	}
+
+	tfxINTERNAL inline tfxU32 Pack10bitUnsigned(tfxVec3 const &v) {
+		tfxVec3 converted = v * 511.f + 511.f;
+		tfxUInt10bit result;
+		result.pack = 0;
+		result.data.x = (tfxU32)converted.z;
+		result.data.y = (tfxU32)converted.y;
+		result.data.z = (tfxU32)converted.x;
+		result.data.w = 0;
+		return result.pack;
+	}
+
+	tfxINTERNAL inline tfxU32 Pack16bit(float x, float y) {
+		union
+		{
+			signed short in[2];
+			tfxU32 out;
+		} u;
+
+		x = x * 32767.f;
+		y = y * 32767.f;
+
+		u.in[0] = (signed short)x;
+		u.in[1] = (signed short)y;
+
+		return u.out;
+	}
+
+	tfxINTERNAL inline tfxU32 Pack16bitUnsigned(float x, float y) {
+		union
+		{
+			struct {
+				tfxU32 x : 16;
+				tfxU32 y : 16;
+			} data;
+			tfxU32 out;
+		} u;
+
+		x = x * 32767.f + 32767.f;
+		y = y * 32767.f + 32767.f;
+
+		u.data.x = (tfxU32)x;
+		u.data.y = (tfxU32)y;
+
+		return u.out;
+	}
+
+	tfxINTERNAL inline tfxVec2 UnPack16bit(tfxU32 in) {
+		float one_div_32k = 1.f / 32767.f;
+
+		tfxVec2 result;
+		result.x = ((signed short)(in & 0x0000FFFF)) * one_div_32k;
+		result.y = ((signed short)((in & 0xFFFF0000) >> 16)) * one_div_32k;
+
+		return result;
+	}
+
+	tfxINTERNAL inline tfxVec2 UnPack16bitUnsigned(tfxU32 in) {
+		float one_div_32k = 1.f / 32767.f;
+
+		tfxVec2 result;
+		result.x = ((int)(in & 0x0000FFFF) - 32767) * one_div_32k;
+		result.y = ((int)((in & 0xFFFF0000) >> 16) - 32767) * one_div_32k;
+
+		return result;
+	}
+
+	tfxINTERNAL inline tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
+		tfxWideFloat w32k = tfxWideSetSingle(32767.f);
+		tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
+		converted_y = tfxWideAndi(converted_y, bits16);
+		converted_y = tfxWideShiftLeft(converted_y, 16);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
+		converted_x = tfxWideAndi(converted_x, bits16);
+		return tfxWideOri(converted_x, converted_y);
+	}
+
+	tfxINTERNAL inline void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y) {
+		tfxWideInt w32k = tfxWideSetSinglei(32767);
+		x = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x0000FFFF)), w32k));
+		y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0xFFFF0000)), 16), w32k));
+		x = tfxWideMul(x, one_div_32k_wide);
+		y = tfxWideMul(y, one_div_32k_wide);
+	}
+
+	tfxINTERNAL inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
+		tfxWideFloat w511 = tfxWideSetSingle(511.f);
+		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+		converted_x = tfxWideAndi(converted_x, bits10);
+		converted_x = tfxWideShiftLeft(converted_x, 20);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+		converted_y = tfxWideAndi(converted_y, bits10);
+		converted_y = tfxWideShiftLeft(converted_y, 10);
+		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+		converted_z = tfxWideAndi(converted_z, bits10);
+		return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+	}
+
+	tfxINTERNAL inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
+		tfxWideFloat w511 = tfxWideSetSingle(511.f);
+		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+		converted_x = tfxWideAndi(converted_x, bits10);
+		converted_x = tfxWideShiftLeft(converted_x, 20);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+		converted_y = tfxWideAndi(converted_y, bits10);
+		converted_y = tfxWideShiftLeft(converted_y, 10);
+		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+		converted_z = tfxWideAndi(converted_z, bits10);
+		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
+		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+	}
+
+	tfxINTERNAL inline tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
+		tfxWideFloat w511 = tfxWideSetSingle(511.f);
+		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w511), w511));
+		converted_x = tfxWideAndi(converted_x, bits10);
+		converted_x = tfxWideShiftLeft(converted_x, 20);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w511), w511));
+		converted_y = tfxWideAndi(converted_y, bits10);
+		converted_y = tfxWideShiftLeft(converted_y, 10);
+		tfxWideInt converted_z = tfxWideConverti(tfxWideAdd(tfxWideMul(v_z, w511), w511));
+		converted_z = tfxWideAndi(converted_z, bits10);
+		tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
+		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+	}
+
+	tfxINTERNAL inline void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
+		tfxWideInt w511 = tfxWideSetSinglei(511);
+		x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
+		y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
+		z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
+		x = tfxWideMul(x, one_div_511_wide);
+		y = tfxWideMul(y, one_div_511_wide);
+		z = tfxWideMul(z, one_div_511_wide);
+	}
+
+	tfxINTERNAL inline tfxWideFloat UnPackWide10bitY(tfxWideInt in) {
+		return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide);
+	}
+
+	tfxINTERNAL inline tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a) {
+		tfxWideInt color = tfxWideShiftLeft(tfxWideConverti(v_a), 24);
+		color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_b), 16));
+		color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_g), 8));
+		color = tfxWideAddi(color, tfxWideConverti(v_r));
+		return color;
+	}
+
+	tfxINTERNAL inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra) {
+		tfxWideFloat w511 = tfxWideSetSingle(511.f);
+		tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+		tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+		converted_x = tfxWideAndi(converted_x, bits10);
+		converted_x = tfxWideShiftLeft(converted_x, 20);
+		tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+		converted_y = tfxWideAndi(converted_y, bits10);
+		converted_y = tfxWideShiftLeft(converted_y, 10);
+		tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+		converted_z = tfxWideAndi(converted_z, bits10);
+		tfxWideInt extra_bits = tfxWideShiftLeft(extra, 30);
+		return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+	}
+
+	tfxINTERNAL inline tfxVec4 UnPack10bit(tfxU32 in) {
+		tfxUInt10bit unpack;
+		unpack.pack = in;
+		int test = unpack.data.y;
+		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
+		result = result * tfxVec3(one_div_511, one_div_511, one_div_511);
+		return tfxVec4(result, (float)unpack.data.w);
+	}
+
+	tfxINTERNAL inline tfxVec3 UnPack10bitVec3(tfxU32 in) {
+		tfxUInt10bit unpack;
+		unpack.pack = in;
+		tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
+		return result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
+	}
+
+	tfxINTERNAL inline tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
+		return ((in >> 30) & 0x3);
+	}
+
+	tfxINTERNAL inline size_t ClampStringSize(size_t compare, size_t string_size) {
+		return compare < string_size ? compare : string_size;
+	}
+
+	tfxINTERNAL inline float Distance(float fromx, float fromy, float tox, float toy) {
+
+		float w = tox - fromx;
+		float h = toy - fromy;
+
+		return std::sqrt(w * w + h * h);
+
+	}
+
+	tfxINTERNAL inline tfxUInt10bit UintToPacked10bit(tfxU32 in) {
+		tfxUInt10bit out;
+		out.data.x = (in & 0x3FF);
+		out.data.y = ((in >> 10) & 0x3FF);
+		out.data.z = ((in >> 20) & 0x3FF);
+		out.data.w = ((in >> 30) & 0x3);
+		return out;
+	}
+
+	tfxINTERNAL inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
+		return to * tween + from * (1.f - tween);
+	}
+
+	tfxINTERNAL inline tfxVec3 InterpolateVec3(float tween, tfxVec3 from, tfxVec3 to) {
+		return to * tween + from * (1.f - tween);
+	}
+
+	tfxINTERNAL inline tfxRGBA8 InterpolateRGBA(float tween, tfxRGBA8 from, tfxRGBA8 to) {
+		tfxRGBA8 out;
+		out.r = char((float)to.r * tween + (float)from.r * (1 - tween));
+		out.g = char((float)to.g * tween + (float)from.g * (1 - tween));
+		out.b = char((float)to.b * tween + (float)from.b * (1 - tween));
+		out.a = char((float)to.a * tween + (float)from.a * (1 - tween));
+		return out;
+	}
+
+	tfxINTERNAL inline float GammaCorrect(float color, float gamma = tfxGAMMA) {
+		return powf(color, gamma);
+	}
+
+	tfxINTERNAL inline tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to) {
+		tfxVec3 fromf = UnPack10bitVec3(from);
+		tfxVec3 tof = UnPack10bitVec3(to);
+		return Pack10bit(InterpolateVec3(tween, fromf, tof), (from >> 30) & 0x3);
+	}
+
+	tfxINTERNAL inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &to) {
+		tfx128 l4 = _mm_set_ps1(tween);
+		tfx128 l4minus1 = _mm_set_ps1(1.f - tween);
+		tfx128 f4 = _mm_set_ps(from.x, from.y, from.z, from.w);
+		tfx128 t4 = _mm_set_ps(to.x, to.y, to.z, to.w);
+		tfx128 from_lerp = _mm_mul_ps(f4, l4);
+		tfx128 to_lerp = _mm_mul_ps(f4, l4minus1);
+		tfx128 result = _mm_add_ps(from_lerp, to_lerp);
+		tfxVec4 vec;
+		_mm_store_ps(&vec.x, result);
+		return vec;
+	}
+
+	tfxINTERNAL inline tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat &from, tfxWideFloat &to) {
+		tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
+		tfxWideFloat to_lerp = tfxWideMul(to, tween);
+		tfxWideFloat from_lerp = tfxWideMul(from, one_minus_tween);
+		tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
+		return result;
+	}
+
+	tfxINTERNAL inline float Interpolatef(float tween, float from, float to) {
+		return to * tween + from * (1.f - tween);
+	}
+
 	tfxINTERNAL inline void Transform2d(tfxVec3 &out_rotations, tfxVec3 &out_local_rotations, tfxVec3 &out_scale, tfxVec3 &out_position, tfxVec3 &out_local_position, tfxVec3 &out_translation, tfxMatrix4 &out_matrix, const tfxVec3 &in_rotations, const tfxVec3 &in_scale, const tfxVec3 &in_position, const tfxMatrix4 &in_matrix) {
 		float s = sin(out_local_rotations.roll);
 		float c = cos(out_local_rotations.roll);
@@ -6327,50 +6300,77 @@ You can then use layer inside the loop to get the current layer
 		tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
+
 	tfxINTERNAL inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
 		tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
 		world_position = from_position + rotatevec.xyz() * scale;
 	}
 
-	tfxINTERNAL inline int SortIcospherePoints(void const *left, void const *right) {
-		float d1 = static_cast<const tfxVec3*>(left)->y;
-		float d2 = static_cast<const tfxVec3*>(right)->y;
-		return (d2 > d1) - (d2 < d1);
+	//--------------------------------
+	//Random numbers
+	//--------------------------------
+	tfxRandom NewRandom(tfxU32 seed);
+
+	tfxINTERNAL inline void AdvanceRandom(tfxRandom *random) {
+		tfxU64 s1 = random->seeds[0];
+		tfxU64 s0 = random->seeds[1];
+		random->seeds[0] = s0;
+		s1 ^= s1 << 23; // a
+		random->seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
 	}
 
-	tfxINTERNAL inline int SortDepth(void const *left, void const *right) {
-		float d1 = static_cast<const tfxDepthIndex*>(left)->depth;
-		float d2 = static_cast<const tfxDepthIndex*>(right)->depth;
-		return (d2 > d1) - (d2 < d1);
+	tfxINTERNAL inline void RandomReSeed(tfxRandom *random) {
+		random->seeds[0] = Millisecs(); random->seeds[1] = (tfxU64)Millisecs() * 2;
+		AdvanceRandom(random);
 	}
 
-	tfxINTERNAL inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry) {
-		tfxBucketArray<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
-		tfxvec<tfxDepthIndex> &depth_indexes = *static_cast<tfxSortWorkEntry*>(work_entry)->depth_indexes;
-		for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
-			tfxDepthIndex key = depth_indexes[i];
-			int j = i - 1;
-			while (j >= 0 && key.depth > depth_indexes[j].depth) {
-				depth_indexes[j + 1] = depth_indexes[j];
-				bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
-				--j;
-			}
-			depth_indexes[j + 1] = key;
-			bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
-		}
+	tfxINTERNAL inline void RandomReSeed(tfxRandom *random, tfxU64 seed1, tfxU64 seed2) {
+		random->seeds[0] = seed1;
+		random->seeds[1] = seed2;
+		AdvanceRandom(random);
 	}
 
-	tfxINTERNAL inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
-		for (tfxU32 i = 1; i < particles.current_size; ++i) {
-			tfxParticleFrame key = particles[i];
-			int j = i - 1;
-			while (j >= 0 && key.depth > particles[j].depth) {
-				particles[j + 1] = particles[j];
-				--j;
-			}
-			particles[j + 1] = key;
-		}
+	tfxINTERNAL inline void RandomReSeed(tfxRandom *random, tfxU64 seed) {
+		random->seeds[0] = seed;
+		random->seeds[1] = seed * 2;
+		AdvanceRandom(random);
 	}
+
+	tfxINTERNAL inline float GenerateRandom(tfxRandom *random) {
+		tfxU64 s1 = random->seeds[0];
+		tfxU64 s0 = random->seeds[1];
+		tfxU64 result = s0 + s1;
+		random->seeds[0] = s0;
+		s1 ^= s1 << 23; // a
+		random->seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+		return float((double)result / TWO64f);
+	}
+
+	tfxINTERNAL inline float RandomRange(tfxRandom *random, float max) {
+		return GenerateRandom(random) * max;
+	};
+
+	tfxINTERNAL inline float RandomRange(tfxRandom *random, float from, float to) {
+		float a = GenerateRandom(random);
+		float range = to - from;
+		return to - range * a;
+	};
+
+	tfxINTERNAL inline int RandomRange(tfxRandom *random, int from, int to) {
+		float a = (to - from) * GenerateRandom(random) - (to - from) * .5f;
+		return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
+	};
+
+	tfxINTERNAL inline tfxU32 RandomRange(tfxRandom *random, tfxU32 max) {
+		float g = GenerateRandom(random);
+		float a = g * (float)max;
+		return tfxU32(a);
+	};
+
+	tfxINTERNAL inline void AlterRandomSeed(tfxRandom *random, tfxU64 amount) {
+		random->seeds[0] *= amount;
+		random->seeds[1] += amount;
+	};
 
 	//--------------------------------
 	//Particle manager internal functions
@@ -6493,8 +6493,8 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI_EDITOR tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
 	tfxAPI_EDITOR float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
 	tfxAPI_EDITOR float GetDistance(float fromx, float fromy, float tox, float toy);
-	tfxAPI_EDITOR inline float GetVectorAngle(float x, float y) { return atan2f(x, -y); }
-	tfxAPI_EDITOR static bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
+	tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2f(x, -y); }
+	tfxAPI_EDITOR bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
 	tfxAPI_EDITOR void CompileGraph(tfxGraph &graph);
 	tfxAPI_EDITOR void CompileGraphOvertime(tfxGraph &graph);
 	tfxAPI_EDITOR void CompileColorOvertime(tfxGraph &graph, float gamma = tfxGAMMA);
@@ -6937,7 +6937,7 @@ You can then use layer inside the loop to get the current layer
 	* @param seed						An unsigned int representing the seed (Any value other then 0)
 	*/
 	tfxAPI inline void SetSeed(tfxParticleManager *pm, tfxU64 seed) {
-		pm->random.ReSeed(seed == 0 ? tfxMAX_UINT : seed);
+		RandomReSeed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
 	}
 
 	/*
