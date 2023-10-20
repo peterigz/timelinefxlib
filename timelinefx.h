@@ -511,28 +511,6 @@ You can then use layer inside the loop to get the current layer
 		tfxGraphMaxIndex,
 	};
 
-	inline bool IsGraphTransformRotation(tfxGraphType type) {
-		return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
-	}
-
-	inline bool IsGraphEmitterDimension(tfxGraphType type) {
-		return type == tfxProperty_emitter_width || type == tfxProperty_emitter_height || type == tfxProperty_emitter_depth;
-	}
-
-	inline bool IsGraphTranslation(tfxGraphType type) {
-		return type == tfxTransform_translate_x || type == tfxTransform_translate_y || type == tfxTransform_translate_z;
-	}
-
-	inline bool IsGraphEmission(tfxGraphType type) {
-		return type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw;
-	}
-
-	inline bool IsGraphParticleSize(tfxGraphType type) {
-		return	type == tfxBase_width || type == tfxBase_height ||
-			type == tfxVariation_width || type == tfxVariation_height ||
-			type == tfxOvertime_width || type == tfxOvertime_height;
-	}
-
 	//tfxEffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 	enum tfxEffectEmitterType : unsigned char {
 		tfxEffectType,
@@ -6446,6 +6424,28 @@ You can then use layer inside the loop to get the current layer
 	tfxAPI_EDITOR bool IsNodeCurve(tfxAttributeNode *node);
 	tfxAPI_EDITOR bool NodeCurvesAreInitialised(tfxAttributeNode *node);
 	tfxAPI_EDITOR bool SetNodeCurveInitialised(tfxAttributeNode *node);
+
+	tfxINTERNAL inline bool IsGraphTransformRotation(tfxGraphType type) {
+		return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
+	}
+
+	tfxINTERNAL inline bool IsGraphEmitterDimension(tfxGraphType type) {
+		return type == tfxProperty_emitter_width || type == tfxProperty_emitter_height || type == tfxProperty_emitter_depth;
+	}
+
+	tfxINTERNAL inline bool IsGraphTranslation(tfxGraphType type) {
+		return type == tfxTransform_translate_x || type == tfxTransform_translate_y || type == tfxTransform_translate_z;
+	}
+
+	tfxINTERNAL inline bool IsGraphEmission(tfxGraphType type) {
+		return type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw;
+	}
+
+	tfxINTERNAL inline bool IsGraphParticleSize(tfxGraphType type) {
+		return	type == tfxBase_width || type == tfxBase_height ||
+			type == tfxVariation_width || type == tfxVariation_height ||
+			type == tfxOvertime_width || type == tfxOvertime_height;
+	}
 
 	//--------------------------------
 	//Grouped graph struct functions
