@@ -2600,14 +2600,14 @@ You can then use layer inside the loop to get the current layer
 
 	extern tfxQueueProcessor tfxThreadQueues;
 
-	inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
+	tfxINTERNAL inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
 		queues->count = 0;
 		queues->empty_semaphore = CreateSemaphoreEx(0, tfxMAX_QUEUES, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
 		queues->full_semaphore = CreateSemaphoreEx(0, 0, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
 		memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void*));
 	}
 
-	inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
+	tfxINTERNAL inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
 		WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
 		std::unique_lock<std::mutex> lock(thread_processor->mutex);
 		tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
@@ -2615,14 +2615,14 @@ You can then use layer inside the loop to get the current layer
 		return queue;
 	}
 
-	inline void tfxPushQueueWork(tfxQueueProcessor *thread_processor, tfxWorkQueue *queue) {
+	tfxINTERNAL inline void tfxPushQueueWork(tfxQueueProcessor *thread_processor, tfxWorkQueue *queue) {
 		WaitForSingleObject(thread_processor->empty_semaphore, INFINITE);
 		std::unique_lock<std::mutex> lock(thread_processor->mutex);
 		thread_processor->queues[thread_processor->count++] = queue;
 		ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
 	}
 
-	inline void tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
+	tfxINTERNAL inline void tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
 		tfxWorkQueue *queue = tfxGetQueueWithWork(queue_processor);
 
 		if (queue) {
@@ -2640,7 +2640,7 @@ You can then use layer inside the loop to get the current layer
 		}
 	}
 
-	inline void tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
+	tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
 		tfxU32 original_read_entry = queue->next_read_entry;
 		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 
@@ -2654,7 +2654,7 @@ You can then use layer inside the loop to get the current layer
 		}
 	}
 
-	inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+	tfxINTERNAL inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
 		assert(tfxNumberOfThreadsInAdditionToMain > 0);		//This should never be called if there is only a main thread
 
 		tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
@@ -2673,7 +2673,7 @@ You can then use layer inside the loop to get the current layer
 
 	}
 
-	inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
+	tfxINTERNAL inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
 
 		tfxQueueProcessor *thread_processor = (tfxQueueProcessor*)lpParameter;
 
@@ -2683,7 +2683,7 @@ You can then use layer inside the loop to get the current layer
 
 	}
 
-	inline void tfxCompleteAllWork(tfxWorkQueue *queue) {
+	tfxINTERNAL inline void tfxCompleteAllWork(tfxWorkQueue *queue) {
 		tfxWorkQueueEntry entry = {};
 		while (queue->entry_completion_goal != queue->entry_completion_count) {
 			tfxDoNextWorkQueueEntry(queue);
@@ -2692,14 +2692,14 @@ You can then use layer inside the loop to get the current layer
 		queue->entry_completion_goal = 0;
 	}
 
-	inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue) {
+	tfxINTERNAL inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue) {
 		queue->entry_completion_count = 0;
 		queue->entry_completion_goal = 0;
 		queue->next_read_entry = 0;
 		queue->next_write_entry = 0;
 	}
 
-	inline bool tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
+	tfxINTERNAL inline bool tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
 		InitialiseThreadQueues(&tfxThreadQueues);
 
 		//todo: create a function to close all the threads 
@@ -2983,209 +2983,6 @@ You can then use layer inside the loop to get the current layer
 		tfxRGBA(tfxRGBA8 c) : r((float)c.r * one_div_255), g((float)c.g * one_div_255), b((float)c.b * one_div_255), a((float)c.a * one_div_255) { }
 	};
 
-	inline tfxHSV RGBtoHSV(tfxRGB in)
-	{
-		tfxHSV      out;
-		float      min, max, delta;
-
-		min = in.r < in.g ? in.r : in.g;
-		min = min < in.b ? min : in.b;
-
-		max = in.r > in.g ? in.r : in.g;
-		max = max > in.b ? max : in.b;
-
-		out.v = max;                                // v
-		delta = max - min;
-		if (delta < 0.00001f)
-		{
-			out.s = 0;
-			out.h = 0; // undefined, maybe nan?
-			return out;
-		}
-		if (max > 0.0f) { // NOTE: if Max is == 0, this divide would cause a crash
-			out.s = (delta / max);                  // s
-		}
-		else {
-			// if max is 0, then r = g = b = 0              
-			// s = 0, h is undefined
-			out.s = 0.0f;
-			out.h = NAN;                            // its now undefined
-			return out;
-		}
-		if (in.r >= max)                           // > is bogus, just keeps compilor happy
-			out.h = (in.g - in.b) / delta;        // between yellow & magenta
-		else
-			if (in.g >= max)
-				out.h = 2.0f + (in.b - in.r) / delta;  // between cyan & yellow
-			else
-				out.h = 4.0f + (in.r - in.g) / delta;  // between magenta & cyan
-
-		out.h *= 60.0f;                              // degrees
-
-		if (out.h < 0.0f)
-			out.h += 360.0f;
-
-		return out;
-	}
-
-
-	inline tfxRGB HSVtoRGB(tfxHSV in)
-	{
-		float      hh, p, q, t, ff;
-		long        i;
-		tfxRGB      out;
-
-		if (in.s <= 0.0f) {       // < is bogus, just shuts up warnings
-			out.r = in.v;
-			out.g = in.v;
-			out.b = in.v;
-			return out;
-		}
-		hh = in.h;
-		if (hh >= 360.0f) hh = 0.0f;
-		hh /= 60.0f;
-		i = (long)hh;
-		ff = hh - i;
-		p = in.v * (1.0f - in.s);
-		q = in.v * (1.0f - (in.s * ff));
-		t = in.v * (1.0f - (in.s * (1.0f - ff)));
-
-		switch (i) {
-		case 0:
-			out.r = in.v;
-			out.g = t;
-			out.b = p;
-			break;
-		case 1:
-			out.r = q;
-			out.g = in.v;
-			out.b = p;
-			break;
-		case 2:
-			out.r = p;
-			out.g = in.v;
-			out.b = t;
-			break;
-
-		case 3:
-			out.r = p;
-			out.g = q;
-			out.b = in.v;
-			break;
-		case 4:
-			out.r = t;
-			out.g = p;
-			out.b = in.v;
-			break;
-		case 5:
-		default:
-			out.r = in.v;
-			out.g = p;
-			out.b = q;
-			break;
-		}
-		return out;
-	}
-
-	static inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
-	static inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
-	static inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
-	static inline void tfxBound3d(tfxVec3 s, tfxVec3 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
-
-	static inline float LengthVec3NoSqR(tfxVec3 const &v) {
-		return v.x * v.x + v.y * v.y + v.z * v.z;
-	}
-
-	static inline float LengthVec(tfxVec3 const &v) {
-		return sqrtf(LengthVec3NoSqR(v));
-	}
-
-	static inline float HasLength(tfxVec3 const &v) {
-		return (v.x == 0 && v.y == 0 && v.z == 0) ? 0.f : 1.f;
-	}
-
-	static inline tfxVec3 NormalizeVec(tfxVec3 const &v) {
-		if (v.x == 0 && v.y == 0 && v.z == 0) return tfxVec3(1.f, 0.f, 0.f);
-		float length = LengthVec(v);
-		return tfxVec3(v.x / length, v.y / length, v.z / length);
-	}
-
-	static inline tfxVec3 NormalizeVec(tfxVec3 const &v, float &length) {
-		if (length == 0) return tfxVec3();
-		return tfxVec3(v.x / length, v.y / length, v.z / length);
-	}
-
-	static inline tfxVec3 Cross(tfxVec3 a, tfxVec3 b) {
-		tfxVec3 result;
-
-		result.x = a.y*b.z - a.z*b.y;
-		result.y = a.z*b.x - a.x*b.z;
-		result.z = a.x*b.y - a.y*b.x;
-
-		return(result);
-	}
-
-	static inline float DotProduct(const tfxVec3 &a, const tfxVec3 &b)
-	{
-		return (a.x * b.x + a.y * b.y + a.z * b.z);
-	}
-
-	static inline float DotProduct(const tfxVec2 &a, const tfxVec2 &b)
-	{
-		return (a.x * b.x + a.y * b.y);
-	}
-
-	//Quake 3 inverse square root
-	static inline float tfxSqrt(float number)
-	{
-		long i;
-		float x2, y;
-		const float threehalfs = 1.5F;
-
-		x2 = number * 0.5F;
-		y = number;
-		i = *(long *)&y;                       // evil floating point bit level hacking
-		i = 0x5f3759df - (i >> 1);             // what the fuck? 
-		y = *(float *)&i;
-		y = y * (threehalfs - (x2 * y * y));   // 1st iteration
-
-		return y;
-	}
-
-	inline tfxU32 GetLayerFromID(tfxU32 index) {
-		return (index & 0xF0000000) >> 28;
-	}
-
-	inline tfxU32 GetIndexFromID(tfxU32 index) {
-		return index & 0x0FFFFFFF;
-	}
-
-	inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
-		assert(nibble < 16);
-		return (nibble << 28) + index;
-	}
-
-	static inline float FastLength(tfxVec2 const &v) {
-		return 1.f / tfxSqrt(DotProduct(v, v));
-	}
-
-	static inline float FastLength(tfxVec3 const &v) {
-		return 1.f / tfxSqrt(DotProduct(v, v));
-	}
-
-	static inline tfxVec3 FastNormalizeVec(tfxVec3 const &v) {
-		return v * tfxSqrt(DotProduct(v, v));
-	}
-
-	static inline tfxVec2 NormalizeVec(tfxVec2 const &v) {
-		float length = FastLength(v);
-		return tfxVec2(v.x / length, v.y / length);
-	}
-
-	static inline tfxVec2 NormalizeVec(tfxVec2 const &v, const float length) {
-		return tfxVec2(v.x / length, v.y / length);
-	}
-
 	struct tfxMatrix4 {
 
 		tfxVec4 v[4];
@@ -3216,42 +3013,6 @@ You can then use layer inside the loop to get the current layer
 		}
 
 	};
-
-	inline tfxMatrix3 M3(float v = 1.f) {
-		tfxMatrix3 R =
-		{ {
-			{v, 0, 0},
-			{0, v, 0},
-			{0, 0, v}},
-		};
-		return(R);
-	}
-
-	static inline tfxMatrix3 mmTranslate(tfxMatrix3 const &m, tfxVec3 const &v) {
-		tfxMatrix3 result;
-		result.v[2] = m.v[0] * v.x + m.v[1] * v.y + m.v[2];
-		return result;
-	}
-
-	static inline tfxMatrix3 mmRotate(tfxMatrix3 const &m, float r) {
-		float const a = r;
-		float const c = cosf(a);
-		float const s = sinf(a);
-
-		tfxMatrix3 result;
-		result.v[0] = m.v[0] * c + m.v[1] * s;
-		result.v[1] = m.v[0] * -s + m.v[1] * c;
-		result.v[2] = m.v[2];
-		return result;
-	}
-
-	static inline tfxMatrix3 mmScale(tfxMatrix3 const &m, tfxVec2 const &v) {
-		tfxMatrix3 result;
-		result.v[0] = m.v[0] * v.x;
-		result.v[1] = m.v[1] * v.y;
-		result.v[2] = m.v[2];
-		return result;
-	}
 
 	//Very simple 2D Matix
 	struct tfxMatrix2 {
@@ -5622,14 +5383,253 @@ You can then use layer inside the loop to get the current layer
 		return _mm_add_ps(xx, yy);
 	}
 
-	static inline tfxVec2 mmTransformVector(const tfxMatrix4 &mat, const tfxVec2 v) {
+	tfxINTERNAL inline tfxHSV RGBtoHSV(tfxRGB in)
+	{
+		tfxHSV      out;
+		float      min, max, delta;
+
+		min = in.r < in.g ? in.r : in.g;
+		min = min < in.b ? min : in.b;
+
+		max = in.r > in.g ? in.r : in.g;
+		max = max > in.b ? max : in.b;
+
+		out.v = max;                                // v
+		delta = max - min;
+		if (delta < 0.00001f)
+		{
+			out.s = 0;
+			out.h = 0; // undefined, maybe nan?
+			return out;
+		}
+		if (max > 0.0f) { // NOTE: if Max is == 0, this divide would cause a crash
+			out.s = (delta / max);                  // s
+		}
+		else {
+			// if max is 0, then r = g = b = 0              
+			// s = 0, h is undefined
+			out.s = 0.0f;
+			out.h = NAN;                            // its now undefined
+			return out;
+		}
+		if (in.r >= max)                           // > is bogus, just keeps compilor happy
+			out.h = (in.g - in.b) / delta;        // between yellow & magenta
+		else
+			if (in.g >= max)
+				out.h = 2.0f + (in.b - in.r) / delta;  // between cyan & yellow
+			else
+				out.h = 4.0f + (in.r - in.g) / delta;  // between magenta & cyan
+
+		out.h *= 60.0f;                              // degrees
+
+		if (out.h < 0.0f)
+			out.h += 360.0f;
+
+		return out;
+	}
+
+
+	tfxINTERNAL inline tfxRGB HSVtoRGB(tfxHSV in)
+	{
+		float      hh, p, q, t, ff;
+		long        i;
+		tfxRGB      out;
+
+		if (in.s <= 0.0f) {       // < is bogus, just shuts up warnings
+			out.r = in.v;
+			out.g = in.v;
+			out.b = in.v;
+			return out;
+		}
+		hh = in.h;
+		if (hh >= 360.0f) hh = 0.0f;
+		hh /= 60.0f;
+		i = (long)hh;
+		ff = hh - i;
+		p = in.v * (1.0f - in.s);
+		q = in.v * (1.0f - (in.s * ff));
+		t = in.v * (1.0f - (in.s * (1.0f - ff)));
+
+		switch (i) {
+		case 0:
+			out.r = in.v;
+			out.g = t;
+			out.b = p;
+			break;
+		case 1:
+			out.r = q;
+			out.g = in.v;
+			out.b = p;
+			break;
+		case 2:
+			out.r = p;
+			out.g = in.v;
+			out.b = t;
+			break;
+
+		case 3:
+			out.r = p;
+			out.g = q;
+			out.b = in.v;
+			break;
+		case 4:
+			out.r = t;
+			out.g = p;
+			out.b = in.v;
+			break;
+		case 5:
+		default:
+			out.r = in.v;
+			out.g = p;
+			out.b = q;
+			break;
+		}
+		return out;
+	}
+
+	tfxINTERNAL inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
+	tfxINTERNAL inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
+	tfxINTERNAL inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
+	tfxINTERNAL inline void tfxBound3d(tfxVec3 s, tfxVec3 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
+
+	tfxINTERNAL inline float LengthVec3NoSqR(tfxVec3 const &v) {
+		return v.x * v.x + v.y * v.y + v.z * v.z;
+	}
+
+	tfxINTERNAL inline float LengthVec(tfxVec3 const &v) {
+		return sqrtf(LengthVec3NoSqR(v));
+	}
+
+	tfxINTERNAL inline float HasLength(tfxVec3 const &v) {
+		return (v.x == 0 && v.y == 0 && v.z == 0) ? 0.f : 1.f;
+	}
+
+	tfxINTERNAL inline tfxVec3 NormalizeVec(tfxVec3 const &v) {
+		if (v.x == 0 && v.y == 0 && v.z == 0) return tfxVec3(1.f, 0.f, 0.f);
+		float length = LengthVec(v);
+		return tfxVec3(v.x / length, v.y / length, v.z / length);
+	}
+
+	tfxINTERNAL inline tfxVec3 NormalizeVec(tfxVec3 const &v, float &length) {
+		if (length == 0) return tfxVec3();
+		return tfxVec3(v.x / length, v.y / length, v.z / length);
+	}
+
+	tfxINTERNAL inline tfxVec3 Cross(tfxVec3 a, tfxVec3 b) {
+		tfxVec3 result;
+
+		result.x = a.y*b.z - a.z*b.y;
+		result.y = a.z*b.x - a.x*b.z;
+		result.z = a.x*b.y - a.y*b.x;
+
+		return(result);
+	}
+
+	tfxINTERNAL inline float DotProduct(const tfxVec3 &a, const tfxVec3 &b)
+	{
+		return (a.x * b.x + a.y * b.y + a.z * b.z);
+	}
+
+	tfxINTERNAL inline float DotProduct(const tfxVec2 &a, const tfxVec2 &b)
+	{
+		return (a.x * b.x + a.y * b.y);
+	}
+
+	//Quake 3 inverse square root
+	tfxINTERNAL inline float tfxSqrt(float number)
+	{
+		long i;
+		float x2, y;
+		const float threehalfs = 1.5F;
+
+		x2 = number * 0.5F;
+		y = number;
+		i = *(long *)&y;                       // evil floating point bit level hacking
+		i = 0x5f3759df - (i >> 1);             // what the fuck? 
+		y = *(float *)&i;
+		y = y * (threehalfs - (x2 * y * y));   // 1st iteration
+
+		return y;
+	}
+
+	tfxINTERNAL inline tfxU32 GetLayerFromID(tfxU32 index) {
+		return (index & 0xF0000000) >> 28;
+	}
+
+	tfxINTERNAL inline tfxU32 GetIndexFromID(tfxU32 index) {
+		return index & 0x0FFFFFFF;
+	}
+
+	tfxINTERNAL inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
+		assert(nibble < 16);
+		return (nibble << 28) + index;
+	}
+
+	tfxINTERNAL inline float FastLength(tfxVec2 const &v) {
+		return 1.f / tfxSqrt(DotProduct(v, v));
+	}
+
+	tfxINTERNAL inline float FastLength(tfxVec3 const &v) {
+		return 1.f / tfxSqrt(DotProduct(v, v));
+	}
+
+	tfxINTERNAL inline tfxVec3 FastNormalizeVec(tfxVec3 const &v) {
+		return v * tfxSqrt(DotProduct(v, v));
+	}
+
+	tfxINTERNAL inline tfxVec2 NormalizeVec(tfxVec2 const &v) {
+		float length = FastLength(v);
+		return tfxVec2(v.x / length, v.y / length);
+	}
+
+	tfxINTERNAL inline tfxVec2 NormalizeVec(tfxVec2 const &v, const float length) {
+		return tfxVec2(v.x / length, v.y / length);
+	}
+
+	tfxINTERNAL inline tfxMatrix3 M3(float v = 1.f) {
+		tfxMatrix3 R =
+		{ {
+			{v, 0, 0},
+			{0, v, 0},
+			{0, 0, v}},
+		};
+		return(R);
+	}
+
+	tfxINTERNAL inline tfxMatrix3 mmTranslate(tfxMatrix3 const &m, tfxVec3 const &v) {
+		tfxMatrix3 result;
+		result.v[2] = m.v[0] * v.x + m.v[1] * v.y + m.v[2];
+		return result;
+	}
+
+	tfxINTERNAL inline tfxMatrix3 mmRotate(tfxMatrix3 const &m, float r) {
+		float const a = r;
+		float const c = cosf(a);
+		float const s = sinf(a);
+
+		tfxMatrix3 result;
+		result.v[0] = m.v[0] * c + m.v[1] * s;
+		result.v[1] = m.v[0] * -s + m.v[1] * c;
+		result.v[2] = m.v[2];
+		return result;
+	}
+
+	tfxINTERNAL inline tfxMatrix3 mmScale(tfxMatrix3 const &m, tfxVec2 const &v) {
+		tfxMatrix3 result;
+		result.v[0] = m.v[0] * v.x;
+		result.v[1] = m.v[1] * v.y;
+		result.v[2] = m.v[2];
+		return result;
+	}
+
+	tfxINTERNAL inline tfxVec2 mmTransformVector(const tfxMatrix4 &mat, const tfxVec2 v) {
 		tfxVec2 tv = tfxVec2(0.f, 0.f);
 		tv.x = v.x * mat.v[0].x + v.y * mat.v[1].x;
 		tv.y = v.x * mat.v[0].y + v.y * mat.v[1].y;
 		return tv;
 	}
 
-	inline tfxMatrix4 M4(float v = 1.f) {
+	tfxINTERNAL inline tfxMatrix4 M4(float v = 1.f) {
 		tfxMatrix4 R =
 		{ {
 			{v, 0, 0, 0},
@@ -5640,7 +5640,7 @@ You can then use layer inside the loop to get the current layer
 		return(R);
 	}
 
-	inline tfxMatrix4 M4(tfxVec4 a, tfxVec4 b, tfxVec4 c, tfxVec4 d) {
+	tfxINTERNAL inline tfxMatrix4 M4(tfxVec4 a, tfxVec4 b, tfxVec4 c, tfxVec4 d) {
 		tfxMatrix4 R =
 		{ {
 			{a.x, a.y, a.z, a.w},
