@@ -1,6 +1,5 @@
+#define TFX_ALLOCATOR_IMPLEMENTATION
 #include "timelinefx.h"
-
-namespace tfx {
 
 #ifdef _WIN32
 	FILE *tfx__open_file(const char *file_name, const char *mode) {
@@ -25,7 +24,7 @@ namespace tfx {
 #endif
 
 	//A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfx128Array tfxNoise4(const tfx128 x4, const tfx128 y4) {
+	tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 		tfxPROFILE;
 
 		tfx128 s4 = _mm_mul_ps(_mm_add_ps(x4, y4), tfxF2_4);
@@ -91,7 +90,7 @@ namespace tfx {
 	}
 
 	//A 3d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfx128Array tfxNoise4(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
+	tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
 		tfxPROFILE;
 		// Skewing/Unskewing factors for 3D
 
@@ -334,7 +333,7 @@ namespace tfx {
 		return result;
 	}
 
-	int FormatString(char* buf, size_t buf_size, const char* fmt, va_list args) {
+	int tfx_FormatString(char* buf, size_t buf_size, const char* fmt, va_list args) {
 		int w = vsnprintf(buf, buf_size, fmt, args);
 		if (buf == NULL)
 			return w;
@@ -348,7 +347,7 @@ namespace tfx {
 		va_list args_copy;
 		va_copy(args_copy, args);
 
-		int len = FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
 		if (len <= 0)
 		{
 			va_end(args_copy);
@@ -364,7 +363,7 @@ namespace tfx {
 		}
 
 		resize(needed_sz);
-		FormatString(&data[write_off - 1], (size_t)len + 1, format, args);
+		tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args);
 		va_end(args_copy);
 
 	}
@@ -450,7 +449,7 @@ namespace tfx {
 		va_list args_copy;
 		va_copy(args_copy, args);
 
-		int len = FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
 		if (len <= 0)
 		{
 			va_end(args_copy);
@@ -466,7 +465,7 @@ namespace tfx {
 		}
 
 		resize(needed_sz);
-		FormatString(&strbuffer()[write_off - 1], (size_t)len + 1, format, args_copy);
+		tfx_FormatString(&strbuffer()[write_off - 1], (size_t)len + 1, format, args_copy);
 		va_end(args_copy);
 
 		va_end(args);
@@ -479,7 +478,7 @@ namespace tfx {
 		va_list args_copy;
 		va_copy(args_copy, args);
 
-		int len = FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
 		if (len <= 0)
 		{
 			va_end(args_copy);
@@ -495,7 +494,7 @@ namespace tfx {
 		}
 
 		resize(needed_sz);
-		FormatString(&strbuffer()[write_off - 1], (size_t)len + 1, format, args_copy);
+		tfx_FormatString(&strbuffer()[write_off - 1], (size_t)len + 1, format, args_copy);
 		va_end(args_copy);
 
 		va_end(args);
@@ -1178,7 +1177,7 @@ namespace tfx {
 			if (direction.y != 1.f) {
 				tfxVec3 u = Cross(tfxVec3(0.f, 1.f, 0.f), direction);
 				float rot = acosf(DotProduct(direction, tfxVec3(0.f, 1.f, 0.f)));
-				tfxMatrix4 handle_mat = M4();
+				tfxMatrix4 handle_mat = tfxCreateMatrix4(1.f);
 				handle_mat = mmRotate(handle_mat, rot, u);
 				v = mmTransformVector(handle_mat, result).xyz();
 				v.x = -v.x;
@@ -1459,7 +1458,7 @@ namespace tfx {
 		}
 	}
 
-	tfxEffectEmitter* GetRootEffect(tfxEffectEmitter *effect) {
+	tfxEffectEmitter* tfx_GetRootEffect(tfxEffectEmitter *effect) {
 		if (!effect->parent || effect->parent->type == tfxFolder) {
 			return effect;
 		}
@@ -2733,7 +2732,7 @@ namespace tfx {
 	}
 
 	void AddLibraryEffectGraphs(tfxLibrary *library, tfxEffectEmitter& effect) {
-		tfxEffectEmitter *root_effect = GetRootEffect(&effect);
+		tfxEffectEmitter *root_effect = tfx_GetRootEffect(&effect);
 		if (root_effect == &effect)
 			effect.global = AddLibraryGlobal(library);
 		else
@@ -8091,7 +8090,7 @@ namespace tfx {
 					tfx128 zeps4r = _mm_set_ps(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);
 
 					//Find rate of change in YZ plane
-					tfx128Array sample = tfxNoise4(x4, yeps4, zeps4);
+					tfx128Array sample = tfxNoise4_3d(x4, yeps4, zeps4);
 					float a = (sample.a[0] - sample.a[1]) / eps2;
 					//Average to find approximate derivative
 					float b = (sample.a[2] - sample.a[3]) / eps2;
@@ -8100,13 +8099,13 @@ namespace tfx {
 					y.a[n] += 100.f;
 					tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
 					//Find rate of change in XZ plane
-					sample = tfxNoise4(xeps4, y4, zeps4r);
+					sample = tfxNoise4_3d(xeps4, y4, zeps4r);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_y.a[n] = a - b;
 
 					//Find rate of change in XY plane
-					sample = tfxNoise4(xeps4r, yeps4r, z4);
+					sample = tfxNoise4_3d(xeps4r, yeps4r, z4);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_z.a[n] = a - b;
@@ -8463,14 +8462,14 @@ namespace tfx {
 					tfx128 xeps4 = _mm_set_ps(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);
 					tfx128 yeps4 = _mm_set_ps(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);
 
-					tfx128Array sample = tfxNoise4(x4, yeps4);
+					tfx128Array sample = tfxNoise4_2d(x4, yeps4);
 					float a = (sample.a[0] - sample.a[1]) / eps2;
 					float b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_x.a[n] = a - b;
 
 					y.a[n] += 100.f;
 					tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
-					sample = tfxNoise4(xeps4, y4);
+					sample = tfxNoise4_2d(xeps4, y4);
 					a = (sample.a[0] - sample.a[1]) / eps2;
 					b = (sample.a[2] - sample.a[3]) / eps2;
 					noise_y.a[n] = a - b;
@@ -9114,7 +9113,7 @@ namespace tfx {
 	}
 
 	void InitParticleManagerForBoth(tfxParticleManager *pm, tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
-		pm->random = NewRandom(Millisecs());
+		pm->random = NewRandom(tfx_Millisecs());
 		pm->max_effects = effects_limit;
 		pm->mt_batch_size = multi_threaded_batch_size;
 		pm->library = lib;
@@ -12224,9 +12223,9 @@ namespace tfx {
 		profile = tfxProfileArray + id;
 		profile->name = name;
 		snapshot = profile->snapshots + tfxCurrentSnapshot;
-		start_time = Microsecs();
+		start_time = tfx_Microsecs();
 		start_cycles = __rdtsc();
-		AtomicAdd32(&snapshot->hit_count, 1);
+		tfx_AtomicAdd32(&snapshot->hit_count, 1);
 	}
 
 	void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount) {
@@ -12505,7 +12504,7 @@ namespace tfx {
 
 	void InitParticleManagerFor3d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
 		assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
-		pm->random = NewRandom(Millisecs());
+		pm->random = NewRandom(tfx_Millisecs());
 		pm->max_effects = effects_limit;
 		pm->mt_batch_size = mt_batch_size;
 		tfxInitialiseWorkQueue(&pm->work_queue);
@@ -12580,7 +12579,7 @@ namespace tfx {
 	void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
 		assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
 		assert(mode == tfxParticleManagerMode_unordered || mode == tfxParticleManagerMode_ordered_by_age);	//Only these 2 modes are available for 2d effects
-		pm->random = NewRandom(Millisecs());
+		pm->random = NewRandom(tfx_Millisecs());
 		pm->max_effects = effects_limit;
 		pm->mt_batch_size = mt_batch_size;
 		tfxInitialiseWorkQueue(&pm->work_queue);
@@ -12766,5 +12765,3 @@ namespace tfx {
 	void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxEffectID effect_index, float noise_offset) {
 		pm->effects.noise_base_offset[effect_index] = noise_offset;
 	}
-
-}
