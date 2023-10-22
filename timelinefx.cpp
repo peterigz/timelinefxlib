@@ -7465,12 +7465,12 @@
 		return &t->effect;
 	}
 
-	tfxEffectEmitter *GetEmitterFromTemplate(tfxEffectTemplate *t, tfxStr256 &path) {
-		if (t->paths.ValidName(path)) return t->paths.At(path); return nullptr;
+	tfxEffectEmitter *GetEmitterFromTemplate(tfxEffectTemplate *t, tfxStr256 *path) {
+		if (t->paths.ValidName(*path)) return t->paths.At(*path); return nullptr;
 	}
 
-	void SetTemplateUserData(tfxEffectTemplate *t, tfxStr256 &path, void *data) {
-		if (t->paths.ValidName(path)) t->paths.At(path)->user_data = data;
+	void SetTemplateUserData(tfxEffectTemplate *t, tfxStr256 *path, void *data) {
+		if (t->paths.ValidName(*path)) t->paths.At(*path)->user_data = data;
 	}
 
 	void SetTemplateEffectUserData(tfxEffectTemplate *t, void *data) {

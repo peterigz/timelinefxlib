@@ -22,7 +22,7 @@
 	[Enums]							All the definitions for enums and bit flags
 	[Constants]						Various constant definitions
 	[String_Buffers]				Basic string buffers for storing names of things in the library and reading from library files.
-	[Containers_and_Memory]			Container structs and lists and defines for memory is allocated (uses Zest_Pocket_Allocator by default)
+	[Containers_and_Memory]			Container structs and lists and defines for memory is allocated (uses Zest Pocket Allocator by default)
 	[Multithreading_Work_Queues]	Implementation for work queues for threading
 	[Vector_Math]					Vec2/3/4 and Matrix2/3/4 structs including wide vectors for SIMD
 	[Simplex_Noise]					Some setup for implementing simplex noise.
@@ -7825,8 +7825,8 @@ Get the total number of sprites within the layer of the particle manager
 * @param pm					A pointer to an initialised tfxParticleManager.
 * @param layer				The layer of the sprites to the count of
 */
-tfxAPI inline tfxSpriteSoA &SpritesInLayer(tfxParticleManager *pm, tfxU32 layer) {
-	return pm->sprites[pm->current_sprite_buffer][layer];
+tfxAPI inline tfxSpriteSoA *SpritesInLayer(tfxParticleManager *pm, tfxU32 layer) {
+	return &pm->sprites[pm->current_sprite_buffer][layer];
 }
 
 /*
@@ -7940,8 +7940,8 @@ Get the transform vectors for a 3d sprite's previous position so that you can us
 * @param layer			The index of the sprite layer
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline tfxSpriteTransform3d &GetCapturedSprite3dTransform(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
-	return pm->sprites[(index & 0xC0000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
+tfxAPI inline tfxSpriteTransform3d *GetCapturedSprite3dTransform(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+	return &pm->sprites[(index & 0xC0000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
 }
 
 /*
@@ -7950,8 +7950,8 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 * @param layer			The index of the sprite layer
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline tfxSpriteTransform2d &GetCapturedSprite2dTransform(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
-	return pm->sprites[(index & 0xC0000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
+tfxAPI inline tfxSpriteTransform2d *GetCapturedSprite2dTransform(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+	return &pm->sprites[(index & 0xC0000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
 }
 
 /*
@@ -7960,8 +7960,8 @@ Get the intensity for a sprite's previous frame so that you can use that to inte
 * @param layer			The index of the sprite layer
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline float &GetCapturedSprite3dIntensity(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
-	return pm->sprites[(index & 0xC0000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
+tfxAPI inline float *GetCapturedSprite3dIntensity(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+	return &pm->sprites[(index & 0xC0000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
 }
 
 /*
@@ -8057,8 +8057,8 @@ Get the 3d transform struct of a sprite data by its index in the sprite data str
 * @param index			The index of the sprite you want to retrieve
 * @returns				tfxSpriteTransform3d reference
 */
-tfxAPI inline tfxSpriteTransform3d &GetSpriteData3dTransform(tfxSpriteDataSoA &sprites, tfxU32 index) {
-	return sprites.transform_3d[index];
+tfxAPI inline tfxSpriteTransform3d *GetSpriteData3dTransform(tfxSpriteDataSoA *sprites, tfxU32 index) {
+	return &sprites->transform_3d[index];
 }
 
 /*
@@ -8067,8 +8067,8 @@ Get the 2d transform struct of a sprite data by its index in the sprite data str
 * @param index			The index of the sprite you want to retrieve
 * @returns				tfxSpriteTransform2d reference
 */
-tfxAPI inline tfxSpriteTransform2d &GetSpriteData2dTransform(tfxSpriteDataSoA &sprites, tfxU32 index) {
-	return sprites.transform_2d[index];
+tfxAPI inline tfxSpriteTransform2d *GetSpriteData2dTransform(tfxSpriteDataSoA *sprites, tfxU32 index) {
+	return &sprites->transform_2d[index];
 }
 
 /*
@@ -8077,8 +8077,8 @@ Get the intensity of a sprite data by its index in the sprite data struct of arr
 * @param index			The index of the sprite you want to retrieve
 * @returns				float of the intensity value
 */
-tfxAPI inline float GetSpriteDataIntensity(tfxSpriteDataSoA &sprites, tfxU32 index) {
-	return sprites.intensity[index];
+tfxAPI inline float GetSpriteDataIntensity(tfxSpriteDataSoA *sprites, tfxU32 index) {
+	return sprites->intensity[index];
 }
 
 /*
@@ -8087,8 +8087,8 @@ Get the alignment of a sprite data by its index in the sprite data struct of arr
 * @param index			The index of the sprite you want to retrieve
 * @returns				tfxU32 of the alignment value
 */
-tfxAPI inline tfxU32 GetSpriteDataAlignment(tfxSpriteDataSoA &sprites, tfxU32 index) {
-	return sprites.alignment[index];
+tfxAPI inline tfxU32 GetSpriteDataAlignment(tfxSpriteDataSoA *sprites, tfxU32 index) {
+	return sprites->alignment[index];
 }
 
 /*
@@ -8097,8 +8097,8 @@ Get the image frame of a sprite data by its index in the sprite data struct of a
 * @param index			The index of the sprite you want to retrieve
 * @returns				tfxU32 of the frame value
 */
-tfxAPI inline tfxU32 GetSpriteDataFrame(tfxSpriteDataSoA &sprites, tfxU32 index) {
-	return (sprites.property_indexes[index] & 0x00FF0000) >> 16;
+tfxAPI inline tfxU32 GetSpriteDataFrame(tfxSpriteDataSoA *sprites, tfxU32 index) {
+	return (sprites->property_indexes[index] & 0x00FF0000) >> 16;
 }
 
 /*
@@ -8107,8 +8107,8 @@ Get the color of a sprite data by its index in the sprite data struct of arrays
 * @param index			The index of the sprite you want to retrieve
 * @returns				tfxRGBA8 of the frame value
 */
-tfxAPI inline tfxRGBA8 GetSpriteDataColor(tfxSpriteDataSoA &sprites, tfxU32 index) {
-	return sprites.color[index];
+tfxAPI inline tfxRGBA8 GetSpriteDataColor(tfxSpriteDataSoA *sprites, tfxU32 index) {
+	return sprites->color[index];
 }
 
 /*
@@ -8635,7 +8635,7 @@ Get an emitter or sub effect from an effect template.
 * @param path					A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
 * @returns						A pointer to the root effect
 */
-tfxAPI tfxEffectEmitter *GetEmitterFromTemplate(tfxEffectTemplate *t, tfxStr256 &path);
+tfxAPI tfxEffectEmitter *GetEmitterFromTemplate(tfxEffectTemplate *t, tfxStr256 *path);
 
 /*
 Set the user data for any effect or emitter in the effect template. This user data will get passed through to any update callback functions
@@ -8643,7 +8643,7 @@ Set the user data for any effect or emitter in the effect template. This user da
 * @param path					A path to the effect or emitter in the effect template
 * @param data					A pointer to the user data
 */
-tfxAPI void SetTemplateUserData(tfxEffectTemplate *t, tfxStr256 &path, void *data);
+tfxAPI void SetTemplateUserData(tfxEffectTemplate *t, tfxStr256 *path, void *data);
 
 /*
 Set the user data for the root effect in an effect template
@@ -8716,9 +8716,9 @@ Interpolate between 2 tfxVec3s. You can make use of this in your render function
 * @param captured			The captured tvxVec3 position
 * @returns tfxVec3			The interpolated tfxVec3
 */
-tfxAPI inline tfxVec3 Tween3d(float tween, const tfxVec3 &world, const tfxVec3 &captured) {
+tfxAPI inline tfxVec3 Tween3d(float tween, const tfxVec3 *world, const tfxVec3 *captured) {
 	tfxVec3 tweened;
-	tweened = world * tween + captured * (1.f - tween);
+	tweened = *world * tween + *captured * (1.f - tween);
 	return tweened;
 }
 
@@ -8752,18 +8752,18 @@ Interpolate all sprite transform data in a single function. This will interpolat
 * @param captured			The captured transform struct of the sprite
 * @returns tfxWideLerpTransformResult			The interpolated transform data in a tfxWideLerpTransformResult
 */
-inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat &tween, const tfxSpriteTransform3d &current, const tfxSpriteTransform3d &captured) {
-	__m128 to1 = _mm_load_ps(&current.position.x);
-	__m128 from1 = _mm_load_ps(&captured.position.x);
-	__m128 to2 = _mm_load_ps(&current.rotations.y);
-	__m128 from2 = _mm_load_ps(&captured.rotations.y);
-	__m128 one_minus_tween = _mm_sub_ps(tfxWIDEONE, tween);
-	__m128 to_lerp1 = _mm_mul_ps(to1, tween);
+inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat *tween, const tfxSpriteTransform3d *current, const tfxSpriteTransform3d *captured) {
+	__m128 to1 = _mm_load_ps(&current->position.x);
+	__m128 from1 = _mm_load_ps(&captured->position.x);
+	__m128 to2 = _mm_load_ps(&current->rotations.y);
+	__m128 from2 = _mm_load_ps(&captured->rotations.y);
+	__m128 one_minus_tween = _mm_sub_ps(tfxWIDEONE, *tween);
+	__m128 to_lerp1 = _mm_mul_ps(to1, *tween);
 	__m128 from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
 	__m128 result = _mm_add_ps(from_lerp1, to_lerp1);
 	tfxWideLerpTransformResult out;
 	_mm_store_ps(out.position, result);
-	to_lerp1 = _mm_mul_ps(to2, tween);
+	to_lerp1 = _mm_mul_ps(to2, *tween);
 	from_lerp1 = _mm_mul_ps(from2, one_minus_tween);
 	result = _mm_add_ps(from_lerp1, to_lerp1);
 	_mm_store_ps(&out.rotations[1], result);
@@ -8777,9 +8777,9 @@ Interpolate between 2 tfxVec2s. You can make use of this in your render function
 * @param captured	The captured tvxVec2 position
 * @returns tfxVec2	The interpolated tfxVec2
 */
-inline tfxVec2 Tween2d(float tween, const tfxVec2 &world, const tfxVec2 &captured) {
+inline tfxVec2 Tween2d(float tween, const tfxVec2 *world, const tfxVec2 *captured) {
 	tfxVec2 tweened;
-	tweened = world * tween + captured * (1.f - tween);
+	tweened = *world * tween + *captured * (1.f - tween);
 	return tweened;
 }
 
