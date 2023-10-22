@@ -6000,7 +6000,7 @@ tfxAPI inline void DumpSprites(tfxParticleManager *pm, tfxU32 layer) {
 	}
 }
 
-tfxINTERNAL tfxU32 GrabParticleLists(tfxParticleManager &pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
+tfxINTERNAL tfxU32 GrabParticleLists(tfxParticleManager *pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 //--------------------------------
 //Profilings
@@ -6041,18 +6041,18 @@ tfxAPI_EDITOR inline void ResetSnapshots() {
 	}
 }
 
-tfxAPI_EDITOR inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>> &profile_snapshots, tfxU32 amount) {
+tfxAPI_EDITOR inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>> *profile_snapshots, tfxU32 amount) {
 	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
 		tfxProfile *profile = tfxProfileArray + i;
 		if (!profile->name) {
 			ResetSnapshot(profile->snapshots + i);
 			continue;
 		}
-		if (!profile_snapshots.ValidName(profile->name)) {
+		if (!profile_snapshots->ValidName(profile->name)) {
 			tfxvec<tfxProfileSnapshot> snapshots;
-			profile_snapshots.Insert(profile->name, snapshots);
+			profile_snapshots->Insert(profile->name, snapshots);
 		}
-		tfxvec<tfxProfileSnapshot> &snapshots = profile_snapshots.At(profile->name);
+		tfxvec<tfxProfileSnapshot> &snapshots = profile_snapshots->At(profile->name);
 		tfxU32 offset = snapshots.current_size;
 		snapshots.resize(snapshots.current_size + tfxPROFILER_SAMPLES);
 		memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfxProfileSnapshot));
@@ -6064,12 +6064,12 @@ tfxAPI_EDITOR inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>
 //Reading/Writing files
 //--------------------------------
 tfxAPI_EDITOR tfxStream ReadEntireFile(const char *file_name, bool terminate = false);
-tfxAPI_EDITOR tfxErrorFlags LoadPackage(const char *file_name, tfxPackage &package);
-tfxAPI_EDITOR tfxErrorFlags LoadPackage(tfxStream &stream, tfxPackage &package);
+tfxAPI_EDITOR tfxErrorFlags LoadPackage(const char *file_name, tfxPackage *package);
+tfxAPI_EDITOR tfxErrorFlags LoadPackage(tfxStream *stream, tfxPackage *package);
 tfxAPI_EDITOR tfxPackage CreatePackage(const char *file_path);
-tfxAPI_EDITOR bool SavePackageDisk(tfxPackage &package);
-tfxAPI_EDITOR tfxStream SavePackageMemory(tfxPackage &package);
-tfxAPI_EDITOR tfxU64 GetPackageSize(tfxPackage &package);
+tfxAPI_EDITOR bool SavePackageDisk(tfxPackage *package);
+tfxAPI_EDITOR tfxStream SavePackageMemory(tfxPackage *package);
+tfxAPI_EDITOR tfxU64 GetPackageSize(tfxPackage *package);
 tfxAPI_EDITOR bool ValidatePackage(tfxPackage *package);
 tfxAPI_EDITOR tfxEntryInfo *GetPackageFile(tfxPackage *package, const char *name);
 tfxAPI_EDITOR void AddEntryToPackage(tfxPackage *package, tfxEntryInfo file);
@@ -6078,55 +6078,55 @@ tfxAPI_EDITOR bool FileExists(tfxPackage *package, const char *file_name);
 tfxAPI_EDITOR void FreePackage(tfxPackage *package);
 
 //Some file IO functions for the editor
-tfxAPI_EDITOR bool HasDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, const char *value);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, int value);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, bool value);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, double value);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> &config, tfxStr32 key, float value);
-tfxAPI_EDITOR tfxStr &GetDataStrValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
-tfxAPI_EDITOR int& GetDataIntValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
-tfxAPI_EDITOR float& GetDataFloatValue(tfxStorageMap<tfxDataEntry> &config, const char* key);
-tfxAPI_EDITOR bool SaveDataFile(tfxStorageMap<tfxDataEntry> &config, const char* path = "");
-tfxAPI_EDITOR bool LoadDataFile(tfxStorageMap<tfxDataEntry> &config, const char* path);
-tfxAPI_EDITOR void StreamProperties(tfxEmitterPropertiesSoA &property, tfxU32 index, tfxEmitterPropertyFlags &flags, tfxStr &file);
-tfxAPI_EDITOR void StreamProperties(tfxEffectEmitter &effect, tfxStr &file);
-tfxAPI_EDITOR void StreamGraph(const char * name, tfxGraph &graph, tfxStr &file);
-tfxAPI_EDITOR void SplitStringStack(const tfxStr &s, tfxStack<tfxStr256> &pair, char delim = 61);
-tfxAPI_EDITOR bool StringIsUInt(const tfxStr &s);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU64 value, tfxU32 file_version);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value, tfxU32 file_version);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
-tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter &effect, tfxStack<tfxStr256> &values);
-tfxINTERNAL void SplitStringVec(const tfxStr &s, tfxvec<tfxStr256> &pair, char delim = 61);
+tfxAPI_EDITOR bool HasDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key);
+tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, const char *value);
+tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, int value);
+tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, bool value);
+tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, double value);
+tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, float value);
+tfxAPI_EDITOR tfxStr GetDataStrValue(tfxStorageMap<tfxDataEntry> *config, const char* key);
+tfxAPI_EDITOR int GetDataIntValue(tfxStorageMap<tfxDataEntry> *config, const char* key);
+tfxAPI_EDITOR float GetDataFloatValue(tfxStorageMap<tfxDataEntry> *config, const char* key);
+tfxAPI_EDITOR bool SaveDataFile(tfxStorageMap<tfxDataEntry> *config, const char* path = "");
+tfxAPI_EDITOR bool LoadDataFile(tfxStorageMap<tfxDataEntry> *config, const char* path);
+tfxAPI_EDITOR void StreamProperties(tfxEmitterPropertiesSoA *property, tfxU32 index, tfxEmitterPropertyFlags flags, tfxStr *file);
+tfxAPI_EDITOR void StreamProperties(tfxEffectEmitter *effect, tfxStr *file);
+tfxAPI_EDITOR void StreamGraph(const char * name, tfxGraph *graph, tfxStr *file);
+tfxAPI_EDITOR void SplitStringStack(const tfxStr s, tfxStack<tfxStr256> *pair, char delim = 61);
+tfxAPI_EDITOR bool StringIsUInt(const tfxStr s);
+tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU64 value, tfxU32 file_version);
+tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value, tfxU32 file_version);
+tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, float value);
+tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, bool value);
+tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, int value);
+tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxStr &value);
+tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter *effect, tfxStack<tfxStr256> *values);
+tfxINTERNAL void SplitStringVec(const tfxStr s, tfxvec<tfxStr256> *pair, char delim = 61);
 tfxINTERNAL int GetDataType(const tfxStr &s);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxU32 value);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, float value);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, bool value);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, int value);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter &effect, tfxStr &field, tfxStr &value);
-tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxU64 value, tfxU32 file_version);
-tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, float value, tfxU32 file_version);
-tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics &metrics, tfxStr &field, tfxStr value, tfxU32 file_version);
-tfxINTERNAL void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void AssignFrameMetaProperty(tfxFrameMeta &metrics, tfxStr &field, tfxVec3 value, tfxU32 file_version);
-tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, float value, tfxU32 file_version);
-tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties &properties, tfxStr &field, tfxVec2 value, tfxU32 file_version);
-tfxINTERNAL void AssignNodeData(tfxAttributeNode &node, tfxStack<tfxStr256> &values);
-tfxINTERNAL tfxVec3 StrToVec3(tfxStack<tfxStr256> &str);
-tfxINTERNAL tfxVec2 StrToVec2(tfxStack<tfxStr256> &str);
+tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value);
+tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, float value);
+tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, bool value);
+tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, int value);
+tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, tfxStr *value);
+tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics *metrics, tfxStr *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics *metrics, tfxStr *field, tfxU64 value, tfxU32 file_version);
+tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics *metrics, tfxStr *field, float value, tfxU32 file_version);
+tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics *metrics, tfxStr *field, tfxStr value, tfxU32 file_version);
+tfxINTERNAL void AssignFrameMetaProperty(tfxFrameMeta *metrics, tfxStr *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void AssignFrameMetaProperty(tfxFrameMeta *metrics, tfxStr *field, tfxVec3 value, tfxU32 file_version);
+tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, float value, tfxU32 file_version);
+tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, tfxVec2 value, tfxU32 file_version);
+tfxINTERNAL void AssignNodeData(tfxAttributeNode *node, tfxStack<tfxStr256> *values);
+tfxINTERNAL tfxVec3 StrToVec3(tfxStack<tfxStr256> *str);
+tfxINTERNAL tfxVec2 StrToVec2(tfxStack<tfxStr256> *str);
 
 //--------------------------------
 //Inline Math functions
 //--------------------------------
 tfxINTERNAL void MakeIcospheres();
-tfxINTERNAL int VertexForEdge(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, int first, int second);
-tfxINTERNAL tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> &point_cache, tfxvec<tfxVec3>& vertices, tfxvec<tfxFace> &triangles);
+tfxINTERNAL int VertexForEdge(tfxStorageMap<int> *point_cache, tfxvec<tfxVec3> *vertices, int first, int second);
+tfxINTERNAL tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> *point_cache, tfxvec<tfxVec3> *vertices, tfxvec<tfxFace> *triangles);
 
 tfxINTERNAL inline int SortIcospherePoints(void const *left, void const *right) {
 	float d1 = static_cast<const tfxVec3*>(left)->y;
@@ -6156,15 +6156,15 @@ tfxINTERNAL inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry
 	}
 }
 
-tfxINTERNAL inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> &particles) {
-	for (tfxU32 i = 1; i < particles.current_size; ++i) {
-		tfxParticleFrame key = particles[i];
+tfxINTERNAL inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> *particles) {
+	for (tfxU32 i = 1; i < particles->current_size; ++i) {
+		tfxParticleFrame key = (*particles)[i];
 		int j = i - 1;
-		while (j >= 0 && key.depth > particles[j].depth) {
-			particles[j + 1] = particles[j];
+		while (j >= 0 && key.depth > (*particles)[j].depth) {
+			(*particles)[j + 1] = (*particles)[j];
 			--j;
 		}
-		particles[j + 1] = key;
+		(*particles)[j + 1] = key;
 	}
 }
 
@@ -6178,18 +6178,18 @@ tfxINTERNAL inline float Dot(float x1, float y1, float x2, float y2)
 	return x1 * x2 + y1 * y2;
 }
 
-tfxINTERNAL inline tfx128 Dot128XYZ(const tfx128 &x1, const tfx128 &y1, const tfx128 &z1, const tfx128 &x2, const tfx128 &y2, const tfx128 &z2)
+tfxINTERNAL inline tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z2)
 {
-	tfx128 xx = _mm_mul_ps(x1, x2);
-	tfx128 yy = _mm_mul_ps(y1, y2);
-	tfx128 zz = _mm_mul_ps(z1, z2);
+	tfx128 xx = _mm_mul_ps(*x1, *x2);
+	tfx128 yy = _mm_mul_ps(*y1, *y2);
+	tfx128 zz = _mm_mul_ps(*z1, *z2);
 	return _mm_add_ps(xx, _mm_add_ps(yy, zz));
 }
 
-tfxINTERNAL inline tfx128 Dot128XY(const tfx128 &x1, const tfx128 &y1, const tfx128 &x2, const tfx128 &y2)
+tfxINTERNAL inline tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2)
 {
-	tfx128 xx = _mm_mul_ps(x1, x2);
-	tfx128 yy = _mm_mul_ps(y1, y2);
+	tfx128 xx = _mm_mul_ps(*x1, *x2);
+	tfx128 yy = _mm_mul_ps(*y1, *y2);
 	return _mm_add_ps(xx, yy);
 }
 
@@ -6302,47 +6302,47 @@ tfxINTERNAL inline float tfxDegrees(float radians) { return radians * 57.2957795
 tfxINTERNAL inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
 tfxINTERNAL inline void tfxBound3d(tfxVec3 s, tfxVec3 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
 
-tfxINTERNAL inline float LengthVec3NoSqR(tfxVec3 const &v) {
-	return v.x * v.x + v.y * v.y + v.z * v.z;
+tfxINTERNAL inline float LengthVec3NoSqR(tfxVec3 const *v) {
+	return v->x * v->x + v->y * v->y + v->z * v->z;
 }
 
-tfxINTERNAL inline float LengthVec(tfxVec3 const &v) {
+tfxINTERNAL inline float LengthVec(tfxVec3 const *v) {
 	return sqrtf(LengthVec3NoSqR(v));
 }
 
-tfxINTERNAL inline float HasLength(tfxVec3 const &v) {
-	return (v.x == 0 && v.y == 0 && v.z == 0) ? 0.f : 1.f;
+tfxINTERNAL inline float HasLength(tfxVec3 const *v) {
+	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
 }
 
-tfxINTERNAL inline tfxVec3 NormalizeVec(tfxVec3 const &v) {
-	if (v.x == 0 && v.y == 0 && v.z == 0) return tfxVec3(1.f, 0.f, 0.f);
+tfxINTERNAL inline tfxVec3 NormalizeVec(tfxVec3 const *v) {
+	if (v->x == 0 && v->y == 0 && v->z == 0) return tfxVec3(1.f, 0.f, 0.f);
 	float length = LengthVec(v);
-	return tfxVec3(v.x / length, v.y / length, v.z / length);
+	return tfxVec3(v->x / length, v->y / length, v->z / length);
 }
 
-tfxINTERNAL inline tfxVec3 NormalizeVec(tfxVec3 const &v, float &length) {
+tfxINTERNAL inline tfxVec3 NormalizeVec(tfxVec3 const *v, float length) {
 	if (length == 0) return tfxVec3();
-	return tfxVec3(v.x / length, v.y / length, v.z / length);
+	return tfxVec3(v->x / length, v->y / length, v->z / length);
 }
 
-tfxINTERNAL inline tfxVec3 Cross(tfxVec3 a, tfxVec3 b) {
+tfxINTERNAL inline tfxVec3 Cross(tfxVec3 *a, tfxVec3 *b) {
 	tfxVec3 result;
 
-	result.x = a.y*b.z - a.z*b.y;
-	result.y = a.z*b.x - a.x*b.z;
-	result.z = a.x*b.y - a.y*b.x;
+	result.x = a->y*b->z - a->z*b->y;
+	result.y = a->z*b->x - a->x*b->z;
+	result.z = a->x*b->y - a->y*b->x;
 
 	return(result);
 }
 
-tfxINTERNAL inline float DotProduct(const tfxVec3 &a, const tfxVec3 &b)
+tfxINTERNAL inline float DotProduct(const tfxVec3 *a, const tfxVec3 *b)
 {
-	return (a.x * b.x + a.y * b.y + a.z * b.z);
+	return (a->x * b->x + a->y * b->y + a->z * b->z);
 }
 
-tfxINTERNAL inline float DotProduct(const tfxVec2 &a, const tfxVec2 &b)
+tfxINTERNAL inline float DotProduct(const tfxVec2 *a, const tfxVec2 *b)
 {
-	return (a.x * b.x + a.y * b.y);
+	return (a->x * b->x + a->y * b->y);
 }
 
 //Quake 3 inverse square root
@@ -6375,25 +6375,25 @@ tfxINTERNAL inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
 	return (nibble << 28) + index;
 }
 
-tfxINTERNAL inline float FastLength(tfxVec2 const &v) {
+tfxINTERNAL inline float FastLength(tfxVec2 const *v) {
 	return 1.f / tfxSqrt(DotProduct(v, v));
 }
 
-tfxINTERNAL inline float FastLength(tfxVec3 const &v) {
+tfxINTERNAL inline float FastLength(tfxVec3 const *v) {
 	return 1.f / tfxSqrt(DotProduct(v, v));
 }
 
-tfxINTERNAL inline tfxVec3 FastNormalizeVec(tfxVec3 const &v) {
-	return v * tfxSqrt(DotProduct(v, v));
+tfxINTERNAL inline tfxVec3 FastNormalizeVec(tfxVec3 const *v) {
+	return *v * tfxSqrt(DotProduct(v, v));
 }
 
-tfxINTERNAL inline tfxVec2 NormalizeVec(tfxVec2 const &v) {
+tfxINTERNAL inline tfxVec2 NormalizeVec(tfxVec2 const *v) {
 	float length = FastLength(v);
-	return tfxVec2(v.x / length, v.y / length);
+	return tfxVec2(v->x / length, v->y / length);
 }
 
-tfxINTERNAL inline tfxVec2 NormalizeVec(tfxVec2 const &v, const float length) {
-	return tfxVec2(v.x / length, v.y / length);
+tfxINTERNAL inline tfxVec2 NormalizeVec(tfxVec2 const *v, const float length) {
+	return tfxVec2(v->x / length, v->y / length);
 }
 
 tfxINTERNAL inline tfxMatrix3 M3(float v = 1.f) {
@@ -6406,36 +6406,36 @@ tfxINTERNAL inline tfxMatrix3 M3(float v = 1.f) {
 	return(R);
 }
 
-tfxINTERNAL inline tfxMatrix3 mmTranslate(tfxMatrix3 const &m, tfxVec3 const &v) {
+tfxINTERNAL inline tfxMatrix3 mmTranslate(tfxMatrix3 const *m, tfxVec3 const *v) {
 	tfxMatrix3 result;
-	result.v[2] = m.v[0] * v.x + m.v[1] * v.y + m.v[2];
+	result.v[2] = m->v[0] * v->x + m->v[1] * v->y + m->v[2];
 	return result;
 }
 
-tfxINTERNAL inline tfxMatrix3 mmRotate(tfxMatrix3 const &m, float r) {
+tfxINTERNAL inline tfxMatrix3 mmRotate(tfxMatrix3 const *m, float r) {
 	float const a = r;
 	float const c = cosf(a);
 	float const s = sinf(a);
 
 	tfxMatrix3 result;
-	result.v[0] = m.v[0] * c + m.v[1] * s;
-	result.v[1] = m.v[0] * -s + m.v[1] * c;
-	result.v[2] = m.v[2];
+	result.v[0] = m->v[0] * c + m->v[1] * s;
+	result.v[1] = m->v[0] * -s + m->v[1] * c;
+	result.v[2] = m->v[2];
 	return result;
 }
 
-tfxINTERNAL inline tfxMatrix3 mmScale(tfxMatrix3 const &m, tfxVec2 const &v) {
+tfxINTERNAL inline tfxMatrix3 mmScale(tfxMatrix3 const *m, tfxVec2 const &v) {
 	tfxMatrix3 result;
-	result.v[0] = m.v[0] * v.x;
-	result.v[1] = m.v[1] * v.y;
-	result.v[2] = m.v[2];
+	result.v[0] = m->v[0] * v.x;
+	result.v[1] = m->v[1] * v.y;
+	result.v[2] = m->v[2];
 	return result;
 }
 
-tfxINTERNAL inline tfxVec2 mmTransformVector(const tfxMatrix4 &mat, const tfxVec2 v) {
+tfxINTERNAL inline tfxVec2 mmTransformVector(const tfxMatrix4 *mat, const tfxVec2 v) {
 	tfxVec2 tv = tfxVec2(0.f, 0.f);
-	tv.x = v.x * mat.v[0].x + v.y * mat.v[1].x;
-	tv.y = v.x * mat.v[0].y + v.y * mat.v[1].y;
+	tv.x = v.x * mat->v[0].x + v.y * mat->v[1].x;
+	tv.y = v.x * mat->v[0].y + v.y * mat->v[1].y;
 	return tv;
 }
 
@@ -6500,9 +6500,9 @@ tfxINTERNAL inline tfxMatrix4 mmZRotate(float angle) {
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmTranslate(tfxMatrix4 const &m, tfxVec3 const &v) {
+tfxINTERNAL inline tfxMatrix4 mmTranslate(tfxMatrix4 const *m, tfxVec3 const &v) {
 	tfxMatrix4 result;
-	result.v[3] = m.v[0] * v.x + m.v[1] * v.y + m.v[2] * v.z + m.v[3];
+	result.v[3] = m->v[0] * v.x + m->v[1] * v.y + m->v[2] * v.z + m->v[3];
 	return result;
 }
 
@@ -6515,42 +6515,42 @@ tfxINTERNAL inline tfxMatrix4 mmScale(tfxMatrix4 const &m, tfxVec3 const &v) {
 	return result;
 }
 
-tfxINTERNAL inline tfxMatrix4 Transpose(tfxMatrix4 &mat) {
+tfxINTERNAL inline tfxMatrix4 Transpose(tfxMatrix4 *mat) {
 	return tfxM4(
-		tfxVec4(mat.v[0].x, mat.v[1].x, mat.v[2].x, mat.v[3].x),
-		tfxVec4(mat.v[0].y, mat.v[1].y, mat.v[2].y, mat.v[3].y),
-		tfxVec4(mat.v[0].z, mat.v[1].z, mat.v[2].z, mat.v[3].z),
-		tfxVec4(mat.v[0].w, mat.v[1].w, mat.v[2].w, mat.v[3].w)
+		tfxVec4(mat->v[0].x, mat->v[1].x, mat->v[2].x, mat->v[3].x),
+		tfxVec4(mat->v[0].y, mat->v[1].y, mat->v[2].y, mat->v[3].y),
+		tfxVec4(mat->v[0].z, mat->v[1].z, mat->v[2].z, mat->v[3].z),
+		tfxVec4(mat->v[0].w, mat->v[1].w, mat->v[2].w, mat->v[3].w)
 	);
 }
 
-tfxINTERNAL inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, const tfxMatrix4 &m) {
+tfxINTERNAL inline tfxMatrix4 mmTransform2(const tfxMatrix4 *in, const tfxMatrix4 *m) {
 	tfxMatrix4 r;
-	r.v[0].x = in.v[0].x * m.v[0].x + in.v[0].y * m.v[1].x; r.v[0].y = in.v[0].x * m.v[0].y + in.v[0].y * m.v[1].y;
-	r.v[1].x = in.v[1].x * m.v[0].x + in.v[1].y * m.v[1].x; r.v[1].y = in.v[1].x * m.v[0].y + in.v[1].y * m.v[1].y;
+	r.v[0].x = in->v[0].x * m->v[0].x + in->v[0].y * m->v[1].x; r.v[0].y = in->v[0].x * m->v[0].y + in->v[0].y * m->v[1].y;
+	r.v[1].x = in->v[1].x * m->v[0].x + in->v[1].y * m->v[1].x; r.v[1].y = in->v[1].x * m->v[0].y + in->v[1].y * m->v[1].y;
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmTransform2(const tfxMatrix4 &in, const tfxMatrix2 &m) {
+tfxINTERNAL inline tfxMatrix4 mmTransform2(const tfxMatrix4 *in, const tfxMatrix2 *m) {
 	tfxMatrix4 r;
-	r.v[0].x = in.v[0].x * m.aa + in.v[0].y * m.ba; r.v[0].y = in.v[0].x * m.ab + in.v[0].y * m.bb;
-	r.v[1].x = in.v[1].x * m.aa + in.v[1].y * m.ba; r.v[1].y = in.v[1].x * m.ab + in.v[1].y * m.bb;
+	r.v[0].x = in->v[0].x * m->aa + in->v[0].y * m->ba; r.v[0].y = in->v[0].x * m->ab + in->v[0].y * m->bb;
+	r.v[1].x = in->v[1].x * m->aa + in->v[1].y * m->ba; r.v[1].y = in->v[1].x * m->ab + in->v[1].y * m->bb;
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmTransform(const tfxMatrix4 &in, const tfxMatrix4 &m) {
+tfxINTERNAL inline tfxMatrix4 mmTransform(const tfxMatrix4 *in, const tfxMatrix4 *m) {
 	tfxMatrix4 res = tfxCreateMatrix4(0.f);
 
 	tfx128 in_row[4];
-	in_row[0] = _mm_load_ps(&in.v[0].x);
-	in_row[1] = _mm_load_ps(&in.v[1].x);
-	in_row[2] = _mm_load_ps(&in.v[2].x);
-	in_row[3] = _mm_load_ps(&in.v[3].x);
+	in_row[0] = _mm_load_ps(&in->v[0].x);
+	in_row[1] = _mm_load_ps(&in->v[1].x);
+	in_row[2] = _mm_load_ps(&in->v[2].x);
+	in_row[3] = _mm_load_ps(&in->v[3].x);
 
-	tfx128 m_row1 = _mm_set_ps(m.v[3].x, m.v[2].x, m.v[1].x, m.v[0].x);
-	tfx128 m_row2 = _mm_set_ps(m.v[3].y, m.v[2].y, m.v[1].y, m.v[0].y);
-	tfx128 m_row3 = _mm_set_ps(m.v[3].z, m.v[2].z, m.v[1].z, m.v[0].z);
-	tfx128 m_row4 = _mm_set_ps(m.v[3].w, m.v[2].w, m.v[1].w, m.v[0].w);
+	tfx128 m_row1 = _mm_set_ps(m->v[3].x, m->v[2].x, m->v[1].x, m->v[0].x);
+	tfx128 m_row2 = _mm_set_ps(m->v[3].y, m->v[2].y, m->v[1].y, m->v[0].y);
+	tfx128 m_row3 = _mm_set_ps(m->v[3].z, m->v[2].z, m->v[1].z, m->v[0].z);
+	tfx128 m_row4 = _mm_set_ps(m->v[3].w, m->v[2].w, m->v[1].w, m->v[0].w);
 
 	for (int r = 0; r <= 3; ++r)
 	{
@@ -6574,72 +6574,72 @@ tfxINTERNAL inline tfxMatrix4 mmTransform(const tfxMatrix4 &in, const tfxMatrix4
 	return res;
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
-	tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
-	xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[0].c1)), xr);
-	xr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[0].c2)), xr);
-	tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[1].c0));
-	yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
-	yr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[1].c2)), yr);
-	tfxWideFloat zr = tfxWideMul(x, tfxWideSetSingle(mat.v[2].c0));
-	zr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[2].c1)), zr);
-	zr = tfxWideAdd(tfxWideMul(z, tfxWideSetSingle(mat.v[2].c2)), zr);
-	x = xr;
-	y = yr;
-	z = zr;
+tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
+	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[0].c1)), xr);
+	xr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[0].c2)), xr);
+	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[1].c0));
+	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
+	yr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[1].c2)), yr);
+	tfxWideFloat zr = tfxWideMul(*x, tfxWideSetSingle(mat->v[2].c0));
+	zr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[2].c1)), zr);
+	zr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[2].c2)), zr);
+	*x = xr;
+	*y = yr;
+	*z = zr;
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y) {
-	tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
-	xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c0)), xr);
-	tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c1));
-	yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
-	x = xr;
-	y = yr;
+tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 *mat, tfxWideFloat *x, tfxWideFloat *y) {
+	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
+	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
+	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
+	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
+	*x = xr;
+	*y = yr;
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
-	tfxWideFloat xr = tfxWideMul(x, r0c[0]);
-	xr = tfxWideAdd(tfxWideMul(y, r1c[0]), xr);
-	tfxWideFloat yr = tfxWideMul(x, r0c[1]);
-	yr = tfxWideAdd(tfxWideMul(y, r1c[1]), yr);
-	x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
-	y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
+tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
+	xr = tfxWideAdd(tfxWideMul(*y, r1c[0]), xr);
+	tfxWideFloat yr = tfxWideMul(*x, r0c[1]);
+	yr = tfxWideAdd(tfxWideMul(*y, r1c[1]), yr);
+	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
+	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 &mat, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
-	tfxWideFloat xr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c0));
-	xr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c0)), xr);
-	tfxWideFloat yr = tfxWideMul(x, tfxWideSetSingle(mat.v[0].c1));
-	yr = tfxWideAdd(tfxWideMul(y, tfxWideSetSingle(mat.v[1].c1)), yr);
-	x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
-	y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
+tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
+	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
+	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
+	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
+	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
+	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &mask, tfxWideFloat &xor_mask) {
-	tfxWideFloat xr = tfxWideMul(x, r0c[0]);
-	xr = tfxWideAdd(tfxWideMul(y, r0c[1]), xr);
-	xr = tfxWideAdd(tfxWideMul(z, r0c[2]), xr);
-	tfxWideFloat yr = tfxWideMul(x, r1c[0]);
-	yr = tfxWideAdd(tfxWideMul(y, r1c[1]), yr);
-	yr = tfxWideAdd(tfxWideMul(z, r1c[2]), yr);
-	tfxWideFloat zr = tfxWideMul(x, r2c[0]);
-	zr = tfxWideAdd(tfxWideMul(y, r2c[1]), zr);
-	zr = tfxWideAdd(tfxWideMul(z, r2c[2]), zr);
-	x = tfxWideAdd(tfxWideAnd(x, xor_mask), tfxWideAnd(xr, mask));
-	y = tfxWideAdd(tfxWideAnd(y, xor_mask), tfxWideAnd(yr, mask));
-	z = tfxWideAdd(tfxWideAnd(z, xor_mask), tfxWideAnd(zr, mask));
+tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
+	xr = tfxWideAdd(tfxWideMul(*y, r0c[1]), xr);
+	xr = tfxWideAdd(tfxWideMul(*z, r0c[2]), xr);
+	tfxWideFloat yr = tfxWideMul(*x, r1c[0]);
+	yr = tfxWideAdd(tfxWideMul(*y, r1c[1]), yr);
+	yr = tfxWideAdd(tfxWideMul(*z, r1c[2]), yr);
+	tfxWideFloat zr = tfxWideMul(*x, r2c[0]);
+	zr = tfxWideAdd(tfxWideMul(*y, r2c[1]), zr);
+	zr = tfxWideAdd(tfxWideMul(*z, r2c[2]), zr);
+	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
+	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
+	*z = tfxWideAdd(tfxWideAnd(*z, *xor_mask), tfxWideAnd(zr, *mask));
 }
 
-tfxINTERNAL inline tfxVec4 mmTransformVector(const tfxMatrix4 &mat, const tfxVec4 vec) {
+tfxINTERNAL inline tfxVec4 mmTransformVector(const tfxMatrix4 *mat, const tfxVec4 vec) {
 	tfxVec4 v;
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
-	tfx128 mrow1 = _mm_load_ps(&mat.v[0].c0);
-	tfx128 mrow2 = _mm_load_ps(&mat.v[1].c0);
-	tfx128 mrow3 = _mm_load_ps(&mat.v[2].c0);
-	tfx128 mrow4 = _mm_load_ps(&mat.v[3].c0);
+	tfx128 mrow1 = _mm_load_ps(&mat->v[0].c0);
+	tfx128 mrow2 = _mm_load_ps(&mat->v[1].c0);
+	tfx128 mrow3 = _mm_load_ps(&mat->v[2].c0);
+	tfx128 mrow4 = _mm_load_ps(&mat->v[3].c0);
 
 	tfx128 row1result = _mm_mul_ps(v4, mrow1);
 	tfx128 row2result = _mm_mul_ps(v4, mrow2);
@@ -6659,15 +6659,15 @@ tfxINTERNAL inline tfxVec4 mmTransformVector(const tfxMatrix4 &mat, const tfxVec
 	return v;
 }
 
-tfxINTERNAL inline tfxVec4 mmTransformVector(const tfx128 &row1, const tfx128 &row2, const tfx128 &row3, const tfx128 &row4, const tfxVec4 vec) {
+tfxINTERNAL inline tfxVec4 mmTransformVector(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfxVec4 vec) {
 	tfxVec4 v;
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
-	tfx128 row1result = _mm_mul_ps(v4, row1);
-	tfx128 row2result = _mm_mul_ps(v4, row2);
-	tfx128 row3result = _mm_mul_ps(v4, row3);
-	tfx128 row4result = _mm_mul_ps(v4, row4);
+	tfx128 row1result = _mm_mul_ps(v4, *row1);
+	tfx128 row2result = _mm_mul_ps(v4, *row2);
+	tfx128 row3result = _mm_mul_ps(v4, *row3);
+	tfx128 row4result = _mm_mul_ps(v4, *row4);
 
 	float tmp[4];
 	_mm_store_ps(tmp, row1result);
@@ -6682,15 +6682,15 @@ tfxINTERNAL inline tfxVec4 mmTransformVector(const tfx128 &row1, const tfx128 &r
 	return v;
 }
 
-tfxINTERNAL inline tfxVec3 mmTransformVector3(const tfxMatrix4 &mat, const tfxVec4 vec) {
+tfxINTERNAL inline tfxVec3 mmTransformVector3(const tfxMatrix4 *mat, const tfxVec4 *vec) {
 	tfxVec3 v;
 
-	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
 
-	tfx128 mrow1 = _mm_load_ps(&mat.v[0].x);
-	tfx128 mrow2 = _mm_load_ps(&mat.v[1].x);
-	tfx128 mrow3 = _mm_load_ps(&mat.v[2].x);
-	tfx128 mrow4 = _mm_load_ps(&mat.v[3].x);
+	tfx128 mrow1 = _mm_load_ps(&mat->v[0].x);
+	tfx128 mrow2 = _mm_load_ps(&mat->v[1].x);
+	tfx128 mrow3 = _mm_load_ps(&mat->v[2].x);
+	tfx128 mrow4 = _mm_load_ps(&mat->v[3].x);
 
 	tfx128 row1result = _mm_mul_ps(v4, mrow1);
 	tfx128 row2result = _mm_mul_ps(v4, mrow2);
@@ -6708,7 +6708,7 @@ tfxINTERNAL inline tfxVec3 mmTransformVector3(const tfxMatrix4 &mat, const tfxVe
 	return v;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmRotate(tfxMatrix4 const &m, float r, tfxVec3 const &v) {
+tfxINTERNAL inline tfxMatrix4 mmRotate(tfxMatrix4 const *m, float r, tfxVec3 const *v) {
 	float const a = r;
 	float const c = cosf(a);
 	float const s = sinf(a);
@@ -6730,10 +6730,10 @@ tfxINTERNAL inline tfxMatrix4 mmRotate(tfxMatrix4 const &m, float r, tfxVec3 con
 	rotate.v[2].z = c + temp.z * axis.z;
 
 	tfxMatrix4 result = tfxCreateMatrix4(1.f);
-	result.v[0] = m.v[0] * rotate.v[0].x + m.v[1] * rotate.v[0].y + m.v[2] * rotate.v[0].z;
-	result.v[1] = m.v[0] * rotate.v[1].x + m.v[1] * rotate.v[1].y + m.v[2] * rotate.v[1].z;
-	result.v[2] = m.v[0] * rotate.v[2].x + m.v[1] * rotate.v[2].y + m.v[2] * rotate.v[2].z;
-	result.v[3] = m.v[3];
+	result.v[0] = m->v[0] * rotate.v[0].x + m->v[1] * rotate.v[0].y + m->v[2] * rotate.v[0].z;
+	result.v[1] = m->v[0] * rotate.v[1].x + m->v[1] * rotate.v[1].y + m->v[2] * rotate.v[1].z;
+	result.v[2] = m->v[0] * rotate.v[2].x + m->v[1] * rotate.v[2].y + m->v[2] * rotate.v[2].z;
+	result.v[3] = m->v[3];
 	return result;
 }
 
@@ -7028,92 +7028,93 @@ tfxINTERNAL inline float Interpolatef(float tween, float from, float to) {
 	return to * tween + from * (1.f - tween);
 }
 
-tfxINTERNAL inline void Transform2d(tfxVec3 &out_rotations, tfxVec3 &out_local_rotations, tfxVec3 &out_scale, tfxVec3 &out_position, tfxVec3 &out_local_position, tfxVec3 &out_translation, tfxMatrix4 &out_matrix, const tfxVec3 &in_rotations, const tfxVec3 &in_scale, const tfxVec3 &in_position, const tfxMatrix4 &in_matrix) {
-	float s = sin(out_local_rotations.roll);
-	float c = cos(out_local_rotations.roll);
+tfxINTERNAL inline void Transform2d(tfxVec3 *out_rotations, tfxVec3 *out_local_rotations, tfxVec3 *out_scale, tfxVec3 *out_position, tfxVec3 *out_local_position, tfxVec3 *out_translation, tfxMatrix4 *out_matrix, const tfxVec3 *in_rotations, const tfxVec3 *in_scale, const tfxVec3 *in_position, const tfxMatrix4 *in_matrix) {
+	float s = sin(out_local_rotations->roll);
+	float c = cos(out_local_rotations->roll);
 
-	out_matrix.Set2(c, s, -s, c);
-	out_scale = in_scale;
+	out_matrix->Set2(c, s, -s, c);
+	*out_scale = *in_scale;
 
-	out_rotations.roll = in_rotations.roll + out_local_rotations.roll;
+	out_rotations->roll = in_rotations->roll + out_local_rotations->roll;
 
-	out_matrix = mmTransform2(out_matrix, in_matrix);
-	tfxVec2 rotatevec = mmTransformVector(in_matrix, tfxVec2(out_local_position.x + out_translation.x, out_local_position.y + out_translation.y));
+	*out_matrix = mmTransform2(out_matrix, in_matrix);
+	tfxVec2 rotatevec = mmTransformVector(in_matrix, tfxVec2(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
 
-	out_position = in_position.xy() + rotatevec * in_scale.xy();
+	*out_position = in_position->xy() + rotatevec * in_scale->xy();
 }
-tfxINTERNAL inline void Transform3d(tfxVec3 &out_rotations, tfxVec3 &out_local_rotations, tfxVec3 &out_scale, tfxVec3 &out_position, tfxVec3 &out_local_position, tfxVec3 &out_translation, tfxMatrix4 &out_matrix, const tfxVec3 &in_rotations, const tfxVec3 &in_scale, const tfxVec3 &in_position, const tfxMatrix4 &in_matrix) {
-	tfxMatrix4 roll = mmZRotate(out_local_rotations.roll);
-	tfxMatrix4 pitch = mmXRotate(out_local_rotations.pitch);
-	tfxMatrix4 yaw = mmYRotate(out_local_rotations.yaw);
-	out_matrix = mmTransform(yaw, pitch);
-	out_matrix = mmTransform(out_matrix, roll);
-	out_scale = in_scale;
+tfxINTERNAL inline void Transform3d(tfxVec3 *out_rotations, tfxVec3 *out_local_rotations, tfxVec3 *out_scale, tfxVec3 *out_position, tfxVec3 *out_local_position, tfxVec3 *out_translation, tfxMatrix4 *out_matrix, const tfxVec3 *in_rotations, const tfxVec3 *in_scale, const tfxVec3 *in_position, const tfxMatrix4 *in_matrix) {
+	tfxMatrix4 roll = mmZRotate(out_local_rotations->roll);
+	tfxMatrix4 pitch = mmXRotate(out_local_rotations->pitch);
+	tfxMatrix4 yaw = mmYRotate(out_local_rotations->yaw);
+	*out_matrix = mmTransform(&yaw, &pitch);
+	*out_matrix = mmTransform(out_matrix, &roll);
+	*out_scale = *in_scale;
 
-	out_rotations = in_rotations + out_local_rotations;
+	*out_rotations = *in_rotations + *out_local_rotations;
 
-	out_matrix = mmTransform(out_matrix, in_matrix);
-	tfxVec3 rotatevec = mmTransformVector3(in_matrix, out_local_position + out_translation);
+	*out_matrix = mmTransform(out_matrix, in_matrix);
+	tfxVec4 translated_vec = *out_local_position + *out_translation;
+	tfxVec3 rotatevec = mmTransformVector3(in_matrix, &translated_vec);
 
-	out_position = in_position + rotatevec;
+	*out_position = *in_position + rotatevec;
 }
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
 //--------------------------2d---------------------
-tfxINTERNAL inline void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	world_position.x = local_position_x;
-	world_position.y = local_position_y;
-	world_rotations = roll;
+tfxINTERNAL inline void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfxVec2 *world_position, float *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	world_position->x = local_position_x;
+	world_position->y = local_position_y;
+	*world_rotations = roll;
 }
-tfxINTERNAL inline void TransformParticlePositionAngle(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	world_position.x = local_position_x;
-	world_position.y = local_position_y;
-	world_rotations = parent_rotations.roll + roll;
+tfxINTERNAL inline void TransformParticlePositionAngle(const float local_position_x, const float local_position_y, const float roll, tfxVec2 *world_position, float *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	world_position->x = local_position_x;
+	world_position->y = local_position_y;
+	*world_rotations = parent_rotations->roll + roll;
 }
-tfxINTERNAL inline void TransformParticlePositionRelative(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	world_rotations = roll;
-	tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle.xy());
-	world_position = from_position.xy() + rotatevec * scale.xy();
+tfxINTERNAL inline void TransformParticlePositionRelative(const float local_position_x, const float local_position_y, const float roll, tfxVec2 *world_position, float *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	*world_rotations = roll;
+	tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle->xy());
+	*world_position = from_position->xy() + rotatevec * scale->xy();
 }
-tfxINTERNAL inline void TransformParticlePositionRelativeLine(const float local_position_x, const float local_position_y, const float roll, tfxVec2 &world_position, float &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	world_rotations = parent_rotations.roll + roll;
-	tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle.xy());
-	world_position = from_position.xy() + rotatevec * scale.xy();
+tfxINTERNAL inline void TransformParticlePositionRelativeLine(const float local_position_x, const float local_position_y, const float roll, tfxVec2 *world_position, float *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	*world_rotations = parent_rotations->roll + roll;
+	tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle->xy());
+	*world_position = from_position->xy() + rotatevec * scale->xy();
 }
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
 //--------------------------3d---------------------
-tfxINTERNAL inline void TransformParticlePosition3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	world_position.x = local_position_x;
-	world_position.y = local_position_y;
-	world_position.z = local_position_z;
-	world_rotations = local_rotations;
+tfxINTERNAL inline void TransformParticlePosition3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	world_position->x = local_position_x;
+	world_position->y = local_position_y;
+	world_position->z = local_position_z;
+	*world_rotations = *local_rotations;
 }
-tfxINTERNAL inline void TransformParticlePositionAngle3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	world_position.x = local_position_x;
-	world_position.y = local_position_y;
-	world_position.z = local_position_z;
-	world_rotations = parent_rotations + local_rotations;
+tfxINTERNAL inline void TransformParticlePositionAngle3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	world_position->x = local_position_x;
+	world_position->y = local_position_y;
+	world_position->z = local_position_z;
+	*world_rotations = *parent_rotations + *local_rotations;
 }
-tfxINTERNAL inline void TransformParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	world_rotations = local_rotations;
-	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
-	world_position = from_position + rotatevec.xyz() * scale;
+tfxINTERNAL inline void TransformParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	*world_rotations = *local_rotations;
+	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + *handle);
+	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
-tfxINTERNAL inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, tfxVec3 &world_rotations, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	world_rotations = local_rotations;
-	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
-	world_position = from_position + rotatevec.xyz() * scale;
-}
-
-tfxINTERNAL inline void TransformWideParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
-	world_position = from_position + rotatevec.xyz() * scale;
+tfxINTERNAL inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	*world_rotations = *local_rotations;
+	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + *handle);
+	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
-tfxINTERNAL inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 local_rotations, tfxVec3 &world_position, const tfxVec3 &parent_rotations, const tfxMatrix4 &matrix, const tfxVec3 &handle, const tfxVec3 &scale, const tfxVec3 &from_position) {
-	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + handle);
-	world_position = from_position + rotatevec.xyz() * scale;
+tfxINTERNAL inline void TransformWideParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + *handle);
+	*world_position = *from_position + rotatevec.xyz() * *scale;
+}
+
+tfxINTERNAL inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + *handle);
+	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
 //--------------------------------
@@ -7448,12 +7449,11 @@ tfxINTERNAL void AddTemplatePath(tfxEffectTemplate *effect_template, tfxEffectEm
 //Library functions, internal/Editor functions
 //--------------------------------
 tfxAPI_EDITOR tfxEffectEmitterInfo *GetEffectInfo(tfxEffectEmitter *e);					//Required by editor
-tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxStr256 path, tfxEffectTemplate &effect);
-tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxEffectEmitter &effect, tfxEffectTemplate &effect_template);
+tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxStr256 path, tfxEffectTemplate *effect);
+tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxEffectEmitter &effect, tfxEffectTemplate *effect_template);
 //Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
 tfxINTERNAL void CopyLibraryLookupIndexesData(tfxLibrary *library, void* dst);
 tfxINTERNAL void CopyLibraryLookupValuesData(tfxLibrary *library, void* dst);
-tfxINTERNAL bool LibraryNameExists2(tfxLibrary *library, tfxEffectEmitter &effect, const char *name);
 tfxINTERNAL tfxU32 CountLibraryKeyframeLookUpValues(tfxLibrary *library, tfxU32 index);
 tfxINTERNAL tfxU32 CountLibraryGlobalLookUpValues(tfxLibrary *library, tfxU32 index);
 tfxINTERNAL tfxU32 CountLibraryEmitterLookUpValues(tfxLibrary *library, tfxU32 index);
@@ -7481,20 +7481,20 @@ tfxAPI_EDITOR tfxU32 CountOfFreeGraphs(tfxLibrary *library);
 tfxAPI_EDITOR bool IsLibraryShapeUsed(tfxLibrary *library, tfxKey image_hash);
 tfxAPI_EDITOR bool LibraryShapeExists(tfxLibrary *library, tfxKey image_hash);
 tfxAPI_EDITOR bool RemoveLibraryShape(tfxLibrary *library, tfxKey image_hash);
-tfxAPI_EDITOR tfxEffectEmitter &InsertLibraryEffect(tfxLibrary *library, tfxEffectEmitter &effect, tfxEffectEmitter *position);
-tfxAPI_EDITOR tfxEffectEmitter &AddLibraryEffect(tfxLibrary *library, tfxEffectEmitter &effect);
-tfxAPI_EDITOR tfxEffectEmitter &AddLibraryFolder(tfxLibrary *library, tfxStr64 &name);
-tfxAPI_EDITOR tfxEffectEmitter &AddLibraryFolder(tfxLibrary *library, tfxEffectEmitter &effect);
-tfxAPI_EDITOR tfxEffectEmitter &AddLibraryStage(tfxLibrary *library, tfxStr64 &name);
+tfxAPI_EDITOR tfxEffectEmitter *InsertLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect, tfxEffectEmitter *position);
+tfxAPI_EDITOR tfxEffectEmitter *AddLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR tfxEffectEmitter *AddLibraryFolder(tfxLibrary *library, tfxStr64 *name);
+tfxAPI_EDITOR tfxEffectEmitter *AddLibraryFolder(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR tfxEffectEmitter *AddLibraryStage(tfxLibrary *library, tfxStr64 *name);
 tfxAPI_EDITOR void UpdateLibraryEffectPaths(tfxLibrary *library);
-tfxAPI_EDITOR void AddLibraryPath(tfxLibrary *library, tfxEffectEmitter &effect_emitter, tfxStr256 &path);
+tfxAPI_EDITOR void AddLibraryPath(tfxLibrary *library, tfxEffectEmitter *effect_emitter, tfxStr256 *path);
 tfxAPI_EDITOR void DeleteLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR bool RenameLibraryEffect(tfxLibrary *library, tfxEffectEmitter &effect, const char *new_name);
-tfxAPI_EDITOR bool LibraryNameExists(tfxLibrary *library, tfxEffectEmitter &effect, const char *name);
+tfxAPI_EDITOR bool RenameLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect, const char *new_name);
+tfxAPI_EDITOR bool LibraryNameExists(tfxLibrary *library, tfxEffectEmitter *effect, const char *name);
 tfxAPI_EDITOR void ReIndexLibrary(tfxLibrary *library);
 tfxAPI_EDITOR void UpdateLibraryParticleShapeReferences(tfxLibrary *library, tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash);
-tfxAPI_EDITOR tfxEffectEmitter* LibraryMoveUp(tfxLibrary *library, tfxEffectEmitter &effect);
-tfxAPI_EDITOR tfxEffectEmitter* LibraryMoveDown(tfxLibrary *library, tfxEffectEmitter &effect);
+tfxAPI_EDITOR tfxEffectEmitter* LibraryMoveUp(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR tfxEffectEmitter* LibraryMoveDown(tfxLibrary *library, tfxEffectEmitter *effect);
 tfxAPI_EDITOR tfxU32 AddLibraryGlobal(tfxLibrary *library);
 tfxAPI_EDITOR tfxU32 AddLibraryEmitterAttributes(tfxLibrary *library);
 tfxAPI_EDITOR void FreeLibraryGlobal(tfxLibrary *library, tfxU32 index);
@@ -7507,14 +7507,14 @@ tfxAPI_EDITOR tfxU32 CloneLibraryKeyframes(tfxLibrary *library, tfxU32 source_in
 tfxAPI_EDITOR tfxU32 CloneLibraryEmitterAttributes(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
 tfxAPI_EDITOR tfxU32 CloneLibraryInfo(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
 tfxAPI_EDITOR tfxU32 CloneLibraryProperties(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
-tfxAPI_EDITOR void AddLibraryEmitterGraphs(tfxLibrary *library, tfxEffectEmitter &effect);
-tfxAPI_EDITOR void AddLibraryEffectGraphs(tfxLibrary *library, tfxEffectEmitter &effect);
-tfxAPI_EDITOR void AddLibraryTransformGraphs(tfxLibrary *library, tfxEffectEmitter &effect);
-tfxAPI_EDITOR tfxU32 AddLibrarySpriteSheetSettings(tfxLibrary *library, tfxEffectEmitter& effect);
-tfxAPI_EDITOR tfxU32 AddLibrarySpriteDataSettings(tfxLibrary *library, tfxEffectEmitter& effect);
-tfxAPI_EDITOR void AddLibrarySpriteSheetSettingsSub(tfxLibrary *library, tfxEffectEmitter& effect);
-tfxAPI_EDITOR void AddLibrarySpriteDataSettingsSub(tfxLibrary *library, tfxEffectEmitter& effect);
-tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfxLibrary *library, tfxEffectEmitter& effect);
+tfxAPI_EDITOR void AddLibraryEmitterGraphs(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR void AddLibraryEffectGraphs(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR void AddLibraryTransformGraphs(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR tfxU32 AddLibrarySpriteSheetSettings(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR tfxU32 AddLibrarySpriteDataSettings(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR void AddLibrarySpriteSheetSettingsSub(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR void AddLibrarySpriteDataSettingsSub(tfxLibrary *library, tfxEffectEmitter *effect);
+tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfxLibrary *library, tfxEffectEmitter *effect);
 tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfxLibrary *library);
 tfxAPI_EDITOR tfxU32 AddLibraryEffectEmitterInfo(tfxLibrary *library);
 tfxAPI_EDITOR tfxU32 AddLibraryEmitterProperties(tfxLibrary *library);
@@ -7529,7 +7529,7 @@ tfxAPI_EDITOR void CompileLibraryBaseGraph(tfxLibrary *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryVariationGraph(tfxLibrary *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryOvertimeGraph(tfxLibrary *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryColorGraphs(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryGraphsOfEffect(tfxLibrary *library, tfxEffectEmitter &effect, tfxU32 depth = 0);
+tfxAPI_EDITOR void CompileLibraryGraphsOfEffect(tfxLibrary *library, tfxEffectEmitter *effect, tfxU32 depth = 0);
 tfxAPI_EDITOR void SetLibraryMinMaxData(tfxLibrary *library);
 tfxAPI_EDITOR void ClearLibrary(tfxLibrary *library);
 tfxAPI_EDITOR void InitLibrary(tfxLibrary *library);
