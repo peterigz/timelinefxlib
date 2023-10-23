@@ -4893,9 +4893,9 @@ struct tfxEmitterAttributes {
 	tfxOvertimeAttributes overtime;
 };
 
-static float(*lookup_overtime_callback)(tfxGraph &graph, float age, float lifetime);
-static float(*lookup_callback)(tfxGraph &graph, float age);
-static float(*lookup_random_callback)(tfxGraph &graph, float age, tfxRandom &seed);
+static float(*lookup_overtime_callback)(tfxGraph *graph, float age, float lifetime);
+static float(*lookup_callback)(tfxGraph *graph, float age);
+static float(*lookup_random_callback)(tfxGraph *graph, float age, tfxRandom *random);
 
 struct tfxShapeData {
 	char name[64];
@@ -6500,21 +6500,6 @@ tfxINTERNAL inline tfxMatrix4 mmZRotate(float angle) {
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmTranslate(tfxMatrix4 const *m, tfxVec3 const &v) {
-	tfxMatrix4 result;
-	result.v[3] = m->v[0] * v.x + m->v[1] * v.y + m->v[2] * v.z + m->v[3];
-	return result;
-}
-
-tfxINTERNAL inline tfxMatrix4 mmScale(tfxMatrix4 const &m, tfxVec3 const &v) {
-	tfxMatrix4 result;
-	result.v[0] = m.v[0] * v.x;
-	result.v[1] = m.v[1] * v.y;
-	result.v[2] = m.v[2] * v.z;
-	result.v[3] = m.v[3];
-	return result;
-}
-
 tfxINTERNAL inline tfxMatrix4 Transpose(tfxMatrix4 *mat) {
 	return tfxM4(
 		tfxVec4(mat->v[0].x, mat->v[1].x, mat->v[2].x, mat->v[3].x),
@@ -6749,16 +6734,8 @@ tfxINTERNAL inline float tfxClampf(float lower, float upper, float value) {
 	return value;
 }
 
-tfxINTERNAL inline tfxVec3 Clamp(float lower, float upper, tfxVec3 const &v) {
-	tfxVec3 result;
-	result.x = tfxClampf(lower, upper, v.x);
-	result.y = tfxClampf(lower, upper, v.y);
-	result.z = tfxClampf(lower, upper, v.z);
-	return result;
-}
-
-tfxINTERNAL inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
-	tfxVec3 converted = v * 511.f;
+tfxINTERNAL inline tfxU32 Pack10bit(tfxVec3 const *v, tfxU32 extra) {
+	tfxVec3 converted = *v * 511.f;
 	tfxUInt10bit result;
 	result.pack = 0;
 	result.data.x = (tfxU32)converted.z;
@@ -6768,8 +6745,8 @@ tfxINTERNAL inline tfxU32 Pack10bit(tfxVec3 const &v, tfxU32 extra) {
 	return result.pack;
 }
 
-tfxINTERNAL inline tfxU32 Pack10bitUnsigned(tfxVec3 const &v) {
-	tfxVec3 converted = v * 511.f + 511.f;
+tfxINTERNAL inline tfxU32 Pack10bitUnsigned(tfxVec3 const *v) {
+	tfxVec3 converted = *v * 511.f + 511.f;
 	tfxUInt10bit result;
 	result.pack = 0;
 	result.data.x = (tfxU32)converted.z;
@@ -6998,16 +6975,15 @@ tfxINTERNAL inline float GammaCorrect(float color, float gamma = tfxGAMMA) {
 }
 
 tfxINTERNAL inline tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to) {
-	tfxVec3 fromf = UnPack10bitVec3(from);
-	tfxVec3 tof = UnPack10bitVec3(to);
-	return Pack10bit(InterpolateVec3(tween, fromf, tof), (from >> 30) & 0x3);
+	tfxVec3 i = InterpolateVec3(tween, UnPack10bitVec3(from), UnPack10bitVec3(to));
+	return Pack10bit(&i, (from >> 30) & 0x3);
 }
 
-tfxINTERNAL inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &to) {
+tfxINTERNAL inline tfxVec4 InterpolateVec4(float tween, tfxVec4 *from, tfxVec4 *to) {
 	tfx128 l4 = _mm_set_ps1(tween);
 	tfx128 l4minus1 = _mm_set_ps1(1.f - tween);
-	tfx128 f4 = _mm_set_ps(from.x, from.y, from.z, from.w);
-	tfx128 t4 = _mm_set_ps(to.x, to.y, to.z, to.w);
+	tfx128 f4 = _mm_set_ps(from->x, from->y, from->z, from->w);
+	tfx128 t4 = _mm_set_ps(to->x, to->y, to->z, to->w);
 	tfx128 from_lerp = _mm_mul_ps(f4, l4);
 	tfx128 to_lerp = _mm_mul_ps(f4, l4minus1);
 	tfx128 result = _mm_add_ps(from_lerp, to_lerp);
@@ -7016,10 +6992,10 @@ tfxINTERNAL inline tfxVec4 InterpolateVec4(float tween, tfxVec4 &from, tfxVec4 &
 	return vec;
 }
 
-tfxINTERNAL inline tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat &from, tfxWideFloat &to) {
+tfxINTERNAL inline tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to) {
 	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
-	tfxWideFloat to_lerp = tfxWideMul(to, tween);
-	tfxWideFloat from_lerp = tfxWideMul(from, one_minus_tween);
+	tfxWideFloat to_lerp = tfxWideMul(*to, tween);
+	tfxWideFloat from_lerp = tfxWideMul(*from, one_minus_tween);
 	tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
 	return result;
 }
@@ -7186,19 +7162,19 @@ tfxINTERNAL inline void AlterRandomSeed(tfxRandom *random, tfxU64 amount) {
 //--------------------------------
 //Particle manager internal functions
 //--------------------------------
-tfxINTERNAL float GetEmissionDirection2d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
-tfxINTERNAL tfxVec3 GetEmissionDirection3d(tfxParticleManager &pm, tfxLibrary *library, tfxRandom &random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
-tfxINTERNAL void TransformEffector2d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform2d &parent, bool relative_position = true, bool relative_angle = false);
-tfxINTERNAL void TransformEffector3d(tfxVec3 &world_rotations, tfxVec3 &local_rotations, tfxVec3 &world_position, tfxVec3 &local_position, tfxMatrix4 &matrix, tfxSpriteTransform3d &parent, bool relative_position = true, bool relative_angle = false);
-tfxINTERNAL void UpdatePMEffect(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
-tfxINTERNAL void UpdatePMEmitter(tfxParticleManager &pm, tfxSpawnWorkEntry *spawn_work_entry);
-tfxINTERNAL tfxU32 NewSpritesNeeded(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, tfxEmitterPropertiesSoA &properties);
-tfxINTERNAL void UpdateEmitterState(tfxParticleManager &pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls &parent_spawn_controls, tfxSpawnWorkEntry *entry);
-tfxINTERNAL void UpdateEffectState(tfxParticleManager &pm, tfxU32 index);
+tfxINTERNAL float GetEmissionDirection2d(tfxParticleManager *pm, tfxLibrary *library, tfxRandom *random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
+tfxINTERNAL tfxVec3 GetEmissionDirection3d(tfxParticleManager *pm, tfxLibrary *library, tfxRandom *random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
+tfxINTERNAL void TransformEffector2d(tfxVec3 *world_rotations, tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *local_position, tfxMatrix4 *matrix, tfxSpriteTransform2d *parent, bool relative_position = true, bool relative_angle = false);
+tfxINTERNAL void TransformEffector3d(tfxVec3 *world_rotations, tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *local_position, tfxMatrix4 *matrix, tfxSpriteTransform3d *parent, bool relative_position = true, bool relative_angle = false);
+tfxINTERNAL void UpdatePMEffect(tfxParticleManager *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
+tfxINTERNAL void UpdatePMEmitter(tfxParticleManager *pm, tfxSpawnWorkEntry *spawn_work_entry);
+tfxINTERNAL tfxU32 NewSpritesNeeded(tfxParticleManager *pm, tfxU32 index, tfxU32 parent_index, tfxEmitterPropertiesSoA *properties);
+tfxINTERNAL void UpdateEmitterState(tfxParticleManager *pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls *parent_spawn_controls, tfxSpawnWorkEntry *entry);
+tfxINTERNAL void UpdateEffectState(tfxParticleManager *pm, tfxU32 index);
 
-tfxAPI_EDITOR void CompletePMWork(tfxParticleManager &pm);
+tfxAPI_EDITOR void CompletePMWork(tfxParticleManager *pm);
 
-tfxINTERNAL tfxU32 SpawnParticles2d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
+tfxINTERNAL tfxU32 SpawnParticles2d(tfxParticleManager *pm, tfxSpawnWorkEntry *spawn_work_entry, tfxU32 max_spawn_count);
 tfxINTERNAL void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void SpawnParticleLine2d(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void SpawnParticleArea2d(tfxWorkQueue *queue, void *data);
@@ -7214,7 +7190,7 @@ tfxINTERNAL void SpawnParticleAge(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
 
-tfxINTERNAL tfxU32 SpawnParticles3d(tfxParticleManager &pm, tfxSpawnWorkEntry &spawn_work_entry, tfxU32 max_spawn_count);
+tfxINTERNAL tfxU32 SpawnParticles3d(tfxParticleManager *pm, tfxSpawnWorkEntry *spawn_work_entry, tfxU32 max_spawn_count);
 tfxINTERNAL void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void SpawnParticleLine3d(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void SpawnParticleArea3d(tfxWorkQueue *queue, void *data);
@@ -7226,7 +7202,7 @@ tfxINTERNAL void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
 
-tfxINTERNAL void ControlParticles(tfxParticleManager &pm, tfxU32 emitter_index, tfxControlWorkEntry &work_entry);
+tfxINTERNAL void ControlParticles(tfxParticleManager *pm, tfxU32 emitter_index, tfxControlWorkEntry *work_entry);
 
 tfxINTERNAL void ControlParticleAge(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
@@ -7250,23 +7226,23 @@ tfxINTERNAL void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU
 tfxINTERNAL void InitEffectSoA(tfxSoABuffer *buffer, tfxEffectSoA *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount);
 
-tfxAPI_EDITOR void InitEmitterProperites(tfxEmitterPropertiesSoA &properties, tfxU32 i);
-tfxINTERNAL void CopyEmitterProperites(tfxEmitterPropertiesSoA &from_properties, tfxU32 from_i, tfxEmitterPropertiesSoA &to_properties, tfxU32 to_i);
+tfxAPI_EDITOR void InitEmitterProperites(tfxEmitterPropertiesSoA *properties, tfxU32 i);
+tfxINTERNAL void CopyEmitterProperites(tfxEmitterPropertiesSoA *from_properties, tfxU32 from_i, tfxEmitterPropertiesSoA *to_properties, tfxU32 to_i);
 
-tfxINTERNAL inline void FreeSpriteData(tfxSpriteData &sprite_data);
+tfxINTERNAL inline void FreeSpriteData(tfxSpriteData *sprite_data);
 
 //--------------------------------
 //Graph functions
 //Mainly used by the editor to edit graphs so these are kind of API functions but you wouldn't generally use these outside of the particle editor
 //--------------------------------
 tfxAPI_EDITOR tfxAttributeNode* AddGraphNode(tfxGraph *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
-tfxAPI_EDITOR void AddGraphNode(tfxGraph *graph, tfxAttributeNode &node);
+tfxAPI_EDITOR void AddGraphNode(tfxGraph *graph, tfxAttributeNode *node);
 tfxAPI_EDITOR void SetGraphNode(tfxGraph *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxAPI_EDITOR float GetGraphValue(tfxGraph *graph, float age);
-tfxAPI_EDITOR float GetGraphRandomValue(tfxGraph *graph, float age, tfxRandom &seed);
+tfxAPI_EDITOR float GetGraphRandomValue(tfxGraph *graph, float age, tfxRandom *seed);
 tfxAPI_EDITOR float GetGraphValue(tfxGraph *graph, float age, float life);
-tfxAPI_EDITOR tfxAttributeNode *GetGraphNextNode(tfxGraph *graph, tfxAttributeNode &node);
-tfxAPI_EDITOR tfxAttributeNode *GetGraphPrevNode(tfxGraph *graph, tfxAttributeNode &node);
+tfxAPI_EDITOR tfxAttributeNode *GetGraphNextNode(tfxGraph *graph, tfxAttributeNode *node);
+tfxAPI_EDITOR tfxAttributeNode *GetGraphPrevNode(tfxGraph *graph, tfxAttributeNode *node);
 tfxAPI_EDITOR tfxAttributeNode *GetGraphLastNode(tfxGraph *graph);
 tfxAPI_EDITOR float GetGraphFirstValue(tfxGraph *graph);
 tfxAPI_EDITOR tfxAttributeNode* AddGraphCoordNode(tfxGraph *graph, float, float);
@@ -7277,10 +7253,12 @@ tfxAPI_EDITOR float GetGraphLastValue(tfxGraph *graph);
 tfxAPI_EDITOR float GetGraphMaxValue(tfxGraph *graph);
 tfxAPI_EDITOR float GetGraphMinValue(tfxGraph *graph);
 tfxAPI_EDITOR float GetGraphLastFrame(tfxGraph *graph, float udpate_frequence);
-tfxAPI_EDITOR tfxBucketArray<tfxAttributeNode>& GraphNodes(tfxGraph *graph);
-tfxAPI_EDITOR tfxAttributeNode* FindGraphNode(tfxGraph *graph, const tfxAttributeNode &n);
+tfxAPI_EDITOR tfxAttributeNode* GraphNodeByIndex(tfxGraph *graph, tfxU32 index);
+tfxAPI_EDITOR float GraphValueByIndex(tfxGraph *graph, tfxU32 index);
+tfxAPI_EDITOR float GraphFrameByIndex(tfxGraph *graph, tfxU32 index);
+tfxAPI_EDITOR tfxAttributeNode* FindGraphNode(tfxGraph *graph, const tfxAttributeNode *n);
 tfxAPI_EDITOR void ValidateGraphCurves(tfxGraph *graph);
-tfxAPI_EDITOR void DeleteGraphNode(tfxGraph *graph, const tfxAttributeNode &n);
+tfxAPI_EDITOR void DeleteGraphNode(tfxGraph *graph, const tfxAttributeNode *n);
 tfxAPI_EDITOR void DeleteGraphNodeAtFrame(tfxGraph *graph, float frame);
 tfxAPI_EDITOR void ResetGraph(tfxGraph *graph, float first_node_value, tfxGraphPreset preset, bool add_node = true);
 tfxAPI_EDITOR void ClearGraphToOne(tfxGraph *graph, float value);
@@ -7298,24 +7276,24 @@ tfxAPI_EDITOR bool IsAngleGraph(tfxGraph *graph);
 tfxAPI_EDITOR bool IsTranslationGraph(tfxGraph *graph);
 tfxAPI_EDITOR void MultiplyAllGraphValues(tfxGraph *graph, float scalar);
 tfxAPI_EDITOR void CopyGraphNoLookups(tfxGraph *src_graph, tfxGraph *dst_graph);
-tfxAPI_EDITOR void DragGraphValues(tfxGraphPreset preset, float &frame, float &value);
+tfxAPI_EDITOR void DragGraphValues(tfxGraphPreset preset, float *frame, float *value);
 tfxAPI_EDITOR tfxVec4 GetMinMaxGraphValues(tfxGraphPreset preset);
 tfxAPI_EDITOR tfxVec2 GetQuadBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, float t, float ymin, float ymax, bool clamp = true);
 tfxAPI_EDITOR tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
-tfxAPI_EDITOR float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode &a, float t, float ymin, float ymax);
+tfxAPI_EDITOR float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode *a, float t, float ymin, float ymax);
 tfxAPI_EDITOR float GetDistance(float fromx, float fromy, float tox, float toy);
 tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2f(x, -y); }
-tfxAPI_EDITOR bool CompareNodes(tfxAttributeNode &left, tfxAttributeNode &right);
-tfxAPI_EDITOR void CompileGraph(tfxGraph &graph);
-tfxAPI_EDITOR void CompileGraphOvertime(tfxGraph &graph);
-tfxAPI_EDITOR void CompileColorOvertime(tfxGraph &graph, float gamma = tfxGAMMA);
-tfxAPI_EDITOR float GetMaxLife(tfxEffectEmitter &e);
-tfxAPI_EDITOR float LookupFastOvertime(tfxGraph &graph, float age, float lifetime);
-tfxAPI_EDITOR float LookupFast(tfxGraph &graph, float frame);
-tfxAPI_EDITOR float LookupPreciseOvertime(tfxGraph &graph, float age, float lifetime);
-tfxAPI_EDITOR float LookupPrecise(tfxGraph &graph, float frame);
-tfxAPI_EDITOR float GetRandomFast(tfxGraph &graph, float frame, tfxRandom &seed);
-tfxAPI_EDITOR float GetRandomPrecise(tfxGraph &graph, float frame, tfxRandom &seed);
+tfxAPI_EDITOR bool CompareNodes(tfxAttributeNode *left, tfxAttributeNode *right);
+tfxAPI_EDITOR void CompileGraph(tfxGraph *graph);
+tfxAPI_EDITOR void CompileGraphOvertime(tfxGraph *graph);
+tfxAPI_EDITOR void CompileColorOvertime(tfxGraph *graph, float gamma = tfxGAMMA);
+tfxAPI_EDITOR float GetMaxLife(tfxEffectEmitter *e);
+tfxAPI_EDITOR float LookupFastOvertime(tfxGraph *graph, float age, float lifetime);
+tfxAPI_EDITOR float LookupFast(tfxGraph *graph, float frame);
+tfxAPI_EDITOR float LookupPreciseOvertime(tfxGraph *graph, float age, float lifetime);
+tfxAPI_EDITOR float LookupPrecise(tfxGraph *graph, float frame);
+tfxAPI_EDITOR float GetRandomFast(tfxGraph *graph, float frame, tfxRandom *random);
+tfxAPI_EDITOR float GetRandomPrecise(tfxGraph *graph, float frame, tfxRandom *random);
 
 //Node Manipulation
 tfxAPI_EDITOR bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
