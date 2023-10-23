@@ -7296,15 +7296,15 @@ tfxAPI_EDITOR float GetRandomFast(tfxGraph *graph, float frame, tfxRandom *rando
 tfxAPI_EDITOR float GetRandomPrecise(tfxGraph *graph, float frame, tfxRandom *random);
 
 //Node Manipulation
-tfxAPI_EDITOR bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
-tfxAPI_EDITOR bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float &frame, float &value);
-tfxAPI_EDITOR void SetCurve(tfxGraph &graph, tfxAttributeNode &node, bool is_left_curve, float &frame, float &value);
-tfxAPI_EDITOR bool MoveNode(tfxGraph &graph, tfxAttributeNode &node, float frame, float value, bool sort = true);
-tfxAPI_EDITOR bool SetNodeFrame(tfxGraph &graph, tfxAttributeNode &node, float &frame);
-tfxAPI_EDITOR bool SetNodeValue(tfxGraph &graph, tfxAttributeNode &node, float &value);
-tfxAPI_EDITOR void ClampNode(tfxGraph &graph, tfxAttributeNode &node);
-tfxAPI_EDITOR void ClampCurve(tfxGraph &graph, tfxVec2 &curve, tfxAttributeNode &node);
-tfxAPI_EDITOR void ClampGraph(tfxGraph &graph);
+tfxAPI_EDITOR bool SetNode(tfxGraph *graph, tfxAttributeNode *node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
+tfxAPI_EDITOR bool SetNode(tfxGraph *graph, tfxAttributeNode *node, float *frame, float *value);
+tfxAPI_EDITOR void SetCurve(tfxGraph *graph, tfxAttributeNode *node, bool is_left_curve, float *frame, float *value);
+tfxAPI_EDITOR bool MoveNode(tfxGraph *graph, tfxAttributeNode *node, float frame, float value, bool sort = true);
+tfxAPI_EDITOR bool SetNodeFrame(tfxGraph *graph, tfxAttributeNode *node, float *frame);
+tfxAPI_EDITOR bool SetNodeValue(tfxGraph *graph, tfxAttributeNode *node, float *value);
+tfxAPI_EDITOR void ClampNode(tfxGraph *graph, tfxAttributeNode *node);
+tfxAPI_EDITOR void ClampCurve(tfxGraph *graph, tfxVec2 *curve, tfxAttributeNode *node);
+tfxAPI_EDITOR void ClampGraph(tfxGraph *graph);
 tfxAPI_EDITOR bool IsOvertimeGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsColorGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsOvertimePercentageGraph(tfxGraphType type);
@@ -7315,10 +7315,10 @@ tfxAPI_EDITOR bool IsGlobalPercentageGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsAngleGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsAngleOvertimeGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsEverythingElseGraph(tfxGraphType type);
-tfxAPI_EDITOR bool HasNodeAtFrame(tfxGraph &graph, float frame);
-tfxAPI_EDITOR bool HasKeyframes(tfxEffectEmitter &e);
-tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfxEffectEmitter &e);
-tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame);
+tfxAPI_EDITOR bool HasNodeAtFrame(tfxGraph *graph, float frame);
+tfxAPI_EDITOR bool HasKeyframes(tfxEffectEmitter *e);
+tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfxEffectEmitter *e);
+tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter *e, tfxStack<tfxVec3> *points, float frame);
 
 tfxAPI_EDITOR bool IsNodeCurve(tfxAttributeNode *node);
 tfxAPI_EDITOR bool NodeCurvesAreInitialised(tfxAttributeNode *node);
@@ -7368,12 +7368,12 @@ tfxAPI_EDITOR void FreePropertyAttributes(tfxPropertyAttributes *attributes);
 tfxAPI_EDITOR void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttributes *dst);
 tfxAPI_EDITOR void FreeTransformAttributes(tfxTransformAttributes *attributes);
 tfxAPI_EDITOR void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst);
-tfxAPI_EDITOR bool HasTranslationKeyframes(tfxTransformAttributes &graphs);
-tfxAPI_EDITOR void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame);
+tfxAPI_EDITOR bool HasTranslationKeyframes(tfxTransformAttributes *graphs);
+tfxAPI_EDITOR void AddTranslationNodes(tfxTransformAttributes *keyframes, float frame);
 tfxAPI_EDITOR void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes *dst);
 
 //Get a graph by tfxGraphID
-tfxAPI_EDITOR tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id);
+tfxAPI_EDITOR tfxGraph *GetGraph(tfxLibrary *library, tfxGraphID graph_id);
 
 extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
@@ -7428,7 +7428,7 @@ tfxINTERNAL void AddTemplatePath(tfxEffectTemplate *effect_template, tfxEffectEm
 //--------------------------------
 tfxAPI_EDITOR tfxEffectEmitterInfo *GetEffectInfo(tfxEffectEmitter *e);					//Required by editor
 tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxStr256 path, tfxEffectTemplate *effect);
-tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxEffectEmitter &effect, tfxEffectTemplate *effect_template);
+tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxEffectEmitter *effect, tfxEffectTemplate *effect_template);
 //Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
 tfxINTERNAL void CopyLibraryLookupIndexesData(tfxLibrary *library, void* dst);
 tfxINTERNAL void CopyLibraryLookupValuesData(tfxLibrary *library, void* dst);

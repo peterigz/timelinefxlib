@@ -1959,27 +1959,27 @@
 		CopyGraphNoLookups(&src->translation_z, &dst->translation_z);
 	}
 
-	bool HasTranslationKeyframes(tfxTransformAttributes &graphs) {
-		return graphs.translation_x.nodes.size() || graphs.translation_y.nodes.size() || graphs.translation_z.nodes.size();
+	bool HasTranslationKeyframes(tfxTransformAttributes *graphs) {
+		return graphs->translation_x.nodes.size() || graphs->translation_y.nodes.size() || graphs->translation_z.nodes.size();
 	}
 
-	void AddTranslationNodes(tfxTransformAttributes &keyframes, float frame) {
-		if (keyframes.translation_x.nodes.size()) {
-			if (!HasNodeAtFrame(keyframes.translation_x, frame))
-				AddGraphCoordNode(&keyframes.translation_x, frame, 0.f);
-			if (!HasNodeAtFrame(keyframes.translation_y, frame))
-				AddGraphCoordNode(&keyframes.translation_y, frame, 0.f);
-			if (!HasNodeAtFrame(keyframes.translation_z, frame))
-				AddGraphCoordNode(&keyframes.translation_z, frame, 0.f);
+	void AddTranslationNodes(tfxTransformAttributes *keyframes, float frame) {
+		if (keyframes->translation_x.nodes.size()) {
+			if (!HasNodeAtFrame(&keyframes->translation_x, frame))
+				AddGraphCoordNode(&keyframes->translation_x, frame, 0.f);
+			if (!HasNodeAtFrame(&keyframes->translation_y, frame))
+				AddGraphCoordNode(&keyframes->translation_y, frame, 0.f);
+			if (!HasNodeAtFrame(&keyframes->translation_z, frame))
+				AddGraphCoordNode(&keyframes->translation_z, frame, 0.f);
 		}
 		else {
-			AddGraphCoordNode(&keyframes.translation_x, 0.f, 0.f);
-			AddGraphCoordNode(&keyframes.translation_y, 0.f, 0.f);
-			AddGraphCoordNode(&keyframes.translation_z, 0.f, 0.f);
+			AddGraphCoordNode(&keyframes->translation_x, 0.f, 0.f);
+			AddGraphCoordNode(&keyframes->translation_y, 0.f, 0.f);
+			AddGraphCoordNode(&keyframes->translation_z, 0.f, 0.f);
 			if (frame != 0) {
-				AddGraphCoordNode(&keyframes.translation_x, frame, 0.f);
-				AddGraphCoordNode(&keyframes.translation_y, frame, 0.f);
-				AddGraphCoordNode(&keyframes.translation_z, frame, 0.f);
+				AddGraphCoordNode(&keyframes->translation_x, frame, 0.f);
+				AddGraphCoordNode(&keyframes->translation_y, frame, 0.f);
+				AddGraphCoordNode(&keyframes->translation_z, frame, 0.f);
 			}
 		}
 	}
@@ -4194,43 +4194,43 @@
 		dst_graph->lookup.life = src_graph->lookup.life;
 	}
 
-	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
-		node.frame = _frame;
-		node.value = _value;
-		node.flags = flags;
-		node.left.x = _c0x;
-		node.left.y = _c0y;
-		node.right.x = _c1x;
-		node.right.y = _c1y;
-		if (graph.nodes[0] == node) {
-			node.frame = graph.min.x;
+	bool SetNode(tfxGraph *graph, tfxAttributeNode *node, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
+		node->frame = _frame;
+		node->value = _value;
+		node->flags = flags;
+		node->left.x = _c0x;
+		node->left.y = _c0y;
+		node->right.x = _c1x;
+		node->right.y = _c1y;
+		if (&graph->nodes[0] == node) {
+			node->frame = graph->min.x;
 			ClampNode(graph, node);
 		}
 		else {
 			ClampNode(graph, node);
 		}
 
-		if (SortGraph(&graph)) {
-			ReIndexGraph(&graph);
+		if (SortGraph(graph)) {
+			ReIndexGraph(graph);
 			return true;
 		}
 
 		return false;
 	}
 
-	bool SetNodeFrame(tfxGraph &graph, tfxAttributeNode &node, float &_frame) {
-		node.frame = _frame;
-		if (graph.nodes[0] == node) {
-			node.frame = graph.min.x;
+	bool SetNodeFrame(tfxGraph *graph, tfxAttributeNode *node, float *frame) {
+		node->frame = *frame;
+		if (&graph->nodes[0] == node) {
+			node->frame = graph->min.x;
 			ClampNode(graph, node);
 		}
 		else {
 			ClampNode(graph, node);
 		}
-		_frame = node.frame;
+		*frame = node->frame;
 
-		if (SortGraph(&graph)) {
-			ReIndexGraph(&graph);
+		if (SortGraph(graph)) {
+			ReIndexGraph(graph);
 			return true;
 		}
 
@@ -4250,99 +4250,99 @@
 		return node->flags |= tfxAttributeNodeFlags_curves_initialised;
 	}
 
-	bool SetNodeValue(tfxGraph &graph, tfxAttributeNode &node, float &_value) {
-		node.value = _value;
+	bool SetNodeValue(tfxGraph *graph, tfxAttributeNode *node, float *value) {
+		node->value = *value;
 		ClampNode(graph, node);
-		_value = node.value;
+		*value = node->value;
 
 		return false;
 	}
 
-	bool SetNode(tfxGraph &graph, tfxAttributeNode &node, float &frame, float &value) {
-		float old_frame = node.frame;
-		float old_value = node.value;
+	bool SetNode(tfxGraph *graph, tfxAttributeNode *node, float *frame, float *value) {
+		float old_frame = node->frame;
+		float old_value = node->value;
 
-		node.frame = frame;
-		node.value = value;
+		node->frame = *frame;
+		node->value = *value;
 
-		if (graph.nodes[0] == node) {
-			node.frame = graph.min.x;
+		if (&graph->nodes[0] == node) {
+			node->frame = graph->min.x;
 			ClampNode(graph, node);
 		}
 		else {
 			ClampNode(graph, node);
 		}
 
-		if (node.flags & tfxAttributeNodeFlags_curves_initialised) {
-			node.left.y += node.value - old_value;
-			node.left.x += node.frame - old_frame;
-			node.right.y += node.value - old_value;
-			node.right.x += node.frame - old_frame;
-			ClampCurve(graph, node.right, node);
-			ClampCurve(graph, node.left, node);
+		if (node->flags & tfxAttributeNodeFlags_curves_initialised) {
+			node->left.y += node->value - old_value;
+			node->left.x += node->frame - old_frame;
+			node->right.y += node->value - old_value;
+			node->right.x += node->frame - old_frame;
+			ClampCurve(graph, &node->right, node);
+			ClampCurve(graph, &node->left, node);
 		}
 
-		frame = node.frame;
-		value = node.value;
+		*frame = node->frame;
+		*value = node->value;
 
-		if (SortGraph(&graph)) {
-			ReIndexGraph(&graph);
+		if (SortGraph(graph)) {
+			ReIndexGraph(graph);
 			return true;
 		}
 
 		return false;
 	}
 
-	void SetCurve(tfxGraph &graph, tfxAttributeNode &node, bool is_left_curve, float &frame, float &value) {
+	void SetCurve(tfxGraph *graph, tfxAttributeNode *node, bool is_left_curve, float *frame, float *value) {
 		if (is_left_curve) {
-			node.left.x = frame;
-			node.left.y = value;
-			if (node.left.x > node.frame)
-				node.left.x = node.frame;
+			node->left.x = *frame;
+			node->left.y = *value;
+			if (node->left.x > node->frame)
+				node->left.x = node->frame;
 			else
-				ClampCurve(graph, node.left, node);
-			frame = node.left.x;
-			value = node.left.y;
+				ClampCurve(graph, &node->left, node);
+			*frame = node->left.x;
+			*value = node->left.y;
 		}
 		else {
-			node.right.x = frame;
-			node.right.y = value;
-			if (node.right.x < node.frame)
-				node.right.x = node.frame;
+			node->right.x = *frame;
+			node->right.y = *value;
+			if (node->right.x < node->frame)
+				node->right.x = node->frame;
 			else
-				ClampCurve(graph, node.right, node);
-			frame = node.right.x;
-			value = node.right.y;
+				ClampCurve(graph, &node->right, node);
+			*frame = node->right.x;
+			*value = node->right.y;
 		}
 	}
 
-	bool MoveNode(tfxGraph &graph, tfxAttributeNode &node, float frame, float value, bool sort) {
-		float old_frame = node.frame;
-		float old_value = node.value;
+	bool MoveNode(tfxGraph *graph, tfxAttributeNode *node, float frame, float value, bool sort) {
+		float old_frame = node->frame;
+		float old_value = node->value;
 
-		node.frame += frame;
-		node.value += value;
+		node->frame += frame;
+		node->value += value;
 
-		if (graph.nodes[0] == node) {
-			node.frame = graph.min.x;
+		if (&graph->nodes[0] == node) {
+			node->frame = graph->min.x;
 			ClampNode(graph, node);
 		}
 		else {
 			ClampNode(graph, node);
 		}
 
-		if (node.flags & tfxAttributeNodeFlags_curves_initialised) {
-			node.left.y += node.value - old_value;
-			node.left.x += node.frame - old_frame;
-			node.right.y += node.value - old_value;
-			node.right.x += node.frame - old_frame;
-			ClampCurve(graph, node.right, node);
-			ClampCurve(graph, node.left, node);
+		if (node->flags & tfxAttributeNodeFlags_curves_initialised) {
+			node->left.y += node->value - old_value;
+			node->left.x += node->frame - old_frame;
+			node->right.y += node->value - old_value;
+			node->right.x += node->frame - old_frame;
+			ClampCurve(graph, &node->right, node);
+			ClampCurve(graph, &node->left, node);
 		}
 
 		if (sort) {
-			if (SortGraph(&graph)) {
-				ReIndexGraph(&graph);
+			if (SortGraph(graph)) {
+				ReIndexGraph(graph);
 				return true;
 			}
 		}
@@ -4350,40 +4350,40 @@
 		return false;
 	}
 
-	void ClampNode(tfxGraph &graph, tfxAttributeNode &node) {
-		if (node.value < graph.min.y) node.value = graph.min.y;
-		if (node.frame < graph.min.x) node.frame = graph.min.x;
-		if (node.value > graph.max.y) node.value = graph.max.y;
-		if (node.frame > graph.max.x) node.frame = graph.max.x;
+	void ClampNode(tfxGraph *graph, tfxAttributeNode *node) {
+		if (node->value < graph->min.y) node->value = graph->min.y;
+		if (node->frame < graph->min.x) node->frame = graph->min.x;
+		if (node->value > graph->max.y) node->value = graph->max.y;
+		if (node->frame > graph->max.x) node->frame = graph->max.x;
 	}
 
-	void ClampGraph(tfxGraph &graph) {
-		graph.nodes.ResetIteratorIndex();
+	void ClampGraph(tfxGraph *graph) {
+		graph->nodes.ResetIteratorIndex();
 		do {
-			for (auto &node : graph.nodes) {
-				ClampNode(graph, node);
+			for (auto &node : graph->nodes) {
+				ClampNode(graph, &node);
 				if (node.flags & tfxAttributeNodeFlags_is_curve) {
-					ClampCurve(graph, node.left, node);
-					ClampCurve(graph, node.right, node);
+					ClampCurve(graph, &node.left, &node);
+					ClampCurve(graph, &node.right, &node);
 				}
 			}
-		} while (!graph.nodes.EndOfBuckets());
+		} while (!graph->nodes.EndOfBuckets());
 	}
 
-	void ClampCurve(tfxGraph &graph, tfxVec2 &p, tfxAttributeNode &node) {
-		if (p.y < graph.min.y) p.y = graph.min.y;
-		if (p.x < graph.min.x) p.x = graph.min.x;
-		//if (p.y > graph.max.y) p.y = graph.max.y;
-		if (p.x > graph.max.x) p.x = graph.max.x;
+	void ClampCurve(tfxGraph *graph, tfxVec2 *p, tfxAttributeNode *node) {
+		if (p->y < graph->min.y) p->y = graph->min.y;
+		if (p->x < graph->min.x) p->x = graph->min.x;
+		//if (p->y > graph->max.y) p->y = graph->max.y;
+		if (p->x > graph->max.x) p->x = graph->max.x;
 
-		tfxAttributeNode *next = GetGraphNextNode(&graph, &node);
+		tfxAttributeNode *next = GetGraphNextNode(graph, node);
 		if (next) {
-			if (p.x > next->frame) p.x = next->frame;
+			if (p->x > next->frame) p->x = next->frame;
 		}
 
-		tfxAttributeNode *prev = GetGraphPrevNode(&graph, &node);
+		tfxAttributeNode *prev = GetGraphPrevNode(graph, node);
 		if (prev) {
-			if (p.x < prev->frame) p.x = prev->frame;
+			if (p->x < prev->frame) p->x = prev->frame;
 		}
 	}
 
@@ -4494,7 +4494,7 @@
 		node.left.y = _c0y;
 		node.right.x = _c1x;
 		node.right.y = _c1y;
-		ClampNode(*graph, node);
+		ClampNode(graph, &node);
 		graph->nodes.push_back(node);
 		SortGraph(graph);
 
@@ -4529,7 +4529,7 @@
 		node.left.y = 0.f;
 		node.right.x = 0.f;
 		node.right.y = 0.f;
-		ClampNode(*graph, node);
+		ClampNode(graph, &node);
 		tfxAttributeNode &n = graph->nodes.push_back(node);
 		if (SortGraph(graph)) {
 			ReIndexGraph(graph);
@@ -4554,7 +4554,7 @@
 		node.left.y = 0.f;
 		node.right.x = 0.f;
 		node.right.y = 0.f;
-		ClampNode(*graph, node);
+		ClampNode(graph, &node);
 
 		if (graph->nodes.size() > 1) {
 			tfxAttributeNode *last_node = nullptr;
@@ -4591,7 +4591,7 @@
 		node.left.y = 0.f;
 		node.right.x = 0.f;
 		node.right.y = 0.f;
-		ClampNode(*graph, node);
+		ClampNode(graph, &node);
 
 		if (graph->nodes.size() > 1) {
 			tfxAttributeNode *last_node = nullptr;
@@ -5495,40 +5495,40 @@
 		return !IsOvertimeGraph(type) && !IsOvertimePercentageGraph(type) && !IsGlobalGraph(type) && !IsAngleGraph(type) && !IsOvertimeGraph(type);
 	}
 
-	bool HasNodeAtFrame(tfxGraph &graph, float frame) {
-		graph.nodes.ResetIteratorIndex();
+	bool HasNodeAtFrame(tfxGraph *graph, float frame) {
+		graph->nodes.ResetIteratorIndex();
 		do {
-			for (auto &node : graph.nodes) {
+			for (auto &node : graph->nodes) {
 				if (node.frame == frame) return true;
 			}
-		} while (!graph.nodes.EndOfBuckets());
+		} while (!graph->nodes.EndOfBuckets());
 		return false;
 	}
 
-	bool HasKeyframes(tfxEffectEmitter &e) {
-		assert(e.transform_attributes < e.library->transform_attributes.size());		//Must be a valid keyframes index into the library
-		tfxTransformAttributes &keyframes = e.library->transform_attributes[e.transform_attributes];
+	bool HasKeyframes(tfxEffectEmitter *e) {
+		assert(e->transform_attributes < e->library->transform_attributes.size());		//Must be a valid keyframes index into the library
+		tfxTransformAttributes &keyframes = e->library->transform_attributes[e->transform_attributes];
 		tfxU32 size = keyframes.translation_x.nodes.size() +
 			keyframes.translation_y.nodes.size() +
 			keyframes.translation_z.nodes.size();
 		return size > 0;
 	}
 
-	bool HasMoreThanOneKeyframe(tfxEffectEmitter &e) {
-		assert(e.transform_attributes < e.library->transform_attributes.size());		//Must be a valid keyframes index into the library
-		tfxTransformAttributes &keyframes = e.library->transform_attributes[e.transform_attributes];
+	bool HasMoreThanOneKeyframe(tfxEffectEmitter *e) {
+		assert(e->transform_attributes < e->library->transform_attributes.size());		//Must be a valid keyframes index into the library
+		tfxTransformAttributes &keyframes = e->library->transform_attributes[e->transform_attributes];
 		return	keyframes.translation_x.nodes.size() > 1 ||
 			keyframes.translation_y.nodes.size() > 1 ||
 			keyframes.translation_z.nodes.size() > 1;
 	}
 
-	void PushTranslationPoints(tfxEffectEmitter &e, tfxStack<tfxVec3> &points, float frame) {
-		assert(e.transform_attributes < e.library->transform_attributes.size());		//Must be a valid keyframes index into the library
-		tfxTransformAttributes *keyframes = &e.library->transform_attributes[e.transform_attributes];
+	void PushTranslationPoints(tfxEffectEmitter *e, tfxStack<tfxVec3> *points, float frame) {
+		assert(e->transform_attributes < e->library->transform_attributes.size());		//Must be a valid keyframes index into the library
+		tfxTransformAttributes *keyframes = &e->library->transform_attributes[e->transform_attributes];
 		tfxVec3 point(lookup_callback(&keyframes->translation_x, frame),
 			lookup_callback(&keyframes->translation_y, frame),
 			lookup_callback(&keyframes->translation_z, frame));
-		points.push_back(point);
+		points->push_back(point);
 	}
 
 	bool HasDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key) {
@@ -5720,36 +5720,36 @@
 	}
 
 	//Get a graph by tfxGraphID
-	tfxGraph &GetGraph(tfxLibrary &library, tfxGraphID &graph_id) {
+	tfxGraph *GetGraph(tfxLibrary *library, tfxGraphID graph_id) {
 		tfxGraphType type = graph_id.type;
 
 		if (type < tfxGlobalCount) {
-			return ((tfxGraph*)&library.global_graphs[graph_id.graph_id])[type];
+			return &((tfxGraph*)&library->global_graphs[graph_id.graph_id])[type];
 		}
 		else if (type >= tfxPropertyStart && type < tfxBaseStart) {
 			int ref = type - tfxPropertyStart;
-			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].properties)[ref];
+			return &((tfxGraph*)&library->emitter_attributes[graph_id.graph_id].properties)[ref];
 		}
 		else if (type >= tfxBaseStart && type < tfxVariationStart) {
 			int ref = type - tfxBaseStart;
-			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].base)[ref];
+			return &((tfxGraph*)&library->emitter_attributes[graph_id.graph_id].base)[ref];
 		}
 		else if (type >= tfxVariationStart && type < tfxOvertimeStart) {
 			int ref = type - tfxVariationStart;
-			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].variation)[ref];
+			return &((tfxGraph*)&library->emitter_attributes[graph_id.graph_id].variation)[ref];
 		}
 		else if (type >= tfxOvertimeStart && type < tfxTransformStart) {
 			int ref = type - tfxOvertimeStart;
-			return ((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].overtime)[ref];
+			return &((tfxGraph*)&library->emitter_attributes[graph_id.graph_id].overtime)[ref];
 		}
 		else if (type >= tfxTransformStart) {
 			int ref = type - tfxTransformStart;
-			return ((tfxGraph*)&library.transform_attributes[graph_id.graph_id])[ref];
+			return &((tfxGraph*)&library->transform_attributes[graph_id.graph_id])[ref];
 		}
 
 		assert(0);	//This function must return a value, make sure the graph_id is valid
 
-		return((tfxGraph*)&library.emitter_attributes[graph_id.graph_id].overtime)[type];
+		return nullptr;
 
 	}
 
