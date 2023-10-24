@@ -7378,9 +7378,9 @@ tfxAPI_EDITOR tfxGraph *GetGraph(tfxLibrary *library, tfxGraphID graph_id);
 extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
 extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
-tfxAPI_EDITOR int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats);
-tfxAPI_EDITOR tfxEffectLibraryStats CreateLibraryStats(tfxLibrary &lib);
-tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+tfxAPI_EDITOR int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats *stats);
+tfxAPI_EDITOR tfxEffectLibraryStats CreateLibraryStats(tfxLibrary *lib);
+tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfxPackage *package, tfxLibrary *lib, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
 //--------------------------------
 //Animation manager internal functions - animation manager is used to playback pre-recorded effects
@@ -7397,10 +7397,10 @@ tfxINTERNAL bool FreePMEffectCapacity(tfxParticleManager *pm);
 tfxINTERNAL tfxU32 GetPMEffectSlot(tfxParticleManager *pm);
 tfxINTERNAL tfxU32 GetPMEmitterSlot(tfxParticleManager *pm);
 tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfxParticleManager *pm, tfxParticleID particle_id);
-tfxINTERNAL void FreePMParticleIndex(tfxParticleManager *pm, tfxU32 &index);
+tfxINTERNAL void FreePMParticleIndex(tfxParticleManager *pm, tfxU32 *index);
 tfxINTERNAL tfxU32 PushPMDepthIndex(tfxParticleManager *pm, tfxU32 layer, tfxDepthIndex depth_index);
 tfxINTERNAL void ResetPMFlags(tfxParticleManager *pm);
-tfxINTERNAL tfxU32 &GetParticleSpriteIndex(tfxParticleManager *pm, tfxParticleID id);
+tfxINTERNAL tfxU32 GetParticleSpriteIndex(tfxParticleManager *pm, tfxParticleID id);
 tfxINTERNAL unsigned int GetControllerMemoryUsage(tfxParticleManager *pm);
 tfxINTERNAL unsigned int GetParticleMemoryUsage(tfxParticleManager *pm);
 tfxINTERNAL void FreeComputeSlot(tfxParticleManager *pm, unsigned int slot_id);
@@ -7440,7 +7440,7 @@ tfxINTERNAL float LookupLibraryPreciseNodeList(tfxLibrary *library, tfxGraphType
 tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
 tfxINTERNAL float LookupLibraryFastValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
 tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
-tfxINTERNAL void ResetSpriteDataLerpOffset(tfxSpriteData &sprites);
+tfxINTERNAL void ResetSpriteDataLerpOffset(tfxSpriteData *sprites);
 tfxINTERNAL void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d, float frame_lengt);
 tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
 tfxINTERNAL void WrapSingleParticleSprites(tfxSpriteData *sprite_data);
@@ -7470,7 +7470,7 @@ tfxAPI_EDITOR void DeleteLibraryEffect(tfxLibrary *library, tfxEffectEmitter *ef
 tfxAPI_EDITOR bool RenameLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect, const char *new_name);
 tfxAPI_EDITOR bool LibraryNameExists(tfxLibrary *library, tfxEffectEmitter *effect, const char *name);
 tfxAPI_EDITOR void ReIndexLibrary(tfxLibrary *library);
-tfxAPI_EDITOR void UpdateLibraryParticleShapeReferences(tfxLibrary *library, tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash);
+tfxAPI_EDITOR void UpdateLibraryParticleShapeReferences(tfxLibrary *library, tfxKey default_hash);
 tfxAPI_EDITOR tfxEffectEmitter* LibraryMoveUp(tfxLibrary *library, tfxEffectEmitter *effect);
 tfxAPI_EDITOR tfxEffectEmitter* LibraryMoveDown(tfxLibrary *library, tfxEffectEmitter *effect);
 tfxAPI_EDITOR tfxU32 AddLibraryGlobal(tfxLibrary *library);
@@ -7515,7 +7515,6 @@ tfxAPI_EDITOR void InitLibraryEmitterProperties(tfxLibrary *library);
 //Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
 //You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
 //These are mainly for use by the editor, use effect templates instead, see PrepareEffectTemplate.
-tfxAPI_EDITOR tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxStr256 &path);
 tfxAPI_EDITOR tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, const char *path);
 //Get an effect by it's path hash key
 tfxAPI_EDITOR tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxKey key);
@@ -7607,7 +7606,7 @@ tfxAPI int ValidateEffectPackage(const char *filename);
 * @param filename		A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
 * @param lib			A reference to a tfxLibrary object that will hold the loaded effect library data.
 * @param shape_loader	A pointer to a function that will be used to load image data into the effect library package.
-*						The function has the following signature: void shape_loader(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data).
+*						The function has the following signature: void shape_loader(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data).
 * @param user_data		A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
 * @param read_only		A boolean value that determines whether the effect library data will be loaded in read-only mode. (Maybe removed in the future).
 *
@@ -7625,7 +7624,7 @@ tfxAPI int ValidateEffectPackage(const char *filename);
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary *lib, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
 /**
 * Loads a sprite data file into an animation manager
@@ -7633,7 +7632,7 @@ tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary &
 * @param filename		A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
 * @param lib			A reference to a tfxAnimationManager object that will hold the loaded sprite data.
 * @param shape_loader	A pointer to a function that will be used to load image data into the effect library package.
-*						The function has the following signature: void shape_loader(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data).
+*						The function has the following signature: void shape_loader(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data).
 * @param user_data		A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
 *
 * @return A tfxErrorFlags value that indicates whether the function succeeded or failed. The possible return values are:
@@ -7650,7 +7649,7 @@ tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary &
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager &animation_manager, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr);
+tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager *animation_manager, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr);
 
 /*
 Output all the effect names in a library to the console
@@ -8649,7 +8648,6 @@ Pre-record this effect into a sprite cache so that you can play the effect back 
 	* @param pm			Reference to a pm that will be used to run the particle simulation and record the sprite data
 	* @param path		const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
 	* @param camera		Array of 3 floats with the camera position (only needed for 3d effects that are sorted by depth
-	* / void RecordSpriteData3d(tfxParticleManager &pm, u32 frames, u32 start_frame, int extra_frames, u32 &largest_frame);
 */
 tfxAPI void RecordTemplateEffect(tfxEffectTemplate *t, tfxParticleManager *pm, float update_frequency, float camera_position[3]);
 

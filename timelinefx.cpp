@@ -2327,11 +2327,6 @@
 		return &library->effects.back();
 	}
 
-	tfxEffectEmitter* GetLibraryEffect(tfxLibrary *library, tfxStr256 &path) {
-		assert(library->effect_paths.ValidName(path));		//Effect was not found by that name
-		return library->effect_paths.At(path);
-	}
-
 	tfxEffectEmitter* GetLibraryEffect(tfxLibrary *library, const char *path) {
 		assert(library->effect_paths.ValidName(path));		//Effect was not found by that name
 		return library->effect_paths.At(path);
@@ -2343,7 +2338,7 @@
 	}
 
 	void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxStr256 path, tfxEffectTemplate *effect_template) {
-		tfxEffectEmitter *effect = GetLibraryEffect(library, path);
+		tfxEffectEmitter *effect = GetLibraryEffect(library, path.c_str());
 		assert(effect);								//Effect was not found, make sure the path exists
 		assert(effect->type == tfxEffectType);		//The effect must be an effect type, not an emitter
 		effect_template->original_effect_hash = effect->path_hash;
@@ -2366,7 +2361,7 @@
 		}
 	}
 
-	void UpdateLibraryParticleShapeReferences(tfxLibrary *library, tfxvec<tfxEffectEmitter> &effects, tfxKey default_hash) {
+	void UpdateLibraryParticleShapeReferences(tfxLibrary *library, tfxKey default_hash) {
 		tfxvec<tfxEffectEmitter*> stack;
 		for (auto &effect : library->effects) {
 			stack.push_back(&effect);
@@ -5810,7 +5805,7 @@
 		return shape_count;
 	}
 
-	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats &stats) {
+	int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats *stats) {
 		int context = 0;
 		int error = 0;
 
@@ -5828,7 +5823,7 @@
 			return error;
 		}
 
-		memset(&stats, 0, sizeof(tfxEffectLibraryStats));
+		memset(stats, 0, sizeof(tfxEffectLibraryStats));
 		bool inside_emitter = false;
 
 		tmpStack(tfxStr256, pair);
@@ -5855,18 +5850,18 @@
 				if (context == tfxStartShapes) {
 					if (pair.size() >= 5) {
 						int frame_count = atoi(pair[2].c_str());
-						stats.total_shapes += frame_count;
+						stats->total_shapes += frame_count;
 					}
 				}
 				else if (context == tfxStartEmitter) {
 					inside_emitter = true;
-					stats.total_emitters++;
+					stats->total_emitters++;
 				}
 				else if (context == tfxStartEffect) {
 					if (inside_emitter)
-						stats.total_sub_effects++;
+						stats->total_sub_effects++;
 					else
-						stats.total_effects++;
+						stats->total_effects++;
 				}
 			}
 		}
@@ -5874,14 +5869,14 @@
 		return error;
 	}
 
-	tfxEffectLibraryStats CreateLibraryStats(tfxLibrary &lib) {
+	tfxEffectLibraryStats CreateLibraryStats(tfxLibrary *lib) {
 		tfxEffectLibraryStats stats;
 		memset(&stats, 0, sizeof(stats));
-		stats.total_effects = lib.effects.size();
-		stats.total_node_lookup_indexes = lib.node_lookup_indexes.size();
-		stats.total_attribute_nodes = lib.all_nodes.size();
+		stats.total_effects = lib->effects.size();
+		stats.total_node_lookup_indexes = lib->node_lookup_indexes.size();
+		stats.total_attribute_nodes = lib->all_nodes.size();
 		tmpStack(tfxEffectEmitter, stack);
-		for (auto &effect : lib.effects) {
+		for (auto &effect : lib->effects) {
 			stack.push_back(effect);
 		}
 		while (!stack.empty()) {
@@ -5898,14 +5893,14 @@
 				stack.push_back(sub);
 			}
 		}
-		stats.total_shapes = lib.particle_shapes.data.size();
-		stats.required_graph_node_memory = lib.graph_node_allocator.TotalMemoryInUse();
-		stats.required_graph_lookup_memory = lib.graph_lookup_allocator.TotalMemoryInUse();
+		stats.total_shapes = lib->particle_shapes.data.size();
+		stats.required_graph_node_memory = lib->graph_node_allocator.TotalMemoryInUse();
+		stats.required_graph_lookup_memory = lib->graph_lookup_allocator.TotalMemoryInUse();
 
 		return stats;
 	}
 
-	tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager &animation_manager, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+	tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager *animation_manager, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		//assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 		if (!tfxDataTypes.initialised)
 			tfxDataTypes.Init();
@@ -5934,21 +5929,21 @@
 			return error;
 		}
 
-		if (package.header.user_data2 == 1 && !(animation_manager.flags & tfxAnimationManagerFlags_is_3d)) {
+		if (package.header.user_data2 == 1 && !(animation_manager->flags & tfxAnimationManagerFlags_is_3d)) {
 			return tfxErrorCode_sprite_data_is_3d_but_animation_manager_is_2d;
 		}
 
-		if (package.header.user_data2 == 0 && animation_manager.flags & tfxAnimationManagerFlags_is_3d) {
+		if (package.header.user_data2 == 0 && animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
 			return tfxErrorCode_sprite_data_is_2d_but_animation_manager_is_3d;
 		}
 
-		if (animation_manager.flags & tfxAnimationManagerFlags_is_3d) {
-			animation_manager.sprite_data_3d.resize((tfxU32)(sprite_data->file_size / package.header.user_data1));
-			memcpy(animation_manager.sprite_data_3d.data, sprite_data->data.data, sprite_data->file_size);
+		if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
+			animation_manager->sprite_data_3d.resize((tfxU32)(sprite_data->file_size / package.header.user_data1));
+			memcpy(animation_manager->sprite_data_3d.data, sprite_data->data.data, sprite_data->file_size);
 		}
 		else {
-			animation_manager.sprite_data_2d.resize((tfxU32)(sprite_data->file_size / package.header.user_data1));
-			memcpy(animation_manager.sprite_data_2d.data, sprite_data->data.data, sprite_data->file_size);
+			animation_manager->sprite_data_2d.resize((tfxU32)(sprite_data->file_size / package.header.user_data1));
+			memcpy(animation_manager->sprite_data_2d.data, sprite_data->data.data, sprite_data->file_size);
 		}
 
 		tmpStack(tfxSpriteDataMetrics, metrics_stack);
@@ -6094,13 +6089,13 @@
 							}
 							assert(s.image_hash == image_data.image_hash);
 
-							shape_loader(s.name, image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
+							shape_loader(s.name, &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
 							if (!image_data.ptr) {
 								//uid = -6;
 							}
 							else {
-								animation_manager.particle_shapes.Insert(image_data.image_hash, image_data);
+								animation_manager->particle_shapes.Insert(image_data.image_hash, image_data);
 								if (first_shape_hash == 0)
 									first_shape_hash = s.image_hash;
 							}
@@ -6124,12 +6119,12 @@
 			}
 			else if (context == tfxEndEffectAnimationInfo) {
 				assert(metrics_stack.current_size);
-				animation_manager.effect_animation_info.Insert(metrics_stack.back().name, metrics_stack.back());
+				animation_manager->effect_animation_info.Insert(metrics_stack.back().name, metrics_stack.back());
 				metrics_stack.pop();
 			}
 			else if (context == tfxEndEmitter) {
 				assert(emitter_properties_stack.current_size);
-				animation_manager.emitter_properties.push_back(emitter_properties_stack.pop_back());
+				animation_manager->emitter_properties.push_back(emitter_properties_stack.pop_back());
 			}
 
 		}
@@ -6143,41 +6138,41 @@
 		return error;
 	}
 
-	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage &package, tfxLibrary &lib, void(*shape_loader)(const char *filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
+	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage *package, tfxLibrary *lib, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 
 		assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 		if (!tfxDataTypes.initialised)
 			tfxDataTypes.Init();
 
-		ClearLibrary(&lib);
+		ClearLibrary(lib);
 		if (tfxIcospherePoints[0].current_size == 0) {
 			MakeIcospheres();
 		}
 
-		tfxEntryInfo *data = GetPackageFile(&package, "data.txt");
-		tfxEntryInfo *stats_struct = GetPackageFile(&package, "stats.struct");
+		tfxEntryInfo *data = GetPackageFile(package, "data.txt");
+		tfxEntryInfo *stats_struct = GetPackageFile(package, "stats.struct");
 		tfxErrorFlags error = 0;
 
 		int context = 0;
 		int uid = 0;
 		tfxU32 current_global_graph = 0;
 
-		InitLibraryEmitterProperties(&lib);
+		InitLibraryEmitterProperties(lib);
 
 		if (!stats_struct) {
-			lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-			lib.graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
+			lib->graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
+			lib->graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
 		}
 		else {
 			tfxEffectLibraryStats stats;
 			memcpy(&stats, stats_struct->data.data, stats_struct->file_size);
 			if (read_only) {
-				lib.graph_node_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_node_memory, tfxMegabyte(2)), 8);
-				lib.graph_lookup_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_lookup_memory, tfxMegabyte(4)), 256);
+				lib->graph_node_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_node_memory, tfxMegabyte(2)), 8);
+				lib->graph_lookup_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_lookup_memory, tfxMegabyte(4)), 256);
 			}
 			else {
-				lib.graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-				lib.graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
+				lib->graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
+				lib->graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
 			}
 		}
 
@@ -6185,7 +6180,7 @@
 			error |= tfxErrorCode_data_could_not_be_loaded;
 
 		if (error != 0) {
-			FreePackage(&package);
+			FreePackage(package);
 			return error;
 		}
 
@@ -6208,51 +6203,51 @@
 				context_set = true;
 				if (context == tfxStartFolder) {
 					tfxEffectEmitter effect;
-					effect.library = &lib;
+					effect.library = lib;
 					effect.type = tfxEffectEmitterType::tfxFolder;
-					effect.info_index = AddLibraryEffectEmitterInfo(&lib);
+					effect.info_index = AddLibraryEffectEmitterInfo(lib);
 					GetEffectInfo(&effect)->uid = uid++;
 					effect_stack.push_back(effect);
 				}
 				else if (context == tfxStartStage) {
 					tfxEffectEmitter effect;
-					effect.library = &lib;
+					effect.library = lib;
 					effect.type = tfxEffectEmitterType::tfxStage;
-					effect.info_index = AddLibraryEffectEmitterInfo(&lib);
-					AddLibraryPreviewCameraSettings(&lib, &effect);
-					effect.transform_attributes = AddLibraryKeyframes(&lib);
+					effect.info_index = AddLibraryEffectEmitterInfo(lib);
+					AddLibraryPreviewCameraSettings(lib, &effect);
+					effect.transform_attributes = AddLibraryKeyframes(lib);
 					GetEffectInfo(&effect)->uid = uid++;
 					effect_stack.push_back(effect);
 				}
 				else if (context == tfxStartEffect) {
 					tfxEffectEmitter effect;
-					effect.library = &lib;
-					effect.info_index = AddLibraryEffectEmitterInfo(&lib);
-					effect.property_index = AddLibraryEmitterProperties(&lib);
-					effect.transform_attributes = AddLibraryKeyframes(&lib);
+					effect.library = lib;
+					effect.info_index = AddLibraryEffectEmitterInfo(lib);
+					effect.property_index = AddLibraryEmitterProperties(lib);
+					effect.transform_attributes = AddLibraryKeyframes(lib);
 					if (effect_stack.size() <= 1) { //Only root effects get the global graphs
-						AddLibraryEffectGraphs(&lib, &effect);
+						AddLibraryEffectGraphs(lib, &effect);
 						ResetEffectGraphs(&effect, false, false);
 						current_global_graph = effect.global;
 					}
-					AddLibraryTransformGraphs(&lib, &effect);
+					AddLibraryTransformGraphs(lib, &effect);
 					ResetTransformGraphs(&effect, false, false);
 					effect.type = tfxEffectEmitterType::tfxEffectType;
-					AddLibrarySpriteSheetSettings(&lib, &effect);
-					AddLibrarySpriteDataSettings(&lib, &effect);
-					AddLibraryPreviewCameraSettings(&lib, &effect);
+					AddLibrarySpriteSheetSettings(lib, &effect);
+					AddLibrarySpriteDataSettings(lib, &effect);
+					AddLibraryPreviewCameraSettings(lib, &effect);
 					GetEffectInfo(&effect)->uid = uid++;
 					effect_stack.push_back(effect);
 
 				}
 				else if (context == tfxStartEmitter) {
 					tfxEffectEmitter emitter;
-					emitter.library = &lib;
-					emitter.info_index = AddLibraryEffectEmitterInfo(&lib);
-					emitter.property_index = AddLibraryEmitterProperties(&lib);
-					emitter.transform_attributes = AddLibraryKeyframes(&lib);
-					AddLibraryEmitterGraphs(&lib, &emitter);
-					AddLibraryTransformGraphs(&lib, &emitter);
+					emitter.library = lib;
+					emitter.info_index = AddLibraryEffectEmitterInfo(lib);
+					emitter.property_index = AddLibraryEmitterProperties(lib);
+					emitter.transform_attributes = AddLibraryKeyframes(lib);
+					AddLibraryEmitterGraphs(lib, &emitter);
+					AddLibraryTransformGraphs(lib, &emitter);
 					emitter.type = tfxEffectEmitterType::tfxEmitterType;
 					ResetEmitterGraphs(&emitter, false, false);
 					ResetTransformGraphs(&emitter, false, false);
@@ -6277,10 +6272,10 @@
 					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
 						switch (tfxDataTypes.names_and_types.At(pair[0])) {
 						case tfxUInt64:
-							AssignEffectorProperty(&effect_stack.back(), &pair[0], (tfxU64)strtoull(pair[1].c_str(), NULL, 10), package.header.file_version);
+							AssignEffectorProperty(&effect_stack.back(), &pair[0], (tfxU64)strtoull(pair[1].c_str(), NULL, 10), package->header.file_version);
 							break;
 						case tfxUint:
-							AssignEffectorProperty(&effect_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
+							AssignEffectorProperty(&effect_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 							break;
 						case tfxFloat:
 							AssignEffectorProperty(&effect_stack.back(), &pair[0], (float)atof(pair[1].c_str()));
@@ -6348,7 +6343,7 @@
 							s.import_filter = 0;
 						}
 
-						tfxEntryInfo *shape_entry = GetPackageFile(&package, s.name);
+						tfxEntryInfo *shape_entry = GetPackageFile(package, s.name);
 						if (shape_entry) {
 							tfxImageData image_data;
 							image_data.shape_index = s.shape_index;
@@ -6362,13 +6357,13 @@
 							}
 							assert(s.image_hash == image_data.image_hash);
 
-							shape_loader(s.name, image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
+							shape_loader(s.name, &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
 							if (!image_data.ptr) {
 								//uid = -6;
 							}
 							else {
-								lib.particle_shapes.Insert(image_data.image_hash, image_data);
+								lib->particle_shapes.Insert(image_data.image_hash, image_data);
 								if (first_shape_hash == 0)
 									first_shape_hash = s.image_hash;
 							}
@@ -6390,7 +6385,7 @@
 				memcpy(sub_effectors.name, "emitter_sub_effects\0", 20);
 #endif
 				if (effect_stack.back().property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
-					lib.emitter_properties.image_handle[effect_stack.back().property_index] = { .5f, .5f };
+					lib->emitter_properties.image_handle[effect_stack.back().property_index] = { .5f, .5f };
 				}
 				effect_stack.back().property_flags |= tfxEmitterPropertyFlags_enabled;
 				GetEffectInfo(&effect_stack.parent())->sub_effectors.push_back(effect_stack.back());
@@ -6417,7 +6412,7 @@
 					GetEffectInfo(&effect_stack.parent())->sub_effectors.push_back(effect_stack.back());
 				}
 				else {
-					lib.effects.push_back(effect_stack.back());
+					lib->effects.push_back(effect_stack.back());
 					InitialiseUninitialisedGraphs(&effect_stack.back());
 				}
 				effect_stack.pop();
@@ -6425,37 +6420,37 @@
 
 			if (context == tfxEndFolder) {
 				assert(effect_stack.size() == 1);			//Folders should not be contained within anything
-				lib.effects.push_back(effect_stack.back());
+				lib->effects.push_back(effect_stack.back());
 				effect_stack.pop();
 			}
 
 			if (context == tfxEndStage) {
 				assert(effect_stack.size() == 1);			//Stages should not be contained within anything
-				lib.effects.push_back(effect_stack.back());
+				lib->effects.push_back(effect_stack.back());
 				effect_stack.pop();
 			}
 
 		}
 
-		FreePackage(&package);
+		FreePackage(package);
 
 		if (uid >= 0) {
 			//Effects were loaded so let's compile them
-			CompileAllLibraryGraphs(&lib);
-			ReIndexLibrary(&lib);
+			CompileAllLibraryGraphs(lib);
+			ReIndexLibrary(lib);
 			if (first_shape_hash != 0) {
-				UpdateLibraryParticleShapeReferences(&lib, lib.effects, first_shape_hash);
+				UpdateLibraryParticleShapeReferences(lib, first_shape_hash);
 			}
-			UpdateLibraryEffectPaths(&lib);
-			UpdateLibraryComputeNodes(&lib);
-			SetLibraryMinMaxData(&lib);
+			UpdateLibraryEffectPaths(lib);
+			UpdateLibraryComputeNodes(lib);
+			SetLibraryMinMaxData(lib);
 		}
-		lib.uid = uid;
+		lib->uid = uid;
 
 		return error;
 	}
 
-	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary &lib, void(*shape_loader)(const char* filename, tfxImageData &image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
+	tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary *lib, void(*shape_loader)(const char* filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 
 		tfxErrorFlags error = 0;
 
@@ -6465,7 +6460,7 @@
 			FreePackage(&package);
 			return error;
 		}
-		error = LoadEffectLibraryPackage(package, lib, shape_loader, user_data, read_only);
+		error = LoadEffectLibraryPackage(&package, lib, shape_loader, user_data, read_only);
 
 		FreePackage(&package);
 		return error;
@@ -6494,9 +6489,9 @@
 		}
 	}
 
-	void ResetSpriteDataLerpOffset(tfxSpriteData &sprite_data) {
-		tfxSpriteDataSoA &sprites = sprite_data.real_time_sprites;
-		for (int i = 0; i != sprite_data.real_time_sprites_buffer.current_size; ++i) {
+	void ResetSpriteDataLerpOffset(tfxSpriteData *sprite_data) {
+		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
+		for (int i = 0; i != sprite_data->real_time_sprites_buffer.current_size; ++i) {
 			sprites.lerp_offset[i] = 1.f;
 		}
 	}
@@ -6820,7 +6815,7 @@
 		sprite_data->real_time_sprites_buffer.current_size = total_sprites;
 		//total sprites should not exceed the capacity of the sprite buffer
 		assert(sprite_data->real_time_sprites_buffer.current_size <= sprite_data->real_time_sprites_buffer.capacity);
-		ResetSpriteDataLerpOffset(*sprite_data);
+		ResetSpriteDataLerpOffset(sprite_data);
 		tfxSpriteDataSoA &sprites = sprite_data->real_time_sprites;
 
 		for (int i = 0; i != anim.real_frames; ++i) {
@@ -9281,12 +9276,12 @@
 		return pm->particle_indexes.current_size - 1;
 	}
 
-	void FreePMParticleIndex(tfxParticleManager *pm, tfxU32 &index) {
+	void FreePMParticleIndex(tfxParticleManager *pm, tfxU32 *index) {
 		//Todo: ideally we want a better thread safe container for this
 		std::lock_guard<std::mutex> lock(pm->particle_index_mutex);
-		pm->particle_indexes[index] = tfxINVALID;
-		pm->free_particle_indexes.push_back(index);
-		index = tfxINVALID;
+		pm->particle_indexes[*index] = tfxINVALID;
+		pm->free_particle_indexes.push_back(*index);
+		*index = tfxINVALID;
 	}
 
 	tfxU32 PushPMDepthIndex(tfxParticleManager *pm, tfxU32 layer, tfxDepthIndex depth_index) {
@@ -9311,7 +9306,7 @@
 		pm->flags = 0; 
 	}
 
-	tfxU32 &GetParticleSpriteIndex(tfxParticleManager *pm, tfxParticleID id) { 
+	tfxU32 GetParticleSpriteIndex(tfxParticleManager *pm, tfxParticleID id) { 
 		return pm->particle_arrays[ParticleBank(id)].sprite_index[ParticleIndex(id)]; 
 	}
 
@@ -12049,7 +12044,7 @@
 			if (flags & tfxParticleFlags_remove) {
 				offset++;
 				if (flags & tfxParticleFlags_has_sub_effects) {
-					FreePMParticleIndex(&pm, bank.particle_index[index]);
+					FreePMParticleIndex(&pm, &bank.particle_index[index]);
 				}
 				if (!(pm.flags & tfxEffectManagerFlags_unordered)) {
 					tfxU32 temp_depth = bank.depth_index[index];
