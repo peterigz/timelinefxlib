@@ -5,7 +5,7 @@
 //#define tfxUSEAVX
 
 /*
-	Timeline FX C++ library
+	Timeline FX C++ library (Very WIP currently)
 
 	This library is for implementing particle effects into your games and applications.
 
@@ -3450,73 +3450,6 @@ inline T &FindValueByIndex(tfxMemoryBucket &range, tfxU32 i) {
 
 #define tfxBucket(type, index, bucket_ptr) (type*)bucket_ptr + index;
 
-//No Destructor, so use free_all before it goes out of scope!
-template <typename T>
-struct tfxArray {
-	tfxMemoryArenaManager *allocator;			//Pointer to the allocator that manages the memory and blocks of that memory
-	T *block;									//Pointer to the data storing the array. This will be somewhere in a tfxMemoryArena
-	tfxU32 block_index;							//This index of the block of memory referenced in allocator->blocks
-	tfxU32 capacity;							//The total capacity of the array in units of T
-
-	tfxArray() : allocator(NULL) { block = NULL; capacity = 0; block_index = tfxINVALID; }
-	tfxArray(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; block_index = tfxINVALID; capacity = 0; reserve(size); }
-
-	inline tfxU32		size() { return capacity; }
-	inline const tfxU32	size() const { return capacity; }
-	inline T&           operator[](tfxU32 i) {
-		assert(i < capacity);		//Index is out of bounds
-		return block[i];
-	}
-	inline const T&     operator[](tfxU32 i) const {
-		assert(i < capacity);		//Index is out of bounds
-		return block[i];
-	}
-	inline tfxArray<T>&		operator=(const tfxArray<T>& src) {
-		if (!allocator)
-			allocator = src.allocator;
-		if (!src.block) return *this;
-		assert(resize(src.capacity));
-		allocator->CopyBlockToBlock(src.block_index, block_index);
-		return *this;
-	}
-
-	inline void         free() { if (block != NULL) { capacity = capacity = 0; allocator->FreeBlocks(block_index); block = NULL; block_index = tfxINVALID; } }
-	inline T*           begin() { return block; }
-	inline const T*     begin() const { return block; }
-	inline T*           end() { return block + capacity; }
-	inline const T*     end() const { return block + capacity; }
-	inline bool			reserve(tfxU32 size) {
-		assert(allocator);		//Must assign an allocator before doing anything with a tfxBucketArray. Capacity must equal 0
-		assert(capacity == 0);	//Capacity must equal 0 before reserving an array
-		assert(size * sizeof(T) < allocator->arena_size);	//The size of an array must fit into an arena size
-		if (capacity == 0) {
-			if (!Allocate<T>(*allocator, size, block_index)) {
-				return false;
-			}
-			capacity = size;
-			allocator->blocks[block_index].current_size = capacity;
-			allocator->blocks[block_index].end_ptr = (T*)allocator->blocks[block_index].end_ptr + capacity;
-			block = (T*)allocator->blocks[block_index].data;
-		}
-		return true;
-	}
-	inline bool			resize(tfxU32 size, bool keep_contents = false) {
-		assert(allocator);		//Must assign an allocator before doing anything with a tfxBucketArray. Capacity must equal 0
-		if (size == capacity) return true;
-		tfxU32 current_block = block_index;
-		if (!Allocate<T>(*allocator, size, block_index)) {
-			return false;
-		}
-		if (keep_contents)
-			allocator->CopyBlockToBlock(current_block, block_index);
-		capacity = size;
-		block = (T*)allocator->blocks[block_index].data;
-		return true;
-	}
-	inline void			zero() { assert(capacity > 0); memset(block, 0, capacity * sizeof(T)); }
-
-};
-
 template <typename T>
 struct tfxBucketArray {
 	tfxMemoryArenaManager *allocator;	//Pointer to the arena manager that handles the memory and blocks of that memory
@@ -4742,7 +4675,7 @@ struct tfxRandom {
 };
 
 struct tfxGraphLookup {
-	tfxArray<float> values;
+	tfxvec<float> values;
 	tfxU32 last_frame;
 	float life;
 
@@ -7349,13 +7282,13 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfxGraphType type) {
 //--------------------------------
 //Grouped graph struct functions
 //--------------------------------
-tfxINTERNAL void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
 tfxINTERNAL void FreeEmitterAttributes(tfxEmitterAttributes *attributes);
 tfxINTERNAL void FreeGlobalAttributes(tfxGlobalAttributes *attributes);
 tfxAPI_EDITOR void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);

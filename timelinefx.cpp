@@ -1855,7 +1855,7 @@
 		}
 	}
 
-	void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
+	void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size) {
 		attributes->life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -1871,22 +1871,6 @@
 		attributes->emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-		attributes->life.lookup.values.allocator = value_allocator;
-		attributes->amount.lookup.values.allocator = value_allocator;
-		attributes->velocity.lookup.values.allocator = value_allocator;
-		attributes->width.lookup.values.allocator = value_allocator;
-		attributes->height.lookup.values.allocator = value_allocator;
-		attributes->weight.lookup.values.allocator = value_allocator;
-		attributes->spin.lookup.values.allocator = value_allocator;
-		attributes->stretch.lookup.values.allocator = value_allocator;
-		attributes->overal_scale.lookup.values.allocator = value_allocator;
-		attributes->intensity.lookup.values.allocator = value_allocator;
-		attributes->frame_rate.lookup.values.allocator = value_allocator;
-		attributes->splatter.lookup.values.allocator = value_allocator;
-		attributes->emitter_width.lookup.values.allocator = value_allocator;
-		attributes->emitter_height.lookup.values.allocator = value_allocator;
-		attributes->emitter_depth.lookup.values.allocator = value_allocator;
 	}
 
 	void FreeGlobalAttributes(tfxGlobalAttributes *attributes) {
@@ -1925,20 +1909,13 @@
 		CopyGraphNoLookups(&src->emitter_depth, &dst->emitter_depth);
 	}
 
-	void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
+	void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size) {
 		attributes->roll.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->translation_x.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->translation_y.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->translation_z.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-		attributes->roll.lookup.values.allocator = value_allocator;
-		attributes->pitch.lookup.values.allocator = value_allocator;
-		attributes->yaw.lookup.values.allocator = value_allocator;
-		attributes->translation_x.lookup.values.allocator = value_allocator;
-		attributes->translation_y.lookup.values.allocator = value_allocator;
-		attributes->translation_z.lookup.values.allocator = value_allocator;
 	}
 
 	void FreeTransformAttributes(tfxTransformAttributes *attributes) {
@@ -1984,7 +1961,7 @@
 		}
 	}
 
-	void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
+	void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size) {
 		attributes->emission_pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->emission_yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->emission_range.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -1994,16 +1971,6 @@
 		attributes->emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->arc_size.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->arc_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-		attributes->emission_pitch.lookup.values.allocator = value_allocator;
-		attributes->emission_yaw.lookup.values.allocator = value_allocator;
-		attributes->emission_range.lookup.values.allocator = value_allocator;
-		attributes->splatter.lookup.values.allocator = value_allocator;
-		attributes->emitter_width.lookup.values.allocator = value_allocator;
-		attributes->emitter_height.lookup.values.allocator = value_allocator;
-		attributes->emitter_depth.lookup.values.allocator = value_allocator;
-		attributes->arc_size.lookup.values.allocator = value_allocator;
-		attributes->arc_offset.lookup.values.allocator = value_allocator;
 	}
 
 	void FreePropertyAttributes(tfxPropertyAttributes *attributes) {
@@ -2030,7 +1997,7 @@
 		CopyGraphNoLookups(&src->arc_offset, &dst->arc_offset);
 	}
 
-	void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
+	void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size) {
 		attributes->life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -2039,18 +2006,9 @@
 		attributes->weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->noise_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-		attributes->life.lookup.values.allocator = value_allocator;
-		attributes->amount.lookup.values.allocator = value_allocator;
-		attributes->velocity.lookup.values.allocator = value_allocator;
-		attributes->width.lookup.values.allocator = value_allocator;
-		attributes->height.lookup.values.allocator = value_allocator;
-		attributes->weight.lookup.values.allocator = value_allocator;
-		attributes->spin.lookup.values.allocator = value_allocator;
-		attributes->noise_offset.lookup.values.allocator = value_allocator;
 	}
 
-	void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
+	void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size) {
 		attributes->life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -2060,19 +2018,9 @@
 		attributes->spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->noise_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->noise_resolution.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-		attributes->life.lookup.values.allocator = value_allocator;
-		attributes->amount.lookup.values.allocator = value_allocator;
-		attributes->velocity.lookup.values.allocator = value_allocator;
-		attributes->width.lookup.values.allocator = value_allocator;
-		attributes->height.lookup.values.allocator = value_allocator;
-		attributes->weight.lookup.values.allocator = value_allocator;
-		attributes->spin.lookup.values.allocator = value_allocator;
-		attributes->noise_offset.lookup.values.allocator = value_allocator;
-		attributes->noise_resolution.lookup.values.allocator = value_allocator;
 	}
 
-	void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
+	void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size) {
 		attributes->velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
@@ -2089,23 +2037,6 @@
 		attributes->intensity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->direction.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
 		attributes->noise_resolution.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-
-		attributes->velocity.lookup.values.allocator = value_allocator;
-		attributes->width.lookup.values.allocator = value_allocator;
-		attributes->height.lookup.values.allocator = value_allocator;
-		attributes->weight.lookup.values.allocator = value_allocator;
-		attributes->spin.lookup.values.allocator = value_allocator;
-		attributes->stretch.lookup.values.allocator = value_allocator;
-		attributes->red.lookup.values.allocator = value_allocator;
-		attributes->blue.lookup.values.allocator = value_allocator;
-		attributes->green.lookup.values.allocator = value_allocator;
-		attributes->blendfactor.lookup.values.allocator = value_allocator;
-		attributes->velocity_turbulance.lookup.values.allocator = value_allocator;
-		attributes->direction_turbulance.lookup.values.allocator = value_allocator;
-		attributes->velocity_adjuster.lookup.values.allocator = value_allocator;
-		attributes->intensity.lookup.values.allocator = value_allocator;
-		attributes->direction.lookup.values.allocator = value_allocator;
-		attributes->noise_resolution.lookup.values.allocator = value_allocator;
 	}
 
 	void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes) {
@@ -2192,11 +2123,11 @@
 		CopyGraphNoLookups(&src->noise_offset, &dst->noise_offset);
 	}
 
-	void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
-		InitialisePropertyAttributes(&attributes->properties, allocator, value_allocator, bucket_size);
-		InitialiseBaseAttributes(&attributes->base, allocator, value_allocator, bucket_size);
-		InitialiseVariationAttributes(&attributes->variation, allocator, value_allocator, bucket_size);
-		InitialiseOvertimeAttributes(&attributes->overtime, allocator, value_allocator, bucket_size);
+	void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size) {
+		InitialisePropertyAttributes(&attributes->properties, allocator, bucket_size);
+		InitialiseBaseAttributes(&attributes->base, allocator, bucket_size);
+		InitialiseVariationAttributes(&attributes->variation, allocator, bucket_size);
+		InitialiseOvertimeAttributes(&attributes->overtime, allocator, bucket_size);
 	}
 
 	void FreeEmitterAttributes(tfxEmitterAttributes *attributes) {
@@ -2539,7 +2470,7 @@
 		if (library->free_global_graphs.size())
 			return library->free_global_graphs.pop_back();
 		tfxGlobalAttributes global;
-		InitialiseGlobalAttributes(&global, &library->graph_node_allocator, &library->graph_lookup_allocator);
+		InitialiseGlobalAttributes(&global, &library->graph_node_allocator);
 		library->global_graphs.push_back(global);
 		return library->global_graphs.size() - 1;
 	}
@@ -2548,7 +2479,7 @@
 		if (library->free_keyframes.size())
 			return library->free_keyframes.pop_back();
 		tfxTransformAttributes keyframes;
-		InitialiseTransformAttributes(&keyframes, &library->graph_node_allocator, &library->graph_lookup_allocator);
+		InitialiseTransformAttributes(&keyframes, &library->graph_node_allocator);
 		library->transform_attributes.push_back(keyframes);
 		return library->transform_attributes.size() - 1;
 	}
@@ -2557,7 +2488,7 @@
 		if (library->free_emitter_attributes.size())
 			return library->free_emitter_attributes.pop_back();
 		tfxEmitterAttributes attributes;
-		InitialiseEmitterAttributes(&attributes, &library->graph_node_allocator, &library->graph_lookup_allocator);
+		InitialiseEmitterAttributes(&attributes, &library->graph_node_allocator);
 		library->emitter_attributes.push_back(attributes);
 		return library->emitter_attributes.size() - 1;
 	}
@@ -5106,7 +5037,7 @@
 	void FreeGraph(tfxGraph *graph) {
 		//Explicitly free the nodes
 		graph->nodes.free_all();
-		graph->lookup.values.free();
+		graph->lookup.values.free_all();
 	}
 
 	void CopyGraph(tfxGraph *from, tfxGraph *to, bool compile) {
