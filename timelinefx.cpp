@@ -1442,7 +1442,7 @@
 	}
 
 	void CountEffectChildren(tfxEffectEmitter *effect, int *emitters, int *effects) {
-		tmpStack(tfxEffectEmitter*, stack);
+		tfxvec<tfxEffectEmitter*> stack;
 		stack.push_back(effect);
 		*emitters = 0;
 		*effects = 0;
@@ -1514,7 +1514,7 @@
 	void DeleteEmitterFromEffect(tfxEffectEmitter *emitter) {
 		tfxEffectEmitter *parent = emitter->parent;
 		tfxLibrary *library = emitter->library;
-		tmpStack(tfxEffectEmitter, stack);
+		tfxvec<tfxEffectEmitter> stack;
 		stack.push_back(*emitter);
 		while (stack.size()) {
 			tfxEffectEmitter &current = stack.pop_back();
@@ -1538,7 +1538,7 @@
 
 	void CleanUpEffect(tfxEffectEmitter *effect) {
 		if (GetEffectInfo(effect)->sub_effectors.size()) {
-			tmpStack(tfxEffectEmitter, stack);
+			tfxvec<tfxEffectEmitter> stack;
 			stack.push_back(*effect);
 			while (stack.size()) {
 				tfxEffectEmitter current = stack.pop_back();
@@ -2337,7 +2337,7 @@
 	}
 
 	bool IsLibraryShapeUsed(tfxLibrary *library, tfxKey image_hash) {
-		tmpStack(tfxEffectEmitter*, effect_stack);
+		tfxvec<tfxEffectEmitter*> effect_stack;
 		for (auto &effect : library->effects) {
 			effect_stack.push_back(&effect);
 		}
@@ -2748,8 +2748,6 @@
 	}
 
 	void InitLibrary(tfxLibrary *library) {
-		library->graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-		library->graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 8);
 		InitLibraryEmitterProperties(library);
 	}
 
@@ -2806,9 +2804,6 @@
 		AddLibraryPreviewCameraSettings(library);
 		library->pre_recorded_effects.FreeAll();
 
-		library->graph_node_allocator.FreeAll();
-		library->graph_lookup_allocator.FreeAll();
-
 		library->free_global_graphs.free_all();
 		library->free_keyframe_graphs.free_all();
 		library->free_emitter_attributes.free_all();
@@ -2824,7 +2819,7 @@
 	void UpdateLibraryComputeNodes(tfxLibrary *library) {
 		tfxU32 running_node_index = 0;
 		tfxU32 running_value_index = 0;
-		tmpStack(tfxEffectEmitter*, stack);
+		tfxvec<tfxEffectEmitter*> stack;
 		library->all_nodes.clear();
 		library->node_lookup_indexes.clear();
 		library->compiled_lookup_values.clear();
@@ -3455,7 +3450,7 @@
 		return 0;
 	}
 
-	void AssignGraphData(tfxEffectEmitter *effect, tfxStack<tfxStr256> *values) {
+	void AssignGraphData(tfxEffectEmitter *effect, tfxvec<tfxStr256> *values) {
 		if (values->size() > 0) {
 			if ((*values)[0] == "global_amount") { tfxAttributeNode n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].amount, &n); }
 			if ((*values)[0] == "global_frame_rate") { tfxAttributeNode n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].frame_rate, &n); }
@@ -3543,7 +3538,7 @@
 		}
 	}
 
-	void AssignNodeData(tfxAttributeNode *n, tfxStack<tfxStr256> *values) {
+	void AssignNodeData(tfxAttributeNode *n, tfxvec<tfxStr256> *values) {
 		n->frame = (float)atof((*values)[1].c_str());
 		n->value = (float)atof((*values)[2].c_str());
 		n->flags = (bool)atoi((*values)[3].c_str()) ? tfxAttributeNodeFlags_is_curve : 0;
@@ -3578,12 +3573,12 @@
 			metrics->total_sprites = value;
 	}
 
-	tfxVec3 StrToVec3(tfxStack<tfxStr256> *str) {
+	tfxVec3 StrToVec3(tfxvec<tfxStr256> *str) {
 		assert(str->size() == 3);	//array must be size 3
 		return tfxVec3((float)atof((*str)[0].c_str()), (float)atof((*str)[1].c_str()), (float)atof((*str)[2].c_str()));
 	}
 
-	tfxVec2 StrToVec2(tfxStack<tfxStr256> *str) {
+	tfxVec2 StrToVec2(tfxvec<tfxStr256> *str) {
 		assert(str->size() == 2);	//array must be size 2
 		return tfxVec2((float)atof((*str)[0].c_str()), (float)atof((*str)[1].c_str()));
 	}
@@ -4211,14 +4206,6 @@
 	}
 
 	tfxGraph::tfxGraph() {
-		min.x = 0.f;
-		min.y = 0.f;
-		max.x = 1000.f;
-		max.y = 1000.f;
-		effector = nullptr;
-	}
-
-	tfxGraph::tfxGraph(tfxMemoryArenaManager *node_allocator, tfxU32 bucket_size) {
 		min.x = 0.f;
 		min.y = 0.f;
 		max.x = 1000.f;
@@ -5300,7 +5287,7 @@
 			keyframes.translation_z.nodes.size() > 1;
 	}
 
-	void PushTranslationPoints(tfxEffectEmitter *e, tfxStack<tfxVec3> *points, float frame) {
+	void PushTranslationPoints(tfxEffectEmitter *e, tfxvec<tfxVec3> *points, float frame) {
 		assert(e->transform_attributes < e->library->transform_attributes.size());		//Must be a valid keyframes index into the library
 		tfxTransformAttributes *keyframes = &e->library->transform_attributes[e->transform_attributes];
 		tfxVec3 point(lookup_callback(&keyframes->translation_x, frame),
@@ -5440,7 +5427,7 @@
 
 	}
 
-	void SplitStringStack(const tfxStr str, tfxStack<tfxStr256> *pair, char delim) {
+	void SplitStringStack(const tfxStr str, tfxvec<tfxStr256> *pair, char delim) {
 		tfxStr256 line;
 		for (char c : str) {
 			if (c == delim && line.Length() && c != NULL) {
@@ -5553,7 +5540,7 @@
 		}
 
 		int shape_count = 0;
-		tmpStack(tfxStr256, pair);
+		tfxvec<tfxStr256> pair;
 
 		while (!data->data.EoF()) {
 			pair.clear();
@@ -5609,7 +5596,7 @@
 		memset(stats, 0, sizeof(tfxEffectLibraryStats));
 		bool inside_emitter = false;
 
-		tmpStack(tfxStr256, pair);
+		tfxvec<tfxStr256> pair;
 		while (!data->data.EoF()) {
 			pair.clear();
 			tfxStr128 line = data->data.ReadLine();
@@ -5658,7 +5645,7 @@
 		stats.total_effects = lib->effects.size();
 		stats.total_node_lookup_indexes = lib->node_lookup_indexes.size();
 		stats.total_attribute_nodes = lib->all_nodes.size();
-		tmpStack(tfxEffectEmitter, stack);
+		tfxvec<tfxEffectEmitter> stack;
 		for (auto &effect : lib->effects) {
 			stack.push_back(effect);
 		}
@@ -5677,8 +5664,9 @@
 			}
 		}
 		stats.total_shapes = lib->particle_shapes.data.size();
-		stats.required_graph_node_memory = lib->graph_node_allocator.TotalMemoryInUse();
-		stats.required_graph_lookup_memory = lib->graph_lookup_allocator.TotalMemoryInUse();
+		//Todo: need to redo this since changing to tfxvec
+		stats.required_graph_node_memory = 0;
+		stats.required_graph_lookup_memory = 0;
 
 		return stats;
 	}
@@ -5729,11 +5717,11 @@
 			memcpy(animation_manager->sprite_data_2d.data, sprite_data->data.data, sprite_data->file_size);
 		}
 
-		tmpStack(tfxSpriteDataMetrics, metrics_stack);
-		tmpStack(tfxFrameMeta, frame_meta_stack);
-		tmpStack(tfxAnimationEmitterProperties, emitter_properties_stack);
-		tmpStack(tfxStr256, pair);
-		tmpStack(tfxStr256, multi);
+		tfxvec<tfxSpriteDataMetrics> metrics_stack;
+		tfxvec<tfxFrameMeta> frame_meta_stack;
+		tfxvec<tfxAnimationEmitterProperties> emitter_properties_stack;
+		tfxvec<tfxStr256> pair;
+		tfxvec<tfxStr256> multi;
 
 		tfxKey first_shape_hash = 0;
 		int context = 0;
@@ -5942,23 +5930,6 @@
 
 		InitLibraryEmitterProperties(lib);
 
-		if (!stats_struct) {
-			lib->graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-			lib->graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
-		}
-		else {
-			tfxEffectLibraryStats stats;
-			memcpy(&stats, stats_struct->data.data, stats_struct->file_size);
-			if (read_only) {
-				lib->graph_node_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_node_memory, tfxMegabyte(2)), 8);
-				lib->graph_lookup_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_lookup_memory, tfxMegabyte(4)), 256);
-			}
-			else {
-				lib->graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-				lib->graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
-			}
-		}
-
 		if (!data)
 			error |= tfxErrorCode_data_could_not_be_loaded;
 
@@ -5969,10 +5940,8 @@
 
 		tfxKey first_shape_hash = 0;
 
-		//You must call InitialiseTimelineFX() before doing anything!	
-		assert(tfxSTACK_ALLOCATOR.arena_size > 0);
-		tmpStack(tfxEffectEmitter, effect_stack);
-		tmpStack(tfxStr256, pair);
+		tfxvec<tfxEffectEmitter> effect_stack;
+		tfxvec<tfxStr256> pair;
 
 		while (!data->data.EoF()) {
 			tfxStr512 line = data->data.ReadLine();
@@ -6250,7 +6219,7 @@
 	}
 
 	void SetTemplateUserDataAll(tfxEffectTemplate *t, void *data) {
-		tmpStack(tfxEffectEmitter*, stack);
+		tfxvec<tfxEffectEmitter*> stack;
 		stack.push_back(&t->effect);
 		while (stack.size()) {
 			tfxEffectEmitter *current = stack.pop_back();
@@ -6749,7 +6718,7 @@
 		sprite_data->compressed.frame_count = compressed_frame + 1;
 		anim.animation_length_in_time = sprite_data->compressed.animation_length_in_time = sprite_data->compressed.frame_count * frequency;
 		anim.frames_after_compression = sprite_data->compressed.frame_count;
-		tmpMTStack(tfxCompressWorkEntry, compress_entry);
+		tfxvec<tfxCompressWorkEntry> compress_entry;
 		while (f < (int)sprite_data->compressed.frame_count) {
 			tfxCompressWorkEntry *entry = &compress_entry.next();
 			entry->sprite_data = sprite_data;
@@ -6763,7 +6732,7 @@
 			f++;
 		}
 		tfxCompleteAllWork(&pm->work_queue);
-		compress_entry.free();
+		compress_entry.free_all();
 
 		TrimSoABuffer(&sprite_data->compressed_sprites_buffer);
 		sprite_data->compressed.total_memory_for_sprites = (tfxU32)sprite_data->compressed_sprites_buffer.current_arena_size;
@@ -7264,7 +7233,6 @@
 	tfxParticleManager::~tfxParticleManager() {
 		FreeSoABuffer(&effect_buffers);
 		FreeSoABuffer(&emitter_buffers);
-		particle_array_allocator.FreeAll();
 	}
 
 	tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate *effect_template) {
@@ -7518,7 +7486,8 @@
 			emitter_start_size[depth] = pm->emitters_in_use[depth][pm->current_ebuff].current_size;
 		}
 
-		tmpMTStack(tfxSpawnWorkEntry, spawn_work);
+		tfxvec<tfxSpawnWorkEntry> spawn_work;
+		spawn_work.reserve(100);
 		//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 			pm->effects_in_use[depth][next_buffer].clear();
@@ -7574,7 +7543,7 @@
 			pm->emitters.highest_particle_age[index] = std::fmaxf(pm->emitters.highest_particle_age[index], work_entry.highest_particle_age);
 			pm->effects.highest_particle_age[pm->emitters.parent_index[index]] = pm->emitters.highest_particle_age[index] + pm->frame_length;
 		}
-		spawn_work.free();
+		spawn_work.free_all();
 
 		if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
 			for (tfxEachLayer) {
@@ -7617,7 +7586,8 @@
 		}
 
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
-			tmpMTStack(tfxControlWorkEntry, work);
+			tfxvec<tfxControlWorkEntry> work;
+			work.reserve(100);
 			for (int index : pm->emitters_in_use[depth][next_buffer]) {
 				tfxSoABuffer &bank = pm->particle_array_buffers[pm->emitters.particles_index[index]];
 				int particles_to_update = bank.current_size;
@@ -7640,9 +7610,10 @@
 			}
 
 			tfxCompleteAllWork(&pm->work_queue);
-			work.free();
+			work.free_all();
 			if(pm->emitters_check_capture.current_size > 0) {
-				tmpMTStack(tfxControlWorkEntry, work);
+				tfxvec<tfxControlWorkEntry> work;
+				work.reserve(100);
 				for (int index : pm->emitters_check_capture) {
 					//Really don't like this but is fine for now. For any line emitters where the particles loop back round to the beginning we need to set the captured index of the sprites
 					//so that they don't interpolate the frame that they loop
@@ -7679,12 +7650,13 @@
 					}
 				}
 				tfxCompleteAllWork(&pm->work_queue);
-				work.free();
+				work.free_all();
 				pm->emitters_check_capture.clear();
 			}
 
 			{
-				tmpMTStack(tfxParticleAgeWorkEntry, work);
+				tfxvec<tfxParticleAgeWorkEntry> work;
+				work.reserve(100);
 				for (int index : pm->emitters_in_use[depth][next_buffer]) {
 					tfxSoABuffer &bank = pm->particle_array_buffers[pm->emitters.particles_index[index]];
 					tfxParticleAgeWorkEntry &work_entry = work.next();
@@ -7706,7 +7678,7 @@
 				}
 
 				tfxCompleteAllWork(&pm->work_queue);
-				work.free();
+				work.free_all();
 			}
 		}
 
@@ -8896,11 +8868,6 @@
 		pm->max_effects = effects_limit;
 		pm->mt_batch_size = multi_threaded_batch_size;
 		pm->library = lib;
-
-		if (pm->particle_array_allocator.arenas.current_size == 0) {
-			//todo need to be able to adjust the arena size
-			pm->particle_array_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-		}
 
 		pm->flags = 0;
 
@@ -11993,14 +11960,10 @@
 	tfxDataTypesDictionary tfxDataTypes;
 	int tfxNumberOfThreadsInAdditionToMain;
 	tfxQueueProcessor tfxThreadQueues;
-	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
-	tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
 
 	//Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
 	//max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
 	void InitialiseTimelineFX(int max_threads) {
-		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
-		tfxMT_STACK_ALLOCATOR = CreateArenaManager(tfxMT_STACK_SIZE, 8);
 		tfxNumberOfThreadsInAdditionToMain = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 		lookup_callback = LookupFast;
 		lookup_overtime_callback = LookupFastOvertime;
@@ -12299,11 +12262,6 @@
 		tfxInitialiseWorkQueue(&pm->work_queue);
 		pm->library = library;
 
-		if (pm->particle_array_allocator.arenas.current_size == 0) {
-			//todo need to be able to adjust the arena size
-			pm->particle_array_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-		}
-
 		pm->flags = 0;
 
 		if (mode == tfxParticleManagerMode_unordered)
@@ -12372,11 +12330,6 @@
 		pm->mt_batch_size = mt_batch_size;
 		tfxInitialiseWorkQueue(&pm->work_queue);
 		pm->library = library;
-
-		if (pm->particle_array_allocator.arenas.current_size == 0) {
-			//todo need to be able to adjust the arena size
-			pm->particle_array_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-		}
 
 		pm->flags = 0;
 
