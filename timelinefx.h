@@ -3451,271 +3451,6 @@ inline T &FindValueByIndex(tfxMemoryBucket &range, tfxU32 i) {
 #define tfxBucket(type, index, bucket_ptr) (type*)bucket_ptr + index;
 
 template <typename T>
-struct tfxBucketArray {
-	tfxMemoryArenaManager *allocator;	//Pointer to the arena manager that handles the memory and blocks of that memory
-	tfxU32 block;						//The first block in the allocator
-	tfxU32 current_bucket;				//the current bucket for iterating all blocks
-	tfxU32 current_size;				//Current size of the bucket array. This will be the total of all buckets if there are more then one
-	tfxU32 capacity;					//The total capacity of the bucket array
-	tfxU32 size_of_each_bucket;			//The size of each bucket
-	tfxU32 volatile locked;
-
-	tfxBucketArray() { allocator = NULL; current_bucket = block = tfxINVALID; size_of_each_bucket = 64; current_size = capacity = size_of_each_bucket = locked = 0; }
-	tfxBucketArray(tfxMemoryArenaManager *allocator_init) : allocator(allocator_init) { size_of_each_bucket = 64; current_size = capacity = locked = 0; current_bucket = block = tfxINVALID; }
-	tfxBucketArray(tfxMemoryArenaManager *allocator_init, tfxU32 bucket_size) { assert(bucket_size > 1); size_of_each_bucket = bucket_size; allocator = allocator_init; current_size = locked = capacity = 0; current_bucket = block = tfxINVALID; }
-
-	inline bool			empty() { return current_size == 0; }
-	inline tfxU32		size() { return current_size; }
-	inline const tfxU32	size() const { return current_size; }
-	inline T&           operator[](tfxU32 i) {
-		assert(i < current_size);		//Index is out of bounds
-		return FindValueByIndex<T>(*allocator, i, block);
-	}
-	inline const T&     operator[](tfxU32 i) const {
-		assert(i < current_size);		//Index is out of bounds
-		return FindValueByIndex<T>(*allocator, i, block);
-	}
-	inline tfxBucketArray<T>&		operator=(const tfxBucketArray<T>& src) {
-		if (&src == this) {
-			return *this;
-		}
-		if (!allocator)
-			allocator = src.allocator;
-		free_all();
-		size_of_each_bucket = src.size_of_each_bucket;
-		if (src.capacity == 0) {
-			return *this;
-		}
-		reserve(src.capacity / src.size_of_each_bucket);
-		current_bucket = block;
-		tfxU32 src_block = src.block;
-		while (current_bucket != tfxINVALID && src_block != tfxINVALID) {
-			CopyBlockToBlock(*src.allocator, *allocator, src_block, current_bucket);
-			current_bucket = allocator->blocks[current_bucket].next_block;
-			src_block = src.allocator->blocks[src_block].next_block;
-		}
-		while (current_bucket != tfxINVALID) {
-			allocator->blocks[current_bucket].clear();
-			current_bucket = allocator->blocks[current_bucket].next_block;
-		}
-		TrimBuckets();
-		current_bucket = block;
-		current_size = src.current_size;
-		return *this;
-	}
-
-	inline void         free_all() { if (block != tfxINVALID) { current_size = capacity = 0; current_bucket = tfxINVALID; allocator->FreeBlocks(block); block = tfxINVALID; } }
-	inline T*           begin() { return current_bucket != tfxINVALID ? (T*)allocator->blocks[current_bucket].data : NULL; }
-	inline const T*     begin() const { return current_bucket != tfxINVALID ? (T*)allocator->blocks[current_bucket].data : NULL; }
-	inline T*           end() { return current_bucket != tfxINVALID ? (T*)allocator->blocks[current_bucket].end_ptr : NULL; }
-	inline const T*     end() const { return current_bucket != tfxINVALID ? (T*)allocator->blocks[current_bucket].end_ptr : NULL; }
-	inline T*			bucket_end() { return (T*)allocator->FirstBlockWithSpace(block).end(); }
-	inline T&           front() { assert(current_size > 0); return *(T*)allocator->blocks[block].data; }
-	inline const T&     front() const { assert(current_size > 0); return *(T*)allocator->blocks[block].data; }
-	inline T&           back() { assert(current_size > 0); return BlockBack<T>(allocator->FirstBlockWithSpace(block)); }
-	inline const T&     back() const { assert(current_size > 0); return BlockBack<T>(allocator->FirstBlockWithSpace(block)); }
-	inline void         clear() {
-		current_size = 0;
-		allocator->ClearBlocks(block);
-	}
-	inline tfxU32 bump() {
-		assert(current_size != capacity);
-		current_size++;
-		return (tfxU32)BumpBlock<T>(allocator->FirstBlockWithSpace(block)) - 1;
-	}
-	inline tfxU32 bump(tfxU32 block_to_bump) {
-		//You must ensure that this block belongs to this bucket array
-		assert(current_size != capacity);
-		current_size++;
-		allocator->blocks[block_to_bump].current_size++;
-		allocator->blocks[block_to_bump].end_ptr = (T*)allocator->blocks[block_to_bump].data + allocator->blocks[block_to_bump].current_size;
-		return current_size - 1;
-	}
-	inline bool			reserve(int number_of_buckets) {
-		assert(allocator);										//Must assign and allocator before doing anything with a tfxBucketArray
-		assert(size_of_each_bucket * number_of_buckets > 1);	//Buckets must be greater than 0
-		int block_count = (int)allocator->BlockCount(block);
-		if (block_count > 0) {
-			number_of_buckets = (int)number_of_buckets - block_count;
-		}
-		for (int i = 0; i < number_of_buckets; ++i) {
-			AllocateBucket<T>(*allocator, size_of_each_bucket, block);		//Out of memory!
-			capacity += size_of_each_bucket;
-		}
-		return true;
-	}
-	inline tfxU32        locked_push_back(const T& v) {
-		while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
-
-		if (current_size == capacity) {
-			AllocateBucket<T>(*allocator, size_of_each_bucket, block);		//Out of memory!
-			capacity += size_of_each_bucket;
-			ResetIteratorIndex();
-		}
-		tfxMemoryBucket &last_block = allocator->FirstBlockWithSpace(block);
-		assert(last_block.current_size < last_block.capacity);
-		*(T*)((T*)last_block.data + last_block.current_size++) = v;
-		last_block.end_ptr = (T*)last_block.end_ptr + 1;
-		tfxU32 index = current_size++;
-
-		InterlockedExchange((LONG volatile*)&locked, 0);
-		return index;
-	}
-	inline T&	        push_back(const T& v) {
-		assert(allocator);	//Must assign an allocator before doing anything with a tfxBucketArray
-		if (current_size == capacity) {
-			AllocateBucket<T>(*allocator, size_of_each_bucket, block);		//Out of memory!
-			capacity += size_of_each_bucket;
-			ResetIteratorIndex();
-		}
-		tfxMemoryBucket &last_block = allocator->FirstBlockWithSpace(block);
-		assert(last_block.current_size < last_block.capacity);
-		*(T*)((T*)last_block.data + last_block.current_size++) = v;
-		last_block.end_ptr = (T*)last_block.end_ptr + 1;
-		current_size++;
-		return BlockBack<T>(last_block);
-	}
-	inline T*	insert(tfxU32 insert_index, const T &v) {
-		assert(insert_index < current_size);
-		if (current_size == capacity) {
-			AllocateBucket<T>(*allocator, size_of_each_bucket, block);		//Out of memory!
-			capacity += size_of_each_bucket;
-			ResetIteratorIndex();
-		}
-		tfxU32 bucket_index = insert_index / size_of_each_bucket;
-		insert_index -= bucket_index * size_of_each_bucket;
-		tfxU32 index_block = allocator->BlockIndexByIndex(bucket_index, block);
-		T value_to_insert = v;
-		T* return_value = NULL;
-		bool initial_inserted = false;
-		do {
-			T* insert_point = &ValueAt<T>(allocator->blocks[index_block], insert_index);
-			size_t move_size = (tfxAddress)size_of_each_bucket - insert_index - (allocator->blocks[index_block].current_size == allocator->blocks[index_block].capacity ? 1 : 0);
-			T value_at_back = BlockBack<T>(allocator->blocks[index_block]);
-			if (move_size > 0) {
-				memmove(insert_point + 1, insert_point, move_size * sizeof(T));
-			}
-			*insert_point = value_to_insert;
-			if (!initial_inserted) {
-				initial_inserted = true;
-				return_value = insert_point;
-			}
-			if (allocator->blocks[index_block].current_size < allocator->blocks[index_block].capacity)
-				BumpBlock<T>(allocator->blocks[index_block]);
-			index_block = allocator->blocks[index_block].next_block;
-			if (index_block != tfxINVALID && allocator->blocks[index_block].current_size == 0) {
-				PushBack<T>(allocator->blocks[index_block], value_at_back);
-				break;
-			}
-			else {
-				value_to_insert = value_at_back;
-			}
-			insert_index = 0;
-		} while (index_block != tfxINVALID);
-		current_size++;
-		return return_value;
-	}
-	inline T*	insert(const T* it, const T &v) {
-		tfxU32 index;
-		T* found_value = find(*it, index);
-		return insert(index, v);
-	}
-	inline bool	erase(tfxU32 erase_index) {
-		assert(erase_index < current_size);
-		tfxU32 bucket_index = erase_index / size_of_each_bucket;
-		erase_index -= bucket_index * size_of_each_bucket;
-		tfxU32 index_block = allocator->BlockIndexByIndex(bucket_index, block);
-		tfxU32 last_block = tfxINVALID;
-		do {
-			T* erase_point = &ValueAt<T>(allocator->blocks[index_block], erase_index);
-			size_t move_size = size_of_each_bucket - erase_index - 1;
-			T value_at_back = BlockBack<T>(allocator->blocks[index_block]);
-			if (move_size > 0) {
-				memmove(erase_point, erase_point + 1, move_size * sizeof(T));
-			}
-			T &end_of_block = BlockBack<T>(allocator->blocks[index_block]);
-			if (allocator->blocks[index_block].next_block != tfxINVALID) {
-				end_of_block = BlockFront<T>(allocator->blocks[allocator->blocks[index_block].next_block]);
-			}
-			last_block = index_block;
-			index_block = allocator->blocks[index_block].next_block;
-			erase_index = 0;
-		} while (index_block != tfxINVALID && allocator->blocks[index_block].current_size > 0);
-		PopBlock<T>(allocator->blocks[last_block]);
-		current_size--;
-		return true;
-	}
-	inline bool	erase(const T* it) {
-		tfxU32 index;
-		T* found_value = find(*it, index);
-		return erase(index);
-	}
-	inline T* find(const T& v) {
-		assert(block != tfxINVALID);		//bucket array must be initialised
-		tfxU32 current_block = block;
-		T *_data = (T*)allocator->blocks[block].data;
-		while (current_block != tfxINVALID && allocator->blocks[current_block].current_size > 0) {
-			_data = (T*)allocator->blocks[current_block].data;
-			while (_data < allocator->blocks[current_block].end_ptr) {
-				if (*_data == v)		//Note that you need to have an operator overload for == for your type if you don't have one or your inserts/erase may crash on compile here
-					return _data;
-				++_data;
-			}
-			current_block = allocator->blocks[current_block].next_block;
-		}
-		return _data;
-	}
-	inline T* find(const T& v, tfxU32 &index) {
-		assert(block != tfxINVALID);
-		index = 0;
-		tfxU32 current_block = block;
-		T *_data = (T*)allocator->blocks[block].data;
-		while (current_block != tfxINVALID && allocator->blocks[current_block].current_size > 0) {
-			_data = (T*)allocator->blocks[current_block].data;
-			while (_data < allocator->blocks[current_block].end_ptr) {
-				if (*_data == v)		//Note that you need to have an operator overload for == for your type if you don't have one or your inserts/erase may crash on compile here
-					return _data;
-				++index;
-				++_data;
-			}
-			current_block = allocator->blocks[current_block].next_block;
-		}
-		return _data;
-	}
-	inline void ResetIteratorIndex() {
-		current_bucket = block;
-	}
-	inline bool EndOfBuckets() {
-		if (current_bucket == tfxINVALID)
-			return true;
-		current_bucket = allocator->blocks[current_bucket].next_block;
-		if (current_bucket == tfxINVALID) {
-			current_bucket = block;
-			return true;
-		}
-		return false;
-	}
-	inline tfxMemoryBucket &NextBlock() {
-		assert(allocator);	//Must assign and allocator before doing anything with a tfxBucketArray
-		return allocator->blocks[current_bucket];
-	}
-	inline tfxMemoryBucket &GetFirstBucket() {
-		assert(allocator);	//Must assign an allocator before doing anything with a tfxBucketArray
-		return allocator->blocks[block];
-	}
-	inline void TrimBuckets() {
-		tfxU32 first_empty_block = allocator->FirstEmptyBlockIndex(block);
-		if (first_empty_block != tfxINVALID) {
-			tfxU32 freed_blocks = allocator->FreeBlocks(first_empty_block);
-			capacity -= freed_blocks * size_of_each_bucket;
-			allocator->CutOffBlock(block, first_empty_block);
-		}
-		if (block == first_empty_block)
-			block = tfxINVALID;
-	}
-};
-
-template <typename T>
 struct tfxStack {
 	tfxMemoryArenaManager *allocator;			//Pointer to the allocator that manages the memory and blocks of that memory
 	T *block;									//Pointer to the data storing the array. This will be somewhere in a tfxMemoryArena
@@ -3798,7 +3533,7 @@ struct tfxStack {
 		return true;
 	}
 	inline bool			resize(tfxU32 size, bool keep_contents = false) {
-		assert(allocator);		//Must assign an allocator before doing anything with a tfxBucketArray. Capacity must equal 0
+		assert(allocator);		//Must assign an allocator before doing anything with a tfxStack. Capacity must equal 0
 		if (size == capacity) return true;
 		tfxU32 current_block = block_index;
 		if (!Allocate<T>(*allocator, size, block_index)) {
@@ -3817,12 +3552,6 @@ struct tfxStack {
 #define tmpStack(type, name) assert(tfxSTACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxSTACK_ALLOCATOR)
 	//You must called InitialiseTimelineFX() before doing anything!
 #define tmpMTStack(type, name) assert(tfxMT_STACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxMT_STACK_ALLOCATOR)
-
-template <typename T>
-static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
-	tfxBucketArray bucket_array(allocator, bucket_size);
-	return bucket_array;
-}
 
 //A char buffer you can use to load a file into and read from
 //Has no deconstructor so make sure you call FreeAll() when done
@@ -4726,7 +4455,7 @@ struct tfxGraph {
 	tfxGraphPreset graph_preset;
 	tfxGraphType type;
 	tfxEffectEmitter *effector;
-	tfxBucketArray<tfxAttributeNode> nodes;
+	tfxvec<tfxAttributeNode> nodes;
 	tfxGraphLookup lookup;
 	tfxU32 index;
 	float gamma;
@@ -5543,7 +5272,7 @@ struct tfxParticleAgeWorkEntry {
 };
 
 struct tfxSortWorkEntry {
-	tfxBucketArray<tfxParticleSoA> *bank;
+	tfxvec<tfxParticleSoA> *bank;
 	tfxvec<tfxDepthIndex> *depth_indexes;
 };
 
@@ -5667,7 +5396,7 @@ struct tfxAnimationManager {
 //Use the particle manager to add multiple effects to your scene 
 struct tfxParticleManager {
 	tfxvec<tfxSoABuffer> particle_array_buffers;
-	tfxBucketArray<tfxParticleSoA> particle_arrays;
+	tfxvec<tfxParticleSoA> particle_arrays;
 
 	tfxMemoryArenaManager particle_array_allocator;
 	//In unordered mode emitters that expire have their particle banks added here to be reused
@@ -6074,7 +5803,7 @@ tfxINTERNAL inline int SortDepth(void const *left, void const *right) {
 }
 
 tfxINTERNAL inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry) {
-	tfxBucketArray<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
+	tfxvec<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
 	tfxvec<tfxDepthIndex> &depth_indexes = *static_cast<tfxSortWorkEntry*>(work_entry)->depth_indexes;
 	for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
 		tfxDepthIndex key = depth_indexes[i];
@@ -7282,13 +7011,6 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfxGraphType type) {
 //--------------------------------
 //Grouped graph struct functions
 //--------------------------------
-tfxINTERNAL void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxU32 bucket_size = 8);
 tfxINTERNAL void FreeEmitterAttributes(tfxEmitterAttributes *attributes);
 tfxINTERNAL void FreeGlobalAttributes(tfxGlobalAttributes *attributes);
 tfxAPI_EDITOR void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);
