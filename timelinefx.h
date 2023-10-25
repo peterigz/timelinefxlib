@@ -251,6 +251,7 @@ extern "C" {
 	}
 
 #endif
+	tfx_allocator *tfxGetAllocator();
 
 	/*
 		Initialise an allocator. Pass a block of memory that you want to use to store the allocator data. This will not create a pool, only the
@@ -262,7 +263,7 @@ extern "C" {
 		Initialise an allocator and a pool at the same time. The data stucture to store the allocator will be stored at the beginning of the memory
 		you pass to the function and the remaining memory will be used as the pool.
 	*/
-	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size);
+	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size, tfx_allocator **allocator);
 
 	/*
 		Add a new memory pool to the allocator. Pools don't have to all be the same size, adding a pool will create the biggest block it can within
@@ -348,6 +349,8 @@ extern "C" {
 			}
 		}
 	}
+
+	static tfx__error_codes tfx_VerifyBlocks(tfx_header *first_block, tfx__block_output output_function, void *user_data);
 
 	//Read only functions
 	static inline tfx_bool tfx__has_free_block(const tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
@@ -532,7 +535,8 @@ extern "C" {
 		}
 		tfx__mark_block_as_free(block);
 #ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
+		//tfx__verify_lists(allocator);
+		tfx_VerifyBlocks(tfx__allocator_first_block(tfxGetAllocator()), 0, 0);
 #endif
 	}
 
@@ -544,7 +548,8 @@ extern "C" {
 	static inline tfx_header *tfx__pop_block(tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
 		tfx_header *block = allocator->segregated_lists[fli][sli];
 #ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
+		tfx_VerifyBlocks(tfx__allocator_first_block(tfxGetAllocator()), 0, 0);
+		//tfx__verify_lists(allocator);
 #endif
 
 		//If the block in the segregated list is actually the null_block then something went very wrong.
@@ -570,7 +575,8 @@ extern "C" {
 		}
 		tfx__mark_block_as_used(block);
 #ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
+		//tfx__verify_lists(allocator);
+		tfx_VerifyBlocks(tfx__allocator_first_block(tfxGetAllocator()), 0, 0);
 #endif
 		return block;
 	}
@@ -603,7 +609,8 @@ extern "C" {
 		}
 		tfx__mark_block_as_used(block);
 #ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
+		//tfx__verify_lists(allocator);
+		tfx_VerifyBlocks(tfx__allocator_first_block(tfxGetAllocator()), 0, 0);
 #endif
 	}
 
@@ -715,7 +722,7 @@ extern "C" {
 		return 0;
 	}
 
-	static inline tfx__error_codes tfx_VerifyBlocks(tfx_header *first_block, tfx__block_output output_function, void *user_data) {
+	static tfx__error_codes tfx_VerifyBlocks(tfx_header *first_block, tfx__block_output output_function, void *user_data) {
 		tfx_header *current_block = first_block;
 		while (!tfx__is_last_block_in_pool(current_block)) {
 			if (output_function) {
@@ -773,19 +780,19 @@ extern "C" {
 		return allocator;
 	}
 
-	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size) {
+	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size, tfx_allocator **allocator) {
 		tfx_size array_offset = sizeof(tfx_allocator);
 		if (size < array_offset + tfx__MEMORY_ALIGNMENT) {
 			TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Tried to initialise allocator with a memory allocation that is too small. Must be at least: %zi bytes\n", TFX_ERROR_NAME, array_offset + tfx__MEMORY_ALIGNMENT);
 			return 0;
 		}
 
-		tfx_allocator *allocator = tfx_InitialiseAllocator(memory);
+		*allocator = tfx_InitialiseAllocator(memory);
 		if (!allocator) {
 			return 0;
 		}
-		tfx_AddPool(allocator, tfx_GetPool(allocator), size - tfx_AllocatorSize());
-		return allocator;
+		tfx_AddPool(*allocator, tfx_GetPool(*allocator), size - tfx_AllocatorSize());
+		return *allocator;
 	}
 
 	tfx_size tfx_AllocatorSize(void) {
@@ -1035,7 +1042,6 @@ void *tfxAllocate(size_t size);
 void *tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
 tfx_globals_t *tfxGetGlobals();
-tfx_allocator *tfxGetAllocator();
 //--------------------------------------------------------------
 //macros
 #define TFX_VERSION "Alpha"
@@ -2242,14 +2248,14 @@ struct tfxStr {
 		capacity = new_capacity;
 	}
 
-	tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-	tfxStr(const tfxStr &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
-	inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length + 1) reserve((tfxU32)length + 1); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfxStr(const tfxStr &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length + 1) reserve((tfxU32)length + 1); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
+	inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length + 1) reserve((tfxU32)length + 1); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const tfxStr& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
-	inline bool operator==(const tfxStr string) { return !strcmp(c_str(), string.c_str()); }
+	inline bool operator==(const tfxStr *string) { return !strcmp(c_str(), string->c_str()); }
 	inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
-	inline bool operator!=(const tfxStr string) { return strcmp(c_str(), string.c_str()); }
+	inline bool operator!=(const tfxStr *string) { return strcmp(c_str(), string->c_str()); }
 	inline const char *strbuffer() const { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
 	inline char *strbuffer() { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
 	inline const char *c_str() const { return current_size ? strbuffer() : ""; }
@@ -5208,8 +5214,9 @@ tfxAPI_EDITOR bool LoadDataFile(tfxDataTypesDictionary *data_types, tfxStorageMa
 tfxAPI_EDITOR void StreamProperties(tfxEmitterPropertiesSoA *property, tfxU32 index, tfxEmitterPropertyFlags flags, tfxStr *file);
 tfxAPI_EDITOR void StreamProperties(tfxEffectEmitter *effect, tfxStr *file);
 tfxAPI_EDITOR void StreamGraph(const char * name, tfxGraph *graph, tfxStr *file);
-tfxAPI_EDITOR void SplitStringStack(const tfxStr s, tfxvec<tfxStr256> *pair, char delim = 61);
-tfxAPI_EDITOR bool StringIsUInt(const tfxStr s);
+tfxAPI_EDITOR void SplitStringStack(const tfxStr *s, tfxvec<tfxStr256> *pair, char delim = 61);
+tfxAPI_EDITOR void SplitStringStack(const char *s, tfxvec<tfxStr256> *pair, char delim = 61);
+tfxAPI_EDITOR bool StringIsUInt(const tfxStr *s);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU64 value, tfxU32 file_version);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value, tfxU32 file_version);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, float value);
@@ -5217,8 +5224,8 @@ tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *fiel
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, int value);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxStr &value);
 tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter *effect, tfxvec<tfxStr256> *values);
-tfxINTERNAL void SplitStringVec(const tfxStr s, tfxvec<tfxStr256> *pair, char delim = 61);
-tfxINTERNAL int GetDataType(const tfxStr &s);
+tfxINTERNAL void SplitStringVec(const tfxStr *s, tfxvec<tfxStr256> *pair, char delim = 61);
+tfxINTERNAL int GetDataType(const tfxStr *s);
 tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value);
 tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, float value);
 tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, bool value);

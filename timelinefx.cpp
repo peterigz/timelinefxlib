@@ -1,5 +1,6 @@
 #define TFX_ALLOCATOR_IMPLEMENTATION
-#define TFX_EXTRA_DEBUGGING
+//#define TFX_EXTRA_DEBUGGING
+#define TFX_THREAD_SAFE
 #include "timelinefx.h"
 
 #ifdef _WIN32
@@ -43,7 +44,6 @@ void tfxAddHostMemoryPool(size_t size) {
 
 void* tfxAllocate(size_t size) {
 	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
-	tfx_VerifyBlocks(tfx__allocator_first_block(tfxMemoryAllocator), nullptr, nullptr);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_Allocate(tfxMemoryAllocator, size);
@@ -54,7 +54,6 @@ void* tfxAllocate(size_t size) {
 
 void* tfxReallocate(void *memory, size_t size) {
 	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
-	tfx_VerifyBlocks(tfx__allocator_first_block(tfxMemoryAllocator), nullptr, nullptr);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
@@ -65,7 +64,6 @@ void* tfxReallocate(void *memory, size_t size) {
 
 void *tfxAllocateAligned(size_t size, size_t alignment) {
 	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
-	tfx_VerifyBlocks(tfx__allocator_first_block(tfxMemoryAllocator), nullptr, nullptr);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
 		allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
@@ -5459,7 +5457,7 @@ tfx_allocator *tfxGetAllocator() {
 			buffer[strcspn(buffer, "\n")] = 0;
 			tfxStr512 str = buffer;
 			pair.clear();
-			SplitStringVec(str, &pair, 61);
+			SplitStringVec(&str, &pair, 61);
 			if (pair.size() == 2) {
 				tfxStr256 key = pair[0];
 				if (data_types->names_and_types.ValidName(pair[0])) {
@@ -5485,9 +5483,30 @@ tfx_allocator *tfxGetAllocator() {
 
 	}
 
-	void SplitStringStack(const tfxStr str, tfxvec<tfxStr256> *pair, char delim) {
+	void SplitStringStack(const char *text, tfxvec<tfxStr256> *pair, char delim) {
+		tfxStr str = text;
+		SplitStringStack(&str, pair, delim);
+	}
+
+	void SplitStringStack(const tfxStr *str, tfxvec<tfxStr256> *pair, char delim) {
 		tfxStr256 line;
-		for (char c : str) {
+		for (char c : *str) {
+			if (c == delim && line.Length() && c != NULL) {
+				pair->push_back(line);
+				line.Clear();
+			}
+			else if (c != NULL) {
+				line.Append(c);
+			}
+		}
+		if (line.Length()) {
+			pair->push_back(line);
+		}
+	}
+
+	void SplitStringVec(const tfxStr *str, tfxvec<tfxStr256> *pair, char delim) {
+		tfxStr256 line;
+		for (char c : *str) {
 			if (c == delim && line.Length() && c != NULL) {
 				pair->push_back(line);
 				line.Clear();
@@ -5502,26 +5521,9 @@ tfx_allocator *tfxGetAllocator() {
 		}
 	}
 
-	void SplitStringVec(const tfxStr str, tfxvec<tfxStr256> *pair, char delim) {
-		tfxStr256 line;
-		for (char c : str) {
-			if (c == delim && line.Length() && c != NULL) {
-				pair->push_back(line);
-				line.Clear();
-			}
-			else if (c != NULL) {
-				line.Append(c);
-			}
-		}
+	bool StringIsUInt(const tfxStr *s) {
 
-		if (line.Length()) {
-			pair->push_back(line);
-		}
-	}
-
-	bool StringIsUInt(const tfxStr s) {
-
-		for (auto c : s) {
+		for (auto c : *s) {
 			if (!std::isdigit(c) && c != 0)
 				return false;
 		}
@@ -5529,14 +5531,14 @@ tfx_allocator *tfxGetAllocator() {
 		return true;
 	}
 
-	int GetDataType(const tfxStr &s) {
-		if (s.Length() == 0)
+	int GetDataType(const tfxStr *s) {
+		if (s->Length() == 0)
 			return tfxString;
 
-		if (s.IsInt())
+		if (s->IsInt())
 			return tfxSInt;
 
-		if (s.IsFloat())
+		if (s->IsFloat())
 			return tfxFloat;
 
 		return tfxString;
@@ -5604,17 +5606,17 @@ tfx_allocator *tfxGetAllocator() {
 			pair.clear();
 			tfxStr128 line = data->data.ReadLine();
 			bool context_set = false;
-			if (StringIsUInt(line.c_str())) {
+			if (StringIsUInt(&line)) {
 				context = atoi(line.c_str());
 				if (context == tfxEndShapes)
 					break;
 				context_set = true;
 			}
 			if (context_set == false) {
-				SplitStringStack(line.c_str(), &pair);
+				SplitStringStack(&line, &pair);
 				if (pair.size() != 2) {
 					pair.clear();
-					SplitStringStack(line.c_str(), &pair, 44);
+					SplitStringStack(&line, &pair, 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
@@ -5659,17 +5661,17 @@ tfx_allocator *tfxGetAllocator() {
 			pair.clear();
 			tfxStr128 line = data->data.ReadLine();
 			bool context_set = false;
-			if (StringIsUInt(line.c_str())) {
+			if (StringIsUInt(&line)) {
 				context_set = true;
 				if (context == tfxEndEmitter) {
 					inside_emitter = false;
 				}
 			}
 			if (context_set == false) {
-				SplitStringStack(line.c_str(), &pair);
+				SplitStringStack(&line, &pair);
 				if (pair.size() != 2) {
 					pair.clear();
-					SplitStringStack(line.c_str(), &pair, 44);
+					SplitStringStack(&line, &pair, 44);
 					if (pair.size() < 2) {
 						error = 1;
 						break;
@@ -5788,7 +5790,7 @@ tfx_allocator *tfxGetAllocator() {
 			tfxStr512 line = data->data.ReadLine();
 			bool context_set = false;
 
-			if (StringIsUInt(line.c_str())) {
+			if (StringIsUInt(&line)) {
 				context = atoi(line.c_str());
 				if (context == tfxEndOfFile) {
 					break;
@@ -5811,10 +5813,10 @@ tfx_allocator *tfxGetAllocator() {
 
 			if (context_set == false) {
 				pair.clear();
-				SplitStringStack(line.c_str(), &pair);
+				SplitStringStack(&line, &pair);
 				if (pair.size() != 2) {
 					pair.clear();
-					SplitStringStack(line.c_str(), &pair, ',');
+					SplitStringStack(&line, &pair, ',');
 					if (pair.size() < 2) {
 						error |= tfxErrorCode_some_data_not_loaded;
 						continue;
@@ -5847,7 +5849,7 @@ tfx_allocator *tfxGetAllocator() {
 							break;
 						case tfxFloat3:
 							multi.clear();
-							SplitStringStack(pair[1], &multi, ',');
+							SplitStringStack(&pair[1], &multi, ',');
 							AssignFrameMetaProperty(&frame_meta_stack.back(), &pair[0], StrToVec3(&multi), package.header.file_version);
 							break;
 						}
@@ -5864,7 +5866,7 @@ tfx_allocator *tfxGetAllocator() {
 							break;
 						case tfxFloat2:
 							multi.clear();
-							SplitStringStack(pair[1], &multi, ',');
+							SplitStringStack(&pair[1], &multi, ',');
 							AssignAnimationEmitterProperty(&emitter_properties_stack.back(), &pair[0], StrToVec2(&multi), package.header.file_version);
 							break;
 						}
@@ -6005,7 +6007,7 @@ tfx_allocator *tfxGetAllocator() {
 			tfxStr512 line = data->data.ReadLine();
 			bool context_set = false;
 
-			if (StringIsUInt(line.c_str())) {
+			if (StringIsUInt(&line)) {
 				context = atoi(line.c_str());
 				if (context == tfxEndOfFile)
 					break;
@@ -6068,10 +6070,10 @@ tfx_allocator *tfxGetAllocator() {
 
 			if (context_set == false) {
 				pair.clear();
-				SplitStringStack(line.c_str(), &pair);
+				SplitStringStack(&line, &pair);
 				if (pair.size() != 2) {
 					pair.clear();
-					SplitStringStack(line.c_str(), &pair, 44);
+					SplitStringStack(&line, &pair, 44);
 					if (pair.size() < 2) {
 						error |= tfxErrorCode_some_data_not_loaded;
 						continue;
@@ -12020,7 +12022,7 @@ tfx_allocator *tfxGetAllocator() {
 		if (tfxMemoryAllocator) return;
 		void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
 		assert(memory_pool);	//unable to allocate initial memory pool
-		tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size);
+		tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
 	}
 
 	//Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
@@ -12029,7 +12031,7 @@ tfx_allocator *tfxGetAllocator() {
 		if (!tfxMemoryAllocator) {
 			void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
 			assert(memory_pool);	//unable to allocate initial memory pool
-			tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size);
+			tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
 		}
 		tfxGlobals = (tfx_globals_t*)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_globals_t));
 		memset(tfxGlobals, 0, sizeof(tfx_globals_t));
