@@ -1066,9 +1066,19 @@ tfx_globals_t *tfxGetGlobals();
 #define tfxArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
 #ifndef tfxREALLOCATE
+#define tfxALLOCATE(size) malloc(size)
+#define tfxALLOCATE_ALIGNED(size, alignment) malloc(alignment)
+#define tfxREALLOCATE(ptr, size) realloc(ptr, size)
+#endif
+
+#ifndef tfxREALLOCATE
 #define tfxALLOCATE(size) tfxAllocate(size)
 #define tfxALLOCATE_ALIGNED(size, alignment) tfxAllocateAligned(size, alignment)
 #define tfxREALLOCATE(ptr, size) tfxReallocate(ptr, size)
+#endif
+
+#ifndef tfxFREE
+#define tfxFREE(memory) free(memory)
 #endif
 
 #ifndef tfxFREE

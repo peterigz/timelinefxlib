@@ -9880,6 +9880,10 @@ tfx_allocator *tfxGetAllocator() {
 
 		assert(random.seeds[0] > 0);
 
+		if (entry->amount_to_spawn == 122) {
+			int d = 0;
+		}
+
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[particles_index], entry->spawn_start_index + i);
 			entry->particle_data->uid[index] = pm.unique_particle_id++;
@@ -12364,6 +12368,8 @@ tfx_allocator *tfxGetAllocator() {
 			}
 
 		}
+
+		pm->particle_arrays.reserve(100);
 
 		if (pm->flags & tfxEffectManagerFlags_ordered_by_age || pm->flags & tfxEffectManagerFlags_order_by_depth) {
 			FreeParticleBanks(pm);
