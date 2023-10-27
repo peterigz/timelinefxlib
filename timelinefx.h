@@ -5,7 +5,7 @@
 //#define tfxUSEAVX
 
 /*
-	Timeline FX C++ library
+	Timeline FX C++ library (Very WIP currently)
 
 	This library is for implementing particle effects into your games and applications.
 
@@ -16,6 +16,7 @@
 
 	[Zest_Pocket_Allocator]			A single header library for allocating memory from a large pool.
 	[Header_Includes_and_Typedefs]	Just your basic header stuff for setting up typedefs and some #defines
+	[Global_Variables]				Struct containing global variables such as the allocator and threading objects
 	[OS_Specific_Functions]			OS specific multithreading and file access
 	[XXHash_Implementation]			XXHasher for the storage map.
 	[SIMD_defines]					Defines for SIMD intrinsics
@@ -62,6 +63,7 @@ typedef unsigned int tfx_uint;
 typedef unsigned int tfx_thread_access;
 typedef int tfx_bool;
 typedef void* tfx_pool;
+typedef void(*tfx__block_output)(void* ptr, size_t size, int used, void* user, int is_final_output);
 
 #if !defined (TFX_ASSERT)
 #define TFX_ASSERT assert
@@ -249,6 +251,7 @@ extern "C" {
 	}
 
 #endif
+	tfx_allocator *tfxGetAllocator();
 
 	/*
 		Initialise an allocator. Pass a block of memory that you want to use to store the allocator data. This will not create a pool, only the
@@ -346,6 +349,8 @@ extern "C" {
 			}
 		}
 	}
+
+	static tfx__error_codes tfx_VerifyBlocks(tfx_header *first_block, tfx__block_output output_function, void *user_data);
 
 	//Read only functions
 	static inline tfx_bool tfx__has_free_block(const tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
@@ -530,7 +535,8 @@ extern "C" {
 		}
 		tfx__mark_block_as_free(block);
 #ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
+		//tfx__verify_lists(allocator);
+		tfx_VerifyBlocks(tfx__allocator_first_block(tfxGetAllocator()), 0, 0);
 #endif
 	}
 
@@ -541,6 +547,10 @@ extern "C" {
 	*/
 	static inline tfx_header *tfx__pop_block(tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
 		tfx_header *block = allocator->segregated_lists[fli][sli];
+#ifdef TFX_EXTRA_DEBUGGING
+		tfx_VerifyBlocks(tfx__allocator_first_block(tfxGetAllocator()), 0, 0);
+		//tfx__verify_lists(allocator);
+#endif
 
 		//If the block in the segregated list is actually the null_block then something went very wrong.
 		//Somehow the segregated lists had the end block assigned but the first or second level bitmaps
@@ -565,7 +575,8 @@ extern "C" {
 		}
 		tfx__mark_block_as_used(block);
 #ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
+		//tfx__verify_lists(allocator);
+		tfx_VerifyBlocks(tfx__allocator_first_block(tfxGetAllocator()), 0, 0);
 #endif
 		return block;
 	}
@@ -598,7 +609,8 @@ extern "C" {
 		}
 		tfx__mark_block_as_used(block);
 #ifdef TFX_EXTRA_DEBUGGING
-		tfx__verify_lists(allocator);
+		//tfx__verify_lists(allocator);
+		tfx_VerifyBlocks(tfx__allocator_first_block(tfxGetAllocator()), 0, 0);
 #endif
 	}
 
@@ -708,6 +720,22 @@ extern "C" {
 		}
 
 		return 0;
+	}
+
+	static tfx__error_codes tfx_VerifyBlocks(tfx_header *first_block, tfx__block_output output_function, void *user_data) {
+		tfx_header *current_block = first_block;
+		while (!tfx__is_last_block_in_pool(current_block)) {
+			if (output_function) {
+				output_function(current_block, tfx__block_size(current_block), tfx__is_free_block(current_block), user_data, 0);
+			}
+			tfx_header *last_block = current_block;
+			current_block = tfx__next_physical_block(current_block);
+			if (last_block != current_block->prev_physical_block) {
+				TFX_ASSERT(0);
+				return tfx__PHYSICAL_BLOCK_MISALIGNMENT;
+			}
+		}
+		return tfx__OK;
 	}
 	//--End of internal functions
 
@@ -1002,7 +1030,10 @@ struct tfxComputeSprite;
 struct tfxComputeParticle;
 struct tfxSpriteSheetSettings;
 struct tfxSpriteDataSettings;
+struct tfxQueueProcessor;
+struct tfx_globals_t;
 struct tfxLibrary;
+struct tfxProfile;
 struct tfxStr;
 struct tfxStr16;
 struct tfxStr32;
@@ -1011,6 +1042,14 @@ struct tfxStr128;
 struct tfxStr256;
 struct tfxStr512;
 
+
+//Memory allocation functions
+size_t tfxGetNextPower(size_t n);
+void tfxAddHostMemoryPool(size_t size);
+void *tfxAllocate(size_t size);
+void *tfxReallocate(void *memory, size_t size);
+void *tfxAllocateAligned(size_t size, size_t alignment);
+tfx_globals_t *tfxGetGlobals();
 //--------------------------------------------------------------
 //macros
 #define TFX_VERSION "Alpha"
@@ -1080,6 +1119,7 @@ All functions in the library will be marked this way for clarity and naturally t
 //Override this for more layers, although currently the editor is fixed at 4
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
+#endif 
 
 /*
 Helper macro to place inside a for loop, for example:
@@ -1088,8 +1128,10 @@ You can then use layer inside the loop to get the current layer
 */
 #define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
 
-//Internal use macro
-#endif 
+#ifndef tfxMAX_QUEUES
+#define tfxMAX_QUEUES 512
+#endif
+
 //type defs
 typedef unsigned int tfxU32;
 typedef unsigned int tfxEmitterID;
@@ -1371,7 +1413,7 @@ private:
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by defaul
-//Note that avx is currently slowly then SSE, probably because memory bandwidth becomes more of an issue at that point. But also I could be doing it wrong!
+//Note that avx is currently slower then SSE, probably because memory bandwidth becomes more of an issue at that point. But also I could be doing it wrong!
 #ifdef tfxUSEAVX
 #define tfxDataWidth 8	
 typedef __m256 tfxWideFloat;
@@ -2192,17 +2234,17 @@ struct tfxStr {
 	inline ~tfxStr() { if (data && !is_local_buffer) { tfxFREE(data); data = NULL; } current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
-	inline char&           operator[](tfxU32 i) { return data[i]; }
-	inline const char&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
+	inline char&        operator[](tfxU32 i) { return data[i]; }
+	inline const char&  operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 
 	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 	inline void         Clear() { current_size = 0; }
-	inline char*           begin() { return strbuffer(); }
-	inline const char*     begin() const { return strbuffer(); }
-	inline char*           end() { return strbuffer() + current_size; }
-	inline const char*     end() const { return strbuffer() + current_size; }
-	inline char&           back() { assert(current_size > 0); return strbuffer()[current_size - 1]; }
-	inline const char&     back() const { assert(current_size > 0); return strbuffer()[current_size - 1]; }
+	inline char*        begin() { return strbuffer(); }
+	inline const char*  begin() const { return strbuffer(); }
+	inline char*        end() { return strbuffer() + current_size; }
+	inline const char*  end() const { return strbuffer() + current_size; }
+	inline char&        back() { assert(current_size > 0); return strbuffer()[current_size - 1]; }
+	inline const char&  back() const { assert(current_size > 0); return strbuffer()[current_size - 1]; }
 	inline void         pop() { assert(current_size > 0); current_size--; }
 	inline void	        push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void*)(data + current_size)) char(v); current_size++; }
 
@@ -2224,14 +2266,14 @@ struct tfxStr {
 		capacity = new_capacity;
 	}
 
-	tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-	tfxStr(const tfxStr &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
-	inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length + 1) reserve((tfxU32)length + 1); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfxStr(const tfxStr &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length + 1) reserve((tfxU32)length + 1); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
+	inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length + 1) reserve((tfxU32)length + 1); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const tfxStr& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
-	inline bool operator==(const tfxStr string) { return !strcmp(c_str(), string.c_str()); }
+	inline bool operator==(const tfxStr *string) { return !strcmp(c_str(), string->c_str()); }
 	inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
-	inline bool operator!=(const tfxStr string) { return strcmp(c_str(), string.c_str()); }
+	inline bool operator!=(const tfxStr *string) { return strcmp(c_str(), string->c_str()); }
 	inline const char *strbuffer() const { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
 	inline char *strbuffer() { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
 	inline const char *c_str() const { return current_size ? strbuffer() : ""; }
@@ -2416,7 +2458,11 @@ struct tfxvec {
 		data = new_data;
 		capacity = new_capacity;
 	}
-
+	inline T&			next() {
+		if (current_size == capacity) resize(_grow_capacity(current_size + 1));	//Stack overflow, try increasing the stack size
+		new((void*)(data + current_size)) T();
+		return data[current_size++];
+	}
 	inline T&	        grab() {
 		if (current_size == capacity) reserve(_grow_capacity(current_size + 1));
 		current_size++;
@@ -2696,14 +2742,6 @@ struct tfxStorageMap {
 #define tfxKilobyte(Value) ((Value)*1024LL)
 #define tfxMegabyte(Value) (tfxKilobyte(Value)*1024LL)
 #define tfxGigabyte(Value) (tfxMegabyte(Value)*1024LL)
-
-#ifndef tfxSTACK_SIZE
-#define tfxSTACK_SIZE tfxMegabyte(2)
-#endif
-
-#ifndef tfxMT_STACK_SIZE
-#define tfxMT_STACK_SIZE tfxMegabyte(4)
-#endif
 
 inline tfxU32 IsPowerOf2(tfxU32 v)
 {
@@ -3969,7 +4007,7 @@ struct tfxStream {
 	inline void         Clear() { if (data) { size = 0; } }
 
 	inline void         Resize(tfxU64 new_capacity) {
-		if (new_capacity <= size)
+		if (new_capacity <= size) {
 			return;
 		char* new_data = (char*)tfxALLOCATE((tfxU64)new_capacity * sizeof(char));
 		assert(new_data);	//Unable to allocate memory. Todo: better handling
@@ -3977,7 +4015,9 @@ struct tfxStream {
 			memcpy(new_data, data, (tfxU64)size * sizeof(char));
 			tfxFREE(data);
 		}
-		data = new_data; size = new_capacity;
+		data = (char*)tfxREALLOCATE(data, (tfxU64)new_capacity * sizeof(char));
+		assert(data);	//Unable to allocate memory. Todo: better handling
+		size = new_capacity;
 		position = 0;
 	}
 	inline void			NullTerminate() { *(data + size) = NULL; }
@@ -4011,12 +4051,6 @@ enum tfxWorkQueueFlag_ {
 	tfxWorkQueueFlag_none = 0
 };
 
-extern int tfxNumberOfThreadsInAdditionToMain;
-
-#ifndef tfxMAX_QUEUES
-#define tfxMAX_QUEUES 512
-#endif
-
 struct tfxWorkQueue {
 	tfxU32 volatile entry_completion_goal = 0;
 	tfxU32 volatile entry_completion_count = 0;
@@ -4034,123 +4068,34 @@ struct tfxQueueProcessor {
 	tfxWorkQueue *queues[tfxMAX_QUEUES];
 };
 
-extern tfxQueueProcessor tfxThreadQueues;
+//-----------------------------------------------------------
+//Section: Global_Variables
+//-----------------------------------------------------------
+extern const tfxU32 tfxPROFILE_COUNT;
 
-tfxINTERNAL inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
-	queues->count = 0;
-	queues->empty_semaphore = CreateSemaphoreEx(0, tfxMAX_QUEUES, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
-	queues->full_semaphore = CreateSemaphoreEx(0, 0, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
-	memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void*));
-}
+struct tfxDataTypesDictionary {
+	bool initialised = false;
+	tfxStorageMap<tfxDataType> names_and_types;
+	tfxDataTypesDictionary() :
+		names_and_types("Data Types Storage Map", "Data Types Storage Data")
+	{}
+	void Init();
+};
 
-tfxINTERNAL inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
-	WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
-	std::unique_lock<std::mutex> lock(thread_processor->mutex);
-	tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
-	ReleaseSemaphore(thread_processor->empty_semaphore, 1, 0);
-	return queue;
-}
-
-tfxINTERNAL inline void tfxPushQueueWork(tfxQueueProcessor *thread_processor, tfxWorkQueue *queue) {
-	WaitForSingleObject(thread_processor->empty_semaphore, INFINITE);
-	std::unique_lock<std::mutex> lock(thread_processor->mutex);
-	thread_processor->queues[thread_processor->count++] = queue;
-	ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
-}
-
-tfxINTERNAL inline void tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
-	tfxWorkQueue *queue = tfxGetQueueWithWork(queue_processor);
-
-	if (queue) {
-		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
-
-		if (original_read_entry != queue->next_write_entry) {
-			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
-			if (index == original_read_entry) {
-				tfxWorkQueueEntry entry = queue->entries[index];
-				entry.call_back(queue, entry.data);
-				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
-			}
-		}
-	}
-}
-
-tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
-	tfxU32 original_read_entry = queue->next_read_entry;
-	tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
-
-	if (original_read_entry != queue->next_write_entry) {
-		tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
-		if (index == original_read_entry) {
-			tfxWorkQueueEntry entry = queue->entries[index];
-			entry.call_back(queue, entry.data);
-			InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
-		}
-	}
-}
-
-tfxINTERNAL inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
-	assert(tfxNumberOfThreadsInAdditionToMain > 0);		//This should never be called if there is only a main thread
-
-	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
-	while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
-		//We can do this because we're single producer
-		tfxDoNextWorkQueueEntry(queue);
-	}
-	queue->entries[queue->next_write_entry].data = data;
-	queue->entries[queue->next_write_entry].call_back = call_back;
-	InterlockedIncrement(&queue->entry_completion_goal);
-
-	_WriteBarrier();
-
-	tfxPushQueueWork(&tfxThreadQueues, queue);
-	queue->next_write_entry = new_entry_to_write;
-
-}
-
-tfxINTERNAL inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
-
-	tfxQueueProcessor *thread_processor = (tfxQueueProcessor*)lpParameter;
-
-	for (;;) {
-		tfxDoNextWorkQueue(thread_processor);
-	}
-
-}
-
-tfxINTERNAL inline void tfxCompleteAllWork(tfxWorkQueue *queue) {
-	tfxWorkQueueEntry entry = {};
-	while (queue->entry_completion_goal != queue->entry_completion_count) {
-		tfxDoNextWorkQueueEntry(queue);
-	}
-	queue->entry_completion_count = 0;
-	queue->entry_completion_goal = 0;
-}
-
-tfxINTERNAL inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue) {
-	queue->entry_completion_count = 0;
-	queue->entry_completion_goal = 0;
-	queue->next_read_entry = 0;
-	queue->next_write_entry = 0;
-}
-
-tfxINTERNAL inline bool tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
-	InitialiseThreadQueues(&tfxThreadQueues);
-
-	//todo: create a function to close all the threads 
-
-	tfxU32 threads_initialised = 0;
-	for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
-		DWORD thread_id;
-		HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, thread_queues, 0, &thread_id);
-		if (!thread_handle) {
-			tfxNumberOfThreadsInAdditionToMain = threads_initialised;
-			return false;
-		}
-	}
-	return true;
-}
+//Global variables
+struct tfx_globals_t {
+	tfxU32 memory_pool_count;
+	size_t default_memory_pool_size;
+	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
+	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
+	tfxU32 current_snapshot;
+	tfxvec<tfxProfile> profile_array;
+	tfxDataTypesDictionary data_types;
+	int number_of_threads_in_addition_to_main;
+	tfxQueueProcessor thread_queues;
+};
+extern tfx_globals_t *tfxGlobals;
+extern tfx_allocator *tfxMemoryAllocator;
 
 //-----------------------------------------------------------
 //Section: Global_Variables
@@ -4675,7 +4620,6 @@ tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
 //-----------------------------------------------------------
 //Section: Profiling
 //-----------------------------------------------------------
-
 struct tfxProfileStats {
 	tfxU64 cycle_high;
 	tfxU64 cycle_low;
@@ -4696,10 +4640,6 @@ struct tfxProfile {
 	const char *name;
 	tfxProfileSnapshot snapshots[tfxPROFILER_SAMPLES];
 };
-
-extern const tfxU32 tfxPROFILE_COUNT;
-extern tfxU32 tfxCurrentSnapshot;
-tfxProfile tfxProfileArray[];
 
 struct tfxProfileTag {
 	tfxProfile *profile;
@@ -4804,7 +4744,7 @@ struct tfxRandom {
 };
 
 struct tfxGraphLookup {
-	tfxArray<float> values;
+	tfxvec<float> values;
 	tfxU32 last_frame;
 	float life;
 
@@ -4855,13 +4795,12 @@ struct tfxGraph {
 	tfxGraphPreset graph_preset;
 	tfxGraphType type;
 	tfxEffectEmitter *effector;
-	tfxBucketArray<tfxAttributeNode> nodes;
+	tfxvec<tfxAttributeNode> nodes;
 	tfxGraphLookup lookup;
 	tfxU32 index;
 	float gamma;
 
 	tfxGraph();
-	tfxGraph(tfxMemoryArenaManager *node_allocator, tfxU32 bucket_size);
 	~tfxGraph();
 
 };
@@ -5672,7 +5611,7 @@ struct tfxParticleAgeWorkEntry {
 };
 
 struct tfxSortWorkEntry {
-	tfxBucketArray<tfxParticleSoA> *bank;
+	tfxvec<tfxParticleSoA> *bank;
 	tfxvec<tfxDepthIndex> *depth_indexes;
 };
 
@@ -5796,9 +5735,8 @@ struct tfxAnimationManager {
 //Use the particle manager to add multiple effects to your scene 
 struct tfxParticleManager {
 	tfxvec<tfxSoABuffer> particle_array_buffers;
-	tfxBucketArray<tfxParticleSoA> particle_arrays;
+	tfxvec<tfxParticleSoA> particle_arrays;
 
-	tfxMemoryArenaManager particle_array_allocator;
 	//In unordered mode emitters that expire have their particle banks added here to be reused
 	tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
@@ -5922,8 +5860,6 @@ struct tfxEffectsStage {
 };
 
 struct tfxLibrary {
-	tfxMemoryArenaManager graph_node_allocator;
-	tfxMemoryArenaManager graph_lookup_allocator;
 	tfxSoABuffer emitter_properties_buffer;
 
 	tfxStorageMap<tfxEffectEmitter*> effect_paths;
@@ -6024,6 +5960,123 @@ struct tfxDataEntry {
 
 tfx_globals_t *tfxGetGlobals();
 
+//Threading functions (OS specific)
+tfxINTERNAL inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
+	queues->count = 0;
+	queues->empty_semaphore = CreateSemaphoreEx(0, tfxMAX_QUEUES, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
+	queues->full_semaphore = CreateSemaphoreEx(0, 0, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
+	memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void*));
+}
+
+tfxINTERNAL inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
+	WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
+	std::unique_lock<std::mutex> lock(thread_processor->mutex);
+	tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
+	ReleaseSemaphore(thread_processor->empty_semaphore, 1, 0);
+	return queue;
+}
+
+tfxINTERNAL inline void tfxPushQueueWork(tfxQueueProcessor *thread_processor, tfxWorkQueue *queue) {
+	WaitForSingleObject(thread_processor->empty_semaphore, INFINITE);
+	std::unique_lock<std::mutex> lock(thread_processor->mutex);
+	thread_processor->queues[thread_processor->count++] = queue;
+	ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
+}
+
+tfxINTERNAL inline void tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
+	tfxWorkQueue *queue = tfxGetQueueWithWork(queue_processor);
+
+	if (queue) {
+		tfxU32 original_read_entry = queue->next_read_entry;
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+
+		if (original_read_entry != queue->next_write_entry) {
+			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
+			if (index == original_read_entry) {
+				tfxWorkQueueEntry entry = queue->entries[index];
+				entry.call_back(queue, entry.data);
+				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+			}
+		}
+	}
+}
+
+tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
+	tfxU32 original_read_entry = queue->next_read_entry;
+	tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+
+	if (original_read_entry != queue->next_write_entry) {
+		tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
+		if (index == original_read_entry) {
+			tfxWorkQueueEntry entry = queue->entries[index];
+			entry.call_back(queue, entry.data);
+			InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+		}
+	}
+}
+
+tfxINTERNAL inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+	assert(tfxGlobals->number_of_threads_in_addition_to_main > 0);		//This should never be called if there is only a main thread
+
+	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+	while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
+		//We can do this because we're single producer
+		tfxDoNextWorkQueueEntry(queue);
+	}
+	queue->entries[queue->next_write_entry].data = data;
+	queue->entries[queue->next_write_entry].call_back = call_back;
+	InterlockedIncrement(&queue->entry_completion_goal);
+
+	_WriteBarrier();
+
+	tfxPushQueueWork(&tfxGlobals->thread_queues, queue);
+	queue->next_write_entry = new_entry_to_write;
+
+}
+
+tfxINTERNAL inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
+
+	tfxQueueProcessor *thread_processor = (tfxQueueProcessor*)lpParameter;
+
+	for (;;) {
+		tfxDoNextWorkQueue(thread_processor);
+	}
+
+}
+
+tfxINTERNAL inline void tfxCompleteAllWork(tfxWorkQueue *queue) {
+	tfxWorkQueueEntry entry = {};
+	while (queue->entry_completion_goal != queue->entry_completion_count) {
+		tfxDoNextWorkQueueEntry(queue);
+	}
+	queue->entry_completion_count = 0;
+	queue->entry_completion_goal = 0;
+}
+
+tfxINTERNAL inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue) {
+	queue->entry_completion_count = 0;
+	queue->entry_completion_goal = 0;
+	queue->next_read_entry = 0;
+	queue->next_write_entry = 0;
+}
+
+tfxINTERNAL inline bool tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
+	InitialiseThreadQueues(&tfxGlobals->thread_queues);
+
+	//todo: create a function to close all the threads 
+
+	tfxU32 threads_initialised = 0;
+	for (int thread_index = 0; thread_index < tfxGlobals->number_of_threads_in_addition_to_main; ++thread_index) {
+		DWORD thread_id;
+		HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, thread_queues, 0, &thread_id);
+		if (!thread_handle) {
+			tfxGlobals->number_of_threads_in_addition_to_main = threads_initialised;
+			return false;
+		}
+	}
+	return true;
+}
+
 //--------------------------------
 //Internal functions used either by the library or editor
 //--------------------------------
@@ -6088,14 +6141,14 @@ tfxAPI_EDITOR inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
 
 tfxAPI_EDITOR inline void ResetSnapshots() {
 	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
-		tfxProfile *profile = tfxProfileArray + i;
+		tfxProfile *profile = &tfxGetGlobals()->profile_array[i];
 		memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfxProfileSnapshot));
 	}
 }
 
 tfxAPI_EDITOR inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>> *profile_snapshots, tfxU32 amount) {
 	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
-		tfxProfile *profile = tfxProfileArray + i;
+		tfxProfile *profile = &tfxGetGlobals()->profile_array[i];
 		if (!profile->name) {
 			ResetSnapshot(profile->snapshots + i);
 			continue;
@@ -6144,17 +6197,18 @@ tfxAPI_EDITOR bool LoadDataFile(tfxDataTypesDictionary *data_types, tfxStorageMa
 tfxAPI_EDITOR void StreamProperties(tfxEmitterPropertiesSoA *property, tfxU32 index, tfxEmitterPropertyFlags flags, tfxStr *file);
 tfxAPI_EDITOR void StreamProperties(tfxEffectEmitter *effect, tfxStr *file);
 tfxAPI_EDITOR void StreamGraph(const char * name, tfxGraph *graph, tfxStr *file);
-tfxAPI_EDITOR void SplitStringStack(const tfxStr s, tfxStack<tfxStr256> *pair, char delim = 61);
-tfxAPI_EDITOR bool StringIsUInt(const tfxStr s);
+tfxAPI_EDITOR void SplitStringStack(const tfxStr *s, tfxvec<tfxStr256> *pair, char delim = 61);
+tfxAPI_EDITOR void SplitStringStack(const char *s, tfxvec<tfxStr256> *pair, char delim = 61);
+tfxAPI_EDITOR bool StringIsUInt(const tfxStr *s);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU64 value, tfxU32 file_version);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value, tfxU32 file_version);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, float value);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, bool value);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, int value);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxStr &value);
-tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter *effect, tfxStack<tfxStr256> *values);
-tfxINTERNAL void SplitStringVec(const tfxStr s, tfxvec<tfxStr256> *pair, char delim = 61);
-tfxINTERNAL int GetDataType(const tfxStr &s);
+tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter *effect, tfxvec<tfxStr256> *values);
+tfxINTERNAL void SplitStringVec(const tfxStr *s, tfxvec<tfxStr256> *pair, char delim = 61);
+tfxINTERNAL int GetDataType(const tfxStr *s);
 tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value);
 tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, float value);
 tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, bool value);
@@ -6169,9 +6223,9 @@ tfxINTERNAL void AssignFrameMetaProperty(tfxFrameMeta *metrics, tfxStr *field, t
 tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, tfxU32 value, tfxU32 file_version);
 tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, float value, tfxU32 file_version);
 tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, tfxVec2 value, tfxU32 file_version);
-tfxINTERNAL void AssignNodeData(tfxAttributeNode *node, tfxStack<tfxStr256> *values);
-tfxINTERNAL tfxVec3 StrToVec3(tfxStack<tfxStr256> *str);
-tfxINTERNAL tfxVec2 StrToVec2(tfxStack<tfxStr256> *str);
+tfxINTERNAL void AssignNodeData(tfxAttributeNode *node, tfxvec<tfxStr256> *values);
+tfxINTERNAL tfxVec3 StrToVec3(tfxvec<tfxStr256> *str);
+tfxINTERNAL tfxVec2 StrToVec2(tfxvec<tfxStr256> *str);
 
 //--------------------------------
 //Inline Math functions
@@ -6193,7 +6247,7 @@ tfxINTERNAL inline int SortDepth(void const *left, void const *right) {
 }
 
 tfxINTERNAL inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry) {
-	tfxBucketArray<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
+	tfxvec<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
 	tfxvec<tfxDepthIndex> &depth_indexes = *static_cast<tfxSortWorkEntry*>(work_entry)->depth_indexes;
 	for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
 		tfxDepthIndex key = depth_indexes[i];
@@ -7370,7 +7424,7 @@ tfxAPI_EDITOR bool IsEverythingElseGraph(tfxGraphType type);
 tfxAPI_EDITOR bool HasNodeAtFrame(tfxGraph *graph, float frame);
 tfxAPI_EDITOR bool HasKeyframes(tfxEffectEmitter *e);
 tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfxEffectEmitter *e);
-tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter *e, tfxStack<tfxVec3> *points, float frame);
+tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter *e, tfxvec<tfxVec3> *points, float frame);
 
 tfxAPI_EDITOR bool IsNodeCurve(tfxAttributeNode *node);
 tfxAPI_EDITOR bool NodeCurvesAreInitialised(tfxAttributeNode *node);
@@ -7401,13 +7455,6 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfxGraphType type) {
 //--------------------------------
 //Grouped graph struct functions
 //--------------------------------
-tfxINTERNAL void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size = 8);
 tfxINTERNAL void FreeEmitterAttributes(tfxEmitterAttributes *attributes);
 tfxINTERNAL void FreeGlobalAttributes(tfxGlobalAttributes *attributes);
 tfxAPI_EDITOR void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);
@@ -7630,6 +7677,7 @@ tfxAPI_EDITOR float GetEffectHighestLoopLength(tfxEffectEmitter *effect);
 
 /*
 You don't have to call this, you can just call InitialiseTimelineFX in order to initialise the memory, but I created this for the sake of the editor which
+
 needs to load in an ini file before initialising timelinefx which requires the memory pool to be created before hand
 * @param memory_pool_size	The size of each memory pool to contain all objects created in TimelineFX
 */
@@ -7637,8 +7685,9 @@ tfxAPI void InitialiseTimelineFXMemory(size_t memory_pool_size = tfxMegabyte(128
 
 /*
 Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
-* @param max_threads	Pass the number of threads that you want to use in addition to the main thread.
-*						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
+* @param max_threads		Pass the number of threads that you want to use in addition to the main thread.
+*							Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
+* @param memory_pool_size	The size of each memory pool to contain all objects created in TimelineFX
 */
 tfxAPI void InitialiseTimelineFX(int max_threads = 0, size_t memory_pool_size = tfxMegabyte(128));
 
