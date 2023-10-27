@@ -4100,7 +4100,6 @@ extern tfx_allocator *tfxMemoryAllocator;
 //-----------------------------------------------------------
 //Section: Global_Variables
 //-----------------------------------------------------------
-extern const tfxU32 tfxPROFILE_COUNT;
 
 struct tfxDataTypesDictionary {
 	bool initialised = false;
