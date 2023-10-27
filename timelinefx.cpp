@@ -25,60 +25,60 @@ FILE *tfx__open_file(const char *file_name, const char *mode) {
 }
 #endif
 
-size_t tfxGetNextPower(size_t n) {
-	return 1ULL << (tfx__scan_reverse(n) + 1);
-}
-
-void tfxAddHostMemoryPool(size_t size) {
-	assert(tfxGlobals->memory_pool_count < 32);    //Reached the max number of memory pools
-	size_t pool_size = tfxGlobals->default_memory_pool_size;
-	if (pool_size <= size) {
-		pool_size = tfxGetNextPower(size);
+	size_t tfxGetNextPower(size_t n) {
+		return 1ULL << (tfx__scan_reverse(n) + 1);
 	}
-	tfxGlobals->memory_pools[tfxGlobals->memory_pool_count] = (tfx_pool*)tfxALLOCATE_POOL(pool_size);
-	assert(tfxGlobals->memory_pools[tfxGlobals->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
-	tfx_AddPool(tfxMemoryAllocator, (tfx_pool*)tfxGlobals->memory_pools[tfxGlobals->memory_pool_count], pool_size);
-	tfxGlobals->memory_pool_sizes[tfxGlobals->memory_pool_count] = pool_size;
-	tfxGlobals->memory_pool_count++;
-}
 
-void* tfxAllocate(size_t size) {
-	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
-	if (!allocation) {
-		tfxAddHostMemoryPool(size);
-		allocation = tfx_Allocate(tfxMemoryAllocator, size);
-		assert(allocation);    //Unable to allocate even after adding a pool
+	void tfxAddHostMemoryPool(size_t size) {
+		assert(tfxGlobals->memory_pool_count < 32);    //Reached the max number of memory pools
+		size_t pool_size = tfxGlobals->default_memory_pool_size;
+		if (pool_size <= size) {
+			pool_size = tfxGetNextPower(size);
+		}
+		tfxGlobals->memory_pools[tfxGlobals->memory_pool_count] = (tfx_pool*)tfxALLOCATE_POOL(pool_size);
+		assert(tfxGlobals->memory_pools[tfxGlobals->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
+		tfx_AddPool(tfxMemoryAllocator, (tfx_pool*)tfxGlobals->memory_pools[tfxGlobals->memory_pool_count], pool_size);
+		tfxGlobals->memory_pool_sizes[tfxGlobals->memory_pool_count] = pool_size;
+		tfxGlobals->memory_pool_count++;
 	}
-	return allocation;
-}
 
-void* tfxReallocate(void *memory, size_t size) {
-	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
-	if (!allocation) {
-		tfxAddHostMemoryPool(size);
-		allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
-		assert(allocation);	//Unable to allocate even after adding a pool
+	void* tfxAllocate(size_t size) {
+		void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
+		if (!allocation) {
+			tfxAddHostMemoryPool(size);
+			allocation = tfx_Allocate(tfxMemoryAllocator, size);
+			assert(allocation);    //Unable to allocate even after adding a pool
+		}
+		return allocation;
 	}
-	return allocation;
-}
 
-void *tfxAllocateAligned(size_t size, size_t alignment) {
-	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
-	if (!allocation) {
-		tfxAddHostMemoryPool(size);
-		allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
-		assert(allocation);    //Unable to allocate even after adding a pool
+	void* tfxReallocate(void *memory, size_t size) {
+		void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
+		if (!allocation) {
+			tfxAddHostMemoryPool(size);
+			allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
+			assert(allocation);	//Unable to allocate even after adding a pool
+		}
+		return allocation;
 	}
-	return allocation;
-}
 
-tfx_globals_t *tfxGetGlobals() {
-	return tfxGlobals;
-}
+	void *tfxAllocateAligned(size_t size, size_t alignment) {
+		void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
+		if (!allocation) {
+			tfxAddHostMemoryPool(size);
+			allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
+			assert(allocation);    //Unable to allocate even after adding a pool
+		}
+		return allocation;
+	}
 
-tfx_allocator *tfxGetAllocator() {
-	return tfxMemoryAllocator;
-}
+	tfx_globals_t *tfxGetGlobals() {
+		return tfxGlobals;
+	}
+
+	tfx_allocator *tfxGetAllocator() {
+		return tfxMemoryAllocator;
+	}
 
 	//A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
 	tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
@@ -6000,8 +6000,10 @@ tfx_allocator *tfxGetAllocator() {
 
 		tfxKey first_shape_hash = 0;
 
-		tfxvec<tfxEffectEmitter> effect_stack;
-		tfxvec<tfxStr256> pair;
+		//You must call InitialiseTimelineFX() before doing anything!	
+		assert(tfxGlobals->stack_allocator.arena_size > 0);
+		tmpStack(tfxEffectEmitter, effect_stack);
+		tmpStack(tfxStr256, pair);
 
 		while (!data->data.EoF()) {
 			tfxStr512 line = data->data.ReadLine();
@@ -12019,6 +12021,11 @@ tfx_allocator *tfxGetAllocator() {
 	}
 
 	const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
+	tfxU32 tfxCurrentSnapshot = 0;
+	tfxProfile tfxProfileArray[tfxPROFILE_COUNT];
+	int tfxNumberOfThreadsInAdditionToMain = 0;
+	tfxQueueProcessor tfxThreadQueues;
+
 	tfx_globals_t *tfxGlobals = 0;
 	tfx_allocator *tfxMemoryAllocator = 0;
 
@@ -12039,14 +12046,14 @@ tfx_allocator *tfxGetAllocator() {
 		}
 		tfxGlobals = (tfx_globals_t*)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_globals_t));
 		memset(tfxGlobals, 0, sizeof(tfx_globals_t));
-		new (&tfxGlobals->thread_queues.mutex) std::mutex;
 
-		tfxGlobals->number_of_threads_in_addition_to_main = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
+		tfxGlobals->stack_allocator = CreateArenaManager(tfxSTACK_SIZE, 8);
+		tfxGlobals->mt_stack_allocator = CreateArenaManager(tfxMT_STACK_SIZE, 8);
+
+		tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 		lookup_callback = LookupFast;
 		lookup_overtime_callback = LookupFastOvertime;
-		tfxGlobals->profile_array.resize(tfxPROFILE_COUNT);
-		tfxGlobals->profile_array.zero();
-		tfxInitialiseThreads(&tfxGlobals->thread_queues);
+		tfxInitialiseThreads(&tfxThreadQueues);
 	}
 
 	tfxProfileTag::tfxProfileTag(tfxU32 id, const char *name) {
