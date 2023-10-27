@@ -23,6 +23,61 @@
 	}
 #endif
 
+	size_t tfxGetNextPower(size_t n) {
+		return 1ULL << (tfx__scan_reverse(n) + 1);
+	}
+
+	void tfxAddHostMemoryPool(size_t size) {
+		assert(tfxGlobals->memory_pool_count < 32);    //Reached the max number of memory pools
+		size_t pool_size = tfxGlobals->default_memory_pool_size;
+		if (pool_size <= size) {
+			pool_size = tfxGetNextPower(size);
+		}
+		tfxGlobals->memory_pools[tfxGlobals->memory_pool_count] = (tfx_pool*)tfxALLOCATE_POOL(pool_size);
+		assert(tfxGlobals->memory_pools[tfxGlobals->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
+		tfx_AddPool(tfxMemoryAllocator, (tfx_pool*)tfxGlobals->memory_pools[tfxGlobals->memory_pool_count], pool_size);
+		tfxGlobals->memory_pool_sizes[tfxGlobals->memory_pool_count] = pool_size;
+		tfxGlobals->memory_pool_count++;
+	}
+
+	void* tfxAllocate(size_t size) {
+		void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
+		if (!allocation) {
+			tfxAddHostMemoryPool(size);
+			allocation = tfx_Allocate(tfxMemoryAllocator, size);
+			assert(allocation);    //Unable to allocate even after adding a pool
+		}
+		return allocation;
+	}
+
+	void* tfxReallocate(void *memory, size_t size) {
+		void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
+		if (!allocation) {
+			tfxAddHostMemoryPool(size);
+			allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
+			assert(allocation);	//Unable to allocate even after adding a pool
+		}
+		return allocation;
+	}
+
+	void *tfxAllocateAligned(size_t size, size_t alignment) {
+		void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
+		if (!allocation) {
+			tfxAddHostMemoryPool(size);
+			allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
+			assert(allocation);    //Unable to allocate even after adding a pool
+		}
+		return allocation;
+	}
+
+	tfx_globals_t *tfxGetGlobals() {
+		return tfxGlobals;
+	}
+
+	tfx_allocator *tfxGetAllocator() {
+		return tfxMemoryAllocator;
+	}
+
 	//A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
 	tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 		tfxPROFILE;
@@ -5616,8 +5671,7 @@
 
 	}
 
-	bool LoadDataFile(tfxStorageMap<tfxDataEntry> *config, const char* path) {
-		if (!tfxDataTypes.initialised) tfxDataTypes.Init();
+	bool LoadDataFile(tfxDataTypesDictionary *data_types, tfxStorageMap<tfxDataEntry> *config, const char* path) {
 		FILE* fp = tfx__open_file(path, "r");
 		if (fp == NULL) {
 			return false;
@@ -5634,8 +5688,8 @@
 			SplitStringVec(str, &pair, 61);
 			if (pair.size() == 2) {
 				tfxStr256 key = pair[0];
-				if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
-					tfxDataType t = tfxDataTypes.names_and_types.At(pair[0]);
+				if (data_types->names_and_types.ValidName(pair[0])) {
+					tfxDataType t = data_types->names_and_types.At(pair[0]);
 					if (t == tfxBool) {
 						AddDataValue(config, key, (bool)atoi(pair[1].c_str()));
 					}
@@ -5902,8 +5956,8 @@
 
 	tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager *animation_manager, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 		//assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
-		if (!tfxDataTypes.initialised)
-			tfxDataTypes.Init();
+		if (!tfxGlobals->data_types.initialised)
+			tfxGlobals->data_types.Init();
 
 		tfxPackage package;
 		tfxErrorFlags error = LoadPackage(filename, &package);
@@ -5993,8 +6047,8 @@
 				}
 
 				if (context == tfxStartEffectAnimationInfo) {
-					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
-						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+					if (tfxGlobals->data_types.names_and_types.ValidName(pair[0])) {
+						switch (tfxGlobals->data_types.names_and_types.At(pair[0])) {
 						case tfxUint:
 							AssignSpriteDataMetricsProperty(&metrics_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
 							break;
@@ -6011,8 +6065,8 @@
 					}
 				}
 				else if (context == tfxStartFrameMeta) {
-					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
-						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+					if (tfxGlobals->data_types.names_and_types.ValidName(pair[0])) {
+						switch (tfxGlobals->data_types.names_and_types.At(pair[0])) {
 						case tfxUint:
 							AssignFrameMetaProperty(&frame_meta_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
 							break;
@@ -6025,8 +6079,8 @@
 					}
 				}
 				else if (context == tfxStartEmitter) {
-					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
-						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+					if (tfxGlobals->data_types.names_and_types.ValidName(pair[0])) {
+						switch (tfxGlobals->data_types.names_and_types.At(pair[0])) {
 						case tfxUint:
 							AssignAnimationEmitterProperty(&emitter_properties_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package.header.file_version);
 							break;
@@ -6141,8 +6195,8 @@
 	tfxErrorFlags LoadEffectLibraryPackage(tfxPackage *package, tfxLibrary *lib, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 
 		assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
-		if (!tfxDataTypes.initialised)
-			tfxDataTypes.Init();
+		if (!tfxGlobals->data_types.initialised)
+			tfxGlobals->data_types.Init();
 
 		ClearLibrary(lib);
 		if (tfxIcospherePoints[0].current_size == 0) {
@@ -6187,7 +6241,7 @@
 		tfxKey first_shape_hash = 0;
 
 		//You must call InitialiseTimelineFX() before doing anything!	
-		assert(tfxSTACK_ALLOCATOR.arena_size > 0);
+		assert(tfxGlobals->stack_allocator.arena_size > 0);
 		tmpStack(tfxEffectEmitter, effect_stack);
 		tmpStack(tfxStr256, pair);
 
@@ -6269,8 +6323,8 @@
 				}
 
 				if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
-					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
-						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+					if (tfxGlobals->data_types.names_and_types.ValidName(pair[0])) {
+						switch (tfxGlobals->data_types.names_and_types.At(pair[0])) {
 						case tfxUInt64:
 							AssignEffectorProperty(&effect_stack.back(), &pair[0], (tfxU64)strtoull(pair[1].c_str(), NULL, 10), package->header.file_version);
 							break;
@@ -6303,8 +6357,8 @@
 						AssignGraphData(&effect_stack.back(), &pair);
 				}
 				else if (context == tfxStartStage) {
-					if (tfxDataTypes.names_and_types.ValidName(pair[0])) {
-						switch (tfxDataTypes.names_and_types.At(pair[0])) {
+					if (tfxGlobals->data_types.names_and_types.ValidName(pair[0])) {
+						switch (tfxGlobals->data_types.names_and_types.At(pair[0])) {
 						case tfxUint:
 							AssignStageProperty(&effect_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()));
 							break;
@@ -12208,21 +12262,36 @@
 	const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
 	tfxU32 tfxCurrentSnapshot = 0;
 	tfxProfile tfxProfileArray[tfxPROFILE_COUNT];
-	tfxDataTypesDictionary tfxDataTypes;
-	int tfxNumberOfThreadsInAdditionToMain;
+	int tfxNumberOfThreadsInAdditionToMain = 0;
 	tfxQueueProcessor tfxThreadQueues;
-	tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
-	tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
+
+	tfx_globals_t *tfxGlobals = 0;
+	tfx_allocator *tfxMemoryAllocator = 0;
+
+	void InitialiseTimelineFXMemory(size_t memory_pool_size) {
+		if (tfxMemoryAllocator) return;
+		void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
+		assert(memory_pool);	//unable to allocate initial memory pool
+		tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
+	}
 
 	//Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
 	//max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
-	void InitialiseTimelineFX(int max_threads) {
-		tfxSTACK_ALLOCATOR = CreateArenaManager(tfxSTACK_SIZE, 8);
-		tfxMT_STACK_ALLOCATOR = CreateArenaManager(tfxMT_STACK_SIZE, 8);
-		tfxNumberOfThreadsInAdditionToMain = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
+	void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
+		if (!tfxMemoryAllocator) {
+			void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
+			assert(memory_pool);	//unable to allocate initial memory pool
+			tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
+		}
+		tfxGlobals = (tfx_globals_t*)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_globals_t));
+		memset(tfxGlobals, 0, sizeof(tfx_globals_t));
+
+		tfxGlobals->stack_allocator = CreateArenaManager(tfxSTACK_SIZE, 8);
+		tfxGlobals->mt_stack_allocator = CreateArenaManager(tfxMT_STACK_SIZE, 8);
+
+		tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 		lookup_callback = LookupFast;
 		lookup_overtime_callback = LookupFastOvertime;
-		memset(tfxProfileArray, 0, tfxPROFILE_COUNT * sizeof(tfxProfile));
 		tfxInitialiseThreads(&tfxThreadQueues);
 	}
 

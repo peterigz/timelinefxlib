@@ -33,6 +33,15 @@
 	[API_Functions]					The main functions for use by users of the library
 */
 
+//Override this if you'd prefer a different way to allocate the pools for sub allocation in host memory.
+#ifndef tfxALLOCATE_POOL
+#define tfxALLOCATE_POOL malloc
+#endif
+
+#ifndef tfxMAX_MEMORY_POOLS
+#define tfxMAX_MEMORY_POOLS 32
+#endif
+
 //---------------------------------------
 /*	Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator 
 	This is my own memory allocator from https://github.com/peterigz/zloc
@@ -251,7 +260,7 @@ extern "C" {
 		Initialise an allocator and a pool at the same time. The data stucture to store the allocator will be stored at the beginning of the memory
 		you pass to the function and the remaining memory will be used as the pool.
 	*/
-	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size);
+	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size, tfx_allocator **allocator);
 
 	/*
 		Add a new memory pool to the allocator. Pools don't have to all be the same size, adding a pool will create the biggest block it can within
@@ -743,19 +752,19 @@ extern "C" {
 		return allocator;
 	}
 
-	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size) {
+	tfx_allocator *tfx_InitialiseAllocatorWithPool(void *memory, tfx_size size, tfx_allocator **allocator) {
 		tfx_size array_offset = sizeof(tfx_allocator);
 		if (size < array_offset + tfx__MEMORY_ALIGNMENT) {
 			TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Tried to initialise allocator with a memory allocation that is too small. Must be at least: %zi bytes\n", TFX_ERROR_NAME, array_offset + tfx__MEMORY_ALIGNMENT);
 			return 0;
 		}
 
-		tfx_allocator *allocator = tfx_InitialiseAllocator(memory);
+		*allocator = tfx_InitialiseAllocator(memory);
 		if (!allocator) {
 			return 0;
 		}
-		tfx_AddPool(allocator, tfx_GetPool(allocator), size - tfx_AllocatorSize());
-		return allocator;
+		tfx_AddPool(*allocator, tfx_GetPool(*allocator), size - tfx_AllocatorSize());
+		return *allocator;
 	}
 
 	tfx_size tfx_AllocatorSize(void) {
@@ -940,6 +949,14 @@ extern "C" {
 #ifdef __cplusplus
 }
 #endif
+
+size_t tfxGetNextPower(size_t n);
+void tfxAddHostMemoryPool(size_t size);
+void* tfxAllocate(size_t size);
+void* tfxReallocate(void *memory, size_t size);
+void *tfxAllocateAligned(size_t size, size_t alignment);
+tfx_allocator *tfxGetAllocator();
+
 //---------------------------------------
 //End of allocator code
 //---------------------------------------
@@ -1017,9 +1034,26 @@ struct tfxStr512;
 #define tfxMax(a, b) (((a) > (b)) ? (a) : (b))
 #define tfxArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
-#define tfxALLOCATE(tracker_name, dst, size) malloc(size);
-#define tfxREALLOCATE(tracker_name, dst, data, size) realloc(data, size);
-#define tfxFREE(dst) free(dst); 
+#ifndef tfxREALLOCATE
+#define tfxALLOCATE(size) tfxAllocate(size)
+#define tfxALLOCATE_ALIGNED(size, alignment) tfxAllocateAligned(size, alignment)
+#define tfxREALLOCATE(ptr, size) tfxReallocate(ptr, size)
+#endif
+
+#ifndef tfxREALLOCATE
+#define tfxALLOCATE(size) malloc(size)
+#define tfxALLOCATE_ALIGNED(size, alignment) malloc(alignment)
+#define tfxREALLOCATE(ptr, size) realloc(ptr, size)
+#endif
+
+#ifndef tfxFREE
+#define tfxFREE(memory) tfx_Free(tfxGetAllocator(), memory)
+#endif
+
+#ifndef tfxFREE
+#define tfxFREE(memory) free(memory)
+#endif
+
 #define tfxINIT_VEC_NAME 
 #define tfxINIT_VEC_NAME_INIT 
 #define tfxINIT_VEC_NAME_SRC_COPY 
@@ -2155,13 +2189,13 @@ struct tfxStr {
 	bool is_local_buffer;
 
 	inline tfxStr() : current_size(0), capacity(0), data(NULL), is_local_buffer(false) {}
-	inline ~tfxStr() { if (data && !is_local_buffer) { free(data); data = NULL; } current_size = capacity = 0; }
+	inline ~tfxStr() { if (data && !is_local_buffer) { tfxFREE(data); data = NULL; } current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
 	inline char&           operator[](tfxU32 i) { return data[i]; }
 	inline const char&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 
-	inline void         free_all() { if (data) { current_size = capacity = 0; free(data); data = NULL; } }
+	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 	inline void         Clear() { current_size = 0; }
 	inline char*           begin() { return strbuffer(); }
 	inline const char*     begin() const { return strbuffer(); }
@@ -2176,11 +2210,11 @@ struct tfxStr {
 	inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 	inline void         reserve(tfxU32 new_capacity) {
 		if (new_capacity <= capacity) return;
-		char* new_data = (char*)tfxALLOCATE(0, 0, (size_t)new_capacity * sizeof(char));
+		char* new_data = (char*)tfxALLOCATE((size_t)new_capacity * sizeof(char));
 		assert(new_data);	//unable to allocate memory. Todo: proper handling
 		if (data && !is_local_buffer) {
 			memcpy(new_data, data, (size_t)current_size * sizeof(char));
-			free(data);
+			tfxFREE(data);
 		}
 		else if (is_local_buffer) {
 			memcpy(new_data, strbuffer(), (size_t)current_size * sizeof(char));
@@ -2338,7 +2372,7 @@ struct tfxvec {
 	inline tfxvec(const char *name_init) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init); }
 	inline tfxvec(const tfxvec<T> &src) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline tfxvec<T>& operator=(const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
-	inline ~tfxvec() { if (data) { tfxFREE(data) }; data = NULL; current_size = capacity = 0; }
+	inline ~tfxvec() { if (data) { tfxFREE(data); } data = NULL; current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
 	inline tfxU32		size() { return current_size; }
@@ -2373,7 +2407,7 @@ struct tfxvec {
 	inline void         reserve(tfxU32 new_capacity) {
 		if (new_capacity <= capacity)
 			return;
-		T* new_data = (T*)tfxALLOCATE(name, new_data, (size_t)new_capacity * sizeof(T));
+		T* new_data = (T*)tfxALLOCATE((size_t)new_capacity * sizeof(T));
 		assert(new_data);	//Unable to allocate memory. todo: better handling
 		if (data) {
 			memcpy(new_data, data, (size_t)current_size * sizeof(T));
@@ -2758,7 +2792,7 @@ struct tfxMemoryArena {
 	inline void FreeAll() {
 		if (data) {
 			memory_remaining = 0;
-			free(data);
+			tfxFREE(data);
 			data = NULL;
 		}
 	}
@@ -2972,7 +3006,7 @@ struct tfxMemoryArenaManager {
 		tfxMemoryArena arena;
 		arena.total_memory = arena_size;
 		arena.memory_remaining = arena_size;
-		arena.data = tfxALLOCATE(0, 0, arena_size);
+		arena.data = tfxALLOCATE(arena_size);
 		assert(arena.data); //Unable to allocate memory. Todo: proper handling of out of memory
 		arena.end_of_allocated = arena.data;
 		memset(arena.data, 0, arena_size);
@@ -3036,7 +3070,7 @@ inline tfxMemoryArenaManager CreateArenaManager(size_t size_of_each_arena, tfxU3
 inline tfxMemoryArena CreateMemoryArena(size_t size_in_bytes, tfxU32 size_diff_threshold = 8) {
 	assert(size_in_bytes > 1024 * 1024);	//minimum 1mb allocation
 	tfxMemoryArena allocator;
-	void* new_data = tfxALLOCATE(0, 0, size_in_bytes);
+	void* new_data = tfxALLOCATE(size_in_bytes);
 	assert(new_data);	//Unable to allocate memory. Todo: better handling
 	allocator.data = new_data;
 	allocator.end_of_allocated = allocator.data;
@@ -3126,7 +3160,7 @@ inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, t
 	}
 	reserve_amount = (reserve_amount / buffer->block_size + 1) * buffer->block_size;
 	buffer->current_arena_size = reserve_amount * buffer->struct_size;
-	buffer->data = tfxALLOCATE(0, 0, buffer->current_arena_size);
+	buffer->data = tfxALLOCATE(buffer->current_arena_size);
 	assert(buffer->data);	//Unable to allocate memory. Todo: better handling
 	memset(buffer->data, 0, buffer->current_arena_size);
 	buffer->capacity = reserve_amount;
@@ -3148,7 +3182,7 @@ inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_
 	tfxU32 new_capacity = 0;
 	new_capacity = new_target_size > buffer->capacity ? new_target_size + new_target_size / 2 : buffer->capacity + buffer->capacity / 2;
 	new_capacity = (new_capacity / buffer->block_size + 1) * buffer->block_size;
-	void *new_data = tfxALLOCATE(0, 0, new_capacity * buffer->struct_size);
+	void *new_data = tfxALLOCATE(new_capacity * buffer->struct_size);
 	assert(new_data);	//Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
 	size_t running_offset = 0;
@@ -3178,7 +3212,7 @@ inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
 	}
-	free(old_data);
+	tfxFREE(old_data);
 
 	if (buffer->resize_callback) {
 		buffer->resize_callback(buffer, first_new_index);
@@ -3277,7 +3311,7 @@ inline void Bump(tfxSoABuffer *buffer, tfxU32 amount) {
 inline void FreeSoABuffer(tfxSoABuffer *buffer) {
 	buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
 	if (buffer->data)
-		free(buffer->data);
+		tfxFREE(buffer->data);
 	buffer->array_ptrs.free_all();
 	ResetSoABuffer(buffer);
 }
@@ -3298,7 +3332,7 @@ inline void TrimSoABuffer(tfxSoABuffer *buffer) {
 	}
 	assert(buffer->current_size < buffer->capacity);
 	tfxU32 new_capacity = buffer->current_size;
-	void *new_data = tfxALLOCATE(0, 0, new_capacity * buffer->struct_size);
+	void *new_data = tfxALLOCATE(new_capacity * buffer->struct_size);
 	assert(new_data);	//Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
 	size_t running_offset = 0;
@@ -3326,7 +3360,7 @@ inline void TrimSoABuffer(tfxSoABuffer *buffer) {
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
 	}
-	free(old_data);
+	tfxFREE(old_data);
 }
 
 template <typename T>
@@ -3881,9 +3915,9 @@ struct tfxStack {
 };
 
 //You must called InitialiseTimelineFX() before doing anything!
-#define tmpStack(type, name) assert(tfxSTACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxSTACK_ALLOCATOR)
+#define tmpStack(type, name) assert(tfxGlobals->stack_allocator.arena_size > 0); tfxStack<type> name(&tfxGlobals->stack_allocator)
 	//You must called InitialiseTimelineFX() before doing anything!
-#define tmpMTStack(type, name) assert(tfxMT_STACK_ALLOCATOR.arena_size > 0); tfxStack<type> name(&tfxMT_STACK_ALLOCATOR)
+#define tmpMTStack(type, name) assert(tfxGlobals->mt_stack_allocator.arena_size > 0); tfxStack<type> name(&tfxGlobals->mt_stack_allocator)
 
 template <typename T>
 static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
@@ -3937,11 +3971,11 @@ struct tfxStream {
 	inline void         Resize(tfxU64 new_capacity) {
 		if (new_capacity <= size)
 			return;
-		char* new_data = (char*)tfxALLOCATE("Stream", new_data, (tfxU64)new_capacity * sizeof(char));
+		char* new_data = (char*)tfxALLOCATE((tfxU64)new_capacity * sizeof(char));
 		assert(new_data);	//Unable to allocate memory. Todo: better handling
 		if (data) {
 			memcpy(new_data, data, (tfxU64)size * sizeof(char));
-			free(data);
+			tfxFREE(data);
 		}
 		data = new_data; size = new_capacity;
 		position = 0;
@@ -4117,6 +4151,34 @@ tfxINTERNAL inline bool tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
 	}
 	return true;
 }
+
+//-----------------------------------------------------------
+//Section: Global_Variables
+//-----------------------------------------------------------
+extern const tfxU32 tfxPROFILE_COUNT;
+
+struct tfxDataTypesDictionary {
+	bool initialised = false;
+	tfxStorageMap<tfxDataType> names_and_types;
+	tfxDataTypesDictionary() :
+		names_and_types("Data Types Storage Map", "Data Types Storage Data")
+	{}
+	void Init();
+};
+
+//Global variables
+struct tfx_globals_t {
+	tfxU32 memory_pool_count;
+	size_t default_memory_pool_size;
+	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
+	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
+	tfxDataTypesDictionary data_types;
+	tfxMemoryArenaManager stack_allocator;
+	tfxMemoryArenaManager mt_stack_allocator;
+};
+
+extern tfx_globals_t *tfxGlobals;
+extern tfx_allocator *tfxMemoryAllocator;
 
 //-----------------------------------------------------------
 //Section: Vector_Math
@@ -5956,21 +6018,11 @@ struct tfxDataEntry {
 	double double_value = 0;
 };
 
-struct tfxDataTypesDictionary {
-	bool initialised = false;
-	tfxStorageMap<tfxDataType> names_and_types;
-
-	tfxDataTypesDictionary() :
-		names_and_types("Data Types Storage Map", "Data Types Storage Data")
-	{}
-	void Init();
-};
-
-extern tfxDataTypesDictionary tfxDataTypes;
-
 //------------------------------------------------------------
 //Section: Internal_Functions
 //------------------------------------------------------------
+
+tfx_globals_t *tfxGetGlobals();
 
 //--------------------------------
 //Internal functions used either by the library or editor
@@ -6088,7 +6140,7 @@ tfxAPI_EDITOR tfxStr GetDataStrValue(tfxStorageMap<tfxDataEntry> *config, const 
 tfxAPI_EDITOR int GetDataIntValue(tfxStorageMap<tfxDataEntry> *config, const char* key);
 tfxAPI_EDITOR float GetDataFloatValue(tfxStorageMap<tfxDataEntry> *config, const char* key);
 tfxAPI_EDITOR bool SaveDataFile(tfxStorageMap<tfxDataEntry> *config, const char* path = "");
-tfxAPI_EDITOR bool LoadDataFile(tfxStorageMap<tfxDataEntry> *config, const char* path);
+tfxAPI_EDITOR bool LoadDataFile(tfxDataTypesDictionary *data_types, tfxStorageMap<tfxDataEntry> *config, const char* path);
 tfxAPI_EDITOR void StreamProperties(tfxEmitterPropertiesSoA *property, tfxU32 index, tfxEmitterPropertyFlags flags, tfxStr *file);
 tfxAPI_EDITOR void StreamProperties(tfxEffectEmitter *effect, tfxStr *file);
 tfxAPI_EDITOR void StreamGraph(const char * name, tfxGraph *graph, tfxStr *file);
@@ -7375,9 +7427,6 @@ tfxAPI_EDITOR void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGl
 //Get a graph by tfxGraphID
 tfxAPI_EDITOR tfxGraph *GetGraph(tfxLibrary *library, tfxGraphID graph_id);
 
-extern tfxMemoryArenaManager tfxSTACK_ALLOCATOR;
-extern tfxMemoryArenaManager tfxMT_STACK_ALLOCATOR;
-
 tfxAPI_EDITOR int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats *stats);
 tfxAPI_EDITOR tfxEffectLibraryStats CreateLibraryStats(tfxLibrary *lib);
 tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfxPackage *package, tfxLibrary *lib, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
@@ -7580,11 +7629,18 @@ tfxAPI_EDITOR float GetEffectHighestLoopLength(tfxEffectEmitter *effect);
 //All the functions below represent all that you will need to call to implement TimelineFX
 
 /*
+You don't have to call this, you can just call InitialiseTimelineFX in order to initialise the memory, but I created this for the sake of the editor which
+needs to load in an ini file before initialising timelinefx which requires the memory pool to be created before hand
+* @param memory_pool_size	The size of each memory pool to contain all objects created in TimelineFX
+*/
+tfxAPI void InitialiseTimelineFXMemory(size_t memory_pool_size = tfxMegabyte(128));
+
+/*
 Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
 * @param max_threads	Pass the number of threads that you want to use in addition to the main thread.
 *						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
 */
-tfxAPI void InitialiseTimelineFX(int max_threads = 0);
+tfxAPI void InitialiseTimelineFX(int max_threads = 0, size_t memory_pool_size = tfxMegabyte(128));
 
 /*
 Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
