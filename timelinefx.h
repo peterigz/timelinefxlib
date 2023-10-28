@@ -2384,6 +2384,7 @@ struct tfxvec {
 	inline T&           ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
 
 	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
+	inline void         free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
 	inline void         clear() { if (data) { current_size = 0; } }
 	inline T*           begin() { return data; }
 	inline const T*     begin() const { return data; }
@@ -2444,6 +2445,9 @@ struct tfxvec {
 			reserve(_grow_capacity(current_size + 1));
 		memcpy(&data[current_size], &v, sizeof(v));
 		current_size++; return data[current_size - 1];
+	}
+	inline T&			next() {
+		return push_back(T());
 	}
 	inline void			zero() { assert(capacity > 0); memset(data, 0, capacity * sizeof(T)); }
 	inline void         pop() { assert(current_size > 0); current_size--; }
@@ -3817,17 +3821,20 @@ struct tfxBucketArray {
 };
 
 template <typename T>
-struct tfxStack {
+using tfxStack = tfxvec<T>;
+
+template <typename T>
+struct tfxStackOld {
 	tfxMemoryArenaManager *allocator;			//Pointer to the allocator that manages the memory and blocks of that memory
 	T *block;									//Pointer to the data storing the array. This will be somewhere in a tfxMemoryArena
 	tfxU32 block_index;							//This index of the block of memory referenced in allocator->blocks
 	tfxU32 capacity;							//The total capacity of the array in units of T
 	tfxU32 current_size;
 
-	tfxStack() : allocator(NULL) { block = NULL; capacity = current_size = 0; block_index = tfxINVALID; }
-	tfxStack(tfxMemoryArenaManager *allocator_init) : allocator(allocator_init) { block = NULL; capacity = current_size = 0; block_index = tfxINVALID; }
-	tfxStack(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; capacity = current_size = 0; reserve(size); block_index = tfxINVALID; }
-	~tfxStack() { free(); }
+	tfxStackOld() : allocator(NULL) { block = NULL; capacity = current_size = 0; block_index = tfxINVALID; }
+	tfxStackOld(tfxMemoryArenaManager *allocator_init) : allocator(allocator_init) { block = NULL; capacity = current_size = 0; block_index = tfxINVALID; }
+	tfxStackOld(tfxMemoryArenaManager *allocator_init, tfxU32 size) : allocator(allocator_init) { block = NULL; capacity = current_size = 0; reserve(size); block_index = tfxINVALID; }
+	~tfxStackOld() { free(); }
 
 	inline tfxU32		size() { return current_size; }
 	inline const tfxU32	size() const { return current_size; }
@@ -3915,9 +3922,7 @@ struct tfxStack {
 };
 
 //You must called InitialiseTimelineFX() before doing anything!
-#define tmpStack(type, name) assert(tfxGlobals->stack_allocator.arena_size > 0); tfxStack<type> name(&tfxGlobals->stack_allocator)
-	//You must called InitialiseTimelineFX() before doing anything!
-#define tmpMTStack(type, name) assert(tfxGlobals->mt_stack_allocator.arena_size > 0); tfxStack<type> name(&tfxGlobals->mt_stack_allocator)
+#define tmpStack(type, name) assert(tfxGlobals->stack_allocator.arena_size > 0); tfxvec<type> name
 
 template <typename T>
 static inline tfxBucketArray<T> CreateBucketArray(tfxMemoryArena *allocator, tfxU32 bucket_size) {
@@ -5804,6 +5809,9 @@ struct tfxParticleManager {
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfxSortWorkEntry sorting_work_entry[tfxLAYERS];
 
+	tfxvec<tfxSpawnWorkEntry> spawn_work;
+	tfxvec<tfxControlWorkEntry> control_work;
+	tfxvec<tfxParticleAgeWorkEntry> age_work;
 	tfxvec<tfxParticleID> particle_indexes;
 	tfxvec<tfxU32> free_particle_indexes;
 	tfxvec<tfxDepthIndex> depth_indexes[tfxLAYERS][2];
@@ -6144,7 +6152,7 @@ tfxAPI_EDITOR bool LoadDataFile(tfxDataTypesDictionary *data_types, tfxStorageMa
 tfxAPI_EDITOR void StreamProperties(tfxEmitterPropertiesSoA *property, tfxU32 index, tfxEmitterPropertyFlags flags, tfxStr *file);
 tfxAPI_EDITOR void StreamProperties(tfxEffectEmitter *effect, tfxStr *file);
 tfxAPI_EDITOR void StreamGraph(const char * name, tfxGraph *graph, tfxStr *file);
-tfxAPI_EDITOR void SplitStringStack(const tfxStr s, tfxStack<tfxStr256> *pair, char delim = 61);
+tfxAPI_EDITOR void SplitStringStack(const tfxStr s, tfxvec<tfxStr256> *pair, char delim = 61);
 tfxAPI_EDITOR bool StringIsUInt(const tfxStr s);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU64 value, tfxU32 file_version);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value, tfxU32 file_version);
@@ -6152,7 +6160,7 @@ tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *fiel
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, bool value);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, int value);
 tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxStr &value);
-tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter *effect, tfxStack<tfxStr256> *values);
+tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter *effect, tfxvec<tfxStr256> *values);
 tfxINTERNAL void SplitStringVec(const tfxStr s, tfxvec<tfxStr256> *pair, char delim = 61);
 tfxINTERNAL int GetDataType(const tfxStr &s);
 tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value);
@@ -6169,9 +6177,9 @@ tfxINTERNAL void AssignFrameMetaProperty(tfxFrameMeta *metrics, tfxStr *field, t
 tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, tfxU32 value, tfxU32 file_version);
 tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, float value, tfxU32 file_version);
 tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, tfxVec2 value, tfxU32 file_version);
-tfxINTERNAL void AssignNodeData(tfxAttributeNode *node, tfxStack<tfxStr256> *values);
-tfxINTERNAL tfxVec3 StrToVec3(tfxStack<tfxStr256> *str);
-tfxINTERNAL tfxVec2 StrToVec2(tfxStack<tfxStr256> *str);
+tfxINTERNAL void AssignNodeData(tfxAttributeNode *node, tfxvec<tfxStr256> *values);
+tfxINTERNAL tfxVec3 StrToVec3(tfxvec<tfxStr256> *str);
+tfxINTERNAL tfxVec2 StrToVec2(tfxvec<tfxStr256> *str);
 
 //--------------------------------
 //Inline Math functions
@@ -7370,7 +7378,7 @@ tfxAPI_EDITOR bool IsEverythingElseGraph(tfxGraphType type);
 tfxAPI_EDITOR bool HasNodeAtFrame(tfxGraph *graph, float frame);
 tfxAPI_EDITOR bool HasKeyframes(tfxEffectEmitter *e);
 tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfxEffectEmitter *e);
-tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter *e, tfxStack<tfxVec3> *points, float frame);
+tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter *e, tfxvec<tfxVec3> *points, float frame);
 
 tfxAPI_EDITOR bool IsNodeCurve(tfxAttributeNode *node);
 tfxAPI_EDITOR bool NodeCurvesAreInitialised(tfxAttributeNode *node);
@@ -7875,11 +7883,18 @@ tfxAPI inline tfxU32 TotalSpriteCount(tfxParticleManager *pm) {
 }
 
 /*
-Clear all particles, sprites and effects in a particle manager
+Clear all particles, sprites and effects in a particle manager. If you don't need to use the particle manager again then call FreeParticleManager to also
+free all the memory associated with the particle manager.
 * @param pm						A pointer to an initialised tfxParticleManager.
 * @param free_particle_banks	Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
 */
 tfxAPI void ClearParticleManager(tfxParticleManager *pm, bool free_particle_banks);
+
+/*
+Free all the memory used in the particle manager.
+* @param pm						A pointer to an initialised tfxParticleManager.
+*/
+tfxAPI void FreeParticleManager(tfxParticleManager *pm);
 
 //[Effects functions for altering effects that are currently playing out in a particle manager]
 

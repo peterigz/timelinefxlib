@@ -5712,7 +5712,7 @@ bool LoadDataFile(tfxDataTypesDictionary *data_types, tfxStorageMap<tfxDataEntry
 
 }
 
-void SplitStringStack(const tfxStr str, tfxStack<tfxStr256> *pair, char delim) {
+void SplitStringStack(const tfxStr str, tfxvec<tfxStr256> *pair, char delim) {
 	tfxStr256 line;
 	for (char c : str) {
 		if (c == delim && line.Length() && c != NULL) {
@@ -6858,15 +6858,6 @@ void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float up
 			DisablePMSpawning(pm, true);
 	}
 
-	/*
-	for (int i = 0; i != total_sprites; ++i) {
-		tfxU32 property_index = sprite_data->real_time_sprites.property_indexes[i] & 0x0000FFFF;
-		if (property_index == 0) {
-			int d = 0;
-		}
-	}
-	*/
-
 	sprite_data->real_time_sprites_buffer.current_size = total_sprites;
 	//total sprites should not exceed the capacity of the sprite buffer
 	assert(sprite_data->real_time_sprites_buffer.current_size <= sprite_data->real_time_sprites_buffer.capacity);
@@ -7021,9 +7012,10 @@ void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool i
 	sprite_data->compressed.frame_count = compressed_frame + 1;
 	anim.animation_length_in_time = sprite_data->compressed.animation_length_in_time = sprite_data->compressed.frame_count * frequency;
 	anim.frames_after_compression = sprite_data->compressed.frame_count;
-	tmpMTStack(tfxCompressWorkEntry, compress_entry);
+	tfxvec<tfxCompressWorkEntry> compress_work;
+	compress_work.reserve((int)sprite_data->compressed.frame_count);
 	while (f < (int)sprite_data->compressed.frame_count) {
-		tfxCompressWorkEntry *entry = &compress_entry.next();
+		tfxCompressWorkEntry *entry = &compress_work.next();
 		entry->sprite_data = sprite_data;
 		entry->frame = f;
 		if (tfxNumberOfThreadsInAdditionToMain > 0) {
@@ -7035,7 +7027,7 @@ void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool i
 		f++;
 	}
 	tfxCompleteAllWork(&pm->work_queue);
-	compress_entry.free();
+	compress_work.free();
 
 	TrimSoABuffer(&sprite_data->compressed_sprites_buffer);
 	sprite_data->compressed.total_memory_for_sprites = (tfxU32)sprite_data->compressed_sprites_buffer.current_arena_size;
@@ -7790,7 +7782,6 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 		emitter_start_size[depth] = pm->emitters_in_use[depth][pm->current_ebuff].current_size;
 	}
 
-	tmpMTStack(tfxSpawnWorkEntry, spawn_work);
 	//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		pm->effects_in_use[depth][next_buffer].clear();
@@ -7810,7 +7801,7 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 		}
 
 		for (int i = 0; i != emitter_start_size[depth]; ++i) {
-			tfxSpawnWorkEntry *spawn_work_entry = &spawn_work.next();
+			tfxSpawnWorkEntry *spawn_work_entry = &pm->spawn_work.next();
 			tfxU32 current_index = pm->emitters_in_use[depth][pm->current_ebuff][i];
 			spawn_work_entry->depth = depth;
 			spawn_work_entry->emitter_index = current_index;
@@ -7841,12 +7832,12 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 	tfxCompleteAllWork(&pm->work_queue);
 	AdvanceRandom(&pm->random);
 
-	for (auto &work_entry : spawn_work) {
+	for (auto &work_entry : pm->spawn_work) {
 		tfxU32 index = work_entry.emitter_index;
 		pm->emitters.highest_particle_age[index] = std::fmaxf(pm->emitters.highest_particle_age[index], work_entry.highest_particle_age);
 		pm->effects.highest_particle_age[pm->emitters.parent_index[index]] = pm->emitters.highest_particle_age[index] + pm->frame_length;
 	}
-	spawn_work.free();
+	pm->spawn_work.clear();
 
 	if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
 		for (tfxEachLayer) {
@@ -7889,13 +7880,12 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 	}
 
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
-		tmpMTStack(tfxControlWorkEntry, work);
 		for (int index : pm->emitters_in_use[depth][next_buffer]) {
 			tfxSoABuffer &bank = pm->particle_array_buffers[pm->emitters.particles_index[index]];
 			int particles_to_update = bank.current_size;
 			tfxU32 running_start_index = 0;
 			while (particles_to_update > 0) {
-				tfxControlWorkEntry &work_entry = work.next();
+				tfxControlWorkEntry &work_entry = pm->control_work.next();
 				work_entry.properties = &pm->library->emitter_properties;
 				work_entry.emitter_index = index;
 				work_entry.start_index = running_start_index;
@@ -7912,9 +7902,9 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 		}
 
 		tfxCompleteAllWork(&pm->work_queue);
-		work.free();
+		pm->control_work.clear();
+
 		if (pm->emitters_check_capture.current_size > 0) {
-			tmpMTStack(tfxControlWorkEntry, work);
 			for (int index : pm->emitters_check_capture) {
 				//Really don't like this but is fine for now. For any line emitters where the particles loop back round to the beginning we need to set the captured index of the sprites
 				//so that they don't interpolate the frame that they loop
@@ -7922,7 +7912,7 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 				int particles_to_update = bank.current_size;
 				tfxU32 running_start_index = 0;
 				while (particles_to_update > 0) {
-					tfxControlWorkEntry &work_entry = work.next();
+					tfxControlWorkEntry &work_entry = pm->control_work.next();
 					work_entry.properties = &pm->library->emitter_properties;
 					work_entry.emitter_index = index;
 					work_entry.start_index = running_start_index;
@@ -7951,15 +7941,14 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 				}
 			}
 			tfxCompleteAllWork(&pm->work_queue);
-			work.free();
+			pm->control_work.free();
 			pm->emitters_check_capture.clear();
 		}
 
 		{
-			tmpMTStack(tfxParticleAgeWorkEntry, work);
 			for (int index : pm->emitters_in_use[depth][next_buffer]) {
 				tfxSoABuffer &bank = pm->particle_array_buffers[pm->emitters.particles_index[index]];
-				tfxParticleAgeWorkEntry &work_entry = work.next();
+				tfxParticleAgeWorkEntry &work_entry = pm->age_work.next();
 				work_entry.properties = &pm->library->emitter_properties;
 				work_entry.start_index = bank.current_size - 1;
 				work_entry.emitter_index = index;
@@ -7978,7 +7967,7 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 			}
 
 			tfxCompleteAllWork(&pm->work_queue);
-			work.free();
+			pm->age_work.clear();
 		}
 	}
 
@@ -8327,10 +8316,6 @@ void ControlParticleTransform3d(tfxWorkQueue *queue, void *data) {
 		capture_flag.m = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi()));
 		tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag.m, tfxWideSetZero());
 		_ReadBarrier();
-
-		if ((tfxU32)capture_flag.a[0] & tfxParticleFlags_capture_after_transform) {
-			int d = 0;
-		}
 
 		if (property_flags & tfxEmitterPropertyFlags_relative_position || (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine)) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
@@ -9219,9 +9204,12 @@ void InitParticleManagerForBoth(tfxParticleManager *pm, tfxLibrary *lib, tfxU32 
 	}
 
 	pm->free_effects.reserve(pm->max_effects);
-	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
 	InitEffectSoA(&pm->effect_buffers, &pm->effects, pm->max_effects);
 	InitEmitterSoA(&pm->emitter_buffers, &pm->emitters, pm->max_effects);
+	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
+	pm->spawn_work.reserve(1000);
+	pm->control_work.reserve(1000);
+	pm->age_work.reserve(1000);
 }
 
 void ClearParticleManager(tfxParticleManager *pm, bool free_particle_banks) {
@@ -9263,6 +9251,45 @@ void ClearParticleManager(tfxParticleManager *pm, bool free_particle_banks) {
 	ClearSoABuffer(&pm->emitter_buffers);
 	ClearSoABuffer(&pm->effect_buffers);
 	pm->particle_id = 0;
+	pm->spawn_work.clear();
+	pm->control_work.clear();
+	pm->age_work.clear();
+}
+
+void FreeParticleManager(tfxParticleManager *pm) {
+	FreeParticleBanks(pm);
+	for (auto &bank : pm->free_particle_lists.data) {
+		bank.free_all();
+	}
+	pm->free_particle_lists.FreeAll();
+
+	for (tfxEachLayer) {
+		ClearSoABuffer(&pm->sprite_buffer[0][layer]);
+		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
+			ClearSoABuffer(&pm->sprite_buffer[1][layer]);
+		}
+		pm->depth_indexes[layer][0].free();
+		pm->depth_indexes[layer][1].free();
+	}
+	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+		pm->effects_in_use[depth][0].free();
+		pm->effects_in_use[depth][1].free();
+
+		pm->emitters_in_use[depth][0].free();
+		pm->emitters_in_use[depth][1].free();
+	}
+	pm->emitters_check_capture.free();
+	pm->free_effects.free();
+	pm->free_emitters.free();
+	pm->particle_indexes.free();
+	pm->free_particle_indexes.free();
+	ClearSoABuffer(&pm->emitter_buffers);
+	ClearSoABuffer(&pm->effect_buffers);
+	pm->free_compute_controllers.free();
+	pm->particle_id = 0;
+	pm->spawn_work.free();
+	pm->control_work.free();
+	pm->age_work.free();
 }
 
 void FreeParticleBanks(tfxParticleManager *pm) {
@@ -9631,6 +9658,7 @@ void UpdatePMEmitter(tfxParticleManager *pm, tfxSpawnWorkEntry *spawn_work_entry
 			if (!(pm->flags & tfxEffectManagerFlags_disable_spawning))
 				amount_spawned = SpawnParticles3d(pm, spawn_work_entry, max_spawn_count);
 		}
+
 		sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 		pm->sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
 	}
@@ -12648,10 +12676,13 @@ void InitParticleManagerFor3d(tfxParticleManager *pm, tfxLibrary *library, tfxU3
 		pm->emitters_in_use[depth][0].reserve(pm->max_effects);
 		pm->emitters_in_use[depth][1].reserve(pm->max_effects);
 	}
-	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
 	pm->free_effects.reserve(pm->max_effects);
 	InitEffectSoA(&pm->effect_buffers, &pm->effects, pm->max_effects);
 	InitEmitterSoA(&pm->emitter_buffers, &pm->emitters, pm->max_effects);
+	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
+	pm->spawn_work.reserve(1000);
+	pm->control_work.reserve(1000);
+	pm->age_work.reserve(1000);
 }
 
 void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
@@ -12717,10 +12748,12 @@ void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU3
 	}
 
 	pm->free_effects.reserve(pm->max_effects);
-	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
 	InitEffectSoA(&pm->effect_buffers, &pm->effects, pm->max_effects);
 	InitEmitterSoA(&pm->emitter_buffers, &pm->emitters, pm->max_effects);
-
+	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
+	pm->spawn_work.reserve(1000);
+	pm->control_work.reserve(1000);
+	pm->age_work.reserve(1000);
 }
 
 void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y) {
