@@ -9164,7 +9164,7 @@ void ReconfigureParticleManager(tfxParticleManager *pm, tfxParticleManagerModes 
 	pm->sort_passes = req_sort_passes;
 }
 
-void SetWorkQueueSizes(tfxParticleManager *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
+void SetPMWorkQueueSizes(tfxParticleManager *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
 	pm->spawn_work.reserve(spawn_work_max);
 	pm->spawn_work.reserve(control_work_max);
 	pm->spawn_work.reserve(age_work_max);
