@@ -3674,7 +3674,7 @@ int ValidateEffectPackage(const char *filename) {
 	return 0;
 }
 
-void AssignGraphData(tfxEffectEmitter *effect, tfxStack<tfxStr256> *values) {
+void AssignGraphData(tfxEffectEmitter *effect, tfxvec<tfxStr256> *values) {
 	if (values->size() > 0) {
 		if ((*values)[0] == "global_amount") { tfxAttributeNode n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].amount, &n); }
 		if ((*values)[0] == "global_frame_rate") { tfxAttributeNode n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].frame_rate, &n); }
@@ -3762,7 +3762,7 @@ void AssignGraphData(tfxEffectEmitter *effect, tfxStack<tfxStr256> *values) {
 	}
 }
 
-void AssignNodeData(tfxAttributeNode *n, tfxStack<tfxStr256> *values) {
+void AssignNodeData(tfxAttributeNode *n, tfxvec<tfxStr256> *values) {
 	n->frame = (float)atof((*values)[1].c_str());
 	n->value = (float)atof((*values)[2].c_str());
 	n->flags = (bool)atoi((*values)[3].c_str()) ? tfxAttributeNodeFlags_is_curve : 0;
@@ -3797,12 +3797,12 @@ void AssignFrameMetaProperty(tfxFrameMeta *metrics, tfxStr *field, tfxU32 value,
 		metrics->total_sprites = value;
 }
 
-tfxVec3 StrToVec3(tfxStack<tfxStr256> *str) {
+tfxVec3 StrToVec3(tfxvec<tfxStr256> *str) {
 	assert(str->size() == 3);	//array must be size 3
 	return tfxVec3((float)atof((*str)[0].c_str()), (float)atof((*str)[1].c_str()), (float)atof((*str)[2].c_str()));
 }
 
-tfxVec2 StrToVec2(tfxStack<tfxStr256> *str) {
+tfxVec2 StrToVec2(tfxvec<tfxStr256> *str) {
 	assert(str->size() == 2);	//array must be size 2
 	return tfxVec2((float)atof((*str)[0].c_str()), (float)atof((*str)[1].c_str()));
 }
@@ -5573,7 +5573,7 @@ bool HasMoreThanOneKeyframe(tfxEffectEmitter *e) {
 		keyframes.translation_z.nodes.size() > 1;
 }
 
-void PushTranslationPoints(tfxEffectEmitter *e, tfxStack<tfxVec3> *points, float frame) {
+void PushTranslationPoints(tfxEffectEmitter *e, tfxvec<tfxVec3> *points, float frame) {
 	assert(e->transform_attributes < e->library->transform_attributes.size());		//Must be a valid keyframes index into the library
 	tfxTransformAttributes *keyframes = &e->library->transform_attributes[e->transform_attributes];
 	tfxVec3 point(lookup_callback(&keyframes->translation_x, frame),
@@ -6242,7 +6242,6 @@ tfxErrorFlags LoadEffectLibraryPackage(tfxPackage *package, tfxLibrary *lib, voi
 	tfxKey first_shape_hash = 0;
 
 	//You must call InitialiseTimelineFX() before doing anything!	
-	assert(tfxGlobals->stack_allocator.arena_size > 0);
 	tmpStack(tfxEffectEmitter, effect_stack);
 	tmpStack(tfxStr256, pair);
 
@@ -12337,9 +12336,6 @@ void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	}
 	tfxGlobals = (tfx_globals_t*)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_globals_t));
 	memset(tfxGlobals, 0, sizeof(tfx_globals_t));
-
-	tfxGlobals->stack_allocator = CreateArenaManager(tfxSTACK_SIZE, 8);
-	tfxGlobals->mt_stack_allocator = CreateArenaManager(tfxMT_STACK_SIZE, 8);
 
 	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 	lookup_callback = LookupFast;
