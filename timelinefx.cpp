@@ -7801,6 +7801,10 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 		}
 
 		for (int i = 0; i != emitter_start_size[depth]; ++i) {
+			//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+			//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+			//would cause more work entries to be created.
+			assert(pm->spawn_work.current_size != pm->spawn_work.capacity);
 			tfxSpawnWorkEntry *spawn_work_entry = &pm->spawn_work.next();
 			tfxU32 current_index = pm->emitters_in_use[depth][pm->current_ebuff][i];
 			spawn_work_entry->depth = depth;
@@ -7885,6 +7889,10 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 			int particles_to_update = bank.current_size;
 			tfxU32 running_start_index = 0;
 			while (particles_to_update > 0) {
+				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+				//would cause more work entries to be created.
+				assert(pm->control_work.current_size != pm->control_work.capacity);
 				tfxControlWorkEntry &work_entry = pm->control_work.next();
 				work_entry.properties = &pm->library->emitter_properties;
 				work_entry.emitter_index = index;
@@ -7912,6 +7920,10 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 				int particles_to_update = bank.current_size;
 				tfxU32 running_start_index = 0;
 				while (particles_to_update > 0) {
+					//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+					//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+					//would cause more work entries to be created.
+					assert(pm->control_work.current_size != pm->control_work.capacity);
 					tfxControlWorkEntry &work_entry = pm->control_work.next();
 					work_entry.properties = &pm->library->emitter_properties;
 					work_entry.emitter_index = index;
@@ -7948,6 +7960,10 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 		{
 			for (int index : pm->emitters_in_use[depth][next_buffer]) {
 				tfxSoABuffer &bank = pm->particle_array_buffers[pm->emitters.particles_index[index]];
+				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+				//would cause more work entries to be created.
+				assert(pm->age_work.current_size != pm->age_work.capacity);
 				tfxParticleAgeWorkEntry &work_entry = pm->age_work.next();
 				work_entry.properties = &pm->library->emitter_properties;
 				work_entry.start_index = bank.current_size - 1;
@@ -9146,6 +9162,12 @@ void ReconfigureParticleManager(tfxParticleManager *pm, tfxParticleManagerModes 
 	ClearSoABuffer(&pm->effect_buffers);
 
 	pm->sort_passes = req_sort_passes;
+}
+
+void SetWorkQueueSizes(tfxParticleManager *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
+	pm->spawn_work.reserve(spawn_work_max);
+	pm->spawn_work.reserve(control_work_max);
+	pm->spawn_work.reserve(age_work_max);
 }
 
 void InitParticleManagerForBoth(tfxParticleManager *pm, tfxLibrary *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {

@@ -7800,6 +7800,18 @@ in mind that you can just use more than one particle manager and utilised differ
 void ReconfigureParticleManager(tfxParticleManager *pm, tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
 
 /*
+When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
+more than enough for most situations. However you can increase the sizes here if needed. You only need to set this manually if you hit one of the asserts when these
+run out of space or you anticipate a huge amount of emitters and particles to be used (> million). On the other hand, you might be tight on memory in which case you
+could reduce the numbers as well if needed (they don't take a lot of space though)
+* @param pm						A pointer to an intialised tfxParticleManager.
+* @param spawn_work_max			The maximum amount of spawn work entries
+* @param control_work_max		The maximum amount of control work entries
+* @param age_work_max			The maximum amount of age_work work entries
+*/
+void SetPMWorkQueueSizes(tfxParticleManager *pm, tfxU32 spawn_work_max = 1000, tfxU32 control_work_max = 1000, tfxU32 age_work_max = 1000);
+
+/*
 Get the current particle count for a particle manager
 * @param pm						A pointer to an tfxParticleManager
 * @returns tfxU32				The total number of particles currently being updated
