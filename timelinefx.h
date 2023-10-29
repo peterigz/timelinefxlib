@@ -2375,6 +2375,7 @@ struct tfxvec {
 	inline ~tfxvec() { if (data) { tfxFREE(data); } data = NULL; current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
+	inline bool			full() { return current_size == capacity; }
 	inline tfxU32		size() { return current_size; }
 	inline const tfxU32	size() const { return current_size; }
 	inline tfxU32		size_in_bytes() { return current_size * sizeof(T); }
@@ -2454,6 +2455,7 @@ struct tfxvec {
 	inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
 	inline void         push_front(const T& v) { if (current_size == 0) push_back(v); else insert(data, v); }
 	inline T*           erase(const T* it) { assert(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(T)); current_size--; return data + off; }
+	inline T	        pop_front() { assert(current_size > 0); T front = data[0]; erase(data); return front; }
 	inline T*           erase(const T* it, const T* it_last) { assert(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove(data + off, data + off + count, ((size_t)current_size - (size_t)off - count) * sizeof(T)); current_size -= (tfxU32)count; return data + off; }
 	inline T*           erase_unsorted(const T* it) { assert(it >= data && it < data + current_size);  const ptrdiff_t off = it - data; if (it < data + current_size - 1) memcpy(data + off, data + current_size - 1, sizeof(T)); current_size--; return data + off; }
 	inline T*           insert(const T* it, const T& v) { assert(it >= data && it <= data + current_size); const ptrdiff_t off = it - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); new((void*)(data + off)) T(v); current_size++; return data + off; }
@@ -3487,6 +3489,191 @@ inline T &FindValueByIndex(tfxMemoryBucket &range, tfxU32 i) {
 }
 
 #define tfxBucket(type, index, bucket_ptr) (type*)bucket_ptr + index;
+
+template <typename T>
+struct tfx_bucket_t {
+	tfxvec<T> data;
+	tfx_bucket_t *next;
+};
+
+template <typename T>
+inline tfx_bucket_t<T> *tfxCreateBucket(tfxU32 size) {
+	tfx_bucket_t<T> *bucket = (tfx_bucket_t<T>*)tfxALLOCATE(sizeof(tfx_bucket_t<T>));
+	bucket->data.data = NULL;
+	bucket->data.current_size = 0;
+	bucket->data.capacity = 0;
+	bucket->data.locked = 0;
+	bucket->data.reserve(size);
+	bucket->next = nullptr;
+	return bucket;
+}
+
+template <typename T>
+struct tfx_bucket_array_t {
+	tfxU32 current_size;
+	tfxU32 capacity;
+	tfxU32 size_of_each_bucket;
+	tfxvec<tfx_bucket_t<T>*> bucket_list;
+
+	inline bool			empty() { return current_size == 0; }
+	inline tfxU32		size() { return current_size; }
+	inline void			free_all() {
+		for (tfx_bucket_t *bucket : bucket_list) {
+			bucket->data.free();
+		}
+		bucket_list.free();
+	}
+	inline T&           operator[](tfxU32 i) {
+		assert(i < current_size);		//Index is out of bounds
+		tfxU32 bucket_index = i / size_of_each_bucket;
+		tfxU32 element_index = i % size_of_each_bucket;
+		return (*bucket_list[bucket_index]).data[element_index];
+	}
+	inline const T&     operator[](tfxU32 i) const {
+		assert(i < current_size);		//Index is out of bounds
+		tfxU32 bucket_index = i / size_of_each_bucket;
+		tfxU32 element_index = i % size_of_each_bucket;
+		return (*bucket_list[bucket_index]).data[element_index];
+	}
+	inline T*           begin() { return bucket_list.current_size ? (T*)bucket_list[0]->data.data : NULL; }
+	inline const T*     begin() const { return bucket_list.current_size ? (T*)bucket_list[0]->data.data : NULL; }
+	inline T*           end() { return bucket_list.current_size ? (T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : NULL; }
+	inline const T*     end() const { return bucket_list.current_size ? (T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : NULL; }
+	inline T&           front() { assert(current_size > 0); return *(T*)bucket_list[0]->data.front(); }
+	inline const T&     front() const { assert(current_size > 0); return *(T*)bucket_list[0]->data.front(); }
+	inline T&           back() { assert(current_size > 0); return *(T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
+	inline const T&     back() const { assert(current_size > 0); return *(T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
+	inline tfxU32		active_buckets() { return current_size / size_of_each_bucket + 1; }
+	inline void         clear() {
+		for (tfx_bucket_t *bucket : bucket_list) {
+			bucket->data.clear();
+		}
+		current_size = 0;
+	}
+
+	inline tfx_bucket_t<T> *add_bucket(tfxU32 size_of_each_bucket) {
+		//current_bucket must be the last bucket in the chain
+		tfx_bucket_t<T> *bucket = tfxCreateBucket<T>(size_of_each_bucket);
+		bucket_list.push_back(bucket);
+		return bucket;
+	}
+
+	inline tfx_bucket_array_t<T>&		operator=(const tfx_bucket_array_t<T>& src) {
+		if (&src == this) {
+			return *this;
+		}
+		free_all();
+		for (tfx_bucket_t *bucket : src.bucket_list) {
+			tfx_bucket_t *copy = add_bucket(size_of_each_bucket);
+			copy->data = bucket->data;
+		}
+		current_size = src.current_size;
+		capacity = src.capacity;
+		size_of_each_bucket = src.size_of_each_bucket;
+	}
+
+	inline T& push_back(const T& v) {
+		if (current_size == capacity) {
+			add_bucket(size_of_each_bucket);
+			capacity += size_of_each_bucket;
+		}
+		tfxU32 current_bucket = current_size / size_of_each_bucket;
+		bucket_list[current_bucket]->data.push_back(v);
+		current_size++;
+		return bucket_list[current_bucket]->data.back();
+	}
+
+	inline T*	insert(tfxU32 insert_index, const T &v) {
+		assert(insert_index < current_size);
+		tfxU32 insert_bucket = insert_index / size_of_each_bucket;
+		tfxU32 element_index = insert_index % size_of_each_bucket;
+		if (bucket_list[insert_bucket]->data.current_size < bucket_list[insert_bucket]->data.capacity) {
+			//We're inserting in the last bucket
+			return bucket_list[insert_bucket]->data.insert(&bucket_list[insert_bucket]->data[element_index], v);
+		}
+		T end_element = bucket_list[insert_bucket]->data.pop_back();
+		T end_element2 = NULL;
+		bool end_pushed = false;
+		bool end2_pushed = true;
+		bucket_list[insert_bucket]->data.insert(&bucket_list[insert_bucket]->data[element_index], v);
+		tfxU32 current_insert_bucket = insert_bucket;
+		tfxU32 alternator = 0;
+		while (current_insert_bucket++ < active_buckets() - 1) {
+			if (bucket_list[current_insert_bucket]->data.full()) {
+				if (alternator == 0) {
+					end_element2 = bucket_list[current_insert_bucket]->data.pop_back();
+					end2_pushed = false;
+					bucket_list[current_insert_bucket]->data.push_front(end_element);
+					end_pushed = true;
+				}
+				else {
+					end_element = bucket_list[current_insert_bucket]->data.pop_back();
+					end_pushed = false;
+					bucket_list[current_insert_bucket]->data.push_front(end_element2);
+					end2_pushed = true;
+				}
+				alternator = !alternator;
+			}
+			else {
+				bucket_list[current_insert_bucket]->data.push_front(alternator == 0 ? end_element : end_element2);
+				end_pushed = true;
+				end2_pushed = true;
+				break;
+			}
+		}
+		if (!end_pushed || !end2_pushed) {
+			push_back(!end_pushed ? end_element : end_element2);
+		}
+		else {
+			current_size++;
+		}
+		return &bucket_list[insert_bucket]->data[element_index];
+	}
+
+	inline void erase(tfxU32 index) {
+		assert(index < current_size);
+		tfxU32 bucket_index = index / size_of_each_bucket;
+		tfxU32 element_index = index % size_of_each_bucket;
+		bucket_list[bucket_index]->data.erase(&bucket_list[bucket_index]->data[element_index]);
+		current_size--;
+		if (bucket_index == bucket_list.current_size - 1) {
+			//We're erasing in the last bucket
+			return;
+		}
+		tfxU32 current_bucket_index = bucket_index;
+		while (current_bucket_index < active_buckets() - 1) {
+			T front = bucket_list[current_bucket_index + 1]->data.pop_front();
+			bucket_list[current_bucket_index]->data.push_back(front);
+			current_bucket_index++;
+		}
+	}
+
+	inline void erase(T* it) {
+		tfxU32 index;
+		assert(find(it, index));	//pointer not found in list
+		erase(index);
+	}
+
+	inline bool find(T *it, tfxU32 &index) {
+		for (int i = 0; i != current_size; ++i) {
+			if (it == &(*this)[i]) {
+				index = i;
+				return true;
+			}
+		}
+		return false;
+	}
+
+};
+
+template <typename T>
+inline tfx_bucket_array_t<T> tfxCreateBucketArray(tfxU32 size_of_each_bucket) {
+	tfx_bucket_array_t<T> bucket_array;
+	bucket_array.add_bucket(size_of_each_bucket);
+	bucket_array.current_size = 0;
+	bucket_array.size_of_each_bucket = bucket_array.capacity = size_of_each_bucket;
+	return bucket_array;
+}
 
 template <typename T>
 struct tfxBucketArray {
