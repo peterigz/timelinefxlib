@@ -1911,22 +1911,22 @@ void CompileEffectGraphs(tfxEffectEmitter *effect) {
 	}
 }
 
-void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
-	attributes->life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->stretch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->overal_scale.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->intensity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->frame_rate.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxU32 bucket_size) {
+	attributes->life.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->amount.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->velocity.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->width.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->height.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->weight.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->spin.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->stretch.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->overal_scale.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->intensity.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->frame_rate.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->splatter.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->emitter_width.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->emitter_height.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->emitter_depth.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
 }
 
 void FreeGlobalAttributes(tfxGlobalAttributes *attributes) {
@@ -1965,13 +1965,13 @@ void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes
 	CopyGraphNoLookups(&src->emitter_depth, &dst->emitter_depth);
 }
 
-void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
-	attributes->roll.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->translation_x.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->translation_y.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->translation_z.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxU32 bucket_size) {
+	attributes->roll.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->pitch.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->yaw.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->translation_x.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->translation_y.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->translation_z.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
 }
 
 void FreeTransformAttributes(tfxTransformAttributes *attributes) {
@@ -2017,16 +2017,16 @@ void AddTranslationNodes(tfxTransformAttributes *keyframes, float frame) {
 	}
 }
 
-void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
-	attributes->emission_pitch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->emission_yaw.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->emission_range.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->splatter.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->emitter_width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->emitter_height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->emitter_depth.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->arc_size.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->arc_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxU32 bucket_size) {
+	attributes->emission_pitch.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->emission_yaw.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->emission_range.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->splatter.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->emitter_width.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->emitter_height.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->emitter_depth.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->arc_size.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->arc_offset.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
 }
 
 void FreePropertyAttributes(tfxPropertyAttributes *attributes) {
@@ -2053,46 +2053,46 @@ void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttr
 	CopyGraphNoLookups(&src->arc_offset, &dst->arc_offset);
 }
 
-void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
-	attributes->life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->noise_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxU32 bucket_size) {
+	attributes->life.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->amount.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->velocity.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->width.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->height.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->weight.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->spin.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->noise_offset.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
 }
 
-void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
-	attributes->life.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->amount.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->noise_offset.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->noise_resolution.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxU32 bucket_size) {
+	attributes->life.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->amount.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->velocity.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->width.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->height.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->weight.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->spin.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->noise_offset.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->noise_resolution.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
 }
 
-void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
-	attributes->velocity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->width.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->height.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->weight.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->spin.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->stretch.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->red.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->blue.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->green.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->blendfactor.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->velocity_turbulance.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->direction_turbulance.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->velocity_adjuster.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->intensity.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->direction.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
-	attributes->noise_resolution.nodes = tfxBucketArray<tfxAttributeNode>(allocator, bucket_size);
+void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxU32 bucket_size) {
+	attributes->velocity.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->width.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->height.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->weight.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->spin.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->stretch.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->red.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->blue.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->green.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->blendfactor.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->velocity_turbulance.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->direction_turbulance.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->velocity_adjuster.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->intensity.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->direction.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
+	attributes->noise_resolution.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
 }
 
 void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes) {
@@ -2179,11 +2179,11 @@ void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst)
 	CopyGraphNoLookups(&src->noise_offset, &dst->noise_offset);
 }
 
-void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxMemoryArenaManager *allocator, tfxMemoryArenaManager *value_allocator, tfxU32 bucket_size) {
-	InitialisePropertyAttributes(&attributes->properties, allocator, value_allocator, bucket_size);
-	InitialiseBaseAttributes(&attributes->base, allocator, value_allocator, bucket_size);
-	InitialiseVariationAttributes(&attributes->variation, allocator, value_allocator, bucket_size);
-	InitialiseOvertimeAttributes(&attributes->overtime, allocator, value_allocator, bucket_size);
+void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxU32 bucket_size) {
+	InitialisePropertyAttributes(&attributes->properties, bucket_size);
+	InitialiseBaseAttributes(&attributes->base, bucket_size);
+	InitialiseVariationAttributes(&attributes->variation, bucket_size);
+	InitialiseOvertimeAttributes(&attributes->overtime, bucket_size);
 }
 
 void FreeEmitterAttributes(tfxEmitterAttributes *attributes) {
@@ -2526,7 +2526,7 @@ tfxU32 AddLibraryGlobal(tfxLibrary *library) {
 	if (library->free_global_graphs.size())
 		return library->free_global_graphs.pop_back();
 	tfxGlobalAttributes global;
-	InitialiseGlobalAttributes(&global, &library->graph_node_allocator, &library->graph_lookup_allocator);
+	InitialiseGlobalAttributes(&global);
 	library->global_graphs.push_back(global);
 	return library->global_graphs.size() - 1;
 }
@@ -2535,7 +2535,7 @@ tfxU32 AddLibraryKeyframes(tfxLibrary *library) {
 	if (library->free_keyframes.size())
 		return library->free_keyframes.pop_back();
 	tfxTransformAttributes keyframes;
-	InitialiseTransformAttributes(&keyframes, &library->graph_node_allocator, &library->graph_lookup_allocator);
+	InitialiseTransformAttributes(&keyframes);
 	library->transform_attributes.push_back(keyframes);
 	return library->transform_attributes.size() - 1;
 }
@@ -2544,7 +2544,7 @@ tfxU32 AddLibraryEmitterAttributes(tfxLibrary *library) {
 	if (library->free_emitter_attributes.size())
 		return library->free_emitter_attributes.pop_back();
 	tfxEmitterAttributes attributes;
-	InitialiseEmitterAttributes(&attributes, &library->graph_node_allocator, &library->graph_lookup_allocator);
+	InitialiseEmitterAttributes(&attributes);
 	library->emitter_attributes.push_back(attributes);
 	return library->emitter_attributes.size() - 1;
 }
@@ -2895,8 +2895,6 @@ tfxU32 AddLibraryEmitterProperties(tfxLibrary *library) {
 }
 
 void InitLibrary(tfxLibrary *library) {
-	library->graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-	library->graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 8);
 	InitLibraryEmitterProperties(library);
 }
 
@@ -2953,9 +2951,6 @@ void ClearLibrary(tfxLibrary *library) {
 	AddLibraryPreviewCameraSettings(library);
 	library->pre_recorded_effects.FreeAll();
 
-	library->graph_node_allocator.FreeAll();
-	library->graph_lookup_allocator.FreeAll();
-
 	library->free_global_graphs.free_all();
 	library->free_keyframe_graphs.free_all();
 	library->free_emitter_attributes.free_all();
@@ -3001,13 +2996,10 @@ void UpdateLibraryComputeNodes(tfxLibrary *library) {
 					index.start_index = running_node_index;
 					index.length = graph.nodes.size();
 					index.max_life = graph.lookup.life;
-					graph.nodes.ResetIteratorIndex();
-					do {
-						for (auto &node : graph.nodes) {
-							library->all_nodes.push_back(node);
-							running_node_index++;
-						}
-					} while (!graph.nodes.EndOfBuckets());
+					for (tfxBucketLoop(graph.nodes)) {
+						library->all_nodes.push_back(graph.nodes[i]);
+						running_node_index++;
+					}
 
 					tfxGraphLookupIndex value_index;
 					value_index.start_index = running_value_index;
@@ -4120,12 +4112,9 @@ void StreamProperties(tfxEffectEmitter *effect, tfxStr *file) {
 
 void StreamGraph(const char *name, tfxGraph *graph, tfxStr *file) {
 
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &n : graph->nodes) {
-			file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, n.frame, n.value, (n.flags & tfxAttributeNodeFlags_is_curve), n.left.x, n.left.y, n.right.x, n.right.y);
-		}
-	} while (!graph->nodes.EndOfBuckets());
+	for (tfxBucketLoop(graph->nodes)) {
+		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
+	}
 
 }
 
@@ -4155,14 +4144,11 @@ bool IsTranslationGraph(tfxGraph *graph) {
 }
 
 void MultiplyAllGraphValues(tfxGraph *graph, float scalar) {
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &node : graph->nodes) {
-			node.value *= scalar;
-			node.left.y *= scalar;
-			node.right.y *= scalar;
-		}
-	} while (!graph->nodes.EndOfBuckets());
+	for (tfxBucketLoop(graph->nodes)) {
+		graph->nodes[i].value *= scalar;
+		graph->nodes[i].left.y *= scalar;
+		graph->nodes[i].right.y *= scalar;
+	}
 }
 
 void CopyGraphNoLookups(tfxGraph *src_graph, tfxGraph *dst_graph) {
@@ -4171,7 +4157,7 @@ void CopyGraphNoLookups(tfxGraph *src_graph, tfxGraph *dst_graph) {
 	dst_graph->graph_preset = src_graph->graph_preset;
 	dst_graph->type = src_graph->type;
 	dst_graph->effector = src_graph->effector;
-	dst_graph->nodes = src_graph->nodes;
+	tfxCopyBucketArray<tfxAttributeNode>(&dst_graph->nodes, &src_graph->nodes);
 	dst_graph->index = src_graph->index;
 	dst_graph->lookup.life = src_graph->lookup.life;
 }
@@ -4340,16 +4326,13 @@ void ClampNode(tfxGraph *graph, tfxAttributeNode *node) {
 }
 
 void ClampGraph(tfxGraph *graph) {
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &node : graph->nodes) {
-			ClampNode(graph, &node);
-			if (node.flags & tfxAttributeNodeFlags_is_curve) {
-				ClampCurve(graph, &node.left, &node);
-				ClampCurve(graph, &node.right, &node);
-			}
+	for (tfxBucketLoop(graph->nodes)) {
+		ClampNode(graph, &graph->nodes[i]);
+		if (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve) {
+			ClampCurve(graph, &graph->nodes[i].left, &graph->nodes[i]);
+			ClampCurve(graph, &graph->nodes[i].right, &graph->nodes[i]);
 		}
-	} while (!graph->nodes.EndOfBuckets());
+	}
 }
 
 void ClampCurve(tfxGraph *graph, tfxVec2 *p, tfxAttributeNode *node) {
@@ -4375,19 +4358,20 @@ tfxGraph::tfxGraph() {
 	max.x = 1000.f;
 	max.y = 1000.f;
 	effector = nullptr;
+	nodes = tfxCreateBucketArray<tfxAttributeNode>(8);
 }
 
-tfxGraph::tfxGraph(tfxMemoryArenaManager *node_allocator, tfxU32 bucket_size) {
+tfxGraph::tfxGraph(tfxU32 bucket_size) {
 	min.x = 0.f;
 	min.y = 0.f;
 	max.x = 1000.f;
 	max.y = 1000.f;
 	effector = nullptr;
-	nodes.allocator = node_allocator;
-	nodes.size_of_each_bucket = bucket_size;
+	nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
 }
 
 tfxGraph::~tfxGraph() {
+	nodes.free_all();
 	//Free();
 }
 
@@ -4485,13 +4469,10 @@ tfxAttributeNode* AddGraphNode(tfxGraph *graph, float _frame, float _value, tfxA
 }
 
 void AddGraphNode(tfxGraph *graph, tfxAttributeNode *node) {
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &n : graph->nodes) {
-			if (n.frame == node->frame && n.value == node->value)
-				return;
-		}
-	} while (!graph->nodes.EndOfBuckets());
+	for (tfxBucketLoop(graph->nodes)) {
+		if (graph->nodes[i].frame == node->frame && graph->nodes[i].value == node->value)
+			return;
+	}
 	graph->nodes.push_back(*node);
 	SortGraph(graph);
 	ReIndexGraph(graph);
@@ -4515,7 +4496,7 @@ tfxAttributeNode* AddGraphCoordNode(tfxGraph *graph, float _frame, float _value)
 	tfxAttributeNode &n = graph->nodes.push_back(node);
 	if (SortGraph(graph)) {
 		ReIndexGraph(graph);
-		return graph->nodes.find(n);
+		return graph->nodes.find(&n);
 	}
 
 	ReIndexGraph(graph);
@@ -4577,15 +4558,13 @@ tfxAttributeNode* InsertGraphNode(tfxGraph *graph, float _frame, float _value) {
 
 	if (graph->nodes.size() > 1) {
 		tfxAttributeNode *last_node = nullptr;
-		graph->nodes.ResetIteratorIndex();
-		do {
-			for (auto &n : graph->nodes) {
-				if (node.frame < n.frame)
-					last_node = &n;
-				else
+			for (tfxBucketLoop(graph->nodes)) {
+				if (node.frame < graph->nodes[i].frame) {
+					last_node = &graph->nodes[i];
+				} else {
 					break;
+				}
 			}
-		} while (!graph->nodes.EndOfBuckets());
 
 		if (last_node) {
 			tfxAttributeNode *r_value = graph->nodes.insert(last_node, node);
@@ -4633,24 +4612,21 @@ float GetGraphValue(tfxGraph *graph, float age) {
 	float lastf = 0;
 	float p = 0;
 	tfxAttributeNode *lastec = nullptr;
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &a : graph->nodes) {
-			if (age < a.frame) {
-				p = (age - lastf) / (a.frame - lastf);
-				float bezier_value = GetBezierValue(lastec, &a, p, graph->min.y, graph->max.y);
-				if (bezier_value) {
-					return bezier_value;
-				}
-				else {
-					return lastv - p * (lastv - a.value);
-				}
+	for (tfxBucketLoop(graph->nodes)) {
+		if (age < graph->nodes[i].frame) {
+			p = (age - lastf) / (graph->nodes[i].frame - lastf);
+			float bezier_value = GetBezierValue(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
+			if (bezier_value) {
+				return bezier_value;
 			}
-			lastv = a.value;
-			lastf = a.frame - 1;
-			lastec = &a;
+			else {
+				return lastv - p * (lastv - graph->nodes[i].value);
+			}
 		}
-	} while (!graph->nodes.EndOfBuckets());
+		lastv = graph->nodes[i].value;
+		lastf = graph->nodes[i].frame - 1;
+		lastec = &graph->nodes[i];
+	}
 	return lastv;
 
 }
@@ -4680,24 +4656,21 @@ float GetGraphRandomValue(tfxGraph *graph, float age, tfxRandom *random) {
 	float lastf = 0;
 	float p = 0;
 	tfxAttributeNode *lastec = nullptr;
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &a : graph->nodes) {
-			if (age < a.frame) {
-				p = (age - lastf) / (a.frame - lastf);
-				float bezier_value = GetBezierValue(lastec, &a, p, graph->min.y, graph->max.y);
-				if (bezier_value) {
-					return RandomRange(random, bezier_value);
-				}
-				else {
-					return RandomRange(random, lastv - p * (lastv - a.value));
-				}
+	for (tfxBucketLoop(graph->nodes)) {
+		if (age < graph->nodes[i].frame) {
+			p = (age - lastf) / (graph->nodes[i].frame - lastf);
+			float bezier_value = GetBezierValue(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
+			if (bezier_value) {
+				return RandomRange(random, bezier_value);
 			}
-			lastv = a.value;
-			lastf = a.frame - 1;
-			lastec = &a;
+			else {
+				return RandomRange(random, lastv - p * (lastv - graph->nodes[i].value));
+			}
 		}
-	} while (!graph->nodes.EndOfBuckets());
+		lastv = graph->nodes[i].value;
+		lastf = graph->nodes[i].frame - 1;
+		lastec = &graph->nodes[i];
+	}
 	return RandomRange(random, lastv);
 
 }
@@ -4707,25 +4680,22 @@ float GetGraphValue(tfxGraph *graph, float age, float life) {
 	float lastf = 0;
 	float p = 0;
 	tfxAttributeNode *lastec = nullptr;
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &a : graph->nodes) {
-			float frame = a.frame * life;
-			if (age < frame) {
-				p = (age - lastf) / (frame - lastf);
-				float bezier_value = GetBezierValue(lastec, &a, p, graph->min.y, graph->max.y);
-				if (bezier_value) {
-					return bezier_value;
-				}
-				else {
-					return lastv - p * (lastv - a.value);
-				}
+	for (tfxBucketLoop(graph->nodes)) {
+		float frame = graph->nodes[i].frame * life;
+		if (age < frame) {
+			p = (age - lastf) / (frame - lastf);
+			float bezier_value = GetBezierValue(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
+			if (bezier_value) {
+				return bezier_value;
 			}
-			lastv = a.value;
-			lastf = frame - 1;
-			lastec = &a;
+			else {
+				return lastv - p * (lastv - graph->nodes[i].value);
+			}
 		}
-	} while (!graph->nodes.EndOfBuckets());
+		lastv = graph->nodes[i].value;
+		lastf = frame - 1;
+		lastec = &graph->nodes[i];
+	}
 	return lastv;
 }
 
@@ -4751,13 +4721,10 @@ float GetGraphLastValue(tfxGraph *graph) {
 float GetGraphMaxValue(tfxGraph *graph) {
 	if (graph->nodes.size()) {
 		float value = tfxMIN_FLOAT;
-		graph->nodes.ResetIteratorIndex();
-		do {
-			for (auto &n : graph->nodes) {
-				if (value < n.value)
-					value = n.value;
-			}
-		} while (!graph->nodes.EndOfBuckets());
+		for (tfxBucketLoop(graph->nodes)) {
+			if (value < graph->nodes[i].value)
+				value = graph->nodes[i].value;
+		}
 		return value;
 	}
 	return 0.f;
@@ -4766,13 +4733,10 @@ float GetGraphMaxValue(tfxGraph *graph) {
 float GetGraphMinValue(tfxGraph *graph) {
 	if (graph->nodes.size()) {
 		float value = tfxMAX_FLOAT;
-		graph->nodes.ResetIteratorIndex();
-		do {
-			for (auto &n : graph->nodes) {
-				if (value > n.value)
-					value = n.value;
-			}
-		} while (!graph->nodes.EndOfBuckets());
+		for (tfxBucketLoop(graph->nodes)) {
+			if (value > graph->nodes[i].value)
+				value = graph->nodes[i].value;
+		}
 		return value;
 	}
 	return 0.f;
@@ -4787,55 +4751,48 @@ float GetGraphLastFrame(tfxGraph *graph, float update_frequency) {
 	return 0.f;
 }
 
-tfxAttributeNode* FindGraphNode(tfxGraph *graph, const tfxAttributeNode *n) {
-	return graph->nodes.find(*n);
+tfxAttributeNode* FindGraphNode(tfxGraph *graph, tfxAttributeNode *n) {
+	return graph->nodes.find(n);
 }
 
 void ValidateGraphCurves(tfxGraph *graph) {
 	tfxU32 index = 0;
 	tfxU32 last_index = graph->nodes.size() - 1;
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &n : graph->nodes) {
-			if (n.flags & tfxAttributeNodeFlags_is_curve) {
-				if (index < last_index) {
-					if (graph->nodes[index + 1].frame < n.right.x)
-						n.right.x = graph->nodes[index + 1].frame;
-				}
-				if (index > 0) {
-					if (graph->nodes[index - 1].frame > n.left.x)
-						n.left.x = graph->nodes[index - 1].frame;
-				}
-				if (n.left.x > n.frame)
-					n.left.x = n.frame;
-				if (n.right.x < n.frame)
-					n.right.x = n.frame;
+	for (tfxBucketLoop(graph->nodes)) {
+		if (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve) {
+			if (index < last_index) {
+				if (graph->nodes[index + 1].frame < graph->nodes[i].right.x)
+					graph->nodes[i].right.x = graph->nodes[index + 1].frame;
 			}
-			index++;
+			if (index > 0) {
+				if (graph->nodes[index - 1].frame > graph->nodes[i].left.x)
+					graph->nodes[i].left.x = graph->nodes[index - 1].frame;
+			}
+			if (graph->nodes[i].left.x > graph->nodes[i].frame)
+				graph->nodes[i].left.x = graph->nodes[i].frame;
+			if (graph->nodes[i].right.x < graph->nodes[i].frame)
+				graph->nodes[i].right.x = graph->nodes[i].frame;
 		}
-	} while (!graph->nodes.EndOfBuckets());
+		index++;
+	}
 }
 
-void DeleteGraphNode(tfxGraph *graph, const tfxAttributeNode *n) {
+void DeleteGraphNode(tfxGraph *graph, tfxAttributeNode *n) {
 	graph->nodes.erase(n);
 }
 
 void DeleteGraphNodeAtFrame(tfxGraph *graph, float frame) {
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &n : graph->nodes) {
-			if (n.frame == frame) {
-				graph->nodes.erase(&n);
-				return;
-			}
+	for (tfxBucketLoop(graph->nodes)) {
+		if (graph->nodes[i].frame == frame) {
+			graph->nodes.erase(&graph->nodes[i]);
+			return;
 		}
-	} while (!graph->nodes.EndOfBuckets());
-
+	}
 }
 
 void ResetGraph(tfxGraph *graph, float v, tfxGraphPreset preset, bool add_node) {
 	graph->nodes.clear();
-	graph->nodes.TrimBuckets();
+	graph->nodes.trim_buckets();
 	if (add_node && preset == tfxWeightOvertimePreset) {
 		AddGraphNode(graph, 0.f, 0.f, 0);
 		tfxAttributeNode *node = AddGraphNode(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
@@ -5098,11 +5055,9 @@ void FreeGraph(tfxGraph *graph) {
 
 void CopyGraph(tfxGraph *from, tfxGraph *to, bool compile) {
 	ClearGraph(to);
-	do {
-		for (auto &n : from->nodes) {
-			to->nodes.push_back(n);
-		}
-	} while (!from->nodes.EndOfBuckets());
+	for (tfxBucketLoop(from->nodes)) {
+		to->nodes.push_back(from->nodes[i]);
+	}
 	if (compile) {
 		if (IsColorGraph(from))
 			CompileColorOvertime(to);
@@ -5129,13 +5084,10 @@ bool SortGraph(tfxGraph *graph) {
 }
 
 void ReIndexGraph(tfxGraph *graph) {
-	tfxU32 i = 0;
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &a : graph->nodes) {
-			a.index = i++;
-		}
-	} while (!graph->nodes.EndOfBuckets());
+	tfxU32 index = 0;
+	for (tfxBucketLoop(graph->nodes)) {
+		graph->nodes[i].index = index++;
+	}
 }
 
 tfxVec2 GetGraphInitialZoom(tfxGraph *graph) {
@@ -5351,25 +5303,22 @@ float LookupPreciseOvertime(tfxGraph *graph, float age, float life) {
 	float lastf = 0;
 	float p = 0;
 	tfxAttributeNode *lastec = nullptr;
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &a : graph->nodes) {
-			float frame = a.frame * life;
-			if (age < frame) {
-				p = (age - lastf) / (frame - lastf);
-				float bezier_value = GetBezierValue(lastec, &a, p, graph->min.y, graph->max.y);
-				if (bezier_value) {
-					return bezier_value;
-				}
-				else {
-					return lastv - p * (lastv - a.value);
-				}
+	for (tfxBucketLoop(graph->nodes)) {
+		float frame = graph->nodes[i].frame * life;
+		if (age < frame) {
+			p = (age - lastf) / (frame - lastf);
+			float bezier_value = GetBezierValue(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
+			if (bezier_value) {
+				return bezier_value;
 			}
-			lastv = a.value;
-			lastf = frame - 1;
-			lastec = &a;
+			else {
+				return lastv - p * (lastv - graph->nodes[i].value);
+			}
 		}
-	} while (!graph->nodes.EndOfBuckets());
+		lastv = graph->nodes[i].value;
+		lastf = frame - 1;
+		lastec = &graph->nodes[i];
+	}
 	return lastv;
 }
 
@@ -5378,24 +5327,21 @@ float LookupPrecise(tfxGraph *graph, float age) {
 	float lastf = 0;
 	float p = 0;
 	tfxAttributeNode *lastec = nullptr;
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &a : graph->nodes) {
-			if (age < a.frame) {
-				p = (age - lastf) / (a.frame - lastf);
-				float bezier_value = GetBezierValue(lastec, &a, p, graph->min.y, graph->max.y);
-				if (bezier_value) {
-					return bezier_value;
-				}
-				else {
-					return lastv - p * (lastv - a.value);
-				}
+	for (tfxBucketLoop(graph->nodes)) {
+		if (age < graph->nodes[i].frame) {
+			p = (age - lastf) / (graph->nodes[i].frame - lastf);
+			float bezier_value = GetBezierValue(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
+			if (bezier_value) {
+				return bezier_value;
 			}
-			lastv = a.value;
-			lastf = a.frame - 1;
-			lastec = &a;
+			else {
+				return lastv - p * (lastv - graph->nodes[i].value);
+			}
 		}
-	} while (!graph->nodes.EndOfBuckets());
+		lastv = graph->nodes[i].value;
+		lastf = graph->nodes[i].frame - 1;
+		lastec = &graph->nodes[i];
+	}
 	return lastv;
 }
 
@@ -5478,12 +5424,9 @@ bool IsEverythingElseGraph(tfxGraphType type) {
 }
 
 bool HasNodeAtFrame(tfxGraph *graph, float frame) {
-	graph->nodes.ResetIteratorIndex();
-	do {
-		for (auto &node : graph->nodes) {
-			if (node.frame == frame) return true;
+		for (tfxBucketLoop(graph->nodes)) {
+			if (graph->nodes[i].frame == frame) return true;
 		}
-	} while (!graph->nodes.EndOfBuckets());
 	return false;
 }
 
@@ -5880,8 +5823,6 @@ tfxEffectLibraryStats CreateLibraryStats(tfxLibrary *lib) {
 		}
 	}
 	stats.total_shapes = lib->particle_shapes.data.size();
-	stats.required_graph_node_memory = lib->graph_node_allocator.TotalMemoryInUse();
-	stats.required_graph_lookup_memory = lib->graph_lookup_allocator.TotalMemoryInUse();
 
 	return stats;
 }
@@ -6144,23 +6085,6 @@ tfxErrorFlags LoadEffectLibraryPackage(tfxPackage *package, tfxLibrary *lib, voi
 	tfxU32 current_global_graph = 0;
 
 	InitLibraryEmitterProperties(lib);
-
-	if (!stats_struct) {
-		lib->graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-		lib->graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
-	}
-	else {
-		tfxEffectLibraryStats stats;
-		memcpy(&stats, stats_struct->data.data, stats_struct->file_size);
-		if (read_only) {
-			lib->graph_node_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_node_memory, tfxMegabyte(2)), 8);
-			lib->graph_lookup_allocator = CreateArenaManager(NearestMultiple((size_t)stats.required_graph_lookup_memory, tfxMegabyte(4)), 256);
-		}
-		else {
-			lib->graph_node_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-			lib->graph_lookup_allocator = CreateArenaManager(tfxMegabyte(4), 256);
-		}
-	}
 
 	if (!data)
 		error |= tfxErrorCode_data_could_not_be_loaded;
@@ -7458,7 +7382,6 @@ void SetTemplateEffectUpdateCallback(tfxEffectTemplate *t, void(*update_callback
 tfxParticleManager::~tfxParticleManager() {
 	FreeSoABuffer(&effect_buffers);
 	FreeSoABuffer(&emitter_buffers);
-	particle_array_allocator.FreeAll();
 }
 
 tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate *effect_template) {
@@ -9106,10 +9029,9 @@ void InitParticleManagerForBoth(tfxParticleManager *pm, tfxLibrary *lib, tfxU32 
 	pm->mt_batch_size = multi_threaded_batch_size;
 	pm->library = lib;
 
-	if (pm->particle_array_allocator.arenas.current_size == 0) {
+	if (pm->particle_arrays.bucket_list.capacity == 0) {
 		//todo need to be able to adjust the arena size
-		pm->particle_array_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-		pm->particle_arrays = tfxBucketArray<tfxParticleSoA>(&pm->particle_array_allocator, 32);
+		pm->particle_arrays = tfxCreateBucketArray<tfxParticleSoA>(32);
 	}
 
 	pm->flags = 0;
@@ -12565,10 +12487,9 @@ void InitParticleManagerFor3d(tfxParticleManager *pm, tfxLibrary *library, tfxU3
 	tfxInitialiseWorkQueue(&pm->work_queue);
 	pm->library = library;
 
-	if (pm->particle_array_allocator.arenas.current_size == 0) {
+	if (pm->particle_arrays.bucket_list.current_size == 0) {
 		//todo need to be able to adjust the arena size
-		pm->particle_array_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-		pm->particle_arrays = tfxBucketArray<tfxParticleSoA>(&pm->particle_array_allocator, 32);
+		pm->particle_arrays = tfxCreateBucketArray<tfxParticleSoA>(32);
 	}
 
 	pm->flags = 0;
@@ -12643,10 +12564,9 @@ void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU3
 	tfxInitialiseWorkQueue(&pm->work_queue);
 	pm->library = library;
 
-	if (pm->particle_array_allocator.arenas.current_size == 0) {
+	if (pm->particle_arrays.bucket_list.current_size == 0) {
 		//todo need to be able to adjust the arena size
-		pm->particle_array_allocator = CreateArenaManager(tfxMegabyte(2), 8);
-		pm->particle_arrays = tfxBucketArray<tfxParticleSoA>(&pm->particle_array_allocator, 32);
+		pm->particle_arrays = tfxCreateBucketArray<tfxParticleSoA>(32);
 	}
 
 	pm->flags = 0;
