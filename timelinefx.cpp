@@ -4371,7 +4371,7 @@ tfxGraph::tfxGraph(tfxU32 bucket_size) {
 }
 
 tfxGraph::~tfxGraph() {
-	nodes.free_all();
+	//nodes.free_all();
 	//Free();
 }
 
