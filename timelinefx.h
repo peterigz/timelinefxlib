@@ -3225,6 +3225,7 @@ inline void tfxCopyBucketArray(tfx_bucket_array_t<T> *dst, tfx_bucket_array_t<T>
 }
 
 #define tfxBucketLoop(bucket) int i = 0; i != bucket.current_size; ++i
+#define tfxBucketLoopNI(bucket) int ni = 0; ni != bucket.current_size; ++ni
 
 //A char buffer you can use to load a file into and read from
 //Has no deconstructor so make sure you call FreeAll() when done
@@ -6711,17 +6712,23 @@ tfxINTERNAL void FreeEmitterAttributes(tfxEmitterAttributes *attributes);
 tfxINTERNAL void FreeGlobalAttributes(tfxGlobalAttributes *attributes);
 tfxAPI_EDITOR void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);
 tfxAPI_EDITOR void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst);
+tfxAPI_EDITOR void CopyOvertimeAttributes(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst);
 tfxAPI_EDITOR void FreeVariationAttributes(tfxVariationAttributes *attributes);
 tfxAPI_EDITOR void CopyVariationAttributesNoLookups(tfxVariationAttributes *src, tfxVariationAttributes *dst);
+tfxAPI_EDITOR void CopyVariationAttributes(tfxVariationAttributes *src, tfxVariationAttributes *dst);
 tfxAPI_EDITOR void FreeBaseAttributes(tfxBaseAttributes *attributes);
 tfxAPI_EDITOR void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst);
+tfxAPI_EDITOR void CopyBaseAttributes(tfxBaseAttributes *src, tfxBaseAttributes *dst);
 tfxAPI_EDITOR void FreePropertyAttributes(tfxPropertyAttributes *attributes);
 tfxAPI_EDITOR void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttributes *dst);
+tfxAPI_EDITOR void CopyPropertyAttributes(tfxPropertyAttributes *src, tfxPropertyAttributes *dst);
 tfxAPI_EDITOR void FreeTransformAttributes(tfxTransformAttributes *attributes);
 tfxAPI_EDITOR void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst);
+tfxAPI_EDITOR void CopyTransformAttributes(tfxTransformAttributes *src, tfxTransformAttributes *dst);
 tfxAPI_EDITOR bool HasTranslationKeyframes(tfxTransformAttributes *graphs);
 tfxAPI_EDITOR void AddTranslationNodes(tfxTransformAttributes *keyframes, float frame);
 tfxAPI_EDITOR void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes *dst);
+tfxAPI_EDITOR void CopyGlobalAttributes(tfxGlobalAttributes *src, tfxGlobalAttributes *dst);
 
 //Get a graph by tfxGraphID
 tfxAPI_EDITOR tfxGraph *GetGraph(tfxLibrary *library, tfxGraphID graph_id);

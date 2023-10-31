@@ -1965,6 +1965,24 @@ void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes
 	CopyGraphNoLookups(&src->emitter_depth, &dst->emitter_depth);
 }
 
+void CopyGlobalAttributes(tfxGlobalAttributes *src, tfxGlobalAttributes *dst) {
+	CopyGraph(&src->life, &dst->life);
+	CopyGraph(&src->amount, &dst->amount);
+	CopyGraph(&src->velocity, &dst->velocity);
+	CopyGraph(&src->width, &dst->width);
+	CopyGraph(&src->height, &dst->height);
+	CopyGraph(&src->weight, &dst->weight);
+	CopyGraph(&src->spin, &dst->spin);
+	CopyGraph(&src->stretch, &dst->stretch);
+	CopyGraph(&src->overal_scale, &dst->overal_scale);
+	CopyGraph(&src->intensity, &dst->intensity);
+	CopyGraph(&src->frame_rate, &dst->frame_rate);
+	CopyGraph(&src->splatter, &dst->splatter);
+	CopyGraph(&src->emitter_width, &dst->emitter_width);
+	CopyGraph(&src->emitter_height, &dst->emitter_height);
+	CopyGraph(&src->emitter_depth, &dst->emitter_depth);
+}
+
 void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxU32 bucket_size) {
 	attributes->roll.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
 	attributes->pitch.nodes = tfxCreateBucketArray<tfxAttributeNode>(bucket_size);
@@ -1990,6 +2008,15 @@ void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformA
 	CopyGraphNoLookups(&src->translation_x, &dst->translation_x);
 	CopyGraphNoLookups(&src->translation_y, &dst->translation_y);
 	CopyGraphNoLookups(&src->translation_z, &dst->translation_z);
+}
+
+void CopyTransformAttributes(tfxTransformAttributes *src, tfxTransformAttributes *dst) {
+	CopyGraph(&src->roll, &dst->roll);
+	CopyGraph(&src->pitch, &dst->pitch);
+	CopyGraph(&src->yaw, &dst->yaw);
+	CopyGraph(&src->translation_x, &dst->translation_x);
+	CopyGraph(&src->translation_y, &dst->translation_y);
+	CopyGraph(&src->translation_z, &dst->translation_z);
 }
 
 bool HasTranslationKeyframes(tfxTransformAttributes *graphs) {
@@ -2051,6 +2078,18 @@ void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttr
 	CopyGraphNoLookups(&src->emitter_depth, &dst->emitter_depth);
 	CopyGraphNoLookups(&src->arc_size, &dst->arc_size);
 	CopyGraphNoLookups(&src->arc_offset, &dst->arc_offset);
+}
+
+void CopyPropertyAttributes(tfxPropertyAttributes *src, tfxPropertyAttributes *dst) {
+	CopyGraph(&src->emission_pitch, &dst->emission_pitch);
+	CopyGraph(&src->emission_yaw, &dst->emission_yaw);
+	CopyGraph(&src->emission_range, &dst->emission_range);
+	CopyGraph(&src->splatter, &dst->splatter);
+	CopyGraph(&src->emitter_width, &dst->emitter_width);
+	CopyGraph(&src->emitter_height, &dst->emitter_height);
+	CopyGraph(&src->emitter_depth, &dst->emitter_depth);
+	CopyGraph(&src->arc_size, &dst->arc_size);
+	CopyGraph(&src->arc_offset, &dst->arc_offset);
 }
 
 void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxU32 bucket_size) {
@@ -2133,6 +2172,25 @@ void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttr
 	CopyGraphNoLookups(&src->noise_resolution, &dst->noise_resolution);
 }
 
+void CopyOvertimeAttributes(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst) {
+	CopyGraph(&src->velocity, &dst->velocity);
+	CopyGraph(&src->width, &dst->width);
+	CopyGraph(&src->height, &dst->height);
+	CopyGraph(&src->weight, &dst->weight);
+	CopyGraph(&src->spin, &dst->spin);
+	CopyGraph(&src->stretch, &dst->stretch);
+	CopyGraph(&src->red, &dst->red);
+	CopyGraph(&src->green, &dst->green);
+	CopyGraph(&src->blue, &dst->blue);
+	CopyGraph(&src->blendfactor, &dst->blendfactor);
+	CopyGraph(&src->velocity_turbulance, &dst->velocity_turbulance);
+	CopyGraph(&src->direction_turbulance, &dst->direction_turbulance);
+	CopyGraph(&src->velocity_adjuster, &dst->velocity_adjuster);
+	CopyGraph(&src->intensity, &dst->intensity);
+	CopyGraph(&src->direction, &dst->direction);
+	CopyGraph(&src->noise_resolution, &dst->noise_resolution);
+}
+
 void FreeVariationAttributes(tfxVariationAttributes *attributes) {
 	FreeGraph(&attributes->life);
 	FreeGraph(&attributes->amount);
@@ -2157,6 +2215,18 @@ void CopyVariationAttributesNoLookups(tfxVariationAttributes *src, tfxVariationA
 	CopyGraphNoLookups(&src->noise_resolution, &dst->noise_resolution);
 }
 
+void CopyVariationAttributes(tfxVariationAttributes *src, tfxVariationAttributes *dst) {
+	CopyGraph(&src->life, &dst->life);
+	CopyGraph(&src->amount, &dst->amount);
+	CopyGraph(&src->velocity, &dst->velocity);
+	CopyGraph(&src->width, &dst->width);
+	CopyGraph(&src->height, &dst->height);
+	CopyGraph(&src->weight, &dst->weight);
+	CopyGraph(&src->spin, &dst->spin);
+	CopyGraph(&src->noise_offset, &dst->noise_offset);
+	CopyGraph(&src->noise_resolution, &dst->noise_resolution);
+}
+
 void FreeBaseAttributes(tfxBaseAttributes *attributes) {
 	FreeGraph(&attributes->life);
 	FreeGraph(&attributes->amount);
@@ -2177,6 +2247,17 @@ void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst)
 	CopyGraphNoLookups(&src->weight, &dst->weight);
 	CopyGraphNoLookups(&src->spin, &dst->spin);
 	CopyGraphNoLookups(&src->noise_offset, &dst->noise_offset);
+}
+
+void CopyBaseAttributes(tfxBaseAttributes *src, tfxBaseAttributes *dst) {
+	CopyGraph(&src->life, &dst->life);
+	CopyGraph(&src->amount, &dst->amount);
+	CopyGraph(&src->velocity, &dst->velocity);
+	CopyGraph(&src->width, &dst->width);
+	CopyGraph(&src->height, &dst->height);
+	CopyGraph(&src->weight, &dst->weight);
+	CopyGraph(&src->spin, &dst->spin);
+	CopyGraph(&src->noise_offset, &dst->noise_offset);
 }
 
 void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxU32 bucket_size) {
@@ -2933,9 +3014,18 @@ void ClearLibrary(tfxLibrary *library) {
 	library->effects.free_all();
 	library->effect_paths.FreeAll();
 	library->particle_shapes.FreeAll();
-	library->global_graphs.free_all();
-	library->emitter_attributes.free_all();
-	library->transform_attributes.free_all();
+	for (tfxGlobalAttributes &global : library->global_graphs) {
+		FreeGlobalAttributes(&global);
+	}
+	for (tfxEmitterAttributes &emitter_attributes : library->emitter_attributes) {
+		FreeEmitterAttributes(&emitter_attributes);
+	}
+	for (tfxTransformAttributes &transform_attributes : library->transform_attributes) {
+		FreeTransformAttributes(&transform_attributes);
+	}
+	library->global_graphs.free();
+	library->emitter_attributes.free();
+	library->transform_attributes.free();
 	library->sprite_sheet_settings.free_all();
 	library->preview_camera_settings.free_all();
 	library->all_nodes.free_all();
@@ -7806,7 +7896,7 @@ void UpdateParticleManager(tfxParticleManager *pm, float elapsed_time) {
 				}
 			}
 			tfxCompleteAllWork(&pm->work_queue);
-			pm->control_work.free();
+			pm->control_work.clear();
 			pm->emitters_check_capture.clear();
 		}
 
@@ -12189,6 +12279,7 @@ void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	}
 	tfxGlobals = (tfx_globals_t*)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_globals_t));
 	memset(tfxGlobals, 0, sizeof(tfx_globals_t));
+	tfxGlobals->default_memory_pool_size = memory_pool_size;
 
 	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 	lookup_callback = LookupFast;
