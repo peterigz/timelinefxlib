@@ -1623,7 +1623,8 @@ enum tfxGraphCategory : unsigned int {
 	tfxGraphCategory_property,
 	tfxGraphCategory_base,
 	tfxGraphCategory_variation,
-	tfxGraphCategory_overtime
+	tfxGraphCategory_overtime,
+	tfxGraphCategory_max
 };
 
 

@@ -1948,6 +1948,7 @@ void FreeGlobalAttributes(tfxGlobalAttributes *attributes) {
 }
 
 void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes *dst) {
+	if (src == dst) return;
 	CopyGraphNoLookups(&src->life, &dst->life);
 	CopyGraphNoLookups(&src->amount, &dst->amount);
 	CopyGraphNoLookups(&src->velocity, &dst->velocity);
@@ -1966,6 +1967,7 @@ void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes
 }
 
 void CopyGlobalAttributes(tfxGlobalAttributes *src, tfxGlobalAttributes *dst) {
+	if (src == dst) return;
 	CopyGraph(&src->life, &dst->life);
 	CopyGraph(&src->amount, &dst->amount);
 	CopyGraph(&src->velocity, &dst->velocity);
@@ -2002,6 +2004,7 @@ void FreeTransformAttributes(tfxTransformAttributes *attributes) {
 }
 
 void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst) {
+	if (src == dst) return;
 	CopyGraphNoLookups(&src->roll, &dst->roll);
 	CopyGraphNoLookups(&src->pitch, &dst->pitch);
 	CopyGraphNoLookups(&src->yaw, &dst->yaw);
@@ -2011,6 +2014,7 @@ void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformA
 }
 
 void CopyTransformAttributes(tfxTransformAttributes *src, tfxTransformAttributes *dst) {
+	if (src == dst) return;
 	CopyGraph(&src->roll, &dst->roll);
 	CopyGraph(&src->pitch, &dst->pitch);
 	CopyGraph(&src->yaw, &dst->yaw);
@@ -2069,6 +2073,7 @@ void FreePropertyAttributes(tfxPropertyAttributes *attributes) {
 }
 
 void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttributes *dst) {
+	if (src == dst) return;
 	CopyGraphNoLookups(&src->emission_pitch, &dst->emission_pitch);
 	CopyGraphNoLookups(&src->emission_yaw, &dst->emission_yaw);
 	CopyGraphNoLookups(&src->emission_range, &dst->emission_range);
@@ -2081,6 +2086,7 @@ void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttr
 }
 
 void CopyPropertyAttributes(tfxPropertyAttributes *src, tfxPropertyAttributes *dst) {
+	if (src == dst) return;
 	CopyGraph(&src->emission_pitch, &dst->emission_pitch);
 	CopyGraph(&src->emission_yaw, &dst->emission_yaw);
 	CopyGraph(&src->emission_range, &dst->emission_range);
@@ -2154,6 +2160,7 @@ void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes) {
 }
 
 void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst) {
+	if (src == dst) return;
 	CopyGraphNoLookups(&src->velocity, &dst->velocity);
 	CopyGraphNoLookups(&src->width, &dst->width);
 	CopyGraphNoLookups(&src->height, &dst->height);
@@ -2173,6 +2180,7 @@ void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttr
 }
 
 void CopyOvertimeAttributes(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst) {
+	if (src == dst) return;
 	CopyGraph(&src->velocity, &dst->velocity);
 	CopyGraph(&src->width, &dst->width);
 	CopyGraph(&src->height, &dst->height);
@@ -2204,6 +2212,7 @@ void FreeVariationAttributes(tfxVariationAttributes *attributes) {
 }
 
 void CopyVariationAttributesNoLookups(tfxVariationAttributes *src, tfxVariationAttributes *dst) {
+	if (src == dst) return;
 	CopyGraphNoLookups(&src->life, &dst->life);
 	CopyGraphNoLookups(&src->amount, &dst->amount);
 	CopyGraphNoLookups(&src->velocity, &dst->velocity);
@@ -2239,6 +2248,7 @@ void FreeBaseAttributes(tfxBaseAttributes *attributes) {
 }
 
 void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst) {
+	if (src == dst) return;
 	CopyGraphNoLookups(&src->life, &dst->life);
 	CopyGraphNoLookups(&src->amount, &dst->amount);
 	CopyGraphNoLookups(&src->velocity, &dst->velocity);
@@ -2250,6 +2260,7 @@ void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst)
 }
 
 void CopyBaseAttributes(tfxBaseAttributes *src, tfxBaseAttributes *dst) {
+	if (src == dst) return;
 	CopyGraph(&src->life, &dst->life);
 	CopyGraph(&src->amount, &dst->amount);
 	CopyGraph(&src->velocity, &dst->velocity);
