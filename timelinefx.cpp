@@ -949,7 +949,7 @@ bool Is3DEffect(tfx_effect_emitter_t *effect) {
 	return effect->property_flags & tfxEmitterPropertyFlags_is_3d;
 }
 
-tfxParticleManagerModes GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect) {
+tfx_particle_manager_mode GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect) {
 	if (effect->type == tfxEffectType) {
 		if (effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order && effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
 			return tfxParticleManagerMode_ordered_by_depth_guaranteed;
@@ -962,7 +962,7 @@ tfxParticleManagerModes GetRequiredParticleManagerMode(tfx_effect_emitter_t *eff
 		}
 	}
 	else if (effect->type == tfxStage) {
-		tfxParticleManagerModes result = tfxParticleManagerMode_unordered;
+		tfx_particle_manager_mode result = tfxParticleManagerMode_unordered;
 		for (auto &sub_effect : GetEffectInfo(effect)->sub_effectors) {
 			if (sub_effect.effect_flags & tfxEffectPropertyFlags_guaranteed_order && sub_effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
 				return tfxParticleManagerMode_ordered_by_depth_guaranteed;
@@ -997,7 +997,7 @@ float GetEffectHighestLoopLength(tfx_effect_emitter_t *effect) {
 
 tfx_effect_emitter_t* AddEmitterToEffect(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *emitter) {
 	assert(GetEffectInfo(emitter)->name.Length());				//Emitter must have a name so that a hash can be generated
-	emitter->type = tfxEffectEmitterType::tfxEmitterType;
+	emitter->type = tfx_effect_emitter_type::tfxEmitterType;
 	emitter->library = effect->library;
 	GetEffectInfo(emitter)->uid = ++effect->library->uid;
 	GetEffectInfo(effect)->sub_effectors.push_back(*emitter);
@@ -1008,7 +1008,7 @@ tfx_effect_emitter_t* AddEmitterToEffect(tfx_effect_emitter_t *effect, tfx_effec
 
 tfx_effect_emitter_t* AddEffectToEmitter(tfx_effect_emitter_t *emitter, tfx_effect_emitter_t *effect) {
 	assert(GetEffectInfo(effect)->name.Length());				//Effect must have a name so that a hash can be generated
-	effect->type = tfxEffectEmitterType::tfxEffectType;
+	effect->type = tfx_effect_emitter_type::tfxEffectType;
 	effect->library = emitter->library;
 	effect->parent = emitter;
 	GetEffectInfo(effect)->uid = ++emitter->library->uid;
@@ -1022,7 +1022,7 @@ tfx_effect_emitter_t* AddEffect(tfx_effect_emitter_t *e) {
 	tfx_effect_emitter_t new_effect;
 	new_effect.library = e->library;
 	GetEffectInfo(&new_effect)->uid = ++e->library->uid;
-	new_effect.type = tfxEffectEmitterType::tfxEffectType;
+	new_effect.type = tfx_effect_emitter_type::tfxEffectType;
 	GetEffectInfo(&new_effect)->name = "New Effect";
 	GetEffectInfo(e)->sub_effectors.push_back(new_effect);
 	UpdateLibraryEffectPaths(e->library);
@@ -1058,8 +1058,8 @@ float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library,
 	//----Emission
 	float range = emission_angle_variation * .5f;
 	float direction = 0;
-	tfxEmissionType emission_type = library->emitter_properties.emission_type[property_index];
-	tfxEmissionDirection emission_direction = library->emitter_properties.emission_direction[property_index];
+	tfx_emission_type emission_type = library->emitter_properties.emission_type[property_index];
+	tfx_emission_direction emission_direction = library->emitter_properties.emission_direction[property_index];
 
 	if (emission_type == tfxPoint)
 		return direction + emission_angle + RandomRange(random, -range, range);
@@ -1075,7 +1075,7 @@ float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library,
 	else
 		tmp_position = local_position + handle.xy();
 
-	if (emission_direction == tfxEmissionDirection::tfxOutwards) {
+	if (emission_direction == tfx_emission_direction::tfxOutwards) {
 
 		tfx_vec2_t to_handle;
 
@@ -1087,7 +1087,7 @@ float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library,
 		direction = GetVectorAngle(to_handle.x, to_handle.y);
 
 	}
-	else if (emission_direction == tfxEmissionDirection::tfxInwards) {
+	else if (emission_direction == tfx_emission_direction::tfxInwards) {
 
 		tfx_vec2_t to_handle;
 
@@ -1100,7 +1100,7 @@ float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library,
 		direction = GetVectorAngle(to_handle.x, to_handle.y);
 
 	}
-	else if (emission_direction == tfxEmissionDirection::tfxBothways) {
+	else if (emission_direction == tfx_emission_direction::tfxBothways) {
 
 		//todo: replace these if statements
 		if (emission_alternator) {
@@ -1156,14 +1156,14 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 	else
 		tmp_position = local_position + handle;
 
-	tfxEmissionType emission_type = library->emitter_properties.emission_type[property_index];
-	tfxEmissionDirection emission_direction = library->emitter_properties.emission_direction[property_index];
+	tfx_emission_type emission_type = library->emitter_properties.emission_type[property_index];
+	tfx_emission_direction emission_direction = library->emitter_properties.emission_direction[property_index];
 
 	tfx_vec3_t to_handle(0.f, 1.f, 0.f);
 	float parent_pitch = 0.f;
 	float parent_yaw = 0.f;
 	if (emission_type != tfxPoint) {
-		if (emission_direction == tfxEmissionDirection::tfxOutwards) {
+		if (emission_direction == tfx_emission_direction::tfxOutwards) {
 
 			if (property_flags & tfxEmitterPropertyFlags_relative_position)
 				to_handle = tmp_position;
@@ -1173,7 +1173,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			to_handle = FastNormalizeVec(&to_handle);
 
 		}
-		else if (emission_direction == tfxEmissionDirection::tfxInwards) {
+		else if (emission_direction == tfx_emission_direction::tfxInwards) {
 
 			if (property_flags & tfxEmitterPropertyFlags_relative_position)
 				to_handle = -tmp_position;
@@ -1183,7 +1183,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			to_handle = FastNormalizeVec(&to_handle);
 
 		}
-		else if (emission_direction == tfxEmissionDirection::tfxBothways) {
+		else if (emission_direction == tfx_emission_direction::tfxBothways) {
 
 			if (emission_alternator) {
 
@@ -1735,30 +1735,30 @@ void DisableAllEmittersExcept(tfx_effect_emitter_t *effect, tfx_effect_emitter_t
 	}
 }
 
-tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfxGraphType type) {
+tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfx_graph_type type) {
 	tfx_library_t *library = effect->library;
 
-	if (type < tfxGlobalCount) {
+	if (type < TFX_GLOBAL_COUNT) {
 		return &((tfx_graph_t*)&library->global_graphs[effect->global])[type];
 	}
-	else if (type >= tfxPropertyStart && type < tfxBaseStart) {
-		int ref = type - tfxPropertyStart;
+	else if (type >= TFX_PROPERTY_START && type < TFX_BASE_START) {
+		int ref = type - TFX_PROPERTY_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[effect->emitter_attributes].properties)[ref];
 	}
-	else if (type >= tfxBaseStart && type < tfxVariationStart) {
-		int ref = type - tfxBaseStart;
+	else if (type >= TFX_BASE_START && type < TFX_VARIATION_START) {
+		int ref = type - TFX_BASE_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[effect->emitter_attributes].base)[ref];
 	}
-	else if (type >= tfxVariationStart && type < tfxOvertimeStart) {
-		int ref = type - tfxVariationStart;
+	else if (type >= TFX_VARIATION_START && type < TFX_OVERTIME_START) {
+		int ref = type - TFX_VARIATION_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[effect->emitter_attributes].variation)[ref];
 	}
-	else if (type >= tfxOvertimeStart && type < tfxTransformStart) {
-		int ref = type - tfxOvertimeStart;
+	else if (type >= TFX_OVERTIME_START && type < TFX_TRANSFORM_START) {
+		int ref = type - TFX_OVERTIME_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[effect->emitter_attributes].overtime)[ref];
 	}
-	else if (type >= tfxTransformStart) {
-		int ref = type - tfxTransformStart;
+	else if (type >= TFX_TRANSFORM_START) {
+		int ref = type - TFX_TRANSFORM_START;
 		return &((tfx_graph_t*)&library->transform_attributes[effect->transform_attributes].roll)[ref];
 	}
 
@@ -1766,12 +1766,12 @@ tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfxGraphType typ
 
 }
 
-tfxU32 GetEffectGraphIndexByType(tfx_effect_emitter_t *effect, tfxGraphType type) {
+tfxU32 GetEffectGraphIndexByType(tfx_effect_emitter_t *effect, tfx_graph_type type) {
 
-	if (type < tfxGlobalCount) {
+	if (type < TFX_GLOBAL_COUNT) {
 		return effect->global;
 	}
-	else if (type < tfxTransformStart) {
+	else if (type < TFX_TRANSFORM_START) {
 		return effect->emitter_attributes;
 	}
 	else {
@@ -1886,23 +1886,23 @@ tfxU32 CountAllEffectLookupValues(tfx_effect_emitter_t *effect) {
 
 void CompileEffectGraphs(tfx_effect_emitter_t *effect) {
 	for (tfxU32 t = (tfxU32)tfxTransform_translate_x; t != (tfxU32)tfxGraphMaxIndex; ++t) {
-		CompileGraph(GetEffectGraphByType(effect, tfxGraphType(t)));
+		CompileGraph(GetEffectGraphByType(effect, tfx_graph_type(t)));
 	}
 	if (effect->type == tfxEffectType) {
 		for (tfxU32 t = (tfxU32)tfxGlobal_life; t != (tfxU32)tfxProperty_emission_pitch; ++t) {
-			CompileGraph(GetEffectGraphByType(effect, tfxGraphType(t)));
+			CompileGraph(GetEffectGraphByType(effect, tfx_graph_type(t)));
 		}
 	}
 	else if (effect->type == tfxEmitterType) {
 		for (tfxU32 t = (tfxU32)tfxProperty_emission_pitch; t != (tfxU32)tfxOvertime_velocity; ++t) {
-			CompileGraph(GetEffectGraphByType(effect, (tfxGraphType)t));
+			CompileGraph(GetEffectGraphByType(effect, (tfx_graph_type)t));
 		}
 		for (tfxU32 t = (tfxU32)tfxOvertime_velocity; t != (tfxU32)tfxTransform_translate_x; ++t) {
-			if (IsColorGraph((tfxGraphType)t)) {
-				CompileColorOvertime(GetEffectGraphByType(effect, (tfxGraphType)t));
+			if (IsColorGraph((tfx_graph_type)t)) {
+				CompileColorOvertime(GetEffectGraphByType(effect, (tfx_graph_type)t));
 			}
 			else {
-				CompileGraphOvertime(GetEffectGraphByType(effect, (tfxGraphType)t));
+				CompileGraphOvertime(GetEffectGraphByType(effect, (tfx_graph_type)t));
 			}
 		}
 	}
@@ -2557,7 +2557,7 @@ tfxU32 GetLibraryComputeShapeCount(tfx_library_t *library) {
 }
 
 tfxU32 GetLibraryLookupIndexCount(tfx_library_t *library) {
-	return library->compiled_lookup_indexes.size() * tfxOvertimeCount;
+	return library->compiled_lookup_indexes.size() * TFX_OVERTIME_COUNT;
 }
 
 tfxU32 GetLibraryLookupValueCount(tfx_library_t *library) {
@@ -2565,7 +2565,7 @@ tfxU32 GetLibraryLookupValueCount(tfx_library_t *library) {
 }
 
 tfxU32 GetLibraryLookupIndexesSizeInBytes(tfx_library_t *library) {
-	return sizeof(tfx_graph_lookup_index_t) * tfxOvertimeCount * library->compiled_lookup_indexes.size();
+	return sizeof(tfx_graph_lookup_index_t) * TFX_OVERTIME_COUNT * library->compiled_lookup_indexes.size();
 }
 
 tfxU32 GetLibraryLookupValuesSizeInBytes(tfx_library_t *library) {
@@ -2819,8 +2819,8 @@ tfxU32 AddLibrarySpriteSheetSettings(tfx_library_t *library, tfx_effect_emitter_
 	a.zoom = 1.f;
 	a.scale = 1.f;
 	a.needs_exporting = 0;
-	a.color_option = tfxExportColorOptions::tfxFullColor;
-	a.export_option = tfxExportOptions::tfxSpriteSheet;
+	a.color_option = tfx_export_color_options::tfxFullColor;
+	a.export_option = tfx_export_options::tfxSpriteSheet;
 	a.camera_settings.camera_floor_height = -10.f;
 	a.camera_settings.camera_fov = tfxRadians(60);
 	a.camera_settings.camera_pitch = tfxRadians(-30.f);
@@ -2857,8 +2857,8 @@ void AddLibrarySpriteSheetSettingsSub(tfx_library_t *library, tfx_effect_emitter
 		a.zoom = 1.f;
 		a.scale = 1.f;
 		a.needs_exporting = 0;
-		a.color_option = tfxExportColorOptions::tfxFullColor;
-		a.export_option = tfxExportOptions::tfxSpriteSheet;
+		a.color_option = tfx_export_color_options::tfxFullColor;
+		a.export_option = tfx_export_options::tfxSpriteSheet;
 		a.camera_settings.camera_floor_height = -10.f;
 		a.camera_settings.camera_fov = tfxRadians(60);
 		a.camera_settings.camera_pitch = tfxRadians(-30.f);
@@ -2992,19 +2992,19 @@ void InitLibrary(tfx_library_t *library) {
 
 void InitLibraryEmitterProperties(tfx_library_t *library) {
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_vec3_t), offsetof(tfx_emitter_properties_soa_t, angle_offsets));
-	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxVectorAlignType), offsetof(tfx_emitter_properties_soa_t, vector_align_type));
-	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxEmissionType), offsetof(tfx_emitter_properties_soa_t, emission_type));
+	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_vector_align_type), offsetof(tfx_emitter_properties_soa_t, vector_align_type));
+	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_emission_type), offsetof(tfx_emitter_properties_soa_t, emission_type));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxU32), offsetof(tfx_emitter_properties_soa_t, single_shot_limit));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(float), offsetof(tfx_emitter_properties_soa_t, frame_rate));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(float), offsetof(tfx_emitter_properties_soa_t, end_frame));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_image_data_t*), offsetof(tfx_emitter_properties_soa_t, image));
-	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxBillboardingOptions), offsetof(tfx_emitter_properties_soa_t, billboard_option));
+	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_billboarding_option), offsetof(tfx_emitter_properties_soa_t, billboard_option));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_vec3_t), offsetof(tfx_emitter_properties_soa_t, grid_points));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxAngleSettingFlags), offsetof(tfx_emitter_properties_soa_t, angle_settings));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxU32), offsetof(tfx_emitter_properties_soa_t, layer));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(float), offsetof(tfx_emitter_properties_soa_t, delay_spawning));
-	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxEmissionDirection), offsetof(tfx_emitter_properties_soa_t, emission_direction));
-	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxLineTraversalEndBehaviour), offsetof(tfx_emitter_properties_soa_t, end_behaviour));
+	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_emission_direction), offsetof(tfx_emitter_properties_soa_t, emission_direction));
+	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_line_traversal_end_behaviour), offsetof(tfx_emitter_properties_soa_t, end_behaviour));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfxParticleControlFlags), offsetof(tfx_emitter_properties_soa_t, compute_flags));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_vec2_t), offsetof(tfx_emitter_properties_soa_t, image_handle));
 	AddStructArray(&library->emitter_properties_buffer, sizeof(tfx_vec3_t), offsetof(tfx_emitter_properties_soa_t, emitter_handle));
@@ -3088,10 +3088,10 @@ void UpdateLibraryComputeNodes(tfx_library_t *library) {
 			memset(&value_lookup_data, 0, sizeof(tfx_effect_lookup_data_t));
 			if (current->type == tfxEmitterType) {
 
-				int offset = tfxGlobalCount + tfxPropertyCount + tfxBaseCount + tfxVariationCount;
+				int offset = TFX_GLOBAL_COUNT + TFX_PROPERTY_COUNT + TFX_BASE_COUNT + TFX_VARIATION_COUNT;
 
 				GetEffectInfo(current)->lookup_value_index = library->compiled_lookup_indexes.size();
-				for (int i = 0; i != tfxOvertimeCount; ++i) {
+				for (int i = 0; i != TFX_OVERTIME_COUNT; ++i) {
 					tfx_graph_t &graph = ((tfx_graph_t*)(&library->emitter_attributes[current->emitter_attributes].overtime))[i];
 					tfx_graph_lookup_index_t &index = ((tfx_graph_lookup_index_t*)&lookup_data)[i];
 					index.start_index = running_node_index;
@@ -3398,7 +3398,7 @@ void SetLibraryMinMaxData(tfx_library_t *library) {
 	library->graph_min_max[tfxOvertime_direction] = GetMinMaxGraphValues(tfxDirectionOvertimePreset);
 }
 
-float LookupLibraryPreciseOvertimeNodeList(tfx_library_t *library, tfxGraphType graph_type, int lookup_node_index, float age, float life) {
+float LookupLibraryPreciseOvertimeNodeList(tfx_library_t *library, tfx_graph_type graph_type, int lookup_node_index, float age, float life) {
 	float lastv = 0;
 	float lastf = 0;
 	float p = 0;
@@ -3426,7 +3426,7 @@ float LookupLibraryPreciseOvertimeNodeList(tfx_library_t *library, tfxGraphType 
 	return lastv;
 }
 
-float LookupLibraryPreciseNodeList(tfx_library_t *library, tfxGraphType graph_type, int lookup_node_index, float age) {
+float LookupLibraryPreciseNodeList(tfx_library_t *library, tfx_graph_type graph_type, int lookup_node_index, float age) {
 	float lastv = 0;
 	float lastf = 0;
 	float p = 0;
@@ -3453,7 +3453,7 @@ float LookupLibraryPreciseNodeList(tfx_library_t *library, tfxGraphType graph_ty
 	return lastv;
 }
 
-float LookupLibraryFastValueList(tfx_library_t *library, tfxGraphType graph_type, int lookup_node_index, float frame) {
+float LookupLibraryFastValueList(tfx_library_t *library, tfx_graph_type graph_type, int lookup_node_index, float frame) {
 	tfx_graph_lookup_index_t &lookup_data = ((tfx_graph_lookup_index_t*)&library->compiled_lookup_indexes[lookup_node_index])[graph_type];
 	frame += lookup_data.start_index;
 	tfxU32 end_frame = lookup_data.start_index + lookup_data.length - 1;
@@ -3461,7 +3461,7 @@ float LookupLibraryFastValueList(tfx_library_t *library, tfxGraphType graph_type
 	return library->compiled_lookup_values[(tfxU32)frame];
 }
 
-float LookupLibraryFastOvertimeValueList(tfx_library_t *library, tfxGraphType graph_type, int lookup_value_index, float age, float lifetime) {
+float LookupLibraryFastOvertimeValueList(tfx_library_t *library, tfx_graph_type graph_type, int lookup_value_index, float age, float lifetime) {
 	tfx_graph_lookup_index_t &lookup_data = ((tfx_graph_lookup_index_t*)&library->compiled_lookup_indexes[lookup_value_index])[graph_type - tfxOvertime_velocity];
 	float frame = (float)lookup_data.start_index;
 	if (lifetime)
@@ -3922,10 +3922,10 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 				value = 3;
 			}
 		}
-		emitter_properties.billboard_option[effect->property_index] = (tfxBillboardingOptions)value;
+		emitter_properties.billboard_option[effect->property_index] = (tfx_billboarding_option)value;
 	}
 	if (*field == "vector_align_type")
-		emitter_properties.vector_align_type[effect->property_index] = value >= 0 && value < tfxVectorAlignType_max ? (tfxVectorAlignType)value : (tfxVectorAlignType)0;
+		emitter_properties.vector_align_type[effect->property_index] = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
 	if (*field == "angle_setting")
 		emitter_properties.angle_settings[effect->property_index] = (tfxAngleSettingFlags)value;
 	if (*field == "sort_passes")
@@ -3946,15 +3946,15 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int value) {
 	tfx_emitter_properties_soa_t &emitter_properties = effect->library->emitter_properties;
 	if (*field == "emission_type")
-		emitter_properties.emission_type[effect->property_index] = (tfxEmissionType)value;
+		emitter_properties.emission_type[effect->property_index] = (tfx_emission_type)value;
 	if (*field == "emission_direction")
-		emitter_properties.emission_direction[effect->property_index] = (tfxEmissionDirection)value;
+		emitter_properties.emission_direction[effect->property_index] = (tfx_emission_direction)value;
 	if (*field == "color_option")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfxExportColorOptions)value;
+		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
 	if (*field == "export_option")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].export_option = (tfxExportOptions)value;
+		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].export_option = (tfx_export_options)value;
 	if (*field == "end_behaviour")
-		emitter_properties.end_behaviour[effect->property_index] = (tfxLineTraversalEndBehaviour)value;
+		emitter_properties.end_behaviour[effect->property_index] = (tfx_line_traversal_end_behaviour)value;
 	if (*field == "frame_offset")
 		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
 	if (*field == "extra_frames_count")
@@ -4891,7 +4891,7 @@ void DeleteGraphNodeAtFrame(tfx_graph_t *graph, float frame) {
 	}
 }
 
-void ResetGraph(tfx_graph_t *graph, float v, tfxGraphPreset preset, bool add_node) {
+void ResetGraph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_node) {
 	graph->nodes.clear();
 	graph->nodes.trim_buckets();
 	if (add_node && preset == tfxWeightOvertimePreset) {
@@ -4903,90 +4903,90 @@ void ResetGraph(tfx_graph_t *graph, float v, tfxGraphPreset preset, bool add_nod
 		AddGraphNode(graph, 0.f, v);
 	}
 	switch (preset) {
-	case tfxGraphPreset::tfxGlobalPercentPreset:
+	case tfx_graph_preset::tfxGlobalPercentPreset:
 		//We have a epsilon to prevent divide by 0 here
 		graph->min = { 0.f, 0.0001f }; graph->max = { tfxMAX_FRAME, 20.f };
 		break;
-	case tfxGraphPreset::tfxGlobalOpacityPreset:
+	case tfx_graph_preset::tfxGlobalOpacityPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 1.f };
 		break;
-	case tfxGraphPreset::tfxGlobalPercentPresetSigned:
+	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
 		graph->min = { 0.f, -20.f }; graph->max = { tfxMAX_FRAME, 20.f };
 		break;
-	case tfxGraphPreset::tfxAnglePreset:
+	case tfx_graph_preset::tfxAnglePreset:
 		graph->min = { 0.f, -1080.f }; graph->max = { tfxMAX_FRAME, 1080.f };
 		break;
-	case tfxGraphPreset::tfxArcPreset:
+	case tfx_graph_preset::tfxArcPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 360.f };
 		break;
-	case tfxGraphPreset::tfxEmissionRangePreset:
+	case tfx_graph_preset::tfxEmissionRangePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 360.f };
 		break;
-	case tfxGraphPreset::tfxDimensionsPreset:
+	case tfx_graph_preset::tfxDimensionsPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 4000.f };
 		break;
-	case tfxGraphPreset::tfxTranslationPreset:
+	case tfx_graph_preset::tfxTranslationPreset:
 		graph->min = { 0.f, -4000.f }; graph->max = { tfxMAX_FRAME, 4000.f };
 		break;
-	case tfxGraphPreset::tfxLifePreset:
+	case tfx_graph_preset::tfxLifePreset:
 		//We have a epsilon to prevent divide by 0 here. The divide by zero occurrs in control functions (ControlParticleImageFrame3d etc.) when the current % life of the particle is calculated
 		graph->min = { 0.f, 0.0001f }; graph->max = { tfxMAX_FRAME, 100000.f };
 		break;
-	case tfxGraphPreset::tfxAmountPreset:
+	case tfx_graph_preset::tfxAmountPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 5000.f };
 		break;
-	case tfxGraphPreset::tfxVelocityPreset:
+	case tfx_graph_preset::tfxVelocityPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 10000.f };
 		break;
-	case tfxGraphPreset::tfxWeightPreset:
+	case tfx_graph_preset::tfxWeightPreset:
 		graph->min = { 0.f, -10000.f }; graph->max = { tfxMAX_FRAME, 10000.f };
 		break;
-	case tfxGraphPreset::tfxWeightVariationPreset:
+	case tfx_graph_preset::tfxWeightVariationPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 20000.f };
 		break;
-	case tfxGraphPreset::tfxNoiseOffsetVariationPreset:
+	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 1000.f };
 		break;
-	case tfxGraphPreset::tfxNoiseResolutionPreset:
+	case tfx_graph_preset::tfxNoiseResolutionPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 10000.f };
 		break;
-	case tfxGraphPreset::tfxSpinPreset:
+	case tfx_graph_preset::tfxSpinPreset:
 		graph->min = { 0.f, -2000.f }; graph->max = { tfxMAX_FRAME, 2000.f };
 		break;
-	case tfxGraphPreset::tfxSpinVariationPreset:
+	case tfx_graph_preset::tfxSpinVariationPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 2000.f };
 		break;
-	case tfxGraphPreset::tfxDirectionVariationPreset:
+	case tfx_graph_preset::tfxDirectionVariationPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 22.5f };
 		break;
-	case tfxGraphPreset::tfxWeightOvertimePreset:
+	case tfx_graph_preset::tfxWeightOvertimePreset:
 		graph->min = { 0.f, -20.f }; graph->max = { 1.f, 20.f };
 		break;
-	case tfxGraphPreset::tfxDirectionOvertimePreset:
+	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 4320.f };
 		break;
-	case tfxGraphPreset::tfxSpinOvertimePreset:
+	case tfx_graph_preset::tfxSpinOvertimePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 20.f };
 		break;
-	case tfxGraphPreset::tfxVelocityOvertimePreset:
+	case tfx_graph_preset::tfxVelocityOvertimePreset:
 		graph->min = { 0.f, -20.f }; graph->max = { 1.f, 20.f };
 		break;
-	case tfxGraphPreset::tfxPercentOvertime:
+	case tfx_graph_preset::tfxPercentOvertime:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 20.f };
 		break;
-	case tfxGraphPreset::tfxFrameratePreset:
+	case tfx_graph_preset::tfxFrameratePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 200.f };
 		break;
-	case tfxGraphPreset::tfxVelocityTurbulancePreset:
+	case tfx_graph_preset::tfxVelocityTurbulancePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 2000.f };
 		break;
-	case tfxGraphPreset::tfxOpacityOvertimePreset:
+	case tfx_graph_preset::tfxOpacityOvertimePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 1.f };
 		break;
-	case tfxGraphPreset::tfxColorPreset:
+	case tfx_graph_preset::tfxColorPreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 255.f };
 		break;
-	case tfxGraphPreset::tfxIntensityOvertimePreset:
+	case tfx_graph_preset::tfxIntensityOvertimePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 5.f };
 		break;
 	}
@@ -4994,85 +4994,85 @@ void ResetGraph(tfx_graph_t *graph, float v, tfxGraphPreset preset, bool add_nod
 	graph->graph_preset = preset;
 }
 
-tfx_vec4_t GetMinMaxGraphValues(tfxGraphPreset preset) {
+tfx_vec4_t GetMinMaxGraphValues(tfx_graph_preset preset) {
 	tfx_vec4_t mm;
 	switch (preset) {
-	case tfxGraphPreset::tfxGlobalPercentPreset:
+	case tfx_graph_preset::tfxGlobalPercentPreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 20.f };
 		break;
-	case tfxGraphPreset::tfxGlobalOpacityPreset:
+	case tfx_graph_preset::tfxGlobalOpacityPreset:
 		mm = { 0.f, 0.f , tfxMAX_FRAME, 1.f };
 		break;
-	case tfxGraphPreset::tfxGlobalPercentPresetSigned:
+	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
 		mm = { 0.f, -20.f, tfxMAX_FRAME, 20.f };
 		break;
-	case tfxGraphPreset::tfxAnglePreset:
+	case tfx_graph_preset::tfxAnglePreset:
 		mm = { 0.f, -1080.f, tfxMAX_FRAME, 1080.f };
 		break;
-	case tfxGraphPreset::tfxArcPreset:
+	case tfx_graph_preset::tfxArcPreset:
 		mm = { 0.f, 0.f , tfxMAX_FRAME, 360.f };
 		break;
-	case tfxGraphPreset::tfxEmissionRangePreset:
+	case tfx_graph_preset::tfxEmissionRangePreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 360.f };
 		break;
-	case tfxGraphPreset::tfxDimensionsPreset:
+	case tfx_graph_preset::tfxDimensionsPreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 4000.f };
 		break;
-	case tfxGraphPreset::tfxTranslationPreset:
+	case tfx_graph_preset::tfxTranslationPreset:
 		mm = { 0.f, -4000.f, tfxMAX_FRAME, 4000.f };
 		break;
-	case tfxGraphPreset::tfxLifePreset:
+	case tfx_graph_preset::tfxLifePreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 100000.f };
 		break;
-	case tfxGraphPreset::tfxAmountPreset:
+	case tfx_graph_preset::tfxAmountPreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 5000.f };
 		break;
-	case tfxGraphPreset::tfxVelocityPreset:
+	case tfx_graph_preset::tfxVelocityPreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 10000.f };
 		break;
-	case tfxGraphPreset::tfxWeightPreset:
+	case tfx_graph_preset::tfxWeightPreset:
 		mm = { 0.f, -10000.f, tfxMAX_FRAME, 10000.f };
 		break;
-	case tfxGraphPreset::tfxWeightVariationPreset:
+	case tfx_graph_preset::tfxWeightVariationPreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 20000.f };
 		break;
-	case tfxGraphPreset::tfxSpinPreset:
+	case tfx_graph_preset::tfxSpinPreset:
 		mm = { 0.f, -2000.f, tfxMAX_FRAME, 2000.f };
 		break;
-	case tfxGraphPreset::tfxSpinVariationPreset:
+	case tfx_graph_preset::tfxSpinVariationPreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 2000.f };
 		break;
-	case tfxGraphPreset::tfxDirectionVariationPreset:
+	case tfx_graph_preset::tfxDirectionVariationPreset:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 22.5f };
 		break;
-	case tfxGraphPreset::tfxWeightOvertimePreset:
+	case tfx_graph_preset::tfxWeightOvertimePreset:
 		mm = { 0.f, -20.f, 1.f, 20.f };
 		break;
-	case tfxGraphPreset::tfxDirectionOvertimePreset:
+	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		mm = { 0.f, 0.f, 1.f, 4320.f };
 		break;
-	case tfxGraphPreset::tfxSpinOvertimePreset:
+	case tfx_graph_preset::tfxSpinOvertimePreset:
 		mm = { 0.f, 0.f, 1.f, 20.f };
 		break;
-	case tfxGraphPreset::tfxVelocityOvertimePreset:
+	case tfx_graph_preset::tfxVelocityOvertimePreset:
 		mm = { 0.f, -20.f, 1.f, 20.f };
 		break;
-	case tfxGraphPreset::tfxPercentOvertime:
+	case tfx_graph_preset::tfxPercentOvertime:
 		mm = { 0.f, 0.f, 1.f, 20.f };
 		break;
-	case tfxGraphPreset::tfxFrameratePreset:
+	case tfx_graph_preset::tfxFrameratePreset:
 		mm = { 0.f, 0.f, 1.f, 200.f };
 		break;
-	case tfxGraphPreset::tfxVelocityTurbulancePreset:
+	case tfx_graph_preset::tfxVelocityTurbulancePreset:
 		mm = { 0.f, 0.f, 1.f, 2000.f };
 		break;
-	case tfxGraphPreset::tfxOpacityOvertimePreset:
+	case tfx_graph_preset::tfxOpacityOvertimePreset:
 		mm = { 0.f, 0.f, 1.f, 1.f };
 		break;
-	case tfxGraphPreset::tfxColorPreset:
+	case tfx_graph_preset::tfxColorPreset:
 		mm = { 0.f, 0.f, 1.f, 255.f };
 		break;
-	case tfxGraphPreset::tfxIntensityOvertimePreset:
+	case tfx_graph_preset::tfxIntensityOvertimePreset:
 		mm = { 0.f, 0.f, 1.f, 5.f };
 		break;
 	}
@@ -5080,55 +5080,55 @@ tfx_vec4_t GetMinMaxGraphValues(tfxGraphPreset preset) {
 	return mm;
 }
 
-void DragGraphValues(tfxGraphPreset preset, float *frame, float *value) {
+void DragGraphValues(tfx_graph_preset preset, float *frame, float *value) {
 	switch (preset) {
-	case tfxGraphPreset::tfxOpacityOvertimePreset:
-	case tfxGraphPreset::tfxGlobalPercentPreset:
-	case tfxGraphPreset::tfxIntensityOvertimePreset:
+	case tfx_graph_preset::tfxOpacityOvertimePreset:
+	case tfx_graph_preset::tfxGlobalPercentPreset:
+	case tfx_graph_preset::tfxIntensityOvertimePreset:
 		*frame = 0.001f;
 		*value = 0.001f;
 		break;
-	case tfxGraphPreset::tfxDirectionOvertimePreset:
+	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		*frame = 0.001f;
 		*value = 0.1f;
 		break;
-	case tfxGraphPreset::tfxLifePreset:
+	case tfx_graph_preset::tfxLifePreset:
 		*frame = 5;
 		*value = 5;
 		break;
-	case tfxGraphPreset::tfxAnglePreset:
-	case tfxGraphPreset::tfxArcPreset:
-	case tfxGraphPreset::tfxEmissionRangePreset:
+	case tfx_graph_preset::tfxAnglePreset:
+	case tfx_graph_preset::tfxArcPreset:
+	case tfx_graph_preset::tfxEmissionRangePreset:
 		*frame = 5;
 		*value = 0.1f;
 		break;
-	case tfxGraphPreset::tfxDimensionsPreset:
-	case tfxGraphPreset::tfxAmountPreset:
-	case tfxGraphPreset::tfxVelocityPreset:
-	case tfxGraphPreset::tfxWeightPreset:
-	case tfxGraphPreset::tfxWeightVariationPreset:
-	case tfxGraphPreset::tfxSpinPreset:
-	case tfxGraphPreset::tfxSpinVariationPreset:
-	case tfxGraphPreset::tfxFrameratePreset:
+	case tfx_graph_preset::tfxDimensionsPreset:
+	case tfx_graph_preset::tfxAmountPreset:
+	case tfx_graph_preset::tfxVelocityPreset:
+	case tfx_graph_preset::tfxWeightPreset:
+	case tfx_graph_preset::tfxWeightVariationPreset:
+	case tfx_graph_preset::tfxSpinPreset:
+	case tfx_graph_preset::tfxSpinVariationPreset:
+	case tfx_graph_preset::tfxFrameratePreset:
 		*frame = 5.f;
 		*value = 1.f;
 		break;
-	case tfxGraphPreset::tfxVelocityTurbulancePreset:
+	case tfx_graph_preset::tfxVelocityTurbulancePreset:
 		*frame = .001f;
 		*value = .01f;
 		break;
-	case tfxGraphPreset::tfxWeightOvertimePreset:
-	case tfxGraphPreset::tfxVelocityOvertimePreset:
-	case tfxGraphPreset::tfxSpinOvertimePreset:
-	case tfxGraphPreset::tfxDirectionVariationPreset:
+	case tfx_graph_preset::tfxWeightOvertimePreset:
+	case tfx_graph_preset::tfxVelocityOvertimePreset:
+	case tfx_graph_preset::tfxSpinOvertimePreset:
+	case tfx_graph_preset::tfxDirectionVariationPreset:
 		*frame = 0.001f;
 		*value = 0.01f;
 		break;
-	case tfxGraphPreset::tfxColorPreset:
+	case tfx_graph_preset::tfxColorPreset:
 		*frame = 0.001f;
 		*value = 1.f;
 		break;
-	case tfxGraphPreset::tfxPercentOvertime:
+	case tfx_graph_preset::tfxPercentOvertime:
 		*frame = 0.05f;
 		*value = 0.05f;
 		break;
@@ -5193,67 +5193,67 @@ void ReIndexGraph(tfx_graph_t *graph) {
 
 tfx_vec2_t GetGraphInitialZoom(tfx_graph_t *graph) {
 	switch (graph->graph_preset) {
-	case tfxGraphPreset::tfxOpacityOvertimePreset:
+	case tfx_graph_preset::tfxOpacityOvertimePreset:
 		return tfx_vec2_t(.0017f, 0.00275f);
-	case tfxGraphPreset::tfxGlobalPercentPreset:
+	case tfx_graph_preset::tfxGlobalPercentPreset:
 		return tfx_vec2_t(10.f, 0.005f);
 		break;
-	case tfxGraphPreset::tfxGlobalPercentPresetSigned:
+	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
 		return tfx_vec2_t(10.f, 0.006f);
 		break;
-	case tfxGraphPreset::tfxGlobalOpacityPreset:
+	case tfx_graph_preset::tfxGlobalOpacityPreset:
 		return tfx_vec2_t(10.f, 0.003f);
 		break;
-	case tfxGraphPreset::tfxLifePreset:
+	case tfx_graph_preset::tfxLifePreset:
 		return tfx_vec2_t(10.f, 3.5f);
 		break;
-	case tfxGraphPreset::tfxAnglePreset:
+	case tfx_graph_preset::tfxAnglePreset:
 		return tfx_vec2_t(10.f, 1.f);
 		break;
-	case tfxGraphPreset::tfxArcPreset:
+	case tfx_graph_preset::tfxArcPreset:
 		return tfx_vec2_t(10.f, 1.f);
 		break;
-	case tfxGraphPreset::tfxEmissionRangePreset:
+	case tfx_graph_preset::tfxEmissionRangePreset:
 		return tfx_vec2_t(10.f, .5f);
 		break;
-	case tfxGraphPreset::tfxAmountPreset:
+	case tfx_graph_preset::tfxAmountPreset:
 		return tfx_vec2_t(10.f, 1.25f);
 		break;
-	case tfxGraphPreset::tfxFrameratePreset:
+	case tfx_graph_preset::tfxFrameratePreset:
 		return tfx_vec2_t(0.0017f, .5f);
 		break;
-	case tfxGraphPreset::tfxVelocityTurbulancePreset:
+	case tfx_graph_preset::tfxVelocityTurbulancePreset:
 		return tfx_vec2_t(0.0017f, .1f);
 		break;
-	case tfxGraphPreset::tfxDimensionsPreset:
-	case tfxGraphPreset::tfxTranslationPreset:
-	case tfxGraphPreset::tfxVelocityPreset:
-	case tfxGraphPreset::tfxWeightPreset:
-	case tfxGraphPreset::tfxWeightVariationPreset:
-	case tfxGraphPreset::tfxSpinPreset:
-	case tfxGraphPreset::tfxSpinVariationPreset:
+	case tfx_graph_preset::tfxDimensionsPreset:
+	case tfx_graph_preset::tfxTranslationPreset:
+	case tfx_graph_preset::tfxVelocityPreset:
+	case tfx_graph_preset::tfxWeightPreset:
+	case tfx_graph_preset::tfxWeightVariationPreset:
+	case tfx_graph_preset::tfxSpinPreset:
+	case tfx_graph_preset::tfxSpinVariationPreset:
 		return tfx_vec2_t(10.f, 2.5f);
 		break;
-	case tfxGraphPreset::tfxNoiseResolutionPreset:
+	case tfx_graph_preset::tfxNoiseResolutionPreset:
 		return tfx_vec2_t(10.f, 1.f);
 		break;
-	case tfxGraphPreset::tfxNoiseOffsetVariationPreset:
+	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
 		return tfx_vec2_t(10.f, .01f);
 		break;
-	case tfxGraphPreset::tfxDirectionOvertimePreset:
+	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		return tfx_vec2_t(0.0017f, 1.f);
 		break;
-	case tfxGraphPreset::tfxWeightOvertimePreset:
-	case tfxGraphPreset::tfxVelocityOvertimePreset:
-	case tfxGraphPreset::tfxSpinOvertimePreset:
-	case tfxGraphPreset::tfxDirectionVariationPreset:
-	case tfxGraphPreset::tfxPercentOvertime:
+	case tfx_graph_preset::tfxWeightOvertimePreset:
+	case tfx_graph_preset::tfxVelocityOvertimePreset:
+	case tfx_graph_preset::tfxSpinOvertimePreset:
+	case tfx_graph_preset::tfxDirectionVariationPreset:
+	case tfx_graph_preset::tfxPercentOvertime:
 		return tfx_vec2_t(0.0017f, 0.0035f);
 		break;
-	case tfxGraphPreset::tfxIntensityOvertimePreset:
+	case tfx_graph_preset::tfxIntensityOvertimePreset:
 		return tfx_vec2_t(0.0017f, 0.01115f);
 		break;
-	case tfxGraphPreset::tfxColorPreset:
+	case tfx_graph_preset::tfxColorPreset:
 		break;
 	default:
 		return tfx_vec2_t(0.1f, 0.1f);
@@ -5265,71 +5265,71 @@ tfx_vec2_t GetGraphInitialZoom(tfx_graph_t *graph) {
 
 tfx_vec2_t GetGraphInitialZoom3d(tfx_graph_t *graph) {
 	switch (graph->graph_preset) {
-	case tfxGraphPreset::tfxOpacityOvertimePreset:
+	case tfx_graph_preset::tfxOpacityOvertimePreset:
 		return tfx_vec2_t(.0017f, 0.00275f);
-	case tfxGraphPreset::tfxGlobalPercentPreset:
+	case tfx_graph_preset::tfxGlobalPercentPreset:
 		return tfx_vec2_t(10.f, 0.005f);
 		break;
-	case tfxGraphPreset::tfxGlobalPercentPresetSigned:
+	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
 		return tfx_vec2_t(10.f, 0.006f);
 		break;
-	case tfxGraphPreset::tfxGlobalOpacityPreset:
+	case tfx_graph_preset::tfxGlobalOpacityPreset:
 		return tfx_vec2_t(10.f, 0.003f);
 		break;
-	case tfxGraphPreset::tfxLifePreset:
+	case tfx_graph_preset::tfxLifePreset:
 		return tfx_vec2_t(10.f, 3.5f);
 		break;
-	case tfxGraphPreset::tfxAnglePreset:
+	case tfx_graph_preset::tfxAnglePreset:
 		return tfx_vec2_t(10.f, 1.f);
 		break;
-	case tfxGraphPreset::tfxArcPreset:
+	case tfx_graph_preset::tfxArcPreset:
 		return tfx_vec2_t(10.f, 1.f);
 		break;
-	case tfxGraphPreset::tfxEmissionRangePreset:
+	case tfx_graph_preset::tfxEmissionRangePreset:
 		return tfx_vec2_t(10.f, .5f);
 		break;
-	case tfxGraphPreset::tfxAmountPreset:
+	case tfx_graph_preset::tfxAmountPreset:
 		return tfx_vec2_t(10.f, 1.25f);
 		break;
-	case tfxGraphPreset::tfxFrameratePreset:
+	case tfx_graph_preset::tfxFrameratePreset:
 		return tfx_vec2_t(0.0017f, .01f);
 		break;
-	case tfxGraphPreset::tfxDimensionsPreset:
-	case tfxGraphPreset::tfxTranslationPreset:
-	case tfxGraphPreset::tfxVelocityPreset:
+	case tfx_graph_preset::tfxDimensionsPreset:
+	case tfx_graph_preset::tfxTranslationPreset:
+	case tfx_graph_preset::tfxVelocityPreset:
 		return tfx_vec2_t(10.f, 0.01f);
 		break;
-	case tfxGraphPreset::tfxWeightPreset:
-	case tfxGraphPreset::tfxWeightVariationPreset:
+	case tfx_graph_preset::tfxWeightPreset:
+	case tfx_graph_preset::tfxWeightVariationPreset:
 		return tfx_vec2_t(10.f, 1.f);
 		break;
-	case tfxGraphPreset::tfxVelocityTurbulancePreset:
+	case tfx_graph_preset::tfxVelocityTurbulancePreset:
 		return tfx_vec2_t(0.0017f, .01f);
 		break;
-	case tfxGraphPreset::tfxSpinPreset:
-	case tfxGraphPreset::tfxSpinVariationPreset:
+	case tfx_graph_preset::tfxSpinPreset:
+	case tfx_graph_preset::tfxSpinVariationPreset:
 		return tfx_vec2_t(10.f, 2.5f);
 		break;
-	case tfxGraphPreset::tfxNoiseResolutionPreset:
+	case tfx_graph_preset::tfxNoiseResolutionPreset:
 		return tfx_vec2_t(10.f, .01f);
 		break;
-	case tfxGraphPreset::tfxNoiseOffsetVariationPreset:
+	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
 		return tfx_vec2_t(10.f, .01f);
 		break;
-	case tfxGraphPreset::tfxDirectionOvertimePreset:
+	case tfx_graph_preset::tfxDirectionOvertimePreset:
 		return tfx_vec2_t(0.0017f, 1.f);
 		break;
-	case tfxGraphPreset::tfxWeightOvertimePreset:
-	case tfxGraphPreset::tfxVelocityOvertimePreset:
-	case tfxGraphPreset::tfxSpinOvertimePreset:
-	case tfxGraphPreset::tfxDirectionVariationPreset:
-	case tfxGraphPreset::tfxPercentOvertime:
+	case tfx_graph_preset::tfxWeightOvertimePreset:
+	case tfx_graph_preset::tfxVelocityOvertimePreset:
+	case tfx_graph_preset::tfxSpinOvertimePreset:
+	case tfx_graph_preset::tfxDirectionVariationPreset:
+	case tfx_graph_preset::tfxPercentOvertime:
 		return tfx_vec2_t(0.0017f, 0.0035f);
 		break;
-	case tfxGraphPreset::tfxIntensityOvertimePreset:
+	case tfx_graph_preset::tfxIntensityOvertimePreset:
 		return tfx_vec2_t(0.0017f, 0.01115f);
 		break;
-	case tfxGraphPreset::tfxColorPreset:
+	case tfx_graph_preset::tfxColorPreset:
 		break;
 	default:
 		return tfx_vec2_t(0.1f, 0.1f);
@@ -5483,44 +5483,44 @@ float GetMaxLife(tfx_effect_emitter_t *e) {
 	return max_life;
 }
 
-bool IsOvertimeGraph(tfxGraphType type) {
+bool IsOvertimeGraph(tfx_graph_type type) {
 	return type >= tfxOvertime_velocity && type != tfxOvertime_noise_resolution && type <= tfxOvertime_noise_resolution;
 }
 
-bool IsColorGraph(tfxGraphType type) {
+bool IsColorGraph(tfx_graph_type type) {
 	return type >= tfxOvertime_red && type <= tfxOvertime_blue;
 }
 
-bool IsOvertimePercentageGraph(tfxGraphType type) {
+bool IsOvertimePercentageGraph(tfx_graph_type type) {
 	return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && type <= tfxOvertime_noise_resolution;
 }
 
-bool IsGlobalGraph(tfxGraphType type) {
+bool IsGlobalGraph(tfx_graph_type type) {
 	return type >= tfxGlobal_life && type <= tfxGlobal_emitter_depth;
 }
 
-bool IsEmitterGraph(tfxGraphType type) {
-	return type >= tfxPropertyStart && type < tfxTransformStart;
+bool IsEmitterGraph(tfx_graph_type type) {
+	return type >= TFX_PROPERTY_START && type < TFX_TRANSFORM_START;
 }
 
-bool IsTransformGraph(tfxGraphType type) {
+bool IsTransformGraph(tfx_graph_type type) {
 	return type >= tfxTransform_roll && type <= tfxTransform_translate_z;
 }
 
-bool IsGlobalPercentageGraph(tfxGraphType type) {
+bool IsGlobalPercentageGraph(tfx_graph_type type) {
 	return type >= tfxGlobal_life && type <= tfxGlobal_splatter;
 }
 
-bool IsAngleGraph(tfxGraphType type) {
+bool IsAngleGraph(tfx_graph_type type) {
 	return (type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw || type == tfxProperty_emission_range ||
 		type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_spin || type == tfxVariation_spin);
 }
 
-bool IsAngleOvertimeGraph(tfxGraphType type) {
+bool IsAngleOvertimeGraph(tfx_graph_type type) {
 	return type == tfxOvertime_direction;
 }
 
-bool IsEverythingElseGraph(tfxGraphType type) {
+bool IsEverythingElseGraph(tfx_graph_type type) {
 	return !IsOvertimeGraph(type) && !IsOvertimePercentageGraph(type) && !IsGlobalGraph(type) && !IsAngleGraph(type) && !IsOvertimeGraph(type);
 }
 
@@ -5665,7 +5665,7 @@ bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx
 		if (pair.size() == 2) {
 			tfx_str256_t key = pair[0];
 			if (data_types->names_and_types.ValidName(pair[0])) {
-				tfxDataType t = data_types->names_and_types.At(pair[0]);
+				tfx_data_type t = data_types->names_and_types.At(pair[0]);
 				if (t == tfxBool) {
 					AddDataValue(config, key, (bool)atoi(pair[1].c_str()));
 				}
@@ -5746,29 +5746,29 @@ int GetDataType(const tfx_str_t &s) {
 
 //Get a graph by tfx_graph_id_t
 tfx_graph_t *GetGraph(tfx_library_t *library, tfx_graph_id_t graph_id) {
-	tfxGraphType type = graph_id.type;
+	tfx_graph_type type = graph_id.type;
 
-	if (type < tfxGlobalCount) {
+	if (type < TFX_GLOBAL_COUNT) {
 		return &((tfx_graph_t*)&library->global_graphs[graph_id.graph_id])[type];
 	}
-	else if (type >= tfxPropertyStart && type < tfxBaseStart) {
-		int ref = type - tfxPropertyStart;
+	else if (type >= TFX_PROPERTY_START && type < TFX_BASE_START) {
+		int ref = type - TFX_PROPERTY_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[graph_id.graph_id].properties)[ref];
 	}
-	else if (type >= tfxBaseStart && type < tfxVariationStart) {
-		int ref = type - tfxBaseStart;
+	else if (type >= TFX_BASE_START && type < TFX_VARIATION_START) {
+		int ref = type - TFX_BASE_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[graph_id.graph_id].base)[ref];
 	}
-	else if (type >= tfxVariationStart && type < tfxOvertimeStart) {
-		int ref = type - tfxVariationStart;
+	else if (type >= TFX_VARIATION_START && type < TFX_OVERTIME_START) {
+		int ref = type - TFX_VARIATION_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[graph_id.graph_id].variation)[ref];
 	}
-	else if (type >= tfxOvertimeStart && type < tfxTransformStart) {
-		int ref = type - tfxOvertimeStart;
+	else if (type >= TFX_OVERTIME_START && type < TFX_TRANSFORM_START) {
+		int ref = type - TFX_OVERTIME_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[graph_id.graph_id].overtime)[ref];
 	}
-	else if (type >= tfxTransformStart) {
-		int ref = type - tfxTransformStart;
+	else if (type >= TFX_TRANSFORM_START) {
+		int ref = type - TFX_TRANSFORM_START;
 		return &((tfx_graph_t*)&library->transform_attributes[graph_id.graph_id])[ref];
 	}
 
@@ -6214,7 +6214,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 			if (context == tfxStartFolder) {
 				tfx_effect_emitter_t effect;
 				effect.library = lib;
-				effect.type = tfxEffectEmitterType::tfxFolder;
+				effect.type = tfx_effect_emitter_type::tfxFolder;
 				effect.info_index = AddLibraryEffectEmitterInfo(lib);
 				GetEffectInfo(&effect)->uid = uid++;
 				effect_stack.push_back(effect);
@@ -6222,7 +6222,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 			else if (context == tfxStartStage) {
 				tfx_effect_emitter_t effect;
 				effect.library = lib;
-				effect.type = tfxEffectEmitterType::tfxStage;
+				effect.type = tfx_effect_emitter_type::tfxStage;
 				effect.info_index = AddLibraryEffectEmitterInfo(lib);
 				AddLibraryPreviewCameraSettings(lib, &effect);
 				effect.transform_attributes = AddLibraryKeyframes(lib);
@@ -6242,7 +6242,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 				}
 				AddLibraryTransformGraphs(lib, &effect);
 				ResetTransformGraphs(&effect, false, false);
-				effect.type = tfxEffectEmitterType::tfxEffectType;
+				effect.type = tfx_effect_emitter_type::tfxEffectType;
 				AddLibrarySpriteSheetSettings(lib, &effect);
 				AddLibrarySpriteDataSettings(lib, &effect);
 				AddLibraryPreviewCameraSettings(lib, &effect);
@@ -6258,7 +6258,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 				emitter.transform_attributes = AddLibraryKeyframes(lib);
 				AddLibraryEmitterGraphs(lib, &emitter);
 				AddLibraryTransformGraphs(lib, &emitter);
-				emitter.type = tfxEffectEmitterType::tfxEmitterType;
+				emitter.type = tfx_effect_emitter_type::tfxEmitterType;
 				ResetEmitterGraphs(&emitter, false, false);
 				ResetTransformGraphs(&emitter, false, false);
 				GetEffectInfo(&emitter)->uid = uid++;
@@ -7418,7 +7418,7 @@ void EnableTemplateEmitter(tfx_effect_template_t *t, const char *path) {
 	emitter->property_flags |= tfxEmitterPropertyFlags_enabled;
 }
 
-void ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfxGraphType global_type, float amount) {
+void ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfx_graph_type global_type, float amount) {
 	assert(IsGlobalGraph(global_type));
 	tfx_graph_t *graph = GetEffectGraphByType(&t->effect, global_type);
 	tfx_effect_emitter_t *original_effect = GetLibraryEffect(t->effect.library, t->original_effect_hash);
@@ -7428,7 +7428,7 @@ void ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfxGraphType global
 	CompileGraph(graph);
 }
 
-void ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter_path, tfxGraphType graph_type, float amount) {
+void ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter_path, tfx_graph_type graph_type, float amount) {
 	assert(IsEmitterGraph(graph_type));		//Must be an emitter graph type. This is any property, base, variaion or overtime graph
 	assert(t->paths.ValidName(emitter_path));			//Must be a valid path to the emitter
 	tfx_effect_emitter_t *emitter = t->paths.At(emitter_path);
@@ -8236,9 +8236,9 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 	tfx_mat4_t &e_matrix = pm.emitters.matrix[emitter_index];
 	const tfxEmitterPropertyFlags property_flags = pm.emitters.property_flags[emitter_index];
-	const tfxVectorAlignType vector_align_type = work_entry->properties->vector_align_type[property_index];
-	const tfxBillboardingOptions billboard_option = work_entry->properties->billboard_option[property_index];
-	const tfxEmissionType emission_type = work_entry->properties->emission_type[property_index];
+	const tfx_vector_align_type vector_align_type = work_entry->properties->vector_align_type[property_index];
+	const tfx_billboarding_option billboard_option = work_entry->properties->billboard_option[property_index];
+	const tfx_emission_type emission_type = work_entry->properties->emission_type[property_index];
 	const tfxU32 sprite_layer = work_entry->properties->layer[property_index];
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
 	tfxU32 start_diff = work_entry->start_diff;
@@ -8882,7 +8882,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 	tfx_particle_manager_t &pm = *work_entry->pm;
 	tfx_particle_soa_t &bank = pm.particle_arrays[particles_index];
 	tfx_image_data_t *image = work_entry->properties->image[property_index];
-	const tfxBillboardingOptions billboard_option = work_entry->properties->billboard_option[property_index];
+	const tfx_billboarding_option billboard_option = work_entry->properties->billboard_option[property_index];
 
 	tfxU32 start_diff = work_entry->start_diff;
 
@@ -9066,7 +9066,7 @@ void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on) {
 	}
 }
 
-void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfxParticleManagerModes mode, tfxU32 req_sort_passes, bool is_3d) {
+void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager_mode mode, tfxU32 req_sort_passes, bool is_3d) {
 	ClearParticleManager(pm, false);
 	FreeParticleBanks(pm);
 	for (auto &bank : pm->free_particle_lists.data) {
@@ -9124,7 +9124,7 @@ void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU
 	pm->spawn_work.reserve(age_work_max);
 }
 
-void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
+void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
 	pm->random = NewRandom(tfx_Millisecs());
 	pm->max_effects = effects_limit;
 	pm->mt_batch_size = multi_threaded_batch_size;
@@ -9281,7 +9281,7 @@ void SoftExpireAll(tfx_particle_manager_t *pm) {
 	}
 }
 
-void SetPMLookUpMode(tfx_particle_manager_t *pm, tfxLookupMode mode) {
+void SetPMLookUpMode(tfx_particle_manager_t *pm, tfx_lookup_mode mode) {
 	if (mode == tfxPrecise) {
 		lookup_overtime_callback = LookupPreciseOvertime;
 		lookup_callback = LookupPrecise;
@@ -9749,7 +9749,7 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 				spawn_quantity = x * y;
 			}
 			switch (properties->emission_type[property_index]) {
-			case tfxEmissionType::tfxArea:
+			case tfx_emission_type::tfxArea:
 				if (property_flags & tfxEmitterPropertyFlags_is_3d) {
 					if (property_flags & tfxEmitterPropertyFlags_fill_area) {
 						spawn_quantity = x * y * z;
@@ -9770,18 +9770,18 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 					}
 				}
 				break;
-			case tfxEmissionType::tfxCylinder:
+			case tfx_emission_type::tfxCylinder:
 				spawn_quantity = x * y;
 				break;
-			case tfxEmissionType::tfxEllipse:
+			case tfx_emission_type::tfxEllipse:
 				if (!(property_flags & tfxEmitterPropertyFlags_is_3d)) {
 					spawn_quantity = x;
 				}
 				break;
-			case tfxEmissionType::tfxLine:
+			case tfx_emission_type::tfxLine:
 				spawn_quantity = x;
 				break;
-			case tfxEmissionType::tfxIcosphere:
+			case tfx_emission_type::tfxIcosphere:
 				spawn_quantity = (float)tfxIcospherePoints[tfxMin((tfxU32)x, 5)].current_size;
 				break;
 			}
@@ -9856,7 +9856,7 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 
 	bool grew = false;
 	work_entry->spawn_start_index = AddRows(&pm->particle_array_buffers[particles_index], work_entry->amount_to_spawn, true, grew);
-	tfxEmissionType &emission_type = properties.emission_type[pm->emitters.properties_index[work_entry->emitter_index]];
+	tfx_emission_type &emission_type = properties.emission_type[pm->emitters.properties_index[work_entry->emitter_index]];
 	if (grew && !(pm->flags & tfxEffectManagerFlags_unordered)) {
 		//Todo: This should be avoided by allocating the correct amount for the particle buffer ahead of time
 		//If the particle buffer is allocated a larger memory size then the ring buffer index has to be reset in the depth buffer list
@@ -10013,7 +10013,7 @@ tfxU32 SpawnParticles3d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 			pm->depth_indexes[layer][pm->current_depth_index_buffer][bank.depth_index[i]].particle_id = MakeParticleID(particles_index, i);
 		}
 	}
-	tfxEmissionType &emission_type = properties.emission_type[property_index];
+	tfx_emission_type &emission_type = properties.emission_type[property_index];
 
 	if (!(pm->flags & tfxEffectManagerFlags_update_age_only) && !(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
 		if (work_entry->amount_to_spawn > 0) {
@@ -11614,7 +11614,7 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 	const tfx_vec3_t emitter_world_rotations = pm.emitters.world_rotations[emitter_index];
 	const tfx_vec3_t handle = pm.emitters.handle[emitter_index];
 	const tfx_mat4_t matrix = pm.emitters.matrix[emitter_index];
-	const tfxEmissionType emission_type = properties.emission_type[property_index];
+	const tfx_emission_type emission_type = properties.emission_type[property_index];
 	const tfx_vec2_t emitter_size = pm.emitters.emitter_size[emitter_index].xy();
 	const tfxU32 layer = properties.layer[property_index];
 
@@ -11735,8 +11735,8 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 	const tfx_vec3_t emitter_size = pm.emitters.emitter_size[emitter_index];
 	const tfx_vec3_t handle = pm.emitters.handle[emitter_index];
 	const tfx_mat4_t matrix = pm.emitters.matrix[emitter_index];
-	const tfxEmissionType emission_type = properties.emission_type[property_index];
-	const tfxVectorAlignType vector_align_type = properties.vector_align_type[property_index];
+	const tfx_emission_type emission_type = properties.emission_type[property_index];
+	const tfx_vector_align_type vector_align_type = properties.vector_align_type[property_index];
 	const bool line = property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 	const float velocity_adjuster = pm.emitters.velocity_adjuster[emitter_index];
 	const float frame = pm.emitters.frame[emitter_index];
@@ -12522,13 +12522,13 @@ void InitEmitterProperites(tfx_emitter_properties_soa_t *properties, tfxU32 i) {
 	properties->image_handle[i] = tfx_vec2_t();
 	properties->spawn_amount[i] = 1;
 	properties->single_shot_limit[i] = 0;
-	properties->emission_type[i] = tfxEmissionType::tfxPoint;
+	properties->emission_type[i] = tfx_emission_type::tfxPoint;
 	properties->billboard_option[i] = tfxBillboarding_align_to_camera;
 	properties->vector_align_type[i] = tfxVectorAlignType_motion;
-	properties->emission_direction[i] = tfxEmissionDirection::tfxOutwards;
+	properties->emission_direction[i] = tfx_emission_direction::tfxOutwards;
 	properties->grid_points[i] = { 10.f, 10.f, 10.f };
 	properties->emitter_handle[i] = { 0.f, 0.f, 0.f };
-	properties->end_behaviour[i] = tfxLineTraversalEndBehaviour::tfxLoop;
+	properties->end_behaviour[i] = tfx_line_traversal_end_behaviour::tfxLoop;
 	properties->loop_length[i] = 0.f;
 	properties->layer[i] = 0;
 	properties->image_hash[i] = 1;
@@ -12581,7 +12581,7 @@ void FreeSpriteData(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
+void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
 	assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
 	pm->random = NewRandom(tfx_Millisecs());
 	pm->max_effects = effects_limit;
@@ -12657,7 +12657,7 @@ void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library
 	pm->age_work.reserve(1000);
 }
 
-void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfxParticleManagerModes mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
+void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
 	assert(pm->flags == 0);		//You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
 	assert(mode == tfxParticleManagerMode_unordered || mode == tfxParticleManagerMode_ordered_by_age);	//Only these 2 modes are available for 2d effects
 	pm->random = NewRandom(tfx_Millisecs());

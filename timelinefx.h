@@ -1585,7 +1585,7 @@ tfxINTERNAL inline tfxWideInt tfxWideAbsi(tfxWideInt v) {
 //----------------------------------------------------------
 
 //tfx_graph_t presets to determine limits and scales of different graphs, mainly used for the editor
-enum tfxGraphPreset {
+enum tfx_graph_preset {
 	tfxGlobalPercentPreset,
 	tfxGlobalOpacityPreset,
 	tfxGlobalPercentPresetSigned,
@@ -1616,7 +1616,7 @@ enum tfxGraphPreset {
 	tfxIntensityOvertimePreset
 };
 
-enum tfxGraphCategory : unsigned int {
+enum tfx_graph_category : unsigned int {
 	tfxGraphCategory_global,
 	tfxGraphCategory_transform,
 	tfxGraphCategory_property,
@@ -1627,22 +1627,22 @@ enum tfxGraphCategory : unsigned int {
 };
 
 
-#define tfxGlobalCount  15
-#define	tfxPropertyCount  9
-#define	tfxBaseCount  8
-#define	tfxVariationCount  9
-#define	tfxOvertimeCount  16
-#define	tfxTransformCount  6
+#define TFX_GLOBAL_COUNT  15
+#define	TFX_PROPERTY_COUNT  9
+#define	TFX_BASE_COUNT  8
+#define	TFX_VARIATION_COUNT  9
+#define	TFX_OVERTIME_COUNT  16
+#define	TFX_TRANSFORM_COUNT  6
 
-#define tfxGlobalStart 0
-#define	tfxPropertyStart tfxGlobalCount
-#define	tfxBaseStart (tfxPropertyStart + tfxPropertyCount)
-#define	tfxVariationStart (tfxBaseStart + tfxBaseCount)
-#define	tfxOvertimeStart (tfxVariationStart + tfxVariationCount)
-#define	tfxTransformStart (tfxOvertimeStart + tfxOvertimeCount)
+#define TFX_GLOBAL_START 0
+#define	TFX_PROPERTY_START TFX_GLOBAL_COUNT
+#define	TFX_BASE_START (TFX_PROPERTY_START + TFX_PROPERTY_COUNT)
+#define	TFX_VARIATION_START (TFX_BASE_START + TFX_BASE_COUNT)
+#define	TFX_OVERTIME_START (TFX_VARIATION_START + TFX_VARIATION_COUNT)
+#define	TFX_TRANSFORM_START (TFX_OVERTIME_START + TFX_OVERTIME_COUNT)
 
 //All the different types of graphs, split into main type: global, property, base, variation and overtime
-enum tfxGraphType : unsigned char {
+enum tfx_graph_type : unsigned char {
 	tfxGlobal_life,
 	tfxGlobal_amount,
 	tfxGlobal_velocity,
@@ -1715,7 +1715,7 @@ enum tfxGraphType : unsigned char {
 };
 
 //tfx_effect_emitter_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
-enum tfxEffectEmitterType : unsigned char {
+enum tfx_effect_emitter_type : unsigned char {
 	tfxEffectType,
 	tfxEmitterType,
 	tfxStage,
@@ -1723,7 +1723,7 @@ enum tfxEffectEmitterType : unsigned char {
 };
 
 //Different ways that particles can be emitted
-enum tfxEmissionType : unsigned char {
+enum tfx_emission_type : unsigned char {
 	tfxPoint,
 	tfxArea,
 	tfxLine,
@@ -1733,7 +1733,7 @@ enum tfxEmissionType : unsigned char {
 };
 
 //Determines how for area, line and ellipse emitters the direction that particles should travel
-enum tfxEmissionDirection : unsigned char {
+enum tfx_emission_direction : unsigned char {
 	tfxInwards,
 	tfxOutwards,
 	tfxBothways,
@@ -1741,34 +1741,34 @@ enum tfxEmissionDirection : unsigned char {
 };
 
 //For line effects where traverse line is switched on
-enum tfxLineTraversalEndBehaviour : unsigned char {
+enum tfx_line_traversal_end_behaviour : unsigned char {
 	tfxLoop,
 	tfxKill,
 	tfxLetFree
 };
 
 //Mainly for the editor, maybe this can just be moved there instead?
-enum tfxExportColorOptions {
+enum tfx_export_color_options {
 	tfxFullColor,
 	tfxOneColor,
 	tfxGreyScale
 };
 
 //Mainly for the editor, maybe this can just be moved there instead?
-enum tfxExportOptions {
+enum tfx_export_options {
 	tfxSpriteSheet,
 	tfxStrip,
 	tfxSeparateImages
 };
 
 //tfx_graph_t data can be looked up in one of 2 ways, either by just using linear/bezier interpolation (slower), or look up the value in a pre-compiled look up table.
-enum tfxLookupMode {
+enum tfx_lookup_mode {
 	tfxPrecise,
 	tfxFast
 };
 
 //Used in file loading - for loading effects library
-enum tfxDataType {
+enum tfx_data_type {
 	tfxString,
 	tfxSInt,
 	tfxUint,
@@ -1782,7 +1782,7 @@ enum tfxDataType {
 
 //Block designators for loading effects library and other files like animation sprite data
 //The values of existing enums below must never change or older files won't load anymore!
-enum tfxEffectLibraryStream : tfxU32 {
+enum tfx_effect_library_stream_context : tfxU32 {
 	tfxStartEffect = 0x00FFFF00,
 	tfxEndEffect,
 	tfxStartEmitter,
@@ -1826,7 +1826,7 @@ typedef tfxU32 tfxAnimationFlags;
 typedef tfxU32 tfxAnimationInstanceFlags;
 typedef tfxU32 tfxAnimationManagerFlags;
 
-enum tfxErrorFlags_bits {
+enum tfx_error_flag_bits {
 	tfxErrorCode_success = 0,
 	tfxErrorCode_incorrect_package_format = 1 << 0,
 	tfxErrorCode_data_could_not_be_loaded = 1 << 1,
@@ -1844,7 +1844,7 @@ enum tfxErrorFlags_bits {
 	tfxErrorCode_library_loaded_without_shape_loader = 1 << 13
 };
 
-enum tfxEffectCloningFlags_bits {
+enum tfx_effect_cloning_flag_bits {
 	tfxEffectCloningFlags_none = 0,
 	tfxEffectCloningFlags_keep_user_data = 1 << 0,
 	tfxEffectCloningFlags_force_clone_global = 1 << 1,
@@ -1852,21 +1852,21 @@ enum tfxEffectCloningFlags_bits {
 	tfxEffectCloningFlags_compile_graphs = 1 << 3
 };
 
-enum tfxParticleManagerModes {
+enum tfx_particle_manager_mode {
 	tfxParticleManagerMode_unordered,
 	tfxParticleManagerMode_ordered_by_age,
 	tfxParticleManagerMode_ordered_by_depth,
 	tfxParticleManagerMode_ordered_by_depth_guaranteed
 };
 
-enum tfxBillboardingOptions {
+enum tfx_billboarding_option {
 	tfxBillboarding_align_to_camera = 0,			//Align to Camera only
 	tfxBillboarding_free_align = 1,					//Free align
 	tfxBillboarding_align_to_camera_and_vector = 2,	//Align to camera and vector
 	tfxBillboarding_align_to_vector = 3				//Align to vector
 };
 
-enum tfxParticleManagerFlags_bits {
+enum tfx_particle_manager_flag_bits {
 	tfxEffectManagerFlags_none = 0,
 	tfxEffectManagerFlags_disable_spawning = 1,
 	tfxEffectManagerFlags_force_capture = 2,			//Unused
@@ -1886,7 +1886,7 @@ enum tfxParticleManagerFlags_bits {
 	tfxEffectManagerFlags_2d_and_3d = 1 << 16
 };
 
-enum tfxVectorAlignType {
+enum tfx_vector_align_type {
 	tfxVectorAlignType_motion,
 	tfxVectorAlignType_emission,
 	tfxVectorAlignType_emitter,
@@ -1896,7 +1896,7 @@ enum tfxVectorAlignType {
 };
 
 //Particle property that defines how a particle will rotate
-enum tfxAngleSettingFlags_bits {
+enum tfx_angle_setting_flag_bits {
 	tfxAngleSettingFlags_none = 0,														//No flag
 	tfxAngleSettingFlags_align_roll = 1 << 0,											//Align the particle with it's direction of travel in 2d
 	tfxAngleSettingFlags_random_roll = 1 << 1,											//Chose a random angle at spawn time/state_flags
@@ -1909,7 +1909,7 @@ enum tfxAngleSettingFlags_bits {
 };
 
 //All the state_flags needed by the ControlParticle function put into one enum to save space
-enum tfxParticleControlFlags_bits {
+enum tfx_particle_control_flag_bits {
 	tfxParticleControlFlags_none = 0,
 	tfxParticleControlFlags_random_color = 1 << 0,
 	tfxParticleControlFlags_relative_position = 1 << 1,
@@ -1938,7 +1938,7 @@ enum tfxParticleControlFlags_bits {
 	tfxParticleControlFlags_specify_yaw = 1 << 24,
 };
 
-enum tfxEffectPropertyFlags_bits {
+enum tfx_effect_property_flag_bits {
 	tfxEffectPropertyFlags_none = 0,
 	tfxEffectPropertyFlags_is_3d = 1 << 0,
 	tfxEffectPropertyFlags_depth_draw_order = 1 << 1,
@@ -1948,7 +1948,7 @@ enum tfxEffectPropertyFlags_bits {
 	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5		//In the editor you can specify which effects you want to be included in a spritedata export
 };
 
-enum tfxEmitterPropertyFlags_bits {
+enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_none = 0,
 	tfxEmitterPropertyFlags_random_color = 1 << 0,						//Pick a random color from the color overtime gradient rather then change the color over the lifetime of the particle
 	tfxEmitterPropertyFlags_relative_position = 1 << 1,					//Keep the particles position relative to the current position of the emitter
@@ -1984,7 +1984,7 @@ enum tfxEmitterPropertyFlags_bits {
 	tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 31	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
 };
 
-enum tfxParticleFlags_bits : unsigned char {
+enum tfx_particle_flag_bits : unsigned char {
 	tfxParticleFlags_none = 0,
 	tfxParticleFlags_fresh = 1 << 0,									//Particle has just spawned this frame	
 	tfxParticleFlags_capture_after_transform = 1 << 3,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
@@ -1993,7 +1993,7 @@ enum tfxParticleFlags_bits : unsigned char {
 	tfxParticleFlags_has_sub_effects = 1 << 6,							//Flagged if the particle has sub effects
 };
 
-enum tfxEmitterStateFlags_bits : unsigned int {
+enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_none = 0,
 	tfxEmitterStateFlags_random_color = 1 << 0,
 	tfxEmitterStateFlags_relative_position = 1 << 1,					//Keep the particles position relative to the current position of the emitter
@@ -2021,7 +2021,7 @@ enum tfxEmitterStateFlags_bits : unsigned int {
 	tfxEmitterStateFlags_has_noise = 1 << 23
 };
 
-enum tfxEffectStateFlags_bits : unsigned int {
+enum tfx_effect_state_flag_bits : unsigned int {
 	tfxEffectStateFlags_none = 0,
 	tfxEffectStateFlags_stop_spawning = 1 << 3,							//Tells the emitter to stop spawning
 	tfxEffectStateFlags_remove = 1 << 4,								//Tells the effect/emitter to remove itself from the particle manager immediately
@@ -2033,13 +2033,13 @@ enum tfxEffectStateFlags_bits : unsigned int {
 	tfxEffectStateFlags_no_tween = 1 << 20
 };
 
-enum tfxVectorFieldFlags_bits : unsigned char {
+enum tfx_vector_field_flag_bits : unsigned char {
 	tfxVectorFieldFlags_none = 0,
 	tfxVectorFieldFlags_repeat_horizontal = 1 << 0,						//Field will repeat horizontally
 	tfxVectorFieldFlags_repeat_vertical = 1 << 1						//Field will repeat vertically
 };
 
-enum tfxAttributeNodeFlags_bits {
+enum tfx_attribute_node_flag_bits {
 	tfxAttributeNodeFlags_none = 0,
 	tfxAttributeNodeFlags_is_curve = 1 << 0,
 	tfxAttributeNodeFlags_is_left_curve = 1 << 1,
@@ -2047,7 +2047,7 @@ enum tfxAttributeNodeFlags_bits {
 	tfxAttributeNodeFlags_curves_initialised = 1 << 3
 };
 
-enum tfxAnimationFlags_bits {
+enum tfx_animation_flag_bits {
 	tfxAnimationFlags_none = 0,
 	tfxAnimationFlags_loop = 1 << 0,
 	tfxAnimationFlags_seamless = 1 << 1,
@@ -2057,12 +2057,12 @@ enum tfxAnimationFlags_bits {
 	tfxAnimationFlags_orthographic = 1 << 5
 };
 
-enum tfxAnimationInstanceFlags_bits {
+enum tfx_animation_instance_flag_bits {
 	tfxAnimationInstanceFlags_none = 0,
 	tfxAnimationInstanceFlags_loop = 1 << 0,
 };
 
-enum tfxAnimationManagerFlags_bits {
+enum tfx_animation_manager_flag_bits {
 	tfxAnimationManagerFlags_none = 0,
 	tfxAnimationManagerFlags_has_animated_shapes = 1 << 0,
 	tfxAnimationManagerFlags_initialised = 1 << 1,
@@ -3458,7 +3458,7 @@ extern const tfxU32 tfxPROFILE_COUNT;
 
 struct tfx_data_types_dictionary_t {
 	bool initialised = false;
-	tfx_storage_map_t<tfxDataType> names_and_types;
+	tfx_storage_map_t<tfx_data_type> names_and_types;
 	tfx_data_types_dictionary_t() :
 		names_and_types("Data Types Storage Map", "Data Types Storage Data")
 	{}
@@ -4111,8 +4111,8 @@ struct tfx_graph_lookup_t {
 };
 
 struct tfx_graph_id_t {
-	tfxGraphCategory category;
-	tfxGraphType type = tfxGraphMaxIndex;
+	tfx_graph_category category;
+	tfx_graph_type type = tfxGraphMaxIndex;
 	tfxU32 graph_id = 0;
 	tfxU32 node_id = 0;
 };
@@ -4151,8 +4151,8 @@ struct tfx_graph_t {
 
 	tfx_vec2_t min;
 	tfx_vec2_t max;
-	tfxGraphPreset graph_preset;
-	tfxGraphType type;
+	tfx_graph_preset graph_preset;
+	tfx_graph_type type;
 	tfx_effect_emitter_t *effector;
 	tfx_bucket_array_t<tfx_attribute_node_t> nodes;
 	tfx_graph_lookup_t lookup;
@@ -4310,8 +4310,8 @@ struct tfx_sprite_sheet_settings_t {
 	tfxU32 largest_frame;
 	float playback_speed;
 	float effect_z_offset = 5.f;
-	tfxExportColorOptions color_option;
-	tfxExportOptions export_option;
+	tfx_export_color_options color_option;
+	tfx_export_options export_option;
 	tfx_camera_settings_t camera_settings;
 	tfx_camera_settings_t camera_settings_orthographic;
 };
@@ -4381,9 +4381,9 @@ struct tfx_emitter_properties_soa_t {
 	//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfx_random_t
 	tfx_vec3_t *angle_offsets;
 	//When aligning the billboard along a vector, you can set the type of vector that it aligns with
-	tfxVectorAlignType *vector_align_type;
+	tfx_vector_align_type *vector_align_type;
 	//Point, area, ellipse emitter etc.
-	tfxEmissionType *emission_type;
+	tfx_emission_type *emission_type;
 	//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
 	tfxU32 *single_shot_limit;
 	//Animation frame rate
@@ -4393,7 +4393,7 @@ struct tfx_emitter_properties_soa_t {
 	//Pointer to the ImageData in the EffectLibary. 
 	tfx_image_data_t **image;
 	//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
-	tfxBillboardingOptions *billboard_option;
+	tfx_billboarding_option *billboard_option;
 
 	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
 	tfx_vec3_t *grid_points;
@@ -4404,10 +4404,10 @@ struct tfx_emitter_properties_soa_t {
 	//Milliseconds to delay spawing
 	float *delay_spawning;
 	//Should particles emit towards the center of the emitter or away, or in a specific direction
-	tfxEmissionDirection *emission_direction;
+	tfx_emission_direction *emission_direction;
 
 	//How particles should behave when they reach the end of the line
-	tfxLineTraversalEndBehaviour *end_behaviour;
+	tfx_line_traversal_end_behaviour *end_behaviour;
 	//Bit field of various boolean state_flags
 	tfxParticleControlFlags *compute_flags;
 	//Offset to draw particles at
@@ -4619,7 +4619,7 @@ struct tfx_effect_emitter_t {
 	tfxEmitterPropertyFlags property_flags;
 	tfx_library_t *library;
 	//Is this an tfxEffectType or tfxEmitterType
-	tfxEffectEmitterType type;
+	tfx_effect_emitter_type type;
 	//The index within the library that this exists at
 	tfxU32 library_index;
 	//A hash of the directory path to the effect ie Flare/spark, and also a UID for the effect/emitter
@@ -5128,7 +5128,7 @@ struct tfx_particle_manager_t {
 	unsigned int highest_compute_controller_index;
 	tfx_compute_fx_global_state_t compute_global_state;
 	tfxU32 sort_passes;
-	tfxLookupMode lookup_mode;
+	tfx_lookup_mode lookup_mode;
 	//For when particles are ordered by distance from camera (3d effects)
 	tfx_vec3_t camera_front;
 	tfx_vec3_t camera_position;
@@ -5275,7 +5275,7 @@ Todo: rewrite now that we've converted to SoA data layouts
 */
 
 struct tfx_data_entry_t {
-	tfxDataType type = tfxSInt;
+	tfx_data_type type = tfxSInt;
 	tfx_str32_t key;
 	tfx_str_t str_value;
 	int int_value = 0;
@@ -6587,7 +6587,7 @@ tfxAPI_EDITOR tfx_attribute_node_t* FindGraphNode(tfx_graph_t *graph, tfx_attrib
 tfxAPI_EDITOR void ValidateGraphCurves(tfx_graph_t *graph);
 tfxAPI_EDITOR void DeleteGraphNode(tfx_graph_t *graph, tfx_attribute_node_t *n);
 tfxAPI_EDITOR void DeleteGraphNodeAtFrame(tfx_graph_t *graph, float frame);
-tfxAPI_EDITOR void ResetGraph(tfx_graph_t *graph, float first_node_value, tfxGraphPreset preset, bool add_node = true);
+tfxAPI_EDITOR void ResetGraph(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true);
 tfxAPI_EDITOR void ClearGraphToOne(tfx_graph_t *graph, float value);
 tfxAPI_EDITOR void ClearGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void FreeGraph(tfx_graph_t *graph);
@@ -6603,8 +6603,8 @@ tfxAPI_EDITOR bool IsAngleGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsTranslationGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void MultiplyAllGraphValues(tfx_graph_t *graph, float scalar);
 tfxAPI_EDITOR void CopyGraphNoLookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph);
-tfxAPI_EDITOR void DragGraphValues(tfxGraphPreset preset, float *frame, float *value);
-tfxAPI_EDITOR tfx_vec4_t GetMinMaxGraphValues(tfxGraphPreset preset);
+tfxAPI_EDITOR void DragGraphValues(tfx_graph_preset preset, float *frame, float *value);
+tfxAPI_EDITOR tfx_vec4_t GetMinMaxGraphValues(tfx_graph_preset preset);
 tfxAPI_EDITOR tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax, bool clamp = true);
 tfxAPI_EDITOR tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax, bool clamp = true);
 tfxAPI_EDITOR float GetBezierValue(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
@@ -6632,16 +6632,16 @@ tfxAPI_EDITOR bool SetNodeValue(tfx_graph_t *graph, tfx_attribute_node_t *node, 
 tfxAPI_EDITOR void ClampNode(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxAPI_EDITOR void ClampCurve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribute_node_t *node);
 tfxAPI_EDITOR void ClampGraph(tfx_graph_t *graph);
-tfxAPI_EDITOR bool IsOvertimeGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsColorGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsOvertimePercentageGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsGlobalGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsEmitterGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsTransformGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsGlobalPercentageGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsAngleGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsAngleOvertimeGraph(tfxGraphType type);
-tfxAPI_EDITOR bool IsEverythingElseGraph(tfxGraphType type);
+tfxAPI_EDITOR bool IsOvertimeGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsColorGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsOvertimePercentageGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsGlobalGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsEmitterGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsTransformGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsGlobalPercentageGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsAngleGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsAngleOvertimeGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsEverythingElseGraph(tfx_graph_type type);
 tfxAPI_EDITOR bool HasNodeAtFrame(tfx_graph_t *graph, float frame);
 tfxAPI_EDITOR bool HasKeyframes(tfx_effect_emitter_t *e);
 tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfx_effect_emitter_t *e);
@@ -6651,23 +6651,23 @@ tfxAPI_EDITOR bool IsNodeCurve(tfx_attribute_node_t *node);
 tfxAPI_EDITOR bool NodeCurvesAreInitialised(tfx_attribute_node_t *node);
 tfxAPI_EDITOR bool SetNodeCurveInitialised(tfx_attribute_node_t *node);
 
-tfxINTERNAL inline bool IsGraphTransformRotation(tfxGraphType type) {
+tfxINTERNAL inline bool IsGraphTransformRotation(tfx_graph_type type) {
 	return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
 }
 
-tfxINTERNAL inline bool IsGraphEmitterDimension(tfxGraphType type) {
+tfxINTERNAL inline bool IsGraphEmitterDimension(tfx_graph_type type) {
 	return type == tfxProperty_emitter_width || type == tfxProperty_emitter_height || type == tfxProperty_emitter_depth;
 }
 
-tfxINTERNAL inline bool IsGraphTranslation(tfxGraphType type) {
+tfxINTERNAL inline bool IsGraphTranslation(tfx_graph_type type) {
 	return type == tfxTransform_translate_x || type == tfxTransform_translate_y || type == tfxTransform_translate_z;
 }
 
-tfxINTERNAL inline bool IsGraphEmission(tfxGraphType type) {
+tfxINTERNAL inline bool IsGraphEmission(tfx_graph_type type) {
 	return type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw;
 }
 
-tfxINTERNAL inline bool IsGraphParticleSize(tfxGraphType type) {
+tfxINTERNAL inline bool IsGraphParticleSize(tfx_graph_type type) {
 	return	type == tfxBase_width || type == tfxBase_height ||
 		type == tfxVariation_width || type == tfxVariation_height ||
 		type == tfxOvertime_width || type == tfxOvertime_height;
@@ -6765,10 +6765,10 @@ tfxINTERNAL void CopyLibraryLookupValuesData(tfx_library_t *library, void* dst);
 tfxINTERNAL tfxU32 CountLibraryKeyframeLookUpValues(tfx_library_t *library, tfxU32 index);
 tfxINTERNAL tfxU32 CountLibraryGlobalLookUpValues(tfx_library_t *library, tfxU32 index);
 tfxINTERNAL tfxU32 CountLibraryEmitterLookUpValues(tfx_library_t *library, tfxU32 index);
-tfxINTERNAL float LookupLibraryPreciseOvertimeNodeList(tfx_library_t *library, tfxGraphType graph_type, int index, float age, float life);
-tfxINTERNAL float LookupLibraryPreciseNodeList(tfx_library_t *library, tfxGraphType graph_type, int index, float age);
-tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfx_library_t *library, tfxGraphType graph_type, int index, float age, float life);
-tfxINTERNAL float LookupLibraryFastValueList(tfx_library_t *library, tfxGraphType graph_type, int index, float age);
+tfxINTERNAL float LookupLibraryPreciseOvertimeNodeList(tfx_library_t *library, tfx_graph_type graph_type, int index, float age, float life);
+tfxINTERNAL float LookupLibraryPreciseNodeList(tfx_library_t *library, tfx_graph_type graph_type, int index, float age);
+tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfx_library_t *library, tfx_graph_type graph_type, int index, float age, float life);
+tfxINTERNAL float LookupLibraryFastValueList(tfx_library_t *library, tfx_graph_type graph_type, int index, float age);
 tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfx_particle_manager_t *pm);
 tfxINTERNAL void ResetSpriteDataLerpOffset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_lengt);
@@ -6884,8 +6884,8 @@ tfxAPI_EDITOR void ResetEmitterGraphs(tfx_effect_emitter_t *effect, bool add_nod
 
 tfxAPI_EDITOR void AddEmitterColorOvertime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color);
 tfxAPI_EDITOR void UpdateEffectMaxLife(tfx_effect_emitter_t *effect);
-tfxAPI_EDITOR tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfxGraphType type);
-tfxAPI_EDITOR tfxU32 GetEffectGraphIndexByType(tfx_effect_emitter_t *effect, tfxGraphType type);
+tfxAPI_EDITOR tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfx_graph_type type);
+tfxAPI_EDITOR tfxU32 GetEffectGraphIndexByType(tfx_effect_emitter_t *effect, tfx_graph_type type);
 tfxAPI_EDITOR void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void SetEffectName(tfx_effect_emitter_t *effect, const char *n);
 tfxAPI_EDITOR bool RenameSubEffector(tfx_effect_emitter_t *effect, const char *new_name);
@@ -6898,7 +6898,7 @@ tfxAPI_EDITOR void DisableAllEmittersExcept(tfx_effect_emitter_t *effect, tfx_ef
 tfxAPI_EDITOR bool IsFiniteEffect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag);
 tfxAPI_EDITOR bool Is3DEffect(tfx_effect_emitter_t *effect);
-tfxAPI_EDITOR tfxParticleManagerModes GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfx_particle_manager_mode GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfx_preview_camera_settings_t *GetEffectCameraSettings(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR float GetEffectHighestLoopLength(tfx_effect_emitter_t *effect);
 
@@ -7019,7 +7019,7 @@ Initialise a tfx_particle_manager_t for 3d usage
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512
 
 */
-tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 /*
 Initialise a tfx_particle_manager_t for 2d usage
@@ -7037,7 +7037,7 @@ Initialise a tfx_particle_manager_t for 2d usage
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
 
 */
-tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 /*
 Initialise a tfx_particle_manager_t for both 2d and 3d. This just allocates buffers for both 2d and 3d anticipating that you'll be using ReconfigureParticleManager to switch between 2d/3d modes. If you want to update
@@ -7056,7 +7056,7 @@ both 2d and 3d particles at the same time then just use 2 separate particle mana
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
 
 */
-tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
 
 /*
 Reconfigure a particle manager to make it work in a different mode. A particle manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
@@ -7070,7 +7070,7 @@ in mind that you can just use more than one particle manager and utilised differ
 * @param sort_passes			The number of sort passes if you're using depth sorted effects
 * @param is_3d					True if the particle manager should be configured for 3d effects.
 */
-void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
+void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager_mode mode, tfxU32 sort_passes, bool is_3d);
 
 /*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
@@ -7246,7 +7246,7 @@ todo: callbacks should be moved into the particle manager, currently they're glo
 * @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param mode			The look up mode you want to set. tfxFast is the default mode.
 */
-tfxAPI void SetPMLookUpMode(tfx_particle_manager_t *pm, tfxLookupMode mode);
+tfxAPI void SetPMLookUpMode(tfx_particle_manager_t *pm, tfx_lookup_mode mode);
 
 /*
 Set the effect user data for an effect already added to a particle manager
@@ -8021,18 +8021,18 @@ tfxAPI void EnableTemplateEmitter(tfx_effect_template_t *t, const char *path);
 
 /*
 Scale all nodes on a global graph graph of the effect
-* @param global_type		tfxGraphType of the global graph that you want to scale. Must be a global graph or an assert will be called
+* @param global_type		tfx_graph_type of the global graph that you want to scale. Must be a global graph or an assert will be called
 * @param amount				A float of the amount that you want to scale the multiplier by.
 */
-tfxAPI void ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfxGraphType global_type, float amount);
+tfxAPI void ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfx_graph_type global_type, float amount);
 
 /*
 Scale all nodes on an emitter graph
 * @param emitter_path		const *char of the emitter path
-* @param global_type		tfxGraphType of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
+* @param global_type		tfx_graph_type of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
 * @param amount				A float of the amount that you want to scale the graph by.
 */
-tfxAPI void ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter_path, tfxGraphType graph_type, float amount);
+tfxAPI void ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter_path, tfx_graph_type graph_type, float amount);
 
 /*
 Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
