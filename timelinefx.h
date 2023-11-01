@@ -994,22 +994,21 @@ tfx_allocator *tfxGetAllocator();
 //----------------------------------------------------------
 //Forward declarations
 
-struct tfxEffectEmitter;
-struct tfxParticleManager;
-struct tfxEffectTemplate;
-struct tfxParticleData;
-struct tfxComputeSprite;
-struct tfxComputeParticle;
-struct tfxSpriteSheetSettings;
-struct tfxSpriteDataSettings;
-struct tfxLibrary;
-struct tfxStr;
-struct tfxStr16;
-struct tfxStr32;
-struct tfxStr64;
-struct tfxStr128;
-struct tfxStr256;
-struct tfxStr512;
+struct tfx_effect_emitter_t;
+struct tfx_particle_manager_t;
+struct tfx_effect_template_t;
+struct tfx_compute_sprite_t;
+struct tfx_compute_particle_t;
+struct tfx_sprite_sheet_settings_t;
+struct tfx_sprite_data_settings_t;
+struct tfx_library_t;
+struct tfx_str_t;
+struct tfx_str16_t;
+struct tfx_str32_t;
+struct tfx_str64_t;
+struct tfx_str128_t;
+struct tfx_str256_t;
+struct tfx_str512_t;
 
 //--------------------------------------------------------------
 //macros
@@ -1585,7 +1584,7 @@ tfxINTERNAL inline tfxWideInt tfxWideAbsi(tfxWideInt v) {
 //Section: Enums
 //----------------------------------------------------------
 
-//tfxGraph presets to determine limits and scales of different graphs, mainly used for the editor
+//tfx_graph_t presets to determine limits and scales of different graphs, mainly used for the editor
 enum tfxGraphPreset {
 	tfxGlobalPercentPreset,
 	tfxGlobalOpacityPreset,
@@ -1715,7 +1714,7 @@ enum tfxGraphType : unsigned char {
 	tfxGraphMaxIndex,
 };
 
-//tfxEffectEmitter type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
+//tfx_effect_emitter_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 enum tfxEffectEmitterType : unsigned char {
 	tfxEffectType,
 	tfxEmitterType,
@@ -1762,7 +1761,7 @@ enum tfxExportOptions {
 	tfxSeparateImages
 };
 
-//tfxGraph data can be looked up in one of 2 ways, either by just using linear/bezier interpolation (slower), or look up the value in a pre-compiled look up table.
+//tfx_graph_t data can be looked up in one of 2 ways, either by just using linear/bezier interpolation (slower), or look up the value in a pre-compiled look up table.
 enum tfxLookupMode {
 	tfxPrecise,
 	tfxFast
@@ -2183,14 +2182,14 @@ static tfxWideFloat tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetSingle(1.f);
 tfxINTERNAL int tfx_FormatString(char* buf, size_t buf_size, const char* fmt, va_list args);
 
 //Very simple string builder
-struct tfxStr {
+struct tfx_str_t {
 	char *data;
 	tfxU32 current_size;
 	tfxU32 capacity;
 	bool is_local_buffer;
 
-	inline tfxStr() : current_size(0), capacity(0), data(NULL), is_local_buffer(false) {}
-	inline ~tfxStr() { if (data && !is_local_buffer) { tfxFREE(data); data = NULL; } current_size = capacity = 0; }
+	inline tfx_str_t() : current_size(0), capacity(0), data(NULL), is_local_buffer(false) {}
+	inline ~tfx_str_t() { if (data && !is_local_buffer) { tfxFREE(data); data = NULL; } current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
 	inline char&           operator[](tfxU32 i) { return data[i]; }
@@ -2225,19 +2224,19 @@ struct tfxStr {
 		capacity = new_capacity;
 	}
 
-	tfxStr(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-	tfxStr(const tfxStr &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfx_str_t(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfx_str_t(const tfx_str_t &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-	inline void operator=(const tfxStr& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
+	inline void operator=(const tfx_str_t& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
-	inline bool operator==(const tfxStr string) { return !strcmp(c_str(), string.c_str()); }
+	inline bool operator==(const tfx_str_t string) { return !strcmp(c_str(), string.c_str()); }
 	inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
-	inline bool operator!=(const tfxStr string) { return strcmp(c_str(), string.c_str()); }
-	inline const char *strbuffer() const { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
-	inline char *strbuffer() { return is_local_buffer ? (char*)this + sizeof(tfxStr) : data; }
+	inline bool operator!=(const tfx_str_t string) { return strcmp(c_str(), string.c_str()); }
+	inline const char *strbuffer() const { return is_local_buffer ? (char*)this + sizeof(tfx_str_t) : data; }
+	inline char *strbuffer() { return is_local_buffer ? (char*)this + sizeof(tfx_str_t) : data; }
 	inline const char *c_str() const { return current_size ? strbuffer() : ""; }
 	int Find(const char *needle);
-	tfxStr Lower();
+	tfx_str_t Lower();
 	inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
 	void AddLine(const char *format, ...);
 	void Setf(const char *format, ...);
@@ -2284,10 +2283,10 @@ struct tfxStr {
 };
 
 #define tfxStrType(type, size)		\
-	struct type : public tfxStr { \
+	struct type : public tfx_str_t { \
 	char buffer[size]; \
 	type() { memset(buffer, 0, size); data = buffer; capacity = size; current_size = 0; is_local_buffer = true; NullTerminate(); } \
-	inline void operator=(const tfxStr& src) { \
+	inline void operator=(const tfx_str_t& src) { \
 		data = buffer; \
 		is_local_buffer = true; \
 		capacity = size; size_t length = src.Length(); \
@@ -2313,7 +2312,7 @@ struct tfxStr {
 	} \
 	inline void operator=(const char *text) { data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
 	type(const char *text) { memset(buffer, 0, size); data = buffer; is_local_buffer = true; capacity = size; size_t length = strnlen_s(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
-	type(const tfxStr &src) { \
+	type(const tfx_str_t &src) { \
 		memset(buffer, 0, size); \
 		data = buffer; \
 		is_local_buffer = true; \
@@ -2343,12 +2342,12 @@ struct tfxStr {
 	inline type Lower() { type convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; } \
 	};
 
-tfxStrType(tfxStr512, 512);
-tfxStrType(tfxStr256, 256);
-tfxStrType(tfxStr128, 128);
-tfxStrType(tfxStr64, 64);
-tfxStrType(tfxStr32, 32);
-tfxStrType(tfxStr16, 16);
+tfxStrType(tfx_str512_t, 512);
+tfxStrType(tfx_str256_t, 256);
+tfxStrType(tfx_str128_t, 128);
+tfxStrType(tfx_str64_t, 64);
+tfxStrType(tfx_str32_t, 32);
+tfxStrType(tfx_str16_t, 16);
 
 //-----------------------------------------------------------
 //Containers_and_Memory
@@ -2358,7 +2357,7 @@ tfxStrType(tfxStr16, 16);
 //Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut for tfxvec
 //std::vector replacement with some extra stuff and tweaks specific to TimelineFX
 template<typename T>
-struct tfxvec {
+struct tfx_vector_t {
 	tfxU32 current_size;
 	tfxU32 capacity;
 	tfxU32 volatile locked;
@@ -2369,11 +2368,11 @@ struct tfxvec {
 	typedef value_type*         iterator;
 	typedef const value_type*   const_iterator;
 
-	inline tfxvec() { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME; }
-	inline tfxvec(const char *name_init) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init); }
-	inline tfxvec(const tfxvec<T> &src) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
-	inline tfxvec<T>& operator=(const tfxvec<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
-	inline ~tfxvec() { if (data) { tfxFREE(data); } data = NULL; current_size = capacity = 0; }
+	inline tfx_vector_t() { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME; }
+	inline tfx_vector_t(const char *name_init) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init); }
+	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
+	inline tfx_vector_t<T>& operator=(const tfx_vector_t<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
+	inline ~tfx_vector_t() { if (data) { tfxFREE(data); } data = NULL; current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
 	inline bool			full() { return current_size == capacity; }
@@ -2479,19 +2478,19 @@ struct tfxvec {
 //Note that if you reference things by index and you then remove something then that index may not be valid anymore so you would need to keep checks on that.
 //Not sure how efficient a hash lookup with this is, could probably be better, but isn't used much at all in any realtime particle updating.
 template<typename T>
-struct tfxStorageMap {
+struct tfx_storage_map_t {
 	struct pair {
 		tfxKey key;
 		tfxU32 index;
 		pair(tfxKey k, tfxU32 i) : key(k), index(i) {}
 	};
 
-	tfxvec<pair> map;
-	tfxvec<T> data;
+	tfx_vector_t<pair> map;
+	tfx_vector_t<T> data;
 	void(*remove_callback)(T &item) = nullptr;
 
-	tfxStorageMap() : map(tfxCONSTRUCTOR_VEC_INIT("Storage Map map")), data(tfxCONSTRUCTOR_VEC_INIT("Storage Map data")) {}
-	tfxStorageMap(const char *map_tracker, const char *data_tracker) : map(tfxCONSTRUCTOR_VEC_INIT2(map_tracker)), data(tfxCONSTRUCTOR_VEC_INIT2(data_tracker)) {}
+	tfx_storage_map_t() : map(tfxCONSTRUCTOR_VEC_INIT("Storage Map map")), data(tfxCONSTRUCTOR_VEC_INIT("Storage Map data")) {}
+	tfx_storage_map_t(const char *map_tracker, const char *data_tracker) : map(tfxCONSTRUCTOR_VEC_INIT2(map_tracker)), data(tfxCONSTRUCTOR_VEC_INIT2(data_tracker)) {}
 
 	//Insert a new T value into the storage
 	inline void Insert(const char *name, const T &value) {
@@ -2500,7 +2499,7 @@ struct tfxStorageMap {
 	}
 
 	//Insert a new T value into the storage
-	inline void Insert(tfxStr name, const T &value) {
+	inline void Insert(tfx_str_t name, const T &value) {
 		tfxKey key = tfxXXHash64::hash(name.c_str(), name.Length(), 0);
 		SetIndex(key, value);
 	}
@@ -2551,7 +2550,7 @@ struct tfxStorageMap {
 		return GetIntIndex(name) > -1;
 	}
 
-	inline bool ValidName(const tfxStr &name) {
+	inline bool ValidName(const tfx_str_t &name) {
 		return GetIndex(name) > -1;
 	}
 
@@ -2611,7 +2610,7 @@ struct tfxStorageMap {
 		return data[index];
 	}
 
-	inline T &At(const tfxStr &name) {
+	inline T &At(const tfx_str_t &name) {
 		int index = GetIndex(name.c_str());
 		assert(index > -1);						//Key was not found
 		return data[index];
@@ -2661,7 +2660,7 @@ struct tfxStorageMap {
 		return it->index;
 	}
 
-	int GetIndex(const tfxStr &name) {
+	int GetIndex(const tfx_str_t &name) {
 		tfxKey key = tfxXXHash64::hash(name.c_str(), name.Length(), 0);
 		pair* it = LowerBound(key);
 		if (it == map.end() || it->key != key)
@@ -2678,13 +2677,13 @@ struct tfxStorageMap {
 
 	pair* LowerBound(tfxKey key)
 	{
-		tfxStorageMap::pair* first = map.data;
-		tfxStorageMap::pair* last = map.data + map.current_size;
+		tfx_storage_map_t::pair* first = map.data;
+		tfx_storage_map_t::pair* last = map.data + map.current_size;
 		size_t count = (size_t)(last - first);
 		while (count > 0)
 		{
 			size_t count2 = count >> 1;
-			tfxStorageMap::pair* mid = first + count2;
+			tfx_storage_map_t::pair* mid = first + count2;
 			if (mid->key < key)
 			{
 				first = ++mid;
@@ -2717,10 +2716,11 @@ inline tfxU32 tfxIsPowerOf2(tfxU32 v)
 	return ((v & ~(v - 1)) == v);
 }
 
-struct tfxSoAData {
-	void *ptr = NULL;
-	size_t offset = 0;
-	size_t unit_size = 0;
+//Used in tfx_soa_buffer_t to store pointers to arrays inside a struct of arrays
+struct tfx_soa_data_t {
+	void *ptr = NULL;		//A pointer to the array in the struct
+	size_t offset = 0;		//The offset to the memory location in the buffer where the array starts
+	size_t unit_size = 0;	//The size of each data type in the array
 };
 
 //A buffer designed to contain structs of arrays. If the arrays need to grow then a new memory block is made and all copied over
@@ -2728,7 +2728,7 @@ struct tfxSoAData {
 //In order to use this you need to first prepare the buffer by calling AddStructArray for each struct member of the SoA you're setting up. 
 //All members must be of the same struct.
 //Then call FinishSoABufferSetup to create the memory for the struct of arrays with an initial reserve amount.
-struct tfxSoABuffer {
+struct tfx_soa_buffer_t {
 	size_t current_arena_size = 0;		//The current size of the arena that contains all the arrays
 	size_t struct_size = 0;				//The size of the struct (each member unit size added up)
 	tfxU32 current_size = 0;			//current size of each array
@@ -2736,14 +2736,14 @@ struct tfxSoABuffer {
 	tfxU32 last_bump = 0;				//the amount the the start index was bumped by the last time Bump was called
 	tfxU32 capacity = 0;				//capacity of each array
 	tfxU32 block_size = tfxDataWidth;	//Keep the capacity to the nearest block size
-	tfxvec<tfxSoAData> array_ptrs;		//Container for all the pointers into the arena
+	tfx_vector_t<tfx_soa_data_t> array_ptrs;		//Container for all the pointers into the arena
 	void *user_data = NULL;
-	void(*resize_callback)(tfxSoABuffer *ring, tfxU32 new_index_start) = NULL;
+	void(*resize_callback)(tfx_soa_buffer_t *ring, tfxU32 new_index_start) = NULL;
 	void *struct_of_arrays = NULL;		//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
 	void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
 };
 
-inline void ResetSoABuffer(tfxSoABuffer *buffer) {
+inline void ResetSoABuffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_arena_size = 0;
 	buffer->struct_size = 0;
 	buffer->current_size = 0;
@@ -2757,30 +2757,30 @@ inline void ResetSoABuffer(tfxSoABuffer *buffer) {
 	buffer->data = NULL;
 }
 
-inline void* GetEndOfBufferPtr(tfxSoABuffer *buffer) {
+inline void* GetEndOfBufferPtr(tfx_soa_buffer_t *buffer) {
 	assert(buffer->data);
 	return (char*)buffer->data + buffer->current_arena_size;
 }
 
 //Get the amount of free space in the buffer
-inline tfxU32 FreeSpace(tfxSoABuffer *buffer) {
+inline tfxU32 FreeSpace(tfx_soa_buffer_t *buffer) {
 	return buffer->capacity - buffer->current_size;
 }
 
 //Get the index based on the buffer being a ring buffer
-inline tfxU32 GetCircularIndex(tfxSoABuffer *buffer, tfxU32 index) {
+inline tfxU32 GetCircularIndex(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	return (buffer->start_index + index) % buffer->capacity;
 }
 
 //Get the index based on the buffer being a ring buffer
-inline tfxU32 GetAbsoluteIndex(tfxSoABuffer *buffer, tfxU32 circular_index) {
+inline tfxU32 GetAbsoluteIndex(tfx_soa_buffer_t *buffer, tfxU32 circular_index) {
 	return buffer->capacity - (circular_index % buffer->capacity);
 }
 
 //Add an array to a SoABuffer. parse in the size of the data type and the offset to the member variable within the struct.
 //You must add all the member veriables in the struct before calling FinishSoABufferSetup
-inline void AddStructArray(tfxSoABuffer *buffer, size_t unit_size, size_t offset) {
-	tfxSoAData data;
+inline void AddStructArray(tfx_soa_buffer_t *buffer, size_t unit_size, size_t offset) {
+	tfx_soa_data_t data;
 	data.unit_size = unit_size;
 	data.offset = offset;
 	buffer->array_ptrs.push_back(data);
@@ -2789,7 +2789,7 @@ inline void AddStructArray(tfxSoABuffer *buffer, size_t unit_size, size_t offset
 //Once you have called AddStructArray for all your member variables you must call this function in order to 
 //set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 //inside the space
-inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
+inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
 	assert(buffer->data == NULL && buffer->array_ptrs.current_size > 0);
 	assert(reserve_amount > buffer->block_size);		//reserve amount must be greater than the block_size
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
@@ -2814,7 +2814,7 @@ inline void FinishSoABufferSetup(tfxSoABuffer *buffer, void *struct_of_arrays, t
 }
 
 //Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved if keep_data passed as true (default).
-inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true) {
+inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true) {
 	assert(buffer->capacity);			//buffer must already have a capacity!
 	tfxU32 new_capacity = 0;
 	new_capacity = new_target_size > buffer->capacity ? new_target_size + new_target_size / 2 : buffer->capacity + buffer->capacity / 2;
@@ -2861,7 +2861,7 @@ inline bool GrowArrays(tfxSoABuffer *buffer, tfxU32 first_new_index, tfxU32 new_
 }
 
 //Increase current size of a SoA Buffer and grow if necessary.
-inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
+inline void Resize(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 	assert(buffer->data);			//No data allocated in buffer
 	if (new_size >= buffer->capacity) {
 		GrowArrays(buffer, buffer->capacity, new_size);
@@ -2871,7 +2871,7 @@ inline void Resize(tfxSoABuffer *buffer, tfxU32 new_size) {
 
 //Increase current size of a SoA Buffer and grow if necessary. This will not shrink the capacity so if new_size is not bigger than the
 //current capacity then nothing will happen
-inline void SetCapacity(tfxSoABuffer *buffer, tfxU32 new_size) {
+inline void SetCapacity(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 	assert(buffer->data);			//No data allocated in buffer
 	if (new_size >= buffer->capacity) {
 		GrowArrays(buffer, buffer->capacity, new_size);
@@ -2879,7 +2879,7 @@ inline void SetCapacity(tfxSoABuffer *buffer, tfxU32 new_size) {
 }
 
 //Increase current size of a SoA Buffer by 1 and grow if grow is true. Returns the last index.
-inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
+inline tfxU32 AddRow(tfx_soa_buffer_t *buffer, bool grow = false) {
 	assert(buffer->data);			//No data allocated in buffer
 	tfxU32 new_size = ++buffer->current_size;
 	if (grow && new_size == buffer->capacity) {
@@ -2892,7 +2892,7 @@ inline tfxU32 AddRow(tfxSoABuffer *buffer, bool grow = false) {
 
 //Increase current size of a SoA Buffer by a specific amount and grow if grow is true. Returns the last index.
 //You can also pass in a boolean to know if the buffer had to be increased in size or not. Returns the index where the new rows start.
-inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow, bool &grew) {
+inline tfxU32 AddRows(tfx_soa_buffer_t *buffer, tfxU32 amount, bool grow, bool &grew) {
 	assert(buffer->data);			//No data allocated in buffer
 	tfxU32 first_new_index = buffer->current_size;
 	tfxU32 new_size = buffer->current_size += amount;
@@ -2905,7 +2905,7 @@ inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow, bool &grew
 }
 
 //Increase current size of a SoA Buffer and grow if grow is true. Returns the index where the new rows start.
-inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow) {
+inline tfxU32 AddRows(tfx_soa_buffer_t *buffer, tfxU32 amount, bool grow) {
 	assert(buffer->data);			//No data allocated in buffer
 	tfxU32 first_new_index = buffer->current_size;
 	tfxU32 new_size = buffer->current_size + amount;
@@ -2918,13 +2918,13 @@ inline tfxU32 AddRows(tfxSoABuffer *buffer, tfxU32 amount, bool grow) {
 }
 
 //Decrease the current size of a SoA Buffer by 1.
-inline void PopRow(tfxSoABuffer *buffer) {
+inline void PopRow(tfx_soa_buffer_t *buffer) {
 	assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 	buffer->current_size--;
 }
 
 //Bump the start index of the SoA buffer (ring buffer usage)
-inline void Bump(tfxSoABuffer *buffer) {
+inline void Bump(tfx_soa_buffer_t *buffer) {
 	assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 	if (buffer->current_size == 0)
 		return;
@@ -2932,7 +2932,7 @@ inline void Bump(tfxSoABuffer *buffer) {
 }
 
 //Bump the start index of the SoA buffer (ring buffer usage)
-inline void Bump(tfxSoABuffer *buffer, tfxU32 amount) {
+inline void Bump(tfx_soa_buffer_t *buffer, tfxU32 amount) {
 	assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 	if (buffer->current_size == 0)
 		return;
@@ -2945,7 +2945,7 @@ inline void Bump(tfxSoABuffer *buffer, tfxU32 amount) {
 }
 
 //Free the SoA buffer
-inline void FreeSoABuffer(tfxSoABuffer *buffer) {
+inline void FreeSoABuffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
 	if (buffer->data)
 		tfxFREE(buffer->data);
@@ -2954,12 +2954,12 @@ inline void FreeSoABuffer(tfxSoABuffer *buffer) {
 }
 
 //Clear the SoA buffer
-inline void ClearSoABuffer(tfxSoABuffer *buffer) {
+inline void ClearSoABuffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_size = buffer->start_index = 0;
 }
 
 //Trim an SoA buffer to the current size. This is a bit rough and ready and I just created it for trimming compressed sprite data down to size
-inline void TrimSoABuffer(tfxSoABuffer *buffer) {
+inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 	if (buffer->current_size == buffer->capacity) {
 		return;
 	}
@@ -3000,11 +3000,11 @@ inline void TrimSoABuffer(tfxSoABuffer *buffer) {
 	tfxFREE(old_data);
 }
 
-#define tmpStack(type, name) tfxvec<type> name
+#define tmpStack(type, name) tfx_vector_t<type> name
 
 template <typename T>
 struct tfx_bucket_t {
-	tfxvec<T> data;
+	tfx_vector_t<T> data;
 	tfx_bucket_t *next;
 };
 
@@ -3026,7 +3026,7 @@ struct tfx_bucket_array_t {
 	tfxU32 capacity;
 	tfxU32 size_of_each_bucket;
 	tfxU32 volatile locked;
-	tfxvec<tfx_bucket_t<T>*> bucket_list;
+	tfx_vector_t<tfx_bucket_t<T>*> bucket_list;
 
 	inline bool			empty() { return current_size == 0; }
 	inline tfxU32		size() { return current_size; }
@@ -3231,13 +3231,13 @@ inline void tfxCopyBucketArray(tfx_bucket_array_t<T> *dst, tfx_bucket_array_t<T>
 //A char buffer you can use to load a file into and read from
 //Has no deconstructor so make sure you call FreeAll() when done
 //This is meant for limited usage in timeline fx only and not recommended for use outside!
-struct tfxStream {
+struct tfx_stream_t {
 	tfxU64 size = 0;
 	tfxU64 position = 0;
 	char* data = NULL;
 
-	inline tfxStream() { size = position = 0; data = NULL; }
-	inline tfxStream(tfxU64 qty) { size = position = 0; data = NULL; Resize(qty); }
+	inline tfx_stream_t() { size = position = 0; data = NULL; }
+	inline tfx_stream_t(tfxU64 qty) { size = position = 0; data = NULL; Resize(qty); }
 
 	inline bool Read(char* dst, tfxU64 count) {
 		if (count + position <= size) {
@@ -3247,7 +3247,7 @@ struct tfxStream {
 		}
 		return false;
 	}
-	inline tfxStr512 ReadLine();
+	inline tfx_str512_t ReadLine();
 	inline bool Write(void *src, tfxU64 count) {
 		if (count + position <= size) {
 			memcpy(data + position, src, count);
@@ -3294,16 +3294,12 @@ struct tfxStream {
 //Some multithreading functions - TODO: currently this is windows only, needs linux/mac etc added
 //Might end up just using std::thread but will see how the Mac API is
 //There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue.
-struct tfxWorkQueue;
+struct tfx_work_queue_t;
 
-#define tfxWORKQUEUECALLBACK(name) void name(tfxWorkQueue *queue, void *data)
+#define tfxWORKQUEUECALLBACK(name) void name(tfx_work_queue_t *queue, void *data)
 typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
 
-struct tfxSignaller {
-	tfxU32 signal_slots[256];
-};
-
-struct tfxWorkQueueEntry {
+struct tfx_work_queue_entry_t {
 	tfxWorkQueueCallback *call_back = NULL;
 	void *data = NULL;
 };
@@ -3320,49 +3316,49 @@ extern int tfxNumberOfThreadsInAdditionToMain;
 #define tfxMAX_QUEUES 512
 #endif
 
-struct tfxWorkQueue {
+struct tfx_work_queue_t {
 	tfxU32 volatile entry_completion_goal = 0;
 	tfxU32 volatile entry_completion_count = 0;
 	tfxU32 volatile next_read_entry = 0;
 	tfxU32 volatile next_write_entry = 0;
-	tfxWorkQueueEntry entries[tfxMAX_QUEUES];
+	tfx_work_queue_entry_t entries[tfxMAX_QUEUES];
 };
 
-struct tfxQueueProcessor {
+struct tfx_queue_processor_t {
 	std::mutex mutex;
 	HANDLE empty_semaphore;
 	HANDLE full_semaphore;
 	tfxU32 count;
 	//These point to the queues stored in particle managers and anything else that needs a queue with multithreading
-	tfxWorkQueue *queues[tfxMAX_QUEUES];
+	tfx_work_queue_t *queues[tfxMAX_QUEUES];
 };
 
-extern tfxQueueProcessor tfxThreadQueues;
+extern tfx_queue_processor_t tfxThreadQueues;
 
-tfxINTERNAL inline void InitialiseThreadQueues(tfxQueueProcessor *queues) {
+tfxINTERNAL inline void InitialiseThreadQueues(tfx_queue_processor_t *queues) {
 	queues->count = 0;
 	queues->empty_semaphore = CreateSemaphoreEx(0, tfxMAX_QUEUES, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
 	queues->full_semaphore = CreateSemaphoreEx(0, 0, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
 	memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void*));
 }
 
-tfxINTERNAL inline tfxWorkQueue *tfxGetQueueWithWork(tfxQueueProcessor *thread_processor) {
+tfxINTERNAL inline tfx_work_queue_t *tfxGetQueueWithWork(tfx_queue_processor_t *thread_processor) {
 	WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
 	std::unique_lock<std::mutex> lock(thread_processor->mutex);
-	tfxWorkQueue *queue = thread_processor->queues[thread_processor->count--];
+	tfx_work_queue_t *queue = thread_processor->queues[thread_processor->count--];
 	ReleaseSemaphore(thread_processor->empty_semaphore, 1, 0);
 	return queue;
 }
 
-tfxINTERNAL inline void tfxPushQueueWork(tfxQueueProcessor *thread_processor, tfxWorkQueue *queue) {
+tfxINTERNAL inline void tfxPushQueueWork(tfx_queue_processor_t *thread_processor, tfx_work_queue_t *queue) {
 	WaitForSingleObject(thread_processor->empty_semaphore, INFINITE);
 	std::unique_lock<std::mutex> lock(thread_processor->mutex);
 	thread_processor->queues[thread_processor->count++] = queue;
 	ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
 }
 
-tfxINTERNAL inline void tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
-	tfxWorkQueue *queue = tfxGetQueueWithWork(queue_processor);
+tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processor) {
+	tfx_work_queue_t *queue = tfxGetQueueWithWork(queue_processor);
 
 	if (queue) {
 		tfxU32 original_read_entry = queue->next_read_entry;
@@ -3371,7 +3367,7 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
 		if (original_read_entry != queue->next_write_entry) {
 			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
 			if (index == original_read_entry) {
-				tfxWorkQueueEntry entry = queue->entries[index];
+				tfx_work_queue_entry_t entry = queue->entries[index];
 				entry.call_back(queue, entry.data);
 				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
 			}
@@ -3379,21 +3375,21 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfxQueueProcessor *queue_processor) {
 	}
 }
 
-tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfxWorkQueue *queue) {
+tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
 	tfxU32 original_read_entry = queue->next_read_entry;
 	tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 
 	if (original_read_entry != queue->next_write_entry) {
 		tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
 		if (index == original_read_entry) {
-			tfxWorkQueueEntry entry = queue->entries[index];
+			tfx_work_queue_entry_t entry = queue->entries[index];
 			entry.call_back(queue, entry.data);
 			InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
 		}
 	}
 }
 
-tfxINTERNAL inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tfxWorkQueueCallback call_back) {
+tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data, tfxWorkQueueCallback call_back) {
 	assert(tfxNumberOfThreadsInAdditionToMain > 0);		//This should never be called if there is only a main thread
 
 	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
@@ -3414,7 +3410,7 @@ tfxINTERNAL inline void tfxAddWorkQueueEntry(tfxWorkQueue *queue, void *data, tf
 
 tfxINTERNAL inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
 
-	tfxQueueProcessor *thread_processor = (tfxQueueProcessor*)lpParameter;
+	tfx_queue_processor_t *thread_processor = (tfx_queue_processor_t*)lpParameter;
 
 	for (;;) {
 		tfxDoNextWorkQueue(thread_processor);
@@ -3422,8 +3418,8 @@ tfxINTERNAL inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
 
 }
 
-tfxINTERNAL inline void tfxCompleteAllWork(tfxWorkQueue *queue) {
-	tfxWorkQueueEntry entry = {};
+tfxINTERNAL inline void tfxCompleteAllWork(tfx_work_queue_t *queue) {
+	tfx_work_queue_entry_t entry = {};
 	while (queue->entry_completion_goal != queue->entry_completion_count) {
 		tfxDoNextWorkQueueEntry(queue);
 	}
@@ -3431,14 +3427,14 @@ tfxINTERNAL inline void tfxCompleteAllWork(tfxWorkQueue *queue) {
 	queue->entry_completion_goal = 0;
 }
 
-tfxINTERNAL inline void tfxInitialiseWorkQueue(tfxWorkQueue *queue) {
+tfxINTERNAL inline void tfxInitialiseWorkQueue(tfx_work_queue_t *queue) {
 	queue->entry_completion_count = 0;
 	queue->entry_completion_goal = 0;
 	queue->next_read_entry = 0;
 	queue->next_write_entry = 0;
 }
 
-tfxINTERNAL inline bool tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
+tfxINTERNAL inline bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queues) {
 	InitialiseThreadQueues(&tfxThreadQueues);
 
 	//todo: create a function to close all the threads 
@@ -3460,25 +3456,27 @@ tfxINTERNAL inline bool tfxInitialiseThreads(tfxQueueProcessor *thread_queues) {
 //-----------------------------------------------------------
 extern const tfxU32 tfxPROFILE_COUNT;
 
-struct tfxDataTypesDictionary {
+struct tfx_data_types_dictionary_t {
 	bool initialised = false;
-	tfxStorageMap<tfxDataType> names_and_types;
-	tfxDataTypesDictionary() :
+	tfx_storage_map_t<tfxDataType> names_and_types;
+	tfx_data_types_dictionary_t() :
 		names_and_types("Data Types Storage Map", "Data Types Storage Data")
 	{}
 	void Init();
 };
 
 //Global variables
-struct tfx_globals_t {
+struct tfx_storage_t {
 	tfxU32 memory_pool_count;
 	size_t default_memory_pool_size;
 	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
 	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
-	tfxDataTypesDictionary data_types;
+	tfx_data_types_dictionary_t data_types;
+	//tfx_storage_map_t<tfx_particle_manager_t*> particle_managers;
+	//tfx_storage_map_t<tfx_animation_manager_t*> animation_managers;
 };
 
-extern tfx_globals_t *tfxGlobals;
+extern tfx_storage_t *tfxStore;
 extern tfx_allocator *tfxMemoryAllocator;
 
 //-----------------------------------------------------------
@@ -3486,81 +3484,81 @@ extern tfx_allocator *tfxMemoryAllocator;
 //-----------------------------------------------------------
 
 //Just the very basic vector types that we need
-struct tfxVec2 {
+struct tfx_vec2_t {
 	float x, y;
 
-	tfxVec2() { x = y = 0.f; }
-	tfxVec2(float _x, float _y) : x(_x), y(_y) {}
+	tfx_vec2_t() { x = y = 0.f; }
+	tfx_vec2_t(float _x, float _y) : x(_x), y(_y) {}
 
 	inline void operator=(float v) { x = v; y = v; }
 
-	inline tfxVec2 operator+(tfxVec2 v) { return tfxVec2(x + v.x, y + v.y); }
-	inline void operator+=(tfxVec2 v) { x += v.x; y += v.y; }
-	inline tfxVec2 operator-(tfxVec2 v) { return tfxVec2(x - v.x, y - v.y); }
-	inline tfxVec2 operator-() { return tfxVec2(-x, -y); }
-	inline void operator-=(tfxVec2 v) { x -= v.x; y -= v.y; }
-	inline tfxVec2 operator*(tfxVec2 v) { return tfxVec2(x * v.x, y * v.y); }
-	inline void operator*=(tfxVec2 v) { x *= v.x; y *= v.y; }
-	inline tfxVec2 operator/(tfxVec2 v) { return tfxVec2(x / v.x, y / v.y); }
-	inline void operator/=(tfxVec2 v) { x /= v.x; y /= v.y; }
-	inline tfxVec2 operator+(float v) { return tfxVec2(x + v, y + v); }
-	inline tfxVec2 operator-(float v) { return tfxVec2(x - v, y - v); }
-	inline tfxVec2 operator*(float v) { return tfxVec2(x * v, y * v); }
+	inline tfx_vec2_t operator+(tfx_vec2_t v) { return tfx_vec2_t(x + v.x, y + v.y); }
+	inline void operator+=(tfx_vec2_t v) { x += v.x; y += v.y; }
+	inline tfx_vec2_t operator-(tfx_vec2_t v) { return tfx_vec2_t(x - v.x, y - v.y); }
+	inline tfx_vec2_t operator-() { return tfx_vec2_t(-x, -y); }
+	inline void operator-=(tfx_vec2_t v) { x -= v.x; y -= v.y; }
+	inline tfx_vec2_t operator*(tfx_vec2_t v) { return tfx_vec2_t(x * v.x, y * v.y); }
+	inline void operator*=(tfx_vec2_t v) { x *= v.x; y *= v.y; }
+	inline tfx_vec2_t operator/(tfx_vec2_t v) { return tfx_vec2_t(x / v.x, y / v.y); }
+	inline void operator/=(tfx_vec2_t v) { x /= v.x; y /= v.y; }
+	inline tfx_vec2_t operator+(float v) { return tfx_vec2_t(x + v, y + v); }
+	inline tfx_vec2_t operator-(float v) { return tfx_vec2_t(x - v, y - v); }
+	inline tfx_vec2_t operator*(float v) { return tfx_vec2_t(x * v, y * v); }
 	inline void operator*=(float v) { x *= v; y *= v; }
-	inline bool operator>(tfxVec2 &v) { return x + y > v.x + v.y; }
-	inline tfxVec2 operator/(float v) { return tfxVec2(x / v, y / v); }
+	inline bool operator>(tfx_vec2_t &v) { return x + y > v.x + v.y; }
+	inline tfx_vec2_t operator/(float v) { return tfx_vec2_t(x / v, y / v); }
 
-	inline tfxVec2 operator+(float v) const { return tfxVec2(x + v, y + v); }
-	inline tfxVec2 operator-(float v) const { return tfxVec2(x - v, y - v); }
-	inline tfxVec2 operator*(float v) const { return tfxVec2(x * v, y * v); }
-	inline tfxVec2 operator/(float v) const { return tfxVec2(x / v, y / v); }
+	inline tfx_vec2_t operator+(float v) const { return tfx_vec2_t(x + v, y + v); }
+	inline tfx_vec2_t operator-(float v) const { return tfx_vec2_t(x - v, y - v); }
+	inline tfx_vec2_t operator*(float v) const { return tfx_vec2_t(x * v, y * v); }
+	inline tfx_vec2_t operator/(float v) const { return tfx_vec2_t(x / v, y / v); }
 
-	inline tfxVec2 operator+(const tfxVec2 &v) const { return tfxVec2(x + v.x, y + v.y); }
-	inline tfxVec2 operator-(const tfxVec2 &v) const { return tfxVec2(x - v.x, y - v.y); }
-	inline tfxVec2 operator*(const tfxVec2 &v) const { return tfxVec2(x * v.x, y * v.y); }
-	inline tfxVec2 operator/(const tfxVec2 &v) const { return tfxVec2(x / v.x, y / v.y); }
+	inline tfx_vec2_t operator+(const tfx_vec2_t &v) const { return tfx_vec2_t(x + v.x, y + v.y); }
+	inline tfx_vec2_t operator-(const tfx_vec2_t &v) const { return tfx_vec2_t(x - v.x, y - v.y); }
+	inline tfx_vec2_t operator*(const tfx_vec2_t &v) const { return tfx_vec2_t(x * v.x, y * v.y); }
+	inline tfx_vec2_t operator/(const tfx_vec2_t &v) const { return tfx_vec2_t(x / v.x, y / v.y); }
 
 	inline float Squared() { return x * x + y * y; }
 	inline bool IsNill() { return !x && !y; }
 };
-inline tfxVec2 operator*(float ls, tfxVec2 rs) { return tfxVec2(rs.x * ls, rs.y * ls); }
+inline tfx_vec2_t operator*(float ls, tfx_vec2_t rs) { return tfx_vec2_t(rs.x * ls, rs.y * ls); }
 
-struct tfxVec3 {
+struct tfx_vec3_t {
 	union {
 		struct { float x, y, z; };
 		struct { float pitch, yaw, roll; };
 	};
 
-	tfxVec3() { x = y = z = 0.f; }
-	tfxVec3(float v) : x(v), y(v), z(v) {}
-	tfxVec3(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
-	inline void operator=(const tfxVec2 &v) { x = v.x; y = v.y; }
+	tfx_vec3_t() { x = y = z = 0.f; }
+	tfx_vec3_t(float v) : x(v), y(v), z(v) {}
+	tfx_vec3_t(float _x, float _y, float _z) : x(_x), y(_y), z(_z) {}
+	inline void operator=(const tfx_vec2_t &v) { x = v.x; y = v.y; }
 
-	inline tfxVec2 xy() const { return tfxVec2(x, y); }
+	inline tfx_vec2_t xy() const { return tfx_vec2_t(x, y); }
 
-	inline bool operator==(const tfxVec3 &v) const { return x == v.x && y == v.y && z == v.z; }
+	inline bool operator==(const tfx_vec3_t &v) const { return x == v.x && y == v.y && z == v.z; }
 
-	inline tfxVec3 operator+(const tfxVec3 &v) const { return tfxVec3(x + v.x, y + v.y, z + v.z); }
-	inline tfxVec3 operator-(const tfxVec3 &v) const { return tfxVec3(x - v.x, y - v.y, z - v.z); }
-	inline tfxVec3 operator*(const tfxVec3 &v) const { return tfxVec3(x * v.x, y * v.y, z * v.z); }
-	inline tfxVec3 operator/(const tfxVec3 &v) const { return tfxVec3(x / v.x, y / v.y, z / v.z); }
+	inline tfx_vec3_t operator+(const tfx_vec3_t &v) const { return tfx_vec3_t(x + v.x, y + v.y, z + v.z); }
+	inline tfx_vec3_t operator-(const tfx_vec3_t &v) const { return tfx_vec3_t(x - v.x, y - v.y, z - v.z); }
+	inline tfx_vec3_t operator*(const tfx_vec3_t &v) const { return tfx_vec3_t(x * v.x, y * v.y, z * v.z); }
+	inline tfx_vec3_t operator/(const tfx_vec3_t &v) const { return tfx_vec3_t(x / v.x, y / v.y, z / v.z); }
 
-	inline tfxVec3 operator-() const { return tfxVec3(-x, -y, -z); }
+	inline tfx_vec3_t operator-() const { return tfx_vec3_t(-x, -y, -z); }
 
-	inline void operator-=(const tfxVec3 &v) { x -= v.x; y -= v.y; z -= v.z; }
-	inline void operator+=(const tfxVec3 &v) { x += v.x; y += v.y; z += v.z; }
-	inline void operator*=(const tfxVec3 &v) { x *= v.x; y *= v.y; z *= v.z; }
-	inline void operator/=(const tfxVec3 &v) { x /= v.x; y /= v.y; z /= v.z; }
+	inline void operator-=(const tfx_vec3_t &v) { x -= v.x; y -= v.y; z -= v.z; }
+	inline void operator+=(const tfx_vec3_t &v) { x += v.x; y += v.y; z += v.z; }
+	inline void operator*=(const tfx_vec3_t &v) { x *= v.x; y *= v.y; z *= v.z; }
+	inline void operator/=(const tfx_vec3_t &v) { x /= v.x; y /= v.y; z /= v.z; }
 
-	inline void operator-=(const tfxVec2 &v) { x -= v.x; y -= v.y; }
-	inline void operator+=(const tfxVec2 &v) { x += v.x; y += v.y; }
-	inline void operator*=(const tfxVec2 &v) { x *= v.x; y *= v.y; }
-	inline void operator/=(const tfxVec2 &v) { x /= v.x; y /= v.y; }
+	inline void operator-=(const tfx_vec2_t &v) { x -= v.x; y -= v.y; }
+	inline void operator+=(const tfx_vec2_t &v) { x += v.x; y += v.y; }
+	inline void operator*=(const tfx_vec2_t &v) { x *= v.x; y *= v.y; }
+	inline void operator/=(const tfx_vec2_t &v) { x /= v.x; y /= v.y; }
 
-	inline tfxVec3 operator+(float v) const { return tfxVec3(x + v, y + v, z + v); }
-	inline tfxVec3 operator-(float v) const { return tfxVec3(x - v, y - v, z - v); }
-	inline tfxVec3 operator*(float v) const { return tfxVec3(x * v, y * v, z * v); }
-	inline tfxVec3 operator/(float v) const { return tfxVec3(x / v, y / v, z / v); }
+	inline tfx_vec3_t operator+(float v) const { return tfx_vec3_t(x + v, y + v, z + v); }
+	inline tfx_vec3_t operator-(float v) const { return tfx_vec3_t(x - v, y - v, z - v); }
+	inline tfx_vec3_t operator*(float v) const { return tfx_vec3_t(x * v, y * v, z * v); }
+	inline tfx_vec3_t operator/(float v) const { return tfx_vec3_t(x / v, y / v, z / v); }
 
 	inline void operator*=(float v) { x *= v; y *= v; z *= v; }
 	inline void operator/=(float v) { x /= v; y /= v; z /= v; }
@@ -3571,54 +3569,54 @@ struct tfxVec3 {
 	inline bool IsNill() { return !x && !y && !z; }
 };
 
-struct tfxVec4 {
+struct tfx_vec4_t {
 	union {
 		struct { float x, y, z, w; };
 		struct { float c0, c1, c2, c3; };
 	};
 
-	tfxVec4() { x = y = z = w = 0.f; }
-	tfxVec4(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
-	tfxVec4(tfxVec2 vec1, tfxVec2 vec2) : x(vec1.x), y(vec1.y), z(vec2.x), w(vec2.y) {}
-	tfxVec4(tfxVec3 vec) : x(vec.x), y(vec.y), z(vec.z), w(0.f) {}
-	tfxVec4(tfxVec3 vec, float _w) : x(vec.x), y(vec.y), z(vec.z), w(_w) {}
+	tfx_vec4_t() { x = y = z = w = 0.f; }
+	tfx_vec4_t(float _x, float _y, float _z, float _w) : x(_x), y(_y), z(_z), w(_w) {}
+	tfx_vec4_t(tfx_vec2_t vec1, tfx_vec2_t vec2) : x(vec1.x), y(vec1.y), z(vec2.x), w(vec2.y) {}
+	tfx_vec4_t(tfx_vec3_t vec) : x(vec.x), y(vec.y), z(vec.z), w(0.f) {}
+	tfx_vec4_t(tfx_vec3_t vec, float _w) : x(vec.x), y(vec.y), z(vec.z), w(_w) {}
 
-	inline tfxVec2 xy() { return tfxVec2(x, y); }
-	inline tfxVec2 zw() { return tfxVec2(z, w); }
-	inline tfxVec3 xyz() { return tfxVec3(x, y, z); }
+	inline tfx_vec2_t xy() { return tfx_vec2_t(x, y); }
+	inline tfx_vec2_t zw() { return tfx_vec2_t(z, w); }
+	inline tfx_vec3_t xyz() { return tfx_vec3_t(x, y, z); }
 
-	inline tfxVec2 xy() const { return tfxVec2(x, y); }
-	inline tfxVec2 zw() const { return tfxVec2(z, w); }
-	inline tfxVec3 xyz() const { return tfxVec3(x, y, z); }
+	inline tfx_vec2_t xy() const { return tfx_vec2_t(x, y); }
+	inline tfx_vec2_t zw() const { return tfx_vec2_t(z, w); }
+	inline tfx_vec3_t xyz() const { return tfx_vec3_t(x, y, z); }
 
-	inline void operator=(const tfxVec2 &v) { x = v.x; y = v.y; }
-	inline void operator=(const tfxVec3 &v) { x = v.x; y = v.y; z = v.z; }
+	inline void operator=(const tfx_vec2_t &v) { x = v.x; y = v.y; }
+	inline void operator=(const tfx_vec3_t &v) { x = v.x; y = v.y; z = v.z; }
 
-	inline tfxVec4 operator+(const tfxVec4 &v) { return tfxVec4(x + v.x, y + v.y, z + v.z, w + v.w); }
-	inline tfxVec4 operator-(const tfxVec4 &v) { return tfxVec4(x - v.x, y - v.y, z - v.z, w - v.w); }
-	inline tfxVec4 operator-() { return tfxVec4(-x, -y, -z, -w); }
-	inline tfxVec4 operator*(const tfxVec4 &v) { return tfxVec4(x * v.x, y * v.y, z * v.z, w * v.w); }
-	inline tfxVec4 operator/(const tfxVec4 &v) { return tfxVec4(x / v.x, y / v.y, z / v.z, w / v.w); }
+	inline tfx_vec4_t operator+(const tfx_vec4_t &v) { return tfx_vec4_t(x + v.x, y + v.y, z + v.z, w + v.w); }
+	inline tfx_vec4_t operator-(const tfx_vec4_t &v) { return tfx_vec4_t(x - v.x, y - v.y, z - v.z, w - v.w); }
+	inline tfx_vec4_t operator-() { return tfx_vec4_t(-x, -y, -z, -w); }
+	inline tfx_vec4_t operator*(const tfx_vec4_t &v) { return tfx_vec4_t(x * v.x, y * v.y, z * v.z, w * v.w); }
+	inline tfx_vec4_t operator/(const tfx_vec4_t &v) { return tfx_vec4_t(x / v.x, y / v.y, z / v.z, w / v.w); }
 
-	inline void operator-=(const tfxVec4 &v) { x -= v.x; y -= v.y; z -= v.z; w -= v.w; }
-	inline void operator+=(const tfxVec4 &v) { x += v.x; y += v.y; z += v.z; w += v.w; }
-	inline void operator*=(const tfxVec4 &v) { x *= v.x; y *= v.y; z *= v.z; w *= v.w; }
-	inline void operator/=(const tfxVec4 &v) { x /= v.x; y /= v.y; z /= v.z; w /= v.w; }
+	inline void operator-=(const tfx_vec4_t &v) { x -= v.x; y -= v.y; z -= v.z; w -= v.w; }
+	inline void operator+=(const tfx_vec4_t &v) { x += v.x; y += v.y; z += v.z; w += v.w; }
+	inline void operator*=(const tfx_vec4_t &v) { x *= v.x; y *= v.y; z *= v.z; w *= v.w; }
+	inline void operator/=(const tfx_vec4_t &v) { x /= v.x; y /= v.y; z /= v.z; w /= v.w; }
 
-	inline void operator-=(const tfxVec3 &v) { x -= v.x; y -= v.y; z -= v.z; }
-	inline void operator+=(const tfxVec3 &v) { x += v.x; y += v.y; z += v.z; }
-	inline void operator*=(const tfxVec3 &v) { x *= v.x; y *= v.y; z *= v.z; }
-	inline void operator/=(const tfxVec3 &v) { x /= v.x; y /= v.y; z /= v.z; }
+	inline void operator-=(const tfx_vec3_t &v) { x -= v.x; y -= v.y; z -= v.z; }
+	inline void operator+=(const tfx_vec3_t &v) { x += v.x; y += v.y; z += v.z; }
+	inline void operator*=(const tfx_vec3_t &v) { x *= v.x; y *= v.y; z *= v.z; }
+	inline void operator/=(const tfx_vec3_t &v) { x /= v.x; y /= v.y; z /= v.z; }
 
-	inline void operator-=(const tfxVec2 &v) { x -= v.x; y -= v.y; }
-	inline void operator+=(const tfxVec2 &v) { x += v.x; y += v.y; }
-	inline void operator*=(const tfxVec2 &v) { x *= v.x; y *= v.y; }
-	inline void operator/=(const tfxVec2 &v) { x /= v.x; y /= v.y; }
+	inline void operator-=(const tfx_vec2_t &v) { x -= v.x; y -= v.y; }
+	inline void operator+=(const tfx_vec2_t &v) { x += v.x; y += v.y; }
+	inline void operator*=(const tfx_vec2_t &v) { x *= v.x; y *= v.y; }
+	inline void operator/=(const tfx_vec2_t &v) { x /= v.x; y /= v.y; }
 
-	inline tfxVec4 operator+(float v) const { return tfxVec4(x + v, y + v, z + v, w + v); }
-	inline tfxVec4 operator-(float v) const { return tfxVec4(x - v, y - v, z - v, w - v); }
-	inline tfxVec4 operator*(float v) const { return tfxVec4(x * v, y * v, z * v, w * v); }
-	inline tfxVec4 operator/(float v) const { return tfxVec4(x / v, y / v, z / v, w / v); }
+	inline tfx_vec4_t operator+(float v) const { return tfx_vec4_t(x + v, y + v, z + v, w + v); }
+	inline tfx_vec4_t operator-(float v) const { return tfx_vec4_t(x - v, y - v, z - v, w - v); }
+	inline tfx_vec4_t operator*(float v) const { return tfx_vec4_t(x * v, y * v, z * v, w * v); }
+	inline tfx_vec4_t operator/(float v) const { return tfx_vec4_t(x / v, y / v, z / v, w / v); }
 
 	inline void operator*=(float v) { x *= v; y *= v; z *= v; w *= v; }
 	inline void operator/=(float v) { x /= v; y /= v; z /= v; w /= v; }
@@ -3626,37 +3624,37 @@ struct tfxVec4 {
 	inline void operator-=(float v) { x -= v; y -= v; z -= v; w -= v; }
 };
 
-//Wide simd versions of tfxVec2/3
-struct tfxWideVec3 {
+//Wide simd versions of tfx_vec2_t/3
+struct tfx_wide_vec3_t {
 	union {
 		struct { tfxWideFloat x, y, z; };
 		struct { tfxWideFloat pitch, yaw, roll; };
 	};
 
-	tfxWideVec3() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); z = tfxWideSetSingle(0.f); }
-	tfxWideVec3(tfxWideFloat _x, tfxWideFloat _y, tfxWideFloat _z) { x = _x; y = _y; z = _z; }
+	tfx_wide_vec3_t() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); z = tfxWideSetSingle(0.f); }
+	tfx_wide_vec3_t(tfxWideFloat _x, tfxWideFloat _y, tfxWideFloat _z) { x = _x; y = _y; z = _z; }
 
-	inline tfxWideVec3 operator+(const tfxWideVec3 &v) const { return tfxWideVec3(tfxWideAdd(x, v.x), tfxWideAdd(y, v.y), tfxWideAdd(z, v.z)); }
-	inline tfxWideVec3 operator-(const tfxWideVec3 &v) const { return tfxWideVec3(tfxWideSub(x, v.x), tfxWideSub(y, v.y), tfxWideSub(z, v.z)); }
-	inline tfxWideVec3 operator*(const tfxWideVec3 &v) const { return tfxWideVec3(tfxWideMul(x, v.x), tfxWideMul(y, v.y), tfxWideMul(z, v.z)); }
-	inline tfxWideVec3 operator/(const tfxWideVec3 &v) const { return tfxWideVec3(tfxWideDiv(x, v.x), tfxWideDiv(y, v.y), tfxWideDiv(z, v.z)); }
+	inline tfx_wide_vec3_t operator+(const tfx_wide_vec3_t &v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v.x), tfxWideAdd(y, v.y), tfxWideAdd(z, v.z)); }
+	inline tfx_wide_vec3_t operator-(const tfx_wide_vec3_t &v) const { return tfx_wide_vec3_t(tfxWideSub(x, v.x), tfxWideSub(y, v.y), tfxWideSub(z, v.z)); }
+	inline tfx_wide_vec3_t operator*(const tfx_wide_vec3_t &v) const { return tfx_wide_vec3_t(tfxWideMul(x, v.x), tfxWideMul(y, v.y), tfxWideMul(z, v.z)); }
+	inline tfx_wide_vec3_t operator/(const tfx_wide_vec3_t &v) const { return tfx_wide_vec3_t(tfxWideDiv(x, v.x), tfxWideDiv(y, v.y), tfxWideDiv(z, v.z)); }
 
-	inline tfxWideVec3 operator-() const { return tfxWideVec3(tfxWideSub(tfxWideSetSingle(0.f), x), tfxWideSub(tfxWideSetSingle(0.f), y), tfxWideSub(tfxWideSetSingle(0.f), z)); }
+	inline tfx_wide_vec3_t operator-() const { return tfx_wide_vec3_t(tfxWideSub(tfxWideSetSingle(0.f), x), tfxWideSub(tfxWideSetSingle(0.f), y), tfxWideSub(tfxWideSetSingle(0.f), z)); }
 
-	inline void operator-=(const tfxWideVec3 &v) { x = tfxWideSub(x, v.x); y = tfxWideSub(y, v.y); z = tfxWideSub(z, v.z); }
-	inline void operator+=(const tfxWideVec3 &v) { x = tfxWideAdd(x, v.x); y = tfxWideAdd(y, v.y); z = tfxWideAdd(z, v.z); }
-	inline void operator*=(const tfxWideVec3 &v) { x = tfxWideMul(x, v.x); y = tfxWideMul(y, v.y); z = tfxWideMul(z, v.z); }
-	inline void operator/=(const tfxWideVec3 &v) { x = tfxWideDiv(x, v.x); y = tfxWideDiv(y, v.y); z = tfxWideDiv(z, v.z); }
+	inline void operator-=(const tfx_wide_vec3_t &v) { x = tfxWideSub(x, v.x); y = tfxWideSub(y, v.y); z = tfxWideSub(z, v.z); }
+	inline void operator+=(const tfx_wide_vec3_t &v) { x = tfxWideAdd(x, v.x); y = tfxWideAdd(y, v.y); z = tfxWideAdd(z, v.z); }
+	inline void operator*=(const tfx_wide_vec3_t &v) { x = tfxWideMul(x, v.x); y = tfxWideMul(y, v.y); z = tfxWideMul(z, v.z); }
+	inline void operator/=(const tfx_wide_vec3_t &v) { x = tfxWideDiv(x, v.x); y = tfxWideDiv(y, v.y); z = tfxWideDiv(z, v.z); }
 
-	inline tfxWideVec3 operator+(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec3(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
-	inline tfxWideVec3 operator-(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec3(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
-	inline tfxWideVec3 operator*(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec3(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
-	inline tfxWideVec3 operator/(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec3(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
+	inline tfx_wide_vec3_t operator+(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec3_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
+	inline tfx_wide_vec3_t operator-(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec3_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
+	inline tfx_wide_vec3_t operator*(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec3_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
+	inline tfx_wide_vec3_t operator/(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec3_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
 
-	inline tfxWideVec3 operator+(tfxWideFloat v) const { return tfxWideVec3(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
-	inline tfxWideVec3 operator-(tfxWideFloat v) const { return tfxWideVec3(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
-	inline tfxWideVec3 operator*(tfxWideFloat v) const { return tfxWideVec3(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
-	inline tfxWideVec3 operator/(tfxWideFloat v) const { return tfxWideVec3(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
+	inline tfx_wide_vec3_t operator+(tfxWideFloat v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
+	inline tfx_wide_vec3_t operator-(tfxWideFloat v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
+	inline tfx_wide_vec3_t operator*(tfxWideFloat v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
+	inline tfx_wide_vec3_t operator/(tfxWideFloat v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
 
 	inline void operator*=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideMul(x, wide_v); y = tfxWideMul(y, wide_v); z = tfxWideMul(z, wide_v); }
 	inline void operator/=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideDiv(x, wide_v); y = tfxWideDiv(y, wide_v); z = tfxWideDiv(z, wide_v); }
@@ -3666,33 +3664,33 @@ struct tfxWideVec3 {
 	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideAdd(tfxWideMul(y, y), tfxWideMul(z, z))); }
 };
 
-struct tfxWideVec2 {
+struct tfx_wide_vec2_t {
 	tfxWideFloat x, y;
 
-	tfxWideVec2() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); }
-	tfxWideVec2(tfxWideFloat _x, tfxWideFloat _y) { x = _x; y = _y; }
+	tfx_wide_vec2_t() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); }
+	tfx_wide_vec2_t(tfxWideFloat _x, tfxWideFloat _y) { x = _x; y = _y; }
 
-	inline tfxWideVec2 operator+(const tfxWideVec2 &v) const { return tfxWideVec2(tfxWideAdd(x, v.x), tfxWideAdd(y, v.y)); }
-	inline tfxWideVec2 operator-(const tfxWideVec2 &v) const { return tfxWideVec2(tfxWideSub(x, v.x), tfxWideSub(y, v.y)); }
-	inline tfxWideVec2 operator*(const tfxWideVec2 &v) const { return tfxWideVec2(tfxWideMul(x, v.x), tfxWideMul(y, v.y)); }
-	inline tfxWideVec2 operator/(const tfxWideVec2 &v) const { return tfxWideVec2(tfxWideDiv(x, v.x), tfxWideDiv(y, v.y)); }
+	inline tfx_wide_vec2_t operator+(const tfx_wide_vec2_t &v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v.x), tfxWideAdd(y, v.y)); }
+	inline tfx_wide_vec2_t operator-(const tfx_wide_vec2_t &v) const { return tfx_wide_vec2_t(tfxWideSub(x, v.x), tfxWideSub(y, v.y)); }
+	inline tfx_wide_vec2_t operator*(const tfx_wide_vec2_t &v) const { return tfx_wide_vec2_t(tfxWideMul(x, v.x), tfxWideMul(y, v.y)); }
+	inline tfx_wide_vec2_t operator/(const tfx_wide_vec2_t &v) const { return tfx_wide_vec2_t(tfxWideDiv(x, v.x), tfxWideDiv(y, v.y)); }
 
-	inline tfxWideVec2 operator-() const { return tfxWideVec2(tfxWideSub(tfxWideSetSingle(0.f), x), tfxWideSub(tfxWideSetSingle(0.f), y)); }
+	inline tfx_wide_vec2_t operator-() const { return tfx_wide_vec2_t(tfxWideSub(tfxWideSetSingle(0.f), x), tfxWideSub(tfxWideSetSingle(0.f), y)); }
 
-	inline void operator-=(const tfxWideVec2 &v) { x = tfxWideSub(x, v.x); y = tfxWideSub(y, v.y); }
-	inline void operator+=(const tfxWideVec2 &v) { x = tfxWideAdd(x, v.x); y = tfxWideAdd(y, v.y); }
-	inline void operator*=(const tfxWideVec2 &v) { x = tfxWideMul(x, v.x); y = tfxWideMul(y, v.y); }
-	inline void operator/=(const tfxWideVec2 &v) { x = tfxWideDiv(x, v.x); y = tfxWideDiv(y, v.y); }
+	inline void operator-=(const tfx_wide_vec2_t &v) { x = tfxWideSub(x, v.x); y = tfxWideSub(y, v.y); }
+	inline void operator+=(const tfx_wide_vec2_t &v) { x = tfxWideAdd(x, v.x); y = tfxWideAdd(y, v.y); }
+	inline void operator*=(const tfx_wide_vec2_t &v) { x = tfxWideMul(x, v.x); y = tfxWideMul(y, v.y); }
+	inline void operator/=(const tfx_wide_vec2_t &v) { x = tfxWideDiv(x, v.x); y = tfxWideDiv(y, v.y); }
 
-	inline tfxWideVec2 operator+(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec2(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
-	inline tfxWideVec2 operator-(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec2(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
-	inline tfxWideVec2 operator*(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec2(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
-	inline tfxWideVec2 operator/(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfxWideVec2(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
+	inline tfx_wide_vec2_t operator+(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec2_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
+	inline tfx_wide_vec2_t operator-(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec2_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
+	inline tfx_wide_vec2_t operator*(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec2_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
+	inline tfx_wide_vec2_t operator/(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec2_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
 
-	inline tfxWideVec2 operator+(tfxWideFloat v) const { return tfxWideVec2(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
-	inline tfxWideVec2 operator-(tfxWideFloat v) const { return tfxWideVec2(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
-	inline tfxWideVec2 operator*(tfxWideFloat v) const { return tfxWideVec2(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
-	inline tfxWideVec2 operator/(tfxWideFloat v) const { return tfxWideVec2(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
+	inline tfx_wide_vec2_t operator+(tfxWideFloat v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
+	inline tfx_wide_vec2_t operator-(tfxWideFloat v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
+	inline tfx_wide_vec2_t operator*(tfxWideFloat v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
+	inline tfx_wide_vec2_t operator/(tfxWideFloat v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
 
 	inline void operator*=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideMul(x, wide_v); y = tfxWideMul(y, wide_v); }
 	inline void operator/=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideDiv(x, wide_v); y = tfxWideDiv(y, wide_v); }
@@ -3702,40 +3700,40 @@ struct tfxWideVec2 {
 	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideMul(y, y)); }
 };
 
-inline tfxWideVec3 InterpolateWideVec3(tfxWideFloat &tween, tfxWideVec3 &from, tfxWideVec3 &to) {
+inline tfx_wide_vec3_t InterpolateWideVec3(tfxWideFloat &tween, tfx_wide_vec3_t &from, tfx_wide_vec3_t &to) {
 	return to * tween + from * (tfxWideSub(tfxWIDEONE, tween));
 }
 
-static inline void ScaleVec4xyz(tfxVec4 &v, float scalar) {
+static inline void ScaleVec4xyz(tfx_vec4_t &v, float scalar) {
 	v.x *= scalar;
 	v.y *= scalar;
 	v.z *= scalar;
 }
 
-struct tfxRGBA8 {
+struct tfx_rgba8_t {
 	union {
 		struct { unsigned char r, g, b, a; };
 		struct { tfxU32 color; };
 	};
 
-	tfxRGBA8() { r = g = b = a = 0; }
-	tfxRGBA8(unsigned char _r, unsigned char _g, unsigned char _b, unsigned char _a) : r(_r), g(_g), b(_b), a(_a) { }
-	tfxRGBA8(float _r, float _g, float _b, float _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
-	tfxRGBA8(tfxU32 _r, tfxU32 _g, tfxU32 _b, tfxU32 _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
-	tfxRGBA8(int _r, int _g, int _b, int _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
-	tfxRGBA8(tfxRGBA8 _c, char _a) : r(_c.r), g(_c.g), b(_c.b), a((char)_a) { }
+	tfx_rgba8_t() { r = g = b = a = 0; }
+	tfx_rgba8_t(unsigned char _r, unsigned char _g, unsigned char _b, unsigned char _a) : r(_r), g(_g), b(_b), a(_a) { }
+	tfx_rgba8_t(float _r, float _g, float _b, float _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
+	tfx_rgba8_t(tfxU32 _r, tfxU32 _g, tfxU32 _b, tfxU32 _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
+	tfx_rgba8_t(int _r, int _g, int _b, int _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
+	tfx_rgba8_t(tfx_rgba8_t _c, char _a) : r(_c.r), g(_c.g), b(_c.b), a((char)_a) { }
 };
 
-struct tfxRGB {
+struct tfx_rgb_t {
 	float r, g, b;
-	tfxRGB() { r = g = b = 0.f; }
-	tfxRGB(float _r, float _g, float _b) : r(_r), g(_g), b(_b) { }
+	tfx_rgb_t() { r = g = b = 0.f; }
+	tfx_rgb_t(float _r, float _g, float _b) : r(_r), g(_g), b(_b) { }
 };
 
-struct tfxHSV {
+struct tfx_hsv_t {
 	float h, s, v;
-	tfxHSV() { h = s = v = 0.f; }
-	tfxHSV(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
+	tfx_hsv_t() { h = s = v = 0.f; }
+	tfx_hsv_t(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
 };
 
 const float one_div_255 = 1 / 255.f;
@@ -3745,16 +3743,16 @@ const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
 #define tfxPACKED_Y_NORMAL_2D 32767
 
-struct tfxRGBA {
+struct tfx_rgba_t {
 	float r, g, b, a;
-	tfxRGBA() { r = g = b = a = 1.f; }
-	tfxRGBA(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) { }
-	tfxRGBA(tfxRGBA8 c) : r((float)c.r * one_div_255), g((float)c.g * one_div_255), b((float)c.b * one_div_255), a((float)c.a * one_div_255) { }
+	tfx_rgba_t() { r = g = b = a = 1.f; }
+	tfx_rgba_t(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) { }
+	tfx_rgba_t(tfx_rgba8_t c) : r((float)c.r * one_div_255), g((float)c.g * one_div_255), b((float)c.b * one_div_255), a((float)c.a * one_div_255) { }
 };
 
-struct tfxMatrix4 {
+struct tfx_mat4_t {
 
-	tfxVec4 v[4];
+	tfx_vec4_t v[4];
 
 	inline void Set2(float aa, float ab, float ba, float bb) {
 		v[0].c0 = aa; v[0].c1 = ab;
@@ -3763,19 +3761,19 @@ struct tfxMatrix4 {
 
 };
 
-struct tfxMatrix4Wide {
+struct tfx_wide_mat4_t {
 	float x[4];
 	float y[4];
 	float z[4];
 	float w[4];
 };
 
-struct tfxMatrix3 {
+struct tfx_mat3_t {
 
-	tfxVec3 v[3];
+	tfx_vec3_t v[3];
 
-	inline tfxVec3 operator*(const tfxVec3 &vec) const {
-		return tfxVec3(
+	inline tfx_vec3_t operator*(const tfx_vec3_t &vec) const {
+		return tfx_vec3_t(
 			v[0].x * vec.x + v[1].x * vec.y + v[2].x * vec.z,
 			v[0].y * vec.x + v[1].y * vec.y + v[2].y * vec.z,
 			v[0].z * vec.x + v[1].z * vec.y + v[2].z * vec.z);
@@ -3784,11 +3782,11 @@ struct tfxMatrix3 {
 };
 
 //Very simple 2D Matix
-struct tfxMatrix2 {
+struct tfx_mat2_t {
 
 	float aa, ab, ba, bb;
 
-	tfxMatrix2() :aa(1.f), ab(0.f), ba(0.f), bb(1.f) {}
+	tfx_mat2_t() :aa(1.f), ab(0.f), ba(0.f), bb(1.f) {}
 
 	void Set(float _aa = 1.f, float _ab = 1.f, float _ba = 1.f, float _bb = 1.f) {
 		aa = _aa;
@@ -3810,22 +3808,22 @@ struct tfxMatrix2 {
 		bb *= s;
 	}
 
-	tfxMatrix2 Transform(const tfxMatrix2 &m) {
-		tfxMatrix2 r;
+	tfx_mat2_t Transform(const tfx_mat2_t &m) {
+		tfx_mat2_t r;
 		r.aa = aa * m.aa + ab * m.ba; r.ab = aa * m.ab + ab * m.bb;
 		r.ba = ba * m.aa + bb * m.ba; r.bb = ba * m.ab + bb * m.bb;
 		return r;
 	}
 
-	tfxMatrix2 Transform(const tfxMatrix4 &m) {
-		tfxMatrix2 r;
+	tfx_mat2_t Transform(const tfx_mat4_t &m) {
+		tfx_mat2_t r;
 		r.aa = aa * m.v[0].x + ab * m.v[1].x; r.ab = aa * m.v[0].y + ab * m.v[1].y;
 		r.ba = ba * m.v[0].x + bb * m.v[1].x; r.bb = ba * m.v[0].y + bb * m.v[1].y;
 		return r;
 	}
 
-	tfxVec2 TransformVector(const tfxVec2 v) {
-		tfxVec2 tv = tfxVec2(0.f, 0.f);
+	tfx_vec2_t TransformVector(const tfx_vec2_t v) {
+		tfx_vec2_t tv = tfx_vec2_t(0.f, 0.f);
 		tv.x = v.x * aa + v.y * ba;
 		tv.y = v.x * ab + v.y * bb;
 		return tv;
@@ -3977,7 +3975,7 @@ tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
 //Section: Profiling
 //-----------------------------------------------------------
 
-struct tfxProfileStats {
+struct tfx_profile_stats_t {
 	tfxU64 cycle_high;
 	tfxU64 cycle_low;
 	tfxU64 cycle_average;
@@ -3987,30 +3985,30 @@ struct tfxProfileStats {
 	tfxU32 hit_count;
 };
 
-struct tfxProfileSnapshot {
+struct tfx_profile_snapshot_t {
 	tfxU32 hit_count = 0;
 	tfxU64 run_time = 0;
 	tfxU64 cycle_count = 0;
 };
 
-struct tfxProfile {
+struct tfx_profile_t {
 	const char *name;
-	tfxProfileSnapshot snapshots[tfxPROFILER_SAMPLES];
+	tfx_profile_snapshot_t snapshots[tfxPROFILER_SAMPLES];
 };
 
 extern const tfxU32 tfxPROFILE_COUNT;
 extern tfxU32 tfxCurrentSnapshot;
-tfxProfile tfxProfileArray[];
+tfx_profile_t tfxProfileArray[];
 
-struct tfxProfileTag {
-	tfxProfile *profile;
-	tfxProfileSnapshot *snapshot;
+struct tfx_profile_tag_t {
+	tfx_profile_t *profile;
+	tfx_profile_snapshot_t *snapshot;
 	tfxU64 start_cycles;
 	tfxU64 start_time;
 
-	tfxProfileTag(tfxU32 id, const char *name);
+	tfx_profile_tag_t(tfxU32 id, const char *name);
 
-	~tfxProfileTag() {
+	~tfx_profile_tag_t() {
 		tfx_AtomicAdd64(&snapshot->run_time, tfx_Microsecs() - start_time);
 		tfx_AtomicAdd64(&snapshot->cycle_count, (__rdtsc() - start_cycles));
 	}
@@ -4018,7 +4016,7 @@ struct tfxProfileTag {
 };
 
 #ifdef tfxENABLE_PROFILING 
-#define tfxPROFILE tfxProfileTag tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
+#define tfxPROFILE tfx_profile_tag_t tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
 #else
 #define tfxPROFILE __COUNTER__
 #endif
@@ -4032,7 +4030,7 @@ const tfxU32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
 const tfxU32 tfxFILE_VERSION = 2;
 
 //Basic package manager used for reading/writing effects files
-struct tfxHeader {
+struct tfx_package_header_t {
 	tfxU32 magic_number;						//Magic number to confirm file format
 	tfxU32 file_version;						//The version of the file
 	tfxU32 flags;								//Any state_flags for the file
@@ -4045,35 +4043,35 @@ struct tfxHeader {
 	tfxU64 reserved5;							//More reserved space
 };
 
-struct tfxEntryInfo {
-	tfxStr file_name;							//The name of the file stored in the package
+struct tfx_package_entry_info_t {
+	tfx_str_t file_name;							//The name of the file stored in the package
 	tfxU64 offset_from_start_of_file = 0;		//Offset from the start of the file to where the file is located
 	tfxU64 file_size = 0;						//The size of the file
-	tfxStream data;								//The file data
+	tfx_stream_t data;								//The file data
 
 	void FreeData();
 };
 
-struct tfxInventory {
+struct tfx_package_inventory_t {
 	tfxU32 magic_number;						//Magic number to confirm format of the Inventory
 	tfxU32 entry_count;							//Number of files in the inventory
-	tfxStorageMap<tfxEntryInfo> entries;		//The inventory list
+	tfx_storage_map_t<tfx_package_entry_info_t> entries;		//The inventory list
 
-	tfxInventory() :
+	tfx_package_inventory_t() :
 		entries("Inventory Map", "Inventory Data"),
 		magic_number(0),
 		entry_count(0)
 	{}
 };
 
-struct tfxPackage {
-	tfxStr file_path;
-	tfxHeader header;
-	tfxInventory inventory;
+struct tfx_package_t {
+	tfx_str_t file_path;
+	tfx_package_header_t header;
+	tfx_package_inventory_t inventory;
 	tfxU64 file_size = 0;						//The total file size of the package, should match file size on disk
-	tfxStream file_data;						//Dump of the data from the package file on disk
+	tfx_stream_t file_data;						//Dump of the data from the package file on disk
 
-	~tfxPackage();
+	~tfx_package_t();
 
 };
 
@@ -4081,45 +4079,45 @@ struct tfxPackage {
 //Section: Struct_Types
 //------------------------------------------------------------
 
-struct tfxFace {
+struct tfx_face_t {
 	int v[3];
 };
-extern tfxvec<tfxVec3> tfxIcospherePoints[6];
+extern tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
 
-struct tfxAttributeNode {
+struct tfx_attribute_node_t {
 	float frame;
 	float value;
 
-	tfxVec2 left;
-	tfxVec2 right;
+	tfx_vec2_t left;
+	tfx_vec2_t right;
 
 	tfxAttributeNodeFlags flags;
 	tfxU32 index;
 
-	tfxAttributeNode() : frame(0.f), value(0.f), flags(0), index(0) { }
-	inline bool operator==(const tfxAttributeNode& n) { return n.frame == frame && n.value == value; }
+	tfx_attribute_node_t() : frame(0.f), value(0.f), flags(0), index(0) { }
+	inline bool operator==(const tfx_attribute_node_t& n) { return n.frame == frame && n.value == value; }
 };
 
-struct tfxRandom {
+struct tfx_random_t {
 	tfxU64 seeds[2];
 };
 
-struct tfxGraphLookup {
-	tfxvec<float> values;
+struct tfx_graph_lookup_t {
+	tfx_vector_t<float> values;
 	tfxU32 last_frame;
 	float life;
 
-	tfxGraphLookup() : last_frame(0), life(0) {}
+	tfx_graph_lookup_t() : last_frame(0), life(0) {}
 };
 
-struct tfxGraphID {
+struct tfx_graph_id_t {
 	tfxGraphCategory category;
 	tfxGraphType type = tfxGraphMaxIndex;
 	tfxU32 graph_id = 0;
 	tfxU32 node_id = 0;
 };
 
-struct tfxGraphLookupIndex {
+struct tfx_graph_lookup_index_t {
 	tfxU32 start_index;
 	tfxU32 length;
 	float max_life;
@@ -4129,138 +4127,138 @@ struct tfxGraphLookupIndex {
 //This struct is used to store indexing data in order to index into large lists containing either the node data of graphs
 //or the lookup data of compiled graphs. This is so that we can upload that data into a buffer on the GPU to get the particles
 //updating in a compute shader.
-struct tfxEffectLookUpData {
-	tfxGraphLookupIndex overtime_velocity;
-	tfxGraphLookupIndex overtime_width;
-	tfxGraphLookupIndex overtime_height;
-	tfxGraphLookupIndex overtime_weight;
-	tfxGraphLookupIndex overtime_spin;
-	tfxGraphLookupIndex overtime_stretch;
-	tfxGraphLookupIndex overtime_red;
-	tfxGraphLookupIndex overtime_green;
-	tfxGraphLookupIndex overtime_blue;
-	tfxGraphLookupIndex overtime_opacity;
-	tfxGraphLookupIndex overtime_velocity_turbulance;
-	tfxGraphLookupIndex overtime_direction_turbulance;
-	tfxGraphLookupIndex overtime_velocity_adjuster;
-	tfxGraphLookupIndex overtime_intensity;
-	tfxGraphLookupIndex overtime_direction;
-	tfxGraphLookupIndex overtime_noise_resolution;
+struct tfx_effect_lookup_data_t {
+	tfx_graph_lookup_index_t overtime_velocity;
+	tfx_graph_lookup_index_t overtime_width;
+	tfx_graph_lookup_index_t overtime_height;
+	tfx_graph_lookup_index_t overtime_weight;
+	tfx_graph_lookup_index_t overtime_spin;
+	tfx_graph_lookup_index_t overtime_stretch;
+	tfx_graph_lookup_index_t overtime_red;
+	tfx_graph_lookup_index_t overtime_green;
+	tfx_graph_lookup_index_t overtime_blue;
+	tfx_graph_lookup_index_t overtime_opacity;
+	tfx_graph_lookup_index_t overtime_velocity_turbulance;
+	tfx_graph_lookup_index_t overtime_direction_turbulance;
+	tfx_graph_lookup_index_t overtime_velocity_adjuster;
+	tfx_graph_lookup_index_t overtime_intensity;
+	tfx_graph_lookup_index_t overtime_direction;
+	tfx_graph_lookup_index_t overtime_noise_resolution;
 };
 
-struct tfxGraph {
+struct tfx_graph_t {
 	//The ratio to transalte graph frame/value to grid x/y coords on a graph editor
 
-	tfxVec2 min;
-	tfxVec2 max;
+	tfx_vec2_t min;
+	tfx_vec2_t max;
 	tfxGraphPreset graph_preset;
 	tfxGraphType type;
-	tfxEffectEmitter *effector;
-	tfx_bucket_array_t<tfxAttributeNode> nodes;
-	tfxGraphLookup lookup;
+	tfx_effect_emitter_t *effector;
+	tfx_bucket_array_t<tfx_attribute_node_t> nodes;
+	tfx_graph_lookup_t lookup;
 	tfxU32 index;
 	float gamma;
 
-	tfxGraph();
-	tfxGraph(tfxU32 bucket_size);
-	~tfxGraph();
+	tfx_graph_t();
+	tfx_graph_t(tfxU32 bucket_size);
+	~tfx_graph_t();
 
 };
 
 //The following structs group graphs together under the attribute categories Global, Transform, Properties, Base, Variation and Overtime
-struct tfxGlobalAttributes {
-	tfxGraph life;
-	tfxGraph amount;
-	tfxGraph velocity;
-	tfxGraph width;
-	tfxGraph height;
-	tfxGraph weight;
-	tfxGraph spin;
-	tfxGraph stretch;
-	tfxGraph overal_scale;
-	tfxGraph intensity;
-	tfxGraph frame_rate;
-	tfxGraph splatter;
-	tfxGraph emitter_width;
-	tfxGraph emitter_height;
-	tfxGraph emitter_depth;
+struct tfx_global_attributes_t {
+	tfx_graph_t life;
+	tfx_graph_t amount;
+	tfx_graph_t velocity;
+	tfx_graph_t width;
+	tfx_graph_t height;
+	tfx_graph_t weight;
+	tfx_graph_t spin;
+	tfx_graph_t stretch;
+	tfx_graph_t overal_scale;
+	tfx_graph_t intensity;
+	tfx_graph_t frame_rate;
+	tfx_graph_t splatter;
+	tfx_graph_t emitter_width;
+	tfx_graph_t emitter_height;
+	tfx_graph_t emitter_depth;
 };
 
-struct tfxTransformAttributes {
-	tfxGraph roll;
-	tfxGraph pitch;
-	tfxGraph yaw;
-	tfxGraph translation_x;
-	tfxGraph translation_y;
-	tfxGraph translation_z;
+struct tfx_transform_attributes_t {
+	tfx_graph_t roll;
+	tfx_graph_t pitch;
+	tfx_graph_t yaw;
+	tfx_graph_t translation_x;
+	tfx_graph_t translation_y;
+	tfx_graph_t translation_z;
 };
 
-struct tfxPropertyAttributes {
-	tfxGraph emission_pitch;
-	tfxGraph emission_yaw;
-	tfxGraph emission_range;
-	tfxGraph splatter;
-	tfxGraph emitter_width;
-	tfxGraph emitter_height;
-	tfxGraph emitter_depth;
-	tfxGraph arc_size;
-	tfxGraph arc_offset;
+struct tfx_property_attributes_t {
+	tfx_graph_t emission_pitch;
+	tfx_graph_t emission_yaw;
+	tfx_graph_t emission_range;
+	tfx_graph_t splatter;
+	tfx_graph_t emitter_width;
+	tfx_graph_t emitter_height;
+	tfx_graph_t emitter_depth;
+	tfx_graph_t arc_size;
+	tfx_graph_t arc_offset;
 };
 
-struct tfxBaseAttributes {
-	tfxGraph life;
-	tfxGraph amount;
-	tfxGraph velocity;
-	tfxGraph width;
-	tfxGraph height;
-	tfxGraph weight;
-	tfxGraph spin;
-	tfxGraph noise_offset;
+struct tfx_base_attributes_t {
+	tfx_graph_t life;
+	tfx_graph_t amount;
+	tfx_graph_t velocity;
+	tfx_graph_t width;
+	tfx_graph_t height;
+	tfx_graph_t weight;
+	tfx_graph_t spin;
+	tfx_graph_t noise_offset;
 };
 
-struct tfxVariationAttributes {
-	tfxGraph life;
-	tfxGraph amount;
-	tfxGraph velocity;
-	tfxGraph width;
-	tfxGraph height;
-	tfxGraph weight;
-	tfxGraph spin;
-	tfxGraph noise_offset;
-	tfxGraph noise_resolution;
+struct tfx_variation_attributes_t {
+	tfx_graph_t life;
+	tfx_graph_t amount;
+	tfx_graph_t velocity;
+	tfx_graph_t width;
+	tfx_graph_t height;
+	tfx_graph_t weight;
+	tfx_graph_t spin;
+	tfx_graph_t noise_offset;
+	tfx_graph_t noise_resolution;
 };
 
-struct tfxOvertimeAttributes {
-	tfxGraph velocity;
-	tfxGraph width;
-	tfxGraph height;
-	tfxGraph weight;
-	tfxGraph spin;
-	tfxGraph stretch;
-	tfxGraph red;
-	tfxGraph green;
-	tfxGraph blue;
-	tfxGraph blendfactor;
-	tfxGraph velocity_turbulance;
-	tfxGraph direction_turbulance;
-	tfxGraph velocity_adjuster;
-	tfxGraph intensity;
-	tfxGraph direction;
-	tfxGraph noise_resolution;
+struct tfx_overtime_attributes_t {
+	tfx_graph_t velocity;
+	tfx_graph_t width;
+	tfx_graph_t height;
+	tfx_graph_t weight;
+	tfx_graph_t spin;
+	tfx_graph_t stretch;
+	tfx_graph_t red;
+	tfx_graph_t green;
+	tfx_graph_t blue;
+	tfx_graph_t blendfactor;
+	tfx_graph_t velocity_turbulance;
+	tfx_graph_t direction_turbulance;
+	tfx_graph_t velocity_adjuster;
+	tfx_graph_t intensity;
+	tfx_graph_t direction;
+	tfx_graph_t noise_resolution;
 };
 
-struct tfxEmitterAttributes {
-	tfxPropertyAttributes properties;
-	tfxBaseAttributes base;
-	tfxVariationAttributes variation;
-	tfxOvertimeAttributes overtime;
+struct tfx_emitter_attributes_t {
+	tfx_property_attributes_t properties;
+	tfx_base_attributes_t base;
+	tfx_variation_attributes_t variation;
+	tfx_overtime_attributes_t overtime;
 };
 
-static float(*lookup_overtime_callback)(tfxGraph *graph, float age, float lifetime);
-static float(*lookup_callback)(tfxGraph *graph, float age);
-static float(*lookup_random_callback)(tfxGraph *graph, float age, tfxRandom *random);
+static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age, float lifetime);
+static float(*lookup_callback)(tfx_graph_t *graph, float age);
+static float(*lookup_random_callback)(tfx_graph_t *graph, float age, tfx_random_t *random);
 
-struct tfxShapeData {
+struct tfx_shape_data_t {
 	char name[64];
 	tfxU32 frame_count = 0;
 	tfxU32 width = 0;
@@ -4270,15 +4268,15 @@ struct tfxShapeData {
 	int import_filter = 0;
 };
 
-struct tfxBase {
-	tfxVec2 size;
+struct tfx_base_t {
+	tfx_vec2_t size;
 	float velocity;
 	float spin;
 	float weight;
 };
 
-struct tfxCameraSettings {
-	tfxVec3 camera_position;
+struct tfx_camera_settings_t {
+	tfx_vec3_t camera_position;
 	float camera_pitch;
 	float camera_yaw;
 	float camera_fov;
@@ -4288,17 +4286,17 @@ struct tfxCameraSettings {
 	bool camera_hide_floor;
 };
 
-struct tfxPreviewCameraSettings {
-	tfxCameraSettings camera_settings;
+struct tfx_preview_camera_settings_t {
+	tfx_camera_settings_t camera_settings;
 	float effect_z_offset;
 	float camera_speed;
 	bool attach_effect_to_camera = false;
 };
 
 //this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
-struct tfxSpriteSheetSettings {
-	tfxVec3 position;
-	tfxVec2 frame_size;
+struct tfx_sprite_sheet_settings_t {
+	tfx_vec3_t position;
+	tfx_vec2_t frame_size;
 	float scale;
 	float zoom;
 	int frames;
@@ -4314,12 +4312,12 @@ struct tfxSpriteSheetSettings {
 	float effect_z_offset = 5.f;
 	tfxExportColorOptions color_option;
 	tfxExportOptions export_option;
-	tfxCameraSettings camera_settings;
-	tfxCameraSettings camera_settings_orthographic;
+	tfx_camera_settings_t camera_settings;
+	tfx_camera_settings_t camera_settings_orthographic;
 };
 
 //This struct has the settings for recording sprite data frames so that they can be played back as an alternative to dynamic particle updating
-struct tfxSpriteDataSettings {
+struct tfx_sprite_data_settings_t {
 	int real_frames;
 	int frames_after_compression;
 	int current_frame;
@@ -4341,17 +4339,17 @@ struct tfxSpriteDataSettings {
 //API structs you can access in various ways to update and render effects in realtime
 
 //Image data for particle shapes. This is passed into your custom ShapeLoader function for loading image textures into whatever renderer you're using
-struct tfxImageData {
+struct tfx_image_data_t {
 	//This can be a ptr to the image texture for rendering. You must assign this in your ShapeLoader function
 	void *ptr;
 	//Index of the image, deprecated, image hash should be used now instead.
 	tfxU32 shape_index;
 	//Name of the image
-	tfxStr name;
+	tfx_str_t name;
 	//A hash of the image data for a unique and which can also be used to see if an image has already been loaded
 	tfxU64 image_hash;
 	//The size of one frame of the image
-	tfxVec2 image_size;
+	tfx_vec2_t image_size;
 	//Image index refers to any index that helps you look up the correct image to use. this could be an index in a texture array for example.
 	tfxU32 image_index;
 	//The number of frames in the image, can be one or more
@@ -4367,7 +4365,7 @@ struct tfxImageData {
 	tfxCUSTOM_IMAGE_DATA
 #endif // tfxCUSTOM_IMAGE_DATA
 
-		tfxImageData() :
+		tfx_image_data_t() :
 		image_index(0),
 		ptr(nullptr),
 		animation_frames(1.f),
@@ -4379,9 +4377,9 @@ struct tfxImageData {
 };
 
 //Struct of Arrays for the emitter properties. 
-struct tfxEmitterPropertiesSoA {
-	//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfxRandom
-	tfxVec3 *angle_offsets;
+struct tfx_emitter_properties_soa_t {
+	//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfx_random_t
+	tfx_vec3_t *angle_offsets;
 	//When aligning the billboard along a vector, you can set the type of vector that it aligns with
 	tfxVectorAlignType *vector_align_type;
 	//Point, area, ellipse emitter etc.
@@ -4393,12 +4391,12 @@ struct tfxEmitterPropertiesSoA {
 	//The final frame index of the animation
 	float *end_frame;
 	//Pointer to the ImageData in the EffectLibary. 
-	tfxImageData **image;
+	tfx_image_data_t **image;
 	//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
 	tfxBillboardingOptions *billboard_option;
 
 	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
-	tfxVec3 *grid_points;
+	tfx_vec3_t *grid_points;
 	//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
 	tfxAngleSettingFlags *angle_settings;
 	//Layer of the particle manager that the particle is added to
@@ -4413,9 +4411,9 @@ struct tfxEmitterPropertiesSoA {
 	//Bit field of various boolean state_flags
 	tfxParticleControlFlags *compute_flags;
 	//Offset to draw particles at
-	tfxVec2 *image_handle;
+	tfx_vec2_t *image_handle;
 	//Offset of emitters
-	tfxVec3 *emitter_handle;
+	tfx_vec3_t *emitter_handle;
 	//When single flag is set, spawn this amount of particles in one go
 	tfxU32 *spawn_amount;
 	//The shape being used for all particles spawned from the emitter (deprecated, hash now used instead)
@@ -4433,24 +4431,11 @@ struct tfxEmitterPropertiesSoA {
 	//are stored on the GPU for looking up from the sprite data
 	tfxU32 *animation_property_index;
 
-	tfxEmitterPropertiesSoA() { memset(this, 0, sizeof(tfxEmitterPropertiesSoA)); }
-};
-
-struct tfxEmitterTransform {
-	//Position, scale and rotation values
-	tfxVec3 translation;
-	tfxVec3 local_position;
-	tfxVec3 world_position;
-	tfxVec3 captured_position;
-	tfxVec3 local_rotations;
-	tfxVec3 world_rotations;
-	tfxVec3 scale;
-	//Todo: save space and use a quaternion here
-	tfxMatrix4 matrix;
+	tfx_emitter_properties_soa_t() { memset(this, 0, sizeof(tfx_emitter_properties_soa_t)); }
 };
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
-struct tfxParentSpawnControls {
+struct tfx_parent_spawn_controls_t {
 	float life;
 	float size_x;
 	float size_y;
@@ -4461,15 +4446,15 @@ struct tfxParentSpawnControls {
 	float weight;
 };
 
-struct tfxEffectEmitterInfo {
+struct tfx_effect_emitter_info_t {
 	//Name of the effect
-	tfxStr64 name;
+	tfx_str64_t name;
 	//Every effect and emitter in the library gets a unique id
 	tfxU32 uid;
 	//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
 	float max_radius;
 	//List of sub_effects ( effects contain emitters, emitters contain sub effects )
-	tfxvec<tfxEffectEmitter> sub_effectors;
+	tfx_vector_t<tfx_effect_emitter_t> sub_effectors;
 	//Experiment: index into the lookup index data in the effect library
 	tfxU32 lookup_node_index;
 	tfxU32 lookup_value_index;
@@ -4487,7 +4472,7 @@ struct tfxEffectEmitterInfo {
 	tfxU32 max_particles[tfxLAYERS];
 	tfxU32 max_sub_emitters;
 
-	tfxEffectEmitterInfo() :
+	tfx_effect_emitter_info_t() :
 		lookup_node_index(0),
 		lookup_value_index(0),
 		sprite_data_settings_index(0),
@@ -4506,7 +4491,7 @@ struct tfxEffectEmitterInfo {
 	}
 };
 
-struct tfxEmitterSoA {
+struct tfx_emitter_soa_t {
 	//State data
 	float *frame;
 	float *age;
@@ -4514,20 +4499,20 @@ struct tfxEmitterSoA {
 	float *delay_spawning;
 	float *timeout_counter;
 	float *timeout;
-	tfxVec3 *handle;
+	tfx_vec3_t *handle;
 	tfxEmitterPropertyFlags *property_flags;
 	float *loop_length;
 	//Position, scale and rotation values
-	tfxVec3 *translation;
-	tfxVec3 *local_position;
-	tfxVec3 *world_position;
-	tfxVec3 *captured_position;
-	tfxVec3 *local_rotations;
-	tfxVec3 *world_rotations;
-	tfxVec3 *scale;
+	tfx_vec3_t *translation;
+	tfx_vec3_t *local_position;
+	tfx_vec3_t *world_position;
+	tfx_vec3_t *captured_position;
+	tfx_vec3_t *local_rotations;
+	tfx_vec3_t *world_rotations;
+	tfx_vec3_t *scale;
 	//Todo: save space and use a quaternion here... maybe
-	tfxMatrix4 *matrix;
-	tfxVec2 *image_handle;
+	tfx_mat4_t *matrix;
+	tfx_vec2_t *image_handle;
 	float *amount_remainder;
 	float *spawn_quantity;
 	float *qty_step_size;
@@ -4560,9 +4545,9 @@ struct tfxEmitterSoA {
 	float *noise_offset_variation;
 	float *noise_offset;
 	float *noise_resolution;
-	tfxVec2 *size;
-	tfxVec2 *size_variation;
-	tfxVec3 *grid_segment_size;
+	tfx_vec2_t *size;
+	tfx_vec2_t *size_variation;
+	tfx_vec3_t *grid_segment_size;
 
 	//Control Data
 	tfxU32 *particles_index;
@@ -4572,47 +4557,47 @@ struct tfxEmitterSoA {
 	float *image_frame_rate;
 	float *stretch;
 	float *end_frame;
-	tfxVec3 *grid_coords;
-	tfxVec3 *grid_direction;
-	tfxVec3 *emitter_size;
+	tfx_vec3_t *grid_coords;
+	tfx_vec3_t *grid_direction;
+	tfx_vec3_t *emitter_size;
 	float *emission_alternator;
 	tfxEmitterStateFlags *state_flags;
-	tfxVec2 *image_size;
-	tfxVec3 *angle_offsets;
+	tfx_vec2_t *image_size;
+	tfx_vec3_t *angle_offsets;
 
 };
 
-struct tfxEffectSoA {
+struct tfx_effect_soa_t {
 	//State data
 	float *frame;
 	float *age;
 	float *highest_particle_age;
 	float *timeout_counter;
 	float *timeout;
-	tfxVec3 *handle;
+	tfx_vec3_t *handle;
 	tfxEmitterPropertyFlags *property_flags;
 	float *loop_length;
 	//Position, scale and rotation values
-	tfxVec3 *translation;
-	tfxVec3 *local_position;
-	tfxVec3 *world_position;
-	tfxVec3 *captured_position;
-	tfxVec3 *local_rotations;
-	tfxVec3 *world_rotations;
-	tfxVec3 *scale;
+	tfx_vec3_t *translation;
+	tfx_vec3_t *local_position;
+	tfx_vec3_t *world_position;
+	tfx_vec3_t *captured_position;
+	tfx_vec3_t *local_rotations;
+	tfx_vec3_t *world_rotations;
+	tfx_vec3_t *scale;
 	//Todo: save space and use a quaternion here?
-	tfxMatrix4 *matrix;
+	tfx_mat4_t *matrix;
 	tfxU32 *global_attributes;
 	tfxU32 *transform_attributes;
 
 	tfxU32 *properties_index;
 	tfxU32 *info_index;
 	tfxU32 *parent_particle_index;
-	tfxLibrary **library;
+	tfx_library_t **library;
 
 	//Spawn controls
-	tfxParentSpawnControls *spawn_controls;
-	tfxVec3 *emitter_size;
+	tfx_parent_spawn_controls_t *spawn_controls;
+	tfx_vec3_t *emitter_size;
 	float *stretch;
 	float *overal_scale;
 	float *noise_base_offset;
@@ -4620,19 +4605,19 @@ struct tfxEffectSoA {
 
 	//User Data
 	void **user_data;
-	void(**update_callback)(tfxParticleManager *pm, tfxEffectID effect_index);
+	void(**update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 };
 
-//An tfxEffectEmitter can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
+//An tfx_effect_emitter_t can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 //Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
-//This is only for library storage, when using to update each frame this is copied to tfxEffectSoA and tfxEmitterSoA for realtime updates
+//This is only for library storage, when using to update each frame this is copied to tfx_effect_soa_t and tfx_emitter_soa_t for realtime updates
 //suited for realtime use.
-struct tfxEffectEmitter {
+struct tfx_effect_emitter_t {
 	//Required for frame by frame updating
 	//The current state of the effect/emitter used in the editor only at this point
 	tfxEmitterStateFlags state_flags;
 	tfxEmitterPropertyFlags property_flags;
-	tfxLibrary *library;
+	tfx_library_t *library;
 	//Is this an tfxEffectType or tfxEmitterType
 	tfxEffectEmitterType type;
 	//The index within the library that this exists at
@@ -4644,7 +4629,7 @@ struct tfxEffectEmitter {
 	tfxU32 emitter_attributes;
 	tfxU32 transform_attributes;
 	//Pointer to the immediate parent
-	tfxEffectEmitter *parent;
+	tfx_effect_emitter_t *parent;
 	//State state_flags for emitters and effects
 	tfxEffectPropertyFlags effect_flags;
 	//When not using insert sort to guarantee particle order, sort passes offers a more lax way of ordering particles over a number of frames.
@@ -4652,7 +4637,7 @@ struct tfxEffectEmitter {
 	tfxU32 sort_passes;
 	//Custom user data, can be accessed in callback functions
 	void *user_data;
-	void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index);
+	void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 
 	tfxU32 buffer_index;
 
@@ -4661,7 +4646,7 @@ struct tfxEffectEmitter {
 	tfxU32 property_index;
 	tfxU32 pm_index;
 
-	tfxEffectEmitter() :
+	tfx_effect_emitter_t() :
 		buffer_index(0),
 		pm_index(0),
 		parent(nullptr),
@@ -4682,31 +4667,31 @@ struct tfxEffectEmitter {
 			tfxEmitterPropertyFlags_lifetime_uniform_size),
 		state_flags(0)
 	{ }
-	~tfxEffectEmitter();
+	~tfx_effect_emitter_t();
 
 };
 
-struct tfxComputeSprite {	//64 bytes
-	tfxVec4 bounds;				//the min/max x,y coordinates of the image being drawn
-	tfxVec4 uv;					//The UV coords of the image in the texture
-	tfxVec4 scale_rotation;		//Scale and rotation (x, y = scale, z = rotation, w = multiply blend factor)
-	tfxVec2 position;			//The position of the sprite
-	tfxRGBA8 color;				//The color tint of the sprite
+struct tfx_compute_sprite_t {	//64 bytes
+	tfx_vec4_t bounds;				//the min/max x,y coordinates of the image being drawn
+	tfx_vec4_t uv;					//The UV coords of the image in the texture
+	tfx_vec4_t scale_rotation;		//Scale and rotation (x, y = scale, z = rotation, w = multiply blend factor)
+	tfx_vec2_t position;			//The position of the sprite
+	tfx_rgba8_t color;				//The color tint of the sprite
 	tfxU32 parameters;	//4 extra parameters packed into a tfxU32: blend_mode, image layer index, shader function index, blend type
 };
 
-struct tfxDepthIndex {
+struct tfx_depth_index_t {
 	tfxParticleID particle_id;
 	float depth;
 };
 
-struct tfxUniqueSpriteID {
+struct tfx_unique_sprite_id_t {
 	tfxU32 uid;
 	tfxU32 age;
 };
 
-//These all point into a tfxSoABuffer, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
-struct tfxParticleSoA {
+//These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
+struct tfx_particle_soa_t {
 	tfxU32 *uid;		//Only used for recording sprite data
 	tfxU32 *parent_index;
 	tfxU32 *sprite_index;
@@ -4732,43 +4717,43 @@ struct tfxParticleSoA {
 	float *base_size_y;
 	float *noise_offset;
 	float *noise_resolution;
-	tfxRGBA8 *color;
+	tfx_rgba8_t *color;
 	float *image_frame;
 	tfxU32 *single_loop_count;
 };
 
-struct tfxSpriteTransform2d {
-	tfxVec2 position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
-	tfxVec2 scale;						//Scale
+struct tfx_sprite_transform2d_t {
+	tfx_vec2_t position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
+	tfx_vec2_t scale;						//Scale
 	float rotation;
 };
 
-struct tfxSpriteTransform3d {
-	tfxVec3 position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
-	tfxVec3 rotations;					//Rotations of the sprite
-	tfxVec2 scale;						//Scale
+struct tfx_sprite_transform3d_t {
+	tfx_vec3_t position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
+	tfx_vec3_t rotations;					//Rotations of the sprite
+	tfx_vec2_t scale;						//Scale
 };
 
 //When exporting effects as sprite data each frame gets frame meta containing information about the frame such as bounding box and sprite count/offset into the buffer
-struct tfxFrameMeta {
+struct tfx_frame_meta_t {
 	tfxU32 index_offset[tfxLAYERS];		//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
 	tfxU32 sprite_count[tfxLAYERS];		//The number of sprites in the frame for each layer
 	tfxU32 total_sprites;				//The total number of sprites for all layers in the frame
-	tfxVec3 corner1;					//Bounding box corner
-	tfxVec3 corner2;					//The bounding box can be used to decide if this frame needs to be drawn
+	tfx_vec3_t corner1;					//Bounding box corner
+	tfx_vec3_t corner2;					//The bounding box can be used to decide if this frame needs to be drawn
 };
 
 //This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
 //InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
 //3d in one struct like this as it makes it a lot easier to use the same control functions where we can.
-struct tfxSpriteSoA {	//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
+struct tfx_sprite_soa_t {	//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
 	tfxU32 *property_indexes;				//The image frame of animation index packed with alignment option flag and property_index
 	tfxU32 *captured_index;					//The index of the sprite in the previous frame so that it can be looked up and interpolated with
-	tfxUniqueSpriteID *uid;					//Unique particle id of the sprite, only used when recording sprite data
-	tfxSpriteTransform3d *transform_3d;		//Transform data for 3d sprites
-	tfxSpriteTransform2d *transform_2d;		//Transform data for 2d sprites
+	tfx_unique_sprite_id_t *uid;					//Unique particle id of the sprite, only used when recording sprite data
+	tfx_sprite_transform3d_t *transform_3d;		//Transform data for 3d sprites
+	tfx_sprite_transform2d_t *transform_2d;		//Transform data for 2d sprites
 	tfxU32 *alignment;						//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over or 2 packed 16bit floats for 2d
-	tfxRGBA8 *color;						//The color tint of the sprite and blend factor in alpha channel
+	tfx_rgba8_t *color;						//The color tint of the sprite and blend factor in alpha channel
 	float *stretch;							//Multiplier for how much the particle is stretched in the shader (3d only)	
 	float *intensity;						//The multiplier for the sprite color
 };
@@ -4780,62 +4765,62 @@ enum tfxSpriteBufferMode {
 };
 
 //These structs are for animation sprite data that you can upload to the gpu
-struct alignas(16) tfxSpriteData3d {	//60 bytes aligning to 64
-	tfxVec3 position;
+struct alignas(16) tfx_sprite_data3d_t {	//60 bytes aligning to 64
+	tfx_vec3_t position;
 	float lerp_offset;
-	tfxVec3 rotations;
+	tfx_vec3_t rotations;
 	float stretch;
-	tfxVec2 scale;
+	tfx_vec2_t scale;
 	tfxU32 property_indexes;
 	tfxU32 captured_index;
 	tfxU32 alignment;
-	tfxRGBA8 color;
+	tfx_rgba8_t color;
 	float intensity;
 	//Free space for extra 4 bytes if needed
 };
 
-struct alignas(16) tfxSpriteData2d {	//48 bytes
-	tfxVec2 position;
-	tfxVec2 scale;
+struct alignas(16) tfx_sprite_data2d_t {	//48 bytes
+	tfx_vec2_t position;
+	tfx_vec2_t scale;
 	float rotation;
 	tfxU32 property_indexes;
 	tfxU32 captured_index;
 	tfxU32 alignment;
-	tfxRGBA8 color;
+	tfx_rgba8_t color;
 	float lerp_offset;
 	float stretch;
 	float intensity;
 };
 
 //Animation sprite data that is used on the cpu to bake the data
-struct tfxSpriteDataSoA {	//64 bytes or 60 after uid is removed as it's only needed for compressing the sprite data down to size.
+struct tfx_sprite_data_soa_t {	//64 bytes or 60 after uid is removed as it's only needed for compressing the sprite data down to size.
 	tfxU32 *property_indexes;	//The image frame of animation index packed with alignment option flag and property_index
 	tfxU32 *captured_index;
-	tfxUniqueSpriteID *uid;
+	tfx_unique_sprite_id_t *uid;
 	float *lerp_offset;
-	tfxSpriteTransform3d *transform_3d;
-	tfxSpriteTransform2d *transform_2d;
+	tfx_sprite_transform3d_t *transform_3d;
+	tfx_sprite_transform2d_t *transform_2d;
 	tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-	tfxRGBA8 *color;			//The color tint of the sprite and blend factor in a
+	tfx_rgba8_t *color;			//The color tint of the sprite and blend factor in a
 	float *stretch;
 	float *intensity;
 };
 
-struct tfxWideLerpTransformResult {
+struct tfx_wide_lerp_transform_result_t {
 	float position[3];
 	float rotations[3];
 	float scale[2];
 };
 
-struct tfxWideLerpOtherResult {
+struct tfx_wide_lerp_data_result_t {
 	float stretch;
 	float intensity;
 	float color[4];
 	float padding[2];
 };
 
-struct tfxSpriteDataMetrics {
-	tfxStr64 name;
+struct tfx_sprite_data_metrics_t {
+	tfx_str64_t name;
 	tfxKey path_hash;
 	tfxU32 start_offset;	//Only applies to animation manager
 	tfxU32 frames_after_compression;
@@ -4844,48 +4829,48 @@ struct tfxSpriteDataMetrics {
 	float animation_length_in_time;
 	tfxU32 total_sprites;
 	tfxU32 total_memory_for_sprites;
-	tfxvec<tfxFrameMeta> frame_meta;
+	tfx_vector_t<tfx_frame_meta_t> frame_meta;
 	tfxAnimationManagerFlags flags;
 	tfxAnimationFlags animation_flags;
 };
 
-struct tfxSpriteData {
+struct tfx_sprite_data_t {
 	float frame_compression;
-	tfxSpriteDataMetrics normal;
-	tfxSpriteDataMetrics compressed;
-	tfxSoABuffer real_time_sprites_buffer;
-	tfxSpriteDataSoA real_time_sprites;
-	tfxSoABuffer compressed_sprites_buffer;
-	tfxSpriteDataSoA compressed_sprites;
+	tfx_sprite_data_metrics_t normal;
+	tfx_sprite_data_metrics_t compressed;
+	tfx_soa_buffer_t real_time_sprites_buffer;
+	tfx_sprite_data_soa_t real_time_sprites;
+	tfx_soa_buffer_t compressed_sprites_buffer;
+	tfx_sprite_data_soa_t compressed_sprites;
 };
 
-struct tfxComputeFXGlobalState {
+struct tfx_compute_fx_global_state_t {
 	tfxU32 start_index = 0;
 	tfxU32 current_length = 0;
 	tfxU32 max_index = 0;
 	tfxU32 end_index = 0;
 };
 
-struct tfxComputeController {
-	tfxVec2 position;
+struct tfx_compute_controller_t {
+	tfx_vec2_t position;
 	float line_length;
 	float angle_offset;
-	tfxVec4 scale_rotation;				//Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
+	tfx_vec4_t scale_rotation;				//Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
 	float end_frame;
 	tfxU32 normalised_values;		//Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, position_negator, opacity
 	tfxParticleControlFlags flags;
 	tfxU32 image_data_index;		//index into the shape buffer on the gpu. CopyComputeShapeData must be called to prepare the data.
-	tfxVec2 image_handle;
-	tfxVec2 emitter_handle;
+	tfx_vec2_t image_handle;
+	tfx_vec2_t emitter_handle;
 	float noise_offset;
 	float stretch;
 	float frame_rate;
 	float noise_resolution;
 };
 
-struct tfxComputeParticle {
-	tfxVec2 local_position;
-	tfxVec2 base_size;
+struct tfx_compute_particle_t {
+	tfx_vec2_t local_position;
+	tfx_vec2_t base_size;
 
 	float base_velocity = 1;
 	float base_spin = 1;
@@ -4902,11 +4887,11 @@ struct tfxComputeParticle {
 	float local_rotation;
 };
 
-struct alignas(16) tfxGPUImageData {
-	tfxVec4 uv;
+struct alignas(16) tfx_gpu_image_data_t {
+	tfx_vec4_t uv;
 	tfxU32 uv_xy;
 	tfxU32 uv_zw;
-	tfxVec2 image_size;
+	tfx_vec2_t image_size;
 	tfxU32 texture_array_index = 0;
 	float animation_frames = 0;
 #ifdef tfxCUSTOM_GPU_IMAGE_DATA
@@ -4914,28 +4899,28 @@ struct alignas(16) tfxGPUImageData {
 #endif
 };
 
-struct tfxGPUShapes {
-	tfxvec<tfxGPUImageData> list;
+struct tfx_gpu_shapes_t {
+	tfx_vector_t<tfx_gpu_image_data_t> list;
 };
 
 //Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation so probably not needed here really!
-struct tfxParticleFrame {
+struct tfx_particle_frame_t {
 	tfxU32 property_indexes;	//The image frame of animation index packed with alignment option flag and property_index
 	tfxU32 captured_index;
-	tfxSpriteTransform3d transform;
+	tfx_sprite_transform3d_t transform;
 	tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-	tfxRGBA8 color;				//The color tint of the sprite and blend factor in a
+	tfx_rgba8_t color;				//The color tint of the sprite and blend factor in a
 	float stretch;
 	float intensity;
 	float depth;
 };
 
-struct tfxSpawnWorkEntry {
-	tfxParticleManager *pm;
-	tfxEmitterPropertiesSoA *properties;
+struct tfx_spawn_work_entry_t {
+	tfx_particle_manager_t *pm;
+	tfx_emitter_properties_soa_t *properties;
 	tfxU32 emitter_index;
-	tfxParticleSoA *particle_data;
-	tfxvec<tfxEffectEmitter> *sub_effects;
+	tfx_particle_soa_t *particle_data;
+	tfx_vector_t<tfx_effect_emitter_t> *sub_effects;
 	tfxU32 seed;
 	float tween;
 	tfxU32 max_spawn_count;
@@ -4948,7 +4933,7 @@ struct tfxSpawnWorkEntry {
 	float highest_particle_age;
 };
 
-struct tfxControlWorkEntry {
+struct tfx_control_work_entry_t {
 	tfxU32 start_index;
 	tfxU32 end_index;
 	tfxU32 wide_end_index;
@@ -4956,33 +4941,33 @@ struct tfxControlWorkEntry {
 	tfxU32 sprites_index;
 	tfxU32 sprite_buffer_end_index;
 	tfxU32 emitter_index;
-	tfxParticleManager *pm;
-	tfxOvertimeAttributes *graphs;
+	tfx_particle_manager_t *pm;
+	tfx_overtime_attributes_t *graphs;
 	tfxU32 layer;
-	tfxEmitterPropertiesSoA *properties;
-	tfxSpriteSoA *sprites;
+	tfx_emitter_properties_soa_t *properties;
+	tfx_sprite_soa_t *sprites;
 };
 
-struct tfxParticleAgeWorkEntry {
+struct tfx_particle_age_work_entry_t {
 	tfxU32 start_index;
 	tfxU32 emitter_index;
 	tfxU32 wide_end_index;
 	tfxU32 start_diff;
-	tfxEmitterPropertiesSoA *properties;
-	tfxParticleManager *pm;
+	tfx_emitter_properties_soa_t *properties;
+	tfx_particle_manager_t *pm;
 };
 
-struct tfxSortWorkEntry {
-	tfx_bucket_array_t<tfxParticleSoA> *bank;
-	tfxvec<tfxDepthIndex> *depth_indexes;
+struct tfx_sort_work_entry_t {
+	tfx_bucket_array_t<tfx_particle_soa_t> *bank;
+	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
 };
 
-struct tfxCompressWorkEntry {
-	tfxSpriteData *sprite_data;
+struct tfx_compress_work_entry_t {
+	tfx_sprite_data_t *sprite_data;
 	tfxU32 frame;
 };
 
-struct tfxEffectData {
+struct tfx_effect_data_t {
 	tfxU32 *global_attributes;
 	tfxU32 *transform_attributes;
 	float *overal_scale;
@@ -4996,25 +4981,9 @@ struct tfxEffectData {
 	float *weight;
 };
 
-struct tfxEffectsInUseSoA {
-	tfxU32 *effects_in_use[3][2];
-	tfxU32 *emitters_in_use[3][2];
-	tfxU32 *free_effects[3];
-	tfxU32 *free_emitters[3];
-};
-
-inline void tfxResizeParticleSoACallback(tfxSoABuffer *buffer, tfxU32 index) {
-	tfxParticleSoA *particles = static_cast<tfxParticleSoA*>(buffer->user_data);
-	for (int i = index; i != buffer->capacity; ++i) {
-		particles->max_age[i] = 1.f;
-		particles->age[i] = 1.f;
-		particles->flags[i] = 0;
-	}
-}
-
 //An anim instance is used to let the gpu know where to draw an animation with sprite data.
-struct tfxAnimationInstance {
-	tfxVec3 position;					//position that the instance should be played at
+struct tfx_animation_instance_t {
+	tfx_vec3_t position;					//position that the instance should be played at
 	float scale;						//Scales the overal size of the animation
 	tfxU32 sprite_count;				//The number of sprites to be drawn
 	tfxU32 frame_count;					//The number of sprites to be drawn
@@ -5026,7 +4995,7 @@ struct tfxAnimationInstance {
 	tfxAnimationInstanceFlags flags;	//Flags associated with the instance
 };
 
-struct tfxAnimationBufferMetrics {
+struct tfx_animation_buffer_metrics_t {
 	size_t sprite_data_size;
 	tfxU32 offsets_size;
 	tfxU32 instances_size;
@@ -5034,11 +5003,11 @@ struct tfxAnimationBufferMetrics {
 	size_t instances_size_in_bytes;
 	tfxU32 total_sprites_to_draw;
 
-	tfxAnimationBufferMetrics() : sprite_data_size(0), offsets_size(0), instances_size(0) {}
+	tfx_animation_buffer_metrics_t() : sprite_data_size(0), offsets_size(0), instances_size(0) {}
 };
 
-struct alignas(16) tfxAnimationEmitterProperties {
-	tfxVec2 handle;
+struct alignas(16) tfx_animation_emitter_properties_t {
+	tfx_vec2_t handle;
 	tfxU32 flags;
 	tfxU32 start_frame_index;
 	float animation_frames;
@@ -5046,48 +5015,48 @@ struct alignas(16) tfxAnimationEmitterProperties {
 };
 
 //Use the animation manager to control playing of pre-recorded effects
-struct tfxAnimationManager {
+struct tfx_animation_manager_t {
 	//All of the sprite data for all the animations that you might want to play on the GPU.
 	//This could be deleted once it's uploaded to the GPU
 	//An animation manager can only be used for either 2d or 3d not both
-	tfxvec<tfxSpriteData3d> sprite_data_3d;
-	tfxvec<tfxSpriteData2d> sprite_data_2d;
+	tfx_vector_t<tfx_sprite_data3d_t> sprite_data_3d;
+	tfx_vector_t<tfx_sprite_data2d_t> sprite_data_2d;
 	//List of active instances that are currently playing
-	tfxvec<tfxAnimationInstance> instances;
+	tfx_vector_t<tfx_animation_instance_t> instances;
 	//List of instances in use. These index into the instances list above
-	tfxvec<tfxU32> instances_in_use[2];
+	tfx_vector_t<tfxU32> instances_in_use[2];
 	//Flips between 1 and 0 each frame to be used when accessing instances_in_use
 	tfxU32 current_in_use_buffer;
 	//List of free instance indexes
-	tfxvec<tfxU32> free_instances;
+	tfx_vector_t<tfxU32> free_instances;
 	//List of indexes into the instances list that will actually be sent to the GPU next frame
 	//Any instances deemed not in view can be culled for example by not adding them to the queue
-	tfxvec<tfxAnimationInstance> render_queue;
+	tfx_vector_t<tfx_animation_instance_t> render_queue;
 	//The compute shader needs to know when to switch from one animation instance to another as it
 	//progresses through all the sprites that need to be rendered. So this array of offsets tells
 	//it when to do this. So 0 will always be in the first slot, then the second element will be 
 	//the total number of sprites to be drawn for the first animation instance and so on. When the
 	//global index is more than or equal to the next element then we start on the next animation
 	//instance and draw those sprites.
-	tfxvec<tfxU32> offsets;
+	tfx_vector_t<tfxU32> offsets;
 	//We also need to upload some emitter properties to the GPU as well such as the sprite handle.
 	//These can be looked up byt the sprite in the compute shader and the values applied to the sprite
 	//before going to the vertex shader
-	tfxvec<tfxAnimationEmitterProperties> emitter_properties;
+	tfx_vector_t<tfx_animation_emitter_properties_t> emitter_properties;
 	//Each animation has sprite data settings that contains properties about each animation
-	tfxvec<tfxSpriteDataSettings> sprite_data_settings;
+	tfx_vector_t<tfx_sprite_data_settings_t> sprite_data_settings;
 	//Every animation that gets added to the animation manager gets info added here that describes
 	//where to find the relevent sprite data in the buffer and contains other frame meta about the 
 	//animation
-	tfxStorageMap<tfxSpriteDataMetrics> effect_animation_info;
+	tfx_storage_map_t<tfx_sprite_data_metrics_t> effect_animation_info;
 	//When loading in a tfxsd file the shapes are put here and can then be used to upload to the GPU
 	//Other wise if you're adding sprite data from an effect library then the shapes will just be
 	//referenced from there instead
-	tfxStorageMap<tfxImageData> particle_shapes;
+	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
 	//This struct contains the size of the buffers that need to be uploaded to the GPU. Offsets and 
 	//animation instances need to be uploaded every frame, but the sprite data only once before you
 	//start drawing anything
-	tfxAnimationBufferMetrics buffer_metrics;
+	tfx_animation_buffer_metrics_t buffer_metrics;
 	//Bit flag field
 	tfxAnimationManagerFlags flags;
 	//The update frequency that the animations are recorded at. 60 is the recommended default
@@ -5095,43 +5064,43 @@ struct tfxAnimationManager {
 };
 
 //Use the particle manager to add multiple effects to your scene 
-struct tfxParticleManager {
-	tfxvec<tfxSoABuffer> particle_array_buffers;
-	tfx_bucket_array_t<tfxParticleSoA> particle_arrays;
+struct tfx_particle_manager_t {
+	tfx_vector_t<tfx_soa_buffer_t> particle_array_buffers;
+	tfx_bucket_array_t<tfx_particle_soa_t> particle_arrays;
 
 	//In unordered mode emitters that expire have their particle banks added here to be reused
-	tfxStorageMap<tfxvec<tfxU32>> free_particle_lists;
+	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_lists;
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
-	tfxSortWorkEntry sorting_work_entry[tfxLAYERS];
+	tfx_sort_work_entry_t sorting_work_entry[tfxLAYERS];
 
-	tfxvec<tfxSpawnWorkEntry> spawn_work;
-	tfxvec<tfxControlWorkEntry> control_work;
-	tfxvec<tfxParticleAgeWorkEntry> age_work;
-	tfxvec<tfxParticleID> particle_indexes;
-	tfxvec<tfxU32> free_particle_indexes;
-	tfxvec<tfxDepthIndex> depth_indexes[tfxLAYERS][2];
-	tfxvec<tfxU32> effects_in_use[tfxMAXDEPTH][2];
-	tfxvec<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
-	tfxvec<tfxU32> emitters_check_capture;
-	tfxvec<tfxU32> free_effects;
-	tfxvec<tfxU32> free_emitters;
-	tfxSoABuffer effect_buffers;
-	tfxEffectSoA effects;
-	tfxSoABuffer emitter_buffers;
-	tfxEmitterSoA emitters;
-	tfxLibrary *library;
+	tfx_vector_t<tfx_spawn_work_entry_t> spawn_work;
+	tfx_vector_t<tfx_control_work_entry_t> control_work;
+	tfx_vector_t<tfx_particle_age_work_entry_t> age_work;
+	tfx_vector_t<tfxParticleID> particle_indexes;
+	tfx_vector_t<tfxU32> free_particle_indexes;
+	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
+	tfx_vector_t<tfxU32> effects_in_use[tfxMAXDEPTH][2];
+	tfx_vector_t<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
+	tfx_vector_t<tfxU32> emitters_check_capture;
+	tfx_vector_t<tfxU32> free_effects;
+	tfx_vector_t<tfxU32> free_emitters;
+	tfx_soa_buffer_t effect_buffers;
+	tfx_effect_soa_t effects;
+	tfx_soa_buffer_t emitter_buffers;
+	tfx_emitter_soa_t emitters;
+	tfx_library_t *library;
 
-	tfxWorkQueue work_queue;
+	tfx_work_queue_t work_queue;
 
 	//Banks of sprites for drawing in unordered mode
-	tfxSoABuffer sprite_buffer[2][tfxLAYERS];
-	tfxSpriteSoA sprites[2][tfxLAYERS];
+	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
+	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfxU32 current_sprite_buffer;
 	tfxU32 current_depth_index_buffer;
 
 	//todo: document compute controllers once we've established this is how we'll be doing it.
 	void *compute_controller_ptr;
-	tfxvec<unsigned int> free_compute_controllers;
+	tfx_vector_t<unsigned int> free_compute_controllers;
 	unsigned int new_compute_particle_index;
 	unsigned int new_particles_count;
 	void *new_compute_particle_ptr;
@@ -5154,15 +5123,15 @@ struct tfxParticleManager {
 	int mt_batch_size;
 	std::mutex particle_index_mutex;
 
-	tfxRandom random;
+	tfx_random_t random;
 	unsigned int max_compute_controllers;
 	unsigned int highest_compute_controller_index;
-	tfxComputeFXGlobalState compute_global_state;
+	tfx_compute_fx_global_state_t compute_global_state;
 	tfxU32 sort_passes;
 	tfxLookupMode lookup_mode;
 	//For when particles are ordered by distance from camera (3d effects)
-	tfxVec3 camera_front;
-	tfxVec3 camera_position;
+	tfx_vec3_t camera_front;
+	tfx_vec3_t camera_position;
 
 	tfxU32 unique_particle_id = 0;	//Used when recording sprite data
 	//When using single particles, you can flag the emitter to set the max_age of the particle to the 
@@ -5179,7 +5148,7 @@ struct tfxParticleManager {
 	tfxWideFloat update_time_wide;
 	float update_frequency;
 
-	tfxParticleManager() :
+	tfx_particle_manager_t() :
 		flags(0),
 		lookup_mode(tfxFast),
 		max_effects(10000),
@@ -5199,10 +5168,10 @@ struct tfxParticleManager {
 		sort_passes(0)
 	{
 	}
-	~tfxParticleManager();
+	~tfx_particle_manager_t();
 };
 
-struct tfxEffectLibraryStats {
+struct tfx_effect_library_stats_t {
 	tfxU32 total_effects;
 	tfxU32 total_sub_effects;
 	tfxU32 total_emitters;
@@ -5220,51 +5189,47 @@ struct tfxEffectLibraryStats {
 	tfxU32 reserved7;
 };
 
-struct tfxEffectsStage {
-	tfxvec<tfxEffectEmitter> effects;
-};
+struct tfx_library_t {
+	tfx_soa_buffer_t emitter_properties_buffer;
 
-struct tfxLibrary {
-	tfxSoABuffer emitter_properties_buffer;
+	tfx_storage_map_t<tfx_effect_emitter_t*> effect_paths;
+	tfx_vector_t<tfx_effect_emitter_t> effects;
+	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
+	tfx_vector_t<tfx_effect_emitter_info_t> effect_infos;
+	tfx_emitter_properties_soa_t emitter_properties;
+	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
-	tfxStorageMap<tfxEffectEmitter*> effect_paths;
-	tfxvec<tfxEffectEmitter> effects;
-	tfxStorageMap<tfxImageData> particle_shapes;
-	tfxvec<tfxEffectEmitterInfo> effect_infos;
-	tfxEmitterPropertiesSoA emitter_properties;
-	tfxStorageMap<tfxSpriteData> pre_recorded_effects;
-
-	tfxvec<tfxGlobalAttributes> global_graphs;
-	tfxvec<tfxEmitterAttributes> emitter_attributes;
-	tfxvec<tfxTransformAttributes> transform_attributes;
-	tfxvec<tfxSpriteSheetSettings> sprite_sheet_settings;
-	tfxvec<tfxSpriteDataSettings> sprite_data_settings;
-	tfxvec<tfxPreviewCameraSettings> preview_camera_settings;
-	tfxvec<tfxAttributeNode> all_nodes;
-	tfxvec<tfxEffectLookUpData> node_lookup_indexes;
-	tfxvec<float> compiled_lookup_values;
-	tfxvec<tfxGraphLookupIndex> compiled_lookup_indexes;
+	tfx_vector_t<tfx_global_attributes_t> global_graphs;
+	tfx_vector_t<tfx_emitter_attributes_t> emitter_attributes;
+	tfx_vector_t<tfx_transform_attributes_t> transform_attributes;
+	tfx_vector_t<tfx_sprite_sheet_settings_t> sprite_sheet_settings;
+	tfx_vector_t<tfx_sprite_data_settings_t> sprite_data_settings;
+	tfx_vector_t<tfx_preview_camera_settings_t> preview_camera_settings;
+	tfx_vector_t<tfx_attribute_node_t> all_nodes;
+	tfx_vector_t<tfx_effect_lookup_data_t> node_lookup_indexes;
+	tfx_vector_t<float> compiled_lookup_values;
+	tfx_vector_t<tfx_graph_lookup_index_t> compiled_lookup_indexes;
 	//This could probably be stored globally
-	tfxvec<tfxVec4> graph_min_max;
+	tfx_vector_t<tfx_vec4_t> graph_min_max;
 
-	tfxvec<tfxU32> free_global_graphs;
-	tfxvec<tfxU32> free_keyframe_graphs;
-	tfxvec<tfxU32> free_emitter_attributes;
-	tfxvec<tfxU32> free_animation_settings;
-	tfxvec<tfxU32> free_preview_camera_settings;
-	tfxvec<tfxU32> free_properties;
-	tfxvec<tfxU32> free_infos;
-	tfxvec<tfxU32> free_keyframes;
+	tfx_vector_t<tfxU32> free_global_graphs;
+	tfx_vector_t<tfxU32> free_keyframe_graphs;
+	tfx_vector_t<tfxU32> free_emitter_attributes;
+	tfx_vector_t<tfxU32> free_animation_settings;
+	tfx_vector_t<tfxU32> free_preview_camera_settings;
+	tfx_vector_t<tfxU32> free_properties;
+	tfx_vector_t<tfxU32> free_infos;
+	tfx_vector_t<tfxU32> free_keyframes;
 
 	//Get an effect from the library by index
-	tfxEffectEmitter& operator[] (tfxU32 index);
-	tfxStr64 name;
+	tfx_effect_emitter_t& operator[] (tfxU32 index);
+	tfx_str64_t name;
 	bool open_library = false;
 	bool dirty = false;
-	tfxStr library_file_path;
+	tfx_str_t library_file_path;
 	tfxU32 uid;
 
-	tfxLibrary() :
+	tfx_library_t() :
 		uid(0),
 		effect_paths("EffectLib effect paths map", "EffectLib effect paths data"),
 		particle_shapes("EffectLib shapes map", "EffectLib shapes data"),
@@ -5292,12 +5257,12 @@ struct tfxLibrary {
 
 };
 
-struct tfxEffectTemplate {
-	tfxStorageMap<tfxEffectEmitter*> paths;
-	tfxEffectEmitter effect;
+struct tfx_effect_template_t {
+	tfx_storage_map_t<tfx_effect_emitter_t*> paths;
+	tfx_effect_emitter_t effect;
 	tfxKey original_effect_hash;
 
-	tfxEffectTemplate() :
+	tfx_effect_template_t() :
 		original_effect_hash(0),
 		paths("Effect template paths map", "Effect template paths data")
 	{}
@@ -5309,10 +5274,10 @@ Notes on updating effects emitters and particles:
 Todo: rewrite now that we've converted to SoA data layouts
 */
 
-struct tfxDataEntry {
+struct tfx_data_entry_t {
 	tfxDataType type = tfxSInt;
-	tfxStr32 key;
-	tfxStr str_value;
+	tfx_str32_t key;
+	tfx_str_t str_value;
 	int int_value = 0;
 	bool bool_value = 0;
 	float float_value = 0;
@@ -5323,7 +5288,16 @@ struct tfxDataEntry {
 //Section: Internal_Functions
 //------------------------------------------------------------
 
-tfx_globals_t *tfxGetGlobals();
+tfx_storage_t *tfxGetGlobals();
+
+inline void tfxResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 index) {
+	tfx_particle_soa_t *particles = static_cast<tfx_particle_soa_t*>(buffer->user_data);
+	for (int i = index; i != buffer->capacity; ++i) {
+		particles->max_age[i] = 1.f;
+		particles->age[i] = 1.f;
+		particles->flags[i] = 0;
+	}
+}
 
 //--------------------------------
 //Internal functions used either by the library or editor
@@ -5341,7 +5315,7 @@ tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id) {
 }
 
 //Dump sprites for Debugging
-tfxAPI inline void DumpSprites(tfxParticleManager *pm, tfxU32 layer) {
+tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer) {
 	for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
 		printf("%i:\t%f\t%f\t%f\t%u\n",
 			i,
@@ -5353,12 +5327,12 @@ tfxAPI inline void DumpSprites(tfxParticleManager *pm, tfxU32 layer) {
 	}
 }
 
-tfxINTERNAL tfxU32 GrabParticleLists(tfxParticleManager *pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
+tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 //--------------------------------
 //Profilings
 //--------------------------------
-tfxAPI_EDITOR inline void GatherStats(tfxProfile *profile, tfxProfileStats *stat) {
+tfxAPI_EDITOR inline void GatherStats(tfx_profile_t *profile, tfx_profile_stats_t *stat) {
 	stat->cycle_high = 0;
 	stat->cycle_low = tfxMAX_64u;
 	stat->time_high = 0;
@@ -5367,7 +5341,7 @@ tfxAPI_EDITOR inline void GatherStats(tfxProfile *profile, tfxProfileStats *stat
 	stat->cycle_average = 0;
 	stat->time_average = 0;
 	for (int i = 0; i != tfxPROFILER_SAMPLES; ++i) {
-		tfxProfileSnapshot *snap = profile->snapshots + i;
+		tfx_profile_snapshot_t *snap = profile->snapshots + i;
 		stat->cycle_high = tfxMax(snap->cycle_count, stat->cycle_high);
 		stat->cycle_low = tfxMin(snap->cycle_count, stat->cycle_low);
 		stat->cycle_average += snap->cycle_count;
@@ -5381,7 +5355,7 @@ tfxAPI_EDITOR inline void GatherStats(tfxProfile *profile, tfxProfileStats *stat
 	stat->hit_count /= tfxPROFILER_SAMPLES;
 }
 
-tfxAPI_EDITOR inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
+tfxAPI_EDITOR inline void ResetSnapshot(tfx_profile_snapshot_t *snapshot) {
 	snapshot->cycle_count = 0;
 	snapshot->hit_count = 0;
 	snapshot->run_time = 0;
@@ -5389,115 +5363,115 @@ tfxAPI_EDITOR inline void ResetSnapshot(tfxProfileSnapshot *snapshot) {
 
 tfxAPI_EDITOR inline void ResetSnapshots() {
 	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
-		tfxProfile *profile = tfxProfileArray + i;
-		memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfxProfileSnapshot));
+		tfx_profile_t *profile = tfxProfileArray + i;
+		memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfx_profile_snapshot_t));
 	}
 }
 
-tfxAPI_EDITOR inline void DumpSnapshots(tfxStorageMap<tfxvec<tfxProfileSnapshot>> *profile_snapshots, tfxU32 amount) {
+tfxAPI_EDITOR inline void DumpSnapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>> *profile_snapshots, tfxU32 amount) {
 	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
-		tfxProfile *profile = tfxProfileArray + i;
+		tfx_profile_t *profile = tfxProfileArray + i;
 		if (!profile->name) {
 			ResetSnapshot(profile->snapshots + i);
 			continue;
 		}
 		if (!profile_snapshots->ValidName(profile->name)) {
-			tfxvec<tfxProfileSnapshot> snapshots;
+			tfx_vector_t<tfx_profile_snapshot_t> snapshots;
 			profile_snapshots->Insert(profile->name, snapshots);
 		}
-		tfxvec<tfxProfileSnapshot> &snapshots = profile_snapshots->At(profile->name);
+		tfx_vector_t<tfx_profile_snapshot_t> &snapshots = profile_snapshots->At(profile->name);
 		tfxU32 offset = snapshots.current_size;
 		snapshots.resize(snapshots.current_size + tfxPROFILER_SAMPLES);
-		memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfxProfileSnapshot));
-		memset(profile->snapshots, 0, sizeof(tfxProfileSnapshot) * tfxPROFILER_SAMPLES);
+		memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfx_profile_snapshot_t));
+		memset(profile->snapshots, 0, sizeof(tfx_profile_snapshot_t) * tfxPROFILER_SAMPLES);
 	}
 }
 
 //--------------------------------
 //Reading/Writing files
 //--------------------------------
-tfxAPI_EDITOR tfxStream ReadEntireFile(const char *file_name, bool terminate = false);
-tfxAPI_EDITOR tfxErrorFlags LoadPackage(const char *file_name, tfxPackage *package);
-tfxAPI_EDITOR tfxErrorFlags LoadPackage(tfxStream *stream, tfxPackage *package);
-tfxAPI_EDITOR tfxPackage CreatePackage(const char *file_path);
-tfxAPI_EDITOR bool SavePackageDisk(tfxPackage *package);
-tfxAPI_EDITOR tfxStream SavePackageMemory(tfxPackage *package);
-tfxAPI_EDITOR tfxU64 GetPackageSize(tfxPackage *package);
-tfxAPI_EDITOR bool ValidatePackage(tfxPackage *package);
-tfxAPI_EDITOR tfxEntryInfo *GetPackageFile(tfxPackage *package, const char *name);
-tfxAPI_EDITOR void AddEntryToPackage(tfxPackage *package, tfxEntryInfo file);
-tfxAPI_EDITOR void AddFileToPackage(tfxPackage *package, const char *file_name, tfxStream *data);
-tfxAPI_EDITOR bool FileExists(tfxPackage *package, const char *file_name);
-tfxAPI_EDITOR void FreePackage(tfxPackage *package);
+tfxAPI_EDITOR tfx_stream_t ReadEntireFile(const char *file_name, bool terminate = false);
+tfxAPI_EDITOR tfxErrorFlags LoadPackage(const char *file_name, tfx_package_t *package);
+tfxAPI_EDITOR tfxErrorFlags LoadPackage(tfx_stream_t *stream, tfx_package_t *package);
+tfxAPI_EDITOR tfx_package_t CreatePackage(const char *file_path);
+tfxAPI_EDITOR bool SavePackageDisk(tfx_package_t *package);
+tfxAPI_EDITOR tfx_stream_t SavePackageMemory(tfx_package_t *package);
+tfxAPI_EDITOR tfxU64 GetPackageSize(tfx_package_t *package);
+tfxAPI_EDITOR bool ValidatePackage(tfx_package_t *package);
+tfxAPI_EDITOR tfx_package_entry_info_t *GetPackageFile(tfx_package_t *package, const char *name);
+tfxAPI_EDITOR void AddEntryToPackage(tfx_package_t *package, tfx_package_entry_info_t file);
+tfxAPI_EDITOR void AddFileToPackage(tfx_package_t *package, const char *file_name, tfx_stream_t *data);
+tfxAPI_EDITOR bool FileExists(tfx_package_t *package, const char *file_name);
+tfxAPI_EDITOR void FreePackage(tfx_package_t *package);
 
 //Some file IO functions for the editor
-tfxAPI_EDITOR bool HasDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, const char *value);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, int value);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, bool value);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, double value);
-tfxAPI_EDITOR void AddDataValue(tfxStorageMap<tfxDataEntry> *config, tfxStr32 key, float value);
-tfxAPI_EDITOR tfxStr GetDataStrValue(tfxStorageMap<tfxDataEntry> *config, const char* key);
-tfxAPI_EDITOR int GetDataIntValue(tfxStorageMap<tfxDataEntry> *config, const char* key);
-tfxAPI_EDITOR float GetDataFloatValue(tfxStorageMap<tfxDataEntry> *config, const char* key);
-tfxAPI_EDITOR bool SaveDataFile(tfxStorageMap<tfxDataEntry> *config, const char* path = "");
-tfxAPI_EDITOR bool LoadDataFile(tfxDataTypesDictionary *data_types, tfxStorageMap<tfxDataEntry> *config, const char* path);
-tfxAPI_EDITOR void StreamProperties(tfxEmitterPropertiesSoA *property, tfxU32 index, tfxEmitterPropertyFlags flags, tfxStr *file);
-tfxAPI_EDITOR void StreamProperties(tfxEffectEmitter *effect, tfxStr *file);
-tfxAPI_EDITOR void StreamGraph(const char * name, tfxGraph *graph, tfxStr *file);
-tfxAPI_EDITOR void SplitStringStack(const tfxStr s, tfxvec<tfxStr256> *pair, char delim = 61);
-tfxAPI_EDITOR bool StringIsUInt(const tfxStr s);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU64 value, tfxU32 file_version);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value, tfxU32 file_version);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, float value);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, bool value);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, int value);
-tfxAPI_EDITOR void AssignEffectorProperty(tfxEffectEmitter *effect, tfxStr *field, tfxStr &value);
-tfxAPI_EDITOR void AssignGraphData(tfxEffectEmitter *effect, tfxvec<tfxStr256> *values);
-tfxINTERNAL void SplitStringVec(const tfxStr s, tfxvec<tfxStr256> *pair, char delim = 61);
-tfxINTERNAL int GetDataType(const tfxStr &s);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, tfxU32 value);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, float value);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, bool value);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, int value);
-tfxINTERNAL void AssignStageProperty(tfxEffectEmitter *effect, tfxStr *field, tfxStr *value);
-tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics *metrics, tfxStr *field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics *metrics, tfxStr *field, tfxU64 value, tfxU32 file_version);
-tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics *metrics, tfxStr *field, float value, tfxU32 file_version);
-tfxINTERNAL void AssignSpriteDataMetricsProperty(tfxSpriteDataMetrics *metrics, tfxStr *field, tfxStr value, tfxU32 file_version);
-tfxINTERNAL void AssignFrameMetaProperty(tfxFrameMeta *metrics, tfxStr *field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void AssignFrameMetaProperty(tfxFrameMeta *metrics, tfxStr *field, tfxVec3 value, tfxU32 file_version);
-tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, float value, tfxU32 file_version);
-tfxINTERNAL void AssignAnimationEmitterProperty(tfxAnimationEmitterProperties *properties, tfxStr *field, tfxVec2 value, tfxU32 file_version);
-tfxINTERNAL void AssignNodeData(tfxAttributeNode *node, tfxvec<tfxStr256> *values);
-tfxINTERNAL tfxVec3 StrToVec3(tfxvec<tfxStr256> *str);
-tfxINTERNAL tfxVec2 StrToVec2(tfxvec<tfxStr256> *str);
+tfxAPI_EDITOR bool HasDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key);
+tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, const char *value);
+tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, int value);
+tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, bool value);
+tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, double value);
+tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, float value);
+tfxAPI_EDITOR tfx_str_t GetDataStrValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
+tfxAPI_EDITOR int GetDataIntValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
+tfxAPI_EDITOR float GetDataFloatValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
+tfxAPI_EDITOR bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path = "");
+tfxAPI_EDITOR bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char* path);
+tfxAPI_EDITOR void StreamProperties(tfx_emitter_properties_soa_t *property, tfxU32 index, tfxEmitterPropertyFlags flags, tfx_str_t *file);
+tfxAPI_EDITOR void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file);
+tfxAPI_EDITOR void StreamGraph(const char * name, tfx_graph_t *graph, tfx_str_t *file);
+tfxAPI_EDITOR void SplitStringStack(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
+tfxAPI_EDITOR bool StringIsUInt(const tfx_str_t s);
+tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU64 value, tfxU32 file_version);
+tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
+tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, float value);
+tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value);
+tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int value);
+tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t &value);
+tfxAPI_EDITOR void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *values);
+tfxINTERNAL void SplitStringVec(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
+tfxINTERNAL int GetDataType(const tfx_str_t &s);
+tfxINTERNAL void AssignStageProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value);
+tfxINTERNAL void AssignStageProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, float value);
+tfxINTERNAL void AssignStageProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value);
+tfxINTERNAL void AssignStageProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int value);
+tfxINTERNAL void AssignStageProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t *value);
+tfxINTERNAL void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfxU64 value, tfxU32 file_version);
+tfxINTERNAL void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, float value, tfxU32 file_version);
+tfxINTERNAL void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfx_str_t value, tfxU32 file_version);
+tfxINTERNAL void AssignFrameMetaProperty(tfx_frame_meta_t *metrics, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void AssignFrameMetaProperty(tfx_frame_meta_t *metrics, tfx_str_t *field, tfx_vec3_t value, tfxU32 file_version);
+tfxINTERNAL void AssignAnimationEmitterProperty(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void AssignAnimationEmitterProperty(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, float value, tfxU32 file_version);
+tfxINTERNAL void AssignAnimationEmitterProperty(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfx_vec2_t value, tfxU32 file_version);
+tfxINTERNAL void AssignNodeData(tfx_attribute_node_t *node, tfx_vector_t<tfx_str256_t> *values);
+tfxINTERNAL tfx_vec3_t StrToVec3(tfx_vector_t<tfx_str256_t> *str);
+tfxINTERNAL tfx_vec2_t StrToVec2(tfx_vector_t<tfx_str256_t> *str);
 
 //--------------------------------
 //Inline Math functions
 //--------------------------------
 tfxINTERNAL void MakeIcospheres();
-tfxINTERNAL int VertexForEdge(tfxStorageMap<int> *point_cache, tfxvec<tfxVec3> *vertices, int first, int second);
-tfxINTERNAL tfxvec<tfxFace> SubDivideIcosphere(tfxStorageMap<int> *point_cache, tfxvec<tfxVec3> *vertices, tfxvec<tfxFace> *triangles);
+tfxINTERNAL int VertexForEdge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, int first, int second);
+tfxINTERNAL tfx_vector_t<tfx_face_t> SubDivideIcosphere(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, tfx_vector_t<tfx_face_t> *triangles);
 
 tfxINTERNAL inline int SortIcospherePoints(void const *left, void const *right) {
-	float d1 = static_cast<const tfxVec3*>(left)->y;
-	float d2 = static_cast<const tfxVec3*>(right)->y;
+	float d1 = static_cast<const tfx_vec3_t*>(left)->y;
+	float d2 = static_cast<const tfx_vec3_t*>(right)->y;
 	return (d2 > d1) - (d2 < d1);
 }
 
 tfxINTERNAL inline int SortDepth(void const *left, void const *right) {
-	float d1 = static_cast<const tfxDepthIndex*>(left)->depth;
-	float d2 = static_cast<const tfxDepthIndex*>(right)->depth;
+	float d1 = static_cast<const tfx_depth_index_t*>(left)->depth;
+	float d2 = static_cast<const tfx_depth_index_t*>(right)->depth;
 	return (d2 > d1) - (d2 < d1);
 }
 
-tfxINTERNAL inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry) {
-	tfx_bucket_array_t<tfxParticleSoA> &bank = *static_cast<tfxSortWorkEntry*>(work_entry)->bank;
-	tfxvec<tfxDepthIndex> &depth_indexes = *static_cast<tfxSortWorkEntry*>(work_entry)->depth_indexes;
+tfxINTERNAL inline void InsertionSortDepth(tfx_work_queue_t *queue, void *work_entry) {
+	tfx_bucket_array_t<tfx_particle_soa_t> &bank = *static_cast<tfx_sort_work_entry_t*>(work_entry)->bank;
+	tfx_vector_t<tfx_depth_index_t> &depth_indexes = *static_cast<tfx_sort_work_entry_t*>(work_entry)->depth_indexes;
 	for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
-		tfxDepthIndex key = depth_indexes[i];
+		tfx_depth_index_t key = depth_indexes[i];
 		int j = i - 1;
 		while (j >= 0 && key.depth > depth_indexes[j].depth) {
 			depth_indexes[j + 1] = depth_indexes[j];
@@ -5509,9 +5483,9 @@ tfxINTERNAL inline void InsertionSortDepth(tfxWorkQueue *queue, void *work_entry
 	}
 }
 
-tfxINTERNAL inline void InsertionSortParticleFrame(tfxvec<tfxParticleFrame> *particles) {
+tfxINTERNAL inline void InsertionSortParticleFrame(tfx_vector_t<tfx_particle_frame_t> *particles) {
 	for (tfxU32 i = 1; i < particles->current_size; ++i) {
-		tfxParticleFrame key = (*particles)[i];
+		tfx_particle_frame_t key = (*particles)[i];
 		int j = i - 1;
 		while (j >= 0 && key.depth > (*particles)[j].depth) {
 			(*particles)[j + 1] = (*particles)[j];
@@ -5546,9 +5520,9 @@ tfxINTERNAL inline tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx
 	return _mm_add_ps(xx, yy);
 }
 
-tfxINTERNAL inline tfxHSV RGBtoHSV(tfxRGB in)
+tfxINTERNAL inline tfx_hsv_t RGBtoHSV(tfx_rgb_t in)
 {
-	tfxHSV      out;
+	tfx_hsv_t      out;
 	float      min, max, delta;
 
 	min = in.r < in.g ? in.r : in.g;
@@ -5592,11 +5566,11 @@ tfxINTERNAL inline tfxHSV RGBtoHSV(tfxRGB in)
 }
 
 
-tfxINTERNAL inline tfxRGB HSVtoRGB(tfxHSV in)
+tfxINTERNAL inline tfx_rgb_t HSVtoRGB(tfx_hsv_t in)
 {
 	float      hh, p, q, t, ff;
 	long        i;
-	tfxRGB      out;
+	tfx_rgb_t      out;
 
 	if (in.s <= 0.0f) {       // < is bogus, just shuts up warnings
 		out.r = in.v;
@@ -5652,34 +5626,34 @@ tfxINTERNAL inline tfxRGB HSVtoRGB(tfxHSV in)
 
 tfxINTERNAL inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
 tfxINTERNAL inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
-tfxINTERNAL inline void tfxBound(tfxVec2 s, tfxVec2 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
-tfxINTERNAL inline void tfxBound3d(tfxVec3 s, tfxVec3 b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
+tfxINTERNAL inline void tfxBound(tfx_vec2_t s, tfx_vec2_t b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
+tfxINTERNAL inline void tfxBound3d(tfx_vec3_t s, tfx_vec3_t b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
 
-tfxINTERNAL inline float LengthVec3NoSqR(tfxVec3 const *v) {
+tfxINTERNAL inline float LengthVec3NoSqR(tfx_vec3_t const *v) {
 	return v->x * v->x + v->y * v->y + v->z * v->z;
 }
 
-tfxINTERNAL inline float LengthVec(tfxVec3 const *v) {
+tfxINTERNAL inline float LengthVec(tfx_vec3_t const *v) {
 	return sqrtf(LengthVec3NoSqR(v));
 }
 
-tfxINTERNAL inline float HasLength(tfxVec3 const *v) {
+tfxINTERNAL inline float HasLength(tfx_vec3_t const *v) {
 	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
 }
 
-tfxINTERNAL inline tfxVec3 NormalizeVec(tfxVec3 const *v) {
-	if (v->x == 0 && v->y == 0 && v->z == 0) return tfxVec3(1.f, 0.f, 0.f);
+tfxINTERNAL inline tfx_vec3_t NormalizeVec(tfx_vec3_t const *v) {
+	if (v->x == 0 && v->y == 0 && v->z == 0) return tfx_vec3_t(1.f, 0.f, 0.f);
 	float length = LengthVec(v);
-	return tfxVec3(v->x / length, v->y / length, v->z / length);
+	return tfx_vec3_t(v->x / length, v->y / length, v->z / length);
 }
 
-tfxINTERNAL inline tfxVec3 NormalizeVec(tfxVec3 const *v, float length) {
-	if (length == 0) return tfxVec3();
-	return tfxVec3(v->x / length, v->y / length, v->z / length);
+tfxINTERNAL inline tfx_vec3_t NormalizeVec(tfx_vec3_t const *v, float length) {
+	if (length == 0) return tfx_vec3_t();
+	return tfx_vec3_t(v->x / length, v->y / length, v->z / length);
 }
 
-tfxINTERNAL inline tfxVec3 Cross(tfxVec3 *a, tfxVec3 *b) {
-	tfxVec3 result;
+tfxINTERNAL inline tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b) {
+	tfx_vec3_t result;
 
 	result.x = a->y*b->z - a->z*b->y;
 	result.y = a->z*b->x - a->x*b->z;
@@ -5688,12 +5662,12 @@ tfxINTERNAL inline tfxVec3 Cross(tfxVec3 *a, tfxVec3 *b) {
 	return(result);
 }
 
-tfxINTERNAL inline float DotProduct(const tfxVec3 *a, const tfxVec3 *b)
+tfxINTERNAL inline float DotProduct(const tfx_vec3_t *a, const tfx_vec3_t *b)
 {
 	return (a->x * b->x + a->y * b->y + a->z * b->z);
 }
 
-tfxINTERNAL inline float DotProduct(const tfxVec2 *a, const tfxVec2 *b)
+tfxINTERNAL inline float DotProduct(const tfx_vec2_t *a, const tfx_vec2_t *b)
 {
 	return (a->x * b->x + a->y * b->y);
 }
@@ -5728,29 +5702,29 @@ tfxINTERNAL inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
 	return (nibble << 28) + index;
 }
 
-tfxINTERNAL inline float FastLength(tfxVec2 const *v) {
+tfxINTERNAL inline float FastLength(tfx_vec2_t const *v) {
 	return 1.f / tfxSqrt(DotProduct(v, v));
 }
 
-tfxINTERNAL inline float FastLength(tfxVec3 const *v) {
+tfxINTERNAL inline float FastLength(tfx_vec3_t const *v) {
 	return 1.f / tfxSqrt(DotProduct(v, v));
 }
 
-tfxINTERNAL inline tfxVec3 FastNormalizeVec(tfxVec3 const *v) {
+tfxINTERNAL inline tfx_vec3_t FastNormalizeVec(tfx_vec3_t const *v) {
 	return *v * tfxSqrt(DotProduct(v, v));
 }
 
-tfxINTERNAL inline tfxVec2 NormalizeVec(tfxVec2 const *v) {
+tfxINTERNAL inline tfx_vec2_t NormalizeVec(tfx_vec2_t const *v) {
 	float length = FastLength(v);
-	return tfxVec2(v->x / length, v->y / length);
+	return tfx_vec2_t(v->x / length, v->y / length);
 }
 
-tfxINTERNAL inline tfxVec2 NormalizeVec(tfxVec2 const *v, const float length) {
-	return tfxVec2(v->x / length, v->y / length);
+tfxINTERNAL inline tfx_vec2_t NormalizeVec(tfx_vec2_t const *v, const float length) {
+	return tfx_vec2_t(v->x / length, v->y / length);
 }
 
-tfxINTERNAL inline tfxMatrix3 M3(float v = 1.f) {
-	tfxMatrix3 R =
+tfxINTERNAL inline tfx_mat3_t M3(float v = 1.f) {
+	tfx_mat3_t R =
 	{ {
 		{v, 0, 0},
 		{0, v, 0},
@@ -5759,41 +5733,41 @@ tfxINTERNAL inline tfxMatrix3 M3(float v = 1.f) {
 	return(R);
 }
 
-tfxINTERNAL inline tfxMatrix3 mmTranslate(tfxMatrix3 const *m, tfxVec3 const *v) {
-	tfxMatrix3 result;
+tfxINTERNAL inline tfx_mat3_t mmTranslate(tfx_mat3_t const *m, tfx_vec3_t const *v) {
+	tfx_mat3_t result;
 	result.v[2] = m->v[0] * v->x + m->v[1] * v->y + m->v[2];
 	return result;
 }
 
-tfxINTERNAL inline tfxMatrix3 mmRotate(tfxMatrix3 const *m, float r) {
+tfxINTERNAL inline tfx_mat3_t mmRotate(tfx_mat3_t const *m, float r) {
 	float const a = r;
 	float const c = cosf(a);
 	float const s = sinf(a);
 
-	tfxMatrix3 result;
+	tfx_mat3_t result;
 	result.v[0] = m->v[0] * c + m->v[1] * s;
 	result.v[1] = m->v[0] * -s + m->v[1] * c;
 	result.v[2] = m->v[2];
 	return result;
 }
 
-tfxINTERNAL inline tfxMatrix3 mmScale(tfxMatrix3 const *m, tfxVec2 const &v) {
-	tfxMatrix3 result;
+tfxINTERNAL inline tfx_mat3_t mmScale(tfx_mat3_t const *m, tfx_vec2_t const &v) {
+	tfx_mat3_t result;
 	result.v[0] = m->v[0] * v.x;
 	result.v[1] = m->v[1] * v.y;
 	result.v[2] = m->v[2];
 	return result;
 }
 
-tfxINTERNAL inline tfxVec2 mmTransformVector(const tfxMatrix4 *mat, const tfxVec2 v) {
-	tfxVec2 tv = tfxVec2(0.f, 0.f);
+tfxINTERNAL inline tfx_vec2_t mmTransformVector(const tfx_mat4_t *mat, const tfx_vec2_t v) {
+	tfx_vec2_t tv = tfx_vec2_t(0.f, 0.f);
 	tv.x = v.x * mat->v[0].x + v.y * mat->v[1].x;
 	tv.y = v.x * mat->v[0].y + v.y * mat->v[1].y;
 	return tv;
 }
 
-tfxINTERNAL inline tfxMatrix4 tfxCreateMatrix4(float v) {
-	tfxMatrix4 R =
+tfxINTERNAL inline tfx_mat4_t tfxCreateMatrix4(float v) {
+	tfx_mat4_t R =
 	{ {
 		{v, 0, 0, 0},
 		{0, v, 0, 0},
@@ -5803,8 +5777,8 @@ tfxINTERNAL inline tfxMatrix4 tfxCreateMatrix4(float v) {
 	return(R);
 }
 
-tfxINTERNAL inline tfxMatrix4 tfxM4(tfxVec4 a, tfxVec4 b, tfxVec4 c, tfxVec4 d) {
-	tfxMatrix4 R =
+tfxINTERNAL inline tfx_mat4_t tfxM4(tfx_vec4_t a, tfx_vec4_t b, tfx_vec4_t c, tfx_vec4_t d) {
+	tfx_mat4_t R =
 	{ {
 		{a.x, a.y, a.z, a.w},
 		{b.x, b.y, b.z, b.w},
@@ -5814,10 +5788,10 @@ tfxINTERNAL inline tfxMatrix4 tfxM4(tfxVec4 a, tfxVec4 b, tfxVec4 c, tfxVec4 d) 
 	return(R);
 }
 
-tfxINTERNAL inline tfxMatrix4 mmXRotate(float angle) {
+tfxINTERNAL inline tfx_mat4_t mmXRotate(float angle) {
 	float c = std::cos(angle);
 	float s = std::sin(angle);
-	tfxMatrix4 r =
+	tfx_mat4_t r =
 	{ {
 		{1, 0, 0, 0},
 		{0, c,-s, 0},
@@ -5827,10 +5801,10 @@ tfxINTERNAL inline tfxMatrix4 mmXRotate(float angle) {
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmYRotate(float angle) {
+tfxINTERNAL inline tfx_mat4_t mmYRotate(float angle) {
 	float c = std::cos(angle);
 	float s = std::sin(angle);
-	tfxMatrix4 r =
+	tfx_mat4_t r =
 	{ {
 		{ c, 0, s, 0},
 		{ 0, 1, 0, 0},
@@ -5840,10 +5814,10 @@ tfxINTERNAL inline tfxMatrix4 mmYRotate(float angle) {
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmZRotate(float angle) {
+tfxINTERNAL inline tfx_mat4_t mmZRotate(float angle) {
 	float c = std::cos(angle);
 	float s = std::sin(angle);
-	tfxMatrix4 r =
+	tfx_mat4_t r =
 	{ {
 		{c, -s, 0, 0},
 		{s,  c, 0, 0},
@@ -5853,31 +5827,31 @@ tfxINTERNAL inline tfxMatrix4 mmZRotate(float angle) {
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 Transpose(tfxMatrix4 *mat) {
+tfxINTERNAL inline tfx_mat4_t Transpose(tfx_mat4_t *mat) {
 	return tfxM4(
-		tfxVec4(mat->v[0].x, mat->v[1].x, mat->v[2].x, mat->v[3].x),
-		tfxVec4(mat->v[0].y, mat->v[1].y, mat->v[2].y, mat->v[3].y),
-		tfxVec4(mat->v[0].z, mat->v[1].z, mat->v[2].z, mat->v[3].z),
-		tfxVec4(mat->v[0].w, mat->v[1].w, mat->v[2].w, mat->v[3].w)
+		tfx_vec4_t(mat->v[0].x, mat->v[1].x, mat->v[2].x, mat->v[3].x),
+		tfx_vec4_t(mat->v[0].y, mat->v[1].y, mat->v[2].y, mat->v[3].y),
+		tfx_vec4_t(mat->v[0].z, mat->v[1].z, mat->v[2].z, mat->v[3].z),
+		tfx_vec4_t(mat->v[0].w, mat->v[1].w, mat->v[2].w, mat->v[3].w)
 	);
 }
 
-tfxINTERNAL inline tfxMatrix4 mmTransform2(const tfxMatrix4 *in, const tfxMatrix4 *m) {
-	tfxMatrix4 r;
+tfxINTERNAL inline tfx_mat4_t mmTransform2(const tfx_mat4_t *in, const tfx_mat4_t *m) {
+	tfx_mat4_t r;
 	r.v[0].x = in->v[0].x * m->v[0].x + in->v[0].y * m->v[1].x; r.v[0].y = in->v[0].x * m->v[0].y + in->v[0].y * m->v[1].y;
 	r.v[1].x = in->v[1].x * m->v[0].x + in->v[1].y * m->v[1].x; r.v[1].y = in->v[1].x * m->v[0].y + in->v[1].y * m->v[1].y;
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmTransform2(const tfxMatrix4 *in, const tfxMatrix2 *m) {
-	tfxMatrix4 r;
+tfxINTERNAL inline tfx_mat4_t mmTransform2(const tfx_mat4_t *in, const tfx_mat2_t *m) {
+	tfx_mat4_t r;
 	r.v[0].x = in->v[0].x * m->aa + in->v[0].y * m->ba; r.v[0].y = in->v[0].x * m->ab + in->v[0].y * m->bb;
 	r.v[1].x = in->v[1].x * m->aa + in->v[1].y * m->ba; r.v[1].y = in->v[1].x * m->ab + in->v[1].y * m->bb;
 	return r;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmTransform(const tfxMatrix4 *in, const tfxMatrix4 *m) {
-	tfxMatrix4 res = tfxCreateMatrix4(0.f);
+tfxINTERNAL inline tfx_mat4_t mmTransform(const tfx_mat4_t *in, const tfx_mat4_t *m) {
+	tfx_mat4_t res = tfxCreateMatrix4(0.f);
 
 	tfx128 in_row[4];
 	in_row[0] = _mm_load_ps(&in->v[0].x);
@@ -5912,7 +5886,7 @@ tfxINTERNAL inline tfxMatrix4 mmTransform(const tfxMatrix4 *in, const tfxMatrix4
 	return res;
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[0].c1)), xr);
 	xr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[0].c2)), xr);
@@ -5927,7 +5901,7 @@ tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 *mat, tfxWideFloa
 	*z = zr;
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 *mat, tfxWideFloat *x, tfxWideFloat *y) {
+tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
 	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
@@ -5945,7 +5919,7 @@ tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfx
 	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxMatrix4 *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
 	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
@@ -5969,8 +5943,8 @@ tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfx
 	*z = tfxWideAdd(tfxWideAnd(*z, *xor_mask), tfxWideAnd(zr, *mask));
 }
 
-tfxINTERNAL inline tfxVec4 mmTransformVector(const tfxMatrix4 *mat, const tfxVec4 vec) {
-	tfxVec4 v;
+tfxINTERNAL inline tfx_vec4_t mmTransformVector(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
+	tfx_vec4_t v;
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
@@ -5997,8 +5971,8 @@ tfxINTERNAL inline tfxVec4 mmTransformVector(const tfxMatrix4 *mat, const tfxVec
 	return v;
 }
 
-tfxINTERNAL inline tfxVec4 mmTransformVector(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfxVec4 vec) {
-	tfxVec4 v;
+tfxINTERNAL inline tfx_vec4_t mmTransformVector(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
+	tfx_vec4_t v;
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
@@ -6020,8 +5994,8 @@ tfxINTERNAL inline tfxVec4 mmTransformVector(const tfx128 *row1, const tfx128 *r
 	return v;
 }
 
-tfxINTERNAL inline tfxVec3 mmTransformVector3(const tfxMatrix4 *mat, const tfxVec4 *vec) {
-	tfxVec3 v;
+tfxINTERNAL inline tfx_vec3_t mmTransformVector3(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
+	tfx_vec3_t v;
 
 	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
 
@@ -6046,15 +6020,15 @@ tfxINTERNAL inline tfxVec3 mmTransformVector3(const tfxMatrix4 *mat, const tfxVe
 	return v;
 }
 
-tfxINTERNAL inline tfxMatrix4 mmRotate(tfxMatrix4 const *m, float r, tfxVec3 const *v) {
+tfxINTERNAL inline tfx_mat4_t mmRotate(tfx_mat4_t const *m, float r, tfx_vec3_t const *v) {
 	float const a = r;
 	float const c = cosf(a);
 	float const s = sinf(a);
 
-	tfxVec3 axis = NormalizeVec(v);
-	tfxVec3 temp = axis * (1.f - c);
+	tfx_vec3_t axis = NormalizeVec(v);
+	tfx_vec3_t temp = axis * (1.f - c);
 
-	tfxMatrix4 rotate;
+	tfx_mat4_t rotate;
 	rotate.v[0].x = c + temp.x * axis.x;
 	rotate.v[0].y = temp.x * axis.y + s * axis.z;
 	rotate.v[0].z = temp.x * axis.z - s * axis.y;
@@ -6067,7 +6041,7 @@ tfxINTERNAL inline tfxMatrix4 mmRotate(tfxMatrix4 const *m, float r, tfxVec3 con
 	rotate.v[2].y = temp.z * axis.y - s * axis.x;
 	rotate.v[2].z = c + temp.z * axis.z;
 
-	tfxMatrix4 result = tfxCreateMatrix4(1.f);
+	tfx_mat4_t result = tfxCreateMatrix4(1.f);
 	result.v[0] = m->v[0] * rotate.v[0].x + m->v[1] * rotate.v[0].y + m->v[2] * rotate.v[0].z;
 	result.v[1] = m->v[0] * rotate.v[1].x + m->v[1] * rotate.v[1].y + m->v[2] * rotate.v[1].z;
 	result.v[2] = m->v[0] * rotate.v[2].x + m->v[1] * rotate.v[2].y + m->v[2] * rotate.v[2].z;
@@ -6087,8 +6061,8 @@ tfxINTERNAL inline float tfxClampf(float lower, float upper, float value) {
 	return value;
 }
 
-tfxINTERNAL inline tfxU32 Pack10bit(tfxVec3 const *v, tfxU32 extra) {
-	tfxVec3 converted = *v * 511.f;
+tfxINTERNAL inline tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra) {
+	tfx_vec3_t converted = *v * 511.f;
 	tfxUInt10bit result;
 	result.pack = 0;
 	result.data.x = (tfxU32)converted.z;
@@ -6098,8 +6072,8 @@ tfxINTERNAL inline tfxU32 Pack10bit(tfxVec3 const *v, tfxU32 extra) {
 	return result.pack;
 }
 
-tfxINTERNAL inline tfxU32 Pack10bitUnsigned(tfxVec3 const *v) {
-	tfxVec3 converted = *v * 511.f + 511.f;
+tfxINTERNAL inline tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v) {
+	tfx_vec3_t converted = *v * 511.f + 511.f;
 	tfxUInt10bit result;
 	result.pack = 0;
 	result.data.x = (tfxU32)converted.z;
@@ -6144,20 +6118,20 @@ tfxINTERNAL inline tfxU32 Pack16bitUnsigned(float x, float y) {
 	return u.out;
 }
 
-tfxINTERNAL inline tfxVec2 UnPack16bit(tfxU32 in) {
+tfxINTERNAL inline tfx_vec2_t UnPack16bit(tfxU32 in) {
 	float one_div_32k = 1.f / 32767.f;
 
-	tfxVec2 result;
+	tfx_vec2_t result;
 	result.x = ((signed short)(in & 0x0000FFFF)) * one_div_32k;
 	result.y = ((signed short)((in & 0xFFFF0000) >> 16)) * one_div_32k;
 
 	return result;
 }
 
-tfxINTERNAL inline tfxVec2 UnPack16bitUnsigned(tfxU32 in) {
+tfxINTERNAL inline tfx_vec2_t UnPack16bitUnsigned(tfxU32 in) {
 	float one_div_32k = 1.f / 32767.f;
 
-	tfxVec2 result;
+	tfx_vec2_t result;
 	result.x = ((int)(in & 0x0000FFFF) - 32767) * one_div_32k;
 	result.y = ((int)((in & 0xFFFF0000) >> 16) - 32767) * one_div_32k;
 
@@ -6264,20 +6238,20 @@ tfxINTERNAL inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloa
 	return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
 }
 
-tfxINTERNAL inline tfxVec4 UnPack10bit(tfxU32 in) {
+tfxINTERNAL inline tfx_vec4_t UnPack10bit(tfxU32 in) {
 	tfxUInt10bit unpack;
 	unpack.pack = in;
 	int test = unpack.data.y;
-	tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-	result = result * tfxVec3(one_div_511, one_div_511, one_div_511);
-	return tfxVec4(result, (float)unpack.data.w);
+	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
+	result = result * tfx_vec3_t(one_div_511, one_div_511, one_div_511);
+	return tfx_vec4_t(result, (float)unpack.data.w);
 }
 
-tfxINTERNAL inline tfxVec3 UnPack10bitVec3(tfxU32 in) {
+tfxINTERNAL inline tfx_vec3_t UnPack10bitVec3(tfxU32 in) {
 	tfxUInt10bit unpack;
 	unpack.pack = in;
-	tfxVec3 result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-	return result * tfxVec3(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
+	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
+	return result * tfx_vec3_t(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
 }
 
 tfxINTERNAL inline tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
@@ -6306,16 +6280,16 @@ tfxINTERNAL inline tfxUInt10bit UintToPacked10bit(tfxU32 in) {
 	return out;
 }
 
-tfxINTERNAL inline tfxVec2 InterpolateVec2(float tween, tfxVec2 from, tfxVec2 to) {
+tfxINTERNAL inline tfx_vec2_t InterpolateVec2(float tween, tfx_vec2_t from, tfx_vec2_t to) {
 	return to * tween + from * (1.f - tween);
 }
 
-tfxINTERNAL inline tfxVec3 InterpolateVec3(float tween, tfxVec3 from, tfxVec3 to) {
+tfxINTERNAL inline tfx_vec3_t InterpolateVec3(float tween, tfx_vec3_t from, tfx_vec3_t to) {
 	return to * tween + from * (1.f - tween);
 }
 
-tfxINTERNAL inline tfxRGBA8 InterpolateRGBA(float tween, tfxRGBA8 from, tfxRGBA8 to) {
-	tfxRGBA8 out;
+tfxINTERNAL inline tfx_rgba8_t InterpolateRGBA(float tween, tfx_rgba8_t from, tfx_rgba8_t to) {
+	tfx_rgba8_t out;
 	out.r = char((float)to.r * tween + (float)from.r * (1 - tween));
 	out.g = char((float)to.g * tween + (float)from.g * (1 - tween));
 	out.b = char((float)to.b * tween + (float)from.b * (1 - tween));
@@ -6328,11 +6302,11 @@ tfxINTERNAL inline float GammaCorrect(float color, float gamma = tfxGAMMA) {
 }
 
 tfxINTERNAL inline tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to) {
-	tfxVec3 i = InterpolateVec3(tween, UnPack10bitVec3(from), UnPack10bitVec3(to));
+	tfx_vec3_t i = InterpolateVec3(tween, UnPack10bitVec3(from), UnPack10bitVec3(to));
 	return Pack10bit(&i, (from >> 30) & 0x3);
 }
 
-tfxINTERNAL inline tfxVec4 InterpolateVec4(float tween, tfxVec4 *from, tfxVec4 *to) {
+tfxINTERNAL inline tfx_vec4_t InterpolateVec4(float tween, tfx_vec4_t *from, tfx_vec4_t *to) {
 	tfx128 l4 = _mm_set_ps1(tween);
 	tfx128 l4minus1 = _mm_set_ps1(1.f - tween);
 	tfx128 f4 = _mm_set_ps(from->x, from->y, from->z, from->w);
@@ -6340,7 +6314,7 @@ tfxINTERNAL inline tfxVec4 InterpolateVec4(float tween, tfxVec4 *from, tfxVec4 *
 	tfx128 from_lerp = _mm_mul_ps(f4, l4);
 	tfx128 to_lerp = _mm_mul_ps(f4, l4minus1);
 	tfx128 result = _mm_add_ps(from_lerp, to_lerp);
-	tfxVec4 vec;
+	tfx_vec4_t vec;
 	_mm_store_ps(&vec.x, result);
 	return vec;
 }
@@ -6357,7 +6331,7 @@ tfxINTERNAL inline float Interpolatef(float tween, float from, float to) {
 	return to * tween + from * (1.f - tween);
 }
 
-tfxINTERNAL inline void Transform2d(tfxVec3 *out_rotations, tfxVec3 *out_local_rotations, tfxVec3 *out_scale, tfxVec3 *out_position, tfxVec3 *out_local_position, tfxVec3 *out_translation, tfxMatrix4 *out_matrix, const tfxVec3 *in_rotations, const tfxVec3 *in_scale, const tfxVec3 *in_position, const tfxMatrix4 *in_matrix) {
+tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, tfx_vec3_t *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_vec3_t *in_rotations, const tfx_vec3_t *in_scale, const tfx_vec3_t *in_position, const tfx_mat4_t *in_matrix) {
 	float s = sin(out_local_rotations->roll);
 	float c = cos(out_local_rotations->roll);
 
@@ -6367,14 +6341,14 @@ tfxINTERNAL inline void Transform2d(tfxVec3 *out_rotations, tfxVec3 *out_local_r
 	out_rotations->roll = in_rotations->roll + out_local_rotations->roll;
 
 	*out_matrix = mmTransform2(out_matrix, in_matrix);
-	tfxVec2 rotatevec = mmTransformVector(in_matrix, tfxVec2(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
+	tfx_vec2_t rotatevec = mmTransformVector(in_matrix, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
 
 	*out_position = in_position->xy() + rotatevec * in_scale->xy();
 }
-tfxINTERNAL inline void Transform3d(tfxVec3 *out_rotations, tfxVec3 *out_local_rotations, tfxVec3 *out_scale, tfxVec3 *out_position, tfxVec3 *out_local_position, tfxVec3 *out_translation, tfxMatrix4 *out_matrix, const tfxVec3 *in_rotations, const tfxVec3 *in_scale, const tfxVec3 *in_position, const tfxMatrix4 *in_matrix) {
-	tfxMatrix4 roll = mmZRotate(out_local_rotations->roll);
-	tfxMatrix4 pitch = mmXRotate(out_local_rotations->pitch);
-	tfxMatrix4 yaw = mmYRotate(out_local_rotations->yaw);
+tfxINTERNAL inline void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, tfx_vec3_t *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_vec3_t *in_rotations, const tfx_vec3_t *in_scale, const tfx_vec3_t *in_position, const tfx_mat4_t *in_matrix) {
+	tfx_mat4_t roll = mmZRotate(out_local_rotations->roll);
+	tfx_mat4_t pitch = mmXRotate(out_local_rotations->pitch);
+	tfx_mat4_t yaw = mmYRotate(out_local_rotations->yaw);
 	*out_matrix = mmTransform(&yaw, &pitch);
 	*out_matrix = mmTransform(out_matrix, &roll);
 	*out_scale = *in_scale;
@@ -6382,76 +6356,76 @@ tfxINTERNAL inline void Transform3d(tfxVec3 *out_rotations, tfxVec3 *out_local_r
 	*out_rotations = *in_rotations + *out_local_rotations;
 
 	*out_matrix = mmTransform(out_matrix, in_matrix);
-	tfxVec4 translated_vec = *out_local_position + *out_translation;
-	tfxVec3 rotatevec = mmTransformVector3(in_matrix, &translated_vec);
+	tfx_vec4_t translated_vec = *out_local_position + *out_translation;
+	tfx_vec3_t rotatevec = mmTransformVector3(in_matrix, &translated_vec);
 
 	*out_position = *in_position + rotatevec;
 }
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
 //--------------------------2d---------------------
-tfxINTERNAL inline void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfxVec2 *world_position, float *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+tfxINTERNAL inline void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	world_position->x = local_position_x;
 	world_position->y = local_position_y;
 	*world_rotations = roll;
 }
-tfxINTERNAL inline void TransformParticlePositionAngle(const float local_position_x, const float local_position_y, const float roll, tfxVec2 *world_position, float *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+tfxINTERNAL inline void TransformParticlePositionAngle(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	world_position->x = local_position_x;
 	world_position->y = local_position_y;
 	*world_rotations = parent_rotations->roll + roll;
 }
-tfxINTERNAL inline void TransformParticlePositionRelative(const float local_position_x, const float local_position_y, const float roll, tfxVec2 *world_position, float *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+tfxINTERNAL inline void TransformParticlePositionRelative(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = roll;
-	tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle->xy());
+	tfx_vec2_t rotatevec = mmTransformVector(matrix, tfx_vec2_t(local_position_x, local_position_y) + handle->xy());
 	*world_position = from_position->xy() + rotatevec * scale->xy();
 }
-tfxINTERNAL inline void TransformParticlePositionRelativeLine(const float local_position_x, const float local_position_y, const float roll, tfxVec2 *world_position, float *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+tfxINTERNAL inline void TransformParticlePositionRelativeLine(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = parent_rotations->roll + roll;
-	tfxVec2 rotatevec = mmTransformVector(matrix, tfxVec2(local_position_x, local_position_y) + handle->xy());
+	tfx_vec2_t rotatevec = mmTransformVector(matrix, tfx_vec2_t(local_position_x, local_position_y) + handle->xy());
 	*world_position = from_position->xy() + rotatevec * scale->xy();
 }
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
 //--------------------------3d---------------------
-tfxINTERNAL inline void TransformParticlePosition3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+tfxINTERNAL inline void TransformParticlePosition3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	world_position->x = local_position_x;
 	world_position->y = local_position_y;
 	world_position->z = local_position_z;
 	*world_rotations = *local_rotations;
 }
-tfxINTERNAL inline void TransformParticlePositionAngle3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+tfxINTERNAL inline void TransformParticlePositionAngle3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	world_position->x = local_position_x;
 	world_position->y = local_position_y;
 	world_position->z = local_position_z;
 	*world_rotations = *parent_rotations + *local_rotations;
 }
-tfxINTERNAL inline void TransformParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+tfxINTERNAL inline void TransformParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = *local_rotations;
-	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = mmTransformVector(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
-tfxINTERNAL inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *world_rotations, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
+tfxINTERNAL inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = *local_rotations;
-	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = mmTransformVector(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
-tfxINTERNAL inline void TransformWideParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
-	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + *handle);
+tfxINTERNAL inline void TransformWideParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
+	tfx_vec4_t rotatevec = mmTransformVector(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
-tfxINTERNAL inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfxVec3 *local_rotations, tfxVec3 *world_position, const tfxVec3 *parent_rotations, const tfxMatrix4 *matrix, const tfxVec3 *handle, const tfxVec3 *scale, const tfxVec3 *from_position) {
-	tfxVec4 rotatevec = mmTransformVector(matrix, tfxVec3(local_position_x, local_position_y, local_position_z) + *handle);
+tfxINTERNAL inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
+	tfx_vec4_t rotatevec = mmTransformVector(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
 //--------------------------------
 //Random numbers
 //--------------------------------
-tfxRandom NewRandom(tfxU32 seed);
+tfx_random_t NewRandom(tfxU32 seed);
 
-tfxINTERNAL inline void AdvanceRandom(tfxRandom *random) {
+tfxINTERNAL inline void AdvanceRandom(tfx_random_t *random) {
 	tfxU64 s1 = random->seeds[0];
 	tfxU64 s0 = random->seeds[1];
 	random->seeds[0] = s0;
@@ -6459,24 +6433,24 @@ tfxINTERNAL inline void AdvanceRandom(tfxRandom *random) {
 	random->seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
 }
 
-tfxINTERNAL inline void RandomReSeed(tfxRandom *random) {
+tfxINTERNAL inline void RandomReSeed(tfx_random_t *random) {
 	random->seeds[0] = tfx_Millisecs(); random->seeds[1] = (tfxU64)tfx_Millisecs() * 2;
 	AdvanceRandom(random);
 }
 
-tfxINTERNAL inline void RandomReSeed(tfxRandom *random, tfxU64 seed1, tfxU64 seed2) {
+tfxINTERNAL inline void RandomReSeed(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2) {
 	random->seeds[0] = seed1;
 	random->seeds[1] = seed2;
 	AdvanceRandom(random);
 }
 
-tfxINTERNAL inline void RandomReSeed(tfxRandom *random, tfxU64 seed) {
+tfxINTERNAL inline void RandomReSeed(tfx_random_t *random, tfxU64 seed) {
 	random->seeds[0] = seed;
 	random->seeds[1] = seed * 2;
 	AdvanceRandom(random);
 }
 
-tfxINTERNAL inline float GenerateRandom(tfxRandom *random) {
+tfxINTERNAL inline float GenerateRandom(tfx_random_t *random) {
 	tfxU64 s1 = random->seeds[0];
 	tfxU64 s0 = random->seeds[1];
 	tfxU64 result = s0 + s1;
@@ -6486,28 +6460,28 @@ tfxINTERNAL inline float GenerateRandom(tfxRandom *random) {
 	return float((double)result / tfxTWO64f);
 }
 
-tfxINTERNAL inline float RandomRange(tfxRandom *random, float max) {
+tfxINTERNAL inline float RandomRange(tfx_random_t *random, float max) {
 	return GenerateRandom(random) * max;
 };
 
-tfxINTERNAL inline float RandomRange(tfxRandom *random, float from, float to) {
+tfxINTERNAL inline float RandomRange(tfx_random_t *random, float from, float to) {
 	float a = GenerateRandom(random);
 	float range = to - from;
 	return to - range * a;
 };
 
-tfxINTERNAL inline int RandomRange(tfxRandom *random, int from, int to) {
+tfxINTERNAL inline int RandomRange(tfx_random_t *random, int from, int to) {
 	float a = (to - from) * GenerateRandom(random) - (to - from) * .5f;
 	return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
 };
 
-tfxINTERNAL inline tfxU32 RandomRange(tfxRandom *random, tfxU32 max) {
+tfxINTERNAL inline tfxU32 RandomRange(tfx_random_t *random, tfxU32 max) {
 	float g = GenerateRandom(random);
 	float a = g * (float)max;
 	return tfxU32(a);
 };
 
-tfxINTERNAL inline void AlterRandomSeed(tfxRandom *random, tfxU64 amount) {
+tfxINTERNAL inline void AlterRandomSeed(tfx_random_t *random, tfxU64 amount) {
 	random->seeds[0] *= amount;
 	random->seeds[1] += amount;
 };
@@ -6515,149 +6489,149 @@ tfxINTERNAL inline void AlterRandomSeed(tfxRandom *random, tfxU64 amount) {
 //--------------------------------
 //Particle manager internal functions
 //--------------------------------
-tfxINTERNAL float GetEmissionDirection2d(tfxParticleManager *pm, tfxLibrary *library, tfxRandom *random, tfxU32 property_index, tfxU32 index, tfxVec2 local_position, tfxVec2 world_position, tfxVec2 emitter_size);
-tfxINTERNAL tfxVec3 GetEmissionDirection3d(tfxParticleManager *pm, tfxLibrary *library, tfxRandom *random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfxVec3 local_position, tfxVec3 world_position, tfxVec3 emitter_size);
-tfxINTERNAL void TransformEffector2d(tfxVec3 *world_rotations, tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *local_position, tfxMatrix4 *matrix, tfxSpriteTransform2d *parent, bool relative_position = true, bool relative_angle = false);
-tfxINTERNAL void TransformEffector3d(tfxVec3 *world_rotations, tfxVec3 *local_rotations, tfxVec3 *world_position, tfxVec3 *local_position, tfxMatrix4 *matrix, tfxSpriteTransform3d *parent, bool relative_position = true, bool relative_angle = false);
-tfxINTERNAL void UpdatePMEffect(tfxParticleManager *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
-tfxINTERNAL void UpdatePMEmitter(tfxParticleManager *pm, tfxSpawnWorkEntry *spawn_work_entry);
-tfxINTERNAL tfxU32 NewSpritesNeeded(tfxParticleManager *pm, tfxU32 index, tfxU32 parent_index, tfxEmitterPropertiesSoA *properties);
-tfxINTERNAL void UpdateEmitterState(tfxParticleManager *pm, tfxU32 index, tfxU32 parent_index, const tfxParentSpawnControls *parent_spawn_controls, tfxSpawnWorkEntry *entry);
-tfxINTERNAL void UpdateEffectState(tfxParticleManager *pm, tfxU32 index);
+tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfxU32 property_index, tfxU32 index, tfx_vec2_t local_position, tfx_vec2_t world_position, tfx_vec2_t emitter_size);
+tfxINTERNAL tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfxU32 property_index, tfxU32 index, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position, tfx_vec3_t emitter_size);
+tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
+tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
+tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
+tfxINTERNAL void UpdatePMEmitter(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *spawn_work_entry);
+tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, tfx_emitter_properties_soa_t *properties);
+tfxINTERNAL void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index);
 
-tfxAPI_EDITOR void CompletePMWork(tfxParticleManager *pm);
+tfxAPI_EDITOR void CompletePMWork(tfx_particle_manager_t *pm);
 
-tfxINTERNAL tfxU32 SpawnParticles2d(tfxParticleManager *pm, tfxSpawnWorkEntry *spawn_work_entry, tfxU32 max_spawn_count);
-tfxINTERNAL void SpawnParticlePoint2d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleLine2d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleArea2d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleEllipse2d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleMicroUpdate2d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleNoise(tfxWorkQueue *queue, void *data);
+tfxINTERNAL tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *spawn_work_entry, tfxU32 max_spawn_count);
+tfxINTERNAL void SpawnParticlePoint2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleNoise(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void SpawnParticleWeight(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleVelocity(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleRoll(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleImageFrame(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleAge(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleSize2d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleSpin2d(tfxWorkQueue *queue, void *data);
+tfxINTERNAL void SpawnParticleWeight(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleVelocity(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleRoll(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleImageFrame(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleAge(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleSize2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleSpin2d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL tfxU32 SpawnParticles3d(tfxParticleManager *pm, tfxSpawnWorkEntry *spawn_work_entry, tfxU32 max_spawn_count);
-tfxINTERNAL void SpawnParticlePoint3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleLine3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleArea3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleEllipse3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleCylinder3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleIcosphereRandom3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleIcosphere3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleMicroUpdate3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleSpin3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void SpawnParticleSize3d(tfxWorkQueue *queue, void *data);
+tfxINTERNAL tfxU32 SpawnParticles3d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *spawn_work_entry, tfxU32 max_spawn_count);
+tfxINTERNAL void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleSpin3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleSize3d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void ControlParticles(tfxParticleManager *pm, tfxU32 emitter_index, tfxControlWorkEntry *work_entry);
+tfxINTERNAL void ControlParticles(tfx_particle_manager_t *pm, tfxU32 emitter_index, tfx_control_work_entry_t *work_entry);
 
-tfxINTERNAL void ControlParticleAge(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void ControlParticleImageFrame(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void ControlParticleColor(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void ControlParticleSize(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void ControlParticleUID(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void ControlParticleCaptureFlag(tfxWorkQueue *queue, void *data);
+tfxINTERNAL void ControlParticleAge(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleColor(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleSize(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleUID(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleCaptureFlag(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void ControlParticlePosition2d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void ControlParticleTransform2d(tfxWorkQueue *queue, void *data);
+tfxINTERNAL void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void ControlParticlePosition3d(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void ControlParticleTransform3d(tfxWorkQueue *queue, void *data);
+tfxINTERNAL void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void InitSpriteData3dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitSpriteData3dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitSpriteData2dSoACompression(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitSpriteData2dSoA(tfxSoABuffer *buffer, tfxSpriteDataSoA *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitSpriteBufferSoA(tfxSoABuffer *buffer, tfxSpriteSoA *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
-tfxINTERNAL void InitParticleSoA(tfxSoABuffer *buffer, tfxParticleSoA *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitEffectSoA(tfxSoABuffer *buffer, tfxEffectSoA *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitEmitterSoA(tfxSoABuffer *buffer, tfxEmitterSoA *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitSpriteData3dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
+tfxINTERNAL void InitParticleSoA(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitEffectSoA(tfx_soa_buffer_t *buffer, tfx_effect_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitEmitterSoA(tfx_soa_buffer_t *buffer, tfx_emitter_soa_t *soa, tfxU32 reserve_amount);
 
-tfxAPI_EDITOR void InitEmitterProperites(tfxEmitterPropertiesSoA *properties, tfxU32 i);
-tfxINTERNAL void CopyEmitterProperites(tfxEmitterPropertiesSoA *from_properties, tfxU32 from_i, tfxEmitterPropertiesSoA *to_properties, tfxU32 to_i);
+tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_soa_t *properties, tfxU32 i);
+tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_soa_t *from_properties, tfxU32 from_i, tfx_emitter_properties_soa_t *to_properties, tfxU32 to_i);
 
-tfxINTERNAL inline void FreeSpriteData(tfxSpriteData *sprite_data);
+tfxINTERNAL inline void FreeSpriteData(tfx_sprite_data_t *sprite_data);
 
 //--------------------------------
 //Graph functions
 //Mainly used by the editor to edit graphs so these are kind of API functions but you wouldn't generally use these outside of the particle editor
 //--------------------------------
-tfxAPI_EDITOR tfxAttributeNode* AddGraphNode(tfxGraph *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
-tfxAPI_EDITOR void AddGraphNode(tfxGraph *graph, tfxAttributeNode *node);
-tfxAPI_EDITOR void SetGraphNode(tfxGraph *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
-tfxAPI_EDITOR float GetGraphValue(tfxGraph *graph, float age);
-tfxAPI_EDITOR float GetGraphRandomValue(tfxGraph *graph, float age, tfxRandom *seed);
-tfxAPI_EDITOR float GetGraphValue(tfxGraph *graph, float age, float life);
-tfxAPI_EDITOR tfxAttributeNode *GetGraphNextNode(tfxGraph *graph, tfxAttributeNode *node);
-tfxAPI_EDITOR tfxAttributeNode *GetGraphPrevNode(tfxGraph *graph, tfxAttributeNode *node);
-tfxAPI_EDITOR tfxAttributeNode *GetGraphLastNode(tfxGraph *graph);
-tfxAPI_EDITOR float GetGraphFirstValue(tfxGraph *graph);
-tfxAPI_EDITOR tfxAttributeNode* AddGraphCoordNode(tfxGraph *graph, float, float);
-tfxAPI_EDITOR tfxAttributeNode* InsertGraphCoordNode(tfxGraph *graph, float, float);
-tfxAPI_EDITOR tfxAttributeNode* InsertGraphNode(tfxGraph *graph, float, float);
-tfxAPI_EDITOR float *LinkGraphFirstValue(tfxGraph *graph);
-tfxAPI_EDITOR float GetGraphLastValue(tfxGraph *graph);
-tfxAPI_EDITOR float GetGraphMaxValue(tfxGraph *graph);
-tfxAPI_EDITOR float GetGraphMinValue(tfxGraph *graph);
-tfxAPI_EDITOR float GetGraphLastFrame(tfxGraph *graph, float udpate_frequence);
-tfxAPI_EDITOR tfxAttributeNode* GraphNodeByIndex(tfxGraph *graph, tfxU32 index);
-tfxAPI_EDITOR float GraphValueByIndex(tfxGraph *graph, tfxU32 index);
-tfxAPI_EDITOR float GraphFrameByIndex(tfxGraph *graph, tfxU32 index);
-tfxAPI_EDITOR tfxAttributeNode* FindGraphNode(tfxGraph *graph, tfxAttributeNode *n);
-tfxAPI_EDITOR void ValidateGraphCurves(tfxGraph *graph);
-tfxAPI_EDITOR void DeleteGraphNode(tfxGraph *graph, tfxAttributeNode *n);
-tfxAPI_EDITOR void DeleteGraphNodeAtFrame(tfxGraph *graph, float frame);
-tfxAPI_EDITOR void ResetGraph(tfxGraph *graph, float first_node_value, tfxGraphPreset preset, bool add_node = true);
-tfxAPI_EDITOR void ClearGraphToOne(tfxGraph *graph, float value);
-tfxAPI_EDITOR void ClearGraph(tfxGraph *graph);
-tfxAPI_EDITOR void FreeGraph(tfxGraph *graph);
-tfxAPI_EDITOR void CopyGraph(tfxGraph *graph, tfxGraph *to, bool compile = true);
-tfxAPI_EDITOR bool SortGraph(tfxGraph *graph);
-tfxAPI_EDITOR void ReIndexGraph(tfxGraph *graph);
-tfxAPI_EDITOR tfxVec2 GetGraphInitialZoom(tfxGraph *graph);
-tfxAPI_EDITOR tfxVec2 GetGraphInitialZoom3d(tfxGraph *graph);
-tfxAPI_EDITOR bool IsColorGraph(tfxGraph *graph);
-tfxAPI_EDITOR bool IsOvertimeGraph(tfxGraph *graph);
-tfxAPI_EDITOR bool IsGlobalGraph(tfxGraph *graph);
-tfxAPI_EDITOR bool IsAngleGraph(tfxGraph *graph);
-tfxAPI_EDITOR bool IsTranslationGraph(tfxGraph *graph);
-tfxAPI_EDITOR void MultiplyAllGraphValues(tfxGraph *graph, float scalar);
-tfxAPI_EDITOR void CopyGraphNoLookups(tfxGraph *src_graph, tfxGraph *dst_graph);
+tfxAPI_EDITOR tfx_attribute_node_t* AddGraphNode(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+tfxAPI_EDITOR void AddGraphNode(tfx_graph_t *graph, tfx_attribute_node_t *node);
+tfxAPI_EDITOR void SetGraphNode(tfx_graph_t *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+tfxAPI_EDITOR float GetGraphValue(tfx_graph_t *graph, float age);
+tfxAPI_EDITOR float GetGraphRandomValue(tfx_graph_t *graph, float age, tfx_random_t *seed);
+tfxAPI_EDITOR float GetGraphValue(tfx_graph_t *graph, float age, float life);
+tfxAPI_EDITOR tfx_attribute_node_t *GetGraphNextNode(tfx_graph_t *graph, tfx_attribute_node_t *node);
+tfxAPI_EDITOR tfx_attribute_node_t *GetGraphPrevNode(tfx_graph_t *graph, tfx_attribute_node_t *node);
+tfxAPI_EDITOR tfx_attribute_node_t *GetGraphLastNode(tfx_graph_t *graph);
+tfxAPI_EDITOR float GetGraphFirstValue(tfx_graph_t *graph);
+tfxAPI_EDITOR tfx_attribute_node_t* AddGraphCoordNode(tfx_graph_t *graph, float, float);
+tfxAPI_EDITOR tfx_attribute_node_t* InsertGraphCoordNode(tfx_graph_t *graph, float, float);
+tfxAPI_EDITOR tfx_attribute_node_t* InsertGraphNode(tfx_graph_t *graph, float, float);
+tfxAPI_EDITOR float *LinkGraphFirstValue(tfx_graph_t *graph);
+tfxAPI_EDITOR float GetGraphLastValue(tfx_graph_t *graph);
+tfxAPI_EDITOR float GetGraphMaxValue(tfx_graph_t *graph);
+tfxAPI_EDITOR float GetGraphMinValue(tfx_graph_t *graph);
+tfxAPI_EDITOR float GetGraphLastFrame(tfx_graph_t *graph, float udpate_frequence);
+tfxAPI_EDITOR tfx_attribute_node_t* GraphNodeByIndex(tfx_graph_t *graph, tfxU32 index);
+tfxAPI_EDITOR float GraphValueByIndex(tfx_graph_t *graph, tfxU32 index);
+tfxAPI_EDITOR float GraphFrameByIndex(tfx_graph_t *graph, tfxU32 index);
+tfxAPI_EDITOR tfx_attribute_node_t* FindGraphNode(tfx_graph_t *graph, tfx_attribute_node_t *n);
+tfxAPI_EDITOR void ValidateGraphCurves(tfx_graph_t *graph);
+tfxAPI_EDITOR void DeleteGraphNode(tfx_graph_t *graph, tfx_attribute_node_t *n);
+tfxAPI_EDITOR void DeleteGraphNodeAtFrame(tfx_graph_t *graph, float frame);
+tfxAPI_EDITOR void ResetGraph(tfx_graph_t *graph, float first_node_value, tfxGraphPreset preset, bool add_node = true);
+tfxAPI_EDITOR void ClearGraphToOne(tfx_graph_t *graph, float value);
+tfxAPI_EDITOR void ClearGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR void FreeGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR void CopyGraph(tfx_graph_t *graph, tfx_graph_t *to, bool compile = true);
+tfxAPI_EDITOR bool SortGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR void ReIndexGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom(tfx_graph_t *graph);
+tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom3d(tfx_graph_t *graph);
+tfxAPI_EDITOR bool IsColorGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool IsOvertimeGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool IsGlobalGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool IsAngleGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool IsTranslationGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR void MultiplyAllGraphValues(tfx_graph_t *graph, float scalar);
+tfxAPI_EDITOR void CopyGraphNoLookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph);
 tfxAPI_EDITOR void DragGraphValues(tfxGraphPreset preset, float *frame, float *value);
-tfxAPI_EDITOR tfxVec4 GetMinMaxGraphValues(tfxGraphPreset preset);
-tfxAPI_EDITOR tfxVec2 GetQuadBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, float t, float ymin, float ymax, bool clamp = true);
-tfxAPI_EDITOR tfxVec2 GetCubicBezier(tfxVec2 p0, tfxVec2 p1, tfxVec2 p2, tfxVec2 p3, float t, float ymin, float ymax, bool clamp = true);
-tfxAPI_EDITOR float GetBezierValue(const tfxAttributeNode *lastec, const tfxAttributeNode *a, float t, float ymin, float ymax);
+tfxAPI_EDITOR tfx_vec4_t GetMinMaxGraphValues(tfxGraphPreset preset);
+tfxAPI_EDITOR tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax, bool clamp = true);
+tfxAPI_EDITOR tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax, bool clamp = true);
+tfxAPI_EDITOR float GetBezierValue(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
 tfxAPI_EDITOR float GetDistance(float fromx, float fromy, float tox, float toy);
 tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2f(x, -y); }
-tfxAPI_EDITOR bool CompareNodes(tfxAttributeNode *left, tfxAttributeNode *right);
-tfxAPI_EDITOR void CompileGraph(tfxGraph *graph);
-tfxAPI_EDITOR void CompileGraphOvertime(tfxGraph *graph);
-tfxAPI_EDITOR void CompileColorOvertime(tfxGraph *graph, float gamma = tfxGAMMA);
-tfxAPI_EDITOR float GetMaxLife(tfxEffectEmitter *e);
-tfxAPI_EDITOR float LookupFastOvertime(tfxGraph *graph, float age, float lifetime);
-tfxAPI_EDITOR float LookupFast(tfxGraph *graph, float frame);
-tfxAPI_EDITOR float LookupPreciseOvertime(tfxGraph *graph, float age, float lifetime);
-tfxAPI_EDITOR float LookupPrecise(tfxGraph *graph, float frame);
-tfxAPI_EDITOR float GetRandomFast(tfxGraph *graph, float frame, tfxRandom *random);
-tfxAPI_EDITOR float GetRandomPrecise(tfxGraph *graph, float frame, tfxRandom *random);
+tfxAPI_EDITOR bool CompareNodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
+tfxAPI_EDITOR void CompileGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR void CompileGraphOvertime(tfx_graph_t *graph);
+tfxAPI_EDITOR void CompileColorOvertime(tfx_graph_t *graph, float gamma = tfxGAMMA);
+tfxAPI_EDITOR float GetMaxLife(tfx_effect_emitter_t *e);
+tfxAPI_EDITOR float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime);
+tfxAPI_EDITOR float LookupFast(tfx_graph_t *graph, float frame);
+tfxAPI_EDITOR float LookupPreciseOvertime(tfx_graph_t *graph, float age, float lifetime);
+tfxAPI_EDITOR float LookupPrecise(tfx_graph_t *graph, float frame);
+tfxAPI_EDITOR float GetRandomFast(tfx_graph_t *graph, float frame, tfx_random_t *random);
+tfxAPI_EDITOR float GetRandomPrecise(tfx_graph_t *graph, float frame, tfx_random_t *random);
 
 //Node Manipulation
-tfxAPI_EDITOR bool SetNode(tfxGraph *graph, tfxAttributeNode *node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
-tfxAPI_EDITOR bool SetNode(tfxGraph *graph, tfxAttributeNode *node, float *frame, float *value);
-tfxAPI_EDITOR void SetCurve(tfxGraph *graph, tfxAttributeNode *node, bool is_left_curve, float *frame, float *value);
-tfxAPI_EDITOR bool MoveNode(tfxGraph *graph, tfxAttributeNode *node, float frame, float value, bool sort = true);
-tfxAPI_EDITOR bool SetNodeFrame(tfxGraph *graph, tfxAttributeNode *node, float *frame);
-tfxAPI_EDITOR bool SetNodeValue(tfxGraph *graph, tfxAttributeNode *node, float *value);
-tfxAPI_EDITOR void ClampNode(tfxGraph *graph, tfxAttributeNode *node);
-tfxAPI_EDITOR void ClampCurve(tfxGraph *graph, tfxVec2 *curve, tfxAttributeNode *node);
-tfxAPI_EDITOR void ClampGraph(tfxGraph *graph);
+tfxAPI_EDITOR bool SetNode(tfx_graph_t *graph, tfx_attribute_node_t *node, float, float, tfxAttributeNodeFlags flags, float = 0, float = 0, float = 0, float = 0);
+tfxAPI_EDITOR bool SetNode(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame, float *value);
+tfxAPI_EDITOR void SetCurve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve, float *frame, float *value);
+tfxAPI_EDITOR bool MoveNode(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame, float value, bool sort = true);
+tfxAPI_EDITOR bool SetNodeFrame(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame);
+tfxAPI_EDITOR bool SetNodeValue(tfx_graph_t *graph, tfx_attribute_node_t *node, float *value);
+tfxAPI_EDITOR void ClampNode(tfx_graph_t *graph, tfx_attribute_node_t *node);
+tfxAPI_EDITOR void ClampCurve(tfx_graph_t *graph, tfx_vec2_t *curve, tfx_attribute_node_t *node);
+tfxAPI_EDITOR void ClampGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsOvertimeGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsColorGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsOvertimePercentageGraph(tfxGraphType type);
@@ -6668,14 +6642,14 @@ tfxAPI_EDITOR bool IsGlobalPercentageGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsAngleGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsAngleOvertimeGraph(tfxGraphType type);
 tfxAPI_EDITOR bool IsEverythingElseGraph(tfxGraphType type);
-tfxAPI_EDITOR bool HasNodeAtFrame(tfxGraph *graph, float frame);
-tfxAPI_EDITOR bool HasKeyframes(tfxEffectEmitter *e);
-tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfxEffectEmitter *e);
-tfxAPI_EDITOR void PushTranslationPoints(tfxEffectEmitter *e, tfxvec<tfxVec3> *points, float frame);
+tfxAPI_EDITOR bool HasNodeAtFrame(tfx_graph_t *graph, float frame);
+tfxAPI_EDITOR bool HasKeyframes(tfx_effect_emitter_t *e);
+tfxAPI_EDITOR bool HasMoreThanOneKeyframe(tfx_effect_emitter_t *e);
+tfxAPI_EDITOR void PushTranslationPoints(tfx_effect_emitter_t *e, tfx_vector_t<tfx_vec3_t> *points, float frame);
 
-tfxAPI_EDITOR bool IsNodeCurve(tfxAttributeNode *node);
-tfxAPI_EDITOR bool NodeCurvesAreInitialised(tfxAttributeNode *node);
-tfxAPI_EDITOR bool SetNodeCurveInitialised(tfxAttributeNode *node);
+tfxAPI_EDITOR bool IsNodeCurve(tfx_attribute_node_t *node);
+tfxAPI_EDITOR bool NodeCurvesAreInitialised(tfx_attribute_node_t *node);
+tfxAPI_EDITOR bool SetNodeCurveInitialised(tfx_attribute_node_t *node);
 
 tfxINTERNAL inline bool IsGraphTransformRotation(tfxGraphType type) {
 	return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
@@ -6702,231 +6676,231 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfxGraphType type) {
 //--------------------------------
 //Grouped graph struct functions
 //--------------------------------
-tfxINTERNAL void InitialiseGlobalAttributes(tfxGlobalAttributes *attributes, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseOvertimeAttributes(tfxOvertimeAttributes *attributes, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseVariationAttributes(tfxVariationAttributes *attributes, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseBaseAttributes(tfxBaseAttributes *attributes, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialisePropertyAttributes(tfxPropertyAttributes *attributes, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseTransformAttributes(tfxTransformAttributes *attributes, tfxU32 bucket_size = 8);
-tfxINTERNAL void InitialiseEmitterAttributes(tfxEmitterAttributes *attributes, tfxU32 bucket_size = 8);
-tfxINTERNAL void FreeEmitterAttributes(tfxEmitterAttributes *attributes);
-tfxINTERNAL void FreeGlobalAttributes(tfxGlobalAttributes *attributes);
-tfxAPI_EDITOR void FreeOvertimeAttributes(tfxOvertimeAttributes *attributes);
-tfxAPI_EDITOR void CopyOvertimeAttributesNoLookups(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst);
-tfxAPI_EDITOR void CopyOvertimeAttributes(tfxOvertimeAttributes *src, tfxOvertimeAttributes *dst);
-tfxAPI_EDITOR void FreeVariationAttributes(tfxVariationAttributes *attributes);
-tfxAPI_EDITOR void CopyVariationAttributesNoLookups(tfxVariationAttributes *src, tfxVariationAttributes *dst);
-tfxAPI_EDITOR void CopyVariationAttributes(tfxVariationAttributes *src, tfxVariationAttributes *dst);
-tfxAPI_EDITOR void FreeBaseAttributes(tfxBaseAttributes *attributes);
-tfxAPI_EDITOR void CopyBaseAttributesNoLookups(tfxBaseAttributes *src, tfxBaseAttributes *dst);
-tfxAPI_EDITOR void CopyBaseAttributes(tfxBaseAttributes *src, tfxBaseAttributes *dst);
-tfxAPI_EDITOR void FreePropertyAttributes(tfxPropertyAttributes *attributes);
-tfxAPI_EDITOR void CopyPropertyAttributesNoLookups(tfxPropertyAttributes *src, tfxPropertyAttributes *dst);
-tfxAPI_EDITOR void CopyPropertyAttributes(tfxPropertyAttributes *src, tfxPropertyAttributes *dst);
-tfxAPI_EDITOR void FreeTransformAttributes(tfxTransformAttributes *attributes);
-tfxAPI_EDITOR void CopyTransformAttributesNoLookups(tfxTransformAttributes *src, tfxTransformAttributes *dst);
-tfxAPI_EDITOR void CopyTransformAttributes(tfxTransformAttributes *src, tfxTransformAttributes *dst);
-tfxAPI_EDITOR bool HasTranslationKeyframes(tfxTransformAttributes *graphs);
-tfxAPI_EDITOR void AddTranslationNodes(tfxTransformAttributes *keyframes, float frame);
-tfxAPI_EDITOR void CopyGlobalAttributesNoLookups(tfxGlobalAttributes *src, tfxGlobalAttributes *dst);
-tfxAPI_EDITOR void CopyGlobalAttributes(tfxGlobalAttributes *src, tfxGlobalAttributes *dst);
+tfxINTERNAL void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseVariationAttributes(tfx_variation_attributes_t *attributes, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseBaseAttributes(tfx_base_attributes_t *attributes, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialisePropertyAttributes(tfx_property_attributes_t *attributes, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseTransformAttributes(tfx_transform_attributes_t *attributes, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseEmitterAttributes(tfx_emitter_attributes_t *attributes, tfxU32 bucket_size = 8);
+tfxINTERNAL void FreeEmitterAttributes(tfx_emitter_attributes_t *attributes);
+tfxINTERNAL void FreeGlobalAttributes(tfx_global_attributes_t *attributes);
+tfxAPI_EDITOR void FreeOvertimeAttributes(tfx_overtime_attributes_t *attributes);
+tfxAPI_EDITOR void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
+tfxAPI_EDITOR void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
+tfxAPI_EDITOR void FreeVariationAttributes(tfx_variation_attributes_t *attributes);
+tfxAPI_EDITOR void CopyVariationAttributesNoLookups(tfx_variation_attributes_t *src, tfx_variation_attributes_t *dst);
+tfxAPI_EDITOR void CopyVariationAttributes(tfx_variation_attributes_t *src, tfx_variation_attributes_t *dst);
+tfxAPI_EDITOR void FreeBaseAttributes(tfx_base_attributes_t *attributes);
+tfxAPI_EDITOR void CopyBaseAttributesNoLookups(tfx_base_attributes_t *src, tfx_base_attributes_t *dst);
+tfxAPI_EDITOR void CopyBaseAttributes(tfx_base_attributes_t *src, tfx_base_attributes_t *dst);
+tfxAPI_EDITOR void FreePropertyAttributes(tfx_property_attributes_t *attributes);
+tfxAPI_EDITOR void CopyPropertyAttributesNoLookups(tfx_property_attributes_t *src, tfx_property_attributes_t *dst);
+tfxAPI_EDITOR void CopyPropertyAttributes(tfx_property_attributes_t *src, tfx_property_attributes_t *dst);
+tfxAPI_EDITOR void FreeTransformAttributes(tfx_transform_attributes_t *attributes);
+tfxAPI_EDITOR void CopyTransformAttributesNoLookups(tfx_transform_attributes_t *src, tfx_transform_attributes_t *dst);
+tfxAPI_EDITOR void CopyTransformAttributes(tfx_transform_attributes_t *src, tfx_transform_attributes_t *dst);
+tfxAPI_EDITOR bool HasTranslationKeyframes(tfx_transform_attributes_t *graphs);
+tfxAPI_EDITOR void AddTranslationNodes(tfx_transform_attributes_t *keyframes, float frame);
+tfxAPI_EDITOR void CopyGlobalAttributesNoLookups(tfx_global_attributes_t *src, tfx_global_attributes_t *dst);
+tfxAPI_EDITOR void CopyGlobalAttributes(tfx_global_attributes_t *src, tfx_global_attributes_t *dst);
 
-//Get a graph by tfxGraphID
-tfxAPI_EDITOR tfxGraph *GetGraph(tfxLibrary *library, tfxGraphID graph_id);
+//Get a graph by tfx_graph_id_t
+tfxAPI_EDITOR tfx_graph_t *GetGraph(tfx_library_t *library, tfx_graph_id_t graph_id);
 
-tfxAPI_EDITOR int GetEffectLibraryStats(const char *filename, tfxEffectLibraryStats *stats);
-tfxAPI_EDITOR tfxEffectLibraryStats CreateLibraryStats(tfxLibrary *lib);
-tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfxPackage *package, tfxLibrary *lib, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+tfxAPI_EDITOR int GetEffectLibraryStats(const char *filename, tfx_effect_library_stats_t *stats);
+tfxAPI_EDITOR tfx_effect_library_stats_t CreateLibraryStats(tfx_library_t *lib);
+tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
 //--------------------------------
 //Animation manager internal functions - animation manager is used to playback pre-recorded effects
 //--------------------------------
-tfxINTERNAL tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager);
-tfxINTERNAL void FreeAnimationInstance(tfxAnimationManager *animation_manager, tfxU32 index);
-tfxINTERNAL void AddEffectEmitterProperties(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, bool *has_animated_shape);
-tfxINTERNAL void UpdateAnimationManagerBufferMetrics(tfxAnimationManager *animation_manager);
-tfxINTERNAL bool FreePMEffectCapacity(tfxParticleManager *pm);
+tfxINTERNAL tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager);
+tfxINTERNAL void FreeAnimationInstance(tfx_animation_manager_t *animation_manager, tfxU32 index);
+tfxINTERNAL void AddEffectEmitterProperties(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape);
+tfxINTERNAL void UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
+tfxINTERNAL bool FreePMEffectCapacity(tfx_particle_manager_t *pm);
 
 //--------------------------------
 //Particle manager internal functions
 //--------------------------------
-tfxINTERNAL tfxU32 GetPMEffectSlot(tfxParticleManager *pm);
-tfxINTERNAL tfxU32 GetPMEmitterSlot(tfxParticleManager *pm);
-tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfxParticleManager *pm, tfxParticleID particle_id);
-tfxINTERNAL void FreePMParticleIndex(tfxParticleManager *pm, tfxU32 *index);
-tfxINTERNAL tfxU32 PushPMDepthIndex(tfxParticleManager *pm, tfxU32 layer, tfxDepthIndex depth_index);
-tfxINTERNAL void ResetPMFlags(tfxParticleManager *pm);
-tfxINTERNAL tfxU32 GetParticleSpriteIndex(tfxParticleManager *pm, tfxParticleID id);
-tfxINTERNAL unsigned int GetControllerMemoryUsage(tfxParticleManager *pm);
-tfxINTERNAL unsigned int GetParticleMemoryUsage(tfxParticleManager *pm);
-tfxINTERNAL void FreeComputeSlot(tfxParticleManager *pm, unsigned int slot_id);
-tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectEmitter *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning);
-tfxINTERNAL void ToggleSpritesWithUID(tfxParticleManager *pm, bool switch_on);
-tfxINTERNAL void FreeParticleList(tfxParticleManager *pm, tfxU32 index);
-tfxINTERNAL void FreeParticleBanks(tfxParticleManager *pm);
+tfxINTERNAL tfxU32 GetPMEffectSlot(tfx_particle_manager_t *pm);
+tfxINTERNAL tfxU32 GetPMEmitterSlot(tfx_particle_manager_t *pm);
+tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfx_particle_manager_t *pm, tfxParticleID particle_id);
+tfxINTERNAL void FreePMParticleIndex(tfx_particle_manager_t *pm, tfxU32 *index);
+tfxINTERNAL tfxU32 PushPMDepthIndex(tfx_particle_manager_t *pm, tfxU32 layer, tfx_depth_index_t depth_index);
+tfxINTERNAL void ResetPMFlags(tfx_particle_manager_t *pm);
+tfxINTERNAL tfxU32 GetParticleSpriteIndex(tfx_particle_manager_t *pm, tfxParticleID id);
+tfxINTERNAL unsigned int GetControllerMemoryUsage(tfx_particle_manager_t *pm);
+tfxINTERNAL unsigned int GetParticleMemoryUsage(tfx_particle_manager_t *pm);
+tfxINTERNAL void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_id);
+tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning);
+tfxINTERNAL void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
+tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
+tfxINTERNAL void FreeParticleBanks(tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
-tfxINTERNAL void EnableCompute(tfxParticleManager *pm) { pm->flags |= tfxEffectManagerFlags_use_compute_shader; }
-tfxINTERNAL void DisableCompute(tfxParticleManager *pm) { pm->flags &= ~tfxEffectManagerFlags_use_compute_shader; }
-tfxINTERNAL int AddComputeController(tfxParticleManager *pm);
-tfxINTERNAL tfxComputeParticle *GrabComputeParticle(tfxParticleManager *pm, unsigned int layer);
-tfxINTERNAL void ResetParticlePtr(tfxParticleManager *pm, void *ptr);
-tfxINTERNAL void ResetControllerPtr(tfxParticleManager *pm, void *ptr);
-tfxINTERNAL void UpdateCompute(tfxParticleManager *pm, void *sampled_particles, unsigned int sample_size = 100);
+tfxINTERNAL void EnableCompute(tfx_particle_manager_t *pm) { pm->flags |= tfxEffectManagerFlags_use_compute_shader; }
+tfxINTERNAL void DisableCompute(tfx_particle_manager_t *pm) { pm->flags &= ~tfxEffectManagerFlags_use_compute_shader; }
+tfxINTERNAL int AddComputeController(tfx_particle_manager_t *pm);
+tfxINTERNAL tfx_compute_particle_t *GrabComputeParticle(tfx_particle_manager_t *pm, unsigned int layer);
+tfxINTERNAL void ResetParticlePtr(tfx_particle_manager_t *pm, void *ptr);
+tfxINTERNAL void ResetControllerPtr(tfx_particle_manager_t *pm, void *ptr);
+tfxINTERNAL void UpdateCompute(tfx_particle_manager_t *pm, void *sampled_particles, unsigned int sample_size = 100);
 
 //--------------------------------
 //Effect templates
 //--------------------------------
-tfxINTERNAL void AddTemplatePath(tfxEffectTemplate *effect_template, tfxEffectEmitter *effect_emitter, tfxStr256 path);
+tfxINTERNAL void AddTemplatePath(tfx_effect_template_t *effect_template, tfx_effect_emitter_t *effect_emitter, tfx_str256_t path);
 
 //--------------------------------
 //Library functions, internal/Editor functions
 //--------------------------------
-tfxAPI_EDITOR tfxEffectEmitterInfo *GetEffectInfo(tfxEffectEmitter *e);					//Required by editor
-tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxStr256 path, tfxEffectTemplate *effect);
-tfxINTERNAL void PrepareLibraryEffectTemplate(tfxLibrary *library, tfxEffectEmitter *effect, tfxEffectTemplate *effect_template);
+tfxAPI_EDITOR tfx_effect_emitter_info_t *GetEffectInfo(tfx_effect_emitter_t *e);					//Required by editor
+tfxINTERNAL void PrepareLibraryEffectTemplate(tfx_library_t *library, tfx_str256_t path, tfx_effect_template_t *effect);
+tfxINTERNAL void PrepareLibraryEffectTemplate(tfx_library_t *library, tfx_effect_emitter_t *effect, tfx_effect_template_t *effect_template);
 //Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
-tfxINTERNAL void CopyLibraryLookupIndexesData(tfxLibrary *library, void* dst);
-tfxINTERNAL void CopyLibraryLookupValuesData(tfxLibrary *library, void* dst);
-tfxINTERNAL tfxU32 CountLibraryKeyframeLookUpValues(tfxLibrary *library, tfxU32 index);
-tfxINTERNAL tfxU32 CountLibraryGlobalLookUpValues(tfxLibrary *library, tfxU32 index);
-tfxINTERNAL tfxU32 CountLibraryEmitterLookUpValues(tfxLibrary *library, tfxU32 index);
-tfxINTERNAL float LookupLibraryPreciseOvertimeNodeList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
-tfxINTERNAL float LookupLibraryPreciseNodeList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
-tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age, float life);
-tfxINTERNAL float LookupLibraryFastValueList(tfxLibrary *library, tfxGraphType graph_type, int index, float age);
-tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfxParticleManager *pm);
-tfxINTERNAL void ResetSpriteDataLerpOffset(tfxSpriteData *sprites);
-tfxINTERNAL void CompressSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, bool is_3d, float frame_lengt);
-tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfxWorkQueue *queue, void *data);
-tfxINTERNAL void WrapSingleParticleSprites(tfxSpriteData *sprite_data);
-tfxINTERNAL void ClearWrapBit(tfxSpriteData *sprite_data);
-tfxINTERNAL void MaybeGrowLibraryInfos(tfxLibrary *library);
+tfxINTERNAL void CopyLibraryLookupIndexesData(tfx_library_t *library, void* dst);
+tfxINTERNAL void CopyLibraryLookupValuesData(tfx_library_t *library, void* dst);
+tfxINTERNAL tfxU32 CountLibraryKeyframeLookUpValues(tfx_library_t *library, tfxU32 index);
+tfxINTERNAL tfxU32 CountLibraryGlobalLookUpValues(tfx_library_t *library, tfxU32 index);
+tfxINTERNAL tfxU32 CountLibraryEmitterLookUpValues(tfx_library_t *library, tfxU32 index);
+tfxINTERNAL float LookupLibraryPreciseOvertimeNodeList(tfx_library_t *library, tfxGraphType graph_type, int index, float age, float life);
+tfxINTERNAL float LookupLibraryPreciseNodeList(tfx_library_t *library, tfxGraphType graph_type, int index, float age);
+tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfx_library_t *library, tfxGraphType graph_type, int index, float age, float life);
+tfxINTERNAL float LookupLibraryFastValueList(tfx_library_t *library, tfxGraphType graph_type, int index, float age);
+tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfx_particle_manager_t *pm);
+tfxINTERNAL void ResetSpriteDataLerpOffset(tfx_sprite_data_t *sprites);
+tfxINTERNAL void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_lengt);
+tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void WrapSingleParticleSprites(tfx_sprite_data_t *sprite_data);
+tfxINTERNAL void ClearWrapBit(tfx_sprite_data_t *sprite_data);
+tfxINTERNAL void MaybeGrowLibraryInfos(tfx_library_t *library);
 
-tfxAPI_EDITOR void MaybeGrowLibraryProperties(tfxLibrary *library, tfxU32 size_offset);	//Required by editor
-tfxAPI_EDITOR tfxU32 GetLibraryComputeShapeDataSizeInBytes(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 GetLibraryComputeShapeCount(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 GetLibraryLookupIndexCount(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 GetLibraryLookupValueCount(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 GetLibraryLookupIndexesSizeInBytes(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 GetLibraryLookupValuesSizeInBytes(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 CountOfGraphsInUse(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 CountOfFreeGraphs(tfxLibrary *library);
-tfxAPI_EDITOR bool IsLibraryShapeUsed(tfxLibrary *library, tfxKey image_hash);
-tfxAPI_EDITOR bool LibraryShapeExists(tfxLibrary *library, tfxKey image_hash);
-tfxAPI_EDITOR bool RemoveLibraryShape(tfxLibrary *library, tfxKey image_hash);
-tfxAPI_EDITOR tfxEffectEmitter *InsertLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect, tfxEffectEmitter *position);
-tfxAPI_EDITOR tfxEffectEmitter *AddLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxEffectEmitter *AddLibraryFolder(tfxLibrary *library, tfxStr64 *name);
-tfxAPI_EDITOR tfxEffectEmitter *AddLibraryFolder(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxEffectEmitter *AddLibraryStage(tfxLibrary *library, tfxStr64 *name);
-tfxAPI_EDITOR void UpdateLibraryEffectPaths(tfxLibrary *library);
-tfxAPI_EDITOR void AddLibraryPath(tfxLibrary *library, tfxEffectEmitter *effect_emitter, tfxStr256 *path);
-tfxAPI_EDITOR void DeleteLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR bool RenameLibraryEffect(tfxLibrary *library, tfxEffectEmitter *effect, const char *new_name);
-tfxAPI_EDITOR bool LibraryNameExists(tfxLibrary *library, tfxEffectEmitter *effect, const char *name);
-tfxAPI_EDITOR void ReIndexLibrary(tfxLibrary *library);
-tfxAPI_EDITOR void UpdateLibraryParticleShapeReferences(tfxLibrary *library, tfxKey default_hash);
-tfxAPI_EDITOR tfxEffectEmitter* LibraryMoveUp(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxEffectEmitter* LibraryMoveDown(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxU32 AddLibraryGlobal(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 AddLibraryEmitterAttributes(tfxLibrary *library);
-tfxAPI_EDITOR void FreeLibraryGlobal(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void FreeLibraryKeyframes(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void FreeLibraryEmitterAttributes(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void FreeLibraryProperties(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void FreeLibraryInfo(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR tfxU32 CloneLibraryGlobal(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
-tfxAPI_EDITOR tfxU32 CloneLibraryKeyframes(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
-tfxAPI_EDITOR tfxU32 CloneLibraryEmitterAttributes(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
-tfxAPI_EDITOR tfxU32 CloneLibraryInfo(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
-tfxAPI_EDITOR tfxU32 CloneLibraryProperties(tfxLibrary *library, tfxU32 source_index, tfxLibrary *destination_library);
-tfxAPI_EDITOR void AddLibraryEmitterGraphs(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR void AddLibraryEffectGraphs(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR void AddLibraryTransformGraphs(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxU32 AddLibrarySpriteSheetSettings(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxU32 AddLibrarySpriteDataSettings(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR void AddLibrarySpriteSheetSettingsSub(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR void AddLibrarySpriteDataSettingsSub(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfxLibrary *library, tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 AddLibraryEffectEmitterInfo(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 AddLibraryEmitterProperties(tfxLibrary *library);
-tfxAPI_EDITOR tfxU32 AddLibraryKeyframes(tfxLibrary *library);
-tfxAPI_EDITOR void UpdateLibraryComputeNodes(tfxLibrary *library);
-tfxAPI_EDITOR void CompileAllLibraryGraphs(tfxLibrary *library);
-tfxAPI_EDITOR void CompileLibraryGlobalGraph(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryKeyframeGraph(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryEmitterGraphs(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryPropertyGraph(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryBaseGraph(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryVariationGraph(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryOvertimeGraph(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryColorGraphs(tfxLibrary *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryGraphsOfEffect(tfxLibrary *library, tfxEffectEmitter *effect, tfxU32 depth = 0);
-tfxAPI_EDITOR void SetLibraryMinMaxData(tfxLibrary *library);
-tfxAPI_EDITOR void ClearLibrary(tfxLibrary *library);
-tfxAPI_EDITOR void InitLibrary(tfxLibrary *library);
-tfxAPI_EDITOR void InitLibraryEmitterProperties(tfxLibrary *library);
+tfxAPI_EDITOR void MaybeGrowLibraryProperties(tfx_library_t *library, tfxU32 size_offset);	//Required by editor
+tfxAPI_EDITOR tfxU32 GetLibraryComputeShapeDataSizeInBytes(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 GetLibraryComputeShapeCount(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 GetLibraryLookupIndexCount(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 GetLibraryLookupValueCount(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 GetLibraryLookupIndexesSizeInBytes(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 GetLibraryLookupValuesSizeInBytes(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 CountOfGraphsInUse(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 CountOfFreeGraphs(tfx_library_t *library);
+tfxAPI_EDITOR bool IsLibraryShapeUsed(tfx_library_t *library, tfxKey image_hash);
+tfxAPI_EDITOR bool LibraryShapeExists(tfx_library_t *library, tfxKey image_hash);
+tfxAPI_EDITOR bool RemoveLibraryShape(tfx_library_t *library, tfxKey image_hash);
+tfxAPI_EDITOR tfx_effect_emitter_t *InsertLibraryEffect(tfx_library_t *library, tfx_effect_emitter_t *effect, tfx_effect_emitter_t *position);
+tfxAPI_EDITOR tfx_effect_emitter_t *AddLibraryEffect(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfx_effect_emitter_t *AddLibraryFolder(tfx_library_t *library, tfx_str64_t *name);
+tfxAPI_EDITOR tfx_effect_emitter_t *AddLibraryFolder(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfx_effect_emitter_t *AddLibraryStage(tfx_library_t *library, tfx_str64_t *name);
+tfxAPI_EDITOR void UpdateLibraryEffectPaths(tfx_library_t *library);
+tfxAPI_EDITOR void AddLibraryPath(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, tfx_str256_t *path);
+tfxAPI_EDITOR void DeleteLibraryEffect(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR bool RenameLibraryEffect(tfx_library_t *library, tfx_effect_emitter_t *effect, const char *new_name);
+tfxAPI_EDITOR bool LibraryNameExists(tfx_library_t *library, tfx_effect_emitter_t *effect, const char *name);
+tfxAPI_EDITOR void ReIndexLibrary(tfx_library_t *library);
+tfxAPI_EDITOR void UpdateLibraryParticleShapeReferences(tfx_library_t *library, tfxKey default_hash);
+tfxAPI_EDITOR tfx_effect_emitter_t* LibraryMoveUp(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfx_effect_emitter_t* LibraryMoveDown(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfxU32 AddLibraryGlobal(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 AddLibraryEmitterAttributes(tfx_library_t *library);
+tfxAPI_EDITOR void FreeLibraryGlobal(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void FreeLibraryKeyframes(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void FreeLibraryEmitterAttributes(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void FreeLibraryProperties(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void FreeLibraryInfo(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR tfxU32 CloneLibraryGlobal(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
+tfxAPI_EDITOR tfxU32 CloneLibraryKeyframes(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
+tfxAPI_EDITOR tfxU32 CloneLibraryEmitterAttributes(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
+tfxAPI_EDITOR tfxU32 CloneLibraryInfo(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
+tfxAPI_EDITOR tfxU32 CloneLibraryProperties(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
+tfxAPI_EDITOR void AddLibraryEmitterGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void AddLibraryEffectGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void AddLibraryTransformGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfxU32 AddLibrarySpriteSheetSettings(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfxU32 AddLibrarySpriteDataSettings(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void AddLibrarySpriteSheetSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void AddLibrarySpriteDataSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 AddLibraryEffectEmitterInfo(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 AddLibraryEmitterProperties(tfx_library_t *library);
+tfxAPI_EDITOR tfxU32 AddLibraryKeyframes(tfx_library_t *library);
+tfxAPI_EDITOR void UpdateLibraryComputeNodes(tfx_library_t *library);
+tfxAPI_EDITOR void CompileAllLibraryGraphs(tfx_library_t *library);
+tfxAPI_EDITOR void CompileLibraryGlobalGraph(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryKeyframeGraph(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryEmitterGraphs(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryPropertyGraph(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryBaseGraph(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryGraphsOfEffect(tfx_library_t *library, tfx_effect_emitter_t *effect, tfxU32 depth = 0);
+tfxAPI_EDITOR void SetLibraryMinMaxData(tfx_library_t *library);
+tfxAPI_EDITOR void ClearLibrary(tfx_library_t *library);
+tfxAPI_EDITOR void InitLibrary(tfx_library_t *library);
+tfxAPI_EDITOR void InitLibraryEmitterProperties(tfx_library_t *library);
 //Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
 //You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
 //These are mainly for use by the editor, use effect templates instead, see PrepareEffectTemplate.
-tfxAPI_EDITOR tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, const char *path);
+tfxAPI_EDITOR tfx_effect_emitter_t *GetLibraryEffect(tfx_library_t *library, const char *path);
 //Get an effect by it's path hash key
-tfxAPI_EDITOR tfxEffectEmitter *GetLibraryEffect(tfxLibrary *library, tfxKey key);
-tfxAPI_EDITOR void RecordSpriteData(tfxParticleManager *pm, tfxEffectEmitter *effect, float update_frequency, float camera_position[3]);
+tfxAPI_EDITOR tfx_effect_emitter_t *GetLibraryEffect(tfx_library_t *library, tfxKey key);
+tfxAPI_EDITOR void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3]);
 
 //Effect/Emitter functions
-void SetEffectUserData(tfxEffectEmitter *e, void *data);
-void *GetEffectUserData(tfxEffectEmitter *e);
+void SetEffectUserData(tfx_effect_emitter_t *e, void *data);
+void *GetEffectUserData(tfx_effect_emitter_t *e);
 
-tfxINTERNAL bool IsRootEffect(tfxEffectEmitter *effect);
-tfxINTERNAL void ResetEffectParents(tfxEffectEmitter *effect);
-tfxINTERNAL void CompileEffectGraphs(tfxEffectEmitter *effect);
-tfxINTERNAL void FreeEffectGraphs(tfxEffectEmitter *effect);
-tfxINTERNAL tfxU32 CountAllEffectLookupValues(tfxEffectEmitter *effect);
-tfxINTERNAL float GetEffectLoopLength(tfxEffectEmitter *effect);
+tfxINTERNAL bool IsRootEffect(tfx_effect_emitter_t *effect);
+tfxINTERNAL void ResetEffectParents(tfx_effect_emitter_t *effect);
+tfxINTERNAL void CompileEffectGraphs(tfx_effect_emitter_t *effect);
+tfxINTERNAL void FreeEffectGraphs(tfx_effect_emitter_t *effect);
+tfxINTERNAL tfxU32 CountAllEffectLookupValues(tfx_effect_emitter_t *effect);
+tfxINTERNAL float GetEffectLoopLength(tfx_effect_emitter_t *effect);
 
-tfxAPI_EDITOR tfxEmitterPropertiesSoA *GetEffectProperties(tfxEffectEmitter *e);
-tfxAPI_EDITOR tfxEffectEmitter* AddEmitterToEffect(tfxEffectEmitter *effect, tfxEffectEmitter *e);
-tfxAPI_EDITOR tfxEffectEmitter* AddEffectToEmitter(tfxEffectEmitter *effect, tfxEffectEmitter *e);
-tfxAPI_EDITOR tfxEffectEmitter* AddEffect(tfxEffectEmitter *effect);
-tfxAPI_EDITOR int GetEffectDepth(tfxEffectEmitter *e);
-tfxAPI_EDITOR tfxU32 CountAllEffects(tfxEffectEmitter *effect, tfxU32 amount);
-tfxAPI_EDITOR tfxEffectEmitter* tfx_GetRootEffect(tfxEffectEmitter *effect);
-tfxAPI_EDITOR void ReIndexEffect(tfxEffectEmitter *effect);
-tfxAPI_EDITOR void CountEffectChildren(tfxEffectEmitter *effect, int *emitters, int *effects);
-tfxAPI_EDITOR tfxEffectEmitter* MoveEffectUp(tfxEffectEmitter *effect_to_move);
-tfxAPI_EDITOR tfxEffectEmitter* MoveEffectDown(tfxEffectEmitter *effect_to_move);
-tfxAPI_EDITOR void DeleteEmitterFromEffect(tfxEffectEmitter *emitter_to_delete);
-tfxAPI_EDITOR void CleanUpEffect(tfxEffectEmitter *effect);
-tfxAPI_EDITOR void ResetEffectGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
-tfxAPI_EDITOR void ResetTransformGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
-tfxAPI_EDITOR void ResetEmitterBaseGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
-tfxAPI_EDITOR void ResetEmitterPropertyGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
-tfxAPI_EDITOR void ResetEmitterVariationGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
-tfxAPI_EDITOR void ResetEmitterOvertimeGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
-tfxAPI_EDITOR void ResetEmitterGraphs(tfxEffectEmitter *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR tfx_emitter_properties_soa_t *GetEffectProperties(tfx_effect_emitter_t *e);
+tfxAPI_EDITOR tfx_effect_emitter_t* AddEmitterToEffect(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *e);
+tfxAPI_EDITOR tfx_effect_emitter_t* AddEffectToEmitter(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *e);
+tfxAPI_EDITOR tfx_effect_emitter_t* AddEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR int GetEffectDepth(tfx_effect_emitter_t *e);
+tfxAPI_EDITOR tfxU32 CountAllEffects(tfx_effect_emitter_t *effect, tfxU32 amount);
+tfxAPI_EDITOR tfx_effect_emitter_t* tfx_GetRootEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void ReIndexEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void CountEffectChildren(tfx_effect_emitter_t *effect, int *emitters, int *effects);
+tfxAPI_EDITOR tfx_effect_emitter_t* MoveEffectUp(tfx_effect_emitter_t *effect_to_move);
+tfxAPI_EDITOR tfx_effect_emitter_t* MoveEffectDown(tfx_effect_emitter_t *effect_to_move);
+tfxAPI_EDITOR void DeleteEmitterFromEffect(tfx_effect_emitter_t *emitter_to_delete);
+tfxAPI_EDITOR void CleanUpEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void ResetEffectGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void ResetTransformGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void ResetEmitterBaseGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void ResetEmitterPropertyGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void ResetEmitterVariationGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void ResetEmitterOvertimeGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void ResetEmitterGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
 
-tfxAPI_EDITOR void AddEmitterColorOvertime(tfxEffectEmitter *effect, float frame, tfxRGB color);
-tfxAPI_EDITOR void UpdateEffectMaxLife(tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxGraph* GetEffectGraphByType(tfxEffectEmitter *effect, tfxGraphType type);
-tfxAPI_EDITOR tfxU32 GetEffectGraphIndexByType(tfxEffectEmitter *effect, tfxGraphType type);
-tfxAPI_EDITOR void InitialiseUninitialisedGraphs(tfxEffectEmitter *effect);
-tfxAPI_EDITOR void SetEffectName(tfxEffectEmitter *effect, const char *n);
-tfxAPI_EDITOR bool RenameSubEffector(tfxEffectEmitter *effect, const char *new_name);
-tfxAPI_EDITOR bool EffectNameExists(tfxEffectEmitter *in_effect, tfxEffectEmitter *excluding_effect, const char *name);
-tfxAPI_EDITOR void CloneEffect(tfxEffectEmitter *effect_to_clone, tfxEffectEmitter *clone, tfxEffectEmitter *root_parent, tfxLibrary *destination_library, tfxEffectCloningFlags flags = 0);
-tfxAPI_EDITOR void EnableAllEmitters(tfxEffectEmitter *effect);
-tfxAPI_EDITOR void EnableEmitter(tfxEffectEmitter *effect);
-tfxAPI_EDITOR void DisableAllEmitters(tfxEffectEmitter *effect);
-tfxAPI_EDITOR void DisableAllEmittersExcept(tfxEffectEmitter *effect, tfxEffectEmitter *emitter);
-tfxAPI_EDITOR bool IsFiniteEffect(tfxEffectEmitter *effect);
-tfxAPI_EDITOR void FlagEffectAs3D(tfxEffectEmitter *effect, bool flag);
-tfxAPI_EDITOR bool Is3DEffect(tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxParticleManagerModes GetRequiredParticleManagerMode(tfxEffectEmitter *effect);
-tfxAPI_EDITOR tfxPreviewCameraSettings *GetEffectCameraSettings(tfxEffectEmitter *effect);
-tfxAPI_EDITOR float GetEffectHighestLoopLength(tfxEffectEmitter *effect);
+tfxAPI_EDITOR void AddEmitterColorOvertime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color);
+tfxAPI_EDITOR void UpdateEffectMaxLife(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfxGraphType type);
+tfxAPI_EDITOR tfxU32 GetEffectGraphIndexByType(tfx_effect_emitter_t *effect, tfxGraphType type);
+tfxAPI_EDITOR void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void SetEffectName(tfx_effect_emitter_t *effect, const char *n);
+tfxAPI_EDITOR bool RenameSubEffector(tfx_effect_emitter_t *effect, const char *new_name);
+tfxAPI_EDITOR bool EffectNameExists(tfx_effect_emitter_t *in_effect, tfx_effect_emitter_t *excluding_effect, const char *name);
+tfxAPI_EDITOR void CloneEffect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter_t *clone, tfx_effect_emitter_t *root_parent, tfx_library_t *destination_library, tfxEffectCloningFlags flags = 0);
+tfxAPI_EDITOR void EnableAllEmitters(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void EnableEmitter(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void DisableAllEmitters(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void DisableAllEmittersExcept(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *emitter);
+tfxAPI_EDITOR bool IsFiniteEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag);
+tfxAPI_EDITOR bool Is3DEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfxParticleManagerModes GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR tfx_preview_camera_settings_t *GetEffectCameraSettings(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR float GetEffectHighestLoopLength(tfx_effect_emitter_t *effect);
 
 //------------------------------------------------------------
 //Section API_Functions
@@ -6964,12 +6938,12 @@ Validate a timelinefx tfx file to make sure that it's valid.
 tfxAPI int ValidateEffectPackage(const char *filename);
 
 /**
-* Loads an effect library package from the specified filename into the provided tfxLibrary object.
+* Loads an effect library package from the specified filename into the provided tfx_library_t object.
 *
 * @param filename		A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
-* @param lib			A reference to a tfxLibrary object that will hold the loaded effect library data.
+* @param lib			A reference to a tfx_library_t object that will hold the loaded effect library data.
 * @param shape_loader	A pointer to a function that will be used to load image data into the effect library package.
-*						The function has the following signature: void shape_loader(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data).
+*						The function has the following signature: void shape_loader(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data).
 * @param user_data		A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
 * @param read_only		A boolean value that determines whether the effect library data will be loaded in read-only mode. (Maybe removed in the future).
 *
@@ -6987,15 +6961,15 @@ tfxAPI int ValidateEffectPackage(const char *filename);
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary *lib, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
 /**
 * Loads a sprite data file into an animation manager
 *
 * @param filename		A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
-* @param lib			A reference to a tfxAnimationManager object that will hold the loaded sprite data.
+* @param lib			A reference to a tfx_animation_manager_t object that will hold the loaded sprite data.
 * @param shape_loader	A pointer to a function that will be used to load image data into the effect library package.
-*						The function has the following signature: void shape_loader(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data).
+*						The function has the following signature: void shape_loader(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data).
 * @param user_data		A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
 *
 * @return A tfxErrorFlags value that indicates whether the function succeeded or failed. The possible return values are:
@@ -7012,13 +6986,13 @@ tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfxLibrary *
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfxAnimationManager *animation_manager, void(*shape_loader)(const char *filename, tfxImageData *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr);
+tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_t *animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr);
 
 /*
 Output all the effect names in a library to the console
-* @param tfxLibrary				A valid pointer to a tfxLibrary
+* @param tfx_library_t				A valid pointer to a tfx_library_t
 */
-inline tfxAPI void ListEffectNames(tfxLibrary *library) {
+inline tfxAPI void ListEffectNames(tfx_library_t *library) {
 	tfxU32 index = 0;
 	for (auto &effect : library->effects) {
 		printf("%i) %s\n", index++, GetEffectInfo(&effect)->name.c_str());
@@ -7028,9 +7002,9 @@ inline tfxAPI void ListEffectNames(tfxLibrary *library) {
 //[Particle Manager functions]
 
 /*
-Initialise a tfxParticleManager for 3d usage
-* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
-* @param library				A pointer to a tfxLibrary that you will be using to add all of the effects from to the particle manager.
+Initialise a tfx_particle_manager_t for 3d usage
+* @param pm						A pointer to an unitialised tfx_particle_manager_t. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+* @param library				A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
 * @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
 * @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
 * @param mode					The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
@@ -7045,12 +7019,12 @@ Initialise a tfxParticleManager for 3d usage
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512
 
 */
-tfxAPI void InitParticleManagerFor3d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 /*
-Initialise a tfxParticleManager for 2d usage
-* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
-* @param library				A pointer to a tfxLibrary that you will be using to add all of the effects from to the particle manager.
+Initialise a tfx_particle_manager_t for 2d usage
+* @param pm						A pointer to an unitialised tfx_particle_manager_t. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+* @param library				A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
 * @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
 * @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
 * @param mode					The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
@@ -7063,13 +7037,13 @@ Initialise a tfxParticleManager for 2d usage
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
 
 */
-tfxAPI void InitParticleManagerFor2d(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
 
 /*
-Initialise a tfxParticleManager for both 2d and 3d. This just allocates buffers for both 2d and 3d anticipating that you'll be using ReconfigureParticleManager to switch between 2d/3d modes. If you want to update
+Initialise a tfx_particle_manager_t for both 2d and 3d. This just allocates buffers for both 2d and 3d anticipating that you'll be using ReconfigureParticleManager to switch between 2d/3d modes. If you want to update
 both 2d and 3d particles at the same time then just use 2 separate particle managers instead as a particle manager can only update one type of particle 2d or 3d.
-* @param pm						A pointer to an unitialised tfxParticleManager. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
-* @param library				A pointer to a tfxLibrary that you will be using to add all of the effects from to the particle manager.
+* @param pm						A pointer to an unitialised tfx_particle_manager_t. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+* @param library				A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
 * @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
 * @param effects_limit			The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
 * @param mode					The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
@@ -7082,12 +7056,12 @@ both 2d and 3d particles at the same time then just use 2 separate particle mana
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
 
 */
-tfxAPI void InitParticleManagerForBoth(tfxParticleManager *pm, tfxLibrary *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfxParticleManagerModes mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
 
 /*
 Reconfigure a particle manager to make it work in a different mode. A particle manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
 in mind that you can just use more than one particle manager and utilised different modes that way as well. The modes that you need will depend on the effects that you're adding to the particle manager.
-* @param pm						A pointer to an intialised tfxParticleManager.
+* @param pm						A pointer to an intialised tfx_particle_manager_t.
 * @param mode					One of the following modes:
 								tfxParticleManagerMode_unordered
 								tfxParticleManagerMode_ordered_by_age
@@ -7096,96 +7070,96 @@ in mind that you can just use more than one particle manager and utilised differ
 * @param sort_passes			The number of sort passes if you're using depth sorted effects
 * @param is_3d					True if the particle manager should be configured for 3d effects.
 */
-void ReconfigureParticleManager(tfxParticleManager *pm, tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
+void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfxParticleManagerModes mode, tfxU32 sort_passes, bool is_3d);
 
 /*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
 more than enough for most situations. However you can increase the sizes here if needed. You only need to set this manually if you hit one of the asserts when these
 run out of space or you anticipate a huge amount of emitters and particles to be used (> million). On the other hand, you might be tight on memory in which case you
 could reduce the numbers as well if needed (they don't take a lot of space though)
-* @param pm						A pointer to an intialised tfxParticleManager.
+* @param pm						A pointer to an intialised tfx_particle_manager_t.
 * @param spawn_work_max			The maximum amount of spawn work entries
 * @param control_work_max		The maximum amount of control work entries
 * @param age_work_max			The maximum amount of age_work work entries
 */
-void SetPMWorkQueueSizes(tfxParticleManager *pm, tfxU32 spawn_work_max = 1000, tfxU32 control_work_max = 1000, tfxU32 age_work_max = 1000);
+void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max = 1000, tfxU32 control_work_max = 1000, tfxU32 age_work_max = 1000);
 
 /*
 Get the current particle count for a particle manager
-* @param pm						A pointer to an tfxParticleManager
+* @param pm						A pointer to an tfx_particle_manager_t
 * @returns tfxU32				The total number of particles currently being updated
 */
-tfxU32 ParticleCount(tfxParticleManager *pm);
+tfxU32 ParticleCount(tfx_particle_manager_t *pm);
 
 /*
 Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
 then the effect will look the same each time. Note that seed of 0 is invalid, it must be 1 or greater.
-* @param pm							A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param pm							A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 * @param seed						An unsigned int representing the seed (Any value other then 0)
 */
-tfxAPI inline void SetSeed(tfxParticleManager *pm, tfxU64 seed) {
+tfxAPI inline void SetSeed(tfx_particle_manager_t *pm, tfxU64 seed) {
 	RandomReSeed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
 }
 
 /*
-Prepare a tfxEffectTemplate that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
+Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
 means that you can tweak an effect without editing the base effect in the library.
-* @param library					A reference to a tfxLibrary that should be loaded with LoadEffectLibraryPackage
+* @param library					A reference to a tfx_library_t that should be loaded with LoadEffectLibraryPackage
 * @param name						The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
-* @param effect_template			The empty tfxEffectTemplate object that you want the effect loading into
+* @param effect_template			The empty tfx_effect_template_t object that you want the effect loading into
 //Returns true on success.
 */
-tfxAPI bool PrepareEffectTemplate(tfxLibrary *library, const char *name, tfxEffectTemplate *effect_template);
+tfxAPI bool PrepareEffectTemplate(tfx_library_t *library, const char *name, tfx_effect_template_t *effect_template);
 
 /*
-Add an effect to a tfxParticleManager from an effect template
-* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param effect_template	The tfxEffectTemplate object that you want to add to the particle manager. It must have already been prepared by calling PrepareEffectTemplate
+Add an effect to a tfx_particle_manager_t from an effect template
+* @param pm					A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param effect_template	The tfx_effect_template_t object that you want to add to the particle manager. It must have already been prepared by calling PrepareEffectTemplate
 *
 * @return					Index of the effect after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
 							For example by calling SetEffectPosition
 */
-tfxAPI tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectTemplate *effect);
+tfxAPI tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect);
 
 /*
-Add an effect to a tfxParticleManager.
-* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param effect				tfxEffectEmitter object that you want to add to the particle manager.
+Add an effect to a tfx_particle_manager_t.
+* @param pm					A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param effect				tfx_effect_emitter_t object that you want to add to the particle manager.
 *
 * @return					Index of the effect after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
 							For example by calling SetEffectPosition
 */
-tfxAPI tfxEffectID AddEffectToParticleManager(tfxParticleManager *pm, tfxEffectEmitter *effect);
+tfxAPI tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect);
 
 /*
 Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
-* @param pm					A pointer to an initialised tfxParticleManager. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param pm					A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 */
-tfxAPI inline void UpdateParticleManager(tfxParticleManager *pm, float elapsed);
+tfxAPI inline void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed);
 
 /*
 Get the total number of sprites within the layer of the particle manager
-* @param pm					A pointer to an initialised tfxParticleManager.
+* @param pm					A pointer to an initialised tfx_particle_manager_t.
 * @param layer				The layer of the sprites to the count of
 */
-tfxAPI inline tfxU32 SpritesInLayerCount(tfxParticleManager *pm, tfxU32 layer) {
+tfxAPI inline tfxU32 SpritesInLayerCount(tfx_particle_manager_t *pm, tfxU32 layer) {
 	return pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 }
 
 /*
 Get the total number of sprites within the layer of the particle manager
-* @param pm					A pointer to an initialised tfxParticleManager.
+* @param pm					A pointer to an initialised tfx_particle_manager_t.
 * @param layer				The layer of the sprites to the count of
 */
-tfxAPI inline tfxSpriteSoA *SpritesInLayer(tfxParticleManager *pm, tfxU32 layer) {
+tfxAPI inline tfx_sprite_soa_t *SpritesInLayer(tfx_particle_manager_t *pm, tfxU32 layer) {
 	return &pm->sprites[pm->current_sprite_buffer][layer];
 }
 
 /*
 Get the total number of 3d sprites ready for rendering in the particle manager
-* @param pm					A pointer to an initialised tfxParticleManager.
+* @param pm					A pointer to an initialised tfx_particle_manager_t.
 */
-tfxAPI inline tfxU32 TotalSpriteCount(tfxParticleManager *pm) {
+tfxAPI inline tfxU32 TotalSpriteCount(tfx_particle_manager_t *pm) {
 	tfxU32 count = 0;
 	for (tfxEachLayer) {
 		count += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
@@ -7196,142 +7170,142 @@ tfxAPI inline tfxU32 TotalSpriteCount(tfxParticleManager *pm) {
 /*
 Clear all particles, sprites and effects in a particle manager. If you don't need to use the particle manager again then call FreeParticleManager to also
 free all the memory associated with the particle manager.
-* @param pm						A pointer to an initialised tfxParticleManager.
+* @param pm						A pointer to an initialised tfx_particle_manager_t.
 * @param free_particle_banks	Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
 */
-tfxAPI void ClearParticleManager(tfxParticleManager *pm, bool free_particle_banks);
+tfxAPI void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks);
 
 /*
 Free all the memory used in the particle manager.
-* @param pm						A pointer to an initialised tfxParticleManager.
+* @param pm						A pointer to an initialised tfx_particle_manager_t.
 */
-tfxAPI void FreeParticleManager(tfxParticleManager *pm);
+tfxAPI void FreeParticleManager(tfx_particle_manager_t *pm);
 
 //[Effects functions for altering effects that are currently playing out in a particle manager]
 
 /*
 Expire an effect by telling it to stop spawning particles. This means that the effect will eventually be removed from the particle manager after all of it's remaining particles have expired.
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
 */
-tfxAPI inline void SoftExpireEffect(tfxParticleManager *pm, tfxEffectID effect_index) {
+tfxAPI inline void SoftExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
 	pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
 }
 
 /*
 Soft expire all the effects in a particle manager so that the particles complete their animation first
 */
-tfxAPI void SoftExpireAll(tfxParticleManager *pm);
+tfxAPI void SoftExpireAll(tfx_particle_manager_t *pm);
 
 /*
 Expire an effect by telling it to stop spawning particles and remove all associated particles immediately.
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
 */
-tfxAPI inline void HardExpireEffect(tfxParticleManager *pm, tfxEffectID effect_index) {
+tfxAPI inline void HardExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
 	pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
 	pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_remove;
 }
 
 /*
 Get effect user data
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
-* @returns				void* pointing to the user data set in the effect. See tfxEffectTemplate::SetUserData() and SetEffectUserData()
+* @returns				void* pointing to the user data set in the effect. See tfx_effect_template_t::SetUserData() and SetEffectUserData()
 */
-tfxAPI inline void* GetEffectUserData(tfxParticleManager *pm, tfxEffectID effect_index) {
+tfxAPI inline void* GetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
 	return pm->effects.user_data[effect_index];
 }
 
 /*
 More for use in the editor, this function updates emitter base values for any effects that are currently running after their graph values have been changed.
 */
-tfxAPI void UpdatePMBaseValues(tfxParticleManager *pm);
+tfxAPI void UpdatePMBaseValues(tfx_particle_manager_t *pm);
 
 /*
-Set the tfxLibrary that the particle manager will use to render sprites and lookup all of the various properties required to update emitters and particles.
+Set the tfx_library_t that the particle manager will use to render sprites and lookup all of the various properties required to update emitters and particles.
 This is also set when you initialise a particle manager
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
-* @param lib			A pointer to a tfxLibrary
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param lib			A pointer to a tfx_library_t
 */
-tfxAPI void SetPMLibrary(tfxParticleManager *pm, tfxLibrary *library);
+tfxAPI void SetPMLibrary(tfx_particle_manager_t *pm, tfx_library_t *library);
 
 /*
 Set the particle manager camera. This is used to calculate particle depth if you're using depth ordered particles so it needs to be updated each frame.
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param front			An array of 3 floats representing a normalised 3d vector describing the direction that the camera is pointing
 * @param position		An array of 3 floats representing the position of the camera in 3d space
 */
-tfxAPI void SetPMCamera(tfxParticleManager *pm, float front[3], float position[3]);
+tfxAPI void SetPMCamera(tfx_particle_manager_t *pm, float front[3], float position[3]);
 
 /*
 Set the lookup mode for the particle manager. Lookup modes are either calculating the emitter attribute graphs in real time, or looking up arrays of the graphs
 in pre-compiled lookup tables. Generally tfxFast will be a little bit faster due to less math involved. Having said that more graph nodes could be cached in memory
 so maybe the extra math wouldn't make much difference but either way it needs more testing and profiling!
 todo: callbacks should be moved into the particle manager, currently they're global callbacks so having this function is a bit pointless!
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param mode			The look up mode you want to set. tfxFast is the default mode.
 */
-tfxAPI void SetPMLookUpMode(tfxParticleManager *pm, tfxLookupMode mode);
+tfxAPI void SetPMLookUpMode(tfx_particle_manager_t *pm, tfxLookupMode mode);
 
 /*
 Set the effect user data for an effect already added to a particle manager
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
 * @param user_data		A void* pointing to the user_data that you want to store in the effect
 */
-tfxAPI inline void SetEffectUserData(tfxParticleManager *pm, tfxEffectID effect_index, void* user_data) {
+tfxAPI inline void SetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index, void* user_data) {
 	pm->effects.user_data[effect_index] = user_data;
 }
 
 /*
 Force a particle manager to only run in single threaded mode. In other words, only use the main thread to update particles
-* @param pm				A pointer to a tfxParticleManager.
+* @param pm				A pointer to a tfx_particle_manager_t.
 * @param switch_on		true or false to use a single thread or not
 */
-tfxAPI inline void ForcePMSingleThreaded(tfxParticleManager *pm, bool switch_on) {
+tfxAPI inline void ForcePMSingleThreaded(tfx_particle_manager_t *pm, bool switch_on) {
 	if (switch_on) pm->flags |= tfxEffectManagerFlags_single_threaded; else pm->flags &= ~tfxEffectManagerFlags_single_threaded;
 }
 
 /*
 Get the transform vectors for a 3d sprite's previous position so that you can use that to interpolate between that and the current sprite position
-* @param pm				A pointer to a tfxParticleManager.
+* @param pm				A pointer to a tfx_particle_manager_t.
 * @param layer			The index of the sprite layer
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline tfxSpriteTransform3d *GetCapturedSprite3dTransform(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+tfxAPI inline tfx_sprite_transform3d_t *GetCapturedSprite3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
 	return &pm->sprites[(index & 0xC0000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
 }
 
 /*
 Get the transform vectors for a 2d sprite's previous position so that you can use that to interpolate between that and the current sprite position
-* @param pm				A pointer to a tfxParticleManager.
+* @param pm				A pointer to a tfx_particle_manager_t.
 * @param layer			The index of the sprite layer
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline tfxSpriteTransform2d *GetCapturedSprite2dTransform(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+tfxAPI inline tfx_sprite_transform2d_t *GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
 	return &pm->sprites[(index & 0xC0000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
 }
 
 /*
 Get the intensity for a sprite's previous frame so that you can use that to interpolate between that and the current sprite intensity
-* @param pm				A pointer to a tfxParticleManager.
+* @param pm				A pointer to a tfx_particle_manager_t.
 * @param layer			The index of the sprite layer
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline float *GetCapturedSprite3dIntensity(tfxParticleManager *pm, tfxU32 layer, tfxU32 index) {
+tfxAPI inline float *GetCapturedSprite3dIntensity(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
 	return &pm->sprites[(index & 0xC0000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
 }
 
 /*
 Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side SpriteDataEndIndex to create
 a for loop to iterate over the sprites in a pre-recorded effect
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param frame			The index of the frame you want the offset for
 * @param layer			The sprite layer
 * @returns				tfxU32 containing the index offset
 */
-tfxAPI inline tfxU32 SpriteDataIndexOffset(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+tfxAPI inline tfxU32 SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
 	assert(frame < sprite_data->normal.frame_meta.size());			//frame is outside index range
 	assert(layer < tfxLAYERS);								//layer is outside index range
 	return sprite_data->normal.frame_meta[frame].index_offset[layer];
@@ -7340,10 +7314,10 @@ tfxAPI inline tfxU32 SpriteDataIndexOffset(tfxSpriteData *sprite_data, tfxU32 fr
 /*
 Make a particle manager stop spawning. This will mean that all emitters in the particle manager will no longer spawn any particles so all currently running effects will expire
 as the remaining particles come to the end of their life. Any single particles will also get flagged to expire
-* @param pm				A pointer to a tfxParticleManager.
+* @param pm				A pointer to a tfx_particle_manager_t.
 * @param yesno			True = disable spawning, false = enable spawning
 */
-tfxAPI inline void DisablePMSpawning(tfxParticleManager *pm, bool yesno) {
+tfxAPI inline void DisablePMSpawning(tfx_particle_manager_t *pm, bool yesno) {
 	if (yesno) {
 		pm->flags |= tfxEffectManagerFlags_disable_spawning;
 	}
@@ -7354,29 +7328,29 @@ tfxAPI inline void DisablePMSpawning(tfxParticleManager *pm, bool yesno) {
 
 /*
 Get the buffer of effect indexes in the particle manager.
-* @param pm				A pointer to a tfxParticleManager.
+* @param pm				A pointer to a tfx_particle_manager_t.
 * @param depth			The depth of the list that you want. 0 are top level effects and anything higher are sub effects within those effects
 * @returns				Pointer to the tfxvec of effect indexes
 */
-tfxAPI tfxvec<tfxU32> *GetPMEffectBuffer(tfxParticleManager *pm, tfxU32 depth);
+tfxAPI tfx_vector_t<tfxU32> *GetPMEffectBuffer(tfx_particle_manager_t *pm, tfxU32 depth);
 
 /*
 Get the buffer of emitter indexes in the particle manager.
-* @param pm				A pointer to a tfxParticleManager.
+* @param pm				A pointer to a tfx_particle_manager_t.
 * @param depth			The depth of the list that you want. 0 are top level emitters and anything higher are sub emitters within those effects
 * @returns				Pointer to the tfxvec of effect indexes
 */
-tfxAPI tfxvec<tfxU32> *GetPMEmitterBuffer(tfxParticleManager *pm, tfxU32 depth);
+tfxAPI tfx_vector_t<tfxU32> *GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU32 depth);
 
 /*
 Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation that has been compresssed into fewer frames. Can be used along side SpriteDataIndexOffset to create
 a for loop to iterate over the sprites in a pre-recorded effect
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param frame			The index of the frame you want the offset for
 * @param layer			The sprite layer
 * @returns				tfxU32 containing the index offset
 */
-tfxAPI inline tfxU32 CompressedSpriteDataIndexOffset(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+tfxAPI inline tfxU32 CompressedSpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
 	assert(frame < sprite_data->compressed.frame_meta.size());			//frame is outside index range
 	assert(layer < tfxLAYERS);								//layer is outside index range
 	return sprite_data->compressed.frame_meta[frame].index_offset[layer];
@@ -7385,12 +7359,12 @@ tfxAPI inline tfxU32 CompressedSpriteDataIndexOffset(tfxSpriteData *sprite_data,
 /*
 Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side SpriteDataEndIndex to create
 a for loop to iterate over the sprites in a pre-recorded effect
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param frame			The index of the frame you want the end index for
 * @param layer			The sprite layer
 * @returns				tfxU32 containing the end offset
 */
-tfxAPI inline tfxU32 SpriteDataEndIndex(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+tfxAPI inline tfxU32 SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
 	assert(frame < sprite_data->normal.frame_meta.size());			//frame is outside index range
 	assert(layer < tfxLAYERS);								//layer is outside index range
 	return sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer];
@@ -7399,12 +7373,12 @@ tfxAPI inline tfxU32 SpriteDataEndIndex(tfxSpriteData *sprite_data, tfxU32 frame
 /*
 Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation that has been compressed into fewer frames. Can be used along side CompressedSpriteDataIndexOffset to create
 a for loop to iterate over the sprites in a pre-recorded effect
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param frame			The index of the frame you want the end index for
 * @param layer			The sprite layer
 * @returns				tfxU32 containing the end offset
 */
-tfxAPI inline tfxU32 CompressedSpriteDataEndIndex(tfxSpriteData *sprite_data, tfxU32 frame, tfxU32 layer) {
+tfxAPI inline tfxU32 CompressedSpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
 	assert(frame < sprite_data->compressed.frame_meta.size());			//frame is outside index range
 	assert(layer < tfxLAYERS);								//layer is outside index range
 	return sprite_data->compressed.frame_meta[frame].index_offset[layer] + sprite_data->compressed.frame_meta[frame].sprite_count[layer];
@@ -7412,436 +7386,436 @@ tfxAPI inline tfxU32 CompressedSpriteDataEndIndex(tfxSpriteData *sprite_data, tf
 
 /*
 Get the 3d transform struct of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param index			The index of the sprite you want to retrieve
-* @returns				tfxSpriteTransform3d reference
+* @returns				tfx_sprite_transform3d_t reference
 */
-tfxAPI inline tfxSpriteTransform3d *GetSpriteData3dTransform(tfxSpriteDataSoA *sprites, tfxU32 index) {
+tfxAPI inline tfx_sprite_transform3d_t *GetSpriteData3dTransform(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
 	return &sprites->transform_3d[index];
 }
 
 /*
 Get the 2d transform struct of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param index			The index of the sprite you want to retrieve
-* @returns				tfxSpriteTransform2d reference
+* @returns				tfx_sprite_transform2d_t reference
 */
-tfxAPI inline tfxSpriteTransform2d *GetSpriteData2dTransform(tfxSpriteDataSoA *sprites, tfxU32 index) {
+tfxAPI inline tfx_sprite_transform2d_t *GetSpriteData2dTransform(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
 	return &sprites->transform_2d[index];
 }
 
 /*
 Get the intensity of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param index			The index of the sprite you want to retrieve
 * @returns				float of the intensity value
 */
-tfxAPI inline float GetSpriteDataIntensity(tfxSpriteDataSoA *sprites, tfxU32 index) {
+tfxAPI inline float GetSpriteDataIntensity(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
 	return sprites->intensity[index];
 }
 
 /*
 Get the alignment of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param index			The index of the sprite you want to retrieve
 * @returns				tfxU32 of the alignment value
 */
-tfxAPI inline tfxU32 GetSpriteDataAlignment(tfxSpriteDataSoA *sprites, tfxU32 index) {
+tfxAPI inline tfxU32 GetSpriteDataAlignment(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
 	return sprites->alignment[index];
 }
 
 /*
 Get the image frame of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param index			The index of the sprite you want to retrieve
 * @returns				tfxU32 of the frame value
 */
-tfxAPI inline tfxU32 GetSpriteDataFrame(tfxSpriteDataSoA *sprites, tfxU32 index) {
+tfxAPI inline tfxU32 GetSpriteDataFrame(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
 	return (sprites->property_indexes[index] & 0x00FF0000) >> 16;
 }
 
 /*
 Get the color of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data	A pointer to tfxSpriteData containing all the sprites and frame data
+* @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param index			The index of the sprite you want to retrieve
-* @returns				tfxRGBA8 of the frame value
+* @returns				tfx_rgba8_t of the frame value
 */
-tfxAPI inline tfxRGBA8 GetSpriteDataColor(tfxSpriteDataSoA *sprites, tfxU32 index) {
+tfxAPI inline tfx_rgba8_t GetSpriteDataColor(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
 	return sprites->color[index];
 }
 
 /*
 Set the position of a 2d effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param x				The x value of the position
 * @param y				The y value of the position
 */
-tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y);
+tfxAPI void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y);
 
 /*
 Set the position of a 3d effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param x				The x value of the position
 * @param y				The y value of the position
 * @param z				The z value of the position
 */
-tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y, float z);
+tfxAPI void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y, float z);
 
 /*
 Set the position of a 2d effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
-* @param position		A tfxVec2 vector object containing the x and y coordinates
+* @param position		A tfx_vec2_t vector object containing the x and y coordinates
 */
-tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec2 position);
+tfxAPI void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec2_t position);
 
 /*
 Set the position of a 3d effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
-* @param position		A tfxVec3 vector object containing the x, y and z coordinates
+* @param position		A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void SetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 position);
+tfxAPI void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec3_t position);
 
 /*
 Move an Effect by a specified amount relative to the effect's current position
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
-* @param amount			A tfxVec3 vector object containing the amount to move in the x, y and z planes
+* @param amount			A tfx_vec3_t vector object containing the amount to move in the x, y and z planes
 */
-tfxAPI void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, tfxVec3 amount);
+tfxAPI void MoveEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec3_t amount);
 
 /*
 Move an Effect by a specified amount relative to the effect's current position
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param x				The amount to move in the x plane
 * @param y				The amount to move in the y plane
 * @param z				The amount to move in the z plane
 */
-tfxAPI void MoveEffect(tfxParticleManager *pm, tfxEffectID effect_index, float x, float y, float z);
+tfxAPI void MoveEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y, float z);
 
 /*
 Get the current position of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
-* @return				tfxVec3 containing the effect position
+* @return				tfx_vec3_t containing the effect position
 */
-tfxAPI tfxVec3 GetEffectPosition(tfxParticleManager *pm, tfxEffectID effect_index);
+tfxAPI tfx_vec3_t GetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 
 /*
 Set the rotation of a 2d effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current rotation of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current rotation of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param rotation		A float of the amount that you want to set the rotation too
 */
-tfxAPI void SetEffectRotation(tfxParticleManager *pm, tfxEffectID effect_index, float rotation);
+tfxAPI void SetEffectRotation(tfx_particle_manager_t *pm, tfxEffectID effect_index, float rotation);
 
 /*
 Set the roll of a 3d effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current roll of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current roll of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param roll			A float of the amount that you want to set the roll too
 */
-tfxAPI void SetEffectRoll(tfxParticleManager *pm, tfxEffectID effect_index, float roll);
+tfxAPI void SetEffectRoll(tfx_particle_manager_t *pm, tfxEffectID effect_index, float roll);
 
 /*
 Set the pitch of a 3d effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current pitch of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current pitch of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param pitch			A float of the amount that you want to set the pitch too
 */
-tfxAPI void SetEffectPitch(tfxParticleManager *pm, tfxEffectID effect_index, float pitch);
+tfxAPI void SetEffectPitch(tfx_particle_manager_t *pm, tfxEffectID effect_index, float pitch);
 
 /*
 Set the yaw of a 3d effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current yaw of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current yaw of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param yaw			A float of the amount that you want to set the yaw too
 */
-tfxAPI void SetEffectYaw(tfxParticleManager *pm, tfxEffectID effect_index, float yaw);
+tfxAPI void SetEffectYaw(tfx_particle_manager_t *pm, tfxEffectID effect_index, float yaw);
 
 /*
 Set the width of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current width of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current width of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param width			A float of the amount that you want to set the width multiplier too. The width multiplier will multiply all widths of emitters within the effect so it can be an easy way to alter the size
 						of area, line, ellipse etc., emitters.
 */
-tfxAPI void SetEffectWidthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float width);
+tfxAPI void SetEffectWidthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float width);
 
 /*
 Set the height of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current height of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current height of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param height			A float of the amount that you want to set the height multiplier too. The height multiplier will multiply all heights of emitters within the effect so it can be an easy way to alter the size
 						of area, line, ellipse etc., emitters.
 */
-tfxAPI void SetEffectHeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float height);
+tfxAPI void SetEffectHeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float height);
 
 /*
 Set the depth of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current depth of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current depth of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param depth			A float of the amount that you want to set the depth multiplier too. The depth multiplier will multiply all heights of emitters within the effect so it can be an easy way to alter the size
 						of area, line, ellipse etc., emitters.
 */
-tfxAPI void SetEffectDepthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float depth);
+tfxAPI void SetEffectDepthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float depth);
 
 /*
 Set the life multiplier of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current life of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current life of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param life			A float of the amount that you want to set the life multiplier too. The life mulitplier will affect how long all particles emitted within the effect will last before expiring.
 */
-tfxAPI void SetEffectLifeMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float life);
+tfxAPI void SetEffectLifeMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float life);
 
 /*
 Set the particle width multiplier of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current particle width of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current particle width of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param width			A float of the amount that you want to set the particle width multiplier too. The particle width mulitplier will affect the width of each particle if the emitter has a non uniform particle size, otherwise
 						it will uniformly size the particle
 */
-tfxAPI void SetEffectParticleWidthMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float width);
+tfxAPI void SetEffectParticleWidthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float width);
 
 /*
 Set the particle height multiplier of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current particle width of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current particle width of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param height			A float of the amount that you want to set the particle height multiplier too. The particle height mulitplier will affect the height of each particle if the emitter has a non uniform particle size, otherwise
 						this function will have no effect.
 */
-tfxAPI void SetEffectParticleHeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float height);
+tfxAPI void SetEffectParticleHeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float height);
 
 /*
 Set the velocity multiplier of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current velocity of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current velocity of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param velocity		A float of the amount that you want to set the particle velocity multiplier too. The particle velocity mulitplier will affect the base velocity of a particle at spawn time.
 */
-tfxAPI void SetEffectVelocityMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float velocity);
+tfxAPI void SetEffectVelocityMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float velocity);
 
 /*
 Set the spin multiplier of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current spin of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current spin of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param spin			A float of the amount that you want to set the particle spin multiplier too. The particle spin mulitplier will affect the base spin of a particle at spawn time.
 */
-tfxAPI void SetEffectSpinMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float spin);
+tfxAPI void SetEffectSpinMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float spin);
 
 /*
 Set the intensity multiplier of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current intensity of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current intensity of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param intensity		A float of the amount that you want to set the particle intensity multiplier too. The particle intensity mulitplier will instantly affect the opacity of all particles currently emitted by the effect.
 */
-tfxAPI void SetEffectIntensityMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float intensity);
+tfxAPI void SetEffectIntensityMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float intensity);
 
 /*
 Set the splatter multiplier of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current splatter of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current splatter of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param splatter		A float of the amount that you want to set the particle splatter multiplier too. The particle splatter mulitplier will change the amount of random offset all particles emitted in the effect will have.
 */
-tfxAPI void SetEffectSplatterMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float splatter);
+tfxAPI void SetEffectSplatterMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float splatter);
 
 /*
 Set the weight multiplier of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current weight of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current weight of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param weight			A float of the amount that you want to set the particle weight multiplier too. The particle weight mulitplier will change the weight applied to particles in the effect at spawn time.
 */
-tfxAPI void SetEffectWeightMultiplier(tfxParticleManager *pm, tfxEffectID effect_index, float weight);
+tfxAPI void SetEffectWeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float weight);
 
 /*
 Set the overal scale of an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current weight of the effect that was
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current weight of the effect that was
 *						set in the TimelineFX editor.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param overal_scale	A float of the amount that you want to set the overal scale to. The overal scale is an simply way to change the size of an effect
 */
-tfxAPI void SetEffectOveralScale(tfxParticleManager *pm, tfxEffectID effect_index, float overal_scale);
+tfxAPI void SetEffectOveralScale(tfx_particle_manager_t *pm, tfxEffectID effect_index, float overal_scale);
 
 /*
 Set the base noise offset for an effect
-* @param pm				A pointer to a tfxParticleManager where the effect is being managed.
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed.
 * @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param noise_offset	A float of the amount that you want to set the effect noise offset to. By default when an effect is added to a particle manager a random noise offset will be set based on the Base Noise Offset Range property. Here you can override that
 						value by setting it here. The most ideal time to set this would be immediately after you have added the effect to the particle manager, but you could call it any time you wanted for a constantly changing noise offset.
 */
-tfxAPI void SetEffectBaseNoiseOffset(tfxParticleManager *pm, tfxEffectID effect_index, float noise_offset);
+tfxAPI void SetEffectBaseNoiseOffset(tfx_particle_manager_t *pm, tfxEffectID effect_index, float noise_offset);
 
 /*
 Get the name of an effect
 * @param pm				A pointer to the effect
 * @returns				const char * name
 */
-inline tfxAPI const char *GetEffectName(tfxEffectEmitter *effect) {
+inline tfxAPI const char *GetEffectName(tfx_effect_emitter_t *effect) {
 	return GetEffectInfo(effect)->name.c_str();
 }
 
-//-------Functions related to tfxAnimationManager--------
+//-------Functions related to tfx_animation_manager_t--------
 
 /*
 Set the position of a 3d animation
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
-* @param position				A tfxVec3 vector object containing the x, y and z coordinates
+* @param position				A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float position[3]);
+tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float position[3]);
 
 /*
 Set the position of a 2d animation
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 * @param x						A float of the x position
 * @param y						A float of the y position
 */
-tfxAPI void SetAnimationPosition(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float x, float y);
+tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float x, float y);
 
 /*
 Set the scale of a 3d animation
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 * @param scale					A multiplier that will determine the overal size/scale of the effect
 */
-tfxAPI void SetAnimationScale(tfxAnimationManager *animation_manager, tfxAnimationID effect_index, float scale);
+tfxAPI void SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float scale);
 
 /*
 Initialise an Animation Manager for use with 3d sprites. This must be run before using an animation manager. An animation manager is used
 to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in
 real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work
 to calculate the state of particles between frames for smooth animation.
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param max_instances			The maximum number of animation instances that you want to be able to play at one time.
 * @param initial_capacity		Optionally, you can set an initial capacity for the sprite data. The data will grow if you add
 								beyond this amount but it gives you a chance to reserve a decent amount to start with to
 								save too much mem copies as the data grows
 */
-tfxAPI void InitialiseAnimationManagerFor3d(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
+tfxAPI void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
 
 /*
 Initialise an Animation Manager for use with 2d sprites. This must be run before using an animation manager. An animation manager is used
 to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in
 real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work
 to calculate the state of particles between frames for smooth animation.
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param max_instances			The maximum number of animation instances that you want to be able to play at one time.
 * @param initial_capacity		Optionally, you can set an initial capacity for the sprite data. The data will grow if you add
 								beyond this amount but it gives you a chance to reserve a decent amount to start with to
 								save too much mem copies as the data grows
 */
-tfxAPI void InitialiseAnimationManagerFor2d(tfxAnimationManager *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
+tfxAPI void InitialiseAnimationManagerFor2d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
 
 /*
 Add sprite data to an animation manager sprite data buffer from an effect. This will record the
-animation if necessary and then convert the sprite data to tfxSpriteData3d ready for uploading
+animation if necessary and then convert the sprite data to tfx_sprite_data3d_t ready for uploading
 to the GPU
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
-* @param position				A tfxVec3 vector object containing the x, y and z coordinates
+* @param position				A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void AddSpriteData(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect, tfxParticleManager *pm = NULL, tfxVec3 camera_position = { 0.f, 0.f, 0.f });
+tfxAPI void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager_t *pm = NULL, tfx_vec3_t camera_position = { 0.f, 0.f, 0.f });
 
 /*
 Add an animation instance to the animation manager.
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param path					tfxKey path hash of the effect name and path: effect.path_hash
 * @param start_frame			Starting frame of the animation
 * @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 								Return tfxINVALID if there is no room in the animation manager
 */
-tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, tfxKey path, tfxU32 start_frame = 0);
+tfxAPI tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager, tfxKey path, tfxU32 start_frame = 0);
 
 /*
 Add an animation instance to the animation manager.
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param path					const char * name of the effect. If the effect was in a folder then specify the whole path
 * @param start_frame			Starting frame of the animation
 * @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 								Return tfxINVALID if there is no room in the animation manager
 */
-tfxAPI tfxAnimationID AddAnimationInstance(tfxAnimationManager *animation_manager, const char *path, tfxU32 start_frame = 0);
+tfxAPI tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager, const char *path, tfxU32 start_frame = 0);
 
 /*
 Update an animation manager to advance the time and frames of all instances currently playing.
-* @param animation_manager		A pointer to a tfxAnimationManager that you want to update
+* @param animation_manager		A pointer to a tfx_animation_manager_t that you want to update
 * @param start_frame			Starting frame of the animation
 */
-tfxAPI void UpdateAnimationManager(tfxAnimationManager *animation_manager, float elapsed);
+tfxAPI void UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float elapsed);
 
 /*
 Add an effect's shapes to an animation manager. You can use this function if you're manually recording particle effects and adding them to an animation
 manager rather then just using the editor.
-* @param animation_manager		A pointer to a tfxAnimationManager that you want to update
+* @param animation_manager		A pointer to a tfx_animation_manager_t that you want to update
 * @param effect					A pointer to the effect whose shapes you want to add
 */
-tfxAPI void AddEffectShapes(tfxAnimationManager *animation_manager, tfxEffectEmitter *effect);
+tfxAPI void AddEffectShapes(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect);
 
 /*
 Update an animation manager so that the effects do not expire they just loop forever instead regardless of whether they're a looped effect or not.
-* @param animation_manager		A pointer to a tfxAnimationManager that you want to update
+* @param animation_manager		A pointer to a tfx_animation_manager_t that you want to update
 */
-tfxAPI void CycleAnimationManager(tfxAnimationManager *animation_manager);
+tfxAPI void CycleAnimationManager(tfx_animation_manager_t *animation_manager);
 
 /*
 Clears all animation instances currently in play in an animation manager, resulting in all currently running animations
 from being drawn
-* @param animation_manager		A pointer to a tfxAnimationManager that you want to clear
+* @param animation_manager		A pointer to a tfx_animation_manager_t that you want to clear
 */
-tfxAPI void ClearAllAnimationInstances(tfxAnimationManager *animation_manager);
+tfxAPI void ClearAllAnimationInstances(tfx_animation_manager_t *animation_manager);
 
 /*
 Clears all data from the animation manager including sprite data, metrics and instances. Essentially resetting everything back to
 it's initialisation point
 from being drawn
-* @param animation_manager		A pointer to a tfxAnimationManager that you want to reset
+* @param animation_manager		A pointer to a tfx_animation_manager_t that you want to reset
 */
-tfxAPI void ResetAnimationManager(tfxAnimationManager *animation_manager);
+tfxAPI void ResetAnimationManager(tfx_animation_manager_t *animation_manager);
 
 /*
 Frees all data from the animation manager including sprite data, metrics and instances.
 from being drawn
-* @param animation_manager		A pointer to a tfxAnimationManager that you want to reset
+* @param animation_manager		A pointer to a tfx_animation_manager_t that you want to reset
 */
-tfxAPI void FreeAnimationManager(tfxAnimationManager *animation_manager);
+tfxAPI void FreeAnimationManager(tfx_animation_manager_t *animation_manager);
 
 /*
-Get the tfxAnimationBufferMetrics from an animation manager. This will contain the info you need to upload the sprite data,
+Get the tfx_animation_buffer_metrics_t from an animation manager. This will contain the info you need to upload the sprite data,
 offsets and animation instances to the GPU. Only offsets and animation instances need to be uploaded to the GPU each frame. Sprite
 data can be done ahead of time.
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
-* @returns						tfxAnimationBufferMetrics containing buffer sizes
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
+* @returns						tfx_animation_buffer_metrics_t containing buffer sizes
 */
-tfxAPI inline tfxAnimationBufferMetrics GetAnimationBufferMetrics(tfxAnimationManager *animation_manager) {
+tfxAPI inline tfx_animation_buffer_metrics_t GetAnimationBufferMetrics(tfx_animation_manager_t *animation_manager) {
 	return animation_manager->buffer_metrics;
 }
 
 /*
 Get the total number of sprites that need to be drawn by an animation manager this frame. You can use this in your renderer
 to draw your sprite instances
-* @param animation_manager		A pointer to a tfxAnimationManager where the effect animation is being managed
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @returns						tfxU32 of the number of sprites
 */
-tfxAPI inline tfxU32 GetTotalSpritesThatNeedDrawing(tfxAnimationManager *animation_manager) {
+tfxAPI inline tfxU32 GetTotalSpritesThatNeedDrawing(tfx_animation_manager_t *animation_manager) {
 	return animation_manager->buffer_metrics.total_sprites_to_draw;
 }
 
@@ -7849,59 +7823,59 @@ tfxAPI inline tfxU32 GetTotalSpritesThatNeedDrawing(tfxAnimationManager *animati
 Create the image data required for GPU shaders such as animation viewer. The image data will contain data such as uv coordinates
 that the shaders can use to create the sprite data. Once you have built the data you can use GetLibraryImageData to get the buffer
 and upload it to the gpu.
-* @param library				A pointer to some image data where the image data is. You can use GetParticleShapes with a tfxLibrary or tfxAnimationManager for this
+* @param library				A pointer to some image data where the image data is. You can use GetParticleShapes with a tfx_library_t or tfx_animation_manager_t for this
 * @param uv_lookup				A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 */
-tfxAPI tfxGPUShapes BuildGPUShapeData(tfxvec<tfxImageData> *particle_shapes, tfxVec4(uv_lookup)(void *ptr, tfxGPUImageData *image_data, int offset));
+tfxAPI tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_vec4_t(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
 
 /*
 Get a pointer to the GPU shapes which you can use in a memcpy
-* @param particle_shapes		A pointer the tfxGPUShapes
+* @param particle_shapes		A pointer the tfx_gpu_shapes_t
 */
-tfxAPI inline void *GetGPUShapesPointer(tfxGPUShapes *particle_shapes) {
+tfxAPI inline void *GetGPUShapesPointer(tfx_gpu_shapes_t *particle_shapes) {
 	return particle_shapes->list.data;
 }
 
 /*
 Get a pointer to the particle shapes data in the animation manager. This can be used with BuildGPUShapeData when you want to upload the data to the GPU
-* @param animation_manager		A pointer the tfxAnimationManager
+* @param animation_manager		A pointer the tfx_animation_manager_t
 */
-tfxAPI inline tfxvec<tfxImageData> *GetParticleShapes(tfxAnimationManager *animation_manager) {
+tfxAPI inline tfx_vector_t<tfx_image_data_t> *GetParticleShapes(tfx_animation_manager_t *animation_manager) {
 	return &animation_manager->particle_shapes.data;
 }
 
 /*
 Get a pointer to the particle shapes data in the animation manager. This can be used with BuildGPUShapeData when you want to upload the data to the GPU
-* @param animation_manager		A pointer the tfxAnimationManager
+* @param animation_manager		A pointer the tfx_animation_manager_t
 */
-tfxAPI inline tfxvec<tfxImageData> *GetParticleShapes(tfxLibrary *library) {
+tfxAPI inline tfx_vector_t<tfx_image_data_t> *GetParticleShapes(tfx_library_t *library) {
 	return &library->particle_shapes.data;
 }
 
 /*
 Get the number of shapes in the GPU Shape Data buffer. Make sure you call BuildGPUShapeData first or they'll be nothing to return
-* @param library				A pointer to a tfxAnimationManager where the image data will be created.
+* @param library				A pointer to a tfx_animation_manager_t where the image data will be created.
 * @returns tfxU32				The number of shapes in the buffer
 */
-tfxAPI inline tfxU32 GetGPUShapeCount(tfxGPUShapes *particle_shapes) {
+tfxAPI inline tfxU32 GetGPUShapeCount(tfx_gpu_shapes_t *particle_shapes) {
 	return particle_shapes->list.size();
 }
 
 /*
-Get the size in bytes of the GPU image data in a tfxLibrary
-* @param library				A pointer to a tfxLibrary where the image data exists.
+Get the size in bytes of the GPU image data in a tfx_library_t
+* @param library				A pointer to a tfx_library_t where the image data exists.
 * @returns size_t				The size in bytes of the image data
 */
-tfxAPI inline size_t GetGPUShapesSizeInBytes(tfxGPUShapes *particle_shapes) {
+tfxAPI inline size_t GetGPUShapesSizeInBytes(tfx_gpu_shapes_t *particle_shapes) {
 	return particle_shapes->list.size_in_bytes();
 }
 
 /*
 Get the total number of sprites in an animation manger's sprite data buffer
-* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+* @param animation_manager		A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32				The number of sprites in the buffer
 */
-tfxAPI inline tfxU32 GetTotalSpriteDataCount(tfxAnimationManager *animation_manager) {
+tfxAPI inline tfxU32 GetTotalSpriteDataCount(tfx_animation_manager_t *animation_manager) {
 	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
 		return animation_manager->sprite_data_3d.current_size;
 	}
@@ -7910,10 +7884,10 @@ tfxAPI inline tfxU32 GetTotalSpriteDataCount(tfxAnimationManager *animation_mana
 
 /*
 Get the total number of sprites in an animation manger's sprite data buffer
-* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+* @param animation_manager		A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32				The number of sprites in the buffer
 */
-tfxAPI inline size_t GetSpriteDataSizeInBytes(tfxAnimationManager *animation_manager) {
+tfxAPI inline size_t GetSpriteDataSizeInBytes(tfx_animation_manager_t *animation_manager) {
 	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
 		return animation_manager->sprite_data_3d.size_in_bytes();
 	}
@@ -7922,10 +7896,10 @@ tfxAPI inline size_t GetSpriteDataSizeInBytes(tfxAnimationManager *animation_man
 
 /*
 Get the buffer memory address for the sprite data in an animation manager
-* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+* @param animation_manager		A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns void*				A pointer to the sprite data memory
 */
-tfxAPI inline void* GetSpriteDataBufferPointer(tfxAnimationManager *animation_manager) {
+tfxAPI inline void* GetSpriteDataBufferPointer(tfx_animation_manager_t *animation_manager) {
 	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
 		return animation_manager->sprite_data_3d.data;
 	}
@@ -7934,96 +7908,96 @@ tfxAPI inline void* GetSpriteDataBufferPointer(tfxAnimationManager *animation_ma
 
 /*
 Get the size in bytes of the offsets buffer in an animation manager
-* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+* @param animation_manager		A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t				Size in bytes of the offsets buffer
 */
-tfxAPI inline size_t GetOffsetsSizeInBytes(tfxAnimationManager *animation_manager) {
+tfxAPI inline size_t GetOffsetsSizeInBytes(tfx_animation_manager_t *animation_manager) {
 	return animation_manager->offsets.current_size * sizeof(tfxU32);
 }
 
 /*
 Get the size in bytes of the render queue of animation instances buffer in an animation manager
-* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+* @param animation_manager		A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t				Size in bytes of the instances buffer
 */
-tfxAPI inline size_t GetAnimationInstancesSizeInBytes(tfxAnimationManager *animation_manager) {
-	return animation_manager->render_queue.current_size * sizeof(tfxAnimationInstance);
+tfxAPI inline size_t GetAnimationInstancesSizeInBytes(tfx_animation_manager_t *animation_manager) {
+	return animation_manager->render_queue.current_size * sizeof(tfx_animation_instance_t);
 }
 
 /*
 Get the size in bytes of the animation emitter properties list
-* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+* @param animation_manager		A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t				Size in bytes of the properties bufffer
 */
-tfxAPI inline size_t GetAnimationEmitterPropertySizeInBytes(tfxAnimationManager *animation_manager) {
-	return animation_manager->emitter_properties.current_size * sizeof(tfxAnimationEmitterProperties);
+tfxAPI inline size_t GetAnimationEmitterPropertySizeInBytes(tfx_animation_manager_t *animation_manager) {
+	return animation_manager->emitter_properties.current_size * sizeof(tfx_animation_emitter_properties_t);
 }
 
 /*
 Get the number of emitter properties being using by the animation manager
-* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+* @param animation_manager		A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32				Number of emitter properties
 */
-tfxAPI inline tfxU32 GetAnimationEmitterPropertyCount(tfxAnimationManager *animation_manager) {
+tfxAPI inline tfxU32 GetAnimationEmitterPropertyCount(tfx_animation_manager_t *animation_manager) {
 	return animation_manager->emitter_properties.current_size;
 }
 
 /*
 Get the buffer memory address for the sprite data in an animation manager
-* @param animation_manager		A pointer to a tfxAnimationManager to get the sprite data from
+* @param animation_manager		A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns void*				A pointer to the sprite data memory
 */
-tfxAPI void* GetAnimationEmitterPropertiesBufferPointer(tfxAnimationManager *animation_manager);
+tfxAPI void* GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager_t *animation_manager);
 
 /*
 Reset an effect template and make it empty so you can use it to store another effect.
-* @param t						A pointer to a tfxEffectTemplate
+* @param t						A pointer to a tfx_effect_template_t
 */
-tfxAPI void ResetTemplate(tfxEffectTemplate *t);
+tfxAPI void ResetTemplate(tfx_effect_template_t *t);
 
 /*
 Get the root effect from the template
-* @param t						A pointer to a tfxEffectTemplate
+* @param t						A pointer to a tfx_effect_template_t
 * @returns						A pointer to the root effect
 */
-tfxAPI tfxEffectEmitter *GetEffectFromTemplate(tfxEffectTemplate *t);
+tfxAPI tfx_effect_emitter_t *GetEffectFromTemplate(tfx_effect_template_t *t);
 
 /*
 Get an emitter or sub effect from an effect template.
-* @param t						A pointer to a tfxEffectTemplate
+* @param t						A pointer to a tfx_effect_template_t
 * @param path					A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
 * @returns						A pointer to the root effect
 */
-tfxAPI tfxEffectEmitter *GetEmitterFromTemplate(tfxEffectTemplate *t, tfxStr256 *path);
+tfxAPI tfx_effect_emitter_t *GetEmitterFromTemplate(tfx_effect_template_t *t, tfx_str256_t *path);
 
 /*
 Set the user data for any effect or emitter in the effect template. This user data will get passed through to any update callback functions
-* @param t						A pointer to a tfxEffectTemplate
+* @param t						A pointer to a tfx_effect_template_t
 * @param path					A path to the effect or emitter in the effect template
 * @param data					A pointer to the user data
 */
-tfxAPI void SetTemplateUserData(tfxEffectTemplate *t, tfxStr256 *path, void *data);
+tfxAPI void SetTemplateUserData(tfx_effect_template_t *t, tfx_str256_t *path, void *data);
 
 /*
 Set the user data for the root effect in an effect template
-* @param t						A pointer to a tfxEffectTemplate
+* @param t						A pointer to a tfx_effect_template_t
 * @param data					A pointer to the user data
 */
-tfxAPI void SetTemplateEffectUserData(tfxEffectTemplate *t, void *data);
+tfxAPI void SetTemplateEffectUserData(tfx_effect_template_t *t, void *data);
 
 /*
 Set the same user data for all effects and emitters/sub effects in the effect template
-* @param t						A pointer to a tfxEffectTemplate
+* @param t						A pointer to a tfx_effect_template_t
 * @param data					A pointer to the user data that will be set to all effects and emitters in the template
 */
-tfxAPI void SetTemplateUserDataAll(tfxEffectTemplate *t, void *data);
+tfxAPI void SetTemplateUserDataAll(tfx_effect_template_t *t, void *data);
 
 /*
 Set an update callback for the root effect in the effect template.
-* @param t						A pointer to a tfxEffectTemplate
+* @param t						A pointer to a tfx_effect_template_t
 * @param update_callback		A pointer to the call back function
 */
-tfxAPI void SetTemplateEffectUpdateCallback(tfxEffectTemplate *t, void(*update_callback)(tfxParticleManager *pm, tfxEffectID effect_index));
+tfxAPI void SetTemplateEffectUpdateCallback(tfx_effect_template_t *t, void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index));
 
 /*
 Pre-record this effect into a sprite cache so that you can play the effect back without the need to actually caclulate particles in realtime.
@@ -8031,26 +8005,26 @@ Pre-record this effect into a sprite cache so that you can play the effect back 
 	* @param path		const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
 	* @param camera		Array of 3 floats with the camera position (only needed for 3d effects that are sorted by depth
 */
-tfxAPI void RecordTemplateEffect(tfxEffectTemplate *t, tfxParticleManager *pm, float update_frequency, float camera_position[3]);
+tfxAPI void RecordTemplateEffect(tfx_effect_template_t *t, tfx_particle_manager_t *pm, float update_frequency, float camera_position[3]);
 
 /*
 Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling AddEffectToParticleManager
 * @param path		const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
 */
-tfxAPI void DisableTemplateEmitter(tfxEffectTemplate *t, const char *path);
+tfxAPI void DisableTemplateEmitter(tfx_effect_template_t *t, const char *path);
 
 /*
 Enable an emitter within an effect so that it is added to the particle manager when calling AddEffectToParticleManager. Emitters are enabled by default.
 * @param path		const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
 */
-tfxAPI void EnableTemplateEmitter(tfxEffectTemplate *t, const char *path);
+tfxAPI void EnableTemplateEmitter(tfx_effect_template_t *t, const char *path);
 
 /*
 Scale all nodes on a global graph graph of the effect
 * @param global_type		tfxGraphType of the global graph that you want to scale. Must be a global graph or an assert will be called
 * @param amount				A float of the amount that you want to scale the multiplier by.
 */
-tfxAPI void ScaleTemplateGlobalMultiplier(tfxEffectTemplate *t, tfxGraphType global_type, float amount);
+tfxAPI void ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfxGraphType global_type, float amount);
 
 /*
 Scale all nodes on an emitter graph
@@ -8058,36 +8032,36 @@ Scale all nodes on an emitter graph
 * @param global_type		tfxGraphType of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
 * @param amount				A float of the amount that you want to scale the graph by.
 */
-tfxAPI void ScaleTemplateEmitterGraph(tfxEffectTemplate *t, const char *emitter_path, tfxGraphType graph_type, float amount);
+tfxAPI void ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter_path, tfxGraphType graph_type, float amount);
 
 /*
 Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
 * @param emitter_path		const *char of the emitter path
 * @param amount				A float of the amount that you want to set the single spawn amount to.
 */
-tfxAPI void SetTemplateSingleSpawnAmount(tfxEffectTemplate *t, const char *emitter_path, tfxU32 amount);
+tfxAPI void SetTemplateSingleSpawnAmount(tfx_effect_template_t *t, const char *emitter_path, tfxU32 amount);
 
 /*
 Interpolate between 2 tfxVec3s. You can make use of this in your render function when rendering sprites and interpolating between captured and current positions
 * @param tween				The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param world				The current tvxVec3 position
 * @param captured			The captured tvxVec3 position
-* @returns tfxVec3			The interpolated tfxVec3
+* @returns tfx_vec3_t			The interpolated tfx_vec3_t
 */
-tfxAPI inline tfxVec3 Tween3d(float tween, const tfxVec3 *world, const tfxVec3 *captured) {
-	tfxVec3 tweened;
+tfxAPI inline tfx_vec3_t Tween3d(float tween, const tfx_vec3_t *world, const tfx_vec3_t *captured) {
+	tfx_vec3_t tweened;
 	tweened = *world * tween + *captured * (1.f - tween);
 	return tweened;
 }
 
 /*
-Interpolate between 2 colors in tfxRGBA8 format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
+Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
 * @param tween				The interpolation value between 0 and 1. You should pass in the value from your timing function
-* @param current			The current tfxRGBA8 color
-* @param captured			The captured tfxRGBA8 color
-* @returns tfxRGBA8			The interpolated tfxRGBA8
+* @param current			The current tfx_rgba8_t color
+* @param captured			The captured tfx_rgba8_t color
+* @returns tfx_rgba8_t			The interpolated tfx_rgba8_t
 */
-inline tfxRGBA8 TweenColor(float tween, const tfxRGBA8 current, const tfxRGBA8 captured) {
+inline tfx_rgba8_t TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
 	__m128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
 	__m128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
 	__m128 wide_tween = _mm_set1_ps(tween);
@@ -8100,7 +8074,7 @@ inline tfxRGBA8 TweenColor(float tween, const tfxRGBA8 current, const tfxRGBA8 c
 	color1 = _mm_mul_ps(color1, _mm_set1_ps(255.f));
 	tfx128iArray packed;
 	packed.m = _mm_cvtps_epi32(color1);
-	return tfxRGBA8(packed.a[0], packed.a[1], packed.a[2], packed.a[3]);
+	return tfx_rgba8_t(packed.a[0], packed.a[1], packed.a[2], packed.a[3]);
 }
 
 /*
@@ -8108,9 +8082,9 @@ Interpolate all sprite transform data in a single function. This will interpolat
 * @param tween				The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param current			The current transform struct of the sprite
 * @param captured			The captured transform struct of the sprite
-* @returns tfxWideLerpTransformResult			The interpolated transform data in a tfxWideLerpTransformResult
+* @returns tfx_wide_lerp_transform_result_t			The interpolated transform data in a tfx_wide_lerp_transform_result_t
 */
-inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat *tween, const tfxSpriteTransform3d *current, const tfxSpriteTransform3d *captured) {
+inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const tfxWideFloat *tween, const tfx_sprite_transform3d_t *current, const tfx_sprite_transform3d_t *captured) {
 	__m128 to1 = _mm_load_ps(&current->position.x);
 	__m128 from1 = _mm_load_ps(&captured->position.x);
 	__m128 to2 = _mm_load_ps(&current->rotations.y);
@@ -8119,7 +8093,7 @@ inline tfxWideLerpTransformResult InterpolateSpriteTransform(const tfxWideFloat 
 	__m128 to_lerp1 = _mm_mul_ps(to1, *tween);
 	__m128 from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
 	__m128 result = _mm_add_ps(from_lerp1, to_lerp1);
-	tfxWideLerpTransformResult out;
+	tfx_wide_lerp_transform_result_t out;
 	_mm_store_ps(out.position, result);
 	to_lerp1 = _mm_mul_ps(to2, *tween);
 	from_lerp1 = _mm_mul_ps(from2, one_minus_tween);
@@ -8133,10 +8107,10 @@ Interpolate between 2 tfxVec2s. You can make use of this in your render function
 * @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param world		The current tvxVec2 position
 * @param captured	The captured tvxVec2 position
-* @returns tfxVec2	The interpolated tfxVec2
+* @returns tfx_vec2_t	The interpolated tfx_vec2_t
 */
-inline tfxVec2 Tween2d(float tween, const tfxVec2 *world, const tfxVec2 *captured) {
-	tfxVec2 tweened;
+inline tfx_vec2_t Tween2d(float tween, const tfx_vec2_t *world, const tfx_vec2_t *captured) {
+	tfx_vec2_t tweened;
 	tweened = *world * tween + *captured * (1.f - tween);
 	return tweened;
 }
@@ -8146,7 +8120,7 @@ Interpolate between 2 float. You can make use of this in your render function wh
 * @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param world		The current tvxVec2 position
 * @param captured	The captured tvxVec2 position
-* @returns tfxVec2	The interpolated tfxVec2
+* @returns tfx_vec2_t	The interpolated tfx_vec2_t
 */
 inline float TweenFloat(float tween, const float current, const float captured) {
 	return current * tween + captured * (1.f - tween);
