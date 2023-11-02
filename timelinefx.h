@@ -1079,6 +1079,7 @@ All functions in the library will be marked this way for clarity and naturally t
 //Override this for more layers, although currently the editor is fixed at 4
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
+#endif 
 
 /*
 Helper macro to place inside a for loop, for example:
@@ -1088,7 +1089,6 @@ You can then use layer inside the loop to get the current layer
 #define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
 
 //Internal use macro
-#endif 
 //type defs
 typedef unsigned int tfxU32;
 typedef unsigned int tfxEmitterID;
@@ -2178,8 +2178,6 @@ static tfxWideFloat tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetSingle(1.f);
 //-----------------------------------------------------------
 //Section: String_Buffers
 //-----------------------------------------------------------
-
-tfxINTERNAL int tfx_FormatString(char* buf, size_t buf_size, const char* fmt, va_list args);
 
 //Very simple string builder
 struct tfx_str_t {
