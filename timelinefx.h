@@ -3139,7 +3139,7 @@ struct tfx_bucket_array_t {
 	}
 
 	inline T*	insert(T* position, const T &v) {
-		tfxU32 index;
+		tfxU32 index = 0;
 		assert(find(position, index));	//Could not find the object to insert at, make sure it exists
 		return insert(index, v);
 	}
@@ -3164,7 +3164,7 @@ struct tfx_bucket_array_t {
 	}
 
 	inline void erase(T* it) {
-		tfxU32 index;
+		tfxU32 index = 0;
 		assert(find(it, index));	//pointer not found in list
 		erase(index);
 	}
