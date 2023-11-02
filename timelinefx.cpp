@@ -1,6 +1,8 @@
 #define TFX_ALLOCATOR_IMPLEMENTATION
 #include "timelinefx.h"
 
+namespace tfx {
+
 #ifdef _WIN32
 FILE *tfx__open_file(const char *file_name, const char *mode) {
 	FILE *file = NULL;
@@ -22,60 +24,63 @@ FILE *tfx__open_file(const char *file_name, const char *mode) {
 	return fopen(file_name, mode);
 }
 #endif
+}
 
 size_t tfxGetNextPower(size_t n) {
 	return 1ULL << (tfx__scan_reverse(n) + 1);
 }
 
 void tfxAddHostMemoryPool(size_t size) {
-	assert(tfxStore->memory_pool_count < 32);    //Reached the max number of memory pools
-	size_t pool_size = tfxStore->default_memory_pool_size;
+	assert(tfx::tfxStore->memory_pool_count < 32);    //Reached the max number of memory pools
+	size_t pool_size = tfx::tfxStore->default_memory_pool_size;
 	if (pool_size <= size) {
 		pool_size = tfxGetNextPower(size);
 	}
-	tfxStore->memory_pools[tfxStore->memory_pool_count] = (tfx_pool*)tfxALLOCATE_POOL(pool_size);
-	assert(tfxStore->memory_pools[tfxStore->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
-	tfx_AddPool(tfxMemoryAllocator, (tfx_pool*)tfxStore->memory_pools[tfxStore->memory_pool_count], pool_size);
-	tfxStore->memory_pool_sizes[tfxStore->memory_pool_count] = pool_size;
-	tfxStore->memory_pool_count++;
+	tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count] = (tfx_pool*)tfxALLOCATE_POOL(pool_size);
+	assert(tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
+	tfx_AddPool(tfx::tfxMemoryAllocator, (tfx_pool*)tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count], pool_size);
+	tfx::tfxStore->memory_pool_sizes[tfx::tfxStore->memory_pool_count] = pool_size;
+	tfx::tfxStore->memory_pool_count++;
 }
 
 void* tfxAllocate(size_t size) {
-	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
+	void *allocation = tfx_Allocate(tfx::tfxMemoryAllocator, size);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
-		allocation = tfx_Allocate(tfxMemoryAllocator, size);
+		allocation = tfx_Allocate(tfx::tfxMemoryAllocator, size);
 		assert(allocation);    //Unable to allocate even after adding a pool
 	}
 	return allocation;
 }
 
 void* tfxReallocate(void *memory, size_t size) {
-	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
+	void *allocation = tfx_Reallocate(tfx::tfxMemoryAllocator, memory, size);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
-		allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
+		allocation = tfx_Reallocate(tfx::tfxMemoryAllocator, memory, size);
 		assert(allocation);	//Unable to allocate even after adding a pool
 	}
 	return allocation;
 }
 
 void *tfxAllocateAligned(size_t size, size_t alignment) {
-	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
+	void *allocation = tfx_AllocateAligned(tfx::tfxMemoryAllocator, size, alignment);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
-		allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
+		allocation = tfx_AllocateAligned(tfx::tfxMemoryAllocator, size, alignment);
 		assert(allocation);    //Unable to allocate even after adding a pool
 	}
 	return allocation;
 }
 
-tfx_storage_t *tfxGetGlobals() {
-	return tfxStore;
+tfx_allocator *tfxGetAllocator() {
+	return tfx::tfxMemoryAllocator;
 }
 
-tfx_allocator *tfxGetAllocator() {
-	return tfxMemoryAllocator;
+namespace tfx {
+
+tfx_storage_t *GetGlobals() {
+	return tfxStore;
 }
 
 //A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
@@ -1232,10 +1237,10 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 		if (direction.y != 1.f) {
 			tfx_vec3_t n(0.f, 1.f, 0.f);
 			tfx_vec3_t u = Cross(&n, &direction);
-			float rot = acosf(DotProduct(&direction, &n));
-			tfx_mat4_t handle_mat = tfxCreateMatrix4(1.f);
-			handle_mat = mmRotate(&handle_mat, rot, &u);
-			v = mmTransformVector(&handle_mat, result).xyz();
+			float rot = acosf(DotProductVec3(&direction, &n));
+			tfx_mat4_t handle_mat = CreateMatrix4(1.f);
+			handle_mat = Matrix4RotateAxis(&handle_mat, rot, &u);
+			v = TransformVector4Matrix4(&handle_mat, result).xyz();
 			v.x = -v.x;
 			v.z = -v.z;
 		}
@@ -1307,7 +1312,7 @@ void ResetEmitterPropertyGraphs(tfx_effect_emitter_t *effect, bool add_node, boo
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_width, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.emitter_width.type = tfxProperty_emitter_width;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_height, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.emitter_height.type = tfxProperty_emitter_height;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_depth, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.emitter_depth.type = tfxProperty_emitter_depth;
-	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_size, tfxRadians(360.f), tfxArcPreset, add_node); library->emitter_attributes[emitter_attributes].properties.arc_size.type = tfxProperty_arc_size;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_size, DegreesToRadians(360.f), tfxArcPreset, add_node); library->emitter_attributes[emitter_attributes].properties.arc_size.type = tfxProperty_arc_size;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_offset, 0.f, tfxArcPreset, add_node); library->emitter_attributes[emitter_attributes].properties.arc_offset.type = tfxProperty_arc_offset;
 	if (compile) {
 		CompileLibraryPropertyGraph(library, emitter_attributes);
@@ -1411,7 +1416,7 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].properties.emitter_width.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_width, 0.f, tfxDimensionsPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.emitter_height.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_height, 0.f, tfxDimensionsPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.emitter_depth.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_depth, 0.f, tfxDimensionsPreset);
-		if (library->emitter_attributes[emitter_attributes].properties.arc_size.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_size, tfxRadians(360.f), tfxArcPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.arc_size.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_size, DegreesToRadians(360.f), tfxArcPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.arc_offset.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_offset, 0.f, tfxArcPreset);
 
 		if (library->emitter_attributes[emitter_attributes].variation.life.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].variation.life, 0.f, tfxLifePreset);
@@ -2822,17 +2827,17 @@ tfxU32 AddLibrarySpriteSheetSettings(tfx_library_t *library, tfx_effect_emitter_
 	a.color_option = tfx_export_color_options::tfxFullColor;
 	a.export_option = tfx_export_options::tfxSpriteSheet;
 	a.camera_settings.camera_floor_height = -10.f;
-	a.camera_settings.camera_fov = tfxRadians(60);
-	a.camera_settings.camera_pitch = tfxRadians(-30.f);
-	a.camera_settings.camera_yaw = tfxRadians(-90.f);
+	a.camera_settings.camera_fov = DegreesToRadians(60);
+	a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
+	a.camera_settings.camera_yaw = DegreesToRadians(-90.f);
 	a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	a.camera_settings.camera_isometric = false;
 	a.camera_settings.camera_isometric_scale = 5.f;
 	a.camera_settings.camera_hide_floor = false;
 	a.camera_settings_orthographic.camera_floor_height = -10.f;
-	a.camera_settings_orthographic.camera_fov = tfxRadians(60);
-	a.camera_settings_orthographic.camera_pitch = tfxRadians(-30.f);
-	a.camera_settings_orthographic.camera_yaw = tfxRadians(-90.f);
+	a.camera_settings_orthographic.camera_fov = DegreesToRadians(60);
+	a.camera_settings_orthographic.camera_pitch = DegreesToRadians(-30.f);
+	a.camera_settings_orthographic.camera_yaw = DegreesToRadians(-90.f);
 	a.camera_settings_orthographic.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	a.camera_settings_orthographic.camera_isometric = true;
 	a.camera_settings_orthographic.camera_isometric_scale = 5.f;
@@ -2860,17 +2865,17 @@ void AddLibrarySpriteSheetSettingsSub(tfx_library_t *library, tfx_effect_emitter
 		a.color_option = tfx_export_color_options::tfxFullColor;
 		a.export_option = tfx_export_options::tfxSpriteSheet;
 		a.camera_settings.camera_floor_height = -10.f;
-		a.camera_settings.camera_fov = tfxRadians(60);
-		a.camera_settings.camera_pitch = tfxRadians(-30.f);
-		a.camera_settings.camera_yaw = tfxRadians(-90.f);
+		a.camera_settings.camera_fov = DegreesToRadians(60);
+		a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
+		a.camera_settings.camera_yaw = DegreesToRadians(-90.f);
 		a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 		a.camera_settings.camera_isometric = false;
 		a.camera_settings.camera_isometric_scale = 5.f;
 		a.camera_settings.camera_hide_floor = false;
 		a.camera_settings_orthographic.camera_floor_height = -10.f;
-		a.camera_settings_orthographic.camera_fov = tfxRadians(60);
-		a.camera_settings_orthographic.camera_pitch = tfxRadians(-30.f);
-		a.camera_settings_orthographic.camera_yaw = tfxRadians(-90.f);
+		a.camera_settings_orthographic.camera_fov = DegreesToRadians(60);
+		a.camera_settings_orthographic.camera_pitch = DegreesToRadians(-30.f);
+		a.camera_settings_orthographic.camera_yaw = DegreesToRadians(-90.f);
 		a.camera_settings_orthographic.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 		a.camera_settings_orthographic.camera_isometric = true;
 		a.camera_settings_orthographic.camera_isometric_scale = 5.f;
@@ -2899,9 +2904,9 @@ tfxU32 AddLibrarySpriteDataSettings(tfx_library_t *library, tfx_effect_emitter_t
 	a.needs_exporting = 0;
 	a.recording_frame_rate = 60.f;
 	//a.camera_settings.camera_floor_height = -10.f;
-	//a.camera_settings.camera_fov = tfxRadians(60);
-	//a.camera_settings.camera_pitch = tfxRadians(-30.f);
-	//a.camera_settings.camera_yaw = tfxRadians(-90.f);
+	//a.camera_settings.camera_fov = DegreesToRadians(60);
+	//a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
+	//a.camera_settings.camera_yaw = DegreesToRadians(-90.f);
 	//a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	//a.camera_settings.camera_isometric = false;
 	//a.camera_settings.camera_isometric_scale = 5.f;
@@ -2938,9 +2943,9 @@ tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library, tfx_effect_emitte
 	assert(effect->type == tfxEffectType || effect->type == tfxStage);
 	tfx_preview_camera_settings_t a;
 	a.camera_settings.camera_floor_height = -10.f;
-	a.camera_settings.camera_fov = tfxRadians(60);
-	a.camera_settings.camera_pitch = tfxRadians(-30.f);
-	a.camera_settings.camera_yaw = tfxRadians(-90.f);
+	a.camera_settings.camera_fov = DegreesToRadians(60);
+	a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
+	a.camera_settings.camera_yaw = DegreesToRadians(-90.f);
 	a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	a.camera_settings.camera_isometric = false;
 	a.camera_settings.camera_isometric_scale = 5.f;
@@ -2956,9 +2961,9 @@ tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library, tfx_effect_emitte
 tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library) {
 	tfx_preview_camera_settings_t a;
 	a.camera_settings.camera_floor_height = -10.f;
-	a.camera_settings.camera_fov = tfxRadians(60);
-	a.camera_settings.camera_pitch = tfxRadians(-30.f);
-	a.camera_settings.camera_yaw = tfxRadians(-90.f);
+	a.camera_settings.camera_fov = DegreesToRadians(60);
+	a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
+	a.camera_settings.camera_yaw = DegreesToRadians(-90.f);
 	a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	a.camera_settings.camera_isometric = false;
 	a.camera_settings.camera_isometric_scale = 5.f;
@@ -8291,7 +8296,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
 			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
-			mmWideTransformVector(&e_matrix, &position_x.m, &position_y.m, &position_z.m);
+			TransformMatrix4Vector3(&e_matrix, &position_x.m, &position_y.m, &position_z.m);
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale_x), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale_y), e_world_position_y);
 			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale_z), e_world_position_z);
@@ -8326,7 +8331,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_x = velocity_normal_x;
 			alignment_vector_y = velocity_normal_y;
 			alignment_vector_z = velocity_normal_z;
-			mmWideTransformVector(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+			TransformMatrix4Vector3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
 		else if (vector_align_type == tfxVectorAlignType_emission) {
 			alignment_vector_x = velocity_normal_x;
@@ -8337,7 +8342,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_x = tfxWideSetSingle(0.f);
 			alignment_vector_y = tfxWideSetSingle(1.f);
 			alignment_vector_z = tfxWideSetSingle(0.f);
-			mmWideTransformVector(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+			TransformMatrix4Vector3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
 
 		//sprites.transform_3d.captured_position = captured_position;
@@ -8543,7 +8548,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		stretch_velocity_y = tfxWideDiv(stretch_velocity_y, l);
 
 		if (property_flags & tfxEmitterPropertyFlags_relative_position) {
-			mmWideTransformVector(&matrix, &stretch_velocity_x, &stretch_velocity_y);
+			TransformMatrix4Vector2(&matrix, &stretch_velocity_x, &stretch_velocity_y);
 		}
 
 		tfxWideArrayi packed;
@@ -8660,7 +8665,7 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 		if (property_flags & tfxEmitterPropertyFlags_relative_position) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
-			mmWideTransformVector(&e_matrix, &position_x.m, &position_y.m);
+			TransformMatrix4Vector2(&e_matrix, &position_x.m, &position_y.m);
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale_x), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale_y), e_world_position_y);
 		}
@@ -9399,7 +9404,7 @@ tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, tfxU32
 	tfx_particle_soa_t lists;
 	tfxU32 index = pm->particle_arrays.locked_push_back(lists);
 	tfx_soa_buffer_t buffer;
-	buffer.resize_callback = tfxResizeParticleSoACallback;
+	buffer.resize_callback = ResizeParticleSoACallback;
 	buffer.user_data = &pm->particle_arrays.back();
 	pm->particle_array_buffers.push_back(buffer);
 	assert(index == pm->particle_array_buffers.current_size - 1);
@@ -9480,11 +9485,11 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 			world_position += properties.emitter_handle[property_index] * overal_scale;
 			if (property_flags & tfxEmitterPropertyFlags_is_3d) {
 				world_rotations = local_rotations;
-				tfx_mat4_t roll = mmZRotate(local_rotations.roll);
-				tfx_mat4_t pitch = mmXRotate(local_rotations.pitch);
-				tfx_mat4_t yaw = mmYRotate(local_rotations.yaw);
-				matrix = mmTransform(&yaw, &pitch);
-				matrix = mmTransform(&matrix, &roll);
+				tfx_mat4_t roll = Matrix4RotateZ(local_rotations.roll);
+				tfx_mat4_t pitch = Matrix4RotateX(local_rotations.pitch);
+				tfx_mat4_t yaw = Matrix4RotateY(local_rotations.yaw);
+				matrix = TransformMatrix4(&yaw, &pitch);
+				matrix = TransformMatrix4(&matrix, &roll);
 			}
 			else {
 				world_rotations.roll = local_rotations.roll;
@@ -10482,7 +10487,7 @@ void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data) {
 			}
 			else {
 				tfx_vec4_t inverse_handle = -handle;
-				tfx_vec3_t rotvec = mmTransformVector3(&matrix, &inverse_handle);
+				tfx_vec3_t rotvec = TransformVector3Matrix4(&matrix, &inverse_handle);
 				local_position_x = rotvec.x + lerp_position.x;
 				local_position_y = rotvec.y + lerp_position.y;
 				local_position_z = rotvec.z + lerp_position.z;
@@ -10636,7 +10641,7 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = mmTransformVector3(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 			local_position_z = lerp_position.z + pos.z * scale.z;
@@ -10779,7 +10784,6 @@ void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data) {
 					}
 
 					grid_coords += grid_direction;
-					tfxBound(grid_coords.xy(), grid_points.xy());
 					local_position_x = position.x + (grid_coords.x * grid_segment_size.x);
 					local_position_y = position.y + (grid_coords.y * grid_segment_size.y);
 				}
@@ -11078,7 +11082,7 @@ void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = mmTransformVector3(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 			local_position_z = lerp_position.z + pos.z * scale.z;
@@ -11250,7 +11254,7 @@ void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = mmTransformVector3(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 			local_position_z = lerp_position.z + pos.z * scale.z;
@@ -11305,7 +11309,7 @@ void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data) {
 
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = mmTransformVector3(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + local_position_x * scale.x;
 			local_position_y = lerp_position.y + local_position_y * scale.y;
 			local_position_z = lerp_position.z + local_position_z * scale.z;
@@ -11356,7 +11360,7 @@ void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data) {
 		local_position_z = tfxIcospherePoints[sub_division][ico_point].z * half_emitter_size.z;
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = mmTransformVector3(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + local_position_x * scale.x;
 			local_position_y = lerp_position.y + local_position_y * scale.y;
 			local_position_z = lerp_position.z + local_position_z * scale.z;
@@ -11465,7 +11469,7 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = mmTransformVector3(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + local_position_x * scale.x;
 			local_position_y = lerp_position.y + local_position_y * scale.y;
 			local_position_z = lerp_position.z + local_position_z * scale.z;
@@ -11765,7 +11769,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			}
 			else {
 				tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-				tfx_vec4_t rotatevec = mmTransformVector(&matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle);
+				tfx_vec4_t rotatevec = TransformVector4Matrix4(&matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle);
 				world_position = emitter_world_position + rotatevec.xyz() * scale;
 			}
 			captured_position_x = world_position.x;
@@ -11807,7 +11811,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 				world_position.z = local_position_z;
 			}
 			else {
-				tfx_vec4_t rotatevec = mmTransformVector(&matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle);
+				tfx_vec4_t rotatevec = TransformVector4Matrix4(&matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle);
 				captured_position_x = world_position.x = emitter_captured_position.x + rotatevec.x * scale.x;
 				captured_position_y = world_position.y = emitter_captured_position.y + rotatevec.y * scale.y;
 				captured_position_z = world_position.z = emitter_captured_position.z + rotatevec.z * scale.z;
@@ -12255,12 +12259,12 @@ void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotation
 		*world_rotations = *local_rotations;
 	}
 
-	tfx_mat4_t roll = mmZRotate(world_rotations->roll);
-	tfx_mat4_t pitch = mmXRotate(world_rotations->pitch);
-	tfx_mat4_t yaw = mmYRotate(world_rotations->yaw);
+	tfx_mat4_t roll = Matrix4RotateZ(world_rotations->roll);
+	tfx_mat4_t pitch = Matrix4RotateX(world_rotations->pitch);
+	tfx_mat4_t yaw = Matrix4RotateY(world_rotations->yaw);
 
-	*matrix = mmTransform(&yaw, &pitch);
-	*matrix = mmTransform(matrix, &roll);
+	*matrix = TransformMatrix4(&yaw, &pitch);
+	*matrix = TransformMatrix4(matrix, &roll);
 
 }
 
@@ -12633,7 +12637,7 @@ void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library
 			assert(index == pm->particle_array_buffers.current_size - 1);
 			InitParticleSoA(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), tfxMax(pm->max_cpu_particles_per_layer[layer], 8));
 			pm->particle_array_buffers[index].user_data = &pm->particle_arrays.back();
-			tfxResizeParticleSoACallback(&pm->particle_array_buffers[index], 0);
+			ResizeParticleSoACallback(&pm->particle_array_buffers[index], 0);
 			pm->depth_indexes[layer][0].reserve(pm->max_cpu_particles_per_layer[layer]);
 			pm->depth_indexes[layer][1].reserve(pm->max_cpu_particles_per_layer[layer]);
 		}
@@ -12847,3 +12851,5 @@ void SetEffectOveralScale(tfx_particle_manager_t *pm, tfxEffectID effect_index, 
 void SetEffectBaseNoiseOffset(tfx_particle_manager_t *pm, tfxEffectID effect_index, float noise_offset) {
 	pm->effects.noise_base_offset[effect_index] = noise_offset;
 }
+
+}		//Namespace

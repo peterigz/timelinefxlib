@@ -45,7 +45,7 @@
 //---------------------------------------
 /*	Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
 	This is my own memory allocator from https://github.com/peterigz/zloc
-	This is used in TimelineFX to manage memory allocation. A large pool created and allocated from. New pools are created if it runs out of space
+	This is used in TimelineFX to manage memory allocation. A large pool is created and allocated from. New pools are created if it runs out of space
 	(and you initialised TimelineFX to do so).
 */
 //---------------------------------------
@@ -991,6 +991,7 @@ tfx_allocator *tfxGetAllocator();
 #define tfx90Radians 1.5708f
 #define tfxMAXDEPTH 3
 
+namespace tfx {
 //----------------------------------------------------------
 //Forward declarations
 
@@ -5286,9 +5287,9 @@ struct tfx_data_entry_t {
 //Section: Internal_Functions
 //------------------------------------------------------------
 
-tfx_storage_t *tfxGetGlobals();
+tfx_storage_t *GetGlobals();
 
-inline void tfxResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 index) {
+inline void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	tfx_particle_soa_t *particles = static_cast<tfx_particle_soa_t*>(buffer->user_data);
 	for (int i = index; i != buffer->capacity; ++i) {
 		particles->max_age[i] = 1.f;
@@ -5493,16 +5494,6 @@ tfxINTERNAL inline void InsertionSortParticleFrame(tfx_vector_t<tfx_particle_fra
 	}
 }
 
-tfxINTERNAL inline float Dot(float x1, float y1, float z1, float x2, float y2, float z2)
-{
-	return x1 * x2 + y1 * y2 + z1 * z2;
-}
-
-tfxINTERNAL inline float Dot(float x1, float y1, float x2, float y2)
-{
-	return x1 * x2 + y1 * y2;
-}
-
 tfxINTERNAL inline tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z2)
 {
 	tfx128 xx = _mm_mul_ps(*x1, *x2);
@@ -5622,10 +5613,8 @@ tfxINTERNAL inline tfx_rgb_t HSVtoRGB(tfx_hsv_t in)
 	return out;
 }
 
-tfxINTERNAL inline float tfxRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
-tfxINTERNAL inline float tfxDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
-tfxINTERNAL inline void tfxBound(tfx_vec2_t s, tfx_vec2_t b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; }
-tfxINTERNAL inline void tfxBound3d(tfx_vec3_t s, tfx_vec3_t b) { if (s.x < 0.f) s.x = 0.f; if (s.y < 0.f) s.y = 0.f; if (s.z < 0.f) s.z = 0.f; if (s.x >= b.x) s.x = b.x - 1.f; if (s.y >= b.y) s.y = b.y - 1.f; if (s.z >= b.z) s.z = b.y - 1.f; }
+tfxINTERNAL inline float DegreesToRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
+tfxINTERNAL inline float RadiansToDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
 
 tfxINTERNAL inline float LengthVec3NoSqR(tfx_vec3_t const *v) {
 	return v->x * v->x + v->y * v->y + v->z * v->z;
@@ -5660,18 +5649,18 @@ tfxINTERNAL inline tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b) {
 	return(result);
 }
 
-tfxINTERNAL inline float DotProduct(const tfx_vec3_t *a, const tfx_vec3_t *b)
+tfxINTERNAL inline float DotProductVec3(const tfx_vec3_t *a, const tfx_vec3_t *b)
 {
 	return (a->x * b->x + a->y * b->y + a->z * b->z);
 }
 
-tfxINTERNAL inline float DotProduct(const tfx_vec2_t *a, const tfx_vec2_t *b)
+tfxINTERNAL inline float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
 {
 	return (a->x * b->x + a->y * b->y);
 }
 
 //Quake 3 inverse square root
-tfxINTERNAL inline float tfxSqrt(float number)
+tfxINTERNAL inline float QuakeSqrt(float number)
 {
 	long i;
 	float x2, y;
@@ -5701,15 +5690,15 @@ tfxINTERNAL inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
 }
 
 tfxINTERNAL inline float FastLength(tfx_vec2_t const *v) {
-	return 1.f / tfxSqrt(DotProduct(v, v));
+	return 1.f / QuakeSqrt(DotProductVec2(v, v));
 }
 
 tfxINTERNAL inline float FastLength(tfx_vec3_t const *v) {
-	return 1.f / tfxSqrt(DotProduct(v, v));
+	return 1.f / QuakeSqrt(DotProductVec3(v, v));
 }
 
 tfxINTERNAL inline tfx_vec3_t FastNormalizeVec(tfx_vec3_t const *v) {
-	return *v * tfxSqrt(DotProduct(v, v));
+	return *v * QuakeSqrt(DotProductVec3(v, v));
 }
 
 tfxINTERNAL inline tfx_vec2_t NormalizeVec(tfx_vec2_t const *v) {
@@ -5764,7 +5753,7 @@ tfxINTERNAL inline tfx_vec2_t mmTransformVector(const tfx_mat4_t *mat, const tfx
 	return tv;
 }
 
-tfxINTERNAL inline tfx_mat4_t tfxCreateMatrix4(float v) {
+tfxINTERNAL inline tfx_mat4_t CreateMatrix4(float v) {
 	tfx_mat4_t R =
 	{ {
 		{v, 0, 0, 0},
@@ -5775,7 +5764,7 @@ tfxINTERNAL inline tfx_mat4_t tfxCreateMatrix4(float v) {
 	return(R);
 }
 
-tfxINTERNAL inline tfx_mat4_t tfxM4(tfx_vec4_t a, tfx_vec4_t b, tfx_vec4_t c, tfx_vec4_t d) {
+tfxINTERNAL inline tfx_mat4_t Matrix4FromVecs(tfx_vec4_t a, tfx_vec4_t b, tfx_vec4_t c, tfx_vec4_t d) {
 	tfx_mat4_t R =
 	{ {
 		{a.x, a.y, a.z, a.w},
@@ -5786,7 +5775,7 @@ tfxINTERNAL inline tfx_mat4_t tfxM4(tfx_vec4_t a, tfx_vec4_t b, tfx_vec4_t c, tf
 	return(R);
 }
 
-tfxINTERNAL inline tfx_mat4_t mmXRotate(float angle) {
+tfxINTERNAL inline tfx_mat4_t Matrix4RotateX(float angle) {
 	float c = std::cos(angle);
 	float s = std::sin(angle);
 	tfx_mat4_t r =
@@ -5799,7 +5788,7 @@ tfxINTERNAL inline tfx_mat4_t mmXRotate(float angle) {
 	return r;
 }
 
-tfxINTERNAL inline tfx_mat4_t mmYRotate(float angle) {
+tfxINTERNAL inline tfx_mat4_t Matrix4RotateY(float angle) {
 	float c = std::cos(angle);
 	float s = std::sin(angle);
 	tfx_mat4_t r =
@@ -5812,7 +5801,7 @@ tfxINTERNAL inline tfx_mat4_t mmYRotate(float angle) {
 	return r;
 }
 
-tfxINTERNAL inline tfx_mat4_t mmZRotate(float angle) {
+tfxINTERNAL inline tfx_mat4_t Matrix4RotateZ(float angle) {
 	float c = std::cos(angle);
 	float s = std::sin(angle);
 	tfx_mat4_t r =
@@ -5825,8 +5814,8 @@ tfxINTERNAL inline tfx_mat4_t mmZRotate(float angle) {
 	return r;
 }
 
-tfxINTERNAL inline tfx_mat4_t Transpose(tfx_mat4_t *mat) {
-	return tfxM4(
+tfxINTERNAL inline tfx_mat4_t TransposeMatrix4(tfx_mat4_t *mat) {
+	return Matrix4FromVecs(
 		tfx_vec4_t(mat->v[0].x, mat->v[1].x, mat->v[2].x, mat->v[3].x),
 		tfx_vec4_t(mat->v[0].y, mat->v[1].y, mat->v[2].y, mat->v[3].y),
 		tfx_vec4_t(mat->v[0].z, mat->v[1].z, mat->v[2].z, mat->v[3].z),
@@ -5834,22 +5823,22 @@ tfxINTERNAL inline tfx_mat4_t Transpose(tfx_mat4_t *mat) {
 	);
 }
 
-tfxINTERNAL inline tfx_mat4_t mmTransform2(const tfx_mat4_t *in, const tfx_mat4_t *m) {
+tfxINTERNAL inline tfx_mat4_t TransformMatrix42d(const tfx_mat4_t *in, const tfx_mat4_t *m) {
 	tfx_mat4_t r;
 	r.v[0].x = in->v[0].x * m->v[0].x + in->v[0].y * m->v[1].x; r.v[0].y = in->v[0].x * m->v[0].y + in->v[0].y * m->v[1].y;
 	r.v[1].x = in->v[1].x * m->v[0].x + in->v[1].y * m->v[1].x; r.v[1].y = in->v[1].x * m->v[0].y + in->v[1].y * m->v[1].y;
 	return r;
 }
 
-tfxINTERNAL inline tfx_mat4_t mmTransform2(const tfx_mat4_t *in, const tfx_mat2_t *m) {
+tfxINTERNAL inline tfx_mat4_t TransformMatrix4ByMatrix2(const tfx_mat4_t *in, const tfx_mat2_t *m) {
 	tfx_mat4_t r;
 	r.v[0].x = in->v[0].x * m->aa + in->v[0].y * m->ba; r.v[0].y = in->v[0].x * m->ab + in->v[0].y * m->bb;
 	r.v[1].x = in->v[1].x * m->aa + in->v[1].y * m->ba; r.v[1].y = in->v[1].x * m->ab + in->v[1].y * m->bb;
 	return r;
 }
 
-tfxINTERNAL inline tfx_mat4_t mmTransform(const tfx_mat4_t *in, const tfx_mat4_t *m) {
-	tfx_mat4_t res = tfxCreateMatrix4(0.f);
+tfxINTERNAL inline tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
+	tfx_mat4_t res = CreateMatrix4(0.f);
 
 	tfx128 in_row[4];
 	in_row[0] = _mm_load_ps(&in->v[0].x);
@@ -5884,7 +5873,7 @@ tfxINTERNAL inline tfx_mat4_t mmTransform(const tfx_mat4_t *in, const tfx_mat4_t
 	return res;
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+tfxINTERNAL inline void TransformMatrix4Vector3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[0].c1)), xr);
 	xr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[0].c2)), xr);
@@ -5899,7 +5888,7 @@ tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloa
 	*z = zr;
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y) {
+tfxINTERNAL inline void TransformMatrix4Vector2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
 	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
@@ -5908,7 +5897,7 @@ tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloa
 	*y = yr;
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+tfxINTERNAL inline void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
 	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
 	xr = tfxWideAdd(tfxWideMul(*y, r1c[0]), xr);
 	tfxWideFloat yr = tfxWideMul(*x, r0c[1]);
@@ -5917,7 +5906,7 @@ tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfx
 	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+tfxINTERNAL inline void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
 	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
@@ -5926,7 +5915,7 @@ tfxINTERNAL inline void mmWideTransformVector(const tfx_mat4_t *mat, tfxWideFloa
 	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
 }
 
-tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+tfxINTERNAL inline void MaskedTransformMatrix4Vector3(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
 	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
 	xr = tfxWideAdd(tfxWideMul(*y, r0c[1]), xr);
 	xr = tfxWideAdd(tfxWideMul(*z, r0c[2]), xr);
@@ -5941,7 +5930,7 @@ tfxINTERNAL inline void mmWideTransformVector(const tfxWideFloat *r0c, const tfx
 	*z = tfxWideAdd(tfxWideAnd(*z, *xor_mask), tfxWideAnd(zr, *mask));
 }
 
-tfxINTERNAL inline tfx_vec4_t mmTransformVector(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
+tfxINTERNAL inline tfx_vec4_t TransformVector4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
 	tfx_vec4_t v;
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
@@ -5969,7 +5958,7 @@ tfxINTERNAL inline tfx_vec4_t mmTransformVector(const tfx_mat4_t *mat, const tfx
 	return v;
 }
 
-tfxINTERNAL inline tfx_vec4_t mmTransformVector(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
+tfxINTERNAL inline tfx_vec4_t WideTransformVector4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
 	tfx_vec4_t v;
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
@@ -5992,7 +5981,7 @@ tfxINTERNAL inline tfx_vec4_t mmTransformVector(const tfx128 *row1, const tfx128
 	return v;
 }
 
-tfxINTERNAL inline tfx_vec3_t mmTransformVector3(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
+tfxINTERNAL inline tfx_vec3_t TransformVector3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
 	tfx_vec3_t v;
 
 	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
@@ -6018,7 +6007,7 @@ tfxINTERNAL inline tfx_vec3_t mmTransformVector3(const tfx_mat4_t *mat, const tf
 	return v;
 }
 
-tfxINTERNAL inline tfx_mat4_t mmRotate(tfx_mat4_t const *m, float r, tfx_vec3_t const *v) {
+tfxINTERNAL inline tfx_mat4_t Matrix4RotateAxis(tfx_mat4_t const *m, float r, tfx_vec3_t const *v) {
 	float const a = r;
 	float const c = cosf(a);
 	float const s = sinf(a);
@@ -6039,7 +6028,7 @@ tfxINTERNAL inline tfx_mat4_t mmRotate(tfx_mat4_t const *m, float r, tfx_vec3_t 
 	rotate.v[2].y = temp.z * axis.y - s * axis.x;
 	rotate.v[2].z = c + temp.z * axis.z;
 
-	tfx_mat4_t result = tfxCreateMatrix4(1.f);
+	tfx_mat4_t result = CreateMatrix4(1.f);
 	result.v[0] = m->v[0] * rotate.v[0].x + m->v[1] * rotate.v[0].y + m->v[2] * rotate.v[0].z;
 	result.v[1] = m->v[0] * rotate.v[1].x + m->v[1] * rotate.v[1].y + m->v[2] * rotate.v[1].z;
 	result.v[2] = m->v[0] * rotate.v[2].x + m->v[1] * rotate.v[2].y + m->v[2] * rotate.v[2].z;
@@ -6338,24 +6327,24 @@ tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_l
 
 	out_rotations->roll = in_rotations->roll + out_local_rotations->roll;
 
-	*out_matrix = mmTransform2(out_matrix, in_matrix);
+	*out_matrix = TransformMatrix42d(out_matrix, in_matrix);
 	tfx_vec2_t rotatevec = mmTransformVector(in_matrix, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
 
 	*out_position = in_position->xy() + rotatevec * in_scale->xy();
 }
 tfxINTERNAL inline void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, tfx_vec3_t *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_vec3_t *in_rotations, const tfx_vec3_t *in_scale, const tfx_vec3_t *in_position, const tfx_mat4_t *in_matrix) {
-	tfx_mat4_t roll = mmZRotate(out_local_rotations->roll);
-	tfx_mat4_t pitch = mmXRotate(out_local_rotations->pitch);
-	tfx_mat4_t yaw = mmYRotate(out_local_rotations->yaw);
-	*out_matrix = mmTransform(&yaw, &pitch);
-	*out_matrix = mmTransform(out_matrix, &roll);
+	tfx_mat4_t roll = Matrix4RotateZ(out_local_rotations->roll);
+	tfx_mat4_t pitch = Matrix4RotateX(out_local_rotations->pitch);
+	tfx_mat4_t yaw = Matrix4RotateY(out_local_rotations->yaw);
+	*out_matrix = TransformMatrix4(&yaw, &pitch);
+	*out_matrix = TransformMatrix4(out_matrix, &roll);
 	*out_scale = *in_scale;
 
 	*out_rotations = *in_rotations + *out_local_rotations;
 
-	*out_matrix = mmTransform(out_matrix, in_matrix);
+	*out_matrix = TransformMatrix4(out_matrix, in_matrix);
 	tfx_vec4_t translated_vec = *out_local_position + *out_translation;
-	tfx_vec3_t rotatevec = mmTransformVector3(in_matrix, &translated_vec);
+	tfx_vec3_t rotatevec = TransformVector3Matrix4(in_matrix, &translated_vec);
 
 	*out_position = *in_position + rotatevec;
 }
@@ -6399,22 +6388,22 @@ tfxINTERNAL inline void TransformParticlePositionAngle3d(const float local_posit
 }
 tfxINTERNAL inline void TransformParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = *local_rotations;
-	tfx_vec4_t rotatevec = mmTransformVector(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = TransformVector4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 tfxINTERNAL inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = *local_rotations;
-	tfx_vec4_t rotatevec = mmTransformVector(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = TransformVector4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
 tfxINTERNAL inline void TransformWideParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
-	tfx_vec4_t rotatevec = mmTransformVector(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = TransformVector4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
 tfxINTERNAL inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
-	tfx_vec4_t rotatevec = mmTransformVector(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = TransformVector4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
@@ -8124,4 +8113,4 @@ inline float TweenFloat(float tween, const float current, const float captured) 
 	return current * tween + captured * (1.f - tween);
 }
 
-
+} //namespace
