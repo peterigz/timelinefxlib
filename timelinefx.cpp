@@ -365,7 +365,7 @@ int VertexForEdge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> 
 	point_cache->Insert(key, vertices->size());
 
 	tfx_vec3_t edge_sum = (*vertices)[first] + (*vertices)[second];
-	tfx_vec3_t point = NormalizeVec(&edge_sum);
+	tfx_vec3_t point = NormalizeVec3(&edge_sum);
 	vertices->push_back(point);
 
 	return vertices->size() - 1;
@@ -1175,7 +1175,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			else
 				to_handle = world_position - emitter_world_position;
 
-			to_handle = FastNormalizeVec(&to_handle);
+			to_handle = NormalizeVec3Fast(&to_handle);
 
 		}
 		else if (emission_direction == tfx_emission_direction::tfxInwards) {
@@ -1185,7 +1185,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			else
 				to_handle = emitter_world_position - world_position;
 
-			to_handle = FastNormalizeVec(&to_handle);
+			to_handle = NormalizeVec3Fast(&to_handle);
 
 		}
 		else if (emission_direction == tfx_emission_direction::tfxBothways) {
@@ -1206,7 +1206,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			}
 
 			emission_alternator = !emission_alternator;
-			to_handle = FastNormalizeVec(&to_handle);
+			to_handle = NormalizeVec3Fast(&to_handle);
 		}
 		else {
 			parent_pitch = emitter_world_rotations.pitch;
@@ -1240,7 +1240,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			float rot = acosf(DotProductVec3(&direction, &n));
 			tfx_mat4_t handle_mat = CreateMatrix4(1.f);
 			handle_mat = Matrix4RotateAxis(&handle_mat, rot, &u);
-			v = TransformVector4Matrix4(&handle_mat, result).xyz();
+			v = TransformVec4Matrix4(&handle_mat, result).xyz();
 			v.x = -v.x;
 			v.z = -v.z;
 		}
@@ -8296,7 +8296,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
 			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
-			TransformMatrix4Vector3(&e_matrix, &position_x.m, &position_y.m, &position_z.m);
+			TransformMatrix4Vec3(&e_matrix, &position_x.m, &position_y.m, &position_z.m);
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale_x), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale_y), e_world_position_y);
 			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale_z), e_world_position_z);
@@ -8331,7 +8331,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_x = velocity_normal_x;
 			alignment_vector_y = velocity_normal_y;
 			alignment_vector_z = velocity_normal_z;
-			TransformMatrix4Vector3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+			TransformMatrix4Vec3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
 		else if (vector_align_type == tfxVectorAlignType_emission) {
 			alignment_vector_x = velocity_normal_x;
@@ -8342,7 +8342,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_x = tfxWideSetSingle(0.f);
 			alignment_vector_y = tfxWideSetSingle(1.f);
 			alignment_vector_z = tfxWideSetSingle(0.f);
-			TransformMatrix4Vector3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+			TransformMatrix4Vec3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
 
 		//sprites.transform_3d.captured_position = captured_position;
@@ -8548,7 +8548,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		stretch_velocity_y = tfxWideDiv(stretch_velocity_y, l);
 
 		if (property_flags & tfxEmitterPropertyFlags_relative_position) {
-			TransformMatrix4Vector2(&matrix, &stretch_velocity_x, &stretch_velocity_y);
+			TransformMatrix4Vec2(&matrix, &stretch_velocity_x, &stretch_velocity_y);
 		}
 
 		tfxWideArrayi packed;
@@ -8665,7 +8665,7 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 		if (property_flags & tfxEmitterPropertyFlags_relative_position) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
-			TransformMatrix4Vector2(&e_matrix, &position_x.m, &position_y.m);
+			TransformMatrix4Vec2(&e_matrix, &position_x.m, &position_y.m);
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale_x), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale_y), e_world_position_y);
 		}
@@ -10445,7 +10445,7 @@ void SpawnParticlePoint2d(tfx_work_queue_t *queue, void *data) {
 				local_position_y = lerp_position.y;
 			}
 			else {
-				tfx_vec2_t rotvec = mmTransformVector(&matrix, -handle.xy());
+				tfx_vec2_t rotvec = TransformVec2Matrix4(&matrix, -handle.xy());
 				local_position_x = rotvec.x + lerp_position.x;
 				local_position_y = rotvec.y + lerp_position.y;
 			}
@@ -10487,7 +10487,7 @@ void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data) {
 			}
 			else {
 				tfx_vec4_t inverse_handle = -handle;
-				tfx_vec3_t rotvec = TransformVector3Matrix4(&matrix, &inverse_handle);
+				tfx_vec3_t rotvec = TransformVec3Matrix4(&matrix, &inverse_handle);
 				local_position_x = rotvec.x + lerp_position.x;
 				local_position_y = rotvec.y + lerp_position.y;
 				local_position_z = rotvec.z + lerp_position.z;
@@ -10558,7 +10558,7 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-			tfx_vec2_t pos = mmTransformVector(&matrix, tfx_vec2_t(local_position_x, local_position_y) + handle.xy());
+			tfx_vec2_t pos = TransformVec2Matrix4(&matrix, tfx_vec2_t(local_position_x, local_position_y) + handle.xy());
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 		}
@@ -10641,7 +10641,7 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position) && !(property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVec3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 			local_position_z = lerp_position.z + pos.z * scale.z;
@@ -10825,7 +10825,7 @@ void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-			tfx_vec2_t pos = mmTransformVector(&matrix, tfx_vec2_t(local_position_x, local_position_y) + handle.xy());
+			tfx_vec2_t pos = TransformVec2Matrix4(&matrix, tfx_vec2_t(local_position_x, local_position_y) + handle.xy());
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 		}
@@ -11082,7 +11082,7 @@ void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVec3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 			local_position_z = lerp_position.z + pos.z * scale.z;
@@ -11175,7 +11175,7 @@ void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
-			tfx_vec2_t pos = mmTransformVector(&matrix, tfx_vec2_t(local_position_x, local_position_y) + handle.xy());
+			tfx_vec2_t pos = TransformVec2Matrix4(&matrix, tfx_vec2_t(local_position_x, local_position_y) + handle.xy());
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 		}
@@ -11254,7 +11254,7 @@ void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVec3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * scale.x;
 			local_position_y = lerp_position.y + pos.y * scale.y;
 			local_position_z = lerp_position.z + pos.z * scale.z;
@@ -11309,7 +11309,7 @@ void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data) {
 
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVec3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + local_position_x * scale.x;
 			local_position_y = lerp_position.y + local_position_y * scale.y;
 			local_position_z = lerp_position.z + local_position_z * scale.z;
@@ -11360,7 +11360,7 @@ void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data) {
 		local_position_z = tfxIcospherePoints[sub_division][ico_point].z * half_emitter_size.z;
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVec3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + local_position_x * scale.x;
 			local_position_y = lerp_position.y + local_position_y * scale.y;
 			local_position_z = lerp_position.z + local_position_z * scale.z;
@@ -11469,7 +11469,7 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-			tfx_vec3_t pos = TransformVector3Matrix4(&matrix, &position_plus_handle);
+			tfx_vec3_t pos = TransformVec3Matrix4(&matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + local_position_x * scale.x;
 			local_position_y = lerp_position.y + local_position_y * scale.y;
 			local_position_z = lerp_position.z + local_position_z * scale.z;
@@ -11661,7 +11661,7 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 		local_position_x += current_velocity.x * micro_time;
 		local_position_y += current_velocity.y * micro_time;
 		if (line || property_flags & tfxEmitterPropertyFlags_relative_position) {
-			tfx_vec2_t rotatevec = mmTransformVector(&matrix, tfx_vec2_t(local_position_x, local_position_y) + handle.xy());
+			tfx_vec2_t rotatevec = TransformVec2Matrix4(&matrix, tfx_vec2_t(local_position_x, local_position_y) + handle.xy());
 			captured_position_x = emitter_captured_position.x + rotatevec.x * scale.x;
 			captured_position_y = emitter_captured_position.y + rotatevec.y * scale.y;
 		}
@@ -11769,7 +11769,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			}
 			else {
 				tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle;
-				tfx_vec4_t rotatevec = TransformVector4Matrix4(&matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle);
+				tfx_vec4_t rotatevec = TransformVec4Matrix4(&matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle);
 				world_position = emitter_world_position + rotatevec.xyz() * scale;
 			}
 			captured_position_x = world_position.x;
@@ -11811,7 +11811,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 				world_position.z = local_position_z;
 			}
 			else {
-				tfx_vec4_t rotatevec = TransformVector4Matrix4(&matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle);
+				tfx_vec4_t rotatevec = TransformVec4Matrix4(&matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + handle);
 				captured_position_x = world_position.x = emitter_captured_position.x + rotatevec.x * scale.x;
 				captured_position_y = world_position.y = emitter_captured_position.y + rotatevec.y * scale.y;
 				captured_position_z = world_position.z = emitter_captured_position.z + rotatevec.z * scale.z;

@@ -5628,14 +5628,9 @@ tfxINTERNAL inline float HasLength(tfx_vec3_t const *v) {
 	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
 }
 
-tfxINTERNAL inline tfx_vec3_t NormalizeVec(tfx_vec3_t const *v) {
+tfxINTERNAL inline tfx_vec3_t NormalizeVec3(tfx_vec3_t const *v) {
 	if (v->x == 0 && v->y == 0 && v->z == 0) return tfx_vec3_t(1.f, 0.f, 0.f);
 	float length = LengthVec(v);
-	return tfx_vec3_t(v->x / length, v->y / length, v->z / length);
-}
-
-tfxINTERNAL inline tfx_vec3_t NormalizeVec(tfx_vec3_t const *v, float length) {
-	if (length == 0) return tfx_vec3_t();
 	return tfx_vec3_t(v->x / length, v->y / length, v->z / length);
 }
 
@@ -5689,28 +5684,24 @@ tfxINTERNAL inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
 	return (nibble << 28) + index;
 }
 
-tfxINTERNAL inline float FastLength(tfx_vec2_t const *v) {
+tfxINTERNAL inline float Vec2LengthFast(tfx_vec2_t const *v) {
 	return 1.f / QuakeSqrt(DotProductVec2(v, v));
 }
 
-tfxINTERNAL inline float FastLength(tfx_vec3_t const *v) {
+tfxINTERNAL inline float Vec3FastLength(tfx_vec3_t const *v) {
 	return 1.f / QuakeSqrt(DotProductVec3(v, v));
 }
 
-tfxINTERNAL inline tfx_vec3_t FastNormalizeVec(tfx_vec3_t const *v) {
+tfxINTERNAL inline tfx_vec3_t NormalizeVec3Fast(tfx_vec3_t const *v) {
 	return *v * QuakeSqrt(DotProductVec3(v, v));
 }
 
-tfxINTERNAL inline tfx_vec2_t NormalizeVec(tfx_vec2_t const *v) {
-	float length = FastLength(v);
+tfxINTERNAL inline tfx_vec2_t NormalizeVec2(tfx_vec2_t const *v) {
+	float length = Vec2LengthFast(v);
 	return tfx_vec2_t(v->x / length, v->y / length);
 }
 
-tfxINTERNAL inline tfx_vec2_t NormalizeVec(tfx_vec2_t const *v, const float length) {
-	return tfx_vec2_t(v->x / length, v->y / length);
-}
-
-tfxINTERNAL inline tfx_mat3_t M3(float v = 1.f) {
+tfxINTERNAL inline tfx_mat3_t CreateMatrix3(float v = 1.f) {
 	tfx_mat3_t R =
 	{ {
 		{v, 0, 0},
@@ -5720,13 +5711,13 @@ tfxINTERNAL inline tfx_mat3_t M3(float v = 1.f) {
 	return(R);
 }
 
-tfxINTERNAL inline tfx_mat3_t mmTranslate(tfx_mat3_t const *m, tfx_vec3_t const *v) {
+tfxINTERNAL inline tfx_mat3_t TranslateMatrix3Vec3(tfx_mat3_t const *m, tfx_vec3_t const *v) {
 	tfx_mat3_t result;
 	result.v[2] = m->v[0] * v->x + m->v[1] * v->y + m->v[2];
 	return result;
 }
 
-tfxINTERNAL inline tfx_mat3_t mmRotate(tfx_mat3_t const *m, float r) {
+tfxINTERNAL inline tfx_mat3_t RotateMatrix3(tfx_mat3_t const *m, float r) {
 	float const a = r;
 	float const c = cosf(a);
 	float const s = sinf(a);
@@ -5738,7 +5729,7 @@ tfxINTERNAL inline tfx_mat3_t mmRotate(tfx_mat3_t const *m, float r) {
 	return result;
 }
 
-tfxINTERNAL inline tfx_mat3_t mmScale(tfx_mat3_t const *m, tfx_vec2_t const &v) {
+tfxINTERNAL inline tfx_mat3_t ScaleMatrix3Vec2(tfx_mat3_t const *m, tfx_vec2_t const &v) {
 	tfx_mat3_t result;
 	result.v[0] = m->v[0] * v.x;
 	result.v[1] = m->v[1] * v.y;
@@ -5746,7 +5737,7 @@ tfxINTERNAL inline tfx_mat3_t mmScale(tfx_mat3_t const *m, tfx_vec2_t const &v) 
 	return result;
 }
 
-tfxINTERNAL inline tfx_vec2_t mmTransformVector(const tfx_mat4_t *mat, const tfx_vec2_t v) {
+tfxINTERNAL inline tfx_vec2_t TransformVec2Matrix4(const tfx_mat4_t *mat, const tfx_vec2_t v) {
 	tfx_vec2_t tv = tfx_vec2_t(0.f, 0.f);
 	tv.x = v.x * mat->v[0].x + v.y * mat->v[1].x;
 	tv.y = v.x * mat->v[0].y + v.y * mat->v[1].y;
@@ -5873,7 +5864,7 @@ tfxINTERNAL inline tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_m
 	return res;
 }
 
-tfxINTERNAL inline void TransformMatrix4Vector3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+tfxINTERNAL inline void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[0].c1)), xr);
 	xr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[0].c2)), xr);
@@ -5888,7 +5879,7 @@ tfxINTERNAL inline void TransformMatrix4Vector3(const tfx_mat4_t *mat, tfxWideFl
 	*z = zr;
 }
 
-tfxINTERNAL inline void TransformMatrix4Vector2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y) {
+tfxINTERNAL inline void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
 	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
@@ -5915,7 +5906,7 @@ tfxINTERNAL inline void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideF
 	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
 }
 
-tfxINTERNAL inline void MaskedTransformMatrix4Vector3(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+tfxINTERNAL inline void MaskedTransformMatrix4Vec3(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
 	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
 	xr = tfxWideAdd(tfxWideMul(*y, r0c[1]), xr);
 	xr = tfxWideAdd(tfxWideMul(*z, r0c[2]), xr);
@@ -5930,7 +5921,7 @@ tfxINTERNAL inline void MaskedTransformMatrix4Vector3(const tfxWideFloat *r0c, c
 	*z = tfxWideAdd(tfxWideAnd(*z, *xor_mask), tfxWideAnd(zr, *mask));
 }
 
-tfxINTERNAL inline tfx_vec4_t TransformVector4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
+tfxINTERNAL inline tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
 	tfx_vec4_t v;
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
@@ -5958,7 +5949,7 @@ tfxINTERNAL inline tfx_vec4_t TransformVector4Matrix4(const tfx_mat4_t *mat, con
 	return v;
 }
 
-tfxINTERNAL inline tfx_vec4_t WideTransformVector4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
+tfxINTERNAL inline tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
 	tfx_vec4_t v;
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
@@ -5981,7 +5972,7 @@ tfxINTERNAL inline tfx_vec4_t WideTransformVector4Matrix4(const tfx128 *row1, co
 	return v;
 }
 
-tfxINTERNAL inline tfx_vec3_t TransformVector3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
+tfxINTERNAL inline tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
 	tfx_vec3_t v;
 
 	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
@@ -6012,7 +6003,7 @@ tfxINTERNAL inline tfx_mat4_t Matrix4RotateAxis(tfx_mat4_t const *m, float r, tf
 	float const c = cosf(a);
 	float const s = sinf(a);
 
-	tfx_vec3_t axis = NormalizeVec(v);
+	tfx_vec3_t axis = NormalizeVec3(v);
 	tfx_vec3_t temp = axis * (1.f - c);
 
 	tfx_mat4_t rotate;
@@ -6249,7 +6240,7 @@ tfxINTERNAL inline size_t ClampStringSize(size_t compare, size_t string_size) {
 	return compare < string_size ? compare : string_size;
 }
 
-tfxINTERNAL inline float tfx_Distance(float fromx, float fromy, float tox, float toy) {
+tfxINTERNAL inline float Distance2d(float fromx, float fromy, float tox, float toy) {
 
 	float w = tox - fromx;
 	float h = toy - fromy;
@@ -6328,7 +6319,7 @@ tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_l
 	out_rotations->roll = in_rotations->roll + out_local_rotations->roll;
 
 	*out_matrix = TransformMatrix42d(out_matrix, in_matrix);
-	tfx_vec2_t rotatevec = mmTransformVector(in_matrix, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
+	tfx_vec2_t rotatevec = TransformVec2Matrix4(in_matrix, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
 
 	*out_position = in_position->xy() + rotatevec * in_scale->xy();
 }
@@ -6344,7 +6335,7 @@ tfxINTERNAL inline void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_l
 
 	*out_matrix = TransformMatrix4(out_matrix, in_matrix);
 	tfx_vec4_t translated_vec = *out_local_position + *out_translation;
-	tfx_vec3_t rotatevec = TransformVector3Matrix4(in_matrix, &translated_vec);
+	tfx_vec3_t rotatevec = TransformVec3Matrix4(in_matrix, &translated_vec);
 
 	*out_position = *in_position + rotatevec;
 }
@@ -6363,12 +6354,12 @@ tfxINTERNAL inline void TransformParticlePositionAngle(const float local_positio
 }
 tfxINTERNAL inline void TransformParticlePositionRelative(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = roll;
-	tfx_vec2_t rotatevec = mmTransformVector(matrix, tfx_vec2_t(local_position_x, local_position_y) + handle->xy());
+	tfx_vec2_t rotatevec = TransformVec2Matrix4(matrix, tfx_vec2_t(local_position_x, local_position_y) + handle->xy());
 	*world_position = from_position->xy() + rotatevec * scale->xy();
 }
 tfxINTERNAL inline void TransformParticlePositionRelativeLine(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = parent_rotations->roll + roll;
-	tfx_vec2_t rotatevec = mmTransformVector(matrix, tfx_vec2_t(local_position_x, local_position_y) + handle->xy());
+	tfx_vec2_t rotatevec = TransformVec2Matrix4(matrix, tfx_vec2_t(local_position_x, local_position_y) + handle->xy());
 	*world_position = from_position->xy() + rotatevec * scale->xy();
 }
 //-------------------------------------------------
@@ -6388,22 +6379,22 @@ tfxINTERNAL inline void TransformParticlePositionAngle3d(const float local_posit
 }
 tfxINTERNAL inline void TransformParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = *local_rotations;
-	tfx_vec4_t rotatevec = TransformVector4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = TransformVec4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 tfxINTERNAL inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
 	*world_rotations = *local_rotations;
-	tfx_vec4_t rotatevec = TransformVector4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = TransformVec4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
 tfxINTERNAL inline void TransformWideParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
-	tfx_vec4_t rotatevec = TransformVector4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = TransformVec4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
 tfxINTERNAL inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const tfx_vec3_t *scale, const tfx_vec3_t *from_position) {
-	tfx_vec4_t rotatevec = TransformVector4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
+	tfx_vec4_t rotatevec = TransformVec4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
 	*world_position = *from_position + rotatevec.xyz() * *scale;
 }
 
