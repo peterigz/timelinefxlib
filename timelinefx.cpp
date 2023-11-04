@@ -7200,7 +7200,6 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			//-------------------------
 			sprite.property_indexes &= ~0x0000FFFF;
 			sprite.property_indexes += effect->library->emitter_properties.animation_property_index[property_index];
-			tfxU32 alignment = (sprite.property_indexes & 0xFF000000) >> 24;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
 			sprite.stretch = sprites.stretch[i];
@@ -7228,7 +7227,6 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			//-------------------------
 			sprite.property_indexes &= ~0x0000FFFF;
 			sprite.property_indexes += effect->library->emitter_properties.animation_property_index[property_index];
-			tfxU32 alignment = (sprite.property_indexes & 0xFF000000) >> 24;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
 			sprite.stretch = sprites.stretch[i];
