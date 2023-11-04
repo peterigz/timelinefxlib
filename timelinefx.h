@@ -2791,7 +2791,7 @@ inline void AddStructArray(tfx_soa_buffer_t *buffer, size_t unit_size, size_t of
 //inside the space
 inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
 	assert(buffer->data == NULL && buffer->array_ptrs.current_size > 0);
-	assert(reserve_amount > buffer->block_size);		//reserve amount must be greater than the block_size
+	reserve_amount = tfx__Max(reserve_amount, buffer->block_size);
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->struct_size += buffer->array_ptrs[i].unit_size;
 	}
