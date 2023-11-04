@@ -2188,7 +2188,7 @@ struct tfx_str_t {
 	bool is_local_buffer;
 
 	inline tfx_str_t() : current_size(0), capacity(0), data(NULL), is_local_buffer(false) {}
-	inline ~tfx_str_t() { if (data && !is_local_buffer) tfxFREE(data); }
+	inline ~tfx_str_t() { if (data && !is_local_buffer) { tfxFREE(data); data = NULL; } current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
 	inline char&           operator[](tfxU32 i) { return data[i]; }
@@ -2444,7 +2444,7 @@ struct tfx_vector_t {
 	inline T&	        push_back_copy(const T& v) {
 		if (current_size == capacity)
 			reserve(_grow_capacity(current_size + 1));
-		memcpy(&data[current_size], &v, sizeof(T));
+		memcpy(&data[current_size], &v, sizeof(v));
 		current_size++; return data[current_size - 1];
 	}
 	inline T&			next() {
@@ -3141,7 +3141,8 @@ struct tfx_bucket_array_t {
 
 	inline T*	insert(T* position, const T &v) {
 		tfxU32 index = 0;
-		assert(find(position, index));	//Could not find the object to insert at, make sure it exists
+		bool find_result = find(position, index);
+		assert(find_result);	//Could not find the object to insert at, make sure it exists
 		return insert(index, v);
 	}
 
@@ -3166,7 +3167,8 @@ struct tfx_bucket_array_t {
 
 	inline void erase(T* it) {
 		tfxU32 index = 0;
-		assert(find(it, index));	//pointer not found in list
+		bool find_result = find(it, index);
+		assert(find_result);	//pointer not found in list
 		erase(index);
 	}
 
