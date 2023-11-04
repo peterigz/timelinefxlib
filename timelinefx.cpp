@@ -6001,15 +6001,15 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 			context_set = true;
 			if (context == tfxStartEffectAnimationInfo) {
 				tfx_sprite_data_metrics_t metrics;
-				metrics_stack.push_back(metrics);
+				metrics_stack.push_back_copy(metrics);
 			}
 			else if (context == tfxStartFrameMeta) {
 				tfx_frame_meta_t frame_meta;
-				frame_meta_stack.push_back(frame_meta);
+				frame_meta_stack.push_back_copy(frame_meta);
 			}
 			else if (context == tfxStartEmitter) {
 				tfx_animation_emitter_properties_t emitter_properties;
-				emitter_properties_stack.push_back(emitter_properties);
+				emitter_properties_stack.push_back_copy(emitter_properties);
 			}
 		}
 
@@ -6148,7 +6148,7 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 		else if (context == tfxEndFrameMeta) {
 			assert(metrics_stack.current_size);
 			assert(frame_meta_stack.current_size);
-			metrics_stack.back().frame_meta.push_back(frame_meta_stack.pop_back());
+			metrics_stack.back().frame_meta.push_back_copy(frame_meta_stack.pop_back());
 		}
 		else if (context == tfxEndEffectAnimationInfo) {
 			assert(metrics_stack.current_size);
@@ -6157,7 +6157,7 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 		}
 		else if (context == tfxEndEmitter) {
 			assert(emitter_properties_stack.current_size);
-			animation_manager->emitter_properties.push_back(emitter_properties_stack.pop_back());
+			animation_manager->emitter_properties.push_back_copy(emitter_properties_stack.pop_back());
 		}
 
 	}
