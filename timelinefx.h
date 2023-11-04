@@ -2188,7 +2188,7 @@ struct tfx_str_t {
 	bool is_local_buffer;
 
 	inline tfx_str_t() : current_size(0), capacity(0), data(NULL), is_local_buffer(false) {}
-	inline ~tfx_str_t() { if (data && !is_local_buffer) { tfxFREE(data); data = NULL; } current_size = capacity = 0; }
+	inline ~tfx_str_t() { if (data && !is_local_buffer) tfxFREE(data); }
 
 	inline bool			empty() { return current_size == 0; }
 	inline char&           operator[](tfxU32 i) { return data[i]; }
@@ -2437,8 +2437,8 @@ struct tfx_vector_t {
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
-		//new((void*)&data[current_size]) T(v);
-		memcpy(&data[current_size], &v, sizeof(T));
+		new((void*)(data + current_size)) T(v);
+		//memcpy(&data[current_size], &v, sizeof(T));
 		current_size++; return data[current_size - 1];
 	}
 	inline T&	        push_back_copy(const T& v) {
@@ -5267,12 +5267,6 @@ struct tfx_effect_template_t {
 		paths("Effect template paths map", "Effect template paths data")
 	{}
 };
-
-/*
-Notes on updating effects emitters and particles:
-
-Todo: rewrite now that we've converted to SoA data layouts
-*/
 
 struct tfx_data_entry_t {
 	tfx_data_type type = tfxSInt;
