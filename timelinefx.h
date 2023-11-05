@@ -2,6 +2,7 @@
 
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
+#define TFX_OUTPUT_NOTICE_MESSAGES
 //#define tfxUSEAVX
 
 /*
@@ -98,6 +99,21 @@ typedef size_t tfx_fl_bitmap;
 
 #ifndef TFX_ERROR_COLOR
 #define TFX_ERROR_COLOR "\033[31m"
+#endif
+
+#ifndef TFX_NOTICE_COLOR
+#define TFX_NOTICE_COLOR "\033[0m"
+#endif
+
+#ifndef TFX_NOTICE_NAME
+#define TFX_NOTICE_NAME "TimelineFX Notice"
+#endif
+
+#ifdef TFX_OUTPUT_NOTICE_MESSAGES
+#include <stdio.h>
+#define TFX_PRINT_NOTICE(message_f, ...) printf(message_f"\033[0m", __VA_ARGS__)
+#else
+#define TFX_PRINT_NOTICE(message_f, ...)
 #endif
 
 #ifdef TFX_OUTPUT_ERROR_MESSAGES

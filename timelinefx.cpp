@@ -36,6 +36,7 @@ void tfxAddHostMemoryPool(size_t size) {
 	if (pool_size <= size) {
 		pool_size = tfxGetNextPower(size);
 	}
+	TFX_PRINT_NOTICE(TFX_NOTICE_COLOR"%s: Ran out of memory, creating a new pool of size %zu. \n", TFX_NOTICE_NAME, pool_size);
 	tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count] = (tfx_pool*)tfxALLOCATE_POOL(pool_size);
 	assert(tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
 	tfx_AddPool(tfx::tfxMemoryAllocator, (tfx_pool*)tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count], pool_size);
