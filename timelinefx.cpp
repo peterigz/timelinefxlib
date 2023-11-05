@@ -6864,10 +6864,10 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index];
 	tfx_sprite_data_t *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 	if (is_3d) {
-		InitSpriteData3dSoACompression(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, sprite_data->real_time_sprites_buffer.current_size);
+		InitSpriteData3dSoACompression(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, tfxU32((float)sprite_data->real_time_sprites_buffer.current_size * sprite_data->frame_compression));
 	}
 	else {
-		InitSpriteData2dSoACompression(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, sprite_data->real_time_sprites_buffer.current_size);
+		InitSpriteData2dSoACompression(&sprite_data->compressed_sprites_buffer, &sprite_data->compressed_sprites, tfxU32((float)sprite_data->real_time_sprites_buffer.current_size * sprite_data->frame_compression));
 	}
 
 	sprite_data->compressed.frame_meta.resize(tfxU32((float)anim.real_frames * anim.playback_speed) + 1);
@@ -6913,6 +6913,9 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 					c_sprites.transform_2d[ci] = sprites.transform_2d[i];
 				}
 				ci++;
+				if (ci >= sprite_data->compressed_sprites_buffer.capacity) {
+					GrowArrays(&sprite_data->compressed_sprites_buffer, ci, sprite_data->compressed_sprites_buffer.capacity + 1, true);	//Failed to grow sprite compression array
+				}
 			}
 			frame_done = true;
 			f++;
@@ -6938,6 +6941,9 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 						c_sprites.transform_2d[ci] = sprites.transform_2d[i];
 					}
 					ci++;
+					if (ci >= sprite_data->compressed_sprites_buffer.capacity) {
+						GrowArrays(&sprite_data->compressed_sprites_buffer, ci, sprite_data->compressed_sprites_buffer.capacity + 1, true);	//Failed to grow sprite compression array
+					}
 				}
 			}
 			f++;
@@ -12309,11 +12315,38 @@ void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	tfxStore = (tfx_storage_t*)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_storage_t));
 	memset(tfxStore, 0, sizeof(tfx_storage_t));
 	tfxStore->default_memory_pool_size = memory_pool_size;
+	tfxStore->memory_pools[0] = (tfx_pool*)((char*)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
+	tfxStore->memory_pool_count = 1;
 
 	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 	lookup_callback = LookupFast;
 	lookup_overtime_callback = LookupFastOvertime;
 	tfxInitialiseThreads(&tfxThreadQueues);
+}
+
+tfx_pool_stats_t CreateMemorySnapshot(tfx_header *first_block) {
+	tfx_pool_stats_t stats = { 0 };
+	tfx_header *current_block = first_block;
+	while (!tfx__is_last_block_in_pool(current_block)) {
+		if (tfx__is_free_block(current_block)) {
+			stats.free_blocks++;
+			stats.free_size += tfx__block_size(current_block);
+		}
+		else {
+			stats.used_blocks++;
+			stats.used_size += tfx__block_size(current_block);
+		}
+		current_block = tfx__next_physical_block(current_block);
+	}
+	if (tfx__is_free_block(current_block)) {
+		stats.free_blocks++;
+		stats.free_size += tfx__block_size(current_block);
+	}
+	else {
+		stats.used_blocks++;
+		stats.used_size += tfx__block_size(current_block);
+	}
+	return stats;
 }
 
 tfx_profile_tag_t::tfx_profile_tag_t(tfxU32 id, const char *name) {

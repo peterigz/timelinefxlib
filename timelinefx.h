@@ -188,6 +188,16 @@ extern "C" {
 		struct tfx_header *next_free_block;
 	} tfx_header;
 
+	/*
+	A struct for making snapshots of a memory pool to get used/free memory stats
+	*/
+	typedef struct tfx_pool_stats_t {
+		int used_blocks;
+		int free_blocks;
+		tfx_size free_size;
+		tfx_size used_size;
+	} tfx_pool_stats_t;
+
 	typedef struct tfx_allocator {
 		/*	This is basically a terminator block that free blocks can point to if they're at the end
 			of a free list. */
@@ -5300,7 +5310,8 @@ struct tfx_data_entry_t {
 //Section: Internal_Functions
 //------------------------------------------------------------
 
-tfx_storage_t *GetGlobals();
+tfxAPI tfx_storage_t *GetGlobals();
+tfxAPI tfx_pool_stats_t CreateMemorySnapshot(tfx_header *first_block);
 
 inline void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	tfx_particle_soa_t *particles = static_cast<tfx_particle_soa_t*>(buffer->user_data);
@@ -8052,7 +8063,7 @@ Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in 
 * @param captured			The captured tfx_rgba8_t color
 * @returns tfx_rgba8_t			The interpolated tfx_rgba8_t
 */
-inline tfx_rgba8_t TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
+tfxAPI inline tfx_rgba8_t TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
 	__m128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
 	__m128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
 	__m128 wide_tween = _mm_set1_ps(tween);
@@ -8075,7 +8086,7 @@ Interpolate all sprite transform data in a single function. This will interpolat
 * @param captured			The captured transform struct of the sprite
 * @returns tfx_wide_lerp_transform_result_t			The interpolated transform data in a tfx_wide_lerp_transform_result_t
 */
-inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const tfxWideFloat *tween, const tfx_sprite_transform3d_t *current, const tfx_sprite_transform3d_t *captured) {
+tfxAPI inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const tfxWideFloat *tween, const tfx_sprite_transform3d_t *current, const tfx_sprite_transform3d_t *captured) {
 	__m128 to1 = _mm_load_ps(&current->position.x);
 	__m128 from1 = _mm_load_ps(&captured->position.x);
 	__m128 to2 = _mm_load_ps(&current->rotations.y);
@@ -8100,7 +8111,7 @@ Interpolate between 2 tfxVec2s. You can make use of this in your render function
 * @param captured	The captured tvxVec2 position
 * @returns tfx_vec2_t	The interpolated tfx_vec2_t
 */
-inline tfx_vec2_t Tween2d(float tween, const tfx_vec2_t *world, const tfx_vec2_t *captured) {
+tfxAPI inline tfx_vec2_t Tween2d(float tween, const tfx_vec2_t *world, const tfx_vec2_t *captured) {
 	tfx_vec2_t tweened;
 	tweened = *world * tween + *captured * (1.f - tween);
 	return tweened;
@@ -8113,7 +8124,7 @@ Interpolate between 2 float. You can make use of this in your render function wh
 * @param captured	The captured tvxVec2 position
 * @returns tfx_vec2_t	The interpolated tfx_vec2_t
 */
-inline float TweenFloat(float tween, const float current, const float captured) {
+tfxAPI inline float TweenFloat(float tween, const float current, const float captured) {
 	return current * tween + captured * (1.f - tween);
 }
 
