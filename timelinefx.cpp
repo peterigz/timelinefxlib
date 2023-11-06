@@ -1711,6 +1711,9 @@ bool PrepareEffectTemplate(tfx_library_t *library, const char *name, tfx_effect_
 		PrepareLibraryEffectTemplate(library, name, effect_template);
 		return true;
 	}
+	else {
+		assert(0);	//Not a valid effect name, make sure the effect exists in the library, name is case sensitive.
+	}
 	return false;
 }
 
@@ -6882,7 +6885,7 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 	int f = 0;
 	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
 	tfx_sprite_data_soa_t &c_sprites = sprite_data->compressed_sprites;
-	int ci = 0;
+	tfxU32 ci = 0;
 	bool frame_done = false;
 	tfxU32 running_offset = 0;
 	tfxU32 layer = 0;
@@ -6894,7 +6897,7 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 		float next_compressed_time = next_compressed_frame * frequency;
 		float lerp_offset = (next_compressed_time - real_time) / (next_compressed_time - compressed_time);
 		if (real_time >= compressed_time && frame_done == false) {
-			for (int i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
+			for (tfxU32 i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
 				//Add to compress sprites but make invalid captured indexed create the offset
 				sprite_data->compressed.frame_meta[compressed_frame].sprite_count[layer]++;
 				sprite_data->compressed.frame_meta[compressed_frame].total_sprites++;
@@ -6921,7 +6924,7 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 			f++;
 		}
 		else if (real_time > compressed_time && real_time < next_compressed_time && f < anim.real_frames) {
-			for (int i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
+			for (tfxU32 i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
 				if (sprites.captured_index[i] == tfxINVALID) {
 					//Add to compressed sprites frame but add the lerp offset
 					sprite_data->compressed.frame_meta[compressed_frame].sprite_count[layer]++;
