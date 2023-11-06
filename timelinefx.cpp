@@ -7863,6 +7863,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				assert(pm->control_work.current_size != pm->control_work.capacity);
 				tfx_control_work_entry_t &work_entry = pm->control_work.next();
 				work_entry.properties = &pm->library->emitter_properties;
+				work_entry.pm = pm;
 				work_entry.emitter_index = index;
 				work_entry.start_index = running_start_index;
 				work_entry.end_index = particles_to_update > pm->mt_batch_size ? running_start_index + pm->mt_batch_size : running_start_index + particles_to_update;
@@ -7873,7 +7874,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
 				particles_to_update -= pm->mt_batch_size;
 				running_start_index += pm->mt_batch_size;
-				ControlParticles(pm, index, &work_entry);
+				tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticles);
 			}
 		}
 
@@ -9148,8 +9149,8 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 
 void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
 	pm->spawn_work.reserve(spawn_work_max);
-	pm->spawn_work.reserve(control_work_max);
-	pm->spawn_work.reserve(age_work_max);
+	pm->control_work.reserve(control_work_max);
+	pm->age_work.reserve(age_work_max);
 }
 
 void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
@@ -12190,10 +12191,14 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 
 }
 
-void ControlParticles(tfx_particle_manager_t *pm, tfxU32 emitter_index, tfx_control_work_entry_t *work_entry) {
+void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 
+	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t*>(data);
+
+	tfx_particle_manager_t *pm = work_entry->pm;
 	tfx_library_t *library = pm->library;
+	tfxU32 emitter_index = work_entry->emitter_index;
 	const tfxU32 property_index = pm->emitters.properties_index[emitter_index];
 	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[emitter_index];
 	const tfxU32 sprites_count = pm->emitters.sprites_count[emitter_index];
@@ -12216,40 +12221,23 @@ void ControlParticles(tfx_particle_manager_t *pm, tfxU32 emitter_index, tfx_cont
 		amount_to_update = sprites_count;
 	}
 
-	work_entry->pm = pm;
 	work_entry->sprites_index = sprites_index + work_entry->start_index;
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
 	work_entry->layer = properties.layer[property_index];
 	work_entry->sprites = &pm->sprites[pm->current_sprite_buffer][work_entry->layer];
 
 	if (amount_to_update > 0) {
-		if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-			if (pm->flags & tfxEffectManagerFlags_3d_effects) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, ControlParticlePosition3d);
-			}
-			else {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, ControlParticlePosition2d);
-			}
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, ControlParticleSize);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, ControlParticleColor);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, ControlParticleImageFrame);
-			if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, ControlParticleUID);
-			}
+		if (pm->flags & tfxEffectManagerFlags_3d_effects) {
+			ControlParticlePosition3d(&pm->work_queue, work_entry);
 		}
 		else {
-			if (pm->flags & tfxEffectManagerFlags_3d_effects) {
-				ControlParticlePosition3d(&pm->work_queue, work_entry);
-			}
-			else {
-				ControlParticlePosition2d(&pm->work_queue, work_entry);
-			}
-			ControlParticleSize(&pm->work_queue, work_entry);
-			ControlParticleColor(&pm->work_queue, work_entry);
-			ControlParticleImageFrame(&pm->work_queue, work_entry);
-			if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
-				ControlParticleUID(&pm->work_queue, work_entry);
-			}
+			ControlParticlePosition2d(&pm->work_queue, work_entry);
+		}
+		ControlParticleSize(&pm->work_queue, work_entry);
+		ControlParticleColor(&pm->work_queue, work_entry);
+		ControlParticleImageFrame(&pm->work_queue, work_entry);
+		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+			ControlParticleUID(&pm->work_queue, work_entry);
 		}
 	}
 }

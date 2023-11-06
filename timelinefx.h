@@ -6531,7 +6531,7 @@ tfxINTERNAL void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data)
 tfxINTERNAL void SpawnParticleSpin3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleSize3d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void ControlParticles(tfx_particle_manager_t *pm, tfxU32 emitter_index, tfx_control_work_entry_t *work_entry);
+tfxINTERNAL void ControlParticles(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void ControlParticleAge(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data);
