@@ -9148,8 +9148,8 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 
 void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
 	pm->spawn_work.reserve(spawn_work_max);
-	pm->spawn_work.reserve(control_work_max);
-	pm->spawn_work.reserve(age_work_max);
+	pm->control_work.reserve(control_work_max);
+	pm->age_work.reserve(age_work_max);
 }
 
 void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *lib, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size) {
