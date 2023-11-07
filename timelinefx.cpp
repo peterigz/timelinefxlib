@@ -6399,10 +6399,6 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 		if (context == tfxEndEmitter) {
 			InitialiseUninitialisedGraphs(&effect_stack.back());
 			UpdateEffectMaxLife(&effect_stack.back());
-#ifdef tfxTRACK_MEMORY
-			tfx_vector_t<tfx_effect_emitter_t> &sub_effectors = effect_stack.parent().GetEffectInfo(this)->sub_effectors;
-			memcpy(sub_effectors.name, "emitter_sub_effects\0", 20);
-#endif
 			if (effect_stack.back().property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 				lib->emitter_properties.image_handle[effect_stack.back().property_index] = { .5f, .5f };
 			}
@@ -6414,10 +6410,6 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 		if (context == tfxEndEffect) {
 			ReIndexEffect(&effect_stack.back());
 			if (effect_stack.size() > 1) {
-#ifdef tfxTRACK_MEMORY
-				tfx_vector_t<tfx_effect_emitter_t> &sub_effectors = effect_stack.parent().GetEffectInfo(this)->sub_effectors;
-				memcpy(sub_effectors.name, "effect_sub_emitters\0", 20);
-#endif
 				if (effect_stack.parent().type == tfxStage && GetEffectInfo(&effect_stack.parent())->sub_effectors.size() == 0) {
 					tfxEffectPropertyFlags tmp = effect_stack.parent().property_flags;
 					if (Is3DEffect(&effect_stack.back())) {
@@ -7707,11 +7699,7 @@ void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index) {
 		pm->free_particle_lists.At(pm->emitters.path_hash[index]).push_back(pm->emitters.particles_index[index]);
 	}
 	else {
-#ifdef tfxTRACK_MEMORY
-		tfx_vector_t<tfxU32> new_indexes(tfxCONSTRUCTOR_VEC_INIT("FreeParticleBanks::new_indexes"));
-#else
 		tfx_vector_t<tfxU32> new_indexes;
-#endif
 		new_indexes.push_back(pm->emitters.particles_index[index]);
 		pm->free_particle_lists.Insert(pm->emitters.path_hash[index], new_indexes);
 	}
@@ -7952,9 +7940,10 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				}
 			}
 
-			tfxCompleteAllWork(&pm->work_queue);
-			pm->age_work.clear();
 		}
+
+		tfxCompleteAllWork(&pm->work_queue);
+		pm->age_work.clear();
 	}
 
 	//Todo work queue this for each layer
@@ -9066,10 +9055,6 @@ void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on) {
 				FreeSoABuffer(&pm->sprite_buffer[1][layer]);
 			}
 
-#ifdef tfxTRACK_MEMORY
-			memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
-#endif
-
 			if (pm->flags & tfxEffectManagerFlags_2d_and_3d) {
 				InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((pm->max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_both, true);
 				if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
@@ -9183,11 +9168,6 @@ void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *lib, 
 
 	for (tfxEachLayer) {
 		pm->max_cpu_particles_per_layer[layer] = layer_max_values[layer];
-
-#ifdef tfxTRACK_MEMORY
-		memcpy(sprites2d[layer].name, "ParticleManager::sprites2d\0", 27);
-		memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
-#endif
 
 		InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, tfxDataWidth * 2), tfxSpriteBufferMode_both);
 		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
@@ -12623,10 +12603,6 @@ void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library
 	for (tfxEachLayer) {
 		pm->max_cpu_particles_per_layer[layer] = layer_max_values[layer];
 
-#ifdef tfxTRACK_MEMORY
-		memcpy(sprites3d[layer].name, "ParticleManager::sprites3d\0", 27);
-#endif
-
 		InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d);
 		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
 			InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d);
@@ -12695,10 +12671,6 @@ void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library
 
 	for (tfxEachLayer) {
 		pm->max_cpu_particles_per_layer[layer] = layer_max_values[layer];
-
-#ifdef tfxTRACK_MEMORY
-		memcpy(sprites2d[layer].name, "ParticleManager::sprites2d\0", 27);
-#endif
 
 		InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d);
 		if (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) {
