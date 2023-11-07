@@ -7783,10 +7783,11 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			spawn_work_entry->amount_to_spawn = 0;
 			spawn_work_entry->end_index = 0;
 			spawn_work_entry->highest_particle_age = 0;
+			spawn_work_entry->pm = pm;
 
 			float &timeout_counter = pm->emitters.timeout_counter[current_index];
 
-			UpdatePMEmitter(pm, spawn_work_entry);
+			UpdatePMEmitter(&pm->work_queue, spawn_work_entry);
 			if (timeout_counter <= pm->emitters.timeout[current_index]) {
 				pm->emitters_in_use[depth][next_buffer].push_back(current_index);
 			}
@@ -9549,9 +9550,12 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 	state_flags &= ~tfxEffectStateFlags_no_tween_this_update;
 }
 
-void UpdatePMEmitter(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *spawn_work_entry) {
+void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfxPROFILE;
+	tfx_spawn_work_entry_t *spawn_work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfxU32 index = spawn_work_entry->emitter_index;
+
+	tfx_particle_manager_t *pm = spawn_work_entry->pm;
 
 	const tfxU32 parent_index = pm->emitters.parent_index[index];
 	const tfxU32 property_index = pm->emitters.properties_index[index];
@@ -9654,13 +9658,15 @@ void UpdatePMEmitter(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *spawn_w
 		sprites_index = pm->sprite_index_point[layer];
 		pm->sprite_index_point[layer] += sprites_count;
 
+		spawn_work_entry->max_spawn_count = max_spawn_count;
+
 		if (state_flags & tfxEmitterStateFlags_is_sub_emitter) {
 			if (age > 0 && !(pm->flags & tfxEffectManagerFlags_disable_spawning))
-				amount_spawned = SpawnParticles3d(pm, spawn_work_entry, max_spawn_count);
+				amount_spawned = SpawnParticles3d(&pm->work_queue, spawn_work_entry);
 		}
 		else {
 			if (!(pm->flags & tfxEffectManagerFlags_disable_spawning))
-				amount_spawned = SpawnParticles3d(pm, spawn_work_entry, max_spawn_count);
+				amount_spawned = SpawnParticles3d(&pm->work_queue, spawn_work_entry);
 		}
 
 		sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
@@ -9967,7 +9973,9 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 	return work_entry->amount_to_spawn;
 }
 
-tfxU32 SpawnParticles3d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work_entry, tfxU32 max_spawn_count) {
+tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
+	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
+	tfx_particle_manager_t *pm = work_entry->pm;
 	const tfx_emitter_properties_soa_t &properties = *work_entry->properties;
 	const tfxEmitterStateFlags state_flags = pm->emitters.state_flags[work_entry->emitter_index];
 	const tfxEmitterStateFlags parent_state_flags = pm->emitters.state_flags[work_entry->emitter_index];
@@ -9997,12 +10005,11 @@ tfxU32 SpawnParticles3d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		tween -= spawn_quantity;
 	}
 
-	work_entry->pm = pm;
 	work_entry->tween = tween;
-	work_entry->max_spawn_count = max_spawn_count;
 	work_entry->qty_step_size = step_size;
 	work_entry->amount_to_spawn = 0;
 	work_entry->particle_data = &pm->particle_arrays[particles_index];
+	work_entry->property_flags = property_flags;
 
 	if (tween >= 1) {
 		amount_remainder = tween - 1.f;
@@ -10010,8 +10017,8 @@ tfxU32 SpawnParticles3d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 	else if (!(property_flags & tfxEmitterPropertyFlags_single)) {
 		float amount_that_will_spawn = (1.f - tween) / step_size;
 		work_entry->amount_to_spawn = (tfxU32)std::ceilf(amount_that_will_spawn);
-		if (work_entry->amount_to_spawn > max_spawn_count) {
-			work_entry->amount_to_spawn = max_spawn_count;
+		if (work_entry->amount_to_spawn > work_entry->max_spawn_count) {
+			work_entry->amount_to_spawn = work_entry->max_spawn_count;
 			amount_remainder = 0.f;
 		}
 		else {
@@ -10042,90 +10049,52 @@ tfxU32 SpawnParticles3d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 			pm->depth_indexes[layer][pm->current_depth_index_buffer][bank.depth_index[i]].particle_id = MakeParticleID(particles_index, i);
 		}
 	}
-	tfx_emission_type &emission_type = properties.emission_type[property_index];
+	work_entry->emission_type = properties.emission_type[property_index];
 
-	if (!(pm->flags & tfxEffectManagerFlags_update_age_only) && !(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-		if (work_entry->amount_to_spawn > 0) {
-			if (emission_type == tfxPoint) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticlePoint3d);
-			}
-			else if (emission_type == tfxArea) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleArea3d);
-			}
-			else if (emission_type == tfxEllipse) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleEllipse3d);
-			}
-			else if (emission_type == tfxLine) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleLine3d);
-			}
-			else if (emission_type == tfxCylinder) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleCylinder3d);
-			}
-			else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleIcosphereRandom3d);
-			}
-			else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleIcosphere3d);
-			}
-
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleWeight);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleVelocity);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleRoll);
-			//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threadsrandom.Advance();
-			//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
-			//fine and is stable
-			//Another idea: We could split this into 2 functions where where we push all the above spawn functions to the queue for all emitters, then in the second function
-			//we do all of the micro updates for all particles
-			tfxCompleteAllWork(&pm->work_queue);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleMicroUpdate3d);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleAge);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleNoise);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleImageFrame);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleSize3d);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleSpin3d);
-		}
-	}
-	else if (!(pm->flags & tfxEffectManagerFlags_update_age_only)) {
-		SpawnParticleAge(&pm->work_queue, work_entry);
-		if (emission_type == tfxPoint) {
-			SpawnParticlePoint3d(&pm->work_queue, work_entry);
-		}
-		else if (emission_type == tfxArea) {
-			SpawnParticleArea3d(&pm->work_queue, work_entry);
-		}
-		else if (emission_type == tfxEllipse) {
-			SpawnParticleEllipse3d(&pm->work_queue, work_entry);
-		}
-		else if (emission_type == tfxLine) {
-			SpawnParticleLine3d(&pm->work_queue, work_entry);
-		}
-		else if (emission_type == tfxIcosphere && property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-			SpawnParticleIcosphereRandom3d(&pm->work_queue, work_entry);
-		}
-		else if (emission_type == tfxIcosphere && !(property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
-			SpawnParticleIcosphere3d(&pm->work_queue, work_entry);
-		}
-		else if (emission_type == tfxCylinder) {
-			SpawnParticleCylinder3d(&pm->work_queue, work_entry);
-		}
-
-		SpawnParticleWeight(&pm->work_queue, work_entry);
-		SpawnParticleVelocity(&pm->work_queue, work_entry);
-		SpawnParticleRoll(&pm->work_queue, work_entry);
-		SpawnParticleMicroUpdate3d(&pm->work_queue, work_entry);
-		SpawnParticleNoise(&pm->work_queue, work_entry);
-		SpawnParticleImageFrame(&pm->work_queue, work_entry);
-		SpawnParticleSize3d(&pm->work_queue, work_entry);
-		SpawnParticleSpin3d(&pm->work_queue, work_entry);
-	}
-	else {
-		SpawnParticleAge(&pm->work_queue, work_entry);
+	if (work_entry->amount_to_spawn > 0) {
+		tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork);
 	}
 
 	if (work_entry->amount_to_spawn > 0 && property_flags & tfxEmitterPropertyFlags_single)
 		pm->emitters.state_flags[work_entry->emitter_index] |= tfxEmitterStateFlags_single_shot_done;
 
 	return work_entry->amount_to_spawn;
+}
+
+void DoSpawnWork(tfx_work_queue_t *queue, void *data) {
+	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
+	tfx_particle_manager_t *pm = work_entry->pm;
+	SpawnParticleAge(&pm->work_queue, work_entry);
+	if (work_entry->emission_type == tfxPoint) {
+		SpawnParticlePoint3d(&pm->work_queue, work_entry);
+	}
+	else if (work_entry->emission_type == tfxArea) {
+		SpawnParticleArea3d(&pm->work_queue, work_entry);
+	}
+	else if (work_entry->emission_type == tfxEllipse) {
+		SpawnParticleEllipse3d(&pm->work_queue, work_entry);
+	}
+	else if (work_entry->emission_type == tfxLine) {
+		SpawnParticleLine3d(&pm->work_queue, work_entry);
+	}
+	else if (work_entry->emission_type == tfxIcosphere && work_entry->property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
+		SpawnParticleIcosphereRandom3d(&pm->work_queue, work_entry);
+	}
+	else if (work_entry->emission_type == tfxIcosphere && !(work_entry->property_flags & tfxEmitterPropertyFlags_grid_spawn_random)) {
+		SpawnParticleIcosphere3d(&pm->work_queue, work_entry);
+	}
+	else if (work_entry->emission_type == tfxCylinder) {
+		SpawnParticleCylinder3d(&pm->work_queue, work_entry);
+	}
+
+	SpawnParticleWeight(&pm->work_queue, work_entry);
+	SpawnParticleVelocity(&pm->work_queue, work_entry);
+	SpawnParticleRoll(&pm->work_queue, work_entry);
+	SpawnParticleMicroUpdate3d(&pm->work_queue, work_entry);
+	SpawnParticleNoise(&pm->work_queue, work_entry);
+	SpawnParticleImageFrame(&pm->work_queue, work_entry);
+	SpawnParticleSize3d(&pm->work_queue, work_entry);
+	SpawnParticleSpin3d(&pm->work_queue, work_entry);
 }
 
 void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {

@@ -3418,7 +3418,10 @@ tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
 }
 
 tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data, tfxWorkQueueCallback call_back) {
-	assert(tfxNumberOfThreadsInAdditionToMain > 0);		//This should never be called if there is only a main thread
+	if (!tfxNumberOfThreadsInAdditionToMain) {
+		call_back(queue, data);
+		return;
+	}
 
 	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 	while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
@@ -4947,6 +4950,8 @@ struct tfx_spawn_work_entry_t {
 	tfx_particle_manager_t *pm;
 	tfx_emitter_properties_soa_t *properties;
 	tfxU32 emitter_index;
+	tfx_emission_type emission_type;
+	tfxEmitterPropertyFlags property_flags;
 	tfx_particle_soa_t *particle_data;
 	tfx_vector_t<tfx_effect_emitter_t> *sub_effects;
 	tfxU32 seed;
@@ -6496,7 +6501,7 @@ tfxINTERNAL tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_li
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
-tfxINTERNAL void UpdatePMEmitter(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *spawn_work_entry);
+tfxINTERNAL void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, tfx_emitter_properties_soa_t *properties);
 tfxINTERNAL void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index);
@@ -6519,7 +6524,9 @@ tfxINTERNAL void SpawnParticleAge(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleSize2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleSpin2d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL tfxU32 SpawnParticles3d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *spawn_work_entry, tfxU32 max_spawn_count);
+tfxINTERNAL void DoSpawnWork(tfx_work_queue_t *queue, void *data);
+
+tfxINTERNAL tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data);
