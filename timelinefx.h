@@ -3,7 +3,7 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_OUTPUT_NOTICE_MESSAGES
-//#define tfxUSEAVX
+#define tfxUSEAVX
 
 /*
 	Timeline FX C++ library
@@ -4596,6 +4596,7 @@ struct tfx_emitter_soa_t {
 	tfx_vec2_t *image_size;
 	tfx_vec3_t *angle_offsets;
 
+	//Containers
 };
 
 struct tfx_effect_soa_t {
@@ -4950,6 +4951,7 @@ struct tfx_spawn_work_entry_t {
 	tfx_particle_manager_t *pm;
 	tfx_emitter_properties_soa_t *properties;
 	tfxU32 emitter_index;
+	tfxU32 parent_index;
 	tfx_emission_type emission_type;
 	tfxEmitterPropertyFlags property_flags;
 	tfx_particle_soa_t *particle_data;
@@ -6503,6 +6505,14 @@ tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *lo
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, tfx_emitter_properties_soa_t *properties);
+tfxINTERNAL void UpdateEmitterStateSize(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void UpdateEmitterStatePosition(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void UpdateEmitterStateProperties(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void UpdateEmitterStateSpin(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void UpdateEmitterStateSpawnPosition(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void UpdateEmitterStateLife(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void UpdateEmitterStateLife(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL void UpdateEmitterStateSpawnQuantity(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index);
 
@@ -7099,6 +7109,20 @@ Get the current particle count for a particle manager
 * @returns tfxU32				The total number of particles currently being updated
 */
 tfxU32 ParticleCount(tfx_particle_manager_t *pm);
+
+/*
+Get the current number of effects that are currently being updated by a particle manager
+* @param pm						A pointer to an tfx_particle_manager_t
+* @returns tfxU32				The total number of effects currently being updated
+*/
+tfxU32 EffectCount(tfx_particle_manager_t *pm);
+
+/*
+Get the current number of emitters that are currently being updated by a particle manager
+* @param pm						A pointer to an tfx_particle_manager_t
+* @returns tfxU32				The total number of emitters currently being updated
+*/
+tfxU32 EmitterCount(tfx_particle_manager_t *pm);
 
 /*
 Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
@@ -8093,12 +8117,12 @@ Interpolate all sprite transform data in a single function. This will interpolat
 * @param captured			The captured transform struct of the sprite
 * @returns tfx_wide_lerp_transform_result_t			The interpolated transform data in a tfx_wide_lerp_transform_result_t
 */
-tfxAPI inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const tfxWideFloat *tween, const tfx_sprite_transform3d_t *current, const tfx_sprite_transform3d_t *captured) {
+tfxAPI inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const __m128 *tween, const tfx_sprite_transform3d_t *current, const tfx_sprite_transform3d_t *captured) {
 	__m128 to1 = _mm_load_ps(&current->position.x);
 	__m128 from1 = _mm_load_ps(&captured->position.x);
 	__m128 to2 = _mm_load_ps(&current->rotations.y);
 	__m128 from2 = _mm_load_ps(&captured->rotations.y);
-	__m128 one_minus_tween = _mm_sub_ps(tfxWIDEONE, *tween);
+	__m128 one_minus_tween = _mm_sub_ps(_mm_set1_ps(1.f), *tween);
 	__m128 to_lerp1 = _mm_mul_ps(to1, *tween);
 	__m128 from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
 	__m128 result = _mm_add_ps(from_lerp1, to_lerp1);

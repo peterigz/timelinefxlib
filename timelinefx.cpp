@@ -9397,6 +9397,22 @@ tfxU32 ParticleCount(tfx_particle_manager_t *pm) {
 	return count;
 }
 
+tfxU32 EffectCount(tfx_particle_manager_t *pm) {
+	tfxU32 count = 0;
+	for (int d = 0; d != tfxMAXDEPTH; ++d) {
+		count += pm->effects_in_use[d][pm->current_ebuff].current_size;
+	}
+	return count;
+}
+
+tfxU32 EmitterCount(tfx_particle_manager_t *pm) {
+	tfxU32 count = 0;
+	for (int d = 0; d != tfxMAXDEPTH; ++d) {
+		count += pm->emitters_in_use[d][pm->current_ebuff].current_size;
+	}
+	return count;
+}
+
 tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, tfxU32 reserve_amount) {
 	if (pm->free_particle_lists.ValidKey(emitter_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter_hash);
@@ -11813,34 +11829,13 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
-void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
-	tfxPROFILE;
+void UpdateEmitterStateSize(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
 	tfx_library_t *library = pm->library;
-	tfx_emitter_properties_soa_t &properties = library->emitter_properties;
-
-	const float frame = pm->emitters.frame[index];
-	const float age = pm->emitters.age[index];
-	const tfxU32 global_attributes = pm->effects.global_attributes[parent_index];
 	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
-	const tfxU32 transform_attributes = pm->emitters.transform_attributes[index];
-	const tfxU32 property_index = pm->emitters.properties_index[index];
 	const tfxEmitterPropertyFlags property_flags = pm->emitters.property_flags[index];
 	const tfxEmitterPropertyFlags parent_property_flags = pm->effects.property_flags[parent_index];
-	tfx_vec3_t &translation = pm->emitters.translation[index];
-	tfx_vec3_t &local_rotations = pm->emitters.local_rotations[index];
-	tfx_vec3_t &scale = pm->emitters.scale[index];
-	tfx_vec3_t &handle = pm->emitters.handle[index];
-	tfx_vec3_t &emitter_size = pm->emitters.emitter_size[index];
-	float &overal_scale = pm->emitters.overal_scale[index];
-	float &velocity_adjuster = pm->emitters.velocity_adjuster[index];
-	float &stretch = pm->emitters.stretch[index];
-	float &intensity = pm->emitters.intensity[index];
-	float &spawn_quantity = pm->emitters.spawn_quantity[index];
+	const float frame = pm->emitters.frame[index];
 
-	tfx_vec3_t &parent_scale = pm->effects.scale[parent_index];
-
-	pm->emitters.life[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].base.life, frame) * parent_spawn_controls->life;
-	pm->emitters.life_variation[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.life, frame) * parent_spawn_controls->life;
 	if (!(property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
 		pm->emitters.size[index].x = lookup_callback(&library->emitter_attributes[emitter_attributes].base.width, frame) * parent_spawn_controls->size_x;
 		pm->emitters.size[index].y = lookup_callback(&library->emitter_attributes[emitter_attributes].base.height, frame) * parent_spawn_controls->size_y;
@@ -11855,40 +11850,40 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 	}
 	pm->emitters.size_variation[index].x = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.width, frame) * parent_spawn_controls->size_x;
 	pm->emitters.size_variation[index].y = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.height, frame) * parent_spawn_controls->size_y;
+	pm->emitters.overal_scale[index] = pm->effects.overal_scale[parent_index];
+
+	pm->emitters.scale[index] = pm->effects.scale[parent_index];
+}
+
+void UpdateEmitterStatePosition(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+	tfx_library_t *library = pm->library;
+	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
+	const tfxEmitterPropertyFlags property_flags = pm->emitters.property_flags[index];
+	const tfxEmitterPropertyFlags parent_property_flags = pm->effects.property_flags[parent_index];
+	const float frame = pm->emitters.frame[index];
+
 	pm->emitters.velocity[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].base.velocity, frame) * parent_spawn_controls->velocity;
 	pm->emitters.velocity_variation[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.velocity, frame) * parent_spawn_controls->velocity;
-	pm->emitters.spin[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].base.spin, frame) * parent_spawn_controls->spin;
-	pm->emitters.spin_variation[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.spin, frame) * parent_spawn_controls->spin;
-	pm->emitters.splatter[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].properties.splatter, frame) * parent_spawn_controls->splatter;
 	pm->emitters.weight[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].base.weight, frame) * parent_spawn_controls->weight;
 	pm->emitters.weight_variation[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.weight, frame) * parent_spawn_controls->weight;
 	pm->emitters.noise_offset_variation[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.noise_offset, frame);
 	pm->emitters.noise_offset[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].base.noise_offset, frame);
 	pm->emitters.noise_resolution[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.noise_resolution, frame);
+	pm->emitters.velocity_adjuster[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster, frame);
+	pm->emitters.stretch[index] = pm->effects.stretch[parent_index];
+}
 
-	translation.x = lookup_callback(&library->transform_attributes[transform_attributes].translation_x, frame);
-	translation.y = lookup_callback(&library->transform_attributes[transform_attributes].translation_y, frame);
-	translation.z = lookup_callback(&library->transform_attributes[transform_attributes].translation_z, frame);
-	overal_scale = pm->effects.overal_scale[parent_index];
-	local_rotations.roll = LookupPrecise(&library->transform_attributes[transform_attributes].roll, age);
-	local_rotations.pitch = LookupPrecise(&library->transform_attributes[transform_attributes].pitch, age);
-	local_rotations.yaw = LookupPrecise(&library->transform_attributes[transform_attributes].yaw, age);
-	velocity_adjuster = lookup_callback(&library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster, frame);
-	intensity = parent_spawn_controls->intensity;
-	stretch = pm->effects.stretch[parent_index];
-	scale = parent_scale;
-
-	if (!(property_flags & tfxEmitterPropertyFlags_single)) {
-		spawn_quantity = lookup_callback(&library->emitter_attributes[emitter_attributes].base.amount, frame);
-		float amount_variation = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.amount, frame);
-		spawn_quantity += amount_variation > 0.f ? RandomRange(&pm->random, 1.f, amount_variation) : 0.f;
-
-		spawn_quantity *= lookup_callback(&library->global_graphs[global_attributes].amount, frame);
-	}
-	else {
-		spawn_quantity = (float)properties.spawn_amount[property_index];
-		spawn_quantity *= lookup_callback(&library->global_graphs[global_attributes].amount, frame);
-	}
+void UpdateEmitterStateProperties(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+	tfx_library_t *library = pm->library;
+	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
+	const tfxEmitterPropertyFlags property_flags = pm->emitters.property_flags[index];
+	const float frame = pm->emitters.frame[index];
+	const float age = pm->emitters.age[index];
+	const tfxU32 property_index = pm->emitters.properties_index[index];
+	const tfxU32 transform_attributes = pm->emitters.transform_attributes[index];
+	tfx_emitter_properties_soa_t &properties = library->emitter_properties;
+	tfx_vec3_t &emitter_size = pm->emitters.emitter_size[index];
+	tfx_vec3_t &handle = pm->emitters.handle[index];
 
 	bool is_area = properties.emission_type[property_index] == tfxArea || properties.emission_type[property_index] == tfxEllipse || properties.emission_type[property_index] == tfxCylinder || properties.emission_type[property_index] == tfxIcosphere;
 
@@ -11904,6 +11899,10 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 	}
 
 	emitter_size *= pm->effects.emitter_size[parent_index];
+
+	pm->emitters.local_rotations[index].roll = LookupPrecise(&library->transform_attributes[transform_attributes].roll, age);
+	pm->emitters.local_rotations[index].pitch = LookupPrecise(&library->transform_attributes[transform_attributes].pitch, age);
+	pm->emitters.local_rotations[index].yaw = LookupPrecise(&library->transform_attributes[transform_attributes].yaw, age);
 
 	if (properties.emission_type[property_index] == tfxEllipse || properties.emission_type[property_index] == tfxCylinder) {
 		pm->emitters.arc_size[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].properties.arc_size, frame);
@@ -11951,6 +11950,79 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 				pm->emitters.grid_segment_size[index].y = emitter_size.y / (properties.grid_points[property_index].x - 1);
 		}
 	}
+}
+
+void UpdateEmitterStateSpin(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+	tfx_library_t *library = pm->library;
+	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
+	const float frame = pm->emitters.frame[index];
+
+	pm->emitters.spin[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].base.spin, frame) * parent_spawn_controls->spin;
+	pm->emitters.spin_variation[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.spin, frame) * parent_spawn_controls->spin;
+}
+
+void UpdateEmitterStateSpawnPosition(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+	tfx_library_t *library = pm->library;
+	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
+	const float frame = pm->emitters.frame[index];
+	const tfxU32 transform_attributes = pm->emitters.transform_attributes[index];
+
+	pm->emitters.splatter[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].properties.splatter, frame) * parent_spawn_controls->splatter;
+	pm->emitters.translation[index].x = lookup_callback(&library->transform_attributes[transform_attributes].translation_x, frame);
+	pm->emitters.translation[index].y = lookup_callback(&library->transform_attributes[transform_attributes].translation_y, frame);
+	pm->emitters.translation[index].z = lookup_callback(&library->transform_attributes[transform_attributes].translation_z, frame);
+}
+
+void UpdateEmitterStateLife(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+	tfx_library_t *library = pm->library;
+	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
+	const float frame = pm->emitters.frame[index];
+
+	pm->emitters.life[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].base.life, frame) * parent_spawn_controls->life;
+	pm->emitters.life_variation[index] = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.life, frame) * parent_spawn_controls->life;
+}
+
+void UpdateEmitterStateIntensity(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+	tfx_library_t *library = pm->library;
+	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
+	const float frame = pm->emitters.frame[index];
+
+	pm->emitters.intensity[index] = parent_spawn_controls->intensity;
+}
+
+void UpdateEmitterStateSpawnQuantity(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+	tfx_library_t *library = pm->library;
+	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
+	const float frame = pm->emitters.frame[index];
+	const tfxEmitterPropertyFlags property_flags = pm->emitters.property_flags[index];
+	const tfxU32 global_attributes = pm->effects.global_attributes[parent_index];
+	const tfxU32 property_index = pm->emitters.properties_index[index];
+	tfx_emitter_properties_soa_t &properties = library->emitter_properties;
+
+	float &spawn_quantity = pm->emitters.spawn_quantity[index];
+	if (!(property_flags & tfxEmitterPropertyFlags_single)) {
+		spawn_quantity = lookup_callback(&library->emitter_attributes[emitter_attributes].base.amount, frame);
+		float amount_variation = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.amount, frame);
+		spawn_quantity += amount_variation > 0.f ? RandomRange(&pm->random, 1.f, amount_variation) : 0.f;
+		spawn_quantity *= lookup_callback(&library->global_graphs[global_attributes].amount, frame);
+	}
+	else {
+		spawn_quantity = (float)properties.spawn_amount[property_index];
+		spawn_quantity *= lookup_callback(&library->global_graphs[global_attributes].amount, frame);
+	}
+}
+
+void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry) {
+	tfxPROFILE;
+
+	UpdateEmitterStateSize(pm, index, parent_index, parent_spawn_controls, entry);
+	UpdateEmitterStatePosition(pm, index, parent_index, parent_spawn_controls, entry);
+	UpdateEmitterStateProperties(pm, index, parent_index, parent_spawn_controls, entry);
+	UpdateEmitterStateSpin(pm, index, parent_index, parent_spawn_controls, entry);
+	UpdateEmitterStateSpawnPosition(pm, index, parent_index, parent_spawn_controls, entry);
+	UpdateEmitterStateLife(pm, index, parent_index, parent_spawn_controls, entry);
+	UpdateEmitterStateIntensity(pm, index, parent_index, parent_spawn_controls, entry);
+	UpdateEmitterStateSpawnQuantity(pm, index, parent_index, parent_spawn_controls, entry);
 
 	//if (e.update_emitter_callback)
 		//e.update_emitter_callback(pm.emitters, index);
