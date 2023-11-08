@@ -4562,8 +4562,8 @@ struct tfx_emitter_soa_t {
 	tfxKey *path_hash;
 
 	//Spawn controls
-	float *life;
-	float *life_variation;
+	//float *life;
+	//float *life_variation;
 	float *arc_size;
 	float *arc_offset;
 	float *weight;
@@ -4950,6 +4950,7 @@ struct tfx_particle_frame_t {
 struct tfx_spawn_work_entry_t {
 	tfx_particle_manager_t *pm;
 	tfx_emitter_properties_soa_t *properties;
+	tfx_parent_spawn_controls_t *parent_spawn_controls;
 	tfxU32 emitter_index;
 	tfxU32 parent_index;
 	tfx_emission_type emission_type;
