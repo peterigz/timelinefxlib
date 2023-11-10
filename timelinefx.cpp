@@ -8579,7 +8579,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		else {
 			if (start_diff == 0 && limit_index == tfxDataWidth) {
 				tfxWideStore(&sprites.stretch[running_sprite_index], p_stretch.m);
-				tfxWideStorei((tfxWideInt*)&sprites.alignment[running_sprite_index++], packed.m);
+				tfxWideStorei((tfxWideInt*)&sprites.alignment[running_sprite_index], packed.m);
 				running_sprite_index += tfxDataWidth;
 			}
 			else {
