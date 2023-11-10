@@ -1416,6 +1416,7 @@ typedef __m256i tfxWideInt;
 #define tfxWideSubi _mm256_sub_epi32
 #define tfxWideMuli _mm256_mul_epi32
 #define tfxWideSqrt _mm256_sqrt_ps
+#define tfxWideMoveMask _mm256_movemask_epi8
 #define tfxWideShiftRight _mm256_srli_epi32
 #define tfxWideShiftLeft _mm256_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GE_OS)
@@ -1493,6 +1494,7 @@ typedef __m128i tfxWideInt;
 #define tfxWideSubi _mm_sub_epi32
 #define tfxWideMuli _mm_mul_epu32
 #define tfxWideSqrt _mm_sqrt_ps
+#define tfxWideMoveMask _mm_movemask_epi8
 #define tfxWideShiftRight _mm_srli_epi32
 #define tfxWideShiftLeft _mm_slli_epi32
 #define tfxWideGreaterEqual(v1, v2) _mm_cmpge_ps(v1, v2)
@@ -1579,7 +1581,7 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
 	//__m128i v1 = _mm_cmpeq_epi32(v0, v0);
 	//__m128i ji = _mm_srli_epi32(v1, 25);
 	//__m128 j = *(__m128*)&_mm_slli_epi32(ji, 23); //create vector 1.0f
-	//I'm not entirely sure why original code had above lines to create a vector of 1.f. It seems to me that the below works fine
+	//I'm not entirely sure why original code had above lines to create a vector of 1.f. It seems to me that the below works fine 
 	//Worth noting that we only need to floor small numbers for the noise algorithm so can get away with this function.
 	__m128 j = _mm_set1_ps(1.f); //create vector 1.0f
 	__m128i i = _mm_cvttps_epi32(x);
@@ -4750,15 +4752,15 @@ struct tfx_frame_meta_t {
 //InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
 //3d in one struct like this as it makes it a lot easier to use the same control functions where we can.
 struct tfx_sprite_soa_t {	//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
-	tfxU32 *property_indexes;				//The image frame of animation index packed with alignment option flag and property_index
-	tfxU32 *captured_index;					//The index of the sprite in the previous frame so that it can be looked up and interpolated with
-	tfx_unique_sprite_id_t *uid;					//Unique particle id of the sprite, only used when recording sprite data
+	tfxU32 *property_indexes;					//The image frame of animation index packed with alignment option flag and property_index
+	tfxU32 *captured_index;						//The index of the sprite in the previous frame so that it can be looked up and interpolated with
+	tfx_unique_sprite_id_t *uid;				//Unique particle id of the sprite, only used when recording sprite data
 	tfx_sprite_transform3d_t *transform_3d;		//Transform data for 3d sprites
 	tfx_sprite_transform2d_t *transform_2d;		//Transform data for 2d sprites
-	tfxU32 *alignment;						//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over or 2 packed 16bit floats for 2d
-	tfx_rgba8_t *color;						//The color tint of the sprite and blend factor in alpha channel
-	float *stretch;							//Multiplier for how much the particle is stretched in the shader (3d only)	
-	float *intensity;						//The multiplier for the sprite color
+	tfxU32 *alignment;							//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over or 2 packed 16bit floats for 2d
+	tfx_rgba8_t *color;							//The color tint of the sprite and blend factor in alpha channel
+	float *stretch;								//Multiplier for how much the particle is stretched in the shader (3d only)	
+	float *intensity;							//The multiplier for the sprite color
 };
 
 enum tfxSpriteBufferMode {

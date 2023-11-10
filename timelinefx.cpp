@@ -8361,6 +8361,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
+				sprites.alignment[sprite_depth_index] = packed.a[j];
 				sprites.stretch[sprite_depth_index] = p_stretch.a[j];
 				sprites.transform_3d[sprite_depth_index].rotations.x = rotations_x.a[j];
 				sprites.transform_3d[sprite_depth_index].rotations.y = rotations_y.a[j];
@@ -8368,7 +8369,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 				sprites.transform_3d[sprite_depth_index].position.x = position_x.a[j];
 				sprites.transform_3d[sprite_depth_index].position.y = position_y.a[j];
 				sprites.transform_3d[sprite_depth_index].position.z = position_z.a[j];
-				sprites.alignment[sprite_depth_index] = packed.a[j];
 				bank.captured_position_x[index + j] = sprites.transform_3d[sprite_depth_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform_3d[sprite_depth_index].position.y;
 				bank.captured_position_z[index + j] = sprites.transform_3d[sprite_depth_index].position.z;
@@ -8380,13 +8380,13 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.stretch[running_sprite_index] = p_stretch.a[j];
+				sprites.alignment[running_sprite_index] = packed.a[j];
 				sprites.transform_3d[running_sprite_index].rotations.x = rotations_x.a[j];
 				sprites.transform_3d[running_sprite_index].rotations.y = rotations_y.a[j];
 				sprites.transform_3d[running_sprite_index].rotations.z = rotations_z.a[j];
 				sprites.transform_3d[running_sprite_index].position.x = position_x.a[j];
 				sprites.transform_3d[running_sprite_index].position.y = position_y.a[j];
 				sprites.transform_3d[running_sprite_index].position.z = position_z.a[j];
-				sprites.alignment[running_sprite_index] = packed.a[j];
 				bank.captured_position_x[index + j] = sprites.transform_3d[running_sprite_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform_3d[running_sprite_index].position.y;
 				bank.captured_position_z[index + j] = sprites.transform_3d[running_sprite_index].position.z;
@@ -8577,9 +8577,16 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+			if (start_diff == 0 && limit_index == tfxDataWidth) {
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					tfxWideStore(&sprites.stretch[running_sprite_index], p_stretch.m);
+					tfxWideStorei((tfxWideInt*)&sprites.alignment[running_sprite_index++], packed.m);
+				}
+			}
+			else {
 				sprites.stretch[running_sprite_index] = p_stretch.a[j];
-				sprites.alignment[running_sprite_index++] = packed.a[j];
+				sprites.alignment[running_sprite_index] = packed.a[j];
+				running_sprite_index += tfxDataWidth;
 			}
 		}
 		start_diff = 0;
@@ -8884,9 +8891,15 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.color[running_sprite_index].color = packed_color.a[j];
-				sprites.intensity[running_sprite_index++] = wide_intensity.a[j];
+			if (start_diff == 0 && limit_index == tfxDataWidth) {
+				tfxWideStorei((tfxWideInt*)&sprites.color[running_sprite_index].color, packed_color.m);
+				tfxWideStore(&sprites.intensity[running_sprite_index], wide_intensity.m);
+				running_sprite_index += tfxDataWidth;
+			} else {
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					sprites.color[running_sprite_index].color = packed_color.a[j];
+					sprites.intensity[running_sprite_index++] = wide_intensity.a[j];
+				}
 			}
 		}
 		start_diff = 0;
