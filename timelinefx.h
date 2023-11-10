@@ -4751,7 +4751,7 @@ struct tfx_frame_meta_t {
 //This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
 //InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
 //3d in one struct like this as it makes it a lot easier to use the same control functions where we can.
-struct tfx_sprite_soa_t {	//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
+struct tfx_sprite_soa_t {						//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
 	tfxU32 *property_indexes;					//The image frame of animation index packed with alignment option flag and property_index
 	tfxU32 *captured_index;						//The index of the sprite in the previous frame so that it can be looked up and interpolated with
 	tfx_unique_sprite_id_t *uid;				//Unique particle id of the sprite, only used when recording sprite data

@@ -8578,15 +8578,15 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			if (start_diff == 0 && limit_index == tfxDataWidth) {
-				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-					tfxWideStore(&sprites.stretch[running_sprite_index], p_stretch.m);
-					tfxWideStorei((tfxWideInt*)&sprites.alignment[running_sprite_index++], packed.m);
-				}
+				tfxWideStore(&sprites.stretch[running_sprite_index], p_stretch.m);
+				tfxWideStorei((tfxWideInt*)&sprites.alignment[running_sprite_index++], packed.m);
+				running_sprite_index += tfxDataWidth;
 			}
 			else {
-				sprites.stretch[running_sprite_index] = p_stretch.a[j];
-				sprites.alignment[running_sprite_index] = packed.a[j];
-				running_sprite_index += tfxDataWidth;
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					sprites.stretch[running_sprite_index] = p_stretch.a[j];
+					sprites.alignment[running_sprite_index++] = packed.a[j];
+				}
 			}
 		}
 		start_diff = 0;
