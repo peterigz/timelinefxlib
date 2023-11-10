@@ -4909,7 +4909,13 @@ void ResetGraph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_n
 		SetNodeCurveInitialised(node);
 	}
 	else if (add_node) {
-		AddGraphNode(graph, 0.f, v);
+		if (preset == tfxWeightOvertimePreset) {
+			AddGraphNode(graph, 0.f, 0.f, 0);
+			tfx_attribute_node_t *node = AddGraphNode(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
+			SetNodeCurveInitialised(node);
+		} else {
+			AddGraphNode(graph, 0.f, v);
+		}
 	}
 	switch (preset) {
 	case tfx_graph_preset::tfxGlobalPercentPreset:
