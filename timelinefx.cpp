@@ -10587,9 +10587,8 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 	const tfx_vec3_t handle = pm.emitters.handle[emitter_index];
 	const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 	const tfx_vec3_t &grid_points = properties.grid_points[property_index];
-	const tfx_vec2_t emitter_size = pm.emitters.emitter_size[emitter_index].xy();
-	const float grid_segment_size_x = emitter_size.x / (grid_points.x - 1);
-	const float grid_segment_size_y = emitter_size.y / (grid_points.y - 1);
+	const float emitter_size = pm.emitters.emitter_size[emitter_index].y;
+	const float grid_segment_size_y = emitter_size / (grid_points.x - 1);
 	tfx_vec3_t &grid_coords = pm.emitters.grid_coords[emitter_index];
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -10611,7 +10610,6 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 				}
 			}
 
-			local_position_x = grid_coords.x * -grid_segment_size_x;
 			local_position_y = grid_coords.y * -grid_segment_size_y;
 
 			if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
@@ -10624,7 +10622,7 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			local_position_x = 0.f;
-			local_position_y = RandomRange(&random, -emitter_size.y, 0.f);
+			local_position_y = RandomRange(&random, -emitter_size, 0.f);
 
 		}
 
@@ -10657,10 +10655,8 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 	const tfx_vec3_t handle = pm.emitters.handle[emitter_index];
 	const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 	const tfx_vec3_t &grid_points = properties.grid_points[property_index];
-	const tfx_vec3_t emitter_size = pm.emitters.emitter_size[emitter_index];
-	const float grid_segment_size_x = emitter_size.x / (grid_points.x - 1);
-	const float grid_segment_size_y = emitter_size.y / (grid_points.y - 1);
-	const float grid_segment_size_z = emitter_size.z / (grid_points.z - 1);
+	const float emitter_size = pm.emitters.emitter_size[emitter_index].y;
+	const float grid_segment_size_y = emitter_size / (grid_points.x - 1);
 	tfx_vec3_t &grid_coords = pm.emitters.grid_coords[emitter_index];
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -10679,9 +10675,7 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 
 			if (property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 				grid_coords.y = (float)RandomRange(&random, (tfxU32)grid_points.x);
-				local_position_x = grid_coords.x * grid_segment_size_x;
 				local_position_y = grid_coords.y * grid_segment_size_y;
-				local_position_z = grid_coords.z * grid_segment_size_z;
 			}
 			else {
 
@@ -10692,9 +10686,7 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 					}
 				}
 
-				local_position_x = grid_coords.x * grid_segment_size_x;
 				local_position_y = grid_coords.y * grid_segment_size_y;
-				local_position_z = grid_coords.z * grid_segment_size_z;
 
 				if (property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 					grid_coords.y++;
@@ -10706,9 +10698,7 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 
 		}
 		else {
-			local_position_x = 0.f;
-			local_position_y = RandomRange(&random, 0.f, emitter_size.y);
-			local_position_z = 0.f;
+			local_position_y = RandomRange(&random, 0.f, emitter_size);
 		}
 
 		//----TForm and Emission
