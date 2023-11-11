@@ -6741,6 +6741,7 @@ tfxINTERNAL void ResetParticlePtr(tfx_particle_manager_t *pm, void *ptr);
 tfxINTERNAL void ResetControllerPtr(tfx_particle_manager_t *pm, void *ptr);
 tfxINTERNAL void UpdateCompute(tfx_particle_manager_t *pm, void *sampled_particles, unsigned int sample_size = 100);
 tfxINTERNAL void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size);
+tfxINTERNAL bool ValidEffectID(tfx_particle_manager_t *pm, tfxEffectID id);
 
 //--------------------------------
 //Effect templates
@@ -7123,21 +7124,21 @@ tfxAPI bool PrepareEffectTemplate(tfx_library_t *library, const char *name, tfx_
 Add an effect to a tfx_particle_manager_t from an effect template
 * @param pm					A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 * @param effect_template	The tfx_effect_template_t object that you want to add to the particle manager. It must have already been prepared by calling PrepareEffectTemplate
-*
-* @return					Index of the effect after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
-							For example by calling SetEffectPosition
+* @param effect_id			pointer to a tfxEffectID of the effect which will be set after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
+							For example by calling SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
+  @returns					True if the effect was succesfully added.
 */
-tfxAPI tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect);
+tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect, tfxEffectID *effect_id);
 
 /*
 Add an effect to a tfx_particle_manager_t.
 * @param pm					A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 * @param effect				tfx_effect_emitter_t object that you want to add to the particle manager.
-*
-* @return					Index of the effect after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
-							For example by calling SetEffectPosition
+* @param effect_id			pointer to a tfxEffectID of the effect which will be set after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
+							For example by calling SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
+  @returns					True if the effect was succesfully added.
 */
-tfxAPI tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect);
+tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id);
 
 /*
 Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.

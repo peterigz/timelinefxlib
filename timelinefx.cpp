@@ -7497,12 +7497,14 @@ tfx_particle_manager_t::~tfx_particle_manager_t() {
 	FreeSoABuffer(&emitter_buffers);
 }
 
-tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect_template) {
-	return AddEffectToParticleManager(pm, &effect_template->effect, pm->current_ebuff, 0, false, 0.f);
+bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect_template, tfxEffectID *effect_id) {
+	*effect_id = AddEffectToParticleManager(pm, &effect_template->effect, pm->current_ebuff, 0, false, 0.f);
+	return *effect_id != tfxINVALID;
 }
 
-tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect) {
-	return AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0.f);
+bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id) {
+	*effect_id = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0.f);
+	return *effect_id != tfxINVALID;
 }
 
 tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning) {
@@ -12514,6 +12516,10 @@ void FreeSpriteData(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
+bool ValidEffectID(tfx_particle_manager_t *pm, tfxEffectID id) {
+	return  id != tfxINVALID && pm->effect_buffers.capacity > id;
+}
+
 void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
 	pm->random = NewRandom(tfx_Millisecs());
 	pm->max_effects = effects_limit;
@@ -12647,20 +12653,24 @@ void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *libra
 }
 
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	tfx_vec2_t position(x, y);
 	pm->effects.local_position[effect_index] = position;
 }
 
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec2_t position) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.local_position[effect_index] = position;
 }
 
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y, float z) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	tfx_vec3_t position(x, y, z);
 	pm->effects.local_position[effect_index] = position;
 }
 
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec3_t position) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.local_position[effect_index] = position;
 }
 
@@ -12680,90 +12690,110 @@ void SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationI
 }
 
 void MoveEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec3_t amount) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.local_position[effect_index] += amount;
 }
 
 void MoveEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y, float z) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.local_position[effect_index] += {x, y, z};
 }
 
 tfxAPI tfx_vec3_t GetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	return pm->effects.local_position[effect_index];
 }
 
 void SetEffectRotation(tfx_particle_manager_t *pm, tfxEffectID effect_index, float rotation) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.local_rotations[effect_index].roll = rotation;
 	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
 }
 
 void SetEffectRoll(tfx_particle_manager_t *pm, tfxEffectID effect_index, float roll) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.local_rotations[effect_index].roll = roll;
 	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
 }
 
 void SetEffectPitch(tfx_particle_manager_t *pm, tfxEffectID effect_index, float pitch) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.local_rotations[effect_index].pitch = pitch;
 	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
 }
 
 void SetEffectYaw(tfx_particle_manager_t *pm, tfxEffectID effect_index, float pitch) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.local_rotations[effect_index].pitch = pitch;
 	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
 }
 
 void SetEffectWidthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float width) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.emitter_size[effect_index].x = width;
 	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void SetEffectHeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float height) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.emitter_size[effect_index].y = height;
 	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void SetEffectDepthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float depth) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.emitter_size[effect_index].z = depth;
 	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void SetEffectLifeMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float life) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.spawn_controls[effect_index].life = life;
 }
 
 void SetEffectParticleWidthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float width) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.spawn_controls[effect_index].size_x = width;
 }
 
 void SetEffectParticleHeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float height) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.spawn_controls[effect_index].size_y = height;
 }
 
 void SetEffectVelocityMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float velocity) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.spawn_controls[effect_index].velocity = velocity;
 }
 
 void SetEffectSpinMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float spin) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.spawn_controls[effect_index].spin = spin;
 }
 
 void SetEffectIntensityMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float intensity) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.spawn_controls[effect_index].intensity = intensity;
 }
 
 void SetEffectSplatterMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float splatter) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.spawn_controls[effect_index].splatter = splatter;
 }
 
 void SetEffectWeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float weight) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.spawn_controls[effect_index].weight = weight;
 }
 
 void SetEffectOveralScale(tfx_particle_manager_t *pm, tfxEffectID effect_index, float overal_scale) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.overal_scale[effect_index] = overal_scale;
 	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_overal_scale;
 }
 
 void SetEffectBaseNoiseOffset(tfx_particle_manager_t *pm, tfxEffectID effect_index, float noise_offset) {
+	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	pm->effects.noise_base_offset[effect_index] = noise_offset;
 }
 
