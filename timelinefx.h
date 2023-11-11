@@ -2791,7 +2791,7 @@ inline void* GetEndOfBufferPtr(tfx_soa_buffer_t *buffer) {
 }
 
 //Get the amount of free space in the buffer
-inline tfxU32 FreeSpace(tfx_soa_buffer_t *buffer) {
+inline tfxU32 FreeSpriteBufferSpace(tfx_soa_buffer_t *buffer) {
 	return buffer->capacity - buffer->current_size;
 }
 
@@ -5111,6 +5111,7 @@ struct tfx_particle_manager_t {
 	//Banks of sprites for drawing in unordered mode
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
+	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 current_sprite_buffer;
 	tfxU32 current_depth_index_buffer;
 
@@ -6739,6 +6740,7 @@ tfxINTERNAL tfx_compute_particle_t *GrabComputeParticle(tfx_particle_manager_t *
 tfxINTERNAL void ResetParticlePtr(tfx_particle_manager_t *pm, void *ptr);
 tfxINTERNAL void ResetControllerPtr(tfx_particle_manager_t *pm, void *ptr);
 tfxINTERNAL void UpdateCompute(tfx_particle_manager_t *pm, void *sampled_particles, unsigned int sample_size = 100);
+tfxINTERNAL void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size);
 
 //--------------------------------
 //Effect templates
