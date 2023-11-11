@@ -3341,6 +3341,7 @@ enum tfxWorkQueueFlag_ {
 };
 
 extern int tfxNumberOfThreadsInAdditionToMain;
+extern bool tfxThreadUsage[];		//Used for debugging to see which threads were utilised each frame
 
 #ifndef tfxMAX_QUEUES
 #define tfxMAX_QUEUES 512
@@ -3480,6 +3481,7 @@ tfxINTERNAL inline bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queue
 			tfxNumberOfThreadsInAdditionToMain = threads_initialised;
 			return false;
 		}
+		threads_initialised++;
 	}
 	return true;
 }
