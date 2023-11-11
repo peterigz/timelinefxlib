@@ -7498,13 +7498,21 @@ tfx_particle_manager_t::~tfx_particle_manager_t() {
 }
 
 bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect_template, tfxEffectID *effect_id) {
-	*effect_id = AddEffectToParticleManager(pm, &effect_template->effect, pm->current_ebuff, 0, false, 0.f);
-	return *effect_id != tfxINVALID;
+	tfxEffectID id;
+	id = AddEffectToParticleManager(pm, &effect_template->effect, pm->current_ebuff, 0, false, 0.f);
+	if (effect_id) {
+		*effect_id = id;
+	}
+	return id != tfxINVALID;
 }
 
 bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id) {
-	*effect_id = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0.f);
-	return *effect_id != tfxINVALID;
+	tfxEffectID id;
+	id = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0.f);
+	if (effect_id) {
+		*effect_id = id;
+	}
+	return id != tfxINVALID;
 }
 
 tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning) {

@@ -7128,7 +7128,7 @@ Add an effect to a tfx_particle_manager_t from an effect template
 							For example by calling SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
   @returns					True if the effect was succesfully added.
 */
-tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect, tfxEffectID *effect_id);
+tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect, tfxEffectID *effect_id = NULL);
 
 /*
 Add an effect to a tfx_particle_manager_t.
@@ -7138,7 +7138,7 @@ Add an effect to a tfx_particle_manager_t.
 							For example by calling SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
   @returns					True if the effect was succesfully added.
 */
-tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id);
+tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id = NULL);
 
 /*
 Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
