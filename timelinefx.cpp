@@ -6549,31 +6549,31 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	SetEffectPosition(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
 	if (is_3d) {
-		Transform3d(&pm->effects.world_rotations[preview_effect_index],
-			&pm->effects.local_rotations[preview_effect_index],
-			&pm->effects.overal_scale[preview_effect_index],
-			&pm->effects.world_position[preview_effect_index],
-			&pm->effects.local_position[preview_effect_index],
-			&pm->effects.translation[preview_effect_index],
-			&pm->effects.matrix[preview_effect_index],
-			&pm->effects.world_rotations[preview_effect_index],
-			&pm->effects.overal_scale[preview_effect_index],
-			&pm->effects.world_position[preview_effect_index],
-			&pm->effects.matrix[preview_effect_index]
+		Transform3d(&pm->effects[preview_effect_index].world_rotations,
+			&pm->effects[preview_effect_index].local_rotations,
+			&pm->effects[preview_effect_index].overal_scale,
+			&pm->effects[preview_effect_index].world_position,
+			&pm->effects[preview_effect_index].local_position,
+			&pm->effects[preview_effect_index].translation,
+			&pm->effects[preview_effect_index].matrix,
+			&pm->effects[preview_effect_index].world_rotations,
+			&pm->effects[preview_effect_index].overal_scale,
+			&pm->effects[preview_effect_index].world_position,
+			&pm->effects[preview_effect_index].matrix
 		);
 	}
 	else {
-		Transform2d(&pm->effects.world_rotations[preview_effect_index],
-			&pm->effects.local_rotations[preview_effect_index],
-			&pm->effects.overal_scale[preview_effect_index],
-			&pm->effects.world_position[preview_effect_index],
-			&pm->effects.local_position[preview_effect_index],
-			&pm->effects.translation[preview_effect_index],
-			&pm->effects.matrix[preview_effect_index],
-			&pm->effects.world_rotations[preview_effect_index],
-			&pm->effects.overal_scale[preview_effect_index],
-			&pm->effects.world_position[preview_effect_index],
-			&pm->effects.matrix[preview_effect_index]);
+		Transform2d(&pm->effects[preview_effect_index].world_rotations,
+			&pm->effects[preview_effect_index].local_rotations,
+			&pm->effects[preview_effect_index].overal_scale,
+			&pm->effects[preview_effect_index].world_position,
+			&pm->effects[preview_effect_index].local_position,
+			&pm->effects[preview_effect_index].translation,
+			&pm->effects[preview_effect_index].matrix,
+			&pm->effects[preview_effect_index].world_rotations,
+			&pm->effects[preview_effect_index].overal_scale,
+			&pm->effects[preview_effect_index].world_position,
+			&pm->effects[preview_effect_index].matrix);
 	}
 
 	tfxU32 total_sprites = 0;
@@ -6664,31 +6664,31 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	preview_effect_index = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0.f);
 	SetEffectPosition(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
 	if (is_3d) {
-		Transform3d(&pm->effects.world_rotations[preview_effect_index],
-			&pm->effects.local_rotations[preview_effect_index],
-			&pm->effects.overal_scale[preview_effect_index],
-			&pm->effects.world_position[preview_effect_index],
-			&pm->effects.local_position[preview_effect_index],
-			&pm->effects.translation[preview_effect_index],
-			&pm->effects.matrix[preview_effect_index],
-			&pm->effects.world_rotations[preview_effect_index],
-			&pm->effects.overal_scale[preview_effect_index],
-			&pm->effects.world_position[preview_effect_index],
-			&pm->effects.matrix[preview_effect_index]
+		Transform3d(&pm->effects[preview_effect_index].world_rotations,
+			&pm->effects[preview_effect_index].local_rotations,
+			&pm->effects[preview_effect_index].overal_scale,
+			&pm->effects[preview_effect_index].world_position,
+			&pm->effects[preview_effect_index].local_position,
+			&pm->effects[preview_effect_index].translation,
+			&pm->effects[preview_effect_index].matrix,
+			&pm->effects[preview_effect_index].world_rotations,
+			&pm->effects[preview_effect_index].overal_scale,
+			&pm->effects[preview_effect_index].world_position,
+			&pm->effects[preview_effect_index].matrix
 		);
 	}
 	else {
-		Transform2d(&pm->effects.world_rotations[preview_effect_index],
-			&pm->effects.local_rotations[preview_effect_index],
-			&pm->effects.overal_scale[preview_effect_index],
-			&pm->effects.world_position[preview_effect_index],
-			&pm->effects.local_position[preview_effect_index],
-			&pm->effects.translation[preview_effect_index],
-			&pm->effects.matrix[preview_effect_index],
-			&pm->effects.world_rotations[preview_effect_index],
-			&pm->effects.overal_scale[preview_effect_index],
-			&pm->effects.world_position[preview_effect_index],
-			&pm->effects.matrix[preview_effect_index]);
+		Transform2d(&pm->effects[preview_effect_index].world_rotations,
+			&pm->effects[preview_effect_index].local_rotations,
+			&pm->effects[preview_effect_index].overal_scale,
+			&pm->effects[preview_effect_index].world_position,
+			&pm->effects[preview_effect_index].local_position,
+			&pm->effects[preview_effect_index].translation,
+			&pm->effects[preview_effect_index].matrix,
+			&pm->effects[preview_effect_index].world_rotations,
+			&pm->effects[preview_effect_index].overal_scale,
+			&pm->effects[preview_effect_index].world_position,
+			&pm->effects[preview_effect_index].matrix);
 	}
 
 	if (total_sprites == 0) {
@@ -7493,7 +7493,6 @@ void SetTemplateEffectUpdateCallback(tfx_effect_template_t *t, void(*update_call
 }
 
 tfx_particle_manager_t::~tfx_particle_manager_t() {
-	FreeSoABuffer(&effect_buffers);
 	FreeSoABuffer(&emitter_buffers);
 }
 
@@ -7525,26 +7524,26 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	if (parent_index == tfxINVALID)
 		return tfxINVALID;
 	if (!is_sub_emitter) {
-		pm->effects.highest_particle_age[parent_index] = pm->frame_length * 3.f;
+		pm->effects[parent_index].highest_particle_age = pm->frame_length * 3.f;
 	}
 	tfx_emitter_properties_soa_t &properties = effect->library->emitter_properties;
-	pm->effects.global_attributes[parent_index] = effect->global;
-	pm->effects.transform_attributes[parent_index] = effect->transform_attributes;
-	pm->effects.age[parent_index] = -add_delayed_spawning;
-	pm->effects.state_flags[parent_index] = 0;
-	pm->effects.frame[parent_index] = 0.f;
-	pm->effects.property_flags[parent_index] = effect->property_flags;
-	pm->effects.local_position[parent_index] = tfx_vec3_t();
-	pm->effects.timeout[parent_index] = 1000.f;
-	pm->effects.library[parent_index] = effect->library;
-	pm->effects.parent_particle_index[parent_index] = tfxINVALID;
-	pm->effects.info_index[parent_index] = effect->info_index;
-	pm->effects.properties_index[parent_index] = effect->property_index;
-	pm->effects.timeout_counter[parent_index] = 0;
-	pm->effects.user_data[parent_index] = effect->user_data;
-	pm->effects.update_callback[parent_index] = effect->update_callback;
+	pm->effects[parent_index].global_attributes = effect->global;
+	pm->effects[parent_index].transform_attributes = effect->transform_attributes;
+	pm->effects[parent_index].age = -add_delayed_spawning;
+	pm->effects[parent_index].state_flags = 0;
+	pm->effects[parent_index].frame = 0.f;
+	pm->effects[parent_index].property_flags = effect->property_flags;
+	pm->effects[parent_index].local_position = tfx_vec3_t();
+	pm->effects[parent_index].timeout = 1000.f;
+	pm->effects[parent_index].library = effect->library;
+	pm->effects[parent_index].parent_particle_index = tfxINVALID;
+	pm->effects[parent_index].info_index = effect->info_index;
+	pm->effects[parent_index].properties_index = effect->property_index;
+	pm->effects[parent_index].timeout_counter = 0;
+	pm->effects[parent_index].user_data = effect->user_data;
+	pm->effects[parent_index].update_callback = effect->update_callback;
 	float range = properties.noise_base_offset_range[effect->property_index];
-	pm->effects.noise_base_offset[parent_index] = RandomRange(&pm->random, range);
+	pm->effects[parent_index].noise_base_offset = RandomRange(&pm->random, range);
 	pm->effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
 	effect->pm_index = parent_index;
 	pm->sort_passes = tfxMax(effect->sort_passes, pm->sort_passes);
@@ -7789,10 +7788,10 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 		for (int i = 0; i != effects_start_size[depth]; ++i) {
 			tfxU32 current_index = pm->effects_in_use[depth][pm->current_ebuff][i];
-			float &timeout_counter = pm->effects.timeout_counter[current_index];
+			float &timeout_counter = pm->effects[current_index].timeout_counter;
 
 			UpdatePMEffect(pm, current_index);
-			if (timeout_counter <= pm->effects.timeout[current_index]) {
+			if (timeout_counter <= pm->effects[current_index].timeout) {
 				pm->effects_in_use[depth][next_buffer].push_back(current_index);
 			}
 			else {
@@ -7840,7 +7839,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	for (auto &work_entry : pm->spawn_work) {
 		tfxU32 index = work_entry.emitter_index;
 		pm->emitters.highest_particle_age[index] = std::fmaxf(pm->emitters.highest_particle_age[index], work_entry.highest_particle_age);
-		pm->effects.highest_particle_age[pm->emitters.parent_index[index]] = pm->emitters.highest_particle_age[index] + pm->frame_length;
+		pm->effects[pm->emitters.parent_index[index]].highest_particle_age = pm->emitters.highest_particle_age[index] + pm->frame_length;
 	}
 	pm->spawn_work.clear();
 
@@ -7905,8 +7904,8 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
 				work_entry.start_diff = circular_start - block_start_index;
 				work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
-				work_entry.stretch = pm->effects.stretch[pm->emitters.parent_index[index]];
-				work_entry.intensity = pm->effects.spawn_controls[pm->emitters.parent_index[index]].intensity;
+				work_entry.stretch = pm->effects[pm->emitters.parent_index[index]].stretch;
+				work_entry.intensity = pm->effects[pm->emitters.parent_index[index]].spawn_controls.intensity;
 				particles_to_update -= pm->mt_batch_size;
 				running_start_index += pm->mt_batch_size;
 				tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticles);
@@ -9157,7 +9156,7 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 	memset(pm->sprite_index_point, 0, 4 * tfxLAYERS);
 
 	ClearSoABuffer(&pm->emitter_buffers);
-	ClearSoABuffer(&pm->effect_buffers);
+	pm->effects.clear();
 
 	pm->sort_passes = req_sort_passes;
 }
@@ -9205,7 +9204,7 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks) 
 	pm->particle_indexes.clear();
 	pm->free_particle_indexes.clear();
 	ClearSoABuffer(&pm->emitter_buffers);
-	ClearSoABuffer(&pm->effect_buffers);
+	pm->effects.clear();
 	pm->particle_id = 0;
 	pm->spawn_work.clear();
 	pm->control_work.clear();
@@ -9241,7 +9240,7 @@ void FreeParticleManager(tfx_particle_manager_t *pm) {
 	pm->particle_indexes.free();
 	pm->free_particle_indexes.free();
 	ClearSoABuffer(&pm->emitter_buffers);
-	ClearSoABuffer(&pm->effect_buffers);
+	pm->effects.free();
 	pm->free_compute_controllers.free();
 	pm->particle_id = 0;
 	pm->spawn_work.free();
@@ -9287,10 +9286,10 @@ tfxU32 GetPMEffectSlot(tfx_particle_manager_t *pm) {
 	if (!pm->free_effects.empty()) {
 		return pm->free_effects.pop_back();
 	}
-	if (pm->effect_buffers.current_size == pm->effect_buffers.capacity)
+	if (pm->effects.current_size == pm->effects.capacity)
 		return tfxINVALID;
-	AddRow(&pm->effect_buffers);
-	return pm->effect_buffers.current_size - 1;
+	pm->effects.current_size++;
+	return pm->effects.current_size - 1;
 }
 
 tfxU32 GetPMEmitterSlot(tfx_particle_manager_t *pm) {
@@ -9406,29 +9405,29 @@ tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, tfxU32
 }
 
 void SetEffectUserData(tfx_particle_manager_t &pm, tfxU32 effect_index, void *data) {
-	assert(effect_index < pm.effect_buffers.current_size);	//effect index is out of bounds of the array
-	pm.effects.user_data[effect_index] = data;
+	assert(effect_index < pm.effects.current_size);	//effect index is out of bounds of the array
+	pm.effects[effect_index].user_data = data;
 }
 
 void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index) {
 	tfxPROFILE;
 
-	const tfxU32 property_index = pm->effects.properties_index[index];
-	tfxU32 &parent_particle_index = pm->effects.parent_particle_index[index];
-	tfx_vec3_t &captured_position = pm->effects.captured_position[index];
-	tfx_vec3_t &world_position = pm->effects.world_position[index];
-	tfx_vec3_t &local_position = pm->effects.local_position[index];
-	tfx_vec3_t &world_rotations = pm->effects.world_rotations[index];
-	tfx_vec3_t &local_rotations = pm->effects.local_rotations[index];
-	tfx_vec3_t &translation = pm->effects.translation[index];
-	tfx_mat4_t &matrix = pm->effects.matrix[index];
-	float &frame = pm->effects.frame[index];
-	float &age = pm->effects.age[index];
-	float &timeout_counter = pm->effects.timeout_counter[index];
-	float &highest_particle_age = pm->effects.highest_particle_age[index];
-	tfxEmitterPropertyFlags &property_flags = pm->effects.property_flags[index];
-	tfxEmitterStateFlags &state_flags = pm->effects.state_flags[index];
-	tfx_library_t *library = pm->effects.library[index];
+	const tfxU32 property_index = pm->effects[index].properties_index;
+	tfxU32 &parent_particle_index = pm->effects[index].parent_particle_index;
+	tfx_vec3_t &captured_position = pm->effects[index].captured_position;
+	tfx_vec3_t &world_position = pm->effects[index].world_position;
+	tfx_vec3_t &local_position = pm->effects[index].local_position;
+	tfx_vec3_t &world_rotations = pm->effects[index].world_rotations;
+	tfx_vec3_t &local_rotations = pm->effects[index].local_rotations;
+	tfx_vec3_t &translation = pm->effects[index].translation;
+	tfx_mat4_t &matrix = pm->effects[index].matrix;
+	float &frame = pm->effects[index].frame;
+	float &age = pm->effects[index].age;
+	float &timeout_counter = pm->effects[index].timeout_counter;
+	float &highest_particle_age = pm->effects[index].highest_particle_age;
+	tfxEmitterPropertyFlags &property_flags = pm->effects[index].property_flags;
+	tfxEmitterStateFlags &state_flags = pm->effects[index].state_flags;
+	tfx_library_t *library = pm->effects[index].library;
 
 	captured_position = world_position;
 
@@ -9446,7 +9445,7 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 	if (parent_particle_index != tfxINVALID) {
 		tfxParticleID parent_particle_id = pm->particle_indexes[parent_particle_index];
 		if (parent_particle_id != tfxINVALID) {
-			const float overal_scale = pm->effects.overal_scale[index];
+			const float overal_scale = pm->effects[index].overal_scale;
 			tfxU32 sprite_id = GetParticleSpriteIndex(pm, parent_particle_id);
 			tfxU32 sprite_layer = (sprite_id & 0xF0000000) >> 28;
 			tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
@@ -9472,7 +9471,7 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 	}
 	else {
 		if (!(state_flags & tfxEffectStateFlags_retain_matrix)) {
-			const float overal_scale = pm->effects.overal_scale[index];
+			const float overal_scale = pm->effects[index].overal_scale;
 			world_position = local_position + translation;
 			world_position += properties.emitter_handle[property_index] * overal_scale;
 			if (property_flags & tfxEmitterPropertyFlags_is_3d) {
@@ -9570,9 +9569,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfxU32 layer = properties.layer[property_index];
 
-	float &parent_timeout_counter = pm->effects.timeout_counter[parent_index];
-	const float parent_age = pm->effects.age[parent_index];
-	const tfxEmitterStateFlags parent_state_flags = pm->effects.state_flags[parent_index];
+	float &parent_timeout_counter = pm->effects[parent_index].timeout_counter;
+	const float parent_age = pm->effects[parent_index].age;
+	const tfxEmitterStateFlags parent_state_flags = pm->effects[parent_index].state_flags;
 
 	parent_timeout_counter = 0;
 	if (parent_age < delay_spawning) {
@@ -9584,9 +9583,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
 	state_flags |= parent_state_flags & tfxEffectStateFlags_stop_spawning;
 	state_flags |= parent_state_flags & tfxEffectStateFlags_remove;
-	spawn_work_entry->parent_spawn_controls = &pm->effects.spawn_controls[parent_index];
-	spawn_work_entry->parent_property_flags = pm->effects.property_flags[parent_index];
-	spawn_work_entry->overal_scale = pm->effects.overal_scale[parent_index];
+	spawn_work_entry->parent_spawn_controls = &pm->effects[parent_index].spawn_controls;
+	spawn_work_entry->parent_property_flags = pm->effects[parent_index].property_flags;
+	spawn_work_entry->overal_scale = pm->effects[parent_index].overal_scale;
 	UpdateEmitterState(pm, index, parent_index, spawn_work_entry->parent_spawn_controls, spawn_work_entry);
 
 	if ((state_flags & tfxEmitterStateFlags_is_line_loop_or_kill && state_flags & tfxEmitterStateFlags_loop) || (state_flags & tfxEmitterStateFlags_is_single && properties.single_shot_limit[property_index] > 1)) {
@@ -9597,11 +9596,11 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfxU32 amount_spawned = 0;
 	tfxU32 max_spawn_count = NewSpritesNeeded(pm, index, parent_index, &properties);
 
-	tfx_vec3_t &parent_captured_position = pm->effects.captured_position[parent_index];
-	tfx_vec3_t &parent_world_position = pm->effects.world_position[parent_index];
-	tfx_vec3_t &parent_world_rotations = pm->effects.world_rotations[parent_index];
-	float &parent_scale = pm->effects.overal_scale[parent_index];
-	tfx_mat4_t &parent_matrix = pm->effects.matrix[parent_index];
+	tfx_vec3_t &parent_captured_position = pm->effects[parent_index].captured_position;
+	tfx_vec3_t &parent_world_position = pm->effects[parent_index].world_position;
+	tfx_vec3_t &parent_world_rotations = pm->effects[parent_index].world_rotations;
+	float &parent_scale = pm->effects[parent_index].overal_scale;
+	tfx_mat4_t &parent_matrix = pm->effects[parent_index].matrix;
 
 	if (property_flags & tfxEmitterPropertyFlags_is_3d) {
 		tfx_soa_buffer_t &sprite_buffer = pm->sprite_buffer[pm->current_sprite_buffer][layer];
@@ -9612,10 +9611,11 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			captured_position = world_position;
 		}
 
-		tfxU32 free_space = sprite_buffer.capacity - pm->active_particles_count[layer];
+		tfxU32 free_space = 0;
 
 		sprites_count = pm->particle_array_buffers[particles_index].current_size;
 		if (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
+			free_space = FreeSpriteBufferSpace(&sprite_buffer);
 			if (sprites_count + max_spawn_count > free_space) {
 				GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (sprites_count + max_spawn_count - free_space) + 1);
 				if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
@@ -9624,6 +9624,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			}
 		}
 		else {
+			free_space = sprite_buffer.capacity - pm->active_particles_count[layer];
 			if (sprites_count + max_spawn_count > free_space) {
 				if (free_space > sprites_count) {
 					max_spawn_count = free_space - sprites_count;
@@ -9632,8 +9633,8 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 					max_spawn_count = tfxMin(free_space, max_spawn_count);
 				}
 			}
+			assert(free_space >= max_spawn_count);	//Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
 		}
-		assert(free_space >= max_spawn_count);	//Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
 
 		sprite_buffer.current_size += max_spawn_count + sprites_count;
 		sprites_count += max_spawn_count;
@@ -9738,14 +9739,14 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 
 	const tfxEmitterStateFlags state_flags = pm->emitters.state_flags[index];
 	const tfxEmitterPropertyFlags property_flags = pm->emitters.property_flags[index];
-	const tfxEmitterStateFlags parent_state_flags = pm->effects.state_flags[parent_index];
+	const tfxEmitterStateFlags parent_state_flags = pm->effects[parent_index].state_flags;
 	const tfxU32 property_index = pm->emitters.properties_index[index];
 
 	const float amount_remainder = pm->emitters.amount_remainder[index];
 	const float frame = pm->emitters.frame[index];
 	float &spawn_quantity = pm->emitters.spawn_quantity[index];
 	const tfxU32 emitter_attributes = pm->emitters.emitter_attributes[index];
-	const tfxU32 global_attributes = pm->effects.global_attributes[parent_index];
+	const tfxU32 global_attributes = pm->effects[parent_index].global_attributes;
 
 	if (!(property_flags & tfxEmitterPropertyFlags_single)) {
 		spawn_quantity = lookup_callback(&pm->library->emitter_attributes[emitter_attributes].base.amount, frame);
@@ -10202,8 +10203,8 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 					break;
 				assert(entry->depth < tfxMAXDEPTH - 1);
 				tfxU32 added_index = AddEffectToParticleManager(&pm, &sub, pm.current_ebuff, entry->depth + 1, true, 0.f);
-				pm.effects.overal_scale[added_index] = entry->overal_scale;
-				pm.effects.parent_particle_index[added_index] = particle_index;
+				pm.effects[added_index].overal_scale = entry->overal_scale;
+				pm.effects[added_index].parent_particle_index = particle_index;
 			}
 		}
 	}
@@ -10375,7 +10376,7 @@ void SpawnParticleNoise(tfx_work_queue_t *queue, void *data) {
 	float emitter_noise_offset_variation = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.noise_offset, frame);
 	float emitter_noise_offset = lookup_callback(&library->emitter_attributes[emitter_attributes].base.noise_offset, frame);
 	float emitter_noise_resolution = lookup_callback(&library->emitter_attributes[emitter_attributes].variation.noise_resolution, frame);
-	const float parent_noise_base_offset = pm.effects.noise_base_offset[pm.emitters.parent_index[emitter_index]];
+	const float parent_noise_base_offset = pm.effects[pm.emitters.parent_index[emitter_index]].noise_base_offset;
 	const tfxU32 particles_index = pm.emitters.particles_index[emitter_index];
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -11916,7 +11917,7 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 		emitter_size.z = lookup_callback(&library->emitter_attributes[emitter_attributes].properties.emitter_depth, frame);
 	}
 
-	emitter_size *= pm->effects.emitter_size[parent_index];
+	emitter_size *= pm->effects[parent_index].emitter_size;
 
 	if (property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type[property_index] != tfxPoint) {
 		if ((properties.emission_type[property_index] == tfxEllipse || properties.emission_type[property_index] == tfxIcosphere) && property_flags & tfxEmitterPropertyFlags_is_3d)
@@ -11940,22 +11941,22 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index) {
 	tfxPROFILE;
 
-	const float frame = pm->effects.frame[index];
-	const float age = pm->effects.age[index];
-	const tfxU32 global_attributes = pm->effects.global_attributes[index];
-	const tfxU32 transform_attributes = pm->effects.transform_attributes[index];
-	tfx_library_t *library = pm->effects.library[index];
-	tfx_vec3_t &translation = pm->effects.translation[index];
-	tfx_vec3_t &local_rotations = pm->effects.local_rotations[index];
-	tfx_vec3_t &emitter_size = pm->effects.emitter_size[index];
-	float &overal_scale = pm->effects.overal_scale[index];
-	tfxEffectStateFlags &state_flags = pm->effects.state_flags[index];
-	//float &stretch = pm->effects.stretch[index];
+	const float frame = pm->effects[index].frame;
+	const float age = pm->effects[index].age;
+	const tfxU32 global_attributes = pm->effects[index].global_attributes;
+	const tfxU32 transform_attributes = pm->effects[index].transform_attributes;
+	tfx_library_t *library = pm->effects[index].library;
+	tfx_vec3_t &translation = pm->effects[index].translation;
+	tfx_vec3_t &local_rotations = pm->effects[index].local_rotations;
+	tfx_vec3_t &emitter_size = pm->effects[index].emitter_size;
+	float &overal_scale = pm->effects[index].overal_scale;
+	tfxEffectStateFlags &state_flags = pm->effects[index].state_flags;
+	//float &stretch = pm->effects[index].stretch;
 
 	//If this effect is a sub effect then the graph index will reference the global graphs for the root parent effect
-	tfx_parent_spawn_controls_t &spawn_controls = pm->effects.spawn_controls[index];
+	tfx_parent_spawn_controls_t &spawn_controls = pm->effects[index].spawn_controls;
 	spawn_controls.life = lookup_callback(&library->global_graphs[global_attributes].life, frame);
-	if (!(pm->effects.property_flags[index] & tfxEmitterPropertyFlags_global_uniform_size)) {
+	if (!(pm->effects[index].property_flags & tfxEmitterPropertyFlags_global_uniform_size)) {
 		spawn_controls.size_x = lookup_callback(&library->global_graphs[global_attributes].width, frame);
 		spawn_controls.size_y = lookup_callback(&library->global_graphs[global_attributes].height, frame);
 	}
@@ -11975,7 +11976,7 @@ void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index) {
 	}
 	//We don't want to scale twice when the sub effect is transformed, so the values here are set to 1. That means that the root effect will only control the global scale.
 	overal_scale = state_flags & tfxEffectStateFlags_override_overal_scale ? overal_scale : lookup_callback(&library->global_graphs[global_attributes].overal_scale, frame);
-	if (pm->effects.parent_particle_index[index] == tfxINVALID) {
+	if (pm->effects[index].parent_particle_index == tfxINVALID) {
 		if (!(state_flags & tfxEffectStateFlags_override_orientiation)) {
 			local_rotations.roll = LookupPrecise(&library->transform_attributes[transform_attributes].roll, age);
 			local_rotations.pitch = LookupPrecise(&library->transform_attributes[transform_attributes].pitch, age);
@@ -11987,13 +11988,13 @@ void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index) {
 		local_rotations.pitch = 0.f;
 		local_rotations.yaw = 0.f;
 	}
-	pm->effects.stretch[index] = lookup_callback(&library->global_graphs[global_attributes].stretch, frame);
+	pm->effects[index].stretch = lookup_callback(&library->global_graphs[global_attributes].stretch, frame);
 	translation.x = LookupPrecise(&library->transform_attributes[transform_attributes].translation_x, age);
 	translation.y = LookupPrecise(&library->transform_attributes[transform_attributes].translation_y, age);
 	translation.z = LookupPrecise(&library->transform_attributes[transform_attributes].translation_z, age);
 
-	if (pm->effects.update_callback[index]) {
-		pm->effects.update_callback[index](pm, index);
+	if (pm->effects[index].update_callback) {
+		pm->effects[index].update_callback(pm, index);
 	}
 
 }
@@ -12148,7 +12149,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
 	work_entry->layer = properties.layer[property_index];
 	work_entry->sprites = &pm->sprites[pm->current_sprite_buffer][work_entry->layer];
-	work_entry->overal_scale = pm->effects.overal_scale[pm->emitters.parent_index[emitter_index]];
+	work_entry->overal_scale = pm->effects[pm->emitters.parent_index[emitter_index]].overal_scale;
 
 	if (amount_to_update > 0) {
 		if (pm->flags & tfxEffectManagerFlags_3d_effects) {
@@ -12524,7 +12525,7 @@ void FreeSpriteData(tfx_sprite_data_t *sprite_data) {
 }
 
 bool ValidEffectID(tfx_particle_manager_t *pm, tfxEffectID id) {
-	return  id != tfxINVALID && pm->effect_buffers.capacity > id;
+	return  id != tfxINVALID && pm->effects.capacity > id;
 }
 
 void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
@@ -12563,8 +12564,9 @@ void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *librar
 	}
 
 	pm->free_effects.reserve(pm->max_effects);
-	InitEffectSoA(&pm->effect_buffers, &pm->effects, pm->max_effects);
+	//InitEffectSoA(&pm->effect_buffers, &pm->effects, pm->max_effects);
 	InitEmitterSoA(&pm->emitter_buffers, &pm->emitters, pm->max_effects);
+	pm->effects.reserve(pm->max_effects);
 	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
 	pm->spawn_work.reserve(1000);
 	pm->control_work.reserve(1000);
@@ -12662,23 +12664,23 @@ void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *libra
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	tfx_vec2_t position(x, y);
-	pm->effects.local_position[effect_index] = position;
+	pm->effects[effect_index].local_position = position;
 }
 
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec2_t position) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.local_position[effect_index] = position;
+	pm->effects[effect_index].local_position = position;
 }
 
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y, float z) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	tfx_vec3_t position(x, y, z);
-	pm->effects.local_position[effect_index] = position;
+	pm->effects[effect_index].local_position = position;
 }
 
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec3_t position) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.local_position[effect_index] = position;
+	pm->effects[effect_index].local_position = position;
 }
 
 void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float position[3]) {
@@ -12698,110 +12700,110 @@ void SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationI
 
 void MoveEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfx_vec3_t amount) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.local_position[effect_index] += amount;
+	pm->effects[effect_index].local_position += amount;
 }
 
 void MoveEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y, float z) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.local_position[effect_index] += {x, y, z};
+	pm->effects[effect_index].local_position += {x, y, z};
 }
 
 tfxAPI tfx_vec3_t GetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	return pm->effects.local_position[effect_index];
+	return pm->effects[effect_index].local_position;
 }
 
 void SetEffectRotation(tfx_particle_manager_t *pm, tfxEffectID effect_index, float rotation) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.local_rotations[effect_index].roll = rotation;
-	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
+	pm->effects[effect_index].local_rotations.roll = rotation;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void SetEffectRoll(tfx_particle_manager_t *pm, tfxEffectID effect_index, float roll) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.local_rotations[effect_index].roll = roll;
-	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
+	pm->effects[effect_index].local_rotations.roll = roll;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void SetEffectPitch(tfx_particle_manager_t *pm, tfxEffectID effect_index, float pitch) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.local_rotations[effect_index].pitch = pitch;
-	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
+	pm->effects[effect_index].local_rotations.pitch = pitch;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void SetEffectYaw(tfx_particle_manager_t *pm, tfxEffectID effect_index, float pitch) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.local_rotations[effect_index].pitch = pitch;
-	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_orientiation;
+	pm->effects[effect_index].local_rotations.pitch = pitch;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_orientiation;
 }
 
 void SetEffectWidthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float width) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.emitter_size[effect_index].x = width;
-	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
+	pm->effects[effect_index].emitter_size.x = width;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void SetEffectHeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float height) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.emitter_size[effect_index].y = height;
-	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
+	pm->effects[effect_index].emitter_size.y = height;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void SetEffectDepthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float depth) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.emitter_size[effect_index].z = depth;
-	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_size_multiplier;
+	pm->effects[effect_index].emitter_size.z = depth;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_size_multiplier;
 }
 
 void SetEffectLifeMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float life) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.spawn_controls[effect_index].life = life;
+	pm->effects[effect_index].spawn_controls.life = life;
 }
 
 void SetEffectParticleWidthMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float width) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.spawn_controls[effect_index].size_x = width;
+	pm->effects[effect_index].spawn_controls.size_x = width;
 }
 
 void SetEffectParticleHeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float height) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.spawn_controls[effect_index].size_y = height;
+	pm->effects[effect_index].spawn_controls.size_y = height;
 }
 
 void SetEffectVelocityMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float velocity) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.spawn_controls[effect_index].velocity = velocity;
+	pm->effects[effect_index].spawn_controls.velocity = velocity;
 }
 
 void SetEffectSpinMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float spin) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.spawn_controls[effect_index].spin = spin;
+	pm->effects[effect_index].spawn_controls.spin = spin;
 }
 
 void SetEffectIntensityMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float intensity) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.spawn_controls[effect_index].intensity = intensity;
+	pm->effects[effect_index].spawn_controls.intensity = intensity;
 }
 
 void SetEffectSplatterMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float splatter) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.spawn_controls[effect_index].splatter = splatter;
+	pm->effects[effect_index].spawn_controls.splatter = splatter;
 }
 
 void SetEffectWeightMultiplier(tfx_particle_manager_t *pm, tfxEffectID effect_index, float weight) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.spawn_controls[effect_index].weight = weight;
+	pm->effects[effect_index].spawn_controls.weight = weight;
 }
 
 void SetEffectOveralScale(tfx_particle_manager_t *pm, tfxEffectID effect_index, float overal_scale) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.overal_scale[effect_index] = overal_scale;
-	pm->effects.state_flags[effect_index] |= tfxEffectStateFlags_override_overal_scale;
+	pm->effects[effect_index].overal_scale = overal_scale;
+	pm->effects[effect_index].state_flags |= tfxEffectStateFlags_override_overal_scale;
 }
 
 void SetEffectBaseNoiseOffset(tfx_particle_manager_t *pm, tfxEffectID effect_index, float noise_offset) {
 	assert(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
-	pm->effects.noise_base_offset[effect_index] = noise_offset;
+	pm->effects[effect_index].noise_base_offset = noise_offset;
 }
 
 }		//Namespace

@@ -4577,42 +4577,42 @@ struct tfx_emitter_soa_t {
 
 struct tfx_effect_soa_t {
 	//State data
-	float *frame;
-	float *age;
-	float *highest_particle_age;
-	float *timeout_counter;
-	float *timeout;
-	tfx_vec3_t *handle;
-	tfxEmitterPropertyFlags *property_flags;
-	float *loop_length;
+	float frame;
+	float age;
+	float highest_particle_age;
+	float timeout_counter;
+	float timeout;
+	tfx_vec3_t handle;
+	tfxEmitterPropertyFlags property_flags;
+	float loop_length;
 	//Position, scale and rotation values
-	tfx_vec3_t *translation;
-	tfx_vec3_t *local_position;
-	tfx_vec3_t *world_position;
-	tfx_vec3_t *captured_position;
-	tfx_vec3_t *local_rotations;
-	tfx_vec3_t *world_rotations;
+	tfx_vec3_t translation;
+	tfx_vec3_t local_position;
+	tfx_vec3_t world_position;
+	tfx_vec3_t captured_position;
+	tfx_vec3_t local_rotations;
+	tfx_vec3_t world_rotations;
 	//Todo: save space and use a quaternion here?
-	tfx_mat4_t *matrix;
-	tfxU32 *global_attributes;
-	tfxU32 *transform_attributes;
+	tfx_mat4_t matrix;
+	tfxU32 global_attributes;
+	tfxU32 transform_attributes;
 
-	tfxU32 *properties_index;
-	tfxU32 *info_index;
-	tfxU32 *parent_particle_index;
-	tfx_library_t **library;
+	tfxU32 properties_index;
+	tfxU32 info_index;
+	tfxU32 parent_particle_index;
+	tfx_library_t *library;
 
 	//Spawn controls
-	tfx_parent_spawn_controls_t *spawn_controls;
-	tfx_vec3_t *emitter_size;
-	float *stretch;
-	float *overal_scale;
-	float *noise_base_offset;
-	tfxEmitterStateFlags *state_flags;
+	tfx_parent_spawn_controls_t spawn_controls;
+	tfx_vec3_t emitter_size;
+	float stretch;
+	float overal_scale;
+	float noise_base_offset;
+	tfxEmitterStateFlags state_flags;
 
 	//User Data
-	void **user_data;
-	void(**update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index);
+	void *user_data;
+	void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 };
 
 //An tfx_effect_emitter_t can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
@@ -5100,8 +5100,7 @@ struct tfx_particle_manager_t {
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfxU32> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
-	tfx_soa_buffer_t effect_buffers;
-	tfx_effect_soa_t effects;
+	tfx_vector_t<tfx_effect_soa_t> effects;
 	tfx_soa_buffer_t emitter_buffers;
 	tfx_emitter_soa_t emitters;
 	tfx_library_t *library;
@@ -7198,7 +7197,7 @@ Expire an effect by telling it to stop spawning particles. This means that the e
 * @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
 */
 tfxAPI inline void SoftExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
-	pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
+	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
 }
 
 /*
@@ -7212,8 +7211,8 @@ Expire an effect by telling it to stop spawning particles and remove all associa
 * @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
 */
 tfxAPI inline void HardExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
-	pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_stop_spawning;
-	pm->effects.state_flags[effect_index] |= tfxEmitterStateFlags_remove;
+	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
+	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_remove;
 }
 
 /*
@@ -7223,7 +7222,7 @@ Get effect user data
 * @returns				void* pointing to the user data set in the effect. See tfx_effect_template_t::SetUserData() and SetEffectUserData()
 */
 tfxAPI inline void* GetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
-	return pm->effects.user_data[effect_index];
+	return pm->effects[effect_index].user_data;
 }
 
 /*
@@ -7264,7 +7263,7 @@ Set the effect user data for an effect already added to a particle manager
 * @param user_data		A void* pointing to the user_data that you want to store in the effect
 */
 tfxAPI inline void SetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index, void* user_data) {
-	pm->effects.user_data[effect_index] = user_data;
+	pm->effects[effect_index].user_data = user_data;
 }
 
 /*
