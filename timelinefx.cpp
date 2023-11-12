@@ -7535,7 +7535,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	pm->effects.frame[parent_index] = 0.f;
 	pm->effects.property_flags[parent_index] = effect->property_flags;
 	pm->effects.local_position[parent_index] = tfx_vec3_t();
-	pm->effects.timeout[parent_index] = 100.f;
+	pm->effects.timeout[parent_index] = 1000.f;
 	pm->effects.library[parent_index] = effect->library;
 	pm->effects.parent_particle_index[parent_index] = tfxINVALID;
 	pm->effects.info_index[parent_index] = effect->info_index;
@@ -7755,6 +7755,35 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+
+		{
+			for (int index : pm->emitters_in_use[depth][next_buffer]) {
+				tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters.particles_index[index]];
+				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+				//would cause more work entries to be created.
+				assert(pm->age_work.current_size != pm->age_work.capacity);
+				tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
+				work_entry.properties = &pm->library->emitter_properties;
+				work_entry.start_index = bank.current_size - 1;
+				work_entry.emitter_index = index;
+				tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters.particles_index[index]], 0);
+				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+				work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
+				work_entry.start_diff = circular_start - block_start_index;
+				work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
+				work_entry.pm = pm;
+				if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
+					tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticleAge);
+				}
+				else {
+					ControlParticleAge(&pm->work_queue, &work_entry);
+				}
+			}
+		}
+		tfxCompleteAllWork(&pm->work_queue);
+		pm->age_work.clear();
+
 		pm->effects_in_use[depth][next_buffer].clear();
 		pm->emitters_in_use[depth][next_buffer].clear();
 
@@ -7931,36 +7960,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			pm->control_work.clear();
 			pm->emitters_check_capture.clear();
 		}
-
-		{
-			for (int index : pm->emitters_in_use[depth][next_buffer]) {
-				tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters.particles_index[index]];
-				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-				//would cause more work entries to be created.
-				assert(pm->age_work.current_size != pm->age_work.capacity);
-				tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
-				work_entry.properties = &pm->library->emitter_properties;
-				work_entry.start_index = bank.current_size - 1;
-				work_entry.emitter_index = index;
-				tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters.particles_index[index]], 0);
-				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
-				work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
-				work_entry.start_diff = circular_start - block_start_index;
-				work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
-				work_entry.pm = pm;
-				if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-					tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticleAge);
-				}
-				else {
-					ControlParticleAge(&pm->work_queue, &work_entry);
-				}
-			}
-
-		}
-
-		tfxCompleteAllWork(&pm->work_queue);
-		pm->age_work.clear();
 	}
 
 	//Todo work queue this for each layer
@@ -8972,7 +8971,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];
-				sprites.captured_index[sprite_depth_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				sprites.captured_index[sprite_depth_index] = age <= work_entry->pm->frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
 				sprites_index = (work_entry->layer << 28) + sprite_depth_index;
 				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (property_index);
@@ -8983,7 +8982,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];
-				sprites.captured_index[running_sprite_index] = age == 0.f && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				sprites.captured_index[running_sprite_index] = age <= work_entry->pm->frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
 				sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (property_index);
@@ -9504,7 +9503,7 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 		age -= properties.loop_length[property_index];
 
 	if (highest_particle_age <= 0 && age > pm->frame_length * 5.f) {
-		timeout_counter++;
+		timeout_counter += pm->frame_length;
 	}
 	else {
 		timeout_counter = 0;
@@ -10164,7 +10163,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 		//Max age
 		//Todo: should age be set to the tween value?
-		age = 0.f;
+		age = entry->pm->frame_length * ((float)i / (float)entry->amount_to_spawn);
 		if (property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 			max_age = pm.animation_length_in_time;
 		}
