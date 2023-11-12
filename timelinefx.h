@@ -6321,35 +6321,35 @@ tfxINTERNAL inline float Interpolatef(float tween, float from, float to) {
 	return to * tween + from * (1.f - tween);
 }
 
-tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_vec3_t *in_rotations, const float *in_scale, const tfx_vec3_t *in_position, const tfx_mat4_t *in_matrix) {
+tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_soa_t *parent) {
 	float s = sin(out_local_rotations->roll);
 	float c = cos(out_local_rotations->roll);
 
 	out_matrix->Set2(c, s, -s, c);
-	*out_scale = *in_scale;
+	*out_scale = parent->overal_scale;
 
-	out_rotations->roll = in_rotations->roll + out_local_rotations->roll;
+	out_rotations->roll = parent->world_rotations.roll + out_local_rotations->roll;
 
-	*out_matrix = TransformMatrix42d(out_matrix, in_matrix);
-	tfx_vec2_t rotatevec = TransformVec2Matrix4(in_matrix, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
+	*out_matrix = TransformMatrix42d(out_matrix, &parent->matrix);
+	tfx_vec2_t rotatevec = TransformVec2Matrix4(&parent->matrix, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
 
-	*out_position = in_position->xy() + rotatevec * *in_scale;
+	*out_position = parent->world_position.xy() + rotatevec * parent->overal_scale;
 }
-tfxINTERNAL inline void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_vec3_t *in_rotations, const float *in_scale, const tfx_vec3_t *in_position, const tfx_mat4_t *in_matrix) {
+tfxINTERNAL inline void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_effect_soa_t *parent) {
 	tfx_mat4_t roll = Matrix4RotateZ(out_local_rotations->roll);
 	tfx_mat4_t pitch = Matrix4RotateX(out_local_rotations->pitch);
 	tfx_mat4_t yaw = Matrix4RotateY(out_local_rotations->yaw);
 	*out_matrix = TransformMatrix4(&yaw, &pitch);
 	*out_matrix = TransformMatrix4(out_matrix, &roll);
-	*out_scale = *in_scale;
+	*out_scale = parent->overal_scale;
 
-	*out_rotations = *in_rotations + *out_local_rotations;
+	*out_rotations = parent->world_rotations + *out_local_rotations;
 
-	*out_matrix = TransformMatrix4(out_matrix, in_matrix);
+	*out_matrix = TransformMatrix4(out_matrix, &parent->matrix);
 	tfx_vec4_t translated_vec = *out_local_position + *out_translation;
-	tfx_vec3_t rotatevec = TransformVec3Matrix4(in_matrix, &translated_vec);
+	tfx_vec3_t rotatevec = TransformVec3Matrix4(&parent->matrix, &translated_vec);
 
-	*out_position = *in_position + rotatevec;
+	*out_position = parent->world_position + rotatevec;
 }
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
@@ -6485,7 +6485,7 @@ tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *lo
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data);
-tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, tfx_emitter_properties_soa_t *properties);
+tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_soa_t *parent, tfx_emitter_properties_soa_t *properties);
 tfxINTERNAL void UpdateEmitterState(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index);
 
@@ -6542,7 +6542,6 @@ tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sp
 tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
 tfxINTERNAL void InitParticleSoA(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitEffectSoA(tfx_soa_buffer_t *buffer, tfx_effect_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitEmitterSoA(tfx_soa_buffer_t *buffer, tfx_emitter_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_soa_t *properties, tfxU32 i);
