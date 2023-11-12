@@ -7580,7 +7580,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			//pm->emitters.image_frame_rate[index] = e.property_flags & tfxEmitterPropertyFlags_reverse_animation ? -pm->emitters.image_frame_rate[index] : pm->emitters.image_frame_rate[index];
 			pm->emitters.end_frame[index] = properties.end_frame[e.property_index];
 			pm->emitters.angle_offsets[index] = properties.angle_offsets[e.property_index];
-			pm->emitters.timeout[index] = 2000.f;
+			pm->emitters.timeout[index] = 1000.f;
 			pm->emitters.amount_remainder[index] = 0.f;
 			pm->emitters.qty_step_size[index] = 0.f;
 			pm->emitters.timeout_counter[index] = 0;
