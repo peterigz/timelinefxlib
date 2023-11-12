@@ -9667,10 +9667,11 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			captured_position = world_position;
 		}
 
-		tfxU32 free_space = sprite_buffer.capacity - pm->active_particles_count[layer];
+		tfxU32 free_space = 0;
 
 		sprites_count = pm->particle_array_buffers[particles_index].current_size;
 		if (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) {
+			free_space = FreeSpriteBufferSpace(&sprite_buffer);
 			if (sprites_count + max_spawn_count > free_space) {
 				GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (sprites_count + max_spawn_count - free_space) + 1);
 				if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
@@ -9679,6 +9680,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			}
 		}
 		else {
+			free_space = sprite_buffer.capacity - pm->active_particles_count[layer];
 			if (sprites_count + max_spawn_count > free_space) {
 				if (free_space > sprites_count) {
 					max_spawn_count = free_space - sprites_count;
@@ -9687,7 +9689,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 					max_spawn_count = tfxMin(free_space, max_spawn_count);
 				}
 			}
+			assert(free_space >= max_spawn_count);	//Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
 		}
+
 		sprite_buffer.current_size += max_spawn_count + sprites_count;
 
 		sprites_count += max_spawn_count;
