@@ -7734,34 +7734,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 
-		{
-			for (int index : pm->emitters_in_use[depth][next_buffer]) {
-				tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
-				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-				//would cause more work entries to be created.
-				assert(pm->age_work.current_size != pm->age_work.capacity);
-				tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
-				work_entry.properties = &pm->library->emitter_properties;
-				work_entry.start_index = bank.current_size - 1;
-				work_entry.emitter_index = index;
-				tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], 0);
-				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
-				work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
-				work_entry.start_diff = circular_start - block_start_index;
-				work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
-				work_entry.pm = pm;
-				if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-					tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticleAge);
-				}
-				else {
-					ControlParticleAge(&pm->work_queue, &work_entry);
-				}
-			}
-		}
-		tfxCompleteAllWork(&pm->work_queue);
-		pm->age_work.clear();
-
 		pm->effects_in_use[depth][next_buffer].clear();
 		pm->emitters_in_use[depth][next_buffer].clear();
 
@@ -7939,6 +7911,34 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			pm->control_work.clear();
 			pm->emitters_check_capture.clear();
 		}
+
+		{
+			for (int index : pm->emitters_in_use[depth][next_buffer]) {
+				tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
+				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+				//would cause more work entries to be created.
+				assert(pm->age_work.current_size != pm->age_work.capacity);
+				tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
+				work_entry.properties = &pm->library->emitter_properties;
+				work_entry.start_index = bank.current_size - 1;
+				work_entry.emitter_index = index;
+				tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], 0);
+				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+				work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
+				work_entry.start_diff = circular_start - block_start_index;
+				work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
+				work_entry.pm = pm;
+				if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
+					tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticleAge);
+				}
+				else {
+					ControlParticleAge(&pm->work_queue, &work_entry);
+				}
+			}
+		}
+		tfxCompleteAllWork(&pm->work_queue);
+		pm->age_work.clear();
 	}
 
 	//Todo work queue this for each layer
@@ -7954,8 +7954,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				//assert(pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size == pm->depth_indexes[layer][!pm->current_depth_index_buffer].current_size);
 		}
 	}
-
-	tfxCompleteAllWork(&pm->work_queue);
 
 	for (tfxEachLayer) {
 		pm->depth_indexes[layer][pm->current_depth_index_buffer].clear();
