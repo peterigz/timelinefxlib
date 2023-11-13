@@ -9765,10 +9765,13 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 	tfx_emitter_soa_t &emitter = pm->emitters[work_entry->emitter_index];
 	const tfxU32 layer = properties.layer[emitter.properties_index];
 
-	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || pm->effects[work_entry->parent_index].state_flags & tfxEffectStateFlags_stop_spawning)
+	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || pm->effects[work_entry->parent_index].state_flags & tfxEffectStateFlags_stop_spawning) {
 		return 0;
-	if (emitter.spawn_quantity == 0)
+	}
+
+	if (emitter.spawn_quantity == 0) {
 		return 0;
+	}
 
 	float step_size = 1.f / emitter.spawn_quantity;
 	float tween = 0;
@@ -9783,12 +9786,11 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		tween -= emitter.spawn_quantity;
 	}
 
-	work_entry->pm = pm;
 	work_entry->tween = tween;
-	work_entry->max_spawn_count = max_spawn_count;
 	work_entry->qty_step_size = step_size;
 	work_entry->amount_to_spawn = 0;
 	work_entry->particle_data = &pm->particle_arrays[emitter.particles_index];
+	work_entry->property_flags = emitter.property_flags;
 
 	if (tween >= 1) {
 		emitter.amount_remainder = tween - 1.f;
@@ -9821,7 +9823,10 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		}
 	}
 
+	work_entry->emission_type = properties.emission_type[emitter.properties_index];
+
 	if (work_entry->amount_to_spawn > 0) {
+		work_entry->end_index = work_entry->amount_to_spawn;
 		tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork2d);
 	}
 
@@ -9953,30 +9958,27 @@ void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfx_particle_manager_t *pm = work_entry->pm;
-	if (work_entry->amount_to_spawn > 0) {
-		work_entry->end_index = work_entry->amount_to_spawn;
-		if (work_entry->emission_type == tfxPoint) {
-			SpawnParticlePoint2d(&pm->work_queue, work_entry);
-		}
-		else if (work_entry->emission_type == tfxArea) {
-			SpawnParticleArea2d(&pm->work_queue, work_entry);
-		}
-		else if (work_entry->emission_type == tfxEllipse) {
-			SpawnParticleEllipse2d(&pm->work_queue, work_entry);
-		}
-		else if (work_entry->emission_type == tfxLine) {
-			SpawnParticleLine2d(&pm->work_queue, work_entry);
-		}
-		SpawnParticleWeight(&pm->work_queue, work_entry);
-		SpawnParticleVelocity(&pm->work_queue, work_entry);
-		SpawnParticleRoll(&pm->work_queue, work_entry);
-		SpawnParticleMicroUpdate2d(&pm->work_queue, work_entry);
-		SpawnParticleAge(&pm->work_queue, work_entry);
-		SpawnParticleNoise(&pm->work_queue, work_entry);
-		SpawnParticleImageFrame(&pm->work_queue, work_entry);
-		SpawnParticleSize2d(&pm->work_queue, work_entry);
-		SpawnParticleSpin2d(&pm->work_queue, work_entry);
+	if (work_entry->emission_type == tfxPoint) {
+		SpawnParticlePoint2d(&pm->work_queue, work_entry);
 	}
+	else if (work_entry->emission_type == tfxArea) {
+		SpawnParticleArea2d(&pm->work_queue, work_entry);
+	}
+	else if (work_entry->emission_type == tfxEllipse) {
+		SpawnParticleEllipse2d(&pm->work_queue, work_entry);
+	}
+	else if (work_entry->emission_type == tfxLine) {
+		SpawnParticleLine2d(&pm->work_queue, work_entry);
+	}
+	SpawnParticleWeight(&pm->work_queue, work_entry);
+	SpawnParticleVelocity(&pm->work_queue, work_entry);
+	SpawnParticleRoll(&pm->work_queue, work_entry);
+	SpawnParticleMicroUpdate2d(&pm->work_queue, work_entry);
+	SpawnParticleAge(&pm->work_queue, work_entry);
+	SpawnParticleNoise(&pm->work_queue, work_entry);
+	SpawnParticleImageFrame(&pm->work_queue, work_entry);
+	SpawnParticleSize2d(&pm->work_queue, work_entry);
+	SpawnParticleSpin2d(&pm->work_queue, work_entry);
 }
 
 void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
