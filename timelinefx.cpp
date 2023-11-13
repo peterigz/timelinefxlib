@@ -9821,67 +9821,8 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		}
 	}
 
-	if (!(pm->flags & tfxEffectManagerFlags_update_age_only) && !(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-		if (work_entry->amount_to_spawn > 0) {
-			work_entry->end_index = work_entry->amount_to_spawn;
-			if (emission_type == tfxPoint) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticlePoint2d);
-			}
-			else if (emission_type == tfxArea) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleArea2d);
-			}
-			else if (emission_type == tfxEllipse) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleEllipse2d);
-			}
-			else if (emission_type == tfxLine) {
-				tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleLine2d);
-			}
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleWeight);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleVelocity);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleRoll);
-			//Can maybe revisit this. We have to complete the above work before doing the micro update. I would like to add the micro update from one of the above threads
-			//when all 4 have finished but synchronisation is hard to get right. Would have to rethink for a multi producer work queue. For now though this is working
-			//fine and is stable
-			//Update: I did try this and had a work queue that you could have sempahores and get jobs to run when specific jobs had finished, but it was actually slower.
-			//This is probably because my implementation was bad and the fact that I had to use mutexes into order to manage adding jobs working in a thread friendly manner
-			//(multi producer/worker). Back to the drawing board, will give it another go at some point.
-			tfxCompleteAllWork(&pm->work_queue);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleMicroUpdate2d);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleAge);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleNoise);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleImageFrame);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleSize2d);
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, SpawnParticleSpin2d);
-		}
-	}
-	else if (!(pm->flags & tfxEffectManagerFlags_update_age_only)) {
-		if (work_entry->amount_to_spawn > 0) {
-			work_entry->end_index = work_entry->amount_to_spawn;
-			if (emission_type == tfxPoint) {
-				SpawnParticlePoint2d(&pm->work_queue, work_entry);
-			}
-			else if (emission_type == tfxArea) {
-				SpawnParticleArea2d(&pm->work_queue, work_entry);
-			}
-			else if (emission_type == tfxEllipse) {
-				SpawnParticleEllipse2d(&pm->work_queue, work_entry);
-			}
-			else if (emission_type == tfxLine) {
-				SpawnParticleLine2d(&pm->work_queue, work_entry);
-			}
-			SpawnParticleWeight(&pm->work_queue, work_entry);
-			SpawnParticleVelocity(&pm->work_queue, work_entry);
-			SpawnParticleRoll(&pm->work_queue, work_entry);
-			SpawnParticleMicroUpdate2d(&pm->work_queue, work_entry);
-			SpawnParticleAge(&pm->work_queue, work_entry);
-			SpawnParticleNoise(&pm->work_queue, work_entry);
-			SpawnParticleImageFrame(&pm->work_queue, work_entry);
-			SpawnParticleSize2d(&pm->work_queue, work_entry);
-			SpawnParticleSpin2d(&pm->work_queue, work_entry);
-		}
-	}
-	else {
-		SpawnParticleAge(&pm->work_queue, work_entry);
+	if (work_entry->amount_to_spawn > 0) {
+		tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork2d);
 	}
 
 	if (work_entry->amount_to_spawn > 0 && emitter.property_flags & tfxEmitterPropertyFlags_single) {
@@ -10007,6 +9948,35 @@ void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 	SpawnParticleImageFrame(&pm->work_queue, work_entry);
 	SpawnParticleSize3d(&pm->work_queue, work_entry);
 	SpawnParticleSpin3d(&pm->work_queue, work_entry);
+}
+
+void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
+	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
+	tfx_particle_manager_t *pm = work_entry->pm;
+	if (work_entry->amount_to_spawn > 0) {
+		work_entry->end_index = work_entry->amount_to_spawn;
+		if (work_entry->emission_type == tfxPoint) {
+			SpawnParticlePoint2d(&pm->work_queue, work_entry);
+		}
+		else if (work_entry->emission_type == tfxArea) {
+			SpawnParticleArea2d(&pm->work_queue, work_entry);
+		}
+		else if (work_entry->emission_type == tfxEllipse) {
+			SpawnParticleEllipse2d(&pm->work_queue, work_entry);
+		}
+		else if (work_entry->emission_type == tfxLine) {
+			SpawnParticleLine2d(&pm->work_queue, work_entry);
+		}
+		SpawnParticleWeight(&pm->work_queue, work_entry);
+		SpawnParticleVelocity(&pm->work_queue, work_entry);
+		SpawnParticleRoll(&pm->work_queue, work_entry);
+		SpawnParticleMicroUpdate2d(&pm->work_queue, work_entry);
+		SpawnParticleAge(&pm->work_queue, work_entry);
+		SpawnParticleNoise(&pm->work_queue, work_entry);
+		SpawnParticleImageFrame(&pm->work_queue, work_entry);
+		SpawnParticleSize2d(&pm->work_queue, work_entry);
+		SpawnParticleSpin2d(&pm->work_queue, work_entry);
+	}
 }
 
 void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
