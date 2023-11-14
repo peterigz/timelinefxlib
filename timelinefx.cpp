@@ -8930,7 +8930,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];
-				sprites.captured_index[sprite_depth_index] = age <= work_entry->pm->frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				sprites.captured_index[sprite_depth_index] = age < pm.frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
 				sprites_index = (work_entry->layer << 28) + sprite_depth_index;
 				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
@@ -8941,7 +8941,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];
-				sprites.captured_index[running_sprite_index] = age <= work_entry->pm->frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				sprites.captured_index[running_sprite_index] = age < pm.frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
 				sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
@@ -9320,7 +9320,7 @@ void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_id) {
 tfxU32 ParticleCount(tfx_particle_manager_t *pm) {
 	tfxU32 count = 0;
 	for (tfxEachLayer) {
-		count += pm->active_particles_count[layer];
+		count += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 	}
 	return count;
 }
@@ -10025,6 +10025,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 		//Max age
 		//Todo: should age be set to the tween value?
 		age = entry->pm->frame_length * ((float)i / (float)entry->amount_to_spawn);
+		//age = 0;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 			max_age = pm.animation_length_in_time;
 		}
@@ -10384,7 +10385,7 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 	const tfx_emitter_properties_soa_t &properties = *entry->properties;
 	const tfx_vec3_t &grid_points = properties.grid_points[emitter.properties_index];
 	const float emitter_size = emitter.emitter_size.y;
-	const float grid_segment_size_y = emitter_size / (grid_points.x - 1);
+	const float grid_segment_size_y = emitter_size / tfxMax(grid_points.x - 1.f, 1.f);;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -10444,7 +10445,7 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 	const tfx_emitter_properties_soa_t &properties = *entry->properties;
 	const tfx_vec3_t &grid_points = properties.grid_points[emitter.properties_index];
 	const float emitter_size = emitter.emitter_size.y;
-	const float grid_segment_size_y = emitter_size / (grid_points.x - 1);
+	const float grid_segment_size_y = emitter_size / tfxMax(grid_points.x - 1.f, 1.f);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -10512,8 +10513,8 @@ void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data) {
 	AlterRandomSeed(&random, 13 + emitter.seed_index);
 	const tfx_emitter_properties_soa_t &properties = *entry->properties;
 	const tfx_vec3_t &grid_points = properties.grid_points[emitter.properties_index];
-	const float grid_segment_size_x = emitter.emitter_size.x / (grid_points.x - 1);
-	const float grid_segment_size_y = emitter.emitter_size.y / (grid_points.y - 1);
+	const float grid_segment_size_x = emitter.emitter_size.x / tfxMax(grid_points.x - 1.f, 1.f);;
+	const float grid_segment_size_y = emitter.emitter_size.y / tfxMax(grid_points.y - 1.f, 1.f);;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -10685,9 +10686,9 @@ void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data) {
 	AlterRandomSeed(&random, 14 + emitter.seed_index);
 	const tfx_emitter_properties_soa_t &properties = *entry->properties;
 	const tfx_vec3_t &grid_points = properties.grid_points[emitter.properties_index];
-	const float grid_segment_size_x = emitter.emitter_size.x / (grid_points.x - 1);
-	const float grid_segment_size_y = emitter.emitter_size.y / (grid_points.y - 1);
-	const float grid_segment_size_z = emitter.emitter_size.z / (grid_points.z - 1);
+	const float grid_segment_size_x = emitter.emitter_size.x / tfxMax(grid_points.x - 1.f, 1.f);
+	const float grid_segment_size_y = emitter.emitter_size.y / tfxMax(grid_points.y - 1.f, 1.f);
+	const float grid_segment_size_z = emitter.emitter_size.z / tfxMax(grid_points.z - 1.f, 1.f);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -10937,7 +10938,7 @@ void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data) {
 	const tfx_vec2_t &emitter_size = emitter.emitter_size.xy();
 	float arc_size = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
 	float arc_offset = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
-	const float grid_segment_size_x = arc_size / grid_points.x;
+	const float grid_segment_size_x = arc_size / tfxMax(grid_points.x, 1.f);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -11017,10 +11018,6 @@ void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data) {
 	tfx_emitter_soa_t &emitter = pm.emitters[entry->emitter_index];
 	AlterRandomSeed(&random, 16 + emitter.seed_index);
 	const tfx_emitter_properties_soa_t &properties = *entry->properties;
-	const tfx_vec3_t &grid_points = properties.grid_points[emitter.properties_index];
-	const float grid_segment_size_x = emitter.emitter_size.x / (grid_points.x - 1);
-	const float grid_segment_size_y = emitter.emitter_size.y / (grid_points.y - 1);
-	const float grid_segment_size_z = emitter.emitter_size.y / (grid_points.z - 1);
 	float arc_size = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
 	float arc_offset = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
 
@@ -11177,8 +11174,8 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 	const tfx_vec3_t &grid_points = properties.grid_points[emitter.properties_index];
 	float arc_size = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
 	float arc_offset = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
-	const float grid_segment_size_x = arc_size / grid_points.x;
-	const float grid_segment_size_y = emitter.emitter_size.y / (grid_points.y - 1);
+	const float grid_segment_size_x = arc_size / tfxMax(grid_points.x, 1.f);
+	const float grid_segment_size_y = emitter.emitter_size.y / tfxMax(grid_points.y - 1.f, 1.f);
 	tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
