@@ -2451,7 +2451,7 @@ void UpdateLibraryParticleShapeReferences(tfx_library_t *library, tfxKey default
 			}
 			else {
 				for (auto &shape : library->particle_shapes.data) {
-					if (shape.shape_index == library->emitter_properties.image_index[current.property_index]) {
+					if (shape.image_hash == library->emitter_properties.image_hash[current.property_index]) {
 						library->emitter_properties.image_hash[current.property_index] = shape.image_hash;
 						library->emitter_properties.image[current.property_index] = &library->particle_shapes.At(library->emitter_properties.image_hash[current.property_index]);
 						library->emitter_properties.end_frame[current.property_index] = library->particle_shapes.At(library->emitter_properties.image_hash[current.property_index]).animation_frames - 1;
