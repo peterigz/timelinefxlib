@@ -4411,7 +4411,7 @@ struct tfx_image_data_t {
 	{ }
 };
 
-struct tfx_emitter_properties_soa_t {
+struct tfx_emitter_properties_t {
 	//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfx_random_t
 	tfx_vec3_t angle_offsets;
 	//When aligning the billboard along a vector, you can set the type of vector that it aligns with
@@ -4465,7 +4465,7 @@ struct tfx_emitter_properties_soa_t {
 	//are stored on the GPU for looking up from the sprite data
 	tfxU32 animation_property_index;
 
-	tfx_emitter_properties_soa_t() { memset(this, 0, sizeof(tfx_emitter_properties_soa_t)); }
+	tfx_emitter_properties_t() { memset(this, 0, sizeof(tfx_emitter_properties_t)); }
 };
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -4525,7 +4525,8 @@ struct tfx_effect_emitter_info_t {
 	}
 };
 
-struct tfx_emitter_soa_t {
+//This is a struct that stores an emitter state that is currently active in a particle manager.
+struct tfx_emitter_state_t {
 	//State data
 	float frame;
 	float age;
@@ -4574,7 +4575,8 @@ struct tfx_emitter_soa_t {
 	tfx_vec3_t angle_offsets;
 };
 
-struct tfx_effect_soa_t {
+//This is a struct that stores an effect state that is currently active in a particle manager.
+struct tfx_effect_state_t {
 	//State data
 	float frame;
 	float age;
@@ -4616,7 +4618,7 @@ struct tfx_effect_soa_t {
 
 //An tfx_effect_emitter_t can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 //Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
-//This is only for library storage, when using to update each frame this is copied to tfx_effect_soa_t and tfx_emitter_soa_t for realtime updates
+//This is only for library storage, when using to update each frame this is copied to tfx_effect_state_t and tfx_emitter_state_t for realtime updates
 //suited for realtime use.
 struct tfx_effect_emitter_t {
 	//Required for frame by frame updating
@@ -4923,7 +4925,7 @@ struct tfx_particle_frame_t {
 
 struct tfx_spawn_work_entry_t {
 	tfx_particle_manager_t *pm;
-	tfx_emitter_properties_soa_t *properties;
+	tfx_emitter_properties_t *properties;
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
 	tfxU32 emitter_index;
 	tfxU32 parent_index;
@@ -4956,7 +4958,7 @@ struct tfx_control_work_entry_t {
 	tfx_particle_manager_t *pm;
 	tfx_overtime_attributes_t *graphs;
 	tfxU32 layer;
-	tfx_emitter_properties_soa_t *properties;
+	tfx_emitter_properties_t *properties;
 	tfx_sprite_soa_t *sprites;
 	float overal_scale;
 	float stretch;
@@ -4968,7 +4970,7 @@ struct tfx_particle_age_work_entry_t {
 	tfxU32 emitter_index;
 	tfxU32 wide_end_index;
 	tfxU32 start_diff;
-	tfx_emitter_properties_soa_t *properties;
+	tfx_emitter_properties_t *properties;
 	tfx_particle_manager_t *pm;
 };
 
@@ -5099,8 +5101,8 @@ struct tfx_particle_manager_t {
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfxU32> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
-	tfx_vector_t<tfx_effect_soa_t> effects;
-	tfx_vector_t<tfx_emitter_soa_t> emitters;
+	tfx_vector_t<tfx_effect_state_t> effects;
+	tfx_vector_t<tfx_emitter_state_t> emitters;
 	tfx_library_t *library;
 
 	tfx_work_queue_t work_queue;
@@ -5208,7 +5210,7 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_effect_emitter_t> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
 	tfx_vector_t<tfx_effect_emitter_info_t> effect_infos;
-	tfx_vector_t<tfx_emitter_properties_soa_t> emitter_properties;
+	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
@@ -5423,7 +5425,7 @@ tfxAPI_EDITOR int GetDataIntValue(tfx_storage_map_t<tfx_data_entry_t> *config, c
 tfxAPI_EDITOR float GetDataFloatValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
 tfxAPI_EDITOR bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path = "");
 tfxAPI_EDITOR bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char* path);
-tfxAPI_EDITOR void StreamProperties(tfx_emitter_properties_soa_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file);
+tfxAPI_EDITOR void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file);
 tfxAPI_EDITOR void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file);
 tfxAPI_EDITOR void StreamGraph(const char * name, tfx_graph_t *graph, tfx_str_t *file);
 tfxAPI_EDITOR void SplitStringStack(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
@@ -6317,7 +6319,7 @@ tfxINTERNAL inline float Interpolatef(float tween, float from, float to) {
 	return to * tween + from * (1.f - tween);
 }
 
-tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_soa_t *parent) {
+tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_state_t *parent) {
 	float s = sin(out_local_rotations->roll);
 	float c = cos(out_local_rotations->roll);
 
@@ -6331,7 +6333,7 @@ tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_l
 
 	*out_position = parent->world_position.xy() + rotatevec * parent->overal_scale;
 }
-tfxINTERNAL inline void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_effect_soa_t *parent) {
+tfxINTERNAL inline void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_effect_state_t *parent) {
 	tfx_mat4_t roll = Matrix4RotateZ(out_local_rotations->roll);
 	tfx_mat4_t pitch = Matrix4RotateX(out_local_rotations->pitch);
 	tfx_mat4_t yaw = Matrix4RotateY(out_local_rotations->yaw);
@@ -6475,14 +6477,14 @@ tfxINTERNAL inline void AlterRandomSeed(tfx_random_t *random, tfxU64 amount) {
 //--------------------------------
 //Particle manager internal functions
 //--------------------------------
-tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_soa_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
-tfxINTERNAL tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_soa_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
+tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
+tfxINTERNAL tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data);
-tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_soa_t *parent, tfx_emitter_properties_soa_t *properties);
-tfxINTERNAL void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_soa_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
+tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties);
+tfxINTERNAL void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index);
 
 tfxAPI_EDITOR void CompletePMWork(tfx_particle_manager_t *pm);
@@ -6540,8 +6542,8 @@ tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
 tfxINTERNAL void InitParticleSoA(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
 
-tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_soa_t *properties);
-tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_soa_t *from_properties, tfx_emitter_properties_soa_t *to_properties);
+tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
+tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);
 
 tfxINTERNAL inline void FreeSpriteData(tfx_sprite_data_t *sprite_data);
 
@@ -6803,7 +6805,7 @@ tfxAPI_EDITOR tfxU32 CloneLibraryGlobal(tfx_library_t *library, tfxU32 source_in
 tfxAPI_EDITOR tfxU32 CloneLibraryKeyframes(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
 tfxAPI_EDITOR tfxU32 CloneLibraryEmitterAttributes(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
 tfxAPI_EDITOR tfxU32 CloneLibraryInfo(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
-tfxAPI_EDITOR tfxU32 CloneLibraryProperties(tfx_library_t *library, tfx_emitter_properties_soa_t *source, tfx_library_t *destination_library);
+tfxAPI_EDITOR tfxU32 CloneLibraryProperties(tfx_library_t *library, tfx_emitter_properties_t *source, tfx_library_t *destination_library);
 tfxAPI_EDITOR void AddLibraryEmitterGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void AddLibraryEffectGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void AddLibraryTransformGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
@@ -6849,7 +6851,7 @@ tfxINTERNAL void FreeEffectGraphs(tfx_effect_emitter_t *effect);
 tfxINTERNAL tfxU32 CountAllEffectLookupValues(tfx_effect_emitter_t *effect);
 tfxINTERNAL float GetEffectLoopLength(tfx_effect_emitter_t *effect);
 
-tfxAPI_EDITOR tfx_emitter_properties_soa_t *GetEffectProperties(tfx_effect_emitter_t *e);
+tfxAPI_EDITOR tfx_emitter_properties_t *GetEffectProperties(tfx_effect_emitter_t *e);
 tfxAPI_EDITOR tfx_effect_emitter_t* AddEmitterToEffect(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *e);
 tfxAPI_EDITOR tfx_effect_emitter_t* AddEffectToEmitter(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *e);
 tfxAPI_EDITOR tfx_effect_emitter_t* AddEffect(tfx_effect_emitter_t *effect);
