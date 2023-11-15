@@ -4411,60 +4411,59 @@ struct tfx_image_data_t {
 	{ }
 };
 
-//Struct of Arrays for the emitter properties. 
 struct tfx_emitter_properties_soa_t {
 	//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfx_random_t
-	tfx_vec3_t *angle_offsets;
+	tfx_vec3_t angle_offsets;
 	//When aligning the billboard along a vector, you can set the type of vector that it aligns with
-	tfx_vector_align_type *vector_align_type;
+	tfx_vector_align_type vector_align_type;
 	//Point, area, ellipse emitter etc.
-	tfx_emission_type *emission_type;
+	tfx_emission_type emission_type;
 	//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
-	tfxU32 *single_shot_limit;
+	tfxU32 single_shot_limit;
 	//Animation frame rate
-	float *frame_rate;
+	float frame_rate;
 	//The final frame index of the animation
-	float *end_frame;
+	float end_frame;
 	//Pointer to the ImageData in the EffectLibary. 
-	tfx_image_data_t **image;
+	tfx_image_data_t *image;
 	//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
-	tfx_billboarding_option *billboard_option;
+	tfx_billboarding_option billboard_option;
 
 	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
-	tfx_vec3_t *grid_points;
+	tfx_vec3_t grid_points;
 	//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
-	tfxAngleSettingFlags *angle_settings;
+	tfxAngleSettingFlags angle_settings;
 	//Layer of the particle manager that the particle is added to
-	tfxU32 *layer;
+	tfxU32 layer;
 	//Milliseconds to delay spawing
-	float *delay_spawning;
+	float delay_spawning;
 	//Should particles emit towards the center of the emitter or away, or in a specific direction
-	tfx_emission_direction *emission_direction;
+	tfx_emission_direction emission_direction;
 
 	//How particles should behave when they reach the end of the line
-	tfx_line_traversal_end_behaviour *end_behaviour;
+	tfx_line_traversal_end_behaviour end_behaviour;
 	//Bit field of various boolean state_flags
-	tfxParticleControlFlags *compute_flags;
+	tfxParticleControlFlags compute_flags;
 	//Offset to draw particles at
-	tfx_vec2_t *image_handle;
+	tfx_vec2_t image_handle;
 	//Offset of emitters
-	tfx_vec3_t *emitter_handle;
+	tfx_vec3_t emitter_handle;
 	//When single flag is set, spawn this amount of particles in one go
-	tfxU32 *spawn_amount;
+	tfxU32 spawn_amount;
 	//The shape being used for all particles spawned from the emitter (deprecated, hash now used instead)
-	tfxU32 *image_index;
+	tfxU32 image_index;
 	//The shape being used for all particles spawned from the emitter
-	tfxKey *image_hash;
+	tfxKey image_hash;
 	//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
-	float *loop_length;
+	float loop_length;
 	//The start frame index of the animation
-	float *start_frame;
+	float start_frame;
 	//Base noise offset random range so that noise patterns don't repeat so much over multiple effects
-	float *noise_base_offset_range;
+	float noise_base_offset_range;
 	//This is only used for the animation manager when sprite data is added to the animation manager. This is used to map
 	//the property_index to the animation property index so the sprite data can point to a new index where some emitter properties
 	//are stored on the GPU for looking up from the sprite data
-	tfxU32 *animation_property_index;
+	tfxU32 animation_property_index;
 
 	tfx_emitter_properties_soa_t() { memset(this, 0, sizeof(tfx_emitter_properties_soa_t)); }
 };
@@ -5205,13 +5204,11 @@ struct tfx_effect_library_stats_t {
 };
 
 struct tfx_library_t {
-	tfx_soa_buffer_t emitter_properties_buffer;
-
 	tfx_storage_map_t<tfx_effect_emitter_t*> effect_paths;
 	tfx_vector_t<tfx_effect_emitter_t> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
 	tfx_vector_t<tfx_effect_emitter_info_t> effect_infos;
-	tfx_emitter_properties_soa_t emitter_properties;
+	tfx_vector_t<tfx_emitter_properties_soa_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
@@ -5426,7 +5423,7 @@ tfxAPI_EDITOR int GetDataIntValue(tfx_storage_map_t<tfx_data_entry_t> *config, c
 tfxAPI_EDITOR float GetDataFloatValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
 tfxAPI_EDITOR bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path = "");
 tfxAPI_EDITOR bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char* path);
-tfxAPI_EDITOR void StreamProperties(tfx_emitter_properties_soa_t *property, tfxU32 index, tfxEmitterPropertyFlags flags, tfx_str_t *file);
+tfxAPI_EDITOR void StreamProperties(tfx_emitter_properties_soa_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file);
 tfxAPI_EDITOR void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file);
 tfxAPI_EDITOR void StreamGraph(const char * name, tfx_graph_t *graph, tfx_str_t *file);
 tfxAPI_EDITOR void SplitStringStack(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
@@ -6543,8 +6540,8 @@ tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
 tfxINTERNAL void InitParticleSoA(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
 
-tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_soa_t *properties, tfxU32 i);
-tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_soa_t *from_properties, tfxU32 from_i, tfx_emitter_properties_soa_t *to_properties, tfxU32 to_i);
+tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_soa_t *properties);
+tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_soa_t *from_properties, tfx_emitter_properties_soa_t *to_properties);
 
 tfxINTERNAL inline void FreeSpriteData(tfx_sprite_data_t *sprite_data);
 
@@ -6806,7 +6803,7 @@ tfxAPI_EDITOR tfxU32 CloneLibraryGlobal(tfx_library_t *library, tfxU32 source_in
 tfxAPI_EDITOR tfxU32 CloneLibraryKeyframes(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
 tfxAPI_EDITOR tfxU32 CloneLibraryEmitterAttributes(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
 tfxAPI_EDITOR tfxU32 CloneLibraryInfo(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
-tfxAPI_EDITOR tfxU32 CloneLibraryProperties(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library);
+tfxAPI_EDITOR tfxU32 CloneLibraryProperties(tfx_library_t *library, tfx_emitter_properties_soa_t *source, tfx_library_t *destination_library);
 tfxAPI_EDITOR void AddLibraryEmitterGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void AddLibraryEffectGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void AddLibraryTransformGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect);
@@ -6833,7 +6830,6 @@ tfxAPI_EDITOR void CompileLibraryGraphsOfEffect(tfx_library_t *library, tfx_effe
 tfxAPI_EDITOR void SetLibraryMinMaxData(tfx_library_t *library);
 tfxAPI_EDITOR void ClearLibrary(tfx_library_t *library);
 tfxAPI_EDITOR void InitLibrary(tfx_library_t *library);
-tfxAPI_EDITOR void InitLibraryEmitterProperties(tfx_library_t *library);
 //Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
 //You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
 //These are mainly for use by the editor, use effect templates instead, see PrepareEffectTemplate.
