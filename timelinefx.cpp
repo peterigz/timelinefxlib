@@ -7734,7 +7734,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			spawn_work_entry->properties = &pm->library->emitter_properties[pm->emitters[current_index].properties_index];
 			spawn_work_entry->sub_effects = &pm->library->effect_infos[pm->emitters[current_index].info_index].sub_effectors;
 			spawn_work_entry->amount_to_spawn = 0;
-			spawn_work_entry->end_index = 0;
 			spawn_work_entry->highest_particle_age = 0;
 			spawn_work_entry->pm = pm;
 
@@ -9777,6 +9776,10 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		}
 	}
 
+	if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
+		//We must complete all work first before potentially growing the particle_array_buffers as some threads may still be working in the buffer
+		tfxCompleteAllWork(&pm->work_queue);
+	}
 	bool grew = false;
 	work_entry->spawn_start_index = AddRows(&pm->particle_array_buffers[emitter.particles_index], work_entry->amount_to_spawn, true, grew);
 	if (grew && !(pm->flags & tfxEffectManagerFlags_unordered)) {
@@ -9793,7 +9796,6 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 	work_entry->emission_type = properties.emission_type;
 
 	if (work_entry->amount_to_spawn > 0) {
-		work_entry->end_index = work_entry->amount_to_spawn;
 		tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork2d);
 	}
 
@@ -9869,8 +9871,8 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 		//assert(pm->particle_array_buffers[particles_index].start_index == 0); //If start_index isn't 0 after the arrays grew then something went wrong with the allocation
 		for (int i = 0; i != pm->particle_array_buffers[emitter.particles_index].current_size - work_entry->amount_to_spawn; ++i) {
-			tfxU32 depth_index = bank.depth_index[i];
-			tfxU32 depth_id = pm->depth_indexes[layer][pm->current_depth_index_buffer][bank.depth_index[i]].particle_id;
+			//tfxU32 depth_index = bank.depth_index[i];
+			//tfxU32 depth_id = pm->depth_indexes[layer][pm->current_depth_index_buffer][bank.depth_index[i]].particle_id;
 			pm->depth_indexes[layer][pm->current_depth_index_buffer][bank.depth_index[i]].particle_id = MakeParticleID(emitter.particles_index, i);
 		}
 	}
@@ -9925,6 +9927,7 @@ void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfx_particle_manager_t *pm = work_entry->pm;
+	SpawnParticleAge(&pm->work_queue, work_entry);
 	if (work_entry->emission_type == tfxPoint) {
 		SpawnParticlePoint2d(&pm->work_queue, work_entry);
 	}
@@ -9941,7 +9944,6 @@ void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
 	SpawnParticleVelocity(&pm->work_queue, work_entry);
 	SpawnParticleRoll(&pm->work_queue, work_entry);
 	SpawnParticleMicroUpdate2d(&pm->work_queue, work_entry);
-	SpawnParticleAge(&pm->work_queue, work_entry);
 	SpawnParticleNoise(&pm->work_queue, work_entry);
 	SpawnParticleImageFrame(&pm->work_queue, work_entry);
 	SpawnParticleSize2d(&pm->work_queue, work_entry);

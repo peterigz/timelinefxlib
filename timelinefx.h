@@ -4938,7 +4938,6 @@ struct tfx_spawn_work_entry_t {
 	float tween;
 	tfxU32 max_spawn_count;
 	tfxU32 amount_to_spawn = 0;
-	tfxU32 end_index;
 	tfxU32 spawn_start_index;
 	tfxU32 next_buffer;
 	int depth;
