@@ -4334,8 +4334,7 @@ void SetCurve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve
 		node->left.y = *value;
 		if (node->left.x > node->frame)
 			node->left.x = node->frame;
-		else
-			ClampCurve(graph, &node->left, node);
+		ClampCurve(graph, &node->left, node);
 		*frame = node->left.x;
 		*value = node->left.y;
 	}
@@ -4344,8 +4343,7 @@ void SetCurve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve
 		node->right.y = *value;
 		if (node->right.x < node->frame)
 			node->right.x = node->frame;
-		else
-			ClampCurve(graph, &node->right, node);
+		ClampCurve(graph, &node->right, node);
 		*frame = node->right.x;
 		*value = node->right.y;
 	}
@@ -4405,7 +4403,7 @@ void ClampGraph(tfx_graph_t *graph) {
 void ClampCurve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node_t *node) {
 	if (p->y < graph->min.y) p->y = graph->min.y;
 	if (p->x < graph->min.x) p->x = graph->min.x;
-	//if (p->y > graph->max.y) p->y = graph->max.y;
+	if (p->y > graph->max.y) p->y = graph->max.y;
 	if (p->x > graph->max.x) p->x = graph->max.x;
 
 	tfx_attribute_node_t *next = GetGraphNextNode(graph, node);
@@ -9776,12 +9774,15 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		}
 	}
 
+	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
+
 	if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
 		//We must complete all work first before potentially growing the particle_array_buffers as some threads may still be working in the buffer
 		tfxCompleteAllWork(&pm->work_queue);
 	}
+
 	bool grew = false;
-	work_entry->spawn_start_index = AddRows(&pm->particle_array_buffers[emitter.particles_index], work_entry->amount_to_spawn, true, grew);
+	work_entry->spawn_start_index = AddRows(&buffer, work_entry->amount_to_spawn, true, grew);
 	if (grew && !(pm->flags & tfxEffectManagerFlags_unordered)) {
 		//Todo: This should be avoided by allocating the correct amount for the particle buffer ahead of time
 		//If the particle buffer is allocated a larger memory size then the ring buffer index has to be reset in the depth buffer list
