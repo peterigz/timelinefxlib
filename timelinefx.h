@@ -1912,7 +1912,8 @@ enum tfx_particle_manager_flag_bits {
 	tfxEffectManagerFlags_double_buffer_sprites = 1 << 13,
 	tfxEffectManagerFlags_recording_sprites = 1 << 14,
 	tfxEffectManagerFlags_using_uids = 1 << 15,
-	tfxEffectManagerFlags_2d_and_3d = 1 << 16
+	tfxEffectManagerFlags_2d_and_3d = 1 << 16,
+	tfxEffectManagerFlags_update_bounding_boxes = 1 << 17
 };
 
 enum tfx_vector_align_type {
@@ -3735,6 +3736,11 @@ struct tfx_wide_vec2_t {
 	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideMul(y, y)); }
 };
 
+struct tfx_bounding_box_t {
+	tfx_vec3_t min_corner;
+	tfx_vec3_t max_corner;
+};
+
 inline tfx_wide_vec3_t InterpolateWideVec3(tfxWideFloat &tween, tfx_wide_vec3_t &from, tfx_wide_vec3_t &to) {
 	return to * tween + from * (tfxWideSub(tfxWIDEONE, tween));
 }
@@ -4545,6 +4551,8 @@ struct tfx_emitter_state_t {
 	//Todo: save space and use a quaternion here... maybe
 	tfx_mat4_t matrix;
 	tfx_vec2_t image_handle;
+	tfx_bounding_box_t bounding_box;
+
 	float amount_remainder;
 	float spawn_quantity;
 	float qty_step_size;
@@ -4553,6 +4561,7 @@ struct tfx_emitter_state_t {
 	tfxU32 transform_attributes;
 	tfxU32 overtime_attributes;
 
+	tfxU32 root_index;
 	tfxU32 parent_index;
 	tfxU32 properties_index;
 	tfxU32 info_index;
@@ -4595,6 +4604,8 @@ struct tfx_effect_state_t {
 	tfx_vec3_t world_rotations;
 	//Todo: save space and use a quaternion here?
 	tfx_mat4_t matrix;
+	tfx_bounding_box_t bounding_box;
+
 	tfxU32 global_attributes;
 	tfxU32 transform_attributes;
 
@@ -6534,6 +6545,8 @@ tfxINTERNAL void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data)
 tfxINTERNAL void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data);
 
+tfxINTERNAL void ControlParticleBoundingBox(tfx_work_queue_t *queue, void *data);
+
 tfxINTERNAL void InitSpriteData3dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
@@ -6722,7 +6735,7 @@ tfxINTERNAL tfxU32 GetParticleSpriteIndex(tfx_particle_manager_t *pm, tfxParticl
 tfxINTERNAL unsigned int GetControllerMemoryUsage(tfx_particle_manager_t *pm);
 tfxINTERNAL unsigned int GetParticleMemoryUsage(tfx_particle_manager_t *pm);
 tfxINTERNAL void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_id);
-tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning);
+tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxINTERNAL void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeParticleBanks(tfx_particle_manager_t *pm);
@@ -7250,6 +7263,14 @@ todo: callbacks should be moved into the particle manager, currently they're glo
 * @param mode			The look up mode you want to set. tfxFast is the default mode.
 */
 tfxAPI void SetPMLookUpMode(tfx_particle_manager_t *pm, tfx_lookup_mode mode);
+
+/*
+Each effect in the particle manager can have bounding box which you can decide to keep updated or not if you wanted to do any offscreen culling of effects. Theres some
+extra overhead to keep the bounding boxes updated but that can be made back if you have a number of effect particles offscreen that don't need to be drawn.
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param yesno			Set to true or false if you want the bounding boxes to be udpated.
+*/
+tfxAPI void KeepBoundingBoxesUpdated(tfx_particle_manager_t *pm, bool yesno);
 
 /*
 Set the effect user data for an effect already added to a particle manager

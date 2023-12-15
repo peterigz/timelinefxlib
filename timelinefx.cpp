@@ -6497,7 +6497,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 		ToggleSpritesWithUID(pm, true);
 	}
 	SetSeed(pm, anim.seed);
-	tfxU32 preview_effect_index = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0.f);
+	tfxU32 preview_effect_index = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0, 0.f);
 	tfx_vec3_t pm_camera_position = pm->camera_position;
 	pm->camera_position = tfx_vec3_t(camera_position[0], camera_position[1], camera_position[2]);
 	SetEffectPosition(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
@@ -6609,7 +6609,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 
 	ClearParticleManager(pm, false);
 	SetSeed(pm, anim.seed);
-	preview_effect_index = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0.f);
+	preview_effect_index = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0, 0.f);
 	SetEffectPosition(pm, preview_effect_index, tfx_vec3_t(0.f, 0.f, 0.f));
 	if (is_3d) {
 		Transform3d(&pm->effects[preview_effect_index].world_rotations,
@@ -7440,7 +7440,7 @@ tfx_particle_manager_t::~tfx_particle_manager_t() {
 
 bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect_template, tfxEffectID *effect_id) {
 	tfxEffectID id;
-	id = AddEffectToParticleManager(pm, &effect_template->effect, pm->current_ebuff, 0, false, 0.f);
+	id = AddEffectToParticleManager(pm, &effect_template->effect, pm->current_ebuff, 0, false, 0, 0.f);
 	if (effect_id) {
 		*effect_id = id;
 	}
@@ -7449,14 +7449,14 @@ bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_
 
 bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id) {
 	tfxEffectID id;
-	id = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0.f);
+	id = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0, 0.f);
 	if (effect_id) {
 		*effect_id = id;
 	}
 	return id != tfxINVALID;
 }
 
-tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, float add_delayed_spawning) {
+tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning) {
 	tfxPROFILE;
 	assert(effect->type == tfxEffectType);
 	assert(effect->library == pm->library);	//The effect must belong to the same library that is assigned to the particle manager
@@ -7566,8 +7566,10 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 
 			if (is_sub_emitter) {
 				state_flags |= tfxEmitterStateFlags_is_sub_emitter;
+				emitter.root_index = root_effect_index;
 			}
 			else {
+				emitter.root_index = parent_index;
 				emitter.highest_particle_age = pm->frame_length * 2.f;
 			}
 
@@ -7975,6 +7977,32 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	pm->current_ebuff = next_buffer;
 
+	if (pm->flags & tfxEffectManagerFlags_update_bounding_boxes) {
+		for (int i = 0; i != pm->effects_in_use[0][pm->current_ebuff].size(); ++i) {
+			tfxU32 index = pm->effects_in_use[0][pm->current_ebuff][i];
+			tfx_bounding_box_t &effect_bb = pm->effects[index].bounding_box;
+			effect_bb.max_corner.x = -FLT_MAX;
+			effect_bb.max_corner.y = -FLT_MAX;
+			effect_bb.max_corner.z = -FLT_MAX;
+			effect_bb.min_corner.x = FLT_MAX;
+			effect_bb.min_corner.y = FLT_MAX;
+			effect_bb.min_corner.z = FLT_MAX;
+		}
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			for (int i = 0; i != pm->emitters_in_use[depth][pm->current_ebuff].size(); ++i) {
+				tfxU32 current_index = pm->emitters_in_use[depth][pm->current_ebuff][i];
+				tfx_emitter_state_t &emitter = pm->emitters[current_index];
+				tfx_bounding_box_t &effect_bb = pm->effects[emitter.root_index].bounding_box;
+				effect_bb.max_corner.x = tfx__Max(effect_bb.max_corner.x, emitter.bounding_box.max_corner.x);
+				effect_bb.max_corner.y = tfx__Max(effect_bb.max_corner.y, emitter.bounding_box.max_corner.y);
+				effect_bb.max_corner.z = tfx__Max(effect_bb.max_corner.z, emitter.bounding_box.max_corner.z);
+				effect_bb.min_corner.x = tfx__Min(effect_bb.min_corner.x, emitter.bounding_box.min_corner.x);
+				effect_bb.min_corner.y = tfx__Min(effect_bb.min_corner.y, emitter.bounding_box.min_corner.y);
+				effect_bb.min_corner.z = tfx__Min(effect_bb.min_corner.z, emitter.bounding_box.min_corner.z);
+			}
+		}
+	}
+
 	pm->flags &= ~tfxEffectManagerFlags_update_base_values;
 
 }
@@ -8179,6 +8207,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t*>(data);
 	tfx_particle_manager_t &pm = *work_entry->pm;
 	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_bounding_box_t &bounding_box = emitter.bounding_box;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
@@ -8327,6 +8356,14 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 				bank.captured_position_z[index + j] = sprites.transform_3d[sprite_depth_index].position.z;
 				tfx_vec3_t sprite_plus_camera_position = sprites.transform_3d[sprite_depth_index].position - pm.camera_position;
 				pm.depth_indexes[sprite_layer][pm.current_depth_index_buffer][sprite_depth_index].depth = LengthVec3NoSqR(&sprite_plus_camera_position);
+				if (pm.flags & tfxEffectManagerFlags_update_bounding_boxes) {
+					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
+					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
+					bounding_box.min_corner.z = tfx__Min(position_z.a[j], bounding_box.min_corner.z);
+					bounding_box.max_corner.x = tfx__Max(position_x.a[j], bounding_box.max_corner.x);
+					bounding_box.max_corner.y = tfx__Max(position_y.a[j], bounding_box.max_corner.y);
+					bounding_box.max_corner.z = tfx__Max(position_z.a[j], bounding_box.max_corner.z);
+				}
 				running_sprite_index++;
 			}
 		}
@@ -8343,6 +8380,14 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 				bank.captured_position_x[index + j] = sprites.transform_3d[running_sprite_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform_3d[running_sprite_index].position.y;
 				bank.captured_position_z[index + j] = sprites.transform_3d[running_sprite_index].position.z;
+				if (pm.flags & tfxEffectManagerFlags_update_bounding_boxes) {
+					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
+					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
+					bounding_box.min_corner.z = tfx__Min(position_z.a[j], bounding_box.min_corner.z);
+					bounding_box.max_corner.x = tfx__Max(position_x.a[j], bounding_box.max_corner.x);
+					bounding_box.max_corner.y = tfx__Max(position_y.a[j], bounding_box.max_corner.y);
+					bounding_box.max_corner.z = tfx__Max(position_z.a[j], bounding_box.max_corner.z);
+				}
 				running_sprite_index++;
 			}
 		}
@@ -8588,6 +8633,7 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t*>(data);
 	tfx_particle_manager_t &pm = *work_entry->pm;
 	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_bounding_box_t &bounding_box = emitter.bounding_box;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
@@ -8654,6 +8700,13 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 				sprites.transform_2d[sprite_depth_index].position.y = position_y.a[j];
 				bank.captured_position_x[index + j] = sprites.transform_2d[sprite_depth_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform_2d[sprite_depth_index].position.y;
+				/*
+				//Not sure what I'm doing for this yet
+				bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
+				bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
+				bounding_box.max_corner.x = tfx__Max(position_x.a[j], bounding_box.max_corner.x);
+				bounding_box.max_corner.y = tfx__Max(position_y.a[j], bounding_box.max_corner.y);
+				*/
 				running_sprite_index++;
 			}
 		}
@@ -8664,11 +8717,22 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 				sprites.transform_2d[running_sprite_index].position.y = position_y.a[j];
 				bank.captured_position_x[index + j] = sprites.transform_2d[running_sprite_index].position.x;
 				bank.captured_position_y[index + j] = sprites.transform_2d[running_sprite_index].position.y;
+				/*
+				//Not sure what I'm doing for this yet
+				bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
+				bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
+				bounding_box.max_corner.x = tfx__Max(position_x.a[j], bounding_box.max_corner.x);
+				bounding_box.max_corner.y = tfx__Max(position_y.a[j], bounding_box.max_corner.y);
+				*/
 				running_sprite_index++;
 			}
 		}
 		start_diff = 0;
 	}
+}
+
+void ControlParticleBoundingBox(tfx_work_queue_t *queue, void *data) {
+
 }
 
 void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
@@ -9196,6 +9260,14 @@ void SetPMLookUpMode(tfx_particle_manager_t *pm, tfx_lookup_mode mode) {
 		lookup_callback = LookupFast;
 	}
 	pm->lookup_mode = mode;
+}
+
+void KeepBoundingBoxesUpdated(tfx_particle_manager_t *pm, bool yesno) {
+	if (yesno) {
+		pm->flags |= tfxEffectManagerFlags_update_bounding_boxes;
+	} else {
+		pm->flags &= ~tfxEffectManagerFlags_update_bounding_boxes;
+	}
 }
 
 void UpdatePMBaseValues(tfx_particle_manager_t *pm) {
@@ -10035,7 +10107,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 				if (!FreePMEffectCapacity(&pm))
 					break;
 				assert(entry->depth < tfxMAXDEPTH - 1);
-				tfxU32 added_index = AddEffectToParticleManager(&pm, &sub, pm.current_ebuff, entry->depth + 1, true, 0.f);
+				tfxU32 added_index = AddEffectToParticleManager(&pm, &sub, pm.current_ebuff, entry->depth + 1, true, emitter.root_index, 0.f);
 				pm.effects[added_index].overal_scale = entry->overal_scale;
 				pm.effects[added_index].parent_particle_index = particle_index;
 			}
@@ -11573,6 +11645,12 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 
 	tfx_library_t *library = pm->library;
 	tfx_emitter_properties_t &properties = *entry->properties;
+	emitter.bounding_box.min_corner.x = FLT_MAX;
+	emitter.bounding_box.min_corner.y = FLT_MAX;
+	emitter.bounding_box.min_corner.z = FLT_MAX;
+	emitter.bounding_box.max_corner.x = -FLT_MAX;
+	emitter.bounding_box.max_corner.y = -FLT_MAX;
+	emitter.bounding_box.max_corner.z = -FLT_MAX;
 
 	bool is_area = properties.emission_type == tfxArea || properties.emission_type == tfxEllipse || properties.emission_type == tfxCylinder || properties.emission_type == tfxIcosphere;
 
