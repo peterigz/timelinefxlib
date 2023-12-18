@@ -4758,8 +4758,8 @@ struct tfx_frame_meta_t {
 	tfxU32 index_offset[tfxLAYERS];		//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
 	tfxU32 sprite_count[tfxLAYERS];		//The number of sprites in the frame for each layer
 	tfxU32 total_sprites;				//The total number of sprites for all layers in the frame
-	tfx_vec3_t corner1;					//Bounding box corner
-	tfx_vec3_t corner2;					//The bounding box can be used to decide if this frame needs to be drawn
+	tfx_vec3_t min_corner;				//Bounding box min corner
+	tfx_vec3_t max_corner;				//Bounding box max corner. The bounding box can be used to decide if this frame needs to be drawn
 };
 
 //This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
@@ -5010,10 +5010,11 @@ struct tfx_effect_data_t {
 
 //An anim instance is used to let the gpu know where to draw an animation with sprite data.
 struct tfx_animation_instance_t {
-	tfx_vec3_t position;					//position that the instance should be played at
+	tfx_vec3_t position;				//position that the instance should be played at
 	float scale;						//Scales the overal size of the animation
 	tfxU32 sprite_count;				//The number of sprites to be drawn
-	tfxU32 frame_count;					//The number of sprites to be drawn
+	tfxU32 frame_count;					//The number of frames in the animation
+	tfxU32 current_frame;				//Current frame being rendered
 	tfxU32 offset_into_sprite_data;		//The starting ofset in the buffer that contains all the sprite data
 	tfxU32 info_index;					//Index into the effect_animation_info storage map to get at the frame meta
 	float current_time;					//Current point of time in the animation
@@ -6719,7 +6720,7 @@ tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_l
 tfxINTERNAL tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager);
 tfxINTERNAL void FreeAnimationInstance(tfx_animation_manager_t *animation_manager, tfxU32 index);
 tfxINTERNAL void AddEffectEmitterProperties(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape);
-tfxINTERNAL void UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
+tfxAPI void UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
 tfxINTERNAL bool FreePMEffectCapacity(tfx_particle_manager_t *pm);
 
 //--------------------------------

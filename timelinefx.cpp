@@ -3527,8 +3527,8 @@ void tfx_data_types_dictionary_t::Init() {
 
 	//Frame meta
 	names_and_types.Insert("total_sprites", tfxUint);
-	names_and_types.Insert("corner1_3d", tfxFloat3);
-	names_and_types.Insert("corner2_3d", tfxFloat3);
+	names_and_types.Insert("min_corner_3d", tfxFloat3);
+	names_and_types.Insert("max_corner_3d", tfxFloat3);
 
 	//Sprite data emitter properties
 	names_and_types.Insert("animation_frames", tfxFloat);
@@ -3799,10 +3799,10 @@ tfx_vec2_t StrToVec2(tfx_vector_t<tfx_str256_t> *str) {
 }
 
 void AssignFrameMetaProperty(tfx_frame_meta_t *metrics, tfx_str_t *field, tfx_vec3_t value, tfxU32 file_version) {
-	if (*field == "corner1")
-		metrics->corner1 = value;
-	if (*field == "corner2")
-		metrics->corner2 = value;
+	if (*field == "min_corner_3d")
+		metrics->min_corner = value;
+	if (*field == "max_corner_3d")
+		metrics->max_corner = value;
 }
 
 void AssignAnimationEmitterProperty(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfx_vec2_t value, tfxU32 file_version) {
@@ -7239,17 +7239,19 @@ void UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float el
 	tfxU32 running_sprite_count = 0;
 	animation_manager->flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
 	for (auto i : animation_manager->instances_in_use[animation_manager->current_in_use_buffer]) {
-		auto &instance = animation_manager->instances[i];
+		tfx_animation_instance_t &instance = animation_manager->instances[i];
 		tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 		instance.current_time += elapsed;
 		float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
 		tfxU32 frame = tfxU32(frame_time);
 		frame++;
 		frame = frame >= metrics.frame_count ? 0 : frame;
+		instance.current_frame = frame;
 		if (instance.current_time >= instance.animation_length_in_time) {
 			if (instance.flags & tfxAnimationInstanceFlags_loop) {
 				instance.sprite_count = metrics.frame_meta[0].total_sprites;
 				instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
+				instance.current_frame = 0;
 				instance.current_time -= instance.animation_length_in_time;
 				animation_manager->instances_in_use[next_buffer].push_back(i);
 				running_sprite_count += instance.sprite_count;
@@ -7286,12 +7288,13 @@ void CycleAnimationManager(tfx_animation_manager_t *animation_manager) {
 	tfxU32 running_sprite_count = 0;
 	animation_manager->flags &= ~tfxAnimationManagerFlags_has_animated_shapes;
 	for (auto i : animation_manager->instances_in_use[animation_manager->current_in_use_buffer]) {
-		auto &instance = animation_manager->instances[i];
+		tfx_animation_instance_t &instance = animation_manager->instances[i];
 		tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 		float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
 		tfxU32 frame = tfxU32(frame_time);
 		frame++;
 		frame = frame >= metrics.frame_count ? 0 : frame;
+		instance.current_frame = frame;
 		instance.sprite_count = metrics.frame_meta[frame].total_sprites;
 		instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
 		animation_manager->instances_in_use[next_buffer].push_back(i);
