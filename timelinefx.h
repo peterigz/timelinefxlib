@@ -3,7 +3,7 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_OUTPUT_NOTICE_MESSAGES
-#define tfxUSEAVX
+//#define tfxUSEAVX
 
 /*
 	Timeline FX C++ library
