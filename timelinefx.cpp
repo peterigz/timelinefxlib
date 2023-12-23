@@ -9699,12 +9699,13 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 }
 
 tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties) {
-
+	tfx_random_t random = pm->random;
 	tfx_emitter_state_t &emitter = pm->emitters[index];
+	AlterRandomSeed(&random, 25 + emitter.seed_index);
 	if (!(emitter.property_flags & tfxEmitterPropertyFlags_single)) {
 		emitter.spawn_quantity = lookup_callback(&pm->library->emitter_attributes[emitter.emitter_attributes].base.amount, emitter.frame);
 		float amount_variation = lookup_callback(&pm->library->emitter_attributes[emitter.emitter_attributes].variation.amount, emitter.frame);
-		emitter.spawn_quantity += amount_variation > 0.f ? RandomRange(&pm->random, 1.f, amount_variation) : 0.f;
+		emitter.spawn_quantity += amount_variation > 0.f ? RandomRange(&random, 1.f, amount_variation) : 0.f;
 		emitter.spawn_quantity *= lookup_callback(&pm->library->global_graphs[parent->global_attributes].amount, emitter.frame);
 	}
 	else {
