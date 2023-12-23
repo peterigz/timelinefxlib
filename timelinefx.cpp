@@ -3647,6 +3647,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("sprite_data_tab_use_compute", tfxSInt);
 	names_and_types.Insert("update_mode", tfxSInt);
 	names_and_types.Insert("camera_mouse_sensitivity", tfxFloat);
+	names_and_types.Insert("show_sprite_data_bounding_boxes", tfxBool);
 	initialised = true;
 }
 
