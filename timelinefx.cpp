@@ -7292,8 +7292,7 @@ void CycleAnimationManager(tfx_animation_manager_t *animation_manager) {
 		tfx_animation_instance_t &instance = animation_manager->instances[i];
 		tfx_sprite_data_metrics_t &metrics = animation_manager->effect_animation_info.data[instance.info_index];
 		float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
-		tfxU32 frame = tfxU32(frame_time);
-		frame++;
+		tfxU32 frame = tfxU32(frame_time) + 1;
 		frame = frame >= metrics.frame_count ? 0 : frame;
 		instance.current_frame = frame;
 		instance.sprite_count = metrics.frame_meta[frame].total_sprites;
