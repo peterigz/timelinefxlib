@@ -9873,6 +9873,13 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork2d);
 	}
 
+	if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+		for (int i = 0; i != work_entry->amount_to_spawn; ++i) {
+			tfxU32 index = GetCircularIndex(&pm->particle_array_buffers[emitter.particles_index], work_entry->spawn_start_index + i);
+			work_entry->particle_data->uid[index] = pm->unique_particle_id++;
+		}
+	}
+
 	if (work_entry->amount_to_spawn > 0 && emitter.property_flags & tfxEmitterPropertyFlags_single) {
 		emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
 	}
@@ -9956,6 +9963,13 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 
 	if (work_entry->amount_to_spawn > 0) {
 		tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork3d);
+	}
+
+	if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+		for (int i = 0; i != work_entry->amount_to_spawn; ++i) {
+			tfxU32 index = GetCircularIndex(&pm->particle_array_buffers[emitter.particles_index], work_entry->spawn_start_index + i);
+			work_entry->particle_data->uid[index] = pm->unique_particle_id++;
+		}
 	}
 
 	if (work_entry->amount_to_spawn > 0 && emitter.property_flags & tfxEmitterPropertyFlags_single)
@@ -10055,7 +10069,6 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
-		entry->particle_data->uid[index] = pm.unique_particle_id++;
 		float &age = entry->particle_data->age[index];
 		float &max_age = entry->particle_data->max_age[index];
 		tfx_rgba8_t &color = entry->particle_data->color[index];
