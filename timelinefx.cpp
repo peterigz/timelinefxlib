@@ -7247,12 +7247,10 @@ void UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float el
 		tfxU32 frame = tfxU32(frame_time);
 		frame++;
 		frame = frame >= metrics.frame_count ? 0 : frame;
-		instance.current_frame = frame;
 		if (instance.current_time >= instance.animation_length_in_time) {
 			if (instance.flags & tfxAnimationInstanceFlags_loop) {
 				instance.sprite_count = metrics.frame_meta[0].total_sprites;
 				instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
-				instance.current_frame = 0;
 				instance.current_time -= instance.animation_length_in_time;
 				animation_manager->instances_in_use[next_buffer].push_back(i);
 				running_sprite_count += instance.sprite_count;
@@ -7294,7 +7292,6 @@ void CycleAnimationManager(tfx_animation_manager_t *animation_manager) {
 		float frame_time = (instance.current_time / instance.animation_length_in_time) * (float)instance.frame_count;
 		tfxU32 frame = tfxU32(frame_time) + 1;
 		frame = frame >= metrics.frame_count ? 0 : frame;
-		instance.current_frame = frame;
 		instance.sprite_count = metrics.frame_meta[frame].total_sprites;
 		instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
 		animation_manager->instances_in_use[next_buffer].push_back(i);
@@ -9934,8 +9931,10 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		work_entry->amount_to_spawn = (tfxU32)emitter.spawn_quantity;
 	}
 
-	if (pm->flags & tfxEffectManagerFlags_order_by_depth) {
+	if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
 		//We must complete all work first before potentially growing the particle_array_buffers as some threads may still be working in the buffer
+		//This could be a lot better if we know when in the depth buffer to put new particles which we should be able to work out. For now though, the
+		//spawning of depth or age ordered particles is single threaded to avoid race conditions pushing indexes into the depth array
 		tfxCompleteAllWork(&pm->work_queue);
 	}
 	bool grew = false;

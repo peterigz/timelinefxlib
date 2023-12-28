@@ -1396,8 +1396,8 @@ private:
 //----------------------------------------------------------
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
-//used by defaul
-//Note that avx is currently slowly then SSE, probably because memory bandwidth becomes more of an issue at that point. But also I could be doing it wrong!
+//used by default
+//Note that avx is currently only slightly faster than SSE, probably because memory bandwidth/caching becomes more of an issue at that point. But also I could be doing it wrong!
 #ifdef tfxUSEAVX
 #define tfxDataWidth 8	
 typedef __m256 tfxWideFloat;
@@ -5008,13 +5008,12 @@ struct tfx_effect_data_t {
 	float *weight;
 };
 
-//An anim instance is used to let the gpu know where to draw an animation with sprite data.
+//An anim instance is used to let the gpu know where to draw an animation with sprite data. 48 bytes
 struct tfx_animation_instance_t {
 	tfx_vec3_t position;				//position that the instance should be played at
 	float scale;						//Scales the overal size of the animation
 	tfxU32 sprite_count;				//The number of sprites to be drawn
 	tfxU32 frame_count;					//The number of frames in the animation
-	tfxU32 current_frame;				//Current frame being rendered
 	tfxU32 offset_into_sprite_data;		//The starting ofset in the buffer that contains all the sprite data
 	tfxU32 info_index;					//Index into the effect_animation_info storage map to get at the frame meta
 	float current_time;					//Current point of time in the animation
