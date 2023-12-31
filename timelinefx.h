@@ -205,7 +205,6 @@ extern "C" {
 #if defined(TFX_THREAD_SAFE)
 		/* Multithreading protection*/
 		volatile tfx_thread_access access;
-		volatile tfx_thread_access access_override;
 #endif
 		tfx_size minimum_allocation_size;
 		/*	Here we store all of the free block data. first_level_bitmap is either a 32bit int
@@ -467,20 +466,16 @@ extern "C" {
 #if defined(TFX_THREAD_SAFE)
 
 #define tfx__lock_thread_access												\
-	if (allocator->access + allocator->access_override != 2) {					\
-		do {																	\
-		} while (0 != tfx__compare_and_exchange(&allocator->access, 1, 0));	\
-	}																			\
+	do {																	\
+	} while (0 != tfx__compare_and_exchange(&allocator->access, 1, 0));		\
 	TFX_ASSERT(allocator->access != 0);
 
 #define tfx__unlock_thread_access allocator->access_override = 0; allocator->access = 0;
-#define tfx__access_override allocator->access_override = 1;
 
 #else
 
 #define tfx__lock_thread_access
 #define tfx__unlock_thread_access 
-#define tfx__access_override
 
 #endif
 
@@ -889,8 +884,9 @@ extern "C" {
 		tfx_size adjusted_size = tfx__adjust_size(size, allocator->minimum_allocation_size, tfx__MEMORY_ALIGNMENT);
 		tfx_size combined_size = current_size + tfx__block_size(next_block);
 		if ((!tfx__next_block_is_free(block) || adjusted_size > combined_size) && adjusted_size > current_size) {
-			tfx__access_override;
-			allocation = tfx_Allocate(allocator, size);
+			tfx_header *block = tfx__find_free_block(allocator, adjusted_size, 0);
+			allocation = tfx__block_user_ptr(block);
+
 			if (allocation) {
 				tfx_size smallest_size = tfx__Min(current_size, size);
 				memcpy(allocation, ptr, smallest_size);
@@ -4760,6 +4756,8 @@ struct tfx_frame_meta_t {
 	tfxU32 total_sprites;				//The total number of sprites for all layers in the frame
 	tfx_vec3_t min_corner;				//Bounding box min corner
 	tfx_vec3_t max_corner;				//Bounding box max corner. The bounding box can be used to decide if this frame needs to be drawn
+	tfx_vec3_t bb_center_point;			//The center point of the bounding box. For the fastest checking against a viewing frustum, you can combine this with radius
+	float radius;						//The radius of the bounding box
 };
 
 //This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
@@ -5640,8 +5638,16 @@ tfxINTERNAL inline float LengthVec3NoSqR(tfx_vec3_t const *v) {
 	return v->x * v->x + v->y * v->y + v->z * v->z;
 }
 
+tfxINTERNAL inline float LengthVec4NoSqR(tfx_vec4_t const *v) {
+	return v->x * v->x + v->y * v->y + v->z * v->z + v->w * v->w;
+}
+
 tfxINTERNAL inline float LengthVec(tfx_vec3_t const *v) {
 	return sqrtf(LengthVec3NoSqR(v));
+}
+
+tfxINTERNAL inline float LengthVec(tfx_vec4_t const *v) {
+	return sqrtf(LengthVec4NoSqR(v));
 }
 
 tfxINTERNAL inline float HasLength(tfx_vec3_t const *v) {
@@ -5654,6 +5660,12 @@ tfxINTERNAL inline tfx_vec3_t NormalizeVec3(tfx_vec3_t const *v) {
 	return tfx_vec3_t(v->x / length, v->y / length, v->z / length);
 }
 
+tfxINTERNAL inline tfx_vec4_t NormalizeVec4(tfx_vec4_t const *v) {
+	if (v->x == 0 && v->y == 0 && v->z == 0 && v->w == 0) return tfx_vec4_t(1.f, 0.f, 0.f, 0.f);
+	float length = LengthVec(v);
+	return tfx_vec4_t(v->x / length, v->y / length, v->z / length, v->w / length);
+}
+
 tfxINTERNAL inline tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b) {
 	tfx_vec3_t result;
 
@@ -5662,6 +5674,11 @@ tfxINTERNAL inline tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b) {
 	result.z = a->x*b->y - a->y*b->x;
 
 	return(result);
+}
+
+tfxINTERNAL inline float DotProductVec4(const tfx_vec4_t *a, const tfx_vec4_t *b)
+{
+	return (a->x * b->x + a->y * b->y + a->z * b->z + a->w * b->w);
 }
 
 tfxINTERNAL inline float DotProductVec3(const tfx_vec3_t *a, const tfx_vec3_t *b)
@@ -5699,6 +5716,7 @@ tfxINTERNAL inline tfxU32 GetIndexFromID(tfxU32 index) {
 	return index & 0x0FFFFFFF;
 }
 
+//Todo: can delete this now?
 tfxINTERNAL inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
 	assert(nibble < 16);
 	return (nibble << 28) + index;
