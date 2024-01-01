@@ -8277,6 +8277,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		captured_position_z.m = tfxWideLoad(&bank.captured_position_z[index]);
 		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 		tfxWideArray capture_flag;
+		_ReadBarrier();
 		capture_flag.m = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi()));
 		tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag.m, tfxWideSetZero());
 		_ReadBarrier();
@@ -8777,6 +8778,8 @@ void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
 		const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
 		const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
 
+		_ReadBarrier();
+
 		//----Size Changes
 		scale_x.m = tfxWideMul(base_size_x, lookup_width);
 
@@ -8939,6 +8942,8 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 
 		tfxWideArray image_frame;
 		image_frame.m = tfxWideLoad(&bank.image_frame[index]);
+
+		_ReadBarrier();
 
 		//----Image animation
 		image_frame.m = tfxWideAdd(image_frame.m, image_frame_rate);
@@ -11792,6 +11797,8 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 		tfxWideInt single_loop_count = tfxWideLoadi((tfxWideInt*)&bank.single_loop_count[index]);
 		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 		age = tfxWideAdd(age, pm.frame_length_wide);
+
+		_ReadBarrier();
 
 		tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
 		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWideSetSinglei(1), expired));
