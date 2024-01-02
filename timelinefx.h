@@ -5086,6 +5086,12 @@ struct tfx_animation_manager_t {
 	tfxAnimationManagerFlags flags;
 	//The update frequency that the animations are recorded at. 60 is the recommended default
 	float update_frequency;
+	//Any pointer to user data that you want to use in callbacks such
+	void *user_data;
+    //Callback which you can assign in order to decide if an animation instance should be added to the render queue
+    //the next frame. This callback is called inside the UpdateAnimationManager function. Set the callback
+    //with SetAnimationManagerCallback
+	bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
 };
 
 //Use the particle manager to add multiple effects to your scene 
@@ -6739,6 +6745,7 @@ tfxINTERNAL void FreeAnimationInstance(tfx_animation_manager_t *animation_manage
 tfxINTERNAL void AddEffectEmitterProperties(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape);
 tfxAPI void UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
 tfxINTERNAL bool FreePMEffectCapacity(tfx_particle_manager_t *pm);
+tfxINTERNAL bool InitialiseAnimationManager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances);
 
 //--------------------------------
 //Particle manager internal functions
@@ -7766,6 +7773,25 @@ to calculate the state of particles between frames for smooth animation.
 								save too much mem copies as the data grows
 */
 tfxAPI void InitialiseAnimationManagerFor2d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
+
+/*
+Set the callback that you can use to determine whether or not a tfx_animation_instance_t should be added to the next frame's render queue. You can use this
+to cull instances that are outside of the view frustum for example
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
+* @param callback				Pointer to the callback you want to use. It must have the following signature:
+								bool(*maybe_render_instance_callback(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data))
+								Values passed into the callback function are a pointer to the animation manager, a pointer to the instance being processed, a pointer to
+								the frame meta of the instance, this will contain the bounding box and radius of the instance from the current frame of the instance and a pointer
+								to any user data that you set that might contain the camera frustum that you want to check against.
+*/
+tfxAPI void SetAnimationManagerInstanceCallback(tfx_animation_manager_t *animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data)));
+
+/*
+Set the user data in a tfx_animation_manager_t which can get passed through to callback functions when updated the animation manager
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
+* @param user_data				void* pointer to the data that you want to set
+*/
+tfxAPI void SetAnimationManagerUserData(tfx_animation_manager_t *animation_manager, void *user_data);
 
 /*
 Add sprite data to an animation manager sprite data buffer from an effect. This will record the

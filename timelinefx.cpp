@@ -7000,14 +7000,13 @@ void ClearWrapBit(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
+bool InitialiseAnimationManager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances) {
 	animation_manager->instances.reserve(max_instances);
 	animation_manager->free_instances.reserve(max_instances);
 	animation_manager->render_queue.reserve(max_instances);
 	animation_manager->offsets.reserve(max_instances);
 	animation_manager->instances_in_use[0].reserve(max_instances);
 	animation_manager->instances_in_use[1].reserve(max_instances);
-	animation_manager->sprite_data_3d.reserve(initial_sprite_data_capacity);
 	animation_manager->current_in_use_buffer = 0;
 	animation_manager->buffer_metrics.instances_size = 0;
 	animation_manager->buffer_metrics.instances_size_in_bytes = 0;
@@ -7016,25 +7015,19 @@ void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager,
 	animation_manager->buffer_metrics.sprite_data_size = 0;
 	animation_manager->buffer_metrics.total_sprites_to_draw = 0;
 	animation_manager->update_frequency = 60.f;
+	animation_manager->user_data = nullptr;
+	animation_manager->maybe_render_instance_callback = nullptr;
+}
+
+void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
+	InitialiseAnimationManager(animation_manager, max_instances);
+	animation_manager->sprite_data_3d.reserve(initial_sprite_data_capacity);
 	animation_manager->flags = tfxAnimationManagerFlags_initialised | tfxAnimationManagerFlags_is_3d;
 }
 
 void InitialiseAnimationManagerFor2d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
-	animation_manager->instances.reserve(max_instances);
-	animation_manager->free_instances.reserve(max_instances);
-	animation_manager->render_queue.reserve(max_instances);
-	animation_manager->offsets.reserve(max_instances);
-	animation_manager->instances_in_use[0].reserve(max_instances);
-	animation_manager->instances_in_use[1].reserve(max_instances);
+	InitialiseAnimationManager(animation_manager, max_instances);
 	animation_manager->sprite_data_2d.reserve(initial_sprite_data_capacity);
-	animation_manager->current_in_use_buffer = 0;
-	animation_manager->buffer_metrics.instances_size = 0;
-	animation_manager->buffer_metrics.instances_size_in_bytes = 0;
-	animation_manager->buffer_metrics.offsets_size = 0;
-	animation_manager->buffer_metrics.offsets_size_in_bytes = 0;
-	animation_manager->buffer_metrics.sprite_data_size = 0;
-	animation_manager->buffer_metrics.total_sprites_to_draw = 0;
-	animation_manager->update_frequency = 60.f;
 	animation_manager->flags = tfxAnimationManagerFlags_initialised;
 }
 
@@ -7201,6 +7194,14 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 	animation_manager->buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
 }
 
+void SetAnimationManagerInstanceCallback(tfx_animation_manager_t *animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data))) {
+	animation_manager->maybe_render_instance_callback = maybe_render_instance_callback;
+}
+
+void SetAnimationManagerUserData(tfx_animation_manager_t *animation_manager, void *user_data) {
+	animation_manager->user_data = user_data;
+}
+
 tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager, tfxKey path, tfxU32 start_frame) {
 	assert(animation_manager->effect_animation_info.ValidKey(path));				//You must have added the effect sprite data to the animation manager
 																					//Call AddSpriteData to do so
@@ -7253,6 +7254,9 @@ void UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float el
 				instance.offset_into_sprite_data = metrics.frame_meta[0].index_offset[0];
 				instance.current_time -= instance.animation_length_in_time;
 				animation_manager->instances_in_use[next_buffer].push_back(i);
+				if (animation_manager->maybe_render_instance_callback && !animation_manager->maybe_render_instance_callback(animation_manager, &instance, &metrics.frame_meta[0], animation_manager->user_data)) {
+					continue;
+				}
 				running_sprite_count += instance.sprite_count;
 				animation_manager->offsets.push_back(running_sprite_count);
 				animation_manager->flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
@@ -7267,6 +7271,9 @@ void UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float el
 			instance.sprite_count = metrics.frame_meta[frame].total_sprites;
 			instance.offset_into_sprite_data = metrics.frame_meta[frame].index_offset[0];
 			animation_manager->instances_in_use[next_buffer].push_back(i);
+			if (animation_manager->maybe_render_instance_callback && !animation_manager->maybe_render_instance_callback(animation_manager, &instance, &metrics.frame_meta[frame], animation_manager->user_data)) {
+				continue;
+			}
 			animation_manager->render_queue.push_back(instance);
 			running_sprite_count += instance.sprite_count;
 			animation_manager->flags |= metrics.flags & tfxAnimationManagerFlags_has_animated_shapes;
