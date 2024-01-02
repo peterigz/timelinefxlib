@@ -7000,7 +7000,7 @@ void ClearWrapBit(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-bool InitialiseAnimationManager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances) {
+void InitialiseAnimationManager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances) {
 	animation_manager->instances.reserve(max_instances);
 	animation_manager->free_instances.reserve(max_instances);
 	animation_manager->render_queue.reserve(max_instances);

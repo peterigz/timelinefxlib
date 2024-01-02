@@ -6745,7 +6745,7 @@ tfxINTERNAL void FreeAnimationInstance(tfx_animation_manager_t *animation_manage
 tfxINTERNAL void AddEffectEmitterProperties(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape);
 tfxAPI void UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
 tfxINTERNAL bool FreePMEffectCapacity(tfx_particle_manager_t *pm);
-tfxINTERNAL bool InitialiseAnimationManager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances);
+tfxINTERNAL void InitialiseAnimationManager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances);
 
 //--------------------------------
 //Particle manager internal functions
