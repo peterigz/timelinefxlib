@@ -3527,8 +3527,8 @@ void tfx_data_types_dictionary_t::Init() {
 
 	//Frame meta
 	names_and_types.Insert("total_sprites", tfxUint);
-	names_and_types.Insert("min_corner_3d", tfxFloat3);
-	names_and_types.Insert("max_corner_3d", tfxFloat3);
+	names_and_types.Insert("min_corner", tfxFloat3);
+	names_and_types.Insert("max_corner", tfxFloat3);
 
 	//Sprite data emitter properties
 	names_and_types.Insert("animation_frames", tfxFloat);
@@ -3800,10 +3800,16 @@ tfx_vec2_t StrToVec2(tfx_vector_t<tfx_str256_t> *str) {
 }
 
 void AssignFrameMetaProperty(tfx_frame_meta_t *metrics, tfx_str_t *field, tfx_vec3_t value, tfxU32 file_version) {
-	if (*field == "min_corner_3d")
+	if (*field == "min_corner") {
 		metrics->min_corner = value;
-	if (*field == "max_corner_3d")
+	}
+	if (*field == "max_corner") {
 		metrics->max_corner = value;
+		//Max corner should always be read after min_corner so can put this here.
+		tfx_vec3_t half_extents = (metrics->max_corner - metrics->min_corner) * 0.5f;
+		metrics->radius = LengthVec(&half_extents); 
+		metrics->bb_center_point = (metrics->max_corner + metrics->min_corner) * 0.5f;
+	}
 }
 
 void AssignAnimationEmitterProperty(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfx_vec2_t value, tfxU32 file_version) {
