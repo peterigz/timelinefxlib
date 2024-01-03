@@ -3,6 +3,7 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_OUTPUT_NOTICE_MESSAGES
+#define TFX_THREAD_SAFE
 //#define tfxUSEAVX
 
 /*
@@ -465,12 +466,12 @@ extern "C" {
 	//Write functions
 #if defined(TFX_THREAD_SAFE)
 
-#define tfx__lock_thread_access												\
+#define tfx__lock_thread_access(alloc)										\
 	do {																	\
-	} while (0 != tfx__compare_and_exchange(&allocator->access, 1, 0));		\
-	TFX_ASSERT(allocator->access != 0);
+	} while (0 != tfx__compare_and_exchange(&alloc->access, 1, 0));			\
+	TFX_ASSERT(alloc->access != 0);
 
-#define tfx__unlock_thread_access allocator->access_override = 0; allocator->access = 0;
+#define tfx__unlock_thread_access(alloc)  alloc->access = 0;
 
 #else
 
@@ -702,7 +703,7 @@ extern "C" {
 		//we stick to the paper and just move on to the next class up to keep a O1 speed at the cost of some extra fragmentation
 		if (tfx__has_free_block(allocator, fli, sli) && tfx__block_size(allocator->segregated_lists[fli][sli]) >= size) {
 			tfx_header *block = tfx__pop_block(allocator, fli, sli);
-			tfx__unlock_thread_access;
+			tfx__unlock_thread_access(allocator);
 			return block;
 		}
 		if (sli == tfx__SECOND_LEVEL_INDEX_COUNT - 1) {
@@ -717,14 +718,14 @@ extern "C" {
 				sli = tfx__scan_forward(allocator->second_level_bitmaps[fli]);
 				tfx_header *block = tfx__pop_block(allocator, fli, sli);
 				tfx_header *split_block = tfx__maybe_split_block(allocator, block, size, 0);
-				tfx__unlock_thread_access;
+				tfx__unlock_thread_access(allocator);
 				return split_block;
 			}
 		}
 		else {
 			tfx_header *block = tfx__pop_block(allocator, fli, sli);
 			tfx_header *split_block = tfx__maybe_split_block(allocator, block, size, 0);
-			tfx__unlock_thread_access;
+			tfx__unlock_thread_access(allocator);
 			return split_block;
 		}
 
@@ -803,7 +804,7 @@ extern "C" {
 	}
 
 	tfx_pool *tfx_AddPool(tfx_allocator *allocator, tfx_pool *memory, tfx_size size) {
-		tfx__lock_thread_access;
+		tfx__lock_thread_access(allocator);
 
 		//Offset it back by the pointer size, we don't need the prev_physical block pointer as there is none
 		//for the first block in the pool
@@ -826,21 +827,21 @@ extern "C" {
 		last_block->prev_physical_block = block;
 		tfx__push_block(allocator, block);
 
-		tfx__unlock_thread_access;
+		tfx__unlock_thread_access(allocator);
 		return memory;
 	}
 
 	tfx_bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool) {
-		tfx__lock_thread_access;
+		tfx__lock_thread_access(allocator);
 		tfx_header *block = tfx__first_block_in_pool(pool);
 
 		if (tfx__is_free_block(block) && !tfx__next_block_is_free(block) && tfx__is_last_block_in_pool(tfx__next_physical_block(block))) {
 			tfx__remove_block_from_segregated_list(allocator, block);
-			tfx__unlock_thread_access;
+			tfx__unlock_thread_access(allocator);
 			return 1;
 		}
 #if defined(TFX_THREAD_SAFE)
-		tfx__unlock_thread_access;
+		tfx__unlock_thread_access(allocator);
 		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: In order to remove a pool there must be only 1 free block in the pool. Was possibly freed by another thread\n", TFX_ERROR_NAME);
 #else
 		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: In order to remove a pool there must be only 1 free block in the pool.\n", TFX_ERROR_NAME);
@@ -850,7 +851,7 @@ extern "C" {
 
 	void *tfx_Allocate(tfx_allocator *allocator, tfx_size size) {
 		tfx_size remote_size = 0;
-		tfx__lock_thread_access;
+		tfx__lock_thread_access(allocator);
 		size = tfx__adjust_size(size, tfx__MINIMUM_BLOCK_SIZE, tfx__MEMORY_ALIGNMENT);
 		tfx_header *block = tfx__find_free_block(allocator, size, remote_size);
 
@@ -860,20 +861,20 @@ extern "C" {
 
 		//Out of memory;
 		TFX_PRINT_ERROR(TFX_ERROR_COLOR"%s: Not enough memory in pool to allocate %zu bytes\n", TFX_ERROR_NAME, size);
-		tfx__unlock_thread_access;
+		tfx__unlock_thread_access(allocator);
 		return 0;
 	}
 
 	void *tfx_Reallocate(tfx_allocator *allocator, void *ptr, tfx_size size) {
-		tfx__lock_thread_access;
+		tfx__lock_thread_access(allocator);
 
 		if (ptr && size == 0) {
-			tfx__unlock_thread_access;
+			tfx__unlock_thread_access(allocator);
 			tfx_Free(allocator, ptr);
 		}
 
 		if (!ptr) {
-			tfx__unlock_thread_access;
+			tfx__unlock_thread_access(allocator);
 			return tfx_Allocate(allocator, size);
 		}
 
@@ -904,12 +905,12 @@ extern "C" {
 			allocation = tfx__block_user_ptr(split_block);
 		}
 
-		tfx__unlock_thread_access;
+		tfx__unlock_thread_access(allocator);
 		return allocation;
 	}
 
 	void *tfx_AllocateAligned(tfx_allocator *allocator, tfx_size size, tfx_size alignment) {
-		tfx__lock_thread_access;
+		tfx__lock_thread_access(allocator);
 		tfx_size adjusted_size = tfx__adjust_size(size, allocator->minimum_allocation_size, alignment);
 		tfx_size gap_minimum = sizeof(tfx_header);
 		tfx_size size_with_gap = tfx__adjust_size(adjusted_size + alignment + gap_minimum, allocator->minimum_allocation_size, alignment);
@@ -942,17 +943,17 @@ extern "C" {
 			TFX_ASSERT(tfx__ptr_is_aligned(tfx__block_user_ptr(block), alignment));	//pointer not aligned to requested alignment
 		}
 		else {
-			tfx__unlock_thread_access;
+			tfx__unlock_thread_access(allocator);
 			return 0;
 		}
 
-		tfx__unlock_thread_access;
+		tfx__unlock_thread_access(allocator);
 		return tfx__block_user_ptr(block);
 	}
 
 	int tfx_Free(tfx_allocator *allocator, void* allocation) {
 		if (!allocation) return 0;
-		tfx__lock_thread_access;
+		tfx__lock_thread_access(allocator);
 		tfx_header *block = tfx__block_from_allocation(allocation);
 		if (tfx__prev_is_free_block(block)) {
 			TFX_ASSERT(block->prev_physical_block);		//Must be a valid previous physical block
@@ -962,7 +963,7 @@ extern "C" {
 			tfx__merge_with_next_block(allocator, block);
 		}
 		tfx__push_block(allocator, block);
-		tfx__unlock_thread_access;
+		tfx__unlock_thread_access(allocator);
 		return 1;
 	}
 
