@@ -886,7 +886,9 @@ extern "C" {
 		tfx_size combined_size = current_size + tfx__block_size(next_block);
 		if ((!tfx__next_block_is_free(block) || adjusted_size > combined_size) && adjusted_size > current_size) {
 			tfx_header *block = tfx__find_free_block(allocator, adjusted_size, 0);
-			allocation = tfx__block_user_ptr(block);
+			if (block) {
+				allocation = tfx__block_user_ptr(block);
+			}
 
 			if (allocation) {
 				tfx_size smallest_size = tfx__Min(current_size, size);
