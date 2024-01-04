@@ -6494,8 +6494,8 @@ tfxINTERNAL inline float RandomRange(tfx_random_t *random, float from, float to)
 };
 
 tfxINTERNAL inline int RandomRange(tfx_random_t *random, int from, int to) {
-	float a = (to - from) * GenerateRandom(random) - (to - from) * .5f;
-	return a < 0 ? int(a - 0.5f) : int(a + 0.5f);
+	float a = (to - from + 1) * GenerateRandom(random) + from;
+	return (int)a;
 };
 
 tfxINTERNAL inline tfxU32 RandomRange(tfx_random_t *random, tfxU32 max) {
