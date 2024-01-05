@@ -3735,9 +3735,10 @@ struct tfx_wide_vec2_t {
 	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideMul(y, y)); }
 };
 
+//Note, has padding for the sake of alignment on GPU compute shaders
 struct tfx_bounding_box_t {
-	tfx_vec3_t min_corner;
-	tfx_vec3_t max_corner;
+	tfx_vec3_t min_corner; float padding1;
+	tfx_vec3_t max_corner; float padding2;
 };
 
 inline tfx_wide_vec3_t InterpolateWideVec3(tfxWideFloat &tween, tfx_wide_vec3_t &from, tfx_wide_vec3_t &to) {
