@@ -7892,6 +7892,16 @@ tfxAPI inline tfxU32 GetTotalSpritesThatNeedDrawing(tfx_animation_manager_t *ani
 }
 
 /*
+Get the total number of instances being processed by an animation manager. This will not necessarily be the same number as
+the instances being rendered if some are being culled in your custom callback if your using one.
+* @param animation_manager		A pointer to a tfx_animation_manager_t that you want to clear
+* @returns int					The number of instances being updated
+*/
+tfxAPI inline tfxU32 GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animation_manager) {
+	return animation_manager->instances_in_use[animation_manager->current_in_use_buffer].size();
+}
+
+/*
 Create the image data required for GPU shaders such as animation viewer. The image data will contain data such as uv coordinates
 that the shaders can use to create the sprite data. Once you have built the data you can use GetLibraryImageData to get the buffer
 and upload it to the gpu.
