@@ -2,7 +2,6 @@
 
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
-#define TFX_OUTPUT_NOTICE_MESSAGES
 #define TFX_THREAD_SAFE
 //#define tfxUSEAVX
 
@@ -991,7 +990,9 @@ tfx_allocator *tfxGetAllocator();
 //----------------------------------------------------------
 #if defined(_WIN32)
 #include <SDKDDKVer.h>
+#ifndef WIN_LEAN_AND_MEAN
 #define WIN_LEAN_AND_MEAN
+#endif
 #include <Windows.h>
 #endif
 
