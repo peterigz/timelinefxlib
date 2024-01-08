@@ -1,4 +1,5 @@
-﻿#pragma once
+﻿#ifndef TFX_LIBRARY_HEADER
+#define TFX_LIBRARY_HEADER
 
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
@@ -41,6 +42,23 @@
 
 #ifndef tfxMAX_MEMORY_POOLS
 #define tfxMAX_MEMORY_POOLS 32
+#endif
+
+#if !defined(IMGUI_USE_STB_SPRINTF) && defined(__MINGW32__) && !defined(__clang__)
+#define IM_FMTARGS(FMT)             __attribute__((format(gnu_printf, FMT, FMT+1)))
+#define IM_FMTLIST(FMT)             __attribute__((format(gnu_printf, FMT, 0)))
+#define TFX_ALIGN_AFFIX(v)			__attribute__((aligned(v)))
+#define TFX_PACKED_STRUCT			__attribute__((packed))
+#elif !defined(IMGUI_USE_STB_SPRINTF) && (defined(__clang__) || defined(__GNUC__))
+#define IM_FMTARGS(FMT)             __attribute__((format(printf, FMT, FMT+1)))
+#define IM_FMTLIST(FMT)             __attribute__((format(printf, FMT, 0)))
+#define TFX_ALIGN_AFFIX(v)			__attribute__((aligned(v)))
+#define TFX_PACKED_STRUCT			__attribute__((packed))
+#else
+#define IM_FMTARGS(FMT)
+#define IM_FMTLIST(FMT)
+#define TFX_ALIGN_AFFIX(v)			
+#define TFX_PACKED_STRUCT
 #endif
 
 //---------------------------------------
@@ -1008,6 +1026,7 @@ tfx_allocator *tfxGetAllocator();
 #include <intrin.h>
 #include <mutex>
 #include <thread>					//only using this for std::thread::hardware_ concurrency()
+#include <cfloat>
 
 #define tfxTWO63 0x8000000000000000u 
 #define tfxTWO64f (tfxTWO63*2.0)
@@ -2212,18 +2231,18 @@ static tfxWideFloat tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetSingle(1.f);
 //Very simple string builder
 struct tfx_str_t {
 	char *data;
-	tfxU32 current_size;
 	tfxU32 capacity;
+	tfxU32 current_size;
 	bool is_local_buffer;
 
-	inline tfx_str_t() : current_size(0), capacity(0), data(NULL), is_local_buffer(false) {}
-	inline ~tfx_str_t() { if (data && !is_local_buffer) { tfxFREE(data); data = NULL; } current_size = capacity = 0; }
+	inline tfx_str_t() : current_size(0), capacity(0), data(nullptr), is_local_buffer(false) {}
+	inline ~tfx_str_t() { if (data && !is_local_buffer) { tfxFREE(data); data = nullptr; } current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
 	inline char&           operator[](tfxU32 i) { return data[i]; }
 	inline const char&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 
-	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
+	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { current_size = 0; }
 	inline char*           begin() { return strbuffer(); }
 	inline const char*     begin() const { return strbuffer(); }
@@ -2252,8 +2271,8 @@ struct tfx_str_t {
 		capacity = new_capacity;
 	}
 
-	tfx_str_t(const char *text) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-	tfx_str_t(const tfx_str_t &src) : data(NULL), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfx_str_t(const char *text) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfx_str_t(const tfx_str_t &src) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const char *text) { size_t length = strnlen_s(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const tfx_str_t& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
@@ -2268,8 +2287,8 @@ struct tfx_str_t {
 	inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
 	void AddLine(const char *format, ...);
 	void Setf(const char *format, ...);
-	void Appendf(const char *format, ...);
-	void Appendv(const char *format, va_list args);
+	void Appendf(const char *format, ...)			IM_FMTARGS(2);
+	void Appendv(const char *format, va_list args)	IM_FMTLIST(2);
 	inline void Append(char c) {
 		if (current_size) {
 			pop();
@@ -2279,14 +2298,14 @@ struct tfx_str_t {
 	}
 	inline void Pop() {
 		if (!Length()) return;
-		if (back() == NULL)
+		if (back() == 0)
 			pop();
 		pop();
 		NullTerminate();
 	}
 	inline void Trim(char c = ' ') {
 		if (!Length()) return;
-		if (back() == NULL)
+		if (back() == 0)
 			pop();
 		while (back() == c && current_size) {
 			pop();
@@ -2304,15 +2323,15 @@ struct tfx_str_t {
 		}
 		current_size -= pos;
 	}
-	void NullTerminate() { push_back(NULL); }
+	void NullTerminate() { push_back('\0'); }
 	bool SaveToFile(const char *file_name);
 	const bool IsInt() const;
 	const bool IsFloat() const;
-};
+} TFX_PACKED_STRUCT;
 
 #define tfxStrType(type, size)		\
 	struct type : public tfx_str_t { \
-	char buffer[size]; \
+	char buffer[size];				\
 	type() { memset(buffer, 0, size); data = buffer; capacity = size; current_size = 0; is_local_buffer = true; NullTerminate(); } \
 	inline void operator=(const tfx_str_t& src) { \
 		data = buffer; \
@@ -2368,7 +2387,7 @@ struct tfx_str_t {
 	} \
 	inline int Find(const char *needle) { type compare = needle; type lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; } \
 	inline type Lower() { type convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; } \
-	};
+	} TFX_PACKED_STRUCT;
 
 tfxStrType(tfx_str512_t, 512);
 tfxStrType(tfx_str256_t, 256);
@@ -2396,11 +2415,11 @@ struct tfx_vector_t {
 	typedef value_type*         iterator;
 	typedef const value_type*   const_iterator;
 
-	inline tfx_vector_t() { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME; }
-	inline tfx_vector_t(const char *name_init) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_INIT(name_init); }
-	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = 0; data = NULL; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
+	inline tfx_vector_t() { locked = false; current_size = capacity = 0; data = nullptr; tfxINIT_VEC_NAME; }
+	inline tfx_vector_t(const char *name_init) { locked = false; current_size = capacity = 0; data = nullptr; tfxINIT_VEC_NAME_INIT(name_init); }
+	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = 0; data = nullptr; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline tfx_vector_t<T>& operator=(const tfx_vector_t<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
-	inline ~tfx_vector_t() { if (data) { tfxFREE(data); } data = NULL; current_size = capacity = 0; }
+	inline ~tfx_vector_t() { if (data) { tfxFREE(data); } data = nullptr; current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
 	inline bool			full() { return current_size == capacity; }
@@ -2412,8 +2431,8 @@ struct tfx_vector_t {
 	inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 	inline T&           ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
 
-	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
-	inline void         free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = NULL; } }
+	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
+	inline void         free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         clear() { if (data) { current_size = 0; } }
 	inline T*           begin() { return data; }
 	inline const T*     begin() const { return data; }
@@ -2747,7 +2766,7 @@ inline tfxU32 tfxIsPowerOf2(tfxU32 v)
 
 //Used in tfx_soa_buffer_t to store pointers to arrays inside a struct of arrays
 struct tfx_soa_data_t {
-	void *ptr = NULL;		//A pointer to the array in the struct
+	void *ptr = nullptr;		//A pointer to the array in the struct
 	size_t offset = 0;		//The offset to the memory location in the buffer where the array starts
 	size_t unit_size = 0;	//The size of each data type in the array
 };
@@ -2766,10 +2785,10 @@ struct tfx_soa_buffer_t {
 	tfxU32 capacity = 0;				//capacity of each array
 	tfxU32 block_size = tfxDataWidth;	//Keep the capacity to the nearest block size
 	tfx_vector_t<tfx_soa_data_t> array_ptrs;		//Container for all the pointers into the arena
-	void *user_data = NULL;
-	void(*resize_callback)(tfx_soa_buffer_t *ring, tfxU32 new_index_start) = NULL;
-	void *struct_of_arrays = NULL;		//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
-	void *data = NULL;					//Pointer to the area in memory that contains all of the array data	
+	void *user_data = nullptr;
+	void(*resize_callback)(tfx_soa_buffer_t *ring, tfxU32 new_index_start) = nullptr;
+	void *struct_of_arrays = nullptr;		//Pointer to the struct of arrays. Important that this is a stable pointer! Set with FinishSoABufferSetup
+	void *data = nullptr;					//Pointer to the area in memory that contains all of the array data	
 };
 
 inline void ResetSoABuffer(tfx_soa_buffer_t *buffer) {
@@ -2780,10 +2799,10 @@ inline void ResetSoABuffer(tfx_soa_buffer_t *buffer) {
 	buffer->last_bump = 0;
 	buffer->capacity = 0;
 	buffer->block_size = tfxDataWidth;
-	buffer->user_data = NULL;
-	buffer->resize_callback = NULL;
-	buffer->struct_of_arrays = NULL;
-	buffer->data = NULL;
+	buffer->user_data = nullptr;
+	buffer->resize_callback = nullptr;
+	buffer->struct_of_arrays = nullptr;
+	buffer->data = nullptr;
 }
 
 inline void* GetEndOfBufferPtr(tfx_soa_buffer_t *buffer) {
@@ -2819,7 +2838,7 @@ inline void AddStructArray(tfx_soa_buffer_t *buffer, size_t unit_size, size_t of
 //set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 //inside the space
 inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
-	assert(buffer->data == NULL && buffer->array_ptrs.current_size > 0);
+	assert(buffer->data == nullptr && buffer->array_ptrs.current_size > 0);
 	reserve_amount = tfx__Max(reserve_amount, buffer->block_size);
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->struct_size += buffer->array_ptrs[i].unit_size;
@@ -3040,7 +3059,7 @@ struct tfx_bucket_t {
 template <typename T>
 inline tfx_bucket_t<T> *tfxCreateBucket(tfxU32 size) {
 	tfx_bucket_t<T> *bucket = (tfx_bucket_t<T>*)tfxALLOCATE(sizeof(tfx_bucket_t<T>));
-	bucket->data.data = NULL;
+	bucket->data.data = nullptr;
 	bucket->data.current_size = 0;
 	bucket->data.capacity = 0;
 	bucket->data.locked = 0;
@@ -3078,10 +3097,10 @@ struct tfx_bucket_array_t {
 		tfxU32 element_index = i % size_of_each_bucket;
 		return (*bucket_list[bucket_index]).data[element_index];
 	}
-	inline T*           begin() { return bucket_list.current_size ? (T*)bucket_list[0]->data.data : NULL; }
-	inline const T*     begin() const { return bucket_list.current_size ? (T*)bucket_list[0]->data.data : NULL; }
-	inline T*           end() { return bucket_list.current_size ? (T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : NULL; }
-	inline const T*     end() const { return bucket_list.current_size ? (T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : NULL; }
+	inline T*           begin() { return bucket_list.current_size ? (T*)bucket_list[0]->data.data : nullptr; }
+	inline const T*     begin() const { return bucket_list.current_size ? (T*)bucket_list[0]->data.data : nullptr; }
+	inline T*           end() { return bucket_list.current_size ? (T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : nullptr; }
+	inline const T*     end() const { return bucket_list.current_size ? (T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : nullptr; }
 	inline T&           front() { assert(current_size > 0); return bucket_list[0]->data.front(); }
 	inline const T&     front() const { assert(current_size > 0); return bucket_list[0]->data.front(); }
 	inline T&           back() { assert(current_size > 0); return bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
@@ -3265,10 +3284,10 @@ inline void tfxCopyBucketArray(tfx_bucket_array_t<T> *dst, tfx_bucket_array_t<T>
 struct tfx_stream_t {
 	tfxU64 size = 0;
 	tfxU64 position = 0;
-	char* data = NULL;
+	char* data = nullptr;
 
-	inline tfx_stream_t() { size = position = 0; data = NULL; }
-	inline tfx_stream_t(tfxU64 qty) { size = position = 0; data = NULL; Resize(qty); }
+	inline tfx_stream_t() { size = position = 0; data = nullptr; }
+	inline tfx_stream_t(tfxU64 qty) { size = position = 0; data = nullptr; Resize(qty); }
 
 	inline bool Read(char* dst, tfxU64 count) {
 		if (count + position <= size) {
@@ -3299,7 +3318,7 @@ struct tfx_stream_t {
 	inline tfxU64		Size() { return size; }
 	inline const tfxU64	Size() const { return size; }
 
-	inline void			FreeAll() { if (data) { size = size = 0; tfxFREE(data); data = NULL; } }
+	inline void			FreeAll() { if (data) { size = size = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { if (data) { size = 0; } }
 
 	inline void         Resize(tfxU64 new_capacity) {
@@ -3314,7 +3333,7 @@ struct tfx_stream_t {
 		data = new_data; size = new_capacity;
 		position = 0;
 	}
-	inline void			NullTerminate() { *(data + size) = NULL; }
+	inline void			NullTerminate() { *(data + size) = '\0'; }
 
 };
 
@@ -3331,8 +3350,8 @@ struct tfx_work_queue_t;
 typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
 
 struct tfx_work_queue_entry_t {
-	tfxWorkQueueCallback *call_back = NULL;
-	void *data = NULL;
+	tfxWorkQueueCallback *call_back = nullptr;
+	void *data = nullptr;
 };
 
 typedef tfxU32 tfxWorkQueueFlags;
@@ -4040,7 +4059,7 @@ struct tfx_profile_t {
 
 extern const tfxU32 tfxPROFILE_COUNT;
 extern tfxU32 tfxCurrentSnapshot;
-tfx_profile_t tfxProfileArray[];
+extern tfx_profile_t tfxProfileArray[];
 
 struct tfx_profile_tag_t {
 	tfx_profile_t *profile;
@@ -4067,8 +4086,8 @@ struct tfx_profile_tag_t {
 //Section: File_IO
 //-----------------------------------------------------------
 
-const tfxU32 tfxMAGIC_NUMBER = '!XFT';
-const tfxU32 tfxMAGIC_NUMBER_INVENTORY = '!VNI';
+const tfxU32 tfxMAGIC_NUMBER = 559433300;				//'!XFT'
+const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;		//'!VNI'
 const tfxU32 tfxFILE_VERSION = 2;
 
 //Basic package manager used for reading/writing effects files
@@ -4086,10 +4105,10 @@ struct tfx_package_header_t {
 };
 
 struct tfx_package_entry_info_t {
-	tfx_str_t file_name;							//The name of the file stored in the package
+	tfx_str_t file_name;						//The name of the file stored in the package
 	tfxU64 offset_from_start_of_file = 0;		//Offset from the start of the file to where the file is located
 	tfxU64 file_size = 0;						//The size of the file
-	tfx_stream_t data;								//The file data
+	tfx_stream_t data;							//The file data
 
 	void FreeData();
 };
@@ -5189,8 +5208,8 @@ struct tfx_particle_manager_t {
 		max_effects(10000),
 		current_ebuff(0),
 		highest_compute_controller_index(0),
-		new_compute_particle_ptr(NULL),
-		compute_controller_ptr(NULL),
+		new_compute_particle_ptr(nullptr),
+		compute_controller_ptr(nullptr),
 		max_compute_controllers(10000),
 		max_new_compute_particles(10000),
 		new_compute_particle_index(0),
@@ -5199,7 +5218,7 @@ struct tfx_particle_manager_t {
 		current_sprite_buffer(0),
 		current_depth_index_buffer(0),
 		free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_compute_controllers")),
-		library(NULL),
+		library(nullptr),
 		sort_passes(0)
 	{
 	}
@@ -5318,102 +5337,25 @@ struct tfx_data_entry_t {
 tfxAPI tfx_storage_t *GetGlobals();
 tfxAPI tfx_pool_stats_t CreateMemorySnapshot(tfx_header *first_block);
 
-inline void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 index) {
-	tfx_particle_soa_t *particles = static_cast<tfx_particle_soa_t*>(buffer->user_data);
-	for (int i = index; i != buffer->capacity; ++i) {
-		particles->max_age[i] = 1.f;
-		particles->age[i] = 1.f;
-		particles->flags[i] = 0;
-	}
-}
+tfxINTERNAL void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 index);
 
 //--------------------------------
 //Internal functions used either by the library or editor
 //--------------------------------
-tfxINTERNAL inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index) {
-	return ((bank_index & 0x00000FFF) << 20) + particle_index;
-}
-
-tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id) {
-	return id & 0x000FFFFF;
-}
-
-tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id) {
-	return (id & 0xFFF00000) >> 20;
-}
-
+tfxINTERNAL inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index);
+tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
+tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 //Dump sprites for Debugging
-tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer) {
-	for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
-		printf("%i:\t%f\t%f\t%f\t%u\n",
-			i,
-			pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.x,
-			pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.y,
-			pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.z,
-			pm->sprites[pm->current_sprite_buffer][layer].property_indexes[i]
-		);
-	}
-}
-
+tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
 tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
 
 //--------------------------------
 //Profilings
 //--------------------------------
-tfxAPI_EDITOR inline void GatherStats(tfx_profile_t *profile, tfx_profile_stats_t *stat) {
-	stat->cycle_high = 0;
-	stat->cycle_low = tfxMAX_64u;
-	stat->time_high = 0;
-	stat->time_low = tfxMAX_64u;
-	stat->hit_count = 0;
-	stat->cycle_average = 0;
-	stat->time_average = 0;
-	for (int i = 0; i != tfxPROFILER_SAMPLES; ++i) {
-		tfx_profile_snapshot_t *snap = profile->snapshots + i;
-		stat->cycle_high = tfxMax(snap->cycle_count, stat->cycle_high);
-		stat->cycle_low = tfxMin(snap->cycle_count, stat->cycle_low);
-		stat->cycle_average += snap->cycle_count;
-		stat->time_high = tfxMax(snap->run_time, stat->time_high);
-		stat->time_low = tfxMin(snap->run_time, stat->time_low);
-		stat->time_average += snap->run_time;
-		stat->hit_count += snap->hit_count;
-	}
-	stat->cycle_average /= tfxPROFILER_SAMPLES;
-	stat->time_average /= tfxPROFILER_SAMPLES;
-	stat->hit_count /= tfxPROFILER_SAMPLES;
-}
-
-tfxAPI_EDITOR inline void ResetSnapshot(tfx_profile_snapshot_t *snapshot) {
-	snapshot->cycle_count = 0;
-	snapshot->hit_count = 0;
-	snapshot->run_time = 0;
-}
-
-tfxAPI_EDITOR inline void ResetSnapshots() {
-	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
-		tfx_profile_t *profile = tfxProfileArray + i;
-		memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfx_profile_snapshot_t));
-	}
-}
-
-tfxAPI_EDITOR inline void DumpSnapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>> *profile_snapshots, tfxU32 amount) {
-	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
-		tfx_profile_t *profile = tfxProfileArray + i;
-		if (!profile->name) {
-			ResetSnapshot(profile->snapshots + i);
-			continue;
-		}
-		if (!profile_snapshots->ValidName(profile->name)) {
-			tfx_vector_t<tfx_profile_snapshot_t> snapshots;
-			profile_snapshots->Insert(profile->name, snapshots);
-		}
-		tfx_vector_t<tfx_profile_snapshot_t> &snapshots = profile_snapshots->At(profile->name);
-		tfxU32 offset = snapshots.current_size;
-		snapshots.resize(snapshots.current_size + tfxPROFILER_SAMPLES);
-		memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfx_profile_snapshot_t));
-		memset(profile->snapshots, 0, sizeof(tfx_profile_snapshot_t) * tfxPROFILER_SAMPLES);
-	}
-}
+tfxAPI_EDITOR void GatherStats(tfx_profile_t *profile, tfx_profile_stats_t *stat);
+tfxAPI_EDITOR void ResetSnapshot(tfx_profile_snapshot_t *snapshot);
+tfxAPI_EDITOR void ResetSnapshots();
+tfxAPI_EDITOR void DumpSnapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>> *profile_snapshots, tfxU32 amount);
 
 //--------------------------------
 //Reading/Writing files
@@ -5483,1035 +5425,114 @@ tfxINTERNAL void MakeIcospheres();
 tfxINTERNAL int VertexForEdge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, int first, int second);
 tfxINTERNAL tfx_vector_t<tfx_face_t> SubDivideIcosphere(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, tfx_vector_t<tfx_face_t> *triangles);
 
-tfxINTERNAL inline int SortIcospherePoints(void const *left, void const *right) {
-	float d1 = static_cast<const tfx_vec3_t*>(left)->y;
-	float d2 = static_cast<const tfx_vec3_t*>(right)->y;
-	return (d2 > d1) - (d2 < d1);
-}
+tfxINTERNAL int SortIcospherePoints(void const *left, void const *right);
+tfxINTERNAL int SortDepth(void const *left, void const *right);
+tfxINTERNAL void InsertionSortDepth(tfx_work_queue_t *queue, void *work_entry);
+tfxAPI_EDITOR void InsertionSortParticleFrame(tfx_vector_t<tfx_particle_frame_t> *particles);
+tfxINTERNAL tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z);
+tfxINTERNAL tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2);
+tfxAPI_EDITOR tfx_hsv_t RGBtoHSV(tfx_rgb_t in);
+tfxAPI_EDITOR tfx_rgb_t HSVtoRGB(tfx_hsv_t in);
+tfxAPI_EDITOR float DegreesToRadians(float degrees);
+tfxAPI_EDITOR float RadiansToDegrees(float radians);
 
-tfxINTERNAL inline int SortDepth(void const *left, void const *right) {
-	float d1 = static_cast<const tfx_depth_index_t*>(left)->depth;
-	float d2 = static_cast<const tfx_depth_index_t*>(right)->depth;
-	return (d2 > d1) - (d2 < d1);
-}
-
-tfxINTERNAL inline void InsertionSortDepth(tfx_work_queue_t *queue, void *work_entry) {
-	tfx_bucket_array_t<tfx_particle_soa_t> &bank = *static_cast<tfx_sort_work_entry_t*>(work_entry)->bank;
-	tfx_vector_t<tfx_depth_index_t> &depth_indexes = *static_cast<tfx_sort_work_entry_t*>(work_entry)->depth_indexes;
-	for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
-		tfx_depth_index_t key = depth_indexes[i];
-		int j = i - 1;
-		while (j >= 0 && key.depth > depth_indexes[j].depth) {
-			depth_indexes[j + 1] = depth_indexes[j];
-			bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
-			--j;
-		}
-		depth_indexes[j + 1] = key;
-		bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
-	}
-}
-
-tfxINTERNAL inline void InsertionSortParticleFrame(tfx_vector_t<tfx_particle_frame_t> *particles) {
-	for (tfxU32 i = 1; i < particles->current_size; ++i) {
-		tfx_particle_frame_t key = (*particles)[i];
-		int j = i - 1;
-		while (j >= 0 && key.depth > (*particles)[j].depth) {
-			(*particles)[j + 1] = (*particles)[j];
-			--j;
-		}
-		(*particles)[j + 1] = key;
-	}
-}
-
-tfxINTERNAL inline tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z2)
-{
-	tfx128 xx = _mm_mul_ps(*x1, *x2);
-	tfx128 yy = _mm_mul_ps(*y1, *y2);
-	tfx128 zz = _mm_mul_ps(*z1, *z2);
-	return _mm_add_ps(xx, _mm_add_ps(yy, zz));
-}
-
-tfxINTERNAL inline tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2)
-{
-	tfx128 xx = _mm_mul_ps(*x1, *x2);
-	tfx128 yy = _mm_mul_ps(*y1, *y2);
-	return _mm_add_ps(xx, yy);
-}
-
-tfxINTERNAL inline tfx_hsv_t RGBtoHSV(tfx_rgb_t in)
-{
-	tfx_hsv_t      out;
-	float      min, max, delta;
-
-	min = in.r < in.g ? in.r : in.g;
-	min = min < in.b ? min : in.b;
-
-	max = in.r > in.g ? in.r : in.g;
-	max = max > in.b ? max : in.b;
-
-	out.v = max;                                // v
-	delta = max - min;
-	if (delta < 0.00001f)
-	{
-		out.s = 0;
-		out.h = 0; // undefined, maybe nan?
-		return out;
-	}
-	if (max > 0.0f) { // NOTE: if Max is == 0, this divide would cause a crash
-		out.s = (delta / max);                  // s
-	}
-	else {
-		// if max is 0, then r = g = b = 0              
-		// s = 0, h is undefined
-		out.s = 0.0f;
-		out.h = NAN;                            // its now undefined
-		return out;
-	}
-	if (in.r >= max)                           // > is bogus, just keeps compilor happy
-		out.h = (in.g - in.b) / delta;        // between yellow & magenta
-	else
-		if (in.g >= max)
-			out.h = 2.0f + (in.b - in.r) / delta;  // between cyan & yellow
-		else
-			out.h = 4.0f + (in.r - in.g) / delta;  // between magenta & cyan
-
-	out.h *= 60.0f;                              // degrees
-
-	if (out.h < 0.0f)
-		out.h += 360.0f;
-
-	return out;
-}
-
-
-tfxINTERNAL inline tfx_rgb_t HSVtoRGB(tfx_hsv_t in)
-{
-	float      hh, p, q, t, ff;
-	long        i;
-	tfx_rgb_t      out;
-
-	if (in.s <= 0.0f) {       // < is bogus, just shuts up warnings
-		out.r = in.v;
-		out.g = in.v;
-		out.b = in.v;
-		return out;
-	}
-	hh = in.h;
-	if (hh >= 360.0f) hh = 0.0f;
-	hh /= 60.0f;
-	i = (long)hh;
-	ff = hh - i;
-	p = in.v * (1.0f - in.s);
-	q = in.v * (1.0f - (in.s * ff));
-	t = in.v * (1.0f - (in.s * (1.0f - ff)));
-
-	switch (i) {
-	case 0:
-		out.r = in.v;
-		out.g = t;
-		out.b = p;
-		break;
-	case 1:
-		out.r = q;
-		out.g = in.v;
-		out.b = p;
-		break;
-	case 2:
-		out.r = p;
-		out.g = in.v;
-		out.b = t;
-		break;
-
-	case 3:
-		out.r = p;
-		out.g = q;
-		out.b = in.v;
-		break;
-	case 4:
-		out.r = t;
-		out.g = p;
-		out.b = in.v;
-		break;
-	case 5:
-	default:
-		out.r = in.v;
-		out.g = p;
-		out.b = q;
-		break;
-	}
-	return out;
-}
-
-tfxINTERNAL inline float DegreesToRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
-tfxINTERNAL inline float RadiansToDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
-
-tfxINTERNAL inline float LengthVec3NoSqR(tfx_vec3_t const *v) {
-	return v->x * v->x + v->y * v->y + v->z * v->z;
-}
-
-tfxINTERNAL inline float LengthVec4NoSqR(tfx_vec4_t const *v) {
-	return v->x * v->x + v->y * v->y + v->z * v->z + v->w * v->w;
-}
-
-tfxINTERNAL inline float LengthVec(tfx_vec3_t const *v) {
-	return sqrtf(LengthVec3NoSqR(v));
-}
-
-tfxINTERNAL inline float LengthVec(tfx_vec4_t const *v) {
-	return sqrtf(LengthVec4NoSqR(v));
-}
-
-tfxINTERNAL inline float HasLength(tfx_vec3_t const *v) {
-	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
-}
-
-tfxINTERNAL inline tfx_vec3_t NormalizeVec3(tfx_vec3_t const *v) {
-	if (v->x == 0 && v->y == 0 && v->z == 0) return tfx_vec3_t(1.f, 0.f, 0.f);
-	float length = LengthVec(v);
-	return tfx_vec3_t(v->x / length, v->y / length, v->z / length);
-}
-
-tfxINTERNAL inline tfx_vec4_t NormalizeVec4(tfx_vec4_t const *v) {
-	if (v->x == 0 && v->y == 0 && v->z == 0 && v->w == 0) return tfx_vec4_t(1.f, 0.f, 0.f, 0.f);
-	float length = LengthVec(v);
-	return tfx_vec4_t(v->x / length, v->y / length, v->z / length, v->w / length);
-}
-
-tfxINTERNAL inline tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b) {
-	tfx_vec3_t result;
-
-	result.x = a->y*b->z - a->z*b->y;
-	result.y = a->z*b->x - a->x*b->z;
-	result.z = a->x*b->y - a->y*b->x;
-
-	return(result);
-}
-
-tfxINTERNAL inline float DotProductVec4(const tfx_vec4_t *a, const tfx_vec4_t *b)
-{
-	return (a->x * b->x + a->y * b->y + a->z * b->z + a->w * b->w);
-}
-
-tfxINTERNAL inline float DotProductVec3(const tfx_vec3_t *a, const tfx_vec3_t *b)
-{
-	return (a->x * b->x + a->y * b->y + a->z * b->z);
-}
-
-tfxINTERNAL inline float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
-{
-	return (a->x * b->x + a->y * b->y);
-}
-
+tfxAPI_EDITOR float LengthVec3NoSqR(tfx_vec3_t const *v);
+tfxINTERNAL float LengthVec4NoSqR(tfx_vec4_t const *v);
+tfxAPI_EDITOR float LengthVec(tfx_vec3_t const *v);
+tfxINTERNAL float LengthVec(tfx_vec4_t const *v);
+tfxINTERNAL float HasLength(tfx_vec3_t const *v);
+tfxINTERNAL tfx_vec3_t NormalizeVec3(tfx_vec3_t const *v);
+tfxINTERNAL tfx_vec4_t NormalizeVec4(tfx_vec4_t const *v);
+tfxINTERNAL tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b);
+tfxINTERNAL float DotProductVec4(const tfx_vec4_t *a, const tfx_vec4_t *b);
+tfxINTERNAL float DotProductVec3(const tfx_vec3_t *a, const tfx_vec3_t *b);
+tfxAPI_EDITOR float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b);
 //Quake 3 inverse square root
-tfxINTERNAL inline float QuakeSqrt(float number)
-{
-	long i;
-	float x2, y;
-	const float threehalfs = 1.5F;
-
-	x2 = number * 0.5F;
-	y = number;
-	i = *(long *)&y;                       // evil floating point bit level hacking
-	i = 0x5f3759df - (i >> 1);             // what the fuck? 
-	y = *(float *)&i;
-	y = y * (threehalfs - (x2 * y * y));   // 1st iteration
-
-	return y;
-}
-
-tfxINTERNAL inline tfxU32 GetLayerFromID(tfxU32 index) {
-	return (index & 0xF0000000) >> 28;
-}
-
-tfxINTERNAL inline tfxU32 GetIndexFromID(tfxU32 index) {
-	return index & 0x0FFFFFFF;
-}
-
+tfxINTERNAL float QuakeSqrt(float number);
+tfxINTERNAL tfxU32 GetLayerFromID(tfxU32 index);
+tfxINTERNAL tfxU32 GetIndexFromID(tfxU32 index);
 //Todo: can delete this now?
-tfxINTERNAL inline tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
-	assert(nibble < 16);
-	return (nibble << 28) + index;
-}
-
-tfxINTERNAL inline float Vec2LengthFast(tfx_vec2_t const *v) {
-	return 1.f / QuakeSqrt(DotProductVec2(v, v));
-}
-
-tfxINTERNAL inline float Vec3FastLength(tfx_vec3_t const *v) {
-	return 1.f / QuakeSqrt(DotProductVec3(v, v));
-}
-
-tfxINTERNAL inline tfx_vec3_t NormalizeVec3Fast(tfx_vec3_t const *v) {
-	return *v * QuakeSqrt(DotProductVec3(v, v));
-}
-
-tfxINTERNAL inline tfx_vec2_t NormalizeVec2(tfx_vec2_t const *v) {
-	float length = Vec2LengthFast(v);
-	return tfx_vec2_t(v->x / length, v->y / length);
-}
-
-tfxINTERNAL inline tfx_mat3_t CreateMatrix3(float v = 1.f) {
-	tfx_mat3_t R =
-	{ {
-		{v, 0, 0},
-		{0, v, 0},
-		{0, 0, v}},
-	};
-	return(R);
-}
-
-tfxINTERNAL inline tfx_mat3_t TranslateMatrix3Vec3(tfx_mat3_t const *m, tfx_vec3_t const *v) {
-	tfx_mat3_t result;
-	result.v[2] = m->v[0] * v->x + m->v[1] * v->y + m->v[2];
-	return result;
-}
-
-tfxINTERNAL inline tfx_mat3_t RotateMatrix3(tfx_mat3_t const *m, float r) {
-	float const a = r;
-	float const c = cosf(a);
-	float const s = sinf(a);
-
-	tfx_mat3_t result;
-	result.v[0] = m->v[0] * c + m->v[1] * s;
-	result.v[1] = m->v[0] * -s + m->v[1] * c;
-	result.v[2] = m->v[2];
-	return result;
-}
-
-tfxINTERNAL inline tfx_mat3_t ScaleMatrix3Vec2(tfx_mat3_t const *m, tfx_vec2_t const &v) {
-	tfx_mat3_t result;
-	result.v[0] = m->v[0] * v.x;
-	result.v[1] = m->v[1] * v.y;
-	result.v[2] = m->v[2];
-	return result;
-}
-
-tfxINTERNAL inline tfx_vec2_t TransformVec2Matrix4(const tfx_mat4_t *mat, const tfx_vec2_t v) {
-	tfx_vec2_t tv = tfx_vec2_t(0.f, 0.f);
-	tv.x = v.x * mat->v[0].x + v.y * mat->v[1].x;
-	tv.y = v.x * mat->v[0].y + v.y * mat->v[1].y;
-	return tv;
-}
-
-tfxINTERNAL inline tfx_mat4_t CreateMatrix4(float v) {
-	tfx_mat4_t R =
-	{ {
-		{v, 0, 0, 0},
-		{0, v, 0, 0},
-		{0, 0, v, 0},
-		{0, 0, 0, v}},
-	};
-	return(R);
-}
-
-tfxINTERNAL inline tfx_mat4_t Matrix4FromVecs(tfx_vec4_t a, tfx_vec4_t b, tfx_vec4_t c, tfx_vec4_t d) {
-	tfx_mat4_t R =
-	{ {
-		{a.x, a.y, a.z, a.w},
-		{b.x, b.y, b.z, b.w},
-		{c.x, c.y, c.z, c.w},
-		{d.x, d.y, d.z, d.w}},
-	};
-	return(R);
-}
-
-tfxINTERNAL inline tfx_mat4_t Matrix4RotateX(float angle) {
-	float c = std::cos(angle);
-	float s = std::sin(angle);
-	tfx_mat4_t r =
-	{ {
-		{1, 0, 0, 0},
-		{0, c,-s, 0},
-		{0, s, c, 0},
-		{0, 0, 0, 1}},
-	};
-	return r;
-}
-
-tfxINTERNAL inline tfx_mat4_t Matrix4RotateY(float angle) {
-	float c = std::cos(angle);
-	float s = std::sin(angle);
-	tfx_mat4_t r =
-	{ {
-		{ c, 0, s, 0},
-		{ 0, 1, 0, 0},
-		{-s, 0, c, 0},
-		{ 0, 0, 0, 1}},
-	};
-	return r;
-}
-
-tfxINTERNAL inline tfx_mat4_t Matrix4RotateZ(float angle) {
-	float c = std::cos(angle);
-	float s = std::sin(angle);
-	tfx_mat4_t r =
-	{ {
-		{c, -s, 0, 0},
-		{s,  c, 0, 0},
-		{0,  0, 1, 0},
-		{0,  0, 0, 1}},
-	};
-	return r;
-}
-
-tfxINTERNAL inline tfx_mat4_t TransposeMatrix4(tfx_mat4_t *mat) {
-	return Matrix4FromVecs(
-		tfx_vec4_t(mat->v[0].x, mat->v[1].x, mat->v[2].x, mat->v[3].x),
-		tfx_vec4_t(mat->v[0].y, mat->v[1].y, mat->v[2].y, mat->v[3].y),
-		tfx_vec4_t(mat->v[0].z, mat->v[1].z, mat->v[2].z, mat->v[3].z),
-		tfx_vec4_t(mat->v[0].w, mat->v[1].w, mat->v[2].w, mat->v[3].w)
-	);
-}
-
-tfxINTERNAL inline tfx_mat4_t TransformMatrix42d(const tfx_mat4_t *in, const tfx_mat4_t *m) {
-	tfx_mat4_t r;
-	r.v[0].x = in->v[0].x * m->v[0].x + in->v[0].y * m->v[1].x; r.v[0].y = in->v[0].x * m->v[0].y + in->v[0].y * m->v[1].y;
-	r.v[1].x = in->v[1].x * m->v[0].x + in->v[1].y * m->v[1].x; r.v[1].y = in->v[1].x * m->v[0].y + in->v[1].y * m->v[1].y;
-	return r;
-}
-
-tfxINTERNAL inline tfx_mat4_t TransformMatrix4ByMatrix2(const tfx_mat4_t *in, const tfx_mat2_t *m) {
-	tfx_mat4_t r;
-	r.v[0].x = in->v[0].x * m->aa + in->v[0].y * m->ba; r.v[0].y = in->v[0].x * m->ab + in->v[0].y * m->bb;
-	r.v[1].x = in->v[1].x * m->aa + in->v[1].y * m->ba; r.v[1].y = in->v[1].x * m->ab + in->v[1].y * m->bb;
-	return r;
-}
-
-tfxINTERNAL inline tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
-	tfx_mat4_t res = CreateMatrix4(0.f);
-
-	tfx128 in_row[4];
-	in_row[0] = _mm_load_ps(&in->v[0].x);
-	in_row[1] = _mm_load_ps(&in->v[1].x);
-	in_row[2] = _mm_load_ps(&in->v[2].x);
-	in_row[3] = _mm_load_ps(&in->v[3].x);
-
-	tfx128 m_row1 = _mm_set_ps(m->v[3].x, m->v[2].x, m->v[1].x, m->v[0].x);
-	tfx128 m_row2 = _mm_set_ps(m->v[3].y, m->v[2].y, m->v[1].y, m->v[0].y);
-	tfx128 m_row3 = _mm_set_ps(m->v[3].z, m->v[2].z, m->v[1].z, m->v[0].z);
-	tfx128 m_row4 = _mm_set_ps(m->v[3].w, m->v[2].w, m->v[1].w, m->v[0].w);
-
-	for (int r = 0; r <= 3; ++r)
-	{
-
-		tfx128 row1result = _mm_mul_ps(in_row[r], m_row1);
-		tfx128 row2result = _mm_mul_ps(in_row[r], m_row2);
-		tfx128 row3result = _mm_mul_ps(in_row[r], m_row3);
-		tfx128 row4result = _mm_mul_ps(in_row[r], m_row4);
-
-		float tmp[4];
-		_mm_store_ps(tmp, row1result);
-		res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row2result);
-		res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row3result);
-		res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row4result);
-		res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-	}
-	return res;
-}
-
-tfxINTERNAL inline void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
-	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
-	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[0].c1)), xr);
-	xr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[0].c2)), xr);
-	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[1].c0));
-	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
-	yr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[1].c2)), yr);
-	tfxWideFloat zr = tfxWideMul(*x, tfxWideSetSingle(mat->v[2].c0));
-	zr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[2].c1)), zr);
-	zr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[2].c2)), zr);
-	*x = xr;
-	*y = yr;
-	*z = zr;
-}
-
-tfxINTERNAL inline void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y) {
-	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
-	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
-	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
-	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
-	*x = xr;
-	*y = yr;
-}
-
-tfxINTERNAL inline void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
-	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
-	xr = tfxWideAdd(tfxWideMul(*y, r1c[0]), xr);
-	tfxWideFloat yr = tfxWideMul(*x, r0c[1]);
-	yr = tfxWideAdd(tfxWideMul(*y, r1c[1]), yr);
-	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
-	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
-}
-
-tfxINTERNAL inline void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
-	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
-	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
-	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
-	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
-	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
-	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
-}
-
-tfxINTERNAL inline void MaskedTransformMatrix4Vec3(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
-	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
-	xr = tfxWideAdd(tfxWideMul(*y, r0c[1]), xr);
-	xr = tfxWideAdd(tfxWideMul(*z, r0c[2]), xr);
-	tfxWideFloat yr = tfxWideMul(*x, r1c[0]);
-	yr = tfxWideAdd(tfxWideMul(*y, r1c[1]), yr);
-	yr = tfxWideAdd(tfxWideMul(*z, r1c[2]), yr);
-	tfxWideFloat zr = tfxWideMul(*x, r2c[0]);
-	zr = tfxWideAdd(tfxWideMul(*y, r2c[1]), zr);
-	zr = tfxWideAdd(tfxWideMul(*z, r2c[2]), zr);
-	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
-	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
-	*z = tfxWideAdd(tfxWideAnd(*z, *xor_mask), tfxWideAnd(zr, *mask));
-}
-
-tfxINTERNAL inline tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
-	tfx_vec4_t v;
-
-	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
-
-	tfx128 mrow1 = _mm_load_ps(&mat->v[0].c0);
-	tfx128 mrow2 = _mm_load_ps(&mat->v[1].c0);
-	tfx128 mrow3 = _mm_load_ps(&mat->v[2].c0);
-	tfx128 mrow4 = _mm_load_ps(&mat->v[3].c0);
-
-	tfx128 row1result = _mm_mul_ps(v4, mrow1);
-	tfx128 row2result = _mm_mul_ps(v4, mrow2);
-	tfx128 row3result = _mm_mul_ps(v4, mrow3);
-	tfx128 row4result = _mm_mul_ps(v4, mrow4);
-
-	float tmp[4];
-	_mm_store_ps(tmp, row1result);
-	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row2result);
-	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row3result);
-	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row4result);
-	v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-	return v;
-}
-
-tfxINTERNAL inline tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
-	tfx_vec4_t v;
-
-	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
-
-	tfx128 row1result = _mm_mul_ps(v4, *row1);
-	tfx128 row2result = _mm_mul_ps(v4, *row2);
-	tfx128 row3result = _mm_mul_ps(v4, *row3);
-	tfx128 row4result = _mm_mul_ps(v4, *row4);
-
-	float tmp[4];
-	_mm_store_ps(tmp, row1result);
-	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row2result);
-	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row3result);
-	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row4result);
-	v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-	return v;
-}
-
-tfxINTERNAL inline tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
-	tfx_vec3_t v;
-
-	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
-
-	tfx128 mrow1 = _mm_load_ps(&mat->v[0].x);
-	tfx128 mrow2 = _mm_load_ps(&mat->v[1].x);
-	tfx128 mrow3 = _mm_load_ps(&mat->v[2].x);
-	tfx128 mrow4 = _mm_load_ps(&mat->v[3].x);
-
-	tfx128 row1result = _mm_mul_ps(v4, mrow1);
-	tfx128 row2result = _mm_mul_ps(v4, mrow2);
-	tfx128 row3result = _mm_mul_ps(v4, mrow3);
-	tfx128 row4result = _mm_mul_ps(v4, mrow4);
-
-	float tmp[4];
-	_mm_store_ps(tmp, row1result);
-	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row2result);
-	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row3result);
-	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-	return v;
-}
-
-tfxINTERNAL inline tfx_mat4_t Matrix4RotateAxis(tfx_mat4_t const *m, float r, tfx_vec3_t const *v) {
-	float const a = r;
-	float const c = cosf(a);
-	float const s = sinf(a);
-
-	tfx_vec3_t axis = NormalizeVec3(v);
-	tfx_vec3_t temp = axis * (1.f - c);
-
-	tfx_mat4_t rotate;
-	rotate.v[0].x = c + temp.x * axis.x;
-	rotate.v[0].y = temp.x * axis.y + s * axis.z;
-	rotate.v[0].z = temp.x * axis.z - s * axis.y;
-
-	rotate.v[1].x = temp.y * axis.x - s * axis.z;
-	rotate.v[1].y = c + temp.y * axis.y;
-	rotate.v[1].z = temp.y * axis.z + s * axis.x;
-
-	rotate.v[2].x = temp.z * axis.x + s * axis.y;
-	rotate.v[2].y = temp.z * axis.y - s * axis.x;
-	rotate.v[2].z = c + temp.z * axis.z;
-
-	tfx_mat4_t result = CreateMatrix4(1.f);
-	result.v[0] = m->v[0] * rotate.v[0].x + m->v[1] * rotate.v[0].y + m->v[2] * rotate.v[0].z;
-	result.v[1] = m->v[0] * rotate.v[1].x + m->v[1] * rotate.v[1].y + m->v[2] * rotate.v[1].z;
-	result.v[2] = m->v[0] * rotate.v[2].x + m->v[1] * rotate.v[2].y + m->v[2] * rotate.v[2].z;
-	result.v[3] = m->v[3];
-	return result;
-}
-
-tfxINTERNAL inline int tfxClampi(int lower, int upper, int value) {
-	if (value < lower) return lower;
-	if (value > upper) return upper;
-	return value;
-}
-
-tfxINTERNAL inline float tfxClampf(float lower, float upper, float value) {
-	if (value < lower) return lower;
-	if (value > upper) return upper;
-	return value;
-}
-
-tfxINTERNAL inline tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra) {
-	tfx_vec3_t converted = *v * 511.f;
-	tfxUInt10bit result;
-	result.pack = 0;
-	result.data.x = (tfxU32)converted.z;
-	result.data.y = (tfxU32)converted.y;
-	result.data.z = (tfxU32)converted.x;
-	result.data.w = extra;
-	return result.pack;
-}
-
-tfxINTERNAL inline tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v) {
-	tfx_vec3_t converted = *v * 511.f + 511.f;
-	tfxUInt10bit result;
-	result.pack = 0;
-	result.data.x = (tfxU32)converted.z;
-	result.data.y = (tfxU32)converted.y;
-	result.data.z = (tfxU32)converted.x;
-	result.data.w = 0;
-	return result.pack;
-}
-
-tfxINTERNAL inline tfxU32 Pack16bit(float x, float y) {
-	union
-	{
-		signed short in[2];
-		tfxU32 out;
-	} u;
-
-	x = x * 32767.f;
-	y = y * 32767.f;
-
-	u.in[0] = (signed short)x;
-	u.in[1] = (signed short)y;
-
-	return u.out;
-}
-
-tfxINTERNAL inline tfxU32 Pack16bitUnsigned(float x, float y) {
-	union
-	{
-		struct {
-			tfxU32 x : 16;
-			tfxU32 y : 16;
-		} data;
-		tfxU32 out;
-	} u;
-
-	x = x * 32767.f + 32767.f;
-	y = y * 32767.f + 32767.f;
-
-	u.data.x = (tfxU32)x;
-	u.data.y = (tfxU32)y;
-
-	return u.out;
-}
-
-tfxINTERNAL inline tfx_vec2_t UnPack16bit(tfxU32 in) {
-	float one_div_32k = 1.f / 32767.f;
-
-	tfx_vec2_t result;
-	result.x = ((signed short)(in & 0x0000FFFF)) * one_div_32k;
-	result.y = ((signed short)((in & 0xFFFF0000) >> 16)) * one_div_32k;
-
-	return result;
-}
-
-tfxINTERNAL inline tfx_vec2_t UnPack16bitUnsigned(tfxU32 in) {
-	float one_div_32k = 1.f / 32767.f;
-
-	tfx_vec2_t result;
-	result.x = ((int)(in & 0x0000FFFF) - 32767) * one_div_32k;
-	result.y = ((int)((in & 0xFFFF0000) >> 16) - 32767) * one_div_32k;
-
-	return result;
-}
-
-tfxINTERNAL inline tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
-	tfxWideFloat w32k = tfxWideSetSingle(32767.f);
-	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
-	converted_y = tfxWideAndi(converted_y, bits16);
-	converted_y = tfxWideShiftLeft(converted_y, 16);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
-	converted_x = tfxWideAndi(converted_x, bits16);
-	return tfxWideOri(converted_x, converted_y);
-}
-
-tfxINTERNAL inline void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y) {
-	tfxWideInt w32k = tfxWideSetSinglei(32767);
-	x = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x0000FFFF)), w32k));
-	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0xFFFF0000)), 16), w32k));
-	x = tfxWideMul(x, one_div_32k_wide);
-	y = tfxWideMul(y, one_div_32k_wide);
-}
-
-tfxINTERNAL inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
-	tfxWideFloat w511 = tfxWideSetSingle(511.f);
-	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
-	converted_x = tfxWideAndi(converted_x, bits10);
-	converted_x = tfxWideShiftLeft(converted_x, 20);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
-	converted_y = tfxWideAndi(converted_y, bits10);
-	converted_y = tfxWideShiftLeft(converted_y, 10);
-	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
-	converted_z = tfxWideAndi(converted_z, bits10);
-	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
-}
-
-tfxINTERNAL inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
-	tfxWideFloat w511 = tfxWideSetSingle(511.f);
-	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
-	converted_x = tfxWideAndi(converted_x, bits10);
-	converted_x = tfxWideShiftLeft(converted_x, 20);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
-	converted_y = tfxWideAndi(converted_y, bits10);
-	converted_y = tfxWideShiftLeft(converted_y, 10);
-	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
-	converted_z = tfxWideAndi(converted_z, bits10);
-	tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
-	return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
-}
-
-tfxINTERNAL inline tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
-	tfxWideFloat w511 = tfxWideSetSingle(511.f);
-	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w511), w511));
-	converted_x = tfxWideAndi(converted_x, bits10);
-	converted_x = tfxWideShiftLeft(converted_x, 20);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w511), w511));
-	converted_y = tfxWideAndi(converted_y, bits10);
-	converted_y = tfxWideShiftLeft(converted_y, 10);
-	tfxWideInt converted_z = tfxWideConverti(tfxWideAdd(tfxWideMul(v_z, w511), w511));
-	converted_z = tfxWideAndi(converted_z, bits10);
-	tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
-	return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
-}
-
-tfxINTERNAL inline void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
-	tfxWideInt w511 = tfxWideSetSinglei(511);
-	x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
-	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
-	z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
-	x = tfxWideMul(x, one_div_511_wide);
-	y = tfxWideMul(y, one_div_511_wide);
-	z = tfxWideMul(z, one_div_511_wide);
-}
-
-tfxINTERNAL inline tfxWideFloat UnPackWide10bitY(tfxWideInt in) {
-	return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide);
-}
-
-tfxINTERNAL inline tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a) {
-	tfxWideInt color = tfxWideShiftLeft(tfxWideConverti(v_a), 24);
-	color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_b), 16));
-	color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_g), 8));
-	color = tfxWideAddi(color, tfxWideConverti(v_r));
-	return color;
-}
-
-tfxINTERNAL inline tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra) {
-	tfxWideFloat w511 = tfxWideSetSingle(511.f);
-	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
-	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
-	converted_x = tfxWideAndi(converted_x, bits10);
-	converted_x = tfxWideShiftLeft(converted_x, 20);
-	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
-	converted_y = tfxWideAndi(converted_y, bits10);
-	converted_y = tfxWideShiftLeft(converted_y, 10);
-	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
-	converted_z = tfxWideAndi(converted_z, bits10);
-	tfxWideInt extra_bits = tfxWideShiftLeft(extra, 30);
-	return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
-}
-
-tfxINTERNAL inline tfx_vec4_t UnPack10bit(tfxU32 in) {
-	tfxUInt10bit unpack;
-	unpack.pack = in;
-	int test = unpack.data.y;
-	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-	result = result * tfx_vec3_t(one_div_511, one_div_511, one_div_511);
-	return tfx_vec4_t(result, (float)unpack.data.w);
-}
-
-tfxINTERNAL inline tfx_vec3_t UnPack10bitVec3(tfxU32 in) {
-	tfxUInt10bit unpack;
-	unpack.pack = in;
-	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-	return result * tfx_vec3_t(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
-}
-
-tfxINTERNAL inline tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
-	return ((in >> 30) & 0x3);
-}
-
-tfxINTERNAL inline size_t ClampStringSize(size_t compare, size_t string_size) {
-	return compare < string_size ? compare : string_size;
-}
-
-tfxINTERNAL inline float Distance2d(float fromx, float fromy, float tox, float toy) {
-
-	float w = tox - fromx;
-	float h = toy - fromy;
-
-	return std::sqrt(w * w + h * h);
-
-}
-
-tfxINTERNAL inline tfxUInt10bit UintToPacked10bit(tfxU32 in) {
-	tfxUInt10bit out;
-	out.data.x = (in & 0x3FF);
-	out.data.y = ((in >> 10) & 0x3FF);
-	out.data.z = ((in >> 20) & 0x3FF);
-	out.data.w = ((in >> 30) & 0x3);
-	return out;
-}
-
-tfxINTERNAL inline tfx_vec2_t InterpolateVec2(float tween, tfx_vec2_t from, tfx_vec2_t to) {
-	return to * tween + from * (1.f - tween);
-}
-
-tfxINTERNAL inline tfx_vec3_t InterpolateVec3(float tween, tfx_vec3_t from, tfx_vec3_t to) {
-	return to * tween + from * (1.f - tween);
-}
-
-tfxINTERNAL inline tfx_rgba8_t InterpolateRGBA(float tween, tfx_rgba8_t from, tfx_rgba8_t to) {
-	tfx_rgba8_t out;
-	out.r = char((float)to.r * tween + (float)from.r * (1 - tween));
-	out.g = char((float)to.g * tween + (float)from.g * (1 - tween));
-	out.b = char((float)to.b * tween + (float)from.b * (1 - tween));
-	out.a = char((float)to.a * tween + (float)from.a * (1 - tween));
-	return out;
-}
-
-tfxINTERNAL inline float GammaCorrect(float color, float gamma = tfxGAMMA) {
-	return powf(color, gamma);
-}
-
-tfxINTERNAL inline tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to) {
-	tfx_vec3_t i = InterpolateVec3(tween, UnPack10bitVec3(from), UnPack10bitVec3(to));
-	return Pack10bit(&i, (from >> 30) & 0x3);
-}
-
-tfxINTERNAL inline tfx_vec4_t InterpolateVec4(float tween, tfx_vec4_t *from, tfx_vec4_t *to) {
-	tfx128 l4 = _mm_set_ps1(tween);
-	tfx128 l4minus1 = _mm_set_ps1(1.f - tween);
-	tfx128 f4 = _mm_set_ps(from->x, from->y, from->z, from->w);
-	tfx128 t4 = _mm_set_ps(to->x, to->y, to->z, to->w);
-	tfx128 from_lerp = _mm_mul_ps(f4, l4);
-	tfx128 to_lerp = _mm_mul_ps(f4, l4minus1);
-	tfx128 result = _mm_add_ps(from_lerp, to_lerp);
-	tfx_vec4_t vec;
-	_mm_store_ps(&vec.x, result);
-	return vec;
-}
-
-tfxINTERNAL inline tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to) {
-	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
-	tfxWideFloat to_lerp = tfxWideMul(*to, tween);
-	tfxWideFloat from_lerp = tfxWideMul(*from, one_minus_tween);
-	tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
-	return result;
-}
-
-tfxINTERNAL inline float Interpolatef(float tween, float from, float to) {
-	return to * tween + from * (1.f - tween);
-}
-
-tfxINTERNAL inline void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_state_t *parent) {
-	float s = sin(out_local_rotations->roll);
-	float c = cos(out_local_rotations->roll);
-
-	out_matrix->Set2(c, s, -s, c);
-	*out_scale = parent->overal_scale;
-
-	out_rotations->roll = parent->world_rotations.roll + out_local_rotations->roll;
-
-	*out_matrix = TransformMatrix42d(out_matrix, &parent->matrix);
-	tfx_vec2_t rotatevec = TransformVec2Matrix4(&parent->matrix, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
-
-	*out_position = parent->world_position.xy() + rotatevec * parent->overal_scale;
-}
-tfxINTERNAL inline void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_effect_state_t *parent) {
-	tfx_mat4_t roll = Matrix4RotateZ(out_local_rotations->roll);
-	tfx_mat4_t pitch = Matrix4RotateX(out_local_rotations->pitch);
-	tfx_mat4_t yaw = Matrix4RotateY(out_local_rotations->yaw);
-	*out_matrix = TransformMatrix4(&yaw, &pitch);
-	*out_matrix = TransformMatrix4(out_matrix, &roll);
-	*out_scale = parent->overal_scale;
-
-	*out_rotations = parent->world_rotations + *out_local_rotations;
-
-	*out_matrix = TransformMatrix4(out_matrix, &parent->matrix);
-	tfx_vec4_t translated_vec = *out_local_position + *out_translation;
-	tfx_vec3_t rotatevec = TransformVec3Matrix4(&parent->matrix, &translated_vec);
-
-	*out_position = parent->world_position + rotatevec;
-}
+tfxINTERNAL tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index);
+tfxAPI_EDITOR float Vec2LengthFast(tfx_vec2_t const *v);
+tfxAPI_EDITOR float Vec3FastLength(tfx_vec3_t const *v);
+tfxAPI_EDITOR tfx_vec3_t NormalizeVec3Fast(tfx_vec3_t const *v);
+tfxINTERNAL tfx_vec2_t NormalizeVec2(tfx_vec2_t const *v);
+tfxAPI_EDITOR tfx_mat3_t CreateMatrix3(float v = 1.f);
+tfxINTERNAL tfx_mat3_t TranslateMatrix3Vec3(tfx_mat3_t const *m, tfx_vec3_t const *v);
+tfxAPI_EDITOR tfx_mat3_t RotateMatrix3(tfx_mat3_t const *m, float r);
+tfxINTERNAL tfx_mat3_t ScaleMatrix3Vec2(tfx_mat3_t const *m, tfx_vec2_t const &v);
+tfxAPI_EDITOR tfx_vec2_t TransformVec2Matrix4(const tfx_mat4_t *mat, const tfx_vec2_t v);
+tfxINTERNAL tfx_mat4_t CreateMatrix4(float v);
+tfxINTERNAL tfx_mat4_t Matrix4FromVecs(tfx_vec4_t a, tfx_vec4_t b, tfx_vec4_t c, tfx_vec4_t d);
+tfxINTERNAL tfx_mat4_t Matrix4RotateX(float angle);
+tfxINTERNAL tfx_mat4_t Matrix4RotateY(float angle);
+tfxINTERNAL tfx_mat4_t Matrix4RotateZ(float angle);
+tfxINTERNAL tfx_mat4_t TransposeMatrix4(tfx_mat4_t *mat);
+tfxINTERNAL tfx_mat4_t TransformMatrix42d(const tfx_mat4_t *in, const tfx_mat4_t *m);
+tfxINTERNAL tfx_mat4_t TransformMatrix4ByMatrix2(const tfx_mat4_t *in, const tfx_mat2_t *m);
+tfxINTERNAL tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m);
+tfxINTERNAL void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
+tfxINTERNAL void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y);
+tfxINTERNAL void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
+tfxINTERNAL void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
+tfxINTERNAL void MaskedTransformMatrix4Vec3(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideFloat *mask, tfxWideFloat *xor_mask);
+tfxINTERNAL tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec);
+tfxAPI_EDITOR tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec);
+tfxINTERNAL tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec);
+tfxINTERNAL tfx_mat4_t Matrix4RotateAxis(tfx_mat4_t const *m, float r, tfx_vec3_t const *v);
+tfxINTERNAL int tfxClampi(int lower, int upper, int value);
+tfxAPI_EDITOR float tfxClampf(float lower, float upper, float value);
+tfxAPI_EDITOR tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra);
+tfxINTERNAL tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v);
+tfxAPI_EDITOR tfxU32 Pack16bit(float x, float y);
+tfxINTERNAL tfxU32 Pack16bitUnsigned(float x, float y);
+tfxAPI_EDITOR tfx_vec2_t UnPack16bit(tfxU32 in);
+tfxINTERNAL tfx_vec2_t UnPack16bitUnsigned(tfxU32 in);
+tfxINTERNAL tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y);
+tfxINTERNAL void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y);
+tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
+tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
+tfxINTERNAL tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
+tfxINTERNAL void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z);
+tfxINTERNAL tfxWideFloat UnPackWide10bitY(tfxWideInt in);
+tfxINTERNAL tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a);
+tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra);
+tfxAPI_EDITOR tfx_vec4_t UnPack10bit(tfxU32 in);
+tfxINTERNAL tfx_vec3_t UnPack10bitVec3(tfxU32 in);
+tfxINTERNAL tfxU32 Get2bitFromPacked10bit(tfxU32 in);
+tfxINTERNAL size_t ClampStringSize(size_t compare, size_t string_size);
+tfxAPI_EDITOR float Distance2d(float fromx, float fromy, float tox, float toy);
+tfxINTERNAL tfxUInt10bit UintToPacked10bit(tfxU32 in);
+tfxINTERNAL tfx_vec2_t InterpolateVec2(float tween, tfx_vec2_t from, tfx_vec2_t to);
+tfxINTERNAL tfx_vec3_t InterpolateVec3(float tween, tfx_vec3_t from, tfx_vec3_t to);
+tfxINTERNAL tfx_rgba8_t InterpolateRGBA(float tween, tfx_rgba8_t from, tfx_rgba8_t to);
+tfxINTERNAL float GammaCorrect(float color, float gamma = tfxGAMMA);
+tfxINTERNAL tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to);
+tfxINTERNAL tfx_vec4_t InterpolateVec4(float tween, tfx_vec4_t *from, tfx_vec4_t *to);
+tfxINTERNAL tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to);
+tfxINTERNAL float Interpolatef(float tween, float from, float to);
+tfxINTERNAL void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_state_t *parent);
+tfxAPI_EDITOR void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_effect_state_t *parent);
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
 //--------------------------2d---------------------
-tfxINTERNAL inline void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	world_position->x = local_position_x;
-	world_position->y = local_position_y;
-	*world_rotations = roll;
-}
-tfxINTERNAL inline void TransformParticlePositionAngle(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	world_position->x = local_position_x;
-	world_position->y = local_position_y;
-	*world_rotations = parent_rotations->roll + roll;
-}
-tfxINTERNAL inline void TransformParticlePositionRelative(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	*world_rotations = roll;
-	tfx_vec2_t rotatevec = TransformVec2Matrix4(matrix, tfx_vec2_t(local_position_x, local_position_y) + handle->xy());
-	*world_position = from_position->xy() + rotatevec * *scale;
-}
-tfxINTERNAL inline void TransformParticlePositionRelativeLine(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	*world_rotations = parent_rotations->roll + roll;
-	tfx_vec2_t rotatevec = TransformVec2Matrix4(matrix, tfx_vec2_t(local_position_x, local_position_y) + handle->xy());
-	*world_position = from_position->xy() + rotatevec * *scale;
-}
-//-------------------------------------------------
-//--New transform_3d particle functions for SoA data--
-//--------------------------3d---------------------
-tfxINTERNAL inline void TransformParticlePosition3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	world_position->x = local_position_x;
-	world_position->y = local_position_y;
-	world_position->z = local_position_z;
-	*world_rotations = *local_rotations;
-}
-tfxINTERNAL inline void TransformParticlePositionAngle3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	world_position->x = local_position_x;
-	world_position->y = local_position_y;
-	world_position->z = local_position_z;
-	*world_rotations = *parent_rotations + *local_rotations;
-}
-tfxINTERNAL inline void TransformParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	*world_rotations = *local_rotations;
-	tfx_vec4_t rotatevec = TransformVec4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
-	*world_position = *from_position + rotatevec.xyz() * *scale;
-}
-tfxINTERNAL inline void TransformParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	*world_rotations = *local_rotations;
-	tfx_vec4_t rotatevec = TransformVec4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
-	*world_position = *from_position + rotatevec.xyz() * *scale;
-}
-
-tfxINTERNAL inline void TransformWideParticlePositionRelative3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	tfx_vec4_t rotatevec = TransformVec4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
-	*world_position = *from_position + rotatevec.xyz() * *scale;
-}
-
-tfxINTERNAL inline void TransformWideParticlePositionRelativeLine3d(const float local_position_x, const float local_position_y, const float local_position_z, const tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
-	tfx_vec4_t rotatevec = TransformVec4Matrix4(matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + *handle);
-	*world_position = *from_position + rotatevec.xyz() * *scale;
-}
+tfxINTERNAL void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position);
 
 //--------------------------------
 //Random numbers
 //--------------------------------
 tfx_random_t NewRandom(tfxU32 seed);
 
-tfxINTERNAL inline void AdvanceRandom(tfx_random_t *random) {
-	tfxU64 s1 = random->seeds[0];
-	tfxU64 s0 = random->seeds[1];
-	random->seeds[0] = s0;
-	s1 ^= s1 << 23; // a
-	random->seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
-}
-
-tfxINTERNAL inline void RandomReSeed(tfx_random_t *random) {
-	random->seeds[0] = tfx_Millisecs(); random->seeds[1] = (tfxU64)tfx_Millisecs() * 2;
-	AdvanceRandom(random);
-}
-
-tfxINTERNAL inline void RandomReSeed(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2) {
-	random->seeds[0] = seed1;
-	random->seeds[1] = seed2;
-	AdvanceRandom(random);
-}
-
-tfxINTERNAL inline void RandomReSeed(tfx_random_t *random, tfxU64 seed) {
-	random->seeds[0] = seed;
-	random->seeds[1] = seed * 2;
-	AdvanceRandom(random);
-}
-
-tfxINTERNAL inline float GenerateRandom(tfx_random_t *random) {
-	tfxU64 s1 = random->seeds[0];
-	tfxU64 s0 = random->seeds[1];
-	tfxU64 result = s0 + s1;
-	random->seeds[0] = s0;
-	s1 ^= s1 << 23; // a
-	random->seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
-	return float((double)result / tfxTWO64f);
-}
-
-tfxINTERNAL inline float RandomRange(tfx_random_t *random, float max) {
-	return GenerateRandom(random) * max;
-};
-
-tfxINTERNAL inline float RandomRange(tfx_random_t *random, float from, float to) {
-	float a = GenerateRandom(random);
-	float range = to - from;
-	return to - range * a;
-};
-
-tfxINTERNAL inline int RandomRange(tfx_random_t *random, int from, int to) {
-	float a = (to - from + 1) * GenerateRandom(random) + from;
-	return (int)a;
-};
-
-tfxINTERNAL inline tfxU32 RandomRange(tfx_random_t *random, tfxU32 max) {
-	float g = GenerateRandom(random);
-	float a = g * (float)max;
-	return tfxU32(a);
-};
-
-tfxINTERNAL inline void AlterRandomSeed(tfx_random_t *random, tfxU64 amount) {
-	random->seeds[0] *= amount;
-	random->seeds[1] += amount;
-};
+void AdvanceRandom(tfx_random_t *random);
+void RandomReSeed(tfx_random_t *random);
+void RandomReSeed(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2);
+void RandomReSeed(tfx_random_t *random, tfxU64 seed);
+float GenerateRandom(tfx_random_t *random);
+float RandomRange(tfx_random_t *random, float max);
+float RandomRange(tfx_random_t *random, float from, float to);
+int RandomRange(tfx_random_t *random, int from, int to);
+tfxU32 RandomRange(tfx_random_t *random, tfxU32 max);
+void AlterRandomSeed(tfx_random_t *random, tfxU64 amount);
 
 //--------------------------------
 //Particle manager internal functions
@@ -7165,7 +6186,7 @@ Add an effect to a tfx_particle_manager_t from an effect template
 							For example by calling SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
   @returns					True if the effect was succesfully added.
 */
-tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect, tfxEffectID *effect_id = NULL);
+tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect, tfxEffectID *effect_id = nullptr);
 
 /*
 Add an effect to a tfx_particle_manager_t.
@@ -7175,7 +6196,7 @@ Add an effect to a tfx_particle_manager_t.
 							For example by calling SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
   @returns					True if the effect was succesfully added.
 */
-tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id = NULL);
+tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id = nullptr);
 
 /*
 Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
@@ -7806,7 +6827,7 @@ to the GPU
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 * @param position				A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager_t *pm = NULL, tfx_vec3_t camera_position = { 0.f, 0.f, 0.f });
+tfxAPI void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager_t *pm = nullptr, tfx_vec3_t camera_position = { 0.f, 0.f, 0.f });
 
 /*
 Add an animation instance to the animation manager.
@@ -8210,3 +7231,4 @@ tfxAPI inline float TweenFloat(float tween, const float current, const float cap
 }
 
 } //namespace
+#endif

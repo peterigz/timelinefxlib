@@ -4,6 +4,7 @@
 namespace tfx {
 
 #ifdef _WIN32
+#if defined (_MSC_VER) && (_MSC_VER >= 1400) && (defined (_M_IX86) || defined (_M_X64))
 FILE *tfx__open_file(const char *file_name, const char *mode) {
 	FILE *file = NULL;
 	errno_t err = fopen_s(&file, file_name, mode);
@@ -19,6 +20,12 @@ FILE *tfx__open_file(const char *file_name, const char *mode) {
 	}
 	return file;
 }
+#elif defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)) && \
+      (defined(__i386__) || defined(__x86_64__)) || defined(__clang__)
+FILE *tfx__open_file(const char *file_name, const char *mode) {
+	return fopen(file_name, mode);
+}
+#endif
 #else
 FILE *tfx__open_file(const char *file_name, const char *mode) {
 	return fopen(file_name, mode);
@@ -290,6 +297,67 @@ tfx_random_t NewRandom(tfxU32 seed) {
 	return random;
 }
 
+void AdvanceRandom(tfx_random_t *random) {
+	tfxU64 s1 = random->seeds[0];
+	tfxU64 s0 = random->seeds[1];
+	random->seeds[0] = s0;
+	s1 ^= s1 << 23; // a
+	random->seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+}
+
+void RandomReSeed(tfx_random_t *random) {
+	random->seeds[0] = tfx_Millisecs(); random->seeds[1] = (tfxU64)tfx_Millisecs() * 2;
+	AdvanceRandom(random);
+}
+
+void RandomReSeed(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2) {
+	random->seeds[0] = seed1;
+	random->seeds[1] = seed2;
+	AdvanceRandom(random);
+}
+
+void RandomReSeed(tfx_random_t *random, tfxU64 seed) {
+	random->seeds[0] = seed;
+	random->seeds[1] = seed * 2;
+	AdvanceRandom(random);
+}
+
+float GenerateRandom(tfx_random_t *random) {
+	tfxU64 s1 = random->seeds[0];
+	tfxU64 s0 = random->seeds[1];
+	tfxU64 result = s0 + s1;
+	random->seeds[0] = s0;
+	s1 ^= s1 << 23; // a
+	random->seeds[1] = s1 ^ s0 ^ (s1 >> 18) ^ (s0 >> 5); // b, c
+	return float((double)result / tfxTWO64f);
+}
+
+float RandomRange(tfx_random_t *random, float max) {
+	return GenerateRandom(random) * max;
+};
+
+float RandomRange(tfx_random_t *random, float from, float to) {
+	float a = GenerateRandom(random);
+	float range = to - from;
+	return to - range * a;
+};
+
+int RandomRange(tfx_random_t *random, int from, int to) {
+	float a = (to - from + 1) * GenerateRandom(random) + from;
+	return (int)a;
+};
+
+tfxU32 RandomRange(tfx_random_t *random, tfxU32 max) {
+	float g = GenerateRandom(random);
+	float a = g * (float)max;
+	return tfxU32(a);
+};
+
+void AlterRandomSeed(tfx_random_t *random, tfxU64 amount) {
+	random->seeds[0] *= amount;
+	random->seeds[1] += amount;
+};
+
 tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
 
 void MakeIcospheres() {
@@ -393,6 +461,920 @@ tfx_vector_t<tfx_face_t> SubDivideIcosphere(tfx_storage_map_t<int> *point_cache,
 	return result;
 }
 
+int SortIcospherePoints(void const *left, void const *right) {
+	float d1 = static_cast<const tfx_vec3_t*>(left)->y;
+	float d2 = static_cast<const tfx_vec3_t*>(right)->y;
+	return (d2 > d1) - (d2 < d1);
+}
+
+int SortDepth(void const *left, void const *right) {
+	float d1 = static_cast<const tfx_depth_index_t*>(left)->depth;
+	float d2 = static_cast<const tfx_depth_index_t*>(right)->depth;
+	return (d2 > d1) - (d2 < d1);
+}
+
+void InsertionSortDepth(tfx_work_queue_t *queue, void *work_entry) {
+	tfx_bucket_array_t<tfx_particle_soa_t> &bank = *static_cast<tfx_sort_work_entry_t*>(work_entry)->bank;
+	tfx_vector_t<tfx_depth_index_t> &depth_indexes = *static_cast<tfx_sort_work_entry_t*>(work_entry)->depth_indexes;
+	for (tfxU32 i = 1; i < depth_indexes.current_size; ++i) {
+		tfx_depth_index_t key = depth_indexes[i];
+		int j = i - 1;
+		while (j >= 0 && key.depth > depth_indexes[j].depth) {
+			depth_indexes[j + 1] = depth_indexes[j];
+			bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
+			--j;
+		}
+		depth_indexes[j + 1] = key;
+		bank[ParticleBank(depth_indexes[j + 1].particle_id)].depth_index[ParticleIndex(depth_indexes[j + 1].particle_id)] = j + 1;
+	}
+}
+
+void InsertionSortParticleFrame(tfx_vector_t<tfx_particle_frame_t> *particles) {
+	for (tfxU32 i = 1; i < particles->current_size; ++i) {
+		tfx_particle_frame_t key = (*particles)[i];
+		int j = i - 1;
+		while (j >= 0 && key.depth > (*particles)[j].depth) {
+			(*particles)[j + 1] = (*particles)[j];
+			--j;
+		}
+		(*particles)[j + 1] = key;
+	}
+}
+
+tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z2)
+{
+	tfx128 xx = _mm_mul_ps(*x1, *x2);
+	tfx128 yy = _mm_mul_ps(*y1, *y2);
+	tfx128 zz = _mm_mul_ps(*z1, *z2);
+	return _mm_add_ps(xx, _mm_add_ps(yy, zz));
+}
+
+tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2)
+{
+	tfx128 xx = _mm_mul_ps(*x1, *x2);
+	tfx128 yy = _mm_mul_ps(*y1, *y2);
+	return _mm_add_ps(xx, yy);
+}
+
+tfx_hsv_t RGBtoHSV(tfx_rgb_t in)
+{
+	tfx_hsv_t      out;
+	float      min, max, delta;
+
+	min = in.r < in.g ? in.r : in.g;
+	min = min < in.b ? min : in.b;
+
+	max = in.r > in.g ? in.r : in.g;
+	max = max > in.b ? max : in.b;
+
+	out.v = max;                                // v
+	delta = max - min;
+	if (delta < 0.00001f)
+	{
+		out.s = 0;
+		out.h = 0; // undefined, maybe nan?
+		return out;
+	}
+	if (max > 0.0f) { // NOTE: if Max is == 0, this divide would cause a crash
+		out.s = (delta / max);                  // s
+	}
+	else {
+		// if max is 0, then r = g = b = 0              
+		// s = 0, h is undefined
+		out.s = 0.0f;
+		out.h = NAN;                            // its now undefined
+		return out;
+	}
+	if (in.r >= max)                           // > is bogus, just keeps compilor happy
+		out.h = (in.g - in.b) / delta;        // between yellow & magenta
+	else
+		if (in.g >= max)
+			out.h = 2.0f + (in.b - in.r) / delta;  // between cyan & yellow
+		else
+			out.h = 4.0f + (in.r - in.g) / delta;  // between magenta & cyan
+
+	out.h *= 60.0f;                              // degrees
+
+	if (out.h < 0.0f)
+		out.h += 360.0f;
+
+	return out;
+}
+
+
+tfx_rgb_t HSVtoRGB(tfx_hsv_t in)
+{
+	float      hh, p, q, t, ff;
+	long        i;
+	tfx_rgb_t      out;
+
+	if (in.s <= 0.0f) {       // < is bogus, just shuts up warnings
+		out.r = in.v;
+		out.g = in.v;
+		out.b = in.v;
+		return out;
+	}
+	hh = in.h;
+	if (hh >= 360.0f) hh = 0.0f;
+	hh /= 60.0f;
+	i = (long)hh;
+	ff = hh - i;
+	p = in.v * (1.0f - in.s);
+	q = in.v * (1.0f - (in.s * ff));
+	t = in.v * (1.0f - (in.s * (1.0f - ff)));
+
+	switch (i) {
+	case 0:
+		out.r = in.v;
+		out.g = t;
+		out.b = p;
+		break;
+	case 1:
+		out.r = q;
+		out.g = in.v;
+		out.b = p;
+		break;
+	case 2:
+		out.r = p;
+		out.g = in.v;
+		out.b = t;
+		break;
+
+	case 3:
+		out.r = p;
+		out.g = q;
+		out.b = in.v;
+		break;
+	case 4:
+		out.r = t;
+		out.g = p;
+		out.b = in.v;
+		break;
+	case 5:
+	default:
+		out.r = in.v;
+		out.g = p;
+		out.b = q;
+		break;
+	}
+	return out;
+}
+
+float DegreesToRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
+float RadiansToDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
+
+float LengthVec3NoSqR(tfx_vec3_t const *v) {
+	return v->x * v->x + v->y * v->y + v->z * v->z;
+}
+
+float LengthVec4NoSqR(tfx_vec4_t const *v) {
+	return v->x * v->x + v->y * v->y + v->z * v->z + v->w * v->w;
+}
+
+float LengthVec(tfx_vec3_t const *v) {
+	return sqrtf(LengthVec3NoSqR(v));
+}
+
+float LengthVec(tfx_vec4_t const *v) {
+	return sqrtf(LengthVec4NoSqR(v));
+}
+
+float HasLength(tfx_vec3_t const *v) {
+	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
+}
+
+tfx_vec3_t NormalizeVec3(tfx_vec3_t const *v) {
+	if (v->x == 0 && v->y == 0 && v->z == 0) return tfx_vec3_t(1.f, 0.f, 0.f);
+	float length = LengthVec(v);
+	return tfx_vec3_t(v->x / length, v->y / length, v->z / length);
+}
+
+tfx_vec4_t NormalizeVec4(tfx_vec4_t const *v) {
+	if (v->x == 0 && v->y == 0 && v->z == 0 && v->w == 0) return tfx_vec4_t(1.f, 0.f, 0.f, 0.f);
+	float length = LengthVec(v);
+	return tfx_vec4_t(v->x / length, v->y / length, v->z / length, v->w / length);
+}
+
+tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b) {
+	tfx_vec3_t result;
+
+	result.x = a->y*b->z - a->z*b->y;
+	result.y = a->z*b->x - a->x*b->z;
+	result.z = a->x*b->y - a->y*b->x;
+
+	return(result);
+}
+
+float DotProductVec4(const tfx_vec4_t *a, const tfx_vec4_t *b)
+{
+	return (a->x * b->x + a->y * b->y + a->z * b->z + a->w * b->w);
+}
+
+float DotProductVec3(const tfx_vec3_t *a, const tfx_vec3_t *b)
+{
+	return (a->x * b->x + a->y * b->y + a->z * b->z);
+}
+
+float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
+{
+	return (a->x * b->x + a->y * b->y);
+}
+
+//Quake 3 inverse square root
+float QuakeSqrt(float number)
+{
+	long i;
+	float x2, y;
+	const float threehalfs = 1.5F;
+
+	x2 = number * 0.5F;
+	y = number;
+	i = *(long *)&y;                       // evil floating point bit level hacking
+	i = 0x5f3759df - (i >> 1);             // what the fuck? 
+	y = *(float *)&i;
+	y = y * (threehalfs - (x2 * y * y));   // 1st iteration
+
+	return y;
+}
+
+tfxU32 GetLayerFromID(tfxU32 index) {
+	return (index & 0xF0000000) >> 28;
+}
+
+tfxU32 GetIndexFromID(tfxU32 index) {
+	return index & 0x0FFFFFFF;
+}
+
+//Todo: can delete this now?
+tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
+	assert(nibble < 16);
+	return (nibble << 28) + index;
+}
+
+float Vec2LengthFast(tfx_vec2_t const *v) {
+	return 1.f / QuakeSqrt(DotProductVec2(v, v));
+}
+
+float Vec3FastLength(tfx_vec3_t const *v) {
+	return 1.f / QuakeSqrt(DotProductVec3(v, v));
+}
+
+tfx_vec3_t NormalizeVec3Fast(tfx_vec3_t const *v) {
+	return *v * QuakeSqrt(DotProductVec3(v, v));
+}
+
+tfx_vec2_t NormalizeVec2(tfx_vec2_t const *v) {
+	float length = Vec2LengthFast(v);
+	return tfx_vec2_t(v->x / length, v->y / length);
+}
+
+tfx_mat3_t CreateMatrix3(float v) {
+	tfx_mat3_t R =
+	{ {
+		{v, 0, 0},
+		{0, v, 0},
+		{0, 0, v}},
+	};
+	return(R);
+}
+
+tfx_mat3_t TranslateMatrix3Vec3(tfx_mat3_t const *m, tfx_vec3_t const *v) {
+	tfx_mat3_t result;
+	result.v[2] = m->v[0] * v->x + m->v[1] * v->y + m->v[2];
+	return result;
+}
+
+tfx_mat3_t RotateMatrix3(tfx_mat3_t const *m, float r) {
+	float const a = r;
+	float const c = cosf(a);
+	float const s = sinf(a);
+
+	tfx_mat3_t result;
+	result.v[0] = m->v[0] * c + m->v[1] * s;
+	result.v[1] = m->v[0] * -s + m->v[1] * c;
+	result.v[2] = m->v[2];
+	return result;
+}
+
+tfx_mat3_t ScaleMatrix3Vec2(tfx_mat3_t const *m, tfx_vec2_t const &v) {
+	tfx_mat3_t result;
+	result.v[0] = m->v[0] * v.x;
+	result.v[1] = m->v[1] * v.y;
+	result.v[2] = m->v[2];
+	return result;
+}
+
+tfx_vec2_t TransformVec2Matrix4(const tfx_mat4_t *mat, const tfx_vec2_t v) {
+	tfx_vec2_t tv = tfx_vec2_t(0.f, 0.f);
+	tv.x = v.x * mat->v[0].x + v.y * mat->v[1].x;
+	tv.y = v.x * mat->v[0].y + v.y * mat->v[1].y;
+	return tv;
+}
+
+tfx_mat4_t CreateMatrix4(float v) {
+	tfx_mat4_t R =
+	{ {
+		{v, 0, 0, 0},
+		{0, v, 0, 0},
+		{0, 0, v, 0},
+		{0, 0, 0, v}},
+	};
+	return(R);
+}
+
+tfx_mat4_t Matrix4FromVecs(tfx_vec4_t a, tfx_vec4_t b, tfx_vec4_t c, tfx_vec4_t d) {
+	tfx_mat4_t R =
+	{ {
+		{a.x, a.y, a.z, a.w},
+		{b.x, b.y, b.z, b.w},
+		{c.x, c.y, c.z, c.w},
+		{d.x, d.y, d.z, d.w}},
+	};
+	return(R);
+}
+
+tfx_mat4_t Matrix4RotateX(float angle) {
+	float c = std::cos(angle);
+	float s = std::sin(angle);
+	tfx_mat4_t r =
+	{ {
+		{1, 0, 0, 0},
+		{0, c,-s, 0},
+		{0, s, c, 0},
+		{0, 0, 0, 1}},
+	};
+	return r;
+}
+
+tfx_mat4_t Matrix4RotateY(float angle) {
+	float c = std::cos(angle);
+	float s = std::sin(angle);
+	tfx_mat4_t r =
+	{ {
+		{ c, 0, s, 0},
+		{ 0, 1, 0, 0},
+		{-s, 0, c, 0},
+		{ 0, 0, 0, 1}},
+	};
+	return r;
+}
+
+tfx_mat4_t Matrix4RotateZ(float angle) {
+	float c = std::cos(angle);
+	float s = std::sin(angle);
+	tfx_mat4_t r =
+	{ {
+		{c, -s, 0, 0},
+		{s,  c, 0, 0},
+		{0,  0, 1, 0},
+		{0,  0, 0, 1}},
+	};
+	return r;
+}
+
+tfx_mat4_t TransposeMatrix4(tfx_mat4_t *mat) {
+	return Matrix4FromVecs(
+		tfx_vec4_t(mat->v[0].x, mat->v[1].x, mat->v[2].x, mat->v[3].x),
+		tfx_vec4_t(mat->v[0].y, mat->v[1].y, mat->v[2].y, mat->v[3].y),
+		tfx_vec4_t(mat->v[0].z, mat->v[1].z, mat->v[2].z, mat->v[3].z),
+		tfx_vec4_t(mat->v[0].w, mat->v[1].w, mat->v[2].w, mat->v[3].w)
+	);
+}
+
+tfx_mat4_t TransformMatrix42d(const tfx_mat4_t *in, const tfx_mat4_t *m) {
+	tfx_mat4_t r;
+	r.v[0].x = in->v[0].x * m->v[0].x + in->v[0].y * m->v[1].x; r.v[0].y = in->v[0].x * m->v[0].y + in->v[0].y * m->v[1].y;
+	r.v[1].x = in->v[1].x * m->v[0].x + in->v[1].y * m->v[1].x; r.v[1].y = in->v[1].x * m->v[0].y + in->v[1].y * m->v[1].y;
+	return r;
+}
+
+tfx_mat4_t TransformMatrix4ByMatrix2(const tfx_mat4_t *in, const tfx_mat2_t *m) {
+	tfx_mat4_t r;
+	r.v[0].x = in->v[0].x * m->aa + in->v[0].y * m->ba; r.v[0].y = in->v[0].x * m->ab + in->v[0].y * m->bb;
+	r.v[1].x = in->v[1].x * m->aa + in->v[1].y * m->ba; r.v[1].y = in->v[1].x * m->ab + in->v[1].y * m->bb;
+	return r;
+}
+
+tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
+	tfx_mat4_t res = CreateMatrix4(0.f);
+
+	tfx128 in_row[4];
+	in_row[0] = _mm_load_ps(&in->v[0].x);
+	in_row[1] = _mm_load_ps(&in->v[1].x);
+	in_row[2] = _mm_load_ps(&in->v[2].x);
+	in_row[3] = _mm_load_ps(&in->v[3].x);
+
+	tfx128 m_row1 = _mm_set_ps(m->v[3].x, m->v[2].x, m->v[1].x, m->v[0].x);
+	tfx128 m_row2 = _mm_set_ps(m->v[3].y, m->v[2].y, m->v[1].y, m->v[0].y);
+	tfx128 m_row3 = _mm_set_ps(m->v[3].z, m->v[2].z, m->v[1].z, m->v[0].z);
+	tfx128 m_row4 = _mm_set_ps(m->v[3].w, m->v[2].w, m->v[1].w, m->v[0].w);
+
+	for (int r = 0; r <= 3; ++r)
+	{
+
+		tfx128 row1result = _mm_mul_ps(in_row[r], m_row1);
+		tfx128 row2result = _mm_mul_ps(in_row[r], m_row2);
+		tfx128 row3result = _mm_mul_ps(in_row[r], m_row3);
+		tfx128 row4result = _mm_mul_ps(in_row[r], m_row4);
+
+		float tmp[4];
+		_mm_store_ps(tmp, row1result);
+		res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row2result);
+		res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row3result);
+		res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+		_mm_store_ps(tmp, row4result);
+		res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+	}
+	return res;
+}
+
+void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
+	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
+	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[0].c1)), xr);
+	xr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[0].c2)), xr);
+	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[1].c0));
+	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
+	yr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[1].c2)), yr);
+	tfxWideFloat zr = tfxWideMul(*x, tfxWideSetSingle(mat->v[2].c0));
+	zr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[2].c1)), zr);
+	zr = tfxWideAdd(tfxWideMul(*z, tfxWideSetSingle(mat->v[2].c2)), zr);
+	*x = xr;
+	*y = yr;
+	*z = zr;
+}
+
+void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y) {
+	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
+	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
+	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
+	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
+	*x = xr;
+	*y = yr;
+}
+
+void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
+	xr = tfxWideAdd(tfxWideMul(*y, r1c[0]), xr);
+	tfxWideFloat yr = tfxWideMul(*x, r0c[1]);
+	yr = tfxWideAdd(tfxWideMul(*y, r1c[1]), yr);
+	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
+	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
+}
+
+void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
+	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c0)), xr);
+	tfxWideFloat yr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c1));
+	yr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[1].c1)), yr);
+	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
+	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
+}
+
+void MaskedTransformMatrix4Vec3(const tfxWideFloat *r0c, const tfxWideFloat *r1c, const tfxWideFloat *r2c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z, tfxWideFloat *mask, tfxWideFloat *xor_mask) {
+	tfxWideFloat xr = tfxWideMul(*x, r0c[0]);
+	xr = tfxWideAdd(tfxWideMul(*y, r0c[1]), xr);
+	xr = tfxWideAdd(tfxWideMul(*z, r0c[2]), xr);
+	tfxWideFloat yr = tfxWideMul(*x, r1c[0]);
+	yr = tfxWideAdd(tfxWideMul(*y, r1c[1]), yr);
+	yr = tfxWideAdd(tfxWideMul(*z, r1c[2]), yr);
+	tfxWideFloat zr = tfxWideMul(*x, r2c[0]);
+	zr = tfxWideAdd(tfxWideMul(*y, r2c[1]), zr);
+	zr = tfxWideAdd(tfxWideMul(*z, r2c[2]), zr);
+	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
+	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
+	*z = tfxWideAdd(tfxWideAnd(*z, *xor_mask), tfxWideAnd(zr, *mask));
+}
+
+tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
+	tfx_vec4_t v;
+
+	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+	tfx128 mrow1 = _mm_load_ps(&mat->v[0].c0);
+	tfx128 mrow2 = _mm_load_ps(&mat->v[1].c0);
+	tfx128 mrow3 = _mm_load_ps(&mat->v[2].c0);
+	tfx128 mrow4 = _mm_load_ps(&mat->v[3].c0);
+
+	tfx128 row1result = _mm_mul_ps(v4, mrow1);
+	tfx128 row2result = _mm_mul_ps(v4, mrow2);
+	tfx128 row3result = _mm_mul_ps(v4, mrow3);
+	tfx128 row4result = _mm_mul_ps(v4, mrow4);
+
+	float tmp[4];
+	_mm_store_ps(tmp, row1result);
+	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+	_mm_store_ps(tmp, row2result);
+	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+	_mm_store_ps(tmp, row3result);
+	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+	_mm_store_ps(tmp, row4result);
+	v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+	return v;
+}
+
+tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
+	tfx_vec4_t v;
+
+	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+	tfx128 row1result = _mm_mul_ps(v4, *row1);
+	tfx128 row2result = _mm_mul_ps(v4, *row2);
+	tfx128 row3result = _mm_mul_ps(v4, *row3);
+	tfx128 row4result = _mm_mul_ps(v4, *row4);
+
+	float tmp[4];
+	_mm_store_ps(tmp, row1result);
+	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+	_mm_store_ps(tmp, row2result);
+	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+	_mm_store_ps(tmp, row3result);
+	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+	_mm_store_ps(tmp, row4result);
+	v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+	return v;
+}
+
+tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
+	tfx_vec3_t v;
+
+	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
+
+	tfx128 mrow1 = _mm_load_ps(&mat->v[0].x);
+	tfx128 mrow2 = _mm_load_ps(&mat->v[1].x);
+	tfx128 mrow3 = _mm_load_ps(&mat->v[2].x);
+	tfx128 mrow4 = _mm_load_ps(&mat->v[3].x);
+
+	tfx128 row1result = _mm_mul_ps(v4, mrow1);
+	tfx128 row2result = _mm_mul_ps(v4, mrow2);
+	tfx128 row3result = _mm_mul_ps(v4, mrow3);
+	tfx128 row4result = _mm_mul_ps(v4, mrow4);
+
+	float tmp[4];
+	_mm_store_ps(tmp, row1result);
+	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+	_mm_store_ps(tmp, row2result);
+	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+	_mm_store_ps(tmp, row3result);
+	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+	return v;
+}
+
+tfx_mat4_t Matrix4RotateAxis(tfx_mat4_t const *m, float r, tfx_vec3_t const *v) {
+	float const a = r;
+	float const c = cosf(a);
+	float const s = sinf(a);
+
+	tfx_vec3_t axis = NormalizeVec3(v);
+	tfx_vec3_t temp = axis * (1.f - c);
+
+	tfx_mat4_t rotate;
+	rotate.v[0].x = c + temp.x * axis.x;
+	rotate.v[0].y = temp.x * axis.y + s * axis.z;
+	rotate.v[0].z = temp.x * axis.z - s * axis.y;
+
+	rotate.v[1].x = temp.y * axis.x - s * axis.z;
+	rotate.v[1].y = c + temp.y * axis.y;
+	rotate.v[1].z = temp.y * axis.z + s * axis.x;
+
+	rotate.v[2].x = temp.z * axis.x + s * axis.y;
+	rotate.v[2].y = temp.z * axis.y - s * axis.x;
+	rotate.v[2].z = c + temp.z * axis.z;
+
+	tfx_mat4_t result = CreateMatrix4(1.f);
+	result.v[0] = m->v[0] * rotate.v[0].x + m->v[1] * rotate.v[0].y + m->v[2] * rotate.v[0].z;
+	result.v[1] = m->v[0] * rotate.v[1].x + m->v[1] * rotate.v[1].y + m->v[2] * rotate.v[1].z;
+	result.v[2] = m->v[0] * rotate.v[2].x + m->v[1] * rotate.v[2].y + m->v[2] * rotate.v[2].z;
+	result.v[3] = m->v[3];
+	return result;
+}
+
+int tfxClampi(int lower, int upper, int value) {
+	if (value < lower) return lower;
+	if (value > upper) return upper;
+	return value;
+}
+
+float tfxClampf(float lower, float upper, float value) {
+	if (value < lower) return lower;
+	if (value > upper) return upper;
+	return value;
+}
+
+tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra) {
+	tfx_vec3_t converted = *v * 511.f;
+	tfxUInt10bit result;
+	result.pack = 0;
+	result.data.x = (tfxU32)converted.z;
+	result.data.y = (tfxU32)converted.y;
+	result.data.z = (tfxU32)converted.x;
+	result.data.w = extra;
+	return result.pack;
+}
+
+tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v) {
+	tfx_vec3_t converted = *v * 511.f + 511.f;
+	tfxUInt10bit result;
+	result.pack = 0;
+	result.data.x = (tfxU32)converted.z;
+	result.data.y = (tfxU32)converted.y;
+	result.data.z = (tfxU32)converted.x;
+	result.data.w = 0;
+	return result.pack;
+}
+
+tfxU32 Pack16bit(float x, float y) {
+	union
+	{
+		signed short in[2];
+		tfxU32 out;
+	} u;
+
+	x = x * 32767.f;
+	y = y * 32767.f;
+
+	u.in[0] = (signed short)x;
+	u.in[1] = (signed short)y;
+
+	return u.out;
+}
+
+tfxU32 Pack16bitUnsigned(float x, float y) {
+	union
+	{
+		struct {
+			tfxU32 x : 16;
+			tfxU32 y : 16;
+		} data;
+		tfxU32 out;
+	} u;
+
+	x = x * 32767.f + 32767.f;
+	y = y * 32767.f + 32767.f;
+
+	u.data.x = (tfxU32)x;
+	u.data.y = (tfxU32)y;
+
+	return u.out;
+}
+
+tfx_vec2_t UnPack16bit(tfxU32 in) {
+	float one_div_32k = 1.f / 32767.f;
+
+	tfx_vec2_t result;
+	result.x = ((signed short)(in & 0x0000FFFF)) * one_div_32k;
+	result.y = ((signed short)((in & 0xFFFF0000) >> 16)) * one_div_32k;
+
+	return result;
+}
+
+tfx_vec2_t UnPack16bitUnsigned(tfxU32 in) {
+	float one_div_32k = 1.f / 32767.f;
+
+	tfx_vec2_t result;
+	result.x = ((int)(in & 0x0000FFFF) - 32767) * one_div_32k;
+	result.y = ((int)((in & 0xFFFF0000) >> 16) - 32767) * one_div_32k;
+
+	return result;
+}
+
+tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
+	tfxWideFloat w32k = tfxWideSetSingle(32767.f);
+	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
+	converted_y = tfxWideAndi(converted_y, bits16);
+	converted_y = tfxWideShiftLeft(converted_y, 16);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
+	converted_x = tfxWideAndi(converted_x, bits16);
+	return tfxWideOri(converted_x, converted_y);
+}
+
+void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y) {
+	tfxWideInt w32k = tfxWideSetSinglei(32767);
+	x = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x0000FFFF)), w32k));
+	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0xFFFF0000)), 16), w32k));
+	x = tfxWideMul(x, one_div_32k_wide);
+	y = tfxWideMul(y, one_div_32k_wide);
+}
+
+tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
+	tfxWideFloat w511 = tfxWideSetSingle(511.f);
+	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+	converted_x = tfxWideAndi(converted_x, bits10);
+	converted_x = tfxWideShiftLeft(converted_x, 20);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+	converted_y = tfxWideAndi(converted_y, bits10);
+	converted_y = tfxWideShiftLeft(converted_y, 10);
+	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+	converted_z = tfxWideAndi(converted_z, bits10);
+	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+}
+
+tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
+	tfxWideFloat w511 = tfxWideSetSingle(511.f);
+	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+	converted_x = tfxWideAndi(converted_x, bits10);
+	converted_x = tfxWideShiftLeft(converted_x, 20);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+	converted_y = tfxWideAndi(converted_y, bits10);
+	converted_y = tfxWideShiftLeft(converted_y, 10);
+	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+	converted_z = tfxWideAndi(converted_z, bits10);
+	tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
+	return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+}
+
+tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra) {
+	tfxWideFloat w511 = tfxWideSetSingle(511.f);
+	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideAdd(tfxWideMul(v_x, w511), w511));
+	converted_x = tfxWideAndi(converted_x, bits10);
+	converted_x = tfxWideShiftLeft(converted_x, 20);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideAdd(tfxWideMul(v_y, w511), w511));
+	converted_y = tfxWideAndi(converted_y, bits10);
+	converted_y = tfxWideShiftLeft(converted_y, 10);
+	tfxWideInt converted_z = tfxWideConverti(tfxWideAdd(tfxWideMul(v_z, w511), w511));
+	converted_z = tfxWideAndi(converted_z, bits10);
+	tfxWideInt extra_bits = tfxWideShiftLeft(tfxWideSetSinglei(extra), 30);
+	return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+}
+
+void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z) {
+	tfxWideInt w511 = tfxWideSetSinglei(511);
+	x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
+	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
+	z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
+	x = tfxWideMul(x, one_div_511_wide);
+	y = tfxWideMul(y, one_div_511_wide);
+	z = tfxWideMul(z, one_div_511_wide);
+}
+
+tfxWideFloat UnPackWide10bitY(tfxWideInt in) {
+	return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide);
+}
+
+tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a) {
+	tfxWideInt color = tfxWideShiftLeft(tfxWideConverti(v_a), 24);
+	color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_b), 16));
+	color = tfxWideAddi(color, tfxWideShiftLeft(tfxWideConverti(v_g), 8));
+	color = tfxWideAddi(color, tfxWideConverti(v_r));
+	return color;
+}
+
+tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra) {
+	tfxWideFloat w511 = tfxWideSetSingle(511.f);
+	tfxWideInt bits10 = tfxWideSetSinglei(0x3FF);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w511));
+	converted_x = tfxWideAndi(converted_x, bits10);
+	converted_x = tfxWideShiftLeft(converted_x, 20);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w511));
+	converted_y = tfxWideAndi(converted_y, bits10);
+	converted_y = tfxWideShiftLeft(converted_y, 10);
+	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w511));
+	converted_z = tfxWideAndi(converted_z, bits10);
+	tfxWideInt extra_bits = tfxWideShiftLeft(extra, 30);
+	return tfxWideOri(tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z), extra_bits);
+}
+
+tfx_vec4_t UnPack10bit(tfxU32 in) {
+	tfxUInt10bit unpack;
+	unpack.pack = in;
+	int test = unpack.data.y;
+	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
+	result = result * tfx_vec3_t(one_div_511, one_div_511, one_div_511);
+	return tfx_vec4_t(result, (float)unpack.data.w);
+}
+
+tfx_vec3_t UnPack10bitVec3(tfxU32 in) {
+	tfxUInt10bit unpack;
+	unpack.pack = in;
+	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
+	return result * tfx_vec3_t(1.f / 511.f, 1.f / 511.f, 1.f / 511.f);
+}
+
+tfxU32 Get2bitFromPacked10bit(tfxU32 in) {
+	return ((in >> 30) & 0x3);
+}
+
+size_t ClampStringSize(size_t compare, size_t string_size) {
+	return compare < string_size ? compare : string_size;
+}
+
+float Distance2d(float fromx, float fromy, float tox, float toy) {
+
+	float w = tox - fromx;
+	float h = toy - fromy;
+
+	return std::sqrt(w * w + h * h);
+
+}
+
+tfxUInt10bit UintToPacked10bit(tfxU32 in) {
+	tfxUInt10bit out;
+	out.data.x = (in & 0x3FF);
+	out.data.y = ((in >> 10) & 0x3FF);
+	out.data.z = ((in >> 20) & 0x3FF);
+	out.data.w = ((in >> 30) & 0x3);
+	return out;
+}
+
+tfx_vec2_t InterpolateVec2(float tween, tfx_vec2_t from, tfx_vec2_t to) {
+	return to * tween + from * (1.f - tween);
+}
+
+tfx_vec3_t InterpolateVec3(float tween, tfx_vec3_t from, tfx_vec3_t to) {
+	return to * tween + from * (1.f - tween);
+}
+
+tfx_rgba8_t InterpolateRGBA(float tween, tfx_rgba8_t from, tfx_rgba8_t to) {
+	tfx_rgba8_t out;
+	out.r = char((float)to.r * tween + (float)from.r * (1 - tween));
+	out.g = char((float)to.g * tween + (float)from.g * (1 - tween));
+	out.b = char((float)to.b * tween + (float)from.b * (1 - tween));
+	out.a = char((float)to.a * tween + (float)from.a * (1 - tween));
+	return out;
+}
+
+float GammaCorrect(float color, float gamma) {
+	return powf(color, gamma);
+}
+
+tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to) {
+	tfx_vec3_t i = InterpolateVec3(tween, UnPack10bitVec3(from), UnPack10bitVec3(to));
+	return Pack10bit(&i, (from >> 30) & 0x3);
+}
+
+tfx_vec4_t InterpolateVec4(float tween, tfx_vec4_t *from, tfx_vec4_t *to) {
+	tfx128 l4 = _mm_set_ps1(tween);
+	tfx128 l4minus1 = _mm_set_ps1(1.f - tween);
+	tfx128 f4 = _mm_set_ps(from->x, from->y, from->z, from->w);
+	tfx128 t4 = _mm_set_ps(to->x, to->y, to->z, to->w);
+	tfx128 from_lerp = _mm_mul_ps(f4, l4);
+	tfx128 to_lerp = _mm_mul_ps(f4, l4minus1);
+	tfx128 result = _mm_add_ps(from_lerp, to_lerp);
+	tfx_vec4_t vec;
+	_mm_store_ps(&vec.x, result);
+	return vec;
+}
+
+tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to) {
+	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
+	tfxWideFloat to_lerp = tfxWideMul(*to, tween);
+	tfxWideFloat from_lerp = tfxWideMul(*from, one_minus_tween);
+	tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
+	return result;
+}
+
+float Interpolatef(float tween, float from, float to) {
+	return to * tween + from * (1.f - tween);
+}
+
+void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_state_t *parent) {
+	float s = sin(out_local_rotations->roll);
+	float c = cos(out_local_rotations->roll);
+
+	out_matrix->Set2(c, s, -s, c);
+	*out_scale = parent->overal_scale;
+
+	out_rotations->roll = parent->world_rotations.roll + out_local_rotations->roll;
+
+	*out_matrix = TransformMatrix42d(out_matrix, &parent->matrix);
+	tfx_vec2_t rotatevec = TransformVec2Matrix4(&parent->matrix, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
+
+	*out_position = parent->world_position.xy() + rotatevec * parent->overal_scale;
+}
+void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_effect_state_t *parent) {
+	tfx_mat4_t roll = Matrix4RotateZ(out_local_rotations->roll);
+	tfx_mat4_t pitch = Matrix4RotateX(out_local_rotations->pitch);
+	tfx_mat4_t yaw = Matrix4RotateY(out_local_rotations->yaw);
+	*out_matrix = TransformMatrix4(&yaw, &pitch);
+	*out_matrix = TransformMatrix4(out_matrix, &roll);
+	*out_scale = parent->overal_scale;
+
+	*out_rotations = parent->world_rotations + *out_local_rotations;
+
+	*out_matrix = TransformMatrix4(out_matrix, &parent->matrix);
+	tfx_vec4_t translated_vec = *out_local_position + *out_translation;
+	tfx_vec3_t rotatevec = TransformVec3Matrix4(&parent->matrix, &translated_vec);
+
+	*out_position = parent->world_position + rotatevec;
+}
+//-------------------------------------------------
+//--New transform_3d particle functions for SoA data--
+//--------------------------2d---------------------
+void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position) {
+	world_position->x = local_position_x;
+	world_position->y = local_position_y;
+	*world_rotations = roll;
+}
+
 int tfx_FormatString(char* buf, size_t buf_size, const char* fmt, va_list args) {
 	int w = vsnprintf(buf, buf_size, fmt, args);
 	if (buf == NULL)
@@ -466,7 +1448,7 @@ bool tfx_str_t::SaveToFile(const char *file_name) {
 		return false;
 
 	tfxU32 l = Length();
-	if (fwrite(data, 1, Length(), file) != Length()) {
+	if (fwrite(data, sizeof(char), Length(), file) != Length()) {
 		fclose(file);
 		return false;
 	}
@@ -733,21 +1715,21 @@ bool SavePackageDisk(tfx_package_t *package) {
 
 	//Write the header, updating the inventory offset before hand
 	package->header.offset_to_inventory = inventory_offset;
-	fwrite((char*)&package->header, 1, sizeof(tfx_package_header_t), file);
+	fwrite((char*)&package->header, sizeof(char), sizeof(tfx_package_header_t), file);
 
 	//Write the file contents
 	for (auto &entry : package->inventory.entries.data) {
-		fwrite(entry.data.data, 1, entry.data.Size(), file);
+		fwrite(entry.data.data, sizeof(char), entry.data.Size(), file);
 	}
 
 	//Write the inventory
-	fwrite((char*)&package->inventory.magic_number, 1, sizeof(tfxU32), file);
-	fwrite((char*)&package->inventory.entry_count, 1, sizeof(tfxU32), file);
+	fwrite((char*)&package->inventory.magic_number, sizeof(char), sizeof(tfxU32), file);
+	fwrite((char*)&package->inventory.entry_count, sizeof(char), sizeof(tfxU32), file);
 	for (auto &entry : package->inventory.entries.data) {
-		fwrite((char*)&entry.file_name.current_size, 1, sizeof(tfxU32), file);
+		fwrite((char*)&entry.file_name.current_size, sizeof(char), sizeof(tfxU32), file);
 		fwrite(entry.file_name.c_str(), 1, entry.file_name.current_size, file);
 		fwrite((char*)&entry.file_size, 1, sizeof(tfxU64), file);
-		fwrite((char*)&entry.offset_from_start_of_file, 1, sizeof(tfxU64), file);
+		fwrite((char*)&entry.offset_from_start_of_file, sizeof(char), sizeof(tfxU64), file);
 	}
 
 	fclose(file);
@@ -781,7 +1763,7 @@ tfx_stream_t SavePackageMemory(tfx_package_t *package) {
 
 	//Write the file contents
 	for (auto &entry : package->inventory.entries.data) {
-		//fwrite(entry.data.data, 1, entry.data.Size(), file);
+		//fwrite(entry.data.data, sizeof(char), entry.data.Size(), file);
 		file.Write(entry.data.data, entry.data.Size());
 	}
 
@@ -3936,6 +4918,8 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int 
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t &value) {
 	if (*field == "name") {
 		GetEffectInfo(effect)->name = value;
+		auto &test = GetEffectInfo(effect)->name;
+		int d = 0;
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, float value) {
@@ -4192,7 +5176,7 @@ void StreamGraph(const char *name, tfx_graph_t *graph, tfx_str_t *file) {
 
 }
 
-static bool CompareNodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right) {
+bool CompareNodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right) {
 	return left->frame < right->frame;
 }
 
@@ -4460,8 +5444,8 @@ float GetDistance(float fromx, float fromy, float tox, float toy) {
 
 tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax, bool clamp) {
 	tfx_vec2_t b;
-	b.x = std::powf(1.f - t, 2.f) * p0.x + 2.f * t * (1.f - t) * p1.x + std::powf(t, 2.f) * p2.x;
-	b.y = std::powf(1.f - t, 2.f) * p0.y + 2.f * t * (1.f - t) * p1.y + std::powf(t, 2.f) * p2.y;
+	b.x = std::pow(1.f - t, 2.f) * p0.x + 2.f * t * (1.f - t) * p1.x + std::pow(t, 2.f) * p2.x;
+	b.y = std::pow(1.f - t, 2.f) * p0.y + 2.f * t * (1.f - t) * p1.y + std::pow(t, 2.f) * p2.y;
 	if (b.x < p0.x) b.x = p0.x;
 	if (b.x > p2.x) b.x = p2.x;
 	if (clamp) {
@@ -4473,8 +5457,8 @@ tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, f
 
 tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax, bool clamp) {
 	tfx_vec2_t b;
-	b.x = std::powf(1.f - t, 3.f) * p0.x + 3.f * t * std::powf(1.f - t, 2.f) * p1.x + 3.f * std::powf(t, 2.f) * (1.f - t) * p2.x + std::powf(t, 3.f) * p3.x;
-	b.y = std::powf(1.f - t, 3.f) * p0.y + 3.f * t * std::powf(1.f - t, 2.f) * p1.y + 3.f * std::powf(t, 2.f) * (1.f - t) * p2.y + std::powf(t, 3.f) * p3.y;
+	b.x = std::pow(1.f - t, 3.f) * p0.x + 3.f * t * std::pow(1.f - t, 2.f) * p1.x + 3.f * std::pow(t, 2.f) * (1.f - t) * p2.x + std::pow(t, 3.f) * p3.x;
+	b.y = std::pow(1.f - t, 3.f) * p0.y + 3.f * t * std::pow(1.f - t, 2.f) * p1.y + 3.f * std::pow(t, 2.f) * (1.f - t) * p2.y + std::pow(t, 3.f) * p3.y;
 	if (b.x < p0.x) b.x = p0.x;
 	if (b.x > p3.x) b.x = p3.x;
 	if (clamp) {
@@ -5591,7 +6575,7 @@ float GetDataFloatValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char*
 }
 
 bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path) {
-	FILE *file = tfx__open_file(path, "w");
+	FILE *file = tfx__open_file(path, "wb");
 
 	if (file == NULL)
 		return false;
@@ -5615,7 +6599,7 @@ bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path)
 				break;
 			}
 			ini_line.Appendf("\n");
-			fwrite(ini_line.c_str(), 1, ini_line.Length(), file);
+			fwrite(ini_line.c_str(), sizeof(char), ini_line.Length(), file);
 		}
 	}
 
@@ -5625,7 +6609,7 @@ bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path)
 }
 
 bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char* path) {
-	FILE* fp = tfx__open_file(path, "r");
+	FILE* fp = tfx__open_file(path, "rb");
 	if (fp == NULL) {
 		return false;
 	}
@@ -5667,11 +6651,11 @@ bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx
 void SplitStringStack(const tfx_str_t str, tfx_vector_t<tfx_str256_t> *pair, char delim) {
 	tfx_str256_t line;
 	for (char c : str) {
-		if (c == delim && line.Length() && c != NULL) {
+		if (c == delim && line.Length() && c != 0) {
 			pair->push_back(line);
 			line.Clear();
 		}
-		else if (c != NULL) {
+		else if (c != 0) {
 			line.Append(c);
 		}
 	}
@@ -5684,11 +6668,11 @@ void SplitStringStack(const tfx_str_t str, tfx_vector_t<tfx_str256_t> *pair, cha
 void SplitStringVec(const tfx_str_t str, tfx_vector_t<tfx_str256_t> *pair, char delim) {
 	tfx_str256_t line;
 	for (char c : str) {
-		if (c == delim && line.Length() && c != NULL) {
+		if (c == delim && line.Length() && c != 0) {
 			pair->push_back(line);
 			line.Clear();
 		}
-		else if (c != NULL) {
+		else if (c != 0) {
 			line.Append(c);
 		}
 	}
@@ -9398,6 +10382,15 @@ tfxU32 EmitterCount(tfx_particle_manager_t *pm) {
 	return count;
 }
 
+void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 index) {
+	tfx_particle_soa_t *particles = static_cast<tfx_particle_soa_t*>(buffer->user_data);
+	for (int i = index; i != buffer->capacity; ++i) {
+		particles->max_age[i] = 1.f;
+		particles->age[i] = 1.f;
+		particles->flags[i] = 0;
+	}
+}
+
 tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, tfxU32 reserve_amount) {
 	if (pm->free_particle_lists.ValidKey(emitter_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter_hash);
@@ -9416,6 +10409,86 @@ tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, tfxU32
 	assert(index == pm->particle_array_buffers.current_size - 1);
 	InitParticleSoA(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount);
 	return index;
+}
+
+tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index) {
+	return ((bank_index & 0x00000FFF) << 20) + particle_index;
+}
+
+tfxU32 ParticleIndex(tfxParticleID id) {
+	return id & 0x000FFFFF;
+}
+
+tfxU32 ParticleBank(tfxParticleID id) {
+	return (id & 0xFFF00000) >> 20;
+}
+
+//Dump sprites for Debugging
+void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer) {
+	for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
+		printf("%i:\t%f\t%f\t%f\t%u\n",
+			i,
+			pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.x,
+			pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.y,
+			pm->sprites[pm->current_sprite_buffer][layer].transform_3d[i].position.z,
+			pm->sprites[pm->current_sprite_buffer][layer].property_indexes[i]
+		);
+	}
+}
+
+void GatherStats(tfx_profile_t *profile, tfx_profile_stats_t *stat) {
+	stat->cycle_high = 0;
+	stat->cycle_low = tfxMAX_64u;
+	stat->time_high = 0;
+	stat->time_low = tfxMAX_64u;
+	stat->hit_count = 0;
+	stat->cycle_average = 0;
+	stat->time_average = 0;
+	for (int i = 0; i != tfxPROFILER_SAMPLES; ++i) {
+		tfx_profile_snapshot_t *snap = profile->snapshots + i;
+		stat->cycle_high = tfxMax(snap->cycle_count, stat->cycle_high);
+		stat->cycle_low = tfxMin(snap->cycle_count, stat->cycle_low);
+		stat->cycle_average += snap->cycle_count;
+		stat->time_high = tfxMax(snap->run_time, stat->time_high);
+		stat->time_low = tfxMin(snap->run_time, stat->time_low);
+		stat->time_average += snap->run_time;
+		stat->hit_count += snap->hit_count;
+	}
+	stat->cycle_average /= tfxPROFILER_SAMPLES;
+	stat->time_average /= tfxPROFILER_SAMPLES;
+	stat->hit_count /= tfxPROFILER_SAMPLES;
+}
+
+void ResetSnapshot(tfx_profile_snapshot_t *snapshot) {
+	snapshot->cycle_count = 0;
+	snapshot->hit_count = 0;
+	snapshot->run_time = 0;
+}
+
+void ResetSnapshots() {
+	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
+		tfx_profile_t *profile = tfxProfileArray + i;
+		memset(profile->snapshots, 0, tfxPROFILER_SAMPLES * sizeof(tfx_profile_snapshot_t));
+	}
+}
+
+void DumpSnapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>> *profile_snapshots, tfxU32 amount) {
+	for (int i = 0; i != tfxPROFILE_COUNT; ++i) {
+		tfx_profile_t *profile = tfxProfileArray + i;
+		if (!profile->name) {
+			ResetSnapshot(profile->snapshots + i);
+			continue;
+		}
+		if (!profile_snapshots->ValidName(profile->name)) {
+			tfx_vector_t<tfx_profile_snapshot_t> snapshots;
+			profile_snapshots->Insert(profile->name, snapshots);
+		}
+		tfx_vector_t<tfx_profile_snapshot_t> &snapshots = profile_snapshots->At(profile->name);
+		tfxU32 offset = snapshots.current_size;
+		snapshots.resize(snapshots.current_size + tfxPROFILER_SAMPLES);
+		memcpy(snapshots.data + offset, profile->snapshots, amount * sizeof(tfx_profile_snapshot_t));
+		memset(profile->snapshots, 0, sizeof(tfx_profile_snapshot_t) * tfxPROFILER_SAMPLES);
+	}
 }
 
 void SetEffectUserData(tfx_particle_manager_t &pm, tfxU32 effect_index, void *data) {
@@ -9853,7 +10926,7 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 	}
 	else {
 		float amount_that_will_spawn = (1.f - tween) / step_size;
-		work_entry->amount_to_spawn = (tfxU32)std::ceilf(amount_that_will_spawn);
+		work_entry->amount_to_spawn = (tfxU32)ceilf(amount_that_will_spawn);
 		if (work_entry->amount_to_spawn > max_spawn_count) {
 			work_entry->amount_to_spawn = max_spawn_count;
 			emitter.amount_remainder = 0.f;
@@ -9942,7 +11015,7 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 	}
 	else if (!(emitter.property_flags & tfxEmitterPropertyFlags_single)) {
 		float amount_that_will_spawn = (1.f - tween) / step_size;
-		work_entry->amount_to_spawn = (tfxU32)std::ceilf(amount_that_will_spawn);
+		work_entry->amount_to_spawn = (tfxU32)ceilf(amount_that_will_spawn);
 		if (work_entry->amount_to_spawn > work_entry->max_spawn_count) {
 			work_entry->amount_to_spawn = work_entry->max_spawn_count;
 			emitter.amount_remainder = 0.f;
@@ -11041,8 +12114,8 @@ void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data) {
 			}
 
 			float th = emitter.grid_coords.x * grid_segment_size_x + arc_offset;
-			local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
-			local_position_y = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
+			local_position_x = cosf(th) * half_emitter_size.x + half_emitter_size.x;
+			local_position_y = -sinf(th) * half_emitter_size.y + half_emitter_size.y;
 
 			if (!(emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 				emitter.grid_coords.x++;
@@ -11054,14 +12127,14 @@ void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data) {
 		}
 		else if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(emitter.property_flags & tfxEmitterPropertyFlags_fill_area) && emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 			float th = (float)RandomRange(&random, (tfxU32)grid_points.x) * grid_segment_size_x + arc_offset;
-			local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
-			local_position_x = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
+			local_position_x = cosf(th) * half_emitter_size.x + half_emitter_size.x;
+			local_position_x = -sinf(th) * half_emitter_size.y + half_emitter_size.y;
 		}
 		else if (!(emitter.property_flags & tfxEmitterPropertyFlags_fill_area)) {
 			float th = RandomRange(&random, arc_size) + arc_offset;
 
-			local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
-			local_position_y = -std::sinf(th) * half_emitter_size.y + half_emitter_size.y;
+			local_position_x = cosf(th) * half_emitter_size.x + half_emitter_size.x;
+			local_position_y = -sinf(th) * half_emitter_size.y + half_emitter_size.y;
 
 		}
 		else {
@@ -11115,11 +12188,11 @@ void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data) {
 			float u = RandomRange(&random, 1.f);
 			float v = RandomRange(&random, 1.f);
 			float theta = u * 2.f * tfxPI;
-			float phi = std::acosf(2.f * v - 1.f);
-			float sin_theta = std::sinf(theta);
-			float cos_theta = std::cosf(theta);
-			float sin_phi = std::sinf(phi);
-			float cos_phi = std::cosf(phi);
+			float phi = acosf(2.f * v - 1.f);
+			float sin_theta = sinf(theta);
+			float cos_theta = cosf(theta);
+			float sin_phi = sinf(phi);
+			float cos_phi = cosf(phi);
 			local_position_x = half_emitter_size.x * sin_phi * cos_theta;
 			local_position_y = half_emitter_size.y * sin_phi * sin_theta;
 			local_position_z = half_emitter_size.z * cos_phi;
@@ -11129,7 +12202,7 @@ void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data) {
 			position.y = RandomRange(&random, -half_emitter_size.y, half_emitter_size.y);
 			position.z = RandomRange(&random, -half_emitter_size.z, half_emitter_size.z);
 
-			while (std::powf(position.x / half_emitter_size.x, 2.f) + std::powf(position.y / half_emitter_size.y, 2.f) + std::powf(position.z / half_emitter_size.z, 2.f) > 1.f) {
+			while (std::pow(position.x / half_emitter_size.x, 2.f) + std::pow(position.y / half_emitter_size.y, 2.f) + std::pow(position.z / half_emitter_size.z, 2.f) > 1.f) {
 				position.x = RandomRange(&random, -half_emitter_size.x, half_emitter_size.x);
 				position.y = RandomRange(&random, -half_emitter_size.y, half_emitter_size.y);
 				position.z = RandomRange(&random, -half_emitter_size.z, half_emitter_size.z);
@@ -11274,9 +12347,9 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 				emitter.grid_coords.y = (float)RandomRange(&random, (tfxU32)grid_points.y);
 
 				float th = emitter.grid_coords.x * grid_segment_size_x + arc_offset;
-				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+				local_position_x = cosf(th) * half_emitter_size.x + half_emitter_size.x;
 				local_position_y = emitter.grid_coords.y * grid_segment_size_y;
-				local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
+				local_position_z = -sinf(th) * half_emitter_size.z + half_emitter_size.z;
 			}
 			else {
 				if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
@@ -11291,9 +12364,9 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 				}
 
 				float th = emitter.grid_coords.x * grid_segment_size_x + arc_offset;
-				local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+				local_position_x = cosf(th) * half_emitter_size.x + half_emitter_size.x;
 				local_position_y = emitter.grid_coords.y * grid_segment_size_y;
-				local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
+				local_position_z = -sinf(th) * half_emitter_size.z + half_emitter_size.z;
 
 				if (!(emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 					emitter.grid_coords.x++;
@@ -11311,9 +12384,9 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 		else if (!(emitter.property_flags & tfxEmitterPropertyFlags_fill_area)) {
 			float th = RandomRange(&random, arc_size) + arc_offset;
 
-			local_position_x = std::cosf(th) * half_emitter_size.x + half_emitter_size.x;
+			local_position_x = cosf(th) * half_emitter_size.x + half_emitter_size.x;
 			local_position_y = RandomRange(&random, emitter.emitter_size.y);
-			local_position_z = -std::sinf(th) * half_emitter_size.z + half_emitter_size.z;
+			local_position_z = -sinf(th) * half_emitter_size.z + half_emitter_size.z;
 		}
 		else {
 			local_position_x = RandomRange(&random, 0.f, emitter.emitter_size.x);
@@ -11550,7 +12623,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 				float splaty = RandomRange(&random, -splatter, splatter);
 				float splatz = RandomRange(&random, -splatter, splatter);
 
-				while (std::powf(splatx / splatter, 2.f) + std::powf(splaty / splatter, 2.f) + std::powf(splatz / splatter, 2.f) > 1.f) {
+				while (std::pow(splatx / splatter, 2.f) + std::pow(splaty / splatter, 2.f) + std::pow(splatz / splatter, 2.f) > 1.f) {
 					splatx = RandomRange(&random, -splatter, splatter);
 					splaty = RandomRange(&random, -splatter, splatter);
 					splatz = RandomRange(&random, -splatter, splatter);
