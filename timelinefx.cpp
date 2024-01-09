@@ -1248,7 +1248,7 @@ tfx_vec4_t UnPack10bit(tfxU32 in) {
 	unpack.pack = in;
 	int test = unpack.data.y;
 	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
-	result = result * tfx_vec3_t(one_div_511, one_div_511, one_div_511);
+	result = result * tfx_vec3_t(TFXONE_DIV_511, TFXONE_DIV_511, TFXONE_DIV_511);
 	return tfx_vec4_t(result, (float)unpack.data.w);
 }
 
@@ -9897,16 +9897,21 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		else {
+			/*
+			This works when compiled on MSVC but not g++ due to data alignment issues when start diff is >0 and running_index
+			becomes unaligned to 16 bytes when storing with intrinsics. There's really not a huge speed gain anyway.
+			Can remove this if no easy work around can be found that makes it worth doing.
 			if (start_diff == 0 && limit_index == tfxDataWidth) {
 				tfxWideStorei((tfxWideInt*)&sprites.color[running_sprite_index].color, packed_color.m);
 				tfxWideStore(&sprites.intensity[running_sprite_index], wide_intensity.m);
 				running_sprite_index += tfxDataWidth;
 			} else {
+			*/
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					sprites.color[running_sprite_index].color = packed_color.a[j];
 					sprites.intensity[running_sprite_index++] = wide_intensity.a[j];
 				}
-			}
+			//}
 		}
 		start_diff = 0;
 	}
@@ -13227,7 +13232,7 @@ void InitParticleSoA(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 r
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_x));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_y));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, single_loop_count));
-	FinishSoABufferSetup(buffer, soa, reserve_amount);
+	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
 void InitEmitterProperites(tfx_emitter_properties_t *properties) {

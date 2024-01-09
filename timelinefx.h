@@ -2784,6 +2784,7 @@ struct tfx_soa_buffer_t {
 	tfxU32 last_bump = 0;				//the amount the the start index was bumped by the last time Bump was called
 	tfxU32 capacity = 0;				//capacity of each array
 	tfxU32 block_size = tfxDataWidth;	//Keep the capacity to the nearest block size
+	tfxU32 alignment = 4;				//The alignment of the memory. If you're planning on using simd for the memory, then 16 will be necessary.
 	tfx_vector_t<tfx_soa_data_t> array_ptrs;		//Container for all the pointers into the arena
 	void *user_data = nullptr;
 	void(*resize_callback)(tfx_soa_buffer_t *ring, tfxU32 new_index_start) = nullptr;
@@ -2834,27 +2835,40 @@ inline void AddStructArray(tfx_soa_buffer_t *buffer, size_t unit_size, size_t of
 	buffer->array_ptrs.push_back(data);
 }
 
+//In order to ensure memory alignment of all arrays in the buffer we need the following function to get the correct amount
+//of memory required to contain all the data in the buffer for each array in the struct of arrays.
+inline size_t GetSoACapacityRequirement(tfx_soa_buffer_t *buffer, size_t capacity) {
+	size_t size_requirement = 0;
+	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
+		size_requirement += buffer->array_ptrs[i].unit_size * capacity;
+		size_requirement += buffer->alignment - (size_requirement % buffer->alignment);
+	}
+	return size_requirement;
+}
+
 //Once you have called AddStructArray for all your member variables you must call this function in order to 
 //set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 //inside the space
-inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount) {
-	assert(buffer->data == nullptr && buffer->array_ptrs.current_size > 0);
-	reserve_amount = tfx__Max(reserve_amount, buffer->block_size);
+inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount, size_t alignment = 4) {
+	assert(buffer->data == nullptr && buffer->array_ptrs.current_size > 0);	//Must be an unitialised soa buffer
+	assert(alignment >= 4);		//Alignment must be 4 or greater
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->struct_size += buffer->array_ptrs[i].unit_size;
 	}
 	reserve_amount = (reserve_amount / buffer->block_size + 1) * buffer->block_size;
-	buffer->current_arena_size = reserve_amount * buffer->struct_size;
-	buffer->data = tfxALLOCATE(buffer->current_arena_size);
+	buffer->capacity = reserve_amount;
+	buffer->alignment = alignment;
+	buffer->current_arena_size = GetSoACapacityRequirement(buffer, reserve_amount);
+	buffer->data = tfxALLOCATE_ALIGNED(buffer->current_arena_size, buffer->alignment);
 	assert(buffer->data);	//Unable to allocate memory. Todo: better handling
 	memset(buffer->data, 0, buffer->current_arena_size);
-	buffer->capacity = reserve_amount;
 	buffer->struct_of_arrays = struct_of_arrays;
 	size_t running_offset = 0;
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
+		running_offset += buffer->alignment - (running_offset % buffer->alignment);
 	}
 	if (buffer->resize_callback) {
 		buffer->resize_callback(buffer, 0);
@@ -2867,7 +2881,7 @@ inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 
 	tfxU32 new_capacity = 0;
 	new_capacity = new_target_size > buffer->capacity ? new_target_size + new_target_size / 2 : buffer->capacity + buffer->capacity / 2;
 	new_capacity = (new_capacity / buffer->block_size + 1) * buffer->block_size;
-	void *new_data = tfxALLOCATE(new_capacity * buffer->struct_size);
+	void *new_data = tfxALLOCATE_ALIGNED(GetSoACapacityRequirement(buffer, new_capacity), buffer->alignment);
 	assert(new_data);	//Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
 	size_t running_offset = 0;
@@ -2883,7 +2897,7 @@ inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 
 				memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 			}
 			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
-
+			running_offset += buffer->alignment - (running_offset % buffer->alignment);
 		}
 	}
 	void *old_data = buffer->data;
@@ -2896,6 +2910,7 @@ inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
+		running_offset += buffer->alignment - (running_offset % buffer->alignment);
 	}
 	tfxFREE(old_data);
 
@@ -3017,7 +3032,7 @@ inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 	}
 	assert(buffer->current_size < buffer->capacity);
 	tfxU32 new_capacity = buffer->current_size;
-	void *new_data = tfxALLOCATE(new_capacity * buffer->struct_size);
+	void *new_data = tfxALLOCATE_ALIGNED(GetSoACapacityRequirement(buffer, new_capacity), buffer->alignment);
 	assert(new_data);	//Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
 	size_t running_offset = 0;
@@ -3032,6 +3047,7 @@ inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 			memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 		}
 		running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
+		running_offset += buffer->alignment - (running_offset % buffer->alignment);
 
 	}
 	void *old_data = buffer->data;
@@ -3044,6 +3060,7 @@ inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
+		running_offset += buffer->alignment - (running_offset % buffer->alignment);
 	}
 	tfxFREE(old_data);
 }
@@ -3771,10 +3788,17 @@ static inline void ScaleVec4xyz(tfx_vec4_t &v, float scalar) {
 	v.z *= scalar;
 }
 
+const float tfxONE_DIV_255 = 1 / 255.f;
+const float TFXONE_DIV_511 = 1 / 511.f;
+
 struct tfx_rgba8_t {
 	union {
-		struct { unsigned char r, g, b, a; };
-		struct { tfxU32 color; };
+		struct {	tfxU32 r : 8; 
+					tfxU32 g : 8; 
+					tfxU32 b : 8; 
+					tfxU32 a : 8; 
+		};
+		struct {	tfxU32 color; };
 	};
 
 	tfx_rgba8_t() { r = g = b = a = 0; }
@@ -3797,8 +3821,6 @@ struct tfx_hsv_t {
 	tfx_hsv_t(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
 };
 
-const float one_div_255 = 1 / 255.f;
-const float one_div_511 = 1 / 511.f;
 const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
 const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
@@ -3808,7 +3830,7 @@ struct tfx_rgba_t {
 	float r, g, b, a;
 	tfx_rgba_t() { r = g = b = a = 1.f; }
 	tfx_rgba_t(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) { }
-	tfx_rgba_t(tfx_rgba8_t c) : r((float)c.r * one_div_255), g((float)c.g * one_div_255), b((float)c.b * one_div_255), a((float)c.a * one_div_255) { }
+	tfx_rgba_t(tfx_rgba8_t c) : r((float)c.r * tfxONE_DIV_255), g((float)c.g * tfxONE_DIV_255), b((float)c.b * tfxONE_DIV_255), a((float)c.a * tfxONE_DIV_255) { }
 };
 
 struct tfx_mat4_t {
@@ -3820,14 +3842,14 @@ struct tfx_mat4_t {
 		v[1].c0 = ba; v[1].c1 = bb;
 	}
 
-};
+} TFX_ALIGN_AFFIX(16);
 
 struct tfx_wide_mat4_t {
 	float x[4];
 	float y[4];
 	float z[4];
 	float w[4];
-};
+} TFX_ALIGN_AFFIX(16);;
 
 struct tfx_mat3_t {
 
