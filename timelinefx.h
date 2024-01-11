@@ -2408,6 +2408,7 @@ struct tfx_vector_t {
 	tfxU32 current_size;
 	tfxU32 capacity;
 	tfxU32 volatile locked;
+	tfxU32 alignment;
 	T* data;
 
 	// Provide standard typedefs but we don't use them ourselves.
@@ -2415,11 +2416,11 @@ struct tfx_vector_t {
 	typedef value_type*         iterator;
 	typedef const value_type*   const_iterator;
 
-	inline tfx_vector_t() { locked = false; current_size = capacity = 0; data = nullptr; tfxINIT_VEC_NAME; }
-	inline tfx_vector_t(const char *name_init) { locked = false; current_size = capacity = 0; data = nullptr; tfxINIT_VEC_NAME_INIT(name_init); }
-	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = 0; data = nullptr; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
+	inline tfx_vector_t() { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME; }
+	inline tfx_vector_t(const char *name_init) { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME_INIT(name_init); }
+	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline tfx_vector_t<T>& operator=(const tfx_vector_t<T>& src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
-	inline ~tfx_vector_t() { if (data) { tfxFREE(data); } data = nullptr; current_size = capacity = 0; }
+	inline ~tfx_vector_t() { if (data) { tfxFREE(data); } data = nullptr; current_size = capacity = alignment = 0; }
 
 	inline bool			empty() { return current_size == 0; }
 	inline bool			full() { return current_size == capacity; }
@@ -2431,8 +2432,8 @@ struct tfx_vector_t {
 	inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
 	inline T&           ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
 
-	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
-	inline void         free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
+	inline void         free_all() { if (data) { current_size = capacity = alignment = 0; tfxFREE(data); data = nullptr; } }
+	inline void         free() { if (data) { current_size = capacity = alignment = 0; tfxFREE(data); data = nullptr; } }
 	inline void         clear() { if (data) { current_size = 0; } }
 	inline T*           begin() { return data; }
 	inline const T*     begin() const { return data; }
@@ -2453,10 +2454,17 @@ struct tfx_vector_t {
 	inline void         resize_bytes(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 	inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 	inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
+	inline void			set_alignment(tfxU32 align_to) { TFX_ASSERT(0 == (align_to & (align_to - 1)) && "must align to a power of two"); alignment = align_to; }
 	inline void         reserve(tfxU32 new_capacity) {
 		if (new_capacity <= capacity)
 			return;
-		T* new_data = (T*)tfxALLOCATE((size_t)new_capacity * sizeof(T));
+		T* new_data;
+		if (alignment != 0) {
+			new_data = (T*)tfxALLOCATE_ALIGNED((size_t)new_capacity * sizeof(T), alignment);
+		}
+		else {
+			new_data = (T*)tfxALLOCATE((size_t)new_capacity * sizeof(T));
+		}
 		assert(new_data);	//Unable to allocate memory. todo: better handling
 		if (data) {
 			memcpy(new_data, data, (size_t)current_size * sizeof(T));
@@ -2849,7 +2857,7 @@ inline size_t GetSoACapacityRequirement(tfx_soa_buffer_t *buffer, size_t capacit
 //Once you have called AddStructArray for all your member variables you must call this function in order to 
 //set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 //inside the space
-inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount, size_t alignment = 4) {
+inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount, tfxU32 alignment = 4) {
 	assert(buffer->data == nullptr && buffer->array_ptrs.current_size > 0);	//Must be an unitialised soa buffer
 	assert(alignment >= 4);		//Alignment must be 4 or greater
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
@@ -3080,6 +3088,7 @@ inline tfx_bucket_t<T> *tfxCreateBucket(tfxU32 size) {
 	bucket->data.current_size = 0;
 	bucket->data.capacity = 0;
 	bucket->data.locked = 0;
+	bucket->data.alignment = 0;
 	bucket->data.reserve(size);
 	bucket->next = nullptr;
 	return bucket;
@@ -3271,7 +3280,7 @@ struct tfx_bucket_array_t {
 
 template <typename T>
 inline tfx_bucket_array_t<T> tfxCreateBucketArray(tfxU32 size_of_each_bucket) {
-	tfx_bucket_array_t<T> bucket_array;
+	tfx_bucket_array_t<T> bucket_array{};
 	bucket_array.current_size = bucket_array.locked = bucket_array.capacity = 0;
 	bucket_array.size_of_each_bucket = size_of_each_bucket;
 	return bucket_array;
@@ -4373,7 +4382,7 @@ struct tfx_preview_camera_settings_t {
 	tfx_camera_settings_t camera_settings;
 	float effect_z_offset;
 	float camera_speed;
-	bool attach_effect_to_camera = false;
+	bool attach_effect_to_camera;
 };
 
 //this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
@@ -4450,6 +4459,7 @@ struct tfx_image_data_t {
 
 		tfx_image_data_t() :
 		image_index(0),
+		shape_index(0),
 		ptr(nullptr),
 		animation_frames(1.f),
 		image_hash(0),
@@ -4559,6 +4569,7 @@ struct tfx_effect_emitter_info_t {
 		lookup_value_index(0),
 		sprite_data_settings_index(0),
 		uid(0),
+		max_particles{2500, 2500, 2500, 2500},
 		max_radius(0),
 		sprite_sheet_settings_index(0),
 		preview_camera_settings(0),
@@ -4624,10 +4635,11 @@ struct tfx_emitter_state_t {
 	tfxEmitterStateFlags state_flags;
 	tfx_vec2_t image_size;
 	tfx_vec3_t angle_offsets;
-};
+} TFX_ALIGN_AFFIX(16);
 
 //This is a struct that stores an effect state that is currently active in a particle manager.
 struct tfx_effect_state_t {
+	tfx_mat4_t matrix;
 	//State data
 	float frame;
 	float age;
@@ -4645,7 +4657,6 @@ struct tfx_effect_state_t {
 	tfx_vec3_t local_rotations;
 	tfx_vec3_t world_rotations;
 	//Todo: save space and use a quaternion here?
-	tfx_mat4_t matrix;
 	tfx_bounding_box_t bounding_box;
 
 	tfxU32 global_attributes;
@@ -4667,7 +4678,7 @@ struct tfx_effect_state_t {
 	//User Data
 	void *user_data;
 	void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index);
-};
+} TFX_ALIGN_AFFIX(16);
 
 //An tfx_effect_emitter_t can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
 //Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
@@ -4709,6 +4720,7 @@ struct tfx_effect_emitter_t {
 
 	tfx_effect_emitter_t() :
 		buffer_index(0),
+		path_hash(0),
 		pm_index(0),
 		parent(nullptr),
 		user_data(nullptr),
@@ -4955,8 +4967,8 @@ struct alignas(16) tfx_gpu_image_data_t {
 	tfxU32 uv_xy;
 	tfxU32 uv_zw;
 	tfx_vec2_t image_size;
-	tfxU32 texture_array_index = 0;
-	float animation_frames = 0;
+	tfxU32 texture_array_index;
+	float animation_frames;
 #ifdef tfxCUSTOM_GPU_IMAGE_DATA
 	//add addition image data if needed
 #endif
@@ -5074,7 +5086,7 @@ struct tfx_animation_buffer_metrics_t {
 	size_t instances_size_in_bytes;
 	tfxU32 total_sprites_to_draw;
 
-	tfx_animation_buffer_metrics_t() : sprite_data_size(0), offsets_size(0), instances_size(0) {}
+	tfx_animation_buffer_metrics_t() : sprite_data_size(0), offsets_size(0), instances_size(0), total_sprites_to_draw(0), instances_size_in_bytes(0), offsets_size_in_bytes(0) {}
 };
 
 struct alignas(16) tfx_animation_emitter_properties_t {
@@ -5232,6 +5244,7 @@ struct tfx_particle_manager_t {
 		highest_compute_controller_index(0),
 		new_compute_particle_ptr(nullptr),
 		compute_controller_ptr(nullptr),
+		sorting_work_entry{ 0 },
 		max_compute_controllers(10000),
 		max_new_compute_particles(10000),
 		new_compute_particle_index(0),
@@ -5555,6 +5568,7 @@ float RandomRange(tfx_random_t *random, float from, float to);
 int RandomRange(tfx_random_t *random, int from, int to);
 tfxU32 RandomRange(tfx_random_t *random, tfxU32 max);
 void AlterRandomSeed(tfx_random_t *random, tfxU64 amount);
+void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 
 //--------------------------------
 //Particle manager internal functions

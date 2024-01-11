@@ -358,6 +358,11 @@ void AlterRandomSeed(tfx_random_t *random, tfxU64 amount) {
 	random->seeds[1] += amount;
 };
 
+void AlterRandomSeed(tfx_random_t *random, tfxU32 amount) {
+	random->seeds[0] *= amount;
+	random->seeds[1] += amount;
+};
+
 tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
 
 void MakeIcospheres() {
@@ -2478,9 +2483,9 @@ void CountEffectChildren(tfx_effect_emitter_t *effect, int *emitters, int *effec
 	while (!stack.empty()) {
 		tfx_effect_emitter_t *current = stack.pop_back();
 		if (current->type == tfxEffectType)
-			*effects++;
+			(*effects)++;
 		else if (current->type == tfxEmitterType)
-			*emitters++;
+			(*emitters)++;
 		for (auto &sub : GetEffectInfo(current)->sub_effectors) {
 			stack.push_back(&sub);
 		}
@@ -5409,6 +5414,7 @@ void ClampCurve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node_t *node) {
 }
 
 tfx_graph_t::tfx_graph_t() {
+	type = tfxGraphMaxIndex;
 	min.x = 0.f;
 	min.y = 0.f;
 	max.x = 1000.f;
@@ -5418,6 +5424,7 @@ tfx_graph_t::tfx_graph_t() {
 }
 
 tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
+	type = tfxGraphMaxIndex;
 	min.x = 0.f;
 	min.y = 0.f;
 	max.x = 1000.f;
@@ -9567,17 +9574,19 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		else {
+			/*
 			if (start_diff == 0 && limit_index == tfxDataWidth) {
 				tfxWideStore(&sprites.stretch[running_sprite_index], p_stretch.m);
 				tfxWideStorei((tfxWideInt*)&sprites.alignment[running_sprite_index], packed.m);
 				running_sprite_index += tfxDataWidth;
 			}
 			else {
+			*/
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					sprites.stretch[running_sprite_index] = p_stretch.a[j];
 					sprites.alignment[running_sprite_index++] = packed.a[j];
 				}
-			}
+			//}
 		}
 		start_diff = 0;
 	}
@@ -13187,7 +13196,7 @@ void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32
 	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_soa_t, color));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_soa_t, stretch));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_soa_t, intensity));
-	FinishSoABufferSetup(buffer, soa, reserve_amount);
+	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
 void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount) {
@@ -13320,6 +13329,8 @@ void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *librar
 
 	pm->free_effects.reserve(pm->max_effects);
 	//InitEffectSoA(&pm->effect_buffers, &pm->effects, pm->max_effects);
+	pm->emitters.set_alignment(16);
+	pm->effects.set_alignment(16);
 	pm->emitters.reserve(pm->max_effects);
 	pm->effects.reserve(pm->max_effects);
 	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
