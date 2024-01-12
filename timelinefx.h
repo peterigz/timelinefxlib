@@ -4820,17 +4820,18 @@ struct tfx_frame_meta_t {
 
 //This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
 //InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
-//3d in one struct like this as it makes it a lot easier to use the same control functions where we can.
+//3d in one struct like this as it makes it a lot easier to use the same control functions where we can. Also note that stretch and alignment for 3d sprites are packed into
+//stretch_alignment_x and alignment_yz as 16bit floats. 2d uses the float float for stretch and packs xy alignment into alignment_yz
 struct tfx_sprite_soa_t {						//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
 	tfxU32 *property_indexes;					//The image frame of animation index packed with alignment option flag and property_index
 	tfxU32 *captured_index;						//The index of the sprite in the previous frame so that it can be looked up and interpolated with
 	tfx_unique_sprite_id_t *uid;				//Unique particle id of the sprite, only used when recording sprite data
 	tfx_sprite_transform3d_t *transform_3d;		//Transform data for 3d sprites
 	tfx_sprite_transform2d_t *transform_2d;		//Transform data for 2d sprites
-	tfxU32 *alignment;							//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over or 2 packed 16bit floats for 2d
 	tfx_rgba8_t *color;							//The color tint of the sprite and blend factor in alpha channel
-	float *stretch;								//Multiplier for how much the particle is stretched in the shader (3d only)	
 	float *intensity;							//The multiplier for the sprite color
+	float *stretch;								//Multiplier for how much the particle is stretched in the shader
+	tfxU32 *alignment;							//The alignment of the particle. 2 16bit floats for 2d and 3 8bit floats for 3d
 };
 
 enum tfxSpriteBufferMode {
@@ -4844,13 +4845,13 @@ struct alignas(16) tfx_sprite_data3d_t {	//60 bytes aligning to 64
 	tfx_vec3_t position;
 	float lerp_offset;
 	tfx_vec3_t rotations;
-	float stretch;
 	tfx_vec2_t scale;
 	tfxU32 property_indexes;
 	tfxU32 captured_index;
-	tfxU32 alignment;
 	tfx_rgba8_t color;
 	float intensity;
+	float stretch;
+	tfxU32 alignment;
 	//Free space for extra 4 bytes if needed
 };
 
@@ -4875,10 +4876,10 @@ struct tfx_sprite_data_soa_t {	//64 bytes or 60 after uid is removed as it's onl
 	float *lerp_offset;
 	tfx_sprite_transform3d_t *transform_3d;
 	tfx_sprite_transform2d_t *transform_2d;
-	tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 	tfx_rgba8_t *color;			//The color tint of the sprite and blend factor in a
-	float *stretch;
 	float *intensity;
+	float *stretch;
+	tfxU32 *alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 };
 
 struct tfx_wide_lerp_transform_result_t {
@@ -4983,11 +4984,11 @@ struct tfx_particle_frame_t {
 	tfxU32 property_indexes;	//The image frame of animation index packed with alignment option flag and property_index
 	tfxU32 captured_index;
 	tfx_sprite_transform3d_t transform;
-	tfxU32 alignment;			//normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
 	tfx_rgba8_t color;				//The color tint of the sprite and blend factor in a
-	float stretch;
 	float intensity;
 	float depth;
+	tfxU32 alignment;		
+	float stretch;
 };
 
 struct tfx_spawn_work_entry_t {
@@ -5523,8 +5524,10 @@ tfxAPI_EDITOR tfxU32 Pack16bit(float x, float y);
 tfxINTERNAL tfxU32 Pack16bitUnsigned(float x, float y);
 tfxAPI_EDITOR tfx_vec2_t UnPack16bit(tfxU32 in);
 tfxINTERNAL tfx_vec2_t UnPack16bitUnsigned(tfxU32 in);
+tfxINTERNAL tfxWideInt PackWide16bitStretch(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxINTERNAL tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxINTERNAL void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y);
+tfxAPI tfxWideInt PackWide8bitXYZ(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
 tfxINTERNAL tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
@@ -6529,7 +6532,7 @@ tfxAPI inline float GetSpriteDataIntensity(tfx_sprite_data_soa_t *sprites, tfxU3
 Get the alignment of a sprite data by its index in the sprite data struct of arrays
 * @param sprite_data	A pointer to tfx_sprite_data_t containing all the sprites and frame data
 * @param index			The index of the sprite you want to retrieve
-* @returns				tfxU32 of the alignment value
+* @returns				tfxU32 
 */
 tfxAPI inline tfxU32 GetSpriteDataAlignment(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
 	return sprites->alignment[index];
