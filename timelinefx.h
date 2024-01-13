@@ -1,4 +1,4 @@
-﻿#ifndef TFX_LIBRARY_HEADER
+#ifndef TFX_LIBRARY_HEADER
 #define TFX_LIBRARY_HEADER
 
 #define tfxENABLE_PROFILING
@@ -290,6 +290,9 @@ extern "C" {
 #endif
 
 #define tfx__strlen strnlen_s
+#define tfx__writebarrier _WriteBarrier();
+#define tfx__readbarrier _ReadBarrier();
+#define tfx__strcpy strcpy_s
 
 #elif defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)) && \
       (defined(__i386__) || defined(__x86_64__)) || defined(__clang__)
@@ -326,6 +329,9 @@ extern "C" {
 	}
 
 #define tfx__strlen strnlen
+#define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
+#define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
+#define tfx__strcpy strcpy
 
 #endif
 
@@ -1058,7 +1064,6 @@ tfx_allocator *tfxGetAllocator();
 #include <algorithm>
 #include <iostream>					//temp for std::cout
 #include <immintrin.h>
-#include <intrin.h>
 #include <mutex>
 #include <thread>					//only using this for std::thread::hardware_ concurrency()
 #include <cfloat>
@@ -2512,12 +2517,12 @@ struct tfx_vector_t {
 	}
 	inline tfxU32        locked_push_back(const T& v) {
 		//suspect, just use a mutex instead?
-		while (tfx__compare_and_exchange((LONG volatile*)&locked, 1, 0) > 1);
+		while (tfx__compare_and_exchange((tfxLONG volatile*)&locked, 1, 0) > 1);
 		if (current_size == capacity)
 			reserve(_grow_capacity(current_size + 1));
 		new((void*)(data + current_size)) T(v);
 		tfxU32 index = current_size++;
-		tfx__exchange((LONG volatile*)&locked, 0);
+		tfx__exchange((tfxLONG volatile*)&locked, 0);
 		return index;
 	}
 	inline T&	        push_back(const T& v) {
@@ -3511,7 +3516,7 @@ tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data
 	queue->entries[queue->next_write_entry].call_back = call_back;
 	tfx__increment(&queue->entry_completion_goal);
 
-	_WriteBarrier();
+	tfx__writebarrier;
 
 	tfxPushQueueWork(&tfxThreadQueues, queue);
 	queue->next_write_entry = new_entry_to_write;

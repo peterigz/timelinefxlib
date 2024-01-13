@@ -799,8 +799,8 @@ tfx_mat4_t Matrix4FromVecs(tfx_vec4_t a, tfx_vec4_t b, tfx_vec4_t c, tfx_vec4_t 
 }
 
 tfx_mat4_t Matrix4RotateX(float angle) {
-	float c = std::cos(angle);
-	float s = std::sin(angle);
+	float c = cosf(angle);
+	float s = sinf(angle);
 	tfx_mat4_t r =
 	{ {
 		{1, 0, 0, 0},
@@ -812,8 +812,8 @@ tfx_mat4_t Matrix4RotateX(float angle) {
 }
 
 tfx_mat4_t Matrix4RotateY(float angle) {
-	float c = std::cos(angle);
-	float s = std::sin(angle);
+	float c = cosf(angle);
+	float s = sinf(angle);
 	tfx_mat4_t r =
 	{ {
 		{ c, 0, s, 0},
@@ -825,8 +825,8 @@ tfx_mat4_t Matrix4RotateY(float angle) {
 }
 
 tfx_mat4_t Matrix4RotateZ(float angle) {
-	float c = std::cos(angle);
-	float s = std::sin(angle);
+	float c = cosf(angle);
+	float s = sinf(angle);
 	tfx_mat4_t r =
 	{ {
 		{c, -s, 0, 0},
@@ -1304,7 +1304,7 @@ float Distance2d(float fromx, float fromy, float tox, float toy) {
 	float w = tox - fromx;
 	float h = toy - fromy;
 
-	return std::sqrt(w * w + h * h);
+	return sqrtf(w * w + h * h);
 
 }
 
@@ -1612,11 +1612,11 @@ bool ValidatePackage(tfx_package_t *package) {
 		return false;
 	}
 
-	if (file == NULL || _fseeki64(file, 0, SEEK_END)) {
+	if (file == NULL || fseeko(file, 0, SEEK_END)) {
 		return false;
 	}
 
-	tfxU64 length = _ftelli64(file);
+	tfxU64 length = ftello(file);
 	rewind(file);
 	if (length == -1 || length >= SIZE_MAX) {
 		fclose(file);
@@ -1648,7 +1648,7 @@ tfx_package_entry_info_t *GetPackageFile(tfx_package_t *package, const char *nam
 		//FILE *file = tfx__open_file(file_path.c_str(), "rb");
 		FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
 		assert(file);		//couldn't open the file!
-		_fseeki64(file, entry->offset_from_start_of_file, SEEK_SET);
+        fseeko(file, entry->offset_from_start_of_file, SEEK_SET);
 		entry->data.Resize(entry->file_size);
 		fread(entry->data.data, 1, entry->file_size, file);
 		fclose(file);
@@ -2144,7 +2144,7 @@ float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library,
 		emitter.emission_alternator = !emitter.emission_alternator;
 	}
 
-	if (std::isnan(direction))
+	if (isnan(direction))
 		direction = 0.f;
 	return direction + emission_angle + RandomRange(random, -range, range);
 }
@@ -5472,14 +5472,14 @@ float GetDistance(float fromx, float fromy, float tox, float toy) {
 	float w = tox - fromx;
 	float h = toy - fromy;
 
-	return std::sqrt(w * w + h * h);
+	return sqrtf(w * w + h * h);
 
 }
 
 tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax, bool clamp) {
 	tfx_vec2_t b;
-	b.x = std::pow(1.f - t, 2.f) * p0.x + 2.f * t * (1.f - t) * p1.x + std::pow(t, 2.f) * p2.x;
-	b.y = std::pow(1.f - t, 2.f) * p0.y + 2.f * t * (1.f - t) * p1.y + std::pow(t, 2.f) * p2.y;
+	b.x = powf(1.f - t, 2.f) * p0.x + 2.f * t * (1.f - t) * p1.x + powf(t, 2.f) * p2.x;
+	b.y = powf(1.f - t, 2.f) * p0.y + 2.f * t * (1.f - t) * p1.y + powf(t, 2.f) * p2.y;
 	if (b.x < p0.x) b.x = p0.x;
 	if (b.x > p2.x) b.x = p2.x;
 	if (clamp) {
@@ -5491,8 +5491,8 @@ tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, f
 
 tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax, bool clamp) {
 	tfx_vec2_t b;
-	b.x = std::pow(1.f - t, 3.f) * p0.x + 3.f * t * std::pow(1.f - t, 2.f) * p1.x + 3.f * std::pow(t, 2.f) * (1.f - t) * p2.x + std::pow(t, 3.f) * p3.x;
-	b.y = std::pow(1.f - t, 3.f) * p0.y + 3.f * t * std::pow(1.f - t, 2.f) * p1.y + 3.f * std::pow(t, 2.f) * (1.f - t) * p2.y + std::pow(t, 3.f) * p3.y;
+	b.x = powf(1.f - t, 3.f) * p0.x + 3.f * t * powf(1.f - t, 2.f) * p1.x + 3.f * powf(t, 2.f) * (1.f - t) * p2.x + powf(t, 3.f) * p3.x;
+	b.y = powf(1.f - t, 3.f) * p0.y + 3.f * t * powf(1.f - t, 2.f) * p1.y + 3.f * powf(t, 2.f) * (1.f - t) * p2.y + powf(t, 3.f) * p3.y;
 	if (b.x < p0.x) b.x = p0.x;
 	if (b.x > p3.x) b.x = p3.x;
 	if (clamp) {
@@ -6462,7 +6462,7 @@ float GetMaxLife(tfx_effect_emitter_t *e) {
 	float life_variation_last_frame = GetGraphLastFrame(&life_variation, 60.f);
 	float global_adjust = 1.f;
 	if (life_last_frame + life_variation_last_frame > 0) {
-		for (float f = 0; f < std::fmaxf(life_last_frame, life_variation_last_frame); ++f) {
+		for (float f = 0; f < fmaxf(life_last_frame, life_variation_last_frame); ++f) {
 			if (e->parent)
 				global_adjust = GetGraphValue(GetEffectGraphByType(e->parent, tfxGlobal_life), f);
 			templife = GetGraphValue(&life, f) + GetGraphValue(&life_variation, f);
@@ -7085,7 +7085,7 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 			if (context == tfxStartShapes && shape_loader != nullptr) {
 				if (pair.size() >= 5) {
 					tfx_shape_data_t s;
-					strcpy_s(s.name, pair[0].c_str());
+					tfx__strcpy(s.name, pair[0].c_str());
 					s.shape_index = atoi(pair[1].c_str());
 					s.frame_count = atoi(pair[2].c_str());
 					s.width = atoi(pair[3].c_str());
@@ -7333,7 +7333,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 			if (context == tfxStartShapes) {
 				if (pair.size() >= 5) {
 					tfx_shape_data_t s;
-					strcpy_s(s.name, pair[0].c_str());
+                    tfx__strcpy(s.name, pair[0].c_str());
 					s.shape_index = atoi(pair[1].c_str());
 					s.frame_count = atoi(pair[2].c_str());
 					s.width = atoi(pair[3].c_str());
@@ -8097,7 +8097,7 @@ void AddEffectEmitterProperties(tfx_animation_manager_t *animation_manager, tfx_
 			}
 			effect->library->emitter_properties[effect->property_index].animation_property_index = animation_manager->emitter_properties.current_size;
 			properties.image_ptr = image.ptr;
-			_ReadBarrier();
+			tfx__readbarrier;
 			animation_manager->emitter_properties.push_back_copy(properties);
 			for (auto &sub : GetEffectInfo(effect)->sub_effectors) {
 				AddEffectEmitterProperties(animation_manager, &sub, has_animated_shape);
@@ -8780,7 +8780,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	for (auto &work_entry : pm->spawn_work) {
 		tfxU32 index = work_entry.emitter_index;
-		pm->emitters[index].highest_particle_age = std::fmaxf(pm->emitters[index].highest_particle_age, work_entry.highest_particle_age);
+		pm->emitters[index].highest_particle_age = fmaxf(pm->emitters[index].highest_particle_age, work_entry.highest_particle_age);
 		pm->effects[pm->emitters[index].parent_index].highest_particle_age = pm->emitters[index].highest_particle_age + pm->frame_length;
 	}
 	pm->spawn_work.clear();
@@ -9056,7 +9056,7 @@ void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data) {
 
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		_ReadBarrier();
+		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
@@ -9087,7 +9087,7 @@ void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data) {
 			const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);
 			tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, overal_scale_wide);
 
-			_ReadBarrier();
+			tfx__readbarrier;
 
 			tfxWideArrayi lookup_frame;
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_turbulance_last_frame);
@@ -9191,7 +9191,7 @@ void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data) {
 				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
-				_ReadBarrier();
+				tfx__readbarrier;
 
 				//Lines - Reposition if the particle is travelling along a line
 				tfxWideFloat length = tfxWideAbs(local_position_y);
@@ -9207,7 +9207,7 @@ void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data) {
 				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
-				_ReadBarrier();
+				tfx__readbarrier;
 
 				//Lines - Reposition if the particle is travelling along a line
 				tfxWideFloat length = tfxWideAbs(local_position_y);
@@ -9263,7 +9263,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		_ReadBarrier();
+		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
@@ -9298,10 +9298,10 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		captured_position_z.m = tfxWideLoad(&bank.captured_position_z[index]);
 		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 		tfxWideArray capture_flag;
-		_ReadBarrier();
+		tfx__readbarrier;
 		capture_flag.m = tfxWideCast(tfxWideGreateri(tfxWideAndi(flags, capture_after_transform), tfxWideSetZeroi()));
 		tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag.m, tfxWideSetZero());
-		_ReadBarrier();
+		tfx__readbarrier;
 
 		if (property_flags & tfxEmitterPropertyFlags_relative_position || (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine)) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
@@ -9458,7 +9458,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 
-		_ReadBarrier();
+		tfx__readbarrier;
 
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
@@ -9482,7 +9482,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
 			const tfxWideFloat noise_offset = tfxWideLoad(&bank.noise_offset[index]);
 
-			_ReadBarrier();
+			tfx__readbarrier;
 
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), noise_resolution_last_frame);
 			const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->noise_resolution.lookup.values, lookup_frame), noise_resolution);
@@ -9619,7 +9619,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
-				_ReadBarrier();
+				tfx__readbarrier;
 
 				//Lines - Reposition if the particle is travelling along a line
 				tfxWideFloat length = tfxWideAbs(local_position_y);
@@ -9639,7 +9639,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 				tfxWideFloat length = tfxWideAbs(local_position_y);
 				tfxWideFloat at_end = tfxWideGreater(length, emitter_size_y);
 
-				_ReadBarrier();
+				tfx__readbarrier;
 
 				local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, offset_y));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
@@ -9695,7 +9695,7 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		_ReadBarrier();
+		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
@@ -9787,7 +9787,7 @@ void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
 
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		_ReadBarrier();
+		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
@@ -9801,7 +9801,7 @@ void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
 		const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
 		const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
 
-		_ReadBarrier();
+		tfx__readbarrier;
 
 		//----Size Changes
 		scale_x.m = tfxWideMul(base_size_x, lookup_width);
@@ -9882,7 +9882,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
-		_ReadBarrier();
+		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
@@ -9971,7 +9971,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 		tfxWideArray image_frame;
 		image_frame.m = tfxWideLoad(&bank.image_frame[index]);
 
-		_ReadBarrier();
+		tfx__readbarrier;
 
 		//----Image animation
 		image_frame.m = tfxWideAdd(image_frame.m, image_frame_rate);
@@ -11236,7 +11236,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 			color = tfx_rgba8_t(255.f * first_red_value, 255.f * first_green_value, 255.f * first_blue_value, alpha);
 		}
 
-		entry->highest_particle_age = std::fmaxf(emitter.highest_particle_age, (max_age * loop_count) + pm.frame_length + 1);
+		entry->highest_particle_age = fmaxf(emitter.highest_particle_age, (max_age * loop_count) + pm.frame_length + 1);
 
 		if (entry->sub_effects->current_size > 0) {
 			particle_index = GetPMParticleIndexSlot(&pm, MakeParticleID(emitter.particles_index, index));
@@ -12172,7 +12172,7 @@ void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data) {
 			local_position_x = RandomRange(&random, 0.f, emitter_size.x);
 			local_position_y = RandomRange(&random, 0.f, emitter_size.y);
 
-			while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_y - half_emitter_size.y, 2) / std::pow(half_emitter_size.y, 2)) > 1) {
+			while ((powf(local_position_x - half_emitter_size.x, 2) / powf(half_emitter_size.x, 2)) + (powf(local_position_y - half_emitter_size.y, 2) / powf(half_emitter_size.y, 2)) > 1) {
 				local_position_x = RandomRange(&random, 0.f, emitter_size.x);
 				local_position_y = RandomRange(&random, 0.f, emitter_size.y);
 			}
@@ -12233,7 +12233,7 @@ void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data) {
 			position.y = RandomRange(&random, -half_emitter_size.y, half_emitter_size.y);
 			position.z = RandomRange(&random, -half_emitter_size.z, half_emitter_size.z);
 
-			while (std::pow(position.x / half_emitter_size.x, 2.f) + std::pow(position.y / half_emitter_size.y, 2.f) + std::pow(position.z / half_emitter_size.z, 2.f) > 1.f) {
+			while (powf(position.x / half_emitter_size.x, 2.f) + powf(position.y / half_emitter_size.y, 2.f) + powf(position.z / half_emitter_size.z, 2.f) > 1.f) {
 				position.x = RandomRange(&random, -half_emitter_size.x, half_emitter_size.x);
 				position.y = RandomRange(&random, -half_emitter_size.y, half_emitter_size.y);
 				position.z = RandomRange(&random, -half_emitter_size.z, half_emitter_size.z);
@@ -12424,7 +12424,7 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 			local_position_y = RandomRange(&random, 0.f, emitter.emitter_size.y);
 			local_position_z = RandomRange(&random, 0.f, emitter.emitter_size.z);
 
-			while ((std::pow(local_position_x - half_emitter_size.x, 2) / std::pow(half_emitter_size.x, 2)) + (std::pow(local_position_z - half_emitter_size.z, 2) / std::pow(half_emitter_size.z, 2)) > 1) {
+			while ((powf(local_position_x - half_emitter_size.x, 2) / powf(half_emitter_size.x, 2)) + (powf(local_position_z - half_emitter_size.z, 2) / powf(half_emitter_size.z, 2)) > 1) {
 				local_position_x = RandomRange(&random, 0.f, half_emitter_size.x);
 				local_position_z = RandomRange(&random, 0.f, half_emitter_size.z);
 			}
@@ -12654,7 +12654,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 				float splaty = RandomRange(&random, -splatter, splatter);
 				float splatz = RandomRange(&random, -splatter, splatter);
 
-				while (std::pow(splatx / splatter, 2.f) + std::pow(splaty / splatter, 2.f) + std::pow(splatz / splatter, 2.f) > 1.f) {
+				while (powf(splatx / splatter, 2.f) + powf(splaty / splatter, 2.f) + powf(splatz / splatter, 2.f) > 1.f) {
 					splatx = RandomRange(&random, -splatter, splatter);
 					splaty = RandomRange(&random, -splatter, splatter);
 					splatz = RandomRange(&random, -splatter, splatter);
@@ -12915,7 +12915,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 		age = tfxWideAdd(age, pm.frame_length_wide);
 
-		_ReadBarrier();
+		tfx__readbarrier;
 
 		tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
 		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWideSetSinglei(1), expired));
