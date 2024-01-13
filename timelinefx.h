@@ -293,6 +293,8 @@ extern "C" {
 #define tfx__writebarrier _WriteBarrier();
 #define tfx__readbarrier _ReadBarrier();
 #define tfx__strcpy strcpy_s
+#define tfx__fseek _fseeki64
+#define tfx__ftell _ftelli64
 
 #elif defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)) && \
       (defined(__i386__) || defined(__x86_64__)) || defined(__clang__)
@@ -332,6 +334,8 @@ extern "C" {
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__strcpy strcpy
+#define tfx__fseek fseeko
+#define tfx__ftell ftello
 
 #endif
 

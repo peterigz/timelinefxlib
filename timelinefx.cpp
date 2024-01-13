@@ -1612,11 +1612,11 @@ bool ValidatePackage(tfx_package_t *package) {
 		return false;
 	}
 
-	if (file == NULL || fseeko(file, 0, SEEK_END)) {
+	if (file == NULL || tfx__fseek(file, 0, SEEK_END)) {
 		return false;
 	}
 
-	tfxU64 length = ftello(file);
+	tfxU64 length = tfx__ftell(file);
 	rewind(file);
 	if (length == -1 || length >= SIZE_MAX) {
 		fclose(file);
@@ -1648,7 +1648,7 @@ tfx_package_entry_info_t *GetPackageFile(tfx_package_t *package, const char *nam
 		//FILE *file = tfx__open_file(file_path.c_str(), "rb");
 		FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
 		assert(file);		//couldn't open the file!
-        fseeko(file, entry->offset_from_start_of_file, SEEK_SET);
+        tfx__fseek(file, entry->offset_from_start_of_file, SEEK_SET);
 		entry->data.Resize(entry->file_size);
 		fread(entry->data.data, 1, entry->file_size, file);
 		fclose(file);
