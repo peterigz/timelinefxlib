@@ -12,7 +12,7 @@
 	This library is for implementing particle effects into your games and applications.
 
 	This library is render agnostic, so you will have to provide your own means to render the particles. You will use ParticleManager::GetParticleBuffer() to get all of the active particles in the particle manager
-	and then use the values in Particle struct to draw a correctly scaled and rotated particle. See example below.
+	and then use the values in Particle struct to draw a correctly scaled and rotated particle.
 
 	Sections in this header file, you can search for the following keywords to jump to that section:
 
@@ -61,6 +61,21 @@
 #define TFX_PACKED_STRUCT
 #endif
 
+#include <stdint.h>
+
+//type defs
+typedef uint32_t tfxU32;
+typedef unsigned int tfxEmitterID;
+typedef int32_t tfxS32;
+typedef uint64_t tfxU64;
+typedef int64_t tfxS64;
+typedef tfxU32 tfxEffectID;
+typedef tfxU32 tfxAnimationID;
+typedef tfxU64 tfxKey;
+typedef tfxU32 tfxParticleID;
+typedef short tfxShort;
+typedef unsigned short tfxUShort;
+
 //---------------------------------------
 /*	Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
 	This is my own memory allocator from https://github.com/peterigz/zloc
@@ -78,7 +93,6 @@
 typedef int tfx_index;
 typedef unsigned int tfx_sl_bitmap;
 typedef unsigned int tfx_uint;
-typedef unsigned int tfx_thread_access;
 typedef int tfx_bool;
 typedef void* tfx_pool;
 
@@ -96,10 +110,12 @@ typedef void* tfx_pool;
 #define tfx__64BIT
 typedef size_t tfx_size;
 typedef size_t tfx_fl_bitmap;
+typedef int32_t tfxLONG;
 #define TFX_ONE 1ULL
 #else
 typedef size_t tfx_size;
 typedef size_t tfx_fl_bitmap;
+typedef int32_t tfxLONG;
 #define TFX_ONE 1U
 #endif
 
@@ -222,7 +238,7 @@ extern "C" {
 		tfx_header null_block;
 #if defined(TFX_THREAD_SAFE)
 		/* Multithreading protection*/
-		volatile tfx_thread_access access;
+		volatile tfxLONG access;
 #endif
 		tfx_size minimum_allocation_size;
 		/*	Here we store all of the free block data. first_level_bitmap is either a 32bit int
@@ -260,8 +276,16 @@ extern "C" {
 
 #ifdef _WIN32
 #include <Windows.h>
-	static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_access* target, tfx_thread_access value, tfx_thread_access original) {
-		return InterlockedCompareExchange(target, value, original);
+	static inline tfxLONG tfx__compare_and_exchange(volatile tfxLONG* target, tfxLONG value, tfxLONG original) {
+		return InterlockedCompareExchange((volatile LONG*)target, value, original);
+	}
+
+	static inline tfxLONG tfx__exchange(volatile tfxLONG* target, tfxLONG value) {
+		return InterlockedExchange((volatile LONG*)target, value);
+	}
+
+	static inline uint32_t tfx__increment(uint32_t volatile *target) {
+		return InterlockedIncrement(target);
 	}
 #endif
 
@@ -287,8 +311,16 @@ extern "C" {
 #endif
 	}
 
-	static inline tfx_thread_access tfx__compare_and_exchange(volatile tfx_thread_access* target, tfx_thread_access value, tfx_thread_access original) {
+	static inline tfxLONG tfx__compare_and_exchange(volatile tfxLONG* target, tfxLONG value, tfxLONG original) {
 		return __sync_val_compare_and_swap(target, original, value);
+	}
+
+	static inline tfxLONG tfx__exchange(volatile tfxLONG* target, tfxLONG value) {
+		return __sync_lock_test_and_set(target, value);
+	}
+
+	static inline uint32_t tfx__increment(uint32_t volatile* target) {
+		return _InterlockedIncrement(target);
 	}
 
 #endif
@@ -1020,7 +1052,6 @@ tfx_allocator *tfxGetAllocator();
 #include <chrono>					//std::chrono::high_resolution_clock
 #include <cctype>					//std::is_digit
 #include <algorithm>
-#include <stdint.h>
 #include <iostream>					//temp for std::cout
 #include <immintrin.h>
 #include <intrin.h>
@@ -1135,18 +1166,6 @@ You can then use layer inside the loop to get the current layer
 #define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
 
 //Internal use macro
-//type defs
-typedef unsigned int tfxU32;
-typedef unsigned int tfxEmitterID;
-typedef int tfxS32;
-typedef unsigned long long tfxU64;
-typedef long long tfxS64;
-typedef tfxU32 tfxEffectID;
-typedef tfxU32 tfxAnimationID;
-typedef unsigned long long tfxKey;
-typedef tfxU32 tfxParticleID;
-typedef short tfxShort;
-typedef unsigned short tfxUShort;
 
 union tfxUInt10bit
 {
@@ -1175,6 +1194,14 @@ tfxINTERNAL inline tfxU32 tfx_AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_
 }
 #else
 FILE *tfx__open_file(const char *file_name, const char *mode);
+
+inline tfxU64 tfx_AtomicAdd64(tfxU64 volatile* value, tfxU64 amount_to_add) {
+	return __sync_fetch_and_add(value, amount_to_add);
+}
+
+inline tfxU32 tfx_AtomicAdd32(tfxU32 volatile* value, tfxU32 amount_to_add) {
+	return __sync_fetch_and_add(value, amount_to_add);
+}
 #endif
 
 tfxINTERNAL inline tfxU32 tfx_Millisecs() {
@@ -1340,7 +1367,7 @@ public:
 		// 4 bytes left ? => eat those
 		if (data + 4 <= stop)
 		{
-			result = rotateLeft(result ^ (*(uint32_t*)data) * Prime1, 23) * Prime2 + Prime3;
+			result = rotateLeft(result ^ (*(tfxU32*)data) * Prime1, 23) * Prime2 + Prime3;
 			data += 4;
 		}
 
@@ -2481,12 +2508,12 @@ struct tfx_vector_t {
 	}
 	inline tfxU32        locked_push_back(const T& v) {
 		//suspect, just use a mutex instead?
-		while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
+		while (tfx__compare_and_exchange((LONG volatile*)&locked, 1, 0) > 1);
 		if (current_size == capacity)
 			reserve(_grow_capacity(current_size + 1));
 		new((void*)(data + current_size)) T(v);
 		tfxU32 index = current_size++;
-		InterlockedExchange((LONG volatile*)&locked, 0);
+		tfx__exchange((LONG volatile*)&locked, 0);
 		return index;
 	}
 	inline T&	        push_back(const T& v) {
@@ -3099,7 +3126,7 @@ struct tfx_bucket_array_t {
 	tfxU32 current_size;
 	tfxU32 capacity;
 	tfxU32 size_of_each_bucket;
-	tfxU32 volatile locked;
+	tfxLONG volatile locked;
 	tfx_vector_t<tfx_bucket_t<T>*> bucket_list;
 
 	inline bool			empty() { return current_size == 0; }
@@ -3158,11 +3185,11 @@ struct tfx_bucket_array_t {
 	}
 
 	inline tfxU32        locked_push_back(const T& v) {
-		while (InterlockedCompareExchange((LONG volatile*)&locked, 1, 0) > 1);
+		while (tfx__compare_and_exchange(&locked, 1, 0) > 1);
 
 		push_back(v);
 
-		InterlockedExchange((LONG volatile*)&locked, 0);
+		tfx__exchange(&locked, 0);
 		return current_size - 1;
 	}
 
@@ -3367,8 +3394,9 @@ struct tfx_stream_t {
 //Section: Multithreading_Work_Queues
 //-----------------------------------------------------------
 
-//Some multithreading functions - TODO: currently this is windows only, needs linux/mac etc added
-//Might end up just using std::thread but will see how the Mac API is
+//Tried to keep this as simple as possible, was originally based on Casey Muratory's Hand Made Hero threading which used the Windows API for
+//threading but for the sake of supporting other platforms I changed it to use std::thread which was actually a lot more simple to do then 
+//I expected. I just had to swap the semaphores for condition_variable and that was pretty much it other then obviously using std::thread as well.
 //There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue.
 struct tfx_work_queue_t;
 
@@ -3396,15 +3424,15 @@ extern bool tfxThreadUsage[];		//Used for debugging to see which threads were ut
 struct tfx_work_queue_t {
 	tfxU32 volatile entry_completion_goal = 0;
 	tfxU32 volatile entry_completion_count = 0;
-	tfxU32 volatile next_read_entry = 0;
-	tfxU32 volatile next_write_entry = 0;
+	tfxLONG volatile next_read_entry = 0;
+	tfxLONG volatile next_write_entry = 0;
 	tfx_work_queue_entry_t entries[tfxMAX_QUEUES];
 };
 
 struct tfx_queue_processor_t {
 	std::mutex mutex;
-	HANDLE empty_semaphore;
-	HANDLE full_semaphore;
+	std::condition_variable empty_condition;
+	std::condition_variable full_condition;
 	tfxU32 count;
 	//These point to the queues stored in particle managers and anything else that needs a queue with multithreading
 	tfx_work_queue_t *queues[tfxMAX_QUEUES];
@@ -3414,24 +3442,22 @@ extern tfx_queue_processor_t tfxThreadQueues;
 
 tfxINTERNAL inline void InitialiseThreadQueues(tfx_queue_processor_t *queues) {
 	queues->count = 0;
-	queues->empty_semaphore = CreateSemaphoreEx(0, tfxMAX_QUEUES, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
-	queues->full_semaphore = CreateSemaphoreEx(0, 0, tfxMAX_QUEUES, 0, 0, SEMAPHORE_ALL_ACCESS);
 	memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void*));
 }
 
 tfxINTERNAL inline tfx_work_queue_t *tfxGetQueueWithWork(tfx_queue_processor_t *thread_processor) {
-	WaitForSingleObject(thread_processor->full_semaphore, INFINITE);
 	std::unique_lock<std::mutex> lock(thread_processor->mutex);
+	thread_processor->full_condition.wait(lock, [&]() { return thread_processor->count > 0; });
 	tfx_work_queue_t *queue = thread_processor->queues[thread_processor->count--];
-	ReleaseSemaphore(thread_processor->empty_semaphore, 1, 0);
+	thread_processor->empty_condition.notify_one();
 	return queue;
 }
 
 tfxINTERNAL inline void tfxPushQueueWork(tfx_queue_processor_t *thread_processor, tfx_work_queue_t *queue) {
-	WaitForSingleObject(thread_processor->empty_semaphore, INFINITE);
 	std::unique_lock<std::mutex> lock(thread_processor->mutex);
+	thread_processor->empty_condition.wait(lock, [&]() { return thread_processor->count < tfxMAX_QUEUES; });
 	thread_processor->queues[thread_processor->count++] = queue;
-	ReleaseSemaphore(thread_processor->full_semaphore, 1, 0);
+	thread_processor->full_condition.notify_one();
 }
 
 tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processor) {
@@ -3442,11 +3468,11 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 
 		if (original_read_entry != queue->next_write_entry) {
-			tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
+			tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
 			if (index == original_read_entry) {
 				tfx_work_queue_entry_t entry = queue->entries[index];
 				entry.call_back(queue, entry.data);
-				InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+				tfx__increment(&queue->entry_completion_count);
 			}
 		}
 	}
@@ -3457,11 +3483,11 @@ tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
 	tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
 
 	if (original_read_entry != queue->next_write_entry) {
-		tfxU32 index = InterlockedCompareExchange((LONG volatile *)&queue->next_read_entry, new_original_read_entry, original_read_entry);
+		tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
 		if (index == original_read_entry) {
 			tfx_work_queue_entry_t entry = queue->entries[index];
 			entry.call_back(queue, entry.data);
-			InterlockedIncrement((LONG volatile *)&queue->entry_completion_count);
+			tfx__increment(&queue->entry_completion_count);
 		}
 	}
 }
@@ -3479,22 +3505,12 @@ tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data
 	}
 	queue->entries[queue->next_write_entry].data = data;
 	queue->entries[queue->next_write_entry].call_back = call_back;
-	InterlockedIncrement(&queue->entry_completion_goal);
+	tfx__increment(&queue->entry_completion_goal);
 
 	_WriteBarrier();
 
 	tfxPushQueueWork(&tfxThreadQueues, queue);
 	queue->next_write_entry = new_entry_to_write;
-
-}
-
-tfxINTERNAL inline DWORD WINAPI tfxThreadProc(LPVOID lpParameter) {
-
-	tfx_queue_processor_t *thread_processor = (tfx_queue_processor_t*)lpParameter;
-
-	for (;;) {
-		tfxDoNextWorkQueue(thread_processor);
-	}
 
 }
 
@@ -3521,13 +3537,13 @@ tfxINTERNAL inline bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queue
 
 	tfxU32 threads_initialised = 0;
 	for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
-		DWORD thread_id;
-		HANDLE thread_handle = CreateThread(0, 0, tfxThreadProc, thread_queues, 0, &thread_id);
-		if (!thread_handle) {
-			tfxNumberOfThreadsInAdditionToMain = threads_initialised;
-			return false;
-		}
-		threads_initialised++;
+		std::thread([thread_queues]() {
+			for (;;) {
+				tfxDoNextWorkQueue(thread_queues);
+			}
+			}).detach();
+
+			threads_initialised++;
 	}
 	return true;
 }
