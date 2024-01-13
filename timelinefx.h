@@ -44,23 +44,6 @@
 #define tfxMAX_MEMORY_POOLS 32
 #endif
 
-#if !defined(IMGUI_USE_STB_SPRINTF) && defined(__MINGW32__) && !defined(__clang__)
-#define IM_FMTARGS(FMT)             __attribute__((format(gnu_printf, FMT, FMT+1)))
-#define IM_FMTLIST(FMT)             __attribute__((format(gnu_printf, FMT, 0)))
-#define TFX_ALIGN_AFFIX(v)			__attribute__((aligned(v)))
-#define TFX_PACKED_STRUCT			__attribute__((packed))
-#elif !defined(IMGUI_USE_STB_SPRINTF) && (defined(__clang__) || defined(__GNUC__))
-#define IM_FMTARGS(FMT)             __attribute__((format(printf, FMT, FMT+1)))
-#define IM_FMTLIST(FMT)             __attribute__((format(printf, FMT, 0)))
-#define TFX_ALIGN_AFFIX(v)			__attribute__((aligned(v)))
-#define TFX_PACKED_STRUCT			__attribute__((packed))
-#else
-#define IM_FMTARGS(FMT)
-#define IM_FMTLIST(FMT)
-#define TFX_ALIGN_AFFIX(v)			
-#define TFX_PACKED_STRUCT
-#endif
-
 #include <stdint.h>
 
 //type defs
@@ -295,6 +278,8 @@ extern "C" {
 #define tfx__strcpy strcpy_s
 #define tfx__fseek _fseeki64
 #define tfx__ftell _ftelli64
+#define TFX_ALIGN_AFFIX(v)
+#define TFX_PACKED_STRUCT
 
 #elif defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)) && \
       (defined(__i386__) || defined(__x86_64__)) || defined(__clang__)
@@ -334,8 +319,10 @@ extern "C" {
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__strcpy strcpy
-#define tfx__fseek fseeko
-#define tfx__ftell ftello
+#define tfx__fseek
+#define tfx__fseek
+#define TFX_ALIGN_AFFIX(v)			__attribute__((aligned(v)))
+#define TFX_PACKED_STRUCT			__attribute__((packed))
 
 #endif
 
@@ -2327,8 +2314,8 @@ struct tfx_str_t {
 	inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
 	void AddLine(const char *format, ...);
 	void Setf(const char *format, ...);
-	void Appendf(const char *format, ...)			IM_FMTARGS(2);
-	void Appendv(const char *format, va_list args)	IM_FMTLIST(2);
+	void Appendf(const char* format, ...);
+	void Appendv(const char* format, va_list args);
 	inline void Append(char c) {
 		if (current_size) {
 			pop();
