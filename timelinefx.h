@@ -4845,13 +4845,13 @@ struct alignas(16) tfx_sprite_data3d_t {	//60 bytes aligning to 64
 	tfx_vec3_t position;
 	float lerp_offset;
 	tfx_vec3_t rotations;
+	float stretch;
 	tfx_vec2_t scale;
 	tfxU32 property_indexes;
 	tfxU32 captured_index;
+	tfxU32 alignment;
 	tfx_rgba8_t color;
 	float intensity;
-	float stretch;
-	tfxU32 alignment;
 	//Free space for extra 4 bytes if needed
 };
 

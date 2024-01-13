@@ -8162,11 +8162,6 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			sprite.color = sprites.color[i];
 			sprite.property_indexes = sprites.property_indexes[i];
 			tfxU32 property_index = sprite.property_indexes & 0x0000FFFF;
-			//tfx_image_data_t &image = *effect->library->emitter_properties[property_index].image;
-			//Temporary while debugging:
-			//sprite.lookup_indexes = image.compute_shape_index + ((sprites.property_indexes[i] & 0x00FF0000) >> 16);
-			//sprite.lookup_indexes += (sprite.property_indexes & 0x0000FFFF) << 16;
-			//-------------------------
 			sprite.property_indexes &= ~0x0000FFFF;
 			sprite.property_indexes += effect->library->emitter_properties[property_index].animation_property_index;
 			sprite.intensity = sprites.intensity[i];
@@ -8189,11 +8184,6 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			sprite.color = sprites.color[i];
 			sprite.property_indexes = sprites.property_indexes[i];
 			tfxU32 property_index = sprite.property_indexes & 0x0000FFFF;
-			//tfx_image_data_t &image = *effect->library->emitter_properties[property_index].image;
-			//Temporary while debugging:
-			//sprite.lookup_indexes = image.compute_shape_index + ((sprites.property_indexes[i] & 0x00FF0000) >> 16);
-			//sprite.lookup_indexes += (sprite.property_indexes & 0x0000FFFF) << 16;
-			//-------------------------
 			sprite.property_indexes &= ~0x0000FFFF;
 			sprite.property_indexes += effect->library->emitter_properties[property_index].animation_property_index;
 			sprite.intensity = sprites.intensity[i];
