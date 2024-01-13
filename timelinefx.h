@@ -320,7 +320,7 @@ extern "C" {
 	}
 
 	static inline uint32_t tfx__increment(uint32_t volatile* target) {
-		return _InterlockedIncrement(target);
+		return __sync_add_and_fetch(target, 1);
 	}
 
 #endif
