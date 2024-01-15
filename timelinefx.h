@@ -45,6 +45,7 @@
 #endif
 
 #include <stdint.h>
+#include <math.h>
 
 //type defs
 typedef uint32_t tfxU32;
@@ -319,8 +320,8 @@ extern "C" {
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__strcpy strcpy
-#define tfx__fseek
-#define tfx__fseek
+#define tfx__fseek fseeko
+#define tfx__ftell ftello
 #define TFX_ALIGN_AFFIX(v)			__attribute__((aligned(v)))
 #define TFX_PACKED_STRUCT			__attribute__((packed))
 
@@ -788,7 +789,6 @@ extern "C" {
 //Implementation
 #if defined(TFX_ALLOCATOR_IMPLEMENTATION)
 
-#include <math.h>
 #include <limits.h>
 #include <stddef.h>
 #include <string.h>
@@ -2300,7 +2300,7 @@ struct tfx_str_t {
 
 	tfx_str_t(const char *text) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	tfx_str_t(const tfx_str_t &src) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
-	inline void operator=(const char *text) { size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+    inline void operator=(const char *text) { if(!text) { free_all(); return;} size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const tfx_str_t& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
 	inline bool operator==(const tfx_str_t string) { return !strcmp(c_str(), string.c_str()); }
@@ -5715,7 +5715,7 @@ tfxAPI_EDITOR tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t 
 tfxAPI_EDITOR tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax, bool clamp = true);
 tfxAPI_EDITOR float GetBezierValue(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
 tfxAPI_EDITOR float GetDistance(float fromx, float fromy, float tox, float toy);
-tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2f(x, -y); }
+tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2(x, -y); }
 tfxAPI_EDITOR bool CompareNodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxAPI_EDITOR void CompileGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void CompileGraphOvertime(tfx_graph_t *graph);
