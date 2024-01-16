@@ -6810,7 +6810,7 @@ Set the position of a 3d animation
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 * @param position				A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float position[3]);
+tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float position[3]);
 
 /*
 Set the position of a 2d animation
@@ -6819,7 +6819,7 @@ Set the position of a 2d animation
 * @param x						A float of the x position
 * @param y						A float of the y position
 */
-tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float x, float y);
+tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float x, float y);
 
 /*
 Set the scale of a 3d animation
@@ -6827,7 +6827,15 @@ Set the scale of a 3d animation
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 * @param scale					A multiplier that will determine the overal size/scale of the effect
 */
-tfxAPI void SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float scale);
+tfxAPI void SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float scale);
+
+/*
+Get an animation instance from an animation manager
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
+* @param tfxAnimationID			The index of the effect. This is the index returned when calling AddAnimationInstance
+* @returns pointer to instance	Pointer to a tfx_animation_instance_t
+*/
+tfxAPI tfx_animation_instance_t *GetAnimationInstance(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id);
 
 /*
 Initialise an Animation Manager for use with 3d sprites. This must be run before using an animation manager. An animation manager is used

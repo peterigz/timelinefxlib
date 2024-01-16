@@ -13311,7 +13311,7 @@ void FreeSpriteData(tfx_sprite_data_t *sprite_data) {
 }
 
 bool ValidEffectID(tfx_particle_manager_t *pm, tfxEffectID id) {
-	return  id != tfxINVALID && pm->effects.capacity > id;
+	return id != tfxINVALID && pm->effects.capacity > id;
 }
 
 void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
@@ -13475,6 +13475,10 @@ void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimati
 	animation_manager->instances[effect_index].position.x = position[0];
 	animation_manager->instances[effect_index].position.y = position[1];
 	animation_manager->instances[effect_index].position.z = position[2];
+}
+
+tfx_animation_instance_t *GetAnimationInstance(tfx_animation_manager_t* animation_manager, tfxAnimationID animation_id) {
+	return &animation_manager->instances[animation_id];
 }
 
 void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float x, float y) {
