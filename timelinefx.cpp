@@ -8346,6 +8346,7 @@ void ResetAnimationManager(tfx_animation_manager_t *animation_manager) {
 	animation_manager->sprite_data_3d.clear();
 	animation_manager->emitter_properties.clear();
 	animation_manager->effect_animation_info.Clear();
+	animation_manager->particle_shapes.Clear();
 
 	animation_manager->buffer_metrics.instances_size = 0;
 	animation_manager->buffer_metrics.instances_size_in_bytes = 0;
