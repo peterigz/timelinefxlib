@@ -13356,10 +13356,10 @@ void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *librar
 	pm->effects.set_alignment(16);
 	pm->emitters.reserve(pm->max_effects);
 	pm->effects.reserve(pm->max_effects);
-	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
-	pm->spawn_work.reserve(1000);
-	pm->control_work.reserve(1000);
-	pm->age_work.reserve(1000);
+	pm->particle_indexes.reserve(effects_limit);	//todo: Handle this better.
+	pm->spawn_work.reserve(effects_limit);
+	pm->control_work.reserve(effects_limit);
+	pm->age_work.reserve(effects_limit);
 	memset(pm->active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
 }
 

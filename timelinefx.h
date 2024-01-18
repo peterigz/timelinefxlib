@@ -3448,7 +3448,7 @@ tfxINTERNAL inline void InitialiseThreadQueues(tfx_queue_processor_t *queues) {
 tfxINTERNAL inline tfx_work_queue_t *tfxGetQueueWithWork(tfx_queue_processor_t *thread_processor) {
 	std::unique_lock<std::mutex> lock(thread_processor->mutex);
 	thread_processor->full_condition.wait(lock, [&]() { return thread_processor->count > 0; });
-	tfx_work_queue_t *queue = thread_processor->queues[thread_processor->count--];
+	tfx_work_queue_t *queue = thread_processor->queues[--thread_processor->count];
 	thread_processor->empty_condition.notify_one();
 	return queue;
 }
@@ -3465,7 +3465,7 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 
 	if (queue) {
 		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUES;
 
 		if (original_read_entry != queue->next_write_entry) {
 			tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -3480,7 +3480,7 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 
 tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
 	tfxU32 original_read_entry = queue->next_read_entry;
-	tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+	tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUES;
 
 	if (original_read_entry != queue->next_write_entry) {
 		tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -3498,7 +3498,7 @@ tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data
 		return;
 	}
 
-	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_QUEUES;
 	while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
 		//We can do this because we're single producer
 		tfxDoNextWorkQueueEntry(queue);
