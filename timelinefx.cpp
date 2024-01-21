@@ -1448,7 +1448,6 @@ int tfx_str_t::Find(const char *needle) {
 	compare = compare.Lower();
 	if (compare.Length() > Length()) return -1;
 	tfxU32 pos = 0;
-	int found = 0;
 	while (compare.Length() + pos <= Length()) {
 		if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) {
 			return pos;
