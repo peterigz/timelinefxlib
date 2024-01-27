@@ -2261,7 +2261,6 @@ void ResetEffectGraphs(tfx_effect_emitter_t *effect, bool add_node, bool compile
 	ResetGraph(&library->global_graphs[global].stretch, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].stretch.type = tfxGlobal_stretch;
 	ResetGraph(&library->global_graphs[global].overal_scale, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].overal_scale.type = tfxGlobal_overal_scale;
 	ResetGraph(&library->global_graphs[global].intensity, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].intensity.type = tfxGlobal_intensity;
-	ResetGraph(&library->global_graphs[global].frame_rate, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].frame_rate.type = tfxGlobal_frame_rate;
 	ResetGraph(&library->global_graphs[global].splatter, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].splatter.type = tfxGlobal_splatter;
 	ResetGraph(&library->global_graphs[global].emitter_width, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].emitter_width.type = tfxGlobal_emitter_width;
 	ResetGraph(&library->global_graphs[global].emitter_height, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].emitter_height.type = tfxGlobal_emitter_height;
@@ -2390,7 +2389,6 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->global_graphs[global].stretch.nodes.size() == 0) ResetGraph(&library->global_graphs[global].stretch, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].overal_scale.nodes.size() == 0) ResetGraph(&library->global_graphs[global].overal_scale, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].intensity.nodes.size() == 0) ResetGraph(&library->global_graphs[global].intensity, 1.f, tfxGlobalPercentPreset);
-		if (library->global_graphs[global].frame_rate.nodes.size() == 0) ResetGraph(&library->global_graphs[global].frame_rate, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].splatter.nodes.size() == 0) ResetGraph(&library->global_graphs[global].splatter, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].emitter_width.nodes.size() == 0) ResetGraph(&library->global_graphs[global].emitter_width, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].emitter_height.nodes.size() == 0) ResetGraph(&library->global_graphs[global].emitter_height, 1.f, tfxGlobalPercentPreset);
@@ -2803,7 +2801,6 @@ void FreeEffectGraphs(tfx_effect_emitter_t *effect) {
 		FreeGraph(&library->global_graphs[global].stretch);
 		FreeGraph(&library->global_graphs[global].overal_scale);
 		FreeGraph(&library->global_graphs[global].intensity);
-		FreeGraph(&library->global_graphs[global].frame_rate);
 		FreeGraph(&library->global_graphs[global].splatter);
 		FreeGraph(&library->global_graphs[global].emitter_width);
 		FreeGraph(&library->global_graphs[global].emitter_height);
@@ -2929,7 +2926,6 @@ void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 buck
 	attributes->stretch.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->overal_scale.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->frame_rate.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->splatter.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->emitter_width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->emitter_height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
@@ -2947,7 +2943,6 @@ void FreeGlobalAttributes(tfx_global_attributes_t *attributes) {
 	FreeGraph(&attributes->stretch);
 	FreeGraph(&attributes->overal_scale);
 	FreeGraph(&attributes->intensity);
-	FreeGraph(&attributes->frame_rate);
 	FreeGraph(&attributes->splatter);
 	FreeGraph(&attributes->emitter_width);
 	FreeGraph(&attributes->emitter_height);
@@ -2966,7 +2961,6 @@ void CopyGlobalAttributesNoLookups(tfx_global_attributes_t *src, tfx_global_attr
 	CopyGraphNoLookups(&src->stretch, &dst->stretch);
 	CopyGraphNoLookups(&src->overal_scale, &dst->overal_scale);
 	CopyGraphNoLookups(&src->intensity, &dst->intensity);
-	CopyGraphNoLookups(&src->frame_rate, &dst->frame_rate);
 	CopyGraphNoLookups(&src->splatter, &dst->splatter);
 	CopyGraphNoLookups(&src->emitter_width, &dst->emitter_width);
 	CopyGraphNoLookups(&src->emitter_height, &dst->emitter_height);
@@ -2985,7 +2979,6 @@ void CopyGlobalAttributes(tfx_global_attributes_t *src, tfx_global_attributes_t 
 	CopyGraph(&src->stretch, &dst->stretch);
 	CopyGraph(&src->overal_scale, &dst->overal_scale);
 	CopyGraph(&src->intensity, &dst->intensity);
-	CopyGraph(&src->frame_rate, &dst->frame_rate);
 	CopyGraph(&src->splatter, &dst->splatter);
 	CopyGraph(&src->emitter_width, &dst->emitter_width);
 	CopyGraph(&src->emitter_height, &dst->emitter_height);
@@ -3701,7 +3694,6 @@ tfxU32 CountLibraryGlobalLookUpValues(tfx_library_t *library, tfxU32 index) {
 	count += global.stretch.lookup.values.capacity;
 	count += global.overal_scale.lookup.values.capacity;
 	count += global.intensity.lookup.values.capacity;
-	count += global.frame_rate.lookup.values.capacity;
 	count += global.splatter.lookup.values.capacity;
 	count += global.emitter_width.lookup.values.capacity;
 	count += global.emitter_height.lookup.values.capacity;
@@ -4136,7 +4128,6 @@ void CompileLibraryGraphsOfEffect(tfx_library_t *library, tfx_effect_emitter_t *
 void CompileAllLibraryGraphs(tfx_library_t *library) {
 	for (auto &g : library->global_graphs) {
 		CompileGraph(&g.amount);
-		CompileGraph(&g.frame_rate);
 		CompileGraph(&g.height);
 		CompileGraph(&g.width);
 		CompileGraph(&g.life);
@@ -4211,7 +4202,6 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 void CompileLibraryGlobalGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_global_attributes_t &g = library->global_graphs[index];
 	CompileGraph(&g.amount);
-	CompileGraph(&g.frame_rate);
 	CompileGraph(&g.height);
 	CompileGraph(&g.width);
 	CompileGraph(&g.life);
@@ -4320,7 +4310,6 @@ void SetLibraryMinMaxData(tfx_library_t *library) {
 	library->graph_min_max[tfxGlobal_stretch] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_overal_scale] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_intensity] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
-	library->graph_min_max[tfxGlobal_frame_rate] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_splatter] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_emitter_width] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_emitter_height] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
@@ -4683,7 +4672,6 @@ int ValidateEffectPackage(const char *filename) {
 void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *values) {
 	if (values->size() > 0) {
 		if ((*values)[0] == "global_amount") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].amount, &n); }
-		if ((*values)[0] == "global_frame_rate") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].frame_rate, &n); }
 		if ((*values)[0] == "global_height") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].height, &n); }
 		if ((*values)[0] == "global_width") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].width, &n); }
 		if ((*values)[0] == "global_life") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].life, &n); }
@@ -8693,7 +8681,7 @@ void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index) {
 void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	tfxPROFILE;
 
-	assert(elapsed_time >= 0);	//Time can only flow 
+	assert(elapsed_time >= 0);	//Time can only flow. (Just return here, no need to update if no time has passed)
 
 	tfxCompleteAllWork(&pm->work_queue);
 
@@ -12809,7 +12797,7 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 
 	if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != tfxPoint) {
 		if ((properties.emission_type == tfxEllipse || properties.emission_type == tfxIcosphere) && emitter.property_flags & tfxEmitterPropertyFlags_is_3d)
-			emitter.handle = emitter.emitter_size * 0.f;
+			emitter.handle = {};
 		else if (emitter.property_flags & tfxEmitterPropertyFlags_is_3d)
 			emitter.handle = emitter.emitter_size * -0.5f;
 		else if (properties.emission_type == tfxLine)

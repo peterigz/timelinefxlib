@@ -1710,7 +1710,7 @@ enum tfx_graph_category : unsigned int {
 };
 
 
-#define TFX_GLOBAL_COUNT  15
+#define TFX_GLOBAL_COUNT  14
 #define	TFX_PROPERTY_COUNT  9
 #define	TFX_BASE_COUNT  8
 #define	TFX_VARIATION_COUNT  9
@@ -1736,7 +1736,6 @@ enum tfx_graph_type : unsigned char {
 	tfxGlobal_stretch,
 	tfxGlobal_overal_scale,
 	tfxGlobal_intensity,
-	tfxGlobal_frame_rate,
 	tfxGlobal_splatter,
 	tfxGlobal_emitter_width,
 	tfxGlobal_emitter_height,
@@ -4293,7 +4292,6 @@ struct tfx_global_attributes_t {
 	tfx_graph_t stretch;
 	tfx_graph_t overal_scale;
 	tfx_graph_t intensity;
-	tfx_graph_t frame_rate;
 	tfx_graph_t splatter;
 	tfx_graph_t emitter_width;
 	tfx_graph_t emitter_height;
