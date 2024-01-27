@@ -3813,7 +3813,7 @@ void AddLibraryEffectGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect
 
 tfxU32 AddLibrarySpriteSheetSettings(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	assert(effect->type == tfxEffectType);
-	tfx_sprite_sheet_settings_t a;
+	tfx_sprite_sheet_settings_t a{};
 	a.frames = 32;
 	a.current_frame = 1;
 	a.frame_offset = 0;
@@ -3851,7 +3851,7 @@ tfxU32 AddLibrarySpriteSheetSettings(tfx_library_t *library, tfx_effect_emitter_
 
 void AddLibrarySpriteSheetSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	if (effect->type == tfxEffectType) {
-		tfx_sprite_sheet_settings_t a;
+		tfx_sprite_sheet_settings_t a{};
 		a.frames = 32;
 		a.current_frame = 1;
 		a.frame_offset = 0;
@@ -3894,7 +3894,7 @@ void AddLibrarySpriteSheetSettingsSub(tfx_library_t *library, tfx_effect_emitter
 
 tfxU32 AddLibrarySpriteDataSettings(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	assert(effect->type == tfxEffectType);
-	tfx_sprite_data_settings_t a;
+	tfx_sprite_data_settings_t a{};
 	a.real_frames = 32;
 	a.frames_after_compression = 32;
 	a.current_frame = 1;
@@ -3920,7 +3920,7 @@ tfxU32 AddLibrarySpriteDataSettings(tfx_library_t *library, tfx_effect_emitter_t
 
 void AddLibrarySpriteDataSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	if (effect->type == tfxEffectType) {
-		tfx_sprite_data_settings_t a;
+		tfx_sprite_data_settings_t a{};
 		a.real_frames = 32;
 		a.frames_after_compression = 32;
 		a.current_frame = 1;
@@ -3943,7 +3943,7 @@ void AddLibrarySpriteDataSettingsSub(tfx_library_t *library, tfx_effect_emitter_
 
 tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	assert(effect->type == tfxEffectType || effect->type == tfxStage);
-	tfx_preview_camera_settings_t a;
+	tfx_preview_camera_settings_t a{};
 	a.camera_settings.camera_floor_height = -10.f;
 	a.camera_settings.camera_fov = DegreesToRadians(60);
 	a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
@@ -3961,7 +3961,7 @@ tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library, tfx_effect_emitte
 }
 
 tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library) {
-	tfx_preview_camera_settings_t a;
+	tfx_preview_camera_settings_t a{};
 	a.camera_settings.camera_floor_height = -10.f;
 	a.camera_settings.camera_fov = DegreesToRadians(60);
 	a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
@@ -3978,7 +3978,7 @@ tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library) {
 }
 
 tfxU32 AddLibraryEffectEmitterInfo(tfx_library_t *library) {
-	tfx_effect_emitter_info_t info;
+	tfx_effect_emitter_info_t info{};
 	if (library->free_infos.size()) {
 		return library->free_infos.pop_back();
 	}
@@ -3990,7 +3990,7 @@ tfxU32 AddLibraryEmitterProperties(tfx_library_t *library) {
 	if (library->free_properties.size()) {
 		return library->free_properties.pop_back();
 	}
-	tfx_emitter_properties_t properties;
+	tfx_emitter_properties_t properties{};
 	library->emitter_properties.push_back(properties);
 	return library->emitter_properties.current_size - 1;
 }
@@ -4468,6 +4468,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("image_handle_x", tfxFloat);
 	names_and_types.Insert("image_handle_y", tfxFloat);
 	names_and_types.Insert("spawn_amount", tfxUint);
+	names_and_types.Insert("spawn_amount_variation", tfxUint);
 	names_and_types.Insert("single_shot_limit", tfxUint);
 	names_and_types.Insert("blend_mode", tfxSInt);
 	names_and_types.Insert("image_start_frame", tfxFloat);
@@ -4885,6 +4886,8 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 		emitter_properties->image_index = value;
 	if (*field == "spawn_amount")
 		emitter_properties->spawn_amount = value;
+	if (*field == "spawn_amount_variation")
+		emitter_properties->spawn_amount_variation = value;
 	if (*field == "frames")
 		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frames = value;
 	if (*field == "current_frame")
@@ -5138,7 +5141,6 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
 }
 
 void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file) {
-
 	file->AddLine("image_hash=%llu", property->image_hash);
 	file->AddLine("image_handle_x=%f", property->image_handle.x);
 	file->AddLine("image_handle_y=%f", property->image_handle.y);
@@ -5151,6 +5153,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("image_random_start_frame=%i", (flags & tfxEmitterPropertyFlags_random_start_frame));
 	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
 	file->AddLine("spawn_amount=%i", property->spawn_amount);
+	file->AddLine("spawn_amount_variation=%i", property->spawn_amount_variation);
 	file->AddLine("emission_type=%i", property->emission_type);
 	file->AddLine("emission_direction=%i", property->emission_direction);
 	file->AddLine("grid_rows=%f", property->grid_points.x);
@@ -5188,7 +5191,6 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("billboard_option=%i", property->billboard_option);
 	file->AddLine("vector_align_type=%i", property->vector_align_type);
 	file->AddLine("layer=%i", property->layer);
-
 }
 
 void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file) {
@@ -10827,7 +10829,7 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_sta
 		emitter.spawn_quantity *= lookup_callback(&pm->library->global_graphs[parent->global_attributes].amount, emitter.frame);
 	}
 	else {
-		emitter.spawn_quantity = (float)properties->spawn_amount;
+		emitter.spawn_quantity = (float)properties->spawn_amount + RandomRange(&random, (float)properties->spawn_amount_variation);
 		emitter.spawn_quantity *= lookup_callback(&pm->library->global_graphs[parent->global_attributes].amount, emitter.frame);
 	}
 

@@ -1698,6 +1698,14 @@ enum tfx_graph_category : unsigned int {
 	tfxGraphCategory_base,
 	tfxGraphCategory_variation,
 	tfxGraphCategory_overtime,
+	tfxGraphCategory_lifetime,
+	tfxGraphCategory_spawn_rate,
+	tfxGraphCategory_size,
+	tfxGraphCategory_velocity,
+	tfxGraphCategory_weight,
+	tfxGraphCategory_spin,
+	tfxGraphCategory_noise,
+	tfxGraphCategory_color,
 	tfxGraphCategory_max
 };
 
@@ -4524,6 +4532,8 @@ struct tfx_emitter_properties_t {
 	tfx_vec3_t emitter_handle;
 	//When single flag is set, spawn this amount of particles in one go
 	tfxU32 spawn_amount;
+	//When single flag is set, spawn this variable amount of particles in one go
+	tfxU32 spawn_amount_variation;
 	//The shape being used for all particles spawned from the emitter (deprecated, hash now used instead)
 	tfxU32 image_index;
 	//The shape being used for all particles spawned from the emitter
