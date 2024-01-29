@@ -4,6 +4,7 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
+//#define TFX_EXTRA_DEBUGGING
 //#define tfxUSEAVX
 
 /*

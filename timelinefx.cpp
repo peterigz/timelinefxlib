@@ -958,10 +958,14 @@ tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
+	tfx__readbarrier;
+
 	tfx128 mrow1 = _mm_load_ps(&mat->v[0].c0);
 	tfx128 mrow2 = _mm_load_ps(&mat->v[1].c0);
 	tfx128 mrow3 = _mm_load_ps(&mat->v[2].c0);
 	tfx128 mrow4 = _mm_load_ps(&mat->v[3].c0);
+
+	tfx__readbarrier;
 
 	tfx128 row1result = _mm_mul_ps(v4, mrow1);
 	tfx128 row2result = _mm_mul_ps(v4, mrow2);
@@ -1009,10 +1013,14 @@ tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
 
 	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
 
+	tfx__readbarrier;
+
 	tfx128 mrow1 = _mm_load_ps(&mat->v[0].x);
 	tfx128 mrow2 = _mm_load_ps(&mat->v[1].x);
 	tfx128 mrow3 = _mm_load_ps(&mat->v[2].x);
 	tfx128 mrow4 = _mm_load_ps(&mat->v[3].x);
+
+	tfx__readbarrier;
 
 	tfx128 row1result = _mm_mul_ps(v4, mrow1);
 	tfx128 row2result = _mm_mul_ps(v4, mrow2);
