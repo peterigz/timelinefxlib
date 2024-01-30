@@ -4948,8 +4948,6 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int 
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t &value) {
 	if (*field == "name") {
 		GetEffectInfo(effect)->name = value;
-		auto &test = GetEffectInfo(effect)->name;
-		int d = 0;
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, float value) {
@@ -7518,6 +7516,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
 		ToggleSpritesWithUID(pm, true);
 	}
+	pm->unique_particle_id = 0;
 	SetSeed(pm, anim.seed);
 	tfxU32 preview_effect_index = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0, 0.f);
 	tfx_vec3_t pm_camera_position = pm->camera_position;
@@ -7588,8 +7587,9 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 			if (!particles_processed_last_frame)
 				break;
 		}
-		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames)
+		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames) {
 			DisablePMSpawning(pm, true);
+		}
 	}
 
 	frames = tmp_frame_meta.size();
@@ -7621,11 +7621,11 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	memcpy(frame_meta.data, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
 	tmp_frame_meta.free_all();
 
-	tfxU32 last_count = 0;
+	tfxU32 last_count[tfxLAYERS] = {};
 	for (auto &meta : frame_meta) {
 		for (tfxEachLayer) {
-			meta.index_offset[layer] = last_count;
-			last_count += meta.sprite_count[layer];
+			meta.index_offset[layer] = last_count[layer];
+			last_count[layer] += meta.sprite_count[layer];
 		}
 	}
 
@@ -7688,6 +7688,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	DisablePMSpawning(pm, false);
 	total_sprites = 0;
 	tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
+	pm->unique_particle_id = 0;
 
 	while (frame < frames && offset < 99999) {
 		tfxU32 count_this_frame = 0;
@@ -7707,7 +7708,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 					memcpy(temp_sprites.property_indexes, sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
 					memcpy(temp_sprites.intensity, sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
 					memcpy(temp_sprites.alignment, sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
-					memcpy(temp_sprites.stretch, sprite_data->real_time_sprites.stretch, sizeof(float) * running_count[layer][frame]);
+					memcpy(temp_sprites.stretch, sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
 					if (is_3d) {
 						memcpy(temp_sprites.transform_3d, sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], sizeof(tfx_sprite_transform3d_t) * running_count[layer][frame]);
 					}
@@ -7735,6 +7736,8 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensity, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].stretch, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+				int index_offset = frame_meta[frame].index_offset[layer];
+				int current_size = pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 				if (is_3d) {
 					memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].transform_3d, sizeof(tfx_sprite_transform3d_t) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				}
@@ -13030,6 +13033,9 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	work_entry->overal_scale = pm->effects[emitter.parent_index].overal_scale;
 
 	if (amount_to_update > 0) {
+		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+			ControlParticleUID(&pm->work_queue, work_entry);
+		}
 		if (pm->flags & tfxEffectManagerFlags_3d_effects) {
 			ControlParticlePosition3d(&pm->work_queue, work_entry);
 		}
@@ -13039,9 +13045,6 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		ControlParticleSize(&pm->work_queue, work_entry);
 		ControlParticleColor(&pm->work_queue, work_entry);
 		ControlParticleImageFrame(&pm->work_queue, work_entry);
-		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
-			ControlParticleUID(&pm->work_queue, work_entry);
-		}
 	}
 }
 
