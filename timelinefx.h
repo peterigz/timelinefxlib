@@ -2611,6 +2611,10 @@ struct tfx_storage_map_t {
 		map.clear();
 	}
 
+	inline tfxKey MakeKey(const char* name) {
+		return tfxXXHash64::hash(name, strlen(name), 0);
+	}
+
 	inline void FreeAll() {
 		data.free_all();
 		map.free_all();
