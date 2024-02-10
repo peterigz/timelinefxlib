@@ -4,6 +4,7 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
+//#define TFX_EXTRA_DEBUGGING
 //#define tfxUSEAVX
 
 /*
@@ -45,6 +46,7 @@
 #endif
 
 #include <stdint.h>
+#include <math.h>
 
 //type defs
 typedef uint32_t tfxU32;
@@ -788,7 +790,6 @@ extern "C" {
 //Implementation
 #if defined(TFX_ALLOCATOR_IMPLEMENTATION)
 
-#include <math.h>
 #include <limits.h>
 #include <stddef.h>
 #include <string.h>
@@ -1698,11 +1699,19 @@ enum tfx_graph_category : unsigned int {
 	tfxGraphCategory_base,
 	tfxGraphCategory_variation,
 	tfxGraphCategory_overtime,
+	tfxGraphCategory_lifetime,
+	tfxGraphCategory_spawn_rate,
+	tfxGraphCategory_size,
+	tfxGraphCategory_velocity,
+	tfxGraphCategory_weight,
+	tfxGraphCategory_spin,
+	tfxGraphCategory_noise,
+	tfxGraphCategory_color,
 	tfxGraphCategory_max
 };
 
 
-#define TFX_GLOBAL_COUNT  15
+#define TFX_GLOBAL_COUNT  14
 #define	TFX_PROPERTY_COUNT  9
 #define	TFX_BASE_COUNT  8
 #define	TFX_VARIATION_COUNT  9
@@ -1728,7 +1737,6 @@ enum tfx_graph_type : unsigned char {
 	tfxGlobal_stretch,
 	tfxGlobal_overal_scale,
 	tfxGlobal_intensity,
-	tfxGlobal_frame_rate,
 	tfxGlobal_splatter,
 	tfxGlobal_emitter_width,
 	tfxGlobal_emitter_height,
@@ -2300,7 +2308,7 @@ struct tfx_str_t {
 
 	tfx_str_t(const char *text) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	tfx_str_t(const tfx_str_t &src) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
-	inline void operator=(const char *text) { size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+    inline void operator=(const char *text) { if(!text) { free_all(); return;} size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const tfx_str_t& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
 	inline bool operator==(const tfx_str_t string) { return !strcmp(c_str(), string.c_str()); }
@@ -2601,6 +2609,10 @@ struct tfx_storage_map_t {
 	inline void Clear() {
 		data.clear();
 		map.clear();
+	}
+
+	inline tfxKey MakeKey(const char* name) {
+		return tfxXXHash64::hash(name, strlen(name), 0);
 	}
 
 	inline void FreeAll() {
@@ -3448,7 +3460,7 @@ tfxINTERNAL inline void InitialiseThreadQueues(tfx_queue_processor_t *queues) {
 tfxINTERNAL inline tfx_work_queue_t *tfxGetQueueWithWork(tfx_queue_processor_t *thread_processor) {
 	std::unique_lock<std::mutex> lock(thread_processor->mutex);
 	thread_processor->full_condition.wait(lock, [&]() { return thread_processor->count > 0; });
-	tfx_work_queue_t *queue = thread_processor->queues[thread_processor->count--];
+	tfx_work_queue_t *queue = thread_processor->queues[--thread_processor->count];
 	thread_processor->empty_condition.notify_one();
 	return queue;
 }
@@ -3465,7 +3477,7 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 
 	if (queue) {
 		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUES;
 
 		if (original_read_entry != queue->next_write_entry) {
 			tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -3480,7 +3492,7 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 
 tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
 	tfxU32 original_read_entry = queue->next_read_entry;
-	tfxU32 new_original_read_entry = (original_read_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+	tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUES;
 
 	if (original_read_entry != queue->next_write_entry) {
 		tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -3498,7 +3510,7 @@ tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data
 		return;
 	}
 
-	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % (tfxU32)tfxArrayCount(queue->entries);
+	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_QUEUES;
 	while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
 		//We can do this because we're single producer
 		tfxDoNextWorkQueueEntry(queue);
@@ -4285,7 +4297,6 @@ struct tfx_global_attributes_t {
 	tfx_graph_t stretch;
 	tfx_graph_t overal_scale;
 	tfx_graph_t intensity;
-	tfx_graph_t frame_rate;
 	tfx_graph_t splatter;
 	tfx_graph_t emitter_width;
 	tfx_graph_t emitter_height;
@@ -4524,6 +4535,8 @@ struct tfx_emitter_properties_t {
 	tfx_vec3_t emitter_handle;
 	//When single flag is set, spawn this amount of particles in one go
 	tfxU32 spawn_amount;
+	//When single flag is set, spawn this variable amount of particles in one go
+	tfxU32 spawn_amount_variation;
 	//The shape being used for all particles spawned from the emitter (deprecated, hash now used instead)
 	tfxU32 image_index;
 	//The shape being used for all particles spawned from the emitter
@@ -5715,7 +5728,7 @@ tfxAPI_EDITOR tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t 
 tfxAPI_EDITOR tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax, bool clamp = true);
 tfxAPI_EDITOR float GetBezierValue(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
 tfxAPI_EDITOR float GetDistance(float fromx, float fromy, float tox, float toy);
-tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2f(x, -y); }
+tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2(x, -y); }
 tfxAPI_EDITOR bool CompareNodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxAPI_EDITOR void CompileGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void CompileGraphOvertime(tfx_graph_t *graph);
@@ -6810,7 +6823,7 @@ Set the position of a 3d animation
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 * @param position				A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float position[3]);
+tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float position[3]);
 
 /*
 Set the position of a 2d animation
@@ -6819,7 +6832,7 @@ Set the position of a 2d animation
 * @param x						A float of the x position
 * @param y						A float of the y position
 */
-tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float x, float y);
+tfxAPI void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float x, float y);
 
 /*
 Set the scale of a 3d animation
@@ -6827,7 +6840,15 @@ Set the scale of a 3d animation
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 * @param scale					A multiplier that will determine the overal size/scale of the effect
 */
-tfxAPI void SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float scale);
+tfxAPI void SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float scale);
+
+/*
+Get an animation instance from an animation manager
+* @param animation_manager		A pointer to a tfx_animation_manager_t where the effect animation is being managed
+* @param tfxAnimationID			The index of the effect. This is the index returned when calling AddAnimationInstance
+* @returns pointer to instance	Pointer to a tfx_animation_instance_t
+*/
+tfxAPI tfx_animation_instance_t *GetAnimationInstance(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id);
 
 /*
 Initialise an Animation Manager for use with 3d sprites. This must be run before using an animation manager. An animation manager is used

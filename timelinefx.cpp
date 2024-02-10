@@ -958,10 +958,14 @@ tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
 
 	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
 
+	tfx__readbarrier;
+
 	tfx128 mrow1 = _mm_load_ps(&mat->v[0].c0);
 	tfx128 mrow2 = _mm_load_ps(&mat->v[1].c0);
 	tfx128 mrow3 = _mm_load_ps(&mat->v[2].c0);
 	tfx128 mrow4 = _mm_load_ps(&mat->v[3].c0);
+
+	tfx__readbarrier;
 
 	tfx128 row1result = _mm_mul_ps(v4, mrow1);
 	tfx128 row2result = _mm_mul_ps(v4, mrow2);
@@ -1009,10 +1013,14 @@ tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
 
 	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
 
+	tfx__readbarrier;
+
 	tfx128 mrow1 = _mm_load_ps(&mat->v[0].x);
 	tfx128 mrow2 = _mm_load_ps(&mat->v[1].x);
 	tfx128 mrow3 = _mm_load_ps(&mat->v[2].x);
 	tfx128 mrow4 = _mm_load_ps(&mat->v[3].x);
+
+	tfx__readbarrier;
 
 	tfx128 row1result = _mm_mul_ps(v4, mrow1);
 	tfx128 row2result = _mm_mul_ps(v4, mrow2);
@@ -1448,7 +1456,6 @@ int tfx_str_t::Find(const char *needle) {
 	compare = compare.Lower();
 	if (compare.Length() > Length()) return -1;
 	tfxU32 pos = 0;
-	int found = 0;
 	while (compare.Length() + pos <= Length()) {
 		if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) {
 			return pos;
@@ -2262,7 +2269,6 @@ void ResetEffectGraphs(tfx_effect_emitter_t *effect, bool add_node, bool compile
 	ResetGraph(&library->global_graphs[global].stretch, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].stretch.type = tfxGlobal_stretch;
 	ResetGraph(&library->global_graphs[global].overal_scale, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].overal_scale.type = tfxGlobal_overal_scale;
 	ResetGraph(&library->global_graphs[global].intensity, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].intensity.type = tfxGlobal_intensity;
-	ResetGraph(&library->global_graphs[global].frame_rate, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].frame_rate.type = tfxGlobal_frame_rate;
 	ResetGraph(&library->global_graphs[global].splatter, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].splatter.type = tfxGlobal_splatter;
 	ResetGraph(&library->global_graphs[global].emitter_width, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].emitter_width.type = tfxGlobal_emitter_width;
 	ResetGraph(&library->global_graphs[global].emitter_height, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].emitter_height.type = tfxGlobal_emitter_height;
@@ -2391,7 +2397,6 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->global_graphs[global].stretch.nodes.size() == 0) ResetGraph(&library->global_graphs[global].stretch, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].overal_scale.nodes.size() == 0) ResetGraph(&library->global_graphs[global].overal_scale, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].intensity.nodes.size() == 0) ResetGraph(&library->global_graphs[global].intensity, 1.f, tfxGlobalPercentPreset);
-		if (library->global_graphs[global].frame_rate.nodes.size() == 0) ResetGraph(&library->global_graphs[global].frame_rate, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].splatter.nodes.size() == 0) ResetGraph(&library->global_graphs[global].splatter, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].emitter_width.nodes.size() == 0) ResetGraph(&library->global_graphs[global].emitter_width, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].emitter_height.nodes.size() == 0) ResetGraph(&library->global_graphs[global].emitter_height, 1.f, tfxGlobalPercentPreset);
@@ -2804,7 +2809,6 @@ void FreeEffectGraphs(tfx_effect_emitter_t *effect) {
 		FreeGraph(&library->global_graphs[global].stretch);
 		FreeGraph(&library->global_graphs[global].overal_scale);
 		FreeGraph(&library->global_graphs[global].intensity);
-		FreeGraph(&library->global_graphs[global].frame_rate);
 		FreeGraph(&library->global_graphs[global].splatter);
 		FreeGraph(&library->global_graphs[global].emitter_width);
 		FreeGraph(&library->global_graphs[global].emitter_height);
@@ -2930,7 +2934,6 @@ void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 buck
 	attributes->stretch.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->overal_scale.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->frame_rate.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->splatter.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->emitter_width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->emitter_height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
@@ -2948,7 +2951,6 @@ void FreeGlobalAttributes(tfx_global_attributes_t *attributes) {
 	FreeGraph(&attributes->stretch);
 	FreeGraph(&attributes->overal_scale);
 	FreeGraph(&attributes->intensity);
-	FreeGraph(&attributes->frame_rate);
 	FreeGraph(&attributes->splatter);
 	FreeGraph(&attributes->emitter_width);
 	FreeGraph(&attributes->emitter_height);
@@ -2967,7 +2969,6 @@ void CopyGlobalAttributesNoLookups(tfx_global_attributes_t *src, tfx_global_attr
 	CopyGraphNoLookups(&src->stretch, &dst->stretch);
 	CopyGraphNoLookups(&src->overal_scale, &dst->overal_scale);
 	CopyGraphNoLookups(&src->intensity, &dst->intensity);
-	CopyGraphNoLookups(&src->frame_rate, &dst->frame_rate);
 	CopyGraphNoLookups(&src->splatter, &dst->splatter);
 	CopyGraphNoLookups(&src->emitter_width, &dst->emitter_width);
 	CopyGraphNoLookups(&src->emitter_height, &dst->emitter_height);
@@ -2986,7 +2987,6 @@ void CopyGlobalAttributes(tfx_global_attributes_t *src, tfx_global_attributes_t 
 	CopyGraph(&src->stretch, &dst->stretch);
 	CopyGraph(&src->overal_scale, &dst->overal_scale);
 	CopyGraph(&src->intensity, &dst->intensity);
-	CopyGraph(&src->frame_rate, &dst->frame_rate);
 	CopyGraph(&src->splatter, &dst->splatter);
 	CopyGraph(&src->emitter_width, &dst->emitter_width);
 	CopyGraph(&src->emitter_height, &dst->emitter_height);
@@ -3702,7 +3702,6 @@ tfxU32 CountLibraryGlobalLookUpValues(tfx_library_t *library, tfxU32 index) {
 	count += global.stretch.lookup.values.capacity;
 	count += global.overal_scale.lookup.values.capacity;
 	count += global.intensity.lookup.values.capacity;
-	count += global.frame_rate.lookup.values.capacity;
 	count += global.splatter.lookup.values.capacity;
 	count += global.emitter_width.lookup.values.capacity;
 	count += global.emitter_height.lookup.values.capacity;
@@ -3814,7 +3813,7 @@ void AddLibraryEffectGraphs(tfx_library_t *library, tfx_effect_emitter_t *effect
 
 tfxU32 AddLibrarySpriteSheetSettings(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	assert(effect->type == tfxEffectType);
-	tfx_sprite_sheet_settings_t a;
+	tfx_sprite_sheet_settings_t a{};
 	a.frames = 32;
 	a.current_frame = 1;
 	a.frame_offset = 0;
@@ -3852,7 +3851,7 @@ tfxU32 AddLibrarySpriteSheetSettings(tfx_library_t *library, tfx_effect_emitter_
 
 void AddLibrarySpriteSheetSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	if (effect->type == tfxEffectType) {
-		tfx_sprite_sheet_settings_t a;
+		tfx_sprite_sheet_settings_t a{};
 		a.frames = 32;
 		a.current_frame = 1;
 		a.frame_offset = 0;
@@ -3895,7 +3894,7 @@ void AddLibrarySpriteSheetSettingsSub(tfx_library_t *library, tfx_effect_emitter
 
 tfxU32 AddLibrarySpriteDataSettings(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	assert(effect->type == tfxEffectType);
-	tfx_sprite_data_settings_t a;
+	tfx_sprite_data_settings_t a{};
 	a.real_frames = 32;
 	a.frames_after_compression = 32;
 	a.current_frame = 1;
@@ -3921,7 +3920,7 @@ tfxU32 AddLibrarySpriteDataSettings(tfx_library_t *library, tfx_effect_emitter_t
 
 void AddLibrarySpriteDataSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	if (effect->type == tfxEffectType) {
-		tfx_sprite_data_settings_t a;
+		tfx_sprite_data_settings_t a{};
 		a.real_frames = 32;
 		a.frames_after_compression = 32;
 		a.current_frame = 1;
@@ -3944,7 +3943,7 @@ void AddLibrarySpriteDataSettingsSub(tfx_library_t *library, tfx_effect_emitter_
 
 tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 	assert(effect->type == tfxEffectType || effect->type == tfxStage);
-	tfx_preview_camera_settings_t a;
+	tfx_preview_camera_settings_t a{};
 	a.camera_settings.camera_floor_height = -10.f;
 	a.camera_settings.camera_fov = DegreesToRadians(60);
 	a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
@@ -3962,7 +3961,7 @@ tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library, tfx_effect_emitte
 }
 
 tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library) {
-	tfx_preview_camera_settings_t a;
+	tfx_preview_camera_settings_t a{};
 	a.camera_settings.camera_floor_height = -10.f;
 	a.camera_settings.camera_fov = DegreesToRadians(60);
 	a.camera_settings.camera_pitch = DegreesToRadians(-30.f);
@@ -3979,7 +3978,7 @@ tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library) {
 }
 
 tfxU32 AddLibraryEffectEmitterInfo(tfx_library_t *library) {
-	tfx_effect_emitter_info_t info;
+	tfx_effect_emitter_info_t info{};
 	if (library->free_infos.size()) {
 		return library->free_infos.pop_back();
 	}
@@ -3991,7 +3990,7 @@ tfxU32 AddLibraryEmitterProperties(tfx_library_t *library) {
 	if (library->free_properties.size()) {
 		return library->free_properties.pop_back();
 	}
-	tfx_emitter_properties_t properties;
+	tfx_emitter_properties_t properties{};
 	library->emitter_properties.push_back(properties);
 	return library->emitter_properties.current_size - 1;
 }
@@ -4137,7 +4136,6 @@ void CompileLibraryGraphsOfEffect(tfx_library_t *library, tfx_effect_emitter_t *
 void CompileAllLibraryGraphs(tfx_library_t *library) {
 	for (auto &g : library->global_graphs) {
 		CompileGraph(&g.amount);
-		CompileGraph(&g.frame_rate);
 		CompileGraph(&g.height);
 		CompileGraph(&g.width);
 		CompileGraph(&g.life);
@@ -4212,7 +4210,6 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 void CompileLibraryGlobalGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_global_attributes_t &g = library->global_graphs[index];
 	CompileGraph(&g.amount);
-	CompileGraph(&g.frame_rate);
 	CompileGraph(&g.height);
 	CompileGraph(&g.width);
 	CompileGraph(&g.life);
@@ -4321,7 +4318,6 @@ void SetLibraryMinMaxData(tfx_library_t *library) {
 	library->graph_min_max[tfxGlobal_stretch] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_overal_scale] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_intensity] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
-	library->graph_min_max[tfxGlobal_frame_rate] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_splatter] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_emitter_width] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_emitter_height] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
@@ -4469,6 +4465,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("image_handle_x", tfxFloat);
 	names_and_types.Insert("image_handle_y", tfxFloat);
 	names_and_types.Insert("spawn_amount", tfxUint);
+	names_and_types.Insert("spawn_amount_variation", tfxUint);
 	names_and_types.Insert("single_shot_limit", tfxUint);
 	names_and_types.Insert("blend_mode", tfxSInt);
 	names_and_types.Insert("image_start_frame", tfxFloat);
@@ -4683,7 +4680,6 @@ int ValidateEffectPackage(const char *filename) {
 void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *values) {
 	if (values->size() > 0) {
 		if ((*values)[0] == "global_amount") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].amount, &n); }
-		if ((*values)[0] == "global_frame_rate") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].frame_rate, &n); }
 		if ((*values)[0] == "global_height") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].height, &n); }
 		if ((*values)[0] == "global_width") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].width, &n); }
 		if ((*values)[0] == "global_life") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].life, &n); }
@@ -4886,6 +4882,8 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 		emitter_properties->image_index = value;
 	if (*field == "spawn_amount")
 		emitter_properties->spawn_amount = value;
+	if (*field == "spawn_amount_variation")
+		emitter_properties->spawn_amount_variation = value;
 	if (*field == "frames")
 		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frames = value;
 	if (*field == "current_frame")
@@ -4950,8 +4948,6 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int 
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t &value) {
 	if (*field == "name") {
 		GetEffectInfo(effect)->name = value;
-		auto &test = GetEffectInfo(effect)->name;
-		int d = 0;
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, float value) {
@@ -5139,7 +5135,6 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
 }
 
 void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file) {
-
 	file->AddLine("image_hash=%llu", property->image_hash);
 	file->AddLine("image_handle_x=%f", property->image_handle.x);
 	file->AddLine("image_handle_y=%f", property->image_handle.y);
@@ -5152,6 +5147,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("image_random_start_frame=%i", (flags & tfxEmitterPropertyFlags_random_start_frame));
 	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
 	file->AddLine("spawn_amount=%i", property->spawn_amount);
+	file->AddLine("spawn_amount_variation=%i", property->spawn_amount_variation);
 	file->AddLine("emission_type=%i", property->emission_type);
 	file->AddLine("emission_direction=%i", property->emission_direction);
 	file->AddLine("grid_rows=%f", property->grid_points.x);
@@ -5189,7 +5185,6 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("billboard_option=%i", property->billboard_option);
 	file->AddLine("vector_align_type=%i", property->vector_align_type);
 	file->AddLine("layer=%i", property->layer);
-
 }
 
 void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file) {
@@ -7521,6 +7516,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	if (!(pm->flags & tfxEffectManagerFlags_using_uids)) {
 		ToggleSpritesWithUID(pm, true);
 	}
+	pm->unique_particle_id = 0;
 	SetSeed(pm, anim.seed);
 	tfxU32 preview_effect_index = AddEffectToParticleManager(pm, effect, pm->current_ebuff, 0, false, 0, 0.f);
 	tfx_vec3_t pm_camera_position = pm->camera_position;
@@ -7591,8 +7587,9 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 			if (!particles_processed_last_frame)
 				break;
 		}
-		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames)
+		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames) {
 			DisablePMSpawning(pm, true);
+		}
 	}
 
 	frames = tmp_frame_meta.size();
@@ -7624,11 +7621,11 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	memcpy(frame_meta.data, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
 	tmp_frame_meta.free_all();
 
-	tfxU32 last_count = 0;
+	tfxU32 last_count[tfxLAYERS] = {};
 	for (auto &meta : frame_meta) {
 		for (tfxEachLayer) {
-			meta.index_offset[layer] = last_count;
-			last_count += meta.sprite_count[layer];
+			meta.index_offset[layer] = last_count[layer];
+			last_count[layer] += meta.sprite_count[layer];
 		}
 	}
 
@@ -7691,6 +7688,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	DisablePMSpawning(pm, false);
 	total_sprites = 0;
 	tfxU32 captured_offset[tfxLAYERS] = { 0, 0, 0, 0 };
+	pm->unique_particle_id = 0;
 
 	while (frame < frames && offset < 99999) {
 		tfxU32 count_this_frame = 0;
@@ -7710,7 +7708,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 					memcpy(temp_sprites.property_indexes, sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
 					memcpy(temp_sprites.intensity, sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
 					memcpy(temp_sprites.alignment, sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
-					memcpy(temp_sprites.stretch, sprite_data->real_time_sprites.stretch, sizeof(float) * running_count[layer][frame]);
+					memcpy(temp_sprites.stretch, sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
 					if (is_3d) {
 						memcpy(temp_sprites.transform_3d, sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], sizeof(tfx_sprite_transform3d_t) * running_count[layer][frame]);
 					}
@@ -7738,6 +7736,8 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensity, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].stretch, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+				int index_offset = frame_meta[frame].index_offset[layer];
+				int current_size = pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 				if (is_3d) {
 					memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].transform_3d, sizeof(tfx_sprite_transform3d_t) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				}
@@ -8346,6 +8346,7 @@ void ResetAnimationManager(tfx_animation_manager_t *animation_manager) {
 	animation_manager->sprite_data_3d.clear();
 	animation_manager->emitter_properties.clear();
 	animation_manager->effect_animation_info.Clear();
+	animation_manager->particle_shapes.Clear();
 
 	animation_manager->buffer_metrics.instances_size = 0;
 	animation_manager->buffer_metrics.instances_size_in_bytes = 0;
@@ -8691,7 +8692,7 @@ void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index) {
 void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	tfxPROFILE;
 
-	assert(elapsed_time >= 0);	//Time can only flow 
+	assert(elapsed_time >= 0);	//Time can only flow. (Just return here, no need to update if no time has passed)
 
 	tfxCompleteAllWork(&pm->work_queue);
 
@@ -10827,7 +10828,7 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_sta
 		emitter.spawn_quantity *= lookup_callback(&pm->library->global_graphs[parent->global_attributes].amount, emitter.frame);
 	}
 	else {
-		emitter.spawn_quantity = (float)properties->spawn_amount;
+		emitter.spawn_quantity = (float)properties->spawn_amount + RandomRange(&random, (float)properties->spawn_amount_variation);
 		emitter.spawn_quantity *= lookup_callback(&pm->library->global_graphs[parent->global_attributes].amount, emitter.frame);
 	}
 
@@ -12807,7 +12808,7 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 
 	if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != tfxPoint) {
 		if ((properties.emission_type == tfxEllipse || properties.emission_type == tfxIcosphere) && emitter.property_flags & tfxEmitterPropertyFlags_is_3d)
-			emitter.handle = emitter.emitter_size * 0.f;
+			emitter.handle = {};
 		else if (emitter.property_flags & tfxEmitterPropertyFlags_is_3d)
 			emitter.handle = emitter.emitter_size * -0.5f;
 		else if (properties.emission_type == tfxLine)
@@ -13032,6 +13033,9 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	work_entry->overal_scale = pm->effects[emitter.parent_index].overal_scale;
 
 	if (amount_to_update > 0) {
+		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
+			ControlParticleUID(&pm->work_queue, work_entry);
+		}
 		if (pm->flags & tfxEffectManagerFlags_3d_effects) {
 			ControlParticlePosition3d(&pm->work_queue, work_entry);
 		}
@@ -13041,9 +13045,6 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		ControlParticleSize(&pm->work_queue, work_entry);
 		ControlParticleColor(&pm->work_queue, work_entry);
 		ControlParticleImageFrame(&pm->work_queue, work_entry);
-		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
-			ControlParticleUID(&pm->work_queue, work_entry);
-		}
 	}
 }
 
@@ -13311,7 +13312,7 @@ void FreeSpriteData(tfx_sprite_data_t *sprite_data) {
 }
 
 bool ValidEffectID(tfx_particle_manager_t *pm, tfxEffectID id) {
-	return  id != tfxINVALID && pm->effects.capacity > id;
+	return id != tfxINVALID && pm->effects.capacity > id;
 }
 
 void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size) {
@@ -13355,10 +13356,10 @@ void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *librar
 	pm->effects.set_alignment(16);
 	pm->emitters.reserve(pm->max_effects);
 	pm->effects.reserve(pm->max_effects);
-	pm->particle_indexes.reserve(1000);	//todo: Handle this better.
-	pm->spawn_work.reserve(1000);
-	pm->control_work.reserve(1000);
-	pm->age_work.reserve(1000);
+	pm->particle_indexes.reserve(effects_limit);	//todo: Handle this better.
+	pm->spawn_work.reserve(effects_limit);
+	pm->control_work.reserve(effects_limit);
+	pm->age_work.reserve(effects_limit);
 	memset(pm->active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
 }
 
@@ -13475,6 +13476,10 @@ void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimati
 	animation_manager->instances[effect_index].position.x = position[0];
 	animation_manager->instances[effect_index].position.y = position[1];
 	animation_manager->instances[effect_index].position.z = position[2];
+}
+
+tfx_animation_instance_t *GetAnimationInstance(tfx_animation_manager_t* animation_manager, tfxAnimationID animation_id) {
+	return &animation_manager->instances[animation_id];
 }
 
 void SetAnimationPosition(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float x, float y) {
