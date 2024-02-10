@@ -10671,6 +10671,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	emitter.state_flags |= parent_effect.state_flags & tfxEffectStateFlags_remove;
 	spawn_work_entry->parent_spawn_controls = &parent_effect.spawn_controls;
 	spawn_work_entry->parent_property_flags = parent_effect.property_flags;
+	spawn_work_entry->parent_index = emitter.parent_index;
 	spawn_work_entry->overal_scale = parent_effect.overal_scale;
 	UpdateEmitterState(pm, emitter, emitter.parent_index, spawn_work_entry->parent_spawn_controls, spawn_work_entry);
 
