@@ -9501,16 +9501,15 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 				tfx128 y4 = _mm_set1_ps(y.a[n]);
 
 				tfx128 xeps4 = _mm_set_ps(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);
-				tfx128 yeps4 = _mm_set_ps(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);
 
-				tfx128Array sample = tfxNoise4_2d(x4, yeps4);
+				tfx128Array sample = tfxNoise4_2d(xeps4, y4);
 				float a = (sample.a[0] - sample.a[1]) / eps2;
 				float b = (sample.a[2] - sample.a[3]) / eps2;
 				noise_x.a[n] = a - b;
 
 				y.a[n] += 100.f;
 				tfx128 yeps4r = _mm_set_ps(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
-				sample = tfxNoise4_2d(xeps4, y4);
+				sample = tfxNoise4_2d(x4, yeps4r);
 				a = (sample.a[0] - sample.a[1]) / eps2;
 				b = (sample.a[2] - sample.a[3]) / eps2;
 				noise_y.a[n] = a - b;
