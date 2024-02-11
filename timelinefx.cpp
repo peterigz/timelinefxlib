@@ -5866,12 +5866,14 @@ void ValidateGraphCurves(tfx_graph_t *graph) {
 
 void DeleteGraphNode(tfx_graph_t *graph, tfx_attribute_node_t *n) {
 	graph->nodes.erase(n);
+	ReIndexGraph(graph);
 }
 
 void DeleteGraphNodeAtFrame(tfx_graph_t *graph, float frame) {
 	for (tfxBucketLoop(graph->nodes)) {
 		if (graph->nodes[i].frame == frame) {
 			graph->nodes.erase(&graph->nodes[i]);
+			ReIndexGraph(graph);
 			return;
 		}
 	}
