@@ -1117,6 +1117,24 @@ tfxU32 Pack16bit(float x, float y) {
 	return u.out;
 }
 
+tfxU32 Pack8bit(tfx_vec3_t v) {
+	union
+	{
+		signed char in[3];
+		tfxU32 out;
+	} u;
+
+	v.x = tfxClampf(-1.f, 1.f, v.x) * 127.f;
+	v.y = tfxClampf(-1.f, 1.f, v.y) * 127.f;
+	v.z = tfxClampf(-1.f, 1.f, v.z) * 127.f;
+
+	u.in[0] = (signed char)v.x;
+	u.in[1] = (signed char)v.y;
+	u.in[2] = (signed char)v.z;
+
+	return u.out;
+}
+
 tfxU32 Pack16bitUnsigned(float x, float y) {
 	union
 	{
@@ -1290,6 +1308,17 @@ tfx_vec4_t UnPack10bit(tfxU32 in) {
 	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
 	result = result * tfx_vec3_t(TFXONE_DIV_511, TFXONE_DIV_511, TFXONE_DIV_511);
 	return tfx_vec4_t(result, (float)unpack.data.w);
+}
+
+tfx_vec3_t UnPack8bit(tfxU32 in) {
+	float one_div_128 = 1.f / 127.f;
+
+	tfx_vec3_t result;
+	result.x = ((signed char)(in & 0x000000FF)) * one_div_128;
+	result.y = ((signed char)((in & 0x0000FF00) >> 8)) * one_div_128;
+	result.z = ((signed char)((in & 0x00FF0000) >> 16)) * one_div_128;
+
+	return result;
 }
 
 tfx_vec3_t UnPack10bitVec3(tfxU32 in) {
@@ -7476,7 +7505,7 @@ void InvalidateNewSpriteCapturedIndex(tfx_particle_manager_t *pm) {
 	for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
 		tfx_sprite_soa_t &sprites = pm->sprites[pm->current_sprite_buffer][layer];
 		for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
-			if ((sprites.captured_index[i] & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(sprites.captured_index[i] & 0x10000000)) {
+			if ((sprites.captured_index[i] & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(sprites.captured_index[i] & 0x80000000)) {
 				sprites.captured_index[i] = tfxINVALID;
 			}
 		}
@@ -7625,11 +7654,11 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	memcpy(frame_meta.data, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
 	tmp_frame_meta.free_all();
 
-	tfxU32 last_count[tfxLAYERS] = {};
+	tfxU32 last_count = 0;
 	for (auto &meta : frame_meta) {
 		for (tfxEachLayer) {
-			meta.index_offset[layer] = last_count[layer];
-			last_count[layer] += meta.sprite_count[layer];
+			meta.index_offset[layer] = last_count;
+			last_count += meta.sprite_count[layer];
 		}
 	}
 
@@ -7804,8 +7833,10 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				if (sprites.captured_index[j] == tfxINVALID) continue;
 				int frame = i - 1;
 				frame = frame < 0 ? anim.real_frames - 1 : frame;
-				tfxU32 wrap_bit = sprites.captured_index[j] & 0x10000000;
+				tfxU32 wrap_bit = sprites.captured_index[j] & 0x80000000;
+				tfxU32* captured_index = &sprites.captured_index[j];
 				sprites.captured_index[j] = (sprites.captured_index[j] & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
+				captured_index = &sprites.captured_index[j];
 				sprites.captured_index[j] |= wrap_bit;
 			}
 		}
@@ -8004,7 +8035,7 @@ void WrapSingleParticleSprites(tfx_sprite_data_t *sprite_data) {
 	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
 	for (tfxEachLayer) {
 		for (int i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
-			if (sprites.captured_index[i] != tfxINVALID && sprites.captured_index[i] & 0x10000000) {
+			if (sprites.captured_index[i] != tfxINVALID && sprites.captured_index[i] & 0x80000000) {
 				for (int j = sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer]; j != sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer] + sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].sprite_count[layer]; ++j) {
 					if (sprites.uid[j].uid == sprites.uid[i].uid) {
 						sprites.captured_index[i] = j;
@@ -8021,7 +8052,7 @@ void ClearWrapBit(tfx_sprite_data_t *sprite_data) {
 		for (tfxEachLayer) {
 			for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
 				if (sprites.captured_index[j] == tfxINVALID) continue;
-				tfxU32 wrap_bit = 0x10000000;
+				tfxU32 wrap_bit = 0x80000000;
 				sprites.captured_index[j] &= ~wrap_bit;
 			}
 		}
@@ -9999,7 +10030,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];
 				sprites.captured_index[sprite_depth_index] = age < pm.frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
+				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + sprite_depth_index;
 				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
 				running_sprite_index++;
@@ -10010,7 +10041,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];
 				sprites.captured_index[running_sprite_index] = age < pm.frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x10000000 : 0;
+				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
 				sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
 			}
