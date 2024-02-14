@@ -1474,7 +1474,7 @@ void tfx_str_t::Appendv(const char *format, va_list args) {
 	}
 
 	resize(needed_sz);
-	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args);
+	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
 	va_end(args_copy);
 
 }
