@@ -435,6 +435,9 @@ extern "C" {
 	}
 
 	static inline tfx_bool tfx__is_free_block(const tfx_header *block) {
+		//Note to self: Crashing here? The most likely reason is a pointer into the allocation for this block that became invalid but was still written to at some point.
+		//Most likeyly cause is a tfx_vector_t or similar being resized and allocated elsewhere but you didn't account for this happening and update the pointer. Just index
+		//into the array instead to fix these issues.
 		return block->size & tfx__BLOCK_IS_FREE;
 	}
 
