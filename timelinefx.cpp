@@ -5111,58 +5111,85 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
 		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor = value;
 	if (*field == "preview_camera_isometric")
 		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric = value;
-	if (*field == "random_color")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_random_color; else effect->property_flags &= ~tfxEmitterPropertyFlags_random_color;
-	if (*field == "relative_position")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_relative_position; else effect->property_flags &= ~tfxEmitterPropertyFlags_relative_position;
-	if (*field == "relative_angle")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_relative_angle; else effect->property_flags &= ~tfxEmitterPropertyFlags_relative_angle;
-	if (*field == "image_handle_auto_center")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; else effect->property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center;
-	if (*field == "single")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_single; else effect->property_flags &= ~tfxEmitterPropertyFlags_single;
-	if (*field == "wrap_single_sprite")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_wrap_single_sprite; else effect->property_flags &= ~tfxEmitterPropertyFlags_wrap_single_sprite;
-	if (*field == "spawn_on_grid")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_spawn_on_grid; else effect->property_flags &= ~tfxEmitterPropertyFlags_spawn_on_grid;
-	if (*field == "grid_spawn_clockwise")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_grid_spawn_clockwise; else effect->property_flags &= ~tfxEmitterPropertyFlags_grid_spawn_clockwise;
-	if (*field == "fill_area")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_fill_area; else effect->property_flags &= ~tfxEmitterPropertyFlags_fill_area;
-	if (*field == "grid_spawn_random")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_grid_spawn_random; else effect->property_flags &= ~tfxEmitterPropertyFlags_grid_spawn_random;
-	if (*field == "area_open_ends")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_area_open_ends; else effect->property_flags &= ~tfxEmitterPropertyFlags_area_open_ends;
-	if (*field == "emitter_handle_auto_center")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_emitter_handle_auto_center; else effect->property_flags &= ~tfxEmitterPropertyFlags_emitter_handle_auto_center;
-	if (*field == "edge_traversal")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_edge_traversal; else effect->property_flags &= ~tfxEmitterPropertyFlags_edge_traversal;
-	if (*field == "image_reverse_animation")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_reverse_animation; else effect->property_flags &= ~tfxEmitterPropertyFlags_reverse_animation;
-	if (*field == "image_play_once")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_play_once; else effect->property_flags &= ~tfxEmitterPropertyFlags_play_once;
-	if (*field == "image_animate")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_animate; else effect->property_flags &= ~tfxEmitterPropertyFlags_animate;
-	if (*field == "image_random_start_frame")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_random_start_frame; else effect->property_flags &= ~tfxEmitterPropertyFlags_random_start_frame;
-	if (*field == "global_uniform_size")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_global_uniform_size; else effect->property_flags &= ~tfxEmitterPropertyFlags_global_uniform_size;
-	if (*field == "base_uniform_size")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_base_uniform_size; else effect->property_flags &= ~tfxEmitterPropertyFlags_base_uniform_size;
-	if (*field == "lifetime_uniform_size")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; else effect->property_flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size;
-	if (*field == "use_spawn_ratio")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; else effect->property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;
-	if (*field == "is_3d")
-		if (value) effect->property_flags |= tfxEmitterPropertyFlags_is_3d; else effect->property_flags &= ~tfxEmitterPropertyFlags_is_3d;
-	if (*field == "draw_order_by_age")
-		if (value) effect->effect_flags |= tfxEffectPropertyFlags_age_order; else effect->effect_flags &= ~tfxEffectPropertyFlags_age_order;
-	if (*field == "draw_order_by_depth")
-		if (value) effect->effect_flags |= tfxEffectPropertyFlags_depth_draw_order; else effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order;
-	if (*field == "guaranteed_draw_order")
-		if (value) effect->effect_flags |= tfxEffectPropertyFlags_guaranteed_order; else effect->effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order;
-	if (*field == "include_in_sprite_data_export")
-		if (value) effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; else effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export;
+    if (*field == "random_color") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_random_color; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_random_color;}
+    }
+    if (*field == "relative_position") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_relative_position; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_relative_position;}
+    }
+    if (*field == "relative_angle") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_relative_angle; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_relative_angle;}
+    }
+    if (*field == "image_handle_auto_center") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_image_handle_auto_center; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_image_handle_auto_center;}
+    }
+    if (*field == "single") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_single; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_single;}
+    }
+    if (*field == "wrap_single_sprite") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_wrap_single_sprite; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_wrap_single_sprite;}
+    }
+    if (*field == "spawn_on_grid") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_spawn_on_grid; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_spawn_on_grid;}
+    }
+    if (*field == "grid_spawn_clockwise") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_grid_spawn_clockwise; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_grid_spawn_clockwise;}
+    }
+    if (*field == "fill_area") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_fill_area; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_fill_area;}
+    }
+    if (*field == "grid_spawn_random") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_grid_spawn_random; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_grid_spawn_random;}
+    }
+    if (*field == "area_open_ends") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_area_open_ends; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_area_open_ends;}
+    }
+    if (*field == "emitter_handle_auto_center") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_emitter_handle_auto_center; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_emitter_handle_auto_center;}
+    }
+    if (*field == "edge_traversal") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_edge_traversal; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_edge_traversal;}
+    }
+    if (*field == "image_reverse_animation") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_reverse_animation; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_reverse_animation;}
+    }
+    if (*field == "image_play_once") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_play_once; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_play_once;}
+    }
+    if (*field == "image_animate") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_animate; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_animate;}
+    }
+    if (*field == "image_random_start_frame") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_random_start_frame; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_random_start_frame;}
+    }
+    if (*field == "global_uniform_size") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_global_uniform_size; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_global_uniform_size;}
+    }
+    if (*field == "base_uniform_size") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_base_uniform_size; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_base_uniform_size;}
+    }
+    if (*field == "lifetime_uniform_size") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_lifetime_uniform_size; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_lifetime_uniform_size;}
+    }
+    if (*field == "use_spawn_ratio") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;}
+    }
+    if (*field == "is_3d") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_is_3d; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_is_3d;}
+    }
+    if (*field == "draw_order_by_age") {
+        if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_age_order;}
+    }
+    if (*field == "draw_order_by_depth") {
+        if (value) { effect->effect_flags |= tfxEffectPropertyFlags_depth_draw_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_depth_draw_order;}
+    }
+    if (*field == "guaranteed_draw_order") {
+        if (value) { effect->effect_flags |= tfxEffectPropertyFlags_guaranteed_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_guaranteed_order;}
+    }
+    if (*field == "include_in_sprite_data_export") {
+        if (value) { effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export;}
+    }
+
 }
 
 void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file) {
@@ -6098,7 +6125,10 @@ tfx_vec4_t GetMinMaxGraphValues(tfx_graph_preset preset) {
 	case tfx_graph_preset::tfxIntensityOvertimePreset:
 		mm = { 0.f, 0.f, 1.f, 5.f };
 		break;
-	}
+    default:
+        mm = { 0.f, 0.f, tfxMAX_FRAME, 20.f };
+    break;
+    }
 
 	return mm;
 }
@@ -6659,6 +6689,8 @@ bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path)
 			case tfxBool:
 				ini_line.Appendf("%i", (int)entry.bool_value);
 				break;
+            default:
+            break;
 			}
 			ini_line.Appendf("\n");
 			fwrite(ini_line.c_str(), sizeof(char), ini_line.Length(), file);
@@ -7055,6 +7087,8 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 					case tfxString:
 						AssignSpriteDataMetricsProperty(&metrics_stack.back(), &pair[0], pair[1], package.header.file_version);
 						break;
+                    default:
+                    break;
 					}
 				}
 				else {
@@ -7072,6 +7106,8 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 						SplitStringStack(pair[1], &multi, ',');
 						AssignFrameMetaProperty(&frame_meta_stack.back(), &pair[0], StrToVec3(&multi), package.header.file_version);
 						break;
+                    default:
+                    break;
 					}
 				}
 			}
@@ -7089,6 +7125,8 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 						SplitStringStack(pair[1], &multi, ',');
 						AssignAnimationEmitterProperty(&emitter_properties_stack.back(), &pair[0], StrToVec2(&multi), package.header.file_version);
 						break;
+                    default:
+                    break;
 					}
 				}
 			}
@@ -7320,6 +7358,8 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 					case tfxString:
 						AssignEffectorProperty(&effect_stack.back(), &pair[0], pair[1]);
 						break;
+                    default:
+                    break;
 					}
 				}
 				else {
@@ -7351,6 +7391,8 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 					case tfxString:
 						AssignStageProperty(&effect_stack.back(), &pair[0], &pair[1]);
 						break;
+                    default:
+                    break;
 					}
 				}
 				else {
@@ -8605,7 +8647,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_single && !(pm->flags & tfxEffectManagerFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_base_uniform_size;
-			state_flags |= (emitter_properties->emission_type != tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || emitter_properties->emission_type == tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal) ? tfxEmitterStateFlags_not_line : 0;
+			state_flags |= (emitter_properties->emission_type != tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || (emitter_properties->emission_type == tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal)) ? tfxEmitterStateFlags_not_line : 0;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_random_color;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
 			state_flags |= emitter_properties->angle_settings != tfxAngleSettingFlags_align_roll && !(e.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
@@ -10173,7 +10215,7 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 	}
 	pm->free_particle_lists.FreeAll();
 
-	tfxParticleManagerFlags current_flags = pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation | pm->flags & tfxEffectManagerFlags_double_buffer_sprites | pm->flags & tfxEffectManagerFlags_2d_and_3d;
+	tfxParticleManagerFlags current_flags = (pm->flags & tfxEffectManagerFlags_dynamic_sprite_allocation) | (pm->flags & tfxEffectManagerFlags_double_buffer_sprites) | (pm->flags & tfxEffectManagerFlags_2d_and_3d);
 
 	if (mode == tfxParticleManagerMode_unordered)
 		pm->flags = tfxEffectManagerFlags_unordered;
@@ -10940,6 +10982,8 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_sta
 			case tfx_emission_type::tfxIcosphere:
 				emitter.spawn_quantity = (float)tfxIcospherePoints[tfxMin((tfxU32)x, 5)].current_size;
 				break;
+            default:
+            break;
 			}
 		}
 		step_size = 1.f / emitter.spawn_quantity;
@@ -12843,7 +12887,7 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 
 	if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != tfxPoint) {
 		if ((properties.emission_type == tfxEllipse || properties.emission_type == tfxIcosphere) && emitter.property_flags & tfxEmitterPropertyFlags_is_3d)
-			emitter.handle = {};
+			emitter.handle = {0};
 		else if (emitter.property_flags & tfxEmitterPropertyFlags_is_3d)
 			emitter.handle = emitter.emitter_size * -0.5f;
 		else if (properties.emission_type == tfxLine)

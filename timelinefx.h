@@ -1248,7 +1248,7 @@ tfxINTERNAL inline uint64_t tfx_Microsecs() {
 	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /// XXHash (64 bit), based on Yann Collet's descriptions, see http://cyan4973.github.io/xxHash/
-/** How to use:
+    How to use:
 	uint64_t myseed = 0;
 	XXHash64 myhash(myseed);
 	myhash.add(pointerToSomeBytes,     numberOfBytes);
@@ -3365,7 +3365,7 @@ struct tfx_stream_t {
 		}
 		return false;
 	}
-	inline tfx_str512_t ReadLine();
+	tfx_str512_t ReadLine();
 	inline bool Write(void *src, tfxU64 count) {
 		if (count + position <= size) {
 			memcpy(data + position, src, count);
@@ -6275,7 +6275,7 @@ tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
 * @param pm					A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 */
-tfxAPI inline void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed);
+tfxAPI void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed);
 
 /*
 Get the total number of sprites within the layer of the particle manager
