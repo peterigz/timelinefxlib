@@ -1949,7 +1949,8 @@ enum tfx_billboarding_option {
 	tfxBillboarding_align_to_camera = 0,			//Align to Camera only
 	tfxBillboarding_free_align = 1,					//Free align
 	tfxBillboarding_align_to_camera_and_vector = 2,	//Align to camera and vector
-	tfxBillboarding_align_to_vector = 3				//Align to vector
+	tfxBillboarding_align_to_vector = 3,			//Align to vector
+	tfxBillboarding_max = 4				
 };
 
 enum tfx_particle_manager_flag_bits {
@@ -5548,7 +5549,7 @@ tfxINTERNAL tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec
 tfxAPI_EDITOR tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec);
 tfxINTERNAL tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec);
 tfxINTERNAL tfx_mat4_t Matrix4RotateAxis(tfx_mat4_t const *m, float r, tfx_vec3_t const *v);
-tfxINTERNAL int tfxClampi(int lower, int upper, int value);
+tfxAPI_EDITOR int tfxClampi(int lower, int upper, int value);
 tfxAPI_EDITOR float tfxClampf(float lower, float upper, float value);
 tfxAPI_EDITOR tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra);
 tfxINTERNAL tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v);
