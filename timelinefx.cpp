@@ -7474,11 +7474,14 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 				else if (effect_stack.parent().type == tfxEmitterType) {
 					effect_stack.back().global = current_global_graph;
 				}
+				if (effect_stack.parent().type == tfxFolder) {
+					InitialiseUninitialisedGraphs(&effect_stack.back());
+				}
 				GetEffectInfo(&effect_stack.parent())->sub_effectors.push_back(effect_stack.back());
 			}
 			else {
-				lib->effects.push_back(effect_stack.back());
 				InitialiseUninitialisedGraphs(&effect_stack.back());
+				lib->effects.push_back(effect_stack.back());
 			}
 			effect_stack.pop();
 		}
@@ -11289,7 +11292,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 		age = entry->pm->frame_length * ((float)i / (float)entry->amount_to_spawn);
 		//age = 0;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
-			max_age = pm.animation_length_in_time;
+			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
 		}
 		//Remove this unless I change my mind about it:
 		//Only makes sense for single particles
@@ -11299,7 +11302,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 		//	max_age = life_proportion * pm.animation_length_in_time + RandomRange(&random, life_variation_proportion * pm.animation_length_in_time);
 		//}
 		else {
-			max_age = life + RandomRange(&random, life_variation);
+			max_age = tfx__Max(life + RandomRange(&random, life_variation), 1.f);
 		}
 		single_loop_count = 0;
 
