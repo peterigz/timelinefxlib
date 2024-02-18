@@ -3487,6 +3487,17 @@ void UpdateLibraryParticleShapeReferences(tfx_library_t *library, tfxKey default
 		if (current.type == tfxEmitterType) {
 			bool shape_found = false;
 			tfxKey hash = library->emitter_properties[current.property_index].image_hash;
+			if (hash == 0) {
+				//Try to match index instead might be a converted eff file
+				tfxU32 image_index = library->emitter_properties[current.property_index].image_index;
+				for (tfx_image_data_t& image_data : library->particle_shapes.data) {
+					if (image_data.shape_index == image_index) {
+						library->emitter_properties[current.property_index].image = &image_data;
+						library->emitter_properties[current.property_index].end_frame = image_data.animation_frames - 1;
+						library->emitter_properties[current.property_index].image_hash = image_data.image_hash;
+					}
+				}
+			}
 			if (library->particle_shapes.ValidKey(library->emitter_properties[current.property_index].image_hash)) {
 				library->emitter_properties[current.property_index].image = &library->particle_shapes.At(library->emitter_properties[current.property_index].image_hash);
 				library->emitter_properties[current.property_index].end_frame = library->particle_shapes.At(library->emitter_properties[current.property_index].image_hash).animation_frames - 1;
