@@ -6423,7 +6423,7 @@ Get the transform vectors for a 3d sprite's previous position so that you can us
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI inline tfx_sprite_transform3d_t *GetCapturedSprite3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return &pm->sprites[(index & 0xC0000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
+	return &pm->sprites[(index & 0x40000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
 }
 
 /*
@@ -6433,7 +6433,7 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI inline tfx_sprite_transform2d_t *GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return &pm->sprites[(index & 0xC0000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
+	return &pm->sprites[(index & 0x40000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
 }
 
 /*
@@ -6443,7 +6443,7 @@ Get the intensity for a sprite's previous frame so that you can use that to inte
 * @param index			The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI inline float *GetCapturedSprite3dIntensity(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return &pm->sprites[(index & 0xC0000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
+	return &pm->sprites[(index & 0x40000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
 }
 
 /*
