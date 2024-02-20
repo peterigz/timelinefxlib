@@ -649,9 +649,8 @@ float HasLength(tfx_vec3_t const *v) {
 }
 
 tfx_vec3_t NormalizeVec3(tfx_vec3_t const *v) {
-	if (v->x == 0 && v->y == 0 && v->z == 0) return tfx_vec3_t(1.f, 0.f, 0.f);
 	float length = LengthVec(v);
-	return tfx_vec3_t(v->x / length, v->y / length, v->z / length);
+	return length > 0.f ? tfx_vec3_t(v->x / length, v->y / length, v->z / length) : *v;
 }
 
 tfx_vec4_t NormalizeVec4(tfx_vec4_t const *v) {
@@ -688,18 +687,19 @@ float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
 //Quake 3 inverse square root
 float QuakeSqrt(float number)
 {
-	long i;
-	float x2, y;
-	const float threehalfs = 1.5F;
+    union {
+        float f;
+        uint32_t i;
+    } conv;
 
-	x2 = number * 0.5F;
-	y = number;
-	i = *(long *)&y;                       // evil floating point bit level hacking
-	i = 0x5f3759df - (i >> 1);             // what the fuck? 
-	y = *(float *)&i;
-	y = y * (threehalfs - (x2 * y * y));   // 1st iteration
+    float x2;
+    const float threehalfs = 1.5F;
 
-	return y;
+    x2 = number * 0.5F;
+    conv.f  = number;
+    conv.i  = 0x5f3759df - ( conv.i >> 1 );
+    conv.f  = conv.f * ( threehalfs - ( x2 * conv.f * conv.f ) );
+    return conv.f;
 }
 
 tfxU32 GetLayerFromID(tfxU32 index) {
@@ -2211,7 +2211,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			else
 				to_handle = world_position - emitter.world_position;
 
-			to_handle = NormalizeVec3Fast(&to_handle);
+			to_handle = NormalizeVec3(&to_handle);
 
 		}
 		else if (emission_direction == tfx_emission_direction::tfxInwards) {
@@ -2221,7 +2221,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			else
 				to_handle = emitter.world_position - world_position;
 
-			to_handle = NormalizeVec3Fast(&to_handle);
+			to_handle = NormalizeVec3(&to_handle);
 
 		}
 		else if (emission_direction == tfx_emission_direction::tfxBothways) {
@@ -2242,7 +2242,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			}
 
 			emitter.emission_alternator = !emitter.emission_alternator;
-			to_handle = NormalizeVec3Fast(&to_handle);
+			to_handle = NormalizeVec3(&to_handle);
 		}
 		else {
 			parent_pitch = emitter.world_rotations.pitch;
@@ -8793,6 +8793,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->update_time = 1.f / pm->update_frequency;
 	pm->update_time_wide = tfxWideSetSingle(pm->update_time);
 	pm->new_compute_particle_index = 0;
+    //printf("%f, %f, %f\n", pm->frame_length, pm->update_frequency, pm->update_time);
 	tfxU32 next_buffer = !pm->current_ebuff;
 
 	tfxU32 depth_starting_index[tfxLAYERS];
@@ -11118,10 +11119,11 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 
 	float step_size = 1.f / emitter.spawn_quantity;
 	float tween = 0;
-	if (step_size == emitter.qty_step_size || emitter.property_flags & tfxEmitterPropertyFlags_single)
-		tween = emitter.amount_remainder;
-	else
-		tween = emitter.amount_remainder - (emitter.qty_step_size - step_size);
+    if (step_size == emitter.qty_step_size || emitter.property_flags & tfxEmitterPropertyFlags_single) {
+        tween = emitter.amount_remainder;
+    } else {
+        tween = emitter.amount_remainder - (emitter.qty_step_size - step_size);
+    }
 	emitter.qty_step_size = step_size;
 	//bool is_compute = work_entry->e->property_flags & tfxEmitterPropertyFlags_is_bottom_emitter && pm->emitter.state_flags & tfxEffectManagerFlags_use_compute_shader;
 
@@ -12816,7 +12818,11 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		tfx_vec3_t velocity_normal;
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
 			velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
-			velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
+            if(velocity_normal.y > 0) {
+                velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
+            } else {
+                velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
+            }
 		}
 		else if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
 			velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
