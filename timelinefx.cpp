@@ -4700,7 +4700,8 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("camera_mouse_sensitivity", tfxFloat);
 	names_and_types.Insert("show_sprite_data_bounding_boxes", tfxBool);
 	names_and_types.Insert("show_help_window", tfxBool);
-	names_and_types.Insert("show_about_at_start", tfxBool);
+    names_and_types.Insert("show_about_at_start", tfxBool);
+	names_and_types.Insert("first_run", tfxBool);
 	initialised = true;
 }
 
