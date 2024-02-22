@@ -91,6 +91,7 @@ tfx_storage_t *GetGlobals() {
 	return tfxStore;
 }
 
+#ifdef tfxINTEL
 //A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
 tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 	tfxPROFILE;
@@ -289,6 +290,490 @@ tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
 	result.m = _mm_mul_ps(tfxTHIRTYTWO, _mm_add_ps(n0, _mm_add_ps(n1, _mm_add_ps(n2, n3))));
 	return result;
 }
+
+tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z2)
+{
+    tfx128 xx = _mm_mul_ps(*x1, *x2);
+    tfx128 yy = _mm_mul_ps(*y1, *y2);
+    tfx128 zz = _mm_mul_ps(*z1, *z2);
+    return _mm_add_ps(xx, _mm_add_ps(yy, zz));
+}
+
+tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2)
+{
+    tfx128 xx = _mm_mul_ps(*x1, *x2);
+    tfx128 yy = _mm_mul_ps(*y1, *y2);
+    return _mm_add_ps(xx, yy);
+}
+
+tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
+    tfx_mat4_t res = CreateMatrix4(0.f);
+
+    tfx128 in_row[4];
+    in_row[0] = _mm_load_ps(&in->v[0].x);
+    in_row[1] = _mm_load_ps(&in->v[1].x);
+    in_row[2] = _mm_load_ps(&in->v[2].x);
+    in_row[3] = _mm_load_ps(&in->v[3].x);
+
+    tfx128 m_row1 = _mm_set_ps(m->v[3].x, m->v[2].x, m->v[1].x, m->v[0].x);
+    tfx128 m_row2 = _mm_set_ps(m->v[3].y, m->v[2].y, m->v[1].y, m->v[0].y);
+    tfx128 m_row3 = _mm_set_ps(m->v[3].z, m->v[2].z, m->v[1].z, m->v[0].z);
+    tfx128 m_row4 = _mm_set_ps(m->v[3].w, m->v[2].w, m->v[1].w, m->v[0].w);
+
+    for (int r = 0; r <= 3; ++r)
+    {
+
+        tfx128 row1result = _mm_mul_ps(in_row[r], m_row1);
+        tfx128 row2result = _mm_mul_ps(in_row[r], m_row2);
+        tfx128 row3result = _mm_mul_ps(in_row[r], m_row3);
+        tfx128 row4result = _mm_mul_ps(in_row[r], m_row4);
+
+        float tmp[4];
+        _mm_store_ps(tmp, row1result);
+        res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+        _mm_store_ps(tmp, row2result);
+        res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+        _mm_store_ps(tmp, row3result);
+        res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+        _mm_store_ps(tmp, row4result);
+        res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+    }
+    return res;
+}
+
+tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
+    tfx_vec4_t v;
+
+    tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+    tfx__readbarrier;
+
+    tfx128 mrow1 = _mm_load_ps(&mat->v[0].c0);
+    tfx128 mrow2 = _mm_load_ps(&mat->v[1].c0);
+    tfx128 mrow3 = _mm_load_ps(&mat->v[2].c0);
+    tfx128 mrow4 = _mm_load_ps(&mat->v[3].c0);
+
+    tfx__readbarrier;
+
+    tfx128 row1result = _mm_mul_ps(v4, mrow1);
+    tfx128 row2result = _mm_mul_ps(v4, mrow2);
+    tfx128 row3result = _mm_mul_ps(v4, mrow3);
+    tfx128 row4result = _mm_mul_ps(v4, mrow4);
+
+    float tmp[4];
+    _mm_store_ps(tmp, row1result);
+    v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    _mm_store_ps(tmp, row2result);
+    v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    _mm_store_ps(tmp, row3result);
+    v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    _mm_store_ps(tmp, row4result);
+    v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+    return v;
+}
+
+tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
+    tfx_vec4_t v;
+
+    tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
+
+    tfx128 row1result = _mm_mul_ps(v4, *row1);
+    tfx128 row2result = _mm_mul_ps(v4, *row2);
+    tfx128 row3result = _mm_mul_ps(v4, *row3);
+    tfx128 row4result = _mm_mul_ps(v4, *row4);
+
+    float tmp[4];
+    _mm_store_ps(tmp, row1result);
+    v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    _mm_store_ps(tmp, row2result);
+    v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    _mm_store_ps(tmp, row3result);
+    v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    _mm_store_ps(tmp, row4result);
+    v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+    return v;
+}
+
+tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
+    tfx_vec3_t v;
+
+    tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
+
+    tfx__readbarrier;
+
+    tfx128 mrow1 = _mm_load_ps(&mat->v[0].x);
+    tfx128 mrow2 = _mm_load_ps(&mat->v[1].x);
+    tfx128 mrow3 = _mm_load_ps(&mat->v[2].x);
+    tfx128 mrow4 = _mm_load_ps(&mat->v[3].x);
+
+    tfx__readbarrier;
+
+    tfx128 row1result = _mm_mul_ps(v4, mrow1);
+    tfx128 row2result = _mm_mul_ps(v4, mrow2);
+    tfx128 row3result = _mm_mul_ps(v4, mrow3);
+    tfx128 row4result = _mm_mul_ps(v4, mrow4);
+
+    float tmp[4];
+    _mm_store_ps(tmp, row1result);
+    v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    _mm_store_ps(tmp, row2result);
+    v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    _mm_store_ps(tmp, row3result);
+    v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+
+    return v;
+}
+
+
+#elifdef tfxARM
+
+tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
+    tfxPROFILE;
+
+    tfx128 s4 = vmulq_f32(vaddq_f32(x4, y4), tfxF2_4);
+    tfx128 x4_s4 = vaddq_f32(x4, s4);
+    tfx128 y4_s4 = vaddq_f32(y4, s4);
+    tfx128 i = tfxFloor128(x4_s4);
+    tfx128 j = tfxFloor128(y4_s4);
+    tfx128 t = vmulq_f32(vaddq_f32(i, j), tfxG2_4);
+
+    tfx128 X0 = vsubq_f32(i, t);
+    tfx128 Y0 = vsubq_f32(j, t);
+    tfx128 x0 = vsubq_f32(x4, X0);
+    tfx128 y0 = vsubq_f32(y4, Y0);
+
+    tfx128i i1, j1;
+
+    i1 = vandq_s32(tfxONE, vreinterpretq_s32_f32(vcgtq_f32(x0, y0)));
+    j1 = vandq_s32(tfxONE, vreinterpretq_s32_f32(vcgeq_f32(y0, x0)));
+
+    const tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1)), tfxG2_4);
+    const tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1)), tfxG2_4);
+    const tfx128 x2 = vaddq_f32(vsubq_f32(x0, vdupq_n_f32(1.f)), tfxG2_4x2);
+    const tfx128 y2 = vaddq_f32(vsubq_f32(y0, vdupq_n_f32(1.f)), tfxG2_4x2);
+
+    tfx128i ii, jj;
+    ii = vandq_s32(vcvtq_s32_f32(i), tfxFF);
+    jj = vandq_s32(vcvtq_s32_f32(j), tfxFF);
+
+    int gi0[4], gi1[4], gi2[4];
+
+    for (int i = 0; i < 4; ++i) {
+        gi0[i] = permMOD12[perm[ii[i] + perm[jj[i]]]];
+        gi1[i] = permMOD12[perm[ii[i] + vgetq_lane_s32(i1, i) + perm[jj[i] + vgetq_lane_s32(j1, i)]]];
+        gi2[i] = permMOD12[perm[ii[i] + 1 + perm[jj[i] + 1]]];
+    }
+
+    tfx128 n0, n1, n2;
+    tfx128 gx0, gy0, gx1, gy1, gx2, gy2;
+    gx0 = vld1q_f32(&gradX[gi0[0]]);
+    gy0 = vld1q_f32(&gradY[gi0[0]]);
+    gx1 = vld1q_f32(&gradX[gi1[0]]);
+    gy1 = vld1q_f32(&gradY[gi1[0]]);
+    gx2 = vld1q_f32(&gradX[gi2[0]]);
+    gy2 = vld1q_f32(&gradY[gi2[0]]);
+
+    tfx128 t0 = vsubq_f32(vsubq_f32(vdupq_n_f32(0.5f), vmulq_f32(x0, x0)), vmulq_f32(y0, y0));
+    tfx128 t02 = vmulq_f32(t0, t0);
+    n0 = vandq_f32(vmulq_f32(vmulq_f32(t02, t02), Dot128XY(&gx0, &gy0, &x0, &y0)), vcgeq_f32(t0, vdupq_n_f32(0.f)));
+
+    tfx128 t1 = vsubq_f32(vsubq_f32(vdupq_n_f32(0.5f), vmulq_f32(x1, x1)), vmulq_f32(y1, y1));
+    tfx128 t12 = vmulq_f32(t1, t1);
+    n1 = vandq_f32(vmulq_f32(vmulq_f32(t12, t12), Dot128XY(&gx1, &gy1, &x1, &y1)), vcgeq_f32(t1, vdupq_n_f32(0.f)));
+
+    tfx128 t2 = vsubq_f32(vsubq_f32(vdupq_n_f32(0.5f), vmulq_f32(x2, x2)), vmulq_f32(y2, y2));
+    tfx128 t22 = vmulq_f32(t2, t2);
+    n2 = vandq_f32(vmulq_f32(vmulq_f32(t22, t22), Dot128XY(&gx2, &gy2, &x2, &y2)), vcgeq_f32(t2, vdupq_n_f32(0.f)));
+
+    tfx128Array result;
+    result.m = vmulq_f32(vdupq_n_f32(45.23065f), vaddq_f32(n0, vaddq_f32(n1, n2)));
+    return result;
+}
+
+tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
+    tfxPROFILE;
+
+    // Skewing/Unskewing factors for 3D
+    tfx128 s4 = vmulq_f32(vaddq_f32(x4, vaddq_f32(y4, z4)), tfxF3_4);
+    tfx128 x4_s4 = vaddq_f32(x4, s4);
+    tfx128 y4_s4 = vaddq_f32(y4, s4);
+    tfx128 z4_s4 = vaddq_f32(z4, s4);
+    tfx128 i = tfxFloor128(x4_s4);
+    tfx128 j = tfxFloor128(y4_s4);
+    tfx128 k = tfxFloor128(z4_s4);
+    tfx128 t = vmulq_f32(vaddq_f32(vaddq_f32(i, j), k), tfxG3_4);
+
+    tfx128 X0 = vsubq_f32(i, t); // Unskew the cell origin back to (v1.x,v1.y,v1.z) space
+    tfx128 Y0 = vsubq_f32(j, t);
+    tfx128 Z0 = vsubq_f32(k, t);
+    tfx128 x0 = vsubq_f32(x4, X0); // The v1.x,v1.y,v1.z distances from the cell origin
+    tfx128 y0 = vsubq_f32(y4, Y0);
+    tfx128 z0 = vsubq_f32(z4, Z0);
+
+    // For the 3D case, the simplex shape is a slightly irregular tetrahedron.
+    // Determine which simplex we are in.
+    tfx128iArray i1, i2, j1, j2, k1, k2;
+
+    i1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0))));
+    j1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vgtq_f32(y0, x0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0))));
+    k1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vgtq_f32(z0, x0)), vreinterpretq_s32_f32(vgtq_f32(z0, y0))));
+
+    //for i2
+    tfx128i yx_xz = vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcltq_f32(x0, z0)));
+    tfx128i zx_xy = vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, z0)), vreinterpretq_s32_f32(vcltq_f32(x0, y0)));
+
+    //for j2
+    tfx128i xy_yz = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(x0, y0)), vreinterpretq_s32_f32(vcltq_f32(y0, z0)));
+    tfx128i zy_yx = vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(y0, z0)), vreinterpretq_s32_f32(vcgeq_f32(x0, y0)));
+
+    //for k2
+    tfx128i yz_zx = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(y0, z0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0)));
+    tfx128i xz_zy = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(x0, z0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0)));
+
+    i2.m = vandq_s32(tfxONE, vorrq_s32(i1.m, vorrq_s32(yx_xz, zx_xy)));
+    j2.m = vandq_s32(tfxONE, vorrq_s32(j1.m, vorrq_s32(xy_yz, zy_yx)));
+    k2.m = vandq_s32(tfxONE, vorrq_s32(k1.m, vorrq_s32(yz_zx, xz_zy)));
+
+    tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG3_4);
+    tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG3_4);
+    tfx128 z1 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k1.m)), tfxG3_4);
+    tfx128 x2 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i2.m)), tfxG32_4);
+    tfx128 y2 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j2.m)), tfxG32_4);
+    tfx128 z2 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k2.m)), tfxG32_4);
+    tfx128 x3 = vaddq_f32(vsubq_f32(x0, tfxONEF), tfxG33_4);
+    tfx128 y3 = vaddq_f32(vsubq_f32(y0, tfxONEF), tfxG33_4);
+    tfx128 z3 = vaddq_f32(vsubq_f32(z0, tfxONEF), tfxG33_4);
+
+    // Work out the hashed gradient indices of the four simplex corners
+    tfx128iArray ii, jj, kk;
+    ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF);
+    jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF);
+    kk.m = vandq_s32(vcvtq_s32_f32(k), tfxFF);
+    tfx128iArray gi0, gi1, gi2, gi3;
+
+    for (int i = 0; i < 4; ++i) {
+        gi0.a[i] = permMOD12[ii.a[i] + perm[jj.a[i] + perm[kk.a[i]]]];
+        gi1.a[i] = permMOD12[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i] + perm[kk.a[i] + k1.a[i]]]];
+        gi2.a[i] = permMOD12[ii.a[i] + i2.a[i] + perm[jj.a[i] + j2.a[i] + perm[kk.a[i] + k2.a[i]]]];
+        gi3.a[i] = permMOD12[ii.a[i] + 1 + perm[jj.a[i] + 1 + perm[kk.a[i] + 1]]];
+    }
+
+    tfx128 t0 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x0, x0)), vmulq_f32(y0, y0)), vmulq_f32(z0, z0));
+    tfx128 t1 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x1, x1)), vmulq_f32(y1, y1)), vmulq_f32(z1, z1));
+    tfx128 t2 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x2, x2)), vmulq_f32(y2, y2)), vmulq_f32(z2, z2));
+    tfx128 t3 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x3, x3)), vmulq_f32(y3, y3)), vmulq_f32(z3, z3));
+
+    tfx128 t0q = vmulq_f32(t0, t0);
+    t0q = vmulq_f32(t0q, t0q);
+    tfx128 t1q = vmulq_f32(t1, t1);
+    t1q = vmulq_f32(t1q, t1q);
+    tfx128 t2q = vmulq_f32(t2, t2);
+    t2q = vmulq_f32(t2q, t2q);
+    tfx128 t3q = vmulq_f32(t3, t3);
+    t3q = vmulq_f32(t3q, t3q);
+
+    tfx128Array gi0x, gi0y, gi0z, gi1x, gi1y, gi1z, gi2x, gi2y, gi2z, gi3x, gi3y, gi3z;
+
+    for (int i = 0; i < 4; i++) {
+        gi0x.a[i] = vld1q_f32(&gradX[gi0.a[i]]);
+        gi0y.a[i] = vld1q_f32(&gradY[gi0.a[i]]);
+        gi0z.a[i] = vld1q_f32(&gradZ[gi0.a[i]]);
+
+        gi1x.a[i] = vld1q_f32(&gradX[gi1.a[i]]);
+        gi1y.a[i] = vld1q_f32(&gradY[gi1.a[i]]);
+        gi1z.a[i] = vld1q_f32(&gradZ[gi1.a[i]]);
+
+        gi2x.a[i] = vld1q_f32(&gradX[gi2.a[i]]);
+        gi2y.a[i] = vld1q_f32(&gradY[gi2.a[i]]);
+        gi2z.a[i] = vld1q_f32(&gradZ[gi2.a[i]]);
+
+        gi3x.a[i] = vld1q_f32(&gradX[gi3.a[i]]);
+        gi3y.a[i] = vld1q_f32(&gradY[gi3.a[i]]);
+        gi3z.a[i] = vld1q_f32(&gradZ[gi3.a[i]]);
+    }
+
+    tfx128 n0 = vmulq_f32(t0q, Dot128XYZ(&gi0x.m, &gi0y.m, &gi0z.m, &x0, &y0, &z0));
+    tfx128 n1 = vmulq_f32(t1q, Dot128XYZ(&gi1x.m, &gi1y.m, &gi1z.m, &x1, &y1, &z1));
+    tfx128 n2 = vmulq_f32(t2q, Dot128XYZ(&gi2x.m, &gi2y.m, &gi2z.m, &x2, &y2, &z2));
+    tfx128 n3 = vmulq_f32(t3q, Dot128XYZ(&gi3x.m, &gi3y.m, &gi3z.m, &x3, &y3, &z3));
+
+    tfx128 cond;
+
+    cond = vcltq_f32(t0, tfxZERO);
+    n0 = vbslq_f32(cond, tfxZERO, n0);
+    cond = vcltq_f32(t1, tfxZERO);
+    n1 = vbslq_f32(cond, tfxZERO, n1);
+    cond = vcltq_f32(t2, tfxZERO);
+    n2 = vbslq_f32(cond, tfxZERO, n2);
+    cond = vcltq_f32(t3, tfxZERO);
+    n3 = vbslq_f32(cond, tfxZERO, n3);
+
+    tfx128Array result;
+    result.m = vmulq_f32(tfxTHIRTYTWO, vaddq_f32(n0, vaddq_f32(n1, vaddq_f32(n2, n3))));
+    return result;
+}
+
+tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z2)
+{
+    tfx128 xx = vmulq_f32(*x1, *x2);
+    tfx128 yy = vmulq_f32(*y1, *y2);
+    tfx128 zz = vmulq_f32(*z1, *z2);
+    return vaddq_f32(xx, vaddq_f32(yy, zz));
+}
+
+tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2)
+{
+    tfx128 xx = vmulq_f32(*x1, *x2);
+    tfx128 yy = vmulq_f32(*y1, *y2);
+    return vaddq_f32(xx, yy);
+}
+
+tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
+    tfx_mat4_t res = CreateMatrix4(0.f);
+
+    tfx128 in_row[4];
+    in_row[0] = vld1q_f32(&in->v[0].x);
+    in_row[1] = vld1q_f32(&in->v[1].x);
+    in_row[2] = vld1q_f32(&in->v[2].x);
+    in_row[3] = vld1q_f32(&in->v[3].x);
+
+    tfx128 m_row1 = vsetq_lane_f32(m->v[0].x, vdupq_n_f32(m->v[1].x), 0);
+    m_row1 = vsetq_lane_f32(m->v[2].x, m_row1, 1);
+    m_row1 = vsetq_lane_f32(m->v[3].x, m_row1, 2);
+
+    tfx128 m_row2 = vsetq_lane_f32(m->v[0].y, vdupq_n_f32(m->v[1].y), 0);
+    m_row2 = vsetq_lane_f32(m->v[2].y, m_row2, 1);
+    m_row2 = vsetq_lane_f32(m->v[3].y, m_row2, 2);
+
+    tfx128 m_row3 = vsetq_lane_f32(m->v[0].z, vdupq_n_f32(m->v[1].z), 0);
+    m_row3 = vsetq_lane_f32(m->v[2].z, m_row3, 1);
+    m_row3 = vsetq_lane_f32(m->v[3].z, m_row3, 2);
+
+    tfx128 m_row4 = vsetq_lane_f32(m->v[0].w, vdupq_n_f32(m->v[1].w), 0);
+    m_row4 = vsetq_lane_f32(m->v[2].w, m_row4, 1);
+    m_row4 = vsetq_lane_f32(m->v[3].w, m_row4, 2);
+
+    for (int r = 0; r <= 3; ++r)
+    {
+        tfx128 row1result = vmulq_f32(in_row[r], m_row1);
+        tfx128 row2result = vmulq_f32(in_row[r], m_row2);
+        tfx128 row3result = vmulq_f32(in_row[r], m_row3);
+        tfx128 row4result = vmulq_f32(in_row[r], m_row4);
+
+        tfx128 tmp;
+        tmp = vaddq_f32(row1result, row2result);
+        tmp = vaddq_f32(tmp, row3result);
+        tmp = vaddq_f32(tmp, row4result);
+
+        res.v[r].x = vgetq_lane_f32(tmp, 0);
+        res.v[r].y = vgetq_lane_f32(tmp, 1);
+        res.v[r].z = vgetq_lane_f32(tmp, 2);
+        res.v[r].w = vgetq_lane_f32(tmp, 3);
+    }
+    return res;
+}
+
+tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
+    tfx_vec4_t v;
+
+    tfx128 v4 = vld1q_f32(&vec.x);
+
+    tfx128 mrow1 = vld1q_f32(&mat->v[0].x);
+    tfx128 mrow2 = vld1q_f32(&mat->v[1].x);
+    tfx128 mrow3 = vld1q_f32(&mat->v[2].x);
+    tfx128 mrow4 = vld1q_f32(&mat->v[3].x);
+
+    tfx128 row1result = vmulq_f32(v4, mrow1);
+    tfx128 row2result = vmulq_f32(v4, mrow2);
+    tfx128 row3result = vmulq_f32(v4, mrow3);
+    tfx128 row4result = vmulq_f32(v4, mrow4);
+
+    tfx128 tmp;
+    tmp = vaddq_f32(row1result, vextq_f32(row1result, row1result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.x = vgetq_lane_f32(tmp, 0);
+
+    tmp = vaddq_f32(row2result, vextq_f32(row2result, row2result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.y = vgetq_lane_f32(tmp, 0);
+
+    tmp = vaddq_f32(row3result, vextq_f32(row3result, row3result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.z = vgetq_lane_f32(tmp, 0);
+
+    tmp = vaddq_f32(row4result, vextq_f32(row4result, row4result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.w = vgetq_lane_f32(tmp, 0);
+
+    return v;
+}
+
+tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
+    tfx_vec4_t v;
+
+    tfx128 v4 = vld1q_f32(&vec.x);
+
+    tfx128 row1result = vmulq_f32(v4, *row1);
+    tfx128 row2result = vmulq_f32(v4, *row2);
+    tfx128 row3result = vmulq_f32(v4, *row3);
+    tfx128 row4result = vmulq_f32(v4, *row4);
+
+    tfx128 tmp;
+    tmp = vaddq_f32(row1result, vextq_f32(row1result, row1result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.x = vgetq_lane_f32(tmp, 0);
+
+    tmp = vaddq_f32(row2result, vextq_f32(row2result, row2result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.y = vgetq_lane_f32(tmp, 0);
+
+    tmp = vaddq_f32(row3result, vextq_f32(row3result, row3result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.z = vgetq_lane_f32(tmp, 0);
+
+    tmp = vaddq_f32(row4result, vextq_f32(row4result, row4result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.w = vgetq_lane_f32(tmp, 0);
+
+    return v;
+}
+
+tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
+    tfx_vec3_t v;
+
+    tfx128 v4 = vld1q_f32(&vec->x);
+
+    tfx128 mrow1 = vld1q_f32(&mat->v[0].x);
+    tfx128 mrow2 = vld1q_f32(&mat->v[1].x);
+    tfx128 mrow3 = vld1q_f32(&mat->v[2].x);
+    tfx128 mrow4 = vld1q_f32(&mat->v[3].x);
+
+    tfx128 row1result = vmulq_f32(v4, mrow1);
+    tfx128 row2result = vmulq_f32(v4, mrow2);
+    tfx128 row3result = vmulq_f32(v4, mrow3);
+    tfx128 row4result = vmulq_f32(v4, mrow4);
+
+    tfx128 tmp;
+    tmp = vaddq_f32(row1result, vextq_f32(row1result, row1result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.x = vgetq_lane_f32(tmp, 0);
+
+    tmp = vaddq_f32(row2result, vextq_f32(row2result, row2result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.y = vgetq_lane_f32(tmp, 0);
+
+    tmp = vaddq_f32(row3result, vextq_f32(row3result, row3result, 1));
+    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
+    v.z = vgetq_lane_f32(tmp, 0);
+
+    return v;
+}
+
+
+#endif
 
 tfx_random_t NewRandom(tfxU32 seed) {
 	tfx_random_t random;
@@ -504,21 +989,6 @@ void InsertionSortParticleFrame(tfx_vector_t<tfx_particle_frame_t> *particles) {
 		}
 		(*particles)[j + 1] = key;
 	}
-}
-
-tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z2)
-{
-	tfx128 xx = _mm_mul_ps(*x1, *x2);
-	tfx128 yy = _mm_mul_ps(*y1, *y2);
-	tfx128 zz = _mm_mul_ps(*z1, *z2);
-	return _mm_add_ps(xx, _mm_add_ps(yy, zz));
-}
-
-tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2)
-{
-	tfx128 xx = _mm_mul_ps(*x1, *x2);
-	tfx128 yy = _mm_mul_ps(*y1, *y2);
-	return _mm_add_ps(xx, yy);
 }
 
 tfx_hsv_t RGBtoHSV(tfx_rgb_t in)
@@ -860,42 +1330,6 @@ tfx_mat4_t TransformMatrix4ByMatrix2(const tfx_mat4_t *in, const tfx_mat2_t *m) 
 	return r;
 }
 
-tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
-	tfx_mat4_t res = CreateMatrix4(0.f);
-
-	tfx128 in_row[4];
-	in_row[0] = _mm_load_ps(&in->v[0].x);
-	in_row[1] = _mm_load_ps(&in->v[1].x);
-	in_row[2] = _mm_load_ps(&in->v[2].x);
-	in_row[3] = _mm_load_ps(&in->v[3].x);
-
-	tfx128 m_row1 = _mm_set_ps(m->v[3].x, m->v[2].x, m->v[1].x, m->v[0].x);
-	tfx128 m_row2 = _mm_set_ps(m->v[3].y, m->v[2].y, m->v[1].y, m->v[0].y);
-	tfx128 m_row3 = _mm_set_ps(m->v[3].z, m->v[2].z, m->v[1].z, m->v[0].z);
-	tfx128 m_row4 = _mm_set_ps(m->v[3].w, m->v[2].w, m->v[1].w, m->v[0].w);
-
-	for (int r = 0; r <= 3; ++r)
-	{
-
-		tfx128 row1result = _mm_mul_ps(in_row[r], m_row1);
-		tfx128 row2result = _mm_mul_ps(in_row[r], m_row2);
-		tfx128 row3result = _mm_mul_ps(in_row[r], m_row3);
-		tfx128 row4result = _mm_mul_ps(in_row[r], m_row4);
-
-		float tmp[4];
-		_mm_store_ps(tmp, row1result);
-		res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row2result);
-		res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row3result);
-		res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-		_mm_store_ps(tmp, row4result);
-		res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-	}
-	return res;
-}
-
 void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z) {
 	tfxWideFloat xr = tfxWideMul(*x, tfxWideSetSingle(mat->v[0].c0));
 	xr = tfxWideAdd(tfxWideMul(*y, tfxWideSetSingle(mat->v[0].c1)), xr);
@@ -951,91 +1385,6 @@ void MaskedTransformMatrix4Vec3(const tfxWideFloat *r0c, const tfxWideFloat *r1c
 	*x = tfxWideAdd(tfxWideAnd(*x, *xor_mask), tfxWideAnd(xr, *mask));
 	*y = tfxWideAdd(tfxWideAnd(*y, *xor_mask), tfxWideAnd(yr, *mask));
 	*z = tfxWideAdd(tfxWideAnd(*z, *xor_mask), tfxWideAnd(zr, *mask));
-}
-
-tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
-	tfx_vec4_t v;
-
-	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
-
-	tfx__readbarrier;
-
-	tfx128 mrow1 = _mm_load_ps(&mat->v[0].c0);
-	tfx128 mrow2 = _mm_load_ps(&mat->v[1].c0);
-	tfx128 mrow3 = _mm_load_ps(&mat->v[2].c0);
-	tfx128 mrow4 = _mm_load_ps(&mat->v[3].c0);
-
-	tfx__readbarrier;
-
-	tfx128 row1result = _mm_mul_ps(v4, mrow1);
-	tfx128 row2result = _mm_mul_ps(v4, mrow2);
-	tfx128 row3result = _mm_mul_ps(v4, mrow3);
-	tfx128 row4result = _mm_mul_ps(v4, mrow4);
-
-	float tmp[4];
-	_mm_store_ps(tmp, row1result);
-	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row2result);
-	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row3result);
-	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row4result);
-	v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-	return v;
-}
-
-tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, const tfx128 *row3, const tfx128 *row4, const tfx_vec4_t vec) {
-	tfx_vec4_t v;
-
-	tfx128 v4 = _mm_set_ps(vec.w, vec.z, vec.y, vec.x);
-
-	tfx128 row1result = _mm_mul_ps(v4, *row1);
-	tfx128 row2result = _mm_mul_ps(v4, *row2);
-	tfx128 row3result = _mm_mul_ps(v4, *row3);
-	tfx128 row4result = _mm_mul_ps(v4, *row4);
-
-	float tmp[4];
-	_mm_store_ps(tmp, row1result);
-	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row2result);
-	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row3result);
-	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row4result);
-	v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-	return v;
-}
-
-tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
-	tfx_vec3_t v;
-
-	tfx128 v4 = _mm_set_ps(vec->w, vec->z, vec->y, vec->x);
-
-	tfx__readbarrier;
-
-	tfx128 mrow1 = _mm_load_ps(&mat->v[0].x);
-	tfx128 mrow2 = _mm_load_ps(&mat->v[1].x);
-	tfx128 mrow3 = _mm_load_ps(&mat->v[2].x);
-	tfx128 mrow4 = _mm_load_ps(&mat->v[3].x);
-
-	tfx__readbarrier;
-
-	tfx128 row1result = _mm_mul_ps(v4, mrow1);
-	tfx128 row2result = _mm_mul_ps(v4, mrow2);
-	tfx128 row3result = _mm_mul_ps(v4, mrow3);
-	tfx128 row4result = _mm_mul_ps(v4, mrow4);
-
-	float tmp[4];
-	_mm_store_ps(tmp, row1result);
-	v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row2result);
-	v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-	_mm_store_ps(tmp, row3result);
-	v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
-
-	return v;
 }
 
 tfx_mat4_t Matrix4RotateAxis(tfx_mat4_t const *m, float r, tfx_vec3_t const *v) {

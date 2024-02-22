@@ -45,6 +45,14 @@
 #define tfxMAX_MEMORY_POOLS 32
 #endif
 
+#if defined(__x86_64__) || defined(__i386__)
+#define tfxINTEL
+#include <immintrin.h>
+#elif defined(__arm__) || defined(__aarch64__)
+#include <arm_neon.h>
+#define tfxARM
+#endif
+
 #include <stdint.h>
 #include <math.h>
 
@@ -1058,7 +1066,6 @@ tfx_allocator *tfxGetAllocator();
 #include <cctype>					//std::is_digit
 #include <algorithm>
 #include <iostream>					//temp for std::cout
-#include <immintrin.h>
 #include <mutex>
 #include <thread>					//only using this for std::thread::hardware_ concurrency()
 #include <cfloat>
@@ -1486,7 +1493,6 @@ typedef __m256i tfxWideInt;
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
 #define tfxWideMaxi _mm256_max_epi32
-#define tfxWideOr _mm256_or_ps
 #define tfxWideOri _mm256_or_si256
 #define tfxWideXOri _mm256_xor_si256
 #define tfxWideXOr _mm256_xor_ps
@@ -1527,6 +1533,9 @@ typedef union {
 } tfxWideArray;
 
 #else
+
+#ifdef tfxINTEL
+//Intel Intrinsics
 #define tfxDataWidth 4	
 typedef __m128 tfxWideFloat;
 typedef __m128i tfxWideInt;
@@ -1563,25 +1572,16 @@ typedef __m128i tfxWideInt;
 #define tfxWideMax _mm_max_ps
 #define tfxWideMini _mm_min_epi32
 #define tfxWideMaxi _mm_max_epi32
-#define tfxWideOr _mm_or_ps
 #define tfxWideOri _mm_or_si128
-#define tfxWideXOr _mm_xor_ps
 #define tfxWideXOri _mm_xor_si128
 #define tfxWideAnd _mm_and_ps
 #define tfxWideAndi _mm_and_si128
-#define tfxWideAndNot _mm_andnot_ps
 #define tfxWideAndNoti _mm_andnot_si128
 #define tfxWideSetZeroi _mm_setzero_si128
 #define tfxWideSetZero _mm_setzero_ps
 #define tfxWideEqualsi _mm_cmpeq_epi32 
 #define tfxWideEquals _mm_cmpeq_ps
 #define tfxWideShufflei _mm_shuffle_epi32
-
-#define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSetMember(lookup, member, index) tfxWideSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
-#define tfxWideLookupSeti(lookup, index) tfxWideSeti( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 
 const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
 const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
@@ -1605,8 +1605,86 @@ typedef union {
 	float a[4];
 } tfxWideArray;
 
+#elifdef tfxARM
+//Arm Intrinsics
+typedef float32x4_t tfxWideFloat;
+typedef int32x4_t tfxWideInt;
+#define tfxWideLoad vld1q_f32
+#define tfxWideLoadi vld1q_s32
+#define tfxWideSet vld1q_f32
+#define tfxWideSetSingle vdupq_n_f32
+#define tfxWideSeti vld1q_s32
+#define tfxWideSetSinglei vdupq_n_s32
+#define tfxWideAdd vaddq_f32
+#define tfxWideSub vsubq_f32
+#define tfxWideMul vmulq_f32
+#define tfxWideDiv vdivq_f32
+#define tfxWideAddi vaddq_s32
+#define tfxWideSubi vsubq_s32
+#define tfxWideMuli vmulq_s32
+#define tfxWideSqrt vrsqrteq_f32 // for reciprocal square root approximation
+#define tfxWideShiftRight vshrq_n_s32
+#define tfxWideShiftLeft vshlq_n_s32
+#define tfxWideGreaterEqual vreinterpretq_f32_u32(vcgeq_f32)
+#define tfxWideGreater vreinterpretq_f32_u32(vcgtq_f32)
+#define tfxWideGreateri vcgtq_s32
+#define tfxWideLessEqual vreinterpretq_f32_u32(vcleq_f32)
+#define tfxWideLess vreinterpretq_f32_u32(vcltq_f32)
+#define tfxWideLessi vcltq_s32
+#define tfxWideStore vst1q_f32
+#define tfxWideStorei vst1q_s32
+#define tfxWideCasti vreinterpretq_s32_f32
+#define tfxWideCast vreinterpretq_f32_s32
+#define tfxWideConverti vcvtnq_s32_f32
+#define tfxWideConvert vcvtnq_f32_s32
+#define tfxWideMin vminq_f32
+#define tfxWideMax vmaxq_f32
+#define tfxWideMini vminq_s32
+#define tfxWideMaxi vmaxq_s32
+#define tfxWideOri vorrq_s32
+#define tfxWideXOri veorq_s32
+#define tfxWideAnd vandq_f32
+#define tfxWideAndi vandq_s32
+#define tfxWideAndNoti vbicq_s32
+#define tfxWideSetZeroi vdupq_n_s32(0)
+#define tfxWideSetZero vdupq_n_f32(0.0f)
+#define tfxWideEqualsi vceqq_s32
+#define tfxWideEquals vreinterpretq_f32_u32(vceqq_f32)
+
+const float32x4_t tfxWIDEF3_4 = vdupq_n_f32(1.0f / 3.0f);
+const float32x4_t tfxWIDEG3_4 = vdupq_n_f32(1.0f / 6.0f);
+const float32x4_t tfxWIDEG32_4 = vdupq_n_f32((1.0f / 6.0f) * 2.f);
+const float32x4_t tfxWIDEG33_4 = vdupq_n_f32((1.0f / 6.0f) * 3.f);
+const int32x4_t tfxWIDEONEi = vdupq_n_s32(1);
+const float32x4_t tfxWIDEONE = vdupq_n_f32(1.f);
+const float32x4_t tfxWIDE255 = vdupq_n_f32(255.f);
+const float32x4_t tfxWIDEZERO = vdupq_n_f32(0.f);
+const float32x4_t tfxWIDETHIRTYTWO = vdupq_n_f32(32.f);
+const int32x4_t tfxWIDEFF = vdupq_n_s32(0xFF);
+const float32x4_t tfxPWIDESIX = vdupq_n_f32(0.6f);
+
+typedef union {
+    int32x4_t m;
+    int a[4];
+} tfxWideArrayi;
+
+typedef union {
+    float32x4_t m;
+    float a[4];
+} tfxWideArray;
+
+
 #endif
 
+#define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetMember(lookup, member, index) tfxWideSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
+#define tfxWideLookupSeti(lookup, index) tfxWideSeti( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+
+#endif
+
+#ifdef tfxINTEL
 typedef __m128 tfx128;
 typedef __m128i tfx128i;
 
@@ -1640,6 +1718,44 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
 	j = _mm_and_ps(igx, j);
 	return _mm_sub_ps(fi, j);
 }
+
+#elifdef tfxARM
+
+typedef float32x4_t tfx128;
+typedef int32x4_t tfx128i;
+
+typedef union {
+    tfx128i m;
+    int a[4];
+} tfx128iArray;
+
+typedef union {
+    tfx128i m;
+    tfxU64 a[2];
+} tfx128iArray64;
+
+typedef union {
+    tfx128 m;
+    float a[4];
+} tfx128Array;
+
+//simd floor function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
+tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
+    //__m128i v0 = _mm_setzero_si128();
+    //__m128i v1 = _mm_cmpeq_epi32(v0, v0);
+    //__m128i ji = _mm_srli_epi32(v1, 25);
+    //__m128 j = *(__m128*)&_mm_slli_epi32(ji, 23); //create vector 1.0f
+    //I'm not entirely sure why original code had above lines to create a vector of 1.f. It seems to me that the below works fine
+    //Worth noting that we only need to floor small numbers for the noise algorithm so can get away with this function.
+    __m128 j = vdupq_n_f32(1.f); //create vector 1.0f
+    __m128i i = vcvtnq_s32_f32(x);
+    __m128 fi = vcvtnq_f32_s32(i);
+    __m128 igx = vreinterpretq_f32_u32(vcgtq_f32(fi, x));
+    j = vandq_f32(igx, j);
+    return vsubq_f32(fi, j);
+}
+
+#endif
 
 //simd mod function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
 tfxINTERNAL inline tfxWideFloat tfxWideMod(const tfxWideFloat &a, const tfxWideFloat &aDiv) {
@@ -7241,54 +7357,6 @@ tfxAPI inline tfx_vec3_t Tween3d(float tween, const tfx_vec3_t *world, const tfx
 }
 
 /*
-Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
-* @param tween				The interpolation value between 0 and 1. You should pass in the value from your timing function
-* @param current			The current tfx_rgba8_t color
-* @param captured			The captured tfx_rgba8_t color
-* @returns tfx_rgba8_t			The interpolated tfx_rgba8_t
-*/
-tfxAPI inline tfx_rgba8_t TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
-	__m128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
-	__m128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
-	__m128 wide_tween = _mm_set1_ps(tween);
-	__m128 wide_tween_m1 = _mm_sub_ps(_mm_set1_ps(1.f), wide_tween);
-	color1 = _mm_div_ps(color1, _mm_set1_ps(255.f));
-	color2 = _mm_div_ps(color2, _mm_set1_ps(255.f));
-	color1 = _mm_mul_ps(color1, wide_tween);
-	color2 = _mm_mul_ps(color2, wide_tween_m1);
-	color1 = _mm_add_ps(color1, color2);
-	color1 = _mm_mul_ps(color1, _mm_set1_ps(255.f));
-	tfx128iArray packed;
-	packed.m = _mm_cvtps_epi32(color1);
-	return tfx_rgba8_t(packed.a[0], packed.a[1], packed.a[2], packed.a[3]);
-}
-
-/*
-Interpolate all sprite transform data in a single function. This will interpolate position, scale and rotation.
-* @param tween				The interpolation value between 0 and 1. You should pass in the value from your timing function
-* @param current			The current transform struct of the sprite
-* @param captured			The captured transform struct of the sprite
-* @returns tfx_wide_lerp_transform_result_t			The interpolated transform data in a tfx_wide_lerp_transform_result_t
-*/
-tfxAPI inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const __m128 *tween, const tfx_sprite_transform3d_t *current, const tfx_sprite_transform3d_t *captured) {
-	__m128 to1 = _mm_load_ps(&current->position.x);
-	__m128 from1 = _mm_load_ps(&captured->position.x);
-	__m128 to2 = _mm_load_ps(&current->rotations.y);
-	__m128 from2 = _mm_load_ps(&captured->rotations.y);
-	__m128 one_minus_tween = _mm_sub_ps(_mm_set1_ps(1.f), *tween);
-	__m128 to_lerp1 = _mm_mul_ps(to1, *tween);
-	__m128 from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
-	__m128 result = _mm_add_ps(from_lerp1, to_lerp1);
-	tfx_wide_lerp_transform_result_t out;
-	_mm_store_ps(out.position, result);
-	to_lerp1 = _mm_mul_ps(to2, *tween);
-	from_lerp1 = _mm_mul_ps(from2, one_minus_tween);
-	result = _mm_add_ps(from_lerp1, to_lerp1);
-	_mm_store_ps(&out.rotations[1], result);
-	return out;
-}
-
-/*
 Interpolate between 2 tfxVec2s. You can make use of this in your render function when rendering sprites and interpolating between captured and current positions
 * @param tween		The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param world		The current tvxVec2 position
@@ -7311,6 +7379,106 @@ Interpolate between 2 float. You can make use of this in your render function wh
 tfxAPI inline float TweenFloat(float tween, const float current, const float captured) {
 	return current * tween + captured * (1.f - tween);
 }
+
+#ifdef tfxINTEL
+/*
+Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
+* @param tween                The interpolation value between 0 and 1. You should pass in the value from your timing function
+* @param current            The current tfx_rgba8_t color
+* @param captured            The captured tfx_rgba8_t color
+* @returns tfx_rgba8_t            The interpolated tfx_rgba8_t
+*/
+tfxAPI inline tfx_rgba8_t TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
+    tfx128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
+    tfx128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
+    tfx128 wide_tween = _mm_set1_ps(tween);
+    tfx128 wide_tween_m1 = _mm_sub_ps(_mm_set1_ps(1.f), wide_tween);
+    color1 = _mm_div_ps(color1, _mm_set1_ps(255.f));
+    color2 = _mm_div_ps(color2, _mm_set1_ps(255.f));
+    color1 = _mm_mul_ps(color1, wide_tween);
+    color2 = _mm_mul_ps(color2, wide_tween_m1);
+    color1 = _mm_add_ps(color1, color2);
+    color1 = _mm_mul_ps(color1, _mm_set1_ps(255.f));
+    tfx128iArray packed;
+    packed.m = _mm_cvtps_epi32(color1);
+    return tfx_rgba8_t(packed.a[0], packed.a[1], packed.a[2], packed.a[3]);
+}
+
+/*
+Interpolate all sprite transform data in a single function. This will interpolate position, scale and rotation.
+* @param tween                The interpolation value between 0 and 1. You should pass in the value from your timing function
+* @param current            The current transform struct of the sprite
+* @param captured            The captured transform struct of the sprite
+* @returns tfx_wide_lerp_transform_result_t            The interpolated transform data in a tfx_wide_lerp_transform_result_t
+*/
+tfxAPI inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const __m128 *tween, const tfx_sprite_transform3d_t *current, const tfx_sprite_transform3d_t *captured) {
+    tfx128 to1 = _mm_load_ps(&current->position.x);
+    tfx128 from1 = _mm_load_ps(&captured->position.x);
+    tfx128 to2 = _mm_load_ps(&current->rotations.y);
+    tfx128 from2 = _mm_load_ps(&captured->rotations.y);
+    tfx128 one_minus_tween = _mm_sub_ps(_mm_set1_ps(1.f), *tween);
+    tfx128 to_lerp1 = _mm_mul_ps(to1, *tween);
+    tfx128 from_lerp1 = _mm_mul_ps(from1, one_minus_tween);
+    tfx128 result = _mm_add_ps(from_lerp1, to_lerp1);
+    tfx_wide_lerp_transform_result_t out;
+    _mm_store_ps(out.position, result);
+    to_lerp1 = _mm_mul_ps(to2, *tween);
+    from_lerp1 = _mm_mul_ps(from2, one_minus_tween);
+    result = _mm_add_ps(from_lerp1, to_lerp1);
+    _mm_store_ps(&out.rotations[1], result);
+    return out;
+}
+
+#elifdef tfxARM
+
+/*
+Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
+* @param tween                The interpolation value between 0 and 1. You should pass in the value from your timing function
+* @param current            The current tfx_rgba8_t color
+* @param captured            The captured tfx_rgba8_t color
+* @returns tfx_rgba8_t            The interpolated tfx_rgba8_t
+*/
+tfxAPI inline tfx_rgba8_t TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
+    tfx128 color1 = { (float)current.a, (float)current.b, (float)current.g, (float)current.r };
+    tfx128 color2 = { (float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r };
+    tfx128 wide_tween = vdupq_n_f32(tween);
+    tfx128 wide_tween_m1 = vsubq_f32(vdupq_n_f32(1.f), wide_tween);
+    color1 = vmulq_f32(vdivq_f32(color1, vdupq_n_f32(255.f)), wide_tween);
+    color2 = vmulq_f32(vdivq_f32(color2, vdupq_n_f32(255.f)), wide_tween_m1);
+    color1 = vaddq_f32(color1, color2);
+    color1 = vmulq_f32(color1, vdupq_n_f32(255.f));
+    tfx128i packed = vcvtq_s32_f32(color1);
+    return tfx_rgba8_t(vgetq_lane_s32(packed, 0), vgetq_lane_s32(packed, 1), vgetq_lane_s32(packed, 2), vgetq_lane_s32(packed, 3));
+}
+
+
+/*
+Interpolate all sprite transform data in a single function. This will interpolate position, scale and rotation.
+* @param tween                The interpolation value between 0 and 1. You should pass in the value from your timing function
+* @param current            The current transform struct of the sprite
+* @param captured            The captured transform struct of the sprite
+* @returns tfx_wide_lerp_transform_result_t            The interpolated transform data in a tfx_wide_lerp_transform_result_t
+*/
+tfxAPI inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const tfx128 *tween, const tfx_sprite_transform3d_t *current, const tfx_sprite_transform3d_t *captured) {
+    tfx128 to1 = vld1q_f32(&current->position.x);
+    tfx128 from1 = vld1q_f32(&captured->position.x);
+    tfx128 to2 = vld1q_f32(&current->rotations.y);
+    tfx128 from2 = vld1q_f32(&captured->rotations.y);
+    tfx128 one_minus_tween = vsubq_f32(vdupq_n_f32(1.f), *tween);
+    tfx128 to_lerp1 = vmulq_f32(to1, *tween);
+    tfx128 from_lerp1 = vmulq_f32(from1, one_minus_tween);
+    tfx128 result = vaddq_f32(from_lerp1, to_lerp1);
+    tfx_wide_lerp_transform_result_t out;
+    vst1q_f32(out.position, result);
+    to_lerp1 = vmulq_f32(to2, *tween);
+    from_lerp1 = vmulq_f32(from2, one_minus_tween);
+    result = vaddq_f32(from_lerp1, to_lerp1);
+    vst1q_f32(&out.rotations[1], result);
+    return out;
+}
+
+
+#endif
 
 } //namespace
 #endif
