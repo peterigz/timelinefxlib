@@ -428,7 +428,7 @@ tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
 }
 
 
-#elifdef tfxARM
+#elif defined(tfxARM)
 
 tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
     tfxPROFILE;

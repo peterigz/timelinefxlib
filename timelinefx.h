@@ -45,7 +45,7 @@
 #define tfxMAX_MEMORY_POOLS 32
 #endif
 
-#if defined(__x86_64__) || defined(__i386__)
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64)
 #define tfxINTEL
 #include <immintrin.h>
 #elif defined(__arm__) || defined(__aarch64__)
@@ -1606,7 +1606,7 @@ typedef union {
 	float a[4];
 } tfxWideArray;
 
-#elifdef tfxARM
+#elif defined(tfxARM)
 //Arm Intrinsics
 typedef float32x4_t tfxWideFloat;
 typedef int32x4_t tfxWideInt;
@@ -1720,7 +1720,7 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
 	return _mm_sub_ps(fi, j);
 }
 
-#elifdef tfxARM
+#elif defined(tfxARM)
 
 typedef float32x4_t tfx128;
 typedef int32x4_t tfx128i;
@@ -7446,7 +7446,7 @@ tfxAPI inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const 
     return out;
 }
 
-#elifdef tfxARM
+#elif defined(tfxARM)
 
 /*
 Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
