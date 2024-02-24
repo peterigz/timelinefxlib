@@ -1534,9 +1534,10 @@ typedef union {
 
 #else
 
+#define tfxDataWidth 4
+
 #ifdef tfxINTEL
 //Intel Intrinsics
-#define tfxDataWidth 4	
 typedef __m128 tfxWideFloat;
 typedef __m128i tfxWideInt;
 #define tfxWideLoad _mm_load_ps
@@ -1636,14 +1637,14 @@ typedef int32x4_t tfxWideInt;
 #define tfxWideCasti vreinterpretq_s32_f32
 #define tfxWideCast vreinterpretq_f32_s32
 #define tfxWideConverti vcvtnq_s32_f32
-#define tfxWideConvert vcvtnq_f32_s32
+#define tfxWideConvert vcvtq_f32_s32
 #define tfxWideMin vminq_f32
 #define tfxWideMax vmaxq_f32
 #define tfxWideMini vminq_s32
 #define tfxWideMaxi vmaxq_s32
 #define tfxWideOri vorrq_s32
 #define tfxWideXOri veorq_s32
-#define tfxWideAnd vandq_f32
+#define tfxWideAnd(a, b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a), vreinterpretq_s32_f32(b)))
 #define tfxWideAndi vandq_s32
 #define tfxWideAndNoti vbicq_s32
 #define tfxWideSetZeroi vdupq_n_s32(0)
@@ -1747,11 +1748,11 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
     //__m128 j = *(__m128*)&_mm_slli_epi32(ji, 23); //create vector 1.0f
     //I'm not entirely sure why original code had above lines to create a vector of 1.f. It seems to me that the below works fine
     //Worth noting that we only need to floor small numbers for the noise algorithm so can get away with this function.
-    __m128 j = vdupq_n_f32(1.f); //create vector 1.0f
-    __m128i i = vcvtnq_s32_f32(x);
-    __m128 fi = vcvtnq_f32_s32(i);
-    __m128 igx = vreinterpretq_f32_u32(vcgtq_f32(fi, x));
-    j = vandq_f32(igx, j);
+    tfx128 j = vdupq_n_f32(1.f); //create vector 1.0f
+    tfx128i i = vcvtnq_s32_f32(x);
+    tfx128 fi = vreinterpretq_f32_s32(i);
+    tfx128 igx = vreinterpretq_f32_s32(vcgtq_f32(fi, x));
+    j = vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(igx), vreinterpretq_s32_f32(j)));
     return vsubq_f32(fi, j);
 }
 
@@ -4096,6 +4097,7 @@ const float gradZ[] =
 	1, 1,-1,-1
 };
 
+#ifdef tfxINTEL
 const tfx128 tfxF3_4 = _mm_set_ps1(1.0f / 3.0f);
 const tfx128 tfxF2_4 = _mm_set_ps1(.366025403f);
 const tfx128 tfxG2_4 = _mm_set_ps1(0.211324865f);
@@ -4109,6 +4111,21 @@ const tfx128 tfxZERO = _mm_set1_ps(0.f);
 const tfx128 tfxTHIRTYTWO = _mm_set1_ps(32.f);
 const tfx128i tfxFF = _mm_set1_epi32(0xFF);
 const tfx128 tfxPSIX = _mm_set_ps1(0.6f);
+#elifdef tfxARM
+const tfx128 tfxF3_4 = vdupq_n_f32(1.0f / 3.0f);
+const tfx128 tfxF2_4 = vdupq_n_f32(.366025403f);
+const tfx128 tfxG2_4 = vdupq_n_f32(0.211324865f);
+const tfx128 tfxG2_4x2 = vdupq_n_f32(0.42264973f);
+const tfx128 tfxG3_4 = vdupq_n_f32(1.0f / 6.0f);
+const tfx128 tfxG32_4 = vdupq_n_f32((1.0f / 6.0f) * 2.f);
+const tfx128 tfxG33_4 = vdupq_n_f32((1.0f / 6.0f) * 3.f);
+const tfx128i tfxONE = vdupq_n_s32(1);
+const tfx128 tfxONEF = vdupq_n_f32(1.f);
+const tfx128 tfxZERO = vdupq_n_f32(0.f);
+const tfx128 tfxTHIRTYTWO = vdupq_n_f32(32.f);
+const tfx128i tfxFF = vdupq_n_s32(0xFF);
+const tfx128 tfxPSIX = vdupq_n_f32(0.6f);
+#endif
 
 static const float tfxGRADIENTS_3D[] =
 {
