@@ -50,6 +50,7 @@
 #include <immintrin.h>
 #elif defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
+#include <mach/mach_time.h>
 #define tfxARM
 #endif
 
@@ -1461,6 +1462,10 @@ typedef __m256 tfxWideFloat;
 typedef __m256i tfxWideInt;
 #define tfxWideLoad _mm256_load_ps
 #define tfxWideLoadi _mm256_load_si256
+#define tfx128Set _mm_set_ps
+#define tfx128Seti _mm_set_epi32
+#define tfx128SetSingle _mm_set_ps1
+#define tfx128SetSinglei _mm_set1_epi32
 #define tfxWideSet _mm256_set_ps
 #define tfxWideSetSingle _mm256_set1_ps
 #define tfxWideSeti _mm256_set_epi32
@@ -1500,8 +1505,8 @@ typedef __m256i tfxWideInt;
 #define tfxWideAndi _mm256_and_si256
 #define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideAndNoti _mm256_andnot_si256
-#define tfxWideSetZero _mm256_setzero_ps
-#define tfxWideSetZeroi _mm256_setzero_si256
+#define tfxWideSetZero _mm256_setzero_ps()
+#define tfxWideSetZeroi _mm256_setzero_si256()
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
 #define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
@@ -1534,15 +1539,21 @@ typedef union {
 
 #else
 
+#define tfxDataWidth 4
+
 #ifdef tfxINTEL
 //Intel Intrinsics
-#define tfxDataWidth 4	
 typedef __m128 tfxWideFloat;
 typedef __m128i tfxWideInt;
 #define tfxWideLoad _mm_load_ps
 #define tfxWideLoadi _mm_load_si128
 #define tfxWideSet _mm_set_ps
 #define tfxWideSetSingle _mm_set_ps1
+#define tfx128Load _mm_load_ps
+#define tfx128Set _mm_set_ps
+#define tfx128Seti _mm_set_epi32
+#define tfx128SetSingle _mm_set_ps1
+#define tfx128SetSinglei _mm_set1_epi32
 #define tfxWideSeti _mm_set_epi32
 #define tfxWideSetSinglei _mm_set1_epi32
 #define tfxWideAdd _mm_add_ps
@@ -1577,9 +1588,9 @@ typedef __m128i tfxWideInt;
 #define tfxWideAnd _mm_and_ps
 #define tfxWideAndi _mm_and_si128
 #define tfxWideAndNoti _mm_andnot_si128
-#define tfxWideSetZeroi _mm_setzero_si128
-#define tfxWideSetZero _mm_setzero_ps
-#define tfxWideEqualsi _mm_cmpeq_epi32 
+#define tfxWideSetZeroi _mm_setzero_si128()
+#define tfxWideSetZero _mm_setzero_ps()
+#define tfxWideEqualsi _mm_cmpeq_epi32
 #define tfxWideEquals _mm_cmpeq_ps
 #define tfxWideShufflei _mm_shuffle_epi32
 
@@ -1609,8 +1620,26 @@ typedef union {
 //Arm Intrinsics
 typedef float32x4_t tfxWideFloat;
 typedef int32x4_t tfxWideInt;
+typedef int32_t tfxWideIntLoader;
 #define tfxWideLoad vld1q_f32
 #define tfxWideLoadi vld1q_s32
+inline __attribute__((always_inline)) float32x4_t tfx__128_SET(float e3, float e2, float e1, float e0) {
+    float32x4_t r;
+    alignas(16) float data[4] = {e0, e1, e2, e3};
+    r = vld1q_f32(data);
+    return r;
+}
+inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, int e1, int e0) {
+    int32x4_t r;
+    alignas(16) int data[4] = {e0, e1, e2, e3};
+    r = vld1q_s32(data);
+    return r;
+}
+#define tfx128Load vld1q_f32
+#define tfx128Set tfx__128_SET
+#define tfx128Seti tfx__128i_SET
+#define tfx128SetSingle vdupq_n_f32
+#define tfx128SetSinglei vdupq_n_s32
 #define tfxWideSet vld1q_f32
 #define tfxWideSetSingle vdupq_n_f32
 #define tfxWideSeti vld1q_s32
@@ -1625,31 +1654,35 @@ typedef int32x4_t tfxWideInt;
 #define tfxWideSqrt vrsqrteq_f32 // for reciprocal square root approximation
 #define tfxWideShiftRight vshrq_n_s32
 #define tfxWideShiftLeft vshlq_n_s32
-#define tfxWideGreaterEqual vreinterpretq_f32_u32(vcgeq_f32)
-#define tfxWideGreater vreinterpretq_f32_u32(vcgtq_f32)
+#define tfxWideGreaterEqual(a, b) vreinterpretq_f32_u32(vcgeq_f32(a, b))
+#define tfxWideGreater(a, b) vreinterpretq_s32_u32(vcgeq_f32(a,b))
 #define tfxWideGreateri vcgtq_s32
-#define tfxWideLessEqual vreinterpretq_f32_u32(vcleq_f32)
-#define tfxWideLess vreinterpretq_f32_u32(vcltq_f32)
+#define tfxWideLessEqual(a, b) vreinterpretq_f32_u32(vcleq_f32(a, b))
+#define tfxWideLess(a, b) vreinterpretq_f32_u32(vcltq_f32(a, b))
 #define tfxWideLessi vcltq_s32
 #define tfxWideStore vst1q_f32
 #define tfxWideStorei vst1q_s32
 #define tfxWideCasti vreinterpretq_s32_f32
 #define tfxWideCast vreinterpretq_f32_s32
 #define tfxWideConverti vcvtnq_s32_f32
-#define tfxWideConvert vcvtnq_f32_s32
+#define tfxWideConvert vcvtq_f32_s32
 #define tfxWideMin vminq_f32
 #define tfxWideMax vmaxq_f32
 #define tfxWideMini vminq_s32
 #define tfxWideMaxi vmaxq_s32
 #define tfxWideOri vorrq_s32
 #define tfxWideXOri veorq_s32
-#define tfxWideAnd vandq_f32
+#define tfxWideAnd(a, b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a), vreinterpretq_s32_f32(b)))
 #define tfxWideAndi vandq_s32
 #define tfxWideAndNoti vbicq_s32
 #define tfxWideSetZeroi vdupq_n_s32(0)
 #define tfxWideSetZero vdupq_n_f32(0.0f)
 #define tfxWideEqualsi vceqq_s32
-#define tfxWideEquals vreinterpretq_f32_u32(vceqq_f32)
+#define tfxWideEquals(a, b) vreinterpretq_f32_u32(vceqq_f32(a, b))
+
+#define tfxSIMD_AND(a,b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a),vreinterpretq_s32_f32(b)))
+#define tfxSIMD_AND_NOT(a,b) vreinterpretq_f32_s32(vandq_s32(vmvnq_s32(vreinterpretq_s32_f32(a)),vreinterpretq_s32_f32(b)))
+#define tfxSIMD_XOR(a,b) vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(a),vreinterpretq_s32_f32(b)))
 
 const float32x4_t tfxWIDEF3_4 = vdupq_n_f32(1.0f / 3.0f);
 const float32x4_t tfxWIDEG3_4 = vdupq_n_f32(1.0f / 6.0f);
@@ -1676,11 +1709,11 @@ typedef union {
 
 #endif
 
-#define tfxWideLookupSet(lookup, index) tfxWideSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSetMember(lookup, member, index) tfxWideSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
-#define tfxWideLookupSeti(lookup, index) tfxWideSeti( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSet(lookup, index) tfx__128_SET( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetMember(lookup, member, index) tfx__128_SET( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSetMemberi(lookup, member, index) tfx__128i_SET( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfx__128_SET( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
+#define tfxWideLookupSeti(lookup, index) tfx__128i_SET( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 
 #endif
 
@@ -1719,6 +1752,10 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
 	return _mm_sub_ps(fi, j);
 }
 
+tfxINTERNAL uint64_t tfx__rdtsc() {
+    return __rdtsc();
+}
+
 #elif defined(tfxARM)
 
 typedef float32x4_t tfx128;
@@ -1747,12 +1784,16 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
     //__m128 j = *(__m128*)&_mm_slli_epi32(ji, 23); //create vector 1.0f
     //I'm not entirely sure why original code had above lines to create a vector of 1.f. It seems to me that the below works fine
     //Worth noting that we only need to floor small numbers for the noise algorithm so can get away with this function.
-    __m128 j = vdupq_n_f32(1.f); //create vector 1.0f
-    __m128i i = vcvtnq_s32_f32(x);
-    __m128 fi = vcvtnq_f32_s32(i);
-    __m128 igx = vreinterpretq_f32_u32(vcgtq_f32(fi, x));
-    j = vandq_f32(igx, j);
+    tfx128 j = vdupq_n_f32(1.f); //create vector 1.0f
+    tfx128i i = vcvtnq_s32_f32(x);
+    tfx128 fi = vreinterpretq_f32_s32(i);
+    tfx128 igx = vreinterpretq_f32_s32(vcgtq_f32(fi, x));
+    j = vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(igx), vreinterpretq_s32_f32(j)));
     return vsubq_f32(fi, j);
+}
+
+tfxINTERNAL uint64_t tfx__rdtsc() {
+    return mach_absolute_time();
 }
 
 #endif
@@ -4096,6 +4137,7 @@ const float gradZ[] =
 	1, 1,-1,-1
 };
 
+#ifdef tfxINTEL
 const tfx128 tfxF3_4 = _mm_set_ps1(1.0f / 3.0f);
 const tfx128 tfxF2_4 = _mm_set_ps1(.366025403f);
 const tfx128 tfxG2_4 = _mm_set_ps1(0.211324865f);
@@ -4109,6 +4151,21 @@ const tfx128 tfxZERO = _mm_set1_ps(0.f);
 const tfx128 tfxTHIRTYTWO = _mm_set1_ps(32.f);
 const tfx128i tfxFF = _mm_set1_epi32(0xFF);
 const tfx128 tfxPSIX = _mm_set_ps1(0.6f);
+#elifdef tfxARM
+const tfx128 tfxF3_4 = vdupq_n_f32(1.0f / 3.0f);
+const tfx128 tfxF2_4 = vdupq_n_f32(.366025403f);
+const tfx128 tfxG2_4 = vdupq_n_f32(0.211324865f);
+const tfx128 tfxG2_4x2 = vdupq_n_f32(0.42264973f);
+const tfx128 tfxG3_4 = vdupq_n_f32(1.0f / 6.0f);
+const tfx128 tfxG32_4 = vdupq_n_f32((1.0f / 6.0f) * 2.f);
+const tfx128 tfxG33_4 = vdupq_n_f32((1.0f / 6.0f) * 3.f);
+const tfx128i tfxONE = vdupq_n_s32(1);
+const tfx128 tfxONEF = vdupq_n_f32(1.f);
+const tfx128 tfxZERO = vdupq_n_f32(0.f);
+const tfx128 tfxTHIRTYTWO = vdupq_n_f32(32.f);
+const tfx128i tfxFF = vdupq_n_s32(0xFF);
+const tfx128 tfxPSIX = vdupq_n_f32(0.6f);
+#endif
 
 static const float tfxGRADIENTS_3D[] =
 {
@@ -4250,7 +4307,7 @@ struct tfx_profile_tag_t {
 
 	~tfx_profile_tag_t() {
 		tfx_AtomicAdd64(&snapshot->run_time, tfx_Microsecs() - start_time);
-		tfx_AtomicAdd64(&snapshot->cycle_count, (__rdtsc() - start_cycles));
+		tfx_AtomicAdd64(&snapshot->cycle_count, (tfx__rdtsc() - start_cycles));
 	}
 
 };
