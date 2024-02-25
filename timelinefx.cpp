@@ -655,21 +655,10 @@ tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
     in_row[2] = vld1q_f32(&in->v[2].x);
     in_row[3] = vld1q_f32(&in->v[3].x);
 
-    tfx128 m_row1 = vsetq_lane_f32(m->v[0].x, vdupq_n_f32(m->v[1].x), 0);
-    m_row1 = vsetq_lane_f32(m->v[2].x, m_row1, 1);
-    m_row1 = vsetq_lane_f32(m->v[3].x, m_row1, 2);
-
-    tfx128 m_row2 = vsetq_lane_f32(m->v[0].y, vdupq_n_f32(m->v[1].y), 0);
-    m_row2 = vsetq_lane_f32(m->v[2].y, m_row2, 1);
-    m_row2 = vsetq_lane_f32(m->v[3].y, m_row2, 2);
-
-    tfx128 m_row3 = vsetq_lane_f32(m->v[0].z, vdupq_n_f32(m->v[1].z), 0);
-    m_row3 = vsetq_lane_f32(m->v[2].z, m_row3, 1);
-    m_row3 = vsetq_lane_f32(m->v[3].z, m_row3, 2);
-
-    tfx128 m_row4 = vsetq_lane_f32(m->v[0].w, vdupq_n_f32(m->v[1].w), 0);
-    m_row4 = vsetq_lane_f32(m->v[2].w, m_row4, 1);
-    m_row4 = vsetq_lane_f32(m->v[3].w, m_row4, 2);
+    tfx128 m_row1 = tfx128Set(m->v[3].x, m->v[2].x, m->v[1].x, m->v[0].x);
+    tfx128 m_row2 = tfx128Set(m->v[3].y, m->v[2].y, m->v[1].y, m->v[0].y);
+    tfx128 m_row3 = tfx128Set(m->v[3].z, m->v[2].z, m->v[1].z, m->v[0].z);
+    tfx128 m_row4 = tfx128Set(m->v[3].w, m->v[2].w, m->v[1].w, m->v[0].w);
 
     for (int r = 0; r <= 3; ++r)
     {
@@ -678,15 +667,15 @@ tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m) {
         tfx128 row3result = vmulq_f32(in_row[r], m_row3);
         tfx128 row4result = vmulq_f32(in_row[r], m_row4);
 
-        tfx128 tmp;
-        tmp = vaddq_f32(row1result, row2result);
-        tmp = vaddq_f32(tmp, row3result);
-        tmp = vaddq_f32(tmp, row4result);
-
-        res.v[r].x = vgetq_lane_f32(tmp, 0);
-        res.v[r].y = vgetq_lane_f32(tmp, 1);
-        res.v[r].z = vgetq_lane_f32(tmp, 2);
-        res.v[r].w = vgetq_lane_f32(tmp, 3);
+        float tmp[4];
+        vst1q_f32(tmp, row1result);
+        res.v[r].x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+        vst1q_f32(tmp, row2result);
+        res.v[r].y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+        vst1q_f32(tmp, row3result);
+        res.v[r].z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+        vst1q_f32(tmp, row4result);
+        res.v[r].w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
     }
     return res;
 }
@@ -706,22 +695,15 @@ tfx_vec4_t TransformVec4Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t vec) {
     tfx128 row3result = vmulq_f32(v4, mrow3);
     tfx128 row4result = vmulq_f32(v4, mrow4);
 
-    tfx128 tmp;
-    tmp = vaddq_f32(row1result, vextq_f32(row1result, row1result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.x = vgetq_lane_f32(tmp, 0);
-
-    tmp = vaddq_f32(row2result, vextq_f32(row2result, row2result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.y = vgetq_lane_f32(tmp, 0);
-
-    tmp = vaddq_f32(row3result, vextq_f32(row3result, row3result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.z = vgetq_lane_f32(tmp, 0);
-
-    tmp = vaddq_f32(row4result, vextq_f32(row4result, row4result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.w = vgetq_lane_f32(tmp, 0);
+    float tmp[4];
+    vst1q_f32(tmp, row1result);
+    v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    vst1q_f32(tmp, row2result);
+    v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    vst1q_f32(tmp, row3result);
+    v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    vst1q_f32(tmp, row4result);
+    v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 
     return v;
 }
@@ -736,22 +718,15 @@ tfx_vec4_t WideTransformVec4Matrix4(const tfx128 *row1, const tfx128 *row2, cons
     tfx128 row3result = vmulq_f32(v4, *row3);
     tfx128 row4result = vmulq_f32(v4, *row4);
 
-    tfx128 tmp;
-    tmp = vaddq_f32(row1result, vextq_f32(row1result, row1result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.x = vgetq_lane_f32(tmp, 0);
-
-    tmp = vaddq_f32(row2result, vextq_f32(row2result, row2result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.y = vgetq_lane_f32(tmp, 0);
-
-    tmp = vaddq_f32(row3result, vextq_f32(row3result, row3result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.z = vgetq_lane_f32(tmp, 0);
-
-    tmp = vaddq_f32(row4result, vextq_f32(row4result, row4result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.w = vgetq_lane_f32(tmp, 0);
+    float tmp[4];
+    vst1q_f32(tmp, row1result);
+    v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    vst1q_f32(tmp, row2result);
+    v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    vst1q_f32(tmp, row3result);
+    v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    vst1q_f32(tmp, row4result);
+    v.w = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 
     return v;
 }
@@ -771,18 +746,13 @@ tfx_vec3_t TransformVec3Matrix4(const tfx_mat4_t *mat, const tfx_vec4_t *vec) {
     tfx128 row3result = vmulq_f32(v4, mrow3);
     tfx128 row4result = vmulq_f32(v4, mrow4);
 
-    tfx128 tmp;
-    tmp = vaddq_f32(row1result, vextq_f32(row1result, row1result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.x = vgetq_lane_f32(tmp, 0);
-
-    tmp = vaddq_f32(row2result, vextq_f32(row2result, row2result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.y = vgetq_lane_f32(tmp, 0);
-
-    tmp = vaddq_f32(row3result, vextq_f32(row3result, row3result, 1));
-    tmp = vaddq_f32(tmp, vextq_f32(tmp, tmp, 2));
-    v.z = vgetq_lane_f32(tmp, 0);
+    float tmp[4];
+    vst1q_f32(tmp, row1result);
+    v.x = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    vst1q_f32(tmp, row2result);
+    v.y = tmp[0] + tmp[1] + tmp[2] + tmp[3];
+    vst1q_f32(tmp, row3result);
+    v.z = tmp[0] + tmp[1] + tmp[2] + tmp[3];
 
     return v;
 }
