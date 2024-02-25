@@ -482,12 +482,12 @@ tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 
     tfx128 n0, n1, n2;
     tfx128 gx0, gy0, gx1, gy1, gx2, gy2;
-    gx0 = vld1q_f32(&gradX[gi0[0]]);
-    gy0 = vld1q_f32(&gradY[gi0[0]]);
-    gx1 = vld1q_f32(&gradX[gi1[0]]);
-    gy1 = vld1q_f32(&gradY[gi1[0]]);
-    gx2 = vld1q_f32(&gradX[gi2[0]]);
-    gy2 = vld1q_f32(&gradY[gi2[0]]);
+    gx0 = tfx128Set(gradX[gi0[3]], gradX[gi0[2]], gradX[gi0[1]], gradX[gi0[0]]);
+    gy0 = tfx128Set(gradY[gi0[3]], gradY[gi0[2]], gradY[gi0[1]], gradY[gi0[0]]);
+    gx1 = tfx128Set(gradX[gi1[3]], gradX[gi1[2]], gradX[gi1[1]], gradX[gi1[0]]);
+    gy1 = tfx128Set(gradY[gi1[3]], gradY[gi1[2]], gradY[gi1[1]], gradY[gi1[0]]);
+    gx2 = tfx128Set(gradX[gi2[3]], gradX[gi2[2]], gradX[gi2[1]], gradX[gi2[0]]);
+    gy2 = tfx128Set(gradY[gi2[3]], gradY[gi2[2]], gradY[gi2[1]], gradY[gi2[0]]);
 
     tfx128 t0 = vsubq_f32(vsubq_f32(vdupq_n_f32(0.5f), vmulq_f32(x0, x0)), vmulq_f32(y0, y0));
     tfx128 t02 = vmulq_f32(t0, t0);
@@ -9789,7 +9789,11 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat l = tfxWideMul(alignment_vector_x, alignment_vector_x);
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_y, alignment_vector_y));
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_z, alignment_vector_z));
-			l = tfxWideSqrt(l);
+            #ifdef tfxARM
+                l = tfxWideMul(tfxWideSqrt(l), l);
+            #else
+                l = tfxWideSqrt(l);
+            #endif
 			p_stretch.m = tfxWideMul(p_stretch.m, tfxWideDiv(l, pm.update_time_wide));	//This is too arbitrary, think up a better solution!
 			alignment_vector_x = tfxWideDiv(alignment_vector_x, l);
 			alignment_vector_y = tfxWideDiv(alignment_vector_y, l);
@@ -10025,7 +10029,11 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		stretch_velocity_y = tfxWideAdd(stretch_velocity_y, tfxWideSetSingle(0.000001f));
 		tfxWideFloat l = tfxWideMul(stretch_velocity_x, stretch_velocity_x);
 		l = tfxWideAdd(l, tfxWideMul(stretch_velocity_y, stretch_velocity_y));
-		l = tfxWideSqrt(l);
+#ifdef tfxARM
+		l = tfxWideMul(tfxWideSqrt(l), l);
+#else
+        l = tfxWideSqrt(l);
+#endif
 		p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(0.02f)));
 		stretch_velocity_x = tfxWideDiv(stretch_velocity_x, l);
 		stretch_velocity_y = tfxWideDiv(stretch_velocity_y, l);
