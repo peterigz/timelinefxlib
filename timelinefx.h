@@ -198,7 +198,7 @@ extern "C" {
 	} tfx__error_codes;
 
 	/*
-		Each block has a header that if used only has a pointer to the previous physical block
+		Each block has a header that is used only has a pointer to the previous physical block
 		and the size. If the block is free then the prev and next free blocks are also stored.
 	*/
 	typedef struct tfx_header {
