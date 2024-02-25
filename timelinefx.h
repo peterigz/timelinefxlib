@@ -1664,7 +1664,7 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideStorei vst1q_s32
 #define tfxWideCasti vreinterpretq_s32_f32
 #define tfxWideCast vreinterpretq_f32_s32
-#define tfxWideConverti vcvtnq_s32_f32
+#define tfxWideConverti vcvtq_s32_f32
 #define tfxWideConvert vcvtq_f32_s32
 #define tfxWideMin vminq_f32
 #define tfxWideMax vmaxq_f32
