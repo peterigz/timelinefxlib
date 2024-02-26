@@ -54,6 +54,14 @@
 #define tfxARM
 #endif
 
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#define tfxWINDOWS
+#elif __APPLE__
+#define tfxMAC
+#elif __linux__
+#define tfxLINUX
+#endif
+
 #include <stdint.h>
 #include <math.h>
 
@@ -1666,7 +1674,7 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideStorei vst1q_s32
 #define tfxWideCasti vreinterpretq_s32_f32
 #define tfxWideCast vreinterpretq_f32_s32
-#define tfxWideConverti vcvtnq_s32_f32
+#define tfxWideConverti vcvtq_s32_f32
 #define tfxWideConvert vcvtq_f32_s32
 #define tfxWideMin vminq_f32
 #define tfxWideMax vmaxq_f32
@@ -1778,21 +1786,7 @@ typedef union {
     float a[4];
 } tfx128Array;
 
-//simd floor function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
-tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
-    //__m128i v0 = _mm_setzero_si128();
-    //__m128i v1 = _mm_cmpeq_epi32(v0, v0);
-    //__m128i ji = _mm_srli_epi32(v1, 25);
-    //__m128 j = *(__m128*)&_mm_slli_epi32(ji, 23); //create vector 1.0f
-    //I'm not entirely sure why original code had above lines to create a vector of 1.f. It seems to me that the below works fine
-    //Worth noting that we only need to floor small numbers for the noise algorithm so can get away with this function.
-    tfx128 j = vdupq_n_f32(1.f); //create vector 1.0f
-    tfx128i i = vcvtnq_s32_f32(x);
-    tfx128 fi = vreinterpretq_f32_s32(i);
-    tfx128 igx = vreinterpretq_f32_s32(vcgtq_f32(fi, x));
-    j = vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(igx), vreinterpretq_s32_f32(j)));
-    return vsubq_f32(fi, j);
-}
+#define tfxFloor128 vrndmq_f32
 
 tfxINTERNAL uint64_t tfx__rdtsc() {
     return mach_absolute_time();
