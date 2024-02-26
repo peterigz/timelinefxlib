@@ -9005,7 +9005,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= emitter_properties->end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
 			state_flags |= emitter_properties->end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
-			state_flags |= GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.velocity_turbulance) > 0 ? tfxEmitterStateFlags_has_noise : 0;
+			state_flags |= (GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.velocity_turbulance) && GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.noise_resolution)) > 0 ? tfxEmitterStateFlags_has_noise : 0;
 
 			if (state_flags & tfxEmitterStateFlags_is_line_traversal) {
 				emitter.property_flags |= tfxEmitterPropertyFlags_relative_position;
