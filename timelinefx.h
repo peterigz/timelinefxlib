@@ -1460,6 +1460,7 @@ private:
 #define tfxDataWidth 8	
 typedef __m256 tfxWideFloat;
 typedef __m256i tfxWideInt;
+typedef __m256i tfxWideIntLoader;
 #define tfxWideLoad _mm256_load_ps
 #define tfxWideLoadi _mm256_load_si256
 #define tfx128Set _mm_set_ps
@@ -1545,6 +1546,7 @@ typedef union {
 //Intel Intrinsics
 typedef __m128 tfxWideFloat;
 typedef __m128i tfxWideInt;
+typedef __m128i tfxWideIntLoader;
 #define tfxWideLoad _mm_load_ps
 #define tfxWideLoadi _mm_load_si128
 #define tfxWideSet _mm_set_ps
@@ -1709,11 +1711,11 @@ typedef union {
 
 #endif
 
-#define tfxWideLookupSet(lookup, index) tfx__128_SET( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSetMember(lookup, member, index) tfx__128_SET( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSetMemberi(lookup, member, index) tfx__128i_SET( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfx__128_SET( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
-#define tfxWideLookupSeti(lookup, index) tfx__128i_SET( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSet(lookup, index) tfx128Set( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetMember(lookup, member, index) tfx128Set( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSetMemberi(lookup, member, index) tfx128iSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfx128Set( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
+#define tfxWideLookupSeti(lookup, index) tfx128iSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 
 #endif
 
@@ -4151,7 +4153,7 @@ const tfx128 tfxZERO = _mm_set1_ps(0.f);
 const tfx128 tfxTHIRTYTWO = _mm_set1_ps(32.f);
 const tfx128i tfxFF = _mm_set1_epi32(0xFF);
 const tfx128 tfxPSIX = _mm_set_ps1(0.6f);
-#elifdef tfxARM
+#elif defined(tfxARM)
 const tfx128 tfxF3_4 = vdupq_n_f32(1.0f / 3.0f);
 const tfx128 tfxF2_4 = vdupq_n_f32(.366025403f);
 const tfx128 tfxG2_4 = vdupq_n_f32(0.211324865f);
@@ -5732,7 +5734,7 @@ tfxINTERNAL tfxU32 Pack16bitUnsigned(float x, float y);
 tfxAPI_EDITOR tfx_vec2_t UnPack16bit(tfxU32 in);
 tfxINTERNAL tfx_vec2_t UnPack16bitUnsigned(tfxU32 in);
 tfxINTERNAL tfxWideInt PackWide16bitStretch(tfxWideFloat &v_x, tfxWideFloat &v_y);
-tfxINTERNAL tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y);
+tfxAPI_EDITOR tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxINTERNAL void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y);
 tfxAPI tfxWideInt PackWide8bitXYZ(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
