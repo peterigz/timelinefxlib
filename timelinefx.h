@@ -15,6 +15,8 @@
 	This library is render agnostic, so you will have to provide your own means to render the particles. You will use ParticleManager::GetParticleBuffer() to get all of the active particles in the particle manager
 	and then use the values in Particle struct to draw a correctly scaled and rotated particle.
 
+	Currently tested on Windows and MacOS, Intel and ARM processors.
+
 	Sections in this header file, you can search for the following keywords to jump to that section:
 
 	[Zest_Pocket_Allocator]			A single header library for allocating memory from a large pool.
@@ -5387,7 +5389,7 @@ struct tfx_particle_manager_t {
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 current_sprite_buffer;
-	tfxU32 current_depth_index_buffer;
+	tfxU32 current_depth_index_buffer[tfxLAYERS];
 
 	//todo: document compute controllers once we've established this is how we'll be doing it.
 	void *compute_controller_ptr;
@@ -5454,7 +5456,6 @@ struct tfx_particle_manager_t {
 		new_particles_count(0),
 		mt_batch_size(512),
 		current_sprite_buffer(0),
-		current_depth_index_buffer(0),
 		free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_compute_controllers")),
 		library(nullptr),
 		sort_passes(0)
