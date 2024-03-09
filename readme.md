@@ -25,18 +25,20 @@ So far some of the features of the Library:
 
 To load an effect library that you create with the editor, use 
 
-	EffectLibrary library;
-	//Parameters are: filename, library object to load into, function pointer to the 
-	//shape loader and any pointer to some custom data that you might want to pass through 
-	//to the function.
-	LoadEffectLibrary("MyEffects.zip", &library, ShapeLoader, &my_custom_data);
+```cpp
+EffectLibrary library;
+//Parameters are: filename, library object to load into, function pointer to the 
+//shape loader and any pointer to some custom data that you might want to pass through 
+//to the function.
+LoadEffectLibrary("MyEffects.tfx", &library, ShapeLoader, &my_custom_data);
+```
 
 ### Setting up a ShapeLoader function to load the particle images
 ShapeLoader is a pointer to your function that the library loader will use to load the images in the library. Each renderer will have its own way of doing that so you will have to adopt the appropriate way.
 
-Here's an example of a Shapeloader using the same renderer that the Editor uses. This is taken from an example you can [https://github.com/peterigz/zest/blob/3685db7c7e066f43e25db5015851c13af5ef89e0/examples/GLFW/zest-timelinefx/zest-timelinefx.cpp#L54](find here): 
+Here's an example of a Shapeloader using the same renderer that the Editor uses. This is taken from an example you can [find here](https://github.com/peterigz/zest/blob/3685db7c7e066f43e25db5015851c13af5ef89e0/examples/GLFW/zest-timelinefx/zest-timelinefx.cpp#L54): 
 
-```
+```cpp
 /* Before you load an effects file, you will need to define a ShapeLoader function that passes the following parameters: */
 //const char* filename			- this will be the filename of the image being loaded from the library. You don't have to do anything with this if you don't need to.
 //ImageData	&image_data			- A struct containing data about the image. You will have to set image_data.ptr to point to the texture in your renderer for later use in the Render function that you will create to render the particles
@@ -77,7 +79,7 @@ void ShapeLoader(const char* filename, tfx_image_data_t *image_data, void *raw_i
 
 ### Creating a render function to render the particles
 Here's an example of a render function that you will need to write in order to integrate timeline fx with your specific renderer that you're using. a 2d render function would be very similar to the 3d one below.
-This is taken from an example you can This is taken from an example you can [https://github.com/peterigz/zest/blob/3685db7c7e066f43e25db5015851c13af5ef89e0/examples/GLFW/zest-timelinefx/zest-timelinefx.cpp#L54](find here):
+This is taken from an example you can This is taken from an example you can [find here](https://github.com/peterigz/zest/blob/3685db7c7e066f43e25db5015851c13af5ef89e0/examples/GLFW/zest-timelinefx/zest-timelinefx.cpp#L54):
 ```cpp
 void RenderParticles3d(tfx_particle_manager_t& pm, VadersGame* game) {
 	//Let our renderer know that we want to draw to the billboard layer.
