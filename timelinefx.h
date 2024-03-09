@@ -6313,10 +6313,10 @@ Initialise a tfx_particle_manager_t for 3d usage
 * @param double_buffer_sprites	True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
 * @param dynamic_allocation		If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
 								many particles you will need to display while developing you're game/app. Default is false.
-* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512
+* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048
 
 */
-tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 2048);
 
 /*
 Initialise a tfx_particle_manager_t for 2d usage
@@ -6331,10 +6331,10 @@ Initialise a tfx_particle_manager_t for 2d usage
 * @param double_buffer_sprites	True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
 * @param dynamic_allocation		If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
 								many particles you will need to display while developing you're game/app. Default is false.
-* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
+* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048.
 
 */
-tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 512);
+tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 2048);
 
 /*
 Initialise a tfx_particle_manager_t for both 2d and 3d. This just allocates buffers for both 2d and 3d anticipating that you'll be using ReconfigureParticleManager to switch between 2d/3d modes. If you want to update
@@ -6350,10 +6350,10 @@ both 2d and 3d particles at the same time then just use 2 separate particle mana
 * @param double_buffer_sprites	True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
 * @param dynamic_allocation		If set to true then when the layer_max_values is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
 								many particles you will need to display while developing you're game/app. Default is false.
-* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 512.
+* @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048.
 
 */
-tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 512);
+tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 2048);
 
 /*
 Reconfigure a particle manager to make it work in a different mode. A particle manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
@@ -6458,7 +6458,7 @@ tfxAPI inline tfxU32 SpritesInLayerCount(tfx_particle_manager_t *pm, tfxU32 laye
 }
 
 /*
-Get the total number of sprites within the layer of the particle manager
+Get a pointer to the sprite buffer in the particle manager. You can use this access all the sprites for rendering.
 * @param pm					A pointer to an initialised tfx_particle_manager_t.
 * @param layer				The layer of the sprites to the count of
 */
