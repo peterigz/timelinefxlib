@@ -6258,7 +6258,7 @@ tfxAPI int ValidateEffectPackage(const char *filename);
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
+tfxAPI tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr, bool read_only = true);
 
 /**
 * Loads a sprite data file into an animation manager
@@ -6415,7 +6415,7 @@ tfxAPI inline void SetSeed(tfx_particle_manager_t *pm, tfxU64 seed) {
 /*
 Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
 means that you can tweak an effect without editing the base effect in the library.
-* @param library					A reference to a tfx_library_t that should be loaded with LoadEffectLibraryPackage
+* @param library					A reference to a tfx_library_t that should be loaded with LoadEffectLibrary
 * @param name						The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
 * @param effect_template			The empty tfx_effect_template_t object that you want the effect loading into
 //Returns true on success.

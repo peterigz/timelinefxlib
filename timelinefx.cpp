@@ -7863,7 +7863,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 	return error;
 }
 
-tfxErrorFlags LoadEffectLibraryPackage(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char* filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
+tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char* filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
 
 	tfxErrorFlags error = 0;
 
