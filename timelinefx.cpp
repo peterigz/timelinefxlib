@@ -7572,7 +7572,7 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 	return error;
 }
 
-tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
+tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 
 	assert(shape_loader);			//Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 	if (!tfxStore->data_types.initialised)
@@ -7863,7 +7863,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 	return error;
 }
 
-tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char* filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data, bool read_only) {
+tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char* filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 
 	tfxErrorFlags error = 0;
 
@@ -7873,7 +7873,7 @@ tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*
 		FreePackage(&package);
 		return error;
 	}
-	error = LoadEffectLibraryPackage(&package, lib, shape_loader, user_data, read_only);
+	error = LoadEffectLibraryPackage(&package, lib, shape_loader, user_data);
 
 	FreePackage(&package);
 	return error;
