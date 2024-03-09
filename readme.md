@@ -131,13 +131,13 @@ InitParticleManagerFor3d(&pm, &library, layer_max_values, 1000, tfxParticleManag
 /*
 Parameters are:
 InitParticleManagerFor3d(	[pointer to the particle manager], 
-							[pointer to the library], 
-							[array of maximum particles per layer], 
-							[maximum number of emitters allowed], 
-							[the mode of the particle manager: unordered, age ordered, depth orderd], 
-							[true/false use double buffered sprites for interpolating positions for smoother updates], 
-							[true/false dynamically increase particle limits], 
-							[batch size for multithreading]);
+				[pointer to the library], 
+				[array of maximum particles per layer], 
+				[maximum number of emitters allowed], 
+				[the mode of the particle manager: unordered, age ordered, depth orderd], 
+				[true/false use double buffered sprites for interpolating positions for smoother updates], 
+				[true/false dynamically increase particle limits], 
+				[batch size for multithreading]);
 */
 ```
 
