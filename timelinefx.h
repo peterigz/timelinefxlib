@@ -6449,6 +6449,27 @@ Update a particle manager. Call this function each frame in your update loop. It
 tfxAPI void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed);
 
 /*
+Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function
+used when loading an effect library.
+* @param pm					A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param property_indexes	The value in the sprites->property_indexs[i] when iterating over the sprites in your render function
+  @returns					void* pointer to the image
+*/
+tfxAPI inline void* GetSpriteImagePointer(tfx_particle_manager_t* pm, tfxU32 property_indexes) {
+	return pm->library->emitter_properties[property_indexes & 0x0000FFFF].image->ptr;
+}
+
+/*
+Get the handle of the sprite. Use this when rendering particles in your renderer.
+* @param pm					A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param property_indexes	The value in the sprites->property_indexs[i] when iterating over the sprites in your render function
+  @returns					tfx_vec_2 containing the x and y values of the handle.
+*/
+tfxAPI inline tfx_vec2_t GetSpriteHandle(tfx_particle_manager_t* pm, tfxU32 property_indexes) {
+	return pm->library->emitter_properties[property_indexes & 0x0000FFFF].image_handle;
+}
+
+/*
 Get the total number of sprites within the layer of the particle manager
 * @param pm					A pointer to an initialised tfx_particle_manager_t.
 * @param layer				The layer of the sprites to the count of
