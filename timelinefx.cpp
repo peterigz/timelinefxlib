@@ -4961,7 +4961,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("overtime_direction", tfxFloat);
 	names_and_types.Insert("overtime_noise_resolution", tfxFloat);
 
-	names_and_types.Insert("transform_roll", tfxFloat), tfxFloat);
+	names_and_types.Insert("transform_roll", tfxFloat);
 	names_and_types.Insert("transform_pitch", tfxFloat);
 	names_and_types.Insert("transform_yaw", tfxFloat);
 	names_and_types.Insert("transform_translate_x", tfxFloat);
