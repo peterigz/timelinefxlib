@@ -2948,9 +2948,11 @@ void DeleteEmitterFromEffect(tfx_effect_emitter_t *emitter) {
 		tfx_effect_emitter_t &current = stack.pop_back();
 		if (current.type == tfxEffectType && !current.parent) {
 			FreeLibraryGlobal(library, current.global);
+			FreeLibraryKeyframes(library, current.transform_attributes);
 		}
 		else if (current.type == tfxEmitterType) {
 			FreeLibraryEmitterAttributes(library, current.emitter_attributes);
+			FreeLibraryKeyframes(library, current.transform_attributes);
 		}
 		for (auto &sub : GetEffectInfo(&current)->sub_effectors) {
 			stack.push_back(sub);
@@ -2972,14 +2974,16 @@ void CleanUpEffect(tfx_effect_emitter_t *effect) {
 			tfx_effect_emitter_t current = stack.pop_back();
 			if (current.type == tfxEffectType && !current.parent) {
 				FreeLibraryGlobal(effect->library, current.global);
+				FreeLibraryKeyframes(effect->library, current.transform_attributes);
 			}
 			else if (current.type == tfxEmitterType) {
 				FreeLibraryEmitterAttributes(effect->library, current.emitter_attributes);
+				FreeLibraryKeyframes(effect->library, current.transform_attributes);
 			}
 			for (auto &sub : GetEffectInfo(&current)->sub_effectors) {
 				stack.push_back(sub);
 			}
-			GetEffectInfo(&current)->sub_effectors.clear();
+			GetEffectInfo(&current)->sub_effectors.free_all();
 			FreeLibraryProperties(effect->library, current.property_index);
 			FreeLibraryInfo(effect->library, current.info_index);
 		}
@@ -4830,8 +4834,8 @@ tfxU32 CountOfFreeGraphs(tfx_library_t *library) {
 }
 
 void tfx_data_types_dictionary_t::Init() {
-	names_and_types.data.reserve(200);
-	names_and_types.map.reserve(200);
+	names_and_types.data.reserve(300);
+	names_and_types.map.reserve(300);
 	names_and_types.Insert("name", tfxString);
 	names_and_types.Insert("image_index", tfxUint);
 	names_and_types.Insert("image_hash", tfxUInt64);
@@ -4894,6 +4898,75 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("draw_order_by_depth", tfxBool);
 	names_and_types.Insert("guaranteed_draw_order", tfxBool);
 	names_and_types.Insert("include_in_sprite_data_export", tfxBool);
+
+	//Graphs
+	names_and_types.Insert("global_life", tfxFloat);
+	names_and_types.Insert("global_amount", tfxFloat);
+	names_and_types.Insert("global_velocity", tfxFloat);
+	names_and_types.Insert("global_width", tfxFloat);
+	names_and_types.Insert("global_height", tfxFloat);
+	names_and_types.Insert("global_weight", tfxFloat);
+	names_and_types.Insert("global_spin", tfxFloat);
+	names_and_types.Insert("global_stretch", tfxFloat);
+	names_and_types.Insert("global_overal_scale", tfxFloat);
+	names_and_types.Insert("global_intensity", tfxFloat);
+	names_and_types.Insert("global_splatter", tfxFloat);
+	names_and_types.Insert("global_emitter_width", tfxFloat);
+	names_and_types.Insert("global_emitter_height", tfxFloat);
+	names_and_types.Insert("global_emitter_depth", tfxFloat);
+
+	names_and_types.Insert("property_emission_pitch", tfxFloat);
+	names_and_types.Insert("property_emission_yaw", tfxFloat);
+	names_and_types.Insert("property_emission_range", tfxFloat);
+	names_and_types.Insert("property_splatter", tfxFloat);
+	names_and_types.Insert("property_emitter_width", tfxFloat);
+	names_and_types.Insert("property_emitter_height", tfxFloat);
+	names_and_types.Insert("property_emitter_depth", tfxFloat);
+	names_and_types.Insert("property_arc_size", tfxFloat);
+	names_and_types.Insert("property_arc_offset", tfxFloat);
+
+	names_and_types.Insert("base_life", tfxFloat);
+	names_and_types.Insert("base_amount", tfxFloat);
+	names_and_types.Insert("base_velocity", tfxFloat);
+	names_and_types.Insert("base_width", tfxFloat);
+	names_and_types.Insert("base_height", tfxFloat);
+	names_and_types.Insert("base_weight", tfxFloat);
+	names_and_types.Insert("base_spin", tfxFloat);
+	names_and_types.Insert("base_noise_offset", tfxFloat);
+
+	names_and_types.Insert("variation_life", tfxFloat);
+	names_and_types.Insert("variation_amount", tfxFloat);
+	names_and_types.Insert("variation_velocity", tfxFloat);
+	names_and_types.Insert("variation_width", tfxFloat);
+	names_and_types.Insert("variation_height", tfxFloat);
+	names_and_types.Insert("variation_weight", tfxFloat);
+	names_and_types.Insert("variation_spin", tfxFloat);
+	names_and_types.Insert("variation_noise_offset", tfxFloat);
+	names_and_types.Insert("variation_noise_resolution", tfxFloat);
+
+	names_and_types.Insert("overtime_velocity", tfxFloat);
+	names_and_types.Insert("overtime_width", tfxFloat);
+	names_and_types.Insert("overtime_height", tfxFloat);
+	names_and_types.Insert("overtime_weight", tfxFloat);
+	names_and_types.Insert("overtime_spin", tfxFloat);
+	names_and_types.Insert("overtime_stretch", tfxFloat);
+	names_and_types.Insert("overtime_red", tfxFloat);
+	names_and_types.Insert("overtime_green", tfxFloat);
+	names_and_types.Insert("overtime_blue", tfxFloat);
+	names_and_types.Insert("overtime_blendfactor", tfxFloat);
+	names_and_types.Insert("overtime_velocity_turbulance", tfxFloat);
+	names_and_types.Insert("overtime_direction_turbulance", tfxFloat);
+	names_and_types.Insert("overtime_velocity_adjuster", tfxFloat);
+	names_and_types.Insert("overtime_intensity", tfxFloat);
+	names_and_types.Insert("overtime_direction", tfxFloat);
+	names_and_types.Insert("overtime_noise_resolution", tfxFloat);
+
+	names_and_types.Insert("transform_roll", tfxFloat), tfxFloat);
+	names_and_types.Insert("transform_pitch", tfxFloat);
+	names_and_types.Insert("transform_yaw", tfxFloat);
+	names_and_types.Insert("transform_translate_x", tfxFloat);
+	names_and_types.Insert("transform_translate_y", tfxFloat);
+	names_and_types.Insert("transform_translate_z", tfxFloat);
 
 	//Sprite data settings
 	names_and_types.Insert("start_offset", tfxUint);
