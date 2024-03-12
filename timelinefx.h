@@ -5630,6 +5630,7 @@ tfxAPI_EDITOR void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *fil
 tfxAPI_EDITOR void StreamGraph(const char * name, tfx_graph_t *graph, tfx_str_t *file);
 tfxAPI_EDITOR void SplitStringStack(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool StringIsUInt(const tfx_str_t s);
+tfxAPI_EDITOR void AssignPropertyLine(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version);
 tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU64 value, tfxU32 file_version);
 tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
 tfxAPI_EDITOR void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, float value);

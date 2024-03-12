@@ -5305,6 +5305,31 @@ void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str
 		metrics->animation_flags = value;
 }
 
+void AssignPropertyLine(tfx_effect_emitter_t* effect, tfx_vector_t<tfx_str256_t>* pair, tfxU32 file_version) {
+	switch (tfxStore->data_types.names_and_types.At((*pair)[0])) {
+	case tfxUInt64:
+		AssignEffectorProperty(effect, &(*pair)[0], (tfxU64)strtoull((*pair)[1].c_str(), NULL, 10), file_version);
+		break;
+	case tfxUint:
+		AssignEffectorProperty(effect, &(*pair)[0], (tfxU32)atoi((*pair)[1].c_str()), file_version);
+		break;
+	case tfxFloat:
+		AssignEffectorProperty(effect, &(*pair)[0], (float)atof((*pair)[1].c_str()));
+		break;
+	case tfxSInt:
+		AssignEffectorProperty(effect, &(*pair)[0], atoi((*pair)[1].c_str()));
+		break;
+	case tfxBool:
+		AssignEffectorProperty(effect, &(*pair)[0], (bool)(atoi((*pair)[1].c_str())));
+		break;
+	case tfxString:
+		AssignEffectorProperty(effect, &(*pair)[0], (*pair)[1]);
+		break;
+	default:
+		break;
+	}
+}
+
 void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfxU64 value, tfxU32 file_version) {
 	if (*field == "path_hash")
 		metrics->path_hash = value;
@@ -7757,28 +7782,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 
 			if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
 				if (tfxStore->data_types.names_and_types.ValidName(pair[0])) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0])) {
-					case tfxUInt64:
-						AssignEffectorProperty(&effect_stack.back(), &pair[0], (tfxU64)strtoull(pair[1].c_str(), NULL, 10), package->header.file_version);
-						break;
-					case tfxUint:
-						AssignEffectorProperty(&effect_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
-						break;
-					case tfxFloat:
-						AssignEffectorProperty(&effect_stack.back(), &pair[0], (float)atof(pair[1].c_str()));
-						break;
-					case tfxSInt:
-						AssignEffectorProperty(&effect_stack.back(), &pair[0], atoi(pair[1].c_str()));
-						break;
-					case tfxBool:
-						AssignEffectorProperty(&effect_stack.back(), &pair[0], (bool)(atoi(pair[1].c_str())));
-						break;
-					case tfxString:
-						AssignEffectorProperty(&effect_stack.back(), &pair[0], pair[1]);
-						break;
-                    default:
-                    break;
-					}
+					AssignPropertyLine(&effect_stack.back(), &pair, package->header.file_version);
 				}
 				else {
 					error |= tfxErrorCode_some_data_not_loaded;
