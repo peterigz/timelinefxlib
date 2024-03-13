@@ -3550,6 +3550,7 @@ struct tfx_stream_t {
 		if (new_capacity <= size)
 			return;
 		char* new_data = (char*)tfxALLOCATE((tfxU64)new_capacity * sizeof(char));
+		memset(new_data, 0, new_capacity);
 		assert(new_data);	//Unable to allocate memory. Todo: better handling
 		if (data) {
 			memcpy(new_data, data, (tfxU64)size * sizeof(char));
