@@ -2743,9 +2743,10 @@ struct tfx_storage_map_t {
 	tfx_storage_map_t(const char *map_tracker, const char *data_tracker) : map(tfxCONSTRUCTOR_VEC_INIT2(map_tracker)), data(tfxCONSTRUCTOR_VEC_INIT2(data_tracker)) {}
 
 	//Insert a new T value into the storage
-	inline void Insert(const char *name, const T &value) {
+	inline tfxKey Insert(const char *name, const T &value) {
 		tfxKey key = tfxXXHash64::hash(name, strlen(name), 0);
 		SetIndex(key, value);
+		return key;
 	}
 
 	//Insert a new T value into the storage
