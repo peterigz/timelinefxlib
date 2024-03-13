@@ -6210,16 +6210,17 @@ tfxAPI_EDITOR float GetEffectHighestLoopLength(tfx_effect_emitter_t *effect);
 /*
 You don't have to call this, you can just call InitialiseTimelineFX in order to initialise the memory, but I created this for the sake of the editor which
 needs to load in an ini file before initialising timelinefx which requires the memory pool to be created before hand
-* @param memory_pool_size	The size of each memory pool to contain all objects created in TimelineFX
+* @param memory_pool_size	The size of each memory pool to contain all objects created in TimelineFX, recommended to be at least 64MB
 */
-tfxAPI void InitialiseTimelineFXMemory(size_t memory_pool_size = tfxMegabyte(128));
+tfxAPI void InitialiseTimelineFXMemory(size_t memory_pool_size);
 
 /*
 Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
-* @param max_threads	Pass the number of threads that you want to use in addition to the main thread.
-*						Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
+* @param max_threads		Pass the number of threads that you want to use in addition to the main thread.
+*							Example, if there are 12 logical cores available, 0.5 will use 6 threads. 0 means only single threaded will be used.
+* @param memory_pool_size	The size of each memory pool to contain all objects created in TimelineFX, recommended to be at least 64MB
 */
-tfxAPI void InitialiseTimelineFX(int max_threads = 0, size_t memory_pool_size = tfxMegabyte(128));
+tfxAPI void InitialiseTimelineFX(int max_threads, size_t memory_pool_size);
 
 /*
 Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
@@ -6259,7 +6260,7 @@ tfxAPI int ValidateEffectPackage(const char *filename);
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr);
+tfxAPI tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
 
 /**
 * Loads a sprite data file into an animation manager
@@ -6284,7 +6285,7 @@ tfxAPI tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib,
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_t *animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr);
+tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_t *animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
 
 /*
 Output all the effect names in a library to the console
@@ -6317,7 +6318,7 @@ Initialise a tfx_particle_manager_t for 3d usage
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048
 
 */
-tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 2048);
+tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_allocation, tfxU32 mt_batch_size);
 
 /*
 Initialise a tfx_particle_manager_t for 2d usage
@@ -6335,7 +6336,7 @@ Initialise a tfx_particle_manager_t for 2d usage
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048.
 
 */
-tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_allocation = false, tfxU32 mt_batch_size = 2048);
+tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_allocation, tfxU32 mt_batch_size);
 
 /*
 Initialise a tfx_particle_manager_t for both 2d and 3d. This just allocates buffers for both 2d and 3d anticipating that you'll be using ReconfigureParticleManager to switch between 2d/3d modes. If you want to update
@@ -6354,7 +6355,7 @@ both 2d and 3d particles at the same time then just use 2 separate particle mana
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048.
 
 */
-tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit = 1000, tfx_particle_manager_mode mode = tfxParticleManagerMode_unordered, bool double_buffer_sprites = true, bool dynamic_sprite_allocation = false, tfxU32 multi_threaded_batch_size = 2048);
+tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size);
 
 /*
 Reconfigure a particle manager to make it work in a different mode. A particle manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
@@ -6380,7 +6381,7 @@ could reduce the numbers as well if needed (they don't take a lot of space thoug
 * @param control_work_max		The maximum amount of control work entries
 * @param age_work_max			The maximum amount of age_work work entries
 */
-void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max = 1000, tfxU32 control_work_max = 1000, tfxU32 age_work_max = 1000);
+void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max);
 
 /*
 Get the current particle count for a particle manager
@@ -6431,7 +6432,7 @@ Add an effect to a tfx_particle_manager_t from an effect template
 							For example by calling SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
   @returns					True if the effect was succesfully added.
 */
-tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect, tfxEffectID *effect_id = nullptr);
+tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect, tfxEffectID *effect_id);
 
 /*
 Add an effect to a tfx_particle_manager_t.
@@ -6441,7 +6442,7 @@ Add an effect to a tfx_particle_manager_t.
 							For example by calling SetEffectPosition. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
   @returns					True if the effect was succesfully added.
 */
-tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id = nullptr);
+tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id);
 
 /*
 Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
@@ -7059,7 +7060,7 @@ to calculate the state of particles between frames for smooth animation.
 								beyond this amount but it gives you a chance to reserve a decent amount to start with to
 								save too much mem copies as the data grows
 */
-tfxAPI void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
+tfxAPI void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity);
 
 /*
 Initialise an Animation Manager for use with 2d sprites. This must be run before using an animation manager. An animation manager is used
@@ -7072,7 +7073,7 @@ to calculate the state of particles between frames for smooth animation.
 								beyond this amount but it gives you a chance to reserve a decent amount to start with to
 								save too much mem copies as the data grows
 */
-tfxAPI void InitialiseAnimationManagerFor2d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity = 100000);
+tfxAPI void InitialiseAnimationManagerFor2d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity);
 
 /*
 Set the callback that you can use to determine whether or not a tfx_animation_instance_t should be added to the next frame's render queue. You can use this
@@ -7101,7 +7102,7 @@ to the GPU
 * @param effect_index			The index of the effect. This is the index returned when calling AddAnimationInstance
 * @param position				A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager_t *pm = nullptr, tfx_vec3_t camera_position = { 0.f, 0.f, 0.f });
+tfxAPI void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager_t *pm, tfx_vec3_t camera_position);
 
 /*
 Add an animation instance to the animation manager.
@@ -7111,7 +7112,7 @@ Add an animation instance to the animation manager.
 * @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 								Return tfxINVALID if there is no room in the animation manager
 */
-tfxAPI tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager, tfxKey path, tfxU32 start_frame = 0);
+tfxAPI tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager, tfxKey path, tfxU32 start_frame);
 
 /*
 Add an animation instance to the animation manager.
@@ -7121,7 +7122,7 @@ Add an animation instance to the animation manager.
 * @returns						The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 								Return tfxINVALID if there is no room in the animation manager
 */
-tfxAPI tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager, const char *path, tfxU32 start_frame = 0);
+tfxAPI tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager, const char *path, tfxU32 start_frame);
 
 /*
 Update an animation manager to advance the time and frames of all instances currently playing.
