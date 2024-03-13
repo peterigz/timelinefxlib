@@ -3570,7 +3570,8 @@ struct tfx_stream_t {
 //Tried to keep this as simple as possible, was originally based on Casey Muratory's Hand Made Hero threading which used the Windows API for
 //threading but for the sake of supporting other platforms I changed it to use std::thread which was actually a lot more simple to do then 
 //I expected. I just had to swap the semaphores for condition_variable and that was pretty much it other then obviously using std::thread as well.
-//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue.
+//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue and then
+//each emitter that the particle manager uses will be given it's own thread.
 struct tfx_work_queue_t;
 
 #define tfxWORKQUEUECALLBACK(name) void name(tfx_work_queue_t *queue, void *data)
@@ -5614,6 +5615,7 @@ tfxAPI_EDITOR void AddEntryToPackage(tfx_package_t *package, tfx_package_entry_i
 tfxAPI_EDITOR void AddFileToPackage(tfx_package_t *package, const char *file_name, tfx_stream_t *data);
 tfxAPI_EDITOR bool FileExists(tfx_package_t *package, const char *file_name);
 tfxAPI_EDITOR void FreePackage(tfx_package_t *package);
+tfxAPI_EDITOR void CopyStream(tfx_stream_t *dst, tfx_stream_t *src);
 
 //Some file IO functions for the editor
 tfxAPI_EDITOR bool HasDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key);

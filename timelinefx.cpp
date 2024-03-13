@@ -2012,6 +2012,7 @@ tfx_package_entry_info_t *GetPackageFile(tfx_package_t *package, const char *nam
 		return nullptr;									//File not found in inventory
 	}
 	assert(ValidatePackage(package));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
+															//Also: function call in assert, sort this out!
 	tfx_package_entry_info_t *entry = &package->inventory.entries.At(name);
 	if (entry->data.Size() != entry->file_size) {
 		//FILE *file = tfx__open_file(file_path.c_str(), "rb");
@@ -2054,6 +2055,12 @@ void FreePackage(tfx_package_t *package) {
 	package->inventory.entries.data.free_all();
 	package->inventory.entries.map.free_all();
 	package->file_data.FreeAll();
+}
+
+void CopyStream(tfx_stream_t* dst, tfx_stream_t* src) {
+	dst->FreeAll();
+	dst->Resize(src->size);
+	memcpy(dst->data, src->data, src->size);
 }
 
 // Reads the whole file on disk into memory and returns the pointer
