@@ -4,7 +4,7 @@
 #define tfxENABLE_PROFILING
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
-//#define TFX_EXTRA_DEBUGGING
+#define TFX_EXTRA_DEBUGGING
 //#define tfxUSEAVX
 
 /*
@@ -433,17 +433,6 @@ extern "C" {
 		*sli = (tfx_index)(size >> (*fli - tfx__SECOND_LEVEL_INDEX_LOG2)) % tfx__SECOND_LEVEL_INDEX_COUNT;
 	}
 
-	//Debug tool to make sure that if a first level bitmap has a bit set, then the corresponding second level index should contain a value
-	static inline void tfx__verify_lists(tfx_allocator *allocator) {
-		for (int fli = 0; fli != tfx__FIRST_LEVEL_INDEX_COUNT; ++fli) {
-			if (allocator->first_level_bitmap & (1ULL << fli)) {
-				//bit in first level is set but according to the second level bitmap array there are no blocks so the first level
-				//bitmap bit should have been 0
-				TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
-			}
-		}
-	}
-
 	//Read only functions
 	static inline tfx_bool tfx__has_free_block(const tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
 		return allocator->first_level_bitmap & (TFX_ONE << fli) && allocator->second_level_bitmaps[fli] & (1U << sli);
@@ -535,6 +524,29 @@ extern "C" {
 		//Mask out all bits up to the start point of the scan
 		map &= (~0ULL << (start + 1));
 		return tfx__scan_forward(map);
+	}
+
+	//Debug tool to make sure that if a first level bitmap has a bit set, then the corresponding second level index should contain a value
+	//It also checks that the blocks in the list are valid.
+	//The most common cause of asserts here is where memory has been written to the wrong address. Check for buffers where they where resized
+	//but the buffer pointer that was being written too was not updated after the resize for example.
+	static inline void tfx__verify_lists(tfx_allocator *allocator) {
+		for (int fli = 0; fli != tfx__FIRST_LEVEL_INDEX_COUNT; ++fli) {
+			if (allocator->first_level_bitmap & (1ULL << fli)) {
+				//bit in first level is set but according to the second level bitmap array there are no blocks so the first level
+				//bitmap bit should have been 0
+				TFX_ASSERT(allocator->second_level_bitmaps[fli] > 0);
+				int sli = -1;
+				sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
+				while (sli != -1) {
+					tfx_header* block = allocator->segregated_lists[fli][sli];
+					tfx_bool is_free = tfx__is_free_block(block);
+					TFX_ASSERT(is_free);	//The block should be marked as free
+					TFX_ASSERT(block->prev_free_block == &allocator->null_block);	//The first block in in the list should have a prev_free_block that points to the null block in the allocator
+					sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
+				}
+			}
+		}
 	}
 
 	//Write functions
@@ -1053,6 +1065,7 @@ void tfxAddHostMemoryPool(size_t size);
 void* tfxAllocate(size_t size);
 void* tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
+tfx_bool tfx_SafeCopy(void *dst, void *src, tfx_size size);
 tfx_allocator *tfxGetAllocator();
 
 //---------------------------------------
@@ -2454,11 +2467,21 @@ struct tfx_str_t {
 		char* new_data = (char*)tfxALLOCATE((size_t)new_capacity * sizeof(char));
 		assert(new_data);	//unable to allocate memory. Todo: proper handling
 		if (data && !is_local_buffer) {
-			memcpy(new_data, data, (size_t)current_size * sizeof(char));
-			tfxFREE(data);
+			if (tfx_SafeCopy(new_data, data, (size_t)current_size * sizeof(char))) {
+				tfxFREE(data);
+			}
+			else {
+				//Failed to copy
+				assert(0);
+			}
 		}
 		else if (is_local_buffer) {
-			memcpy(new_data, strbuffer(), (size_t)current_size * sizeof(char));
+			if (tfx_SafeCopy(new_data, strbuffer(), (size_t)current_size * sizeof(char))) {
+			}
+			else {
+				//Failed to copy
+				assert(0);
+			}
 		}
 		data = new_data;
 		is_local_buffer = false;

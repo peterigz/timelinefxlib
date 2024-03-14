@@ -85,6 +85,20 @@ tfx_allocator *tfxGetAllocator() {
 	return tfx::tfxMemoryAllocator;
 }
 
+tfx_bool tfx_SafeCopy(void* dst, void* src, tfx_size size) {
+	tfx_header* block = tfx__block_from_allocation(dst);
+	if (block->size < size) {
+		return 0;
+	}
+	tfx_header* next_physical_block = tfx__next_physical_block(block);
+	ptrdiff_t diff_check = (ptrdiff_t)((char*)dst + size) - (ptrdiff_t)next_physical_block;
+	if (diff_check >= 0) {
+		return 0;
+	}
+	memcpy(dst, src, size);
+	return 1;
+}
+
 namespace tfx {
 
 tfx_storage_t *GetGlobals() {
