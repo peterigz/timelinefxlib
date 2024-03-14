@@ -2065,7 +2065,7 @@ void CopyStream(tfx_stream_t* dst, tfx_stream_t* src) {
 
 void CopyStreamToString(tfx_str_t *dst, tfx_stream_t *src) {
 	dst->free_all();
-	dst->resize(src->size);
+	dst->resize((tfxU32)src->size);
 	memcpy(dst->data, src->data, src->size);
 }
 
