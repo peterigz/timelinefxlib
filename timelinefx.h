@@ -5616,6 +5616,7 @@ tfxAPI_EDITOR void AddFileToPackage(tfx_package_t *package, const char *file_nam
 tfxAPI_EDITOR bool FileExists(tfx_package_t *package, const char *file_name);
 tfxAPI_EDITOR void FreePackage(tfx_package_t *package);
 tfxAPI_EDITOR void CopyStream(tfx_stream_t *dst, tfx_stream_t *src);
+tfxAPI_EDITOR void CopyStreamToString(tfx_str_t *dst, tfx_stream_t *src);
 
 //Some file IO functions for the editor
 tfxAPI_EDITOR bool HasDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key);

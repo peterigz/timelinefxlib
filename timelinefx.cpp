@@ -2063,6 +2063,12 @@ void CopyStream(tfx_stream_t* dst, tfx_stream_t* src) {
 	memcpy(dst->data, src->data, src->size);
 }
 
+void CopyStreamToString(tfx_str_t *dst, tfx_stream_t *src) {
+	dst->free_all();
+	dst->resize(src->size);
+	memcpy(dst->data, src->data, src->size);
+}
+
 // Reads the whole file on disk into memory and returns the pointer
 tfx_stream_t ReadEntireFile(const char *file_name, bool terminate) {
 	tfx_stream_t buffer;
