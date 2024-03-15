@@ -4905,6 +4905,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("sort_passes", tfxUint);
 
 	names_and_types.Insert("random_color", tfxBool);
+	names_and_types.Insert("exclude_from_global_hue", tfxBool);
 	names_and_types.Insert("relative_position", tfxBool);
 	names_and_types.Insert("relative_angle", tfxBool);
 	names_and_types.Insert("image_handle_auto_center", tfxBool);
