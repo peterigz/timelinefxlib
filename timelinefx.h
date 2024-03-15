@@ -2465,6 +2465,7 @@ struct tfx_str_t {
 	inline void         reserve(tfxU32 new_capacity) {
 		if (new_capacity <= capacity) return;
 		char* new_data = (char*)tfxALLOCATE((size_t)new_capacity * sizeof(char));
+		memset(new_data, 0, new_capacity * sizeof(char));
 		assert(new_data);	//unable to allocate memory. Todo: proper handling
 		if (data && !is_local_buffer) {
 			if (tfx_SafeCopy(new_data, data, (size_t)current_size * sizeof(char))) {
