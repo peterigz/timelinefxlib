@@ -2196,7 +2196,6 @@ enum tfx_particle_control_flag_bits {
 
 enum tfx_effect_property_flag_bits {
 	tfxEffectPropertyFlags_none = 0,
-	tfxEffectPropertyFlags_is_3d = 1 << 0,
 	tfxEffectPropertyFlags_depth_draw_order = 1 << 1,
 	tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
 	tfxEffectPropertyFlags_age_order = 1 << 3,
@@ -2230,7 +2229,7 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
 	tfxEmitterPropertyFlags_can_grow_particle_memory = 1 << 23,			//Allows for expanding the memory used for particle emitters if the amount spawned is changed dynamically
-	tfxEmitterPropertyFlags_is_3d = 1 << 24,							//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
+	tfxEmitterPropertyFlags_effect_is_3d = 1 << 24,						//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
 	tfxEmitterPropertyFlags_use_dynamic = 1 << 25,						//Use a dynamic particle storage rather then a fixed one
 	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 26,				//Spawn on grid points but randomly rather then in sequence
 	tfxEmitterPropertyFlags_area_open_ends = 1 << 27,					//Only sides of the area/cylinder are spawned on when fill area is not checked
@@ -4733,7 +4732,7 @@ struct tfx_emitter_properties_t {
 	tfxParticleControlFlags compute_flags;
 	//Offset to draw particles at
 	tfx_vec2_t image_handle;
-	//Offset of emitters
+	//Offset of emitters and effects
 	tfx_vec3_t emitter_handle;
 	//When single flag is set, spawn this amount of particles in one go
 	tfxU32 spawn_amount;
@@ -4878,7 +4877,7 @@ struct tfx_effect_state_t {
 	float timeout_counter;
 	float timeout;
 	tfx_vec3_t handle;
-	tfxEmitterPropertyFlags property_flags;
+	tfxEffectPropertyFlags property_flags;
 	float loop_length;
 	//Position, scale and rotation values
 	tfx_vec3_t translation;

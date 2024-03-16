@@ -2357,10 +2357,10 @@ bool IsFiniteEffect(tfx_effect_emitter_t *effect) {
 
 void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag) {
 	if (flag) {
-		effect->property_flags |= tfxEmitterPropertyFlags_is_3d;
+		effect->property_flags |= tfxEmitterPropertyFlags_effect_is_3d;
 	}
 	else {
-		effect->property_flags &= ~tfxEmitterPropertyFlags_is_3d;
+		effect->property_flags &= ~tfxEmitterPropertyFlags_effect_is_3d;
 	}
 	for (auto &sub : GetEffectInfo(effect)->sub_effectors) {
 		FlagEffectAs3D(&sub, flag);
@@ -2368,7 +2368,7 @@ void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag) {
 }
 
 bool Is3DEffect(tfx_effect_emitter_t *effect) {
-	return effect->property_flags & tfxEmitterPropertyFlags_is_3d;
+	return effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d;
 }
 
 tfx_particle_manager_mode GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect) {
@@ -5652,7 +5652,7 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
         if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_spawn_ratio; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_spawn_ratio;}
     }
     if (*field == "is_3d") {
-        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_is_3d; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_is_3d;}
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_effect_is_3d; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_effect_is_3d;}
     }
     if (*field == "draw_order_by_age") {
         if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_age_order;}
@@ -5690,7 +5690,6 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("grid_depth=%f", property->grid_points.z);
 	file->AddLine("delay_spawning=%f", property->delay_spawning);
 	file->AddLine("loop_length=%f", property->loop_length);
-	file->AddLine("noise_base_offset_range=%f", property->noise_base_offset_range);
 	file->AddLine("emitter_handle_x=%f", property->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", property->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", property->emitter_handle.z);
@@ -5716,18 +5715,24 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("base_uniform_size=%i", (flags & tfxEmitterPropertyFlags_base_uniform_size));
 	file->AddLine("lifetime_uniform_size=%i", (flags & tfxEmitterPropertyFlags_lifetime_uniform_size));
 	file->AddLine("use_spawn_ratio=%i", (flags & tfxEmitterPropertyFlags_use_spawn_ratio));
-	file->AddLine("is_3d=%i", (flags & tfxEmitterPropertyFlags_is_3d));
 	file->AddLine("billboard_option=%i", property->billboard_option);
 	file->AddLine("vector_align_type=%i", property->vector_align_type);
 	file->AddLine("layer=%i", property->layer);
 }
 
 void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file) {
+	tfx_emitter_properties_t* properties = GetEffectProperties(effect);
+	file->AddLine("is_3d=%i", (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d));
 	file->AddLine("draw_order_by_age=%i", effect->effect_flags & tfxEffectPropertyFlags_age_order);
 	file->AddLine("draw_order_by_depth=%i", effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order);
 	file->AddLine("guaranteed_draw_order=%i", effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order);
 	file->AddLine("include_in_sprite_data_export=%i", effect->effect_flags & tfxEffectPropertyFlags_include_in_sprite_data_export);
 	file->AddLine("sort_passes=%i", effect->sort_passes);
+	file->AddLine("noise_base_offset_range=%f", properties->noise_base_offset_range);
+	file->AddLine("loop_length=%f", properties->loop_length);
+	file->AddLine("emitter_handle_x=%f", properties->emitter_handle.x);
+	file->AddLine("emitter_handle_y=%f", properties->emitter_handle.y);
+	file->AddLine("emitter_handle_z=%f", properties->emitter_handle.z);
 }
 
 void StreamGraph(const char *name, tfx_graph_t *graph, tfx_str_t *file) {
@@ -7923,7 +7928,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 				if (effect_stack.parent().type == tfxStage && GetEffectInfo(&effect_stack.parent())->sub_effectors.size() == 0) {
 					tfxEffectPropertyFlags tmp = effect_stack.parent().property_flags;
 					if (Is3DEffect(&effect_stack.back())) {
-						effect_stack.parent().property_flags |= tfxEmitterPropertyFlags_is_3d;
+						effect_stack.parent().property_flags |= tfxEmitterPropertyFlags_effect_is_3d;
 					}
 					tmp = effect_stack.parent().property_flags;
 				}
@@ -9118,6 +9123,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 			state_flags |= (GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.velocity_turbulance) && GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.noise_resolution)) ? tfxEmitterStateFlags_has_noise : 0;
 
+			emitter.property_flags |= (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d);
 			if (state_flags & tfxEmitterStateFlags_is_line_traversal) {
 				emitter.property_flags |= tfxEmitterPropertyFlags_relative_position;
 			}
@@ -11096,7 +11102,7 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 			tfxU32 sprite_layer = (sprite_id & 0xF0000000) >> 28;
 			tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
 			if (sprite_id != tfxINVALID) {
-				if (effect.property_flags & tfxEmitterPropertyFlags_is_3d)
+				if (effect.property_flags & tfxEmitterPropertyFlags_effect_is_3d)
 					TransformEffector3d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.matrix, &pm->sprites[!pm->current_sprite_buffer][sprite_layer].transform_3d[sprite_index], true, effect.property_flags & tfxEmitterPropertyFlags_relative_angle);
 				else
 					TransformEffector2d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.matrix, &pm->sprites[!pm->current_sprite_buffer][sprite_layer].transform_2d[sprite_index], true, effect.property_flags & tfxEmitterPropertyFlags_relative_angle);
@@ -11119,7 +11125,7 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 		if (!(effect.state_flags & tfxEffectStateFlags_retain_matrix)) {
 			effect.world_position = effect.local_position + effect.translation;
 			effect.world_position += properties.emitter_handle * effect.overal_scale;
-			if (effect.property_flags & tfxEmitterPropertyFlags_is_3d) {
+			if (effect.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
 				effect.world_rotations = effect.local_rotations;
 				tfx_mat4_t roll = Matrix4RotateZ(effect.local_rotations.roll);
 				tfx_mat4_t pitch = Matrix4RotateX(effect.local_rotations.pitch);
@@ -11224,7 +11230,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfxU32 amount_spawned = 0;
 	tfxU32 max_spawn_count = NewSpritesNeeded(pm, emitter_index, &parent_effect, &properties);
 
-	if (emitter.property_flags & tfxEmitterPropertyFlags_is_3d) {
+	if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
 		tfx_soa_buffer_t &sprite_buffer = pm->sprite_buffer[pm->current_sprite_buffer][layer];
 
 		Transform3d(&emitter.world_rotations, &local_rotations, &spawn_work_entry->overal_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.matrix, &parent_effect);
@@ -11387,7 +11393,7 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_sta
 	float step_size = 0;
 	if (!(emitter.property_flags & tfxEmitterPropertyFlags_single)) {
 		if (emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties->emission_type == tfxArea || properties->emission_type == tfxEllipse)) {
-			if (emitter.property_flags & tfxEmitterPropertyFlags_is_3d) {
+			if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
 				float area = tfxMax(0.1f, emitter.emitter_size.x) * tfxMax(0.1f, emitter.emitter_size.y) * tfxMax(0.1f, emitter.emitter_size.z);
 				emitter.spawn_quantity = (emitter.spawn_quantity / 50.f) * area;
 			}
@@ -11415,7 +11421,7 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_sta
 			}
 			switch (properties->emission_type) {
 			case tfx_emission_type::tfxArea:
-				if (emitter.property_flags & tfxEmitterPropertyFlags_is_3d) {
+				if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
 					if (emitter.property_flags & tfxEmitterPropertyFlags_fill_area) {
 						emitter.spawn_quantity = x * y * z;
 					}
@@ -11439,7 +11445,7 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_sta
 				emitter.spawn_quantity = x * y;
 				break;
 			case tfx_emission_type::tfxEllipse:
-				if (!(emitter.property_flags & tfxEmitterPropertyFlags_is_3d)) {
+				if (!(emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d)) {
 					emitter.spawn_quantity = x;
 				}
 				break;
@@ -13351,16 +13357,16 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 	else
 		emitter.emitter_size.x = 0.f;
 
-	if (emitter.property_flags & tfxEmitterPropertyFlags_is_3d && is_area) {
+	if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d && is_area) {
 		emitter.emitter_size.z = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_depth, emitter.frame);
 	}
 
 	emitter.emitter_size *= pm->effects[parent_index].emitter_size;
 
 	if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center && properties.emission_type != tfxPoint) {
-		if ((properties.emission_type == tfxEllipse || properties.emission_type == tfxIcosphere) && emitter.property_flags & tfxEmitterPropertyFlags_is_3d)
+		if ((properties.emission_type == tfxEllipse || properties.emission_type == tfxIcosphere) && emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d)
 			emitter.handle = {0};
-		else if (emitter.property_flags & tfxEmitterPropertyFlags_is_3d)
+		else if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d)
 			emitter.handle = emitter.emitter_size * -0.5f;
 		else if (properties.emission_type == tfxLine)
 			emitter.handle = emitter.emitter_size * 0.5f;
