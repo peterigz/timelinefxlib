@@ -3831,6 +3831,7 @@ struct tfx_vec3_t {
 	inline tfx_vec2_t xy() const { return tfx_vec2_t(x, y); }
 
 	inline bool operator==(const tfx_vec3_t &v) const { return x == v.x && y == v.y && z == v.z; }
+	inline bool operator!=(const tfx_vec3_t &v) const { return x != v.x || y != v.y || z != v.z; }
 
 	inline tfx_vec3_t operator+(const tfx_vec3_t &v) const { return tfx_vec3_t(x + v.x, y + v.y, z + v.z); }
 	inline tfx_vec3_t operator-(const tfx_vec3_t &v) const { return tfx_vec3_t(x - v.x, y - v.y, z - v.z); }
