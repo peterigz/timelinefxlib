@@ -2371,6 +2371,11 @@ bool Is3DEffect(tfx_effect_emitter_t *effect) {
 	return effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d;
 }
 
+bool IsOrderedEffect(tfx_effect_emitter_t* effect) {
+	tfxEffectPropertyFlags ordered_flags = tfxEffectPropertyFlags_age_order | tfxEffectPropertyFlags_depth_draw_order;
+	return effect->effect_flags & ordered_flags;
+}
+
 tfx_particle_manager_mode GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect) {
 	if (effect->type == tfxEffectType) {
 		if (effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order && effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order) {

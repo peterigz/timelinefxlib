@@ -2464,7 +2464,7 @@ struct tfx_str_t {
 	inline void         reserve(tfxU32 new_capacity) {
 		if (new_capacity <= capacity) return;
 		char* new_data = (char*)tfxALLOCATE((size_t)new_capacity * sizeof(char));
-		memset(new_data, 0, new_capacity * sizeof(char));
+		memset(new_data, '\0', new_capacity * sizeof(char));
 		assert(new_data);	//unable to allocate memory. Todo: proper handling
 		if (data && !is_local_buffer) {
 			if (tfx_SafeCopy(new_data, data, (size_t)current_size * sizeof(char))) {
@@ -6226,6 +6226,7 @@ tfxAPI_EDITOR void DisableAllEmittersExcept(tfx_effect_emitter_t *effect, tfx_ef
 tfxAPI_EDITOR bool IsFiniteEffect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag);
 tfxAPI_EDITOR bool Is3DEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR bool IsOrderedEffect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfx_particle_manager_mode GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfx_preview_camera_settings_t *GetEffectCameraSettings(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR float GetEffectHighestLoopLength(tfx_effect_emitter_t *effect);
