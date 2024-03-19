@@ -2343,6 +2343,17 @@ void UpdateEffectMaxLife(tfx_effect_emitter_t *effect) {
 	GetEffectGraphByType(effect, tfxOvertime_direction)->lookup.life = info->max_life;
 }
 
+bool IsFiniteEmitter(tfx_effect_emitter_t* emitter) {
+	if (emitter->property_flags & tfxEmitterPropertyFlags_single && GetEffectProperties(emitter)->single_shot_limit == 0) {
+		return false;
+	}
+	float qty = GetGraphLastValue(&emitter->library->emitter_attributes[emitter->emitter_attributes].base.amount) + GetGraphLastValue(&emitter->library->emitter_attributes[emitter->emitter_attributes].variation.amount);
+	if (!(emitter->property_flags & tfxEmitterPropertyFlags_single) && qty > 0) {
+		return false;
+	}
+	return true;
+}
+
 bool IsFiniteEffect(tfx_effect_emitter_t *effect) {
 	for (auto &e : GetEffectInfo(effect)->sub_effectors) {
 		float qty = GetGraphLastValue(&e.library->emitter_attributes[e.emitter_attributes].base.amount) + GetGraphLastValue(&e.library->emitter_attributes[e.emitter_attributes].variation.amount);

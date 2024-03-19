@@ -6224,6 +6224,7 @@ tfxAPI_EDITOR void EnableEmitter(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void DisableAllEmitters(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void DisableAllEmittersExcept(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *emitter);
 tfxAPI_EDITOR bool IsFiniteEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR bool IsFiniteEmitter(tfx_effect_emitter_t *emitter);
 tfxAPI_EDITOR void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag);
 tfxAPI_EDITOR bool Is3DEffect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR bool IsOrderedEffect(tfx_effect_emitter_t *effect);
