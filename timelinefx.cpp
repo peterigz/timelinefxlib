@@ -3033,6 +3033,7 @@ void CleanUpEffect(tfx_effect_emitter_t *effect) {
 				stack.push_back(sub);
 			}
 			GetEffectInfo(&current)->sub_effectors.free_all();
+			GetEffectInfo(&current)->path.free_all();
 			FreeLibraryProperties(effect->library, current.property_index);
 			FreeLibraryInfo(effect->library, current.info_index);
 		}
@@ -3755,6 +3756,7 @@ void UpdateLibraryEffectPaths(tfx_library_t *library) {
 	library->effect_paths.Clear();
 	for (auto &e : library->effects) {
 		tfx_str256_t path = GetEffectInfo(&e)->name;
+		GetEffectInfo(&e)->path = path;
 		e.path_hash = tfxXXHash64::hash(path.c_str(), path.Length(), 0);
 		AddLibraryPath(library, &e, &path);
 	}
@@ -3765,6 +3767,7 @@ void AddLibraryPath(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter
 	for (auto &sub : GetEffectInfo(effect_emitter)->sub_effectors) {
 		tfx_str256_t sub_path = *path;
 		sub_path.Appendf("/%s", GetEffectInfo(&sub)->name.c_str());
+		GetEffectInfo(&sub)->path = sub_path;
 		sub.path_hash = tfxXXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
 		AddLibraryPath(library, &sub, &sub_path);
 	}

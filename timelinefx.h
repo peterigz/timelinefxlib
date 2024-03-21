@@ -4772,6 +4772,8 @@ struct tfx_parent_spawn_controls_t {
 struct tfx_effect_emitter_info_t {
 	//Name of the effect
 	tfx_str64_t name;
+	//The path of the effect in the library
+	tfx_str_t path;
 	//Every effect and emitter in the library gets a unique id
 	tfxU32 uid;
 	//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
