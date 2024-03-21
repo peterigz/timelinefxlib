@@ -3834,6 +3834,10 @@ tfx_effect_emitter_t* GetLibraryEffect(tfx_library_t *library, const char *path)
 	return library->effect_paths.At(path);
 }
 
+bool IsValidEffectPath(tfx_library_t* library, const char* path) {
+	return library->effect_paths.ValidName(path);
+}
+
 tfx_effect_emitter_t* GetLibraryEffect(tfx_library_t *library, tfxKey key) {
 	assert(library->effect_paths.ValidKey(key));			//Effect was not found by that key
 	return library->effect_paths.At(key);

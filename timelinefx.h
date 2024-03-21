@@ -6174,6 +6174,7 @@ tfxAPI_EDITOR void InitLibrary(tfx_library_t *library);
 //You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
 //These are mainly for use by the editor, use effect templates instead, see PrepareEffectTemplate.
 tfxAPI_EDITOR tfx_effect_emitter_t *GetLibraryEffect(tfx_library_t *library, const char *path);
+tfxAPI_EDITOR bool IsValidEffectPath(tfx_library_t *library, const char *path);
 //Get an effect by it's path hash key
 tfxAPI_EDITOR tfx_effect_emitter_t *GetLibraryEffect(tfx_library_t *library, tfxKey key);
 tfxAPI_EDITOR void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3]);
