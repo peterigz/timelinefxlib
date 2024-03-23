@@ -12870,9 +12870,9 @@ void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
-			local_position_x = lerp_position.x + local_position_x * entry->overal_scale;
-			local_position_y = lerp_position.y + local_position_y * entry->overal_scale;
-			local_position_z = lerp_position.z + local_position_z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
 		}
 
 		tween += entry->qty_step_size;
@@ -12911,9 +12911,9 @@ void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
-			local_position_x = lerp_position.x + local_position_x * entry->overal_scale;
-			local_position_y = lerp_position.y + local_position_y * entry->overal_scale;
-			local_position_z = lerp_position.z + local_position_z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
 		}
 
 		tween += entry->qty_step_size;
@@ -13011,9 +13011,9 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
-			local_position_x = lerp_position.x + local_position_x * entry->overal_scale;
-			local_position_y = lerp_position.y + local_position_y * entry->overal_scale;
-			local_position_z = lerp_position.z + local_position_z * entry->overal_scale;
+			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
 		}
 
 		tween += entry->qty_step_size;
