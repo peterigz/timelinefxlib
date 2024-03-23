@@ -9322,7 +9322,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			spawn_work_entry->properties = &pm->library->emitter_properties[pm->emitters[current_index].properties_index];
 			spawn_work_entry->sub_effects = &pm->library->effect_infos[pm->emitters[current_index].info_index].sub_effectors;
 			spawn_work_entry->amount_to_spawn = 0;
-			spawn_work_entry->highest_particle_age = 0;
+			spawn_work_entry->highest_particle_age = pm->emitters[current_index].highest_particle_age;
 			spawn_work_entry->pm = pm;
 
 			float &timeout_counter = pm->emitters[current_index].timeout_counter;
@@ -11813,7 +11813,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 			color = tfx_rgba8_t(255.f * first_red_value, 255.f * first_green_value, 255.f * first_blue_value, alpha);
 		}
 
-		entry->highest_particle_age = fmaxf(emitter.highest_particle_age, (max_age * loop_count) + pm.frame_length + 1);
+		entry->highest_particle_age = fmaxf(entry->highest_particle_age, (max_age * loop_count) + pm.frame_length + 1);
 
 		if (entry->sub_effects->current_size > 0) {
 			particle_index = GetPMParticleIndexSlot(&pm, MakeParticleID(emitter.particles_index, index));
