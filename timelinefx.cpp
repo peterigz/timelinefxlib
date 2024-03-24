@@ -11294,12 +11294,14 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		spawn_work_entry->max_spawn_count = max_spawn_count;
 
 		if (emitter.state_flags & tfxEmitterStateFlags_is_sub_emitter) {
-			if (emitter.age > 0 && !(pm->flags & tfxEffectManagerFlags_disable_spawning))
+			if (emitter.age > 0 && !(pm->flags & tfxEffectManagerFlags_disable_spawning)) {
 				amount_spawned = SpawnParticles3d(&pm->work_queue, spawn_work_entry);
+			}
 		}
 		else {
-			if (!(pm->flags & tfxEffectManagerFlags_disable_spawning))
+			if (!(pm->flags & tfxEffectManagerFlags_disable_spawning)) {
 				amount_spawned = SpawnParticles3d(&pm->work_queue, spawn_work_entry);
+			}
 		}
 
 		pm->active_particles_count[layer] += amount_spawned;

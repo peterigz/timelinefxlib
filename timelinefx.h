@@ -2529,6 +2529,11 @@ struct tfx_str_t {
 		}
 		NullTerminate();
 	}
+	inline void TrimToZero() {
+		if (current_size < capacity) {
+			memset(data + current_size, '\0', capacity - current_size);
+		}
+	}
 	inline void TrimFront(char c = ' ') {
 		if (!Length()) return;
 		tfxU32 pos = 0;
