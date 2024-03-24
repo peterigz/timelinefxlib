@@ -9130,7 +9130,6 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			const tfxEmitterStateFlags &parent_state_flags = new_effect.state_flags;
 
 			state_flags = tfxEmitterStateFlags_no_tween_this_update;
-			state_flags &= ~tfxEmitterStateFlags_retain_matrix;
 			state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_single && !(pm->flags & tfxEffectManagerFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_base_uniform_size;
