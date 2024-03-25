@@ -1066,6 +1066,7 @@ void* tfxAllocate(size_t size);
 void* tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
 tfx_bool tfx_SafeCopy(void *dst, void *src, tfx_size size);
+tfx_bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size);
 tfx_allocator *tfxGetAllocator();
 
 //---------------------------------------
@@ -2531,7 +2532,8 @@ struct tfx_str_t {
 	}
 	inline void TrimToZero() {
 		if (current_size < capacity) {
-			memset(data + current_size, '\0', capacity - current_size);
+			tfx_bool result = tfx_SafeMemset(data, data + current_size, '\0', capacity - current_size);
+			assert(result);
 		}
 	}
 	inline void TrimFront(char c = ' ') {
