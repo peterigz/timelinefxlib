@@ -103,10 +103,11 @@ tfx_bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size) {
 	tfx_header* block = tfx__block_from_allocation(allocation);
 	tfx_header* next_physical_block = tfx__next_physical_block(block);
 	ptrdiff_t diff_check = (ptrdiff_t)((char*)dst + size) - (ptrdiff_t)next_physical_block;
-	if (diff_check >= 0) {
+	if (diff_check > 0) {
 		return 0;
 	}
 	memset(dst, value, size);
+	next_physical_block = tfx__next_physical_block(block);
 	return 1;
 }
 
@@ -2386,6 +2387,19 @@ void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag) {
 	}
 	for (auto &sub : GetEffectInfo(effect)->sub_effectors) {
 		FlagEffectAs3D(&sub, flag);
+	}
+}
+
+void FlagEffectsAs3D(tfx_library_t* library) {
+	for (tfx_effect_emitter_t& effect : library->effects) {
+		if (effect.type == tfxEffectType) {
+			FlagEffectAs3D(&effect, Is3DEffect(&effect));
+		}
+		else {
+			for (tfx_effect_emitter_t& sub : GetEffectInfo(&effect)->sub_effectors) {
+				FlagEffectAs3D(&effect, Is3DEffect(&sub));
+			}
+		}
 	}
 }
 

@@ -6236,6 +6236,7 @@ tfxAPI_EDITOR void DisableAllEmittersExcept(tfx_effect_emitter_t *effect, tfx_ef
 tfxAPI_EDITOR bool IsFiniteEffect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR bool IsFiniteEmitter(tfx_effect_emitter_t *emitter);
 tfxAPI_EDITOR void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag);
+tfxAPI_EDITOR void FlagEffectsAs3D(tfx_library_t *library);
 tfxAPI_EDITOR bool Is3DEffect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR bool IsOrderedEffect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfx_particle_manager_mode GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect);
