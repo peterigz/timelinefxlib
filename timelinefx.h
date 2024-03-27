@@ -1883,11 +1883,11 @@ enum tfx_graph_category : unsigned int {
 };
 
 
-#define TFX_GLOBAL_COUNT  14
+#define TFX_GLOBAL_COUNT  16
 #define	TFX_PROPERTY_COUNT  9
-#define	TFX_BASE_COUNT  8
-#define	TFX_VARIATION_COUNT  9
-#define	TFX_OVERTIME_COUNT  16
+#define	TFX_BASE_COUNT  10
+#define	TFX_VARIATION_COUNT  11
+#define	TFX_OVERTIME_COUNT  18
 #define	TFX_TRANSFORM_COUNT  6
 
 #define TFX_GLOBAL_START 0
@@ -1905,7 +1905,9 @@ enum tfx_graph_type : unsigned char {
 	tfxGlobal_width,
 	tfxGlobal_height,
 	tfxGlobal_weight,
-	tfxGlobal_spin,
+	tfxGlobal_roll_spin,
+	tfxGlobal_pitch_spin,
+	tfxGlobal_yaw_spin,
 	tfxGlobal_stretch,
 	tfxGlobal_overal_scale,
 	tfxGlobal_intensity,
@@ -1930,7 +1932,9 @@ enum tfx_graph_type : unsigned char {
 	tfxBase_width,
 	tfxBase_height,
 	tfxBase_weight,
-	tfxBase_spin,
+	tfxBase_roll_spin,
+	tfxBase_pitch_spin,
+	tfxBase_yaw_spin,
 	tfxBase_noise_offset,
 
 	tfxVariation_life,
@@ -1939,7 +1943,9 @@ enum tfx_graph_type : unsigned char {
 	tfxVariation_width,
 	tfxVariation_height,
 	tfxVariation_weight,
-	tfxVariation_spin,
+	tfxVariation_roll_spin,
+	tfxVariation_pitch_spin,
+	tfxVariation_yaw_spin,
 	tfxVariation_noise_offset,
 	tfxVariation_noise_resolution,
 
@@ -1947,7 +1953,9 @@ enum tfx_graph_type : unsigned char {
 	tfxOvertime_width,
 	tfxOvertime_height,
 	tfxOvertime_weight,
-	tfxOvertime_spin,
+	tfxOvertime_roll_spin,
+	tfxOvertime_pitch_spin,
+	tfxOvertime_yaw_spin,
 	tfxOvertime_stretch,
 	tfxOvertime_red,
 	tfxOvertime_green,
@@ -4461,7 +4469,9 @@ struct tfx_effect_lookup_data_t {
 	tfx_graph_lookup_index_t overtime_width;
 	tfx_graph_lookup_index_t overtime_height;
 	tfx_graph_lookup_index_t overtime_weight;
-	tfx_graph_lookup_index_t overtime_spin;
+	tfx_graph_lookup_index_t overtime_roll_spin;
+	tfx_graph_lookup_index_t overtime_pitch_spin;
+	tfx_graph_lookup_index_t overtime_yaw_spin;
 	tfx_graph_lookup_index_t overtime_stretch;
 	tfx_graph_lookup_index_t overtime_red;
 	tfx_graph_lookup_index_t overtime_green;
@@ -4503,6 +4513,8 @@ struct tfx_global_attributes_t {
 	tfx_graph_t height;
 	tfx_graph_t weight;
 	tfx_graph_t spin;
+	tfx_graph_t pitch_spin;
+	tfx_graph_t yaw_spin;
 	tfx_graph_t stretch;
 	tfx_graph_t overal_scale;
 	tfx_graph_t intensity;
@@ -4541,6 +4553,8 @@ struct tfx_base_attributes_t {
 	tfx_graph_t height;
 	tfx_graph_t weight;
 	tfx_graph_t spin;
+	tfx_graph_t pitch_spin;
+	tfx_graph_t yaw_spin;
 	tfx_graph_t noise_offset;
 };
 
@@ -4552,6 +4566,8 @@ struct tfx_variation_attributes_t {
 	tfx_graph_t height;
 	tfx_graph_t weight;
 	tfx_graph_t spin;
+	tfx_graph_t pitch_spin;
+	tfx_graph_t yaw_spin;
 	tfx_graph_t noise_offset;
 	tfx_graph_t noise_resolution;
 };
@@ -4562,6 +4578,8 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t height;
 	tfx_graph_t weight;
 	tfx_graph_t spin;
+	tfx_graph_t pitch_spin;
+	tfx_graph_t yaw_spin;
 	tfx_graph_t stretch;
 	tfx_graph_t red;
 	tfx_graph_t green;
@@ -4771,6 +4789,8 @@ struct tfx_parent_spawn_controls_t {
 	float size_y;
 	float velocity;
 	float spin;
+	float pitch_spin;
+	float yaw_spin;
 	float intensity;
 	float splatter;
 	float weight;
@@ -5026,6 +5046,8 @@ struct tfx_particle_soa_t {
 	float *base_weight;
 	float *base_velocity;
 	float *base_spin;
+	float *base_pitch_spin;
+	float *base_yaw_spin;
 	float *base_size_x;
 	float *base_size_y;
 	float *noise_offset;
@@ -5622,7 +5644,7 @@ tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 //Dump sprites for Debugging
 tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
-tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, tfxU32 reserve_amount = 100);
+tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 
 //--------------------------------
 //Profilings
@@ -5886,7 +5908,8 @@ tfxINTERNAL void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
-tfxINTERNAL void InitParticleSoA(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
 tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);
