@@ -2349,6 +2349,8 @@ void UpdateEffectMaxLife(tfx_effect_emitter_t *effect) {
 	GetEffectGraphByType(effect, tfxOvertime_roll_spin)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_stretch)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_roll_spin)->lookup.life = info->max_life;
+	GetEffectGraphByType(effect, tfxOvertime_pitch_spin)->lookup.life = info->max_life;
+	GetEffectGraphByType(effect, tfxOvertime_yaw_spin)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_velocity_turbulance)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_direction_turbulance)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_velocity_adjuster)->lookup.life = info->max_life;
@@ -2702,6 +2704,8 @@ void ResetEffectGraphs(tfx_effect_emitter_t *effect, bool add_node, bool compile
 	ResetGraph(&library->global_graphs[global].height, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].height.type = tfxGlobal_height;
 	ResetGraph(&library->global_graphs[global].weight, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].weight.type = tfxGlobal_weight;
 	ResetGraph(&library->global_graphs[global].spin, 1.f, tfxGlobalPercentPresetSigned, add_node); library->global_graphs[global].spin.type = tfxGlobal_roll_spin;
+	ResetGraph(&library->global_graphs[global].pitch_spin, 1.f, tfxGlobalPercentPresetSigned, add_node); library->global_graphs[global].pitch_spin.type = tfxGlobal_pitch_spin;
+	ResetGraph(&library->global_graphs[global].yaw_spin, 1.f, tfxGlobalPercentPresetSigned, add_node); library->global_graphs[global].yaw_spin.type = tfxGlobal_yaw_spin;
 	ResetGraph(&library->global_graphs[global].stretch, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].stretch.type = tfxGlobal_stretch;
 	ResetGraph(&library->global_graphs[global].overal_scale, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].overal_scale.type = tfxGlobal_overal_scale;
 	ResetGraph(&library->global_graphs[global].intensity, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].intensity.type = tfxGlobal_intensity;
@@ -2738,6 +2742,8 @@ void ResetEmitterBaseGraphs(tfx_effect_emitter_t *effect, bool add_node, bool co
 	ResetGraph(&library->emitter_attributes[emitter_attributes].base.height, 128.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].base.height.type = tfxBase_height;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].base.weight, 0.f, tfxWeightPreset, add_node); library->emitter_attributes[emitter_attributes].base.weight.type = tfxBase_weight;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].base.spin, 0.f, tfxSpinPreset, add_node); library->emitter_attributes[emitter_attributes].base.spin.type = tfxBase_roll_spin;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].base.pitch_spin, 0.f, tfxSpinPreset, add_node); library->emitter_attributes[emitter_attributes].base.pitch_spin.type = tfxBase_pitch_spin;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].base.yaw_spin, 0.f, tfxSpinPreset, add_node); library->emitter_attributes[emitter_attributes].base.yaw_spin.type = tfxBase_yaw_spin;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].base.noise_offset, 0.f, tfxGlobalPercentPreset, add_node); library->emitter_attributes[emitter_attributes].base.noise_offset.type = tfxBase_noise_offset;
 	if (compile) {
 		CompileLibraryBaseGraph(library, emitter_attributes);
@@ -2771,6 +2777,8 @@ void ResetEmitterVariationGraphs(tfx_effect_emitter_t *effect, bool add_node, bo
 	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.height, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].variation.height.type = tfxVariation_height;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.weight, 0.f, tfxWeightVariationPreset, add_node); library->emitter_attributes[emitter_attributes].variation.weight.type = tfxVariation_weight;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.spin, 0.f, tfxSpinVariationPreset, add_node); library->emitter_attributes[emitter_attributes].variation.spin.type = tfxVariation_roll_spin;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.pitch_spin, 0.f, tfxSpinVariationPreset, add_node); library->emitter_attributes[emitter_attributes].variation.pitch_spin.type = tfxVariation_pitch_spin;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.yaw_spin, 0.f, tfxSpinVariationPreset, add_node); library->emitter_attributes[emitter_attributes].variation.yaw_spin.type = tfxVariation_yaw_spin;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.noise_offset, 0.f, tfxNoiseOffsetVariationPreset, add_node); library->emitter_attributes[emitter_attributes].variation.noise_offset.type = tfxVariation_noise_offset;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.noise_resolution, 300.f, tfxNoiseResolutionPreset, add_node); library->emitter_attributes[emitter_attributes].variation.noise_resolution.type = tfxVariation_noise_resolution;
 	if (compile) {
@@ -2787,6 +2795,8 @@ void ResetEmitterOvertimeGraphs(tfx_effect_emitter_t *effect, bool add_node, boo
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.height, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.height.type = tfxOvertime_height;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.weight, 1.f, tfxWeightOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.weight.type = tfxOvertime_weight;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.spin, 0.f, tfxSpinOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.spin.type = tfxOvertime_roll_spin;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.pitch_spin, 0.f, tfxSpinOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.pitch_spin.type = tfxOvertime_pitch_spin;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.yaw_spin, 0.f, tfxSpinOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.yaw_spin.type = tfxOvertime_yaw_spin;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.stretch, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.stretch.type = tfxOvertime_stretch;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.red, 1.f, tfxColorPreset, add_node); library->emitter_attributes[emitter_attributes].overtime.red.type = tfxOvertime_red;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.green, 1.f, tfxColorPreset, add_node); library->emitter_attributes[emitter_attributes].overtime.green.type = tfxOvertime_green;
@@ -9268,6 +9278,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= emitter_properties->end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 			state_flags |= (GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.velocity_turbulance) && GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.noise_resolution)) ? tfxEmitterStateFlags_has_noise : 0;
+			state_flags |= (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
 
 			emitter.property_flags |= (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d);
 			if (state_flags & tfxEmitterStateFlags_is_line_traversal) {
@@ -9851,11 +9862,6 @@ void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data) {
 		current_velocity_y = tfxWideMul(tfxWideMul(current_velocity_y, pm.update_time_wide), velocity_adjuster);
 		current_velocity_z = tfxWideMul(tfxWideMul(current_velocity_z, pm.update_time_wide), velocity_adjuster);
 
-		//----Spin and angle Changes
-		if (emitter.state_flags & tfxEmitterStateFlags_can_spin) {
-			roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, pm.update_time_wide));
-		}
-
 		//----Position
 		local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale_wide));
 		local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y, overal_scale_wide));
@@ -9924,9 +9930,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_world_position_x = tfxWideSetSingle(emitter.world_position.x);
 	const tfxWideFloat e_world_position_y = tfxWideSetSingle(emitter.world_position.y);
 	const tfxWideFloat e_world_position_z = tfxWideSetSingle(emitter.world_position.z);
-	const tfxWideFloat e_world_rotations_x = tfxWideSetSingle(emitter.world_rotations.x);
-	const tfxWideFloat e_world_rotations_y = tfxWideSetSingle(emitter.world_rotations.y);
-	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
@@ -9967,12 +9970,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		position_x.m = tfxWideLoad(&bank.position_x[index]);
 		position_y.m = tfxWideLoad(&bank.position_y[index]);
 		position_z.m = tfxWideLoad(&bank.position_z[index]);
-		tfxWideArray rotations_x;
-		tfxWideArray rotations_y;
-		tfxWideArray rotations_z;
-		rotations_x.m = tfxWideLoad(&bank.local_rotations_x[index]);
-		rotations_y.m = tfxWideLoad(&bank.local_rotations_y[index]);
-		rotations_z.m = tfxWideLoad(&bank.local_rotations_z[index]);
 		const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
 		tfxWideFloat velocity_normal_x;
 		tfxWideFloat velocity_normal_y;
@@ -9999,11 +9996,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
 			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), e_world_position_z);
-		}
-		else if (property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotations_x.m = tfxWideAdd(rotations_x.m, e_world_rotations_x);
-			rotations_y.m = tfxWideAdd(rotations_y.m, e_world_rotations_y);
-			rotations_z.m = tfxWideAdd(rotations_z.m, e_world_rotations_z);
 		}
 
 		captured_position_x.m = tfxWideAdd(tfxWideAnd(position_x.m, capture_flag.m), tfxWideAnd(captured_position_x.m, xor_capture_flag));
@@ -10059,9 +10051,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				sprites.alignment[sprite_depth_index] = alignment_packed.a[j];
 				sprites.stretch[sprite_depth_index] = p_stretch.a[j];
-				sprites.transform_3d[sprite_depth_index].rotations.x = rotations_x.a[j];
-				sprites.transform_3d[sprite_depth_index].rotations.y = rotations_y.a[j];
-				sprites.transform_3d[sprite_depth_index].rotations.z = rotations_z.a[j];
 				sprites.transform_3d[sprite_depth_index].position.x = position_x.a[j];
 				sprites.transform_3d[sprite_depth_index].position.y = position_y.a[j];
 				sprites.transform_3d[sprite_depth_index].position.z = position_z.a[j];
@@ -10085,9 +10074,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.stretch[running_sprite_index] = p_stretch.a[j];
 				sprites.alignment[running_sprite_index] = alignment_packed.a[j];
-				sprites.transform_3d[running_sprite_index].rotations.x = rotations_x.a[j];
-				sprites.transform_3d[running_sprite_index].rotations.y = rotations_y.a[j];
-				sprites.transform_3d[running_sprite_index].rotations.z = rotations_z.a[j];
 				sprites.transform_3d[running_sprite_index].position.x = position_x.a[j];
 				sprites.transform_3d[running_sprite_index].position.y = position_y.a[j];
 				sprites.transform_3d[running_sprite_index].position.z = position_z.a[j];
@@ -10163,8 +10149,6 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 		tfxWideFloat angle = tfxWideLoad(&bank.local_rotations_x[index]);
-		tfxWideArray roll;
-		roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
 
 		tfxWideArrayi lookup_frame;
 		tfxWideArray noise_x;
@@ -10244,18 +10228,12 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		current_velocity_x.m = tfxWideMul(tfxWideMul(current_velocity_x.m, pm.update_time_wide), velocity_adjuster);
 		current_velocity_y.m = tfxWideMul(tfxWideMul(current_velocity_y.m, pm.update_time_wide), velocity_adjuster);
 
-		//----Spin and angle Changes
-		if (emitter.state_flags & tfxEmitterStateFlags_can_spin) {
-			roll.m = tfxWideAdd(roll.m, tfxWideMul(lookup_spin, pm.update_time_wide));
-		}
-
 		//----Position
 		local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x.m, overal_scale_wide));
 		local_position_y = tfxWideAdd(local_position_y, tfxWideMul(current_velocity_y.m, overal_scale_wide));
 
 		tfxWideStore(&bank.position_x[index], local_position_x);
 		tfxWideStore(&bank.position_y[index], local_position_y);
-		tfxWideStore(&bank.local_rotations_z[index], roll.m);
 
 		stretch_velocity_y = tfxWideAdd(stretch_velocity_y, tfxWideSetSingle(0.000001f));
 		tfxWideFloat l = tfxWideMul(stretch_velocity_x, stretch_velocity_x);
@@ -10452,6 +10430,172 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 
 void ControlParticleBoundingBox(tfx_work_queue_t *queue, void *data) {
 
+}
+
+void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t* work_entry = static_cast<tfx_control_work_entry_t*>(data);
+	tfxU32 emitter_index = work_entry->emitter_index;
+	tfx_particle_manager_t& pm = *work_entry->pm;
+	tfx_emitter_state_t& emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_soa_t& bank = pm.particle_arrays[emitter.particles_index];
+
+	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
+
+	tfxU32 running_sprite_index = work_entry->sprites_index;
+
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+
+	tfxU32 start_diff = work_entry->start_diff;
+
+	tfxWideArrayi lookup_frame;
+	tfx_sprite_soa_t& sprites = *work_entry->sprites;
+
+	const tfxWideFloat e_world_rotations_x = tfxWideSetSingle(emitter.world_rotations.x);
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+		tfx__readbarrier;
+		tfxWideFloat life = tfxWideDiv(age, max_age);
+		life = tfxWideMul(life, max_life);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+
+		const tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
+		const tfxWideFloat base_pitch_spin = tfxWideLoad(&bank.base_pitch_spin[index]);
+		const tfxWideFloat base_yaw_spin = tfxWideLoad(&bank.base_yaw_spin[index]);
+
+		tfxWideArray rotations_z;
+		rotations_z.m = tfxWideLoad(&bank.local_rotations_z[index]);
+
+		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
+		const tfxWideFloat lookup_roll_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
+
+		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
+			rotations_z.m = tfxWideAdd(rotations_z.m, e_world_rotations_x);
+		}
+
+		//----Spin and angle Changes
+		rotations_z.m = tfxWideAdd(rotations_z.m, tfxWideMul(lookup_roll_spin, pm.update_time_wide));
+		tfxWideStore(&bank.local_rotations_z[index], rotations_z.m);
+
+		tfx__readbarrier;
+
+		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+		if (pm.flags & tfxEffectManagerFlags_3d_effects) { //Predictable
+			if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					tfxU32 sprite_depth_index = bank.depth_index[index + j];
+					sprites.transform_3d[sprite_depth_index].rotations.z = rotations_z.a[j];
+					running_sprite_index++;
+				}
+			}
+			else {
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					sprites.transform_3d[running_sprite_index++].rotations.z = rotations_z.a[j];
+				}
+			}
+		}
+		else {
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				sprites.transform_2d[running_sprite_index++].rotation = rotations_z.a[j];
+			}
+		}
+		start_diff = 0;
+	}
+}
+
+void ControlParticleSpin3d(tfx_work_queue_t* queue, void* data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t* work_entry = static_cast<tfx_control_work_entry_t*>(data);
+	tfxU32 emitter_index = work_entry->emitter_index;
+	tfx_particle_manager_t& pm = *work_entry->pm;
+	tfx_emitter_state_t& emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_soa_t& bank = pm.particle_arrays[emitter.particles_index];
+
+	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
+	const tfxWideInt spin_pitch_last_frame = tfxWideSetSinglei(work_entry->graphs->pitch_spin.lookup.last_frame);
+	const tfxWideInt spin_yaw_last_frame = tfxWideSetSinglei(work_entry->graphs->yaw_spin.lookup.last_frame);
+
+	tfxU32 running_sprite_index = work_entry->sprites_index;
+
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+
+	tfxU32 start_diff = work_entry->start_diff;
+
+	tfxWideArrayi lookup_frame;
+	tfx_sprite_soa_t& sprites = *work_entry->sprites;
+
+	const tfxWideFloat e_world_rotations_x = tfxWideSetSingle(emitter.world_rotations.x);
+	const tfxWideFloat e_world_rotations_y = tfxWideSetSingle(emitter.world_rotations.y);
+	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+		tfx__readbarrier;
+		tfxWideFloat life = tfxWideDiv(age, max_age);
+		life = tfxWideMul(life, max_life);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+
+		const tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
+		const tfxWideFloat base_pitch_spin = tfxWideLoad(&bank.base_pitch_spin[index]);
+		const tfxWideFloat base_yaw_spin = tfxWideLoad(&bank.base_yaw_spin[index]);
+
+		tfxWideArray rotations_x;
+		tfxWideArray rotations_y;
+		tfxWideArray rotations_z;
+		rotations_x.m = tfxWideLoad(&bank.local_rotations_x[index]);
+		rotations_y.m = tfxWideLoad(&bank.local_rotations_y[index]);
+		rotations_z.m = tfxWideLoad(&bank.local_rotations_z[index]);
+
+		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
+		const tfxWideFloat lookup_roll_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
+		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_pitch_last_frame);
+		const tfxWideFloat lookup_pitch_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->pitch_spin.lookup.values, lookup_frame), base_pitch_spin);
+		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_yaw_last_frame);
+		const tfxWideFloat lookup_yaw_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->yaw_spin.lookup.values, lookup_frame), base_yaw_spin);
+
+		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
+			rotations_x.m = tfxWideAdd(rotations_x.m, e_world_rotations_x);
+			rotations_y.m = tfxWideAdd(rotations_y.m, e_world_rotations_y);
+			rotations_z.m = tfxWideAdd(rotations_z.m, e_world_rotations_z);
+		}
+
+		//----Spin and angle Changes
+		rotations_x.m = tfxWideAdd(rotations_x.m, tfxWideMul(lookup_pitch_spin, pm.update_time_wide));
+		rotations_y.m = tfxWideAdd(rotations_y.m, tfxWideMul(lookup_yaw_spin, pm.update_time_wide));
+		rotations_z.m = tfxWideAdd(rotations_z.m, tfxWideMul(lookup_roll_spin, pm.update_time_wide));
+
+		tfxWideStore(&bank.local_rotations_x[index], rotations_x.m);
+		tfxWideStore(&bank.local_rotations_y[index], rotations_y.m);
+		tfxWideStore(&bank.local_rotations_z[index], rotations_z.m);
+
+		tfx__readbarrier;
+
+		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				tfxU32 sprite_depth_index = bank.depth_index[index + j];
+				sprites.transform_3d[sprite_depth_index].rotations.x = rotations_x.a[j];
+				sprites.transform_3d[sprite_depth_index].rotations.y = rotations_y.a[j];
+				sprites.transform_3d[sprite_depth_index].rotations.z = rotations_z.a[j];
+				running_sprite_index++;
+			}
+		}
+		else {
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				sprites.transform_3d[running_sprite_index].rotations.x = rotations_x.a[j];
+				sprites.transform_3d[running_sprite_index].rotations.y = rotations_y.a[j];
+				sprites.transform_3d[running_sprite_index++].rotations.z = rotations_z.a[j];
+			}
+		}
+		start_diff = 0;
+	}
 }
 
 void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
@@ -12161,8 +12305,12 @@ void SpawnParticleSpin3d(tfx_work_queue_t *queue, void *data) {
 	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	AlterRandomSeed(&random, 8 + emitter.seed_index);
 
-	const float spin = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].base.spin, emitter.frame) * entry->parent_spawn_controls->spin;
+	const float roll_spin = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].base.spin, emitter.frame) * entry->parent_spawn_controls->spin;
+	const float pitch_spin = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].base.pitch_spin, emitter.frame) * entry->parent_spawn_controls->pitch_spin;
+	const float yaw_spin = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].base.yaw_spin, emitter.frame) * entry->parent_spawn_controls->yaw_spin;
 	const float spin_variation = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.spin, emitter.frame) * entry->parent_spawn_controls->spin;
+	const float spin_pitch_variation = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.pitch_spin, emitter.frame) * entry->parent_spawn_controls->pitch_spin;
+	const float spin_yaw_variation = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.yaw_spin, emitter.frame) * entry->parent_spawn_controls->yaw_spin;
 	const tfxAngleSettingFlags angle_settings = entry->properties->angle_settings;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -12174,7 +12322,13 @@ void SpawnParticleSpin3d(tfx_work_queue_t *queue, void *data) {
 		float &local_rotations_z = entry->particle_data->local_rotations_z[index];
 
 		//----Spin
-		base_spin = RandomRange(&random, -spin_variation, spin_variation) + spin;
+		base_spin = RandomRange(&random, -spin_variation, spin_variation) + roll_spin;
+		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
+			float &base_pitch_spin = entry->particle_data->base_pitch_spin[index];
+			float &base_yaw_spin = entry->particle_data->base_yaw_spin[index];
+			base_pitch_spin = RandomRange(&random, -spin_pitch_variation, spin_pitch_variation) + pitch_spin;
+			base_yaw_spin = RandomRange(&random, -spin_yaw_variation, spin_yaw_variation) + yaw_spin;
+		}
 		if (angle_settings & tfxAngleSettingFlags_specify_roll)
 			local_rotations_z = emitter.angle_offsets.roll;
 		if (angle_settings & tfxAngleSettingFlags_specify_pitch)
@@ -13563,6 +13717,8 @@ void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index) {
 	}
 	spawn_controls.velocity = lookup_callback(&library->global_graphs[global_attributes].velocity, frame);
 	spawn_controls.spin = lookup_callback(&library->global_graphs[global_attributes].spin, frame);
+	spawn_controls.pitch_spin = lookup_callback(&library->global_graphs[global_attributes].pitch_spin, frame);
+	spawn_controls.yaw_spin = lookup_callback(&library->global_graphs[global_attributes].yaw_spin, frame);
 	spawn_controls.intensity = lookup_callback(&library->global_graphs[global_attributes].intensity, frame);
 	spawn_controls.splatter = lookup_callback(&library->global_graphs[global_attributes].splatter, frame);
 	spawn_controls.weight = lookup_callback(&library->global_graphs[global_attributes].weight, frame);
@@ -13682,18 +13838,20 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 			bank.max_age[next_index] = bank.max_age[index];
 			bank.position_x[next_index] = bank.position_x[index];
 			bank.position_y[next_index] = bank.position_y[index];
-			bank.position_z[next_index] = bank.position_z[index];
 			bank.captured_position_x[next_index] = bank.captured_position_x[index];
 			bank.captured_position_y[next_index] = bank.captured_position_y[index];
-			bank.captured_position_z[next_index] = bank.captured_position_z[index];
 			bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
-			bank.local_rotations_y[next_index] = bank.local_rotations_y[index];
 			bank.local_rotations_z[next_index] = bank.local_rotations_z[index];
 			bank.velocity_normal[next_index] = bank.velocity_normal[index];
 			bank.base_weight[next_index] = bank.base_weight[index];
 			bank.base_velocity[next_index] = bank.base_velocity[index];
 			bank.base_spin[next_index] = bank.base_spin[index];
-			if (pm.flags & tfxEffectManagerFlags_3d_effects) {
+			if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
+				bank.local_rotations_y[next_index] = bank.local_rotations_y[index];
+				bank.position_z[next_index] = bank.position_z[index];
+				bank.captured_position_z[next_index] = bank.captured_position_z[index];
+			}
+			if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 				bank.base_pitch_spin[next_index] = bank.base_pitch_spin[index];
 				bank.base_yaw_spin[next_index] = bank.base_yaw_spin[index];
 			}
@@ -13754,6 +13912,12 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			ControlParticlePosition2d(&pm->work_queue, work_entry);
+		}
+		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
+			ControlParticleSpin3d(&pm->work_queue, work_entry);
+		}
+		else {
+			ControlParticleSpin(&pm->work_queue, work_entry);
 		}
 		ControlParticleSize(&pm->work_queue, work_entry);
 		ControlParticleColor(&pm->work_queue, work_entry);
@@ -13961,7 +14125,7 @@ void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, captured_position_x));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, captured_position_y));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, local_rotations_x));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, local_rotations_y));
+	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, local_rotations_z));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, velocity_normal));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, depth_index));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_weight));

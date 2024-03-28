@@ -2237,15 +2237,13 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
 	tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
-	tfxEmitterPropertyFlags_can_grow_particle_memory = 1 << 23,			//Allows for expanding the memory used for particle emitters if the amount spawned is changed dynamically
-	tfxEmitterPropertyFlags_effect_is_3d = 1 << 24,						//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
-	tfxEmitterPropertyFlags_use_dynamic = 1 << 25,						//Use a dynamic particle storage rather then a fixed one
-	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 26,				//Spawn on grid points but randomly rather then in sequence
-	tfxEmitterPropertyFlags_area_open_ends = 1 << 27,					//Only sides of the area/cylinder are spawned on when fill area is not checked
-	tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 28,		//Emitter will be excluded from effect hue adjustments if this flag is checked
-	tfxEmitterPropertyFlags_enabled = 1 << 29,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
-	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 30,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
-	tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 31	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
+	tfxEmitterPropertyFlags_effect_is_3d = 1 << 23,						//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
+	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 24,				//Spawn on grid points but randomly rather then in sequence
+	tfxEmitterPropertyFlags_area_open_ends = 1 << 25,					//Only sides of the area/cylinder are spawned on when fill area is not checked
+	tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 26,		//Emitter will be excluded from effect hue adjustments if this flag is checked
+	tfxEmitterPropertyFlags_enabled = 1 << 27,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
+	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 28,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
+	tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 29	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
 };
 
 enum tfx_particle_flag_bits : unsigned char {
@@ -2282,7 +2280,8 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_no_tween = 1 << 20,
 	tfxEmitterStateFlags_align_with_velocity = 1 << 21,
 	tfxEmitterStateFlags_is_sub_emitter = 1 << 22,
-	tfxEmitterStateFlags_has_noise = 1 << 23
+	tfxEmitterStateFlags_has_noise = 1 << 23,
+	tfxEmitterStateFlags_can_spin_pitch_and_yaw = 1 << 24			//For 3d emitters that have free alignment and not always facing the camera
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -5038,9 +5037,9 @@ struct tfx_particle_soa_t {
 	float *captured_position_x;
 	float *captured_position_y;
 	float *captured_position_z;
-	float *local_rotations_x;
+	float *local_rotations_x;	//In 2d this is the direction
 	float *local_rotations_y;
-	float *local_rotations_z;
+	float *local_rotations_z;	//In 2d this is the roll
 	tfxU32 *velocity_normal;
 	tfxU32 *depth_index;
 	float *base_weight;
@@ -5892,6 +5891,8 @@ tfxINTERNAL void ControlParticleAge(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleColor(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleSize(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleSpin3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleSpin(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleUID(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleCaptureFlag(tfx_work_queue_t *queue, void *data);
 
