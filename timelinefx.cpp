@@ -9278,7 +9278,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= emitter_properties->end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 			state_flags |= (GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.velocity_turbulance) && GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.noise_resolution)) ? tfxEmitterStateFlags_has_noise : 0;
-			state_flags |= (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
+			state_flags |= (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d) && (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
 
 			emitter.property_flags |= (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d);
 			if (state_flags & tfxEmitterStateFlags_is_line_traversal) {
@@ -10338,7 +10338,6 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 
 	const tfxWideFloat e_world_position_x = tfxWideSetSingle(emitter.world_position.x);
 	const tfxWideFloat e_world_position_y = tfxWideSetSingle(emitter.world_position.y);
-	const tfxWideFloat e_world_rotations_roll = tfxWideSetSingle(emitter.world_rotations.roll);
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
@@ -10356,10 +10355,8 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 		tfxWideArray position_y;
 		tfxWideArray captured_position_x;
 		tfxWideArray captured_position_y;
-		tfxWideArray roll;
 		position_x.m = tfxWideLoad(&bank.position_x[index]);
 		position_y.m = tfxWideLoad(&bank.position_y[index]);
-		roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
 		captured_position_x.m = tfxWideLoad(&bank.captured_position_x[index]);
 		captured_position_y.m = tfxWideLoad(&bank.captured_position_y[index]);
 		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
@@ -10381,10 +10378,6 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
 		}
 
-		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			roll.m = tfxWideAdd(roll.m, e_world_rotations_roll);
-		}
-
 		captured_position_x.m = tfxWideAdd(tfxWideAnd(position_x.m, capture_flag), tfxWideAnd(captured_position_x.m, xor_capture_flag));
 		captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
 
@@ -10392,7 +10385,6 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
-				sprites.transform_2d[sprite_depth_index].rotation = roll.a[j];
 				sprites.transform_2d[sprite_depth_index].position.x = position_x.a[j];
 				sprites.transform_2d[sprite_depth_index].position.y = position_y.a[j];
 				bank.captured_position_x[index + j] = sprites.transform_2d[sprite_depth_index].position.x;
@@ -10409,7 +10401,6 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.transform_2d[running_sprite_index].rotation = roll.a[j];
 				sprites.transform_2d[running_sprite_index].position.x = position_x.a[j];
 				sprites.transform_2d[running_sprite_index].position.y = position_y.a[j];
 				bank.captured_position_x[index + j] = sprites.transform_2d[running_sprite_index].position.x;
@@ -10464,8 +10455,6 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
 
 		const tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
-		const tfxWideFloat base_pitch_spin = tfxWideLoad(&bank.base_pitch_spin[index]);
-		const tfxWideFloat base_yaw_spin = tfxWideLoad(&bank.base_yaw_spin[index]);
 
 		tfxWideArray rotations_z;
 		rotations_z.m = tfxWideLoad(&bank.local_rotations_z[index]);
@@ -13909,14 +13898,12 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		}
 		if (pm->flags & tfxEffectManagerFlags_3d_effects) {
 			ControlParticlePosition3d(&pm->work_queue, work_entry);
-		}
-		else {
+		} else {
 			ControlParticlePosition2d(&pm->work_queue, work_entry);
 		}
 		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 			ControlParticleSpin3d(&pm->work_queue, work_entry);
-		}
-		else {
+		} else {
 			ControlParticleSpin(&pm->work_queue, work_entry);
 		}
 		ControlParticleSize(&pm->work_queue, work_entry);
