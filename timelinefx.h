@@ -1932,9 +1932,9 @@ enum tfx_graph_type : unsigned char {
 	tfxBase_width,
 	tfxBase_height,
 	tfxBase_weight,
-	tfxBase_roll_spin,
 	tfxBase_pitch_spin,
 	tfxBase_yaw_spin,
+	tfxBase_roll_spin,
 	tfxBase_noise_offset,
 
 	tfxVariation_life,
@@ -1943,9 +1943,9 @@ enum tfx_graph_type : unsigned char {
 	tfxVariation_width,
 	tfxVariation_height,
 	tfxVariation_weight,
-	tfxVariation_roll_spin,
 	tfxVariation_pitch_spin,
 	tfxVariation_yaw_spin,
+	tfxVariation_roll_spin,
 	tfxVariation_noise_offset,
 	tfxVariation_noise_resolution,
 
@@ -1953,9 +1953,9 @@ enum tfx_graph_type : unsigned char {
 	tfxOvertime_width,
 	tfxOvertime_height,
 	tfxOvertime_weight,
-	tfxOvertime_roll_spin,
 	tfxOvertime_pitch_spin,
 	tfxOvertime_yaw_spin,
+	tfxOvertime_roll_spin,
 	tfxOvertime_stretch,
 	tfxOvertime_red,
 	tfxOvertime_green,
@@ -5441,7 +5441,7 @@ struct tfx_particle_manager_t {
 
 	tfx_work_queue_t work_queue;
 
-	//Banks of sprites for drawing in unordered mode
+	//Banks of sprites. All emitters write their sprite data to these banks. 
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfxU32 active_particles_count[tfxLAYERS];
@@ -6020,6 +6020,18 @@ tfxINTERNAL inline bool IsGraphEmitterDimension(tfx_graph_type type) {
 
 tfxINTERNAL inline bool IsGraphTranslation(tfx_graph_type type) {
 	return type == tfxTransform_translate_x || type == tfxTransform_translate_y || type == tfxTransform_translate_z;
+}
+
+tfxINTERNAL inline bool IsGraphBaseSpin(tfx_graph_type type) {
+	return type == tfxBase_roll_spin || type == tfxBase_pitch_spin || type == tfxBase_yaw_spin;
+}
+
+tfxINTERNAL inline bool IsGraphVariationSpin(tfx_graph_type type) {
+	return type == tfxVariation_roll_spin || type == tfxVariation_pitch_spin || type == tfxVariation_yaw_spin;
+}
+
+tfxINTERNAL inline bool IsGraphOvertimeSpin(tfx_graph_type type) {
+	return type == tfxOvertime_roll_spin || type == tfxOvertime_pitch_spin || type == tfxOvertime_yaw_spin;
 }
 
 tfxINTERNAL inline bool IsGraphEmission(tfx_graph_type type) {
