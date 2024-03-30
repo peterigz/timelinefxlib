@@ -2155,9 +2155,8 @@ enum tfx_vector_align_type {
 	tfxVectorAlignType_motion,
 	tfxVectorAlignType_emission,
 	tfxVectorAlignType_emitter,
-	tfxVectorAlignType_max,
-	//Not in yet, need to think about methods of implementing
 	tfxVectorAlignType_surface_normal,
+	tfxVectorAlignType_max,
 };
 
 //Particle property that defines how a particle will rotate
@@ -5719,7 +5718,7 @@ tfxINTERNAL tfx_vec3_t StrToVec3(tfx_vector_t<tfx_str256_t> *str);
 tfxINTERNAL tfx_vec2_t StrToVec2(tfx_vector_t<tfx_str256_t> *str);
 
 //--------------------------------
-//Inline Math functions
+//Math functions
 //--------------------------------
 tfxINTERNAL void MakeIcospheres();
 tfxINTERNAL int VertexForEdge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, int first, int second);
@@ -5747,6 +5746,8 @@ tfxINTERNAL tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b);
 tfxINTERNAL float DotProductVec4(const tfx_vec4_t *a, const tfx_vec4_t *b);
 tfxINTERNAL float DotProductVec3(const tfx_vec3_t *a, const tfx_vec3_t *b);
 tfxAPI_EDITOR float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b);
+tfxAPI_EDITOR tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth);
+tfxAPI_EDITOR void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z);
 //Quake 3 inverse square root
 tfxINTERNAL float QuakeSqrt(float number);
 tfxINTERNAL tfxU32 GetLayerFromID(tfxU32 index);

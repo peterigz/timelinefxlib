@@ -1177,6 +1177,47 @@ float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
 	return (a->x * b->x + a->y * b->y);
 }
 
+tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth) {
+	// Calculate the gradient of the ellipse equation
+	float dx = 2.f * x / (width * width);
+	float dy = 2.f * y / (height * height);
+	float dz = 2.f * z / (depth * depth);
+
+	// Normalize the gradient vector to obtain the surface normal
+	float length = QuakeSqrt(dx * dx + dy * dy + dz * dz);
+	tfx_vec3_t normal;
+	normal.x = dx / length;
+	normal.y = dy / length;
+	normal.z = dz / length;
+
+	return normal;
+}
+
+void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, const tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z) {
+	// Calculate the gradient of the ellipse equation
+	tfxWideFloat dx = tfxWideMul(*width, *width);
+	tfxWideFloat dy = tfxWideMul(*height, *height);
+	tfxWideFloat dz = tfxWideMul(*depth, *depth);
+
+	dx = tfxWideDiv(tfxWideMul(*x, tfxWideSetSingle(2.f)), dx);
+	dy = tfxWideDiv(tfxWideMul(*y, tfxWideSetSingle(2.f)), dy);
+	dz = tfxWideDiv(tfxWideMul(*z, tfxWideSetSingle(2.f)), dz);
+
+	// Normalize the gradient vector to obtain the surface normal
+	tfxWideFloat length = tfxWideMul(dx, dx);
+	length = tfxWideAdd(length, tfxWideMul(dy, dy));
+	length = tfxWideAdd(length, tfxWideMul(dz, dz));
+#ifdef tfxARM
+	length = tfxWideMul(tfxWideSqrt(length), length);
+#else
+	length = tfxWideSqrt(length);
+#endif
+
+	*normal_x = tfxWideDiv(dx, length);
+	*normal_y = tfxWideDiv(dy, length);
+	*normal_z = tfxWideDiv(dz, length);
+}
+
 //Quake 3 inverse square root
 float QuakeSqrt(float number)
 {
@@ -9927,6 +9968,9 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
+	const tfxWideFloat e_emitter_width = tfxWideSetSingle(emitter.emitter_size.x * .5f);
+	const tfxWideFloat e_emitter_height = tfxWideSetSingle(emitter.emitter_size.y * .5f);
+	const tfxWideFloat e_emitter_depth = tfxWideSetSingle(emitter.emitter_size.z * .5f);
 	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
 	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
@@ -10032,6 +10076,12 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_y = tfxWideSetSingle(1.f);
 			alignment_vector_z = tfxWideSetSingle(0.f);
 			TransformMatrix4Vec3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+		}
+		else if (vector_align_type == tfxVectorAlignType_surface_normal) {
+			tfxWideFloat local_x = tfxWideSub(position_x.m, e_world_position_x);
+			tfxWideFloat local_y = tfxWideSub(position_y.m, e_world_position_y);
+			tfxWideFloat local_z = tfxWideSub(position_z.m, e_world_position_z);
+			EllipseSurfaceNormalWide(&local_x, &local_y, &local_z, &e_emitter_width, &e_emitter_height, &e_emitter_depth, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
 
 		//sprites.transform_3d.captured_position = captured_position;
