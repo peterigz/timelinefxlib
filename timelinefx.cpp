@@ -1177,14 +1177,28 @@ float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
 	return (a->x * b->x + a->y * b->y);
 }
 
-tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth) {
+tfx_vec3_t CylinderSurfaceNormal(float x, float z, float width, float depth) {
 	// Calculate the gradient of the ellipse equation
+	float dx = 2.f * x / (width * width);
+	float dz = 2.f * z / (depth * depth);
+
+	// Normalize the gradient vector to obtain the surface normal
+	float length = 1.f / QuakeSqrt(dx * dx + dz * dz);
+	tfx_vec3_t normal;
+	normal.x = dx / length;
+	normal.y = 0.f;
+	normal.z = dz / length;
+
+	return normal;
+}
+
+tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth) {
 	float dx = 2.f * x / (width * width);
 	float dy = 2.f * y / (height * height);
 	float dz = 2.f * z / (depth * depth);
 
 	// Normalize the gradient vector to obtain the surface normal
-	float length = QuakeSqrt(dx * dx + dy * dy + dz * dz);
+	float length = 1.f / QuakeSqrt(dx * dx + dy * dy + dz * dz);
 	tfx_vec3_t normal;
 	normal.x = dx / length;
 	normal.y = dy / length;
@@ -1195,13 +1209,13 @@ tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float he
 
 void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, const tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z) {
 	// Calculate the gradient of the ellipse equation
-	tfxWideFloat dx = tfxWideMul(*width, *width);
-	tfxWideFloat dy = tfxWideMul(*height, *height);
-	tfxWideFloat dz = tfxWideMul(*depth, *depth);
+	tfxWideFloat w2 = tfxWideMul(*width, *width);
+	tfxWideFloat h2 = tfxWideMul(*height, *height);
+	tfxWideFloat d2 = tfxWideMul(*depth, *depth);
 
-	dx = tfxWideDiv(tfxWideMul(*x, tfxWideSetSingle(2.f)), dx);
-	dy = tfxWideDiv(tfxWideMul(*y, tfxWideSetSingle(2.f)), dy);
-	dz = tfxWideDiv(tfxWideMul(*z, tfxWideSetSingle(2.f)), dz);
+	tfxWideFloat dx = tfxWideDiv(*x, w2);
+	tfxWideFloat dy = tfxWideDiv(*y, h2);
+	tfxWideFloat dz = tfxWideDiv(*z, d2);
 
 	// Normalize the gradient vector to obtain the surface normal
 	tfxWideFloat length = tfxWideMul(dx, dx);
@@ -1212,10 +1226,11 @@ void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, cons
 #else
 	length = tfxWideSqrt(length);
 #endif
+	tfxWideFloat scale = tfxWideDiv(tfxWIDEONE, length);
 
-	*normal_x = tfxWideDiv(dx, length);
-	*normal_y = tfxWideDiv(dy, length);
-	*normal_z = tfxWideDiv(dz, length);
+	*normal_x = tfxWideDiv(tfxWideMul(scale, *x), w2);
+	*normal_y = tfxWideDiv(tfxWideMul(scale, *y), h2);
+	*normal_z = tfxWideDiv(tfxWideMul(scale, *z), d2);
 }
 
 //Quake 3 inverse square root
@@ -2648,7 +2663,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 	float parent_pitch = 0.f;
 	float parent_yaw = 0.f;
 	if (emission_type != tfxPoint) {
-		if (emission_direction == tfx_emission_direction::tfxOutwards) {
+		if (emission_direction == tfxOutwards) {
 
 			if (emitter.property_flags & tfxEmitterPropertyFlags_relative_position)
 				to_handle = tmp_position;
@@ -2658,7 +2673,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			to_handle = NormalizeVec3(&to_handle);
 
 		}
-		else if (emission_direction == tfx_emission_direction::tfxInwards) {
+		else if (emission_direction == tfxInwards) {
 
 			if (emitter.property_flags & tfxEmitterPropertyFlags_relative_position)
 				to_handle = -tmp_position;
@@ -2668,7 +2683,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 			to_handle = NormalizeVec3(&to_handle);
 
 		}
-		else if (emission_direction == tfx_emission_direction::tfxBothways) {
+		else if (emission_direction == tfxBothways) {
 
 			if (emitter.emission_alternator) {
 
@@ -2687,6 +2702,15 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 
 			emitter.emission_alternator = !emitter.emission_alternator;
 			to_handle = NormalizeVec3(&to_handle);
+		} else if (emission_direction == tfxSurface) {
+			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
+				to_handle = EllipseSurfaceNormal(local_position.x, local_position.y, local_position.z, emitter.emitter_size.x * .5f, emitter.emitter_size.y * .5f, emitter.emitter_size.z * .5f);
+			}
+			else if (emission_type == tfxCylinder) {
+				float radius_x = emitter.emitter_size.x * .5f;
+				float radius_z = emitter.emitter_size.z * .5f;
+				to_handle = CylinderSurfaceNormal(local_position.x - radius_x, local_position.z - radius_z, radius_x, radius_z);
+			}
 		}
 		else {
 			parent_pitch = emitter.world_rotations.pitch;
@@ -10026,7 +10050,15 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat xor_capture_flag = tfxWideEquals(capture_flag.m, tfxWideSetZero);
 		tfx__readbarrier;
 
+		tfxWideFloat alignment_vector_x;
+		tfxWideFloat alignment_vector_y;
+		tfxWideFloat alignment_vector_z;
+
 		if (property_flags & tfxEmitterPropertyFlags_relative_position || (property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine)) {
+			//if (vector_align_type == tfxVectorAlignType_surface_normal && emission_type == tfxEllipse) {
+				//EllipseSurfaceNormalWide(&position_x.m, &position_y.m, &position_z.m, &e_emitter_width, &e_emitter_height, &e_emitter_depth, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+				//TransformMatrix4Vec3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
+			//}
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
 			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
@@ -10040,9 +10072,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag.m), tfxWideAnd(captured_position_y.m, xor_capture_flag));
 		captured_position_z.m = tfxWideAdd(tfxWideAnd(position_z.m, capture_flag.m), tfxWideAnd(captured_position_z.m, xor_capture_flag));
 
-		tfxWideFloat alignment_vector_x;
-		tfxWideFloat alignment_vector_y;
-		tfxWideFloat alignment_vector_z;
 		if (vector_align_type == tfxVectorAlignType_motion) {
 			alignment_vector_x = tfxWideSub(position_x.m, captured_position_x.m);
 			alignment_vector_y = tfxWideAdd(tfxWideSub(position_y.m, captured_position_y.m), tfxWideSetSingle(0.000001f)); //epsilon to prevent divide by 0
@@ -10076,12 +10105,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_y = tfxWideSetSingle(1.f);
 			alignment_vector_z = tfxWideSetSingle(0.f);
 			TransformMatrix4Vec3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
-		}
-		else if (vector_align_type == tfxVectorAlignType_surface_normal) {
-			tfxWideFloat local_x = tfxWideSub(position_x.m, e_world_position_x);
-			tfxWideFloat local_y = tfxWideSub(position_y.m, e_world_position_y);
-			tfxWideFloat local_z = tfxWideSub(position_z.m, e_world_position_z);
-			EllipseSurfaceNormalWide(&local_x, &local_y, &local_z, &e_emitter_width, &e_emitter_height, &e_emitter_depth, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
 
 		//sprites.transform_3d.captured_position = captured_position;
@@ -13614,16 +13637,12 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		float emission_yaw = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_yaw, emitter.frame);
 
 		tfx_vec3_t velocity_normal;
-		if (!(emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal) || emission_type != tfxLine) {
-			velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
-            if(velocity_normal.y > 0) {
-                velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
-            } else {
-                velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
-            }
-		}
-		else if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
+		if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
 			velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
+		}
+		else {
+			velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
+			velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
 		}
 		float velocity_scale = first_velocity_value * velocity_adjuster * base_velocity;
 
