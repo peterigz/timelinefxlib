@@ -1203,12 +1203,6 @@ tfxU32 GetIndexFromID(tfxU32 index) {
 	return index & 0x0FFFFFFF;
 }
 
-//Todo: can delete this now?
-tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index) {
-	assert(nibble < 16);
-	return (nibble << 28) + index;
-}
-
 float Vec2LengthFast(tfx_vec2_t const *v) {
 	return 1.f / QuakeSqrt(DotProductVec2(v, v));
 }

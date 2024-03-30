@@ -5751,8 +5751,6 @@ tfxAPI_EDITOR float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b);
 tfxINTERNAL float QuakeSqrt(float number);
 tfxINTERNAL tfxU32 GetLayerFromID(tfxU32 index);
 tfxINTERNAL tfxU32 GetIndexFromID(tfxU32 index);
-//Todo: can delete this now?
-tfxINTERNAL tfxU32 SetNibbleID(tfxU32 nibble, tfxU32 index);
 tfxAPI_EDITOR float Vec2LengthFast(tfx_vec2_t const *v);
 tfxAPI_EDITOR float Vec3FastLength(tfx_vec3_t const *v);
 tfxAPI_EDITOR tfx_vec3_t NormalizeVec3Fast(tfx_vec3_t const *v);
