@@ -12018,7 +12018,7 @@ void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 		SpawnParticleArea3d(&pm->work_queue, work_entry);
 	}
 	else if (work_entry->emission_type == tfxEllipse) {
-		SpawnParticleEllipse3d(&pm->work_queue, work_entry);
+		SpawnParticleEllipsoid(&pm->work_queue, work_entry);
 	}
 	else if (work_entry->emission_type == tfxLine) {
 		SpawnParticleLine3d(&pm->work_queue, work_entry);
@@ -13134,7 +13134,7 @@ void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data) {
 
 }
 
-void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data) {
+void SpawnParticleEllipsoid(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfx_random_t random = entry->pm->random;
@@ -13159,9 +13159,8 @@ void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data) {
 		tfx_vec3_t position;
 
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_fill_area)) {
-			float u = RandomRange(&random, 1.f);
+			float theta = RandomRange(&random, tfxPI2);
 			float v = RandomRange(&random, 1.f);
-			float theta = u * 2.f * tfxPI;
 			float phi = acosf(2.f * v - 1.f);
 			float sin_theta = sinf(theta);
 			float cos_theta = cosf(theta);

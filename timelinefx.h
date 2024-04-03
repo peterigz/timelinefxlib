@@ -1098,6 +1098,7 @@ tfx_allocator *tfxGetAllocator();
 #define tfxTWO63 0x8000000000000000u 
 #define tfxTWO64f (tfxTWO63*2.0)
 #define tfxPI 3.14159265359f
+const float tfxPI2 = tfxPI * 2.f;
 #define tfx360Radians 6.28319f
 #define tfx180Radians 3.14159f
 #define tfx90Radians 1.5708f
@@ -5877,7 +5878,7 @@ tfxINTERNAL tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void SpawnParticleEllipse3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleEllipsoid(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data);
