@@ -9819,7 +9819,6 @@ void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data) {
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
-		const tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
 		tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
@@ -9897,9 +9896,6 @@ void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfxWideArrayi lookup_frame;
-		const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
-		const tfxWideFloat lookup_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
 		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
 		tfxWideArrayi lookup_frame_weight;
