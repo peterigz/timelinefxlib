@@ -7553,9 +7553,6 @@ tfx_graph_t *tfxGetGraph(tfx_library_t *library, tfx_graph_id_t graph_id) {
 		int ref = type - TFX_TRANSFORM_START;
 		return &((tfx_graph_t*)&library->transform_attributes[graph_id.graph_id])[ref];
 	}
-	else if (other_graphs) {
-		return &other_graphs[graph_id.graph_id];
-	}
 
 	assert(0);	//This function must return a value, make sure the graph_id is valid
 
