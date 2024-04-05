@@ -3433,7 +3433,7 @@ tfxU32 CountAllEffectLookupValues(tfx_effect_emitter_t *effect) {
 }
 
 void CompileEffectGraphs(tfx_effect_emitter_t *effect) {
-	for (tfxU32 t = (tfxU32)tfxTransform_translate_x; t != (tfxU32)tfxGraphMaxIndex; ++t) {
+	for (tfxU32 t = (tfxU32)tfxTransform_translate_x; t != (tfxU32)tfxEmitterGraphMaxIndex; ++t) {
 		CompileGraph(GetEffectGraphByType(effect, tfx_graph_type(t)));
 	}
 	if (effect->type == tfxEffectType) {
@@ -3457,6 +3457,18 @@ void CompileEffectGraphs(tfx_effect_emitter_t *effect) {
 	for (auto &sub : GetEffectInfo(effect)->sub_effectors) {
 		CompileEffectGraphs(&sub);
 	}
+}
+
+void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
+	path->angle_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	path->angle_x.type = tfxPath_angle_x;
+	path->angle_x.min = { 0.f, -360.f };
+	path->angle_x.max = { 1024, 360.f };
+	path->angle_x.graph_preset = tfxAnglePreset;
+}
+
+void FreePathGraphs(tfx_emitter_path_t* path) {
+	FreeGraph(&path->angle_x);
 }
 
 void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size) {
@@ -4915,7 +4927,7 @@ void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index) {
 
 void SetLibraryMinMaxData(tfx_library_t *library) {
 	library->graph_min_max.clear();
-	library->graph_min_max.create_pool(tfxGraphMaxIndex);
+	library->graph_min_max.create_pool(tfxEmitterGraphMaxIndex);
 
 	library->graph_min_max[tfxGlobal_life] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_amount] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
@@ -6208,7 +6220,7 @@ void ClampCurve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node_t *node) {
 }
 
 tfx_graph_t::tfx_graph_t() {
-	type = tfxGraphMaxIndex;
+	type = tfxEmitterGraphMaxIndex;
 	min.x = 0.f;
 	min.y = 0.f;
 	max.x = 1000.f;
@@ -6218,7 +6230,7 @@ tfx_graph_t::tfx_graph_t() {
 }
 
 tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
-	type = tfxGraphMaxIndex;
+	type = tfxEmitterGraphMaxIndex;
 	min.x = 0.f;
 	min.y = 0.f;
 	max.x = 1000.f;
@@ -7515,7 +7527,7 @@ int GetDataType(const tfx_str_t &s) {
 }
 
 //Get a graph by tfx_graph_id_t
-tfx_graph_t *GetGraph(tfx_library_t *library, tfx_graph_id_t graph_id) {
+tfx_graph_t *tfxGetGraph(tfx_library_t *library, tfx_graph_id_t graph_id) {
 	tfx_graph_type type = graph_id.type;
 
 	if (type < TFX_GLOBAL_COUNT) {
@@ -7540,6 +7552,9 @@ tfx_graph_t *GetGraph(tfx_library_t *library, tfx_graph_id_t graph_id) {
 	else if (type >= TFX_TRANSFORM_START) {
 		int ref = type - TFX_TRANSFORM_START;
 		return &((tfx_graph_t*)&library->transform_attributes[graph_id.graph_id])[ref];
+	}
+	else if (other_graphs) {
+		return &other_graphs[graph_id.graph_id];
 	}
 
 	assert(0);	//This function must return a value, make sure the graph_id is valid

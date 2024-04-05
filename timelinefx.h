@@ -1975,7 +1975,12 @@ enum tfx_graph_type : unsigned char {
 	tfxTransform_translate_x,
 	tfxTransform_translate_y,
 	tfxTransform_translate_z,
-	tfxGraphMaxIndex,
+	tfxEmitterGraphMaxIndex,
+
+	tfxPath_angle_x,
+	tfxPath_angle_y,
+	tfxPath_angle_z,
+	tfxGraphMaxIndex
 };
 
 //tfx_effect_emitter_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
@@ -2090,6 +2095,7 @@ typedef tfxU32 tfxEffectCloningFlags;
 typedef tfxU32 tfxAnimationFlags;
 typedef tfxU32 tfxAnimationInstanceFlags;
 typedef tfxU32 tfxAnimationManagerFlags;
+typedef tfxU32 tfxEmitterPathFlags;
 
 enum tfx_error_flag_bits {
 	tfxErrorCode_success = 0,
@@ -2158,6 +2164,11 @@ enum tfx_vector_align_type {
 	tfxVectorAlignType_emission,
 	tfxVectorAlignType_emitter,
 	tfxVectorAlignType_max,
+};
+
+enum tfx_emitter_path_flag_bits {
+	tfxPathFlags_none,
+	tfxPathFlags_spiral	= 1 << 0,
 };
 
 //Particle property that defines how a particle will rotate
@@ -4448,7 +4459,7 @@ struct tfx_graph_lookup_t {
 
 struct tfx_graph_id_t {
 	tfx_graph_category category;
-	tfx_graph_type type = tfxGraphMaxIndex;
+	tfx_graph_type type = tfxEmitterGraphMaxIndex;
 	tfxU32 graph_id = 0;
 	tfxU32 node_id = 0;
 };
@@ -4590,6 +4601,22 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t intensity;
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
+};
+
+struct tfx_emitter_path_t {
+	tfx_index index;
+	tfx_str32_t name;
+	tfxU32 points;
+	tfxEmitterPathFlags flags;
+	tfx_graph_t angle_x;
+	tfx_graph_t angle_y;
+	tfx_graph_t angle_z;
+	tfx_graph_t offset_x;
+	tfx_graph_t offset_y;
+	tfx_graph_t offset_z;
+	tfx_graph_t increment_x;
+	tfx_graph_t increment_y;
+	tfx_graph_t increment_z;
 };
 
 struct tfx_emitter_attributes_t {
@@ -5547,6 +5574,7 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
+	tfx_vector_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
 	tfx_vector_t<tfx_emitter_attributes_t> emitter_attributes;
 	tfx_vector_t<tfx_transform_attributes_t> transform_attributes;
@@ -6051,6 +6079,8 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfx_graph_type type) {
 //--------------------------------
 //Grouped graph struct functions
 //--------------------------------
+tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *graph, tfxU32 bucket_size = 8);
+tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *graph);
 tfxINTERNAL void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseVariationAttributes(tfx_variation_attributes_t *attributes, tfxU32 bucket_size = 8);
@@ -6081,7 +6111,7 @@ tfxAPI_EDITOR void CopyGlobalAttributesNoLookups(tfx_global_attributes_t *src, t
 tfxAPI_EDITOR void CopyGlobalAttributes(tfx_global_attributes_t *src, tfx_global_attributes_t *dst);
 
 //Get a graph by tfx_graph_id_t
-tfxAPI_EDITOR tfx_graph_t *GetGraph(tfx_library_t *library, tfx_graph_id_t graph_id);
+tfxAPI_EDITOR tfx_graph_t *tfxGetGraph(tfx_library_t *library, tfx_graph_id_t graph_id);
 
 tfxAPI_EDITOR int GetEffectLibraryStats(const char *filename, tfx_effect_library_stats_t *stats);
 tfxAPI_EDITOR tfx_effect_library_stats_t CreateLibraryStats(tfx_library_t *lib);
