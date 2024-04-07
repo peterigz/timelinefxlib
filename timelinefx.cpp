@@ -3465,6 +3465,54 @@ void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	path->angle_x.min = { 0.f, -360.f };
 	path->angle_x.max = { 1024, 360.f };
 	path->angle_x.graph_preset = tfxAnglePreset;
+	path->angle_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	path->angle_y.type = tfxPath_angle_y;
+	path->angle_y.min = { 0.f, -360.f };
+	path->angle_y.max = { 1024, 360.f };
+	path->angle_y.graph_preset = tfxAnglePreset;
+	path->angle_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	path->angle_z.type = tfxPath_angle_z;
+	path->angle_z.min = { 0.f, -360.f };
+	path->angle_z.max = { 1024, 360.f };
+	path->angle_z.graph_preset = tfxAnglePreset;
+	path->offset_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	path->offset_x.type = tfxPath_offset_z;
+	path->offset_x.min = { 0.f, -4000.f };
+	path->offset_x.max = { 1024, 4000.f };
+	path->offset_x.graph_preset = tfxTranslationPreset;
+	path->offset_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	path->offset_y.type = tfxPath_offset_z;
+	path->offset_y.min = { 0.f, -4000.f };
+	path->offset_y.max = { 1024, 4000.f };
+	path->offset_y.graph_preset = tfxTranslationPreset;
+	path->offset_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	path->offset_z.type = tfxPath_offset_z;
+	path->offset_z.min = { 0.f, -4000.f };
+	path->offset_z.max = { 1024, 4000.f };
+	path->offset_z.graph_preset = tfxTranslationPreset;
+}
+
+void BuildPathNodes(tfx_emitter_path_t* path) {
+	path->nodes.resize(path->node_count);
+	float angle = 0.f;
+	float height = 0.f;
+	tfx_mat4_t pitch = Matrix4RotateX(GetGraphValue(&path->angle_x, 0.f));
+	tfx_mat4_t yaw = Matrix4RotateY(GetGraphValue(&path->angle_y, 0.f));
+	tfx_mat4_t roll = Matrix4RotateZ(GetGraphValue(&path->angle_z, 0.f));
+	tfx_mat4_t matrix = TransformMatrix4(&yaw, &pitch);
+	matrix = TransformMatrix4(&matrix, &roll);
+	tfx_vec4_t offset = { GetGraphValue(&path->offset_x, 0.f), GetGraphValue(&path->offset_y, 0.f), GetGraphValue(&path->offset_z, 0.f), 0.f };
+	tfx_vec4_t position = TransformVec4Matrix4(&matrix, offset);
+	for (int i = 0; i != path->node_count; ++i) {
+		path->nodes[i] = position;
+		pitch = Matrix4RotateX(GetGraphValue(&path->angle_x, (float)i));
+		yaw = Matrix4RotateY(GetGraphValue(&path->angle_y, (float)i));
+		roll = Matrix4RotateZ(GetGraphValue(&path->angle_z, (float)i));
+		matrix = TransformMatrix4(&yaw, &pitch);
+		matrix = TransformMatrix4(&matrix, &roll);
+		offset = { GetGraphValue(&path->offset_x, (float)i), GetGraphValue(&path->offset_y, (float)i), GetGraphValue(&path->offset_z, (float)i), 0.f };
+		position = TransformVec4Matrix4(&matrix, offset);
+	}
 }
 
 void FreePathGraphs(tfx_emitter_path_t* path) {
@@ -6661,7 +6709,27 @@ void DeleteGraphNodeAtFrame(tfx_graph_t *graph, float frame) {
 	}
 }
 
-void ResetGraph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_node) {
+void ResetGraphNodes(tfx_graph_t* graph, float v, tfx_graph_preset preset, bool add_node) {
+	graph->nodes.clear();
+	graph->nodes.trim_buckets();
+	if (add_node && preset == tfxWeightOvertimePreset) {
+		AddGraphNode(graph, 0.f, 0.f, 0);
+		tfx_attribute_node_t* node = AddGraphNode(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
+		SetNodeCurveInitialised(node);
+	}
+	else if (add_node) {
+		if (preset == tfxWeightOvertimePreset) {
+			AddGraphNode(graph, 0.f, 0.f, 0);
+			tfx_attribute_node_t* node = AddGraphNode(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
+			SetNodeCurveInitialised(node);
+		}
+		else {
+			AddGraphNode(graph, 0.f, v);
+		}
+	}
+}
+
+void ResetGraph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_node, float max_frames) {
 	graph->nodes.clear();
 	graph->nodes.trim_buckets();
 	if (add_node && preset == tfxWeightOvertimePreset) {
@@ -6678,62 +6746,65 @@ void ResetGraph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_n
 			AddGraphNode(graph, 0.f, v);
 		}
 	}
+	if (!max_frames) {
+		max_frames = tfxMAX_FRAME;
+	}
 	switch (preset) {
 	case tfx_graph_preset::tfxGlobalPercentPreset:
 		//We have a epsilon to prevent divide by 0 here
-		graph->min = { 0.f, 0.0001f }; graph->max = { tfxMAX_FRAME, 20.f };
+		graph->min = { 0.f, 0.0001f }; graph->max = { max_frames, 20.f };
 		break;
 	case tfx_graph_preset::tfxGlobalOpacityPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 1.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 1.f };
 		break;
 	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
-		graph->min = { 0.f, -20.f }; graph->max = { tfxMAX_FRAME, 20.f };
+		graph->min = { 0.f, -20.f }; graph->max = { max_frames, 20.f };
 		break;
 	case tfx_graph_preset::tfxAnglePreset:
-		graph->min = { 0.f, -1080.f }; graph->max = { tfxMAX_FRAME, 1080.f };
+		graph->min = { 0.f, -1080.f }; graph->max = { max_frames, 1080.f };
 		break;
 	case tfx_graph_preset::tfxArcPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 360.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 360.f };
 		break;
 	case tfx_graph_preset::tfxEmissionRangePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 360.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 360.f };
 		break;
 	case tfx_graph_preset::tfxDimensionsPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 4000.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 4000.f };
 		break;
 	case tfx_graph_preset::tfxTranslationPreset:
-		graph->min = { 0.f, -4000.f }; graph->max = { tfxMAX_FRAME, 4000.f };
+		graph->min = { 0.f, -4000.f }; graph->max = { max_frames, 4000.f };
 		break;
 	case tfx_graph_preset::tfxLifePreset:
 		//We have a epsilon to prevent divide by 0 here. The divide by zero occurrs in control functions (ControlParticleImageFrame3d etc.) when the current % life of the particle is calculated
-		graph->min = { 0.f, 0.0001f }; graph->max = { tfxMAX_FRAME, 100000.f };
+		graph->min = { 0.f, 0.0001f }; graph->max = { max_frames, 100000.f };
 		break;
 	case tfx_graph_preset::tfxAmountPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 5000.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 5000.f };
 		break;
 	case tfx_graph_preset::tfxVelocityPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 10000.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 10000.f };
 		break;
 	case tfx_graph_preset::tfxWeightPreset:
-		graph->min = { 0.f, -10000.f }; graph->max = { tfxMAX_FRAME, 10000.f };
+		graph->min = { 0.f, -10000.f }; graph->max = { max_frames, 10000.f };
 		break;
 	case tfx_graph_preset::tfxWeightVariationPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 20000.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 20000.f };
 		break;
 	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 1000.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 1000.f };
 		break;
 	case tfx_graph_preset::tfxNoiseResolutionPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 10000.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 10000.f };
 		break;
 	case tfx_graph_preset::tfxSpinPreset:
-		graph->min = { 0.f, -2000.f }; graph->max = { tfxMAX_FRAME, 2000.f };
+		graph->min = { 0.f, -2000.f }; graph->max = { max_frames, 2000.f };
 		break;
 	case tfx_graph_preset::tfxSpinVariationPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 2000.f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 2000.f };
 		break;
 	case tfx_graph_preset::tfxDirectionVariationPreset:
-		graph->min = { 0.f, 0.f }; graph->max = { tfxMAX_FRAME, 22.5f };
+		graph->min = { 0.f, 0.f }; graph->max = { max_frames, 22.5f };
 		break;
 	case tfx_graph_preset::tfxWeightOvertimePreset:
 		graph->min = { 0.f, -20.f }; graph->max = { 1.f, 20.f };

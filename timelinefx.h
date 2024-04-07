@@ -1980,6 +1980,9 @@ enum tfx_graph_type : unsigned char {
 	tfxPath_angle_x,
 	tfxPath_angle_y,
 	tfxPath_angle_z,
+	tfxPath_offset_x,
+	tfxPath_offset_y,
+	tfxPath_offset_z,
 	tfxGraphMaxIndex
 };
 
@@ -2168,7 +2171,8 @@ enum tfx_vector_align_type {
 
 enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_none,
-	tfxPathFlags_spiral	= 1 << 0,
+	tfxPathFlags_3d = 1 << 0,
+	tfxPathFlags_spiral	= 1 << 1,
 };
 
 //Particle property that defines how a particle will rotate
@@ -4462,6 +4466,7 @@ struct tfx_graph_id_t {
 	tfx_graph_type type = tfxEmitterGraphMaxIndex;
 	tfxU32 graph_id = 0;
 	tfxU32 node_id = 0;
+	tfxKey path_hash = 0;
 };
 
 struct tfx_graph_lookup_index_t {
@@ -4604,9 +4609,9 @@ struct tfx_overtime_attributes_t {
 };
 
 struct tfx_emitter_path_t {
-	tfx_index index;
+	tfxKey key;
 	tfx_str32_t name;
-	tfxU32 points;
+	tfxU32 node_count;
 	tfxEmitterPathFlags flags;
 	tfx_graph_t angle_x;
 	tfx_graph_t angle_y;
@@ -4617,6 +4622,7 @@ struct tfx_emitter_path_t {
 	tfx_graph_t increment_x;
 	tfx_graph_t increment_y;
 	tfx_graph_t increment_z;
+	tfx_vector_t<tfx_vec4_t> nodes;
 };
 
 struct tfx_emitter_attributes_t {
@@ -5567,6 +5573,7 @@ struct tfx_effect_library_stats_t {
 };
 
 struct tfx_library_t {
+	//Todo: Why do this, why not just have a storage map of effect paths? There is a reason but I've forgotten, investigate and note why/why not.
 	tfx_storage_map_t<tfx_effect_emitter_t*> effect_paths;
 	tfx_vector_t<tfx_effect_emitter_t> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
@@ -5574,7 +5581,7 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
-	tfx_vector_t<tfx_emitter_path_t> paths;
+	tfx_storage_map_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
 	tfx_vector_t<tfx_emitter_attributes_t> emitter_attributes;
 	tfx_vector_t<tfx_transform_attributes_t> transform_attributes;
@@ -5978,7 +5985,8 @@ tfxAPI_EDITOR tfx_attribute_node_t* FindGraphNode(tfx_graph_t *graph, tfx_attrib
 tfxAPI_EDITOR void ValidateGraphCurves(tfx_graph_t *graph);
 tfxAPI_EDITOR void DeleteGraphNode(tfx_graph_t *graph, tfx_attribute_node_t *n);
 tfxAPI_EDITOR void DeleteGraphNodeAtFrame(tfx_graph_t *graph, float frame);
-tfxAPI_EDITOR void ResetGraph(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true);
+tfxAPI_EDITOR void ResetGraph(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true, float max_frames = 0);
+tfxAPI_EDITOR void ResetGraphNodes(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true);
 tfxAPI_EDITOR void ClearGraphToOne(tfx_graph_t *graph, float value);
 tfxAPI_EDITOR void ClearGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void FreeGraph(tfx_graph_t *graph);
@@ -6079,8 +6087,9 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfx_graph_type type) {
 //--------------------------------
 //Grouped graph struct functions
 //--------------------------------
-tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *graph, tfxU32 bucket_size = 8);
-tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *graph);
+tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size = 8);
+tfxAPI_EDITOR void BuildPathNodes(tfx_emitter_path_t* path);
+tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *path);
 tfxINTERNAL void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseVariationAttributes(tfx_variation_attributes_t *attributes, tfxU32 bucket_size = 8);
