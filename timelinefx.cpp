@@ -3493,9 +3493,9 @@ void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 }
 
 void BuildPathNodes(tfx_emitter_path_t* path) {
-	path->nodes.resize(path->node_count);
-	float angle = 0.f;
-	float height = 0.f;
+	if (path->nodes.current_size != path->node_count) {
+		path->nodes.resize(path->node_count);
+	}
 	tfx_mat4_t pitch = Matrix4RotateX(GetGraphValue(&path->angle_x, 0.f));
 	tfx_mat4_t yaw = Matrix4RotateY(GetGraphValue(&path->angle_y, 0.f));
 	tfx_mat4_t roll = Matrix4RotateZ(GetGraphValue(&path->angle_z, 0.f));
@@ -3505,12 +3505,13 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 	tfx_vec4_t position = TransformVec4Matrix4(&matrix, offset);
 	for (int i = 0; i != path->node_count; ++i) {
 		path->nodes[i] = position;
-		pitch = Matrix4RotateX(GetGraphValue(&path->angle_x, (float)i));
-		yaw = Matrix4RotateY(GetGraphValue(&path->angle_y, (float)i));
-		roll = Matrix4RotateZ(GetGraphValue(&path->angle_z, (float)i));
+		float age = ((float)i + 1.f) / (float)path->node_count;
+		pitch = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
+		yaw = Matrix4RotateY(GetGraphValue(&path->angle_y, age));
+		roll = Matrix4RotateZ(GetGraphValue(&path->angle_z, age));
 		matrix = TransformMatrix4(&yaw, &pitch);
 		matrix = TransformMatrix4(&matrix, &roll);
-		offset = { GetGraphValue(&path->offset_x, (float)i), GetGraphValue(&path->offset_y, (float)i), GetGraphValue(&path->offset_z, (float)i), 0.f };
+		offset = { GetGraphValue(&path->offset_x, age), GetGraphValue(&path->offset_y, age), GetGraphValue(&path->offset_z, age), 0.f };
 		position = TransformVec4Matrix4(&matrix, offset);
 	}
 }

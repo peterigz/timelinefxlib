@@ -4611,7 +4611,7 @@ struct tfx_overtime_attributes_t {
 struct tfx_emitter_path_t {
 	tfxKey key;
 	tfx_str32_t name;
-	tfxU32 node_count;
+	int node_count;
 	tfxEmitterPathFlags flags;
 	tfx_graph_t angle_x;
 	tfx_graph_t angle_y;
