@@ -10594,6 +10594,7 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 	tfxU32 emitter_index = work_entry->emitter_index;
 	tfx_particle_manager_t& pm = *work_entry->pm;
 	tfx_emitter_state_t& emitter = pm.emitters[work_entry->emitter_index];
+	const tfx_emission_type emission_type = work_entry->properties->emission_type;
 	tfx_particle_soa_t& bank = pm.particle_arrays[emitter.particles_index];
 
 	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
@@ -10608,6 +10609,7 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 	tfx_sprite_soa_t& sprites = *work_entry->sprites;
 
 	const tfxWideFloat e_world_rotations_x = tfxWideSetSingle(emitter.world_rotations.x);
+	bool relative_position = emitter.property_flags & tfxEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -10627,13 +10629,13 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
 		const tfxWideFloat lookup_roll_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
 
-		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotations_z.m = tfxWideAdd(rotations_z.m, e_world_rotations_x);
-		}
-
 		//----Spin and angle Changes
 		rotations_z.m = tfxWideAdd(rotations_z.m, tfxWideMul(lookup_roll_spin, pm.update_time_wide));
 		tfxWideStore(&bank.local_rotations_z[index], rotations_z.m);
+
+		if (!relative_position && emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
+			rotations_z.m = tfxWideAdd(rotations_z.m, e_world_rotations_x);
+		}
 
 		tfx__readbarrier;
 
@@ -10672,6 +10674,7 @@ void ControlParticleSpin3d(tfx_work_queue_t* queue, void* data) {
 	tfx_particle_manager_t& pm = *work_entry->pm;
 	tfx_emitter_state_t& emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t& bank = pm.particle_arrays[emitter.particles_index];
+	const tfx_emission_type emission_type = work_entry->properties->emission_type;
 
 	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
 	const tfxWideInt spin_pitch_last_frame = tfxWideSetSinglei(work_entry->graphs->pitch_spin.lookup.last_frame);
@@ -10689,6 +10692,7 @@ void ControlParticleSpin3d(tfx_work_queue_t* queue, void* data) {
 	const tfxWideFloat e_world_rotations_x = tfxWideSetSingle(emitter.world_rotations.x);
 	const tfxWideFloat e_world_rotations_y = tfxWideSetSingle(emitter.world_rotations.y);
 	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
+	bool relative_position = emitter.property_flags & tfxEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -10718,12 +10722,6 @@ void ControlParticleSpin3d(tfx_work_queue_t* queue, void* data) {
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_yaw_last_frame);
 		const tfxWideFloat lookup_yaw_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->yaw_spin.lookup.values, lookup_frame), base_yaw_spin);
 
-		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
-			rotations_x.m = tfxWideAdd(rotations_x.m, e_world_rotations_x);
-			rotations_y.m = tfxWideAdd(rotations_y.m, e_world_rotations_y);
-			rotations_z.m = tfxWideAdd(rotations_z.m, e_world_rotations_z);
-		}
-
 		//----Spin and angle Changes
 		rotations_x.m = tfxWideAdd(rotations_x.m, tfxWideMul(lookup_pitch_spin, pm.update_time_wide));
 		rotations_y.m = tfxWideAdd(rotations_y.m, tfxWideMul(lookup_yaw_spin, pm.update_time_wide));
@@ -10732,6 +10730,12 @@ void ControlParticleSpin3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideStore(&bank.local_rotations_x[index], rotations_x.m);
 		tfxWideStore(&bank.local_rotations_y[index], rotations_y.m);
 		tfxWideStore(&bank.local_rotations_z[index], rotations_z.m);
+
+		if (!relative_position && emitter.property_flags & tfxEmitterPropertyFlags_relative_angle) {
+			rotations_x.m = tfxWideAdd(rotations_x.m, e_world_rotations_x);
+			rotations_y.m = tfxWideAdd(rotations_y.m, e_world_rotations_y);
+			rotations_z.m = tfxWideAdd(rotations_z.m, e_world_rotations_z);
+		}
 
 		tfx__readbarrier;
 
@@ -14094,7 +14098,8 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		}
 		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 			ControlParticleSpin3d(&pm->work_queue, work_entry);
-		} else {
+		}
+		else {
 			ControlParticleSpin(&pm->work_queue, work_entry);
 		}
 		ControlParticleSize(&pm->work_queue, work_entry);
