@@ -14016,13 +14016,13 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 			bank.position_y[next_index] = bank.position_y[index];
 			bank.captured_position_x[next_index] = bank.captured_position_x[index];
 			bank.captured_position_y[next_index] = bank.captured_position_y[index];
-			bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
 			bank.local_rotations_z[next_index] = bank.local_rotations_z[index];
 			bank.velocity_normal[next_index] = bank.velocity_normal[index];
 			bank.base_weight[next_index] = bank.base_weight[index];
 			bank.base_velocity[next_index] = bank.base_velocity[index];
 			bank.base_spin[next_index] = bank.base_spin[index];
 			if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
+				bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
 				bank.local_rotations_y[next_index] = bank.local_rotations_y[index];
 				bank.position_z[next_index] = bank.position_z[index];
 				bank.captured_position_z[next_index] = bank.captured_position_z[index];
