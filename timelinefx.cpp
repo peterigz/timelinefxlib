@@ -10642,12 +10642,16 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 			if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
+					sprites.transform_3d[sprite_depth_index].rotations.x = 0.f;
+					sprites.transform_3d[sprite_depth_index].rotations.y = 0.f;
 					sprites.transform_3d[sprite_depth_index].rotations.z = rotations_z.a[j];
 					running_sprite_index++;
 				}
 			}
 			else {
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					sprites.transform_3d[running_sprite_index].rotations.x = 0.f;
+					sprites.transform_3d[running_sprite_index].rotations.y = 0.f;
 					sprites.transform_3d[running_sprite_index++].rotations.z = rotations_z.a[j];
 				}
 			}
