@@ -3462,62 +3462,104 @@ void CompileEffectGraphs(tfx_effect_emitter_t *effect) {
 void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	path->angle_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->angle_x.type = tfxPath_angle_x;
-	path->angle_x.min = { 0.f, -360.f };
-	path->angle_x.max = { 1024, 360.f };
-	path->angle_x.graph_preset = tfxAnglePreset;
+	path->angle_x.graph_preset = tfxPathDirectionOvertimePreset;
 	path->angle_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->angle_y.type = tfxPath_angle_y;
-	path->angle_y.min = { 0.f, -360.f };
-	path->angle_y.max = { 1024, 360.f };
-	path->angle_y.graph_preset = tfxAnglePreset;
+	path->angle_y.graph_preset = tfxPathDirectionOvertimePreset;
 	path->angle_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->angle_z.type = tfxPath_angle_z;
-	path->angle_z.min = { 0.f, -360.f };
-	path->angle_z.max = { 1024, 360.f };
-	path->angle_z.graph_preset = tfxAnglePreset;
+	path->angle_z.graph_preset = tfxPathDirectionOvertimePreset;
 	path->offset_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->offset_x.type = tfxPath_offset_z;
-	path->offset_x.min = { 0.f, -4000.f };
-	path->offset_x.max = { 1024, 4000.f };
-	path->offset_x.graph_preset = tfxTranslationPreset;
+	path->offset_x.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->offset_y.type = tfxPath_offset_z;
-	path->offset_y.min = { 0.f, -4000.f };
-	path->offset_y.max = { 1024, 4000.f };
-	path->offset_y.graph_preset = tfxTranslationPreset;
+	path->offset_y.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->offset_z.type = tfxPath_offset_z;
-	path->offset_z.min = { 0.f, -4000.f };
-	path->offset_z.max = { 1024, 4000.f };
-	path->offset_z.graph_preset = tfxTranslationPreset;
+	path->offset_z.graph_preset = tfxPathTranslationOvertimePreset;
+	path->distance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	path->distance.type = tfxPath_distance;
+	path->distance.graph_preset = tfxPathTranslationOvertimePreset;
+}
+
+void FreePathGraphs(tfx_emitter_path_t* path) {
+	FreeGraph(&path->angle_x);
+	FreeGraph(&path->angle_y);
+	FreeGraph(&path->angle_z);
+	FreeGraph(&path->offset_x);
+	FreeGraph(&path->offset_y);
+	FreeGraph(&path->offset_z);
+	FreeGraph(&path->distance);
+}
+
+void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst) {
+	if (src == dst) return;
+	CopyGraphNoLookups(&src->angle_x, &dst->angle_x);
+	CopyGraphNoLookups(&src->angle_y, &dst->angle_y);
+	CopyGraphNoLookups(&src->angle_z, &dst->angle_z);
+	CopyGraphNoLookups(&src->offset_x, &dst->offset_x);
+	CopyGraphNoLookups(&src->offset_y, &dst->offset_y);
+	CopyGraphNoLookups(&src->offset_z, &dst->offset_z);
+	CopyGraphNoLookups(&src->distance, &dst->distance);
+}
+
+tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
+	tfx_emitter_path_t path;
+	path.flags = src->flags;
+	path.name = name;
+	path.node_count = src->node_count;
+	path.preview_scale = src->preview_scale;
+	InitialisePathGraphs(&path);
+	CopyPathGraphs(src, &path);
+	return path;
 }
 
 void BuildPathNodes(tfx_emitter_path_t* path) {
 	if (path->nodes.current_size != path->node_count) {
 		path->nodes.resize(path->node_count);
 	}
-	tfx_mat4_t pitch = Matrix4RotateX(GetGraphValue(&path->angle_x, 0.f));
-	tfx_mat4_t yaw = Matrix4RotateY(GetGraphValue(&path->angle_y, 0.f));
-	tfx_mat4_t roll = Matrix4RotateZ(GetGraphValue(&path->angle_z, 0.f));
-	tfx_mat4_t matrix = TransformMatrix4(&yaw, &pitch);
-	matrix = TransformMatrix4(&matrix, &roll);
-	tfx_vec4_t offset = { GetGraphValue(&path->offset_x, 0.f), GetGraphValue(&path->offset_y, 0.f), GetGraphValue(&path->offset_z, 0.f), 0.f };
-	tfx_vec4_t position = TransformVec4Matrix4(&matrix, offset);
-	for (int i = 0; i != path->node_count; ++i) {
-		path->nodes[i] = position;
-		float age = ((float)i + 1.f) / (float)path->node_count;
-		pitch = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
-		yaw = Matrix4RotateY(GetGraphValue(&path->angle_y, age));
-		roll = Matrix4RotateZ(GetGraphValue(&path->angle_z, age));
-		matrix = TransformMatrix4(&yaw, &pitch);
-		matrix = TransformMatrix4(&matrix, &roll);
-		offset = { GetGraphValue(&path->offset_x, age), GetGraphValue(&path->offset_y, age), GetGraphValue(&path->offset_z, age), 0.f };
-		position = TransformVec4Matrix4(&matrix, offset);
+	float pitch = GetGraphValue(&path->angle_x, 0.f);
+	float yaw = GetGraphValue(&path->angle_y, 0.f);
+	float roll = GetGraphValue(&path->angle_z, 0.f);
+	tfx_mat4_t pitch_mat = Matrix4RotateX(pitch);
+	tfx_mat4_t yaw_mat = Matrix4RotateY(yaw);
+	tfx_mat4_t roll_mat = Matrix4RotateZ(roll);
+	tfx_mat4_t matrix = TransformMatrix4(&yaw_mat, &pitch_mat);
+	matrix = TransformMatrix4(&matrix, &roll_mat);
+	if (path->flags & tfxPathFlags_mode_origin) {
+		tfx_vec4_t offset = { GetGraphValue(&path->offset_x, 0.f), GetGraphValue(&path->offset_y, 0.f), GetGraphValue(&path->offset_z, 0.f), 0.f };
+		tfx_vec4_t position = TransformVec4Matrix4(&matrix, offset);
+		for (int i = 0; i != path->node_count; ++i) {
+			path->nodes[i] = position;
+			float age = ((float)i + 1.f) / (float)path->node_count;
+			pitch_mat = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
+			yaw_mat = Matrix4RotateY(GetGraphValue(&path->angle_y, age));
+			roll_mat = Matrix4RotateZ(GetGraphValue(&path->angle_z, age));
+			matrix = TransformMatrix4(&yaw_mat, &pitch_mat);
+			matrix = TransformMatrix4(&matrix, &roll_mat);
+			offset = { GetGraphValue(&path->offset_x, age), GetGraphValue(&path->offset_y, age), GetGraphValue(&path->offset_z, age), 0.f };
+			position = TransformVec4Matrix4(&matrix, offset);
+		}
 	}
-}
-
-void FreePathGraphs(tfx_emitter_path_t* path) {
-	FreeGraph(&path->angle_x);
+	else if (path->flags & tfxPathFlags_mode_node) {
+		tfx_vec4_t distance = { 0.f, GetGraphValue(&path->distance, 0.f), 0.f, 0.f };
+		tfx_vec4_t position = TransformVec4Matrix4(&matrix, distance);
+		for (int i = 0; i != path->node_count; ++i) {
+			path->nodes[i] = position;
+			float age = ((float)i + 1.f) / (float)path->node_count;
+			pitch = GetGraphValue(&path->angle_x, age);
+			yaw = GetGraphValue(&path->angle_y, age);
+			roll = GetGraphValue(&path->angle_z, age);
+			pitch_mat = Matrix4RotateX(pitch);
+			yaw_mat = Matrix4RotateY(yaw);
+			roll_mat = Matrix4RotateZ(roll);
+			matrix = TransformMatrix4(&yaw_mat, &pitch_mat);
+			matrix = TransformMatrix4(&matrix, &roll_mat);
+			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
+			position += TransformVec4Matrix4(&matrix, distance);
+		}
+	}
 }
 
 void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size) {
@@ -6040,7 +6082,7 @@ bool CompareNodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right) {
 }
 
 bool IsOvertimeGraph(tfx_graph_t *graph) {
-	return graph->type >= tfxOvertime_velocity && graph->type <= tfxOvertime_noise_resolution && graph->type != tfxOvertime_velocity_adjuster;
+	return (graph->type >= tfxOvertime_velocity && graph->type <= tfxOvertime_noise_resolution && graph->type != tfxOvertime_velocity_adjuster) || graph->type > tfxEmitterGraphMaxIndex;
 }
 
 bool IsColorGraph(tfx_graph_t *graph) {
@@ -6542,7 +6584,7 @@ float GetGraphValue(tfx_graph_t *graph, float age) {
 			}
 		}
 		lastv = graph->nodes[i].value;
-		lastf = graph->nodes[i].frame - 1;
+		lastf = graph->nodes[i].frame;
 		lastec = &graph->nodes[i];
 	}
 	return lastv;
@@ -6836,6 +6878,12 @@ void ResetGraph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_n
 		break;
 	case tfx_graph_preset::tfxIntensityOvertimePreset:
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 5.f };
+		break;
+	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
+		graph->min = { 0.f, -4320.f }; graph->max = { 1.f, 4320.f };
+		break;
+	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
+		graph->min = { 0.f, -1000.f }; graph->max = { 1.f, 1000.f };
 		break;
 	}
 
@@ -7181,6 +7229,12 @@ tfx_vec2_t GetGraphInitialZoom3d(tfx_graph_t *graph) {
 		return tfx_vec2_t(0.0017f, 0.01115f);
 		break;
 	case tfx_graph_preset::tfxColorPreset:
+		break;
+	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
+		return tfx_vec2_t(0.0017f, 5.f);
+		break;
+	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
+		return tfx_vec2_t(0.0017f, .05f);
 		break;
 	default:
 		return tfx_vec2_t(0.1f, 0.1f);

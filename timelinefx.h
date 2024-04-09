@@ -1862,7 +1862,9 @@ enum tfx_graph_preset {
 	tfxOpacityOvertimePreset,
 	tfxColorPreset,
 	tfxPercentOvertime,
-	tfxIntensityOvertimePreset
+	tfxIntensityOvertimePreset,
+	tfxPathDirectionOvertimePreset,
+	tfxPathTranslationOvertimePreset,
 };
 
 enum tfx_graph_category : unsigned int {
@@ -1983,6 +1985,7 @@ enum tfx_graph_type : unsigned char {
 	tfxPath_offset_x,
 	tfxPath_offset_y,
 	tfxPath_offset_z,
+	tfxPath_distance,
 	tfxGraphMaxIndex
 };
 
@@ -2172,7 +2175,8 @@ enum tfx_vector_align_type {
 enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_none,
 	tfxPathFlags_3d = 1 << 0,
-	tfxPathFlags_spiral	= 1 << 1,
+	tfxPathFlags_mode_origin = 1 << 1,
+	tfxPathFlags_mode_node = 1 << 2,
 };
 
 //Particle property that defines how a particle will rotate
@@ -2322,7 +2326,8 @@ enum tfx_attribute_node_flag_bits {
 	tfxAttributeNodeFlags_is_curve = 1 << 0,
 	tfxAttributeNodeFlags_is_left_curve = 1 << 1,
 	tfxAttributeNodeFlags_is_right_curve = 1 << 2,
-	tfxAttributeNodeFlags_curves_initialised = 1 << 3
+	tfxAttributeNodeFlags_curves_initialised = 1 << 3,
+	tfxAttributeNodeFlags_path_node_accumulate = 1 << 4,
 };
 
 enum tfx_animation_flag_bits {
@@ -4613,15 +4618,14 @@ struct tfx_emitter_path_t {
 	tfx_str32_t name;
 	int node_count;
 	tfxEmitterPathFlags flags;
+	float preview_scale;
 	tfx_graph_t angle_x;
 	tfx_graph_t angle_y;
 	tfx_graph_t angle_z;
 	tfx_graph_t offset_x;
 	tfx_graph_t offset_y;
 	tfx_graph_t offset_z;
-	tfx_graph_t increment_x;
-	tfx_graph_t increment_y;
-	tfx_graph_t increment_z;
+	tfx_graph_t distance;
 	tfx_vector_t<tfx_vec4_t> nodes;
 };
 
@@ -6090,6 +6094,8 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfx_graph_type type) {
 tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size = 8);
 tfxAPI_EDITOR void BuildPathNodes(tfx_emitter_path_t* path);
 tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *path);
+tfxINTERNAL void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst);
+tfxAPI_EDITOR tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name);
 tfxINTERNAL void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseVariationAttributes(tfx_variation_attributes_t *attributes, tfxU32 bucket_size = 8);
