@@ -93,6 +93,7 @@ typedef unsigned short tfxUShort;
 
 #define tfx__Min(a, b) (((a) < (b)) ? (a) : (b))
 #define tfx__Max(a, b) (((a) > (b)) ? (a) : (b))
+#define tfx__Clamp(min, max, v) (v < min) ? min : (v > max) ? max : v
 
 typedef int tfx_index;
 typedef unsigned int tfx_sl_bitmap;
@@ -6010,8 +6011,10 @@ tfxAPI_EDITOR void MultiplyAllGraphValues(tfx_graph_t *graph, float scalar);
 tfxAPI_EDITOR void CopyGraphNoLookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph);
 tfxAPI_EDITOR void DragGraphValues(tfx_graph_preset preset, float *frame, float *value);
 tfxAPI_EDITOR tfx_vec4_t GetMinMaxGraphValues(tfx_graph_preset preset);
-tfxAPI_EDITOR tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax, bool clamp = true);
-tfxAPI_EDITOR tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax, bool clamp = true);
+tfxAPI_EDITOR tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
+tfxAPI_EDITOR tfx_vec2_t GetQuadBezierClamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
+tfxAPI_EDITOR tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
+tfxAPI_EDITOR tfx_vec2_t GetCubicBezierClamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
 tfxAPI_EDITOR float GetBezierValue(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
 tfxAPI_EDITOR float GetDistance(float fromx, float fromy, float tox, float toy);
 tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2(x, -y); }

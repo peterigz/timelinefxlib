@@ -3558,12 +3558,12 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 	tfx_mat4_t roll_mat = Matrix4RotateZ(roll);
 	tfx_mat4_t matrix = TransformMatrix4(&yaw_mat, &pitch_mat);
 	matrix = TransformMatrix4(&matrix, &roll_mat);
+	float node_count = (float)path->node_count - 3.f;
 	if (path->flags & tfxPathFlags_mode_origin) {
 		tfx_vec4_t offset = { GetGraphValue(&path->offset_x, 0.f), GetGraphValue(&path->offset_y, 0.f), GetGraphValue(&path->offset_z, 0.f), 0.f };
 		tfx_vec4_t position = TransformVec4Matrix4(&matrix, offset);
-		for (int i = 0; i != path->node_count; ++i) {
-			path->nodes[i] = position;
-			float age = ((float)i + 1.f) / (float)path->node_count;
+		float age_inc = 1.f / node_count; float age = 0.f; int i = 1;
+		while (i < path->node_count) {
 			pitch_mat = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
 			yaw_mat = Matrix4RotateY(GetGraphValue(&path->angle_y, age));
 			roll_mat = Matrix4RotateZ(GetGraphValue(&path->angle_z, age));
@@ -3571,14 +3571,19 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 			matrix = TransformMatrix4(&matrix, &roll_mat);
 			offset = { GetGraphValue(&path->offset_x, age), GetGraphValue(&path->offset_y, age), GetGraphValue(&path->offset_z, age), 0.f };
 			position = TransformVec4Matrix4(&matrix, offset);
+			age += age_inc;
+			path->nodes[i++] = position;
 		}
+		path->nodes[0] = path->nodes[1];
+		path->nodes[path->node_count - 1] = path->nodes[path->node_count - 2];
 	}
 	else if (path->flags & tfxPathFlags_mode_node) {
 		tfx_vec4_t distance = { 0.f, GetGraphValue(&path->distance, 0.f), 0.f, 0.f };
 		tfx_vec4_t position = TransformVec4Matrix4(&matrix, distance);
-		for (int i = 0; i != path->node_count; ++i) {
-			path->nodes[i] = position;
-			float age = ((float)i + 1.f) / (float)path->node_count;
+		path->nodes[0] = position;
+		path->nodes[1] = position;
+		for (int i = 2; i != path->node_count - 1; ++i) {
+			float age = ((float)i - 1.f) / node_count;
 			pitch = GetGraphValue(&path->angle_x, age);
 			yaw = GetGraphValue(&path->angle_y, age);
 			roll = GetGraphValue(&path->angle_z, age);
@@ -3589,7 +3594,9 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 			matrix = TransformMatrix4(&matrix, &roll_mat);
 			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
 			position += TransformVec4Matrix4(&matrix, distance);
+			path->nodes[i] = position;
 		}
+		path->nodes[path->node_count - 1] = position;
 	}
 }
 
@@ -6377,29 +6384,35 @@ float GetDistance(float fromx, float fromy, float tox, float toy) {
 
 }
 
-tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax, bool clamp) {
+tfx_vec2_t GetQuadBezierClamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
 	tfx_vec2_t b;
 	b.x = powf(1.f - t, 2.f) * p0.x + 2.f * t * (1.f - t) * p1.x + powf(t, 2.f) * p2.x;
 	b.y = powf(1.f - t, 2.f) * p0.y + 2.f * t * (1.f - t) * p1.y + powf(t, 2.f) * p2.y;
-	if (b.x < p0.x) b.x = p0.x;
-	if (b.x > p2.x) b.x = p2.x;
-	if (clamp) {
-		if (b.y < ymin) b.y = ymin;
-		if (b.y > ymax) b.y = ymax;
-	}
+	b.x = tfx__Clamp(p0.x, p2.x, b.x);
+	b.y = tfx__Clamp( ymin, ymax, b.y);
 	return b;
 }
 
-tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax, bool clamp) {
+tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
+	tfx_vec2_t b;
+	b.x = powf(1.f - t, 2.f) * p0.x + 2.f * t * (1.f - t) * p1.x + powf(t, 2.f) * p2.x;
+	b.y = powf(1.f - t, 2.f) * p0.y + 2.f * t * (1.f - t) * p1.y + powf(t, 2.f) * p2.y;
+	return b;
+}
+
+tfx_vec2_t GetCubicBezierClamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
 	tfx_vec2_t b;
 	b.x = powf(1.f - t, 3.f) * p0.x + 3.f * t * powf(1.f - t, 2.f) * p1.x + 3.f * powf(t, 2.f) * (1.f - t) * p2.x + powf(t, 3.f) * p3.x;
 	b.y = powf(1.f - t, 3.f) * p0.y + 3.f * t * powf(1.f - t, 2.f) * p1.y + 3.f * powf(t, 2.f) * (1.f - t) * p2.y + powf(t, 3.f) * p3.y;
-	if (b.x < p0.x) b.x = p0.x;
-	if (b.x > p3.x) b.x = p3.x;
-	if (clamp) {
-		if (b.y < ymin) b.y = ymin;
-		if (b.y > ymax) b.y = ymax;
-	}
+	b.x = tfx__Clamp(p0.x, p2.x, b.x);
+	b.y = tfx__Clamp( ymin, ymax, b.y);
+	return b;
+}
+
+tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
+	tfx_vec2_t b;
+	b.x = powf(1.f - t, 3.f) * p0.x + 3.f * t * powf(1.f - t, 2.f) * p1.x + 3.f * powf(t, 2.f) * (1.f - t) * p2.x + powf(t, 3.f) * p3.x;
+	b.y = powf(1.f - t, 3.f) * p0.y + 3.f * t * powf(1.f - t, 2.f) * p1.y + 3.f * powf(t, 2.f) * (1.f - t) * p2.y + powf(t, 3.f) * p3.y;
 	return b;
 }
 
@@ -6411,14 +6424,14 @@ float GetBezierValue(const tfx_attribute_node_t *lastec, const tfx_attribute_nod
 				tfx_vec2_t p1(lastec->right.x, lastec->right.y);
 				tfx_vec2_t p2(a->left.x, a->left.y);
 				tfx_vec2_t p3(a->frame, a->value);
-				tfx_vec2_t value = GetCubicBezier(p0, p1, p2, p3, t, ymin, ymax);
+				tfx_vec2_t value = GetCubicBezierClamp(p0, p1, p2, p3, t, ymin, ymax);
 				return value.y;
 			}
 			else {
 				tfx_vec2_t p0(lastec->frame, lastec->value);
 				tfx_vec2_t p1(a->left.x, a->left.y);
 				tfx_vec2_t p2(a->frame, a->value);
-				tfx_vec2_t value = GetQuadBezier(p0, p1, p2, t, ymin, ymax);
+				tfx_vec2_t value = GetQuadBezierClamp(p0, p1, p2, t, ymin, ymax);
 				return value.y;
 			}
 		}
@@ -6426,7 +6439,7 @@ float GetBezierValue(const tfx_attribute_node_t *lastec, const tfx_attribute_nod
 			tfx_vec2_t p0(lastec->frame, lastec->value);
 			tfx_vec2_t p1(lastec->right.x, lastec->right.y);
 			tfx_vec2_t p2(a->frame, a->value);
-			tfx_vec2_t value = GetQuadBezier(p0, p1, p2, t, ymin, ymax);
+			tfx_vec2_t value = GetQuadBezierClamp(p0, p1, p2, t, ymin, ymax);
 			return value.y;
 		}
 	}
