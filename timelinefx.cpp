@@ -1233,6 +1233,37 @@ void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, cons
 	*normal_z = tfxWideDiv(tfxWideMul(scale, *z), d2);
 }
 
+tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t) {
+	float t2 = t * t;
+	float t3 = t2 * t;
+
+	float b0 = 0.5f * (-t3 + 2.0f * t2 - t);
+	float b1 = 0.5f * (3.0f * t3 - 5.0f * t2 + 2.0f);
+	float b2 = 0.5f * (-3.0f * t3 + 4.0f * t2 + t);
+	float b3 = 0.5f * (t3 - t2);
+
+	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
+	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
+
+	return { x, y };
+}
+
+tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t) {
+	float t2 = t * t;
+	float t3 = t2 * t;
+
+	float b0 = 0.5f * (-t3 + 2.0f * t2 - t);
+	float b1 = 0.5f * (3.0f * t3 - 5.0f * t2 + 2.0f);
+	float b2 = 0.5f * (-3.0f * t3 + 4.0f * t2 + t);
+	float b3 = 0.5f * (t3 - t2);
+
+	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
+	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
+	float z = p0->z * b0 + p1->z * b1 + p2->z * b2 + p3->z * b3;
+
+	return { x, y, z };
+}
+
 //Quake 3 inverse square root
 float QuakeSqrt(float number)
 {
