@@ -2178,6 +2178,7 @@ enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_3d = 1 << 0,
 	tfxPathFlags_mode_origin = 1 << 1,
 	tfxPathFlags_mode_node = 1 << 2,
+	tfxPathFlags_space_nodes_evenly = 1 << 3,
 };
 
 //Particle property that defines how a particle will rotate
@@ -5791,7 +5792,10 @@ tfxAPI_EDITOR tfx_vec3_t CylinderSurfaceNormal(float x, float z, float width, fl
 tfxAPI_EDITOR tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z);
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
+tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
+tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
+tfxINTERNAL float GetCatmullSegment(tfx_vector_t<tfx_vec4_t>* nodes, float length);
 //Quake 3 inverse square root
 tfxINTERNAL float QuakeSqrt(float number);
 tfxINTERNAL tfxU32 GetLayerFromID(tfxU32 index);
@@ -6011,10 +6015,11 @@ tfxAPI_EDITOR void MultiplyAllGraphValues(tfx_graph_t *graph, float scalar);
 tfxAPI_EDITOR void CopyGraphNoLookups(tfx_graph_t *src_graph, tfx_graph_t *dst_graph);
 tfxAPI_EDITOR void DragGraphValues(tfx_graph_preset preset, float *frame, float *value);
 tfxAPI_EDITOR tfx_vec4_t GetMinMaxGraphValues(tfx_graph_preset preset);
-tfxAPI_EDITOR tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
+tfxAPI_EDITOR tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t);
 tfxAPI_EDITOR tfx_vec2_t GetQuadBezierClamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
-tfxAPI_EDITOR tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
+tfxAPI_EDITOR tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t);
 tfxAPI_EDITOR tfx_vec2_t GetCubicBezierClamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
+tfxAPI_EDITOR tfx_vec3_t GetCubicBezier3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t);
 tfxAPI_EDITOR float GetBezierValue(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
 tfxAPI_EDITOR float GetDistance(float fromx, float fromy, float tox, float toy);
 tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2(x, -y); }

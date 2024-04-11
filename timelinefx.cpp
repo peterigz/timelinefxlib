@@ -1237,31 +1237,60 @@ tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tf
 	float t2 = t * t;
 	float t3 = t2 * t;
 
-	float b0 = 0.5f * (-t3 + 2.0f * t2 - t);
-	float b1 = 0.5f * (3.0f * t3 - 5.0f * t2 + 2.0f);
-	float b2 = 0.5f * (-3.0f * t3 + 4.0f * t2 + t);
-	float b3 = 0.5f * (t3 - t2);
+	float b0 = -t3 + 2.0f * t2 - t;
+	float b1 = 3.0f * t3 - 5.0f * t2 + 2.0f;
+	float b2 = -3.0f * t3 + 4.0f * t2 + t;
+	float b3 = t3 - t2;
 
 	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
 	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
 
-	return { x, y };
+	return { x * .5f, y * .5f };
+}
+
+tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t) {
+	float t2 = t * t;
+
+	float b0 = -3.f * t2 + 4.f * t - 1.f;
+	float b1 = 9.f * t2 - 10.f * t;
+	float b2 = -9.f * t2 + 8.f * t + 1.f;
+	float b3 = 3.f * t2 - 2.f * t;
+
+	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
+	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
+
+	return { x * 0.5f, y * 0.5f };
 }
 
 tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t) {
 	float t2 = t * t;
 	float t3 = t2 * t;
 
-	float b0 = 0.5f * (-t3 + 2.0f * t2 - t);
-	float b1 = 0.5f * (3.0f * t3 - 5.0f * t2 + 2.0f);
-	float b2 = 0.5f * (-3.0f * t3 + 4.0f * t2 + t);
-	float b3 = 0.5f * (t3 - t2);
+	float b0 = -t3 + 2.0f * t2 - t;
+	float b1 = 3.0f * t3 - 5.0f * t2 + 2.0f;
+	float b2 = -3.0f * t3 + 4.0f * t2 + t;
+	float b3 = t3 - t2;
 
 	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
 	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
 	float z = p0->z * b0 + p1->z * b1 + p2->z * b2 + p3->z * b3;
 
-	return { x, y, z };
+	return { x * 0.5f, y * 0.5f, z * 0.5f };
+}
+
+tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t) {
+	float t2 = t * t;
+
+    float b0 = -3.f * t2 + 4.f * t - 1.f;
+    float b1 = 9.f * t2 - 10.f * t;
+    float b2 = -9.f * t2 + 8.f * t + 1.f;
+    float b3 = 3.f * t2 - 2.f * t;
+
+	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
+	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
+	float z = p0->z * b0 + p1->z * b1 + p2->z * b2 + p3->z * b3;
+
+	return { x * 0.5f, y * 0.5f, z * 0.5f };
 }
 
 //Quake 3 inverse square root
@@ -3546,10 +3575,21 @@ tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
 	return path;
 }
 
+float GetCatmullSegment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
+	int i = 0;
+	while (length >= (*nodes)[i].w && i < nodes->size() - 3) {
+		length -= (*nodes)[i].w;
+		i++;
+	}
+	return (float)i + ((*nodes)[i].w > 0 ? (length / (*nodes)[i].w) : 0.f);
+}
+
 void BuildPathNodes(tfx_emitter_path_t* path) {
 	if (path->nodes.current_size != path->node_count) {
 		path->nodes.resize(path->node_count);
 	}
+	tfx_vector_t<tfx_vec4_t> path_nodes;
+	path_nodes.resize(path->node_count);
 	float pitch = GetGraphValue(&path->angle_x, 0.f);
 	float yaw = GetGraphValue(&path->angle_y, 0.f);
 	float roll = GetGraphValue(&path->angle_z, 0.f);
@@ -3572,18 +3612,16 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 			offset = { GetGraphValue(&path->offset_x, age), GetGraphValue(&path->offset_y, age), GetGraphValue(&path->offset_z, age), 0.f };
 			position = TransformVec4Matrix4(&matrix, offset);
 			age += age_inc;
-			path->nodes[i++] = position;
+			path_nodes[i++] = position;
 		}
-		path->nodes[0] = path->nodes[1];
-		path->nodes[path->node_count - 1] = path->nodes[path->node_count - 2];
+		path_nodes[0] = path_nodes[1];
+		path_nodes[path->node_count - 1] = path_nodes[path->node_count - 2];
 	}
 	else if (path->flags & tfxPathFlags_mode_node) {
 		tfx_vec4_t distance = { 0.f, GetGraphValue(&path->distance, 0.f), 0.f, 0.f };
 		tfx_vec4_t position = TransformVec4Matrix4(&matrix, distance);
-		path->nodes[0] = position;
-		path->nodes[1] = position;
-		for (int i = 2; i != path->node_count - 1; ++i) {
-			float age = ((float)i - 1.f) / node_count;
+		float age_inc = 1.f / node_count; float age = 0.f; int i = 1;
+		while (i < path->node_count) {
 			pitch = GetGraphValue(&path->angle_x, age);
 			yaw = GetGraphValue(&path->angle_y, age);
 			roll = GetGraphValue(&path->angle_z, age);
@@ -3594,10 +3632,43 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 			matrix = TransformMatrix4(&matrix, &roll_mat);
 			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
 			position += TransformVec4Matrix4(&matrix, distance);
-			path->nodes[i] = position;
+			age += age_inc;
+			path_nodes[i++] = position;
 		}
-		path->nodes[path->node_count - 1] = position;
+		path_nodes[0] = path_nodes[1];
+		path_nodes[path->node_count - 1] = path_nodes[path->node_count - 2];
 	}
+	if (path->flags & tfxPathFlags_space_nodes_evenly) {
+		float length = 0.f;
+		for (int i = 0; i != path->node_count - 3; ++i) {
+			float step = 0.05f;
+			path_nodes[i].w = 0.f;
+			for (float t = 0.0f; t < 1.0f - step; t += step) {
+				tfx_vec3_t p1 = CatmullRomSpline3D(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t);
+				tfx_vec3_t p2 = CatmullRomSpline3D(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step);
+				tfx_vec3_t segment = p2 - p1;
+				path_nodes[i].w += LengthVec(&segment);
+			}
+			length += path_nodes[i].w;
+		}
+		float segment_length = length / (node_count);
+		float segment = 0.f;
+		int i = 1;
+		while (i < path->node_count) {
+			float ni = GetCatmullSegment(&path_nodes, segment);
+			tfx_vec3_t position = CatmullRomSpline3D(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
+			path->nodes[i++] = position;
+			segment += segment_length;
+		}
+		path->nodes[0] = path->nodes[1];
+		path->nodes[path->node_count - 1] = path->nodes[path->node_count - 2];
+	}
+	else {
+		for (int i = 0; i != path->node_count; ++i) {
+			path->nodes[i] = path_nodes[i];
+		}
+	}
+	path_nodes.free_all();
 }
 
 void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size) {
@@ -6386,33 +6457,62 @@ float GetDistance(float fromx, float fromy, float tox, float toy) {
 
 tfx_vec2_t GetQuadBezierClamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
 	tfx_vec2_t b;
-	b.x = powf(1.f - t, 2.f) * p0.x + 2.f * t * (1.f - t) * p1.x + powf(t, 2.f) * p2.x;
-	b.y = powf(1.f - t, 2.f) * p0.y + 2.f * t * (1.f - t) * p1.y + powf(t, 2.f) * p2.y;
+	float ti = 1.f - t;
+	float ti2 = ti * ti;
+	float t2 = t * t;
+	b.x = ti2 * p0.x + 2.f * t * ti * p1.x + t2 * p2.x;
+	b.y = ti2 * p0.y + 2.f * t * ti * p1.y + t2 * p2.y;
 	b.x = tfx__Clamp(p0.x, p2.x, b.x);
 	b.y = tfx__Clamp( ymin, ymax, b.y);
 	return b;
 }
 
-tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
+tfx_vec2_t GetQuadBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t) {
 	tfx_vec2_t b;
-	b.x = powf(1.f - t, 2.f) * p0.x + 2.f * t * (1.f - t) * p1.x + powf(t, 2.f) * p2.x;
-	b.y = powf(1.f - t, 2.f) * p0.y + 2.f * t * (1.f - t) * p1.y + powf(t, 2.f) * p2.y;
+	float ti = 1.f - t;
+	float ti2 = ti * ti;
+	float t2 = t * t;
+	b.x = ti2 * p0.x + 2.f * t * ti * p1.x + t2 * p2.x;
+	b.y = ti2 * p0.y + 2.f * t * ti * p1.y + t2 * p2.y;
 	return b;
 }
 
 tfx_vec2_t GetCubicBezierClamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
 	tfx_vec2_t b;
-	b.x = powf(1.f - t, 3.f) * p0.x + 3.f * t * powf(1.f - t, 2.f) * p1.x + 3.f * powf(t, 2.f) * (1.f - t) * p2.x + powf(t, 3.f) * p3.x;
-	b.y = powf(1.f - t, 3.f) * p0.y + 3.f * t * powf(1.f - t, 2.f) * p1.y + 3.f * powf(t, 2.f) * (1.f - t) * p2.y + powf(t, 3.f) * p3.y;
+	float ti = 1.f - t;
+	float ti3 = ti * ti * ti;
+	float ti2 = ti * ti;
+	float t3 = t * t * t;
+	float t2 = t * t;
+	b.x = ti3 * p0.x + 3.f * t * ti2 * p1.x + 3.f * t2 * ti * p2.x + t3 * p3.x;
+	b.y = ti3 * p0.y + 3.f * t * ti2 * p1.y + 3.f * t2 * ti * p2.y + t3 * p3.y;
 	b.x = tfx__Clamp(p0.x, p2.x, b.x);
 	b.y = tfx__Clamp( ymin, ymax, b.y);
 	return b;
 }
 
-tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
+tfx_vec2_t GetCubicBezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t) {
 	tfx_vec2_t b;
-	b.x = powf(1.f - t, 3.f) * p0.x + 3.f * t * powf(1.f - t, 2.f) * p1.x + 3.f * powf(t, 2.f) * (1.f - t) * p2.x + powf(t, 3.f) * p3.x;
-	b.y = powf(1.f - t, 3.f) * p0.y + 3.f * t * powf(1.f - t, 2.f) * p1.y + 3.f * powf(t, 2.f) * (1.f - t) * p2.y + powf(t, 3.f) * p3.y;
+	float ti = 1.f - t;
+	float ti3 = ti * ti * ti;
+	float ti2 = ti * ti;
+	float t3 = t * t * t;
+	float t2 = t * t;
+	b.x = ti3 * p0.x + 3.f * t * ti2 * p1.x + 3.f * t2 * ti * p2.x + t3 * p3.x;
+	b.y = ti3 * p0.y + 3.f * t * ti2 * p1.y + 3.f * t2 * ti * p2.y + t3 * p3.y;
+	return b;
+}
+
+tfx_vec3_t GetCubicBezier3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t) {
+	tfx_vec3_t b;
+	float ti = 1.f - t;
+	float ti3 = ti * ti * ti;
+	float ti2 = ti * ti;
+	float t3 = t * t * t;
+	float t2 = t * t;
+	b.x = ti3 * p0->x + 3.f * t * ti2 * p1->x + 3.f * t2 * ti * p2->x + t3 * p3->x;
+	b.y = ti3 * p0->y + 3.f * t * ti2 * p1->y + 3.f * t2 * ti * p2->y + t3 * p3->y;
+	b.z = ti3 * p0->z + 3.f * t * ti2 * p1->z + 3.f * t2 * ti * p2->z + t3 * p3->z;
 	return b;
 }
 
