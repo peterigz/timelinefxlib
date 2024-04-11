@@ -3576,7 +3576,7 @@ tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
 }
 
 float GetCatmullSegment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
-	int i = 0;
+	tfxU32 i = 0;
 	while (length >= (*nodes)[i].w && i < nodes->size() - 3) {
 		length -= (*nodes)[i].w;
 		i++;
@@ -5351,6 +5351,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("draw_order_by_depth", tfxBool);
 	names_and_types.Insert("guaranteed_draw_order", tfxBool);
 	names_and_types.Insert("include_in_sprite_data_export", tfxBool);
+	names_and_types.Insert("use_path_for_direction", tfxBool);
 
 	//Graphs
 	names_and_types.Insert("global_life", tfxFloat);
@@ -6097,6 +6098,9 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
     if (*field == "is_3d") {
         if (value) { effect->property_flags |= tfxEmitterPropertyFlags_effect_is_3d; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_effect_is_3d;}
     }
+    if (*field == "use_path_for_direction") {
+        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_path_for_direction; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_for_direction;}
+    }
     if (*field == "draw_order_by_age") {
         if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_age_order;}
     }
@@ -6161,6 +6165,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("billboard_option=%i", property->billboard_option);
 	file->AddLine("vector_align_type=%i", property->vector_align_type);
 	file->AddLine("layer=%i", property->layer);
+	file->AddLine("use_path_for_direction=%i", (flags * tfxEmitterPropertyFlags_use_path_for_direction));
 }
 
 void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file) {

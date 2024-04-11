@@ -2264,7 +2264,8 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 26,		//Emitter will be excluded from effect hue adjustments if this flag is checked
 	tfxEmitterPropertyFlags_enabled = 1 << 27,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
 	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 28,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
-	tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 29	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
+	tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 29,	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
+	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 30				//Make the particles use a path to dictate their direction of travel
 };
 
 enum tfx_particle_flag_bits : unsigned char {
@@ -4779,6 +4780,8 @@ struct tfx_emitter_properties_t {
 	//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
 	tfx_billboarding_option billboard_option;
 
+	//Index into the paths stored in the library. Paths are used to guide particles when they have velocity.
+	tfxU32 path_index;
 	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
 	tfx_vec3_t grid_points;
 	//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
@@ -4817,7 +4820,7 @@ struct tfx_emitter_properties_t {
 	//are stored on the GPU for looking up from the sprite data
 	tfxU32 animation_property_index;
 
-	tfx_emitter_properties_t() { memset(this, 0, sizeof(tfx_emitter_properties_t)); }
+	tfx_emitter_properties_t() { memset(this, 0, sizeof(tfx_emitter_properties_t)); path_index = tfxINVALID; }
 };
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -5587,7 +5590,7 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
-	tfx_storage_map_t<tfx_emitter_path_t> paths;
+	tfx_vector_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
 	tfx_vector_t<tfx_emitter_attributes_t> emitter_attributes;
 	tfx_vector_t<tfx_transform_attributes_t> transform_attributes;
