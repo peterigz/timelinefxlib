@@ -3567,7 +3567,6 @@ void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	path->distance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->distance.type = tfxPath_distance;
 	path->distance.graph_preset = tfxPathTranslationOvertimePreset;
-	InitPathsSoA(&path->node_buffer, &path->node_soa, path->node_count);
 }
 
 void FreePathGraphs(tfx_emitter_path_t* path) {
@@ -3617,7 +3616,10 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 	}
 	if (path->nodes.current_size != path->node_count) {
 		path->nodes.resize(path->node_count);
-		Resize(&path->node_buffer, path->node_count);
+		if (path->node_count > path->node_buffer.capacity) {
+			GrowArrays(&path->node_buffer, path->node_buffer.capacity, path->node_count, false);
+		}
+		path->node_buffer.current_size = path->node_count;
 	}
 	tfx_vector_t<tfx_vec4_t> path_nodes;
 	path_nodes.resize(path->node_count);
@@ -10177,9 +10179,11 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideFloat velocity_normal_z;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_use_path_for_direction) {
 			tfxWideArrayi ni;
-			ni.m = tfxWideConverti(tfxWideMul(life, node_count));
+			tfxWideFloat t = tfxWideMul(life, node_count);
+			ni.m = tfxWideConverti(t);
+			t = tfxWideSub(t, tfxWideConvert(ni.m));
 			tfx_path_nodes_soa_t* nodes = &pm.library->paths[work_entry->properties->path_index].node_soa;
-			CatmullRomSplineGradient3DWide(&ni, life, nodes->x, nodes->y, nodes->z, &velocity_normal_x, &velocity_normal_y, &velocity_normal_z);
+			CatmullRomSplineGradient3DWide(&ni, t, nodes->x, nodes->y, nodes->z, &velocity_normal_x, &velocity_normal_y, &velocity_normal_z);
 		}
 		else {
 			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
