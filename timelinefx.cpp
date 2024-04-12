@@ -1293,6 +1293,32 @@ tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1
 	return { x * 0.5f, y * 0.5f, z * 0.5f };
 }
 
+void CatmullRomSplineGradient3DWide(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz) {
+	tfxWideFloat t2 = tfxWideMul(t, t);
+
+	tfxWideFloat b0 = tfxWideSub(tfxWideAdd(tfxWideMul(tfxWideSetSingle(-3.f), t2), tfxWideMul(tfxWideSetSingle(4.f), t)), tfxWideSetSingle(1.f));
+	tfxWideFloat b1 = tfxWideSub(tfxWideMul(tfxWideSetSingle(9.f), t2), tfxWideMul(tfxWideSetSingle(10.f), t));
+	tfxWideFloat b2 = tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideSetSingle(-9.f), t2), tfxWideMul(tfxWideSetSingle(8.f), t)), tfxWideSetSingle(1.f));
+	tfxWideFloat b3 = tfxWideSub(tfxWideMul(tfxWideSetSingle(3.f), t2), tfxWideMul(tfxWideSetSingle(2.f), t));
+
+	tfxWideFloat px0 = tfxWideLookupSet(x, (*pi));
+	tfxWideFloat py0 = tfxWideLookupSet(y, (*pi));
+	tfxWideFloat pz0 = tfxWideLookupSet(z, (*pi));
+	tfxWideFloat px1 = tfxWideLookupSetOffset(x, (*pi), 1);
+	tfxWideFloat py1 = tfxWideLookupSetOffset(y, (*pi), 1);
+	tfxWideFloat pz1 = tfxWideLookupSetOffset(z, (*pi), 1);
+	tfxWideFloat px2 = tfxWideLookupSetOffset(x, (*pi), 2);
+	tfxWideFloat py2 = tfxWideLookupSetOffset(y, (*pi), 2);
+	tfxWideFloat pz2 = tfxWideLookupSetOffset(z, (*pi), 2);
+	tfxWideFloat px3 = tfxWideLookupSetOffset(x, (*pi), 3);
+	tfxWideFloat py3 = tfxWideLookupSetOffset(y, (*pi), 3);
+	tfxWideFloat pz3 = tfxWideLookupSetOffset(z, (*pi), 3);
+
+	*vx = tfxWideMul(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(px0, b0), tfxWideMul(px1, b1)), tfxWideMul(px2, b2)), tfxWideMul(px3, b3)), tfxWideSetSingle(.5f));
+	*vy = tfxWideMul(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(py0, b0), tfxWideMul(py1, b1)), tfxWideMul(py2, b2)), tfxWideMul(py3, b3)), tfxWideSetSingle(.5f));
+	*vz = tfxWideMul(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(pz0, b0), tfxWideMul(pz1, b1)), tfxWideMul(pz2, b2)), tfxWideMul(pz3, b3)), tfxWideSetSingle(.5f));
+}
+
 //Quake 3 inverse square root
 float QuakeSqrt(float number)
 {
@@ -3541,6 +3567,7 @@ void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	path->distance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->distance.type = tfxPath_distance;
 	path->distance.graph_preset = tfxPathTranslationOvertimePreset;
+	InitPathsSoA(&path->node_buffer, &path->node_soa, path->node_count);
 }
 
 void FreePathGraphs(tfx_emitter_path_t* path) {
@@ -3585,8 +3612,12 @@ float GetCatmullSegment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
 }
 
 void BuildPathNodes(tfx_emitter_path_t* path) {
+	if (!path->node_buffer.capacity) {
+		InitPathsSoA(&path->node_buffer, &path->node_soa, path->node_count);
+	}
 	if (path->nodes.current_size != path->node_count) {
 		path->nodes.resize(path->node_count);
+		Resize(&path->node_buffer, path->node_count);
 	}
 	tfx_vector_t<tfx_vec4_t> path_nodes;
 	path_nodes.resize(path->node_count);
@@ -3657,15 +3688,31 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 		while (i < path->node_count) {
 			float ni = GetCatmullSegment(&path_nodes, segment);
 			tfx_vec3_t position = CatmullRomSpline3D(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
+			path->node_soa.x[i] = position.x;
+			path->node_soa.y[i] = position.y;
+			path->node_soa.z[i] = position.z;
 			path->nodes[i++] = position;
 			segment += segment_length;
 		}
 		path->nodes[0] = path->nodes[1];
-		path->nodes[path->node_count - 1] = path->nodes[path->node_count - 2];
+		int c = path->node_count;
+		path->nodes[c - 1] = path->nodes[c - 2];
+		path->node_soa.x[0] = path->node_soa.x[1];
+		path->node_soa.y[0] = path->node_soa.y[1];
+		path->node_soa.z[0] = path->node_soa.z[1];
+		path->node_soa.length[0] = path->node_soa.length[1];
+		path->node_soa.x[c - 1] = path->node_soa.x[c - 2];
+		path->node_soa.y[c - 1] = path->node_soa.y[c - 2];
+		path->node_soa.z[c - 1] = path->node_soa.z[c - 2];
+		path->node_soa.length[c - 1] = path->node_soa.length[c - 2];
 	}
 	else {
 		for (int i = 0; i != path->node_count; ++i) {
 			path->nodes[i] = path_nodes[i];
+			path->node_soa.x[i] = path_nodes[i].x;
+			path->node_soa.y[i] = path_nodes[i].y;
+			path->node_soa.z[i] = path_nodes[i].z;
+			path->node_soa.length[i] = path_nodes[i].w;
 		}
 	}
 	path_nodes.free_all();
@@ -10098,6 +10145,10 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	tfx_particle_manager_t& pm = *work_entry->pm;
 	tfx_emitter_state_t& emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t& bank = work_entry->pm->particle_arrays[emitter.particles_index];
+	tfxWideFloat node_count;
+	if (emitter.property_flags & tfxEmitterPropertyFlags_use_path_for_direction) {
+		node_count = tfxWideSetSingle((float)pm.library->paths[work_entry->properties->path_index].node_count - 3.f);
+	}
 
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
 
@@ -10120,6 +10171,21 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
 		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
+
+		tfxWideFloat velocity_normal_x;
+		tfxWideFloat velocity_normal_y;
+		tfxWideFloat velocity_normal_z;
+		if (emitter.property_flags & tfxEmitterPropertyFlags_use_path_for_direction) {
+			tfxWideArrayi ni;
+			ni.m = tfxWideConverti(tfxWideMul(life, node_count));
+			tfx_path_nodes_soa_t* nodes = &pm.library->paths[work_entry->properties->path_index].node_soa;
+			CatmullRomSplineGradient3DWide(&ni, life, nodes->x, nodes->y, nodes->z, &velocity_normal_x, &velocity_normal_y, &velocity_normal_z);
+		}
+		else {
+			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
+			UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
+		}
+
 		life = tfxWideMul(life, max_life);
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
 
@@ -10130,11 +10196,6 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
 		tfxWideArray roll;
 		roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
-		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
-		tfxWideFloat velocity_normal_x;
-		tfxWideFloat velocity_normal_y;
-		tfxWideFloat velocity_normal_z;
-		UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 
 		tfxWideArray noise_x;
 		tfxWideArray noise_y;
@@ -14559,6 +14620,14 @@ void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_y));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, single_loop_count));
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
+}
+
+void InitPathsSoA(tfx_soa_buffer_t* buffer, tfx_path_nodes_soa_t* soa, tfxU32 reserve_amount) {
+	AddStructArray(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, x));
+	AddStructArray(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, y));
+	AddStructArray(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, z));
+	AddStructArray(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, length));
+	FinishSoABufferSetup(buffer, soa, reserve_amount);
 }
 
 void InitEmitterProperites(tfx_emitter_properties_t *properties) {

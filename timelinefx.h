@@ -1541,6 +1541,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideLookupSetMember(lookup, member, index) tfxWideSet(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
 #define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
 #define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet(lookup1[index1.a[7]].lookup2[index2.a[7]], lookup1[index1.a[6]].lookup2[index2.a[6]], lookup1[index1.a[5]].lookup2[index2.a[5]], lookup1[index1.a[4]].lookup2[index2.a[4]], lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
+#define tfxWideLookupSetOffset(lookup, index, offset) tfxWideSet(lookup[index.a[7] + offset], lookup[index.a[6] + offset], lookup[index.a[5] + offset], lookup[index.a[4] + offset], lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
 const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
 const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
@@ -1742,6 +1743,7 @@ typedef union {
 #define tfxWideLookupSetMemberi(lookup, member, index) tfx128iSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
 #define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfx128Set( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
 #define tfxWideLookupSeti(lookup, index) tfx128iSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetOffset(lookup, index, offset) tfx128Set( lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
 #endif
 
@@ -3059,6 +3061,7 @@ struct tfx_soa_buffer_t {
 	void *data = nullptr;					//Pointer to the area in memory that contains all of the array data	
 };
 
+//Note this doesn't free memory, call FreeSoABuffer to do that.
 inline void ResetSoABuffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_arena_size = 0;
 	buffer->struct_size = 0;
@@ -4616,6 +4619,13 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t noise_resolution;
 };
 
+struct tfx_path_nodes_soa_t {
+	float *x;
+	float *y;
+	float *z;
+	float *length;
+};
+
 struct tfx_emitter_path_t {
 	tfxKey key;
 	tfx_str32_t name;
@@ -4630,6 +4640,8 @@ struct tfx_emitter_path_t {
 	tfx_graph_t offset_z;
 	tfx_graph_t distance;
 	tfx_vector_t<tfx_vec4_t> nodes;
+	tfx_soa_buffer_t node_buffer;
+	tfx_path_nodes_soa_t node_soa;
 };
 
 struct tfx_emitter_attributes_t {
@@ -5798,6 +5810,7 @@ tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
+tfxAPI_EDITOR void CatmullRomSplineGradient3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL float GetCatmullSegment(tfx_vector_t<tfx_vec4_t>* nodes, float length);
 //Quake 3 inverse square root
 tfxINTERNAL float QuakeSqrt(float number);
@@ -5964,6 +5977,7 @@ tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
 tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
 tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);
