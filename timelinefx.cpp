@@ -1293,14 +1293,46 @@ tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1
 	return { x * 0.5f, y * 0.5f, z * 0.5f };
 }
 
+tfx_vec3_t CatmullRomSplineGradient3DSoA(const float *px, const float* py, const float* pz, float t) {
+	float t2 = t * t;
+
+	float b0 = -3.f * t2 + 4.f * t - 1.f;
+	float b1 = 9.f * t2 - 10.f * t;
+	float b2 = -9.f * t2 + 8.f * t + 1.f;
+	float b3 = 3.f * t2 - 2.f * t;
+
+	float x = px[0] * b0 + px[1] * b1 + px[2] * b2 + px[3] * b3;
+	float y = py[0] * b0 + py[1] * b1 + py[2] * b2 + py[3] * b3;
+	float z = pz[0] * b0 + pz[1] * b1 + pz[2] * b2 + pz[3] * b3;
+
+	return { x * 0.5f, y * 0.5f, z * 0.5f };
+}
+
+tfx_vec3_t CatmullRomSplineGradient3DSoAStart(const float* px, const float* py, const float* pz) {
+	float b0 = -1.f;
+	float b1 = 0.f;
+	float b2 = 1.f;
+	float b3 = 0.f;
+
+	float x = -px[0] + px[2];
+	float y = -py[0] + py[2];
+	float z = -pz[0] + pz[2];
+
+	return { x * 0.5f, y * 0.5f, z * 0.5f };
+}
+
 void CatmullRomSplineGradient3DWide(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz) {
+	//This calculates the gradient on a catmull rom spline for 4 (sse) or 8 (avx) particles at a time.
+	//pi contains the first index in the path node list, t is the % of the segment on the path to calcuate for. 
 	tfxWideFloat t2 = tfxWideMul(t, t);
 
+	//Calculate the weigths
 	tfxWideFloat b0 = tfxWideSub(tfxWideAdd(tfxWideMul(tfxWideSetSingle(-3.f), t2), tfxWideMul(tfxWideSetSingle(4.f), t)), tfxWideSetSingle(1.f));
 	tfxWideFloat b1 = tfxWideSub(tfxWideMul(tfxWideSetSingle(9.f), t2), tfxWideMul(tfxWideSetSingle(10.f), t));
 	tfxWideFloat b2 = tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideSetSingle(-9.f), t2), tfxWideMul(tfxWideSetSingle(8.f), t)), tfxWideSetSingle(1.f));
 	tfxWideFloat b3 = tfxWideSub(tfxWideMul(tfxWideSetSingle(3.f), t2), tfxWideMul(tfxWideSetSingle(2.f), t));
 
+	//Load in the node data for 4 nodes to to calculate the path
 	tfxWideFloat px0 = tfxWideLookupSet(x, (*pi));
 	tfxWideFloat py0 = tfxWideLookupSet(y, (*pi));
 	tfxWideFloat pz0 = tfxWideLookupSet(z, (*pi));
@@ -6214,7 +6246,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("billboard_option=%i", property->billboard_option);
 	file->AddLine("vector_align_type=%i", property->vector_align_type);
 	file->AddLine("layer=%i", property->layer);
-	file->AddLine("use_path_for_direction=%i", (flags * tfxEmitterPropertyFlags_use_path_for_direction));
+	file->AddLine("use_path_for_direction=%i", (flags & tfxEmitterPropertyFlags_use_path_for_direction));
 }
 
 void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file) {
@@ -8322,7 +8354,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 
 			context_set = true;
 			if (context == tfxStartFolder) {
-				tfx_effect_emitter_t effect;
+				tfx_effect_emitter_t effect{};
 				effect.library = lib;
 				effect.type = tfx_effect_emitter_type::tfxFolder;
 				effect.info_index = AddLibraryEffectEmitterInfo(lib);
@@ -8330,7 +8362,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 				effect_stack.push_back(effect);
 			}
 			else if (context == tfxStartStage) {
-				tfx_effect_emitter_t effect;
+				tfx_effect_emitter_t effect{};
 				effect.library = lib;
 				effect.type = tfx_effect_emitter_type::tfxStage;
 				effect.info_index = AddLibraryEffectEmitterInfo(lib);
@@ -8340,7 +8372,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 				effect_stack.push_back(effect);
 			}
 			else if (context == tfxStartEffect) {
-				tfx_effect_emitter_t effect;
+				tfx_effect_emitter_t effect{};
 				effect.library = lib;
 				effect.info_index = AddLibraryEffectEmitterInfo(lib);
 				effect.property_index = AddLibraryEmitterProperties(lib);
@@ -8361,7 +8393,9 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 
 			}
 			else if (context == tfxStartEmitter) {
-				tfx_effect_emitter_t emitter;
+				tfx_effect_emitter_t emitter = {};
+				emitter.effect_flags = 0;
+				emitter.property_flags = 0;
 				emitter.library = lib;
 				emitter.info_index = AddLibraryEffectEmitterInfo(lib);
 				emitter.property_index = AddLibraryEmitterProperties(lib);
@@ -10282,10 +10316,11 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			current_velocity_y = tfxWideAdd(current_velocity_y, noise_y.m);
 			current_velocity_z = tfxWideAdd(current_velocity_z, noise_z.m);
 		}
+		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE);
 		current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));
-		current_velocity_x = tfxWideMul(tfxWideMul(current_velocity_x, pm.update_time_wide), velocity_adjuster);
-		current_velocity_y = tfxWideMul(tfxWideMul(current_velocity_y, pm.update_time_wide), velocity_adjuster);
-		current_velocity_z = tfxWideMul(tfxWideMul(current_velocity_z, pm.update_time_wide), velocity_adjuster);
+		current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm.update_time_wide), velocity_adjuster), age_fraction);
+		current_velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_y, pm.update_time_wide), velocity_adjuster), age_fraction);
+		current_velocity_z = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_z, pm.update_time_wide), velocity_adjuster), age_fraction);
 
 		//----Position
 		local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x, overal_scale_wide));
@@ -12470,6 +12505,9 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 	assert(random.seeds[0] > 0);
 
+	float frame_fraction = entry->pm->frame_length / (float)entry->amount_to_spawn;
+	float age_accumulator = entry->pm->frame_length - frame_fraction;
+
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 		float &age = entry->particle_data->age[index];
@@ -12487,7 +12525,8 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 		//Max age
 		//Todo: should age be set to the tween value?
-		age = entry->pm->frame_length * ((float)i / (float)entry->amount_to_spawn);
+		age = tfx__Max(0.f, age_accumulator);
+		age_accumulator -= frame_fraction;
 		//age = 0;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
@@ -12814,11 +12853,12 @@ void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfx_random_t random = entry->pm->random;
-	float tween = entry->tween;
+	float tween = 0.f;
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_particle_manager_t &pm = *entry->pm;
 	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	AlterRandomSeed(&random, 10 + emitter.seed_index);
+	tfx_effect_state_t* parent = &pm.effects[entry->parent_index];
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -12826,8 +12866,13 @@ void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_y = entry->particle_data->position_y[index];
 		float &local_position_z = entry->particle_data->position_z[index];
 
+		tween = 1.f - entry->particle_data->age[index] / pm.frame_length;
+
 		local_position_x = local_position_y = local_position_z = 0;
 		tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
+		if (emitter.captured_position.x != emitter.world_position.x) {
+			int d = 0;
+		}
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
 				local_position_x = lerp_position.x;
@@ -12842,7 +12887,6 @@ void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data) {
 				local_position_z = rotvec.z + lerp_position.z;
 			}
 		}
-		tween += entry->qty_step_size;
 	}
 
 }
@@ -13950,7 +13994,6 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfx_random_t random = entry->pm->random;
-	float tween = entry->tween;
 	tfx_particle_manager_t &pm = *entry->pm;
 	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	AlterRandomSeed(&random, 24 + emitter.seed_index);
@@ -14004,6 +14047,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 	//Micro Update
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+		const float age = entry->particle_data->age[index];
 		const float base_weight = entry->particle_data->base_weight[index];
 		float &roll = entry->particle_data->local_rotations_z[index];
 		float &local_position_x = entry->particle_data->position_x[index];
@@ -14014,6 +14058,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		float &captured_position_z = entry->particle_data->captured_position_z[index];
 		tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 		const float base_velocity = entry->particle_data->base_velocity[index];
+		entry->particle_data->flags[index] &= ~tfxParticleFlags_capture_after_transform;
 
 		tfx_vec3_t world_position;
 		if (!line && !(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -14032,29 +14077,24 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			captured_position_z = world_position.z;
 		}
 
-		//----Velocity
-		float emission_pitch = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);
-		float emission_yaw = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_yaw, emitter.frame);
-
 		tfx_vec3_t velocity_normal;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
 			velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
-		}
-		else if(emission_type != tfxArea || (emission_type == tfxArea && emission_direction != tfxSurface)) {
+		} else if(emission_type != tfxArea || (emission_type == tfxArea && emission_direction != tfxSurface)) {
+			//----Velocity
+			float emission_pitch = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);
+			float emission_yaw = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_yaw, emitter.frame);
 			velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
 			velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
 		}
+		/*
 		float velocity_scale = first_velocity_value * velocity_adjuster * base_velocity;
 
-		//Do a micro update
-		//A bit hacky but the epsilon after tween just ensures that theres a guaranteed small difference between captured/world positions so that
-		//the alignment on the first frame can be calculated
-		float micro_time = pm.update_time * (1.f - tween + 0.001f);
 		float weight_acceleration = base_weight * first_weight_value;
 		//----Velocity Changes
 		tfx_vec3_t current_velocity = tfx_vec3_t(velocity_normal.x, velocity_normal.y, velocity_normal.z) * base_velocity * first_velocity_value;
 		current_velocity.y -= weight_acceleration;
-		current_velocity *= micro_time;
+		current_velocity *= micro_time * pm.update_time;
 		local_position_x += current_velocity.x;
 		local_position_y += current_velocity.y;
 		local_position_z += current_velocity.z;
@@ -14091,7 +14131,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			depth_index.depth = 0.f;
 			entry->particle_data->depth_index[index] = PushPMDepthIndex(&pm, layer, depth_index);
 		}
-		tween += entry->qty_step_size;
+		*/
 	}
 }
 

@@ -2267,7 +2267,7 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_enabled = 1 << 27,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
 	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 28,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
 	tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 29,	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
-	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 30				//Make the particles use a path to dictate their direction of travel
+	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 30			//Make the particles use a path to dictate their direction of travel
 };
 
 enum tfx_particle_flag_bits : unsigned char {
@@ -5810,6 +5810,7 @@ tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
+tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3DSoAStart(const float *px, const float* py, const float* pz);
 tfxAPI_EDITOR void CatmullRomSplineGradient3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL float GetCatmullSegment(tfx_vector_t<tfx_vec4_t>* nodes, float length);
 //Quake 3 inverse square root
