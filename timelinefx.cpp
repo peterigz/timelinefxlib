@@ -9305,8 +9305,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.color = sprites.color[i];
 			sprite.property_indexes = sprites.property_indexes[i];
-			tfxU32 property_index = sprite.property_indexes & 0x0000FFFF;
-			sprite.property_indexes &= ~0x0000FFFF;
+			tfxU32 property_index = sprite.property_indexes & 0x00007FFF;
+			sprite.property_indexes &= ~0x00007FFF;
 			sprite.property_indexes += effect->library->emitter_properties[property_index].animation_property_index;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
@@ -9327,8 +9327,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.color = sprites.color[i];
 			sprite.property_indexes = sprites.property_indexes[i];
-			tfxU32 property_index = sprite.property_indexes & 0x0000FFFF;
-			sprite.property_indexes &= ~0x0000FFFF;
+			tfxU32 property_index = sprite.property_indexes & 0x00007FFF;
+			sprite.property_indexes &= ~0x00007FFF;
 			sprite.property_indexes += effect->library->emitter_properties[property_index].animation_property_index;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
@@ -11298,10 +11298,11 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];
-				sprites.captured_index[sprite_depth_index] = age < pm.frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				tfxU32 first_frame = age < pm.frame_length ? 0x00008000 : 0;
+				sprites.captured_index[sprite_depth_index] = first_frame && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + sprite_depth_index;
-				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
+				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index) + first_frame;
 				running_sprite_index++;
 			}
 		}
@@ -11309,10 +11310,12 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
 				float &age = bank.age[index + j];
-				sprites.captured_index[running_sprite_index] = age < pm.frame_length && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				tfxU32 first_frame = age < pm.frame_length ? 0 : 0x00008000;
+				sprites.captured_index[running_sprite_index] = first_frame == 0 && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
-				sprites.property_indexes[running_sprite_index++] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
+				sprites.property_indexes[running_sprite_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
+				sprites.property_indexes[running_sprite_index++] |= first_frame;
 			}
 		}
 
@@ -14118,6 +14121,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			captured_position_y = world_position.y;
 			captured_position_z = world_position.z;
 		}
+		*/
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
@@ -14131,7 +14135,6 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			depth_index.depth = 0.f;
 			entry->particle_data->depth_index[index] = PushPMDepthIndex(&pm, layer, depth_index);
 		}
-		*/
 	}
 }
 
