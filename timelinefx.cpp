@@ -3648,7 +3648,7 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 	}
 	if (path->nodes.current_size != path->node_count) {
 		path->nodes.resize(path->node_count);
-		if (path->node_count > path->node_buffer.capacity) {
+		if ((tfxU32)path->node_count > path->node_buffer.capacity) {
 			GrowArrays(&path->node_buffer, path->node_buffer.capacity, path->node_count, false);
 		}
 		path->node_buffer.current_size = path->node_count;
@@ -10006,50 +10006,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 		tfxCompleteAllWork(&pm->work_queue);
 		pm->control_work.clear();
 
-		if (pm->emitters_check_capture.current_size > 0) {
-			for (int index : pm->emitters_check_capture) {
-				//Really don't like this but is fine for now. For any line emitters where the particles loop back round to the beginning we need to set the captured index of the sprites
-				//so that they don't interpolate the frame that they loop
-				tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
-				int particles_to_update = bank.current_size;
-				tfxU32 running_start_index = 0;
-				while (particles_to_update > 0) {
-					//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-					//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-					//would cause more work entries to be created.
-					assert(pm->control_work.current_size != pm->control_work.capacity);
-					tfx_control_work_entry_t &work_entry = pm->control_work.next();
-					work_entry.properties = &pm->library->emitter_properties[pm->emitters[index].properties_index];
-					work_entry.emitter_index = index;
-					work_entry.start_index = running_start_index;
-					work_entry.end_index = particles_to_update > pm->mt_batch_size ? running_start_index + pm->mt_batch_size : running_start_index + particles_to_update;
-					tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], work_entry.start_index);
-					tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
-					work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
-					work_entry.start_diff = circular_start - block_start_index;
-					work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
-					particles_to_update -= pm->mt_batch_size;
-					running_start_index += pm->mt_batch_size;
-					work_entry.pm = pm;
-					const tfxU32 property_index = pm->emitters[index].properties_index;
-					const tfxU32 sprites_index = pm->emitters[index].sprites_index;
-					work_entry.sprites_index = sprites_index + work_entry.start_index;
-					work_entry.sprite_buffer_end_index = work_entry.sprites_index + (work_entry.end_index - work_entry.start_index);
-					work_entry.layer = work_entry.properties->layer;
-					work_entry.sprites = &pm->sprites[pm->current_sprite_buffer][work_entry.layer];
-					if (!(pm->flags & tfxEffectManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-						tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticleCaptureFlag);
-					}
-					else {
-						ControlParticleCaptureFlag(&pm->work_queue, &work_entry);
-					}
-				}
-			}
-			tfxCompleteAllWork(&pm->work_queue);
-			pm->control_work.clear();
-			pm->emitters_check_capture.clear();
-		}
-
 		{
 			for (int index : pm->emitters_in_use[depth][next_buffer]) {
 				tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
@@ -10171,7 +10127,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	}
 
 	pm->flags &= ~tfxEffectManagerFlags_update_base_values;
-
 }
 
 void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
@@ -10337,7 +10292,6 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	const tfxWideInt emitter_flags_wide = tfxWideSetSinglei(emitter.state_flags);
 
 	if (emitter.state_flags & tfxEmitterStateFlags_is_line_loop_or_kill) {
-		//Todo: this should also update the captured position as well solving the issue of interpolating from the end back to the beginning
 		if (emitter.state_flags & tfxEmitterStateFlags_kill) {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -10347,7 +10301,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 
 				tfx__readbarrier;
 
-				//Lines - Reposition if the particle is travelling along a line
+				//Lines - Kill if the particle has reached the end of the line
 				tfxWideFloat length = tfxWideAbs(local_position_y);
 				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(length, emitter_size_y)));
 				flags = tfxWideOri(flags, remove_flags);
@@ -11265,6 +11219,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 	tfxWideFloat frames = tfxWideSetSingle(emitter.end_frame + 1);
 	tfxEmitterStateFlags emitter_flags = emitter.state_flags;
 	tfxEmitterStateFlags property_flags = emitter.property_flags;
+	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
@@ -11274,6 +11229,8 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 
 		tfxWideArray image_frame;
 		image_frame.m = tfxWideLoad(&bank.image_frame[index]);
+		tfxWideArrayi flags;
+		flags.m = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
 		tfx__readbarrier;
 
@@ -11297,68 +11254,31 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
-				float &age = bank.age[index + j];
-				tfxU32 first_frame = age < pm.frame_length ? 0x00008000 : 0;
-				sprites.captured_index[sprite_depth_index] = first_frame && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				tfxU32 capture = (flags.a[j] & tfxParticleFlags_capture_after_transform) ^ tfxParticleFlags_capture_after_transform;
+				sprites.captured_index[sprite_depth_index] = capture == 0 && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + sprite_depth_index;
-				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index) + first_frame;
-				running_sprite_index++;
+				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
 			}
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 &sprites_index = bank.sprite_index[index + j];
-				float &age = bank.age[index + j];
-				tfxU32 first_frame = age < pm.frame_length ? 0 : 0x00008000;
-				sprites.captured_index[running_sprite_index] = first_frame == 0 && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				tfxU32 capture = (flags.a[j] & tfxParticleFlags_capture_after_transform) ^ tfxParticleFlags_capture_after_transform;
+				sprites.captured_index[running_sprite_index] = capture == 0 && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
-				sprites.property_indexes[running_sprite_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + (emitter.properties_index);
-				sprites.property_indexes[running_sprite_index++] |= first_frame;
-			}
-		}
-
-		start_diff = 0;
-	}
-
-}
-
-void ControlParticleCaptureFlag(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t*>(data);
-	tfx_particle_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
-	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
-
-	tfxU32 start_diff = work_entry->start_diff;
-
-	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-	tfx_sprite_soa_t &sprites = *work_entry->sprites;
-
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-		tfxWideArrayi flags;
-		flags.m = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
-
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {				//Predictable
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j];
-				sprites.captured_index[sprite_depth_index] = (flags.a[j] & tfxParticleFlags_capture_after_transform) ? (pm.current_sprite_buffer << 30) + sprite_depth_index : sprites.captured_index[sprite_depth_index];
-			}
-		}
-		else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.captured_index[running_sprite_index] = (flags.a[j] & tfxParticleFlags_capture_after_transform) ? (pm.current_sprite_buffer << 30) + running_sprite_index : sprites.captured_index[running_sprite_index];
+				sprites.property_indexes[running_sprite_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + emitter.properties_index | capture;
 				running_sprite_index++;
 			}
 		}
+
 		flags.m = tfxWideAndi(flags.m, xor_capture_after_transform_flag);
 		tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags.m);
+
 		start_diff = 0;
 	}
+
 }
 
 void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
@@ -12524,7 +12444,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 		parent = emitter_index;
 		particle_index = tfxINVALID;
 
-		flags = 0;
+		flags = tfxParticleFlags_capture_after_transform;
 
 		//Max age
 		//Todo: should age be set to the tween value?
@@ -12873,9 +12793,6 @@ void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data) {
 
 		local_position_x = local_position_y = local_position_z = 0;
 		tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
-		if (emitter.captured_position.x != emitter.world_position.x) {
-			int d = 0;
-		}
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
 				local_position_x = lerp_position.x;
@@ -14061,7 +13978,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		float &captured_position_z = entry->particle_data->captured_position_z[index];
 		tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 		const float base_velocity = entry->particle_data->base_velocity[index];
-		entry->particle_data->flags[index] &= ~tfxParticleFlags_capture_after_transform;
+		//entry->particle_data->flags[index] &= ~tfxParticleFlags_capture_after_transform;
 
 		tfx_vec3_t world_position;
 		if (!line && !(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {

@@ -2272,13 +2272,13 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 30			//Make the particles use a path to dictate their direction of travel
 };
 
-enum tfx_particle_flag_bits : unsigned char {
+enum tfx_particle_flag_bits : unsigned int {
 	tfxParticleFlags_none = 0,
 	tfxParticleFlags_fresh = 1 << 0,									//Particle has just spawned this frame	
-	tfxParticleFlags_capture_after_transform = 1 << 3,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
 	tfxParticleFlags_remove = 1 << 4,									//Particle will be removed this or next frame
 	tfxParticleFlags_has_velocity = 1 << 5,								//Flagged if the particle is currently moving
 	tfxParticleFlags_has_sub_effects = 1 << 6,							//Flagged if the particle has sub effects
+	tfxParticleFlags_capture_after_transform = 1 << 15,					//Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
 };
 
 enum tfx_emitter_state_flag_bits : unsigned int {
@@ -5963,7 +5963,6 @@ tfxINTERNAL void ControlParticleSize(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleSpin3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleSpin(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleUID(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void ControlParticleCaptureFlag(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data);
@@ -7613,6 +7612,17 @@ Interpolate between 2 float. You can make use of this in your render function wh
 */
 tfxAPI inline float TweenFloat(float tween, const float current, const float captured) {
 	return current * tween + captured * (1.f - tween);
+}
+
+/*
+Check if a particle sprite is newly spawned. This means that there will be no captured index to interpolate with so if you want you can opt to not draw the sprite or
+draw the sprite but with 0 alpha. A float is returned, either 0.f or 1.f so you can use that to multiply the alpha value or scale of the sprite to not draw it.
+* @param sprites	A pointer to a tfx_sprite_soa_t
+* @param index		The index of the sprite that you're checking
+* @returns float	0.f if it IS the first frame of the sprite otherwise 1.f. 
+*/
+tfxAPI inline float IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index) {
+	return float((sprites->property_indexes[sprite_index] & 0x00008000) >> 15);
 }
 
 #ifdef tfxINTEL
