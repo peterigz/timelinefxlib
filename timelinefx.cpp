@@ -10271,6 +10271,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			current_velocity_y = tfxWideAdd(current_velocity_y, noise_y.m);
 			current_velocity_z = tfxWideAdd(current_velocity_z, noise_z.m);
 		}
+
 		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE);
 		current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));
 		current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm.update_time_wide), velocity_adjuster), age_fraction);
@@ -10356,7 +10357,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->stretch);
 
 	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
-	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 	tfx_mat4_t &e_matrix = emitter.matrix;
 	const tfxEmitterPropertyFlags property_flags = emitter.property_flags;
 	const tfx_vector_align_type vector_align_type = work_entry->properties->vector_align_type;
@@ -10514,9 +10514,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 
-		//flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
-		//tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
-
 		start_diff = 0;
 	}
 }
@@ -10647,8 +10644,9 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		current_velocity_y.m = tfxWideAdd(current_velocity_y.m, tfxWideMul(lookup_weight, base_weight));
 		stretch_velocity_x = current_velocity_x.m;
 		stretch_velocity_y = current_velocity_y.m;
-		current_velocity_x.m = tfxWideMul(tfxWideMul(current_velocity_x.m, pm.update_time_wide), velocity_adjuster);
-		current_velocity_y.m = tfxWideMul(tfxWideMul(current_velocity_y.m, pm.update_time_wide), velocity_adjuster);
+		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE);
+		current_velocity_x.m = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x.m, pm.update_time_wide), velocity_adjuster), age_fraction);
+		current_velocity_y.m = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_y.m, pm.update_time_wide), velocity_adjuster), age_fraction);
 
 		//----Position
 		local_position_x = tfxWideAdd(local_position_x, tfxWideMul(current_velocity_x.m, overal_scale_wide));
@@ -10716,7 +10714,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 
 				tfx__readbarrier;
 
-				//Lines - Reposition if the particle is travelling along a line
+				//Lines - Remove particle if it reaches the end of the line
 				tfxWideFloat length = tfxWideAbs(local_position_y);
 				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(length, emitter_size_y)));
 				flags = tfxWideOri(flags, remove_flags);
@@ -10764,7 +10762,6 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
 	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
-	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 	tfx_mat4_t &e_matrix = emitter.matrix;
 	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 
@@ -12446,11 +12443,9 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 		flags = tfxParticleFlags_capture_after_transform;
 
-		//Max age
-		//Todo: should age be set to the tween value?
+		//Set the age of the particle to an interpolated value between 0 and the length of the frame depending on how many particles are being spawned this frame
 		age = tfx__Max(0.f, age_accumulator);
 		age_accumulator -= frame_fraction;
-		//age = 0;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
 		}
@@ -13857,12 +13852,7 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 		float &roll = entry->particle_data->local_rotations_z[index];
 		float &local_position_x = entry->particle_data->position_x[index];
 		float &local_position_y = entry->particle_data->position_y[index];
-		float &captured_position_x = entry->particle_data->captured_position_x[index];
-		float &captured_position_y = entry->particle_data->captured_position_y[index];
 		float &direction = entry->particle_data->local_rotations_x[index];
-		float &base_velocity = entry->particle_data->base_velocity[index];
-
-		float micro_time = pm.update_time * (1.f - tween);
 
 		tfx_vec2_t sprite_transform_position;
 		float sprite_transform_rotation;
@@ -13871,8 +13861,6 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 
 		if (!line && !(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			TransformParticlePosition(local_position_x, local_position_y, roll, &sprite_transform_position, &sprite_transform_rotation, &emitter.world_rotations, &emitter.matrix, &emitter.handle, &entry->overal_scale, &emitter.world_position);
-			captured_position_x = sprite_transform_position.x;
-			captured_position_y = sprite_transform_position.y;
 		}
 
 		direction = 0;
@@ -13880,22 +13868,14 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 			direction = GetEmissionDirection2d(&pm, library, &random, emitter, tfx_vec2_t(local_position_x, local_position_y), sprite_transform_position) + GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.direction);
 		}
 
-		tfx_vec2_t velocity_normal;
-		velocity_normal.x = sinf(direction);
-		velocity_normal.y = -cosf(direction);
-		float weight_acceleration = base_weight * first_weight_value;
-		//----Velocity Changes
-		tfx_vec2_t current_velocity = velocity_normal * (base_velocity * first_velocity_value);
-		current_velocity.y += weight_acceleration;
-		local_position_x += current_velocity.x * micro_time;
-		local_position_y += current_velocity.y * micro_time;
 		if (line || emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
 			tfx_vec2_t rotatevec = TransformVec2Matrix4(&emitter.matrix, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
-			captured_position_x = emitter.captured_position.x + rotatevec.x * entry->overal_scale;
-			captured_position_y = emitter.captured_position.y + rotatevec.y * entry->overal_scale;
 		}
 
 		if ((angle_settings & tfxAngleSettingFlags_align_roll || angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
+			tfx_vec2_t velocity_normal;
+			velocity_normal.x = sinf(direction);
+			velocity_normal.y = -cosf(direction);
 			roll = GetVectorAngle(velocity_normal.x, velocity_normal.y) + angle_roll_offset;
 		}
 
@@ -13978,7 +13958,6 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		float &captured_position_z = entry->particle_data->captured_position_z[index];
 		tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 		const float base_velocity = entry->particle_data->base_velocity[index];
-		//entry->particle_data->flags[index] &= ~tfxParticleFlags_capture_after_transform;
 
 		tfx_vec3_t world_position;
 		if (!line && !(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
