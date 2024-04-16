@@ -10913,8 +10913,16 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 			}
 		}
 		else {
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.transform_2d[running_sprite_index++].rotation = rotations_z.a[j];
+			if (!(pm.flags & tfxEffectManagerFlags_unordered)) {		//Predictable
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					tfxU32 sprite_depth_index = bank.depth_index[index + j];
+					sprites.transform_2d[sprite_depth_index].rotation = rotations_z.a[j];
+					running_sprite_index++;
+				}
+			} else {
+				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+					sprites.transform_2d[running_sprite_index++].rotation = rotations_z.a[j];
+				}
 			}
 		}
 		start_diff = 0;
