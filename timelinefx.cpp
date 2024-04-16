@@ -7702,6 +7702,7 @@ void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, 
 	entry.type = tfxString;
 	entry.key = key;
 	entry.str_value = value;
+	entry.str_value.SanitizeLineFeeds();
 	config->Insert(key, entry);
 }
 

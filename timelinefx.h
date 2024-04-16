@@ -2581,6 +2581,15 @@ struct tfx_str_t {
 		}
 		current_size -= pos;
 	}
+	inline void SanitizeLineFeeds() {
+		if (current_size > 1) {
+			char test = back();
+			while (back() == '\n' || back() == '\r' || back() == '\0') {
+				pop();
+			}
+			NullTerminate();
+		}
+	}
 	void NullTerminate() { push_back('\0'); }
 	bool SaveToFile(const char *file_name);
 	const bool IsInt() const;
