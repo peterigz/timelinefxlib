@@ -9941,10 +9941,10 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				if (pm->depth_indexes[layer][next_depth_buffer].capacity < pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]].capacity) {
 					pm->depth_indexes[layer][next_depth_buffer].reserve(pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]].capacity);
 				}
-				if (pm->flags & tfxEffectManagerFlags_order_by_depth) {
+				//if (pm->flags & tfxEffectManagerFlags_order_by_depth) {
 					//No need to qsort ordered by age as the depth with all be 0 (depth is particle age)
 					std::qsort(&pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]][depth_starting_index[layer]], pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]].current_size - depth_starting_index[layer], sizeof(tfx_depth_index_t), SortDepth);
-				}
+				//}
 				tfxU32 current_depth_index = 0;
 				tfxU32 second_index = depth_starting_index[layer];
 				for (auto &depth_index : pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]]) {
@@ -13891,7 +13891,7 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 		if (pm.flags & tfxEffectManagerFlags_ordered_by_age) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
-			depth_index.depth = 0.f;
+			depth_index.depth = entry->particle_data->age[index];
 			entry->particle_data->depth_index[index] = PushPMDepthIndex(&pm, layer, depth_index);
 		}
 	}
