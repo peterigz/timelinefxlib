@@ -3600,7 +3600,7 @@ void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	path->angle_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->angle_z.type = tfxPath_angle_z;
 	path->angle_z.graph_preset = tfxPathDirectionOvertimePreset;
-	ResetGraph(&path->angle_y, 0.f, path->angle_z.graph_preset, true, 1.f);
+	ResetGraph(&path->angle_z, 0.f, path->angle_z.graph_preset, true, 1.f);
 	path->offset_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->offset_x.type = tfxPath_offset_z;
 	path->offset_x.graph_preset = tfxPathTranslationOvertimePreset;
