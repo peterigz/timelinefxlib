@@ -3335,6 +3335,12 @@ void CloneEffect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter_t *cl
 			CompileLibraryVariationGraph(clone->library, clone->emitter_attributes);
 			CompileLibraryOvertimeGraph(clone->library, clone->emitter_attributes);
 		}
+		if (clone->path_attributes != tfxINVALID) {
+			tfx_emitter_path_t path_copy = CopyPath(&library->paths[clone->path_attributes], "");
+			clone->path_attributes = library->paths.size();
+			library->paths.push_back(path_copy);
+			BuildPathNodes(&library->paths.back());
+		}
 	}
 
 	for (auto &e : GetEffectInfo(effect_to_clone)->sub_effectors) {
@@ -3586,24 +3592,31 @@ void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	path->angle_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->angle_x.type = tfxPath_angle_x;
 	path->angle_x.graph_preset = tfxPathDirectionOvertimePreset;
+	ResetGraph(&path->angle_x, 0.f, path->angle_x.graph_preset, true, 1.f);
 	path->angle_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->angle_y.type = tfxPath_angle_y;
 	path->angle_y.graph_preset = tfxPathDirectionOvertimePreset;
+	ResetGraph(&path->angle_y, 0.f, path->angle_y.graph_preset, true, 1.f);
 	path->angle_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->angle_z.type = tfxPath_angle_z;
 	path->angle_z.graph_preset = tfxPathDirectionOvertimePreset;
+	ResetGraph(&path->angle_y, 0.f, path->angle_z.graph_preset, true, 1.f);
 	path->offset_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->offset_x.type = tfxPath_offset_z;
 	path->offset_x.graph_preset = tfxPathTranslationOvertimePreset;
+	ResetGraph(&path->offset_x, 0.f, path->offset_x.graph_preset, true, 1.f);
 	path->offset_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->offset_y.type = tfxPath_offset_z;
 	path->offset_y.graph_preset = tfxPathTranslationOvertimePreset;
+	ResetGraph(&path->offset_y, 0.f, path->offset_y.graph_preset, true, 1.f);
 	path->offset_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->offset_z.type = tfxPath_offset_z;
 	path->offset_z.graph_preset = tfxPathTranslationOvertimePreset;
+	ResetGraph(&path->offset_z, 0.f, path->offset_z.graph_preset, true, 1.f);
 	path->distance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->distance.type = tfxPath_distance;
 	path->distance.graph_preset = tfxPathTranslationOvertimePreset;
+	ResetGraph(&path->distance, 0.f, path->distance.graph_preset, true, 1.f);
 }
 
 void FreePathGraphs(tfx_emitter_path_t* path) {
@@ -3646,6 +3659,13 @@ tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter) {
 		path.node_count = 32;
 		path.preview_scale = 1.f;
 		InitialisePathGraphs(&path);
+		ResetGraph(&path.angle_x, 0.f, path.angle_x.graph_preset, true, 1.f);
+		ResetGraph(&path.angle_y, 0.f, path.angle_y.graph_preset, true, 1.f);
+		ResetGraph(&path.angle_z, 0.f, path.angle_z.graph_preset, true, 1.f);
+		ResetGraph(&path.offset_x, 1.f, path.offset_x.graph_preset, true, 1.f);
+		ResetGraph(&path.offset_y, 0.f, path.offset_y.graph_preset, true, 1.f);
+		ResetGraph(&path.offset_z, 0.f, path.offset_z.graph_preset, true, 1.f);
+		ResetGraph(&path.distance, 0.f, path.offset_z.graph_preset, true, 1.f);
 		emitter->path_attributes = emitter->library->paths.size();
 		emitter->library->paths.push_back(path);
 	}
