@@ -4803,8 +4803,6 @@ struct tfx_emitter_properties_t {
 	//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
 	tfx_billboarding_option billboard_option;
 
-	//Index into the paths stored in the library. Paths are used to guide particles when they have velocity.
-	tfxU32 path_index;
 	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
 	tfx_vec3_t grid_points;
 	//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
@@ -4843,7 +4841,7 @@ struct tfx_emitter_properties_t {
 	//are stored on the GPU for looking up from the sprite data
 	tfxU32 animation_property_index;
 
-	tfx_emitter_properties_t() { memset(this, 0, sizeof(tfx_emitter_properties_t)); path_index = tfxINVALID; }
+	tfx_emitter_properties_t() { memset(this, 0, sizeof(tfx_emitter_properties_t)); }
 };
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -4937,6 +4935,7 @@ struct tfx_emitter_state_t {
 	tfxU32 emitter_attributes;
 	tfxU32 transform_attributes;
 	tfxU32 overtime_attributes;
+	tfxU32 path_attributes;
 
 	tfxU32 root_index;
 	tfxU32 parent_index;
@@ -5024,6 +5023,7 @@ struct tfx_effect_emitter_t {
 	tfxU32 global;
 	tfxU32 emitter_attributes;
 	tfxU32 transform_attributes;
+	tfxU32 path_attributes;
 	//Pointer to the immediate parent
 	tfx_effect_emitter_t *parent;
 	//State state_flags for emitters and effects
@@ -5054,6 +5054,7 @@ struct tfx_effect_emitter_t {
 		info_index(tfxINVALID),
 		property_index(tfxINVALID),
 		global(tfxINVALID),
+		path_attributes(tfxINVALID),
 		emitter_attributes(tfxINVALID),
 		transform_attributes(tfxINVALID),
 		property_flags(tfxEmitterPropertyFlags_image_handle_auto_center |
