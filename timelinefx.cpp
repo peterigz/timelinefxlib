@@ -3638,6 +3638,20 @@ tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
 	return path;
 }
 
+tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter) {
+	if (emitter->path_attributes == tfxINVALID) {
+		tfx_emitter_path_t path = {};
+		path.flags = 0;
+		path.name = "";
+		path.node_count = 32;
+		path.preview_scale = 1.f;
+		InitialisePathGraphs(&path);
+		emitter->path_attributes = emitter->library->paths.size();
+		emitter->library->paths.push_back(path);
+	}
+	return emitter->path_attributes;
+}
+
 float GetCatmullSegment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
 	tfxU32 i = 0;
 	while (length >= (*nodes)[i].w && i < nodes->size() - 3) {
@@ -4209,6 +4223,12 @@ void UpdateLibraryEffectPaths(tfx_library_t *library) {
 		GetEffectInfo(&e)->path = path;
 		e.path_hash = tfxXXHash64::hash(path.c_str(), path.Length(), 0);
 		AddLibraryPath(library, &e, &path);
+	}
+}
+
+void BuildAllLibraryPaths(tfx_library_t *library) {
+	for (tfx_emitter_path_t& path : library->paths) {
+		BuildPathNodes(&path);
 	}
 }
 
@@ -5520,13 +5540,17 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("transform_translate_y", tfxFloat);
 	names_and_types.Insert("transform_translate_z", tfxFloat);
 
-	names_and_types.Insert("path_roll", tfxFloat);
 	names_and_types.Insert("path_pitch", tfxFloat);
 	names_and_types.Insert("path_yaw", tfxFloat);
+	names_and_types.Insert("path_roll", tfxFloat);
 	names_and_types.Insert("offset_x", tfxFloat);
 	names_and_types.Insert("offset_y", tfxFloat);
 	names_and_types.Insert("offset_z", tfxFloat);
 	names_and_types.Insert("distance", tfxFloat);
+	names_and_types.Insert("path_mode_origin", tfxBool);
+	names_and_types.Insert("path_mode_node", tfxBool);
+	names_and_types.Insert("path_is_3d", tfxBool);
+	names_and_types.Insert("path_space_nodes_evenly", tfxBool);
 
 	//Sprite data settings
 	names_and_types.Insert("start_offset", tfxUint);
@@ -5782,6 +5806,14 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "overtime_direction") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.direction, &n); }
 		if ((*values)[0] == "overtime_velocity_adjuster") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.velocity_adjuster, &n); }
 		if ((*values)[0] == "overtime_noise_resolution") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.noise_resolution, &n); }
+
+		if ((*values)[0] == "path_pitch") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].angle_x, &n); }
+		if ((*values)[0] == "path_yaw") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].angle_y, &n); }
+		if ((*values)[0] == "path_roll") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].angle_z, &n); }
+		if ((*values)[0] == "path_offset_x") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].offset_x, &n); }
+		if ((*values)[0] == "path_offset_y") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].offset_y, &n); }
+		if ((*values)[0] == "path_offset_z") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].offset_z, &n); }
+		if ((*values)[0] == "path_distance") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].distance, &n); }
 	}
 }
 
@@ -6192,9 +6224,6 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
     if (*field == "is_3d") {
         if (value) { effect->property_flags |= tfxEmitterPropertyFlags_effect_is_3d; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_effect_is_3d;}
     }
-    if (*field == "use_path_for_direction") {
-        if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_path_for_direction; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_for_direction;}
-    }
     if (*field == "draw_order_by_age") {
         if (value) { effect->effect_flags |= tfxEffectPropertyFlags_age_order; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_age_order;}
     }
@@ -6207,6 +6236,22 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
     if (*field == "include_in_sprite_data_export") {
         if (value) { effect->effect_flags |= tfxEffectPropertyFlags_include_in_sprite_data_export; } else { effect->effect_flags &= ~tfxEffectPropertyFlags_include_in_sprite_data_export;}
     }
+	if (*field == "use_path_for_direction") {
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_path_for_direction; }
+		else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_for_direction; }
+	}
+	if (*field == "path_is_3d") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect)]; if (value) { path->flags |= tfxPathFlags_3d; }
+	}
+	if (*field == "path_mode_origin") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect)]; if (value) { path->flags |= tfxPathFlags_mode_origin; }
+	}
+	if (*field == "path_mode_node") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect)]; if (value) { path->flags |= tfxPathFlags_mode_node; }
+	}
+	if (*field == "path_space_nodes_evenly") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect)]; if (value) { path->flags |= tfxPathFlags_space_nodes_evenly; }
+	}
 
 }
 
@@ -6275,6 +6320,16 @@ void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file) {
 	file->AddLine("emitter_handle_x=%f", properties->emitter_handle.x);
 	file->AddLine("emitter_handle_y=%f", properties->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", properties->emitter_handle.z);
+}
+
+void StreamPathProperties(tfx_effect_emitter_t* effect, tfx_str_t* file) {
+	if (effect->path_attributes != tfxINVALID) {
+		tfx_emitter_path_t* path = &effect->library->paths[effect->path_attributes];
+		file->AddLine("path_is_3d=%i", (path->flags & tfxPathFlags_3d));
+		file->AddLine("path_mode_origin=%i", (path->flags & tfxPathFlags_mode_origin));
+		file->AddLine("path_mode_node=%i", (path->flags & tfxPathFlags_mode_node));
+		file->AddLine("path_space_nodes_evenly=%i", (path->flags & tfxPathFlags_space_nodes_evenly));
+	}
 }
 
 void StreamGraph(const char *name, tfx_graph_t *graph, tfx_str_t *file) {
@@ -8589,6 +8644,7 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 		}
 		UpdateLibraryEffectPaths(lib);
 		UpdateLibraryComputeNodes(lib);
+		BuildAllLibraryPaths(lib);
 		SetLibraryMinMaxData(lib);
 	}
 	lib->uid = uid;

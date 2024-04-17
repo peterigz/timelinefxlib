@@ -5755,6 +5755,7 @@ tfxAPI_EDITOR bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, con
 tfxAPI_EDITOR bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char* path);
 tfxAPI_EDITOR void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file);
 tfxAPI_EDITOR void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file);
+tfxAPI_EDITOR void StreamPathProperties(tfx_effect_emitter_t *effect, tfx_str_t *file);
 tfxAPI_EDITOR void StreamGraph(const char * name, tfx_graph_t *graph, tfx_str_t *file);
 tfxAPI_EDITOR void SplitStringStack(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool StringIsUInt(const tfx_str_t s);
@@ -6134,6 +6135,7 @@ tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_
 tfxAPI_EDITOR void BuildPathNodes(tfx_emitter_path_t* path);
 tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *path);
 tfxINTERNAL void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst);
+tfxINTERNAL tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter);
 tfxAPI_EDITOR tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name);
 tfxINTERNAL void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size = 8);
@@ -6238,6 +6240,7 @@ tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfx_work_queue_t *queue, void *data
 tfxINTERNAL void WrapSingleParticleSprites(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL void ClearWrapBit(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL void MaybeGrowLibraryInfos(tfx_library_t *library);
+tfxINTERNAL void BuildAllLibraryPaths(tfx_library_t *library);
 
 tfxAPI_EDITOR void MaybeGrowLibraryProperties(tfx_library_t *library, tfxU32 size_offset);	//Required by editor
 tfxAPI_EDITOR tfxU32 GetLibraryComputeShapeDataSizeInBytes(tfx_library_t *library);
