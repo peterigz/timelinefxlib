@@ -2056,6 +2056,7 @@ enum tfx_data_type {
 	tfxFloat,
 	tfxDouble,
 	tfxBool,
+	tfxColor,
 	tfxUInt64,
 	tfxFloat3,
 	tfxFloat2
@@ -5689,6 +5690,7 @@ struct tfx_data_entry_t {
 	tfx_str32_t key;
 	tfx_str_t str_value;
 	int int_value = 0;
+	tfx_rgba8_t color_value = {};
 	bool bool_value = 0;
 	float float_value = 0;
 	double double_value = 0;
@@ -5745,11 +5747,14 @@ tfxAPI_EDITOR void CopyStringToStream(tfx_stream_t *dst, tfx_str_t *src);
 tfxAPI_EDITOR bool HasDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key);
 tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, const char *value);
 tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, int value);
+tfxAPI_EDITOR void AddColorValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, tfx_rgba8_t value);
+tfxAPI_EDITOR void AddColorValueFromInt(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, tfxU32 value);
 tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, bool value);
 tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, double value);
 tfxAPI_EDITOR void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, float value);
 tfxAPI_EDITOR tfx_str_t GetDataStrValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
 tfxAPI_EDITOR int GetDataIntValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
+tfxAPI_EDITOR tfx_rgba8_t GetDataColorValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
 tfxAPI_EDITOR float GetDataFloatValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key);
 tfxAPI_EDITOR bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path = "");
 tfxAPI_EDITOR bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char* path);
@@ -5793,6 +5798,7 @@ tfxINTERNAL tfx_vec2_t StrToVec2(tfx_vector_t<tfx_str256_t> *str);
 tfxINTERNAL void MakeIcospheres();
 tfxINTERNAL int VertexForEdge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, int first, int second);
 tfxINTERNAL tfx_vector_t<tfx_face_t> SubDivideIcosphere(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, tfx_vector_t<tfx_face_t> *triangles);
+tfxAPI_EDITOR tfx_rgba8_t ConvertFloatColor(float color_array[4]);
 
 tfxINTERNAL int SortIcospherePoints(void const *left, void const *right);
 tfxINTERNAL int SortDepth(void const *left, void const *right);

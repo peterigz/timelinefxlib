@@ -871,6 +871,15 @@ void AlterRandomSeed(tfx_random_t *random, tfxU32 amount) {
 	random->seeds[1] += amount;
 };
 
+tfx_rgba8_t ConvertFloatColor(float color_array[4]) {
+	tfx_rgba8_t color;
+	color.r = (char)tfx__Min(255, (int)(color_array[0] * 255.f));
+	color.g = (char)tfx__Min(255, (int)(color_array[1] * 255.f));
+	color.b = (char)tfx__Min(255, (int)(color_array[2] * 255.f));
+	color.a = (char)tfx__Min(255, (int)(color_array[3] * 255.f));
+	return color;
+}
+
 tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
 
 void MakeIcospheres() {
@@ -5664,54 +5673,6 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("preview_camera_hide_floor", tfxBool);
 	names_and_types.Insert("preview_attach_effect_to_camera", tfxBool);
 
-	//Editor config, move this to the editor
-	names_and_types.Insert("only_play_selected_emitter", tfxBool);
-	names_and_types.Insert("load_examples", tfxBool);
-	names_and_types.Insert("load_last_file", tfxBool);
-	names_and_types.Insert("load_last_file_path", tfxString);
-	names_and_types.Insert("recent1", tfxString);
-	names_and_types.Insert("recent2", tfxString);
-	names_and_types.Insert("recent3", tfxString);
-	names_and_types.Insert("recent4", tfxString);
-	names_and_types.Insert("background_color_red", tfxFloat);
-	names_and_types.Insert("background_color_green", tfxFloat);
-	names_and_types.Insert("background_color_blue", tfxFloat);
-	names_and_types.Insert("background_image_tint_red", tfxFloat);
-	names_and_types.Insert("background_image_tint_green", tfxFloat);
-	names_and_types.Insert("background_image_tint_blue", tfxFloat);
-	names_and_types.Insert("use_checker_background", tfxBool);
-	names_and_types.Insert("preview_zoom", tfxFloat);
-	names_and_types.Insert("updates_per_second", tfxFloat);
-	names_and_types.Insert("background_image", tfxString);
-	names_and_types.Insert("use_background_image", tfxBool);
-	names_and_types.Insert("background_image_scale_x", tfxFloat);
-	names_and_types.Insert("background_image_scale_y", tfxFloat);
-	names_and_types.Insert("background_image_offset_x", tfxFloat);
-	names_and_types.Insert("background_image_offset_y", tfxFloat);
-	names_and_types.Insert("autoplay_effect", tfxSInt);
-	names_and_types.Insert("sync_refresh_rate", tfxBool);
-	names_and_types.Insert("window_maximised", tfxBool);
-	names_and_types.Insert("window_width", tfxSInt);
-	names_and_types.Insert("window_height", tfxSInt);
-	names_and_types.Insert("window_x", tfxSInt);
-	names_and_types.Insert("window_y", tfxSInt);
-	names_and_types.Insert("show_emitter_positions", tfxBool);
-	names_and_types.Insert("dpi_factor", tfxFloat);
-	names_and_types.Insert("graph_lookup_mode", tfxSInt);
-	names_and_types.Insert("show_tool_tips", tfxBool);
-	names_and_types.Insert("preview_trail_mode", tfxBool);
-	names_and_types.Insert("try_autorecover", tfxBool);
-	names_and_types.Insert("autorecovery_file", tfxString);
-	names_and_types.Insert("draw_outlines", tfxBool);
-	names_and_types.Insert("max_threads", tfxSInt);
-	names_and_types.Insert("use_texture_filtering", tfxBool);
-	names_and_types.Insert("sprite_data_tab_use_compute", tfxSInt);
-	names_and_types.Insert("update_mode", tfxSInt);
-	names_and_types.Insert("camera_mouse_sensitivity", tfxFloat);
-	names_and_types.Insert("show_sprite_data_bounding_boxes", tfxBool);
-	names_and_types.Insert("show_help_window", tfxBool);
-    names_and_types.Insert("show_about_at_start", tfxBool);
-	names_and_types.Insert("first_run", tfxBool);
 	initialised = true;
 }
 
@@ -7803,6 +7764,26 @@ void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, 
 	config->Insert(key, entry);
 }
 
+void AddColorValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, tfx_rgba8_t color) {
+	tfx_data_entry_t entry;
+	entry.type = tfxColor;
+	entry.key = key;
+	entry.int_value = (int)color.color;
+	entry.color_value = color;
+	entry.bool_value = (bool)color.color;
+	config->Insert(key, entry);
+}
+
+void AddColorValueFromInt(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, tfxU32 color) {
+	tfx_data_entry_t entry;
+	entry.type = tfxColor;
+	entry.key = key;
+	entry.int_value = color;
+	entry.color_value.color = color;
+	entry.bool_value = (bool)color;
+	config->Insert(key, entry);
+}
+
 void AddDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, bool value) {
 	tfx_data_entry_t entry;
 	entry.type = tfxBool;
@@ -7834,6 +7815,9 @@ tfx_str_t GetDataStrValue(tfx_storage_map_t<tfx_data_entry_t> *config, const cha
 int GetDataIntValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key) {
 	return config->At(key).int_value;
 }
+tfx_rgba8_t GetDataColorValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key) {
+	return config->At(key).color_value;
+}
 float GetDataFloatValue(tfx_storage_map_t<tfx_data_entry_t> *config, const char* key) {
 	return config->At(key).float_value;
 }
@@ -7854,6 +7838,9 @@ bool SaveDataFile(tfx_storage_map_t<tfx_data_entry_t> *config, const char* path)
 				break;
 			case tfxSInt:
 				ini_line.Appendf("%i", entry.int_value);
+				break;
+			case tfxColor:
+				ini_line.Appendf("%ull", entry.color_value.color);
 				break;
 			case tfxFloat:
 				ini_line.Appendf("%f", entry.float_value);
@@ -7904,6 +7891,10 @@ bool LoadDataFile(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx
 				}
 				else if (t == tfxString) {
 					AddDataValue(config, key, pair[1].c_str());
+				}
+				else if (t == tfxColor) {
+					char* endptr;
+					AddColorValueFromInt(config, key, (tfxU32)strtoul(pair[1].c_str(), &endptr, 10));
 				}
 			}
 		}
