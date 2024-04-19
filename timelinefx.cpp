@@ -11352,33 +11352,52 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {				//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j];
-				tfxU32 &sprites_index = bank.sprite_index[index + j];
+				int index_j = index + j;
+				tfxU32 sprite_depth_index = bank.depth_index[index_j];
+				tfxU32 &sprites_index = bank.sprite_index[index_j];
 				tfxU32 capture = (flags.a[j] & tfxParticleFlags_capture_after_transform) ^ tfxParticleFlags_capture_after_transform;
-				sprites.captured_index[sprite_depth_index] = capture == 0 && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				sprites.captured_index[sprite_depth_index] = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + sprite_depth_index;
 				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + emitter.properties_index | capture;
+				bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
 				running_sprite_index++;
 			}
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 &sprites_index = bank.sprite_index[index + j];
+				int index_j = index + j;
+				tfxU32 &sprites_index = bank.sprite_index[index_j];
 				tfxU32 capture = (flags.a[j] & tfxParticleFlags_capture_after_transform) ^ tfxParticleFlags_capture_after_transform;
-				sprites.captured_index[running_sprite_index] = capture == 0 && bank.single_loop_count[index + j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+				sprites.captured_index[running_sprite_index] = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
 				sprites.property_indexes[running_sprite_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + emitter.properties_index | capture;
+				bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
 				running_sprite_index++;
 			}
 		}
 
-		flags.m = tfxWideAndi(flags.m, xor_capture_after_transform_flag);
-		tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags.m);
+		//We can't alter the flags here, there was a bug where storing a block of 4 here would unflag a particle when it shouldn't but I'm not entirely sure why.
+		//Something to do with limit_index being less then 4 and so a particle in the bank (which in theory shouldn't exist yet) gets unflagged. limit_index is
+		//only ever less than 4 on the final loop so maybe something carries over to the next frame. 
+		//It generally only happened when the spawn rate is increased in the editor which may have been throwing things off. For now the flagging is done inside the sprite writing
+		//so we know we're only marking the flag for each particle that is definitely in play. The alternative that also works is a separate loop below, need to 
+		//test which is faster but it would be nice to know exactly why this happens in the first place.
+		//flags.m = tfxWideAndi(flags.m, xor_capture_after_transform_flag);
+		//tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags.m);
 
 		start_diff = 0;
 	}
+
+	/*
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+		tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+		flags = tfxWideAndi(flags, xor_capture_after_transform_flag);
+		tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
+	}
+	*/
 
 }
 
@@ -12549,6 +12568,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 		//Set the age of the particle to an interpolated value between 0 and the length of the frame depending on how many particles are being spawned this frame
 		age = age_accumulator;
+		entry->particle_data->uid[index] = pm.unique_particle_id++;
 		age_accumulator += frame_fraction;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
