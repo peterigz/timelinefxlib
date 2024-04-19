@@ -10565,15 +10565,16 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j];
+				int index_j = index + j;
+				tfxU32 sprite_depth_index = bank.depth_index[index_j];
 				sprites.alignment[sprite_depth_index] = alignment_packed.a[j];
 				sprites.stretch[sprite_depth_index] = p_stretch.a[j];
 				sprites.transform_3d[sprite_depth_index].position.x = position_x.a[j];
 				sprites.transform_3d[sprite_depth_index].position.y = position_y.a[j];
 				sprites.transform_3d[sprite_depth_index].position.z = position_z.a[j];
-				bank.captured_position_x[index + j] = sprites.transform_3d[sprite_depth_index].position.x;
-				bank.captured_position_y[index + j] = sprites.transform_3d[sprite_depth_index].position.y;
-				bank.captured_position_z[index + j] = sprites.transform_3d[sprite_depth_index].position.z;
+				bank.captured_position_x[index_j] = sprites.transform_3d[sprite_depth_index].position.x;
+				bank.captured_position_y[index_j] = sprites.transform_3d[sprite_depth_index].position.y;
+				bank.captured_position_z[index_j] = sprites.transform_3d[sprite_depth_index].position.z;
 				tfx_vec3_t sprite_plus_camera_position = sprites.transform_3d[sprite_depth_index].position - pm.camera_position;
 				pm.depth_indexes[sprite_layer][pm.current_depth_index_buffer[work_entry->layer]][sprite_depth_index].depth = LengthVec3NoSqR(&sprite_plus_camera_position);
 				if (pm.flags & tfxEffectManagerFlags_update_bounding_boxes) {
@@ -10589,14 +10590,15 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				int index_j = index + j;
 				sprites.stretch[running_sprite_index] = p_stretch.a[j];
 				sprites.alignment[running_sprite_index] = alignment_packed.a[j];
 				sprites.transform_3d[running_sprite_index].position.x = position_x.a[j];
 				sprites.transform_3d[running_sprite_index].position.y = position_y.a[j];
 				sprites.transform_3d[running_sprite_index].position.z = position_z.a[j];
-				bank.captured_position_x[index + j] = sprites.transform_3d[running_sprite_index].position.x;
-				bank.captured_position_y[index + j] = sprites.transform_3d[running_sprite_index].position.y;
-				bank.captured_position_z[index + j] = sprites.transform_3d[running_sprite_index].position.z;
+				bank.captured_position_x[index_j] = sprites.transform_3d[running_sprite_index].position.x;
+				bank.captured_position_y[index_j] = sprites.transform_3d[running_sprite_index].position.y;
+				bank.captured_position_z[index_j] = sprites.transform_3d[running_sprite_index].position.z;
 				if (pm.flags & tfxEffectManagerFlags_update_bounding_boxes) {
 					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
 					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
@@ -10898,11 +10900,12 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j];
+				int index_j = index + j;
+				tfxU32 sprite_depth_index = bank.depth_index[index_j];
 				sprites.transform_2d[sprite_depth_index].position.x = position_x.a[j];
 				sprites.transform_2d[sprite_depth_index].position.y = position_y.a[j];
-				bank.captured_position_x[index + j] = sprites.transform_2d[sprite_depth_index].position.x;
-				bank.captured_position_y[index + j] = sprites.transform_2d[sprite_depth_index].position.y;
+				bank.captured_position_x[index_j] = sprites.transform_2d[sprite_depth_index].position.x;
+				bank.captured_position_y[index_j] = sprites.transform_2d[sprite_depth_index].position.y;
 				/*
 				//Not sure what I'm doing for this yet
 				bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
@@ -10915,10 +10918,11 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				int index_j = index + j;
 				sprites.transform_2d[running_sprite_index].position.x = position_x.a[j];
 				sprites.transform_2d[running_sprite_index].position.y = position_y.a[j];
-				bank.captured_position_x[index + j] = sprites.transform_2d[running_sprite_index].position.x;
-				bank.captured_position_y[index + j] = sprites.transform_2d[running_sprite_index].position.y;
+				bank.captured_position_x[index_j] = sprites.transform_2d[running_sprite_index].position.x;
+				bank.captured_position_y[index_j] = sprites.transform_2d[running_sprite_index].position.y;
 				/*
 				//Not sure what I'm doing for this yet
 				bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
@@ -11419,16 +11423,18 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {				//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j];
-				sprites.uid[sprite_depth_index].uid = bank.uid[index + j];
-				sprites.uid[sprite_depth_index].age = tfxU32((bank.age[index + j] + 0.1f) / pm.frame_length);
+				int index_j = index + j;
+				tfxU32 sprite_depth_index = bank.depth_index[index_j];
+				sprites.uid[sprite_depth_index].uid = bank.uid[index_j];
+				sprites.uid[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				running_sprite_index++;
 			}
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.uid[running_sprite_index].uid = bank.uid[index + j];
-				sprites.uid[running_sprite_index++].age = tfxU32((bank.age[index + j] + 0.1f) / pm.frame_length);
+				int index_j = index + j;
+				sprites.uid[running_sprite_index].uid = bank.uid[index_j];
+				sprites.uid[running_sprite_index++].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 			}
 		}
 		start_diff = 0;
