@@ -2696,8 +2696,8 @@ struct tfx_vector_t {
 	inline const tfxU32	size() const { return current_size; }
 	inline tfxU32		size_in_bytes() { return current_size * sizeof(T); }
 	inline const tfxU32	size_in_bytes() const { return current_size * sizeof(T); }
-	inline T&           operator[](tfxU32 i) { return data[i]; }
-	inline const T&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
+	inline T& operator[](tfxU32 i) { TFX_ASSERT(i < current_size); return data[i]; }
+	inline const T&     operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
 	inline T&           ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
 
 	inline void         free_all() { if (data) { current_size = capacity = alignment = 0; tfxFREE(data); data = nullptr; } }

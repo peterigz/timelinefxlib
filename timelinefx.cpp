@@ -3650,7 +3650,7 @@ void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst) {
 }
 
 tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
-	tfx_emitter_path_t path;
+	tfx_emitter_path_t path = {};
 	path.flags = src->flags;
 	path.name = name;
 	path.node_count = src->node_count;
@@ -3683,7 +3683,7 @@ tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter) {
 
 float GetCatmullSegment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
 	tfxU32 i = 0;
-	while (length >= (*nodes)[i].w && i < nodes->size() - 3) {
+	while (length > (*nodes)[i].w && i < nodes->current_size - 3) {
 		length -= (*nodes)[i].w;
 		i++;
 	}
@@ -3756,7 +3756,7 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 		for (int i = 0; i != path->node_count - 3; ++i) {
 			float step = 0.05f;
 			path_nodes[i].w = 0.f;
-			for (float t = 0.0f; t < 1.0f - step; t += step) {
+			for (float t = 0.0f; t <= 1.0f - step; t += step) {
 				tfx_vec3_t p1 = CatmullRomSpline3D(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t);
 				tfx_vec3_t p2 = CatmullRomSpline3D(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step);
 				tfx_vec3_t segment = p2 - p1;
@@ -3767,8 +3767,19 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 		float segment_length = length / (node_count);
 		float segment = 0.f;
 		int i = 1;
-		while (i < path->node_count) {
-			float ni = GetCatmullSegment(&path_nodes, segment);
+		int c = path->node_count - 1;
+		path->nodes[1] = CatmullRomSpline3D(&path_nodes[0], &path_nodes[1], &path_nodes[2], &path_nodes[3], 0.f);
+		float ni = GetCatmullSegment(&path_nodes, length);
+		ni = ni == (int)ni && ni > 0 ? ni - 0.0001f : ni;
+		path->nodes[c - 1] = CatmullRomSpline3D(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
+		path->node_soa.x[1] = path->nodes[1].x;
+		path->node_soa.y[1] = path->nodes[1].y;
+		path->node_soa.z[1] = path->nodes[1].z;
+		path->node_soa.x[c - 1] = path->nodes[c - 1].x;
+		path->node_soa.y[c - 1] = path->nodes[c - 1].y;
+		path->node_soa.z[c - 1] = path->nodes[c - 1].z;
+		while (i != c - 1) {
+			ni = GetCatmullSegment(&path_nodes, segment);
 			tfx_vec3_t position = CatmullRomSpline3D(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
 			path->node_soa.x[i] = position.x;
 			path->node_soa.y[i] = position.y;
@@ -3777,16 +3788,15 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 			segment += segment_length;
 		}
 		path->nodes[0] = path->nodes[1];
-		int c = path->node_count;
-		path->nodes[c - 1] = path->nodes[c - 2];
+		path->nodes[c] = path->nodes[c - 1];
 		path->node_soa.x[0] = path->node_soa.x[1];
 		path->node_soa.y[0] = path->node_soa.y[1];
 		path->node_soa.z[0] = path->node_soa.z[1];
 		path->node_soa.length[0] = path->node_soa.length[1];
-		path->node_soa.x[c - 1] = path->node_soa.x[c - 2];
-		path->node_soa.y[c - 1] = path->node_soa.y[c - 2];
-		path->node_soa.z[c - 1] = path->node_soa.z[c - 2];
-		path->node_soa.length[c - 1] = path->node_soa.length[c - 2];
+		path->node_soa.x[c] = path->node_soa.x[c - 1];
+		path->node_soa.y[c] = path->node_soa.y[c - 1];
+		path->node_soa.z[c] = path->node_soa.z[c - 1];
+		path->node_soa.length[c] = path->node_soa.length[c - 1];
 	}
 	else {
 		for (int i = 0; i != path->node_count; ++i) {
