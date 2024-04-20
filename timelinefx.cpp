@@ -1828,6 +1828,19 @@ void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFlo
 	z = tfxWideMul(z, one_div_511_wide);
 }
 
+void UnPackWide10bitAdd(tfxWideInt in, tfxWideFloat &inx, tfxWideFloat &iny, tfxWideFloat &inz) {
+	tfxWideInt w511 = tfxWideSetSinglei(511);
+	tfxWideFloat x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
+	tfxWideFloat y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
+	tfxWideFloat z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
+	x = tfxWideMul(x, one_div_511_wide);
+	y = tfxWideMul(y, one_div_511_wide);
+	z = tfxWideMul(z, one_div_511_wide);
+	inx = tfxWideAdd(x, inx);
+	iny = tfxWideAdd(y, iny);
+	inz = tfxWideAdd(z, inz);
+}
+
 void UnPackWide10bitX(tfxWideInt in, tfxWideFloat &v) {
 	tfxWideInt w511 = tfxWideSetSinglei(511);
 	v = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
@@ -3703,18 +3716,11 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 	}
 	tfx_vector_t<tfx_vec4_t> path_nodes;
 	path_nodes.resize(path->node_count);
-	float pitch = GetGraphValue(&path->angle_x, 0.f);
-	float yaw = GetGraphValue(&path->angle_y, 0.f);
-	float roll = GetGraphValue(&path->angle_z, 0.f);
-	tfx_mat4_t pitch_mat = Matrix4RotateX(pitch);
-	tfx_mat4_t yaw_mat = Matrix4RotateY(yaw);
-	tfx_mat4_t roll_mat = Matrix4RotateZ(roll);
-	tfx_mat4_t matrix = TransformMatrix4(&yaw_mat, &pitch_mat);
-	matrix = TransformMatrix4(&matrix, &roll_mat);
+	float pitch, yaw, roll;
+	tfx_mat4_t pitch_mat, yaw_mat, roll_mat, matrix;
 	float node_count = (float)path->node_count - 3.f;
 	if (path->flags & tfxPathFlags_mode_origin) {
-		tfx_vec4_t offset = { GetGraphValue(&path->offset_x, 0.f), GetGraphValue(&path->offset_y, 0.f), GetGraphValue(&path->offset_z, 0.f), 0.f };
-		tfx_vec4_t position = TransformVec4Matrix4(&matrix, offset);
+		tfx_vec4_t offset, position;
 		float age_inc = 1.f / node_count; float age = 0.f; int i = 1;
 		while (i < path->node_count) {
 			pitch_mat = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
@@ -4565,8 +4571,9 @@ void DeleteLibraryEffect(tfx_library_t *library, tfx_effect_emitter_t *effect) {
 }
 
 tfxU32 AddLibraryGlobal(tfx_library_t *library) {
-	if (library->free_global_graphs.size())
+	if (library->free_global_graphs.size()) {
 		return library->free_global_graphs.pop_back();
+	}
 	tfx_global_attributes_t global;
 	InitialiseGlobalAttributes(&global);
 	library->global_graphs.push_back(global);
@@ -4583,8 +4590,9 @@ tfxU32 AddLibraryKeyframes(tfx_library_t *library) {
 }
 
 tfxU32 AddLibraryEmitterAttributes(tfx_library_t *library) {
-	if (library->free_emitter_attributes.size())
+	if (library->free_emitter_attributes.size()) {
 		return library->free_emitter_attributes.pop_back();
+	}
 	tfx_emitter_attributes_t attributes;
 	InitialiseEmitterAttributes(&attributes);
 	library->emitter_attributes.push_back(attributes);

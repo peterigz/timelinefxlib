@@ -5880,6 +5880,7 @@ tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
 tfxINTERNAL tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
 tfxINTERNAL void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z);
+tfxINTERNAL void UnPackWide10bitAdd(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z);
 tfxINTERNAL void UnPackWide10bitX(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL void UnPackWide10bitY(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL void UnPackWide10bitZ(tfxWideInt in, tfxWideFloat &v);
