@@ -2048,6 +2048,14 @@ enum tfx_lookup_mode {
 	tfxFast
 };
 
+enum tfx_record_progress {
+	tfxCalculateFrames,
+	tfxBakeSpriteData,
+	tfxLinkUpSprites,
+	tfxCompressFrames,
+	tfxBakingDone
+};
+
 //Used in file loading - for loading effects library
 enum tfx_data_type {
 	tfxString,
@@ -6242,7 +6250,7 @@ tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfx_library_t *library, tfx
 tfxINTERNAL float LookupLibraryFastValueList(tfx_library_t *library, tfx_graph_type graph_type, int index, float age);
 tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfx_particle_manager_t *pm);
 tfxINTERNAL void ResetSpriteDataLerpOffset(tfx_sprite_data_t *sprites);
-tfxINTERNAL void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_lengt);
+tfxINTERNAL void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, std::atomic_int *progress);
 tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void WrapSingleParticleSprites(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL void ClearWrapBit(tfx_sprite_data_t *sprite_data);
@@ -6320,7 +6328,7 @@ tfxAPI_EDITOR tfx_effect_emitter_t *GetLibraryEffect(tfx_library_t *library, con
 tfxAPI_EDITOR bool IsValidEffectPath(tfx_library_t *library, const char *path);
 //Get an effect by it's path hash key
 tfxAPI_EDITOR tfx_effect_emitter_t *GetLibraryEffect(tfx_library_t *library, tfxKey key);
-tfxAPI_EDITOR void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3]);
+tfxAPI_EDITOR void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], std::atomic_int *progress);
 
 //Effect/Emitter functions
 void SetEffectUserData(tfx_effect_emitter_t *e, void *data);

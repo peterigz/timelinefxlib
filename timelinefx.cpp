@@ -8727,7 +8727,7 @@ void ResetSpriteDataLerpOffset(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3]) {
+void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], std::atomic_int *progress) {
 	assert(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
 	ReconfigureParticleManager(pm, GetRequiredParticleManagerMode(effect), effect->sort_passes, Is3DEffect(effect));
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index];
@@ -8742,6 +8742,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	bool start_counting_extra_frames = false;
 	pm->animation_length_in_time = (float)frames * frame_length - 1.f;
 	bool is_3d = Is3DEffect(effect);
+	progress->store(tfxCalculateFrames);
 
 	anim.recording_frame_rate = tfxMin(tfxMax(30.f, anim.recording_frame_rate), 240.f);
 
@@ -8831,7 +8832,10 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames) {
 			DisablePMSpawning(pm, true);
 		}
+
 	}
+
+	progress->store(tfxBakeSpriteData);
 
 	frames = tmp_frame_meta.size();
 
@@ -9025,8 +9029,10 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 			if (!particles_processed_last_frame)
 				break;
 		}
-		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames)
+		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames) {
 			DisablePMSpawning(pm, true);
+		}
+
 	}
 
 	sprite_data->real_time_sprites_buffer.current_size = total_sprites;
@@ -9059,7 +9065,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	pm->flags &= ~tfxEffectManagerFlags_recording_sprites;
 
 	if (anim.playback_speed < 1.f) {
-		CompressSpriteData(pm, effect, is_3d, frame_length);
+		CompressSpriteData(pm, effect, is_3d, frame_length, progress);
 	}
 	else {
 		sprite_data->compressed_sprites = sprite_data->real_time_sprites;
@@ -9072,7 +9078,8 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	ToggleSpritesWithUID(pm, false);
 }
 
-void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length) {
+void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, std::atomic_int *progress) {
+	progress->store(tfxLinkUpSprites);
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index];
 	tfx_sprite_data_t *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 	if (is_3d) {
@@ -9193,6 +9200,7 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 	anim.frames_after_compression = sprite_data->compressed.frame_count;
 	tfx_vector_t<tfx_compress_work_entry_t> compress_work;
 	compress_work.reserve((int)sprite_data->compressed.frame_count);
+	progress->store(tfxCompressFrames);
 	while (f < (int)sprite_data->compressed.frame_count) {
 		tfx_compress_work_entry_t *entry = &compress_work.next();
 		entry->sprite_data = sprite_data;
@@ -9207,6 +9215,7 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 	}
 	tfxCompleteAllWork(&pm->work_queue);
 	compress_work.free();
+	progress->store(tfxBakingDone);
 
 	TrimSoABuffer(&sprite_data->compressed_sprites_buffer);
 	sprite_data->compressed.total_memory_for_sprites = (tfxU32)sprite_data->compressed_sprites_buffer.current_arena_size;
@@ -9378,7 +9387,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index];
 	if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 		assert(pm);		//You must pass an appropriate particle manager if the animation needs recording
-		RecordSpriteData(pm, effect, animation_manager->update_frequency, &camera_position.x);
+		std::atomic_int progress;
+		RecordSpriteData(pm, effect, animation_manager->update_frequency, &camera_position.x, &progress);
 	}
 
 	bool has_animated_shape = false;
@@ -9621,7 +9631,8 @@ void UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_mana
 }
 
 void RecordTemplateEffect(tfx_effect_template_t *t, tfx_particle_manager_t *pm, float update_frequency, float camera_position[3]) {
-	RecordSpriteData(pm, &t->effect, update_frequency, camera_position);
+	std::atomic_int progress;
+	RecordSpriteData(pm, &t->effect, update_frequency, camera_position, &progress);
 }
 
 void DisableTemplateEmitter(tfx_effect_template_t *t, const char *path) {
