@@ -2582,13 +2582,15 @@ bool IsFiniteEmitter(tfx_effect_emitter_t* emitter) {
 }
 
 bool IsFiniteEffect(tfx_effect_emitter_t *effect) {
+	TFX_ASSERT(effect->type == tfxEffectType);
 	for (auto &e : GetEffectInfo(effect)->sub_effectors) {
 		float qty = GetGraphLastValue(&e.library->emitter_attributes[e.emitter_attributes].base.amount) + GetGraphLastValue(&e.library->emitter_attributes[e.emitter_attributes].variation.amount);
-		if (!(e.property_flags & tfxEmitterPropertyFlags_single) && qty > 0)
+		if (!(e.property_flags & tfxEmitterPropertyFlags_single) && qty > 0) {
 			return false;
-		else if (e.property_flags & tfxEmitterPropertyFlags_single && GetEffectProperties(&e)->single_shot_limit == 0)
+		}
+		else if (e.property_flags & tfxEmitterPropertyFlags_single && GetEffectProperties(&e)->single_shot_limit == 0) {
 			return false;
-
+		}
 	}
 	return true;
 }
