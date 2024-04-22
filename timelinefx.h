@@ -2489,8 +2489,8 @@ struct tfx_str_t {
 	inline ~tfx_str_t() { if (data && !is_local_buffer) { tfxFREE(data); data = nullptr; } current_size = capacity = 0; }
 
 	inline bool			empty() { return current_size == 0; }
-	inline char&           operator[](tfxU32 i) { return data[i]; }
-	inline const char&     operator[](tfxU32 i) const { assert(i < current_size); return data[i]; }
+	inline char&           operator[](tfxU32 i) { TFX_ASSERT(i < current_size); return data[i]; }
+	inline const char&     operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
 
 	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { current_size = 0; }
@@ -2498,9 +2498,9 @@ struct tfx_str_t {
 	inline const char*     begin() const { return strbuffer(); }
 	inline char*           end() { return strbuffer() + current_size; }
 	inline const char*     end() const { return strbuffer() + current_size; }
-	inline char&           back() { assert(current_size > 0); return strbuffer()[current_size - 1]; }
-	inline const char&     back() const { assert(current_size > 0); return strbuffer()[current_size - 1]; }
-	inline void         pop() { assert(current_size > 0); current_size--; }
+	inline char&           back() { TFX_ASSERT(current_size > 0); return strbuffer()[current_size - 1]; }
+	inline const char&     back() const { TFX_ASSERT(current_size > 0); return strbuffer()[current_size - 1]; }
+	inline void         pop() { TFX_ASSERT(current_size > 0); current_size--; }
 	inline void	        push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void*)(data + current_size)) char(v); current_size++; }
 
 	inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
@@ -2509,14 +2509,14 @@ struct tfx_str_t {
 		if (new_capacity <= capacity) return;
 		char* new_data = (char*)tfxALLOCATE((size_t)new_capacity * sizeof(char));
 		memset(new_data, '\0', new_capacity * sizeof(char));
-		assert(new_data);	//unable to allocate memory. Todo: proper handling
+		TFX_ASSERT(new_data);	//unable to allocate memory. Todo: proper handling
 		if (data && !is_local_buffer) {
 			if (tfx_SafeCopy(new_data, data, (size_t)current_size * sizeof(char))) {
 				tfxFREE(data);
 			}
 			else {
 				//Failed to copy
-				assert(0);
+				TFX_ASSERT(0);
 			}
 		}
 		else if (is_local_buffer) {
@@ -2524,7 +2524,7 @@ struct tfx_str_t {
 			}
 			else {
 				//Failed to copy
-				assert(0);
+				TFX_ASSERT(0);
 			}
 		}
 		data = new_data;
@@ -2532,9 +2532,9 @@ struct tfx_str_t {
 		capacity = new_capacity;
 	}
 
-	tfx_str_t(const char *text) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-	tfx_str_t(const tfx_str_t &src) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
-    inline void operator=(const char *text) { if(!text) { free_all(); return;} size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); assert(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfx_str_t(const char *text) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	tfx_str_t(const tfx_str_t &src) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
+    inline void operator=(const char *text) { if(!text) { free_all(); return;} size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const tfx_str_t& src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
 	inline bool operator==(const tfx_str_t string) { return !strcmp(c_str(), string.c_str()); }
@@ -2576,7 +2576,7 @@ struct tfx_str_t {
 	inline void TrimToZero() {
 		if (current_size < capacity) {
 			tfx_bool result = tfx_SafeMemset(data, data + current_size, '\0', capacity - current_size);
-			assert(result);
+			TFX_ASSERT(result);
 		}
 	}
 	inline void TrimFront(char c = ' ') {
@@ -2719,17 +2719,17 @@ struct tfx_vector_t {
 	inline const T*     rend() const { return data; }
 	inline T*           rbegin() { return data + current_size; }
 	inline const T*     rbegin() const { return data + current_size; }
-	inline T&           front() { assert(current_size > 0); return data[0]; }
-	inline const T&     front() const { assert(current_size > 0); return data[0]; }
-	inline T&           back() { assert(current_size > 0); return data[current_size - 1]; }
-	inline const T&     back() const { assert(current_size > 0); return data[current_size - 1]; }
-	inline T&           parent() { assert(current_size > 1); return data[current_size - 2]; }
-	inline const T&     parent() const { assert(current_size > 1); return data[current_size - 2]; }
+	inline T&           front() { TFX_ASSERT(current_size > 0); return data[0]; }
+	inline const T&     front() const { TFX_ASSERT(current_size > 0); return data[0]; }
+	inline T&           back() { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
+	inline const T&     back() const { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
+	inline T&           parent() { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
+	inline const T&     parent() const { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
 	inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 	inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 	inline void         resize_bytes(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 	inline void         resize(tfxU32 new_size, const T& v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
-	inline void         shrink(tfxU32 new_size) { assert(new_size <= current_size); current_size = new_size; }
+	inline void         shrink(tfxU32 new_size) { TFX_ASSERT(new_size <= current_size); current_size = new_size; }
 	inline void			set_alignment(tfxU32 align_to) { TFX_ASSERT(0 == (align_to & (align_to - 1)) && "must align to a power of two"); alignment = align_to; }
 	inline void         reserve(tfxU32 new_capacity) {
 		if (new_capacity <= capacity)
@@ -2741,7 +2741,7 @@ struct tfx_vector_t {
 		else {
 			new_data = (T*)tfxALLOCATE((size_t)new_capacity * sizeof(T));
 		}
-		assert(new_data);	//Unable to allocate memory. todo: better handling
+		TFX_ASSERT(new_data);	//Unable to allocate memory. todo: better handling
 		if (data) {
 			memcpy(new_data, data, (size_t)current_size * sizeof(T));
 			tfxFREE(data);
@@ -2782,25 +2782,25 @@ struct tfx_vector_t {
 	inline T&			next() {
 		return push_back(T());
 	}
-	inline void			zero() { assert(capacity > 0); memset(data, 0, capacity * sizeof(T)); }
-	inline void         pop() { assert(current_size > 0); current_size--; }
-	inline T&	        pop_back() { assert(current_size > 0); current_size--; return data[current_size]; }
+	inline void			zero() { TFX_ASSERT(capacity > 0); memset(data, 0, capacity * sizeof(T)); }
+	inline void         pop() { TFX_ASSERT(current_size > 0); current_size--; }
+	inline T&	        pop_back() { TFX_ASSERT(current_size > 0); current_size--; return data[current_size]; }
 	inline void         push_front(const T& v) { if (current_size == 0) push_back(v); else insert(data, v); }
-	inline T*           erase(const T* it) { assert(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(T)); current_size--; return data + off; }
-	inline T	        pop_front() { assert(current_size > 0); T front = data[0]; erase(data); return front; }
-	inline T*           erase(const T* it, const T* it_last) { assert(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove(data + off, data + off + count, ((size_t)current_size - (size_t)off - count) * sizeof(T)); current_size -= (tfxU32)count; return data + off; }
-	inline T*           erase_unsorted(const T* it) { assert(it >= data && it < data + current_size);  const ptrdiff_t off = it - data; if (it < data + current_size - 1) memcpy(data + off, data + current_size - 1, sizeof(T)); current_size--; return data + off; }
-	inline T*           insert(const T* it, const T& v) { assert(it >= data && it <= data + current_size); const ptrdiff_t off = it - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); new((void*)(data + off)) T(v); current_size++; return data + off; }
-	inline T*           insert_after(const T* it, const T& v) { assert(it >= data && it <= data + current_size); const ptrdiff_t off = (it + 1) - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); new((void*)(data + off)) T(v); current_size++; return data + off; }
+	inline T*           erase(const T* it) { TFX_ASSERT(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(T)); current_size--; return data + off; }
+	inline T	        pop_front() { TFX_ASSERT(current_size > 0); T front = data[0]; erase(data); return front; }
+	inline T*           erase(const T* it, const T* it_last) { TFX_ASSERT(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove(data + off, data + off + count, ((size_t)current_size - (size_t)off - count) * sizeof(T)); current_size -= (tfxU32)count; return data + off; }
+	inline T*           erase_unsorted(const T* it) { TFX_ASSERT(it >= data && it < data + current_size);  const ptrdiff_t off = it - data; if (it < data + current_size - 1) memcpy(data + off, data + current_size - 1, sizeof(T)); current_size--; return data + off; }
+	inline T*           insert(const T* it, const T& v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = it - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); new((void*)(data + off)) T(v); current_size++; return data + off; }
+	inline T*           insert_after(const T* it, const T& v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = (it + 1) - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); new((void*)(data + off)) T(v); current_size++; return data + off; }
 	inline bool         contains(const T& v) const { const T* _data = data;  const T* data_end = data + current_size; while (_data < data_end) if (*_data++ == v) return true; return false; }
 	inline T*           find(const T& v) { T* _data = data;  const T* data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
 	inline const T*     find(const T& v) const { const T* _data = data;  const T* data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
 	inline bool         find_erase(const T& v) { const T* it = find(v); if (it < data + current_size) { erase(it); return true; } return false; }
 	inline bool         find_erase_unsorted(const T& v) { const T* it = find(v); if (it < data + current_size) { erase_unsorted(it); return true; } return false; }
-	inline tfxU32       index_from_ptr(const T* it) const { assert(it >= data && it < data + current_size); const ptrdiff_t off = it - data; return (tfxU32)off; }
+	inline tfxU32       index_from_ptr(const T* it) const { TFX_ASSERT(it >= data && it < data + current_size); const ptrdiff_t off = it - data; return (tfxU32)off; }
 
-	inline void			create_pool(tfxU32 amount) { assert(current_size == 0); T base; reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
-	inline void			create_pool_with(tfxU32 amount, const T &base) { assert(current_size == 0);  reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
+	inline void			create_pool(tfxU32 amount) { TFX_ASSERT(current_size == 0); T base; reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
+	inline void			create_pool_with(tfxU32 amount, const T &base) { TFX_ASSERT(current_size == 0);  reserve(amount); for (tfxU32 i = 0; i != capacity; ++i) { new((void*)(data + current_size)) T(base); current_size++; } }
 
 };
 
@@ -2875,7 +2875,7 @@ struct tfx_storage_map_t {
 	}
 
 	inline bool ValidName(const char *name) {
-		assert(name);	//Can't search for anything that's null
+		TFX_ASSERT(name);	//Can't search for anything that's null
 		return GetIndex(name) > -1;
 	}
 
@@ -2943,30 +2943,30 @@ struct tfx_storage_map_t {
 
 	inline T &At(const char *name) {
 		int index = GetIndex(name);
-		assert(index > -1);						//Key was not found
+		TFX_ASSERT(index > -1);						//Key was not found
 		return data[index];
 	}
 
 	inline T &At(const tfx_str_t &name) {
 		int index = GetIndex(name.c_str());
-		assert(index > -1);						//Key was not found
+		TFX_ASSERT(index > -1);						//Key was not found
 		return data[index];
 	}
 
 	inline T &AtInt(int name) {
 		int index = GetIntIndex(name);
-		assert(index > -1);						//Key was not found
+		TFX_ASSERT(index > -1);						//Key was not found
 		return data[index];
 	}
 
 	inline T &At(tfxKey key) {
 		int index = GetIndex(key);
-		assert(index > -1);						//Key was not found
+		TFX_ASSERT(index > -1);						//Key was not found
 		return data[index];
 	}
 
 	inline T &operator[](const tfxU32 index) {
-		assert(index < data.current_size);		//Index was out of range
+		TFX_ASSERT(index < data.current_size);		//Index was out of range
 		return data[index];
 	}
 
@@ -3097,7 +3097,7 @@ inline void ResetSoABuffer(tfx_soa_buffer_t *buffer) {
 }
 
 inline void* GetEndOfBufferPtr(tfx_soa_buffer_t *buffer) {
-	assert(buffer->data);
+	TFX_ASSERT(buffer->data);
 	return (char*)buffer->data + buffer->current_arena_size;
 }
 
@@ -3140,8 +3140,8 @@ inline size_t GetSoACapacityRequirement(tfx_soa_buffer_t *buffer, size_t capacit
 //set up the memory for all your arrays. One block of memory will be created and all your arrays will be line up
 //inside the space
 inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_arrays, tfxU32 reserve_amount, tfxU32 alignment = 4) {
-	assert(buffer->data == nullptr && buffer->array_ptrs.current_size > 0);	//Must be an unitialised soa buffer
-	assert(alignment >= 4);		//Alignment must be 4 or greater
+	TFX_ASSERT(buffer->data == nullptr && buffer->array_ptrs.current_size > 0);	//Must be an unitialised soa buffer
+	TFX_ASSERT(alignment >= 4);		//Alignment must be 4 or greater
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		buffer->struct_size += buffer->array_ptrs[i].unit_size;
 	}
@@ -3150,7 +3150,7 @@ inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_array
 	buffer->alignment = alignment;
 	buffer->current_arena_size = GetSoACapacityRequirement(buffer, reserve_amount);
 	buffer->data = tfxALLOCATE_ALIGNED(buffer->current_arena_size, buffer->alignment);
-	assert(buffer->data);	//Unable to allocate memory. Todo: better handling
+	TFX_ASSERT(buffer->data);	//Unable to allocate memory. Todo: better handling
 	memset(buffer->data, 0, buffer->current_arena_size);
 	buffer->struct_of_arrays = struct_of_arrays;
 	size_t running_offset = 0;
@@ -3167,12 +3167,12 @@ inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_array
 
 //Call this function to increase the capacity of all the arrays in the buffer. Data that is already in the arrays is preserved if keep_data passed as true (default).
 inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 new_target_size, bool keep_data = true) {
-	assert(buffer->capacity);			//buffer must already have a capacity!
+	TFX_ASSERT(buffer->capacity);			//buffer must already have a capacity!
 	tfxU32 new_capacity = 0;
 	new_capacity = new_target_size > buffer->capacity ? new_target_size + new_target_size / 2 : buffer->capacity + buffer->capacity / 2;
 	new_capacity = (new_capacity / buffer->block_size + 1) * buffer->block_size;
 	void *new_data = tfxALLOCATE_ALIGNED(GetSoACapacityRequirement(buffer, new_capacity), buffer->alignment);
-	assert(new_data);	//Unable to allocate memory. Todo: better handling
+	TFX_ASSERT(new_data);	//Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
 	size_t running_offset = 0;
 	if (keep_data) {
@@ -3215,7 +3215,7 @@ inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 
 
 //Increase current size of a SoA Buffer and grow if necessary.
 inline void Resize(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
-	assert(buffer->data);			//No data allocated in buffer
+	TFX_ASSERT(buffer->data);			//No data allocated in buffer
 	if (new_size >= buffer->capacity) {
 		GrowArrays(buffer, buffer->capacity, new_size);
 	}
@@ -3225,7 +3225,7 @@ inline void Resize(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 //Increase current size of a SoA Buffer and grow if necessary. This will not shrink the capacity so if new_size is not bigger than the
 //current capacity then nothing will happen
 inline void SetCapacity(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
-	assert(buffer->data);			//No data allocated in buffer
+	TFX_ASSERT(buffer->data);			//No data allocated in buffer
 	if (new_size >= buffer->capacity) {
 		GrowArrays(buffer, buffer->capacity, new_size);
 	}
@@ -3233,52 +3233,52 @@ inline void SetCapacity(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 
 //Increase current size of a SoA Buffer by 1 and grow if grow is true. Returns the last index.
 inline tfxU32 AddRow(tfx_soa_buffer_t *buffer, bool grow = false) {
-	assert(buffer->data);			//No data allocated in buffer
+	TFX_ASSERT(buffer->data);			//No data allocated in buffer
 	tfxU32 new_size = ++buffer->current_size;
 	if (grow && new_size == buffer->capacity) {
 		GrowArrays(buffer, buffer->capacity, new_size);
 	}
 	buffer->current_size = new_size;
-	assert(buffer->current_size <= buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
+	TFX_ASSERT(buffer->current_size <= buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 	return buffer->current_size - 1;
 }
 
 //Increase current size of a SoA Buffer by a specific amount and grow if grow is true. Returns the last index.
 //You can also pass in a boolean to know if the buffer had to be increased in size or not. Returns the index where the new rows start.
 inline tfxU32 AddRows(tfx_soa_buffer_t *buffer, tfxU32 amount, bool grow, bool &grew) {
-	assert(buffer->data);			//No data allocated in buffer
+	TFX_ASSERT(buffer->data);			//No data allocated in buffer
 	tfxU32 first_new_index = buffer->current_size;
 	tfxU32 new_size = buffer->current_size += amount;
 	if (grow && new_size >= buffer->capacity) {
 		grew = GrowArrays(buffer, buffer->capacity, new_size);
 	}
 	buffer->current_size = new_size;
-	assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
+	TFX_ASSERT(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 	return first_new_index;
 }
 
 //Increase current size of a SoA Buffer and grow if grow is true. Returns the index where the new rows start.
 inline tfxU32 AddRows(tfx_soa_buffer_t *buffer, tfxU32 amount, bool grow) {
-	assert(buffer->data);			//No data allocated in buffer
+	TFX_ASSERT(buffer->data);			//No data allocated in buffer
 	tfxU32 first_new_index = buffer->current_size;
 	tfxU32 new_size = buffer->current_size + amount;
 	if (grow && new_size >= buffer->capacity) {
 		GrowArrays(buffer, buffer->capacity, new_size);
 	}
 	buffer->current_size = new_size;
-	assert(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
+	TFX_ASSERT(buffer->current_size < buffer->capacity);	//Capacity of buffer is exceeded, set grow to true or don't exceed the capacity
 	return first_new_index;
 }
 
 //Decrease the current size of a SoA Buffer by 1.
 inline void PopRow(tfx_soa_buffer_t *buffer) {
-	assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
+	TFX_ASSERT(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 	buffer->current_size--;
 }
 
 //Bump the start index of the SoA buffer (ring buffer usage)
 inline void Bump(tfx_soa_buffer_t *buffer) {
-	assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
+	TFX_ASSERT(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 	if (buffer->current_size == 0)
 		return;
 	buffer->start_index++; buffer->start_index %= buffer->capacity; buffer->current_size--;
@@ -3286,7 +3286,7 @@ inline void Bump(tfx_soa_buffer_t *buffer) {
 
 //Bump the start index of the SoA buffer (ring buffer usage)
 inline void Bump(tfx_soa_buffer_t *buffer, tfxU32 amount) {
-	assert(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
+	TFX_ASSERT(buffer->data && buffer->current_size > 0);			//No data allocated in buffer
 	if (buffer->current_size == 0)
 		return;
 	if (amount > buffer->current_size)
@@ -3320,10 +3320,10 @@ inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 		FreeSoABuffer(buffer);
 		return;
 	}
-	assert(buffer->current_size < buffer->capacity);
+	TFX_ASSERT(buffer->current_size < buffer->capacity);
 	tfxU32 new_capacity = buffer->current_size;
 	void *new_data = tfxALLOCATE_ALIGNED(GetSoACapacityRequirement(buffer, new_capacity), buffer->alignment);
-	assert(new_data);	//Unable to allocate memory. Todo: better handling
+	TFX_ASSERT(new_data);	//Unable to allocate memory. Todo: better handling
 	memset(new_data, 0, new_capacity * buffer->struct_size);
 	size_t running_offset = 0;
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
@@ -3394,13 +3394,13 @@ struct tfx_bucket_array_t {
 		bucket_list.free();
 	}
 	inline T&           operator[](tfxU32 i) {
-		assert(i < current_size);		//Index is out of bounds
+		TFX_ASSERT(i < current_size);		//Index is out of bounds
 		tfxU32 bucket_index = i / size_of_each_bucket;
 		tfxU32 element_index = i % size_of_each_bucket;
 		return (*bucket_list[bucket_index]).data[element_index];
 	}
 	inline const T&     operator[](tfxU32 i) const {
-		assert(i < current_size);		//Index is out of bounds
+		TFX_ASSERT(i < current_size);		//Index is out of bounds
 		tfxU32 bucket_index = i / size_of_each_bucket;
 		tfxU32 element_index = i % size_of_each_bucket;
 		return (*bucket_list[bucket_index]).data[element_index];
@@ -3409,10 +3409,10 @@ struct tfx_bucket_array_t {
 	inline const T*     begin() const { return bucket_list.current_size ? (T*)bucket_list[0]->data.data : nullptr; }
 	inline T*           end() { return bucket_list.current_size ? (T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : nullptr; }
 	inline const T*     end() const { return bucket_list.current_size ? (T*)bucket_list[(current_size - 1) / size_of_each_bucket]->data.end() : nullptr; }
-	inline T&           front() { assert(current_size > 0); return bucket_list[0]->data.front(); }
-	inline const T&     front() const { assert(current_size > 0); return bucket_list[0]->data.front(); }
-	inline T&           back() { assert(current_size > 0); return bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
-	inline const T&     back() const { assert(current_size > 0); return bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
+	inline T&           front() { TFX_ASSERT(current_size > 0); return bucket_list[0]->data.front(); }
+	inline const T&     front() const { TFX_ASSERT(current_size > 0); return bucket_list[0]->data.front(); }
+	inline T&           back() { TFX_ASSERT(current_size > 0); return bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
+	inline const T&     back() const { TFX_ASSERT(current_size > 0); return bucket_list[(current_size - 1) / size_of_each_bucket]->data.back(); }
 	inline tfxU32		active_buckets() { return current_size == 0 ? 0 : current_size / size_of_each_bucket + 1; }
 	inline void         clear() {
 		for (tfx_bucket_t<T> *bucket : bucket_list) {
@@ -3449,7 +3449,7 @@ struct tfx_bucket_array_t {
 	}
 
 	inline T*	insert(tfxU32 insert_index, const T &v) {
-		assert(insert_index < current_size);
+		TFX_ASSERT(insert_index < current_size);
 		tfxU32 insert_bucket = insert_index / size_of_each_bucket;
 		tfxU32 element_index = insert_index % size_of_each_bucket;
 		if (bucket_list[insert_bucket]->data.current_size < bucket_list[insert_bucket]->data.capacity) {
@@ -3498,12 +3498,12 @@ struct tfx_bucket_array_t {
 	inline T*	insert(T* position, const T &v) {
 		tfxU32 index = 0;
 		bool find_result = find(position, index);
-		assert(find_result);	//Could not find the object to insert at, make sure it exists
+		TFX_ASSERT(find_result);	//Could not find the object to insert at, make sure it exists
 		return insert(index, v);
 	}
 
 	inline void erase(tfxU32 index) {
-		assert(index < current_size);
+		TFX_ASSERT(index < current_size);
 		tfxU32 bucket_index = index / size_of_each_bucket;
 		tfxU32 element_index = index % size_of_each_bucket;
 		bucket_list[bucket_index]->data.erase(&bucket_list[bucket_index]->data[element_index]);
@@ -3524,7 +3524,7 @@ struct tfx_bucket_array_t {
 	inline void erase(T* it) {
 		tfxU32 index = 0;
 		bool find_result = find(it, index);
-		assert(find_result);	//pointer not found in list
+		TFX_ASSERT(find_result);	//pointer not found in list
 		erase(index);
 	}
 
@@ -3634,7 +3634,7 @@ struct tfx_stream_t {
 			return;
 		char* new_data = (char*)tfxALLOCATE((tfxU64)new_capacity * sizeof(char));
 		memset(new_data, 0, new_capacity);
-		assert(new_data);	//Unable to allocate memory. Todo: better handling
+		TFX_ASSERT(new_data);	//Unable to allocate memory. Todo: better handling
 		if (data) {
 			memcpy(new_data, data, (tfxU64)size * sizeof(char));
 			tfxFREE(data);
@@ -6833,8 +6833,8 @@ a for loop to iterate over the sprites in a pre-recorded effect
 * @returns				tfxU32 containing the index offset
 */
 tfxAPI inline tfxU32 SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
-	assert(frame < sprite_data->normal.frame_meta.size());			//frame is outside index range
-	assert(layer < tfxLAYERS);								//layer is outside index range
+	TFX_ASSERT(frame < sprite_data->normal.frame_meta.size());			//frame is outside index range
+	TFX_ASSERT(layer < tfxLAYERS);								//layer is outside index range
 	return sprite_data->normal.frame_meta[frame].index_offset[layer];
 }
 
@@ -6878,8 +6878,8 @@ a for loop to iterate over the sprites in a pre-recorded effect
 * @returns				tfxU32 containing the index offset
 */
 tfxAPI inline tfxU32 CompressedSpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
-	assert(frame < sprite_data->compressed.frame_meta.size());			//frame is outside index range
-	assert(layer < tfxLAYERS);								//layer is outside index range
+	TFX_ASSERT(frame < sprite_data->compressed.frame_meta.size());			//frame is outside index range
+	TFX_ASSERT(layer < tfxLAYERS);								//layer is outside index range
 	return sprite_data->compressed.frame_meta[frame].index_offset[layer];
 }
 
@@ -6892,8 +6892,8 @@ a for loop to iterate over the sprites in a pre-recorded effect
 * @returns				tfxU32 containing the end offset
 */
 tfxAPI inline tfxU32 SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
-	assert(frame < sprite_data->normal.frame_meta.size());			//frame is outside index range
-	assert(layer < tfxLAYERS);								//layer is outside index range
+	TFX_ASSERT(frame < sprite_data->normal.frame_meta.size());			//frame is outside index range
+	TFX_ASSERT(layer < tfxLAYERS);								//layer is outside index range
 	return sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer];
 }
 
@@ -6906,8 +6906,8 @@ a for loop to iterate over the sprites in a pre-recorded effect
 * @returns				tfxU32 containing the end offset
 */
 tfxAPI inline tfxU32 CompressedSpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
-	assert(frame < sprite_data->compressed.frame_meta.size());			//frame is outside index range
-	assert(layer < tfxLAYERS);								//layer is outside index range
+	TFX_ASSERT(frame < sprite_data->compressed.frame_meta.size());			//frame is outside index range
+	TFX_ASSERT(layer < tfxLAYERS);								//layer is outside index range
 	return sprite_data->compressed.frame_meta[frame].index_offset[layer] + sprite_data->compressed.frame_meta[frame].sprite_count[layer];
 }
 
