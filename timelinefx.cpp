@@ -10789,7 +10789,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 #else
         l = tfxWideSqrt(l);
 #endif
-		p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(0.02f)));
+		p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(0.001f)));
 		stretch_velocity_x = tfxWideDiv(stretch_velocity_x, l);
 		stretch_velocity_y = tfxWideDiv(stretch_velocity_y, l);
 
