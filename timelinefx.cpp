@@ -11355,6 +11355,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 	tfxEmitterStateFlags emitter_flags = emitter.state_flags;
 	tfxEmitterStateFlags property_flags = emitter.property_flags;
 	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
+	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
@@ -11365,7 +11366,12 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 		tfxWideArray image_frame;
 		image_frame.m = tfxWideLoad(&bank.image_frame[index]);
 		tfxWideArrayi flags;
+		tfxWideArrayi single_loop_count;
+		single_loop_count.m = tfxWideLoadi((tfxWideInt*)&bank.single_loop_count[index]);
+		//We only want to not capture if single loop count is 0.
 		flags.m = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+		flags.m = tfxWideXOri(tfxWideAndi(flags.m, capture_after_transform_flag), capture_after_transform_flag);
+		flags.m = tfxWideOri(flags.m, tfxWideAndi(capture_after_transform_flag, tfxWideGreateri(single_loop_count.m, tfxWideSetZeroi)));
 
 		tfx__readbarrier;
 
@@ -11390,7 +11396,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j];
 				tfxU32 &sprites_index = bank.sprite_index[index_j];
-				tfxU32 capture = (flags.a[j] & tfxParticleFlags_capture_after_transform) ^ tfxParticleFlags_capture_after_transform;
+				tfxU32 capture = flags.a[j];
 				sprites.captured_index[sprite_depth_index] = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + sprite_depth_index;
@@ -11403,7 +11409,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 &sprites_index = bank.sprite_index[index_j];
-				tfxU32 capture = (flags.a[j] & tfxParticleFlags_capture_after_transform) ^ tfxParticleFlags_capture_after_transform;
+				tfxU32 capture = flags.a[j];
 				sprites.captured_index[running_sprite_index] = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
