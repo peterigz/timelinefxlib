@@ -9416,8 +9416,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.color = sprites.color[i];
 			sprite.property_indexes = sprites.property_indexes[i];
-			tfxU32 property_index = sprite.property_indexes & 0x00007FFF;
-			sprite.property_indexes &= ~0x00007FFF;
+			tfxU32 property_index = sprite.property_indexes & tfxPROPERTY_INDEX_MASK;
+			sprite.property_indexes &= ~tfxPROPERTY_INDEX_MASK;
 			sprite.property_indexes += effect->library->emitter_properties[property_index].animation_property_index;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];
@@ -9438,8 +9438,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.color = sprites.color[i];
 			sprite.property_indexes = sprites.property_indexes[i];
-			tfxU32 property_index = sprite.property_indexes & 0x00007FFF;
-			sprite.property_indexes &= ~0x00007FFF;
+			tfxU32 property_index = sprite.property_indexes & tfxPROPERTY_INDEX_MASK;
+			sprite.property_indexes &= ~tfxPROPERTY_INDEX_MASK;
 			sprite.property_indexes += effect->library->emitter_properties[property_index].animation_property_index;
 			sprite.intensity = sprites.intensity[i];
 			sprite.lerp_offset = sprites.lerp_offset[i];

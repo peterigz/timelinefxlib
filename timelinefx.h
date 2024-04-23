@@ -1105,6 +1105,7 @@ const float tfxPI2 = tfxPI * 2.f;
 #define tfx90Radians 1.5708f
 #define tfxMAXDEPTH 3
 #define tfxNL u8"\n"
+#define tfxPROPERTY_INDEX_MASK 0x00007FFF
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
 namespace tfx {
