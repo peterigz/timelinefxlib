@@ -1106,6 +1106,7 @@ const float tfxPI2 = tfxPI * 2.f;
 #define tfxMAXDEPTH 3
 #define tfxNL u8"\n"
 #define tfxPROPERTY_INDEX_MASK 0x00007FFF
+#define tfxCIRCLENODES 16
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
 namespace tfx {
@@ -2019,7 +2020,8 @@ enum tfx_emission_direction : unsigned char {
 	tfxOutwards,
 	tfxBothways,
 	tfxSpecified,
-	tfxSurface
+	tfxSurface,
+	tfxOrbital
 };
 
 //For line effects where traverse line is switched on
@@ -3827,6 +3829,8 @@ struct tfx_storage_t {
 	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
 	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
 	tfx_data_types_dictionary_t data_types;
+	float circle_path_x[tfxCIRCLENODES];
+	float circle_path_z[tfxCIRCLENODES];
 	//tfx_storage_map_t<tfx_particle_manager_t*> particle_managers;
 	//tfx_storage_map_t<tfx_animation_manager_t*> animation_managers;
 };
@@ -5835,6 +5839,7 @@ tfxAPI_EDITOR tfx_vec3_t CylinderSurfaceNormal(float x, float z, float width, fl
 tfxAPI_EDITOR tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z);
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
+tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineSoALoop(const float* p_x, const float* p_y, int p1, int points, float t);
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
@@ -6149,6 +6154,8 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfx_graph_type type) {
 //--------------------------------
 tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size = 8);
 tfxAPI_EDITOR void BuildPathNodes(tfx_emitter_path_t* path);
+tfxAPI_EDITOR void BuildUnitCylinderLoop();
+tfxAPI_EDITOR tfx_vec2_t RandomCylinderPoint(tfx_random_t *random);
 tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *path);
 tfxINTERNAL void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst);
 tfxINTERNAL tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter);
