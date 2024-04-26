@@ -4111,6 +4111,7 @@ struct tfx_hsv_t {
 
 const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
 const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
+#define tfxPACKED_X_NORMAL_3D 0x1FFFF9FF
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
 #define tfxPACKED_Y_NORMAL_2D 32767
 
