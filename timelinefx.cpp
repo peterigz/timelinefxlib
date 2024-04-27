@@ -1878,6 +1878,10 @@ void UnPackWide10bitZ(tfxWideInt in, tfxWideFloat &v) {
 	v = tfxWideMul(v, one_div_511_wide);
 }
 
+tfxWideFloat UnPackWide10bitX(tfxWideInt in) {
+	return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 10), tfxWideSetSinglei(511))), one_div_511_wide);
+}
+
 tfxWideFloat UnPackWide10bitY(tfxWideInt in) {
 	return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide);
 }
@@ -9811,7 +9815,6 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	float range = properties->noise_base_offset_range;
 	new_effect.noise_base_offset = RandomRange(&pm->random, range);
 	pm->effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
-	effect->pm_index = parent_index;
 	pm->sort_passes = tfxMax(effect->sort_passes, pm->sort_passes);
 	pm->sort_passes = tfxMin(5, pm->sort_passes);
 
@@ -9857,7 +9860,6 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			emitter.hierarchy_depth = hierarchy_depth;
 			emitter.world_rotations = 0.f;
 			emitter.seed_index = seed_index++;
-			e.pm_index = index;		//Doesn't have much use beyond the editor?
 			//----Handle
 			if (e.property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 				emitter.image_handle = tfx_vec2_t(0.5f, 0.5f);
@@ -10504,8 +10506,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		else {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				const tfxWideFloat offset_x = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index])), emitter_size_x);
-				tfxWideFloat local_position_x = tfxWideLoad(&bank.position_y[index]);
+				tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
 				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
 
 				tfx__readbarrier;
@@ -10513,10 +10514,10 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 				//Lines - Reposition if the particle is travelling along a line
 				tfxWideFloat length = tfxWideAbs(local_position_x);
 				tfxWideFloat at_end = tfxWideGreater(length, emitter_size_x);
-				local_position_x = tfxWideSub(local_position_x, tfxWideAnd(at_end, offset_x));
+				local_position_x = tfxWideSub(local_position_x, tfxWideAnd(at_end, emitter_size_x));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
-				tfxWideStore(&bank.position_y[index], local_position_x);
+				tfxWideStore(&bank.position_x[index], local_position_x);
 			}
 		}
 	}
@@ -10644,8 +10645,8 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_z = velocity_normal_z;
 		}
 		else if (vector_align_type == tfxVectorAlignType_emitter) {
-			alignment_vector_x = tfxWideSetSingle(0.f);
-			alignment_vector_y = tfxWideSetSingle(1.f);
+			alignment_vector_x = tfxWideSetSingle(1.f);
+			alignment_vector_y = tfxWideSetSingle(0.f);
 			alignment_vector_z = tfxWideSetSingle(0.f);
 			TransformMatrix4Vec3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
@@ -13163,8 +13164,6 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
-			emitter.grid_coords.x = 0.f;
-
 			if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 				emitter.grid_coords.x = (float)RandomRange(&random, (tfxU32)grid_points.x);
 				local_position_x = emitter.grid_coords.x * grid_segment_size_x;
@@ -14258,9 +14257,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 
 		tfx_vec3_t velocity_normal;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
-			velocity_normal = { 1.f, 0.f, 0.f };
 			velocity_normal_packed = tfxPACKED_X_NORMAL_3D;
-			velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
 		} else if(emission_type != tfxArea || (emission_type == tfxArea && emission_direction != tfxSurface)) {
 			//----Velocity
 			float emission_pitch = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);

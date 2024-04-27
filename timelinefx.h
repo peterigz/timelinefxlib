@@ -4111,7 +4111,7 @@ struct tfx_hsv_t {
 
 const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
 const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
-#define tfxPACKED_X_NORMAL_3D 0x1FFFF9FF
+#define tfxPACKED_X_NORMAL_3D 0x3FE7FDFF
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
 #define tfxPACKED_Y_NORMAL_2D 32767
 
@@ -5055,12 +5055,10 @@ struct tfx_effect_emitter_t {
 	//Indexes into library storage
 	tfxU32 info_index;
 	tfxU32 property_index;
-	tfxU32 pm_index;
 
 	tfx_effect_emitter_t() :
 		buffer_index(0),
 		path_hash(0),
-		pm_index(0),
 		parent(nullptr),
 		user_data(nullptr),
 		update_callback(nullptr),
@@ -5899,6 +5897,7 @@ tfxINTERNAL void UnPackWide10bitAdd(tfxWideInt in, tfxWideFloat &x, tfxWideFloat
 tfxINTERNAL void UnPackWide10bitX(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL void UnPackWide10bitY(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL void UnPackWide10bitZ(tfxWideInt in, tfxWideFloat &v);
+tfxINTERNAL tfxWideFloat UnPackWide10bitX(tfxWideInt in);
 tfxINTERNAL tfxWideFloat UnPackWide10bitY(tfxWideInt in);
 tfxINTERNAL tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra);
