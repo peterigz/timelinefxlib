@@ -14265,38 +14265,6 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
 			velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
 		}
-		/*
-		float velocity_scale = first_velocity_value * velocity_adjuster * base_velocity;
-
-		float weight_acceleration = base_weight * first_weight_value;
-		//----Velocity Changes
-		tfx_vec3_t current_velocity = tfx_vec3_t(velocity_normal.x, velocity_normal.y, velocity_normal.z) * base_velocity * first_velocity_value;
-		current_velocity.y -= weight_acceleration;
-		current_velocity *= micro_time * pm.update_time;
-		local_position_x += current_velocity.x;
-		local_position_y += current_velocity.y;
-		local_position_z += current_velocity.z;
-		if (line || emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
-
-			if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position) && !(emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
-				world_position.x = local_position_x;
-				world_position.y = local_position_y;
-				world_position.z = local_position_z;
-			}
-			else {
-				tfx_vec4_t rotatevec = TransformVec4Matrix4(&emitter.matrix, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle);
-				captured_position_x = world_position.x = emitter.captured_position.x + rotatevec.x * entry->overal_scale;
-				captured_position_y = world_position.y = emitter.captured_position.y + rotatevec.y * entry->overal_scale;
-				captured_position_z = world_position.z = emitter.captured_position.z + rotatevec.z * entry->overal_scale;
-			}
-		}
-		else {
-			world_position += current_velocity;
-			captured_position_x = world_position.x;
-			captured_position_y = world_position.y;
-			captured_position_z = world_position.z;
-		}
-		*/
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
