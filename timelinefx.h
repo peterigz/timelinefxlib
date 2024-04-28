@@ -2011,7 +2011,8 @@ enum tfx_emission_type : unsigned char {
 	tfxLine,
 	tfxEllipse,
 	tfxCylinder,
-	tfxIcosphere
+	tfxIcosphere,
+	tfxPath,
 };
 
 //Determines how for area, line and ellipse emitters the direction that particles should travel
@@ -5838,6 +5839,8 @@ tfxAPI_EDITOR tfx_vec3_t CylinderSurfaceNormal(float x, float z, float width, fl
 tfxAPI_EDITOR tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z);
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
+tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineSoA(const float* p_x, const float* p_y, int p0, float t);
+tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3DSoA(const float* p_x, const float* p_y, const float *p_z, int p0, float t);
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineSoALoop(const float* p_x, const float* p_y, int p1, int points, float t);
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
@@ -5867,7 +5870,7 @@ tfxINTERNAL tfx_mat4_t TransposeMatrix4(tfx_mat4_t *mat);
 tfxINTERNAL tfx_mat4_t TransformMatrix42d(const tfx_mat4_t *in, const tfx_mat4_t *m);
 tfxINTERNAL tfx_mat4_t TransformMatrix4ByMatrix2(const tfx_mat4_t *in, const tfx_mat2_t *m);
 tfxINTERNAL tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m);
-tfxINTERNAL void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
+tfxAPI_EDITOR void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxINTERNAL void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
 tfxINTERNAL void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
@@ -5937,6 +5940,7 @@ float RandomRange(tfx_random_t *random, float max);
 float RandomRange(tfx_random_t *random, float from, float to);
 int RandomRange(tfx_random_t *random, int from, int to);
 tfxU32 RandomRange(tfx_random_t *random, tfxU32 max);
+int RandomRange(tfx_random_t *random, int max);
 void AlterRandomSeed(tfx_random_t *random, tfxU64 amount);
 void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 
@@ -5982,6 +5986,7 @@ tfxINTERNAL void SpawnParticleEllipsoid(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticlePath3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleSpin3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleSize3d(tfx_work_queue_t *queue, void *data);
@@ -6011,7 +6016,7 @@ tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
 tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
+tfxAPI_EDITOR void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
 tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);

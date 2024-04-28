@@ -861,6 +861,12 @@ tfxU32 RandomRange(tfx_random_t *random, tfxU32 max) {
 	return tfxU32(a);
 };
 
+int RandomRange(tfx_random_t *random, int max) {
+	float g = GenerateRandom(random);
+	float a = g * (float)max;
+	return tfxU32(a);
+};
+
 void AlterRandomSeed(tfx_random_t *random, tfxU64 amount) {
 	random->seeds[0] *= amount;
 	random->seeds[1] += amount;
@@ -1255,6 +1261,45 @@ tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tf
 	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
 
 	return { x * .5f, y * .5f };
+}
+
+tfx_vec2_t CatmullRomSplineSoA(const float* p_x, const float* p_y, int p0, float t) {
+	float t2 = t * t;
+	float t3 = t2 * t;
+
+	int p1 = p0 + 1;
+	int p2 = p0 + 2;
+	int p3 = p0 + 3;
+
+	float b0 = -t3 + 2.0f * t2 - t;
+	float b1 = 3.0f * t3 - 5.0f * t2 + 2.0f;
+	float b2 = -3.0f * t3 + 4.0f * t2 + t;
+	float b3 = t3 - t2;
+
+	float x = p_x[p0] * b0 + p_x[p1] * b1 + p_x[p2] * b2 + p_x[p3] * b3;
+	float y = p_y[p0] * b0 + p_y[p1] * b1 + p_y[p2] * b2 + p_y[p3] * b3;
+
+	return { x * .5f, y * .5f };
+}
+
+tfx_vec3_t CatmullRomSpline3DSoA(const float* p_x, const float* p_y, const float *p_z, int p0, float t) {
+	float t2 = t * t;
+	float t3 = t2 * t;
+
+	int p1 = p0 + 1;
+	int p2 = p0 + 2;
+	int p3 = p0 + 3;
+
+	float b0 = -t3 + 2.0f * t2 - t;
+	float b1 = 3.0f * t3 - 5.0f * t2 + 2.0f;
+	float b2 = -3.0f * t3 + 4.0f * t2 + t;
+	float b3 = t3 - t2;
+
+	float x = p_x[p0] * b0 + p_x[p1] * b1 + p_x[p2] * b2 + p_x[p3] * b3;
+	float y = p_y[p0] * b0 + p_y[p1] * b1 + p_y[p2] * b2 + p_y[p3] * b3;
+	float z = p_z[p0] * b0 + p_z[p1] * b1 + p_z[p2] * b2 + p_z[p3] * b3;
+
+	return { x * .5f, y * .5f, z * .5f };
 }
 
 tfx_vec2_t CatmullRomSplineSoALoop(const float* p_x, const float* p_y, int p0, int points, float t) {
@@ -12635,6 +12680,9 @@ void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 	else if (work_entry->emission_type == tfxCylinder) {
 		SpawnParticleCylinder3d(&pm->work_queue, work_entry);
 	}
+	else if (work_entry->emission_type == tfxPath) {
+		SpawnParticlePath3d(&pm->work_queue, work_entry);
+	}
 
 	SpawnParticleWeight(&pm->work_queue, work_entry);
 	SpawnParticleVelocity(&pm->work_queue, work_entry);
@@ -13024,10 +13072,10 @@ void SpawnParticlePoint2d(tfx_work_queue_t *queue, void *data) {
 
 		tween = 1.f - entry->particle_data->age[index] / pm.frame_length;
 		local_position_x = local_position_y = 0;
-		tfx_vec2_t lerp_position = InterpolateVec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_position)
 			local_position_x = local_position_y = 0;
 		else {
+			tfx_vec2_t lerp_position = InterpolateVec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 			if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
 				local_position_x = lerp_position.x;
 				local_position_y = lerp_position.y;
@@ -13062,8 +13110,8 @@ void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data) {
 		tween = 1.f - entry->particle_data->age[index] / pm.frame_length;
 
 		local_position_x = local_position_y = local_position_z = 0;
-		tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 			if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
 				local_position_x = lerp_position.x;
 				local_position_y = lerp_position.y;
@@ -13100,8 +13148,8 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_x = entry->particle_data->position_x[index];
 		float &local_position_y = entry->particle_data->position_y[index];
 
+		tween = 1.f - entry->particle_data->age[index] / pm.frame_length;
 		local_position_x = local_position_y = 0;
-		tfx_vec2_t lerp_position = InterpolateVec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
@@ -13130,12 +13178,12 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position) && !(emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
+			tfx_vec2_t lerp_position = InterpolateVec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 			tfx_vec2_t pos = TransformVec2Matrix4(&emitter.matrix, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 		}
 
-		tween += entry->qty_step_size;
 	}
 
 }
@@ -13160,7 +13208,6 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_z = entry->particle_data->position_z[index];
 
 		local_position_x = local_position_y = local_position_z = 0;
-		tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
@@ -13194,6 +13241,7 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position) && !(emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
+			tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
@@ -13226,7 +13274,6 @@ void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_y = entry->particle_data->position_y[index];
 
 		local_position_x = local_position_y = 0;
-		tfx_vec2_t lerp_position = InterpolateVec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 
 		tfx_vec2_t position = tfx_vec2_t(0.f, 0.f);
 
@@ -13374,6 +13421,7 @@ void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec2_t lerp_position = InterpolateVec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 			tfx_vec2_t pos = TransformVec2Matrix4(&emitter.matrix, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
@@ -13408,7 +13456,6 @@ void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data) {
 		tfxU32 &velocity_normal_packed = entry->particle_data->velocity_normal[index];
 
 		local_position_x = local_position_y = local_position_z = 0;
-		tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 
 		tfx_vec3_t position;
 
@@ -13649,6 +13696,7 @@ void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
@@ -13682,7 +13730,6 @@ void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_y = entry->particle_data->position_y[index];
 
 		local_position_x = local_position_y = 0;
-		tfx_vec2_t lerp_position = InterpolateVec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 
 		tfx_vec2_t half_emitter_size = (emitter_size * .5f);
 		tfx_vec2_t position = tfx_vec2_t(0.f, 0.f);
@@ -13736,6 +13783,7 @@ void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec2_t lerp_position = InterpolateVec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 			tfx_vec2_t pos = TransformVec2Matrix4(&emitter.matrix, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
@@ -13801,6 +13849,7 @@ void SpawnParticleEllipsoid(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
@@ -13832,7 +13881,6 @@ void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_z = entry->particle_data->position_z[index];
 
 		local_position_x = local_position_y = local_position_z = 0;
-		tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 
 		tfxU32 sub_division = (tfxU32)grid_points.x;
 		TFX_ASSERT(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
@@ -13846,6 +13894,64 @@ void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data) {
 		emitter.grid_coords.x++;
 
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
+			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
+			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
+			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
+			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
+			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+		}
+
+		tween += entry->qty_step_size;
+	}
+
+}
+
+void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t* entry = static_cast<tfx_spawn_work_entry_t*>(data);
+	tfx_random_t random = entry->pm->random;
+	float tween = entry->tween;
+	tfx_particle_manager_t& pm = *entry->pm;
+	tfx_emitter_state_t& emitter = pm.emitters[entry->emitter_index];
+	AlterRandomSeed(&random, 17 + emitter.seed_index);
+	const tfx_emitter_properties_t& properties = *entry->properties;
+	tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
+	const tfx_vec3_t& grid_points = properties.grid_points;
+	tfx_emitter_path_t* path = &pm.library->paths[emitter.path_attributes];
+	float total_grid_points = (float)path->node_count - 3.f;
+	float increment = 1.f / grid_points.x;
+
+	for (int i = 0; i != entry->amount_to_spawn; ++i) {
+		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+		float& local_position_x = entry->particle_data->position_x[index];
+		float& local_position_y = entry->particle_data->position_y[index];
+		float& local_position_z = entry->particle_data->position_z[index];
+
+		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(emitter.property_flags & tfxEmitterPropertyFlags_fill_area)) {
+			int node = (int)emitter.grid_coords.x;
+			tfx_vec3_t point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, emitter.grid_coords.x - (int)emitter.grid_coords.x);
+
+			local_position_x = point.x * emitter.emitter_size.x;
+			local_position_y = point.y * emitter.emitter_size.y;
+			local_position_z = point.z * emitter.emitter_size.z;
+			
+			emitter.grid_coords.x += increment;
+			if (emitter.grid_coords.x >= total_grid_points) {
+				emitter.grid_coords.x = 0.f;
+			}
+		} else {
+			int node = RandomRange(&random, path->node_count - 3);
+			float t = GenerateRandom(&random);
+
+			tfx_vec3_t point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
+			local_position_x = point.x * emitter.emitter_size.x;
+			local_position_y = point.y * emitter.emitter_size.y;
+			local_position_z = point.z * emitter.emitter_size.z;
+		}
+
+		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
@@ -13877,7 +13983,6 @@ void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_z = entry->particle_data->position_z[index];
 
 		local_position_x = local_position_y = local_position_z = 0;
-		tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 
 		tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
 		tfxU32 sub_division = (tfxU32)grid_points.x;
@@ -13887,6 +13992,7 @@ void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data) {
 		local_position_y = tfxIcospherePoints[sub_division][ico_point].y * half_emitter_size.y;
 		local_position_z = tfxIcospherePoints[sub_division][ico_point].z * half_emitter_size.z;
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
@@ -13922,12 +14028,8 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_z = entry->particle_data->position_z[index];
 
 		local_position_x = local_position_y = local_position_z = 0;
-		tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && !(emitter.property_flags & tfxEmitterPropertyFlags_fill_area)) {
-
-			emitter.grid_coords.z = 0.f;
-
 			if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 				emitter.grid_coords.x = (float)RandomRange(&random, (tfxU32)grid_points.x);
 				emitter.grid_coords.y = (float)RandomRange(&random, (tfxU32)grid_points.y);
@@ -13989,6 +14091,7 @@ void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data) {
 
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tfx_vec3_t lerp_position = InterpolateVec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec4_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
 			tfx_vec3_t pos = TransformVec3Matrix4(&emitter.matrix, &position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
@@ -14293,7 +14396,7 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 	emitter.bounding_box.max_corner.y = -FLT_MAX;
 	emitter.bounding_box.max_corner.z = -FLT_MAX;
 
-	bool is_area = properties.emission_type == tfxArea || properties.emission_type == tfxEllipse || properties.emission_type == tfxCylinder || properties.emission_type == tfxIcosphere;
+	bool is_area = properties.emission_type != tfxPoint && properties.emission_type != tfxLine;
 
 	emitter.emitter_size.x = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_width, emitter.frame);
 	if (is_area) {
