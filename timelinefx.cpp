@@ -5071,6 +5071,7 @@ void ClearLibrary(tfx_library_t *library) {
 	library->global_graphs.free();
 	library->emitter_attributes.free();
 	library->transform_attributes.free();
+	library->paths.free_all();
 	library->sprite_sheet_settings.free_all();
 	library->preview_camera_settings.free_all();
 	library->all_nodes.free_all();

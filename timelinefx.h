@@ -1172,6 +1172,7 @@ struct tfx_str512_t;
 #define tfxFREE(memory) free(memory)
 #endif
 
+//No longer in use, cleanup! This is from an old memory tracking thing before I switched to a new memory allocator.
 #define tfxINIT_VEC_NAME 
 #define tfxINIT_VEC_NAME_INIT 
 #define tfxINIT_VEC_NAME_SRC_COPY 
@@ -3135,7 +3136,8 @@ inline size_t GetSoACapacityRequirement(tfx_soa_buffer_t *buffer, size_t capacit
 	size_t size_requirement = 0;
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		size_requirement += buffer->array_ptrs[i].unit_size * capacity;
-		size_requirement += buffer->alignment - (size_requirement % buffer->alignment);
+		size_t mod = size_requirement % buffer->alignment;
+		size_requirement += mod ? buffer->alignment - mod : 0;
 	}
 	return size_requirement;
 }
@@ -3162,7 +3164,8 @@ inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_array
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
-		running_offset += buffer->alignment - (running_offset % buffer->alignment);
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 	}
 	if (buffer->resize_callback) {
 		buffer->resize_callback(buffer, 0);
@@ -3191,7 +3194,8 @@ inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 
 				memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 			}
 			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
-			running_offset += buffer->alignment - (running_offset % buffer->alignment);
+			size_t mod = running_offset % buffer->alignment;
+			running_offset += mod ? buffer->alignment - mod : 0;
 		}
 	}
 	void *old_data = buffer->data;
@@ -3204,7 +3208,8 @@ inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
-		running_offset += buffer->alignment - (running_offset % buffer->alignment);
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 	}
 	tfxFREE(old_data);
 
@@ -3341,7 +3346,8 @@ inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 			memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 		}
 		running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
-		running_offset += buffer->alignment - (running_offset % buffer->alignment);
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 
 	}
 	void *old_data = buffer->data;
@@ -3354,7 +3360,8 @@ inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
-		running_offset += buffer->alignment - (running_offset % buffer->alignment);
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 	}
 	tfxFREE(old_data);
 }
@@ -3387,6 +3394,8 @@ struct tfx_bucket_array_t {
 	tfxU32 size_of_each_bucket;
 	tfxLONG volatile locked;
 	tfx_vector_t<tfx_bucket_t<T>*> bucket_list;
+
+	tfx_bucket_array_t() : size_of_each_bucket(8), current_size(0), capacity(0), locked(0) {}
 
 	inline bool			empty() { return current_size == 0; }
 	inline tfxU32		size() { return current_size; }
@@ -5628,7 +5637,7 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
-	tfx_vector_t<tfx_emitter_path_t> paths;
+	tfx_bucket_array_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
 	tfx_vector_t<tfx_emitter_attributes_t> emitter_attributes;
 	tfx_vector_t<tfx_transform_attributes_t> transform_attributes;
