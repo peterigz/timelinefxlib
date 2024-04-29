@@ -2829,6 +2829,13 @@ struct tfx_storage_map_t {
 	tfx_storage_map_t() : map(tfxCONSTRUCTOR_VEC_INIT("Storage Map map")), data(tfxCONSTRUCTOR_VEC_INIT("Storage Map data")) {}
 	tfx_storage_map_t(const char *map_tracker, const char *data_tracker) : map(tfxCONSTRUCTOR_VEC_INIT2(map_tracker)), data(tfxCONSTRUCTOR_VEC_INIT2(data_tracker)) {}
 
+	inline void reserve(tfxU32 size) {
+		if (size > data.capacity) {
+			map.reserve(size);
+			data.reserve(size);
+		}
+	}
+
 	//Insert a new T value into the storage
 	inline tfxKey Insert(const char *name, const T &value) {
 		tfxKey key = tfxXXHash64::hash(name, strlen(name), 0);
