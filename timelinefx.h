@@ -2321,7 +2321,8 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_align_with_velocity = 1 << 21,
 	tfxEmitterStateFlags_is_sub_emitter = 1 << 22,
 	tfxEmitterStateFlags_has_noise = 1 << 23,
-	tfxEmitterStateFlags_can_spin_pitch_and_yaw = 1 << 24			//For 3d emitters that have free alignment and not always facing the camera
+	tfxEmitterStateFlags_can_spin_pitch_and_yaw = 1 << 24,			//For 3d emitters that have free alignment and not always facing the camera
+	tfxEmitterStateFlags_has_path = 1 << 25							
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -5138,6 +5139,7 @@ struct tfx_particle_soa_t {
 	float *local_rotations_z;	//In 2d this is the roll
 	tfxU32 *velocity_normal;
 	tfxU32 *depth_index;
+	float *path_position;
 	float *base_weight;
 	float *base_velocity;
 	float *base_spin;
@@ -5742,7 +5744,7 @@ tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 //Dump sprites for Debugging
 tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
-tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
+tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, bool has_noise, bool has_path);
 
 //--------------------------------
 //Profilings
@@ -5862,7 +5864,7 @@ tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tf
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3DSoAStart(const float *px, const float* py, const float* pz);
-tfxAPI_EDITOR void CatmullRomSplineGradient3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
+tfxAPI_EDITOR void CatmullRomSpline3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL float GetCatmullSegment(tfx_vector_t<tfx_vec4_t>* nodes, float length);
 //Quake 3 inverse square root
 tfxINTERNAL float QuakeSqrt(float number);
@@ -6021,6 +6023,7 @@ tfxINTERNAL void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticlePositionPath3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void ControlParticleBoundingBox(tfx_work_queue_t *queue, void *data);
@@ -6030,8 +6033,8 @@ tfxINTERNAL void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
-tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path);
+tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path);
 tfxAPI_EDITOR void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);

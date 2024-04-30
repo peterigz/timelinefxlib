@@ -1394,6 +1394,37 @@ tfx_vec3_t CatmullRomSplineGradient3DSoAStart(const float* px, const float* py, 
 	return { x * 0.5f, y * 0.5f, z * 0.5f };
 }
 
+void CatmullRomSpline3DWide(tfxWideArrayi* pi, tfxWideFloat t, float* x, float* y, float* z, tfxWideFloat* vx, tfxWideFloat* vy, tfxWideFloat* vz) {
+	//This calculates the position on a catmull rom spline for 4 (sse) or 8 (avx) particles at a time.
+	//pi contains the first index in the path node list, t is the % of the segment on the path to calcuate for. 
+	tfxWideFloat t2 = tfxWideMul(t, t);
+	tfxWideFloat t3 = tfxWideMul(t2, t);
+
+	//Calculate the weigths
+	tfxWideFloat b0 = tfxWideSub(tfxWideAdd(tfxWideMul(t3, tfxWideSetSingle(-1.f)), tfxWideMul(tfxWideSetSingle(2.f), t2)), t);
+	tfxWideFloat b1 = tfxWideAdd(tfxWideSub(tfxWideMul(tfxWideSetSingle(3.f), t3), tfxWideMul(tfxWideSetSingle(5.f), t2)), tfxWideSetSingle(2.f));
+	tfxWideFloat b2 = tfxWideAdd(tfxWideAdd(tfxWideMul(tfxWideSetSingle(-3.f), t3), tfxWideMul(tfxWideSetSingle(4.f), t2)), t);
+	tfxWideFloat b3 = tfxWideSub(t3, t2);
+
+	//Load in the node data for 4 nodes to to calculate the path
+	tfxWideFloat px0 = tfxWideLookupSet(x, (*pi));
+	tfxWideFloat py0 = tfxWideLookupSet(y, (*pi));
+	tfxWideFloat pz0 = tfxWideLookupSet(z, (*pi));
+	tfxWideFloat px1 = tfxWideLookupSetOffset(x, (*pi), 1);
+	tfxWideFloat py1 = tfxWideLookupSetOffset(y, (*pi), 1);
+	tfxWideFloat pz1 = tfxWideLookupSetOffset(z, (*pi), 1);
+	tfxWideFloat px2 = tfxWideLookupSetOffset(x, (*pi), 2);
+	tfxWideFloat py2 = tfxWideLookupSetOffset(y, (*pi), 2);
+	tfxWideFloat pz2 = tfxWideLookupSetOffset(z, (*pi), 2);
+	tfxWideFloat px3 = tfxWideLookupSetOffset(x, (*pi), 3);
+	tfxWideFloat py3 = tfxWideLookupSetOffset(y, (*pi), 3);
+	tfxWideFloat pz3 = tfxWideLookupSetOffset(z, (*pi), 3);
+
+	*vx = tfxWideMul(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(px0, b0), tfxWideMul(px1, b1)), tfxWideMul(px2, b2)), tfxWideMul(px3, b3)), tfxWideSetSingle(.5f));
+	*vy = tfxWideMul(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(py0, b0), tfxWideMul(py1, b1)), tfxWideMul(py2, b2)), tfxWideMul(py3, b3)), tfxWideSetSingle(.5f));
+	*vz = tfxWideMul(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(pz0, b0), tfxWideMul(pz1, b1)), tfxWideMul(pz2, b2)), tfxWideMul(pz3, b3)), tfxWideSetSingle(.5f));
+}
+
 void CatmullRomSplineGradient3DWide(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz) {
 	//This calculates the gradient on a catmull rom spline for 4 (sse) or 8 (avx) particles at a time.
 	//pi contains the first index in the path node list, t is the % of the segment on the path to calcuate for. 
@@ -9875,11 +9906,6 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			emitter.particles_index = tfxINVALID;
 			pm->emitters_in_use[hierarchy_depth][buffer].push_back(index);
 			pm->emitters[index].parent_index = parent_index;
-			if (emitter.particles_index == tfxINVALID) {
-				if (!is_sub_emitter) {
-					emitter.particles_index = GrabParticleLists(pm, e.path_hash, (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d), 100);
-				}
-			}
 			tfx_emitter_properties_t *emitter_properties = GetEffectProperties(&e);
 			emitter.path_hash = e.path_hash;
 			emitter.info_index = e.info_index;
@@ -9924,7 +9950,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_random_color;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
 			state_flags |= emitter_properties->angle_settings != tfxAngleSettingFlags_align_roll && !(e.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
-			state_flags |= emitter_properties->angle_settings == tfxAngleSettingFlags_align_roll ? tfxEmitterStateFlags_align_with_velocity : 0;
+			state_flags |= (emitter_properties->angle_settings == tfxAngleSettingFlags_align_roll) ? tfxEmitterStateFlags_align_with_velocity : 0;
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_line_traversal : 0;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_play_once;
 			state_flags |= emitter_properties->end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
@@ -9932,6 +9958,15 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 			state_flags |= (GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.velocity_turbulance) && GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.noise_resolution)) ? tfxEmitterStateFlags_has_noise : 0;
 			state_flags |= (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d) && (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
+			state_flags |= emitter_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
+
+			if (emitter.particles_index == tfxINVALID) {
+				if (!is_sub_emitter) {
+					emitter.particles_index = GrabParticleLists(pm, e.path_hash, 
+																(effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d), 100, 
+																(state_flags & tfxEmitterStateFlags_has_noise) > 0, (state_flags & tfxEmitterStateFlags_has_path) > 0);
+				}
+			}
 
 			emitter.property_flags |= (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d);
 			if (state_flags & tfxEmitterStateFlags_is_line_traversal) {
@@ -10299,7 +10334,8 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 		}
 		for (int i = emitter_start_size[depth]; i != pm->emitters_in_use[depth][pm->current_ebuff].current_size; ++i) {
 			tfxU32 current_index = pm->emitters_in_use[depth][pm->current_ebuff][i];
-			pm->emitters[current_index].particles_index = GrabParticleLists(pm, pm->emitters[current_index].path_hash, pm->flags & tfxEffectManagerFlags_3d_effects, 100);
+			//Why do we do this?
+			//pm->emitters[current_index].particles_index = GrabParticleLists(pm, pm->emitters[current_index].path_hash, pm->flags & tfxEffectManagerFlags_3d_effects, 100);
 			pm->emitters_in_use[depth][next_buffer].push_back(current_index);
 		}
 	}
@@ -10335,6 +10371,43 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->flags &= ~tfxEffectManagerFlags_update_base_values;
 }
 
+void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t* work_entry = static_cast<tfx_control_work_entry_t*>(data);
+	tfxU32 emitter_index = work_entry->emitter_index;
+	tfx_particle_manager_t& pm = *work_entry->pm;
+	tfx_emitter_state_t& emitter = pm.emitters[emitter_index];
+	tfx_particle_soa_t& bank = work_entry->pm->particle_arrays[emitter.particles_index];
+
+	//There must be a path setup for the emitter.
+	TFX_ASSERT(emitter.path_attributes != tfxINVALID);
+	tfx_emitter_path_t *path = &pm.library->paths[emitter.path_attributes];
+	tfxWideFloat node_count = tfxWideSetSingle((float)path->node_count - 3.f);
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+		tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
+		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+		tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
+
+		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+		tfx__readbarrier;
+		tfxWideFloat life = tfxWideDiv(age, max_age);
+
+		tfxWideFloat node_point = tfxWideMul(life, node_count);
+		tfxWideArrayi node_index;
+		node_index.m = tfxWideConverti(node_point);
+		tfxWideFloat t = tfxWideSub(node_point, tfxWideConvert(node_index.m));
+		CatmullRomSpline3DWide(&node_index, t, path->node_soa.x, path->node_soa.y, path->node_soa.z, &local_position_x, &local_position_y, &local_position_z);
+		tfxWideStore(&bank.position_x[index], local_position_x);
+		tfxWideStore(&bank.position_y[index], local_position_y);
+		tfxWideStore(&bank.position_z[index], local_position_z);
+	}
+	ControlParticleTransform3d(&pm.work_queue, data);
+}
+
 void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t* work_entry = static_cast<tfx_control_work_entry_t*>(data);
@@ -10342,10 +10415,6 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	tfx_particle_manager_t& pm = *work_entry->pm;
 	tfx_emitter_state_t& emitter = pm.emitters[emitter_index];
 	tfx_particle_soa_t& bank = work_entry->pm->particle_arrays[emitter.particles_index];
-	tfxWideFloat node_count;
-	if (emitter.property_flags & tfxEmitterPropertyFlags_use_path_for_direction && emitter.path_attributes != tfxINVALID) {
-		node_count = tfxWideSetSingle((float)pm.library->paths[emitter.path_attributes].node_count - 3.f);
-	}
 
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
 
@@ -10428,8 +10497,6 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
-		tfxWideArray roll;
-		roll.m = tfxWideLoad(&bank.local_rotations_z[index]);
 
 		tfxWideArray noise_x;
 		tfxWideArray noise_y;
@@ -10527,7 +10594,6 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideStore(&bank.position_x[index], local_position_x);
 		tfxWideStore(&bank.position_y[index], local_position_y);
 		tfxWideStore(&bank.position_z[index], local_position_z);
-		tfxWideStore(&bank.local_rotations_z[index], roll.m);
 	}
 
 	const tfxWideFloat emitter_size_x = tfxWideSetSingle(emitter.emitter_size.x);
@@ -11965,7 +12031,7 @@ void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	}
 }
 
-tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount) {
+tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, bool has_noise, bool has_path) {
 	if (pm->free_particle_lists.ValidKey(emitter_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter_hash);
 		if (free_banks.current_size) {
@@ -11982,10 +12048,10 @@ tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool i
 	pm->particle_array_buffers.push_back(buffer);
 	TFX_ASSERT(index == pm->particle_array_buffers.current_size - 1);
 	if (is_3d) {
-		InitParticleSoA3d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount);
+		InitParticleSoA3d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount, has_noise, has_path);
 	}
 	else {
-		InitParticleSoA2d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount);
+		InitParticleSoA2d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount, has_noise, has_path);
 	}
 	return index;
 }
@@ -12657,6 +12723,7 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfx_particle_manager_t *pm = work_entry->pm;
+	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	SpawnParticleAge(&pm->work_queue, work_entry);
 	if (work_entry->emission_type == tfxPoint) {
 		SpawnParticlePoint3d(&pm->work_queue, work_entry);
@@ -12687,7 +12754,9 @@ void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 	SpawnParticleVelocity(&pm->work_queue, work_entry);
 	SpawnParticleRoll(&pm->work_queue, work_entry);
 	SpawnParticleMicroUpdate3d(&pm->work_queue, work_entry);
-	SpawnParticleNoise(&pm->work_queue, work_entry);
+	if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
+		SpawnParticleNoise(&pm->work_queue, work_entry);
+	}
 	SpawnParticleImageFrame(&pm->work_queue, work_entry);
 	SpawnParticleSize3d(&pm->work_queue, work_entry);
 	SpawnParticleSpin3d(&pm->work_queue, work_entry);
@@ -12696,6 +12765,7 @@ void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfx_particle_manager_t *pm = work_entry->pm;
+	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	SpawnParticleAge(&pm->work_queue, work_entry);
 	if (work_entry->emission_type == tfxPoint) {
 		SpawnParticlePoint2d(&pm->work_queue, work_entry);
@@ -12713,7 +12783,9 @@ void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
 	SpawnParticleVelocity(&pm->work_queue, work_entry);
 	SpawnParticleRoll(&pm->work_queue, work_entry);
 	SpawnParticleMicroUpdate2d(&pm->work_queue, work_entry);
-	SpawnParticleNoise(&pm->work_queue, work_entry);
+	if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
+		SpawnParticleNoise(&pm->work_queue, work_entry);
+	}
 	SpawnParticleImageFrame(&pm->work_queue, work_entry);
 	SpawnParticleSize2d(&pm->work_queue, work_entry);
 	SpawnParticleSpin2d(&pm->work_queue, work_entry);
@@ -13926,10 +13998,12 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		float& local_position_x = entry->particle_data->position_x[index];
 		float& local_position_y = entry->particle_data->position_y[index];
 		float& local_position_z = entry->particle_data->position_z[index];
+		float& path_position = entry->particle_data->path_position[index];
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 			int node = RandomRange(&random, path->node_count - 3);
 			float t = (float)RandomRange(&random, (int)grid_points.x) * increment;
+			path_position = (float)node + t;
 
 			tfx_vec3_t point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
 			local_position_x = point.x * emitter.emitter_size.x;
@@ -13938,7 +14012,9 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		} else if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 			if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 				int node = (int)emitter.grid_coords.x;
-				tfx_vec3_t point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, emitter.grid_coords.x - (int)emitter.grid_coords.x);
+				float t = emitter.grid_coords.x - (int)emitter.grid_coords.x;
+				path_position = (float)node + t;
+				tfx_vec3_t point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
 
 				local_position_x = point.x * emitter.emitter_size.x;
 				local_position_y = point.y * emitter.emitter_size.y;
@@ -13951,7 +14027,9 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 			}
 			else if (!(emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
 				int node = (int)emitter.grid_coords.x;
-				tfx_vec3_t point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, emitter.grid_coords.x - (int)emitter.grid_coords.x);
+				float t = emitter.grid_coords.x - (int)emitter.grid_coords.x;
+				path_position = (float)node + t;
+				tfx_vec3_t point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
 
 				local_position_x = point.x * emitter.emitter_size.x;
 				local_position_y = point.y * emitter.emitter_size.y;
@@ -13965,6 +14043,7 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		} else {
 			int node = RandomRange(&random, path->node_count - 3);
 			float t = GenerateRandom(&random);
+			path_position = (float)node + t;
 
 			tfx_vec3_t point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
 			local_position_x = point.x * emitter.emitter_size.x;
@@ -14610,8 +14689,13 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 				bank.base_pitch_spin[next_index] = bank.base_pitch_spin[index];
 				bank.base_yaw_spin[next_index] = bank.base_yaw_spin[index];
 			}
-			bank.noise_offset[next_index] = bank.noise_offset[index];
-			bank.noise_resolution[next_index] = bank.noise_resolution[index];
+			if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
+				bank.noise_offset[next_index] = bank.noise_offset[index];
+				bank.noise_resolution[next_index] = bank.noise_resolution[index];
+			}
+			if (emitter.state_flags & tfxEmitterStateFlags_has_path) {
+				bank.path_position[next_index] = bank.path_position[index];
+			}
 			bank.color[next_index] = bank.color[index];
 			bank.image_frame[next_index] = bank.image_frame[index];
 			bank.base_size_x[next_index] = bank.base_size_x[index];
@@ -14662,7 +14746,9 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
 			ControlParticleUID(&pm->work_queue, work_entry);
 		}
-		if (pm->flags & tfxEffectManagerFlags_3d_effects) {
+		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal) {
+			ControlParticlePositionPath3d(&pm->work_queue, work_entry);
+		} else if (pm->flags & tfxEffectManagerFlags_3d_effects) {
 			ControlParticlePosition3d(&pm->work_queue, work_entry);
 		} else {
 			ControlParticlePosition2d(&pm->work_queue, work_entry);
@@ -14866,7 +14952,7 @@ void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
-void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount) {
+void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path) {
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, uid));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, parent_index));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, sprite_index));
@@ -14885,8 +14971,13 @@ void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_weight));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_velocity));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_spin));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
+	if (has_noise) {
+		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
+		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
+	}
+	if (has_path) {
+		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, path_position));
+	}
 	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_particle_soa_t, color));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, image_frame));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_x));
@@ -14895,7 +14986,7 @@ void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
-void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount) {
+void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path) {
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, uid));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, parent_index));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, sprite_index));
@@ -14919,8 +15010,13 @@ void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_spin));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_pitch_spin));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_yaw_spin));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
+	if (has_noise) {
+		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
+		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
+	}
+	if (has_path) {
+		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, path_position));
+	}
 	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_particle_soa_t, color));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, image_frame));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_size_x));
@@ -15056,6 +15152,7 @@ void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library
 	if (pm->flags & tfxEffectManagerFlags_ordered_by_age || pm->flags & tfxEffectManagerFlags_order_by_depth) {
 		FreeParticleBanks(pm);
 		for (tfxEachLayer) {
+			/*
 			tfx_particle_soa_t lists;
 			tfxU32 index = pm->particle_arrays.locked_push_back(lists);
 			tfx_soa_buffer_t buffer;
@@ -15064,6 +15161,7 @@ void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library
 			InitParticleSoA3d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), tfxMax(pm->max_cpu_particles_per_layer[layer], 8));
 			pm->particle_array_buffers[index].user_data = &pm->particle_arrays.back();
 			ResizeParticleSoACallback(&pm->particle_array_buffers[index], 0);
+			*/
 			pm->depth_indexes[layer][0].reserve(pm->max_cpu_particles_per_layer[layer]);
 			pm->depth_indexes[layer][1].reserve(pm->max_cpu_particles_per_layer[layer]);
 		}
@@ -15088,12 +15186,14 @@ void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library
 
 	if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
 		for (tfxEachLayer) {
+			/*
 			tfx_particle_soa_t lists;
 			tfxU32 index = pm->particle_arrays.locked_push_back(lists);
 			tfx_soa_buffer_t buffer;
 			pm->particle_array_buffers.push_back(buffer);
 			InitParticleSoA2d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), layer_max_values[layer]);
 			TFX_ASSERT(index == pm->particle_array_buffers.current_size - 1);
+			*/
 			pm->depth_indexes[layer][0].reserve(pm->max_cpu_particles_per_layer[layer]);
 			pm->depth_indexes[layer][1].reserve(pm->max_cpu_particles_per_layer[layer]);
 		}
