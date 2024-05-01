@@ -2307,7 +2307,7 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_no_tween_this_update = 1 << 7,					//Internal flag generally, but you could use it if you want to teleport the effect to another location
 	tfxEmitterStateFlags_is_single = 1 << 8,
 	tfxEmitterStateFlags_not_line = 1 << 9,
-	tfxEmitterStateFlags_is_line_traversal = 1 << 10,
+	tfxEmitterStateFlags_is_edge_traversal = 1 << 10,
 	tfxEmitterStateFlags_can_spin = 1 << 11,
 	tfxEmitterStateFlags_base_uniform_size = 1 << 12,
 	tfxEmitterStateFlags_lifetime_uniform_size = 1 << 13,				//Keep the size over lifetime of the particle uniform
