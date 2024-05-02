@@ -5120,6 +5120,8 @@ struct tfx_unique_sprite_id_t {
 };
 
 //These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
+//Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
+//when the the buffer is initialised only the fields that are needed for the emitter will be used.
 struct tfx_particle_soa_t {
 	tfxU32 *uid;		//Only used for recording sprite data
 	tfxU32 *parent_index;
@@ -5140,6 +5142,7 @@ struct tfx_particle_soa_t {
 	tfxU32 *velocity_normal;
 	tfxU32 *depth_index;
 	float *path_position;
+	float *path_rotation;
 	float *base_weight;
 	float *base_velocity;
 	float *base_spin;
@@ -5903,12 +5906,12 @@ tfxAPI_EDITOR tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra);
 tfxINTERNAL tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v);
 tfxAPI_EDITOR tfxU32 Pack16bit(float x, float y);
 tfxAPI_EDITOR tfxU32 Pack8bit(tfx_vec3_t v);
-tfxINTERNAL tfxU32 Pack16bitUnsigned(float x, float y);
+tfxAPI_EDITOR tfxU32 Pack16bitUnsigned(float x, float y);
 tfxAPI_EDITOR tfx_vec2_t UnPack16bit(tfxU32 in);
 tfxINTERNAL tfx_vec2_t UnPack16bitUnsigned(tfxU32 in);
 tfxINTERNAL tfxWideInt PackWide16bitStretch(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxAPI_EDITOR tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y);
-tfxINTERNAL void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y);
+tfxAPI_EDITOR void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y);
 tfxAPI tfxWideInt PackWide8bitXYZ(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
@@ -6246,7 +6249,7 @@ tfxINTERNAL void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_i
 tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxINTERNAL void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
-tfxINTERNAL void FreeParticleBanks(tfx_particle_manager_t *pm);
+tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
 tfxINTERNAL void EnableCompute(tfx_particle_manager_t *pm) { pm->flags |= tfxEffectManagerFlags_use_compute_shader; }
@@ -6600,26 +6603,42 @@ could reduce the numbers as well if needed (they don't take a lot of space thoug
 */
 void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max);
 
+/*Free the memory for a specific emitter type. When an emitter is created it creates memory to store all of the particles that it updates each frame. If you have
+multiple emitters of the same type then their particle lists are resused rather then freed as they expire. When they're freed then the unused list is added to a list
+of free particle banks for that emitter type so that they can then be recycled if another emitter of the same type is created. If you want to free the memory for a
+specific emitter then you can call this function to do that.
+NOTE: No emitters of the type passed to the function must be in use in the particle manager.
+* @param pm						A pointer to an intialised tfx_particle_manager_t.
+* @param emitter_hash			The path hash for the emitter. Called path_hash in the tfx_effect_emitter_t struct.
+*/
+tfxAPI void FreeParticleLists(tfx_particle_manager_t* pm, tfxKey emitter_hash);
+
 /*
 Get the current particle count for a particle manager
 * @param pm						A pointer to an tfx_particle_manager_t
 * @returns tfxU32				The total number of particles currently being updated
 */
-tfxU32 ParticleCount(tfx_particle_manager_t *pm);
+tfxAPI tfxU32 ParticleCount(tfx_particle_manager_t *pm);
+/*
+Get the current particle count for a particle manager
+* @param pm						A pointer to an tfx_particle_manager_t
+* @returns tfxU32				The total number of particles currently being updated
+*/
+tfxAPI tfxU32 ParticleCount(tfx_particle_manager_t *pm);
 
 /*
 Get the current number of effects that are currently being updated by a particle manager
 * @param pm						A pointer to an tfx_particle_manager_t
 * @returns tfxU32				The total number of effects currently being updated
 */
-tfxU32 EffectCount(tfx_particle_manager_t *pm);
+tfxAPI tfxU32 EffectCount(tfx_particle_manager_t *pm);
 
 /*
 Get the current number of emitters that are currently being updated by a particle manager
 * @param pm						A pointer to an tfx_particle_manager_t
 * @returns tfxU32				The total number of emitters currently being updated
 */
-tfxU32 EmitterCount(tfx_particle_manager_t *pm);
+tfxAPI tfxU32 EmitterCount(tfx_particle_manager_t *pm);
 
 /*
 Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
