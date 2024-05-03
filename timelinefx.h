@@ -1530,6 +1530,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
 #define tfxWideMaxi _mm256_max_epi32
+#define tfxWideOr _mm256_or_ps
 #define tfxWideOri _mm256_or_si256
 #define tfxWideXOri _mm256_xor_si256
 #define tfxWideXOr _mm256_xor_ps
@@ -1617,6 +1618,7 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideMax _mm_max_ps
 #define tfxWideMini _mm_min_epi32
 #define tfxWideMaxi _mm_max_epi32
+#define tfxWideOr _mm_or_ps
 #define tfxWideOri _mm_or_si128
 #define tfxWideXOri _mm_xor_si128
 #define tfxWideAnd _mm_and_ps
@@ -1704,6 +1706,7 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideMax vmaxq_f32
 #define tfxWideMini vminq_s32
 #define tfxWideMaxi vmaxq_s32
+#define tfxWideOr vorrq_f32
 #define tfxWideOri vorrq_s32
 #define tfxWideXOri veorq_s32
 #define tfxWideAnd(a, b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a), vreinterpretq_s32_f32(b)))

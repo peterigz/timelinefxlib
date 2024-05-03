@@ -10422,7 +10422,8 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 			tfx__readbarrier;
 
 			//Lines - Kill if the particle has reached the end of the line
-			tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreaterEqual(path_position, node_count)));
+			tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
+			tfxWideInt remove_flags = tfxWideAndi(remove_flag, tfxWideOri(tfxWideCasti(tfxWideLess(path_position, tfxWideSetZero)), tfxWideCasti(tfxWideGreaterEqual(path_position, node_count))));
 			flags = tfxWideOri(flags, remove_flags);
 			tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 		}
@@ -10432,8 +10433,11 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 			tfx__readbarrier;
 
 			//Lines - Reposition if the particle is travelling along a line
-			tfxWideFloat at_end = tfxWideGreaterEqual(path_position, node_count);
+			tfxWideFloat at_end =  tfxWideGreaterEqual(path_position, node_count);
 			path_position = tfxWideSub(path_position, tfxWideAnd(at_end, node_count));
+			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
+			at_end = tfxWideLess(path_position, tfxWideSetZero);
+			path_position = tfxWideAdd(path_position, tfxWideAnd(at_end, node_count));
 			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 			tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 		}
@@ -10748,8 +10752,9 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 				tfx__readbarrier;
 
 				//Lines - Kill if the particle has reached the end of the line
-				tfxWideFloat length = tfxWideAbs(local_position_x);
-				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(length, emitter_size_x)));
+				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(local_position_x, emitter_size_x)));
+				flags = tfxWideOri(flags, remove_flags);
+				remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideLess(local_position_x, tfxWideSetZero)));
 				flags = tfxWideOri(flags, remove_flags);
 				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 			}
@@ -10763,9 +10768,11 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 				tfx__readbarrier;
 
 				//Lines - Reposition if the particle is travelling along a line
-				tfxWideFloat length = tfxWideAbs(local_position_x);
-				tfxWideFloat at_end = tfxWideGreater(length, emitter_size_x);
+				tfxWideFloat at_end = tfxWideGreater(local_position_x, emitter_size_x);
 				local_position_x = tfxWideSub(local_position_x, tfxWideAnd(at_end, emitter_size_x));
+				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
+				at_end = tfxWideLess(local_position_x, tfxWideSetZero);
+				local_position_x = tfxWideAdd(local_position_x, tfxWideAnd(at_end, emitter_size_x));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 				tfxWideStore(&bank.position_x[index], local_position_x);
@@ -11204,8 +11211,9 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 				tfx__readbarrier;
 
 				//Lines - Remove particle if it reaches the end of the line
-				tfxWideFloat length = tfxWideAbs(local_position_x);
-				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(length, emitter_size_x)));
+				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(local_position_x, emitter_size_x)));
+				flags = tfxWideOri(flags, remove_flags);
+				remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideLess(local_position_x, tfxWideSetZero)));
 				flags = tfxWideOri(flags, remove_flags);
 				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 			}
@@ -11217,11 +11225,13 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
 
 				//Lines - Reposition if the particle is travelling along a line
-				tfxWideFloat length = tfxWideAbs(local_position_x);
-				tfxWideFloat at_end = tfxWideGreater(length, emitter_size_x);
+				tfxWideFloat at_end = tfxWideGreater(local_position_x, emitter_size_x);
 
 				tfx__readbarrier;
 
+				local_position_x = tfxWideSub(local_position_x, tfxWideAnd(at_end, emitter_size_x));
+				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
+				at_end = tfxWideLess(local_position_x, tfxWideSetZero);
 				local_position_x = tfxWideSub(local_position_x, tfxWideAnd(at_end, emitter_size_x));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
@@ -14899,7 +14909,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
 			ControlParticleUID(&pm->work_queue, work_entry);
 		}
-		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.state_flags & tfxEmitterStateFlags_is_edge_traversal) {
+		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.state_flags & tfxEmitterStateFlags_is_edge_traversal && emitter.state_flags & tfxEmitterStateFlags_has_path) {
 			ControlParticlePositionPath3d(&pm->work_queue, work_entry);
 		} else if (pm->flags & tfxEffectManagerFlags_3d_effects) {
 			ControlParticlePosition3d(&pm->work_queue, work_entry);
