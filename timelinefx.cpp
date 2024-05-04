@@ -11072,10 +11072,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), direction_last_frame);
 			lookup_direction.m = tfxWideLookupSet(work_entry->graphs->direction.lookup.values, lookup_frame);
 			lookup_direction.m = tfxWideAdd(lookup_direction.m, angle);
-			for (int j = 0; j != tfxDataWidth; ++j) {
-				velocity_normal_x.a[j] = sinf(lookup_direction.a[j]);
-				velocity_normal_y.a[j] = -cosf(lookup_direction.a[j]);
-			}
+			tfx_sincos_ps(lookup_direction.m, &velocity_normal_x.m, &velocity_normal_y.m);
 		}
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
