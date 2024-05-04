@@ -1099,7 +1099,11 @@ tfx_allocator *tfxGetAllocator();
 #define tfxTWO63 0x8000000000000000u 
 #define tfxTWO64f (tfxTWO63*2.0)
 #define tfxPI 3.14159265359f
-const float tfxPI2 = tfxPI * 2.f;
+#define tfxHALFPI 1.570796f
+#define tfxPI2 6.283185307f 
+#define tfxINVTWOPI 0.1591549f
+#define tfxTHREEHALFPI 4.7123889f
+#define tfxQUARTERPI 0.7853982f
 #define tfx360Radians 6.28319f
 #define tfx180Radians 3.14159f
 #define tfx90Radians 1.5708f
@@ -1510,6 +1514,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideSubi _mm256_sub_epi32
 #define tfxWideMuli _mm256_mul_epi32
 #define tfxWideSqrt _mm256_sqrt_ps
+#define tfxWideRSqrt _mm256_rsqrt_ps
 #define tfxWideMoveMask _mm256_movemask_epi8
 #define tfxWideShiftRight _mm256_srli_epi32
 #define tfxWideShiftLeft _mm256_slli_epi32
@@ -1541,7 +1546,6 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideSetZero _mm256_setzero_ps()
 #define tfxWideSetZeroi _mm256_setzero_si256()
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
-#define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSeti(lookup, index) tfxWideSeti(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSetMember(lookup, member, index) tfxWideSet(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
@@ -1599,6 +1603,7 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideSubi _mm_sub_epi32
 #define tfxWideMuli _mm_mul_epu32
 #define tfxWideSqrt _mm_sqrt_ps
+#define tfxWideRSqrt _mm_rsqrt_ps
 #define tfxWideMoveMask _mm_movemask_epi8
 #define tfxWideShiftRight _mm_srli_epi32
 #define tfxWideShiftLeft _mm_slli_epi32
@@ -1619,9 +1624,11 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideMini _mm_min_epi32
 #define tfxWideMaxi _mm_max_epi32
 #define tfxWideOr _mm_or_ps
+#define tfxWideXOr _mm_xor_ps
 #define tfxWideOri _mm_or_si128
 #define tfxWideXOri _mm_xor_si128
 #define tfxWideAnd _mm_and_ps
+#define tfxWideAndNot _mm_andnot_ps
 #define tfxWideAndi _mm_and_si128
 #define tfxWideAndNoti _mm_andnot_si128
 #define tfxWideSetZeroi _mm_setzero_si128()
@@ -1641,6 +1648,8 @@ const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
 const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
 const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
 const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
+
+tfxINTERNAL const __m128 SIGNMASK = _mm_castsi128_ps(_mm_set1_epi32(0x80000000));
 
 typedef union {
 	__m128i m;
@@ -1687,7 +1696,7 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideAddi vaddq_s32
 #define tfxWideSubi vsubq_s32
 #define tfxWideMuli vmulq_s32
-#define tfxWideSqrt vrsqrteq_f32 // for reciprocal square root approximation
+#define tfxWideRSqrt vrsqrteq_f32 // for reciprocal square root approximation
 #define tfxWideShiftRight vshrq_n_s32
 #define tfxWideShiftLeft vshlq_n_s32
 #define tfxWideGreaterEqual(a, b) vreinterpretq_f32_u32(vcgeq_f32(a, b))
@@ -1708,6 +1717,7 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideMaxi vmaxq_s32
 #define tfxWideOr vorrq_f32
 #define tfxWideOri vorrq_s32
+#define tfxWideXOr veorq_f32
 #define tfxWideXOri veorq_s32
 #define tfxWideAnd(a, b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a), vreinterpretq_s32_f32(b)))
 #define tfxWideAndi vandq_s32
@@ -1821,6 +1831,152 @@ tfxINTERNAL uint64_t tfx__rdtsc() {
 }
 
 #endif
+
+/*
+Copyright (c) 2013, Robin Lobel
+All rights reserved. https://github.com/divideconcept/FastTrigo
+
+I just extracted the necessary functions that I need from the above code base and modified to use tfx SIMD_DEFINES
+Also fixed a bug in atan2 function where x <= y
+*/
+
+tfxINTERNAL inline tfxWideFloat tfx_sqrt_ps(tfxWideFloat squared)
+{
+	static int csr = 0;
+	if (!csr) csr = _mm_getcsr() | 0x8040; //DAZ,FTZ (divide by zero=0)
+	_mm_setcsr(csr);
+	return tfxWideMul(tfxWideRSqrt(squared), squared);
+}
+
+/*
+possible arm function for andnot
+float32x4_t andnot_ps(float32x4_t a, float32x4_t b) {
+	uint32x4_t not_b = vreinterpretq_u32_f32(vmvnq_f32(b)); // Bitwise NOT of b
+	return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a), not_b)); // Bitwise AND of a and NOT(b)
+}
+*/
+
+tfxINTERNAL inline tfxWideFloat tfx_atan_ps(tfxWideFloat x)
+{
+	//                                      tfxQUARTERPI*x
+	//                                      - x*(fabs(x) - 1)
+	//                                      *(0.2447f+0.0663f*fabs(x));
+	return tfxWideSub(tfxWideMul(_mm_set1_ps(tfxQUARTERPI), x),
+		tfxWideMul(tfxWideMul(x, tfxWideSub(tfxWideAndNot(SIGNMASK, x), tfxWideSetSingle(1.f))),
+			(tfxWideAdd(tfxWideSetSingle(0.2447f), tfxWideMul(tfxWideSetSingle(0.0663f), tfxWideAndNot(SIGNMASK, x))))));
+}
+
+tfxINTERNAL inline tfxWideFloat tfx_a_atan_ps(tfxWideFloat x)
+{
+	tfxWideFloat u = tfxWideMul(x, x);
+	tfxWideFloat u2 = tfxWideMul(u, u);
+	tfxWideFloat u3 = tfxWideMul(u2, u);
+	tfxWideFloat u4 = tfxWideMul(u3, u);
+	//tfxWideFloat f=1.f+0.33288950512027f*u-0.08467922817644f*u2+0.03252232640125f*u3-0.00749305860992f*u4;
+
+	tfxWideFloat f = tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideSetSingle(1.f),
+		tfxWideMul(tfxWideSetSingle(0.33288950512027f), u)),
+		tfxWideMul(tfxWideSetSingle(-0.08467922817644f), u2)),
+		tfxWideMul(tfxWideSetSingle(0.03252232640125f), u3)),
+		tfxWideMul(tfxWideSetSingle(-0.00749305860992f), u4));
+	return tfxWideDiv(x, f);
+}
+
+tfxINTERNAL inline tfxWideFloat tfx_a_atan2_ps(tfxWideFloat y, tfxWideFloat x)
+{
+	tfxWideFloat absxgreaterthanabsy = tfxWideGreater(tfxWideAndNot(SIGNMASK, x), tfxWideAndNot(SIGNMASK, y));
+	tfxWideFloat ratio = tfxWideDiv(tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, y), tfxWideAndNot(absxgreaterthanabsy, x)),
+		tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, x), tfxWideAndNot(absxgreaterthanabsy, y)));
+	tfxWideFloat atan = tfx_a_atan_ps(ratio);
+
+	tfxWideFloat xgreaterthan0 = tfxWideGreater(x, tfxWideSetSingle(0.f));
+	tfxWideFloat ygreaterthan0 = tfxWideGreater(y, tfxWideSetSingle(0.f));
+
+	atan = tfxWideXOr(atan, tfxWideAndNot(absxgreaterthanabsy, tfxWideAnd(xgreaterthan0, SIGNMASK))); //negate atan if absx<=absy & x>0
+
+	tfxWideFloat shift = tfxWideSetSingle(tfxPI);
+	shift = tfxWideSub(shift, tfxWideAndNot(absxgreaterthanabsy, tfxWideSetSingle(tfxHALFPI))); //substract tfxHALFPI if absx<=absy
+	shift = tfxWideXOr(shift, tfxWideAndNot(ygreaterthan0, SIGNMASK)); //negate shift if y<=0
+	shift = tfxWideAndNot(tfxWideAnd(absxgreaterthanabsy, xgreaterthan0), shift); //null if abs>absy & x>0
+
+	return tfxWideAdd(atan, shift);
+}
+
+/*
+float atan2(float y, float x)
+{
+	if (fabs(x) > fabs(y)) {
+		float atan = atanf(y / x);
+		if (x > 0.f)
+			return atan;
+		else
+			return y > 0.f ? atan + pi : atan - pi;
+	}
+	else {
+		float atan = atanf(x / y);
+		return y > 0.f ? halfpi - atan : (-halfpi) - atan;
+	}
+}
+*/
+
+tfxINTERNAL inline tfxWideFloat tfx_atan2_ps(tfxWideFloat y, tfxWideFloat x)
+{
+	tfxWideFloat absxgreaterthanabsy = tfxWideGreater(tfxWideAndNot(SIGNMASK, x), tfxWideAndNot(SIGNMASK, y));
+	tfxWideFloat ratio = tfxWideDiv(tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, y), tfxWideAndNot(absxgreaterthanabsy, x)),
+		tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, x), tfxWideAndNot(absxgreaterthanabsy, y)));
+	tfxWideFloat atan = tfx_atan_ps(ratio);
+
+	tfxWideFloat xgreaterthan0 = tfxWideGreater(x, tfxWideSetSingle(0.f));
+	tfxWideFloat ygreaterthan0 = tfxWideGreater(y, tfxWideSetSingle(0.f));
+
+	atan = tfxWideXOr(atan, tfxWideAndNot(absxgreaterthanabsy, SIGNMASK)); //negate atan if absx<=absy & x>0
+
+	tfxWideFloat shift = tfxWideSetSingle(tfxPI);
+	shift = tfxWideSub(shift, tfxWideAndNot(absxgreaterthanabsy, tfxWideSetSingle(tfxHALFPI))); //substract tfxHALFPI if absx<=absy
+	shift = tfxWideXOr(shift, tfxWideAndNot(ygreaterthan0, SIGNMASK)); //negate shift if y<=0
+	shift = tfxWideAndNot(tfxWideAnd(absxgreaterthanabsy, xgreaterthan0), shift); //null if abs>absy & x>0
+
+	return tfxWideAdd(atan, shift);
+}
+
+tfxINTERNAL inline tfxWideFloat tfx_cos_32s_ps(tfxWideFloat x)
+{
+	const tfxWideFloat c1 = tfxWideSetSingle(0.99940307f);
+	const tfxWideFloat c2 = tfxWideSetSingle(-0.49558072f);
+	const tfxWideFloat c3 = tfxWideSetSingle(0.03679168f);
+	tfxWideFloat x2;      // The input argument squared
+	x2 = tfxWideMul(x, x);
+	//               (c1+           x2*          (c2+           c3*x2));
+	return tfxWideAdd(c1, tfxWideMul(x2, tfxWideAdd(c2, tfxWideMul(c3, x2))));
+}
+
+tfxINTERNAL inline void  tfx_sincos_ps(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* cos) {
+	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK, angle));
+
+	//clamp to the range 0..2pi
+
+	//take absolute value
+	angle = tfxWideAndNot(SIGNMASK, angle);
+	//fmod(angle,tfxPI2)
+	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWideSetSingle(tfxINVTWOPI)))), tfxWideSetSingle(tfxPI2))); //simplied SSE2 fmod, must always operate on absolute value
+	//if SSE4.1 is always available, comment the line above and uncomment the line below
+	//angle=tfxWideSub(angle,tfxWideMul(_mm_floor_ps(tfxWideMul(angle,tfxWideSetSingle(tfxINVTWOPI))),tfxWideSetSingle(tfxPI2))); //faster if SSE4.1 is always available
+
+	tfxWideFloat cosangle = angle;
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI), angle))));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
+
+	tfxWideFloat result = tfx_cos_32s_ps(cosangle);
+
+	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK));
+	*cos = result;
+
+	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK)));
+	*sin = tfxWideMul(sinmultiplier, tfx_sqrt_ps(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result))));
+
+	return;
+}
 
 //simd mod function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
 tfxINTERNAL inline tfxWideFloat tfxWideMod(const tfxWideFloat &a, const tfxWideFloat &aDiv) {

@@ -1237,7 +1237,7 @@ void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, cons
 	length = tfxWideAdd(length, tfxWideMul(dy, dy));
 	length = tfxWideAdd(length, tfxWideMul(dz, dz));
 #ifdef tfxARM
-	length = tfxWideMul(tfxWideSqrt(length), length);
+	length = tfxWideMul(tfxWideRSqrt(length), length);
 #else
 	length = tfxWideSqrt(length);
 #endif
@@ -10404,8 +10404,7 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 		tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
 		tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
-		tfxWideArray path_rotation;
-		path_rotation.m = tfxWideLoad(&bank.path_rotation[index]);
+		tfxWideFloat path_rotation = tfxWideLoad(&bank.path_rotation[index]);
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		tfxWideArrayi lookup_frame;
 
@@ -10449,26 +10448,33 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideArrayi node_index;
 		node_index.m = tfxWideConverti(path_position);
 		tfxWideFloat t = tfxWideSub(path_position, tfxWideConvert(node_index.m));
-		tfxWideArray point_x;
-		tfxWideArray point_z;
-		CatmullRomSpline3DWide(&node_index, t, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x.m, &local_position_y, &point_z.m);
-		tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_z.m, point_z.m));
+		tfxWideFloat point_x;
+		tfxWideFloat point_z;
+		CatmullRomSpline3DWide(&node_index, t, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x, &local_position_y, &point_z);
+		tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x, point_x), tfxWideMul(point_z, point_z));
 #ifdef tfxARM
-		radius = tfxWideMul(tfxWideSqrt(radius), radius);
+		radius = tfxWideMul(tfxWideRSqrt(radius), radius);
 #else
 		radius = tfxWideSqrt(radius);
 #endif
-		tfxWideArray angle;
-		tfxWideArray rx;
-		tfxWideArray rz;
-		for (int j = 0; j != tfxDataWidth; ++j) {
-			angle.a[j] = atan2f(point_z.a[j], point_x.a[j]);
-			angle.a[j] += path_rotation.a[j];
-			rx.a[j] = cosf(angle.a[j]);
-			rz.a[j] = sinf(angle.a[j]);
-		}
-		local_position_x = tfxWideMul(rx.m, radius);
-		local_position_z = tfxWideMul(rz.m, radius);
+		tfxWideFloat angle;
+		tfxWideFloat rx;
+		tfxWideFloat rz;
+
+		angle = tfx_atan2_ps(point_z, point_x);
+		angle = tfxWideAdd(angle, path_rotation);
+		tfx_sincos_ps(angle, &rz, &rx);
+
+		tfxWideFloat captured_position_x = tfxWideLoad(&bank.position_x[index]);
+		tfxWideFloat captured_position_z = tfxWideLoad(&bank.position_z[index]);
+		tfxWideArray x_diff;
+		tfxWideArray z_diff;
+
+		local_position_x = tfxWideMul(rx, radius);
+		local_position_z = tfxWideMul(rz, radius);
+
+		x_diff.m = tfxWideSub(local_position_x, captured_position_x);
+		z_diff.m = tfxWideSub(local_position_z, captured_position_z);
 
 		local_position_x = tfxWideAdd(local_position_x, e_handle_x);
 		local_position_y = tfxWideAdd(local_position_y, e_handle_y);
@@ -10612,7 +10618,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			tfxWideFloat l = tfxWideMul(velocity_normal_x, velocity_normal_x);
 			l = tfxWideAdd(l, tfxWideMul(velocity_normal_z, velocity_normal_z));
 #ifdef tfxARM
-			l = tfxWideMul(tfxWideSqrt(l), l);
+			l = tfxWideMul(tfxWideRSqrt(l), l);
 #else
 			l = tfxWideSqrt(l);
 #endif
@@ -10625,7 +10631,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			tfxWideFloat l = tfxWideMul(velocity_normal_x, velocity_normal_x);
 			l = tfxWideAdd(l, tfxWideMul(velocity_normal_z, velocity_normal_z));
 #ifdef tfxARM
-			l = tfxWideMul(tfxWideSqrt(l), l);
+			l = tfxWideMul(tfxWideRSqrt(l), l);
 #else
 			l = tfxWideSqrt(l);
 #endif
@@ -10886,7 +10892,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_y, alignment_vector_y));
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_z, alignment_vector_z));
             #ifdef tfxARM
-                l = tfxWideMul(tfxWideSqrt(l), l);
+                l = tfxWideMul(tfxWideRSqrt(l), l);
             #else
                 l = tfxWideSqrt(l);
             #endif
@@ -11041,7 +11047,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat l = tfxWideMul(velocity_normal_x.m, velocity_normal_x.m);
 			l = tfxWideAdd(l, tfxWideMul(velocity_normal_y.m, velocity_normal_y.m));
 #ifdef tfxARM
-			l = tfxWideMul(tfxWideSqrt(l), l);
+			l = tfxWideMul(tfxWideRSqrt(l), l);
 #else
 			l = tfxWideSqrt(l);
 #endif
@@ -11054,7 +11060,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat l = tfxWideMul(velocity_normal_x.m, velocity_normal_x.m);
 			l = tfxWideAdd(l, tfxWideMul(velocity_normal_y.m, velocity_normal_y.m));
 #ifdef tfxARM
-			l = tfxWideMul(tfxWideSqrt(l), l);
+			l = tfxWideMul(tfxWideRSqrt(l), l);
 #else
 			l = tfxWideSqrt(l);
 #endif
@@ -11157,7 +11163,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat l = tfxWideMul(stretch_velocity_x, stretch_velocity_x);
 		l = tfxWideAdd(l, tfxWideMul(stretch_velocity_y, stretch_velocity_y));
 #ifdef tfxARM
-		l = tfxWideMul(tfxWideSqrt(l), l);
+		l = tfxWideMul(tfxWideRSqrt(l), l);
 #else
         l = tfxWideSqrt(l);
 #endif
