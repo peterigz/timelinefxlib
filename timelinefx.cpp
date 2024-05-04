@@ -3774,7 +3774,7 @@ tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
 	return path;
 }
 
-tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter) {
+tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node) {
 	if (emitter->path_attributes == tfxINVALID) {
 		tfx_emitter_path_t path = {};
 		path.flags = 0;
@@ -3782,13 +3782,13 @@ tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter) {
 		path.node_count = 32;
 		path.preview_scale = 1.f;
 		InitialisePathGraphs(&path);
-		ResetGraph(&path.angle_x, 0.f, path.angle_x.graph_preset, true, 1.f);
-		ResetGraph(&path.angle_y, 0.f, path.angle_y.graph_preset, true, 1.f);
-		ResetGraph(&path.angle_z, 0.f, path.angle_z.graph_preset, true, 1.f);
-		ResetGraph(&path.offset_x, 1.f, path.offset_x.graph_preset, true, 1.f);
-		ResetGraph(&path.offset_y, 0.f, path.offset_y.graph_preset, true, 1.f);
-		ResetGraph(&path.offset_z, 0.f, path.offset_z.graph_preset, true, 1.f);
-		ResetGraph(&path.distance, 0.f, path.offset_z.graph_preset, true, 1.f);
+		ResetGraph(&path.angle_x, 0.f, path.angle_x.graph_preset, add_node, 1.f);
+		ResetGraph(&path.angle_y, 0.f, path.angle_y.graph_preset, add_node, 1.f);
+		ResetGraph(&path.angle_z, 0.f, path.angle_z.graph_preset, add_node, 1.f);
+		ResetGraph(&path.offset_x, 1.f, path.offset_x.graph_preset, add_node, 1.f);
+		ResetGraph(&path.offset_y, 0.f, path.offset_y.graph_preset, add_node, 1.f);
+		ResetGraph(&path.offset_z, 0.f, path.offset_z.graph_preset, add_node, 1.f);
+		ResetGraph(&path.distance, 0.f, path.offset_z.graph_preset, add_node, 1.f);
 		emitter->path_attributes = emitter->library->paths.size();
 		emitter->library->paths.push_back(path);
 	}
@@ -3857,6 +3857,7 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 			matrix = TransformMatrix4(&matrix, &roll_mat);
 			offset = { GetGraphValue(&path->offset_x, age), GetGraphValue(&path->offset_y, age), GetGraphValue(&path->offset_z, age), 0.f };
 			position = TransformVec4Matrix4(&matrix, offset);
+			position += path->offset;
 			age += age_inc;
 			path_nodes[i++] = position;
 		}
@@ -3879,7 +3880,7 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
 			position += TransformVec4Matrix4(&matrix, distance);
 			age += age_inc;
-			path_nodes[i++] = position;
+			path_nodes[i++] = position + path->offset;
 		}
 		path_nodes[0] = path_nodes[1];
 		path_nodes[path->node_count - 1] = path_nodes[path->node_count - 2];
@@ -5934,13 +5935,13 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "overtime_velocity_adjuster") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.velocity_adjuster, &n); }
 		if ((*values)[0] == "overtime_noise_resolution") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.noise_resolution, &n); }
 
-		if ((*values)[0] == "path_pitch") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].angle_x, &n); }
-		if ((*values)[0] == "path_yaw") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].angle_y, &n); }
-		if ((*values)[0] == "path_roll") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].angle_z, &n); }
-		if ((*values)[0] == "path_offset_x") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].offset_x, &n); }
-		if ((*values)[0] == "path_offset_y") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].offset_y, &n); }
-		if ((*values)[0] == "path_offset_z") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].offset_z, &n); }
-		if ((*values)[0] == "path_distance") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect)].distance, &n); }
+		if ((*values)[0] == "path_pitch") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_x, &n); }
+		if ((*values)[0] == "path_yaw") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_y, &n); }
+		if ((*values)[0] == "path_roll") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_z, &n); }
+		if ((*values)[0] == "path_offset_x") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].offset_x, &n); }
+		if ((*values)[0] == "path_offset_y") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].offset_y, &n); }
+		if ((*values)[0] == "path_offset_z") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].offset_z, &n); }
+		if ((*values)[0] == "path_distance") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].distance, &n); }
 	}
 }
 
@@ -6368,16 +6369,16 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
 		else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_path_for_direction; }
 	}
 	if (*field == "path_is_3d") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect)]; if (value) { path->flags |= tfxPathFlags_3d; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_3d; }
 	}
 	if (*field == "path_mode_origin") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect)]; if (value) { path->flags |= tfxPathFlags_mode_origin; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_origin; }
 	}
 	if (*field == "path_mode_node") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect)]; if (value) { path->flags |= tfxPathFlags_mode_node; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_node; }
 	}
 	if (*field == "path_space_nodes_evenly") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect)]; if (value) { path->flags |= tfxPathFlags_space_nodes_evenly; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_space_nodes_evenly; }
 	}
 
 }
