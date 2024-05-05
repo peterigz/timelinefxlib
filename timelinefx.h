@@ -2142,6 +2142,11 @@ enum tfx_emission_type : unsigned char {
 	tfxPath,
 };
 
+enum tfx_path_extrusion_type {
+	tfxExtrusionArc,
+	tfxExtrusionLinear
+};
+
 //Determines how for area, line and ellipse emitters the direction that particles should travel
 enum tfx_emission_direction : unsigned char {
 	tfxInwards,
@@ -2231,22 +2236,22 @@ enum tfx_effect_library_stream_context : tfxU32 {
 	tfxEndFrameOffsets,
 };
 
-typedef tfxU32 tfxEmitterPropertyFlags;
-typedef tfxU32 tfxEffectPropertyFlags;
-typedef tfxU32 tfxVectorFieldFlags;
-typedef tfxU32 tfxParticleFlags;
-typedef tfxU32 tfxEmitterStateFlags;
-typedef tfxU32 tfxEffectStateFlags;
-typedef tfxU32 tfxParticleControlFlags;
-typedef tfxU32 tfxAttributeNodeFlags;
-typedef tfxU32 tfxAngleSettingFlags;
-typedef tfxU32 tfxParticleManagerFlags;
-typedef tfxU32 tfxErrorFlags;
-typedef tfxU32 tfxEffectCloningFlags;
-typedef tfxU32 tfxAnimationFlags;
-typedef tfxU32 tfxAnimationInstanceFlags;
-typedef tfxU32 tfxAnimationManagerFlags;
-typedef tfxU32 tfxEmitterPathFlags;
+typedef tfxU32 tfxEmitterPropertyFlags;			//tfx_emitter_property_flag_bits
+typedef tfxU32 tfxEffectPropertyFlags;			//tfx_effect_property_flag_bits
+typedef tfxU32 tfxVectorFieldFlags;				//tfx_vector_field_flag_bits
+typedef tfxU32 tfxParticleFlags;				//tfx_particle_flag_bits
+typedef tfxU32 tfxEmitterStateFlags;			//tfx_emitter_state_flag_bits
+typedef tfxU32 tfxEffectStateFlags;				//tfx_effect_state_flag_bits
+typedef tfxU32 tfxParticleControlFlags;			//tfx_particle_control_flag_bits
+typedef tfxU32 tfxAttributeNodeFlags;			//tfx_attribute_node_flag_bits
+typedef tfxU32 tfxAngleSettingFlags;			//tfx_angle_setting_flag_bits
+typedef tfxU32 tfxParticleManagerFlags;			//tfx_particle_manager_flag_bits
+typedef tfxU32 tfxErrorFlags;					//tfx_error_flag_bits
+typedef tfxU32 tfxEffectCloningFlags;			//tfx_effect_cloning_flag_bits
+typedef tfxU32 tfxAnimationFlags;				//tfx_animation_flag_bits
+typedef tfxU32 tfxAnimationInstanceFlags;		//tfx_animation_instance_flag_bits
+typedef tfxU32 tfxAnimationManagerFlags;		//tfx_animation_manager_flag_bits
+typedef tfxU32 tfxEmitterPathFlags;				//tfx_emitter_path_flag_bits
 
 enum tfx_error_flag_bits {
 	tfxErrorCode_success = 0,
@@ -2374,7 +2379,8 @@ enum tfx_effect_property_flag_bits {
 	tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
 	tfxEffectPropertyFlags_age_order = 1 << 3,
 	tfxEffectPropertyFlags_use_keyframes = 1 << 4,
-	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5		//In the editor you can specify which effects you want to be included in a spritedata export
+	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,		//In the editor you can specify which effects you want to be included in a spritedata export
+	tfxEffectPropertyFlags_global_uniform_size = 1 << 6,				//Keep the global particle size uniform
 };
 
 enum tfx_emitter_property_flag_bits {
@@ -2384,32 +2390,30 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_relative_angle = 1 << 2,					//Keep the angle of the particles relative to the current angle of the emitter
 	tfxEmitterPropertyFlags_image_handle_auto_center = 1 << 3,			//Set the offset of the particle to the center of the image
 	tfxEmitterPropertyFlags_single = 1 << 4,							//Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
-	tfxEmitterPropertyFlags_specific_emission_direction = 1 << 5,		//Uses a normal vector (3d) or direction (2d) to determine emission direction
-	tfxEmitterPropertyFlags_spawn_on_grid = 1 << 6,						//When using an area, line or ellipse emitter, spawn along a grid
-	tfxEmitterPropertyFlags_grid_spawn_clockwise = 1 << 7,				//Spawn clockwise/left to right around the area
-	tfxEmitterPropertyFlags_fill_area = 1 << 8,							//Fill the area
-	tfxEmitterPropertyFlags_emitter_handle_auto_center = 1 << 9,		//Center the handle of the emitter
-	tfxEmitterPropertyFlags_edge_traversal = 1 << 10,					//Line emitters only: make particles traverse the line
-	tfxEmitterPropertyFlags_global_uniform_size = 1 << 11,				//Keep the global particle size uniform
-	tfxEmitterPropertyFlags_base_uniform_size = 1 << 12,				//Keep the base particle size uniform
-	tfxEmitterPropertyFlags_lifetime_uniform_size = 1 << 13,			//Keep the size over lifetime of the particle uniform
-	tfxEmitterPropertyFlags_animate = 1 << 14,							//Animate the particle shape if it has more than one frame of animation
-	tfxEmitterPropertyFlags_reverse_animation = 1 << 15,				//Make the image animation go in reverse
-	tfxEmitterPropertyFlags_play_once = 1 << 16,						//Play the animation once only
-	tfxEmitterPropertyFlags_random_start_frame = 1 << 17,				//Start the animation of the image from a random frame
-	tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
-	tfxEmitterPropertyFlags_wrap_single_sprite = 1 << 19,				//When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
-	tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
-	tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
-	tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
-	tfxEmitterPropertyFlags_effect_is_3d = 1 << 23,						//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
-	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 24,				//Spawn on grid points but randomly rather then in sequence
-	tfxEmitterPropertyFlags_area_open_ends = 1 << 25,					//Only sides of the area/cylinder are spawned on when fill area is not checked
-	tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 26,		//Emitter will be excluded from effect hue adjustments if this flag is checked
-	tfxEmitterPropertyFlags_enabled = 1 << 27,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
-	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 28,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
-	tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 29,	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
-	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 30			//Make the particles use a path to dictate their direction of travel
+	tfxEmitterPropertyFlags_spawn_on_grid = 1 << 5,						//When using an area, line or ellipse emitter, spawn along a grid
+	tfxEmitterPropertyFlags_grid_spawn_clockwise = 1 << 6,				//Spawn clockwise/left to right around the area
+	tfxEmitterPropertyFlags_fill_area = 1 << 7,							//Fill the area
+	tfxEmitterPropertyFlags_emitter_handle_auto_center = 1 << 8,		//Center the handle of the emitter
+	tfxEmitterPropertyFlags_edge_traversal = 1 << 9,					//Line and Path emitters only: make particles traverse the line/path
+	tfxEmitterPropertyFlags_base_uniform_size = 1 << 10,				//Keep the base particle size uniform
+	tfxEmitterPropertyFlags_lifetime_uniform_size = 1 << 11,			//Keep the size over lifetime of the particle uniform
+	tfxEmitterPropertyFlags_animate = 1 << 12,							//Animate the particle shape if it has more than one frame of animation
+	tfxEmitterPropertyFlags_reverse_animation = 1 << 13,				//Make the image animation go in reverse
+	tfxEmitterPropertyFlags_play_once = 1 << 14,						//Play the animation once only
+	tfxEmitterPropertyFlags_random_start_frame = 1 << 15,				//Start the animation of the image from a random frame
+	tfxEmitterPropertyFlags_wrap_single_sprite = 1 << 16,				//When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
+	tfxEmitterPropertyFlags_is_in_folder = 1 << 17,						//This effect is located inside a folder
+	tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 18,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
+	tfxEmitterPropertyFlags_effect_is_3d = 1 << 19,						//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
+	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 20,				//Spawn on grid points but randomly rather then in sequence
+	tfxEmitterPropertyFlags_area_open_ends = 1 << 21,					//Only sides of the area/cylinder are spawned on when fill area is not checked
+	tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 22,		//Emitter will be excluded from effect hue adjustments if this flag is checked
+	tfxEmitterPropertyFlags_enabled = 1 << 23,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
+	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 24,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
+	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 25,			//Make the particles use a path to dictate their direction of travel
+	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling = 1 << 26,		//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,			//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
 };
 
 enum tfx_particle_flag_bits : unsigned int {
@@ -2433,10 +2437,10 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_no_tween_this_update = 1 << 7,					//Internal flag generally, but you could use it if you want to teleport the effect to another location
 	tfxEmitterStateFlags_is_single = 1 << 8,
 	tfxEmitterStateFlags_not_line = 1 << 9,
-	tfxEmitterStateFlags_is_edge_traversal = 1 << 10,
-	tfxEmitterStateFlags_can_spin = 1 << 11,
-	tfxEmitterStateFlags_base_uniform_size = 1 << 12,
-	tfxEmitterStateFlags_lifetime_uniform_size = 1 << 13,				//Keep the size over lifetime of the particle uniform
+	tfxEmitterStateFlags_base_uniform_size = 1 << 10,
+	tfxEmitterStateFlags_lifetime_uniform_size = 1 << 11,				//Keep the size over lifetime of the particle uniform
+	tfxEmitterStateFlags_can_spin = 1 << 12,
+	tfxEmitterStateFlags_is_edge_traversal = 1 << 13,
 	tfxEmitterStateFlags_loop = 1 << 14,
 	tfxEmitterStateFlags_kill = 1 << 15,
 	tfxEmitterStateFlags_play_once = 1 << 16,							//Play the animation once only
@@ -2448,7 +2452,8 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_is_sub_emitter = 1 << 22,
 	tfxEmitterStateFlags_has_noise = 1 << 23,
 	tfxEmitterStateFlags_can_spin_pitch_and_yaw = 1 << 24,			//For 3d emitters that have free alignment and not always facing the camera
-	tfxEmitterStateFlags_has_path = 1 << 25							
+	tfxEmitterStateFlags_has_path = 1 << 25,
+	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -2604,6 +2609,7 @@ static float tfxLOOKUP_FREQUENCY_OVERTIME = 1.f;
 //Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 static tfxWideFloat tfxLOOKUP_FREQUENCY_WIDE = tfxWideSetSingle(10.f);
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
+//Experiment with lower resolution and use interpolation instead? Could be a lot better on the cache.
 static tfxWideFloat tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetSingle(1.f);
 
 //-----------------------------------------------------------
@@ -3587,7 +3593,7 @@ struct tfx_bucket_array_t {
 		return bucket_list[current_bucket]->data.back();
 	}
 
-	inline tfxU32        locked_push_back(const T& v) {
+	inline tfxU32 locked_push_back(const T& v) {
 		while (tfx__compare_and_exchange(&locked, 1, 0) > 1);
 
 		push_back(v);
@@ -4814,6 +4820,7 @@ struct tfx_emitter_path_t {
 	tfx_vector_t<tfx_vec4_t> nodes;
 	tfx_soa_buffer_t node_buffer;
 	tfx_path_nodes_soa_t node_soa;
+	tfx_path_extrusion_type extrusion_type;
 };
 
 struct tfx_emitter_attributes_t {
@@ -5208,7 +5215,7 @@ struct tfx_effect_emitter_t {
 		parent(nullptr),
 		user_data(nullptr),
 		update_callback(nullptr),
-		effect_flags(tfxEffectPropertyFlags_none),
+		effect_flags(tfxEffectPropertyFlags_global_uniform_size | tfxEffectPropertyFlags_none),
 		sort_passes(1),
 		info_index(tfxINVALID),
 		property_index(tfxINVALID),
@@ -5219,7 +5226,6 @@ struct tfx_effect_emitter_t {
 		property_flags(tfxEmitterPropertyFlags_image_handle_auto_center |
 			tfxEmitterPropertyFlags_grid_spawn_clockwise |
 			tfxEmitterPropertyFlags_emitter_handle_auto_center |
-			tfxEmitterPropertyFlags_global_uniform_size |
 			tfxEmitterPropertyFlags_base_uniform_size |
 			tfxEmitterPropertyFlags_lifetime_uniform_size),
 		state_flags(0)
@@ -5270,7 +5276,7 @@ struct tfx_particle_soa_t {
 	tfxU32 *velocity_normal;
 	tfxU32 *depth_index;
 	float *path_position;
-	float *path_rotation;
+	float *path_offset;
 	float *base_weight;
 	float *base_velocity;
 	float *base_spin;
@@ -5489,7 +5495,7 @@ struct tfx_spawn_work_entry_t {
 	tfxU32 parent_index;
 	tfx_emission_type emission_type;
 	tfxEmitterPropertyFlags property_flags;
-	tfxEmitterPropertyFlags parent_property_flags;
+	tfxEffectPropertyFlags parent_property_flags;
 	tfx_particle_soa_t *particle_data;
 	tfx_vector_t<tfx_effect_emitter_t> *sub_effects;
 	tfxU32 seed;
