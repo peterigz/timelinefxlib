@@ -1840,7 +1840,7 @@ I just extracted the necessary functions that I need from the above code base an
 Also fixed a bug in atan2 function where x <= y
 */
 
-tfxINTERNAL inline tfxWideFloat tfx_sqrt_ps(tfxWideFloat squared)
+tfxINTERNAL inline tfxWideFloat tfxWideFastSqrt(tfxWideFloat squared)
 {
 	static int csr = 0;
 	if (!csr) csr = _mm_getcsr() | 0x8040; //DAZ,FTZ (divide by zero=0)
@@ -1856,7 +1856,7 @@ float32x4_t andnot_ps(float32x4_t a, float32x4_t b) {
 }
 */
 
-tfxINTERNAL inline tfxWideFloat tfx_atan_ps(tfxWideFloat x)
+tfxINTERNAL inline tfxWideFloat tfxWideAtan(tfxWideFloat x)
 {
 	//                                      tfxQUARTERPI*x
 	//                                      - x*(fabs(x) - 1)
@@ -1864,42 +1864,6 @@ tfxINTERNAL inline tfxWideFloat tfx_atan_ps(tfxWideFloat x)
 	return tfxWideSub(tfxWideMul(_mm_set1_ps(tfxQUARTERPI), x),
 		tfxWideMul(tfxWideMul(x, tfxWideSub(tfxWideAndNot(SIGNMASK, x), tfxWideSetSingle(1.f))),
 			(tfxWideAdd(tfxWideSetSingle(0.2447f), tfxWideMul(tfxWideSetSingle(0.0663f), tfxWideAndNot(SIGNMASK, x))))));
-}
-
-tfxINTERNAL inline tfxWideFloat tfx_a_atan_ps(tfxWideFloat x)
-{
-	tfxWideFloat u = tfxWideMul(x, x);
-	tfxWideFloat u2 = tfxWideMul(u, u);
-	tfxWideFloat u3 = tfxWideMul(u2, u);
-	tfxWideFloat u4 = tfxWideMul(u3, u);
-	//tfxWideFloat f=1.f+0.33288950512027f*u-0.08467922817644f*u2+0.03252232640125f*u3-0.00749305860992f*u4;
-
-	tfxWideFloat f = tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideSetSingle(1.f),
-		tfxWideMul(tfxWideSetSingle(0.33288950512027f), u)),
-		tfxWideMul(tfxWideSetSingle(-0.08467922817644f), u2)),
-		tfxWideMul(tfxWideSetSingle(0.03252232640125f), u3)),
-		tfxWideMul(tfxWideSetSingle(-0.00749305860992f), u4));
-	return tfxWideDiv(x, f);
-}
-
-tfxINTERNAL inline tfxWideFloat tfx_a_atan2_ps(tfxWideFloat y, tfxWideFloat x)
-{
-	tfxWideFloat absxgreaterthanabsy = tfxWideGreater(tfxWideAndNot(SIGNMASK, x), tfxWideAndNot(SIGNMASK, y));
-	tfxWideFloat ratio = tfxWideDiv(tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, y), tfxWideAndNot(absxgreaterthanabsy, x)),
-		tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, x), tfxWideAndNot(absxgreaterthanabsy, y)));
-	tfxWideFloat atan = tfx_a_atan_ps(ratio);
-
-	tfxWideFloat xgreaterthan0 = tfxWideGreater(x, tfxWideSetSingle(0.f));
-	tfxWideFloat ygreaterthan0 = tfxWideGreater(y, tfxWideSetSingle(0.f));
-
-	atan = tfxWideXOr(atan, tfxWideAndNot(absxgreaterthanabsy, tfxWideAnd(xgreaterthan0, SIGNMASK))); //negate atan if absx<=absy & x>0
-
-	tfxWideFloat shift = tfxWideSetSingle(tfxPI);
-	shift = tfxWideSub(shift, tfxWideAndNot(absxgreaterthanabsy, tfxWideSetSingle(tfxHALFPI))); //substract tfxHALFPI if absx<=absy
-	shift = tfxWideXOr(shift, tfxWideAndNot(ygreaterthan0, SIGNMASK)); //negate shift if y<=0
-	shift = tfxWideAndNot(tfxWideAnd(absxgreaterthanabsy, xgreaterthan0), shift); //null if abs>absy & x>0
-
-	return tfxWideAdd(atan, shift);
 }
 
 /*
@@ -1919,12 +1883,12 @@ float atan2(float y, float x)
 }
 */
 
-tfxINTERNAL inline tfxWideFloat tfx_atan2_ps(tfxWideFloat y, tfxWideFloat x)
+tfxINTERNAL inline tfxWideFloat tfxWideAtan2(tfxWideFloat y, tfxWideFloat x)
 {
 	tfxWideFloat absxgreaterthanabsy = tfxWideGreater(tfxWideAndNot(SIGNMASK, x), tfxWideAndNot(SIGNMASK, y));
 	tfxWideFloat ratio = tfxWideDiv(tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, y), tfxWideAndNot(absxgreaterthanabsy, x)),
 		tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, x), tfxWideAndNot(absxgreaterthanabsy, y)));
-	tfxWideFloat atan = tfx_atan_ps(ratio);
+	tfxWideFloat atan = tfxWideAtan(ratio);
 
 	tfxWideFloat xgreaterthan0 = tfxWideGreater(x, tfxWideSetSingle(0.f));
 	tfxWideFloat ygreaterthan0 = tfxWideGreater(y, tfxWideSetSingle(0.f));
@@ -1939,7 +1903,7 @@ tfxINTERNAL inline tfxWideFloat tfx_atan2_ps(tfxWideFloat y, tfxWideFloat x)
 	return tfxWideAdd(atan, shift);
 }
 
-tfxINTERNAL inline tfxWideFloat tfx_cos_32s_ps(tfxWideFloat x)
+tfxINTERNAL inline tfxWideFloat tfxWideCos32s(tfxWideFloat x)
 {
 	const tfxWideFloat c1 = tfxWideSetSingle(0.99940307f);
 	const tfxWideFloat c2 = tfxWideSetSingle(-0.49558072f);
@@ -1950,7 +1914,7 @@ tfxINTERNAL inline tfxWideFloat tfx_cos_32s_ps(tfxWideFloat x)
 	return tfxWideAdd(c1, tfxWideMul(x2, tfxWideAdd(c2, tfxWideMul(c3, x2))));
 }
 
-tfxINTERNAL inline void  tfx_sincos_ps(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* cos) {
+tfxINTERNAL inline void  tfxWideSinCos(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* cos) {
 	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK, angle));
 
 	//clamp to the range 0..2pi
@@ -1967,16 +1931,19 @@ tfxINTERNAL inline void  tfx_sincos_ps(tfxWideFloat angle, tfxWideFloat* sin, tf
 	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK));
 	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
 
-	tfxWideFloat result = tfx_cos_32s_ps(cosangle);
+	tfxWideFloat result = tfxWideCos32s(cosangle);
 
 	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK));
 	*cos = result;
 
 	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK)));
-	*sin = tfxWideMul(sinmultiplier, tfx_sqrt_ps(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result))));
+	*sin = tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result))));
 
 	return;
 }
+/*
+End of Robin Lobel code
+*/
 
 //simd mod function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
 tfxINTERNAL inline tfxWideFloat tfxWideMod(const tfxWideFloat &a, const tfxWideFloat &aDiv) {
@@ -3283,7 +3250,7 @@ inline tfxU32 GetCircularIndex(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	return (buffer->start_index + index) % buffer->capacity;
 }
 
-//Get the index based on the buffer being a ring buffer
+//Convert a circular index back into an index from the start of the buffer
 inline tfxU32 GetAbsoluteIndex(tfx_soa_buffer_t *buffer, tfxU32 circular_index) {
 	return buffer->capacity - (circular_index % buffer->capacity);
 }
