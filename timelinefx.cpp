@@ -14245,7 +14245,8 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		}
 
 		if (path->extrusion_type == tfxExtrusionLinear) {
-			path_offset = RandomRange(&random, arc_size);
+			float radius = arc_size * .5f;
+			path_offset = RandomRange(&random, -radius, radius);
 			local_position_x = path_offset;
 			local_position_x *= emitter.emitter_size.x;
 			local_position_y = point.y * emitter.emitter_size.y;
