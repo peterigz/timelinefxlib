@@ -2322,6 +2322,14 @@ enum tfx_vector_align_type {
 	tfxVectorAlignType_max,
 };
 
+enum tfx_path_generation_type {
+	tfx_path_generation_spiral,
+	tfx_path_loop,
+	tfx_path_arc,
+	tfx_path_s_curve,
+	tfx_path_noise,
+};
+
 enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_none,
 	tfxPathFlags_3d = 1 << 0,
@@ -4808,6 +4816,7 @@ struct tfx_emitter_path_t {
 	tfx_str32_t name;
 	int node_count;
 	tfxEmitterPathFlags flags;
+	tfx_path_generation_type generator_type;
 	float preview_scale;
 	tfx_graph_t angle_x;
 	tfx_graph_t angle_y;
