@@ -2322,12 +2322,13 @@ enum tfx_vector_align_type {
 	tfxVectorAlignType_max,
 };
 
-enum tfx_path_generation_type {
-	tfx_path_generation_spiral,
-	tfx_path_loop,
-	tfx_path_arc,
-	tfx_path_s_curve,
-	tfx_path_noise,
+enum tfx_path_generator_type {
+	tfxPathGenerator_spiral,
+	tfxPathGenerator_loop,
+	tfxPathGenerator_arc,
+	tfxPathGenerator_s_curve,
+	tfxPathGenerator_noise,
+	tfxPathGenerator_max,
 };
 
 enum tfx_emitter_path_flag_bits {
@@ -4816,7 +4817,7 @@ struct tfx_emitter_path_t {
 	tfx_str32_t name;
 	int node_count;
 	tfxEmitterPathFlags flags;
-	tfx_path_generation_type generator_type;
+	tfx_path_generator_type generator_type;
 	float preview_scale;
 	tfx_graph_t angle_x;
 	tfx_graph_t angle_y;
@@ -6206,6 +6207,7 @@ tfxAPI_EDITOR tfx_attribute_node_t* AddGraphCoordNode(tfx_graph_t *graph, float,
 tfxAPI_EDITOR tfx_attribute_node_t* InsertGraphCoordNode(tfx_graph_t *graph, float, float);
 tfxAPI_EDITOR tfx_attribute_node_t* InsertGraphNode(tfx_graph_t *graph, float, float);
 tfxAPI_EDITOR float *LinkGraphFirstValue(tfx_graph_t *graph);
+tfxAPI_EDITOR float *LinkGraphLastValue(tfx_graph_t *graph);
 tfxAPI_EDITOR float GetGraphLastValue(tfx_graph_t *graph);
 tfxAPI_EDITOR float GetGraphMaxValue(tfx_graph_t *graph);
 tfxAPI_EDITOR float GetGraphMinValue(tfx_graph_t *graph);
@@ -6323,6 +6325,8 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfx_graph_type type) {
 //Grouped graph struct functions
 //--------------------------------
 tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size = 8);
+tfxAPI_EDITOR void ResetPathGraphs(tfx_emitter_path_t *path, tfx_path_generator_type generator);
+tfxAPI_EDITOR void BuildPathNodesComplex(tfx_emitter_path_t* path);
 tfxAPI_EDITOR void BuildPathNodes(tfx_emitter_path_t* path);
 tfxAPI_EDITOR void BuildUnitCylinderLoop();
 tfxAPI_EDITOR tfx_vec2_t RandomCylinderPoint(tfx_random_t *random);

@@ -3742,6 +3742,28 @@ void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	ResetGraph(&path->distance, 0.f, path->distance.graph_preset, true, 1.f);
 }
 
+void ResetPathGraphs(tfx_emitter_path_t* path, tfx_path_generator_type generator) {
+	ResetGraph(&path->angle_x, 0.f, path->angle_x.graph_preset, true, 1.f);
+	ResetGraph(&path->angle_y, 0.f, path->angle_y.graph_preset, true, 1.f);
+	ResetGraph(&path->angle_z, 0.f, path->angle_z.graph_preset, true, 1.f);
+	ResetGraph(&path->offset_x, 0.f, path->offset_x.graph_preset, true, 1.f);
+	ResetGraph(&path->offset_y, 0.f, path->offset_y.graph_preset, true, 1.f);
+	ResetGraph(&path->offset_z, 0.f, path->offset_z.graph_preset, true, 1.f);
+	ResetGraph(&path->distance, 0.f, path->distance.graph_preset, true, 1.f);
+	switch (generator) {
+		case tfxPathGenerator_spiral:
+		AddGraphNode(&path->angle_y, 1.f, tfxPI2);
+		ResetGraph(&path->offset_x, 2.f, path->offset_x.graph_preset, true, 1.f);
+		AddGraphNode(&path->offset_x, 1.f, 2.f);
+		AddGraphNode(&path->offset_y, 1.f, 5.f);
+		break;
+		case tfxPathGenerator_arc:
+		break;
+		default:
+		break;
+	}
+}
+
 void FreePathGraphs(tfx_emitter_path_t* path) {
 	FreeGraph(&path->angle_x);
 	FreeGraph(&path->angle_y);
@@ -3831,7 +3853,7 @@ tfx_vec2_t RandomCylinderPoint(tfx_random_t *random) {
 	return CatmullRomSplineSoALoop(tfxStore->circle_path_x, tfxStore->circle_path_z, node, tfxCIRCLENODES - 2, t);
 }
 
-void BuildPathNodes(tfx_emitter_path_t* path) {
+void BuildPathNodesComplex(tfx_emitter_path_t* path) {
 	if (!path->node_buffer.capacity) {
 		InitPathsSoA(&path->node_buffer, &path->node_soa, path->node_count);
 	}
@@ -3932,6 +3954,88 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 		path->node_soa.y[c] = path->node_soa.y[c - 1];
 		path->node_soa.z[c] = path->node_soa.z[c - 1];
 		path->node_soa.length[c] = path->node_soa.length[c - 1];
+	}
+	else {
+		for (int i = 0; i != path->node_count; ++i) {
+			path->nodes[i] = path_nodes[i];
+			path->node_soa.x[i] = path_nodes[i].x;
+			path->node_soa.y[i] = path_nodes[i].y;
+			path->node_soa.z[i] = path_nodes[i].z;
+			path->node_soa.length[i] = path_nodes[i].w;
+		}
+	}
+	path_nodes.free_all();
+}
+
+void BuildPathNodes(tfx_emitter_path_t* path) {
+	if (!path->node_buffer.capacity) {
+		InitPathsSoA(&path->node_buffer, &path->node_soa, path->node_count);
+	}
+	if (path->nodes.current_size != path->node_count) {
+		path->nodes.resize(path->node_count);
+		if ((tfxU32)path->node_count > path->node_buffer.capacity) {
+			GrowArrays(&path->node_buffer, path->node_buffer.capacity, path->node_count, false);
+		}
+		path->node_buffer.current_size = path->node_count;
+	}
+	tfx_vector_t<tfx_vec4_t> path_nodes;
+	path_nodes.resize(path->node_count);
+	tfx_mat4_t matrix;
+	float node_count = (float)path->node_count - 1.f;
+	if (path->generator_type == tfxPathGenerator_spiral) {
+		tfx_vec4_t offset, position;
+		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
+		while (i < path->node_count) {
+			matrix = Matrix4RotateY(GetGraphValue(&path->angle_y, age));
+			offset = { GetGraphValue(&path->offset_x, age), GetGraphValue(&path->offset_y, age), 0.f, 0.f };
+			position = TransformVec4Matrix4(&matrix, offset);
+			position += path->offset;
+			age += age_inc;
+			path_nodes[i++] = position;
+		}
+	}
+	else if(path->generator_type == tfxPathGenerator_arc) {
+		tfx_vec4_t offset, position;
+		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
+		tfx_vec4_t distance = {};
+		while (i < path->node_count) {
+			matrix = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
+			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
+			position += TransformVec4Matrix4(&matrix, distance);
+			age += age_inc;
+			path_nodes[i++] = position + path->offset;
+		}
+	}
+	if (path->flags & tfxPathFlags_space_nodes_evenly) {
+		float length = 0.f;
+		for (int i = 0; i != path->node_count - 3; ++i) {
+			float step = 0.05f;
+			path_nodes[i].w = 0.f;
+			for (float t = 0.0f; t <= 1.0f - step; t += step) {
+				tfx_vec3_t p1 = CatmullRomSpline3D(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t);
+				tfx_vec3_t p2 = CatmullRomSpline3D(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step);
+				tfx_vec3_t segment = p2 - p1;
+				path_nodes[i].w += LengthVec(&segment);
+			}
+			length += path_nodes[i].w;
+		}
+		float segment_length = length / node_count;
+		float segment = 0.f;
+		int i = 0;
+		int c = path->node_count;
+		path->nodes[1] = CatmullRomSpline3D(&path_nodes[0], &path_nodes[1], &path_nodes[2], &path_nodes[3], 0.f);
+		while (i != c) {
+			float ni = GetCatmullSegment(&path_nodes, segment);
+			if (ni >= path->node_count - 3) {
+				ni = (float)path->node_count - 3.f - 0.0001f;
+			}
+			tfx_vec3_t position = CatmullRomSpline3D(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
+			path->node_soa.x[i] = position.x;
+			path->node_soa.y[i] = position.y;
+			path->node_soa.z[i] = position.z;
+			segment += segment_length;
+			path->nodes[i++] = position;
+		}
 	}
 	else {
 		for (int i = 0; i != path->node_count; ++i) {
@@ -5732,6 +5836,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("path_is_3d", tfxBool);
 	names_and_types.Insert("path_space_nodes_evenly", tfxBool);
 	names_and_types.Insert("path_extrusion_type", tfxSInt);
+	names_and_types.Insert("path_generator_type", tfxSInt);
 
 	//Sprite data settings
 	names_and_types.Insert("start_offset", tfxUint);
@@ -6157,6 +6262,9 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int 
 		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].extra_frames_count = value;
 	if (*field == "path_extrusion_type") {
 		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->extrusion_type = (tfx_path_extrusion_type)value; }
+	}
+	if (*field == "path_generator_type") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->generator_type = (tfx_path_generator_type)value; }
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t &value) {
@@ -7114,6 +7222,12 @@ float GetGraphFirstValue(tfx_graph_t *graph) {
 float* LinkGraphFirstValue(tfx_graph_t *graph) {
 	if (graph->nodes.size())
 		return &graph->nodes.front().value;
+	return nullptr;
+}
+
+float* LinkGraphLastValue(tfx_graph_t *graph) {
+	if (graph->nodes.size())
+		return &graph->nodes.back().value;
 	return nullptr;
 }
 
