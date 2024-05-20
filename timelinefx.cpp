@@ -3083,6 +3083,7 @@ void ResetEmitterPropertyGraphs(tfx_effect_emitter_t *effect, bool add_node, boo
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_width, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.emitter_width.type = tfxProperty_emitter_width;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_height, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.emitter_height.type = tfxProperty_emitter_height;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_depth, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.emitter_depth.type = tfxProperty_emitter_depth;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.extrusion, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.extrusion.type = tfxProperty_extrusion;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_size, DegreesToRadians(360.f), tfxArcPreset, add_node); library->emitter_attributes[emitter_attributes].properties.arc_size.type = tfxProperty_arc_size;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_offset, 0.f, tfxArcPreset, add_node); library->emitter_attributes[emitter_attributes].properties.arc_offset.type = tfxProperty_arc_offset;
 	if (compile) {
@@ -3194,6 +3195,7 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].properties.emitter_width.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_width, 0.f, tfxDimensionsPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.emitter_height.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_height, 0.f, tfxDimensionsPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.emitter_depth.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_depth, 0.f, tfxDimensionsPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.extrusion.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.extrusion, 0.f, tfxDimensionsPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.arc_size.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_size, DegreesToRadians(360.f), tfxArcPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.arc_offset.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].properties.arc_offset, 0.f, tfxArcPreset);
 
@@ -3629,6 +3631,7 @@ void FreeEffectGraphs(tfx_effect_emitter_t *effect) {
 		FreeGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_width);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_height);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].properties.emitter_depth);
+		FreeGraph(&library->emitter_attributes[emitter_attributes].properties.extrusion);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].properties.arc_size);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].properties.arc_offset);
 
@@ -4198,6 +4201,7 @@ void InitialisePropertyAttributes(tfx_property_attributes_t *attributes, tfxU32 
 	attributes->emitter_width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->emitter_height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->emitter_depth.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->extrusion.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->arc_size.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->arc_offset.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 }
@@ -4210,6 +4214,7 @@ void FreePropertyAttributes(tfx_property_attributes_t *attributes) {
 	FreeGraph(&attributes->emitter_width);
 	FreeGraph(&attributes->emitter_height);
 	FreeGraph(&attributes->emitter_depth);
+	FreeGraph(&attributes->extrusion);
 	FreeGraph(&attributes->arc_size);
 	FreeGraph(&attributes->arc_offset);
 }
@@ -4223,6 +4228,7 @@ void CopyPropertyAttributesNoLookups(tfx_property_attributes_t *src, tfx_propert
 	CopyGraphNoLookups(&src->emitter_width, &dst->emitter_width);
 	CopyGraphNoLookups(&src->emitter_height, &dst->emitter_height);
 	CopyGraphNoLookups(&src->emitter_depth, &dst->emitter_depth);
+	CopyGraphNoLookups(&src->extrusion, &dst->extrusion);
 	CopyGraphNoLookups(&src->arc_size, &dst->arc_size);
 	CopyGraphNoLookups(&src->arc_offset, &dst->arc_offset);
 }
@@ -4236,6 +4242,7 @@ void CopyPropertyAttributes(tfx_property_attributes_t *src, tfx_property_attribu
 	CopyGraph(&src->emitter_width, &dst->emitter_width);
 	CopyGraph(&src->emitter_height, &dst->emitter_height);
 	CopyGraph(&src->emitter_depth, &dst->emitter_depth);
+	CopyGraph(&src->extrusion, &dst->extrusion);
 	CopyGraph(&src->arc_size, &dst->arc_size);
 	CopyGraph(&src->arc_offset, &dst->arc_offset);
 }
@@ -4905,6 +4912,7 @@ tfxU32 CountLibraryEmitterLookUpValues(tfx_library_t *library, tfxU32 index) {
 	count += attributes.properties.emitter_width.lookup.values.capacity;
 	count += attributes.properties.emitter_height.lookup.values.capacity;
 	count += attributes.properties.emitter_depth.lookup.values.capacity;
+	count += attributes.properties.extrusion.lookup.values.capacity;
 	count += attributes.properties.arc_size.lookup.values.capacity;
 	count += attributes.properties.arc_offset.lookup.values.capacity;
 
@@ -5355,6 +5363,7 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 	for (auto &g : library->emitter_attributes) {
 		CompileGraph(&g.properties.arc_offset);
 		CompileGraph(&g.properties.arc_size);
+		CompileGraph(&g.properties.extrusion);
 		CompileGraph(&g.properties.emission_pitch);
 		CompileGraph(&g.properties.emission_yaw);
 		CompileGraph(&g.properties.emission_range);
@@ -5449,6 +5458,7 @@ void CompileLibraryPropertyGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_property_attributes_t &g = library->emitter_attributes[index].properties;
 	CompileGraph(&g.arc_offset);
 	CompileGraph(&g.arc_size);
+	CompileGraph(&g.extrusion);
 	CompileGraph(&g.emission_pitch);
 	CompileGraph(&g.emission_yaw);
 	CompileGraph(&g.emission_range);
@@ -5547,6 +5557,7 @@ void SetLibraryMinMaxData(tfx_library_t *library) {
 	library->graph_min_max[tfxProperty_emitter_width] = GetMinMaxGraphValues(tfxDimensionsPreset);
 	library->graph_min_max[tfxProperty_emitter_height] = GetMinMaxGraphValues(tfxDimensionsPreset);
 	library->graph_min_max[tfxProperty_emitter_depth] = GetMinMaxGraphValues(tfxDimensionsPreset);
+	library->graph_min_max[tfxProperty_extrusion] = GetMinMaxGraphValues(tfxDimensionsPreset);
 	library->graph_min_max[tfxProperty_arc_size] = GetMinMaxGraphValues(tfxArcPreset);
 	library->graph_min_max[tfxProperty_arc_offset] = GetMinMaxGraphValues(tfxArcPreset);
 
@@ -5769,6 +5780,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("property_emitter_width", tfxFloat);
 	names_and_types.Insert("property_emitter_height", tfxFloat);
 	names_and_types.Insert("property_emitter_depth", tfxFloat);
+	names_and_types.Insert("property_extrusion", tfxFloat);
 	names_and_types.Insert("property_arc_size", tfxFloat);
 	names_and_types.Insert("property_arc_offset", tfxFloat);
 
@@ -5990,6 +6002,7 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 
 		if ((*values)[0] == "property_arc_offset") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].properties.arc_offset, &n); }
 		if ((*values)[0] == "property_arc_size") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].properties.arc_size, &n); }
+		if ((*values)[0] == "property_extrusion") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].properties.extrusion, &n); }
 		if ((*values)[0] == "property_emission_angle") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].properties.emission_pitch, &n); }
 		if ((*values)[0] == "property_emission_pitch") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].properties.emission_pitch, &n); }
 		if ((*values)[0] == "property_emission_yaw") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].properties.emission_yaw, &n); }
@@ -14312,6 +14325,7 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 	float increment = 1.f / grid_points.x;
 	float arc_size = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
 	float arc_offset = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
+	float extrusion = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.extrusion, emitter.frame);
 	tfx_vec3_t point;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -14359,12 +14373,12 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		}
 
 		if (path->extrusion_type == tfxExtrusionLinear) {
-			float radius = arc_size * .5f;
+			float radius = extrusion * .5f;
 			path_offset = RandomRange(&random, -radius, radius);
-			local_position_x = path_offset;
+			local_position_x = point.x + path_offset;
 			local_position_x *= emitter.emitter_size.x;
 			local_position_y = point.y * emitter.emitter_size.y;
-			local_position_z *= emitter.emitter_size.z;
+			local_position_z = point.z * emitter.emitter_size.z;
 		}
 		else {
 			path_offset = RandomRange(&random, arc_size) + arc_offset;

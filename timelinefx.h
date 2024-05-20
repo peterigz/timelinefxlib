@@ -2021,7 +2021,7 @@ enum tfx_graph_category : unsigned int {
 
 
 #define TFX_GLOBAL_COUNT  16
-#define	TFX_PROPERTY_COUNT  9
+#define	TFX_PROPERTY_COUNT  10
 #define	TFX_BASE_COUNT  10
 #define	TFX_VARIATION_COUNT  11
 #define	TFX_OVERTIME_COUNT  18
@@ -2057,9 +2057,10 @@ enum tfx_graph_type : unsigned char {
 	tfxProperty_emission_yaw,
 	tfxProperty_emission_range,
 	tfxProperty_splatter,
-	tfxProperty_emitter_width,
+	tfxProperty_emitter_width,		//Also used for linear extrusion for paths as well
 	tfxProperty_emitter_height,
 	tfxProperty_emitter_depth,
+	tfxProperty_extrusion,
 	tfxProperty_arc_size,
 	tfxProperty_arc_offset,
 
@@ -4753,6 +4754,7 @@ struct tfx_property_attributes_t {
 	tfx_graph_t emitter_width;
 	tfx_graph_t emitter_height;
 	tfx_graph_t emitter_depth;
+	tfx_graph_t extrusion;
 	tfx_graph_t arc_size;
 	tfx_graph_t arc_offset;
 };
