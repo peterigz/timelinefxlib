@@ -3761,6 +3761,8 @@ void ResetPathGraphs(tfx_emitter_path_t* path, tfx_path_generator_type generator
 		AddGraphNode(&path->offset_y, 1.f, 5.f);
 		break;
 		case tfxPathGenerator_arc:
+		ResetGraph(&path->distance, .2f, path->distance.graph_preset, true, 1.f);
+		AddGraphNode(&path->angle_x, 1.f, tfx180Radians);
 		break;
 		default:
 		break;
