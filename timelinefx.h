@@ -1107,6 +1107,7 @@ tfx_allocator *tfxGetAllocator();
 #define tfx360Radians 6.28319f
 #define tfx180Radians 3.14159f
 #define tfx90Radians 1.5708f
+#define tfx270Radians 4.71239f
 #define tfxMAXDEPTH 3
 #define tfxNL u8"\n"
 #define tfxPROPERTY_INDEX_MASK 0x00007FFF
@@ -2328,6 +2329,7 @@ enum tfx_path_generator_type {
 	tfxPathGenerator_loop,
 	tfxPathGenerator_arc,
 	tfxPathGenerator_s_curve,
+	tfxPathGenerator_bend,
 	tfxPathGenerator_noise,
 	tfxPathGenerator_max,
 };
@@ -4820,7 +4822,6 @@ struct tfx_emitter_path_t {
 	int node_count;
 	tfxEmitterPathFlags flags;
 	tfx_path_generator_type generator_type;
-	float preview_scale;
 	tfx_graph_t angle_x;
 	tfx_graph_t angle_y;
 	tfx_graph_t angle_z;
@@ -4829,6 +4830,7 @@ struct tfx_emitter_path_t {
 	tfx_graph_t offset_z;
 	tfx_graph_t distance;
 	tfx_vec3_t offset;
+	tfx_vec3_t builder_parameters;
 	tfx_vector_t<tfx_vec4_t> nodes;
 	tfx_soa_buffer_t node_buffer;
 	tfx_path_nodes_soa_t node_soa;

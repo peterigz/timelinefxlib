@@ -3761,8 +3761,28 @@ void ResetPathGraphs(tfx_emitter_path_t* path, tfx_path_generator_type generator
 		AddGraphNode(&path->offset_y, 1.f, 5.f);
 		break;
 		case tfxPathGenerator_arc:
-		ResetGraph(&path->distance, .2f, path->distance.graph_preset, true, 1.f);
+		ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
 		AddGraphNode(&path->angle_x, 1.f, tfx180Radians);
+		break;
+		case tfxPathGenerator_loop:
+		ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
+		ResetGraph(&path->angle_x, -tfx90Radians, path->angle_x.graph_preset, true, 1.f);
+		AddGraphNode(&path->angle_x, .25f, -tfx90Radians);
+		AddGraphNode(&path->angle_x, .75f, tfx270Radians);
+		break;
+		case tfxPathGenerator_s_curve:
+		ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
+		ResetGraph(&path->angle_x, -0.f, path->angle_x.graph_preset, true, 1.f);
+		AddGraphNode(&path->angle_x, .25f, DegreesToRadians(20.f));
+		AddGraphNode(&path->angle_x, .75f, DegreesToRadians(-20.f));
+		AddGraphNode(&path->angle_x, 1.f, DegreesToRadians(0.f));
+		break;
+		case tfxPathGenerator_bend:
+		ResetGraph(&path->distance, 0.4f, path->distance.graph_preset, true, 1.f);
+		AddGraphNode(&path->angle_x, .5f, 0.f);
+		AddGraphNode(&path->angle_x, .6f, tfx90Radians);
+		path->builder_parameters.x = .5f;
+		path->builder_parameters.y = .1f;
 		break;
 		default:
 		break;
@@ -3795,7 +3815,6 @@ tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
 	path.flags = src->flags;
 	path.name = name;
 	path.node_count = src->node_count;
-	path.preview_scale = src->preview_scale;
 	InitialisePathGraphs(&path);
 	CopyPathGraphs(src, &path);
 	return path;
@@ -3807,7 +3826,6 @@ tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node)
 		path.flags = 0;
 		path.name = "";
 		path.node_count = 32;
-		path.preview_scale = 1.f;
 		path.extrusion_type = tfxExtrusionArc;
 		InitialisePathGraphs(&path);
 		ResetGraph(&path.angle_x, 0.f, path.angle_x.graph_preset, add_node, 1.f);
@@ -4003,6 +4021,49 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 		tfx_vec4_t offset, position;
 		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
 		tfx_vec4_t distance = {};
+		while (i < path->node_count) {
+			matrix = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
+			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
+			position += TransformVec4Matrix4(&matrix, distance);
+			age += age_inc;
+			path_nodes[i++] = position + path->offset;
+		}
+	}
+	else if (path->generator_type == tfxPathGenerator_loop) {
+		tfx_vec4_t offset, position;
+		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
+		tfx_vec4_t distance = {};
+		tfx_mat4_t z_mat;
+		while (i < path->node_count) {
+			matrix = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
+			z_mat = Matrix4RotateZ(GetGraphValue(&path->angle_z, age));
+			matrix = TransformMatrix4(&matrix, &z_mat);
+			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
+			position += TransformVec4Matrix4(&matrix, distance);
+			age += age_inc;
+			path_nodes[i++] = position + path->offset;
+		}
+	}
+	else if (path->generator_type == tfxPathGenerator_s_curve) {
+		tfx_vec4_t offset, position;
+		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
+		tfx_vec4_t distance = {};
+		tfx_mat4_t z_mat;
+		while (i < path->node_count) {
+			matrix = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
+			z_mat = Matrix4RotateZ(GetGraphValue(&path->angle_z, age));
+			matrix = TransformMatrix4(&matrix, &z_mat);
+			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
+			position += TransformVec4Matrix4(&matrix, distance);
+			age += age_inc;
+			path_nodes[i++] = position + path->offset;
+		}
+	}
+	else if (path->generator_type == tfxPathGenerator_bend) {
+		tfx_vec4_t offset, position;
+		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
+		tfx_vec4_t distance = {};
+		tfx_mat4_t z_mat;
 		while (i < path->node_count) {
 			matrix = Matrix4RotateX(GetGraphValue(&path->angle_x, age));
 			distance = { 0.f, GetGraphValue(&path->distance, age), 0.f, 0.f };
