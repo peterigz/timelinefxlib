@@ -2340,6 +2340,7 @@ enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_mode_origin = 1 << 1,
 	tfxPathFlags_mode_node = 1 << 2,
 	tfxPathFlags_space_nodes_evenly = 1 << 3,
+	tfxPathFlags_reverse_direction = 1 << 4,
 };
 
 //Particle property that defines how a particle will rotate

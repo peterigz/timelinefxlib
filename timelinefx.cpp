@@ -4096,20 +4096,42 @@ void BuildPathNodes(tfx_emitter_path_t* path) {
 				ni = (float)path->node_count - 3.f - 0.0001f;
 			}
 			tfx_vec3_t position = CatmullRomSpline3D(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
-			path->node_soa.x[i] = position.x;
-			path->node_soa.y[i] = position.y;
-			path->node_soa.z[i] = position.z;
+			if (path->flags & tfxPathFlags_reverse_direction) {
+				int node_count = path->node_count - 1;
+				path->node_soa.x[node_count - i] = position.x;
+				path->node_soa.y[node_count - i] = position.y;
+				path->node_soa.z[node_count - i] = position.z;
+				path->nodes[node_count - i] = position;
+			}
+			else {
+				path->node_soa.x[i] = position.x;
+				path->node_soa.y[i] = position.y;
+				path->node_soa.z[i] = position.z;
+				path->nodes[i] = position;
+			}
 			segment += segment_length;
-			path->nodes[i++] = position;
+			i++;
 		}
 	}
 	else {
-		for (int i = 0; i != path->node_count; ++i) {
-			path->nodes[i] = path_nodes[i];
-			path->node_soa.x[i] = path_nodes[i].x;
-			path->node_soa.y[i] = path_nodes[i].y;
-			path->node_soa.z[i] = path_nodes[i].z;
-			path->node_soa.length[i] = path_nodes[i].w;
+		if (path->flags & tfxPathFlags_reverse_direction) {
+			int node_count = path->node_count - 1;
+			for (int i = 0; i != path->node_count; ++i) {
+				path->nodes[node_count - i] = path_nodes[i];
+				path->node_soa.x[node_count - i] = path_nodes[i].x;
+				path->node_soa.y[node_count - i] = path_nodes[i].y;
+				path->node_soa.z[node_count - i] = path_nodes[i].z;
+				path->node_soa.length[node_count - i] = path_nodes[i].w;
+			}
+		}
+		else {
+			for (int i = 0; i != path->node_count; ++i) {
+				path->nodes[i] = path_nodes[i];
+				path->node_soa.x[i] = path_nodes[i].x;
+				path->node_soa.y[i] = path_nodes[i].y;
+				path->node_soa.z[i] = path_nodes[i].z;
+				path->node_soa.length[i] = path_nodes[i].w;
+			}
 		}
 	}
 	path_nodes.free_all();
@@ -10627,25 +10649,6 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 
 		tfx__readbarrier;
 
-		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
-		if (emitter.state_flags & tfxEmitterStateFlags_kill) {
-			//Lines - Kill if the particle has reached the end of the line
-			tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
-			tfxWideInt remove_flags = tfxWideAndi(remove_flag, tfxWideOri(tfxWideCasti(tfxWideLess(path_position, tfxWideSetZero)), tfxWideCasti(tfxWideGreaterEqual(path_position, node_count))));
-			flags = tfxWideOri(flags, remove_flags);
-			tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
-		}
-		else {
-			//Lines - Reposition if the particle is travelling along a line
-			tfxWideFloat at_end =  tfxWideGreaterEqual(path_position, node_count);
-			path_position = tfxWideSub(path_position, tfxWideAnd(at_end, node_count));
-			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-			at_end = tfxWideLess(path_position, tfxWideSetZero);
-			path_position = tfxWideAdd(path_position, tfxWideAnd(at_end, node_count));
-			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-			tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
-		}
-
 		if (emitter.property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling) {
 			life = tfxWideDiv(path_position, node_count);
 			life = tfxWideMul(life, max_life);
@@ -10658,6 +10661,27 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
 		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
 		tfxWideFloat velocity_scalar = tfxWideMul(tfxWideMul(base_velocity, lookup_velocity), velocity_adjuster);
+		path_position = tfxWideAdd(path_position, tfxWideMul(velocity_scalar, pm.update_time_wide));
+
+		tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
+		if (emitter.state_flags & tfxEmitterStateFlags_kill) {
+			//Lines - Kill if the particle has reached the end of the path
+			tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
+			tfxWideInt remove_flags = tfxWideAndi(remove_flag, tfxWideOri(tfxWideCasti(tfxWideLess(path_position, tfxWideSetZero)), tfxWideCasti(tfxWideGreaterEqual(path_position, node_count))));
+			flags = tfxWideOri(flags, remove_flags);
+			tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
+		}
+		else {
+			//Lines - Reposition if the particle is travelling along the path
+			tfxWideFloat at_end =  tfxWideGreaterEqual(path_position, node_count);
+			path_position = tfxWideSub(path_position, tfxWideAnd(at_end, node_count));
+			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
+			at_end = tfxWideLess(path_position, tfxWideSetZero);
+			path_position = tfxWideAdd(path_position, tfxWideAnd(at_end, node_count));
+			flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
+			tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
+		}
+
 		tfxWideArrayi node_index;
 		node_index.m = tfxWideConverti(path_position);
 		tfxWideFloat t = tfxWideSub(path_position, tfxWideConvert(node_index.m));
@@ -10665,16 +10689,17 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideFloat point_z;
 		CatmullRomSpline3DWide(&node_index, t, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x, &local_position_y, &point_z);
 		tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x, point_x), tfxWideMul(point_z, point_z));
+		tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
 #ifdef tfxARM
-		radius = tfxWideMul(tfxWideRSqrt(radius), radius);
+		radius = tfxWideAnd(length_mask, tfxWideMul(tfxWideRSqrt(radius), radius));
 #else
-		radius = tfxWideSqrt(radius);
+		radius = tfxWideAnd(length_mask, tfxWideSqrt(radius));
 #endif
 		if (path->extrusion_type == tfxExtrusionArc) {
 			tfxWideFloat angle;
 			tfxWideFloat rx;
 			tfxWideFloat rz;
-			angle = tfxWideAtan2(point_z, point_x);
+			angle = tfxWideAnd(length_mask, tfxWideAtan2(point_z, point_x));
 			angle = tfxWideAdd(angle, path_offset);
 			tfxWideSinCos(angle, &rz, &rx);
 			local_position_x = tfxWideMul(rx, radius);
@@ -10761,7 +10786,6 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideStore(&bank.position_y[index], tfxWideMul(local_position_y, emitter_height));
 		tfxWideStore(&bank.position_z[index], tfxWideMul(local_position_z, emitter_depth));
 
-		path_position = tfxWideAdd(path_position, tfxWideMul(velocity_scalar, pm.update_time_wide));
 		tfxWideStore(&bank.path_position[index], path_position);
 	}
 	ControlParticleTransform3d(&pm.work_queue, data);
@@ -14445,15 +14469,14 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		}
 		else {
 			path_offset = RandomRange(&random, arc_size) + arc_offset;
-			float radius = 1.f / QuakeSqrt(point.x * point.x + point.z * point.z);
+			float length_squared = point.x * point.x + point.z * point.z;
+			float radius =  length_squared == 0.f ? 0.f : 1.f / QuakeSqrt(length_squared);
 			float angle = atan2f(point.z, point.x) + path_offset;
 			float rx = cosf(angle);
 			float ry = sinf(angle);
-			local_position_x = rx * radius;
-			local_position_z = ry * radius;
-			local_position_x *= emitter.emitter_size.x;
+			local_position_x = rx * radius * emitter.emitter_size.x;
+			local_position_z = ry * radius * emitter.emitter_size.z;
 			local_position_y = point.y * emitter.emitter_size.y;
-			local_position_z *= emitter.emitter_size.z;
 		}
 
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
