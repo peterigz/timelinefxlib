@@ -1,4 +1,4 @@
-#define TFX_ALLOCATOR_IMPLEMENTATION
+﻿#define TFX_ALLOCATOR_IMPLEMENTATION
 #include "timelinefx.h"
 
 namespace tfx {
@@ -2077,8 +2077,8 @@ float Interpolatef(float tween, float from, float to) {
 }
 
 void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_state_t *parent) {
-	float s = sin(out_local_rotations->roll);
-	float c = cos(out_local_rotations->roll);
+	float s = sinf(out_local_rotations->roll);
+	float c = cosf(out_local_rotations->roll);
 
 	out_matrix->Set2(c, s, -s, c);
 	*out_scale = parent->overal_scale;
@@ -2908,6 +2908,47 @@ float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library,
 	return direction + emission_angle + RandomRange(random, -range, range);
 }
 
+tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle) {
+	// Convert cone angle to radians
+
+	// Calculate the minimum z value for the cone
+	float min_z = cosf(cone_angle);
+
+	// Randomly sample z in [min_z, 1]
+	float z = RandomRange(random, min_z, 1.0f);
+
+	// Randomly sample ϕ in [0, 2π)
+	float phi = RandomRange(random, 0.0f, 2.0f * tfxPI);
+
+	// Calculate the corresponding x and y for the random point on the unit sphere
+	float sqrt_one_minus_z_squared = sqrtf(1.0f - z * z);
+	float x = sqrt_one_minus_z_squared * cosf(phi);
+	float y = sqrt_one_minus_z_squared * sinf(phi);
+
+	// Create the random vector in the cone's local space
+	tfx_vec3_t random_vector = { x, y, z };
+
+	// If the cone is centered around the north pole (0, 0, 1), return the vector as is
+	if (cone_direction.x == 0 && cone_direction.y == 0) {
+		return random_vector;
+	}
+
+	// Calculate the rotation axis (cross product of (0, 0, 1) and cone_direction)
+	tfx_vec3_t north_pole = { 0, 0, 1 };
+	tfx_vec3_t rotation_axis = Cross(&north_pole, &cone_direction);
+	rotation_axis = NormalizeVec3Fast(&rotation_axis);
+
+
+	// Calculate the rotation angle (acos of dot product of (0, 0, 1) and cone_direction)
+	float rotation_angle = acosf(DotProductVec3(&north_pole, &cone_direction));
+
+	// Rotate the random vector to align with the cone direction
+	// Use Rodrigues' rotation formula
+	tfx_vec3_t rotated_vector = random_vector * cosf(rotation_angle) + Cross(&rotation_axis, &random_vector) * sinf(rotation_angle) + rotation_axis * DotProductVec3(&rotation_axis, &random_vector) * (1.f - cosf(rotation_angle));
+
+	return rotated_vector;
+}
+
 tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position) {
 	float emission_angle_variation = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_range, emitter.frame);
 	//----Emission
@@ -2989,29 +3030,12 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 	float pitch = asinf(-to_handle.y);
 	float yaw = atan2(to_handle.x, to_handle.z);
 	tfx_vec3_t direction;
-	direction.z = cos(emission_yaw + yaw) * cos(emission_pitch + pitch);
-	direction.y = -sin(emission_pitch + pitch);
-	direction.x = sin(emission_yaw + yaw) * cos(emission_pitch + pitch);
+	direction.z = cosf(emission_yaw + yaw) * cosf(emission_pitch + pitch);
+	direction.y = -sinf(emission_pitch + pitch);
+	direction.x = sinf(emission_yaw + yaw) * cosf(emission_pitch + pitch);
 	tfx_vec3_t v = direction;
 	if (range != 0) {
-		result.y = GenerateRandom(random) * (1.f - cos(range)) + cos(range);
-		float phi = GenerateRandom(random) * 2.f * tfxPI;
-		float s = sqrt(1.f - (result.y * result.y));
-		result.x = s * cos(phi);
-		result.z = s * sin(phi);
-
-		v = result;
-
-		if (direction.y != 1.f) {
-			tfx_vec3_t n(0.f, 1.f, 0.f);
-			tfx_vec3_t u = Cross(&n, &direction);
-			float rot = acosf(DotProductVec3(&direction, &n));
-			tfx_mat4_t handle_mat = CreateMatrix4(1.f);
-			handle_mat = Matrix4RotateAxis(&handle_mat, rot, &u);
-			v = TransformVec4Matrix4(&handle_mat, result).xyz();
-			v.x = -v.x;
-			v.z = -v.z;
-		}
+		v = RandomVectorInCone(random, v, range);
 	}
 
 	return v;
@@ -10710,6 +10734,9 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 			local_position_z = point_z;
 		}
 
+		//Emission rotation
+		//---
+
 		local_position_x = tfxWideAdd(local_position_x, e_handle_x);
 		local_position_y = tfxWideAdd(local_position_y, e_handle_y);
 		local_position_z = tfxWideAdd(local_position_z, e_handle_z);
@@ -11075,11 +11102,6 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		position_x.m = tfxWideLoad(&bank.position_x[index]);
 		position_y.m = tfxWideLoad(&bank.position_y[index]);
 		position_z.m = tfxWideLoad(&bank.position_z[index]);
-		const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
-		tfxWideFloat velocity_normal_x;
-		tfxWideFloat velocity_normal_y;
-		tfxWideFloat velocity_normal_z;
-		UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 		tfxWideArray captured_position_x;
 		tfxWideArray captured_position_y;
 		tfxWideArray captured_position_z;
@@ -11135,12 +11157,22 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_z = tfxWideDiv(alignment_vector_z, l);
 		}
 		else if (vector_align_type == tfxVectorAlignType_emission && property_flags & tfxEmitterPropertyFlags_relative_position) {
+			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
+			tfxWideFloat velocity_normal_x;
+			tfxWideFloat velocity_normal_y;
+			tfxWideFloat velocity_normal_z;
+			UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 			alignment_vector_x = velocity_normal_x;
 			alignment_vector_y = velocity_normal_y;
 			alignment_vector_z = velocity_normal_z;
 			TransformMatrix4Vec3(&e_matrix, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
 		else if (vector_align_type == tfxVectorAlignType_emission) {
+			const tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
+			tfxWideFloat velocity_normal_x;
+			tfxWideFloat velocity_normal_y;
+			tfxWideFloat velocity_normal_z;
+			UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 			alignment_vector_x = velocity_normal_x;
 			alignment_vector_y = velocity_normal_y;
 			alignment_vector_z = velocity_normal_z;
@@ -12624,8 +12656,8 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 			}
 			else {
 				effect.world_rotations.roll = effect.local_rotations.roll;
-				float s = sin(effect.local_rotations.roll);
-				float c = cos(effect.local_rotations.roll);
+				float s = sinf(effect.local_rotations.roll);
+				float c = cosf(effect.local_rotations.roll);
 				effect.matrix.Set2(c, s, -s, c);
 			}
 		}
@@ -15205,8 +15237,8 @@ void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotation
 		world_rotations->roll = local_rotations->roll;
 	}
 
-	float s = sin(world_rotations->roll);
-	float c = cos(world_rotations->roll);
+	float s = sinf(world_rotations->roll);
+	float c = cosf(world_rotations->roll);
 	matrix->Set2(c, s, -s, c);
 
 }

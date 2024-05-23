@@ -4148,7 +4148,7 @@ struct tfx_vec4_t {
 	inline void operator-=(float v) { x -= v; y -= v; z -= v; w -= v; }
 };
 
-//Wide simd versions of tfx_vec2_t/3
+//Wide simd versions of tfx_vec2_t/3 Can probably get rid of these?
 struct tfx_wide_vec3_t {
 	union {
 		struct { tfxWideFloat x, y, z; };
@@ -4223,6 +4223,39 @@ struct tfx_wide_vec2_t {
 
 	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideMul(y, y)); }
 };
+
+struct tfx_quaternion_t {
+	float w, x, y, z;
+
+	tfx_quaternion_t(float w, float x, float y, float z) : w(w), x(x), y(y), z(z) {}
+
+	// tfx_quaternion_t multiplication
+	tfx_quaternion_t operator*(const tfx_quaternion_t& q) const {
+		return tfx_quaternion_t(
+			w * q.w - x * q.x - y * q.y - z * q.z,
+			w * q.x + x * q.w + y * q.z - z * q.y,
+			w * q.y - x * q.z + y * q.w + z * q.x,
+			w * q.z + x * q.y - y * q.x + z * q.w
+		);
+	}
+};
+
+tfxINTERNAL tfx_vec3_t RotateVectorQuaternion(tfx_quaternion_t *q, tfx_vec3_t v) {
+	// Convert tfx_vec3_t to tfx_quaternion_t with w = 0
+	tfx_quaternion_t qv(0, v.x, v.y, v.z);
+
+	// Calculate q * qv * q^-1
+	tfx_quaternion_t q_conjugate = tfx_quaternion_t(q->w, -q->x, -q->y, -q->z);
+	tfx_quaternion_t result = *q * qv * q_conjugate;
+
+	return tfx_vec3_t(result.x, result.y, result.z);
+}
+
+// Normalize the quaternion
+tfxINTERNAL tfx_quaternion_t NormalizeQuaternion(tfx_quaternion_t *q) {
+	float len = sqrtf(q->w * q->w + q->x * q->x + q->y * q->y + q->z * q->z);
+	return tfx_quaternion_t(q->w / len, q->x / len, q->y / len, q->z / len);
+}
 
 //Note, has padding for the sake of alignment on GPU compute shaders
 struct tfx_bounding_box_t {
@@ -6118,6 +6151,7 @@ void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 //Particle manager internal functions
 //--------------------------------
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
+tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxINTERNAL tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
