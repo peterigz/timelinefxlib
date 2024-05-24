@@ -4227,9 +4227,9 @@ struct tfx_wide_vec2_t {
 struct tfx_quaternion_t {
 	float w, x, y, z;
 
+	tfx_quaternion_t() : w(0.f), x(0.f), y(0.f), z(0.f) {}
 	tfx_quaternion_t(float w, float x, float y, float z) : w(w), x(x), y(y), z(z) {}
 
-	// tfx_quaternion_t multiplication
 	tfx_quaternion_t operator*(const tfx_quaternion_t& q) const {
 		return tfx_quaternion_t(
 			w * q.w - x * q.x - y * q.y - z * q.z,
@@ -4238,16 +4238,31 @@ struct tfx_quaternion_t {
 			w * q.z + x * q.y - y * q.x + z * q.w
 		);
 	}
+
 };
 
-tfxINTERNAL tfx_vec3_t RotateVectorQuaternion(tfx_quaternion_t *q, tfx_vec3_t v) {
-	// Convert tfx_vec3_t to tfx_quaternion_t with w = 0
-	tfx_quaternion_t qv(0, v.x, v.y, v.z);
+tfxINTERNAL void ToQuaternion2d(tfx_quaternion_t *q, float angle) {
+	float half_angle = angle / 2.f;
+	q->w = cosf(half_angle);
+	q->x = 0.f;
+	q->y = 0.f;
+	q->z = sinf(half_angle);
+}
 
-	// Calculate q * qv * q^-1
+tfxINTERNAL tfx_vec2_t RotateVectorQuaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v) {
+	float c = q->w; 
+	float s = q->z;
+
+	float rotated_x = c * c * v.x - 2.f * s * c * v.y + s * s * v.x;
+	float rotated_y = 2.f * s * c * v.x + c * c * v.y - s * s * v.y;
+
+	return tfx_vec2_t(rotated_x, rotated_y);
+}
+
+tfxINTERNAL tfx_vec3_t RotateVectorQuaternion(const tfx_quaternion_t *q, tfx_vec3_t v) {
+	tfx_quaternion_t qv(0, v.x, v.y, v.z);
 	tfx_quaternion_t q_conjugate = tfx_quaternion_t(q->w, -q->x, -q->y, -q->z);
 	tfx_quaternion_t result = *q * qv * q_conjugate;
-
 	return tfx_vec3_t(result.x, result.y, result.z);
 }
 
@@ -4255,6 +4270,25 @@ tfxINTERNAL tfx_vec3_t RotateVectorQuaternion(tfx_quaternion_t *q, tfx_vec3_t v)
 tfxINTERNAL tfx_quaternion_t NormalizeQuaternion(tfx_quaternion_t *q) {
 	float len = sqrtf(q->w * q->w + q->x * q->x + q->y * q->y + q->z * q->z);
 	return tfx_quaternion_t(q->w / len, q->x / len, q->y / len, q->z / len);
+}
+
+tfxINTERNAL tfx_quaternion_t ToQuaternion(float roll, float pitch, float yaw) {
+	// Abbreviations for the various angular functions
+
+	float cr = cosf(roll * 0.5f);
+	float sr = sinf(roll * 0.5f);
+	float cp = cosf(pitch * 0.5f);
+	float sp = sinf(pitch * 0.5f);
+	float cy = cosf(yaw * 0.5f);
+	float sy = sinf(yaw * 0.5f);
+
+	tfx_quaternion_t q;
+	q.w = cr * cp * cy + sr * sp * sy;
+	q.x = sr * cp * cy - cr * sp * sy;
+	q.y = cr * sp * cy + sr * cp * sy;
+	q.z = cr * cp * sy - sr * sp * cy;
+
+	return q;
 }
 
 //Note, has padding for the sake of alignment on GPU compute shaders
@@ -5140,7 +5174,7 @@ struct tfx_emitter_state_t {
 	tfx_vec3_t captured_position;
 	tfx_vec3_t world_rotations;
 	//Todo: save space and use a quaternion here... maybe
-	tfx_mat4_t matrix;
+	tfx_quaternion_t rotation;
 	tfx_vec2_t image_handle;
 	tfx_bounding_box_t bounding_box;
 
@@ -5178,7 +5212,7 @@ struct tfx_emitter_state_t {
 
 //This is a struct that stores an effect state that is currently active in a particle manager.
 struct tfx_effect_state_t {
-	tfx_mat4_t matrix;
+	tfx_quaternion_t rotation;
 	//State data
 	float frame;
 	float age;
@@ -6074,6 +6108,8 @@ tfxINTERNAL tfx_mat4_t TransformMatrix42d(const tfx_mat4_t *in, const tfx_mat4_t
 tfxINTERNAL tfx_mat4_t TransformMatrix4ByMatrix2(const tfx_mat4_t *in, const tfx_mat2_t *m);
 tfxINTERNAL tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m);
 tfxAPI_EDITOR void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
+tfxAPI_EDITOR void TransformQuaternionVec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
+tfxAPI_EDITOR void TransformQuaternionVec2(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
 tfxINTERNAL void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
@@ -6122,12 +6158,12 @@ tfxAPI tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to);
 tfxAPI tfx_vec4_t InterpolateVec4(float tween, tfx_vec4_t *from, tfx_vec4_t *to);
 tfxAPI tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to);
 tfxAPI float Interpolatef(float tween, float from, float to);
-tfxINTERNAL void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_state_t *parent);
-tfxAPI_EDITOR void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_effect_state_t *parent);
+tfxINTERNAL void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
+tfxAPI_EDITOR void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_effect_state_t *parent);
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
 //--------------------------2d---------------------
-tfxINTERNAL void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position);
+tfxINTERNAL void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations);
 
 //--------------------------------
 //Random numbers
@@ -6153,8 +6189,8 @@ void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxINTERNAL tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
-tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
-tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
+tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
+tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties);
