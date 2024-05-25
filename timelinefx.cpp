@@ -1643,7 +1643,6 @@ void TransformQuaternionVec3(const tfx_quaternion_t* q, tfxWideFloat* x, tfxWide
 
 	tfxWideFloat two = tfxWideSetSingle(2.0f);
 
-	// Calculate t = 2 * cross(q.xyz, v)
 	tfxWideFloat t_x = tfxWideSub(tfxWideMul(q_y, qv_z), tfxWideMul(q_z, qv_y));
 	t_x = tfxWideMul(t_x, two);
 	tfxWideFloat t_y = tfxWideSub(tfxWideMul(q_z, qv_x), tfxWideMul(q_x, qv_z));
@@ -1651,7 +1650,6 @@ void TransformQuaternionVec3(const tfx_quaternion_t* q, tfxWideFloat* x, tfxWide
 	tfxWideFloat t_z = tfxWideSub(tfxWideMul(q_x, qv_y), tfxWideMul(q_y, qv_x));
 	t_z = tfxWideMul(t_z, two);
 
-	// Calculate v' = v + q.w * t + cross(q.xyz, t)
 	tfxWideFloat qw_t_x = tfxWideMul(q_w, t_x);
 	tfxWideFloat qw_t_y = tfxWideMul(q_w, t_y);
 	tfxWideFloat qw_t_z = tfxWideMul(q_w, t_z);
@@ -3008,7 +3006,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 	tfx_emission_type emission_type = library->emitter_properties[emitter.properties_index].emission_type;
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.properties_index].emission_direction;
 
-	tfx_vec3_t to_handle(0.f, 1.f, 0.f);
+	tfx_vec3_t to_handle(0.f, 0.f, 1.f);
 	float parent_pitch = 0.f;
 	float parent_yaw = 0.f;
 	if (emission_type != tfxPoint) {
@@ -3073,6 +3071,8 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 
 	float pitch = asinf(-to_handle.y);
 	float yaw = atan2(to_handle.x, to_handle.z);
+	//float pitch = 0.f;
+	//float yaw = 0.f;
 	tfx_vec3_t direction;
 	direction.z = cosf(emission_yaw + yaw) * cosf(emission_pitch + pitch);
 	direction.y = -sinf(emission_pitch + pitch);
@@ -10636,8 +10636,9 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 		}
 		for (int i = emitter_start_size[depth]; i != pm->emitters_in_use[depth][pm->current_ebuff].current_size; ++i) {
 			tfxU32 current_index = pm->emitters_in_use[depth][pm->current_ebuff][i];
-			//Why do we do this?
-			//pm->emitters[current_index].particles_index = GrabParticleLists(pm, pm->emitters[current_index].path_hash, pm->flags & tfxEffectManagerFlags_3d_effects, 100);
+			//Make sure to grab a particle list for the sub effect emitters as this doesn't happen when calling AddEffectToParticleManager
+			pm->emitters[current_index].particles_index = GrabParticleLists(pm, pm->emitters[current_index].path_hash, pm->flags & tfxEffectManagerFlags_3d_effects, 100,
+																(pm->emitters[current_index].state_flags & tfxEmitterStateFlags_has_noise) > 0, (pm->emitters[current_index].state_flags & tfxEmitterStateFlags_has_path) > 0);
 			pm->emitters_in_use[depth][next_buffer].push_back(current_index);
 		}
 	}
@@ -11057,15 +11058,15 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		if (emitter.state_flags & tfxEmitterStateFlags_kill) {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
+				tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
 				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
 
 				tfx__readbarrier;
 
 				//Lines - Kill if the particle has reached the end of the line
-				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(local_position_x, emitter_size_x)));
+				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(local_position_z, emitter_size_x)));
 				flags = tfxWideOri(flags, remove_flags);
-				remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideLess(local_position_x, tfxWideSetZero)));
+				remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideLess(local_position_z, tfxWideSetZero)));
 				flags = tfxWideOri(flags, remove_flags);
 				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 			}
@@ -11073,20 +11074,20 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		else {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
+				tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
 				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
 
 				tfx__readbarrier;
 
 				//Lines - Reposition if the particle is travelling along a line
-				tfxWideFloat at_end = tfxWideGreater(local_position_x, emitter_size_x);
-				local_position_x = tfxWideSub(local_position_x, tfxWideAnd(at_end, emitter_size_x));
+				tfxWideFloat at_end = tfxWideGreater(local_position_z, emitter_size_x);
+				local_position_z = tfxWideSub(local_position_z, tfxWideAnd(at_end, emitter_size_x));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-				at_end = tfxWideLess(local_position_x, tfxWideSetZero);
-				local_position_x = tfxWideAdd(local_position_x, tfxWideAnd(at_end, emitter_size_x));
+				at_end = tfxWideLess(local_position_z, tfxWideSetZero);
+				local_position_z = tfxWideAdd(local_position_z, tfxWideAnd(at_end, emitter_size_x));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
 				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
-				tfxWideStore(&bank.position_x[index], local_position_x);
+				tfxWideStore(&bank.position_z[index], local_position_z);
 			}
 		}
 	}
@@ -13755,8 +13756,8 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 	AlterRandomSeed(&random, 12 + emitter.seed_index);
 	const tfx_emitter_properties_t &properties = *entry->properties;
 	const tfx_vec3_t &grid_points = properties.grid_points;
-	const float emitter_size = emitter.emitter_size.x;
-	const float grid_segment_size_x = emitter_size / tfxMax(grid_points.x - 1.f, 1.f);
+	const float emitter_size = emitter.emitter_size.z;
+	const float grid_segment_size_z = emitter_size / tfxMax(grid_points.z - 1.f, 1.f);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -13769,31 +13770,31 @@ void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data) {
 		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 
 			if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-				emitter.grid_coords.x = (float)RandomRange(&random, (tfxU32)grid_points.x);
-				local_position_x = emitter.grid_coords.x * grid_segment_size_x;
+				emitter.grid_coords.z = (float)RandomRange(&random, (tfxU32)grid_points.z);
+				local_position_z = emitter.grid_coords.z * grid_segment_size_z;
 			}
 			else {
 
 				if (!(emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
-					emitter.grid_coords.x--;
-					if (emitter.grid_coords.x < 0.f) {
-						emitter.grid_coords.x = grid_points.x - 1;
+					emitter.grid_coords.z--;
+					if (emitter.grid_coords.z < 0.f) {
+						emitter.grid_coords.z = grid_points.z - 1;
 					}
 				}
 
-				local_position_x = emitter.grid_coords.x * grid_segment_size_x;
+				local_position_z = emitter.grid_coords.z * grid_segment_size_z;
 
 				if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
-					emitter.grid_coords.x++;
-					if (emitter.grid_coords.x >= grid_points.x) {
-						emitter.grid_coords.x = 0.f;
+					emitter.grid_coords.z++;
+					if (emitter.grid_coords.z >= grid_points.z) {
+						emitter.grid_coords.z = 0.f;
 					}
 				}
 			}
 
 		}
 		else {
-			local_position_x = RandomRange(&random, 0.f, emitter_size);
+			local_position_z = RandomRange(&random, 0.f, emitter_size);
 		}
 
 		//----TForm and Emission
@@ -14920,7 +14921,6 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 	const float first_velocity_value = GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity);
 	const float first_weight_value = GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.weight);
 	const tfx_emission_type emission_type = properties.emission_type;
-	const tfx_vector_align_type vector_align_type = properties.vector_align_type;
 	const bool line = emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
 	const float velocity_adjuster = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame);
 	const tfxU32 layer = properties.layer;
@@ -14998,15 +14998,13 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 
 	bool is_area = properties.emission_type != tfxPoint && properties.emission_type != tfxLine;
 
-	emitter.emitter_size.x = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_width, emitter.frame);
+	emitter.emitter_size = {};
 	if (is_area) {
 		emitter.emitter_size.y = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_height, emitter.frame);
-	}
-	else {
-		emitter.emitter_size.y = 0.f;
+		emitter.emitter_size.x = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_width, emitter.frame);
 	}
 
-	if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d && is_area) {
+	if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
 		emitter.emitter_size.z = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_depth, emitter.frame);
 	}
 
