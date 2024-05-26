@@ -1227,6 +1227,18 @@ union tfxUInt10bit
 	tfxU32 pack;
 };
 
+union tfxUInt8bit
+{
+	struct
+	{
+		int x : 8;
+		int y : 8;
+		int z : 8;
+		int w : 8;
+	} data;
+	tfxU32 pack;
+};
+
 //Section: OS_Specific_Functions
 #ifdef _WIN32
 FILE *tfx__open_file(const char *file_name, const char *mode);
@@ -2122,6 +2134,9 @@ enum tfx_graph_type : unsigned char {
 	tfxPath_offset_y,
 	tfxPath_offset_z,
 	tfxPath_distance,
+	tfxPath_rotation_range,
+	tfxPath_rotation_pitch,
+	tfxPath_rotation_yaw,
 	tfxGraphMaxIndex
 };
 
@@ -2424,9 +2439,9 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_enabled = 1 << 23,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
 	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 24,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
 	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 25,			//Make the particles use a path to dictate their direction of travel
-	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling = 1 << 26,		//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling = 1 << 26,	//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
-	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,			//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
 };
 
 enum tfx_particle_flag_bits : unsigned int {
@@ -2467,6 +2482,7 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_can_spin_pitch_and_yaw = 1 << 24,			//For 3d emitters that have free alignment and not always facing the camera
 	tfxEmitterStateFlags_has_path = 1 << 25,
 	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
+	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -4291,6 +4307,8 @@ tfxINTERNAL tfx_quaternion_t ToQuaternion(float roll, float pitch, float yaw) {
 	return q;
 }
 
+tfxAPI_EDITOR tfx_quaternion_t QuaternionFromDirection(tfx_vec3_t* normalised_dir);
+
 //Note, has padding for the sake of alignment on GPU compute shaders
 struct tfx_bounding_box_t {
 	tfx_vec3_t min_corner; float padding1;
@@ -4340,10 +4358,12 @@ struct tfx_hsv_t {
 	tfx_hsv_t(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
 };
 
+const tfxWideFloat one_div_127_wide = tfxWideSetSingle(1 / 127.f);
 const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
 const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
 #define tfxPACKED_X_NORMAL_3D 0x3FE7FDFF
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
+#define tfxPACKED_Z_NORMAL_3D 0x1FF7FFFE
 #define tfxPACKED_Y_NORMAL_2D 32767
 
 struct tfx_rgba_t {
@@ -4897,6 +4917,9 @@ struct tfx_emitter_path_t {
 	tfx_graph_t offset_y;
 	tfx_graph_t offset_z;
 	tfx_graph_t distance;
+	float rotation_range;
+	float rotation_pitch;
+	float rotation_yaw;
 	tfx_vec3_t offset;
 	tfx_vec3_t builder_parameters;
 	tfx_vector_t<tfx_vec4_t> nodes;
@@ -5356,6 +5379,7 @@ struct tfx_particle_soa_t {
 	float *local_rotations_y;
 	float *local_rotations_z;	//In 2d this is the roll
 	tfxU32 *velocity_normal;
+	tfxU32 *quaternion;			//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
 	float *path_position;
 	float *path_offset;
@@ -5963,7 +5987,7 @@ tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 //Dump sprites for Debugging
 tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
-tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, bool has_noise, bool has_path);
+tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, bool has_noise, bool has_path, bool has_rotated_path);
 
 //--------------------------------
 //Profilings
@@ -6110,6 +6134,7 @@ tfxINTERNAL tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *
 tfxAPI_EDITOR void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxAPI_EDITOR void TransformQuaternionVec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxAPI_EDITOR void TransformQuaternionVec2(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y);
+tfxAPI_EDITOR void TransformPackedQuaternionVec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxINTERNAL void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
 tfxINTERNAL void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
@@ -6124,6 +6149,7 @@ tfxAPI_EDITOR tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra);
 tfxINTERNAL tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v);
 tfxAPI_EDITOR tfxU32 Pack16bit(float x, float y);
 tfxAPI_EDITOR tfxU32 Pack8bit(tfx_vec3_t v);
+tfxAPI_EDITOR tfxU32 Pack8bitQuaternion(tfx_quaternion_t v);
 tfxAPI_EDITOR tfxU32 Pack16bitUnsigned(float x, float y);
 tfxAPI_EDITOR tfx_vec2_t UnPack16bit(tfxU32 in);
 tfxINTERNAL tfx_vec2_t UnPack16bitUnsigned(tfxU32 in);
@@ -6141,6 +6167,7 @@ tfxINTERNAL void UnPackWide10bitY(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL void UnPackWide10bitZ(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL tfxWideFloat UnPackWide10bitX(tfxWideInt in);
 tfxINTERNAL tfxWideFloat UnPackWide10bitY(tfxWideInt in);
+tfxINTERNAL void UnPackWide8bit(tfxWideInt in, tfxWideFloat& x, tfxWideFloat& y, tfxWideFloat& z, tfxWideFloat& w);
 tfxINTERNAL tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra);
 tfxAPI_EDITOR tfx_vec4_t UnPack10bit(tfxU32 in);
@@ -6188,7 +6215,8 @@ void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 //--------------------------------
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
-tfxINTERNAL tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
+tfxAPI_EDITOR tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
+tfxINTERNAL tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw);
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
@@ -6256,7 +6284,7 @@ tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sp
 tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
 tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path);
-tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path);
+tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path, bool has_rotated_path);
 tfxAPI_EDITOR void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
