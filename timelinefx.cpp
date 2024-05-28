@@ -2131,26 +2131,32 @@ tfx_vec4_t UnPack10bit(tfxU32 in) {
 }
 
 tfx_vec3_t UnPack8bit(tfxU32 in) {
-	float one_div_128 = 1.f / 127.f;
+	float one_div_127 = 1.f / 127.f;
 
 	tfx_vec3_t result;
-	result.x = ((signed char)(in & 0x000000FF)) * one_div_128;
-	result.y = ((signed char)((in & 0x0000FF00) >> 8)) * one_div_128;
-	result.z = ((signed char)((in & 0x00FF0000) >> 16)) * one_div_128;
+	result.x = ((signed char)(in & 0x000000FF)) * one_div_127;
+	result.y = ((signed char)((in & 0x0000FF00) >> 8)) * one_div_127;
+	result.z = ((signed char)((in & 0x00FF0000) >> 16)) * one_div_127;
 
 	return result;
 }
 
-tfx_quaternion_t UnPack8bitQuaternion(tfxU32 in) {
-	float one_div_127 = 1.f / 127.f;
+tfx_quaternion_t UnPack8bitQuaternion(tfxU32 packed) {
+	// Extract each component by shifting and masking
+	uint8_t x = packed & 0xFF;
+	uint8_t y = (packed >> 8) & 0xFF;
+	uint8_t z = (packed >> 16) & 0xFF;
+	uint8_t w = (packed >> 24) & 0xFF;
 
-	tfx_quaternion_t result;
-	result.x = (static_cast<int8_t>(in & 0x000000FF)) * one_div_127;
-	result.y = (static_cast<int8_t>((in & 0x0000FF00) >> 8)) * one_div_127;
-	result.z = (static_cast<int8_t>((in & 0x00FF0000) >> 16)) * one_div_127;
-	result.w = (static_cast<int8_t>((in & 0xFF000000) >> 24)) * one_div_127;
+	// Convert from 0-255 back to -1 to 1 range
+	tfx_quaternion_t q;
+	q.x = (x / 255.0f) * 2.0f - 1.0f;
+	q.y = (y / 255.0f) * 2.0f - 1.0f;
+	q.z = (z / 255.0f) * 2.0f - 1.0f;
+	q.w = (w / 255.0f) * 2.0f - 1.0f;
 
-	return result;
+	// Return the unpacked quaternion
+	return q;
 }
 
 tfx_vec3_t UnPack10bitVec3(tfxU32 in) {
@@ -3995,6 +4001,10 @@ tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
 	path.flags = src->flags;
 	path.name = name;
 	path.node_count = src->node_count;
+	path.rotation_count = src->rotation_count;
+	path.rotation_range = src->rotation_range;
+	path.rotation_pitch = src->rotation_pitch;
+	path.rotation_yaw = src->rotation_yaw;
 	InitialisePathGraphs(&path);
 	CopyPathGraphs(src, &path);
 	return path;
@@ -4007,6 +4017,7 @@ tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node)
 		path.name = "";
 		path.node_count = 32;
 		path.extrusion_type = tfxExtrusionArc;
+		path.rotation_count = 1;
 		InitialisePathGraphs(&path);
 		ResetGraph(&path.angle_x, 0.f, path.angle_x.graph_preset, add_node, 1.f);
 		ResetGraph(&path.angle_y, 0.f, path.angle_y.graph_preset, add_node, 1.f);
@@ -6114,6 +6125,11 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("path_space_nodes_evenly", tfxBool);
 	names_and_types.Insert("path_extrusion_type", tfxSInt);
 	names_and_types.Insert("path_generator_type", tfxSInt);
+	names_and_types.Insert("path_rotation_range", tfxFloat);
+	names_and_types.Insert("path_rotation_pitch", tfxFloat);
+	names_and_types.Insert("path_rotation_yaw", tfxFloat);
+	names_and_types.Insert("path_rotation_count", tfxUint);
+	names_and_types.Insert("path_rotation_stagger", tfxFloat);
 
 	//Sprite data settings
 	names_and_types.Insert("start_offset", tfxUint);
@@ -6521,6 +6537,9 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].real_frames = value;
 	if (*field == "sprite_data_extra_frames_count")
 		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].extra_frames_count = value;
+	if (*field == "path_rotation_count") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_count = value; }
+	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int value) {
 	tfx_emitter_properties_t *emitter_properties = GetEffectProperties(effect);
@@ -6658,6 +6677,18 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, floa
 		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].playback_speed = value;
 	if (*field == "sprite_data_recording_frame_rate")
 		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].recording_frame_rate = value;
+	if (*field == "path_rotation_range") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_range = value; }
+	}
+	if (*field == "path_rotation_pitch") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_pitch = value; }
+	}
+	if (*field == "path_rotation_yaw") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_yaw = value; }
+	}
+	if (*field == "path_rotation_stagger") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_stagger = value; }
+	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value) {
 	if (*field == "loop")
@@ -6862,7 +6893,13 @@ void StreamPathProperties(tfx_effect_emitter_t* effect, tfx_str_t* file) {
 		file->AddLine("path_mode_origin=%i", (path->flags & tfxPathFlags_mode_origin));
 		file->AddLine("path_mode_node=%i", (path->flags & tfxPathFlags_mode_node));
 		file->AddLine("path_space_nodes_evenly=%i", (path->flags & tfxPathFlags_space_nodes_evenly));
+		file->AddLine("path_generator_type=%i", (path->generator_type));
 		file->AddLine("path_extrusion_type=%i", (path->extrusion_type));
+		file->AddLine("path_rotation_range=%f", (path->rotation_range));
+		file->AddLine("path_rotation_pitch=%f", (path->rotation_pitch));
+		file->AddLine("path_rotation_yaw=%f", (path->rotation_yaw));
+		file->AddLine("path_rotation_count=%i", (path->rotation_count));
+		file->AddLine("path_rotation_stagger=%f", (path->rotation_stagger));
 	}
 }
 
@@ -10376,6 +10413,18 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			if (emitter_properties->emission_type == tfxPath) {
 				tfx_emitter_path_t *path = &pm->library->paths[emitter.path_attributes];
 				state_flags |= (path->rotation_range > 0 || path->rotation_pitch != 0 || path->rotation_yaw != 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
+				emitter.path_quaternion_index = 0;
+				emitter.active_paths = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) && path->rotation_stagger == 0 ? path->rotation_count : 1;
+				emitter.path_cycle_counter = 0.f;
+				emitter.path_quaternions = (tfx_path_quaternion_t*)tfxALLOCATE(sizeof(tfx_path_quaternion_t) * path->rotation_count);
+				emitter.path_quaternions[0].grid_coord = (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->node_count - 4;
+				if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
+					for (int qi = 0; qi != emitter.active_paths; ++qi) {
+						tfx_quaternion_t q = GetPathRotation(&pm->random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
+						emitter.path_quaternions[qi].grid_coord = (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->node_count - 4;
+						emitter.path_quaternions[qi].quaternion = Pack8bitQuaternion(q);
+					}
+				}
 			}
 
 			if (emitter.particles_index == tfxINVALID) {
@@ -10854,6 +10903,7 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 			//Lines - Kill if the particle has reached the end of the path
 			tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 			tfxWideInt remove_flags = tfxWideAndi(remove_flag, tfxWideOri(tfxWideCasti(tfxWideLess(path_position, tfxWideSetZero)), tfxWideCasti(tfxWideGreaterEqual(path_position, node_count))));
+			path_position = tfxWideMax(path_position, tfxWideSetZero);
 			flags = tfxWideOri(flags, remove_flags);
 			tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 		}
@@ -13071,6 +13121,12 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_sta
 		return 0;
 	}
 
+	if (properties->emission_type == tfxPath) {
+		tfx_emitter_path_t* path = &pm->library->paths[emitter.path_attributes];
+		emitter.spawn_quantity *=  (float)emitter.active_paths / (float)path->rotation_count;
+		emitter.path_cycle_counter += pm->frame_length;
+	}
+
 	float step_size = 0;
 	if (!(emitter.property_flags & tfxEmitterPropertyFlags_single)) {
 		if (emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties->emission_type == tfxArea || properties->emission_type == tfxEllipse)) {
@@ -14613,6 +14669,7 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		float& local_position_z = entry->particle_data->position_z[index];
 		float& path_position = entry->particle_data->path_position[index];
 		float& path_offset = entry->particle_data->path_offset[index];
+		tfxU32 qi = emitter.path_quaternion_index;
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
 			int node = RandomRange(&random, path->node_count - 3);
@@ -14620,40 +14677,37 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 			path_position = (float)node + t;
 			point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
 		} else if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
+			float &grid_coord = emitter.path_quaternions[qi].grid_coord;
 			if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
-				int node = (int)emitter.grid_coords.x;
-				float t = emitter.grid_coords.x - (int)emitter.grid_coords.x;
-				path_position = (float)node + t;
-				point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
-				
-				emitter.grid_coords.x += increment;
-				if (emitter.grid_coords.x >= total_grid_points) {
-					emitter.grid_coords.x = 0.f;
+				grid_coord += increment;
+				if (emitter.path_quaternions[qi].grid_coord >= total_grid_points) {
+					grid_coord = 0.f;
+					if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
+						tfx_quaternion_t q = GetPathRotation(&pm.random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
+						emitter.path_quaternions[qi].quaternion = Pack8bitQuaternion(q);
+					}
 				}
 			}
 			else if (!(emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
-				int node = (int)emitter.grid_coords.x;
-				float t = emitter.grid_coords.x - (int)emitter.grid_coords.x;
-				path_position = (float)node + t;
-				point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
-				
-				emitter.grid_coords.x -= increment;
-				if (emitter.grid_coords.x < 0) {
-					emitter.grid_coords.x = total_grid_points - increment;
+				grid_coord -= increment;
+				if (grid_coord < 0) {
+					grid_coord = total_grid_points - increment;
+					if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
+						tfx_quaternion_t q = GetPathRotation(&pm.random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
+						emitter.path_quaternions[qi].quaternion = Pack8bitQuaternion(q);
+					}
 				}
 			}
+			int node = (int)grid_coord;
+			float t = grid_coord - (int)grid_coord;
+			path_position = (float)node + t;
+			point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
 		} else {
 			int node = RandomRange(&random, path->node_count - 3);
 			float t = GenerateRandom(&random);
 			path_position = (float)node + t;
 
 			point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
-		}
-
-		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
-			tfx_quaternion_t q = GetPathRotation(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
-			entry->particle_data->quaternion[index] = Pack8bitQuaternion(q);
-			point = RotateVectorQuaternion(&q, point);
 		}
 
 		if (path->extrusion_type == tfxExtrusionLinear) {
@@ -14674,6 +14728,28 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 			local_position_x = rx * radius * emitter.emitter_size.x;
 			local_position_z = ry * radius * emitter.emitter_size.z;
 			local_position_y = point.y * emitter.emitter_size.y;
+		}
+
+		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
+			tfx_quaternion_t q = UnPack8bitQuaternion(emitter.path_quaternions[qi].quaternion);
+			entry->particle_data->quaternion[index] = emitter.path_quaternions[qi].quaternion;
+			tfx_vec3_t rp = { local_position_x, local_position_y, local_position_z };
+			rp = RotateVectorQuaternion(&q, rp);
+			local_position_x = rp.x;
+			local_position_y = rp.y;
+			local_position_z = rp.z;
+			qi++;
+			qi %= emitter.active_paths;  
+			emitter.path_quaternion_index = qi;
+			if (emitter.path_cycle_counter >= path->rotation_stagger) {
+				emitter.path_cycle_counter = 0.f;
+				emitter.path_quaternions[emitter.active_paths].grid_coord = (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : total_grid_points - increment;
+				if (emitter.active_paths < path->rotation_count) {
+					tfx_quaternion_t q = GetPathRotation(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
+					emitter.path_quaternions[emitter.active_paths].quaternion = Pack8bitQuaternion(q);
+					emitter.active_paths++;
+				}
+			}
 		}
 
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {

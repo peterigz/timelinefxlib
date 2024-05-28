@@ -4904,6 +4904,11 @@ struct tfx_path_nodes_soa_t {
 	float *length;
 };
 
+struct tfx_path_quaternion_t {
+	tfxU32 quaternion;
+	float grid_coord;
+};
+
 struct tfx_emitter_path_t {
 	tfxKey key;
 	tfx_str32_t name;
@@ -4920,6 +4925,9 @@ struct tfx_emitter_path_t {
 	float rotation_range;
 	float rotation_pitch;
 	float rotation_yaw;
+	tfxU32 rotation_count;
+	float rotation_cycle_length;
+	float rotation_stagger;
 	tfx_vec3_t offset;
 	tfx_vec3_t builder_parameters;
 	tfx_vector_t<tfx_vec4_t> nodes;
@@ -5180,6 +5188,8 @@ struct tfx_effect_emitter_info_t {
 };
 
 //This is a struct that stores an emitter state that is currently active in a particle manager.
+//Todo: maybe split this up into static variables that stay the same (they're just properties copied from the emitter in the library
+//		and dynamic variables that change each frame.
 struct tfx_emitter_state_t {
 	//State data
 	float frame;
@@ -5196,7 +5206,7 @@ struct tfx_emitter_state_t {
 	tfx_vec3_t world_position;
 	tfx_vec3_t captured_position;
 	tfx_vec3_t world_rotations;
-	//Todo: save space and use a quaternion here... maybe
+
 	tfx_quaternion_t rotation;
 	tfx_vec2_t image_handle;
 	tfx_bounding_box_t bounding_box;
@@ -5209,6 +5219,10 @@ struct tfx_emitter_state_t {
 	tfxU32 transform_attributes;
 	tfxU32 overtime_attributes;
 	tfxU32 path_attributes;
+	tfx_path_quaternion_t *path_quaternions;
+	tfxU32 path_quaternion_index;
+	float path_cycle_counter;
+	tfxU32 active_paths;
 
 	tfxU32 root_index;
 	tfxU32 parent_index;
@@ -6172,6 +6186,7 @@ tfxINTERNAL tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra);
 tfxAPI_EDITOR tfx_vec4_t UnPack10bit(tfxU32 in);
 tfxAPI_EDITOR tfx_vec3_t UnPack8bit(tfxU32 in);
+tfxAPI_EDITOR tfx_quaternion_t UnPack8bitQuaternion(tfxU32 in);
 tfxINTERNAL tfx_vec3_t UnPack10bitVec3(tfxU32 in);
 tfxINTERNAL tfxU32 Get2bitFromPacked10bit(tfxU32 in);
 tfxINTERNAL size_t ClampStringSize(size_t compare, size_t string_size);
@@ -6216,7 +6231,7 @@ void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxAPI_EDITOR tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
-tfxINTERNAL tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw);
+tfxAPI_EDITOR tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw);
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
