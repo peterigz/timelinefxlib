@@ -4907,6 +4907,7 @@ struct tfx_path_nodes_soa_t {
 struct tfx_path_quaternion_t {
 	tfxU32 quaternion;
 	float grid_coord;
+	float age;
 };
 
 struct tfx_emitter_path_t {
@@ -4925,7 +4926,8 @@ struct tfx_emitter_path_t {
 	float rotation_range;
 	float rotation_pitch;
 	float rotation_yaw;
-	tfxU32 rotation_count;
+	tfxU32 maximum_active_paths;
+	tfxU32 maximum_cycles;
 	float rotation_cycle_length;
 	float rotation_stagger;
 	tfx_vec3_t offset;
@@ -5221,7 +5223,8 @@ struct tfx_emitter_state_t {
 	tfxU32 path_attributes;
 	tfx_path_quaternion_t *path_quaternions;
 	tfxU32 path_quaternion_index;
-	float path_cycle_counter;
+	float path_stagger_counter;
+	tfxU32 path_cycle_count;
 	tfxU32 active_paths;
 
 	tfxU32 root_index;
