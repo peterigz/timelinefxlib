@@ -2483,6 +2483,7 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_has_path = 1 << 25,
 	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
+	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -4908,6 +4909,7 @@ struct tfx_path_quaternion_t {
 	tfxU32 quaternion;
 	float grid_coord;
 	float age;
+	tfxU32 cycles;
 };
 
 struct tfx_emitter_path_t {
@@ -5226,6 +5228,7 @@ struct tfx_emitter_state_t {
 	float path_stagger_counter;
 	tfxU32 path_cycle_count;
 	tfxU32 active_paths;
+	tfxU32 path_start_index;
 
 	tfxU32 root_index;
 	tfxU32 parent_index;
