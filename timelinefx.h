@@ -4929,7 +4929,7 @@ struct tfx_emitter_path_t {
 	float rotation_pitch;
 	float rotation_yaw;
 	tfxU32 maximum_active_paths;
-	tfxU32 maximum_cycles;
+	tfxU32 maximum_paths;
 	float rotation_cycle_length;
 	float rotation_stagger;
 	tfx_vec3_t offset;
@@ -5225,6 +5225,7 @@ struct tfx_emitter_state_t {
 	tfxU32 path_attributes;
 	tfx_path_quaternion_t *path_quaternions;
 	tfxU32 path_quaternion_index;
+	tfxU32 last_path_index;
 	float path_stagger_counter;
 	tfxU32 path_cycle_count;
 	tfxU32 active_paths;
@@ -5796,6 +5797,8 @@ struct tfx_particle_manager_t {
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfxU32> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
+	tfx_vector_t<tfxU32> free_path_quaternions;
+	tfx_vector_t<tfx_path_quaternion_t*> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
 	tfx_vector_t<tfx_emitter_state_t> emitters;
 	tfx_library_t *library;
@@ -6510,6 +6513,8 @@ tfxINTERNAL void InitialiseAnimationManager(tfx_animation_manager_t *animation_m
 tfxINTERNAL tfxU32 GetPMEffectSlot(tfx_particle_manager_t *pm);
 tfxINTERNAL tfxU32 GetPMEmitterSlot(tfx_particle_manager_t *pm);
 tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfx_particle_manager_t *pm, tfxParticleID particle_id);
+tfxINTERNAL tfxU32 AllocatePathQuaterion(tfx_particle_manager_t *pm, tfxU32 amount);
+tfxINTERNAL void FreePathQuaternion(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreePMParticleIndex(tfx_particle_manager_t *pm, tfxU32 *index);
 tfxINTERNAL tfxU32 PushPMDepthIndex(tfx_particle_manager_t *pm, tfxU32 layer, tfx_depth_index_t depth_index);
 tfxINTERNAL void ResetPMFlags(tfx_particle_manager_t *pm);

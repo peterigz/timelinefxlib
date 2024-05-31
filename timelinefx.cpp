@@ -6542,7 +6542,7 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->maximum_active_paths = value; }
 	}
 	if (*field == "maximum_path_cycles") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->maximum_cycles = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->maximum_paths = value; }
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int value) {
@@ -6903,7 +6903,7 @@ void StreamPathProperties(tfx_effect_emitter_t* effect, tfx_str_t* file) {
 		file->AddLine("path_rotation_pitch=%f", (path->rotation_pitch));
 		file->AddLine("path_rotation_yaw=%f", (path->rotation_yaw));
 		file->AddLine("maximum_active_paths=%i", (path->maximum_active_paths));
-		file->AddLine("maximum_path_cycles=%i", (path->maximum_cycles));
+		file->AddLine("maximum_path_cycles=%i", (path->maximum_paths));
 		file->AddLine("path_rotation_stagger=%f", (path->rotation_stagger));
 	}
 }
@@ -10362,6 +10362,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			pm->emitters_in_use[hierarchy_depth][buffer].push_back(index);
 			pm->emitters[index].parent_index = parent_index;
 			tfx_emitter_properties_t *emitter_properties = GetEffectProperties(&e);
+			emitter.path_quaternions = nullptr;
 			emitter.path_hash = e.path_hash;
 			emitter.info_index = e.info_index;
 			emitter.properties_index = e.property_index;
@@ -10418,15 +10419,19 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			if (emitter_properties->emission_type == tfxPath) {
 				tfx_emitter_path_t *path = &pm->library->paths[emitter.path_attributes];
 				state_flags |= (path->rotation_range > 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
-				emitter.path_quaternion_index = 0;
+				emitter.last_path_index = 0;
 				emitter.active_paths = (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) && path->rotation_stagger == 0 ? path->maximum_active_paths : 1;
 				emitter.path_stagger_counter = 0.f;
-				emitter.path_quaternions = (tfx_path_quaternion_t*)tfxALLOCATE(sizeof(tfx_path_quaternion_t) * path->maximum_active_paths);
+				emitter.path_quaternion_index = AllocatePathQuaterion(pm, path->maximum_active_paths);
+				emitter.path_quaternions = pm->path_quaternions[emitter.path_quaternion_index];
 				emitter.path_quaternions[0].grid_coord = (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->node_count - 4;
 				emitter.path_quaternions[0].cycles = 0;
-				emitter.path_cycle_count = path->maximum_cycles;
+				emitter.path_cycle_count = path->maximum_paths;
 				emitter.path_start_index = 0;
 				if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
+					for (int qi = 0; qi != path->maximum_active_paths; ++qi) {
+						emitter.path_quaternions[qi].cycles = tfxINVALID;
+					}
 					for (int qi = 0; qi != emitter.active_paths; ++qi) {
 						tfx_quaternion_t q = GetPathRotation(&pm->random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
 						emitter.path_quaternions[qi].grid_coord = (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->node_count - 4;
@@ -10436,7 +10441,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 						if (emitter.path_cycle_count > 0) {
 							emitter.path_cycle_count--;
 						}
-						else if (path->maximum_cycles > 0) {
+						else if (path->maximum_paths > 0) {
 							emitter.path_quaternions[qi].cycles = tfxINVALID;
 						}
 					}
@@ -10638,6 +10643,9 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			}
 			else {
 				pm->free_emitters.push_back(current_index);
+				if (pm->emitters[current_index].path_quaternions) {
+					FreePathQuaternion(pm, pm->emitters[current_index].path_quaternion_index);
+				}
 				//if (pm->flags & tfxEffectManagerFlags_use_compute_shader && pm->emitters[current_index].property_flags & tfxEmitterPropertyFlags_is_bottom_emitter)
 					//FreeComputeSlot(pm->emitters[current_index].compute_slot_id);
 				if (pm->flags & tfxEffectManagerFlags_unordered) {
@@ -12516,6 +12524,13 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks) 
 	pm->control_work.clear();
 	pm->age_work.clear();
 	memset(pm->active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
+	for (int i = 0; i != pm->path_quaternions.current_size; ++i) {
+		if (pm->path_quaternions[i]) {
+			tfxFREE(pm->path_quaternions[i]);
+		}
+	}
+	pm->path_quaternions.clear();
+	pm->free_path_quaternions.clear();
 }
 
 void FreeParticleManager(tfx_particle_manager_t *pm) {
@@ -12552,6 +12567,13 @@ void FreeParticleManager(tfx_particle_manager_t *pm) {
 	pm->spawn_work.free();
 	pm->control_work.free();
 	pm->age_work.free();
+	for (int i = 0; i != pm->path_quaternions.current_size; ++i) {
+		if (pm->path_quaternions[i]) {
+			tfxFREE(pm->path_quaternions[i]);
+		}
+	}
+	pm->path_quaternions.free();
+	pm->free_path_quaternions.free();
 }
 
 void FreeAllParticleLists(tfx_particle_manager_t *pm) {
@@ -12615,6 +12637,28 @@ tfxU32 GetPMEmitterSlot(tfx_particle_manager_t *pm) {
 	}
 	pm->emitters.current_size++;
 	return pm->emitters.current_size - 1;
+}
+
+tfxU32 AllocatePathQuaterion(tfx_particle_manager_t* pm, tfxU32 amount) {
+	tfx_path_quaternion_t *q = (tfx_path_quaternion_t*)tfxALLOCATE(sizeof(tfx_path_quaternion_t) * amount);
+	if (!pm->free_path_quaternions.empty()) {
+		tfxU32 free_index = pm->free_path_quaternions.pop_back();
+		TFX_ASSERT(pm->path_quaternions[free_index] == nullptr);		//Free path quaternion should be null! For some reason the path was not freed before being added to the the list of free path quaternions
+																		//or the path was allocated outside of this function.
+		pm->path_quaternions[free_index] = q;
+		return free_index;
+	} else {
+		pm->path_quaternions.push_back(q);
+	}
+	return pm->path_quaternions.current_size - 1;
+}
+
+void FreePathQuaternion(tfx_particle_manager_t* pm, tfxU32 index) {
+	if (pm->path_quaternions[index] != nullptr) {
+		tfxFREE(pm->path_quaternions[index]);
+		pm->path_quaternions[index] = nullptr;
+		pm->free_path_quaternions.push_back(index);
+	}
 }
 
 tfxU32 GetPMParticleIndexSlot(tfx_particle_manager_t *pm, tfxParticleID particle_id) {
@@ -14683,6 +14727,7 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 			!(emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid)
 			) {
 			for (int qi = 0; qi != emitter.active_paths; ++qi) {
+				int index = (qi + emitter.path_start_index) % path->maximum_active_paths;
 				emitter.path_quaternions[qi].age += pm.frame_length;
 				if (emitter.path_quaternions[qi].age >= path->rotation_cycle_length) {
 					tfx_quaternion_t q = GetPathRotation(&pm.random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
@@ -14694,18 +14739,28 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		}
 	}
 
+	tfxU32 qi = (emitter.path_start_index + emitter.last_path_index) % path->maximum_active_paths;
+	TFX_ASSERT(qi < path->maximum_active_paths);
+
 	if (path->rotation_stagger > 0 && emitter.path_stagger_counter >= path->rotation_stagger) {
-		if (emitter.active_paths < path->maximum_active_paths && emitter.path_cycle_count > 0) {
-			tfxU32 qi = (emitter.path_start_index + emitter.active_paths++) % path->maximum_active_paths;
+		if (emitter.active_paths < path->maximum_active_paths && (emitter.path_cycle_count > 0 || path->maximum_paths == 0)) {
+			emitter.last_path_index = emitter.active_paths;
+			qi = (emitter.path_start_index + emitter.active_paths++) % path->maximum_active_paths;
+			TFX_ASSERT(qi < path->maximum_active_paths);
 			tfx_quaternion_t q = GetPathRotation(&pm.random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
 			emitter.path_quaternions[qi].quaternion = Pack8bitQuaternion(q);
+			emitter.path_quaternions[qi].cycles = 0;
+			if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
+				emitter.path_quaternions[qi].grid_coord = 0.f;
+			} else if (!(emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise)) {
+				emitter.path_quaternions[qi].grid_coord = total_grid_points - increment;
+			}
 			emitter.path_cycle_count--;
 			emitter.path_stagger_counter = 0.f;
 		}
 	}
 
 	int dead_paths = 0;
-	tfxU32 qi = emitter.path_quaternion_index;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -14739,7 +14794,7 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 			}
 			if (new_path) {
 				if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path && path->rotation_stagger == 0) {
-					if (path->maximum_cycles == 0 || emitter.path_cycle_count > 0) {
+					if (path->maximum_paths == 0 || emitter.path_cycle_count > 0) {
 						tfx_quaternion_t q = GetPathRotation(&pm.random, path->rotation_range, path->rotation_pitch, path->rotation_yaw);
 						emitter.path_quaternions[qi].quaternion = Pack8bitQuaternion(q);
 						emitter.path_cycle_count--;
@@ -14752,7 +14807,6 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 				}
 				else {
 					emitter.path_quaternions[qi].cycles = tfxINVALID;
-					entry->particle_data->flags[index] |= tfxParticleFlags_remove;
 					dead_paths++;
 				}
 			}
@@ -14791,10 +14845,10 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path && emitter.active_paths > 0) {
 			if (emitter.path_quaternions[qi].cycles == tfxINVALID) {
 				entry->particle_data->flags[index] |= tfxParticleFlags_remove;
-				qi++;
-				qi %= emitter.active_paths;  
-				qi = (emitter.path_start_index + qi) % path->maximum_active_paths;
-				emitter.path_quaternion_index = qi;
+				emitter.last_path_index++;
+				emitter.last_path_index %= emitter.active_paths;  
+				qi = (emitter.path_start_index + emitter.last_path_index) % path->maximum_active_paths;
+				TFX_ASSERT(qi < path->maximum_active_paths);
 				continue;
 			}
 			tfx_quaternion_t q = UnPack8bitQuaternion(emitter.path_quaternions[qi].quaternion);
@@ -14804,10 +14858,10 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 			local_position_x = rp.x;
 			local_position_y = rp.y;
 			local_position_z = rp.z;
-			qi++;
-			qi %= emitter.active_paths;  
-			qi = (emitter.path_start_index + qi) % path->maximum_active_paths;
-			emitter.path_quaternion_index = qi;
+			emitter.last_path_index++;
+			emitter.last_path_index %= emitter.active_paths;  
+			qi = (emitter.path_start_index + emitter.last_path_index) % path->maximum_active_paths;
+			TFX_ASSERT(qi < path->maximum_active_paths);
 		}
 
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
@@ -14821,20 +14875,21 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 
 		tween += entry->qty_step_size;
 	}
-
-	if (dead_paths > 0) {
-		int offset = 0;
-		for (int qi = path->maximum_active_paths - 1; qi >= 0; --qi) {
+	if (dead_paths > 0 && emitter.active_paths > 0) {
+		tfxU32 offset = 0;
+		for (int qi = emitter.active_paths - 1; qi >= 0; --qi) {
 			int index = (emitter.path_start_index + qi) % path->maximum_active_paths;
 			if (emitter.path_quaternions[index].cycles == tfxINVALID) {
 				offset++;
 			} else if (offset > 0) {
 				tfxU32 next_index =  (qi + offset + emitter.path_start_index) % path->maximum_active_paths;
+				TFX_ASSERT(next_index < path->maximum_active_paths);
 				emitter.path_quaternions[next_index] = emitter.path_quaternions[index];
 			}
 		}
-		emitter.active_paths -= offset;
 		emitter.path_start_index = (emitter.path_start_index + offset) % path->maximum_active_paths;
+		emitter.active_paths -= tfx__Min(emitter.active_paths, offset);
+		emitter.last_path_index = 0;
 	}
 
 }
