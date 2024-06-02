@@ -4001,7 +4001,12 @@ tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name) {
 	path.flags = src->flags;
 	path.name = name;
 	path.node_count = src->node_count;
+	path.generator_type = src->generator_type;
+	path.offset = src->offset;
 	path.maximum_active_paths = src->maximum_active_paths;
+	path.maximum_paths = src->maximum_paths;
+	path.rotation_cycle_length = src->rotation_cycle_length;
+	path.rotation_stagger = src->rotation_stagger;
 	path.rotation_range = src->rotation_range;
 	path.rotation_pitch = src->rotation_pitch;
 	path.rotation_yaw = src->rotation_yaw;
@@ -4030,6 +4035,24 @@ tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node)
 		emitter->library->paths.push_back(path);
 	}
 	return emitter->path_attributes;
+}
+
+tfxU32 AddEmitterPathAttributes(tfx_library_t* library) {
+	tfx_emitter_path_t path = {};
+	path.flags = 0;
+	path.name = "";
+	path.node_count = 32;
+	path.extrusion_type = tfxExtrusionArc;
+	path.maximum_active_paths = 1;
+	path.offset = {};
+	path.rotation_cycle_length = 0.f;
+	path.rotation_range = 0.f;
+	path.rotation_pitch = 0.f;
+	path.rotation_yaw = 0.f;
+	path.rotation_stagger = 0.f;
+	InitialisePathGraphs(&path);
+	library->paths.push_back(path);
+	return library->paths.size() - 1;
 }
 
 float GetCatmullSegment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
@@ -6115,9 +6138,9 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("path_pitch", tfxFloat);
 	names_and_types.Insert("path_yaw", tfxFloat);
 	names_and_types.Insert("path_roll", tfxFloat);
-	names_and_types.Insert("offset_x", tfxFloat);
-	names_and_types.Insert("offset_y", tfxFloat);
-	names_and_types.Insert("offset_z", tfxFloat);
+	names_and_types.Insert("path_offset_x", tfxFloat);
+	names_and_types.Insert("path_offset_y", tfxFloat);
+	names_and_types.Insert("path_offset_z", tfxFloat);
 	names_and_types.Insert("distance", tfxFloat);
 	names_and_types.Insert("path_mode_origin", tfxBool);
 	names_and_types.Insert("path_mode_node", tfxBool);
@@ -6131,6 +6154,9 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("maximum_active_paths", tfxUint);
 	names_and_types.Insert("maximum_path_cycles", tfxUint);
 	names_and_types.Insert("path_rotation_stagger", tfxFloat);
+	names_and_types.Insert("path_handle_x", tfxFloat);
+	names_and_types.Insert("path_handle_y", tfxFloat);
+	names_and_types.Insert("path_handle_z", tfxFloat);
 
 	//Sprite data settings
 	names_and_types.Insert("start_offset", tfxUint);
@@ -6693,6 +6719,15 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, floa
 	if (*field == "path_rotation_stagger") {
 		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_stagger = value; }
 	}
+	if (*field == "path_handle_x") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->offset.x = value; }
+	}
+	if (*field == "path_handle_y") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->offset.y = value; }
+	}
+	if (*field == "path_handle_z") {
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->offset.z = value; }
+	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value) {
 	if (*field == "loop")
@@ -6905,6 +6940,9 @@ void StreamPathProperties(tfx_effect_emitter_t* effect, tfx_str_t* file) {
 		file->AddLine("maximum_active_paths=%i", (path->maximum_active_paths));
 		file->AddLine("maximum_path_cycles=%i", (path->maximum_paths));
 		file->AddLine("path_rotation_stagger=%f", (path->rotation_stagger));
+		file->AddLine("path_handle_x=%f", (path->offset.x));
+		file->AddLine("path_handle_y=%f", (path->offset.y));
+		file->AddLine("path_handle_z=%f", (path->offset.z));
 	}
 }
 
