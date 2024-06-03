@@ -2345,7 +2345,8 @@ enum tfx_path_generator_type {
 	tfxPathGenerator_arc,
 	tfxPathGenerator_s_curve,
 	tfxPathGenerator_bend,
-	tfxPathGenerator_noise,
+	tfxPathGenerator_free_mode_origin,
+	tfxPathGenerator_free_mode_distance,
 	tfxPathGenerator_max,
 };
 
