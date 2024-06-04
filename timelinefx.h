@@ -2157,6 +2157,7 @@ enum tfx_emission_type : unsigned char {
 	tfxCylinder,
 	tfxIcosphere,
 	tfxPath,
+	tfxEmissionTypeMax,
 };
 
 enum tfx_path_extrusion_type {
