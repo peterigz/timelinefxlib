@@ -6461,7 +6461,7 @@ tfxAPI_EDITOR tfx_vec2_t RandomCylinderPoint(tfx_random_t *random);
 tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *path);
 tfxINTERNAL void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst);
 tfxINTERNAL tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node);
-tfxINTERNAL tfxU32 AddEmitterPathAttributes(tfx_library_t* library);
+tfxAPI_EDITOR tfxU32 AddEmitterPathAttributes(tfx_library_t* library);
 tfxAPI_EDITOR tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name);
 tfxINTERNAL void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size = 8);

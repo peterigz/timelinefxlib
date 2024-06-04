@@ -4022,7 +4022,15 @@ tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node)
 		path.name = "";
 		path.node_count = 32;
 		path.extrusion_type = tfxExtrusionArc;
+		path.generator_type = tfxPathGenerator_spiral;
 		path.maximum_active_paths = 1;
+		path.maximum_paths = 1;
+		path.offset = {};
+		path.rotation_cycle_length = 0.f;
+		path.rotation_range = 0.f;
+		path.rotation_pitch = 0.f;
+		path.rotation_yaw = 0.f;
+		path.rotation_stagger = 0.f;
 		InitialisePathGraphs(&path);
 		ResetGraph(&path.angle_x, 0.f, path.angle_x.graph_preset, add_node, 1.f);
 		ResetGraph(&path.angle_y, 0.f, path.angle_y.graph_preset, add_node, 1.f);
@@ -4043,7 +4051,9 @@ tfxU32 AddEmitterPathAttributes(tfx_library_t* library) {
 	path.name = "";
 	path.node_count = 32;
 	path.extrusion_type = tfxExtrusionArc;
+	path.generator_type = tfxPathGenerator_spiral;
 	path.maximum_active_paths = 1;
+	path.maximum_paths = 1;
 	path.offset = {};
 	path.rotation_cycle_length = 0.f;
 	path.rotation_range = 0.f;
@@ -6603,10 +6613,10 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 	if (*field == "sprite_data_extra_frames_count")
 		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].extra_frames_count = value;
 	if (*field == "maximum_active_paths") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->maximum_active_paths = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->maximum_active_paths = value;
 	}
 	if (*field == "maximum_path_cycles") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->maximum_paths = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->maximum_paths = value; 
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int value) {
@@ -6626,10 +6636,10 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int 
 	if (*field == "extra_frames_count")
 		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].extra_frames_count = value;
 	if (*field == "path_extrusion_type") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->extrusion_type = (tfx_path_extrusion_type)value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)];  path->extrusion_type = (tfx_path_extrusion_type)value; 
 	}
 	if (*field == "path_generator_type") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->generator_type = (tfx_path_generator_type)value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)];  path->generator_type = (tfx_path_generator_type)value;
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t &value) {
@@ -6746,25 +6756,25 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, floa
 	if (*field == "sprite_data_recording_frame_rate")
 		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].recording_frame_rate = value;
 	if (*field == "path_rotation_range") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_range = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->rotation_range = value; 
 	}
 	if (*field == "path_rotation_pitch") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_pitch = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->rotation_pitch = value; 
 	}
 	if (*field == "path_rotation_yaw") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_yaw = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->rotation_yaw = value; 
 	}
 	if (*field == "path_rotation_stagger") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->rotation_stagger = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->rotation_stagger = value; 
 	}
 	if (*field == "path_handle_x") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->offset.x = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)];  path->offset.x = value; 
 	}
 	if (*field == "path_handle_y") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->offset.y = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->offset.y = value; 
 	}
 	if (*field == "path_handle_z") {
-		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->offset.z = value; }
+		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->offset.z = value; 
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value) {
@@ -11667,6 +11677,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			lookup_direction.m = tfxWideLookupSet(work_entry->graphs->direction.lookup.values, lookup_frame);
 			lookup_direction.m = tfxWideAdd(lookup_direction.m, angle);
 			tfxWideSinCos(lookup_direction.m, &velocity_normal_x.m, &velocity_normal_y.m);
+			velocity_normal_y.m = tfxWideMul(velocity_normal_y.m, tfxWideSetSingle(-1.f));
 		}
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
@@ -14031,7 +14042,6 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 	const tfx_vec3_t &grid_points = properties.grid_points;
 	const float emitter_size = emitter.emitter_size.y;
 	const float grid_segment_size_y = emitter_size / tfxMax(grid_points.y - 1.f, 1.f);;
-	emitter.grid_coords.y = 0.f;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -14061,9 +14071,7 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 
 		}
 		else {
-			local_position_y = RandomRange(&random, emitter_size);
-			local_position_y = 0.f;
-
+			local_position_y = RandomRange(&random, -emitter_size);
 		}
 
 		//----TForm and Emission
@@ -15224,7 +15232,6 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 			tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 			float &local_position_x = entry->particle_data->position_x[index];
 			float &local_position_y = entry->particle_data->position_y[index];
-			float &local_position_z = entry->particle_data->position_z[index];
 
 			//----Splatter
 			float splattertemp = splatter;
@@ -15599,12 +15606,12 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 			bank.captured_position_x[next_index] = bank.captured_position_x[index];
 			bank.captured_position_y[next_index] = bank.captured_position_y[index];
 			bank.local_rotations_z[next_index] = bank.local_rotations_z[index];
+			bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
 			bank.velocity_normal[next_index] = bank.velocity_normal[index];
 			bank.base_weight[next_index] = bank.base_weight[index];
 			bank.base_velocity[next_index] = bank.base_velocity[index];
 			bank.base_spin[next_index] = bank.base_spin[index];
 			if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
-				bank.local_rotations_x[next_index] = bank.local_rotations_x[index];
 				bank.local_rotations_y[next_index] = bank.local_rotations_y[index];
 				bank.position_z[next_index] = bank.position_z[index];
 				bank.captured_position_z[next_index] = bank.captured_position_z[index];
