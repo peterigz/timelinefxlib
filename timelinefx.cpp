@@ -15558,7 +15558,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetSinglei(0))));
 		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(not_single, expired)));
 		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideOri(tfxWideAndi(single, loop_limit), state_flags_no_spawning), expired)));
-		flags = tfxWideOri(flags, tfxWideAndi(capture_after_transform, expired));
+		flags = tfxWideOri(flags, tfxWideAndi(capture_after_transform, tfxWideAndi(expired, not_single)));
 
 		tfxWideStore(&bank.age[index], age);
 		tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
