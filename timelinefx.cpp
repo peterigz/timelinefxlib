@@ -12313,6 +12313,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			packed_color.m = tfxWideLoadi((tfxWideIntLoader*)&bank.color[index]);
+			packed_color.m = tfxWideOri(packed_color.m, tfxWideShiftLeft(tfxWideConverti(wide_alpha.m), 24));
 		}
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
