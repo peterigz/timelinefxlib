@@ -2358,6 +2358,7 @@ enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_mode_node = 1 << 2,
 	tfxPathFlags_space_nodes_evenly = 1 << 3,
 	tfxPathFlags_reverse_direction = 1 << 4,
+	tfxPathFlags_rotation_range_yaw_only = 1 << 5
 };
 
 //Particle property that defines how a particle will rotate
@@ -6242,7 +6243,7 @@ void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxAPI_EDITOR tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
-tfxAPI_EDITOR tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw);
+tfxAPI_EDITOR tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
