@@ -6355,6 +6355,7 @@ tfxAPI_EDITOR void ClearGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void FreeGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void CopyGraph(tfx_graph_t *graph, tfx_graph_t *to, bool compile = true);
 tfxAPI_EDITOR bool SortGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR void FlipGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void ReIndexGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom3d(tfx_graph_t *graph);

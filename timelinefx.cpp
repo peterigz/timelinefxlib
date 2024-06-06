@@ -3156,15 +3156,26 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 
 			emitter.emission_alternator = !emitter.emission_alternator;
 			to_handle = NormalizeVec3(&to_handle);
-		} else if (emission_direction == tfxSurface) {
+		}
+		else if (emission_direction == tfxSurface && emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
 			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
 				to_handle = EllipseSurfaceNormal(local_position.x, local_position.y, local_position.z, emitter.emitter_size.x * .5f, emitter.emitter_size.y * .5f, emitter.emitter_size.z * .5f);
 			}
 			else if (emission_type == tfxCylinder) {
 				float radius_x = emitter.emitter_size.x * .5f;
 				float radius_z = emitter.emitter_size.z * .5f;
-				to_handle = CylinderSurfaceNormal(local_position.x - radius_x, local_position.z - radius_z, radius_x, radius_z);
+				to_handle = CylinderSurfaceNormal(local_position.x - emitter.handle.x, local_position.z - emitter.handle.z, radius_x, radius_z);
 			}
+		} else if(emission_direction == tfxSurface){
+			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
+				to_handle = EllipseSurfaceNormal(local_position.x - emitter.world_position.x - emitter.handle.x, local_position.y - emitter.world_position.y - emitter.handle.y, local_position.z - emitter.world_position.z - emitter.handle.z, emitter.emitter_size.x * .5f, emitter.emitter_size.y * .5f, emitter.emitter_size.z * .5f);
+			}
+			else if (emission_type == tfxCylinder) {
+				float radius_x = emitter.emitter_size.x * .5f;
+				float radius_z = emitter.emitter_size.z * .5f;
+				to_handle = CylinderSurfaceNormal(local_position.x - emitter.world_position.x - emitter.handle.x, local_position.z - emitter.world_position.z - emitter.handle.z, radius_x, radius_z);
+			}
+
 		}
 		else {
 			parent_pitch = emitter.world_rotations.pitch;
@@ -8047,6 +8058,19 @@ bool SortGraph(tfx_graph_t *graph) {
 		graph->nodes[j + 1] = key;
 	}
 	return needed_sorting;
+}
+
+void FlipGraph(tfx_graph_t *graph) {
+	if (graph->nodes.size() == 1) {
+		return;
+	}
+	int left = 0;
+	int right = graph->nodes.size() - 1;
+	while (left < right) {
+		float left_value = graph->nodes[left].value;
+		graph->nodes[left++].value = graph->nodes[right].value;
+		graph->nodes[right--].value = left_value;
+	}
 }
 
 void ReIndexGraph(tfx_graph_t *graph) {
