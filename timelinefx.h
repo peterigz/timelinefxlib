@@ -7867,6 +7867,14 @@ Get an emitter or sub effect from an effect template.
 tfxAPI tfx_effect_emitter_t *GetEmitterFromTemplate(tfx_effect_template_t *t, tfx_str256_t *path);
 
 /*
+Get an emitter path that an emitter is using. The emitter must have the path emission type set or nullptr will be returned
+* @param t						A pointer to a tfx_effect_emitter_t
+* @param path					A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
+* @returns						A pointer to the root effect
+*/
+tfxAPI tfx_emitter_path_t *GetEmitterPath(tfx_effect_emitter_t *e);
+
+/*
 Set the user data for any effect or emitter in the effect template. This user data will get passed through to any update callback functions
 * @param t						A pointer to a tfx_effect_template_t
 * @param path					A path to the effect or emitter in the effect template

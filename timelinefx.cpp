@@ -10421,6 +10421,14 @@ tfx_effect_emitter_t *GetEmitterFromTemplate(tfx_effect_template_t *t, tfx_str25
 	if (t->paths.ValidName(*path)) return t->paths.At(*path); return nullptr;
 }
 
+tfx_emitter_path_t* GetEmitterPath(tfx_effect_emitter_t* e) {
+	if (e->path_attributes != tfxINVALID) {
+		TFX_ASSERT(e->library->paths.size() > e->path_attributes); //The emitter path attributes is out of bounds. This really shouldn't happen, either a bug in the library or the path attributes was set manually and incorrectly.
+		return &e->library->paths[e->path_attributes];
+	}
+	return nullptr;
+}
+
 void SetTemplateUserData(tfx_effect_template_t *t, tfx_str256_t *path, void *data) {
 	if (t->paths.ValidName(*path)) t->paths.At(*path)->user_data = data;
 }
