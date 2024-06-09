@@ -14812,7 +14812,7 @@ void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data) {
 	AlterRandomSeed(&random, 17 + emitter.seed_index);
 	const tfx_emitter_properties_t &properties = *entry->properties;
 	tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
-	const tfx_vec3_t &grid_points = properties.grid_points;
+	tfxU32 sub_division = tfx__Min((tfxU32)properties.grid_points.x, 5);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -14821,9 +14821,6 @@ void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data) {
 		float &local_position_z = entry->particle_data->position_z[index];
 
 		local_position_x = local_position_y = local_position_z = 0;
-
-		tfxU32 sub_division = (tfxU32)grid_points.x;
-		TFX_ASSERT(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
 
 		if (emitter.grid_coords.x >= tfxIcospherePoints[sub_division].current_size) {
 			emitter.grid_coords.x = 0;
@@ -15048,7 +15045,7 @@ void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data) {
 	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	AlterRandomSeed(&random, 18 + emitter.seed_index);
 	const tfx_emitter_properties_t &properties = *entry->properties;
-	const tfx_vec3_t &grid_points = properties.grid_points;
+	tfxU32 sub_division = tfx__Min((tfxU32)properties.grid_points.x, 5);
 	tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -15060,8 +15057,6 @@ void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data) {
 		local_position_x = local_position_y = local_position_z = 0;
 
 		tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
-		tfxU32 sub_division = (tfxU32)grid_points.x;
-		TFX_ASSERT(sub_division < 6);	//Make sure that grid_points.x is set to 0-5 as that is used for the sub divisions array index
 		int ico_point = RandomRange(&random, tfxIcospherePoints[sub_division].current_size);
 		local_position_x = tfxIcospherePoints[sub_division][ico_point].x * half_emitter_size.x;
 		local_position_y = tfxIcospherePoints[sub_division][ico_point].y * half_emitter_size.y;
