@@ -1916,15 +1916,16 @@ tfxINTERNAL inline tfxWideFloat tfxWideAtan2(tfxWideFloat y, tfxWideFloat x)
 	return tfxWideAdd(atan, shift);
 }
 
-tfxINTERNAL inline tfxWideFloat tfxWideCos32s(tfxWideFloat x)
+inline tfxWideFloat tfxWideCos52s(tfxWideFloat x)
 {
-	const tfxWideFloat c1 = tfxWideSetSingle(0.99940307f);
-	const tfxWideFloat c2 = tfxWideSetSingle(-0.49558072f);
-	const tfxWideFloat c3 = tfxWideSetSingle(0.03679168f);
+	const tfxWideFloat c1 = tfxWideSetSingle(0.9999932946f);
+	const tfxWideFloat c2 = tfxWideSetSingle(-0.4999124376f);
+	const tfxWideFloat c3 = tfxWideSetSingle(0.0414877472f);
+	const tfxWideFloat c4 = tfxWideSetSingle(-0.0012712095f);
 	tfxWideFloat x2;      // The input argument squared
 	x2 = tfxWideMul(x, x);
-	//               (c1+           x2*          (c2+           c3*x2));
-	return tfxWideAdd(c1, tfxWideMul(x2, tfxWideAdd(c2, tfxWideMul(c3, x2))));
+	//               (c1+           x2*          (c2+           x2*          (c3+           c4*x2)));
+	return tfxWideAdd(c1, tfxWideMul(x2, tfxWideAdd(c2, tfxWideMul(x2, tfxWideAdd(c3, tfxWideMul(c4, x2))))));
 }
 
 tfxINTERNAL inline void  tfxWideSinCos(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* cos) {
@@ -1944,7 +1945,7 @@ tfxINTERNAL inline void  tfxWideSinCos(tfxWideFloat angle, tfxWideFloat* sin, tf
 	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK));
 	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
 
-	tfxWideFloat result = tfxWideCos32s(cosangle);
+	tfxWideFloat result = tfxWideCos52s(cosangle);
 
 	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK));
 	*cos = result;
