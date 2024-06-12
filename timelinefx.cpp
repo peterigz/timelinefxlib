@@ -3676,9 +3676,9 @@ void CloneEffect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter_t *cl
 		}
 		if (clone->path_attributes != tfxINVALID) {
 			tfx_emitter_path_t path_copy = CopyPath(&library->paths[clone->path_attributes], "");
-			clone->path_attributes = library->paths.size();
-			library->paths.push_back(path_copy);
-			BuildPathNodes(&library->paths.back());
+			clone->path_attributes = destination_library->paths.size();
+			destination_library->paths.push_back(path_copy);
+			BuildPathNodes(&destination_library->paths.back());
 		}
 	}
 
