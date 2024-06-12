@@ -11253,6 +11253,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
 	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
+	tfx_emitter_path_t *path = emitter.path_attributes != tfxINVALID ? &pm.library->paths[emitter.path_attributes] : nullptr;
 
 	//Noise
 	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
@@ -11274,6 +11275,8 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		emitter_z = tfxWideSetSingle(emitter.handle.z);
 		orbit_relative = true;
 	}
+	bool sample_path_life = path ? work_entry->properties->emission_type == tfxPath && (emitter.property_flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling) > 0 : false;
+	tfxWideFloat node_count = path ? tfxWideSetSingle((float)path->node_count - 3.f) : tfxWideSetZero;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -11282,10 +11285,20 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 		tfxWideFloat local_position_z = tfxWideLoad(&bank.position_z[index]);
 
+		tfxWideFloat life;
+
 		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
 		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+
 		tfx__readbarrier;
-		tfxWideFloat life = tfxWideDiv(age, max_age);
+
+		if (sample_path_life) {
+			tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
+			life = tfxWideDiv(path_position, node_count);
+		}
+		else {
+			life = tfxWideDiv(age, max_age);
+		}
 
 		tfxWideFloat velocity_normal_x;
 		tfxWideFloat velocity_normal_y;
