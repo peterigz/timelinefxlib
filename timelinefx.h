@@ -1642,6 +1642,7 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideXOri _mm_xor_si128
 #define tfxWideAnd _mm_and_ps
 #define tfxWideAndNot _mm_andnot_ps
+#define tfxWideAndNot _mm_andnot_ps
 #define tfxWideAndi _mm_and_si128
 #define tfxWideAndNoti _mm_andnot_si128
 #define tfxWideSetZeroi _mm_setzero_si128()
@@ -1710,8 +1711,8 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideSubi vsubq_s32
 #define tfxWideMuli vmulq_s32
 #define tfxWideRSqrt vrsqrteq_f32 // for reciprocal square root approximation
-#define tfxWideShiftRight vshrq_n_s32
-#define tfxWideShiftLeft vshlq_n_s32
+#define tfxWideShiftRight vshrq_n_u32
+#define tfxWideShiftLeft vshlq_n_u32
 #define tfxWideGreaterEqual(a, b) vreinterpretq_f32_u32(vcgeq_f32(a, b))
 #define tfxWideGreater(a, b) vreinterpretq_s32_u32(vcgeq_f32(a,b))
 #define tfxWideGreateri vcgtq_s32
@@ -1728,13 +1729,15 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideMax vmaxq_f32
 #define tfxWideMini vminq_s32
 #define tfxWideMaxi vmaxq_s32
-#define tfxWideOr vorrq_f32
+#define tfxWideOr(a, b) vreinterpretq_f32_s32(vorrq_s32(vreinterpretq_s32_f32(a), vreinterpretq_s32_f32(b)))
+#define tfxWideXOr(a, b) vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(a), vreinterpretq_s32_f32(b)))
 #define tfxWideOri vorrq_s32
-#define tfxWideXOr veorq_f32
 #define tfxWideXOri veorq_s32
 #define tfxWideAnd(a, b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a), vreinterpretq_s32_f32(b)))
 #define tfxWideAndi vandq_s32
 #define tfxWideAndNoti vbicq_s32
+//#define tfxWideAndNot(a, b) vreinterpretq_f32_s32(vandq_s32(vmvnq_s32(vreinterpretq_s32_f32(a)), vreinterpretq_s32_f32(b)))
+#define tfxWideAndNot(a, b) vreinterpretq_f32_s32(vbicq_s32(vreinterpretq_s32_f32(b), vreinterpretq_s32_f32(a)))
 #define tfxWideSetZeroi vdupq_n_s32(0)
 #define tfxWideSetZero vdupq_n_f32(0.0f)
 #define tfxWideEqualsi vceqq_s32
@@ -1755,6 +1758,8 @@ const float32x4_t tfxWIDEZERO = vdupq_n_f32(0.f);
 const float32x4_t tfxWIDETHIRTYTWO = vdupq_n_f32(32.f);
 const int32x4_t tfxWIDEFF = vdupq_n_s32(0xFF);
 const float32x4_t tfxPWIDESIX = vdupq_n_f32(0.6f);
+
+tfxINTERNAL const float32x4_t SIGNMASK = vreinterpretq_s32_f32(vdupq_n_s32(0x80000000));
 
 typedef union {
     int32x4_t m;
@@ -1855,9 +1860,11 @@ Also fixed a bug in atan2 function where x <= y
 
 tfxINTERNAL inline tfxWideFloat tfxWideFastSqrt(tfxWideFloat squared)
 {
-	static int csr = 0;
-	if (!csr) csr = _mm_getcsr() | 0x8040; //DAZ,FTZ (divide by zero=0)
-	_mm_setcsr(csr);
+//	static int csr = 0;
+//#if defined(tfxINTEL)
+    //if (!csr) csr = _mm_getcsr() | 0x8040; //DAZ,FTZ (divide by zero=0)
+    //_mm_setcsr(csr);
+//#endif
 	return tfxWideMul(tfxWideRSqrt(squared), squared);
 }
 
@@ -1874,7 +1881,7 @@ tfxINTERNAL inline tfxWideFloat tfxWideAtan(tfxWideFloat x)
 	//                                      tfxQUARTERPI*x
 	//                                      - x*(fabs(x) - 1)
 	//                                      *(0.2447f+0.0663f*fabs(x));
-	return tfxWideSub(tfxWideMul(_mm_set1_ps(tfxQUARTERPI), x),
+	return tfxWideSub(tfxWideMul(tfxWideSetSingle(tfxQUARTERPI), x),
 		tfxWideMul(tfxWideMul(x, tfxWideSub(tfxWideAndNot(SIGNMASK, x), tfxWideSetSingle(1.f))),
 			(tfxWideAdd(tfxWideSetSingle(0.2447f), tfxWideMul(tfxWideSetSingle(0.0663f), tfxWideAndNot(SIGNMASK, x))))));
 }
@@ -1928,7 +1935,7 @@ inline tfxWideFloat tfxWideCos52s(tfxWideFloat x)
 	return tfxWideAdd(c1, tfxWideMul(x2, tfxWideAdd(c2, tfxWideMul(x2, tfxWideAdd(c3, tfxWideMul(c4, x2))))));
 }
 
-tfxINTERNAL inline void  tfxWideSinCos(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* cos) {
+inline void tfxWideSinCos(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* cos) {
 	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK, angle));
 
 	//clamp to the range 0..2pi
@@ -4314,6 +4321,7 @@ tfxINTERNAL tfx_quaternion_t ToQuaternion(float roll, float pitch, float yaw) {
 
 tfxAPI_EDITOR tfx_quaternion_t QuaternionFromAxisAngle(float x, float y, float z, float angle);
 tfxAPI_EDITOR tfx_quaternion_t QuaternionFromDirection(tfx_vec3_t* normalised_dir);
+tfxAPI_EDITOR tfx_quaternion_t QuaternionFromAxisAngle(float x, float y, float z, float angle);
 
 //Note, has padding for the sake of alignment on GPU compute shaders
 struct tfx_bounding_box_t {
