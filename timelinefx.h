@@ -1860,12 +1860,11 @@ Also fixed a bug in atan2 function where x <= y
 
 tfxINTERNAL inline tfxWideFloat tfxWideFastSqrt(tfxWideFloat squared)
 {
-	static int csr = 0;
-#if defined(tfxARM)
-#elif
-    if (!csr) csr = _mm_getcsr() | 0x8040; //DAZ,FTZ (divide by zero=0)
-    _mm_setcsr(csr);
-#endif
+//	static int csr = 0;
+//#if defined(tfxINTEL)
+    //if (!csr) csr = _mm_getcsr() | 0x8040; //DAZ,FTZ (divide by zero=0)
+    //_mm_setcsr(csr);
+//#endif
 	return tfxWideMul(tfxWideRSqrt(squared), squared);
 }
 
