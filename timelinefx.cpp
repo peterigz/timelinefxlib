@@ -10732,10 +10732,10 @@ tfx_compute_particle_t *GrabComputeParticle(tfx_particle_manager_t *pm, unsigned
 }
 
 void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index) {
-	if (pm->free_particle_lists.ValidKey(pm->emitters[index].path_hash)) {
+	if (pm->free_particle_lists.ValidKey(pm->emitters[index].path_hash) && pm->emitters[index].particles_index != tfxINVALID) {
 		pm->free_particle_lists.At(pm->emitters[index].path_hash).push_back(pm->emitters[index].particles_index);
 	}
-	else {
+	else if(pm->emitters[index].particles_index != tfxINVALID) {
 		tfx_vector_t<tfxU32> new_indexes;
 		new_indexes.push_back(pm->emitters[index].particles_index);
 		pm->free_particle_lists.Insert(pm->emitters[index].path_hash, new_indexes);
@@ -11916,36 +11916,35 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		if (emitter.state_flags & tfxEmitterStateFlags_kill) {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_x[index]);
-				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
+				const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
+				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
 				tfx__readbarrier;
 
-				//Lines - Remove particle if it reaches the end of the line
-				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(local_position_y, emitter_size_y)));
+				//Lines - Reposition if the particle is travelling along a line
+				tfxWideFloat length = tfxWideAbs(local_position_y);
+				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(length, emitter_size_y)));
 				flags = tfxWideOri(flags, remove_flags);
-				remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideLess(local_position_y, tfxWideSetZero)));
-				flags = tfxWideOri(flags, remove_flags);
-				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
+				tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
 			}
 		}
 		else {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_x[index]);
-				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
+				const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
+				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
+				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
 
 				//Lines - Reposition if the particle is travelling along a line
-				tfxWideFloat at_end = tfxWideGreater(local_position_y, emitter_size_y);
+				tfxWideFloat length = tfxWideAbs(local_position_y);
+				tfxWideFloat at_end = tfxWideGreater(length, emitter_size_y);
 
 				tfx__readbarrier;
 
-				local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, emitter_size_y));
+				local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, offset_y));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-				at_end = tfxWideLess(local_position_y, tfxWideSetZero);
-				local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, emitter_size_y));
-				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
+				tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
 				tfxWideStore(&bank.position_y[index], local_position_y);
 			}
 		}
@@ -14163,7 +14162,7 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 				}
 			}
 
-			local_position_y = emitter.grid_coords.y * -grid_segment_size_y;
+			local_position_y = emitter.grid_coords.y * grid_segment_size_y;
 
 			if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
 				emitter.grid_coords.y++;
@@ -15381,9 +15380,6 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 		if (!line) {
 			direction = GetEmissionDirection2d(&pm, library, &random, emitter, tfx_vec2_t(local_position_x, local_position_y), sprite_transform_position) + GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.direction);
 		}
-		else {
-			direction = tfxPI * .5f;
-		}
 
 		if (line || emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
 			tfx_vec2_t rotatevec = RotateVectorQuaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
@@ -15715,7 +15711,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 				bank.position_z[next_index] = bank.position_z[index];
 				bank.captured_position_z[next_index] = bank.captured_position_z[index];
 			}
-			if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
+			if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d && emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 				bank.base_pitch_spin[next_index] = bank.base_pitch_spin[index];
 				bank.base_yaw_spin[next_index] = bank.base_yaw_spin[index];
 			}
@@ -15787,7 +15783,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		} else {
 			ControlParticlePosition2d(&pm->work_queue, work_entry);
 		}
-		if (emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
+		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.state_flags & tfxEmitterStateFlags_can_spin_pitch_and_yaw) {
 			ControlParticleSpin3d(&pm->work_queue, work_entry);
 		}
 		else {
