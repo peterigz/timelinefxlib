@@ -11367,9 +11367,9 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 		image_frame.m = tfxWideLoad(&bank.image_frame[index]);
 		tfxWideArrayi flags;
 		tfxWideArrayi single_loop_count;
-		single_loop_count.m = tfxWideLoadi((tfxWideInt*)&bank.single_loop_count[index]);
+		single_loop_count.m = tfxWideLoadi((tfxWideIntLoader*)&bank.single_loop_count[index]);
 		//We only want to not capture if single loop count is 0.
-		flags.m = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+		flags.m = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
 		flags.m = tfxWideXOri(tfxWideAndi(flags.m, capture_after_transform_flag), capture_after_transform_flag);
 		flags.m = tfxWideOri(flags.m, tfxWideAndi(capture_after_transform_flag, tfxWideGreateri(single_loop_count.m, tfxWideSetZeroi)));
 
