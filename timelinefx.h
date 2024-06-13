@@ -1099,13 +1099,19 @@ tfx_allocator *tfxGetAllocator();
 #define tfxTWO63 0x8000000000000000u 
 #define tfxTWO64f (tfxTWO63*2.0)
 #define tfxPI 3.14159265359f
-const float tfxPI2 = tfxPI * 2.f;
+#define tfxHALFPI 1.570796f
+#define tfxPI2 6.283185307f 
+#define tfxINVTWOPI 0.1591549f
+#define tfxTHREEHALFPI 4.7123889f
+#define tfxQUARTERPI 0.7853982f
 #define tfx360Radians 6.28319f
 #define tfx180Radians 3.14159f
 #define tfx90Radians 1.5708f
+#define tfx270Radians 4.71239f
 #define tfxMAXDEPTH 3
 #define tfxNL u8"\n"
 #define tfxPROPERTY_INDEX_MASK 0x00007FFF
+#define tfxCIRCLENODES 16
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
 namespace tfx {
@@ -1171,6 +1177,7 @@ struct tfx_str512_t;
 #define tfxFREE(memory) free(memory)
 #endif
 
+//No longer in use, cleanup! This is from an old memory tracking thing before I switched to a new memory allocator.
 #define tfxINIT_VEC_NAME 
 #define tfxINIT_VEC_NAME_INIT 
 #define tfxINIT_VEC_NAME_SRC_COPY 
@@ -1216,6 +1223,18 @@ union tfxUInt10bit
 		int y : 10;
 		int z : 10;
 		int w : 2;
+	} data;
+	tfxU32 pack;
+};
+
+union tfxUInt8bit
+{
+	struct
+	{
+		int x : 8;
+		int y : 8;
+		int z : 8;
+		int w : 8;
 	} data;
 	tfxU32 pack;
 };
@@ -1508,6 +1527,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideSubi _mm256_sub_epi32
 #define tfxWideMuli _mm256_mul_epi32
 #define tfxWideSqrt _mm256_sqrt_ps
+#define tfxWideRSqrt _mm256_rsqrt_ps
 #define tfxWideMoveMask _mm256_movemask_epi8
 #define tfxWideShiftRight _mm256_srli_epi32
 #define tfxWideShiftLeft _mm256_slli_epi32
@@ -1528,6 +1548,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideMax _mm256_max_ps
 #define tfxWideMini _mm256_min_epi32
 #define tfxWideMaxi _mm256_max_epi32
+#define tfxWideOr _mm256_or_ps
 #define tfxWideOri _mm256_or_si256
 #define tfxWideXOri _mm256_xor_si256
 #define tfxWideXOr _mm256_xor_ps
@@ -1538,7 +1559,6 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideSetZero _mm256_setzero_ps()
 #define tfxWideSetZeroi _mm256_setzero_si256()
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
-#define tfxWideAndNot _mm256_andnot_ps
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSeti(lookup, index) tfxWideSeti(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSetMember(lookup, member, index) tfxWideSet(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
@@ -1596,6 +1616,7 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideSubi _mm_sub_epi32
 #define tfxWideMuli _mm_mul_epu32
 #define tfxWideSqrt _mm_sqrt_ps
+#define tfxWideRSqrt _mm_rsqrt_ps
 #define tfxWideMoveMask _mm_movemask_epi8
 #define tfxWideShiftRight _mm_srli_epi32
 #define tfxWideShiftLeft _mm_slli_epi32
@@ -1615,9 +1636,12 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideMax _mm_max_ps
 #define tfxWideMini _mm_min_epi32
 #define tfxWideMaxi _mm_max_epi32
+#define tfxWideOr _mm_or_ps
+#define tfxWideXOr _mm_xor_ps
 #define tfxWideOri _mm_or_si128
 #define tfxWideXOri _mm_xor_si128
 #define tfxWideAnd _mm_and_ps
+#define tfxWideAndNot _mm_andnot_ps
 #define tfxWideAndi _mm_and_si128
 #define tfxWideAndNoti _mm_andnot_si128
 #define tfxWideSetZeroi _mm_setzero_si128()
@@ -1637,6 +1661,8 @@ const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
 const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
 const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
 const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
+
+tfxINTERNAL const __m128 SIGNMASK = _mm_castsi128_ps(_mm_set1_epi32(0x80000000));
 
 typedef union {
 	__m128i m;
@@ -1683,7 +1709,7 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideAddi vaddq_s32
 #define tfxWideSubi vsubq_s32
 #define tfxWideMuli vmulq_s32
-#define tfxWideSqrt vrsqrteq_f32 // for reciprocal square root approximation
+#define tfxWideRSqrt vrsqrteq_f32 // for reciprocal square root approximation
 #define tfxWideShiftRight vshrq_n_s32
 #define tfxWideShiftLeft vshlq_n_s32
 #define tfxWideGreaterEqual(a, b) vreinterpretq_f32_u32(vcgeq_f32(a, b))
@@ -1702,7 +1728,9 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideMax vmaxq_f32
 #define tfxWideMini vminq_s32
 #define tfxWideMaxi vmaxq_s32
+#define tfxWideOr vorrq_f32
 #define tfxWideOri vorrq_s32
+#define tfxWideXOr veorq_f32
 #define tfxWideXOri veorq_s32
 #define tfxWideAnd(a, b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a), vreinterpretq_s32_f32(b)))
 #define tfxWideAndi vandq_s32
@@ -1817,6 +1845,120 @@ tfxINTERNAL uint64_t tfx__rdtsc() {
 
 #endif
 
+/*
+Copyright (c) 2013, Robin Lobel
+All rights reserved. https://github.com/divideconcept/FastTrigo
+
+I just extracted the necessary functions that I need from the above code base and modified to use tfx SIMD_DEFINES
+Also fixed a bug in atan2 function where x <= y
+*/
+
+tfxINTERNAL inline tfxWideFloat tfxWideFastSqrt(tfxWideFloat squared)
+{
+	static int csr = 0;
+	if (!csr) csr = _mm_getcsr() | 0x8040; //DAZ,FTZ (divide by zero=0)
+	_mm_setcsr(csr);
+	return tfxWideMul(tfxWideRSqrt(squared), squared);
+}
+
+/*
+possible arm function for andnot
+float32x4_t andnot_ps(float32x4_t a, float32x4_t b) {
+	uint32x4_t not_b = vreinterpretq_u32_f32(vmvnq_f32(b)); // Bitwise NOT of b
+	return vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(a), not_b)); // Bitwise AND of a and NOT(b)
+}
+*/
+
+tfxINTERNAL inline tfxWideFloat tfxWideAtan(tfxWideFloat x)
+{
+	//                                      tfxQUARTERPI*x
+	//                                      - x*(fabs(x) - 1)
+	//                                      *(0.2447f+0.0663f*fabs(x));
+	return tfxWideSub(tfxWideMul(_mm_set1_ps(tfxQUARTERPI), x),
+		tfxWideMul(tfxWideMul(x, tfxWideSub(tfxWideAndNot(SIGNMASK, x), tfxWideSetSingle(1.f))),
+			(tfxWideAdd(tfxWideSetSingle(0.2447f), tfxWideMul(tfxWideSetSingle(0.0663f), tfxWideAndNot(SIGNMASK, x))))));
+}
+
+/*
+float atan2(float y, float x)
+{
+	if (fabs(x) > fabs(y)) {
+		float atan = atanf(y / x);
+		if (x > 0.f)
+			return atan;
+		else
+			return y > 0.f ? atan + pi : atan - pi;
+	}
+	else {
+		float atan = atanf(x / y);
+		return y > 0.f ? halfpi - atan : (-halfpi) - atan;
+	}
+}
+*/
+
+tfxINTERNAL inline tfxWideFloat tfxWideAtan2(tfxWideFloat y, tfxWideFloat x)
+{
+	tfxWideFloat absxgreaterthanabsy = tfxWideGreater(tfxWideAndNot(SIGNMASK, x), tfxWideAndNot(SIGNMASK, y));
+	tfxWideFloat ratio = tfxWideDiv(tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, y), tfxWideAndNot(absxgreaterthanabsy, x)),
+		tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, x), tfxWideAndNot(absxgreaterthanabsy, y)));
+	tfxWideFloat atan = tfxWideAtan(ratio);
+
+	tfxWideFloat xgreaterthan0 = tfxWideGreater(x, tfxWideSetSingle(0.f));
+	tfxWideFloat ygreaterthan0 = tfxWideGreater(y, tfxWideSetSingle(0.f));
+
+	atan = tfxWideXOr(atan, tfxWideAndNot(absxgreaterthanabsy, SIGNMASK)); //negate atan if absx<=absy & x>0
+
+	tfxWideFloat shift = tfxWideSetSingle(tfxPI);
+	shift = tfxWideSub(shift, tfxWideAndNot(absxgreaterthanabsy, tfxWideSetSingle(tfxHALFPI))); //substract tfxHALFPI if absx<=absy
+	shift = tfxWideXOr(shift, tfxWideAndNot(ygreaterthan0, SIGNMASK)); //negate shift if y<=0
+	shift = tfxWideAndNot(tfxWideAnd(absxgreaterthanabsy, xgreaterthan0), shift); //null if abs>absy & x>0
+
+	return tfxWideAdd(atan, shift);
+}
+
+inline tfxWideFloat tfxWideCos52s(tfxWideFloat x)
+{
+	const tfxWideFloat c1 = tfxWideSetSingle(0.9999932946f);
+	const tfxWideFloat c2 = tfxWideSetSingle(-0.4999124376f);
+	const tfxWideFloat c3 = tfxWideSetSingle(0.0414877472f);
+	const tfxWideFloat c4 = tfxWideSetSingle(-0.0012712095f);
+	tfxWideFloat x2;      // The input argument squared
+	x2 = tfxWideMul(x, x);
+	//               (c1+           x2*          (c2+           x2*          (c3+           c4*x2)));
+	return tfxWideAdd(c1, tfxWideMul(x2, tfxWideAdd(c2, tfxWideMul(x2, tfxWideAdd(c3, tfxWideMul(c4, x2))))));
+}
+
+tfxINTERNAL inline void  tfxWideSinCos(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* cos) {
+	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK, angle));
+
+	//clamp to the range 0..2pi
+
+	//take absolute value
+	angle = tfxWideAndNot(SIGNMASK, angle);
+	//fmod(angle,tfxPI2)
+	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWideSetSingle(tfxINVTWOPI)))), tfxWideSetSingle(tfxPI2))); //simplied SSE2 fmod, must always operate on absolute value
+	//if SSE4.1 is always available, comment the line above and uncomment the line below
+	//angle=tfxWideSub(angle,tfxWideMul(_mm_floor_ps(tfxWideMul(angle,tfxWideSetSingle(tfxINVTWOPI))),tfxWideSetSingle(tfxPI2))); //faster if SSE4.1 is always available
+
+	tfxWideFloat cosangle = angle;
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI), angle))));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
+
+	tfxWideFloat result = tfxWideCos52s(cosangle);
+
+	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK));
+	*cos = result;
+
+	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK)));
+	*sin = tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result))));
+
+	return;
+}
+/*
+End of Robin Lobel code
+*/
+
 //simd mod function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
 tfxINTERNAL inline tfxWideFloat tfxWideMod(const tfxWideFloat &a, const tfxWideFloat &aDiv) {
 	tfxWideFloat c = tfxWideDiv(a, aDiv);
@@ -1893,7 +2035,7 @@ enum tfx_graph_category : unsigned int {
 
 
 #define TFX_GLOBAL_COUNT  16
-#define	TFX_PROPERTY_COUNT  9
+#define	TFX_PROPERTY_COUNT  10
 #define	TFX_BASE_COUNT  10
 #define	TFX_VARIATION_COUNT  11
 #define	TFX_OVERTIME_COUNT  18
@@ -1929,9 +2071,10 @@ enum tfx_graph_type : unsigned char {
 	tfxProperty_emission_yaw,
 	tfxProperty_emission_range,
 	tfxProperty_splatter,
-	tfxProperty_emitter_width,
+	tfxProperty_emitter_width,		//Also used for linear extrusion for paths as well
 	tfxProperty_emitter_height,
 	tfxProperty_emitter_depth,
+	tfxProperty_extrusion,
 	tfxProperty_arc_size,
 	tfxProperty_arc_offset,
 
@@ -1992,6 +2135,9 @@ enum tfx_graph_type : unsigned char {
 	tfxPath_offset_y,
 	tfxPath_offset_z,
 	tfxPath_distance,
+	tfxPath_rotation_range,
+	tfxPath_rotation_pitch,
+	tfxPath_rotation_yaw,
 	tfxGraphMaxIndex
 };
 
@@ -2010,7 +2156,14 @@ enum tfx_emission_type : unsigned char {
 	tfxLine,
 	tfxEllipse,
 	tfxCylinder,
-	tfxIcosphere
+	tfxIcosphere,
+	tfxPath,
+	tfxEmissionTypeMax,
+};
+
+enum tfx_path_extrusion_type {
+	tfxExtrusionArc,
+	tfxExtrusionLinear
 };
 
 //Determines how for area, line and ellipse emitters the direction that particles should travel
@@ -2019,7 +2172,8 @@ enum tfx_emission_direction : unsigned char {
 	tfxOutwards,
 	tfxBothways,
 	tfxSpecified,
-	tfxSurface
+	tfxSurface,
+	tfxOrbital
 };
 
 //For line effects where traverse line is switched on
@@ -2101,22 +2255,22 @@ enum tfx_effect_library_stream_context : tfxU32 {
 	tfxEndFrameOffsets,
 };
 
-typedef tfxU32 tfxEmitterPropertyFlags;
-typedef tfxU32 tfxEffectPropertyFlags;
-typedef tfxU32 tfxVectorFieldFlags;
-typedef tfxU32 tfxParticleFlags;
-typedef tfxU32 tfxEmitterStateFlags;
-typedef tfxU32 tfxEffectStateFlags;
-typedef tfxU32 tfxParticleControlFlags;
-typedef tfxU32 tfxAttributeNodeFlags;
-typedef tfxU32 tfxAngleSettingFlags;
-typedef tfxU32 tfxParticleManagerFlags;
-typedef tfxU32 tfxErrorFlags;
-typedef tfxU32 tfxEffectCloningFlags;
-typedef tfxU32 tfxAnimationFlags;
-typedef tfxU32 tfxAnimationInstanceFlags;
-typedef tfxU32 tfxAnimationManagerFlags;
-typedef tfxU32 tfxEmitterPathFlags;
+typedef tfxU32 tfxEmitterPropertyFlags;			//tfx_emitter_property_flag_bits
+typedef tfxU32 tfxEffectPropertyFlags;			//tfx_effect_property_flag_bits
+typedef tfxU32 tfxVectorFieldFlags;				//tfx_vector_field_flag_bits
+typedef tfxU32 tfxParticleFlags;				//tfx_particle_flag_bits
+typedef tfxU32 tfxEmitterStateFlags;			//tfx_emitter_state_flag_bits
+typedef tfxU32 tfxEffectStateFlags;				//tfx_effect_state_flag_bits
+typedef tfxU32 tfxParticleControlFlags;			//tfx_particle_control_flag_bits
+typedef tfxU32 tfxAttributeNodeFlags;			//tfx_attribute_node_flag_bits
+typedef tfxU32 tfxAngleSettingFlags;			//tfx_angle_setting_flag_bits
+typedef tfxU32 tfxParticleManagerFlags;			//tfx_particle_manager_flag_bits
+typedef tfxU32 tfxErrorFlags;					//tfx_error_flag_bits
+typedef tfxU32 tfxEffectCloningFlags;			//tfx_effect_cloning_flag_bits
+typedef tfxU32 tfxAnimationFlags;				//tfx_animation_flag_bits
+typedef tfxU32 tfxAnimationInstanceFlags;		//tfx_animation_instance_flag_bits
+typedef tfxU32 tfxAnimationManagerFlags;		//tfx_animation_manager_flag_bits
+typedef tfxU32 tfxEmitterPathFlags;				//tfx_emitter_path_flag_bits
 
 enum tfx_error_flag_bits {
 	tfxErrorCode_success = 0,
@@ -2187,12 +2341,25 @@ enum tfx_vector_align_type {
 	tfxVectorAlignType_max,
 };
 
+enum tfx_path_generator_type {
+	tfxPathGenerator_spiral,
+	tfxPathGenerator_loop,
+	tfxPathGenerator_arc,
+	tfxPathGenerator_s_curve,
+	tfxPathGenerator_bend,
+	tfxPathGenerator_free_mode_origin,
+	tfxPathGenerator_free_mode_distance,
+	tfxPathGenerator_max,
+};
+
 enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_none,
 	tfxPathFlags_3d = 1 << 0,
 	tfxPathFlags_mode_origin = 1 << 1,
 	tfxPathFlags_mode_node = 1 << 2,
 	tfxPathFlags_space_nodes_evenly = 1 << 3,
+	tfxPathFlags_reverse_direction = 1 << 4,
+	tfxPathFlags_rotation_range_yaw_only = 1 << 5
 };
 
 //Particle property that defines how a particle will rotate
@@ -2244,7 +2411,8 @@ enum tfx_effect_property_flag_bits {
 	tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
 	tfxEffectPropertyFlags_age_order = 1 << 3,
 	tfxEffectPropertyFlags_use_keyframes = 1 << 4,
-	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5		//In the editor you can specify which effects you want to be included in a spritedata export
+	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,		//In the editor you can specify which effects you want to be included in a spritedata export
+	tfxEffectPropertyFlags_global_uniform_size = 1 << 6,				//Keep the global particle size uniform
 };
 
 enum tfx_emitter_property_flag_bits {
@@ -2254,32 +2422,30 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_relative_angle = 1 << 2,					//Keep the angle of the particles relative to the current angle of the emitter
 	tfxEmitterPropertyFlags_image_handle_auto_center = 1 << 3,			//Set the offset of the particle to the center of the image
 	tfxEmitterPropertyFlags_single = 1 << 4,							//Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
-	tfxEmitterPropertyFlags_specific_emission_direction = 1 << 5,		//Uses a normal vector (3d) or direction (2d) to determine emission direction
-	tfxEmitterPropertyFlags_spawn_on_grid = 1 << 6,						//When using an area, line or ellipse emitter, spawn along a grid
-	tfxEmitterPropertyFlags_grid_spawn_clockwise = 1 << 7,				//Spawn clockwise/left to right around the area
-	tfxEmitterPropertyFlags_fill_area = 1 << 8,							//Fill the area
-	tfxEmitterPropertyFlags_emitter_handle_auto_center = 1 << 9,		//Center the handle of the emitter
-	tfxEmitterPropertyFlags_edge_traversal = 1 << 10,					//Line emitters only: make particles traverse the line
-	tfxEmitterPropertyFlags_global_uniform_size = 1 << 11,				//Keep the global particle size uniform
-	tfxEmitterPropertyFlags_base_uniform_size = 1 << 12,				//Keep the base particle size uniform
-	tfxEmitterPropertyFlags_lifetime_uniform_size = 1 << 13,			//Keep the size over lifetime of the particle uniform
-	tfxEmitterPropertyFlags_animate = 1 << 14,							//Animate the particle shape if it has more than one frame of animation
-	tfxEmitterPropertyFlags_reverse_animation = 1 << 15,				//Make the image animation go in reverse
-	tfxEmitterPropertyFlags_play_once = 1 << 16,						//Play the animation once only
-	tfxEmitterPropertyFlags_random_start_frame = 1 << 17,				//Start the animation of the image from a random frame
-	tfxEmitterPropertyFlags_keep_alive = 1 << 18,						//Keep the effect/emitter in the particle manager, don't remove it when it has no particles
-	tfxEmitterPropertyFlags_wrap_single_sprite = 1 << 19,				//When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
-	tfxEmitterPropertyFlags_is_in_folder = 1 << 20,						//This effect is located inside a folder
-	tfxEmitterPropertyFlags_is_bottom_emitter = 1 << 21,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
-	tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 22,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
-	tfxEmitterPropertyFlags_effect_is_3d = 1 << 23,						//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
-	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 24,				//Spawn on grid points but randomly rather then in sequence
-	tfxEmitterPropertyFlags_area_open_ends = 1 << 25,					//Only sides of the area/cylinder are spawned on when fill area is not checked
-	tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 26,		//Emitter will be excluded from effect hue adjustments if this flag is checked
-	tfxEmitterPropertyFlags_enabled = 1 << 27,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
-	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 28,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
-	tfxEmitterPropertyFlags_life_proportional_to_animation = 1 << 29,	//When recording sprite data and animations, the life particles will be made proportional to the number of frames in the animation
-	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 30			//Make the particles use a path to dictate their direction of travel
+	tfxEmitterPropertyFlags_spawn_on_grid = 1 << 5,						//When using an area, line or ellipse emitter, spawn along a grid
+	tfxEmitterPropertyFlags_grid_spawn_clockwise = 1 << 6,				//Spawn clockwise/left to right around the area
+	tfxEmitterPropertyFlags_fill_area = 1 << 7,							//Fill the area
+	tfxEmitterPropertyFlags_emitter_handle_auto_center = 1 << 8,		//Center the handle of the emitter
+	tfxEmitterPropertyFlags_edge_traversal = 1 << 9,					//Line and Path emitters only: make particles traverse the line/path
+	tfxEmitterPropertyFlags_base_uniform_size = 1 << 10,				//Keep the base particle size uniform
+	tfxEmitterPropertyFlags_lifetime_uniform_size = 1 << 11,			//Keep the size over lifetime of the particle uniform
+	tfxEmitterPropertyFlags_animate = 1 << 12,							//Animate the particle shape if it has more than one frame of animation
+	tfxEmitterPropertyFlags_reverse_animation = 1 << 13,				//Make the image animation go in reverse
+	tfxEmitterPropertyFlags_play_once = 1 << 14,						//Play the animation once only
+	tfxEmitterPropertyFlags_random_start_frame = 1 << 15,				//Start the animation of the image from a random frame
+	tfxEmitterPropertyFlags_wrap_single_sprite = 1 << 16,				//When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
+	tfxEmitterPropertyFlags_is_in_folder = 1 << 17,						//This effect is located inside a folder
+	tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 18,					//Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
+	tfxEmitterPropertyFlags_effect_is_3d = 1 << 19,						//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
+	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 20,				//Spawn on grid points but randomly rather then in sequence
+	tfxEmitterPropertyFlags_area_open_ends = 1 << 21,					//Only sides of the area/cylinder are spawned on when fill area is not checked
+	tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 22,		//Emitter will be excluded from effect hue adjustments if this flag is checked
+	tfxEmitterPropertyFlags_enabled = 1 << 23,							//The emitter is enabled or not, meaning it will or will not be added the particle manager with AddEffect
+	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 24,		//Match the amount to spawn with a single emitter to the number of grid points in the effect
+	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 25,			//Make the particles use a path to dictate their direction of travel
+	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling = 1 << 26,	//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
 };
 
 enum tfx_particle_flag_bits : unsigned int {
@@ -2303,10 +2469,10 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_no_tween_this_update = 1 << 7,					//Internal flag generally, but you could use it if you want to teleport the effect to another location
 	tfxEmitterStateFlags_is_single = 1 << 8,
 	tfxEmitterStateFlags_not_line = 1 << 9,
-	tfxEmitterStateFlags_is_line_traversal = 1 << 10,
-	tfxEmitterStateFlags_can_spin = 1 << 11,
-	tfxEmitterStateFlags_base_uniform_size = 1 << 12,
-	tfxEmitterStateFlags_lifetime_uniform_size = 1 << 13,				//Keep the size over lifetime of the particle uniform
+	tfxEmitterStateFlags_base_uniform_size = 1 << 10,
+	tfxEmitterStateFlags_lifetime_uniform_size = 1 << 11,				//Keep the size over lifetime of the particle uniform
+	tfxEmitterStateFlags_can_spin = 1 << 12,
+	tfxEmitterStateFlags_is_edge_traversal = 1 << 13,
 	tfxEmitterStateFlags_loop = 1 << 14,
 	tfxEmitterStateFlags_kill = 1 << 15,
 	tfxEmitterStateFlags_play_once = 1 << 16,							//Play the animation once only
@@ -2317,7 +2483,11 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_align_with_velocity = 1 << 21,
 	tfxEmitterStateFlags_is_sub_emitter = 1 << 22,
 	tfxEmitterStateFlags_has_noise = 1 << 23,
-	tfxEmitterStateFlags_can_spin_pitch_and_yaw = 1 << 24			//For 3d emitters that have free alignment and not always facing the camera
+	tfxEmitterStateFlags_can_spin_pitch_and_yaw = 1 << 24,			//For 3d emitters that have free alignment and not always facing the camera
+	tfxEmitterStateFlags_has_path = 1 << 25,
+	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
+	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
+	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -2473,6 +2643,7 @@ static float tfxLOOKUP_FREQUENCY_OVERTIME = 1.f;
 //Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 static tfxWideFloat tfxLOOKUP_FREQUENCY_WIDE = tfxWideSetSingle(10.f);
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
+//Experiment with lower resolution and use interpolation instead? Could be a lot better on the cache.
 static tfxWideFloat tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetSingle(1.f);
 
 //-----------------------------------------------------------
@@ -2825,6 +2996,13 @@ struct tfx_storage_map_t {
 	tfx_storage_map_t() : map(tfxCONSTRUCTOR_VEC_INIT("Storage Map map")), data(tfxCONSTRUCTOR_VEC_INIT("Storage Map data")) {}
 	tfx_storage_map_t(const char *map_tracker, const char *data_tracker) : map(tfxCONSTRUCTOR_VEC_INIT2(map_tracker)), data(tfxCONSTRUCTOR_VEC_INIT2(data_tracker)) {}
 
+	inline void reserve(tfxU32 size) {
+		if (size > data.capacity) {
+			map.reserve(size);
+			data.reserve(size);
+		}
+	}
+
 	//Insert a new T value into the storage
 	inline tfxKey Insert(const char *name, const T &value) {
 		tfxKey key = tfxXXHash64::hash(name, strlen(name), 0);
@@ -3112,7 +3290,7 @@ inline tfxU32 GetCircularIndex(tfx_soa_buffer_t *buffer, tfxU32 index) {
 	return (buffer->start_index + index) % buffer->capacity;
 }
 
-//Get the index based on the buffer being a ring buffer
+//Convert a circular index back into an index from the start of the buffer
 inline tfxU32 GetAbsoluteIndex(tfx_soa_buffer_t *buffer, tfxU32 circular_index) {
 	return buffer->capacity - (circular_index % buffer->capacity);
 }
@@ -3132,7 +3310,8 @@ inline size_t GetSoACapacityRequirement(tfx_soa_buffer_t *buffer, size_t capacit
 	size_t size_requirement = 0;
 	for (int i = 0; i != buffer->array_ptrs.current_size; ++i) {
 		size_requirement += buffer->array_ptrs[i].unit_size * capacity;
-		size_requirement += buffer->alignment - (size_requirement % buffer->alignment);
+		size_t mod = size_requirement % buffer->alignment;
+		size_requirement += mod ? buffer->alignment - mod : 0;
 	}
 	return size_requirement;
 }
@@ -3159,7 +3338,8 @@ inline void FinishSoABufferSetup(tfx_soa_buffer_t *buffer, void *struct_of_array
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
-		running_offset += buffer->alignment - (running_offset % buffer->alignment);
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 	}
 	if (buffer->resize_callback) {
 		buffer->resize_callback(buffer, 0);
@@ -3188,7 +3368,8 @@ inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 
 				memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 			}
 			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
-			running_offset += buffer->alignment - (running_offset % buffer->alignment);
+			size_t mod = running_offset % buffer->alignment;
+			running_offset += mod ? buffer->alignment - mod : 0;
 		}
 	}
 	void *old_data = buffer->data;
@@ -3201,7 +3382,8 @@ inline bool GrowArrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_index, tfxU32 
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
-		running_offset += buffer->alignment - (running_offset % buffer->alignment);
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 	}
 	tfxFREE(old_data);
 
@@ -3338,7 +3520,8 @@ inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 			memcpy((char*)new_data + running_offset, (char*)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 		}
 		running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
-		running_offset += buffer->alignment - (running_offset % buffer->alignment);
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 
 	}
 	void *old_data = buffer->data;
@@ -3351,7 +3534,8 @@ inline void TrimSoABuffer(tfx_soa_buffer_t *buffer) {
 		buffer->array_ptrs[i].ptr = (char*)buffer->data + running_offset;
 		memcpy((char*)buffer->struct_of_arrays + buffer->array_ptrs[i].offset, &buffer->array_ptrs[i].ptr, sizeof(void*));
 		running_offset += buffer->array_ptrs[i].unit_size * buffer->capacity;
-		running_offset += buffer->alignment - (running_offset % buffer->alignment);
+		size_t mod = running_offset % buffer->alignment;
+		running_offset += mod ? buffer->alignment - mod : 0;
 	}
 	tfxFREE(old_data);
 }
@@ -3385,6 +3569,8 @@ struct tfx_bucket_array_t {
 	tfxLONG volatile locked;
 	tfx_vector_t<tfx_bucket_t<T>*> bucket_list;
 
+	tfx_bucket_array_t() : size_of_each_bucket(8), current_size(0), capacity(0), locked(0) {}
+
 	inline bool			empty() { return current_size == 0; }
 	inline tfxU32		size() { return current_size; }
 	inline void			free_all() {
@@ -3392,6 +3578,7 @@ struct tfx_bucket_array_t {
 			bucket->data.free();
 			tfxFREE(bucket);
 		}
+		current_size = capacity = 0;
 		bucket_list.free();
 	}
 	inline T&           operator[](tfxU32 i) {
@@ -3440,7 +3627,7 @@ struct tfx_bucket_array_t {
 		return bucket_list[current_bucket]->data.back();
 	}
 
-	inline tfxU32        locked_push_back(const T& v) {
+	inline tfxU32 locked_push_back(const T& v) {
 		while (tfx__compare_and_exchange(&locked, 1, 0) > 1);
 
 		push_back(v);
@@ -3827,6 +4014,8 @@ struct tfx_storage_t {
 	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
 	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
 	tfx_data_types_dictionary_t data_types;
+	float circle_path_x[tfxCIRCLENODES];
+	float circle_path_z[tfxCIRCLENODES];
 	//tfx_storage_map_t<tfx_particle_manager_t*> particle_managers;
 	//tfx_storage_map_t<tfx_animation_manager_t*> animation_managers;
 };
@@ -3980,7 +4169,7 @@ struct tfx_vec4_t {
 	inline void operator-=(float v) { x -= v; y -= v; z -= v; w -= v; }
 };
 
-//Wide simd versions of tfx_vec2_t/3
+//Wide simd versions of tfx_vec2_t/3 Can probably get rid of these?
 struct tfx_wide_vec3_t {
 	union {
 		struct { tfxWideFloat x, y, z; };
@@ -4056,6 +4245,75 @@ struct tfx_wide_vec2_t {
 	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideMul(y, y)); }
 };
 
+struct tfx_quaternion_t {
+	float w, x, y, z;
+
+	tfx_quaternion_t() : w(0.f), x(0.f), y(0.f), z(0.f) {}
+	tfx_quaternion_t(float w, float x, float y, float z) : w(w), x(x), y(y), z(z) {}
+
+	tfx_quaternion_t operator*(const tfx_quaternion_t& q) const {
+		return tfx_quaternion_t(
+			w * q.w - x * q.x - y * q.y - z * q.z,
+			w * q.x + x * q.w + y * q.z - z * q.y,
+			w * q.y - x * q.z + y * q.w + z * q.x,
+			w * q.z + x * q.y - y * q.x + z * q.w
+		);
+	}
+
+};
+
+tfxINTERNAL void ToQuaternion2d(tfx_quaternion_t *q, float angle) {
+	float half_angle = angle / 2.f;
+	q->w = cosf(half_angle);
+	q->x = 0.f;
+	q->y = 0.f;
+	q->z = sinf(half_angle);
+}
+
+tfxINTERNAL tfx_vec2_t RotateVectorQuaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v) {
+	float c = q->w; 
+	float s = q->z;
+
+	float rotated_x = c * c * v.x - 2.f * s * c * v.y + s * s * v.x;
+	float rotated_y = 2.f * s * c * v.x + c * c * v.y - s * s * v.y;
+
+	return tfx_vec2_t(rotated_x, rotated_y);
+}
+
+tfxINTERNAL tfx_vec3_t RotateVectorQuaternion(const tfx_quaternion_t *q, tfx_vec3_t v) {
+	tfx_quaternion_t qv(0, v.x, v.y, v.z);
+	tfx_quaternion_t q_conjugate = tfx_quaternion_t(q->w, -q->x, -q->y, -q->z);
+	tfx_quaternion_t result = *q * qv * q_conjugate;
+	return tfx_vec3_t(result.x, result.y, result.z);
+}
+
+// Normalize the quaternion
+tfxINTERNAL tfx_quaternion_t NormalizeQuaternion(tfx_quaternion_t *q) {
+	float len = sqrtf(q->w * q->w + q->x * q->x + q->y * q->y + q->z * q->z);
+	return tfx_quaternion_t(q->w / len, q->x / len, q->y / len, q->z / len);
+}
+
+tfxINTERNAL tfx_quaternion_t ToQuaternion(float roll, float pitch, float yaw) {
+	// Abbreviations for the various angular functions
+
+	float cr = cosf(roll * 0.5f);
+	float sr = sinf(roll * 0.5f);
+	float cp = cosf(pitch * 0.5f);
+	float sp = sinf(pitch * 0.5f);
+	float cy = cosf(yaw * 0.5f);
+	float sy = sinf(yaw * 0.5f);
+
+	tfx_quaternion_t q;
+	q.w = cr * cp * cy + sr * sp * sy;
+	q.x = sr * cp * cy - cr * sp * sy;
+	q.y = cr * sp * cy + sr * cp * sy;
+	q.z = cr * cp * sy - sr * sp * cy;
+
+	return q;
+}
+
+tfxAPI_EDITOR tfx_quaternion_t QuaternionFromDirection(tfx_vec3_t* normalised_dir);
+
 //Note, has padding for the sake of alignment on GPU compute shaders
 struct tfx_bounding_box_t {
 	tfx_vec3_t min_corner; float padding1;
@@ -4105,9 +4363,12 @@ struct tfx_hsv_t {
 	tfx_hsv_t(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
 };
 
+const tfxWideFloat one_div_127_wide = tfxWideSetSingle(1 / 127.f);
 const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
 const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
+#define tfxPACKED_X_NORMAL_3D 0x3FE7FDFF
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
+#define tfxPACKED_Z_NORMAL_3D 0x1FF7FFFE
 #define tfxPACKED_Y_NORMAL_2D 32767
 
 struct tfx_rgba_t {
@@ -4588,6 +4849,7 @@ struct tfx_property_attributes_t {
 	tfx_graph_t emitter_width;
 	tfx_graph_t emitter_height;
 	tfx_graph_t emitter_depth;
+	tfx_graph_t extrusion;
 	tfx_graph_t arc_size;
 	tfx_graph_t arc_offset;
 };
@@ -4647,12 +4909,19 @@ struct tfx_path_nodes_soa_t {
 	float *length;
 };
 
+struct tfx_path_quaternion_t {
+	tfxU32 quaternion;
+	float grid_coord;
+	float age;
+	tfxU32 cycles;
+};
+
 struct tfx_emitter_path_t {
 	tfxKey key;
 	tfx_str32_t name;
 	int node_count;
 	tfxEmitterPathFlags flags;
-	float preview_scale;
+	tfx_path_generator_type generator_type;
 	tfx_graph_t angle_x;
 	tfx_graph_t angle_y;
 	tfx_graph_t angle_z;
@@ -4660,9 +4929,19 @@ struct tfx_emitter_path_t {
 	tfx_graph_t offset_y;
 	tfx_graph_t offset_z;
 	tfx_graph_t distance;
+	float rotation_range;
+	float rotation_pitch;
+	float rotation_yaw;
+	tfxU32 maximum_active_paths;
+	tfxU32 maximum_paths;
+	float rotation_cycle_length;
+	float rotation_stagger;
+	tfx_vec3_t offset;
+	tfx_vec3_t builder_parameters;
 	tfx_vector_t<tfx_vec4_t> nodes;
 	tfx_soa_buffer_t node_buffer;
 	tfx_path_nodes_soa_t node_soa;
+	tfx_path_extrusion_type extrusion_type;
 };
 
 struct tfx_emitter_attributes_t {
@@ -4917,6 +5196,8 @@ struct tfx_effect_emitter_info_t {
 };
 
 //This is a struct that stores an emitter state that is currently active in a particle manager.
+//Todo: maybe split this up into static variables that stay the same (they're just properties copied from the emitter in the library
+//		and dynamic variables that change each frame.
 struct tfx_emitter_state_t {
 	//State data
 	float frame;
@@ -4933,8 +5214,8 @@ struct tfx_emitter_state_t {
 	tfx_vec3_t world_position;
 	tfx_vec3_t captured_position;
 	tfx_vec3_t world_rotations;
-	//Todo: save space and use a quaternion here... maybe
-	tfx_mat4_t matrix;
+
+	tfx_quaternion_t rotation;
 	tfx_vec2_t image_handle;
 	tfx_bounding_box_t bounding_box;
 
@@ -4946,6 +5227,13 @@ struct tfx_emitter_state_t {
 	tfxU32 transform_attributes;
 	tfxU32 overtime_attributes;
 	tfxU32 path_attributes;
+	tfx_path_quaternion_t *path_quaternions;
+	tfxU32 path_quaternion_index;
+	tfxU32 last_path_index;
+	float path_stagger_counter;
+	tfxU32 path_cycle_count;
+	tfxU32 active_paths;
+	tfxU32 path_start_index;
 
 	tfxU32 root_index;
 	tfxU32 parent_index;
@@ -4972,7 +5260,7 @@ struct tfx_emitter_state_t {
 
 //This is a struct that stores an effect state that is currently active in a particle manager.
 struct tfx_effect_state_t {
-	tfx_mat4_t matrix;
+	tfx_quaternion_t rotation;
 	//State data
 	float frame;
 	float age;
@@ -5050,16 +5338,14 @@ struct tfx_effect_emitter_t {
 	//Indexes into library storage
 	tfxU32 info_index;
 	tfxU32 property_index;
-	tfxU32 pm_index;
 
 	tfx_effect_emitter_t() :
 		buffer_index(0),
 		path_hash(0),
-		pm_index(0),
 		parent(nullptr),
 		user_data(nullptr),
 		update_callback(nullptr),
-		effect_flags(tfxEffectPropertyFlags_none),
+		effect_flags(tfxEffectPropertyFlags_global_uniform_size | tfxEffectPropertyFlags_none),
 		sort_passes(1),
 		info_index(tfxINVALID),
 		property_index(tfxINVALID),
@@ -5070,7 +5356,6 @@ struct tfx_effect_emitter_t {
 		property_flags(tfxEmitterPropertyFlags_image_handle_auto_center |
 			tfxEmitterPropertyFlags_grid_spawn_clockwise |
 			tfxEmitterPropertyFlags_emitter_handle_auto_center |
-			tfxEmitterPropertyFlags_global_uniform_size |
 			tfxEmitterPropertyFlags_base_uniform_size |
 			tfxEmitterPropertyFlags_lifetime_uniform_size),
 		state_flags(0)
@@ -5099,6 +5384,8 @@ struct tfx_unique_sprite_id_t {
 };
 
 //These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
+//Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
+//when the the buffer is initialised only the fields that are needed for the emitter will be used.
 struct tfx_particle_soa_t {
 	tfxU32 *uid;		//Only used for recording sprite data
 	tfxU32 *parent_index;
@@ -5117,7 +5404,10 @@ struct tfx_particle_soa_t {
 	float *local_rotations_y;
 	float *local_rotations_z;	//In 2d this is the roll
 	tfxU32 *velocity_normal;
+	tfxU32 *quaternion;			//Used for paths where the path can be rotated per particle based on the emission direction
 	tfxU32 *depth_index;
+	float *path_position;
+	float *path_offset;
 	float *base_weight;
 	float *base_velocity;
 	float *base_spin;
@@ -5336,7 +5626,7 @@ struct tfx_spawn_work_entry_t {
 	tfxU32 parent_index;
 	tfx_emission_type emission_type;
 	tfxEmitterPropertyFlags property_flags;
-	tfxEmitterPropertyFlags parent_property_flags;
+	tfxEffectPropertyFlags parent_property_flags;
 	tfx_particle_soa_t *particle_data;
 	tfx_vector_t<tfx_effect_emitter_t> *sub_effects;
 	tfxU32 seed;
@@ -5511,6 +5801,8 @@ struct tfx_particle_manager_t {
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfxU32> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
+	tfx_vector_t<tfxU32> free_path_quaternions;
+	tfx_vector_t<tfx_path_quaternion_t*> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
 	tfx_vector_t<tfx_emitter_state_t> emitters;
 	tfx_library_t *library;
@@ -5624,7 +5916,7 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
-	tfx_vector_t<tfx_emitter_path_t> paths;
+	tfx_bucket_array_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
 	tfx_vector_t<tfx_emitter_attributes_t> emitter_attributes;
 	tfx_vector_t<tfx_transform_attributes_t> transform_attributes;
@@ -5722,7 +6014,7 @@ tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 //Dump sprites for Debugging
 tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
-tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
+tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, bool has_noise, bool has_path, bool has_rotated_path);
 
 //--------------------------------
 //Profilings
@@ -5835,11 +6127,14 @@ tfxAPI_EDITOR tfx_vec3_t CylinderSurfaceNormal(float x, float z, float width, fl
 tfxAPI_EDITOR tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z);
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
+tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineSoA(const float* p_x, const float* p_y, int p0, float t);
+tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3DSoA(const float* p_x, const float* p_y, const float *p_z, int p0, float t);
+tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineSoALoop(const float* p_x, const float* p_y, int p1, int points, float t);
 tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3DSoAStart(const float *px, const float* py, const float* pz);
-tfxAPI_EDITOR void CatmullRomSplineGradient3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
+tfxAPI_EDITOR void CatmullRomSpline3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL float GetCatmullSegment(tfx_vector_t<tfx_vec4_t>* nodes, float length);
 //Quake 3 inverse square root
 tfxINTERNAL float QuakeSqrt(float number);
@@ -5863,7 +6158,10 @@ tfxINTERNAL tfx_mat4_t TransposeMatrix4(tfx_mat4_t *mat);
 tfxINTERNAL tfx_mat4_t TransformMatrix42d(const tfx_mat4_t *in, const tfx_mat4_t *m);
 tfxINTERNAL tfx_mat4_t TransformMatrix4ByMatrix2(const tfx_mat4_t *in, const tfx_mat2_t *m);
 tfxINTERNAL tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *m);
-tfxINTERNAL void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
+tfxAPI_EDITOR void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
+tfxAPI_EDITOR void TransformQuaternionVec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
+tfxAPI_EDITOR void TransformQuaternionVec2(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y);
+tfxAPI_EDITOR void TransformPackedQuaternionVec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxINTERNAL void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
 tfxINTERNAL void MaskedTransformMatrix42d(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
@@ -5878,12 +6176,13 @@ tfxAPI_EDITOR tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra);
 tfxINTERNAL tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v);
 tfxAPI_EDITOR tfxU32 Pack16bit(float x, float y);
 tfxAPI_EDITOR tfxU32 Pack8bit(tfx_vec3_t v);
-tfxINTERNAL tfxU32 Pack16bitUnsigned(float x, float y);
+tfxAPI_EDITOR tfxU32 Pack8bitQuaternion(tfx_quaternion_t v);
+tfxAPI_EDITOR tfxU32 Pack16bitUnsigned(float x, float y);
 tfxAPI_EDITOR tfx_vec2_t UnPack16bit(tfxU32 in);
 tfxINTERNAL tfx_vec2_t UnPack16bitUnsigned(tfxU32 in);
 tfxINTERNAL tfxWideInt PackWide16bitStretch(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxAPI_EDITOR tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y);
-tfxINTERNAL void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y);
+tfxAPI_EDITOR void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y);
 tfxAPI tfxWideInt PackWide8bitXYZ(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
@@ -5893,11 +6192,14 @@ tfxINTERNAL void UnPackWide10bitAdd(tfxWideInt in, tfxWideFloat &x, tfxWideFloat
 tfxINTERNAL void UnPackWide10bitX(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL void UnPackWide10bitY(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL void UnPackWide10bitZ(tfxWideInt in, tfxWideFloat &v);
+tfxINTERNAL tfxWideFloat UnPackWide10bitX(tfxWideInt in);
 tfxINTERNAL tfxWideFloat UnPackWide10bitY(tfxWideInt in);
+tfxINTERNAL void UnPackWide8bit(tfxWideInt in, tfxWideFloat& x, tfxWideFloat& y, tfxWideFloat& z, tfxWideFloat& w);
 tfxINTERNAL tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra);
 tfxAPI_EDITOR tfx_vec4_t UnPack10bit(tfxU32 in);
 tfxAPI_EDITOR tfx_vec3_t UnPack8bit(tfxU32 in);
+tfxAPI_EDITOR tfx_quaternion_t UnPack8bitQuaternion(tfxU32 in);
 tfxINTERNAL tfx_vec3_t UnPack10bitVec3(tfxU32 in);
 tfxINTERNAL tfxU32 Get2bitFromPacked10bit(tfxU32 in);
 tfxINTERNAL size_t ClampStringSize(size_t compare, size_t string_size);
@@ -5911,12 +6213,12 @@ tfxAPI tfxU32 InterpolateAlignment(float tween, tfxU32 from, tfxU32 to);
 tfxAPI tfx_vec4_t InterpolateVec4(float tween, tfx_vec4_t *from, tfx_vec4_t *to);
 tfxAPI tfxWideFloat WideInterpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to);
 tfxAPI float Interpolatef(float tween, float from, float to);
-tfxINTERNAL void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, tfx_effect_state_t *parent);
-tfxAPI_EDITOR void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_mat4_t *out_matrix, const tfx_effect_state_t *parent);
+tfxINTERNAL void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent);
+tfxAPI_EDITOR void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_effect_state_t *parent);
 //-------------------------------------------------
 //--New transform_3d particle functions for SoA data--
 //--------------------------2d---------------------
-tfxINTERNAL void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations, const tfx_vec3_t *parent_rotations, const tfx_mat4_t *matrix, const tfx_vec3_t *handle, const float *scale, const tfx_vec3_t *from_position);
+tfxINTERNAL void TransformParticlePosition(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations);
 
 //--------------------------------
 //Random numbers
@@ -5932,6 +6234,7 @@ float RandomRange(tfx_random_t *random, float max);
 float RandomRange(tfx_random_t *random, float from, float to);
 int RandomRange(tfx_random_t *random, int from, int to);
 tfxU32 RandomRange(tfx_random_t *random, tfxU32 max);
+int RandomRange(tfx_random_t *random, int max);
 void AlterRandomSeed(tfx_random_t *random, tfxU64 amount);
 void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 
@@ -5939,9 +6242,11 @@ void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 //Particle manager internal functions
 //--------------------------------
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
-tfxINTERNAL tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
-tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
-tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_mat4_t *matrix, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
+tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
+tfxAPI_EDITOR tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
+tfxAPI_EDITOR tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
+tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
+tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties);
@@ -5977,6 +6282,7 @@ tfxINTERNAL void SpawnParticleEllipsoid(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleCylinder3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleIcosphereRandom3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleIcosphere3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticlePath3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleSpin3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleSize3d(tfx_work_queue_t *queue, void *data);
@@ -5995,6 +6301,7 @@ tfxINTERNAL void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticlePositionPath3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void ControlParticleBoundingBox(tfx_work_queue_t *queue, void *data);
@@ -6004,9 +6311,9 @@ tfxINTERNAL void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
-tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path);
+tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path, bool has_rotated_path);
+tfxAPI_EDITOR void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
 tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);
@@ -6031,6 +6338,7 @@ tfxAPI_EDITOR tfx_attribute_node_t* AddGraphCoordNode(tfx_graph_t *graph, float,
 tfxAPI_EDITOR tfx_attribute_node_t* InsertGraphCoordNode(tfx_graph_t *graph, float, float);
 tfxAPI_EDITOR tfx_attribute_node_t* InsertGraphNode(tfx_graph_t *graph, float, float);
 tfxAPI_EDITOR float *LinkGraphFirstValue(tfx_graph_t *graph);
+tfxAPI_EDITOR float *LinkGraphLastValue(tfx_graph_t *graph);
 tfxAPI_EDITOR float GetGraphLastValue(tfx_graph_t *graph);
 tfxAPI_EDITOR float GetGraphMaxValue(tfx_graph_t *graph);
 tfxAPI_EDITOR float GetGraphMinValue(tfx_graph_t *graph);
@@ -6049,6 +6357,7 @@ tfxAPI_EDITOR void ClearGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void FreeGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void CopyGraph(tfx_graph_t *graph, tfx_graph_t *to, bool compile = true);
 tfxAPI_EDITOR bool SortGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR void FlipGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void ReIndexGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom3d(tfx_graph_t *graph);
@@ -6148,10 +6457,15 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfx_graph_type type) {
 //Grouped graph struct functions
 //--------------------------------
 tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size = 8);
+tfxAPI_EDITOR void ResetPathGraphs(tfx_emitter_path_t *path, tfx_path_generator_type generator);
+tfxAPI_EDITOR void BuildPathNodesComplex(tfx_emitter_path_t* path);
 tfxAPI_EDITOR void BuildPathNodes(tfx_emitter_path_t* path);
+tfxAPI_EDITOR void BuildUnitCylinderLoop();
+tfxAPI_EDITOR tfx_vec2_t RandomCylinderPoint(tfx_random_t *random);
 tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *path);
 tfxINTERNAL void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst);
-tfxINTERNAL tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter);
+tfxINTERNAL tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node);
+tfxAPI_EDITOR tfxU32 AddEmitterPathAttributes(tfx_library_t* library);
 tfxAPI_EDITOR tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name);
 tfxINTERNAL void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size = 8);
@@ -6205,6 +6519,8 @@ tfxINTERNAL void InitialiseAnimationManager(tfx_animation_manager_t *animation_m
 tfxINTERNAL tfxU32 GetPMEffectSlot(tfx_particle_manager_t *pm);
 tfxINTERNAL tfxU32 GetPMEmitterSlot(tfx_particle_manager_t *pm);
 tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfx_particle_manager_t *pm, tfxParticleID particle_id);
+tfxINTERNAL tfxU32 AllocatePathQuaterion(tfx_particle_manager_t *pm, tfxU32 amount);
+tfxINTERNAL void FreePathQuaternion(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreePMParticleIndex(tfx_particle_manager_t *pm, tfxU32 *index);
 tfxINTERNAL tfxU32 PushPMDepthIndex(tfx_particle_manager_t *pm, tfxU32 layer, tfx_depth_index_t depth_index);
 tfxINTERNAL void ResetPMFlags(tfx_particle_manager_t *pm);
@@ -6215,7 +6531,7 @@ tfxINTERNAL void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_i
 tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxINTERNAL void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
-tfxINTERNAL void FreeParticleBanks(tfx_particle_manager_t *pm);
+tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
 tfxINTERNAL void EnableCompute(tfx_particle_manager_t *pm) { pm->flags |= tfxEffectManagerFlags_use_compute_shader; }
@@ -6569,26 +6885,42 @@ could reduce the numbers as well if needed (they don't take a lot of space thoug
 */
 void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max);
 
+/*Free the memory for a specific emitter type. When an emitter is created it creates memory to store all of the particles that it updates each frame. If you have
+multiple emitters of the same type then their particle lists are resused rather then freed as they expire. When they're freed then the unused list is added to a list
+of free particle banks for that emitter type so that they can then be recycled if another emitter of the same type is created. If you want to free the memory for a
+specific emitter then you can call this function to do that.
+NOTE: No emitters of the type passed to the function must be in use in the particle manager.
+* @param pm						A pointer to an intialised tfx_particle_manager_t.
+* @param emitter_hash			The path hash for the emitter. Called path_hash in the tfx_effect_emitter_t struct.
+*/
+tfxAPI void FreeParticleLists(tfx_particle_manager_t* pm, tfxKey emitter_hash);
+
 /*
 Get the current particle count for a particle manager
 * @param pm						A pointer to an tfx_particle_manager_t
 * @returns tfxU32				The total number of particles currently being updated
 */
-tfxU32 ParticleCount(tfx_particle_manager_t *pm);
+tfxAPI tfxU32 ParticleCount(tfx_particle_manager_t *pm);
+/*
+Get the current particle count for a particle manager
+* @param pm						A pointer to an tfx_particle_manager_t
+* @returns tfxU32				The total number of particles currently being updated
+*/
+tfxAPI tfxU32 ParticleCount(tfx_particle_manager_t *pm);
 
 /*
 Get the current number of effects that are currently being updated by a particle manager
 * @param pm						A pointer to an tfx_particle_manager_t
 * @returns tfxU32				The total number of effects currently being updated
 */
-tfxU32 EffectCount(tfx_particle_manager_t *pm);
+tfxAPI tfxU32 EffectCount(tfx_particle_manager_t *pm);
 
 /*
 Get the current number of emitters that are currently being updated by a particle manager
 * @param pm						A pointer to an tfx_particle_manager_t
 * @returns tfxU32				The total number of emitters currently being updated
 */
-tfxU32 EmitterCount(tfx_particle_manager_t *pm);
+tfxAPI tfxU32 EmitterCount(tfx_particle_manager_t *pm);
 
 /*
 Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
@@ -7534,6 +7866,14 @@ Get an emitter or sub effect from an effect template.
 * @returns						A pointer to the root effect
 */
 tfxAPI tfx_effect_emitter_t *GetEmitterFromTemplate(tfx_effect_template_t *t, tfx_str256_t *path);
+
+/*
+Get an emitter path that an emitter is using. The emitter must have the path emission type set or nullptr will be returned
+* @param t						A pointer to a tfx_effect_emitter_t
+* @param path					A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
+* @returns						A pointer to the root effect
+*/
+tfxAPI tfx_emitter_path_t *GetEmitterPath(tfx_effect_emitter_t *e);
 
 /*
 Set the user data for any effect or emitter in the effect template. This user data will get passed through to any update callback functions
