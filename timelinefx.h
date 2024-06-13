@@ -4312,6 +4312,7 @@ tfxINTERNAL tfx_quaternion_t ToQuaternion(float roll, float pitch, float yaw) {
 	return q;
 }
 
+tfxAPI_EDITOR tfx_quaternion_t QuaternionFromAxisAngle(float x, float y, float z, float angle);
 tfxAPI_EDITOR tfx_quaternion_t QuaternionFromDirection(tfx_vec3_t* normalised_dir);
 
 //Note, has padding for the sake of alignment on GPU compute shaders
@@ -6194,7 +6195,7 @@ tfxINTERNAL void UnPackWide10bitY(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL void UnPackWide10bitZ(tfxWideInt in, tfxWideFloat &v);
 tfxINTERNAL tfxWideFloat UnPackWide10bitX(tfxWideInt in);
 tfxINTERNAL tfxWideFloat UnPackWide10bitY(tfxWideInt in);
-tfxINTERNAL void UnPackWide8bit(tfxWideInt in, tfxWideFloat& x, tfxWideFloat& y, tfxWideFloat& z, tfxWideFloat& w);
+tfxAPI_EDITOR void UnPackWide8bit(tfxWideInt in, tfxWideFloat& x, tfxWideFloat& y, tfxWideFloat& z, tfxWideFloat& w);
 tfxINTERNAL tfxWideInt PackWideColor(tfxWideFloat const &v_r, tfxWideFloat const &v_g, tfxWideFloat const &v_b, tfxWideFloat v_a);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxWideInt extra);
 tfxAPI_EDITOR tfx_vec4_t UnPack10bit(tfxU32 in);
