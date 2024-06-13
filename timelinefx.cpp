@@ -1668,7 +1668,7 @@ void TransformQuaternionVec3(const tfx_quaternion_t* q, tfxWideFloat* x, tfxWide
 	tfxWideFloat qv_x = *x;
 	tfxWideFloat qv_y = *y;
 	tfxWideFloat qv_z = *z;
-	tfxWideFloat qv_w = _mm_setzero_ps();
+    tfxWideFloat qv_w = tfxWideSetZero;
 
 	tfxWideFloat q_x = tfxWideSetSingle(q->x);
 	tfxWideFloat q_y = tfxWideSetSingle(q->y);
@@ -1704,7 +1704,7 @@ void TransformPackedQuaternionVec3(tfxWideInt *quaternion, tfxWideFloat* x, tfxW
 	tfxWideFloat qv_x = *x;
 	tfxWideFloat qv_y = *y;
 	tfxWideFloat qv_z = *z;
-	tfxWideFloat qv_w = _mm_setzero_ps();
+    tfxWideFloat qv_w = tfxWideSetZero;
 
 	tfxWideFloat two = tfxWideSetSingle(2.0f);
 
@@ -4054,7 +4054,7 @@ tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node)
 		path.generator_type = tfxPathGenerator_spiral;
 		path.maximum_active_paths = 1;
 		path.maximum_paths = 1;
-		path.offset = {};
+		path.offset = {0};
 		path.rotation_cycle_length = 0.f;
 		path.rotation_range = 0.f;
 		path.rotation_pitch = 0.f;
@@ -4083,7 +4083,7 @@ tfxU32 AddEmitterPathAttributes(tfx_library_t* library) {
 	path.generator_type = tfxPathGenerator_spiral;
 	path.maximum_active_paths = 1;
 	path.maximum_paths = 1;
-	path.offset = {};
+	path.offset = {0};
 	path.rotation_cycle_length = 0.f;
 	path.rotation_range = 0.f;
 	path.rotation_pitch = 0.f;
@@ -11127,11 +11127,20 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideArray point_x;
 		tfxWideArray point_z;
 		CatmullRomSpline3DWide(&node_index, t.m, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x.m, &local_position_y, &point_z.m);
-		tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_z.m, point_z.m));
-		tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
+        /*
+        for(int i = 0; i != tfxDataWidth; ++i) {
+            tfx_vec3_t p = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node_index.a[i], t.a[i]);
+            point_x.a[i] = p.x;
+            point_y.a[i] = p.y;
+            point_z.a[i] = p.z;
+        }
+        local_position_y = point_y.m;
+        */
 		if (path->extrusion_type == tfxExtrusionArc) {
+            tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_z.m, point_z.m));
+            tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
 #ifdef tfxARM
-			radius = tfxWideAnd(length_mask, tfxWideMul(tfxWideRSqrt(radius), radius));
+            radius = tfxWideMul(tfxWideRSqrt(radius), radius);
 #else
 			radius = tfxWideAnd(length_mask, tfxWideSqrt(radius));
 #endif
@@ -15521,7 +15530,7 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 
 	bool is_area = properties.emission_type != tfxPoint && properties.emission_type != tfxLine;
 
-	emitter.emitter_size = {};
+	emitter.emitter_size = {0};
 	if (is_area) {
 		emitter.emitter_size.y = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_height, emitter.frame);
 		emitter.emitter_size.x = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_width, emitter.frame);
