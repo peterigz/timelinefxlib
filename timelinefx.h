@@ -4281,8 +4281,12 @@ tfxINTERNAL tfx_vec2_t RotateVectorQuaternion2d(const tfx_quaternion_t *q, const
 	float c = q->w; 
 	float s = q->z;
 
-	float rotated_x = c * c * v.x - 2.f * s * c * v.y + s * s * v.x;
-	float rotated_y = 2.f * s * c * v.x + c * c * v.y - s * s * v.y;
+	float c2 = c * c;
+	float s2 = s * s;
+	float sc = 2.f * s * c;
+
+	float rotated_x = c2 * v.x - (sc * v.y + s2 * v.x);
+	float rotated_y = sc * v.x + (c2 * v.y - s2 * v.y);
 
 	return tfx_vec2_t(rotated_x, rotated_y);
 }
