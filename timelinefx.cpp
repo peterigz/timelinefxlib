@@ -14143,7 +14143,7 @@ void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data) {
 	const tfx_emitter_properties_t &properties = *entry->properties;
 	const tfx_vec3_t &grid_points = properties.grid_points;
 	const float emitter_size = emitter.emitter_size.y;
-	const float grid_segment_size_y = emitter_size / tfxMax(grid_points.y - 1.f, 1.f);;
+	const float grid_segment_size_y = -emitter_size / tfxMax(grid_points.y - 1.f, 1.f);;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
