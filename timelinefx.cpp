@@ -11916,9 +11916,9 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		if (emitter.state_flags & tfxEmitterStateFlags_kill) {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
+				const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index])), emitter_size_y);
 				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
 
 				tfx__readbarrier;
 
@@ -11926,15 +11926,15 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 				tfxWideFloat length = tfxWideAbs(local_position_y);
 				tfxWideInt remove_flags = tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_remove), tfxWideCasti(tfxWideGreater(length, emitter_size_y)));
 				flags = tfxWideOri(flags, remove_flags);
-				tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 			}
 		}
 		else {
 			for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 				tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-				const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideInt*)&bank.velocity_normal[index])), emitter_size_y);
+				const tfxWideFloat offset_y = tfxWideMul(UnPackWide10bitY(tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index])), emitter_size_y);
 				tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
-				tfxWideInt flags = tfxWideLoadi((tfxWideInt*)&bank.flags[index]);
+				tfxWideInt flags = tfxWideLoadi((tfxWideIntLoader*)&bank.flags[index]);
 
 				//Lines - Reposition if the particle is travelling along a line
 				tfxWideFloat length = tfxWideAbs(local_position_y);
@@ -11944,7 +11944,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 
 				local_position_y = tfxWideSub(local_position_y, tfxWideAnd(at_end, offset_y));
 				flags = tfxWideOri(flags, tfxWideAndi(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideCasti(at_end)));
-				tfxWideStorei((tfxWideInt*)&bank.flags[index], flags);
+				tfxWideStorei((tfxWideIntLoader*)&bank.flags[index], flags);
 				tfxWideStore(&bank.position_y[index], local_position_y);
 			}
 		}
