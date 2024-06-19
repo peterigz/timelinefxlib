@@ -1093,7 +1093,7 @@ tfx_allocator *tfxGetAllocator();
 #include <algorithm>
 #include <iostream>					//temp for std::cout
 #include <mutex>
-#include <thread>					//only using this for std::thread::hardware_ concurrency()
+#include <thread>					
 #include <cfloat>
 
 #define tfxTWO63 0x8000000000000000u 
@@ -1137,7 +1137,7 @@ struct tfx_str512_t;
 //--------------------------------------------------------------
 //macros
 #define TFX_VERSION "Alpha"
-#define TFX_VERSION_NUMBER 3.29.2022
+#define TFX_VERSION_NUMBER 6.18.2024
 
 #define tfxMAX_FRAME 20000.f
 #define tfxNullParent 0xFFFFFFFF
@@ -1151,7 +1151,6 @@ struct tfx_str512_t;
 
 #define tfxDelt "=" 
 #define tfxComt ","
-#define tfxEndLinet "\n"
 
 #define tfxMin(a, b) (((a) < (b)) ? (a) : (b))
 #define tfxMax(a, b) (((a) > (b)) ? (a) : (b))
@@ -4874,9 +4873,9 @@ struct tfx_base_attributes_t {
 	tfx_graph_t width;
 	tfx_graph_t height;
 	tfx_graph_t weight;
-	tfx_graph_t spin;
 	tfx_graph_t pitch_spin;
 	tfx_graph_t yaw_spin;
+	tfx_graph_t spin;
 	tfx_graph_t noise_offset;
 };
 
@@ -4887,9 +4886,9 @@ struct tfx_variation_attributes_t {
 	tfx_graph_t width;
 	tfx_graph_t height;
 	tfx_graph_t weight;
-	tfx_graph_t spin;
 	tfx_graph_t pitch_spin;
 	tfx_graph_t yaw_spin;
+	tfx_graph_t spin;
 	tfx_graph_t noise_offset;
 	tfx_graph_t noise_resolution;
 };
@@ -4899,9 +4898,9 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t width;
 	tfx_graph_t height;
 	tfx_graph_t weight;
-	tfx_graph_t spin;
 	tfx_graph_t pitch_spin;
 	tfx_graph_t yaw_spin;
+	tfx_graph_t spin;
 	tfx_graph_t stretch;
 	tfx_graph_t red;
 	tfx_graph_t green;
