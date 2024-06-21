@@ -2172,14 +2172,15 @@ enum tfx_path_extrusion_type {
 	tfxExtrusionLinear
 };
 
-//Determines how for area, line and ellipse emitters the direction that particles should travel
+//Determines how for area, line and ellipse emitters the direction that particles should travel when they spawn
 enum tfx_emission_direction : unsigned char {
 	tfxInwards,
 	tfxOutwards,
 	tfxBothways,
 	tfxSpecified,
 	tfxSurface,
-	tfxOrbital
+	tfxOrbital,
+	tfxPathGradient
 };
 
 //For line effects where traverse line is switched on
@@ -4303,7 +4304,7 @@ tfxINTERNAL tfx_quaternion_t NormalizeQuaternion(tfx_quaternion_t *q) {
 	return tfx_quaternion_t(q->w / len, q->x / len, q->y / len, q->z / len);
 }
 
-tfxINTERNAL tfx_quaternion_t ToQuaternion(float roll, float pitch, float yaw) {
+tfxINTERNAL tfx_quaternion_t EulerToQuaternion(float roll, float pitch, float yaw) {
 	// Abbreviations for the various angular functions
 
 	float cr = cosf(roll * 0.5f);
@@ -4324,7 +4325,6 @@ tfxINTERNAL tfx_quaternion_t ToQuaternion(float roll, float pitch, float yaw) {
 
 tfxAPI_EDITOR tfx_quaternion_t QuaternionFromAxisAngle(float x, float y, float z, float angle);
 tfxAPI_EDITOR tfx_quaternion_t QuaternionFromDirection(tfx_vec3_t* normalised_dir);
-tfxAPI_EDITOR tfx_quaternion_t QuaternionFromAxisAngle(float x, float y, float z, float angle);
 
 //Note, has padding for the sake of alignment on GPU compute shaders
 struct tfx_bounding_box_t {

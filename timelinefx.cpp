@@ -2250,7 +2250,7 @@ void Transform2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, flo
 }
 
 void Transform3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_effect_state_t *parent) {
-	*out_q = ToQuaternion(out_local_rotations->pitch, out_local_rotations->yaw, out_local_rotations->roll);
+	*out_q = EulerToQuaternion(out_local_rotations->pitch, out_local_rotations->yaw, out_local_rotations->roll);
 	*out_scale = parent->overal_scale;
 
 	*out_rotations = parent->world_rotations + *out_local_rotations;
@@ -3182,7 +3182,6 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 				float radius_z = emitter.emitter_size.z * .5f;
 				to_handle = CylinderSurfaceNormal(local_position.x - emitter.world_position.x - emitter.handle.x, local_position.z - emitter.world_position.z - emitter.handle.z, radius_x, radius_z);
 			}
-
 		}
 		else {
 			parent_pitch = emitter.world_rotations.pitch;
@@ -3205,7 +3204,7 @@ tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *lib
 		v = RandomVectorInCone(random, v, range);
 	}
 
-	return v;
+	return NormalizeVec3Fast(&v);
 }
 
 tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only) {
@@ -13130,7 +13129,7 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 			effect.world_position += properties.emitter_handle * effect.overal_scale;
 			if (effect.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
 				effect.world_rotations = effect.local_rotations;
-				effect.rotation = ToQuaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
+				effect.rotation = EulerToQuaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
 			}
 			else {
 				effect.world_rotations.roll = effect.local_rotations.roll;
@@ -14924,6 +14923,18 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 	tfx_vec3_t point;
 	bool has_rotation = path->rotation_range > 0 || path->rotation_pitch != 0 || path->rotation_yaw != 0;
 
+	float emission_pitch;
+	float emission_yaw;
+	float emission_angle_variation;
+	float range;
+
+	if (properties.emission_direction == tfxPathGradient) {
+		emission_pitch = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);
+		emission_yaw = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.emission_yaw, emitter.frame);
+		emission_angle_variation = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].properties.emission_range, emitter.frame);
+		range = emission_angle_variation * .5f;
+	}
+
 	if (path->rotation_cycle_length > 0) {
 		if ((emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) ||
 			!(emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid)
@@ -14963,6 +14974,8 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 	}
 
 	int dead_paths = 0;
+	int node = 0;
+	float t = 0.f;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -14973,8 +14986,8 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 		float& path_offset = entry->particle_data->path_offset[index];
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) {
-			int node = RandomRange(&random, path->node_count - 3);
-			float t = (float)RandomRange(&random, (int)grid_points.x) * increment;
+			node = RandomRange(&random, path->node_count - 3);
+			t = (float)RandomRange(&random, (int)grid_points.x) * increment;
 			path_position = (float)node + t;
 			point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
 		} else if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
@@ -15012,13 +15025,13 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 					dead_paths++;
 				}
 			}
-			int node = (int)grid_coord;
-			float t = grid_coord - (int)grid_coord;
+			node = (int)grid_coord;
+			t = grid_coord - (int)grid_coord;
 			path_position = (float)node + t;
 			point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
 		} else {
-			int node = RandomRange(&random, path->node_count - 3);
-			float t = GenerateRandom(&random);
+			node = RandomRange(&random, path->node_count - 3);
+			t = GenerateRandom(&random);
 			path_position = (float)node + t;
 
 			point = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
@@ -15073,10 +15086,38 @@ void SpawnParticlePath3d(tfx_work_queue_t* queue, void* data) {
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
+			if (properties.emission_direction == tfxPathGradient) {
+				tfx_vec3_t velocity_direction = CatmullRomSplineGradient3DSoA(&path->node_soa.x[node], &path->node_soa.y[node], &path->node_soa.z[node], t);
+				velocity_direction = NormalizeVec3Fast(&velocity_direction);
+
+				tfx_quaternion_t offset_quaternion = EulerToQuaternion(emission_yaw, emission_pitch, 0.f);
+
+				tfx_vec3_t rotated_normal = RotateVectorQuaternion(&offset_quaternion, velocity_direction);
+				rotated_normal = RotateVectorQuaternion(&emitter.rotation, rotated_normal);
+				if (range != 0.f) {
+					rotated_normal = RandomVectorInCone(&random, rotated_normal, range);
+				}
+
+				entry->particle_data->velocity_normal[index] = Pack10bitUnsigned(&rotated_normal);
+			}
+		}
+		else if(properties.emission_direction == tfxPathGradient) {
+			tfx_vec3_t velocity_direction = CatmullRomSplineGradient3DSoA(&path->node_soa.x[node], &path->node_soa.y[node], &path->node_soa.z[node], t);
+			velocity_direction = NormalizeVec3Fast(&velocity_direction);
+
+			tfx_quaternion_t offset_quaternion = EulerToQuaternion(emission_yaw, emission_pitch, 0.f);
+
+			tfx_vec3_t rotated_normal = RotateVectorQuaternion(&offset_quaternion, velocity_direction);
+			if (range != 0.f) {
+				rotated_normal = RandomVectorInCone(&random, rotated_normal, range);
+			}
+
+			entry->particle_data->velocity_normal[index] = Pack10bitUnsigned(&rotated_normal);
 		}
 
 		tween += entry->qty_step_size;
 	}
+
 	if (dead_paths > 0 && emitter.active_paths > 0) {
 		tfxU32 offset = 0;
 		for (int qi = emitter.active_paths - 1; qi >= 0; --qi) {
@@ -15445,7 +15486,10 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		}
 	}
 
+
 	tfx_library_t *library = pm.library;
+	float emission_pitch = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);
+	float emission_yaw = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_yaw, emitter.frame);
 	const float first_velocity_value = GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity);
 	const float first_weight_value = GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.weight);
 	const tfx_emission_type emission_type = properties.emission_type;
@@ -15487,14 +15531,15 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfx_vec3_t velocity_normal;
-		if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
-			velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
-		} else if(emission_type != tfxArea || (emission_type == tfxArea && emission_direction != tfxSurface)) {
-			//----Velocity
-			float emission_pitch = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);
-			float emission_yaw = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_yaw, emitter.frame);
-			velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
-			velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
+		if (emission_direction != tfxPathGradient) {
+			if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
+				velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
+			}
+			else if ((emission_type != tfxArea || (emission_type == tfxArea && emission_direction != tfxSurface))) {
+				//----Velocity
+				velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
+				velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
+			}
 		}
 		if (pm.flags & tfxEffectManagerFlags_order_by_depth) {
 			tfx_depth_index_t depth_index;
@@ -15820,7 +15865,7 @@ void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotation
 		*world_rotations = *local_rotations;
 	}
 
-	*q = ToQuaternion(world_rotations->pitch, world_rotations->yaw, world_rotations->roll);
+	*q = EulerToQuaternion(world_rotations->pitch, world_rotations->yaw, world_rotations->roll);
 }
 
 const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
