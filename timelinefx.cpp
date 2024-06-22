@@ -13175,9 +13175,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_vec3_t local_rotations;
 	tfx_library_t *library = pm->library;
 	tfx_vec3_t translation;
-	translation.x = lookup_callback(&pm->library->transform_attributes[emitter.transform_attributes].translation_x, emitter.frame);
-	translation.y = lookup_callback(&pm->library->transform_attributes[emitter.transform_attributes].translation_y, emitter.frame);
-	translation.z = lookup_callback(&pm->library->transform_attributes[emitter.transform_attributes].translation_z, emitter.frame);
+	translation.x = LookupPrecise(&pm->library->transform_attributes[emitter.transform_attributes].translation_x, emitter.age);
+	translation.y = LookupPrecise(&pm->library->transform_attributes[emitter.transform_attributes].translation_y, emitter.age);
+	translation.z = LookupPrecise(&pm->library->transform_attributes[emitter.transform_attributes].translation_z, emitter.age);
 
 	emitter.captured_position = emitter.world_position;
 
@@ -15577,15 +15577,15 @@ void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter
 
 	emitter.emitter_size = {0};
 	if (is_area) {
-		emitter.emitter_size.y = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_height, emitter.frame);
-		emitter.emitter_size.x = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_width, emitter.frame);
+		emitter.emitter_size.y = LookupPrecise(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_height, emitter.age);
+		emitter.emitter_size.x = LookupPrecise(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_width, emitter.age);
 	}
 	else if (properties.emission_type == tfxLine) {
-		emitter.emitter_size.y = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_height, emitter.frame);
+		emitter.emitter_size.y = LookupPrecise(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_height, emitter.age);
 	}
 
 	if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
-		emitter.emitter_size.z = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_depth, emitter.frame);
+		emitter.emitter_size.z = LookupPrecise(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_depth, emitter.age);
 	}
 
 	emitter.emitter_size *= pm->effects[parent_index].emitter_size;
