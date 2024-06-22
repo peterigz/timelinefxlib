@@ -4269,7 +4269,7 @@ struct tfx_quaternion_t {
 
 };
 
-tfxINTERNAL void ToQuaternion2d(tfx_quaternion_t *q, float angle) {
+tfxINTERNAL inline void ToQuaternion2d(tfx_quaternion_t *q, float angle) {
 	float half_angle = angle / 2.f;
 	q->w = cosf(half_angle);
 	q->x = 0.f;
@@ -4277,7 +4277,7 @@ tfxINTERNAL void ToQuaternion2d(tfx_quaternion_t *q, float angle) {
 	q->z = sinf(half_angle);
 }
 
-tfxINTERNAL tfx_vec2_t RotateVectorQuaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v) {
+tfxINTERNAL inline tfx_vec2_t RotateVectorQuaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v) {
 	float c = q->w; 
 	float s = q->z;
 
@@ -4291,7 +4291,7 @@ tfxINTERNAL tfx_vec2_t RotateVectorQuaternion2d(const tfx_quaternion_t *q, const
 	return tfx_vec2_t(rotated_x, rotated_y);
 }
 
-tfxINTERNAL tfx_vec3_t RotateVectorQuaternion(const tfx_quaternion_t *q, tfx_vec3_t v) {
+tfxINTERNAL inline tfx_vec3_t RotateVectorQuaternion(const tfx_quaternion_t *q, tfx_vec3_t v) {
 	tfx_quaternion_t qv(0, v.x, v.y, v.z);
 	tfx_quaternion_t q_conjugate = tfx_quaternion_t(q->w, -q->x, -q->y, -q->z);
 	tfx_quaternion_t result = *q * qv * q_conjugate;
@@ -4299,20 +4299,20 @@ tfxINTERNAL tfx_vec3_t RotateVectorQuaternion(const tfx_quaternion_t *q, tfx_vec
 }
 
 // Normalize the quaternion
-tfxINTERNAL tfx_quaternion_t NormalizeQuaternion(tfx_quaternion_t *q) {
+tfxINTERNAL inline tfx_quaternion_t NormalizeQuaternion(tfx_quaternion_t *q) {
 	float len = sqrtf(q->w * q->w + q->x * q->x + q->y * q->y + q->z * q->z);
 	return tfx_quaternion_t(q->w / len, q->x / len, q->y / len, q->z / len);
 }
 
-tfxINTERNAL tfx_quaternion_t EulerToQuaternion(float roll, float pitch, float yaw) {
+tfxINTERNAL inline tfx_quaternion_t EulerToQuaternion(float pitch, float yaw, float roll) {
 	// Abbreviations for the various angular functions
 
-	float cr = cosf(roll * 0.5f);
-	float sr = sinf(roll * 0.5f);
-	float cp = cosf(pitch * 0.5f);
-	float sp = sinf(pitch * 0.5f);
-	float cy = cosf(yaw * 0.5f);
-	float sy = sinf(yaw * 0.5f);
+	float cr = cosf(pitch * 0.5f);
+	float sr = sinf(pitch * 0.5f);
+	float cp = cosf(yaw * 0.5f);
+	float sp = sinf(yaw * 0.5f);
+	float cy = cosf(roll * 0.5f);
+	float sy = sinf(roll * 0.5f);
 
 	tfx_quaternion_t q;
 	q.w = cr * cp * cy + sr * sp * sy;
