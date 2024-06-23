@@ -10555,6 +10555,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			emitter.property_flags = e.property_flags;
 			emitter.image_size = emitter_properties->image->image_size;
 			emitter.image_frame_rate = emitter_properties->image->animation_frames > 1 && e.property_flags & tfxEmitterPropertyFlags_animate ? emitter_properties->frame_rate : 0.f;
+			//emitter.image_frame_rate = e.property_flags & tfxEmitterPropertyFlags_reverse_animation ? emitter.image_frame_rate * -1.f : emitter.image_frame_rate;
 			emitter.end_frame = emitter_properties->end_frame;
 			emitter.angle_offsets = emitter_properties->angle_offsets;
 			emitter.timeout = 1000.f;
@@ -10577,6 +10578,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 
 			state_flags = tfxEmitterStateFlags_no_tween_this_update;
 			state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
+			state_flags |= e.property_flags & tfxEmitterPropertyFlags_play_once;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_single && !(pm->flags & tfxEffectManagerFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_base_uniform_size;
 			state_flags |= (emitter_properties->emission_type != tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal)) || (emitter_properties->emission_type == tfxLine && !(e.property_flags & tfxEmitterPropertyFlags_edge_traversal)) ? tfxEmitterStateFlags_not_line : 0;
@@ -10586,7 +10588,6 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= (emitter_properties->angle_settings == tfxAngleSettingFlags_align_roll) ? tfxEmitterStateFlags_align_with_velocity : 0;
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
 			state_flags |= emitter_properties->emission_type == tfxPath && e.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
-			state_flags |= e.property_flags & tfxEmitterPropertyFlags_play_once;
 			state_flags |= emitter_properties->end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
 			state_flags |= emitter_properties->end_behaviour == tfxKill ? tfxEmitterStateFlags_kill : 0;
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
@@ -12488,15 +12489,15 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 		//----Image animation
 		image_frame.m = tfxWideAdd(image_frame.m, image_frame_rate);
 		tfxWideStore(&bank.image_frame[index], image_frame.m);
-		if (emitter.state_flags & tfxEmitterStateFlags_play_once) {
-			image_frame.m = tfxWideMin(image_frame.m, end_frame);
+		if (property_flags & tfxEmitterPropertyFlags_reverse_animation && emitter.state_flags & tfxEmitterStateFlags_play_once) {
+			image_frame.m = tfxWideSub(end_frame, image_frame.m);
 			image_frame.m = tfxWideMax(image_frame.m, tfxWideSetZero);
-		}
-		else if (property_flags & tfxEmitterPropertyFlags_reverse_animation) {
+		} else if (emitter.state_flags & tfxEmitterStateFlags_play_once) {
+			image_frame.m = tfxWideMin(image_frame.m, end_frame);
+		} else if (property_flags & tfxEmitterPropertyFlags_reverse_animation) {
 			image_frame.m = tfxWideMod(image_frame.m, frames);
 			image_frame.m = tfxWideSub(end_frame, image_frame.m);
-		}
-		else {
+		} else {
 			image_frame.m = tfxWideMod(image_frame.m, frames);
 		}
 

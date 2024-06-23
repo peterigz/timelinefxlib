@@ -2480,9 +2480,9 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_lifetime_uniform_size = 1 << 11,				//Keep the size over lifetime of the particle uniform
 	tfxEmitterStateFlags_can_spin = 1 << 12,
 	tfxEmitterStateFlags_is_edge_traversal = 1 << 13,
-	tfxEmitterStateFlags_loop = 1 << 14,
-	tfxEmitterStateFlags_kill = 1 << 15,
-	tfxEmitterStateFlags_play_once = 1 << 16,							//Play the animation once only
+	tfxEmitterStateFlags_play_once = 1 << 14,							//Play the animation once only
+	tfxEmitterStateFlags_loop = 1 << 15,
+	tfxEmitterStateFlags_kill = 1 << 16,
 	tfxEmitterStateFlags_single_shot_done = 1 << 17,
 	tfxEmitterStateFlags_is_line_loop_or_kill = 1 << 18,
 	tfxEmitterStateFlags_is_area = 1 << 19,
