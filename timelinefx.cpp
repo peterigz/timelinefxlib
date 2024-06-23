@@ -11619,9 +11619,9 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			alignment_vector_z = velocity_normal_z;
 		}
 		else if (vector_align_type == tfxVectorAlignType_emitter) {
-			alignment_vector_x = tfxWideSetSingle(0.f);
+			alignment_vector_x = tfxWideSetZero;
 			alignment_vector_y = tfxWideSetSingle(1.f);
-			alignment_vector_z = tfxWideSetSingle(0.f);
+			alignment_vector_z = tfxWideSetZero;
 			TransformQuaternionVec3(&emitter.rotation, &alignment_vector_x, &alignment_vector_y, &alignment_vector_z);
 		}
 
@@ -15699,7 +15699,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 		tfxWideInt loop_limit = tfxWideEqualsi(single_loop_count, single_shot_limit);
 		tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(tfxWideAndi(single, expired), xor_state_flags_no_spawning), tfxWideSetSinglei(-1));
 		age = tfxWideAnd(age, tfxWideCast(loop_age));
-		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetSinglei(0))));
+		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideGreateri(remove, tfxWideSetZeroi)));
 		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(not_single, expired)));
 		flags = tfxWideOri(flags, tfxWideAndi(remove_flag, tfxWideAndi(tfxWideOri(tfxWideAndi(single, loop_limit), state_flags_no_spawning), expired)));
 		flags = tfxWideOri(flags, tfxWideAndi(capture_after_transform,  tfxWideAndi(expired, wrap)));
