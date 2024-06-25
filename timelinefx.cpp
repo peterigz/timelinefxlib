@@ -4903,6 +4903,12 @@ void BuildAllLibraryPaths(tfx_library_t *library) {
 }
 
 void AddLibraryPath(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, tfx_str256_t *path) {
+	if (library->effect_paths.ValidName(path->c_str())) {
+		*path = FindNewPathName(library, *path);
+		GetEffectInfo(effect_emitter)->path = *path;
+		GetEffectInfo(effect_emitter)->name = GetNameFromPath(path);
+		effect_emitter->path_hash = tfxXXHash64::hash(path->c_str(), path->Length(), 0);
+	}
 	library->effect_paths.Insert(*path, effect_emitter);
 	for (auto &sub : GetEffectInfo(effect_emitter)->sub_effectors) {
 		tfx_str256_t sub_path = *path;
@@ -5580,6 +5586,40 @@ tfxU32 AddLibraryEmitterProperties(tfx_library_t *library) {
 }
 
 void InitLibrary(tfx_library_t *library) {
+}
+
+tfx_str64_t GetNameFromPath(tfx_str256_t *path) {
+	tfx_str16_t extension;
+	tmpStack(tfx_str256_t, file_split);
+	SplitStringStack(*path, &file_split, '/');
+	if (file_split.size()) {
+		extension = file_split.back();
+	}
+	return extension;
+}
+
+tfx_str256_t FindNewPathName(tfx_library_t *library, const tfx_str256_t &path) {
+	tmpStack(tfx_str256_t, name);
+	SplitStringStack(path, &name, 46);
+	tfx_str256_t new_path;
+	if (name.size() > 2) {
+		for (int i = 0; i != name.size() - 2; ++i) {
+			new_path.Appendf(name[i].c_str());
+		}
+	}
+	else if (name.size() == 2) {
+		new_path.Appendf(name[0].c_str());
+	}
+	else {
+		new_path = path;
+	}
+	tfx_str256_t find_name = new_path;
+	int index = 1;
+	while (library->effect_paths.ValidName(find_name.c_str())) {
+		find_name = new_path;
+		find_name.Appendf(".%i", index++);
+	}
+	return find_name;
 }
 
 void ClearLibrary(tfx_library_t *library) {

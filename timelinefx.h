@@ -6650,6 +6650,8 @@ tfxAPI_EDITOR void CompileLibraryGraphsOfEffect(tfx_library_t *library, tfx_effe
 tfxAPI_EDITOR void SetLibraryMinMaxData(tfx_library_t *library);
 tfxAPI_EDITOR void ClearLibrary(tfx_library_t *library);
 tfxAPI_EDITOR void InitLibrary(tfx_library_t *library);
+tfxAPI_EDITOR tfx_str256_t FindNewPathName(tfx_library_t *library, const tfx_str256_t &path);
+tfxINTERNAL tfx_str64_t GetNameFromPath(tfx_str256_t* path);
 //Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
 //You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
 //These are mainly for use by the editor, use effect templates instead, see PrepareEffectTemplate.
