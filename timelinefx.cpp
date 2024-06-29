@@ -117,6 +117,31 @@ tfx_storage_t *GetGlobals() {
 	return tfxStore;
 }
 
+#define tfxNoise2dPermMOD12LoopUnroll(i)	\
+	gi0[i] = permMOD12[perm[ii.a[i] + perm[jj.a[i]]]];	\
+	gi1[i] = permMOD12[perm[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i]]]];	\
+	gi2[i] = permMOD12[perm[ii.a[i] + 1 + perm[jj.a[i] + 1]]];	
+
+#define tfxNoise3dGradientLoopUnroll(i) \
+	gi0x.a[i] = gradX[gi0.a[i]];	\
+	gi0y.a[i] = gradY[gi0.a[i]];	\
+	gi0z.a[i] = gradZ[gi0.a[i]];	\
+	gi1x.a[i] = gradX[gi1.a[i]];	\
+	gi1y.a[i] = gradY[gi1.a[i]];	\
+	gi1z.a[i] = gradZ[gi1.a[i]];	\
+	gi2x.a[i] = gradX[gi2.a[i]];	\
+	gi2y.a[i] = gradY[gi2.a[i]];	\
+	gi2z.a[i] = gradZ[gi2.a[i]];	\
+	gi3x.a[i] = gradX[gi3.a[i]];	\
+	gi3y.a[i] = gradY[gi3.a[i]];	\
+	gi3z.a[i] = gradZ[gi3.a[i]];
+
+#define tfxNoise3dPermModLoopUnroll(i) \
+	gi0.a[i] = permMOD12[ii.a[i] + perm[jj.a[i] + perm[kk.a[i]]]];	\
+	gi1.a[i] = permMOD12[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i] + perm[kk.a[i] + k1.a[i]]]];	\
+	gi2.a[i] = permMOD12[ii.a[i] + i2.a[i] + perm[jj.a[i] + j2.a[i] + perm[kk.a[i] + k2.a[i]]]];	\
+	gi3.a[i] = permMOD12[ii.a[i] + 1 + perm[jj.a[i] + 1 + perm[kk.a[i] + 1]]];	\
+
 #ifdef tfxINTEL
 //A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
 tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
@@ -151,12 +176,10 @@ tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 
 	int gi0[4], gi1[4], gi2[4];
 
-	for (int i = 0; i < 4; ++i)
-	{
-		gi0[i] = permMOD12[perm[ii.a[i] + perm[jj.a[i]]]];
-		gi1[i] = permMOD12[perm[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i]]]];
-		gi2[i] = permMOD12[perm[ii.a[i] + 1 + perm[jj.a[i] + 1]]];
-	}
+	tfxNoise2dPermMOD12LoopUnroll(0);
+	tfxNoise2dPermMOD12LoopUnroll(1);
+	tfxNoise2dPermMOD12LoopUnroll(2);
+	tfxNoise2dPermMOD12LoopUnroll(3);
 
 	tfx128 n0, n1, n2;
 	tfx128 gx0, gy0, gx1, gy1, gx2, gy2;
@@ -252,13 +275,10 @@ tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
 	kk.m = _mm_and_si128(_mm_cvttps_epi32(k), tfxFF);
 	tfx128iArray gi0, gi1, gi2, gi3;
 
-	for (int i = 0; i < 4; ++i)
-	{
-		gi0.a[i] = permMOD12[ii.a[i] + perm[jj.a[i] + perm[kk.a[i]]]];
-		gi1.a[i] = permMOD12[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i] + perm[kk.a[i] + k1.a[i]]]];
-		gi2.a[i] = permMOD12[ii.a[i] + i2.a[i] + perm[jj.a[i] + j2.a[i] + perm[kk.a[i] + k2.a[i]]]];
-		gi3.a[i] = permMOD12[ii.a[i] + 1 + perm[jj.a[i] + 1 + perm[kk.a[i] + 1]]];
-	}
+	tfxNoise3dPermModLoopUnroll(0);
+	tfxNoise3dPermModLoopUnroll(1);
+	tfxNoise3dPermModLoopUnroll(2);
+	tfxNoise3dPermModLoopUnroll(3);
 
 	tfx128 t0 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX, _mm_mul_ps(x0, x0)), _mm_mul_ps(y0, y0)), _mm_mul_ps(z0, z0));
 	tfx128 t1 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX, _mm_mul_ps(x1, x1)), _mm_mul_ps(y1, y1)), _mm_mul_ps(z1, z1));
@@ -276,25 +296,10 @@ tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
 
 	tfx128Array gi0x, gi0y, gi0z, gi1x, gi1y, gi1z, gi2x, gi2y, gi2z, gi3x, gi3y, gi3z;
 
-	for (int i = 0; i < 4; i++)
-	{
-		gi0x.a[i] = gradX[gi0.a[i]];
-		gi0y.a[i] = gradY[gi0.a[i]];
-		gi0z.a[i] = gradZ[gi0.a[i]];
-
-		gi1x.a[i] = gradX[gi1.a[i]];
-		gi1y.a[i] = gradY[gi1.a[i]];
-		gi1z.a[i] = gradZ[gi1.a[i]];
-
-		gi2x.a[i] = gradX[gi2.a[i]];
-		gi2y.a[i] = gradY[gi2.a[i]];
-		gi2z.a[i] = gradZ[gi2.a[i]];
-
-		gi3x.a[i] = gradX[gi3.a[i]];
-		gi3y.a[i] = gradY[gi3.a[i]];
-		gi3z.a[i] = gradZ[gi3.a[i]];
-
-	}
+	tfxNoise3dGradientLoopUnroll(0)
+	tfxNoise3dGradientLoopUnroll(1)
+	tfxNoise3dGradientLoopUnroll(2)
+	tfxNoise3dGradientLoopUnroll(3)
 
 	tfx128 n0 = _mm_mul_ps(t0q, Dot128XYZ(&gi0x.m, &gi0y.m, &gi0z.m, &x0, &y0, &z0));
 	tfx128 n1 = _mm_mul_ps(t1q, Dot128XYZ(&gi1x.m, &gi1y.m, &gi1z.m, &x1, &y1, &z1));
@@ -499,12 +504,10 @@ tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 
     int gi0[4], gi1[4], gi2[4];
 
-    for (int i = 0; i < 4; ++i)
-    {
-        gi0[i] = permMOD12[perm[ii.a[i] + perm[jj.a[i]]]];
-        gi1[i] = permMOD12[perm[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i]]]];
-        gi2[i] = permMOD12[perm[ii.a[i] + 1 + perm[jj.a[i] + 1]]];
-    }
+	tfxNoise2dPermMOD12LoopUnroll(0);
+	tfxNoise2dPermMOD12LoopUnroll(1);
+	tfxNoise2dPermMOD12LoopUnroll(2);
+	tfxNoise2dPermMOD12LoopUnroll(3);
 
     tfx128 n0, n1, n2;
     tfx128 gx0, gy0, gx1, gy1, gx2, gy2;
@@ -593,12 +596,10 @@ tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
     kk.m = vandq_s32(vcvtq_s32_f32(k), tfxFF);
     tfx128iArray gi0, gi1, gi2, gi3;
 
-    for (int i = 0; i < 4; ++i) {
-        gi0.a[i] = permMOD12[ii.a[i] + perm[jj.a[i] + perm[kk.a[i]]]];
-        gi1.a[i] = permMOD12[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i] + perm[kk.a[i] + k1.a[i]]]];
-        gi2.a[i] = permMOD12[ii.a[i] + i2.a[i] + perm[jj.a[i] + j2.a[i] + perm[kk.a[i] + k2.a[i]]]];
-        gi3.a[i] = permMOD12[ii.a[i] + 1 + perm[jj.a[i] + 1 + perm[kk.a[i] + 1]]];
-    }
+	tfxNoise3dPermModLoopUnroll(0);
+	tfxNoise3dPermModLoopUnroll(1);
+	tfxNoise3dPermModLoopUnroll(2);
+	tfxNoise3dPermModLoopUnroll(3);
 
     tfx128 t0 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x0, x0)), vmulq_f32(y0, y0)), vmulq_f32(z0, z0));
     tfx128 t1 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x1, x1)), vmulq_f32(y1, y1)), vmulq_f32(z1, z1));
@@ -616,25 +617,10 @@ tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
 
     tfx128Array gi0x, gi0y, gi0z, gi1x, gi1y, gi1z, gi2x, gi2y, gi2z, gi3x, gi3y, gi3z;
 
-    for (int i = 0; i < 4; i++)
-    {
-        gi0x.a[i] = gradX[gi0.a[i]];
-        gi0y.a[i] = gradY[gi0.a[i]];
-        gi0z.a[i] = gradZ[gi0.a[i]];
-
-        gi1x.a[i] = gradX[gi1.a[i]];
-        gi1y.a[i] = gradY[gi1.a[i]];
-        gi1z.a[i] = gradZ[gi1.a[i]];
-
-        gi2x.a[i] = gradX[gi2.a[i]];
-        gi2y.a[i] = gradY[gi2.a[i]];
-        gi2z.a[i] = gradZ[gi2.a[i]];
-
-        gi3x.a[i] = gradX[gi3.a[i]];
-        gi3y.a[i] = gradY[gi3.a[i]];
-        gi3z.a[i] = gradZ[gi3.a[i]];
-
-    }
+	tfxNoise3dGradientLoopUnroll(0)
+	tfxNoise3dGradientLoopUnroll(1)
+	tfxNoise3dGradientLoopUnroll(2)
+	tfxNoise3dGradientLoopUnroll(3)
 
     tfx128 n0 = vmulq_f32(t0q, Dot128XYZ(&gi0x.m, &gi0y.m, &gi0z.m, &x0, &y0, &z0));
     tfx128 n1 = vmulq_f32(t1q, Dot128XYZ(&gi1x.m, &gi1y.m, &gi1z.m, &x1, &y1, &z1));
@@ -11082,6 +11068,30 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->flags &= ~tfxEffectManagerFlags_update_base_values;
 }
 
+#define tfxParticleNoise3dLoopUnroll(n)		\
+	x4 = tfx128SetSingle(x.a[n]);	\
+	y4 = tfx128SetSingle(y.a[n]);	\
+	z4 = tfx128SetSingle(z.a[n]);	\
+	xeps4 = tfx128Set(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);	\
+	xeps4r = tfx128Set(x.a[n], x.a[n], x.a[n] - eps, x.a[n] + eps);	\
+	yeps4 = tfx128Set(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);	\
+	zeps4 = tfx128Set(z.a[n] - eps, z.a[n] + eps, z.a[n], z.a[n]);	\
+	zeps4r = tfx128Set(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);	\
+	sample = tfxNoise4_3d(x4, yeps4, zeps4);	\
+	a = (sample.a[0] - sample.a[1]) / eps2;	\
+	b = (sample.a[2] - sample.a[3]) / eps2;	\
+	noise_x.a[n] = a - b;	\
+	y.a[n] += 100.f;	\
+	yeps4r = tfx128Set(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);	\
+	sample = tfxNoise4_3d(xeps4, y4, zeps4r);	\
+	a = (sample.a[0] - sample.a[1]) / eps2;	\
+	b = (sample.a[2] - sample.a[3]) / eps2;	\
+	noise_y.a[n] = a - b;	\
+	sample = tfxNoise4_3d(xeps4r, yeps4r, z4);	\
+	a = (sample.a[0] - sample.a[1]) / eps2;	\
+	b = (sample.a[2] - sample.a[3]) / eps2;	\
+	noise_z.a[n] = a - b;
+
 void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t* work_entry = static_cast<tfx_control_work_entry_t*>(data);
@@ -11210,11 +11220,10 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		}
 		//---
 
-		tfxWideArray noise_x;
-		tfxWideArray noise_y;
-		tfxWideArray noise_z;
-
 		if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
+			tfxWideArray noise_x;
+			tfxWideArray noise_y;
+			tfxWideArray noise_z;
 
 			float eps = 0.001f;
 			float eps2 = 0.001f * 2.f;
@@ -11236,48 +11245,31 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 			y.m = tfxWideAdd(tfxWideDiv(local_position_y, lookup_noise_resolution), noise_offset);
 			z.m = tfxWideAdd(tfxWideDiv(local_position_z, lookup_noise_resolution), noise_offset);
 
-			for (int n = 0; n != tfxDataWidth; ++n) {
-				tfx128 x4 = tfx128SetSingle(x.a[n]);
-				tfx128 y4 = tfx128SetSingle(y.a[n]);
-				tfx128 z4 = tfx128SetSingle(z.a[n]);
+			tfx128 x4, y4, z4, xeps4, xeps4r, yeps4, zeps4, zeps4r, yeps4r;
+			tfx128Array sample;
+			float a, b;
 
-				tfx128 xeps4 = tfx128Set(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);
-				tfx128 xeps4r = tfx128Set(x.a[n], x.a[n], x.a[n] - eps, x.a[n] + eps);
-				tfx128 yeps4 = tfx128Set(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);
-				tfx128 zeps4 = tfx128Set(z.a[n] - eps, z.a[n] + eps, z.a[n], z.a[n]);
-				tfx128 zeps4r = tfx128Set(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);
+			tfxParticleNoise3dLoopUnroll(0)
+			tfxParticleNoise3dLoopUnroll(1)
+			tfxParticleNoise3dLoopUnroll(2)
+			tfxParticleNoise3dLoopUnroll(3)
 
-				//Find rate of change in YZ plane
-				tfx128Array sample = tfxNoise4_3d(x4, yeps4, zeps4);
-				float a = (sample.a[0] - sample.a[1]) / eps2;
-				//Average to find approximate derivative
-				float b = (sample.a[2] - sample.a[3]) / eps2;
-				noise_x.a[n] = a - b;
-
-				y.a[n] += 100.f;
-				tfx128 yeps4r = tfx128Set(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
-				//Find rate of change in XZ plane
-				sample = tfxNoise4_3d(xeps4, y4, zeps4r);
-				a = (sample.a[0] - sample.a[1]) / eps2;
-				b = (sample.a[2] - sample.a[3]) / eps2;
-				noise_y.a[n] = a - b;
-
-				//Find rate of change in XY plane
-				sample = tfxNoise4_3d(xeps4r, yeps4r, z4);
-				a = (sample.a[0] - sample.a[1]) / eps2;
-				b = (sample.a[2] - sample.a[3]) / eps2;
-				noise_z.a[n] = a - b;
-			}
+#if defined(tfxAVX)
+			tfxParticleNoise3dLoopUnroll(4)
+			tfxParticleNoise3dLoopUnroll(5)
+			tfxParticleNoise3dLoopUnroll(6)
+			tfxParticleNoise3dLoopUnroll(7)
+#endif
 
 			noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
 			noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
 			noise_z.m = tfxWideMul(lookup_velocity_turbulance, noise_z.m);
-		}
-		if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
+
 			local_position_x = tfxWideAdd(local_position_x, noise_x.m);
 			local_position_y = tfxWideAdd(local_position_y, noise_y.m);
 			local_position_z = tfxWideAdd(local_position_z, noise_z.m);
 		}
+
 		tfxWideStore(&bank.position_x[index], tfxWideMul(local_position_x, emitter_width));
 		tfxWideStore(&bank.position_y[index], tfxWideMul(local_position_y, emitter_height));
 		tfxWideStore(&bank.position_z[index], tfxWideMul(local_position_z, emitter_depth));
@@ -11390,11 +11382,24 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
 
-		tfxWideArray noise_x;
-		tfxWideArray noise_y;
-		tfxWideArray noise_z;
+		tfxWideArrayi lookup_frame;
+		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		tfxWideArrayi lookup_frame_weight;
+		lookup_frame_weight.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);
+		const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->weight.lookup.values, lookup_frame_weight);
+
+		//----Velocity Changes
+		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
+		tfxWideFloat current_velocity_x = tfxWideMul(velocity_normal_x, velocity_scalar);
+		tfxWideFloat current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
+		tfxWideFloat current_velocity_z = tfxWideMul(velocity_normal_z, velocity_scalar);
 
 		if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
+
+			tfxWideArray noise_x;
+			tfxWideArray noise_y;
+			tfxWideArray noise_z;
 
 			float eps = 0.001f;
 			float eps2 = 0.001f * 2.f;
@@ -11416,57 +11421,26 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			y.m = tfxWideAdd(tfxWideDiv(local_position_y, lookup_noise_resolution), noise_offset);
 			z.m = tfxWideAdd(tfxWideDiv(local_position_z, lookup_noise_resolution), noise_offset);
 
-			for (int n = 0; n != tfxDataWidth; ++n) {
-				tfx128 x4 = tfx128SetSingle(x.a[n]);
-				tfx128 y4 = tfx128SetSingle(y.a[n]);
-				tfx128 z4 = tfx128SetSingle(z.a[n]);
+			tfx128 x4, y4, z4, xeps4, xeps4r, yeps4, zeps4, zeps4r, yeps4r;
+			tfx128Array sample;
+			float a, b;
 
-				tfx128 xeps4 = tfx128Set(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);
-				tfx128 xeps4r = tfx128Set(x.a[n], x.a[n], x.a[n] - eps, x.a[n] + eps);
-				tfx128 yeps4 = tfx128Set(y.a[n], y.a[n], y.a[n] - eps, y.a[n] + eps);
-				tfx128 zeps4 = tfx128Set(z.a[n] - eps, z.a[n] + eps, z.a[n], z.a[n]);
-				tfx128 zeps4r = tfx128Set(z.a[n], z.a[n], z.a[n] - eps, z.a[n] + eps);
+			tfxParticleNoise3dLoopUnroll(0)
+			tfxParticleNoise3dLoopUnroll(1)
+			tfxParticleNoise3dLoopUnroll(2)
+			tfxParticleNoise3dLoopUnroll(3)
 
-				//Find rate of change in YZ plane
-				tfx128Array sample = tfxNoise4_3d(x4, yeps4, zeps4);
-				float a = (sample.a[0] - sample.a[1]) / eps2;
-				//Average to find approximate derivative
-				float b = (sample.a[2] - sample.a[3]) / eps2;
-				noise_x.a[n] = a - b;
-
-				y.a[n] += 100.f;
-				tfx128 yeps4r = tfx128Set(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
-				//Find rate of change in XZ plane
-				sample = tfxNoise4_3d(xeps4, y4, zeps4r);
-				a = (sample.a[0] - sample.a[1]) / eps2;
-				b = (sample.a[2] - sample.a[3]) / eps2;
-				noise_y.a[n] = a - b;
-
-				//Find rate of change in XY plane
-				sample = tfxNoise4_3d(xeps4r, yeps4r, z4);
-				a = (sample.a[0] - sample.a[1]) / eps2;
-				b = (sample.a[2] - sample.a[3]) / eps2;
-				noise_z.a[n] = a - b;
-			}
+#if defined(tfxAVX)
+			tfxParticleNoise3dLoopUnroll(4)
+			tfxParticleNoise3dLoopUnroll(5)
+			tfxParticleNoise3dLoopUnroll(6)
+			tfxParticleNoise3dLoopUnroll(7)
+#endif
 
 			noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
 			noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
 			noise_z.m = tfxWideMul(lookup_velocity_turbulance, noise_z.m);
-		}
 
-		tfxWideArrayi lookup_frame;
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
-		tfxWideArrayi lookup_frame_weight;
-		lookup_frame_weight.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);
-		const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->weight.lookup.values, lookup_frame_weight);
-
-		//----Velocity Changes
-		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
-		tfxWideFloat current_velocity_x = tfxWideMul(velocity_normal_x, velocity_scalar);
-		tfxWideFloat current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
-		tfxWideFloat current_velocity_z = tfxWideMul(velocity_normal_z, velocity_scalar);
-		if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
 			current_velocity_x = tfxWideAdd(current_velocity_x, noise_x.m);
 			current_velocity_y = tfxWideAdd(current_velocity_y, noise_y.m);
 			current_velocity_z = tfxWideAdd(current_velocity_z, noise_z.m);

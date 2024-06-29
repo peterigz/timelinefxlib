@@ -1807,7 +1807,6 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128& x) {
 	//__m128i v1 = _mm_cmpeq_epi32(v0, v0);
 	//__m128i ji = _mm_srli_epi32(v1, 25);
 	//__m128 j = *(__m128*)&_mm_slli_epi32(ji, 23); //create vector 1.0f
-	//I'm not entirely sure why original code had above lines to create a vector of 1.f. It seems to me that the below works fine 
 	//Worth noting that we only need to floor small numbers for the noise algorithm so can get away with this function.
 	__m128 j = _mm_set1_ps(1.f); //create vector 1.0f
 	__m128i i = _mm_cvttps_epi32(x);
@@ -4622,6 +4621,27 @@ static const uint8_t permMOD12[] =
 	10, 7, 1, 7, 10, 1, 4, 0, 0, 8, 7, 1, 2, 9, 7, 4, 6, 2, 6, 8, 1, 9, 6, 6, 7, 5,
 	0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0
 };
+
+inline __m128i hash_simd(__m128i x) {
+	const __m128i multiplier = _mm_set1_epi32(0x45d9f3b);
+	x = _mm_xor_si128(_mm_srli_epi32(x, 16), x);
+	x = _mm_mullo_epi32(x, multiplier);
+	x = _mm_xor_si128(_mm_srli_epi32(x, 16), x);
+	x = _mm_mullo_epi32(x, multiplier);
+	x = _mm_xor_si128(_mm_srli_epi32(x, 16), x);
+	return _mm_and_si128(x, _mm_set1_epi32(0xFF));
+}
+
+// SIMD hash and mod 12 function
+inline __m128i hashMOD12_simd(__m128i x) {
+	__m128i hashed = hash_simd(x);
+	// Compute modulo 12 using (x mod 12) = x - 12 * floor(x/12)
+	__m128 float_hashed = _mm_cvtepi32_ps(hashed);
+	__m128 divided = _mm_div_ps(float_hashed, _mm_set1_ps(12.0f));
+	__m128i floored = _mm_cvttps_epi32(divided);
+	__m128i multiplied = _mm_mullo_epi32(floored, _mm_set1_epi32(12));
+	return _mm_sub_epi32(hashed, multiplied);
+}
 
 // 4 noise samples using simd
 tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4);
