@@ -11816,10 +11816,17 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
 		const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
 
-		tfxWideArray noise_x;
-		tfxWideArray noise_y;
+		//----Velocity Changes
+		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
+		velocity_normal_x.m = tfxWideMul(velocity_normal_x.m, velocity_scalar);
+		velocity_normal_y.m = tfxWideMul(velocity_normal_y.m, velocity_scalar);
 
 		if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
+			tfxWideArray noise_x;
+			tfxWideArray noise_y;
+
 			const tfxWideFloat noise_resolution = tfxWideLoad(&bank.noise_resolution[index]);
 			const tfxWideFloat noise_offset = tfxWideLoad(&bank.noise_offset[index]);
 
@@ -11852,29 +11859,22 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 
 			noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
 			noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
+
+			velocity_normal_x.m = tfxWideAdd(velocity_normal_x.m, noise_x.m);
+			velocity_normal_y.m = tfxWideAdd(velocity_normal_y.m, noise_y.m);
 		}
 
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
 		const tfxWideFloat lookup_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);
 		const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->weight.lookup.values, lookup_frame);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
 		const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->stretch.lookup.values, lookup_frame);
 		p_stretch.m = tfxWideMul(lookup_stretch, stretch);
 
-		//----Velocity Changes
-		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
 		tfxWideFloat stretch_velocity_x;
 		tfxWideFloat stretch_velocity_y;
 
-		velocity_normal_x.m = tfxWideMul(velocity_normal_x.m, velocity_scalar);
-		velocity_normal_y.m = tfxWideMul(velocity_normal_y.m, velocity_scalar);
-		if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
-			velocity_normal_x.m = tfxWideAdd(velocity_normal_x.m, noise_x.m);
-			velocity_normal_y.m = tfxWideAdd(velocity_normal_y.m, noise_y.m);
-		}
 		velocity_normal_y.m = tfxWideAdd(velocity_normal_y.m, tfxWideMul(lookup_weight, base_weight));
 		stretch_velocity_x = velocity_normal_x.m;
 		stretch_velocity_y = velocity_normal_y.m;
