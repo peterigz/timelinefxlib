@@ -11697,6 +11697,21 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
+#define tfxParticleNoise2dLoopUnroll(n)		\
+	x4 = tfx128SetSingle(x.a[n]);	\
+	y4 = tfx128SetSingle(y.a[n]);	\
+	xeps4 = tfx128Set(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);	\
+	sample = tfxNoise4_2d(xeps4, y4);	\
+	a = (sample.a[0] - sample.a[1]) / eps2;	\
+	b = (sample.a[2] - sample.a[3]) / eps2;	\
+	noise_x.a[n] = a - b;	\
+	y.a[n] += 100.f;	\
+	yeps4r = tfx128Set(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);	\
+	sample = tfxNoise4_2d(x4, yeps4r);	\
+	a = (sample.a[0] - sample.a[1]) / eps2;	\
+	b = (sample.a[2] - sample.a[3]) / eps2;	\
+	noise_y.a[n] = a - b;	\
+
 void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t*>(data);
@@ -11819,24 +11834,21 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
 			y.m = tfxWideAdd(tfxWideDiv(local_position_y, lookup_noise_resolution), noise_offset);
 
-			for (int n = 0; n != tfxDataWidth; ++n) {
-				tfx128 x4 = tfx128SetSingle(x.a[n]);
-				tfx128 y4 = tfx128SetSingle(y.a[n]);
+			tfx128 x4, y4, xeps4, yeps4r;
+			float a, b;
+			tfx128Array sample;
 
-				tfx128 xeps4 = tfx128Set(x.a[n] - eps, x.a[n] + eps, x.a[n], x.a[n]);
+			tfxParticleNoise2dLoopUnroll(0);
+			tfxParticleNoise2dLoopUnroll(1);
+			tfxParticleNoise2dLoopUnroll(2);
+			tfxParticleNoise2dLoopUnroll(3);
 
-				tfx128Array sample = tfxNoise4_2d(xeps4, y4);
-				float a = (sample.a[0] - sample.a[1]) / eps2;
-				float b = (sample.a[2] - sample.a[3]) / eps2;
-				noise_x.a[n] = a - b;
-
-				y.a[n] += 100.f;
-				tfx128 yeps4r = tfx128Set(y.a[n] - eps, y.a[n] + eps, y.a[n], y.a[n]);
-				sample = tfxNoise4_2d(x4, yeps4r);
-				a = (sample.a[0] - sample.a[1]) / eps2;
-				b = (sample.a[2] - sample.a[3]) / eps2;
-				noise_y.a[n] = a - b;
-			}
+#if defined(tfxAVX)
+			tfxParticleNoise2dLoopUnroll(4);
+			tfxParticleNoise2dLoopUnroll(5);
+			tfxParticleNoise2dLoopUnroll(6);
+			tfxParticleNoise2dLoopUnroll(7);
+#endif
 
 			noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
 			noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
