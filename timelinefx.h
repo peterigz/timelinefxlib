@@ -4566,7 +4566,7 @@ static const float tfxGRADIENTS_3D[] =
 * A vector-valued noise over 3D accesses it 96 times, and a
 * float-valued 4D noise 64 times. We want this to fit in the cache!
 */
-const uint8_t perm[] =
+const uint8_t tfx_permutation_table[] =
 {
 	151,160,137,91,90,15,
 	131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,
@@ -4596,7 +4596,7 @@ const uint8_t perm[] =
 	138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180
 };
 
-static const uint8_t permMOD12[] =
+static const uint8_t tfx_perm_mod12[] =
 {
 	7, 4, 5, 7, 6, 3, 11, 1, 9, 11, 0, 5, 2, 5, 7, 9, 8, 0, 7, 6, 9, 10, 8, 3,
 	1, 0, 9, 10, 11, 10, 6, 4, 7, 0, 6, 3, 0, 2, 5, 2, 10, 0, 3, 11, 9, 11, 11,

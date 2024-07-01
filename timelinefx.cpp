@@ -118,9 +118,9 @@ tfx_storage_t *GetGlobals() {
 }
 
 #define tfxNoise2dPermMOD12LoopUnroll(i)	\
-	gi0[i] = permMOD12[perm[ii.a[i] + perm[jj.a[i]]]];	\
-	gi1[i] = permMOD12[perm[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i]]]];	\
-	gi2[i] = permMOD12[perm[ii.a[i] + 1 + perm[jj.a[i] + 1]]];	
+	gi0[i] = tfx_perm_mod12[tfx_permutation_table[ii.a[i] + tfx_permutation_table[jj.a[i]]]];	\
+	gi1[i] = tfx_perm_mod12[tfx_permutation_table[ii.a[i] + i1.a[i] + tfx_permutation_table[jj.a[i] + j1.a[i]]]];	\
+	gi2[i] = tfx_perm_mod12[tfx_permutation_table[ii.a[i] + 1 + tfx_permutation_table[jj.a[i] + 1]]];	
 
 #define tfxNoise3dGradientLoopUnroll(i) \
 	gi0x.a[i] = gradX[gi0.a[i]];	\
@@ -137,10 +137,10 @@ tfx_storage_t *GetGlobals() {
 	gi3z.a[i] = gradZ[gi3.a[i]];
 
 #define tfxNoise3dPermModLoopUnroll(i) \
-	gi0.a[i] = permMOD12[ii.a[i] + perm[jj.a[i] + perm[kk.a[i]]]];	\
-	gi1.a[i] = permMOD12[ii.a[i] + i1.a[i] + perm[jj.a[i] + j1.a[i] + perm[kk.a[i] + k1.a[i]]]];	\
-	gi2.a[i] = permMOD12[ii.a[i] + i2.a[i] + perm[jj.a[i] + j2.a[i] + perm[kk.a[i] + k2.a[i]]]];	\
-	gi3.a[i] = permMOD12[ii.a[i] + 1 + perm[jj.a[i] + 1 + perm[kk.a[i] + 1]]];	\
+	gi0.a[i] = tfx_perm_mod12[ii.a[i] + tfx_permutation_table[jj.a[i] + tfx_permutation_table[kk.a[i]]]];	\
+	gi1.a[i] = tfx_perm_mod12[ii.a[i] + i1.a[i] + tfx_permutation_table[jj.a[i] + j1.a[i] + tfx_permutation_table[kk.a[i] + k1.a[i]]]];	\
+	gi2.a[i] = tfx_perm_mod12[ii.a[i] + i2.a[i] + tfx_permutation_table[jj.a[i] + j2.a[i] + tfx_permutation_table[kk.a[i] + k2.a[i]]]];	\
+	gi3.a[i] = tfx_perm_mod12[ii.a[i] + 1 + tfx_permutation_table[jj.a[i] + 1 + tfx_permutation_table[kk.a[i] + 1]]];	\
 
 #ifdef tfxINTEL
 //A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
