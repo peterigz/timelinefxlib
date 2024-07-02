@@ -3304,6 +3304,7 @@ void ResetEmitterVariationGraphs(tfx_effect_emitter_t *effect, bool add_node, bo
 	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.yaw_spin, 0.f, tfxSpinVariationPreset, add_node); library->emitter_attributes[emitter_attributes].variation.yaw_spin.type = tfxVariation_yaw_spin;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.noise_offset, 0.f, tfxNoiseOffsetVariationPreset, add_node); library->emitter_attributes[emitter_attributes].variation.noise_offset.type = tfxVariation_noise_offset;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.noise_resolution, 300.f, tfxNoiseResolutionPreset, add_node); library->emitter_attributes[emitter_attributes].variation.noise_resolution.type = tfxVariation_noise_resolution;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].variation.motion_randomness, 1.f, tfxNoiseResolutionPreset, add_node); library->emitter_attributes[emitter_attributes].variation.motion_randomness.type = tfxVariation_motion_randomness;
 	if (compile) {
 		CompileLibraryVariationGraph(library, emitter_attributes);
 	}
@@ -3331,6 +3332,7 @@ void ResetEmitterOvertimeGraphs(tfx_effect_emitter_t *effect, bool add_node, boo
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.direction_turbulance, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.direction_turbulance.type = tfxOvertime_direction_turbulance;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.direction, 0.f, tfxDirectionOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.direction.type = tfxOvertime_direction;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.noise_resolution, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.noise_resolution.type = tfxOvertime_noise_resolution;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.motion_randomness, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.motion_randomness.type = tfxOvertime_motion_randomness;
 	if (compile) {
 		CompileLibraryOvertimeGraph(library, emitter_attributes);
 	}
@@ -3409,6 +3411,7 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].variation.yaw_spin.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].variation.yaw_spin, 0.f, tfxSpinVariationPreset);
 		if (library->emitter_attributes[emitter_attributes].variation.noise_offset.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].variation.noise_offset, 0.f, tfxNoiseOffsetVariationPreset);
 		if (library->emitter_attributes[emitter_attributes].variation.noise_resolution.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].variation.noise_resolution, 300.f, tfxNoiseResolutionPreset);
+		if (library->emitter_attributes[emitter_attributes].variation.motion_randomness.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].variation.motion_randomness, 1.f, tfxNoiseResolutionPreset);
 
 		if (library->emitter_attributes[emitter_attributes].overtime.velocity.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.velocity, 1.f, tfxVelocityOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.width.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.width, 1.f, tfxPercentOvertime);
@@ -3428,6 +3431,7 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster, 1.f, tfxGlobalPercentPreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.direction.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.direction, 0.f, tfxDirectionOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.noise_resolution.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.noise_resolution, 1.f, tfxPercentOvertime);
+		if (library->emitter_attributes[emitter_attributes].overtime.motion_randomness.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.motion_randomness, 0.f, tfxPercentOvertime);
 	}
 }
 
@@ -3852,6 +3856,7 @@ void FreeEffectGraphs(tfx_effect_emitter_t *effect) {
 		FreeGraph(&library->emitter_attributes[emitter_attributes].variation.spin);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].variation.noise_offset);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].variation.noise_resolution);
+		FreeGraph(&library->emitter_attributes[emitter_attributes].variation.motion_randomness);
 
 		FreeGraph(&library->emitter_attributes[emitter_attributes].overtime.velocity);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].overtime.width);
@@ -3869,6 +3874,7 @@ void FreeEffectGraphs(tfx_effect_emitter_t *effect) {
 		FreeGraph(&library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].overtime.direction);
 		FreeGraph(&library->emitter_attributes[emitter_attributes].overtime.noise_resolution);
+		FreeGraph(&library->emitter_attributes[emitter_attributes].overtime.motion_randomness);
 	}
 }
 
@@ -4643,6 +4649,7 @@ void InitialiseVariationAttributes(tfx_variation_attributes_t *attributes, tfxU3
 	attributes->yaw_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->noise_offset.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->noise_resolution.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->motion_randomness.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 }
 
 void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size) {
@@ -4664,6 +4671,7 @@ void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 
 	attributes->intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->direction.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->noise_resolution.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->motion_randomness.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 }
 
 void FreeOvertimeAttributes(tfx_overtime_attributes_t *attributes) {
@@ -4685,6 +4693,7 @@ void FreeOvertimeAttributes(tfx_overtime_attributes_t *attributes) {
 	FreeGraph(&attributes->intensity);
 	FreeGraph(&attributes->direction);
 	FreeGraph(&attributes->noise_resolution);
+	FreeGraph(&attributes->motion_randomness);
 }
 
 void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst) {
@@ -4707,6 +4716,7 @@ void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtim
 	CopyGraphNoLookups(&src->intensity, &dst->intensity);
 	CopyGraphNoLookups(&src->direction, &dst->direction);
 	CopyGraphNoLookups(&src->noise_resolution, &dst->noise_resolution);
+	CopyGraphNoLookups(&src->motion_randomness, &dst->motion_randomness);
 }
 
 void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst) {
@@ -4729,6 +4739,7 @@ void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attribu
 	CopyGraph(&src->intensity, &dst->intensity);
 	CopyGraph(&src->direction, &dst->direction);
 	CopyGraph(&src->noise_resolution, &dst->noise_resolution);
+	CopyGraph(&src->motion_randomness, &dst->motion_randomness);
 }
 
 void FreeVariationAttributes(tfx_variation_attributes_t *attributes) {
@@ -4743,6 +4754,7 @@ void FreeVariationAttributes(tfx_variation_attributes_t *attributes) {
 	FreeGraph(&attributes->yaw_spin);
 	FreeGraph(&attributes->noise_offset);
 	FreeGraph(&attributes->noise_resolution);
+	FreeGraph(&attributes->motion_randomness);
 }
 
 void CopyVariationAttributesNoLookups(tfx_variation_attributes_t *src, tfx_variation_attributes_t *dst) {
@@ -4758,6 +4770,7 @@ void CopyVariationAttributesNoLookups(tfx_variation_attributes_t *src, tfx_varia
 	CopyGraphNoLookups(&src->yaw_spin, &dst->yaw_spin);
 	CopyGraphNoLookups(&src->noise_offset, &dst->noise_offset);
 	CopyGraphNoLookups(&src->noise_resolution, &dst->noise_resolution);
+	CopyGraphNoLookups(&src->motion_randomness, &dst->motion_randomness);
 }
 
 void CopyVariationAttributes(tfx_variation_attributes_t *src, tfx_variation_attributes_t *dst) {
@@ -4772,6 +4785,7 @@ void CopyVariationAttributes(tfx_variation_attributes_t *src, tfx_variation_attr
 	CopyGraph(&src->yaw_spin, &dst->yaw_spin);
 	CopyGraph(&src->noise_offset, &dst->noise_offset);
 	CopyGraph(&src->noise_resolution, &dst->noise_resolution);
+	CopyGraph(&src->motion_randomness, &dst->motion_randomness);
 }
 
 void FreeBaseAttributes(tfx_base_attributes_t *attributes) {
@@ -5315,6 +5329,7 @@ tfxU32 CountLibraryEmitterLookUpValues(tfx_library_t *library, tfxU32 index) {
 	count += attributes.variation.yaw_spin.lookup.values.capacity;
 	count += attributes.variation.noise_offset.lookup.values.capacity;
 	count += attributes.variation.noise_resolution.lookup.values.capacity;
+	count += attributes.variation.motion_randomness.lookup.values.capacity;
 
 	count += attributes.overtime.velocity.lookup.values.capacity;
 	count += attributes.overtime.width.lookup.values.capacity;
@@ -5334,6 +5349,7 @@ tfxU32 CountLibraryEmitterLookUpValues(tfx_library_t *library, tfxU32 index) {
 	count += attributes.overtime.intensity.lookup.values.capacity;
 	count += attributes.overtime.direction.lookup.values.capacity;
 	count += attributes.overtime.noise_resolution.lookup.values.capacity;
+	count += attributes.overtime.motion_randomness.lookup.values.capacity;
 
 	return count;
 }
@@ -5800,6 +5816,7 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 		CompileGraph(&g.variation.life);
 		CompileGraph(&g.variation.noise_offset);
 		CompileGraph(&g.variation.noise_resolution);
+		CompileGraph(&g.variation.motion_randomness);
 		CompileGraph(&g.variation.spin);
 		CompileGraph(&g.variation.pitch_spin);
 		CompileGraph(&g.variation.yaw_spin);
@@ -5824,6 +5841,7 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 		CompileGraphOvertime(&g.overtime.weight);
 		CompileGraphOvertime(&g.overtime.direction);
 		CompileGraphOvertime(&g.overtime.noise_resolution);
+		CompileGraphOvertime(&g.overtime.motion_randomness);
 	}
 }
 
@@ -5899,6 +5917,7 @@ void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraph(&g.life);
 	CompileGraph(&g.noise_offset);
 	CompileGraph(&g.noise_resolution);
+	CompileGraph(&g.motion_randomness);
 	CompileGraph(&g.spin);
 	CompileGraph(&g.pitch_spin);
 	CompileGraph(&g.yaw_spin);
@@ -5925,6 +5944,7 @@ void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraphOvertime(&g.weight);
 	CompileGraphOvertime(&g.direction);
 	CompileGraphOvertime(&g.noise_resolution);
+	CompileGraphOvertime(&g.motion_randomness);
 }
 void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
@@ -6164,6 +6184,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("alt_velocity_lifetime_sampling", tfxBool);
 	names_and_types.Insert("alt_color_lifetime_sampling", tfxBool);
 	names_and_types.Insert("alt_size_lifetime_sampling", tfxBool);
+	names_and_types.Insert("use_simple_motion_randomness", tfxBool);
 
 	//Graphs
 	names_and_types.Insert("global_life", tfxFloat);
@@ -6219,6 +6240,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("variation_yaw_spin", tfxFloat);
 	names_and_types.Insert("variation_noise_offset", tfxFloat);
 	names_and_types.Insert("variation_noise_resolution", tfxFloat);
+	names_and_types.Insert("variation_motion_randomness", tfxFloat);
 
 	names_and_types.Insert("overtime_velocity", tfxFloat);
 	names_and_types.Insert("overtime_width", tfxFloat);
@@ -6239,6 +6261,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("overtime_intensity", tfxFloat);
 	names_and_types.Insert("overtime_direction", tfxFloat);
 	names_and_types.Insert("overtime_noise_resolution", tfxFloat);
+	names_and_types.Insert("overtime_motion_randomness", tfxFloat);
 
 	names_and_types.Insert("transform_roll", tfxFloat);
 	names_and_types.Insert("transform_pitch", tfxFloat);
@@ -6460,6 +6483,7 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "variation_motion_randomness") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.noise_offset, &n); }
 		if ((*values)[0] == "variation_noise_offset") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.noise_offset, &n); }
 		if ((*values)[0] == "variation_noise_resolution") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.noise_resolution, &n); }
+		if ((*values)[0] == "variation_motion_randomness") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.motion_randomness, &n); }
 
 		if ((*values)[0] == "overtime_red") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.red, &n); }
 		if ((*values)[0] == "overtime_green") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.green, &n); }
@@ -6480,6 +6504,7 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "overtime_direction") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.direction, &n); }
 		if ((*values)[0] == "overtime_velocity_adjuster") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.velocity_adjuster, &n); }
 		if ((*values)[0] == "overtime_noise_resolution") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.noise_resolution, &n); }
+		if ((*values)[0] == "overtime_motion_randomness") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.motion_randomness, &n); }
 
 		if ((*values)[0] == "path_pitch") { 
 			tfx_attribute_node_t n; 
@@ -6962,6 +6987,9 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
 	if (*field == "alt_size_lifetime_sampling") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_alt_size_lifetime_sampling; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_alt_size_lifetime_sampling; }
 	}
+	if (*field == "use_simple_motion_randomness") {
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_simple_motion_randomness; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_simple_motion_randomness; }
+	}
 	if (*field == "path_is_3d") {
 		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_3d; }
 	}
@@ -7035,6 +7063,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("alt_velocity_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling));
 	file->AddLine("alt_color_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling));
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
+	file->AddLine("use_simple_motion_randomness=%i", (flags & tfxEmitterPropertyFlags_use_simple_motion_randomness));
 }
 
 void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file) {

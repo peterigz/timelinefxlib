@@ -2042,8 +2042,8 @@ enum tfx_graph_category : unsigned int {
 #define TFX_GLOBAL_COUNT  16
 #define	TFX_PROPERTY_COUNT  10
 #define	TFX_BASE_COUNT  10
-#define	TFX_VARIATION_COUNT  11
-#define	TFX_OVERTIME_COUNT  18
+#define	TFX_VARIATION_COUNT  12
+#define	TFX_OVERTIME_COUNT  19
 #define	TFX_TRANSFORM_COUNT  6
 
 #define TFX_GLOBAL_START 0
@@ -2105,6 +2105,7 @@ enum tfx_graph_type : unsigned char {
 	tfxVariation_roll_spin,
 	tfxVariation_noise_offset,
 	tfxVariation_noise_resolution,
+	tfxVariation_motion_randomness,
 
 	tfxOvertime_velocity,
 	tfxOvertime_width,
@@ -2124,6 +2125,7 @@ enum tfx_graph_type : unsigned char {
 	tfxOvertime_intensity,
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
+	tfxOvertime_motion_randomness,
 
 	tfxTransform_roll,
 	tfxTransform_pitch,
@@ -2452,6 +2454,7 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling = 1 << 26,	//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29,		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
 };
 
 enum tfx_particle_flag_bits : unsigned int {
@@ -4823,6 +4826,7 @@ struct tfx_effect_lookup_data_t {
 	tfx_graph_lookup_index_t overtime_intensity;
 	tfx_graph_lookup_index_t overtime_direction;
 	tfx_graph_lookup_index_t overtime_noise_resolution;
+	tfx_graph_lookup_index_t overtime_motion_randomness;
 };
 
 struct tfx_graph_t {
@@ -4911,6 +4915,7 @@ struct tfx_variation_attributes_t {
 	tfx_graph_t spin;
 	tfx_graph_t noise_offset;
 	tfx_graph_t noise_resolution;
+	tfx_graph_t motion_randomness;
 };
 
 struct tfx_overtime_attributes_t {
@@ -4932,6 +4937,7 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t intensity;
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
+	tfx_graph_t motion_randomness;
 };
 
 struct tfx_path_nodes_soa_t {
