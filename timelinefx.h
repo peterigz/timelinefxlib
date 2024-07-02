@@ -6164,14 +6164,9 @@ tfxAPI_EDITOR float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b);
 tfxAPI_EDITOR tfx_vec3_t CylinderSurfaceNormal(float x, float z, float width, float depth);
 tfxAPI_EDITOR tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z);
-tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
-tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineSoA(const float* p_x, const float* p_y, int p0, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3DSoA(const float* p_x, const float* p_y, const float *p_z, int p0, float t);
-tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineSoALoop(const float* p_x, const float* p_y, int p1, int points, float t);
-tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
-tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3DSoAStart(const float *px, const float* py, const float* pz);
 tfxAPI_EDITOR void CatmullRomSpline3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL float GetCatmullSegment(tfx_vector_t<tfx_vec4_t>* nodes, float length);
 //Quake 3 inverse square root
@@ -6498,8 +6493,6 @@ tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_
 tfxAPI_EDITOR void ResetPathGraphs(tfx_emitter_path_t *path, tfx_path_generator_type generator);
 tfxAPI_EDITOR void BuildPathNodesComplex(tfx_emitter_path_t* path);
 tfxAPI_EDITOR void BuildPathNodes(tfx_emitter_path_t* path);
-tfxAPI_EDITOR void BuildUnitCylinderLoop();
-tfxAPI_EDITOR tfx_vec2_t RandomCylinderPoint(tfx_random_t *random);
 tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *path);
 tfxINTERNAL void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst);
 tfxINTERNAL tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node);

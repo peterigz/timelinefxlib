@@ -1268,40 +1268,6 @@ void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, cons
 	*normal_z = tfxWideDiv(tfxWideMul(scale, *z), d2);
 }
 
-tfx_vec2_t CatmullRomSpline(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t) {
-	float t2 = t * t;
-	float t3 = t2 * t;
-
-	float b0 = -t3 + 2.0f * t2 - t;
-	float b1 = 3.0f * t3 - 5.0f * t2 + 2.0f;
-	float b2 = -3.0f * t3 + 4.0f * t2 + t;
-	float b3 = t3 - t2;
-
-	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
-	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
-
-	return { x * .5f, y * .5f };
-}
-
-tfx_vec2_t CatmullRomSplineSoA(const float* p_x, const float* p_y, int p0, float t) {
-	float t2 = t * t;
-	float t3 = t2 * t;
-
-	int p1 = p0 + 1;
-	int p2 = p0 + 2;
-	int p3 = p0 + 3;
-
-	float b0 = -t3 + 2.0f * t2 - t;
-	float b1 = 3.0f * t3 - 5.0f * t2 + 2.0f;
-	float b2 = -3.0f * t3 + 4.0f * t2 + t;
-	float b3 = t3 - t2;
-
-	float x = p_x[p0] * b0 + p_x[p1] * b1 + p_x[p2] * b2 + p_x[p3] * b3;
-	float y = p_y[p0] * b0 + p_y[p1] * b1 + p_y[p2] * b2 + p_y[p3] * b3;
-
-	return { x * .5f, y * .5f };
-}
-
 tfx_vec3_t CatmullRomSpline3DSoA(const float* p_x, const float* p_y, const float *p_z, int p0, float t) {
 	float t2 = t * t;
 	float t3 = t2 * t;
@@ -1320,39 +1286,6 @@ tfx_vec3_t CatmullRomSpline3DSoA(const float* p_x, const float* p_y, const float
 	float z = p_z[p0] * b0 + p_z[p1] * b1 + p_z[p2] * b2 + p_z[p3] * b3;
 
 	return { x * .5f, y * .5f, z * .5f };
-}
-
-tfx_vec2_t CatmullRomSplineSoALoop(const float* p_x, const float* p_y, int p0, int points, float t) {
-	float t2 = t * t;
-	float t3 = t2 * t;
-
-	int p1 = (p0 + 1) % points;
-	int p2 = (p0 + 2) % points;
-	int p3 = (p0 + 3) % points;
-
-	float b0 = -t3 + 2.0f * t2 - t;
-	float b1 = 3.0f * t3 - 5.0f * t2 + 2.0f;
-	float b2 = -3.0f * t3 + 4.0f * t2 + t;
-	float b3 = t3 - t2;
-
-	float x = p_x[p0] * b0 + p_x[p1] * b1 + p_x[p2] * b2 + p_x[p3] * b3;
-	float y = p_y[p0] * b0 + p_y[p1] * b1 + p_y[p2] * b2 + p_y[p3] * b3;
-
-	return { x * .5f, y * .5f };
-}
-
-tfx_vec2_t CatmullRomSplineGradient(const tfx_vec2_t* p0, const tfx_vec2_t* p1, const tfx_vec2_t* p2, const tfx_vec2_t* p3, float t) {
-	float t2 = t * t;
-
-	float b0 = -3.f * t2 + 4.f * t - 1.f;
-	float b1 = 9.f * t2 - 10.f * t;
-	float b2 = -9.f * t2 + 8.f * t + 1.f;
-	float b3 = 3.f * t2 - 2.f * t;
-
-	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
-	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
-
-	return { x * 0.5f, y * 0.5f };
 }
 
 tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t) {
@@ -1397,19 +1330,6 @@ tfx_vec3_t CatmullRomSplineGradient3DSoA(const float *px, const float* py, const
 	float x = px[0] * b0 + px[1] * b1 + px[2] * b2 + px[3] * b3;
 	float y = py[0] * b0 + py[1] * b1 + py[2] * b2 + py[3] * b3;
 	float z = pz[0] * b0 + pz[1] * b1 + pz[2] * b2 + pz[3] * b3;
-
-	return { x * 0.5f, y * 0.5f, z * 0.5f };
-}
-
-tfx_vec3_t CatmullRomSplineGradient3DSoAStart(const float* px, const float* py, const float* pz) {
-	float b0 = -1.f;
-	float b1 = 0.f;
-	float b2 = 1.f;
-	float b3 = 0.f;
-
-	float x = -px[0] + px[2];
-	float y = -py[0] + py[2];
-	float z = -pz[0] + pz[2];
 
 	return { x * 0.5f, y * 0.5f, z * 0.5f };
 }
@@ -4092,32 +4012,6 @@ float GetCatmullSegment(tfx_vector_t<tfx_vec4_t> *nodes, float length) {
 		i++;
 	}
 	return (float)i + ((*nodes)[i].w > 0 ? (length / (*nodes)[i].w) : 0.f);
-}
-
-void BuildUnitCylinderLoop() {
-	float radius_x = 0.5f;
-	float radius_z = 0.5f;
-	float spline_points = tfxCIRCLENODES;
-
-	float grid_segment_size = tfxPI2 / (spline_points - 2.f);
-	float th = grid_segment_size;
-
-	for (int i = 1; i != (int)spline_points - 1; ++i) {
-		tfxStore->circle_path_x[i] = cosf(th) * radius_x + radius_x;
-		tfxStore->circle_path_z[i] = -sinf(th) * radius_z + radius_z;
-		th += grid_segment_size;
-	}
-	int i = (int)spline_points;
-	tfxStore->circle_path_x[0] = tfxStore->circle_path_x[i - 2];
-	tfxStore->circle_path_z[0] = tfxStore->circle_path_z[i - 2];
-	tfxStore->circle_path_x[i - 1] = tfxStore->circle_path_x[1];
-	tfxStore->circle_path_z[i - 1] = tfxStore->circle_path_z[1];
-}
-
-tfx_vec2_t RandomCylinderPoint(tfx_random_t *random) {
-	int node = RandomRange(random, (tfxU32)tfxCIRCLENODES - 2);
-	float t = GenerateRandom(random);
-	return CatmullRomSplineSoALoop(tfxStore->circle_path_x, tfxStore->circle_path_z, node, tfxCIRCLENODES - 2, t);
 }
 
 void BuildPathNodesComplex(tfx_emitter_path_t* path) {
@@ -11206,15 +11100,6 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		tfxWideArray point_x;
 		tfxWideArray point_z;
 		CatmullRomSpline3DWide(&node_index, t.m, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x.m, &local_position_y, &point_z.m);
-        /*
-        for(int i = 0; i != tfxDataWidth; ++i) {
-            tfx_vec3_t p = CatmullRomSpline3DSoA(path->node_soa.x, path->node_soa.y, path->node_soa.z, node_index.a[i], t.a[i]);
-            point_x.a[i] = p.x;
-            point_y.a[i] = p.y;
-            point_z.a[i] = p.z;
-        }
-        local_position_y = point_y.m;
-        */
 		if (path->extrusion_type == tfxExtrusionArc) {
             tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_z.m, point_z.m));
             tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
