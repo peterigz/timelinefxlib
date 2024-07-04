@@ -1641,7 +1641,6 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideXOri _mm_xor_si128
 #define tfxWideAnd _mm_and_ps
 #define tfxWideAndNot _mm_andnot_ps
-#define tfxWideAndNot _mm_andnot_ps
 #define tfxWideAndi _mm_and_si128
 #define tfxWideAndNoti _mm_andnot_si128
 #define tfxWideSetZeroi _mm_setzero_si128()
@@ -2454,7 +2453,7 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling = 1 << 26,	//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
-	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29,		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
+	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
 };
 
 enum tfx_particle_flag_bits : unsigned int {
@@ -2496,7 +2495,8 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_has_path = 1 << 25,
 	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
-	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28
+	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28,
+	tfxEmitterStateFlags_use_simple_motion_randomness = 1 << 29
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -4625,27 +4625,6 @@ static const uint8_t tfx_perm_mod12[] =
 	0, 0, 3, 9, 8, 3, 6, 6, 11, 1, 0, 0
 };
 
-inline __m128i hash_simd(__m128i x) {
-	const __m128i multiplier = _mm_set1_epi32(0x45d9f3b);
-	x = _mm_xor_si128(_mm_srli_epi32(x, 16), x);
-	x = _mm_mullo_epi32(x, multiplier);
-	x = _mm_xor_si128(_mm_srli_epi32(x, 16), x);
-	x = _mm_mullo_epi32(x, multiplier);
-	x = _mm_xor_si128(_mm_srli_epi32(x, 16), x);
-	return _mm_and_si128(x, _mm_set1_epi32(0xFF));
-}
-
-// SIMD hash and mod 12 function
-inline __m128i hashMOD12_simd(__m128i x) {
-	__m128i hashed = hash_simd(x);
-	// Compute modulo 12 using (x mod 12) = x - 12 * floor(x/12)
-	__m128 float_hashed = _mm_cvtepi32_ps(hashed);
-	__m128 divided = _mm_div_ps(float_hashed, _mm_set1_ps(12.0f));
-	__m128i floored = _mm_cvttps_epi32(divided);
-	__m128i multiplied = _mm_mullo_epi32(floored, _mm_set1_epi32(12));
-	return _mm_sub_epi32(hashed, multiplied);
-}
-
 // 4 noise samples using simd
 tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4);
 tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
@@ -6052,7 +6031,7 @@ tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 //Dump sprites for Debugging
 tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
-tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, bool has_noise, bool has_path, bool has_rotated_path);
+tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterStateFlags flags);
 
 //--------------------------------
 //Profilings
@@ -6158,6 +6137,7 @@ tfxINTERNAL float HasLength(tfx_vec3_t const *v);
 tfxAPI tfx_vec3_t NormalizeVec3(tfx_vec3_t const *v);
 tfxAPI tfx_vec4_t NormalizeVec4(tfx_vec4_t const *v);
 tfxINTERNAL tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b);
+tfxINTERNAL void CrossWide(tfxWideFloat* ax, tfxWideFloat* ay, tfxWideFloat* az, tfxWideFloat* bx, tfxWideFloat* by, tfxWideFloat* bz, tfxWideFloat* rx, tfxWideFloat* ry, tfxWideFloat* rz);
 tfxINTERNAL float DotProductVec4(const tfx_vec4_t *a, const tfx_vec4_t *b);
 tfxINTERNAL float DotProductVec3(const tfx_vec3_t *a, const tfx_vec3_t *b);
 tfxAPI_EDITOR float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b);
@@ -6220,6 +6200,7 @@ tfxAPI tfxWideInt PackWide8bitXYZ(tfxWideFloat const &v_x, tfxWideFloat const &v
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
 tfxINTERNAL tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z, tfxU32 extra);
+tfxINTERNAL tfxWideInt PackWide10bitUnsigned(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL void UnPackWide10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z);
 tfxINTERNAL void UnPackWide10bitAdd(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z);
 tfxINTERNAL void UnPackWide10bitX(tfxWideInt in, tfxWideFloat &v);
@@ -6271,11 +6252,57 @@ int RandomRange(tfx_random_t *random, int max);
 void AlterRandomSeed(tfx_random_t *random, tfxU64 amount);
 void AlterRandomSeed(tfx_random_t *random, tfxU32 amount);
 
+tfxINTERNAL inline tfxU32 SeedGen(tfxU32 px, tfxU32 py) {
+	tfxU32 h = px + py * 2654435761u;
+	h ^= h >> 15;
+	h *= 0x85ebca6b;
+	h ^= h >> 13;
+	h *= 0xc2b2ae35;
+	h ^= h >> 16;
+	return h;
+}
+
+tfxINTERNAL inline tfxWideInt SeedGenWide(tfxWideInt px, tfxWideInt py)
+{
+	tfxWideInt h = _mm_mul_epi32(_mm_add_epi32(px, py), _mm_set1_epi32(2654435761u));
+	h = _mm_xor_si128(h, _mm_srli_epi32(h, 15));
+	tfxWideInt mult1 = _mm_set1_epi32(0x85ebca6b);
+	h = _mm_mullo_epi32(h, mult1);
+	h = _mm_xor_si128(h, _mm_srli_epi32(h, 13));
+	tfxWideInt mult2 = _mm_set1_epi32(0xc2b2ae35);
+	h = _mm_mullo_epi32(h, mult2);
+	h = _mm_xor_si128(h, _mm_srli_epi32(h, 16));
+	return h;
+}
+
+tfxINTERNAL inline tfxWideFloat SeedGenWide(tfxWideInt h)
+{
+	h = _mm_xor_si128(h, _mm_srli_epi32(h, 15));
+	tfxWideInt mult1 = _mm_set1_epi32(0x85ebca6b);
+	h = _mm_mullo_epi32(h, mult1);
+	h = _mm_xor_si128(h, _mm_srli_epi32(h, 13));
+	tfxWideInt mult2 = _mm_set1_epi32(0xc2b2ae35);
+	h = _mm_mullo_epi32(h, mult2);
+	h = _mm_xor_si128(h, _mm_srli_epi32(h, 16));
+	return tfxWideConvert(h);
+}
+
+tfxINTERNAL inline tfxU32 SeedGen(tfxU32 h)
+{
+	h ^= h >> 15;
+	h *= 0x85ebca6b;
+	h ^= h >> 13;
+	h *= 0xc2b2ae35;
+	h ^= h >> 16;
+	return h;
+}
+
 //--------------------------------
 //Particle manager internal functions
 //--------------------------------
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
+tfxINTERNAL void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, float cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);
 tfxAPI_EDITOR tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
 tfxAPI_EDITOR tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
@@ -6344,8 +6371,8 @@ tfxINTERNAL void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
-tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path);
-tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, bool has_noise, bool has_path, bool has_rotated_path);
+tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterStateFlags flags);
+tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterStateFlags flags);
 tfxAPI_EDITOR void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
