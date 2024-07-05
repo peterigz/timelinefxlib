@@ -11465,11 +11465,13 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			tfxWideFloat two = tfxWideSetSingle(2.f);
 			tfxWideFloat max_uint = tfxWideSetSingle((float)UINT32_MAX);
 			tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);
-			tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(SeedGenWide(seed), max_uint), tfxWideMul(tfxWideSetSingle(0.1f), influence));
+			tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(SeedGenWide(seed), max_uint), tfxWideMul(tfxWideSetSingle(0.01f), influence));
 			speed = tfxWideAdd(speed, random_speed);
 			tfxWideFloat random_x, random_y, random_z;
-			RandomVectorInConeWide(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, tfx180Radians, &random_x, &random_y, &random_z);
-			random_x = tfxWideAdd(tfxWideDiv(SeedGenWide(seed), max_uint), tfxWideSetSingle(0.5f));
+			//RandomVectorInConeWide(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, tfx180Radians, &random_x, &random_y, &random_z);
+			random_x = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideAddi(seed, tfxWideSetSinglei(1000))), max_uint), two);
+			random_y = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideAddi(seed, tfxWideSetSinglei(2000))), max_uint), two);
+			random_z = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideAddi(seed, tfxWideSetSinglei(3000))), max_uint), two);
 
 			// Create a random direction vector
 			// Normalize the random direction vector
@@ -11509,10 +11511,6 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			velocity_normal_z = tfxWideDiv(velocity_normal_z, length);
 
 			tfxWideInt packed_normal = PackWide10bitUnsigned(velocity_normal_x, velocity_normal_y, velocity_normal_z);
-			//tfxWideFloat speed_length = tfxWideDiv(velocity_scalar, length);
-			//velocity_normal_x = tfxWideMul(velocity_normal_x, speed_length);
-			//velocity_normal_y = tfxWideMul(velocity_normal_y, speed_length);
-			//velocity_normal_z = tfxWideMul(velocity_normal_z, speed_length);
 
 			current_velocity_x = tfxWideMul(velocity_normal_x, velocity_scalar);
 			current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
@@ -11520,6 +11518,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 
 			// Update position
 			tfxWideStorei((tfxWideIntLoader*)&bank.velocity_normal[index], packed_normal);
+			UnPackWide10bit(packed_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 			tfxWideStore(&bank.noise_offset[index], speed);
 		}
 		else {
@@ -13664,7 +13663,7 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 	if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
 		for (int i = 0; i != work_entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm->particle_array_buffers[emitter.particles_index], work_entry->spawn_start_index + i);
-			work_entry->particle_data->uid[index] = pm->unique_particle_id++;
+			work_entry->particle_data->uid[index] = RandomRange(&pm->random, tfxMAX_UINT);
 		}
 	}
 
@@ -13757,7 +13756,7 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 	if (pm->flags & tfxEffectManagerFlags_recording_sprites && pm->flags & tfxEffectManagerFlags_using_uids) {
 		for (int i = 0; i != work_entry->amount_to_spawn; ++i) {
 			tfxU32 index = GetCircularIndex(&pm->particle_array_buffers[emitter.particles_index], work_entry->spawn_start_index + i);
-			work_entry->particle_data->uid[index] = pm->unique_particle_id++;
+			work_entry->particle_data->uid[index] = RandomRange(&pm->random, tfxMAX_UINT);
 		}
 	}
 
@@ -13885,7 +13884,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 		//Set the age of the particle to an interpolated value between 0 and the length of the frame depending on how many particles are being spawned this frame
 		age = age_accumulator;
-		entry->particle_data->uid[index] = pm.unique_particle_id++;
+		entry->particle_data->uid[index] = RandomRange(&random, tfxMAX_INT);
 		age_accumulator += frame_fraction;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxEffectManagerFlags_recording_sprites) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
