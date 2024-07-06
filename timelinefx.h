@@ -1956,8 +1956,32 @@ inline void tfxWideSinCos(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* c
 
 	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK)));
 	*sin = tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result))));
+}
 
-	return;
+inline void tfxWideSinCosAdd(tfxWideFloat angle, tfxWideFloat* sin, tfxWideFloat* cos) {
+	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK, angle));
+
+	//clamp to the range 0..2pi
+
+	//take absolute value
+	angle = tfxWideAndNot(SIGNMASK, angle);
+	//fmod(angle,tfxPI2)
+	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWideSetSingle(tfxINVTWOPI)))), tfxWideSetSingle(tfxPI2))); //simplied SSE2 fmod, must always operate on absolute value
+	//if SSE4.1 is always available, comment the line above and uncomment the line below
+	//angle=tfxWideSub(angle,tfxWideMul(_mm_floor_ps(tfxWideMul(angle,tfxWideSetSingle(tfxINVTWOPI))),tfxWideSetSingle(tfxPI2))); //faster if SSE4.1 is always available
+
+	tfxWideFloat cosangle = angle;
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI), angle))));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
+
+	tfxWideFloat result = tfxWideCos52s(cosangle);
+
+	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK));
+	*cos = tfxWideAdd(*cos, result);
+
+	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK)));
+	*sin = tfxWideAdd(*sin, tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result)))));
 }
 /*
 End of Robin Lobel code
@@ -6322,6 +6346,7 @@ tfxINTERNAL void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleNoise(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleMotionRandomness(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void SpawnParticleWeight(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleVelocity(tfx_work_queue_t *queue, void *data);
