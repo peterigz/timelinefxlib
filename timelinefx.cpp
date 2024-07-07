@@ -6460,7 +6460,6 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "variation_roll_spin") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.spin, &n); }
 		if ((*values)[0] == "variation_pitch_spin") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.pitch_spin, &n); }
 		if ((*values)[0] == "variation_yaw_spin") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.yaw_spin, &n); }
-		if ((*values)[0] == "variation_motion_randomness") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.noise_offset, &n); }
 		if ((*values)[0] == "variation_noise_offset") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.noise_offset, &n); }
 		if ((*values)[0] == "variation_noise_resolution") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.noise_resolution, &n); }
 		if ((*values)[0] == "variation_motion_randomness") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].variation.motion_randomness, &n); }
@@ -6486,11 +6485,7 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "overtime_noise_resolution") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.noise_resolution, &n); }
 		if ((*values)[0] == "overtime_motion_randomness") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.motion_randomness, &n); }
 
-		if ((*values)[0] == "path_pitch") { 
-			tfx_attribute_node_t n; 
-			AssignNodeData(&n, values); 
-			AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_x, &n); 
-		}
+		if ((*values)[0] == "path_pitch") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_x, &n); }
 		if ((*values)[0] == "path_yaw") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_y, &n); }
 		if ((*values)[0] == "path_roll") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_z, &n); }
 		if ((*values)[0] == "path_offset_x") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].offset_x, &n); }
@@ -11297,7 +11292,12 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
 	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
 	tfx_emitter_path_t *path = emitter.path_attributes != tfxINVALID ? &pm.library->paths[emitter.path_attributes] : nullptr;
-	tfxWideInt time_step = tfxWideConverti(tfxWideSetSingle(emitter.age / 100.f));
+	tfxWideInt time_step = tfxWideConverti(tfxWideSetSingle(emitter.age / 250.f));
+	tfxWideInt next_time_step = tfxWideConverti(tfxWideSetSingle((emitter.age + pm.frame_length) / 250.f));
+	tfxWideFloat time_step_fraction = tfxWideSub(tfxWideSetSingle(emitter.age / 250.f), tfxWideConvert(time_step));
+	tfxWideInt time_changed_mask = tfxWideLessi(time_step, next_time_step);
+	tfxWideFloat smoothstep = tfxWideMul(time_step_fraction, time_step_fraction);
+	smoothstep = tfxWideMul(smoothstep, tfxWideSub(tfxWideSetSingle(3.f), tfxWideMul(tfxWideSetSingle(2.f), time_step_fraction)));
 
 	//Noise
 	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
@@ -11305,7 +11305,8 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	const tfxWideFloat angle_offsets_z = tfxWideSetSingle(emitter.angle_offsets.roll);
 	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
 	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->motion_randomness.lookup.last_frame);
-	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame));
+	float motion_randomness_base_single = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame);
+	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(motion_randomness_base_single);
 	tfxWideFloat emitter_x;
 	tfxWideFloat emitter_z;
 
@@ -11466,11 +11467,11 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			tfxWideFloat max_uint = tfxWideSetSingle((float)UINT32_MAX);
 			tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);
 			tfxWideFloat random_x, random_y, random_z;
-			//RandomVectorInConeWide(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, tfx180Radians, &random_x, &random_y, &random_z);
 			tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(SeedGenWide(seed), max_uint), tfxWideMul(tfxWideSetSingle(0.01f), influence));
-			random_x = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 1)), max_uint), two);
-			random_y = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 2)), max_uint), two);
-			random_z = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 3)), max_uint), two);
+			RandomVectorInConeWide(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, 0.3926991f * motion_randomness_base_single, &random_x, &random_y, &random_z);
+			//random_x = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 1)), max_uint), two);
+			//random_y = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 2)), max_uint), two);
+			//random_z = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 3)), max_uint), two);
 			speed = tfxWideAdd(speed, random_speed);
 
 			// Create a random direction vector
@@ -11487,11 +11488,31 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			random_x = tfxWideMul(random_x, length_one);
 			random_y = tfxWideMul(random_y, length_one);
 			random_z = tfxWideMul(random_z, length_one);
-
-			// Add the random direction to the current velocity
-			velocity_normal_x = tfxWideAdd(velocity_normal_x, tfxWideMul(random_x, point_one_influence));
-			velocity_normal_y = tfxWideAdd(velocity_normal_y, tfxWideMul(random_y, point_one_influence));
-			velocity_normal_z = tfxWideAdd(velocity_normal_z, tfxWideMul(random_z, point_one_influence));
+			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
+			if (orbit_relative + orbit_non_relative) {
+				tfxWideFloat vx, vy, vz;
+				UnPackWide10bit(velocity_normal, vx, vy, vz);
+				tfxWideFloat multiplier = tfxWideSetSingle(1.f);
+				//velocity_normal_x = tfxWideSub(velocity_normal_x, vx);
+				//velocity_normal_y = tfxWideSub(velocity_normal_y, vy);
+				//velocity_normal_z = tfxWideSub(velocity_normal_z, vz);
+				velocity_normal_x = tfxWideMul(velocity_normal_x, multiplier);
+				velocity_normal_y = tfxWideMul(velocity_normal_y, multiplier);
+				velocity_normal_z = tfxWideMul(velocity_normal_z, multiplier);
+				velocity_normal_x = tfxWideAdd(velocity_normal_x, tfxWideMul(tfxWideMul(random_x, point_one_influence), smoothstep));
+				velocity_normal_y = tfxWideAdd(velocity_normal_y, tfxWideMul(tfxWideMul(random_y, point_one_influence), smoothstep));
+				velocity_normal_z = tfxWideAdd(velocity_normal_z, tfxWideMul(tfxWideMul(random_z, point_one_influence), smoothstep));
+				//velocity_normal_x = tfxWideAdd(velocity_normal_x, vx);
+				//velocity_normal_y = tfxWideAdd(velocity_normal_y, vy);
+				//velocity_normal_z = tfxWideAdd(velocity_normal_z, vz);
+			}
+			else {
+				// Add the random direction to the current velocity
+				//return current * tween + captured * (1.f - tween);
+				velocity_normal_x = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(velocity_normal_x, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+				velocity_normal_y = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(velocity_normal_y, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+				velocity_normal_z = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(velocity_normal_z, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+			}
 
 			// Update speed
 			//particle->speed += randomSpeed;
@@ -11516,9 +11537,11 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
 			current_velocity_z = tfxWideMul(velocity_normal_z, velocity_scalar);
 
-			// Update position
-			tfxWideStorei((tfxWideIntLoader*)&bank.velocity_normal[index], packed_normal);
-			UnPackWide10bit(packed_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
+			tfxWideInt normal_to_store = tfxWideOri(
+				tfxWideAndi(packed_normal, time_changed_mask),
+				tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWideSetSinglei(-1)))
+			);
+			tfxWideStorei((tfxWideIntLoader*)&bank.velocity_normal[index], normal_to_store);
 			tfxWideStore(&bank.noise_offset[index], speed);
 		}
 		else {
@@ -11976,8 +11999,10 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 				tfxWideFloat multiplier = tfxWideSetSingle(2.f);
 				velocity_normal_x = tfxWideMul(velocity_normal_x, multiplier);
 				velocity_normal_y = tfxWideMul(velocity_normal_y, multiplier);
-				direction = tfxWideAdd(random_direction, tfxWideAtan2(velocity_normal_y, velocity_normal_x));
-				tfxWideSinCosAdd(direction, &velocity_normal_x, &velocity_normal_y);
+				tfxWideFloat mx, my;
+				tfxWideSinCos(tfxWideAdd(direction, lookup_direction.m), &mx, &my);
+				velocity_normal_x = tfxWideAdd(velocity_normal_x, tfxWideMul(mx, influence));
+				velocity_normal_y = tfxWideAdd(velocity_normal_y, tfxWideMul(my, influence));
 				tfxWideFloat l = tfxWideMul(velocity_normal_x, velocity_normal_x);
 				l = tfxWideAdd(l, tfxWideMul(velocity_normal_y, velocity_normal_y));
 #ifdef tfxARM
@@ -15719,7 +15744,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfx_vec3_t velocity_normal;
-		if (emission_direction != tfxPathGradient) {
+		if (emission_direction != tfxPathGradient && emission_direction != tfxOrbital) {
 			if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
 				velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
 			}
@@ -15728,6 +15753,20 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 				velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
 				velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
 			}
+		}
+		else if (emission_direction == tfxOrbital) {
+			if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+				velocity_normal.z = local_position_x - emitter.world_position.x;
+				velocity_normal.y = 0.f;
+				velocity_normal.x = local_position_z - emitter.world_position.z * -1.f;
+				velocity_normal = NormalizeVec3Fast(&velocity_normal);
+			} else {
+				velocity_normal.z = emitter.handle.x + local_position_x;
+				velocity_normal.y = 0.f;
+				velocity_normal.x = (emitter.handle.z + local_position_z) * -1.f;
+				velocity_normal = NormalizeVec3Fast(&velocity_normal);
+			}
+			velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
 		}
 		if (emitter.state_flags & tfxEmitterStateFlags_use_simple_motion_randomness) {
 			entry->particle_data->noise_offset[index] = 0; 
@@ -16232,11 +16271,7 @@ void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_weight));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_velocity));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_spin));
-	if (flags & tfxEmitterStateFlags_has_noise) {
-		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
-		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
-	}
-	else if (flags & tfxEmitterStateFlags_use_simple_motion_randomness) {
+	if ((flags & tfxEmitterStateFlags_has_noise) + (flags & tfxEmitterStateFlags_use_simple_motion_randomness) > 0) {
 		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
 		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
 	}
@@ -16275,12 +16310,9 @@ void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_spin));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_pitch_spin));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, base_yaw_spin));
-	if (flags & tfxEmitterStateFlags_has_noise) {
+	if ((flags & tfxEmitterStateFlags_has_noise) + (flags & tfxEmitterStateFlags_use_simple_motion_randomness) > 0) {
 		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
 		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_resolution));
-	}
-	else if (flags & tfxEmitterStateFlags_use_simple_motion_randomness) {
-		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, noise_offset));
 	}
 	if (tfxEmitterStateFlags_has_path) {
 		AddStructArray(buffer, sizeof(float), offsetof(tfx_particle_soa_t, path_position));
