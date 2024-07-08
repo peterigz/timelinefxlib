@@ -2584,6 +2584,7 @@ const int tfxMIN_INT = INT_MIN;
 const tfxS64 tfxMAX_64i = LLONG_MAX;
 const tfxS64 tfxMIN_64i = LLONG_MIN;
 const tfxU64 tfxMAX_64u = ULLONG_MAX;
+const tfxWideFloat tfx180RadiansWide = tfxWideSetSingle(3.14159f);
 const float tfxGAMMA = 1.f;
 #if defined(__x86_64__) || defined(_M_X64)
 typedef tfxU64 tfxAddress;
@@ -6326,7 +6327,7 @@ tfxINTERNAL inline tfxU32 SeedGen(tfxU32 h)
 //--------------------------------
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
-tfxINTERNAL void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, float cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);
+tfxINTERNAL void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, tfxWideFloat cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);
 tfxAPI_EDITOR tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
 tfxAPI_EDITOR tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);

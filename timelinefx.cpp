@@ -3033,11 +3033,12 @@ tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, f
 	return rotated_vector;
 }
 
-void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, float cone_angle, tfxWideFloat* result_x, tfxWideFloat* result_y, tfxWideFloat* result_z) {
+void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, tfxWideFloat cone_angle, tfxWideFloat* result_x, tfxWideFloat* result_y, tfxWideFloat* result_z) {
 	// Convert cone angle to radians
 
+	cone_angle = tfxWideMin(cone_angle, tfx180RadiansWide);
 	// Calculate the minimum z value for the cone
-	tfxWideFloat min_z = tfxWideCos52s(tfxWideSetSingle(cone_angle));
+	tfxWideFloat min_z = tfxWideCos52s(cone_angle);
 
 	tfxWideFloat max_uint = tfxWideSetSingle((float)UINT32_MAX);
 	// Randomly sample z in [min_z, 1]
@@ -11305,8 +11306,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	const tfxWideFloat angle_offsets_z = tfxWideSetSingle(emitter.angle_offsets.roll);
 	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
 	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->motion_randomness.lookup.last_frame);
-	float motion_randomness_base_single = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame);
-	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(motion_randomness_base_single);
+	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame));
 	tfxWideFloat emitter_x;
 	tfxWideFloat emitter_z;
 
@@ -11468,10 +11468,8 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);
 			tfxWideFloat random_x, random_y, random_z;
 			tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(SeedGenWide(seed), max_uint), tfxWideMul(tfxWideSetSingle(0.01f), influence));
-			RandomVectorInConeWide(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, 0.3926991f * motion_randomness_base_single, &random_x, &random_y, &random_z);
-			//random_x = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 1)), max_uint), two);
-			//random_y = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 2)), max_uint), two);
-			//random_z = tfxWideMul(tfxWideDiv(SeedGenWide(tfxWideShiftLeft(seed, 3)), max_uint), two);
+			tfxWideFloat degree_range_base = tfxWideSetSingle(0.392699f);
+			RandomVectorInConeWide(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, tfxWideMul(degree_range_base, influence), &random_x, &random_y, &random_z);
 			speed = tfxWideAdd(speed, random_speed);
 
 			// Create a random direction vector
@@ -11489,6 +11487,7 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 			random_y = tfxWideMul(random_y, length_one);
 			random_z = tfxWideMul(random_z, length_one);
 			tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
+			tfxWideInt packed_normal;
 			if (orbit_relative + orbit_non_relative) {
 				tfxWideFloat vx, vy, vz;
 				UnPackWide10bit(velocity_normal, vx, vy, vz);
@@ -11499,12 +11498,38 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 				velocity_normal_x = tfxWideMul(velocity_normal_x, multiplier);
 				velocity_normal_y = tfxWideMul(velocity_normal_y, multiplier);
 				velocity_normal_z = tfxWideMul(velocity_normal_z, multiplier);
-				velocity_normal_x = tfxWideAdd(velocity_normal_x, tfxWideMul(tfxWideMul(random_x, point_one_influence), smoothstep));
-				velocity_normal_y = tfxWideAdd(velocity_normal_y, tfxWideMul(tfxWideMul(random_y, point_one_influence), smoothstep));
-				velocity_normal_z = tfxWideAdd(velocity_normal_z, tfxWideMul(tfxWideMul(random_z, point_one_influence), smoothstep));
-				//velocity_normal_x = tfxWideAdd(velocity_normal_x, vx);
-				//velocity_normal_y = tfxWideAdd(velocity_normal_y, vy);
-				//velocity_normal_z = tfxWideAdd(velocity_normal_z, vz);
+				vx = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(vx, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+				vy = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(vy, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+				vz = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(vz, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+				velocity_normal_x = tfxWideAdd(velocity_normal_x, vx);
+				velocity_normal_y = tfxWideAdd(velocity_normal_y, vy);
+				velocity_normal_z = tfxWideAdd(velocity_normal_z, vz);
+
+				length = tfxWideMul(velocity_normal_x, velocity_normal_x);
+				length = tfxWideAdd(length, tfxWideMul(velocity_normal_y, velocity_normal_y));
+				length = tfxWideAdd(length, tfxWideMul(velocity_normal_z, velocity_normal_z));
+#ifdef tfxARM
+				length = tfxWideMul(tfxWideRSqrt(length), length);
+#else
+				length = tfxWideSqrt(length);
+#endif
+				velocity_normal_x = tfxWideDiv(velocity_normal_x, length);
+				velocity_normal_y = tfxWideDiv(velocity_normal_y, length);
+				velocity_normal_z = tfxWideDiv(velocity_normal_z, length);
+
+				length = tfxWideMul(vx, vx);
+				length = tfxWideAdd(length, tfxWideMul(vy, vy));
+				length = tfxWideAdd(length, tfxWideMul(vz, vz));
+#ifdef tfxARM
+				length = tfxWideMul(tfxWideRSqrt(length), length);
+#else
+				length = tfxWideSqrt(length);
+#endif
+				vx = tfxWideDiv(vx, length);
+				vy = tfxWideDiv(vy, length);
+				vz = tfxWideDiv(vz, length);
+
+				packed_normal = PackWide10bitUnsigned(vx, vy, vz);
 			}
 			else {
 				// Add the random direction to the current velocity
@@ -11512,26 +11537,23 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 				velocity_normal_x = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(velocity_normal_x, tfxWideSub(tfxWIDEONE, time_step_fraction)));
 				velocity_normal_y = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(velocity_normal_y, tfxWideSub(tfxWIDEONE, time_step_fraction)));
 				velocity_normal_z = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(velocity_normal_z, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+
+				length = tfxWideMul(velocity_normal_x, velocity_normal_x);
+				length = tfxWideAdd(length, tfxWideMul(velocity_normal_y, velocity_normal_y));
+				length = tfxWideAdd(length, tfxWideMul(velocity_normal_z, velocity_normal_z));
+	#ifdef tfxARM
+				length = tfxWideMul(tfxWideRSqrt(length), length);
+	#else
+				length = tfxWideSqrt(length);
+	#endif
+				velocity_normal_x = tfxWideDiv(velocity_normal_x, length);
+				velocity_normal_y = tfxWideDiv(velocity_normal_y, length);
+				velocity_normal_z = tfxWideDiv(velocity_normal_z, length);
+
+				packed_normal = PackWide10bitUnsigned(velocity_normal_x, velocity_normal_y, velocity_normal_z);
 			}
 
-			// Update speed
-			//particle->speed += randomSpeed;
 			velocity_scalar = tfxWideAdd(velocity_scalar, speed);
-
-			// Normalize the velocity and apply the speed
-			length = tfxWideMul(velocity_normal_x, velocity_normal_x);
-			length = tfxWideAdd(length, tfxWideMul(velocity_normal_y, velocity_normal_y));
-			length = tfxWideAdd(length, tfxWideMul(velocity_normal_z, velocity_normal_z));
-#ifdef tfxARM
-			length = tfxWideMul(tfxWideRSqrt(length), length);
-#else
-			length = tfxWideSqrt(length);
-#endif
-			velocity_normal_x = tfxWideDiv(velocity_normal_x, length);
-			velocity_normal_y = tfxWideDiv(velocity_normal_y, length);
-			velocity_normal_z = tfxWideDiv(velocity_normal_z, length);
-
-			tfxWideInt packed_normal = PackWide10bitUnsigned(velocity_normal_x, velocity_normal_y, velocity_normal_z);
 
 			current_velocity_x = tfxWideMul(velocity_normal_x, velocity_scalar);
 			current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
