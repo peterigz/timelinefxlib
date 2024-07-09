@@ -2055,7 +2055,6 @@ tfxWideInt PackWide10bit(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWi
 tfx_vec4_t UnPack10bit(tfxU32 in) {
 	tfxUInt10bit unpack;
 	unpack.pack = in;
-	int test = unpack.data.y;
 	tfx_vec3_t result((float)unpack.data.z, (float)unpack.data.y, (float)unpack.data.x);
 	result = result * tfx_vec3_t(TFXONE_DIV_511, TFXONE_DIV_511, TFXONE_DIV_511);
 	return tfx_vec4_t(result, (float)unpack.data.w);
@@ -5098,7 +5097,6 @@ tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shap
 void CopyLibraryLookupIndexesData(tfx_library_t *library, void* dst) {
 	TFX_ASSERT(dst);	//must be a valid pointer to a space in memory
 	TFX_ASSERT(library->compiled_lookup_indexes.size());		//There is no data to copy, make sure a library has been loaded properly and it contains effects with emitters
-	tfx_graph_lookup_index_t *test = static_cast<tfx_graph_lookup_index_t*>(dst);
 	memcpy(dst, library->compiled_lookup_indexes.data, GetLibraryLookupIndexesSizeInBytes(library));
 }
 
@@ -6166,6 +6164,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("alt_color_lifetime_sampling", tfxBool);
 	names_and_types.Insert("alt_size_lifetime_sampling", tfxBool);
 	names_and_types.Insert("use_simple_motion_randomness", tfxBool);
+	//names_and_types.Insert("simple_motion_smoothstep", tfxBool);
 
 	//Graphs
 	names_and_types.Insert("global_life", tfxFloat);
@@ -6966,6 +6965,9 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
 	if (*field == "use_simple_motion_randomness") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_simple_motion_randomness; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_simple_motion_randomness; }
 	}
+	//if (*field == "simple_motion_smoothstep") {
+		//if (value) { effect->property_flags |= tfxEmitterPropertyFlags_simple_motion_smoothstep; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_simple_motion_smoothstep; }
+	//}
 	if (*field == "path_is_3d") {
 		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_3d; }
 	}
@@ -7040,6 +7042,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("alt_color_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling));
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
 	file->AddLine("use_simple_motion_randomness=%i", (flags & tfxEmitterPropertyFlags_use_simple_motion_randomness));
+	//file->AddLine("simple_motion_smoothstep=%i", (flags & tfxEmitterPropertyFlags_simple_motion_smoothstep));
 }
 
 void StreamProperties(tfx_effect_emitter_t *effect, tfx_str_t *file) {
@@ -10624,6 +10627,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 			state_flags |= (!(e.property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness) && GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.velocity_turbulance) && GetGraphMaxValue(&e.library->emitter_attributes[e.emitter_attributes].overtime.noise_resolution)) ? tfxEmitterStateFlags_has_noise : 0;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness;
+			//state_flags |= e.property_flags & tfxEmitterPropertyFlags_simple_motion_smoothstep;
 			state_flags |= (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d) && (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
 			state_flags |= emitter_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
 			if (emitter_properties->emission_type == tfxPath) {
@@ -11293,14 +11297,16 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
 	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
 	tfx_emitter_path_t *path = emitter.path_attributes != tfxINVALID ? &pm.library->paths[emitter.path_attributes] : nullptr;
+
 	tfxWideInt time_step = tfxWideConverti(tfxWideSetSingle(emitter.age / 250.f));
 	tfxWideInt next_time_step = tfxWideConverti(tfxWideSetSingle((emitter.age + pm.frame_length) / 250.f));
-	tfxWideFloat time_step_fraction = tfxWideSub(tfxWideSetSingle(emitter.age / 250.f), tfxWideConvert(time_step));
 	tfxWideInt time_changed_mask = tfxWideLessi(time_step, next_time_step);
-	tfxWideFloat smoothstep = tfxWideMul(time_step_fraction, time_step_fraction);
-	smoothstep = tfxWideMul(smoothstep, tfxWideSub(tfxWideSetSingle(3.f), tfxWideMul(tfxWideSetSingle(2.f), time_step_fraction)));
+	tfxWideFloat time_step_fraction = tfxWideSub(tfxWideSetSingle(emitter.age / 250.f), tfxWideConvert(time_step));
+	time_step_fraction = tfxWideMul(tfxWideMul(time_step_fraction, time_step_fraction), tfxWideSub(tfxWideSetSingle(3.f), tfxWideMul(tfxWideSetSingle(2.f), time_step_fraction)));
+	//I tested with smoothstep but there's so little difference I didn't think it was worth it. Using smoothstep as default though for now.
+	//if (emitter.state_flags & tfxEmitterStateFlags_simple_motion_smoothstep) {
+	//}
 
-	//Noise
 	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
 	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
 	const tfxWideFloat angle_offsets_z = tfxWideSetSingle(emitter.angle_offsets.roll);
@@ -15957,6 +15963,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 	}
 
 	tfxU32 offset = 0;
+	bool has_random_movement = (emitter.state_flags & tfxEmitterStateFlags_has_noise) + (emitter.state_flags & tfxEmitterStateFlags_use_simple_motion_randomness) > 0;
 	for (int i = work_entry->start_index; i >= 0; --i) {
 		const tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i);
 		tfxParticleFlags &flags = bank.flags[index];
@@ -15987,9 +15994,8 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 			bank.sprite_index[next_index] = bank.sprite_index[index];
 			bank.depth_index[next_index] = bank.depth_index[index];
 			bank.particle_index[next_index] = bank.particle_index[index];
-			if (pm.flags & tfxEffectManagerFlags_recording_sprites) {
-				bank.uid[next_index] = bank.uid[index];
-			}
+			bank.uid[next_index] = bank.uid[index];
+			bank.uid[index] = 0;
 			bank.flags[next_index] = bank.flags[index];
 			bank.age[next_index] = bank.age[index];
 			bank.max_age[next_index] = bank.max_age[index];
@@ -16012,11 +16018,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 				bank.base_pitch_spin[next_index] = bank.base_pitch_spin[index];
 				bank.base_yaw_spin[next_index] = bank.base_yaw_spin[index];
 			}
-			if (emitter.state_flags & tfxEmitterStateFlags_has_noise) {
-				bank.noise_offset[next_index] = bank.noise_offset[index];
-				bank.noise_resolution[next_index] = bank.noise_resolution[index];
-			}
-			if (emitter.state_flags & tfxEmitterStateFlags_use_simple_motion_randomness) {
+			if (has_random_movement) {
 				bank.noise_offset[next_index] = bank.noise_offset[index];
 				bank.noise_resolution[next_index] = bank.noise_resolution[index];
 			}

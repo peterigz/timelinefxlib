@@ -1524,7 +1524,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideDiv _mm256_div_ps
 #define tfxWideAddi _mm256_add_epi32
 #define tfxWideSubi _mm256_sub_epi32
-#define tfxWideMuli _mm256_mul_epi32
+#define tfxWideMuli _mm256_mullo_epi32
 #define tfxWideSqrt _mm256_sqrt_ps
 #define tfxWideRSqrt _mm256_rsqrt_ps
 #define tfxWideMoveMask _mm256_movemask_epi8
@@ -1613,7 +1613,7 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideDiv _mm_div_ps
 #define tfxWideAddi _mm_add_epi32
 #define tfxWideSubi _mm_sub_epi32
-#define tfxWideMuli _mm_mul_epu32
+#define tfxWideMuli _mm_mullo_epi32
 #define tfxWideSqrt _mm_sqrt_ps
 #define tfxWideRSqrt _mm_rsqrt_ps
 #define tfxWideMoveMask _mm_movemask_epi8
@@ -2477,7 +2477,8 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling = 1 << 26,	//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
-	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
+	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29,		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
+	//tfxEmitterPropertyFlags_simple_motion_smoothstep = 1 << 30		//Unused, probably just remove.
 };
 
 enum tfx_particle_flag_bits : unsigned int {
@@ -2520,7 +2521,8 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
 	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28,
-	tfxEmitterStateFlags_use_simple_motion_randomness = 1 << 29
+	tfxEmitterStateFlags_use_simple_motion_randomness = 1 << 29,
+	//tfxEmitterStateFlags_simple_motion_smoothstep = 1 << 30
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -6287,28 +6289,31 @@ tfxINTERNAL inline tfxU32 SeedGen(tfxU32 px, tfxU32 py) {
 	return h;
 }
 
-tfxINTERNAL inline tfxWideInt SeedGenWide(tfxWideInt px, tfxWideInt py)
+tfxINTERNAL inline tfxWideInt SeedGenWide(tfxWideInt base, tfxWideInt h)
 {
-	tfxWideInt h = _mm_mul_epi32(_mm_add_epi32(px, py), _mm_set1_epi32(2654435761u));
-	h = _mm_xor_si128(h, _mm_srli_epi32(h, 15));
-	tfxWideInt mult1 = _mm_set1_epi32(0x85ebca6b);
-	h = _mm_mullo_epi32(h, mult1);
-	h = _mm_xor_si128(h, _mm_srli_epi32(h, 13));
-	tfxWideInt mult2 = _mm_set1_epi32(0xc2b2ae35);
-	h = _mm_mullo_epi32(h, mult2);
-	h = _mm_xor_si128(h, _mm_srli_epi32(h, 16));
+	h = tfxWideXOri(base, h);
+	tfxWideInt temp = tfxWideShiftRight(h, 15);
+	h = tfxWideXOri(h, temp);
+	tfxWideInt multiplier1 = tfxWideSetSinglei(0x85ebca6b);
+	h = tfxWideMuli(h, multiplier1);
+	temp = tfxWideShiftRight(h, 13);
+	h = tfxWideXOri(h, temp);
+	tfxWideInt multiplier2 = tfxWideSetSinglei(0xc2b2ae35);
+	h = tfxWideMuli(h, multiplier2);
+	temp = tfxWideShiftRight(h, 16);
+	h = tfxWideXOri(h, temp);
 	return h;
 }
 
 tfxINTERNAL inline tfxWideFloat SeedGenWide(tfxWideInt h)
 {
-	h = _mm_xor_si128(h, _mm_srli_epi32(h, 15));
-	tfxWideInt mult1 = _mm_set1_epi32(0x85ebca6b);
-	h = _mm_mullo_epi32(h, mult1);
-	h = _mm_xor_si128(h, _mm_srli_epi32(h, 13));
-	tfxWideInt mult2 = _mm_set1_epi32(0xc2b2ae35);
-	h = _mm_mullo_epi32(h, mult2);
-	h = _mm_xor_si128(h, _mm_srli_epi32(h, 16));
+	h = tfxWideXOri(h, tfxWideShiftRight(h, 15));
+	tfxWideInt mult1 = tfxWideSetSinglei(0x85ebca6b);
+	h = tfxWideMuli(h, mult1);
+	h = tfxWideXOri(h, tfxWideShiftRight(h, 13));
+	tfxWideInt mult2 = tfxWideSetSinglei(0xc2b2ae35);
+	h = tfxWideMuli(h, mult2);
+	h = tfxWideXOri(h, tfxWideShiftRight(h, 16));
 	return tfxWideConvert(h);
 }
 
