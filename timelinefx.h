@@ -2069,12 +2069,12 @@ enum tfx_graph_category : unsigned int {
 #define	TFX_OVERTIME_COUNT  19
 #define	TFX_TRANSFORM_COUNT  6
 
-#define TFX_GLOBAL_START 0
-#define	TFX_PROPERTY_START TFX_GLOBAL_COUNT
-#define	TFX_BASE_START (TFX_PROPERTY_START + TFX_PROPERTY_COUNT)
-#define	TFX_VARIATION_START (TFX_BASE_START + TFX_BASE_COUNT)
-#define	TFX_OVERTIME_START (TFX_VARIATION_START + TFX_VARIATION_COUNT)
-#define	TFX_TRANSFORM_START (TFX_OVERTIME_START + TFX_OVERTIME_COUNT)
+const int TFX_GLOBAL_START = 0;
+const int TFX_PROPERTY_START = TFX_GLOBAL_COUNT;
+const int TFX_BASE_START = (TFX_PROPERTY_START + TFX_PROPERTY_COUNT);
+const int TFX_VARIATION_START = (TFX_BASE_START + TFX_BASE_COUNT);
+const int TFX_OVERTIME_START = (TFX_VARIATION_START + TFX_VARIATION_COUNT);
+const int TFX_TRANSFORM_START = (TFX_OVERTIME_START + TFX_OVERTIME_COUNT);
 
 //All the different types of graphs, split into main type: global, property, base, variation and overtime
 enum tfx_graph_type : unsigned char {
@@ -5698,6 +5698,9 @@ struct tfx_control_work_entry_t {
 	tfxU32 layer;
 	tfx_emitter_properties_t *properties;
 	tfx_sprite_soa_t *sprites;
+	tfx_emitter_path_t* path;
+	tfxWideFloat node_count;
+	bool sample_path_life;
 	float overal_scale;
 	float stretch;
 	float intensity;
