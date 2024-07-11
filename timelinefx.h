@@ -1570,12 +1570,16 @@ const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
 const __m256 tfxWIDEG32_4 = _mm256_set1_ps((1.0f / 6.0f) * 2.f);
 const __m256 tfxWIDEG33_4 = _mm256_set1_ps((1.0f / 6.0f) * 3.f);
 const __m256i tfxWIDEONEi = _mm256_set1_epi32(1);
+const __m256 tfxWIDEMINUSONE = _mm256_set1_ps(-1.f);
+const __m256i tfxWIDEMINUSONEi = _mm256_set1_epi32(-1);
 const __m256 tfxWIDEONE = _mm256_set1_ps(1.f);
 const __m256 tfxWIDE255 = _mm256_set1_ps(255.f);
 const __m256 tfxWIDEZERO = _mm256_set1_ps(0.f);
 const __m256 tfxWIDETHIRTYTWO = _mm256_set1_ps(32.f);
 const __m256i tfxWIDEFF = _mm256_set1_epi32(0xFF);
 const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
+const __m256 tfxMAXUINTf = _mm256_set1_ps((float)UINT32_MAX);
+const __m256 tfxDEGREERANGEMR = _mm256_set1_ps(0.392699f);
 
 typedef union {
 	__m256i m;
@@ -1654,12 +1658,16 @@ const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
 const __m128 tfxWIDEG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
 const __m128 tfxWIDEG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
 const __m128i tfxWIDEONEi = _mm_set1_epi32(1);
+const __m128 tfxWIDEMINUSONE = _mm_set1_ps(-1.f);
+const __m128i tfxWIDEMINUSONEi = _mm_set1_epi32(-1);
 const __m128 tfxWIDEONE = _mm_set1_ps(1.f);
 const __m128 tfxWIDE255 = _mm_set1_ps(255.f);
 const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
 const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
 const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
 const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
+const __m128 tfxMAXUINTf = _mm_set1_ps((float)UINT32_MAX);
+const __m128 tfxDEGREERANGEMR = _mm_set1_ps(0.392699f);
 
 tfxINTERNAL const __m128 SIGNMASK = _mm_castsi128_ps(_mm_set1_epi32(0x80000000));
 
@@ -1750,12 +1758,16 @@ const float32x4_t tfxWIDEG3_4 = vdupq_n_f32(1.0f / 6.0f);
 const float32x4_t tfxWIDEG32_4 = vdupq_n_f32((1.0f / 6.0f) * 2.f);
 const float32x4_t tfxWIDEG33_4 = vdupq_n_f32((1.0f / 6.0f) * 3.f);
 const int32x4_t tfxWIDEONEi = vdupq_n_s32(1);
+const float32x4_t tfxWIDEMINUSONE = vdupq_n_f32(-1.f);
+const int32x4_t tfxWIDEMINUSONEi = vdupq_n_s32(-1);
 const float32x4_t tfxWIDEONE = vdupq_n_f32(1.f);
 const float32x4_t tfxWIDE255 = vdupq_n_f32(255.f);
 const float32x4_t tfxWIDEZERO = vdupq_n_f32(0.f);
 const float32x4_t tfxWIDETHIRTYTWO = vdupq_n_f32(32.f);
 const int32x4_t tfxWIDEFF = vdupq_n_s32(0xFF);
 const float32x4_t tfxPWIDESIX = vdupq_n_f32(0.6f);
+const float32x4_t tfxMAXUINTf = vdupq_n_f32((float)UINT32_MAX);
+const float32x4_t tfxDEGREERANGEMR = vdupq_n_f32(0.392699f);
 
 tfxINTERNAL const float32x4_t SIGNMASK = vreinterpretq_s32_f32(vdupq_n_s32(0x80000000));
 
@@ -2302,6 +2314,7 @@ typedef tfxU32 tfxAnimationFlags;				//tfx_animation_flag_bits
 typedef tfxU32 tfxAnimationInstanceFlags;		//tfx_animation_instance_flag_bits
 typedef tfxU32 tfxAnimationManagerFlags;		//tfx_animation_manager_flag_bits
 typedef tfxU32 tfxEmitterPathFlags;				//tfx_emitter_path_flag_bits
+typedef tfxU32 tfxEmitterControlProfileFlags;	//tfx_emitter_control_profile_flag_bits
 
 enum tfx_error_flag_bits {
 	tfxErrorCode_success = 0,
@@ -2342,6 +2355,18 @@ enum tfx_billboarding_option {
 	tfxBillboarding_align_to_camera_and_vector = 2,	//Align to camera and vector
 	tfxBillboarding_align_to_vector = 3,			//Align to vector
 	tfxBillboarding_max = 4				
+};
+
+enum tfx_emitter_control_profile_flag_bits {
+	tfxEmitterControlProfile_basic = 0,
+	tfxEmitterControlProfile_noise = 1 << 0,
+	tfxEmitterControlProfile_orbital = 1 << 1,
+	tfxEmitterControlProfile_motion_randomness = 1 << 2,
+	tfxEmitterControlProfile_path = 1 << 3,
+	tfxEmitterControlProfile_path_rotated_path = 1 << 4,
+	tfxEmitterControlProfile_edge_traversal = 1 << 5,
+	tfxEmitterControlProfile_edge_kill = 1 << 6,
+	tfxEmitterControlProfile_edge_loop = 1 << 7,
 };
 
 enum tfx_particle_manager_flag_bits {
@@ -2515,13 +2540,12 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_no_tween = 1 << 20,
 	tfxEmitterStateFlags_align_with_velocity = 1 << 21,
 	tfxEmitterStateFlags_is_sub_emitter = 1 << 22,
-	tfxEmitterStateFlags_has_noise = 1 << 23,
+	tfxEmitterStateFlags_unused2 = 1 << 23,
 	tfxEmitterStateFlags_can_spin_pitch_and_yaw = 1 << 24,			//For 3d emitters that have free alignment and not always facing the camera
 	tfxEmitterStateFlags_has_path = 1 << 25,
 	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
-	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28,
-	tfxEmitterStateFlags_use_simple_motion_randomness = 1 << 29,
+	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28
 	//tfxEmitterStateFlags_simple_motion_smoothstep = 1 << 30
 };
 
@@ -5298,6 +5322,7 @@ struct tfx_emitter_state_t {
 	tfx_vec3_t emitter_size;
 	float emission_alternator;
 	tfxEmitterStateFlags state_flags;
+	tfxEmitterControlProfileFlags control_profile;
 	tfx_vec2_t image_size;
 	tfx_vec3_t angle_offsets;
 } TFX_ALIGN_AFFIX(16);
@@ -5366,11 +5391,13 @@ struct tfx_effect_emitter_t {
 	tfxU32 emitter_attributes;
 	tfxU32 transform_attributes;
 	tfxU32 path_attributes;
+	//The type of function that should be called to update particle positions
+	tfxEmitterControlProfileFlags control_profile;
 	//Pointer to the immediate parent
 	tfx_effect_emitter_t *parent;
 	//State state_flags for emitters and effects
 	tfxEffectPropertyFlags effect_flags;
-	//When not using insert sort to guarantee particle order, sort passes offers a more lax way of ordering particles over a number of frames.
+	//When not using insert sort to guarantee particle order, sort passes offers a more relaxed way of ordering particles over a number of frames.
 	//The more passes the more quickly ordered the particles will be but at a higher cost
 	tfxU32 sort_passes;
 	//Custom user data, can be accessed in callback functions
@@ -6061,7 +6088,7 @@ tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 //Dump sprites for Debugging
 tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
-tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterStateFlags flags);
+tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 
 //--------------------------------
 //Profilings
@@ -6345,6 +6372,7 @@ tfxINTERNAL void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties);
 tfxINTERNAL void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index);
+tfxAPI_EDITOR void UpdateEmitterControlProfile(tfx_effect_emitter_t *emitter);
 
 tfxAPI_EDITOR void CompletePMWork(tfx_particle_manager_t *pm);
 
@@ -6394,6 +6422,14 @@ tfxINTERNAL void ControlParticleUID(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data);
 
+tfxINTERNAL void ControlParticlePosition3dBasic(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticlePosition3dOrbital(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticlePosition3dNoise(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticlePosition3dNoiseOrbital(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticlePosition3dMotionRandomness(tfx_work_queue_t* queue, void* data);
+tfxINTERNAL void ControlParticlePosition3dMotionRandomnessOrbital(tfx_work_queue_t* queue, void* data);
+tfxINTERNAL void ControlParticleLineBehaviourKill(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticleLineBehaviourLoop(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticlePositionPath3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data);
@@ -6405,8 +6441,8 @@ tfxINTERNAL void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
-tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterStateFlags flags);
-tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterStateFlags flags);
+tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
+tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
 tfxAPI_EDITOR void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
