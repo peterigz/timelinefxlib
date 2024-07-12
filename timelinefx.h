@@ -5690,6 +5690,7 @@ struct tfx_particle_frame_t {
 };
 
 struct tfx_spawn_work_entry_t {
+	tfx_random_t random;
 	tfx_particle_manager_t *pm;
 	tfx_emitter_properties_t *properties;
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
@@ -5916,6 +5917,7 @@ struct tfx_particle_manager_t {
 	std::mutex particle_index_mutex;
 
 	tfx_random_t random;
+	tfx_random_t threaded_random;
 	unsigned int max_compute_controllers;
 	unsigned int highest_compute_controller_index;
 	tfx_compute_fx_global_state_t compute_global_state;
@@ -6369,7 +6371,7 @@ tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *lo
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data);
-tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties);
+tfxINTERNAL tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties);
 tfxINTERNAL void UpdateEmitterState(tfx_particle_manager_t *pm, tfx_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index);
 tfxAPI_EDITOR void UpdateEmitterControlProfile(tfx_effect_emitter_t *emitter);
@@ -7060,6 +7062,7 @@ then the effect will look the same each time. Note that seed of 0 is invalid, it
 */
 tfxAPI inline void SetSeed(tfx_particle_manager_t *pm, tfxU64 seed) {
 	RandomReSeed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
+	RandomReSeed(&pm->threaded_random, seed == 0 ? tfxMAX_UINT : seed);
 }
 
 /*
