@@ -10725,7 +10725,7 @@ void UpdateEmitterControlProfile(tfx_effect_emitter_t* emitter) {
 	if (emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness && GetGraphMaxValue(&emitter->library->emitter_attributes[emitter->emitter_attributes].overtime.motion_randomness) > 0.f) {
 		emitter->control_profile |= tfxEmitterControlProfile_motion_randomness;
 	}
-	if (props->emission_direction == tfxOrbital) {
+	if (props->emission_direction == tfxOrbital && props->emission_type != tfxPoint) {
 		emitter->control_profile |= tfxEmitterControlProfile_orbital;
 	}
 	if ((!(emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness) && GetGraphMaxValue(&emitter->library->emitter_attributes[emitter->emitter_attributes].overtime.velocity_turbulance) && GetGraphMaxValue(&emitter->library->emitter_attributes[emitter->emitter_attributes].overtime.noise_resolution))) {
@@ -16384,7 +16384,10 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfx_vec3_t velocity_normal;
-		if (emission_direction != tfxPathGradient && emission_direction != tfxOrbital) {
+		if (emission_type == tfxPoint) {
+			velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
+			velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
+		} else if(emission_direction != tfxPathGradient && emission_direction != tfxOrbital) {
 			if (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine) {
 				velocity_normal_packed = tfxPACKED_Y_NORMAL_3D;
 			}
@@ -16393,8 +16396,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 				velocity_normal = GetEmissionDirection3d(&pm, library, &random, emitter, emission_pitch, emission_yaw, tfx_vec3_t(local_position_x, local_position_y, local_position_z), world_position);
 				velocity_normal_packed = Pack10bitUnsigned(&velocity_normal);
 			}
-		}
-		else if (emission_direction == tfxOrbital) {
+		} else if (emission_direction == tfxOrbital) {
 			if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 				velocity_normal.z = local_position_x - emitter.world_position.x;
 				velocity_normal.y = 0.f;
