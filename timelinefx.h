@@ -2074,7 +2074,7 @@ enum tfx_graph_category : unsigned int {
 };
 
 
-#define TFX_GLOBAL_COUNT  16
+#define TFX_GLOBAL_COUNT  17
 #define	TFX_PROPERTY_COUNT  10
 #define	TFX_BASE_COUNT  10
 #define	TFX_VARIATION_COUNT  12
@@ -2093,6 +2093,7 @@ enum tfx_graph_type : unsigned char {
 	tfxGlobal_life,
 	tfxGlobal_amount,
 	tfxGlobal_velocity,
+	tfxGlobal_noise,
 	tfxGlobal_width,
 	tfxGlobal_height,
 	tfxGlobal_weight,
@@ -4883,6 +4884,7 @@ struct tfx_global_attributes_t {
 	tfx_graph_t life;
 	tfx_graph_t amount;
 	tfx_graph_t velocity;
+	tfx_graph_t noise;
 	tfx_graph_t width;
 	tfx_graph_t height;
 	tfx_graph_t weight;
@@ -5361,6 +5363,7 @@ struct tfx_effect_state_t {
 	tfx_parent_spawn_controls_t spawn_controls;
 	tfx_vec3_t emitter_size;
 	float stretch;
+	float noise;
 	float overal_scale;
 	float noise_base_offset;
 	tfxEmitterStateFlags state_flags;
@@ -5730,8 +5733,9 @@ struct tfx_control_work_entry_t {
 	tfxWideFloat node_count;
 	bool sample_path_life;
 	float overal_scale;
-	float stretch;
-	float intensity;
+	float global_stretch;
+	float global_intensity;
+	float global_noise;
 };
 
 struct tfx_particle_age_work_entry_t {

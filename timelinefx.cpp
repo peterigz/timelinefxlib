@@ -3230,6 +3230,7 @@ void ResetEffectGraphs(tfx_effect_emitter_t *effect, bool add_node, bool compile
 	ResetGraph(&library->global_graphs[global].life, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].life.type = tfxGlobal_life;
 	ResetGraph(&library->global_graphs[global].amount, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].amount.type = tfxGlobal_amount;
 	ResetGraph(&library->global_graphs[global].velocity, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].velocity.type = tfxGlobal_velocity;
+	ResetGraph(&library->global_graphs[global].noise, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].noise.type = tfxGlobal_noise;
 	ResetGraph(&library->global_graphs[global].width, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].width.type = tfxGlobal_width;
 	ResetGraph(&library->global_graphs[global].height, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].height.type = tfxGlobal_height;
 	ResetGraph(&library->global_graphs[global].weight, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].weight.type = tfxGlobal_weight;
@@ -3369,6 +3370,7 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->global_graphs[global].life.nodes.size() == 0) ResetGraph(&library->global_graphs[global].life, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].amount.nodes.size() == 0) ResetGraph(&library->global_graphs[global].amount, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].velocity.nodes.size() == 0) ResetGraph(&library->global_graphs[global].velocity, 1.f, tfxGlobalPercentPreset);
+		if (library->global_graphs[global].noise.nodes.size() == 0) ResetGraph(&library->global_graphs[global].noise, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].width.nodes.size() == 0) ResetGraph(&library->global_graphs[global].width, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].height.nodes.size() == 0) ResetGraph(&library->global_graphs[global].height, 1.f, tfxGlobalPercentPreset);
 		if (library->global_graphs[global].weight.nodes.size() == 0) ResetGraph(&library->global_graphs[global].weight, 1.f, tfxGlobalPercentPreset);
@@ -4415,6 +4417,7 @@ void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 buck
 	attributes->life.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->amount.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->velocity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->noise.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->weight.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
@@ -4434,6 +4437,7 @@ void FreeGlobalAttributes(tfx_global_attributes_t *attributes) {
 	FreeGraph(&attributes->life);
 	FreeGraph(&attributes->amount);
 	FreeGraph(&attributes->velocity);
+	FreeGraph(&attributes->noise);
 	FreeGraph(&attributes->width);
 	FreeGraph(&attributes->height);
 	FreeGraph(&attributes->weight);
@@ -4454,6 +4458,7 @@ void CopyGlobalAttributesNoLookups(tfx_global_attributes_t *src, tfx_global_attr
 	CopyGraphNoLookups(&src->life, &dst->life);
 	CopyGraphNoLookups(&src->amount, &dst->amount);
 	CopyGraphNoLookups(&src->velocity, &dst->velocity);
+	CopyGraphNoLookups(&src->noise, &dst->noise);
 	CopyGraphNoLookups(&src->width, &dst->width);
 	CopyGraphNoLookups(&src->height, &dst->height);
 	CopyGraphNoLookups(&src->weight, &dst->weight);
@@ -4474,6 +4479,7 @@ void CopyGlobalAttributes(tfx_global_attributes_t *src, tfx_global_attributes_t 
 	CopyGraph(&src->life, &dst->life);
 	CopyGraph(&src->amount, &dst->amount);
 	CopyGraph(&src->velocity, &dst->velocity);
+	CopyGraph(&src->noise, &dst->noise);
 	CopyGraph(&src->width, &dst->width);
 	CopyGraph(&src->height, &dst->height);
 	CopyGraph(&src->weight, &dst->weight);
@@ -5755,6 +5761,7 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 		CompileGraph(&g.splatter);
 		CompileGraph(&g.stretch);
 		CompileGraph(&g.velocity);
+		CompileGraph(&g.noise);
 		CompileGraph(&g.weight);
 		CompileGraph(&g.emitter_width);
 		CompileGraph(&g.emitter_height);
@@ -5840,6 +5847,7 @@ void CompileLibraryGlobalGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraph(&g.splatter);
 	CompileGraph(&g.stretch);
 	CompileGraph(&g.velocity);
+	CompileGraph(&g.noise);
 	CompileGraph(&g.weight);
 	CompileGraph(&g.emitter_width);
 	CompileGraph(&g.emitter_height);
@@ -5941,6 +5949,7 @@ void SetLibraryMinMaxData(tfx_library_t *library) {
 	library->graph_min_max[tfxGlobal_life] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_amount] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_velocity] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
+	library->graph_min_max[tfxGlobal_noise] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_width] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_height] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_weight] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
@@ -6172,6 +6181,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("global_life", tfxFloat);
 	names_and_types.Insert("global_amount", tfxFloat);
 	names_and_types.Insert("global_velocity", tfxFloat);
+	names_and_types.Insert("global_noise", tfxFloat);
 	names_and_types.Insert("global_width", tfxFloat);
 	names_and_types.Insert("global_height", tfxFloat);
 	names_and_types.Insert("global_weight", tfxFloat);
@@ -6404,6 +6414,7 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "global_overal_scale") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].overal_scale, &n); }
 		if ((*values)[0] == "global_weight") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].weight, &n); }
 		if ((*values)[0] == "global_velocity") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].velocity, &n); }
+		if ((*values)[0] == "global_noise") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].noise, &n); }
 		if ((*values)[0] == "global_emitter_width") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].emitter_width, &n); }
 		if ((*values)[0] == "global_emitter_height") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].emitter_height, &n); }
 		if ((*values)[0] == "global_emitter_depth") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->global_graphs[effect->global].emitter_depth, &n); }
@@ -10965,8 +10976,9 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				work_entry.start_diff = circular_start - block_start_index;
 				work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
 				tfx_effect_state_t &parent_effect = pm->effects[pm->emitters[index].parent_index];
-				work_entry.stretch = parent_effect.stretch;
-				work_entry.intensity = parent_effect.spawn_controls.intensity;
+				work_entry.global_stretch = parent_effect.stretch;
+				work_entry.global_noise = parent_effect.noise;
+				work_entry.global_intensity = parent_effect.spawn_controls.intensity;
 				particles_to_update -= pm->mt_batch_size;
 				running_start_index += pm->mt_batch_size;
 				tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticles);
@@ -11392,7 +11404,7 @@ tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader*)&bank.uid[index]);	\
 tfxWideInt seed = SeedGenWide(time_step, uid);	\
 tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);	\
 tfxWideArrayi lookup_motion_randomness = { tfxWideMini(tfxWideConverti(life), motion_randomness_last_frame) };	\
-const tfxWideFloat influence = tfxWideMul(motion_randomness_base, tfxWideLookupSet(work_entry->graphs->motion_randomness.lookup.values, lookup_motion_randomness));	\
+const tfxWideFloat influence = tfxWideMul(tfxWideMul(motion_randomness_base, global_noise), tfxWideLookupSet(work_entry->graphs->motion_randomness.lookup.values, lookup_motion_randomness));	\
 tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);	\
 tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(SeedGenWide(seed), tfxMAXUINTf), tfxWideMul(tfxWideSetSingle(0.01f), influence));	\
 tfxWideFloat random_x, random_y, random_z;	\
@@ -11407,7 +11419,7 @@ tfxWideFloat length_one = tfxWideDiv(tfxWIDEONE, length);	\
 random_x = tfxWideMul(random_x, length_one);	\
 random_y = tfxWideMul(random_y, length_one);	\
 random_z = tfxWideMul(random_z, length_one);	\
-velocity_scalar = tfxWideAdd(velocity_scalar, speed);	
+velocity_scalar = tfxWideAdd(velocity_scalar, tfxWideMul(speed, global_noise));	
 
 void ControlParticlePosition3dBasic(tfx_work_queue_t* queue, void* data) {
 	tfxPROFILE;
@@ -11527,6 +11539,7 @@ void ControlParticlePosition3dNoise(tfx_work_queue_t* queue, void* data) {
 	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
 	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
+	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
 	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
 	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
 	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
@@ -11568,9 +11581,9 @@ void ControlParticlePosition3dNoise(tfx_work_queue_t* queue, void* data) {
 		tfxParticleNoise3dLoopUnroll(7)	
 		#endif	
 
-		noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
-		noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
-		noise_z.m = tfxWideMul(lookup_velocity_turbulance, noise_z.m);
+		noise_x.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_x.m));
+		noise_y.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_y.m));
+		noise_z.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_z.m));
 
 		current_velocity_x = tfxWideAdd(current_velocity_x, noise_x.m);
 		current_velocity_y = tfxWideAdd(current_velocity_y, noise_y.m);
@@ -11597,6 +11610,7 @@ void ControlParticlePosition3dNoiseOrbital(tfx_work_queue_t* queue, void* data) 
 	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
 	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
 	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
+	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
 	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
 	tfxWideFloat emitter_x = {};
 	tfxWideFloat emitter_z = {};
@@ -11647,9 +11661,9 @@ void ControlParticlePosition3dNoiseOrbital(tfx_work_queue_t* queue, void* data) 
 		tfxParticleNoise3dLoopUnroll(7)
 #endif	
 
-		noise_x.m = tfxWideMul(lookup_velocity_turbulance, noise_x.m);
-		noise_y.m = tfxWideMul(lookup_velocity_turbulance, noise_y.m);
-		noise_z.m = tfxWideMul(lookup_velocity_turbulance, noise_z.m);
+		noise_x.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_x.m));
+		noise_y.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_y.m));
+		noise_z.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_z.m));
 
 		current_velocity_x = tfxWideAdd(current_velocity_x, noise_x.m);
 		current_velocity_y = tfxWideAdd(current_velocity_y, noise_y.m);
@@ -11674,6 +11688,7 @@ void ControlParticlePosition3dMotionRandomness(tfx_work_queue_t* queue, void* da
 	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
 	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
+	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
 	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
 	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->motion_randomness.lookup.last_frame);
 	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame));
@@ -11756,6 +11771,7 @@ void ControlParticlePosition3dMotionRandomnessOrbital(tfx_work_queue_t* queue, v
 	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
 	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->motion_randomness.lookup.last_frame);
 	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame));
+	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
 
 	tfxWideInt time_step = tfxWideConverti(tfxWideSetSingle(emitter.age / 250.f));
 	tfxWideInt next_time_step = tfxWideConverti(tfxWideSetSingle((emitter.age + pm.frame_length) / 250.f));
@@ -12268,7 +12284,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
 	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
-	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->stretch);
+	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->global_stretch);
 
 	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 	const tfxEmitterPropertyFlags property_flags = emitter.property_flags;
@@ -12479,7 +12495,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
 	const tfxWideInt direction_last_frame = tfxWideSetSinglei(work_entry->graphs->direction.lookup.last_frame);
 	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
-	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->stretch);
+	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->global_stretch);
 	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->motion_randomness.lookup.last_frame);
 	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame));
 	tfxWideFloat emitter_x;
@@ -13179,7 +13195,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 
-	const tfxWideFloat global_intensity = tfxWideSetSingle(work_entry->intensity);
+	const tfxWideFloat global_intensity = tfxWideSetSingle(work_entry->global_intensity);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
@@ -16477,6 +16493,7 @@ void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index) {
 	tfx_vec3_t &local_rotations = pm->effects[index].local_rotations;
 	tfx_vec3_t &emitter_size = pm->effects[index].emitter_size;
 	float &overal_scale = pm->effects[index].overal_scale;
+	float &noise = pm->effects[index].noise;
 	tfxEffectStateFlags &state_flags = pm->effects[index].state_flags;
 	//float &stretch = pm->effects[index].stretch;
 
@@ -16492,6 +16509,7 @@ void UpdateEffectState(tfx_particle_manager_t *pm, tfxU32 index) {
 		spawn_controls.size_y = spawn_controls.size_x;
 	}
 	spawn_controls.velocity = lookup_callback(&library->global_graphs[global_attributes].velocity, frame);
+	noise = lookup_callback(&library->global_graphs[global_attributes].noise, frame);
 	spawn_controls.spin = lookup_callback(&library->global_graphs[global_attributes].spin, frame);
 	spawn_controls.pitch_spin = lookup_callback(&library->global_graphs[global_attributes].pitch_spin, frame);
 	spawn_controls.yaw_spin = lookup_callback(&library->global_graphs[global_attributes].yaw_spin, frame);
