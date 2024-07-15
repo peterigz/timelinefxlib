@@ -5717,6 +5717,7 @@ struct tfx_spawn_work_entry_t {
 };
 
 struct tfx_control_work_entry_t {
+	float node_count;
 	tfxU32 start_index;
 	tfxU32 end_index;
 	tfxU32 wide_end_index;
@@ -5730,7 +5731,6 @@ struct tfx_control_work_entry_t {
 	tfx_emitter_properties_t *properties;
 	tfx_sprite_soa_t *sprites;
 	tfx_emitter_path_t* path;
-	tfxWideFloat node_count;
 	bool sample_path_life;
 	float overal_scale;
 	float global_stretch;
