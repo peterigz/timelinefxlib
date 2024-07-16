@@ -3731,7 +3731,7 @@ struct tfx_bucket_array_t {
 					bucket_list[current_insert_bucket]->data.push_front(end_element2);
 					end2_pushed = true;
 				}
-				alternator = !alternator;
+				alternator = alternator ^ 1;
 			}
 			else {
 				bucket_list[current_insert_bucket]->data.push_front(alternator == 0 ? end_element : end_element2);
@@ -7122,7 +7122,7 @@ used when loading an effect library.
   @returns					void* pointer to the image
 */
 tfxAPI inline void* GetSpriteImagePointer(tfx_particle_manager_t* pm, tfxU32 property_indexes) {
-	return pm->library->emitter_properties[property_indexes & 0x0000FFFF].image->ptr;
+	return pm->library->emitter_properties[tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_indexes)].image->ptr;
 }
 
 /*
@@ -7132,7 +7132,7 @@ Get the handle of the sprite. Use this when rendering particles in your renderer
   @returns					tfx_vec_2 containing the x and y values of the handle.
 */
 tfxAPI inline tfx_vec2_t GetSpriteHandle(tfx_particle_manager_t* pm, tfxU32 property_indexes) {
-	return pm->library->emitter_properties[property_indexes & 0x0000FFFF].image_handle;
+	return pm->library->emitter_properties[tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_indexes)].image_handle;
 }
 
 /*

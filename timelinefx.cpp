@@ -7341,6 +7341,9 @@ void ClampCurve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node_t *node) {
 }
 
 tfx_graph_t::tfx_graph_t() {
+	graph_preset = tfxGlobalPercentPreset;
+	index = 0;
+	gamma = 0.f;
 	type = tfxEmitterGraphMaxIndex;
 	min.x = 0.f;
 	min.y = 0.f;
@@ -7352,6 +7355,9 @@ tfx_graph_t::tfx_graph_t() {
 
 tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
 	type = tfxEmitterGraphMaxIndex;
+	graph_preset = tfxGlobalPercentPreset;
+	index = 0;
+	gamma = 0.f;
 	min.x = 0.f;
 	min.y = 0.f;
 	max.x = 1000.f;
@@ -9498,9 +9504,9 @@ void SetTemplateUserDataAll(tfx_effect_template_t *t, void *data) {
 }
 
 void InvalidateNewSpriteCapturedIndex(tfx_particle_manager_t *pm) {
-	for (unsigned int layer = 0; layer != tfxLAYERS; ++layer) {
+	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
 		tfx_sprite_soa_t &sprites = pm->sprites[pm->current_sprite_buffer][layer];
-		for (int i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
+		for (tfxU32 i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
 			if ((sprites.captured_index[i] & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(sprites.captured_index[i] & 0x80000000)) {
 				sprites.captured_index[i] = tfxINVALID;
 			}
@@ -10300,7 +10306,7 @@ tfxAnimationID AddAnimationInstance(tfx_animation_manager_t *animation_manager, 
 
 void UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float elapsed) {
 	TFX_ASSERT(animation_manager->instances_in_use[animation_manager->current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
-	tfxU32 next_buffer = !animation_manager->current_in_use_buffer;
+	tfxU32 next_buffer = animation_manager->current_in_use_buffer ^ 1;
 	animation_manager->instances_in_use[next_buffer].clear();
 	animation_manager->render_queue.clear();
 	animation_manager->offsets.clear();
@@ -10348,12 +10354,12 @@ void UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float el
 		}
 	}
 	animation_manager->buffer_metrics.total_sprites_to_draw = running_sprite_count;
-	animation_manager->current_in_use_buffer = !animation_manager->current_in_use_buffer;
+	animation_manager->current_in_use_buffer = animation_manager->current_in_use_buffer ^ 1;
 }
 
 void CycleAnimationManager(tfx_animation_manager_t *animation_manager) {
 	TFX_ASSERT(animation_manager->instances_in_use[animation_manager->current_in_use_buffer].capacity > 0);	//You must call InitialiseAnimationManager before trying to update one
-	tfxU32 next_buffer = !animation_manager->current_in_use_buffer;
+	tfxU32 next_buffer = animation_manager->current_in_use_buffer ^ 1;
 	animation_manager->instances_in_use[next_buffer].clear();
 	animation_manager->render_queue.clear();
 	animation_manager->offsets.clear();
@@ -10375,7 +10381,7 @@ void CycleAnimationManager(tfx_animation_manager_t *animation_manager) {
 		UpdateAnimationManagerBufferMetrics(animation_manager);
 	}
 	animation_manager->buffer_metrics.total_sprites_to_draw = running_sprite_count;
-	animation_manager->current_in_use_buffer = !animation_manager->current_in_use_buffer;
+	animation_manager->current_in_use_buffer = animation_manager->current_in_use_buffer ^ 1;
 }
 
 void ClearAllAnimationInstances(tfx_animation_manager_t *animation_manager) {
@@ -10633,7 +10639,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_random_color;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_lifetime_uniform_size;
 			state_flags |= emitter_properties->angle_settings != tfxAngleSettingFlags_align_roll && !(e.property_flags & tfxEmitterPropertyFlags_relative_angle) ? tfxEmitterStateFlags_can_spin : 0;
-			state_flags |= (emitter_properties->angle_settings == tfxAngleSettingFlags_align_roll) ? tfxEmitterStateFlags_align_with_velocity : 0;
+			state_flags |= (emitter_properties->angle_settings & tfxAngleSettingFlags_align_roll) ? tfxEmitterStateFlags_align_with_velocity : 0;
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
 			state_flags |= emitter_properties->emission_type == tfxPath && e.property_flags & tfxEmitterPropertyFlags_edge_traversal ? tfxEmitterStateFlags_is_edge_traversal : 0;
 			state_flags |= emitter_properties->end_behaviour == tfxLoop ? tfxEmitterStateFlags_loop : 0;
@@ -10826,8 +10832,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->update_time = 1.f / pm->update_frequency;
 	pm->update_time_wide = tfxWideSetSingle(pm->update_time);
 	pm->new_compute_particle_index = 0;
-    //printf("%f, %f, %f\n", pm->frame_length, pm->update_frequency, pm->update_time);
-	tfxU32 next_buffer = !pm->current_ebuff;
+	tfxU32 next_buffer = pm->current_ebuff ^ 1;
 
 	tfxU32 depth_starting_index[tfxLAYERS];
 	for (tfxEachLayer) {
@@ -10918,7 +10923,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	if (!(pm->flags & tfxEffectManagerFlags_unordered)) {
 		for (tfxEachLayer) {
 			if (depth_starting_index[layer] < pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]].current_size) {
-				tfxU32 next_depth_buffer = !pm->current_depth_index_buffer[layer];
+				tfxU32 next_depth_buffer = pm->current_depth_index_buffer[layer] ^ 1;
 				if (pm->depth_indexes[layer][next_depth_buffer].capacity < pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]].capacity) {
 					pm->depth_indexes[layer][next_depth_buffer].reserve(pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]].capacity);
 				}
@@ -11032,7 +11037,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	for (tfxEachLayer) {
 		pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]].clear();
-		pm->current_depth_index_buffer[layer] = !pm->current_depth_index_buffer[layer];
+		pm->current_depth_index_buffer[layer] = pm->current_depth_index_buffer[layer] ^ 1;
 	}
 
 	if (pm->flags & tfxEffectManagerFlags_order_by_depth && pm->flags & tfxEffectManagerFlags_3d_effects) {
@@ -12174,8 +12179,8 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		life = tfxWideMul(life, max_life);
 		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
 
-		tfxWideFloat velocity_normal_x;
-		tfxWideFloat velocity_normal_y;
+		tfxWideFloat velocity_normal_x = tfxWideSetZero;
+		tfxWideFloat velocity_normal_y = tfxWideSetZero;
 		tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
 		tfxWideFloat local_position_y = tfxWideLoad(&bank.position_y[index]);
 		tfxWideArrayi lookup_frame;
@@ -12213,6 +12218,10 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			lookup_direction.m = tfxWideAdd(lookup_direction.m, angle);
 			tfxWideSinCos(lookup_direction.m, &velocity_normal_x, &velocity_normal_y);
 			velocity_normal_y = tfxWideMul(velocity_normal_y, tfxWideSetSingle(-1.f));
+		}
+		else {
+			velocity_normal_x = tfxWideSetZero;
+			velocity_normal_y = tfxWideSetZero;
 		}
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
