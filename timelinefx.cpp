@@ -13943,6 +13943,9 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 		effect.frame = effect.age / tfxLOOKUP_FREQUENCY;
 	}
 
+	memset(effect.starting_sprite_index, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(effect.sprite_count, 0, sizeof(tfxU32) * tfxLAYERS);
+
 	UpdateEffectState(pm, index);
 
 	tfx_emitter_properties_t &properties = effect.library->emitter_properties[effect.properties_index];
@@ -14049,6 +14052,8 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	TFX_ASSERT(emitter.parent_index != tfxINVALID);	//Emitter must have a valid parent (an effect)
 
 	tfxU32 layer = properties.layer;
+	tfxU32& root_effect_sprite_index = pm->effects[emitter.root_index].starting_sprite_index[layer];
+	tfxU32& root_effect_sprite_count = pm->effects[emitter.root_index].sprite_count[layer];
 
 	tfx_effect_state_t &parent_effect = pm->effects[emitter.parent_index];
 
@@ -14113,7 +14118,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		sprite_buffer.current_size += max_spawn_count + emitter.sprites_count;
 		emitter.sprites_count += max_spawn_count;
 		emitter.sprites_index = pm->sprite_index_point[layer];
+		root_effect_sprite_index = tfx__Min(emitter.sprites_index, root_effect_sprite_index);
 		pm->sprite_index_point[layer] += emitter.sprites_count;
+		root_effect_sprite_count += emitter.sprites_count;
 
 		spawn_work_entry->max_spawn_count = max_spawn_count;
 
@@ -14133,6 +14140,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		TFX_ASSERT(amount_spawned <= max_spawn_count);
 		sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 		pm->sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
+		root_effect_sprite_count -= (max_spawn_count - amount_spawned);
 	}
 	else {
 		tfx_soa_buffer_t &sprite_buffer = pm->sprite_buffer[pm->current_sprite_buffer][layer];
@@ -14172,7 +14180,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 		emitter.sprites_count += max_spawn_count;
 		emitter.sprites_index = pm->sprite_index_point[layer];
+		root_effect_sprite_index = tfx__Min(emitter.sprites_index, root_effect_sprite_index);
 		pm->sprite_index_point[layer] += emitter.sprites_count;
+		root_effect_sprite_count += emitter.sprites_count;
 
 		if (emitter.state_flags & tfxEmitterStateFlags_is_sub_emitter) {
 			if (emitter.age > 0 && !(pm->flags & tfxEffectManagerFlags_disable_spawning)) {
@@ -14189,6 +14199,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 		sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 		pm->sprite_index_point[layer] -= (max_spawn_count - amount_spawned);
+		root_effect_sprite_count -= (max_spawn_count - amount_spawned);
 	}
 
 	emitter.age += pm->frame_length;

@@ -5368,6 +5368,11 @@ struct tfx_effect_state_t {
 	float noise_base_offset;
 	tfxEmitterStateFlags state_flags;
 
+	//The first sprite index in the particle manager for all the sprites emitted and controlled by all emitters and sub effects in the effect
+	tfxU32 starting_sprite_index[tfxLAYERS];
+	//The count of all sprites within this effect
+	tfxU32 sprite_count[tfxLAYERS];
+
 	//User Data
 	void *user_data;
 	void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index);
