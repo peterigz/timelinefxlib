@@ -5767,6 +5767,12 @@ struct tfx_compress_work_entry_t {
 	tfxU32 frame;
 };
 
+struct tfx_sprite_index_range_t {
+	tfxU32 start_index;
+	tfxU32 end_index;
+	tfxU32 sprite_count;
+};
+
 struct tfx_effect_data_t {
 	tfxU32 *global_attributes;
 	tfxU32 *transform_attributes;
@@ -7213,6 +7219,22 @@ Get effect user data
 */
 tfxAPI inline void* GetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
 	return pm->effects[effect_index].user_data;
+}
+
+/*
+Get the start and end sprite index for an effect in the particle manager. You can use this function in you render function if you're rendering particles
+for each effect individually
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
+* @returns				A tfx_sprite_index_range_t containing the start and end indexes as well as the count of sprites
+*/
+tfxAPI inline tfx_sprite_index_range_t GetEffectSpriteIndexRange(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 layer) {
+	TFX_ASSERT(layer < tfxLAYERS);	//layer must be a value less than the max tfxLAYERS (usually 4)
+	tfx_sprite_index_range_t range = {};
+	range.start_index = pm->effects[effect_index].starting_sprite_index[layer];
+	range.sprite_count = pm->effects[effect_index].sprite_count[layer];
+	range.end_index = range.start_index + range.sprite_count;
+	return range;
 }
 
 /*
