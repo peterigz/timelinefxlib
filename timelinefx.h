@@ -1115,6 +1115,7 @@ tfx_allocator *tfxGetAllocator();
 #define tfxSPRITE_IMAGE_FRAME_MASK 0x00FF0000
 #define tfxEXTRACT_SPRITE_ALIGNMENT(property_index) ((property_index & tfxSPRITE_ALIGNMENT_MASK) >> 24)
 #define tfxEXTRACT_SPRITE_IMAGE_FRAME(property_index) ((property_index & tfxSPRITE_IMAGE_FRAME_MASK) >> 16)
+#define tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_index) (property_index & tfxPROPERTY_INDEX_MASK)
 #define tfxCIRCLENODES 16
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
