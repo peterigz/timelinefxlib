@@ -11316,7 +11316,6 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 
 		tfxWideStore(&bank.path_position[index], path_position);
 	}
-	ControlParticleTransform3d(&pm.work_queue, data);
 }
 
 //I'm not a fan of this at all, but currently it's the best I can think off to create multiple versions of the control particle function
@@ -11462,7 +11461,6 @@ void ControlParticlePosition3dBasic(tfx_work_queue_t* queue, void* data) {
 		tfxControlParticleUpdatePosition;
 	}
 
-	ControlParticleTransform3d(&pm.work_queue, data);
 }
 
 void ControlParticlePosition3dOrbital(tfx_work_queue_t* queue, void* data) {
@@ -11522,7 +11520,6 @@ void ControlParticlePosition3dOrbital(tfx_work_queue_t* queue, void* data) {
 		tfxControlParticleUpdatePosition;
 	}
 
-	ControlParticleTransform3d(&pm.work_queue, data);
 }
 
 //Used for emitters that have simplex noise only.
@@ -11592,7 +11589,6 @@ void ControlParticlePosition3dNoise(tfx_work_queue_t* queue, void* data) {
 		tfxControlParticleUpdatePosition;
 	}
 
-	ControlParticleTransform3d(&pm.work_queue, data);
 }
 
 //Used for emitters that have simplex noise only and orbital emission type non relative positioning
@@ -11673,7 +11669,6 @@ void ControlParticlePosition3dNoiseOrbital(tfx_work_queue_t* queue, void* data) 
 		tfxControlParticleUpdatePosition;
 	}
 
-	ControlParticleTransform3d(&pm.work_queue, data);
 }
 
 //Used for emitters that have simple motion randomness only
@@ -11754,7 +11749,6 @@ void ControlParticlePosition3dMotionRandomness(tfx_work_queue_t* queue, void* da
 		tfxControlParticleUpdatePosition;
 	}
 
-	ControlParticleTransform3d(&pm.work_queue, data);
 }
 
 //Used for emitters that have simple motion randomness only with orbital emission type
@@ -11858,7 +11852,6 @@ void ControlParticlePosition3dMotionRandomnessOrbital(tfx_work_queue_t* queue, v
 		tfxControlParticleUpdatePosition;
 	}
 
-	ControlParticleTransform3d(&pm.work_queue, data);
 }
 
 void ControlParticleLineBehaviourKill(tfx_work_queue_t* queue, void* data) {
@@ -12265,7 +12258,6 @@ void ControlParticlePosition3d(tfx_work_queue_t* queue, void* data) {
 		}
 	}
 
-	ControlParticleTransform3d(&pm.work_queue, data);
 }
 
 void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
@@ -16730,6 +16722,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 		}
 		if (pm->flags & tfxEffectManagerFlags_3d_effects && emitter.control_profile & tfxEmitterControlProfile_path && emitter.control_profile & tfxEmitterControlProfile_edge_traversal) {
 			ControlParticlePositionPath3d(&pm->work_queue, work_entry);
+			ControlParticleTransform3d(&pm->work_queue, work_entry);
 		} else if (pm->flags & tfxEffectManagerFlags_3d_effects) {
 			if (emitter.control_profile & tfxEmitterControlProfile_noise && emitter.control_profile & tfxEmitterControlProfile_orbital) {
 				ControlParticlePosition3dNoiseOrbital(&pm->work_queue, work_entry);
@@ -16750,6 +16743,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 			else if (emitter.control_profile & tfxEmitterControlProfile_edge_loop && emitter.control_profile & tfxEmitterControlProfile_edge_traversal) {
 				ControlParticleLineBehaviourLoop(&pm->work_queue, work_entry);
 			}
+			ControlParticleTransform3d(&pm->work_queue, work_entry);
 		} else {
 			ControlParticlePosition2d(&pm->work_queue, work_entry);
 		}
