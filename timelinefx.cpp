@@ -3054,7 +3054,8 @@ void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat velocity_normal_x, tfx
 	tfxWideFloat phi = tfxWideMul(tfxWideAdd(tfxWideDiv(SeedGenWide(seed), max_uint), tfxWideSetSingle(0.5f)), tfxWideSetSingle(2.f * tfxPI));
 
 	// Calculate the corresponding x and y for the random point on the unit sphere
-	tfxWideFloat sqrt_one_minus_z_squared = tfxWideSqrt(tfxWideSub(tfxWIDEONE, tfxWideMul(z, z)));
+	tfxWideFloat sqrt_one_minus_z_squared = tfxWideSub(tfxWIDEONE, tfxWideMul(z, z));
+    sqrt_one_minus_z_squared = tfxWideMul(tfxWideRSqrt(sqrt_one_minus_z_squared), sqrt_one_minus_z_squared);
 	tfxWideFloat sin;
 	tfxWideFloat cos;
 	tfxWideSinCos(phi, &sin, &cos);
@@ -11232,11 +11233,7 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 		if (path->extrusion_type == tfxExtrusionArc) {
             tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_z.m, point_z.m));
             tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
-#ifdef tfxARM
             radius = tfxWideMul(tfxWideRSqrt(radius), radius);
-#else
-			radius = tfxWideAnd(length_mask, tfxWideSqrt(radius));
-#endif
 			tfxWideArray angle;
 			tfxWideArray rx;
 			tfxWideArray rz;
@@ -11414,7 +11411,6 @@ tfxWideFloat length = tfxWideMul(random_x, random_x);	\
 length = tfxWideAdd(length, tfxWideMul(random_y, random_y));	\
 length = tfxWideAdd(length, tfxWideMul(random_z, random_z));	\
 length = tfxWideMul(tfxWideRSqrt(length), length);	\
-length = tfxWideSqrt(length);	\
 tfxWideFloat length_one = tfxWideDiv(tfxWIDEONE, length);	\
 random_x = tfxWideMul(random_x, length_one);	\
 random_y = tfxWideMul(random_y, length_one);	\
