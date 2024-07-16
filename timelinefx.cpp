@@ -10574,6 +10574,8 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	new_effect.timeout_counter = 0;
 	new_effect.user_data = effect->user_data;
 	new_effect.update_callback = effect->update_callback;
+	memset(new_effect.starting_sprite_index, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(new_effect.sprite_count, 0, sizeof(tfxU32) * tfxLAYERS);
 	float range = properties->noise_base_offset_range;
 	new_effect.noise_base_offset = RandomRange(&pm->random, range);
 	pm->effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
