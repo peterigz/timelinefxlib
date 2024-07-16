@@ -6441,7 +6441,6 @@ tfxINTERNAL void ControlParticlePosition3dMotionRandomness(tfx_work_queue_t* que
 tfxINTERNAL void ControlParticlePosition3dMotionRandomnessOrbital(tfx_work_queue_t* queue, void* data);
 tfxINTERNAL void ControlParticleLineBehaviourKill(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleLineBehaviourLoop(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void ControlParticlePosition3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticlePositionPath3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data);
 
