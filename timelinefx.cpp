@@ -6178,6 +6178,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("vector_align_type", tfxUint);
 	names_and_types.Insert("multiply_blend_factor", tfxFloat);
 	names_and_types.Insert("sort_passes", tfxUint);
+	names_and_types.Insert("paired_emitter_hash", tfxUInt64);
 
 	names_and_types.Insert("random_color", tfxBool);
 	names_and_types.Insert("exclude_from_global_hue", tfxBool);
@@ -6212,6 +6213,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("alt_color_lifetime_sampling", tfxBool);
 	names_and_types.Insert("alt_size_lifetime_sampling", tfxBool);
 	names_and_types.Insert("use_simple_motion_randomness", tfxBool);
+	names_and_types.Insert("spawn_location_source", tfxBool);
 	//names_and_types.Insert("simple_motion_smoothstep", tfxBool);
 
 	//Graphs
@@ -6663,45 +6665,33 @@ void AssignPropertyLine(tfx_effect_emitter_t* effect, tfx_vector_t<tfx_str256_t>
 }
 
 void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfxU64 value, tfxU32 file_version) {
-	if (*field == "path_hash")
-		metrics->path_hash = value;
+	if (*field == "path_hash") metrics->path_hash = value;
 }
 
 void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, float value, tfxU32 file_version) {
-	if (*field == "animation_length_in_time")
-		metrics->animation_length_in_time = value;
+	if (*field == "animation_length_in_time") metrics->animation_length_in_time = value;
 }
 
 void AssignSpriteDataMetricsProperty(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfx_str_t value, tfxU32 file_version) {
-	if (*field == "name")
-		metrics->name = value;
+	if (*field == "name") metrics->name = value;
 }
 
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU64 value, tfxU32 file_version) {
-	if (*field == "image_hash")
-		GetEffectProperties(effect)->image_hash = value;
+	if (*field == "image_hash") GetEffectProperties(effect)->image_hash = value;
+	if (*field == "paired_emitter_hash") GetEffectProperties(effect)->paired_emitter_hash = value;
 }
 
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value, tfxU32 file_version) {
 	tfx_emitter_properties_t *emitter_properties = GetEffectProperties(effect);
-	if (*field == "image_index")
-		emitter_properties->image_index = value;
-	if (*field == "spawn_amount")
-		emitter_properties->spawn_amount = value;
-	if (*field == "spawn_amount_variation")
-		emitter_properties->spawn_amount_variation = value;
-	if (*field == "frames")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frames = value;
-	if (*field == "current_frame")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].current_frame = value;
-	if (*field == "seed")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].seed = value;
-	if (*field == "layer")
-		emitter_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
-	if (*field == "frame_offset")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
-	if (*field == "single_shot_limit")
-		emitter_properties->single_shot_limit = value;
+	if (*field == "image_index") emitter_properties->image_index = value;
+	if (*field == "spawn_amount") emitter_properties->spawn_amount = value;
+	if (*field == "spawn_amount_variation") emitter_properties->spawn_amount_variation = value;
+	if (*field == "frames") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frames = value;
+	if (*field == "current_frame") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].current_frame = value;
+	if (*field == "seed") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].seed = value;
+	if (*field == "layer") emitter_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
+	if (*field == "frame_offset") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
+	if (*field == "single_shot_limit") emitter_properties->single_shot_limit = value;
 	if (*field == "billboard_option") {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
 		//0 and 1 should still be ok, 4 now maps to 2, and 2 should now be 3 but I'll just manually update the effect
@@ -6715,24 +6705,15 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 		}
 		emitter_properties->billboard_option = (tfx_billboarding_option)value;
 	}
-	if (*field == "vector_align_type")
-		emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
-	if (*field == "angle_setting")
-		emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
-	if (*field == "sort_passes")
-		effect->sort_passes = tfxMin(5, value);
-	if (*field == "animation_flags")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
-	if (*field == "sprite_data_flags")
-		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
-	if (*field == "sprite_data_seed")
-		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].seed = value;
-	if (*field == "sprite_data_frame_offset")
-		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].frame_offset = value;
-	if (*field == "sprite_data_frames")
-		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].real_frames = value;
-	if (*field == "sprite_data_extra_frames_count")
-		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].extra_frames_count = value;
+	if (*field == "vector_align_type") emitter_properties->vector_align_type = value >= 0 && value < tfxVectorAlignType_max ? (tfx_vector_align_type)value : (tfx_vector_align_type)0;
+	if (*field == "angle_setting") emitter_properties->angle_settings = (tfxAngleSettingFlags)value;
+	if (*field == "sort_passes") effect->sort_passes = tfxMin(5, value);
+	if (*field == "animation_flags") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
+	if (*field == "sprite_data_flags") effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].animation_flags = value | tfxAnimationFlags_needs_recording;
+	if (*field == "sprite_data_seed") effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].seed = value;
+	if (*field == "sprite_data_frame_offset") effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].frame_offset = value;
+	if (*field == "sprite_data_frames") effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].real_frames = value;
+	if (*field == "sprite_data_extra_frames_count") effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].extra_frames_count = value;
 	if (*field == "maximum_active_paths") {
 		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->maximum_active_paths = value;
 	}
@@ -6745,20 +6726,13 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, int value) {
 	tfx_emitter_properties_t *emitter_properties = GetEffectProperties(effect);
-	if (*field == "emission_type")
-		emitter_properties->emission_type = (tfx_emission_type)value;
-	if (*field == "emission_direction")
-		emitter_properties->emission_direction = (tfx_emission_direction)value;
-	if (*field == "color_option")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
-	if (*field == "export_option")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].export_option = (tfx_export_options)value;
-	if (*field == "end_behaviour")
-		emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
-	if (*field == "frame_offset")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
-	if (*field == "extra_frames_count")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].extra_frames_count = value;
+	if (*field == "emission_type") emitter_properties->emission_type = (tfx_emission_type)value;
+	if (*field == "emission_direction") emitter_properties->emission_direction = (tfx_emission_direction)value;
+	if (*field == "color_option") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].color_option = value > 3 ? tfxFullColor : (tfx_export_color_options)value;
+	if (*field == "export_option") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].export_option = (tfx_export_options)value;
+	if (*field == "end_behaviour") emitter_properties->end_behaviour = (tfx_line_traversal_end_behaviour)value;
+	if (*field == "frame_offset") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
+	if (*field == "extra_frames_count") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].extra_frames_count = value;
 	if (*field == "path_extrusion_type") {
 		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)];  path->extrusion_type = (tfx_path_extrusion_type)value; 
 	}
@@ -6773,112 +6747,59 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, float value) {
 	tfx_emitter_properties_t *emitter_properties = GetEffectProperties(effect);
-	if (*field == "position_x")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].position.x = value;
-	if (*field == "position_y")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].position.y = value;
-	if (*field == "position_z")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].position.z = value;
-	if (*field == "frame_width")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.x = value;
-	if (*field == "frame_height")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.y = value;
-	if (*field == "zoom")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].zoom = value;
-	if (*field == "scale")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].scale = value;
-	if (*field == "playback_speed")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].playback_speed = value;
-	if (*field == "camera_position_x")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.x = value;
-	if (*field == "camera_position_y")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.y = value;
-	if (*field == "camera_position_z")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.z = value;
-	if (*field == "camera_pitch")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_pitch = value;
-	if (*field == "camera_yaw")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_yaw = value;
-	if (*field == "camera_fov")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_fov = value;
-	if (*field == "camera_floor_height")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_floor_height = value;
-	if (*field == "camera_isometric_scale")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric_scale = value;
-	if (*field == "orthographic_camera_position_x")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.x = value;
-	if (*field == "orthographic_camera_position_y")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.y = value;
-	if (*field == "orthographic_camera_position_z")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.z = value;
-	if (*field == "orthographic_camera_pitch")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_pitch = value;
-	if (*field == "orthographic_camera_yaw")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_yaw = value;
-	if (*field == "orthographic_camera_fov")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_fov = value;
-	if (*field == "orthographic_camera_floor_height")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_floor_height = value;
-	if (*field == "orthographic_camera_isometric_scale")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric_scale = value;
-	if (*field == "preview_camera_position_x")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.x = value;
-	if (*field == "preview_camera_position_y")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.y = value;
-	if (*field == "preview_camera_position_z")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.z = value;
-	if (*field == "preview_camera_pitch")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_pitch = value;
-	if (*field == "preview_camera_yaw")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_yaw = value;
-	if (*field == "preview_camera_fov")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_fov = value;
-	if (*field == "preview_camera_floor_height")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_floor_height = value;
-	if (*field == "preview_camera_isometric_scale")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric_scale = value == 0 ? 5.f : value;
-	if (*field == "preview_effect_z_offset")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].effect_z_offset = value;
-	if (*field == "preview_camera_speed")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_speed = value;
-	if (*field == "image_handle_x")
-		emitter_properties->image_handle.x = value;
-	if (*field == "image_handle_y")
-		emitter_properties->image_handle.y = value;
-	if (*field == "delay_spawning")
-		emitter_properties->delay_spawning = value;
-	if (*field == "grid_rows")
-		emitter_properties->grid_points.x = value;
-	if (*field == "grid_columns")
-		emitter_properties->grid_points.y = value;
-	if (*field == "grid_depth")
-		emitter_properties->grid_points.z = value;
-	if (*field == "loop_length")
-		emitter_properties->loop_length = value < 0 ? 0.f : value;
-	if (*field == "noise_base_offset_range")
-		emitter_properties->noise_base_offset_range = value < 0 ? 0.f : value;
-	if (*field == "emitter_handle_x")
-		emitter_properties->emitter_handle.x = value;
-	if (*field == "emitter_handle_y")
-		emitter_properties->emitter_handle.y = value;
-	if (*field == "emitter_handle_z")
-		emitter_properties->emitter_handle.z = value;
-	if (*field == "image_start_frame")
-		emitter_properties->start_frame = value;
-	if (*field == "image_end_frame")
-		emitter_properties->end_frame = value;
-	if (*field == "image_frame_rate")
-		emitter_properties->frame_rate = value;
-	if (*field == "angle_offset")
-		emitter_properties->angle_offsets.roll = value;
-	if (*field == "angle_offset_pitch")
-		emitter_properties->angle_offsets.pitch = value;
-	if (*field == "angle_offset_yaw")
-		emitter_properties->angle_offsets.yaw = value;
-	if (*field == "sprite_data_playback_speed")
-		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].playback_speed = value;
-	if (*field == "sprite_data_recording_frame_rate")
-		effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].recording_frame_rate = value;
+	if (*field == "position_x") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].position.x = value;
+	if (*field == "position_y") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].position.y = value;
+	if (*field == "position_z") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].position.z = value;
+	if (*field == "frame_width") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.x = value;
+	if (*field == "frame_height") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].frame_size.y = value;
+	if (*field == "zoom") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].zoom = value;
+	if (*field == "scale") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].scale = value;
+	if (*field == "playback_speed") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].playback_speed = value;
+	if (*field == "camera_position_x") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.x = value;
+	if (*field == "camera_position_y") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.y = value;
+	if (*field == "camera_position_z") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_position.z = value;
+	if (*field == "camera_pitch") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_pitch = value;
+	if (*field == "camera_yaw") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_yaw = value;
+	if (*field == "camera_fov") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_fov = value;
+	if (*field == "camera_floor_height") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_floor_height = value;
+	if (*field == "camera_isometric_scale") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric_scale = value;
+	if (*field == "orthographic_camera_position_x") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.x = value;
+	if (*field == "orthographic_camera_position_y") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.y = value;
+	if (*field == "orthographic_camera_position_z") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_position.z = value;
+	if (*field == "orthographic_camera_pitch") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_pitch = value;
+	if (*field == "orthographic_camera_yaw") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_yaw = value;
+	if (*field == "orthographic_camera_fov") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_fov = value;
+	if (*field == "orthographic_camera_floor_height") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_floor_height = value;
+	if (*field == "orthographic_camera_isometric_scale") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric_scale = value;
+	if (*field == "preview_camera_position_x") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.x = value;
+	if (*field == "preview_camera_position_y") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.y = value;
+	if (*field == "preview_camera_position_z") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_position.z = value;
+	if (*field == "preview_camera_pitch") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_pitch = value;
+	if (*field == "preview_camera_yaw") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_yaw = value;
+	if (*field == "preview_camera_fov") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_fov = value;
+	if (*field == "preview_camera_floor_height") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_floor_height = value;
+	if (*field == "preview_camera_isometric_scale") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric_scale = value == 0 ? 5.f : value;
+	if (*field == "preview_effect_z_offset") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].effect_z_offset = value;
+	if (*field == "preview_camera_speed") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_speed = value;
+	if (*field == "image_handle_x") emitter_properties->image_handle.x = value;
+	if (*field == "image_handle_y") emitter_properties->image_handle.y = value;
+	if (*field == "delay_spawning") emitter_properties->delay_spawning = value;
+	if (*field == "grid_rows") emitter_properties->grid_points.x = value;
+	if (*field == "grid_columns") emitter_properties->grid_points.y = value;
+	if (*field == "grid_depth") emitter_properties->grid_points.z = value;
+	if (*field == "loop_length") emitter_properties->loop_length = value < 0 ? 0.f : value;
+	if (*field == "noise_base_offset_range") emitter_properties->noise_base_offset_range = value < 0 ? 0.f : value;
+	if (*field == "emitter_handle_x") emitter_properties->emitter_handle.x = value;
+	if (*field == "emitter_handle_y") emitter_properties->emitter_handle.y = value;
+	if (*field == "emitter_handle_z") emitter_properties->emitter_handle.z = value;
+	if (*field == "image_start_frame") emitter_properties->start_frame = value;
+	if (*field == "image_end_frame") emitter_properties->end_frame = value;
+	if (*field == "image_frame_rate") emitter_properties->frame_rate = value;
+	if (*field == "angle_offset") emitter_properties->angle_offsets.roll = value;
+	if (*field == "angle_offset_pitch") emitter_properties->angle_offsets.pitch = value;
+	if (*field == "angle_offset_yaw") emitter_properties->angle_offsets.yaw = value;
+	if (*field == "sprite_data_playback_speed") effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].playback_speed = value;
+	if (*field == "sprite_data_recording_frame_rate") effect->library->sprite_data_settings[GetEffectInfo(effect)->sprite_data_settings_index].recording_frame_rate = value;
 	if (*field == "path_rotation_range") {
 		tfx_emitter_path_t* path = &effect->library->paths[CreateEmitterPathAttributes(effect, false)]; path->rotation_range = value; 
 	}
@@ -6902,26 +6823,16 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, floa
 	}
 }
 void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value) {
-	if (*field == "loop")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_loop : 0;
-	if (*field == "seamless")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_seamless : 0;
-	if (*field == "export_with_transparency")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
-	if (*field == "camera_isometric")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric = false;
-	if (*field == "camera_hide_floor")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_hide_floor = value;
-	if (*field == "orthographic_camera_isometric")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric = true;
-	if (*field == "orthographic_camera_hide_floor")
-		effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_hide_floor = value;
-	if (*field == "preview_attach_effect_to_camera")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].attach_effect_to_camera = value;
-	if (*field == "preview_camera_hide_floor")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor = value;
-	if (*field == "preview_camera_isometric")
-		effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric = value;
+	if (*field == "loop") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_loop : 0;
+	if (*field == "seamless") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_seamless : 0;
+	if (*field == "export_with_transparency") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
+	if (*field == "camera_isometric") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_isometric = false;
+	if (*field == "camera_hide_floor") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings.camera_hide_floor = value;
+	if (*field == "orthographic_camera_isometric") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_isometric = true;
+	if (*field == "orthographic_camera_hide_floor") effect->library->sprite_sheet_settings[GetEffectInfo(effect)->sprite_sheet_settings_index].camera_settings_orthographic.camera_hide_floor = value;
+	if (*field == "preview_attach_effect_to_camera") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].attach_effect_to_camera = value;
+	if (*field == "preview_camera_hide_floor") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor = value;
+	if (*field == "preview_camera_isometric") effect->library->preview_camera_settings[GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric = value;
     if (*field == "random_color") {
         if (value) { effect->property_flags |= tfxEmitterPropertyFlags_random_color; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_random_color;}
     }
@@ -7015,6 +6926,9 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
 	if (*field == "use_simple_motion_randomness") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_simple_motion_randomness; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_simple_motion_randomness; }
 	}
+	if (*field == "spawn_location_source") {
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_spawn_location_source; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_spawn_location_source; }
+	}
 	//if (*field == "simple_motion_smoothstep") {
 		//if (value) { effect->property_flags |= tfxEmitterPropertyFlags_simple_motion_smoothstep; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_simple_motion_smoothstep; }
 	//}
@@ -7051,6 +6965,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("image_animate=%i", (flags & tfxEmitterPropertyFlags_animate));
 	file->AddLine("image_random_start_frame=%i", (flags & tfxEmitterPropertyFlags_random_start_frame));
 	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
+	file->AddLine("paired_emitter_hash=%llu", property->paired_emitter_hash);
 	file->AddLine("spawn_amount=%i", property->spawn_amount);
 	file->AddLine("spawn_amount_variation=%i", property->spawn_amount_variation);
 	file->AddLine("emission_type=%i", property->emission_type);
@@ -7092,6 +7007,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("alt_color_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling));
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
 	file->AddLine("use_simple_motion_randomness=%i", (flags & tfxEmitterPropertyFlags_use_simple_motion_randomness));
+	file->AddLine("spawn_location_source=%i", (flags & tfxEmitterPropertyFlags_spawn_location_source));
 	//file->AddLine("simple_motion_smoothstep=%i", (flags & tfxEmitterPropertyFlags_simple_motion_smoothstep));
 }
 
@@ -10750,7 +10666,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 				emitter.spawn_locations_index = GrabParticleLocationLists(pm, e.path_hash, (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d), 100);
 			}
 			else if (emitter_properties->emission_type == tfxOtherEmitter) {
-				target_emitters.push_back({emitter_properties->other_emitter_hash, index});
+				target_emitters.push_back({emitter_properties->paired_emitter_hash, index});
 			}
 
 			/*if (pm->flags & tfxEffectManagerFlags_use_compute_shader && GetEffectInfo(e)->sub_effectors.empty()) {
@@ -16936,6 +16852,7 @@ void InitEmitterProperites(tfx_emitter_properties_t *properties) {
 	properties->delay_spawning = 0.f;
 	properties->noise_base_offset_range = 1000.f;
 	properties->animation_property_index = tfxINVALID;
+	properties->paired_emitter_hash = 0;
 }
 
 //Use with care, no checks for out of bounds

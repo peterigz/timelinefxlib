@@ -5159,7 +5159,7 @@ struct tfx_emitter_properties_t {
 	tfx_emission_type emission_type;
 	//For other emitter emission types, this hash is the location of the other emitter so that it can be used to connect the two
 	//emitters together when added to a particle manager.
-	tfxKey other_emitter_hash;
+	tfxKey paired_emitter_hash;
 	//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
 	tfxU32 single_shot_limit;
 	//Animation frame rate
