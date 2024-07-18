@@ -14737,6 +14737,10 @@ void SpawnParticleOtherEmitter3d(tfx_work_queue_t *queue, void *data) {
 		return;
 	}
 
+	if ((tfxU32)emitter.grid_coords.x >= spawn_point_buffer.current_size) {
+		emitter.grid_coords.x = 0.f;
+	}
+
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
 		float &local_position_x = entry->particle_data->position_x[index];
