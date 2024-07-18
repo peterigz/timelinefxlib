@@ -12511,6 +12511,14 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 		captured_position_x.m = tfxWideAdd(tfxWideAnd(position_x.m, capture_flag), tfxWideAnd(captured_position_x.m, xor_capture_flag));
 		captured_position_y.m = tfxWideAdd(tfxWideAnd(position_y.m, capture_flag), tfxWideAnd(captured_position_y.m, xor_capture_flag));
 
+		if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_location_source && emitter.spawn_locations_index != tfxINVALID) {
+			tfx_spawn_points_soa_t &locations = work_entry->pm->particle_location_arrays[emitter.spawn_locations_index];
+			tfxWideStore(&locations.position_x[index], position_x.m);
+			tfxWideStore(&locations.position_y[index], position_y.m);
+			tfxWideStore(&locations.captured_position_x[index], captured_position_x.m);
+			tfxWideStore(&locations.captured_position_y[index], captured_position_y.m);
+		}
+
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (!(pm.flags & tfxEffectManagerFlags_unordered)) {	//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
@@ -14098,6 +14106,17 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 
 	work_entry->emission_type = properties.emission_type;
 
+	if (work_entry->emission_type == tfxOtherEmitter) {
+		if (emitter.spawn_locations_index == tfxINVALID) {
+			work_entry->amount_to_spawn = 0;
+		} else {
+			tfx_soa_buffer_t& spawn_point_buffer = pm->particle_array_buffers[emitter.spawn_locations_index];
+			if (spawn_point_buffer.current_size == 0) {
+				work_entry->amount_to_spawn = 0;
+			}
+		}
+	}
+
 	if (work_entry->amount_to_spawn > 0) {
 		tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork2d);
 	}
@@ -14274,14 +14293,13 @@ void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
 	SpawnParticleAge(&pm->work_queue, work_entry);
 	if (work_entry->emission_type == tfxPoint) {
 		SpawnParticlePoint2d(&pm->work_queue, work_entry);
-	}
-	else if (work_entry->emission_type == tfxArea) {
+	} else if (work_entry->emission_type == tfxOtherEmitter) {
+		SpawnParticleOtherEmitter2d(&pm->work_queue, work_entry);
+	} else if (work_entry->emission_type == tfxArea) {
 		SpawnParticleArea2d(&pm->work_queue, work_entry);
-	}
-	else if (work_entry->emission_type == tfxEllipse) {
+	} else if (work_entry->emission_type == tfxEllipse) {
 		SpawnParticleEllipse2d(&pm->work_queue, work_entry);
-	}
-	else if (work_entry->emission_type == tfxLine) {
+	} else if (work_entry->emission_type == tfxLine) {
 		SpawnParticleLine2d(&pm->work_queue, work_entry);
 	}
 	SpawnParticleWeight(&pm->work_queue, work_entry);
@@ -14777,7 +14795,65 @@ void SpawnParticleOtherEmitter3d(tfx_work_queue_t *queue, void *data) {
 		}
 
 	}
+}
 
+void SpawnParticleOtherEmitter2d(tfx_work_queue_t* queue, void* data) {
+	tfxPROFILE;
+	tfx_spawn_work_entry_t* entry = static_cast<tfx_spawn_work_entry_t*>(data);
+	tfx_random_t random = entry->random;
+	float tween = 0.f;
+	tfxU32 emitter_index = entry->emitter_index;
+	tfx_particle_manager_t& pm = *entry->pm;
+	tfx_emitter_state_t& emitter = pm.emitters[entry->emitter_index];
+	AlterRandomSeed(&random, 10 + emitter.seed_index);
+	tfx_effect_state_t* parent = &pm.effects[entry->parent_index];
+
+	if (emitter.spawn_locations_index == tfxINVALID) {
+		entry->amount_to_spawn = 0;
+		return;
+	}
+
+	tfx_soa_buffer_t& spawn_point_buffer = pm.particle_location_buffers[emitter.spawn_locations_index];
+	tfx_spawn_points_soa_t& spawn_points = pm.particle_location_arrays[emitter.spawn_locations_index];
+	if (spawn_point_buffer.current_size == 0) {
+		entry->amount_to_spawn = 0;
+		return;
+	}
+
+	if ((tfxU32)emitter.grid_coords.x >= spawn_point_buffer.current_size) {
+		emitter.grid_coords.x = 0.f;
+	}
+
+	for (int i = 0; i != entry->amount_to_spawn; ++i) {
+		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+		float& local_position_x = entry->particle_data->position_x[index];
+		float& local_position_y = entry->particle_data->position_y[index];
+
+		int spawn_index = (int)emitter.grid_coords.x;
+		spawn_index = GetCircularIndex(&spawn_point_buffer, spawn_index);
+		local_position_x = spawn_points.position_x[spawn_index];
+		local_position_y = spawn_points.position_y[spawn_index];
+
+		emitter.grid_coords.x++;
+		if ((tfxU32)emitter.grid_coords.x >= spawn_point_buffer.current_size) {
+			emitter.grid_coords.x = 0.f;
+		}
+
+		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
+			tween = 1.f - entry->particle_data->age[index] / pm.frame_length;
+			float lerp_position_x = Interpolatef(tween, spawn_points.captured_position_x[spawn_index], spawn_points.position_x[spawn_index]);
+			float lerp_position_y = Interpolatef(tween, spawn_points.captured_position_y[spawn_index], spawn_points.position_y[spawn_index]);
+			if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
+				local_position_x = lerp_position_x;
+				local_position_y = lerp_position_y;
+			}
+			else {
+				tfx_vec2_t rotvec = RotateVectorQuaternion2d(&emitter.rotation, { emitter.handle.x, emitter.handle.y });
+				local_position_x = rotvec.x + lerp_position_x;
+				local_position_y = rotvec.y + lerp_position_y;
+			}
+		}
+	}
 }
 
 
@@ -16826,10 +16902,8 @@ void InitParticleLocationSoA3d(tfx_soa_buffer_t* buffer, tfx_spawn_points_soa_t*
 void InitParticleLocationSoA2d(tfx_soa_buffer_t* buffer, tfx_spawn_points_soa_t* soa, tfxU32 reserve_amount) {
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_x));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_y));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_z));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_x));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_y));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_z));
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 

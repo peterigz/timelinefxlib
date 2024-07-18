@@ -6440,6 +6440,7 @@ tfxINTERNAL void DoSpawnWork2d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleOtherEmitter2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleOtherEmitter3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data);
