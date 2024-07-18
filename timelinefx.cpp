@@ -14834,7 +14834,7 @@ void SpawnParticleOtherEmitter3d(tfx_work_queue_t *queue, void *data) {
 		local_position_z = spawn_points.position_z[spawn_index];
 
 		emitter.grid_coords.x++;
-		if ((int)emitter.grid_coords.x >= spawn_point_buffer.current_size) {
+		if ((tfxU32)emitter.grid_coords.x >= spawn_point_buffer.current_size) {
 			emitter.grid_coords.x = 0.f;
 		}
 
