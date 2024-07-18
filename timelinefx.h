@@ -2206,6 +2206,7 @@ enum tfx_emission_type : unsigned char {
 	tfxCylinder,
 	tfxIcosphere,
 	tfxPath,
+	tfxOtherEmitter,
 	tfxEmissionTypeMax,
 };
 
@@ -2509,7 +2510,7 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29,		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
-	//tfxEmitterPropertyFlags_simple_motion_smoothstep = 1 << 30		//Unused, probably just remove.
+	tfxEmitterPropertyFlags_spawn_location_source = 1 << 30				//This emitter is the source for another emitter that uses it to spawn particles at the location of this emitters' particles
 };
 
 enum tfx_particle_flag_bits : unsigned int {
@@ -5156,6 +5157,9 @@ struct tfx_emitter_properties_t {
 	tfx_vector_align_type vector_align_type;
 	//Point, area, ellipse emitter etc.
 	tfx_emission_type emission_type;
+	//For other emitter emission types, this hash is the location of the other emitter so that it can be used to connect the two
+	//emitters together when added to a particle manager.
+	tfxKey other_emitter_hash;
 	//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
 	tfxU32 single_shot_limit;
 	//Animation frame rate
@@ -5322,6 +5326,7 @@ struct tfx_emitter_state_t {
 
 	//Control Data
 	tfxU32 particles_index;
+	tfxU32 spawn_locations_index;	//For other_emitter emission type and storing the last known position of the particle
 	float image_frame_rate;
 	float end_frame;
 	tfx_vec3_t grid_coords;
@@ -5391,7 +5396,11 @@ struct tfx_effect_emitter_t {
 	//Required for frame by frame updating
 	//The current state of the effect/emitter used in the editor only at this point
 	tfxEmitterStateFlags state_flags;
+	//Property flags for emitters
 	tfxEmitterPropertyFlags property_flags;
+	//Flags specific to effects
+	tfxEffectPropertyFlags effect_flags;
+	//A link to the library that this effect/emitter belongs to
 	tfx_library_t *library;
 	//Is this an tfxEffectType or tfxEmitterType
 	tfx_effect_emitter_type type;
@@ -5408,8 +5417,6 @@ struct tfx_effect_emitter_t {
 	tfxEmitterControlProfileFlags control_profile;
 	//Pointer to the immediate parent
 	tfx_effect_emitter_t *parent;
-	//State state_flags for emitters and effects
-	tfxEffectPropertyFlags effect_flags;
 	//When not using insert sort to guarantee particle order, sort passes offers a more relaxed way of ordering particles over a number of frames.
 	//The more passes the more quickly ordered the particles will be but at a higher cost
 	tfxU32 sort_passes;
@@ -5506,6 +5513,15 @@ struct tfx_particle_soa_t {
 	tfxU32 *single_loop_count;
 };
 
+struct tfx_spawn_points_soa_t {
+	float *position_x;
+	float *position_y;
+	float *position_z;
+	float *captured_position_x;
+	float *captured_position_y;
+	float *captured_position_z;
+};
+
 struct tfx_sprite_transform2d_t {
 	tfx_vec2_t position;					//The position of the sprite, x, y - world, z, w = captured for interpolating
 	tfx_vec2_t scale;						//Scale
@@ -5532,7 +5548,7 @@ struct tfx_frame_meta_t {
 //This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
 //InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
 //3d in one struct like this as it makes it a lot easier to use the same control functions where we can. Also note that stretch and alignment for 3d sprites are packed into
-//stretch_alignment_x and alignment_yz as 16bit floats. 2d uses the float float for stretch and packs xy alignment into alignment_yz
+//stretch_alignment_x and alignment_yz as 16bit floats. 2d uses the float for stretch and packs xy alignment into alignment_yz
 struct tfx_sprite_soa_t {						//3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
 	tfxU32 *property_indexes;					//The image frame of animation index packed with alignment option flag and property_index
 	tfxU32 *captured_index;						//The index of the sprite in the previous frame so that it can be looked up and interpolated with
@@ -5879,9 +5895,12 @@ struct tfx_animation_manager_t {
 struct tfx_particle_manager_t {
 	tfx_vector_t<tfx_soa_buffer_t> particle_array_buffers;
 	tfx_bucket_array_t<tfx_particle_soa_t> particle_arrays;
+	tfx_vector_t<tfx_soa_buffer_t> particle_location_buffers;
+	tfx_bucket_array_t<tfx_spawn_points_soa_t> particle_location_arrays;
 
 	//In unordered mode emitters that expire have their particle banks added here to be reused
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_lists;
+	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfx_sort_work_entry_t sorting_work_entry[tfxLAYERS];
 
@@ -6111,6 +6130,7 @@ tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 //Dump sprites for Debugging
 tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
 tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
+tfxINTERNAL tfxU32 GrabParticleLocationLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 
 //--------------------------------
 //Profilings
@@ -6420,6 +6440,7 @@ tfxINTERNAL void DoSpawnWork2d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticleOtherEmitter3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleLine3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleArea3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleEllipsoid(tfx_work_queue_t *queue, void *data);
@@ -6464,6 +6485,8 @@ tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_s
 tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
 tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
 tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
+tfxINTERNAL void InitParticleLocationSoA3d(tfx_soa_buffer_t* buffer, tfx_spawn_points_soa_t* soa, tfxU32 reserve_amount);
+tfxINTERNAL void InitParticleLocationSoA2d(tfx_soa_buffer_t* buffer, tfx_spawn_points_soa_t* soa, tfxU32 reserve_amount);
 tfxAPI_EDITOR void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
@@ -6680,6 +6703,7 @@ tfxINTERNAL void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_i
 tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxINTERNAL void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
+tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
@@ -6769,6 +6793,7 @@ tfxAPI_EDITOR tfxU32 AddLibrarySpriteDataSettings(tfx_library_t *library, tfx_ef
 tfxAPI_EDITOR void AddLibrarySpriteSheetSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void AddLibrarySpriteDataSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library, tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR void AddLibraryPreviewCameraSettingsSub(tfx_library_t *library, tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfxU32 AddLibraryPreviewCameraSettings(tfx_library_t *library);
 tfxAPI_EDITOR tfxU32 AddLibraryEffectEmitterInfo(tfx_library_t *library);
 tfxAPI_EDITOR tfxU32 AddLibraryEmitterProperties(tfx_library_t *library);
@@ -6794,6 +6819,7 @@ tfxINTERNAL tfx_str64_t GetNameFromPath(tfx_str256_t* path);
 //These are mainly for use by the editor, use effect templates instead, see PrepareEffectTemplate.
 tfxAPI_EDITOR tfx_effect_emitter_t *GetLibraryEffect(tfx_library_t *library, const char *path);
 tfxAPI_EDITOR bool IsValidEffectPath(tfx_library_t *library, const char *path);
+tfxAPI_EDITOR bool IsValidEffectKey(tfx_library_t *library, tfxKey key);
 //Get an effect by it's path hash key
 tfxAPI_EDITOR tfx_effect_emitter_t *GetLibraryEffect(tfx_library_t *library, tfxKey key);
 tfxAPI_EDITOR void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], std::atomic_int *progress);
