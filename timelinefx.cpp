@@ -3695,6 +3695,7 @@ void CloneEffect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter_t *cl
 			CompileLibraryBaseGraph(clone->library, clone->emitter_attributes);
 			CompileLibraryVariationGraph(clone->library, clone->emitter_attributes);
 			CompileLibraryOvertimeGraph(clone->library, clone->emitter_attributes);
+			CompileLibraryFactorGraph(clone->library, clone->emitter_attributes);
 		}
 		if (clone->path_attributes != tfxINVALID) {
 			tfx_emitter_path_t path_copy = CopyPath(&library->paths[clone->path_attributes], "");
@@ -5426,6 +5427,7 @@ tfxU32 CloneLibraryEmitterAttributes(tfx_library_t *library, tfxU32 source_index
 	CopyBaseAttributesNoLookups(&library->emitter_attributes[source_index].base, &destination_library->emitter_attributes[index].base);
 	CopyVariationAttributesNoLookups(&library->emitter_attributes[source_index].variation, &destination_library->emitter_attributes[index].variation);
 	CopyOvertimeAttributesNoLookups(&library->emitter_attributes[source_index].overtime, &destination_library->emitter_attributes[index].overtime);
+	CopyFactorAttributesNoLookups(&library->emitter_attributes[source_index].factor, &destination_library->emitter_attributes[index].factor);
 	return index;
 }
 
@@ -14315,7 +14317,7 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		if (emitter.spawn_locations_index == tfxINVALID) {
 			work_entry->amount_to_spawn = 0;
 		} else {
-			tfx_soa_buffer_t& spawn_point_buffer = pm->particle_array_buffers[emitter.spawn_locations_index];
+			tfx_soa_buffer_t& spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
 			if (spawn_point_buffer.current_size == 0) {
 				work_entry->amount_to_spawn = 0;
 			}
