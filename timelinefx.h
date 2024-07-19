@@ -5493,8 +5493,7 @@ struct tfx_unique_sprite_id_t {
 //Note that not all of these are used, it will depend on the emitter and which attributes it uses. So to save memory,
 //when the the buffer is initialised only the fields that are needed for the emitter will be used.
 struct tfx_particle_soa_t {
-	tfxU32 *uid;		//Only used for recording sprite data
-	tfxU32 *parent_index;
+	tfxU32 *uid;
 	tfxU32 *sprite_index;
 	tfxU32 *particle_index;
 	tfxParticleFlags *flags;
@@ -5523,6 +5522,7 @@ struct tfx_particle_soa_t {
 	float *base_size_y;
 	float *noise_offset;
 	float *noise_resolution;
+	float *intensity_factor;
 	tfx_rgba8_t *color;
 	float *image_frame;
 	tfxU32 *single_loop_count;
@@ -6554,6 +6554,7 @@ tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom3d(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsColorGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsOvertimeGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool IsFactorGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsGlobalGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsAngleGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsTranslationGraph(tfx_graph_t *graph);
