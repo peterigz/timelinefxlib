@@ -2746,6 +2746,10 @@ void UpdateEffectMaxLife(tfx_effect_emitter_t *effect) {
 	GetEffectGraphByType(effect, tfxOvertime_velocity_adjuster)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_direction)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_motion_randomness)->lookup.life = info->max_life;
+	GetEffectGraphByType(effect, tfxFactor_life)->lookup.life = info->max_life;
+	GetEffectGraphByType(effect, tfxFactor_velocity)->lookup.life = info->max_life;
+	GetEffectGraphByType(effect, tfxFactor_size)->lookup.life = info->max_life;
+	GetEffectGraphByType(effect, tfxFactor_intensity)->lookup.life = info->max_life;
 }
 
 bool IsFiniteEmitter(tfx_effect_emitter_t* emitter) {
@@ -3348,12 +3352,25 @@ void ResetEmitterOvertimeGraphs(tfx_effect_emitter_t *effect, bool add_node, boo
 	}
 }
 
+void ResetEmitterFactorGraphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+	tfx_library_t *library = effect->library;
+	tfxU32 emitter_attributes = effect->emitter_attributes;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].factor.life, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].factor.life.type = tfxFactor_life;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].factor.velocity, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].factor.velocity.type = tfxFactor_velocity;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].factor.size, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].factor.size.type = tfxFactor_size;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].factor.intensity, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].factor.intensity.type = tfxFactor_intensity;
+	if (compile) {
+		CompileLibraryFactorGraph(library, emitter_attributes);
+	}
+}
+
 void ResetEmitterGraphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
 	ResetEmitterBaseGraphs(effect, add_node, compile);
 	ResetEmitterPropertyGraphs(effect, add_node, compile);
 	ResetEmitterVariationGraphs(effect, add_node, compile);
 	UpdateEffectMaxLife(effect);
 	ResetEmitterOvertimeGraphs(effect, add_node, compile);
+	ResetEmitterFactorGraphs(effect, add_node, compile);
 }
 
 void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
@@ -3443,6 +3460,11 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].overtime.direction.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.direction, 0.f, tfxDirectionOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.noise_resolution.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.noise_resolution, 1.f, tfxPercentOvertime);
 		if (library->emitter_attributes[emitter_attributes].overtime.motion_randomness.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.motion_randomness, 0.f, tfxPercentOvertime);
+
+		if (library->emitter_attributes[emitter_attributes].factor.life.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].factor.life, 1.f, tfxPercentOvertime);
+		if (library->emitter_attributes[emitter_attributes].factor.velocity.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].factor.velocity, 1.f, tfxPercentOvertime);
+		if (library->emitter_attributes[emitter_attributes].factor.size.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].factor.size, 1.f, tfxPercentOvertime);
+		if (library->emitter_attributes[emitter_attributes].factor.intensity.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].factor.intensity, 1.f, tfxPercentOvertime);
 	}
 }
 
@@ -3770,9 +3792,13 @@ tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfx_graph_type t
 		int ref = type - TFX_VARIATION_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[effect->emitter_attributes].variation)[ref];
 	}
-	else if (type >= TFX_OVERTIME_START && type < TFX_TRANSFORM_START) {
+	else if (type >= TFX_OVERTIME_START && type < TFX_FACTOR_START) {
 		int ref = type - TFX_OVERTIME_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[effect->emitter_attributes].overtime)[ref];
+	}
+	else if (type >= TFX_FACTOR_START && type < TFX_TRANSFORM_START) {
+		int ref = type - TFX_FACTOR_START;
+		return &((tfx_graph_t*)&library->emitter_attributes[effect->emitter_attributes].factor)[ref];
 	}
 	else if (type >= TFX_TRANSFORM_START) {
 		int ref = type - TFX_TRANSFORM_START;
@@ -4663,6 +4689,13 @@ void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 
 	attributes->motion_randomness.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 }
 
+void InitialiseFactorAttributes(tfx_factor_attributes_t *attributes, tfxU32 bucket_size) {
+	attributes->life.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->velocity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->size.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+}
+
 void FreeOvertimeAttributes(tfx_overtime_attributes_t *attributes) {
 	FreeGraph(&attributes->velocity);
 	FreeGraph(&attributes->width);
@@ -4729,6 +4762,29 @@ void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attribu
 	CopyGraph(&src->direction, &dst->direction);
 	CopyGraph(&src->noise_resolution, &dst->noise_resolution);
 	CopyGraph(&src->motion_randomness, &dst->motion_randomness);
+}
+
+void FreeFactorAttributes(tfx_factor_attributes_t* attributes) {
+	FreeGraph(&attributes->life);
+	FreeGraph(&attributes->velocity);
+	FreeGraph(&attributes->size);
+	FreeGraph(&attributes->intensity);
+}
+
+void CopyFactorAttributesNoLookups(tfx_factor_attributes_t* src, tfx_factor_attributes_t* dst) {
+	if (src == dst) return;
+	CopyGraphNoLookups(&src->life, &dst->life);
+	CopyGraphNoLookups(&src->velocity, &dst->velocity);
+	CopyGraphNoLookups(&src->size, &dst->size);
+	CopyGraphNoLookups(&src->intensity, &dst->intensity);
+}
+
+void CopyFactorAttributes(tfx_factor_attributes_t* src, tfx_factor_attributes_t* dst) {
+	if (src == dst) return;
+	CopyGraph(&src->life, &dst->life);
+	CopyGraph(&src->velocity, &dst->velocity);
+	CopyGraph(&src->size, &dst->size);
+	CopyGraph(&src->intensity, &dst->intensity);
 }
 
 void FreeVariationAttributes(tfx_variation_attributes_t *attributes) {
@@ -4823,6 +4879,7 @@ void InitialiseEmitterAttributes(tfx_emitter_attributes_t *attributes, tfxU32 bu
 	InitialiseBaseAttributes(&attributes->base, bucket_size);
 	InitialiseVariationAttributes(&attributes->variation, bucket_size);
 	InitialiseOvertimeAttributes(&attributes->overtime, bucket_size);
+	InitialiseFactorAttributes(&attributes->factor, bucket_size);
 }
 
 void FreeEmitterAttributes(tfx_emitter_attributes_t *attributes) {
@@ -4830,6 +4887,7 @@ void FreeEmitterAttributes(tfx_emitter_attributes_t *attributes) {
 	FreeBaseAttributes(&attributes->base);
 	FreeVariationAttributes(&attributes->variation);
 	FreeOvertimeAttributes(&attributes->overtime);
+	FreeFactorAttributes(&attributes->factor);
 }
 
 tfx_effect_emitter_t& tfx_library_t::operator[] (tfxU32 index) {
@@ -5341,6 +5399,11 @@ tfxU32 CountLibraryEmitterLookUpValues(tfx_library_t *library, tfxU32 index) {
 	count += attributes.overtime.direction.lookup.values.capacity;
 	count += attributes.overtime.noise_resolution.lookup.values.capacity;
 	count += attributes.overtime.motion_randomness.lookup.values.capacity;
+
+	count += attributes.factor.life.lookup.values.capacity;
+	count += attributes.factor.velocity.lookup.values.capacity;
+	count += attributes.factor.size.lookup.values.capacity;
+	count += attributes.factor.intensity.lookup.values.capacity;
 
 	return count;
 }
@@ -5867,6 +5930,11 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 		CompileGraphOvertime(&g.overtime.direction);
 		CompileGraphOvertime(&g.overtime.noise_resolution);
 		CompileGraphOvertime(&g.overtime.motion_randomness);
+
+		CompileGraphOvertime(&g.factor.life);
+		CompileGraphOvertime(&g.factor.velocity);
+		CompileGraphOvertime(&g.factor.size);
+		CompileGraphOvertime(&g.factor.intensity);
 	}
 }
 
@@ -5907,6 +5975,7 @@ void CompileLibraryEmitterGraphs(tfx_library_t *library, tfxU32 index) {
 	CompileLibraryBaseGraph(library, index);
 	CompileLibraryVariationGraph(library, index);
 	CompileLibraryOvertimeGraph(library, index);
+	CompileLibraryFactorGraph(library, index);
 }
 
 void CompileLibraryPropertyGraph(tfx_library_t *library, tfxU32 index) {
@@ -5922,6 +5991,7 @@ void CompileLibraryPropertyGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraph(&g.emitter_depth);
 	CompileGraph(&g.splatter);
 }
+
 void CompileLibraryBaseGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_base_attributes_t &g = library->emitter_attributes[index].base;
 	CompileGraph(&g.amount);
@@ -5935,6 +6005,7 @@ void CompileLibraryBaseGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraph(&g.velocity);
 	CompileGraph(&g.weight);
 }
+
 void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_variation_attributes_t &g = library->emitter_attributes[index].variation;
 	CompileGraph(&g.amount);
@@ -5950,6 +6021,7 @@ void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraph(&g.velocity);
 	CompileGraph(&g.weight);
 }
+
 void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
 	CompileColorOvertime(&g.red);
@@ -5972,6 +6044,15 @@ void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraphOvertime(&g.noise_resolution);
 	CompileGraphOvertime(&g.motion_randomness);
 }
+
+void CompileLibraryFactorGraph(tfx_library_t *library, tfxU32 index) {
+	tfx_factor_attributes_t &g = library->emitter_attributes[index].factor;
+	CompileColorOvertime(&g.life);
+	CompileColorOvertime(&g.velocity);
+	CompileColorOvertime(&g.size);
+	CompileGraphOvertime(&g.intensity);
+}
+
 void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
 	CompileColorOvertime(&g.red);
@@ -6294,6 +6375,11 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("overtime_noise_resolution", tfxFloat);
 	names_and_types.Insert("overtime_motion_randomness", tfxFloat);
 
+	names_and_types.Insert("factor_life", tfxFloat);
+	names_and_types.Insert("factor_velocity", tfxFloat);
+	names_and_types.Insert("factor_size", tfxFloat);
+	names_and_types.Insert("factor_intensity", tfxFloat);
+
 	names_and_types.Insert("transform_roll", tfxFloat);
 	names_and_types.Insert("transform_pitch", tfxFloat);
 	names_and_types.Insert("transform_yaw", tfxFloat);
@@ -6536,6 +6622,11 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "overtime_velocity_adjuster") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.velocity_adjuster, &n); }
 		if ((*values)[0] == "overtime_noise_resolution") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.noise_resolution, &n); }
 		if ((*values)[0] == "overtime_motion_randomness") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.motion_randomness, &n); }
+
+		if ((*values)[0] == "factor_life") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].factor.life, &n); }
+		if ((*values)[0] == "factor_velocity") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].factor.velocity, &n); }
+		if ((*values)[0] == "factor_size") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].factor.size, &n); }
+		if ((*values)[0] == "factor_intensity") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].factor.intensity, &n); }
 
 		if ((*values)[0] == "path_pitch") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_x, &n); }
 		if ((*values)[0] == "path_yaw") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->paths[CreateEmitterPathAttributes(effect, false)].angle_y, &n); }
@@ -8744,9 +8835,13 @@ tfx_graph_t *tfxGetGraph(tfx_library_t *library, tfx_graph_id_t graph_id) {
 		int ref = type - TFX_VARIATION_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[graph_id.graph_id].variation)[ref];
 	}
-	else if (type >= TFX_OVERTIME_START && type < TFX_TRANSFORM_START) {
+	else if (type >= TFX_OVERTIME_START && type < TFX_FACTOR_START) {
 		int ref = type - TFX_OVERTIME_START;
 		return &((tfx_graph_t*)&library->emitter_attributes[graph_id.graph_id].overtime)[ref];
+	}
+	else if (type >= TFX_FACTOR_START && type < TFX_TRANSFORM_START) {
+		int ref = type - TFX_FACTOR_START;
+		return &((tfx_graph_t*)&library->emitter_attributes[graph_id.graph_id].factor)[ref];
 	}
 	else if (type >= TFX_TRANSFORM_START) {
 		int ref = type - TFX_TRANSFORM_START;
@@ -12055,6 +12150,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			tfxWideStore(&locations.captured_position_x[index], captured_position_x.m);
 			tfxWideStore(&locations.captured_position_y[index], captured_position_y.m);
 			tfxWideStore(&locations.captured_position_z[index], captured_position_z.m);
+			tfxWideStore(&locations.age[index], tfxWideDiv(age, max_age));
 		}
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
@@ -12517,6 +12613,7 @@ void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data) {
 			tfxWideStore(&locations.position_y[index], position_y.m);
 			tfxWideStore(&locations.captured_position_x[index], captured_position_x.m);
 			tfxWideStore(&locations.captured_position_y[index], captured_position_y.m);
+			tfxWideStore(&locations.age[index], tfxWideDiv(age, max_age));
 		}
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
@@ -14517,6 +14614,11 @@ void SpawnParticleSize3d(tfx_work_queue_t *queue, void *data) {
 	size_variation.y = lookup_callback(&library->emitter_attributes[emitter.emitter_attributes].variation.height, emitter.frame) * entry->parent_spawn_controls->size_y;
 	tfx_vec2_t &image_size = properties.image->image_size;
 
+	if (entry->emission_type == tfxOtherEmitter) {
+		emitter.grid_coords.x = emitter.grid_coords.y;
+	}
+
+
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -14535,6 +14637,21 @@ void SpawnParticleSize3d(tfx_work_queue_t *queue, void *data) {
 			float random_size_y = random_size_x;
 			base_size_y = random_size_y + size.y;
 			base_size_x = random_size_x + size.x;
+		}
+
+		if (entry->emission_type == tfxOtherEmitter) {
+			int spawn_index = (int)emitter.grid_coords.x;
+			spawn_index = GetCircularIndex(&pm.particle_location_buffers[emitter.spawn_locations_index], spawn_index);
+			float age_lerp = pm.particle_location_arrays[emitter.spawn_locations_index].age[spawn_index];
+
+			emitter.grid_coords.x++;
+			if ((tfxU32)emitter.grid_coords.x >= pm.particle_location_buffers[emitter.spawn_locations_index].current_size) {
+				emitter.grid_coords.x = 0.f;
+			}
+			float max_age = entry->particle_data->max_age[index];
+			float size_factor = lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].factor.size, age_lerp * max_age, max_age);
+			base_size_x *= size_factor;
+			base_size_y *= size_factor;
 		}
 
 	}
@@ -14758,6 +14875,8 @@ void SpawnParticleOtherEmitter3d(tfx_work_queue_t *queue, void *data) {
 	if ((tfxU32)emitter.grid_coords.x >= spawn_point_buffer.current_size) {
 		emitter.grid_coords.x = 0.f;
 	}
+
+	emitter.grid_coords.y = emitter.grid_coords.x;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -16896,6 +17015,7 @@ void InitParticleLocationSoA3d(tfx_soa_buffer_t* buffer, tfx_spawn_points_soa_t*
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_x));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_y));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_z));
+	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, age));
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
@@ -16904,6 +17024,7 @@ void InitParticleLocationSoA2d(tfx_soa_buffer_t* buffer, tfx_spawn_points_soa_t*
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_y));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_x));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_y));
+	AddStructArray(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, age));
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 

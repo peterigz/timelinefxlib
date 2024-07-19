@@ -2084,6 +2084,7 @@ enum tfx_graph_category : unsigned int {
 #define	TFX_BASE_COUNT  10
 #define	TFX_VARIATION_COUNT  12
 #define	TFX_OVERTIME_COUNT  19
+#define	TFX_FACTOR_COUNT  4
 #define	TFX_TRANSFORM_COUNT  6
 
 const int TFX_GLOBAL_START = 0;
@@ -2091,7 +2092,8 @@ const int TFX_PROPERTY_START = TFX_GLOBAL_COUNT;
 const int TFX_BASE_START = (TFX_PROPERTY_START + TFX_PROPERTY_COUNT);
 const int TFX_VARIATION_START = (TFX_BASE_START + TFX_BASE_COUNT);
 const int TFX_OVERTIME_START = (TFX_VARIATION_START + TFX_VARIATION_COUNT);
-const int TFX_TRANSFORM_START = (TFX_OVERTIME_START + TFX_OVERTIME_COUNT);
+const int TFX_FACTOR_START = (TFX_OVERTIME_START + TFX_OVERTIME_COUNT);
+const int TFX_TRANSFORM_START = (TFX_FACTOR_START + TFX_FACTOR_COUNT);
 
 //All the different types of graphs, split into main type: global, property, base, variation and overtime
 enum tfx_graph_type : unsigned char {
@@ -2167,6 +2169,11 @@ enum tfx_graph_type : unsigned char {
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
+
+	tfxFactor_life,
+	tfxFactor_size,
+	tfxFactor_velocity,
+	tfxFactor_intensity,
 
 	tfxTransform_roll,
 	tfxTransform_pitch,
@@ -4978,6 +4985,13 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t motion_randomness;
 };
 
+struct tfx_factor_attributes_t {
+	tfx_graph_t life;
+	tfx_graph_t size;
+	tfx_graph_t velocity;
+	tfx_graph_t intensity;
+};
+
 struct tfx_path_nodes_soa_t {
 	float *x;
 	float *y;
@@ -5025,6 +5039,7 @@ struct tfx_emitter_attributes_t {
 	tfx_base_attributes_t base;
 	tfx_variation_attributes_t variation;
 	tfx_overtime_attributes_t overtime;
+	tfx_factor_attributes_t factor;
 };
 
 static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age, float lifetime);
@@ -5520,6 +5535,7 @@ struct tfx_spawn_points_soa_t {
 	float *captured_position_x;
 	float *captured_position_y;
 	float *captured_position_z;
+	float* age;
 };
 
 struct tfx_sprite_transform2d_t {
@@ -6642,6 +6658,7 @@ tfxAPI_EDITOR tfxU32 AddEmitterPathAttributes(tfx_library_t* library);
 tfxAPI_EDITOR tfx_emitter_path_t CopyPath(tfx_emitter_path_t* src, const char *name);
 tfxINTERNAL void InitialiseGlobalAttributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size = 8);
+tfxINTERNAL void InitialiseFactorAttributes(tfx_factor_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseVariationAttributes(tfx_variation_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialiseBaseAttributes(tfx_base_attributes_t *attributes, tfxU32 bucket_size = 8);
 tfxINTERNAL void InitialisePropertyAttributes(tfx_property_attributes_t *attributes, tfxU32 bucket_size = 8);
@@ -6652,6 +6669,9 @@ tfxINTERNAL void FreeGlobalAttributes(tfx_global_attributes_t *attributes);
 tfxAPI_EDITOR void FreeOvertimeAttributes(tfx_overtime_attributes_t *attributes);
 tfxAPI_EDITOR void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
 tfxAPI_EDITOR void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
+tfxAPI_EDITOR void FreeFactorAttributes(tfx_overtime_attributes_t *attributes);
+tfxAPI_EDITOR void CopyFactorAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
+tfxAPI_EDITOR void CopyFactorAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
 tfxAPI_EDITOR void FreeVariationAttributes(tfx_variation_attributes_t *attributes);
 tfxAPI_EDITOR void CopyVariationAttributesNoLookups(tfx_variation_attributes_t *src, tfx_variation_attributes_t *dst);
 tfxAPI_EDITOR void CopyVariationAttributes(tfx_variation_attributes_t *src, tfx_variation_attributes_t *dst);
@@ -6808,6 +6828,7 @@ tfxAPI_EDITOR void CompileLibraryPropertyGraph(tfx_library_t *library, tfxU32 in
 tfxAPI_EDITOR void CompileLibraryBaseGraph(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryFactorGraph(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryGraphsOfEffect(tfx_library_t *library, tfx_effect_emitter_t *effect, tfxU32 depth = 0);
 tfxAPI_EDITOR void SetLibraryMinMaxData(tfx_library_t *library);
@@ -6855,6 +6876,7 @@ tfxAPI_EDITOR void ResetEmitterBaseGraphs(tfx_effect_emitter_t *effect, bool add
 tfxAPI_EDITOR void ResetEmitterPropertyGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
 tfxAPI_EDITOR void ResetEmitterVariationGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
 tfxAPI_EDITOR void ResetEmitterOvertimeGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void ResetEmitterFactorGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
 tfxAPI_EDITOR void ResetEmitterGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
 
 tfxAPI_EDITOR void AddEmitterColorOvertime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color);
