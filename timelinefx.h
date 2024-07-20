@@ -2384,25 +2384,25 @@ enum tfx_emitter_control_profile_flag_bits {
 };
 
 enum tfx_particle_manager_flag_bits {
-	tfxEffectManagerFlags_none = 0,
-	tfxEffectManagerFlags_disable_spawning = 1,
-	tfxEffectManagerFlags_force_capture = 2,			//Unused
-	tfxEffectManagerFlags_use_compute_shader = 1 << 3,
-	tfxEffectManagerFlags_order_by_depth = 1 << 4,
-	tfxEffectManagerFlags_guarantee_order = 1 << 5,
-	tfxEffectManagerFlags_update_base_values = 1 << 6,
-	tfxEffectManagerFlags_dynamic_sprite_allocation = 1 << 7,
-	tfxEffectManagerFlags_3d_effects = 1 << 8,
-	tfxEffectManagerFlags_unordered = 1 << 9,
-	tfxEffectManagerFlags_ordered_by_age = 1 << 10,
-	tfxEffectManagerFlags_update_age_only = 1 << 11,
-	tfxEffectManagerFlags_single_threaded = 1 << 12,
-	tfxEffectManagerFlags_double_buffer_sprites = 1 << 13,
-	tfxEffectManagerFlags_recording_sprites = 1 << 14,
-	tfxEffectManagerFlags_using_uids = 1 << 15,
-	tfxEffectManagerFlags_2d_and_3d = 1 << 16,
-	tfxEffectManagerFlags_update_bounding_boxes = 1 << 17,
-	tfxEffectManagerFlags_use_effect_sprite_buffers = 1 << 18
+	tfxParticleManagerFlags_none = 0,
+	tfxParticleManagerFlags_disable_spawning = 1,
+	tfxParticleManagerFlags_force_capture = 2,			//Unused
+	tfxParticleManagerFlags_use_compute_shader = 1 << 3,
+	tfxParticleManagerFlags_order_by_depth = 1 << 4,
+	tfxParticleManagerFlags_guarantee_order = 1 << 5,
+	tfxParticleManagerFlags_update_base_values = 1 << 6,
+	tfxParticleManagerFlags_dynamic_sprite_allocation = 1 << 7,
+	tfxParticleManagerFlags_3d_effects = 1 << 8,
+	tfxParticleManagerFlags_unordered = 1 << 9,
+	tfxParticleManagerFlags_ordered_by_age = 1 << 10,
+	tfxParticleManagerFlags_update_age_only = 1 << 11,
+	tfxParticleManagerFlags_single_threaded = 1 << 12,
+	tfxParticleManagerFlags_double_buffer_sprites = 1 << 13,
+	tfxParticleManagerFlags_recording_sprites = 1 << 14,
+	tfxParticleManagerFlags_using_uids = 1 << 15,
+	tfxParticleManagerFlags_2d_and_3d = 1 << 16,
+	tfxParticleManagerFlags_update_bounding_boxes = 1 << 17,
+	tfxParticleManagerFlags_use_effect_sprite_buffers = 1 << 18
 };
 
 enum tfx_vector_align_type {
@@ -6743,8 +6743,8 @@ tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index)
 tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
-tfxINTERNAL void EnableCompute(tfx_particle_manager_t *pm) { pm->flags |= tfxEffectManagerFlags_use_compute_shader; }
-tfxINTERNAL void DisableCompute(tfx_particle_manager_t *pm) { pm->flags &= ~tfxEffectManagerFlags_use_compute_shader; }
+tfxINTERNAL void EnableCompute(tfx_particle_manager_t *pm) { pm->flags |= tfxParticleManagerFlags_use_compute_shader; }
+tfxINTERNAL void DisableCompute(tfx_particle_manager_t *pm) { pm->flags &= ~tfxParticleManagerFlags_use_compute_shader; }
 tfxINTERNAL int AddComputeController(tfx_particle_manager_t *pm);
 tfxINTERNAL tfx_compute_particle_t *GrabComputeParticle(tfx_particle_manager_t *pm, unsigned int layer);
 tfxINTERNAL void ResetParticlePtr(tfx_particle_manager_t *pm, void *ptr);
@@ -7035,7 +7035,7 @@ Initialise a tfx_particle_manager_t for 3d usage
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048
 
 */
-tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_allocation, tfxU32 mt_batch_size);
+tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
 
 /*
 Initialise a tfx_particle_manager_t for 2d usage
@@ -7053,7 +7053,7 @@ Initialise a tfx_particle_manager_t for 2d usage
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048.
 
 */
-tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_allocation, tfxU32 mt_batch_size);
+tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
 
 /*
 Initialise a tfx_particle_manager_t for both 2d and 3d. This just allocates buffers for both 2d and 3d anticipating that you'll be using ReconfigureParticleManager to switch between 2d/3d modes. If you want to update
@@ -7340,7 +7340,7 @@ Force a particle manager to only run in single threaded mode. In other words, on
 * @param switch_on		true or false to use a single thread or not
 */
 tfxAPI inline void ForcePMSingleThreaded(tfx_particle_manager_t *pm, bool switch_on) {
-	if (switch_on) pm->flags |= tfxEffectManagerFlags_single_threaded; else pm->flags &= ~tfxEffectManagerFlags_single_threaded;
+	if (switch_on) pm->flags |= tfxParticleManagerFlags_single_threaded; else pm->flags &= ~tfxParticleManagerFlags_single_threaded;
 }
 
 /*
@@ -7395,10 +7395,10 @@ as the remaining particles come to the end of their life. Any single particles w
 */
 tfxAPI inline void DisablePMSpawning(tfx_particle_manager_t *pm, bool yesno) {
 	if (yesno) {
-		pm->flags |= tfxEffectManagerFlags_disable_spawning;
+		pm->flags |= tfxParticleManagerFlags_disable_spawning;
 	}
 	else {
-		pm->flags &= ~tfxEffectManagerFlags_disable_spawning;
+		pm->flags &= ~tfxParticleManagerFlags_disable_spawning;
 	}
 }
 
