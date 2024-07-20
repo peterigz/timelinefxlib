@@ -16856,8 +16856,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	work_entry->layer = properties.layer;
 	if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
 		work_entry->sprites = &pm->effect_sprite_buffers[emitter.root_index].sprites[pm->current_sprite_buffer][work_entry->layer];
-	}
-	else {
+	} else {
 		work_entry->sprites = &pm->sprites[pm->current_sprite_buffer][work_entry->layer];
 	}
 	work_entry->overal_scale = pm->effects[emitter.parent_index].overal_scale;

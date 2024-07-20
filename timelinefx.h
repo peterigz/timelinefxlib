@@ -7356,6 +7356,16 @@ tfxAPI inline tfx_sprite_transform3d_t *GetCapturedSprite3dTransform(tfx_particl
 }
 
 /*
+Get the transform vectors for a 3d sprite's previous position so that you can use that to interpolate between that and the current sprite position
+* @param pm				A pointer to a tfx_effect_sprites_t object.
+* @param layer			The index of the sprite layer
+* @param index			The sprite index of the sprite that you want the captured sprite for.
+*/
+tfxAPI inline tfx_sprite_transform3d_t *GetCapturedEffectSprite3dTransform(tfx_effect_sprites_t *effect_sprites, tfxU32 layer, tfxU32 index) {
+	return &effect_sprites->sprites[(index & 0x40000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
+}
+
+/*
 Get the transform vectors for a 2d sprite's previous position so that you can use that to interpolate between that and the current sprite position
 * @param pm				A pointer to a tfx_particle_manager_t.
 * @param layer			The index of the sprite layer
