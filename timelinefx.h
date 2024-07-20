@@ -6741,6 +6741,7 @@ tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeEffectSpriteList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
+tfxINTERNAL void FreeAllSpriteBuffers(tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
 tfxINTERNAL void EnableCompute(tfx_particle_manager_t *pm) { pm->flags |= tfxParticleManagerFlags_use_compute_shader; }
@@ -6750,7 +6751,7 @@ tfxINTERNAL tfx_compute_particle_t *GrabComputeParticle(tfx_particle_manager_t *
 tfxINTERNAL void ResetParticlePtr(tfx_particle_manager_t *pm, void *ptr);
 tfxINTERNAL void ResetControllerPtr(tfx_particle_manager_t *pm, void *ptr);
 tfxINTERNAL void UpdateCompute(tfx_particle_manager_t *pm, void *sampled_particles, unsigned int sample_size = 100);
-tfxINTERNAL void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, tfxU32 mt_batch_size);
+tfxINTERNAL void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
 tfxINTERNAL bool ValidEffectID(tfx_particle_manager_t *pm, tfxEffectID id);
 
 //--------------------------------
@@ -7072,7 +7073,7 @@ both 2d and 3d particles at the same time then just use 2 separate particle mana
 * @param mt_batch_size			When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048.
 
 */
-tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, tfxU32 multi_threaded_batch_size);
+tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 layer_max_values[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 multi_threaded_batch_size);
 
 /*
 Reconfigure a particle manager to make it work in a different mode. A particle manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
@@ -7241,7 +7242,7 @@ free all the memory associated with the particle manager.
 * @param pm						A pointer to an initialised tfx_particle_manager_t.
 * @param free_particle_banks	Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
 */
-tfxAPI void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks);
+tfxAPI void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, bool free_sprite_buffers);
 
 /*
 Free all the memory used in the particle manager.
