@@ -2401,7 +2401,8 @@ enum tfx_particle_manager_flag_bits {
 	tfxEffectManagerFlags_recording_sprites = 1 << 14,
 	tfxEffectManagerFlags_using_uids = 1 << 15,
 	tfxEffectManagerFlags_2d_and_3d = 1 << 16,
-	tfxEffectManagerFlags_update_bounding_boxes = 1 << 17
+	tfxEffectManagerFlags_update_bounding_boxes = 1 << 17,
+	tfxEffectManagerFlags_use_effect_sprite_buffers = 1 << 18
 };
 
 enum tfx_vector_align_type {
@@ -5393,10 +5394,8 @@ struct tfx_effect_state_t {
 	float noise_base_offset;
 	tfxEmitterStateFlags state_flags;
 
-	//The first sprite index in the particle manager for all the sprites emitted and controlled by all emitters and sub effects in the effect
-	tfxU32 starting_sprite_index[tfxLAYERS];
-	//The count of all sprites within this effect
-	tfxU32 sprite_count[tfxLAYERS];
+	//When organising sprites per effect this is the index to the sprite buffers containing all the effects.
+	tfxU32 sprite_buffer_index;
 
 	//User Data
 	void *user_data;
@@ -5448,6 +5447,8 @@ struct tfx_effect_emitter_t {
 	tfx_effect_emitter_t() :
 		buffer_index(0),
 		path_hash(0),
+		library(nullptr),
+		library_index(tfxINVALID),
 		parent(nullptr),
 		user_data(nullptr),
 		update_callback(nullptr),
@@ -5459,6 +5460,8 @@ struct tfx_effect_emitter_t {
 		path_attributes(tfxINVALID),
 		emitter_attributes(tfxINVALID),
 		transform_attributes(tfxINVALID),
+		control_profile(0),
+		type(tfxEffectType),
 		property_flags(tfxEmitterPropertyFlags_image_handle_auto_center |
 			tfxEmitterPropertyFlags_grid_spawn_clockwise |
 			tfxEmitterPropertyFlags_emitter_handle_auto_center |
@@ -5907,16 +5910,25 @@ struct tfx_animation_manager_t {
 	bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
 };
 
+struct tfx_effect_sprites_t {
+	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
+	tfx_sprite_soa_t sprites[2][tfxLAYERS];
+	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
+	tfxU32 sprite_index_point[tfxLAYERS];
+	tfxU32 active_particles_count[tfxLAYERS];
+};
+
 //Use the particle manager to add multiple effects to your scene 
 struct tfx_particle_manager_t {
 	tfx_vector_t<tfx_soa_buffer_t> particle_array_buffers;
 	tfx_bucket_array_t<tfx_particle_soa_t> particle_arrays;
 	tfx_vector_t<tfx_soa_buffer_t> particle_location_buffers;
 	tfx_bucket_array_t<tfx_spawn_points_soa_t> particle_location_arrays;
+	tfx_bucket_array_t<tfx_effect_sprites_t> effect_sprite_buffers;
 
-	//In unordered mode emitters that expire have their particle banks added here to be reused
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
+	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_sprite_lists;
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfx_sort_work_entry_t sorting_work_entry[tfxLAYERS];
 
@@ -6147,6 +6159,7 @@ tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
 tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 GrabParticleLocationLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
+tfxINTERNAL tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 
 //--------------------------------
 //Profilings
@@ -6725,6 +6738,7 @@ tfxINTERNAL void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_i
 tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxINTERNAL void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
+tfxINTERNAL void FreeEffectSpriteList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
 
@@ -7269,22 +7283,6 @@ Get effect user data
 */
 tfxAPI inline void* GetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
 	return pm->effects[effect_index].user_data;
-}
-
-/*
-Get the start and end sprite index for an effect in the particle manager. You can use this function in you render function if you're rendering particles
-for each effect individually
-* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
-* @param effect_index	The index of the effect that you want to expire. This is the index returned when calling AddEffectToParticleManager
-* @returns				A tfx_sprite_index_range_t containing the start and end indexes as well as the count of sprites
-*/
-tfxAPI inline tfx_sprite_index_range_t GetEffectSpriteIndexRange(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 layer) {
-	TFX_ASSERT(layer < tfxLAYERS);	//layer must be a value less than the max tfxLAYERS (usually 4)
-	tfx_sprite_index_range_t range = {};
-	range.start_index = pm->effects[effect_index].starting_sprite_index[layer];
-	range.sprite_count = pm->effects[effect_index].sprite_count[layer];
-	range.end_index = range.start_index + range.sprite_count;
-	return range;
 }
 
 /*
