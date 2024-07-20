@@ -13343,14 +13343,38 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, 
 	}
 	if (free_particle_banks) {
 		FreeAllParticleLists(pm);
+		FreeAllSpawnLocationLists(pm);
+		for (auto& list : pm->free_particle_lists.data) {
+			list.free_all();
+		}
+		pm->free_particle_lists.FreeAll();
+		for (auto& list : pm->free_particle_location_lists.data) {
+			list.free_all();
+		}
+		pm->free_particle_location_lists.FreeAll();
 	}
 	else {
-		for (tfx_soa_buffer_t &bank : pm->particle_array_buffers) {
-			ClearSoABuffer(&bank);
+		for (tfx_soa_buffer_t &buffer : pm->particle_array_buffers) {
+			ClearSoABuffer(&buffer);
+		}
+		for (tfx_soa_buffer_t &buffer : pm->particle_location_buffers) {
+			ClearSoABuffer(&buffer);
+		}
+		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
+			for (auto index : pm->emitters_in_use[depth][pm->current_ebuff]) {
+				FreeParticleList(pm, index);
+				if (pm->emitters[index].spawn_locations_index != tfxINVALID) {
+					FreeSpawnLocationList(pm, index);
+				}
+			}
 		}
 	}
 	if (free_sprite_buffers) {
 		FreeAllSpriteBuffers(pm);
+		for (auto& list : pm->free_sprite_lists.data) {
+			list.free_all();
+		}
+		pm->free_sprite_lists.FreeAll();
 	}
 	else {
 		for (tfx_effect_sprites_t& buffer : pm->effect_sprite_buffers) {
@@ -13359,14 +13383,6 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, 
 				if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
 					ClearSoABuffer(&buffer.sprite_buffer[1][layer]);
 				}
-			}
-		}
-	}
-	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
-		for (auto index : pm->emitters_in_use[depth][pm->current_ebuff]) {
-			FreeParticleList(pm, index);
-			if (pm->emitters[index].spawn_locations_index != tfxINVALID) {
-				FreeSpawnLocationList(pm, index);
 			}
 		}
 	}
@@ -13400,10 +13416,19 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, 
 void FreeParticleManager(tfx_particle_manager_t *pm) {
 	FreeAllParticleLists(pm);
 	FreeAllSpriteBuffers(pm);
-	for (auto &bank : pm->free_particle_lists.data) {
-		bank.free_all();
+	for (auto &list : pm->free_particle_lists.data) {
+		list.free_all();
 	}
 	pm->free_particle_lists.FreeAll();
+	for (auto& list : pm->free_particle_location_lists.data) {
+		list.free_all();
+	}
+	pm->free_particle_location_lists.FreeAll();
+	for (auto &list : pm->free_sprite_lists.data) {
+		list.free_all();
+	}
+	pm->free_sprite_lists.FreeAll();
+
 
 	for (tfxEachLayer) {
 		ClearSoABuffer(&pm->sprite_buffer[0][layer]);
@@ -13449,6 +13474,14 @@ void FreeAllParticleLists(tfx_particle_manager_t *pm) {
 	pm->particle_arrays.clear();
 }
 
+void FreeAllSpawnLocationLists(tfx_particle_manager_t *pm) {
+	for (auto &buffer : pm->particle_location_buffers) {
+		FreeSoABuffer(&buffer);
+	}
+	pm->particle_location_buffers.clear();
+	pm->particle_location_arrays.clear();
+}
+
 void FreeAllSpriteBuffers(tfx_particle_manager_t* pm) {
 	for (tfx_effect_sprites_t &buffer : pm->effect_sprite_buffers) {
 		for (tfxEachLayer) {
@@ -13458,6 +13491,7 @@ void FreeAllSpriteBuffers(tfx_particle_manager_t* pm) {
 			}
 		}
 	}
+	pm->effect_sprite_buffers.clear();
 }
 
 void SoftExpireAll(tfx_particle_manager_t *pm) {
@@ -16820,7 +16854,12 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	work_entry->sprites_index = emitter.sprites_index + work_entry->start_index;
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
 	work_entry->layer = properties.layer;
-	work_entry->sprites = &pm->sprites[pm->current_sprite_buffer][work_entry->layer];
+	if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
+		work_entry->sprites = &pm->effect_sprite_buffers[emitter.root_index].sprites[pm->current_sprite_buffer][work_entry->layer];
+	}
+	else {
+		work_entry->sprites = &pm->sprites[pm->current_sprite_buffer][work_entry->layer];
+	}
 	work_entry->overal_scale = pm->effects[emitter.parent_index].overal_scale;
 	work_entry->path = emitter.path_attributes != tfxINVALID ? &pm->library->paths[emitter.path_attributes] : nullptr;
 	work_entry->node_count = work_entry->path ? work_entry->path->node_count : 0.f;

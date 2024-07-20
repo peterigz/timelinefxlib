@@ -6741,6 +6741,7 @@ tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeEffectSpriteList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
+tfxINTERNAL void FreeAllSpawnLocationLists(tfx_particle_manager_t *pm);
 tfxINTERNAL void FreeAllSpriteBuffers(tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
