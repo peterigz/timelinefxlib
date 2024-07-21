@@ -13631,8 +13631,19 @@ void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_id) {
 
 tfxU32 ParticleCount(tfx_particle_manager_t *pm) {
 	tfxU32 count = 0;
-	for (tfxEachLayer) {
-		count += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
+		for (tfxEachLayer) {
+			count += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+		}
+	}
+	else {
+		for (int i = 0; i != pm->effects_in_use[0][pm->current_ebuff].current_size; ++i) {
+			tfxU32 current_index = pm->effects_in_use[0][pm->current_ebuff][i];
+			tfx_effect_sprites_t& sprites = pm->effect_sprite_buffers[pm->effects[current_index].sprite_buffer_index];
+			for (tfxEachLayer) {
+				count += sprites.sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+			}
+		}
 	}
 	return count;
 }
