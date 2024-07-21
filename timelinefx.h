@@ -5974,6 +5974,8 @@ struct tfx_particle_manager_t {
 	//The current effect buffer in use, can be either 0 or 1
 	unsigned int current_ebuff;
 	unsigned int next_ebuff;
+	//For looping through active effects with GetNextEffect function
+	tfxU32 effect_index_position[tfxLAYERS];
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
 	tfxU32 emitter_start_size[tfxMAXDEPTH];
@@ -6683,9 +6685,9 @@ tfxINTERNAL void FreeGlobalAttributes(tfx_global_attributes_t *attributes);
 tfxAPI_EDITOR void FreeOvertimeAttributes(tfx_overtime_attributes_t *attributes);
 tfxAPI_EDITOR void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
 tfxAPI_EDITOR void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
-tfxAPI_EDITOR void FreeFactorAttributes(tfx_overtime_attributes_t *attributes);
-tfxAPI_EDITOR void CopyFactorAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
-tfxAPI_EDITOR void CopyFactorAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
+tfxAPI_EDITOR void FreeFactorAttributes(tfx_factor_attributes_t *attributes);
+tfxAPI_EDITOR void CopyFactorAttributesNoLookups(tfx_factor_attributes_t *src, tfx_factor_attributes_t *dst);
+tfxAPI_EDITOR void CopyFactorAttributes(tfx_factor_attributes_t *src, tfx_factor_attributes_t *dst);
 tfxAPI_EDITOR void FreeVariationAttributes(tfx_variation_attributes_t *attributes);
 tfxAPI_EDITOR void CopyVariationAttributesNoLookups(tfx_variation_attributes_t *src, tfx_variation_attributes_t *dst);
 tfxAPI_EDITOR void CopyVariationAttributes(tfx_variation_attributes_t *src, tfx_variation_attributes_t *dst);
@@ -7592,6 +7594,39 @@ Get the current position of an effect
 * @return				tfx_vec3_t containing the effect position
 */
 tfxAPI tfx_vec3_t GetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index);
+
+/*
+When use a particle manager that has the use_effect_sprite_buffers flag set, you can use this function to get the sprite buffer of a specific effect. If the particle manager does not have this flag set
+then a nullptr is returned.
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param effect_index	The index of the effect. This is the index returned when calling AddEffectToParticleManager
+* @param tfxU32			The index of the sprite layer that you want
+* @param tfxU32			Pass in a pointer to a tfxU32 which will be set to the number of sprites in the buffer.
+* @return				tfx_sprite_soa_t pointer with all the arrays for each sprite.
+*/
+tfxAPI tfx_sprite_soa_t *GetEffectSpriteBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 layer, tfxU32 *sprite_count);
+
+/*
+When use a particle manager that has the use_effect_sprite_buffers flag set, you can use this function to get each sprite buffer for every effect that is currently active in the particle manager. Generally you would call this inside
+a for loop for each layer.
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param tfxU32			The index of the sprite layer that you want
+* @param tfx_sprite_soa_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
+* @param tfx_effect_sprites_t	Pass in a second pointer which will be set to the tfx_effect_sprites_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered sprites (to interpolated with the previous frame).
+*								You can use this with functions like GetCapturedEffectSprite3dTransform.
+* @param tfxU32			Pass in a pointer to a tfxU32 which will be set to the number of sprites in the buffer.
+* @return				true or false if the next sprite buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
+*/
+tfxAPI bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfxU32 layer, tfx_sprite_soa_t **sprites_soa, tfx_effect_sprites_t **effect_sprites, tfxU32 *sprite_count);
+
+/*
+When use a particle manager that has the use_effect_sprite_buffers flag set, you can use this function to reset the index after using GetEffectSpriteBuffer so that you can loop over the sprite buffers again. 
+Generally you will need to reset each time as the particles may be rendered more times then UpdateParticleManager is called if you're using a fixed update rate for your logic.
+* @param pm				A pointer to a tfx_particle_manager_t where the effect is being managed
+*/
+inline tfxAPI void ResetSpriteBufferLoopIndex(tfx_particle_manager_t *pm) {
+	memset(pm->effect_index_position, 0, sizeof(tfxU32) * tfxLAYERS);
+}
 
 /*
 Set the rotation of a 2d effect

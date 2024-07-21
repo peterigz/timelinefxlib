@@ -10942,6 +10942,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->update_time = 1.f / pm->update_frequency;
 	pm->update_time_wide = tfxWideSetSingle(pm->update_time);
 	pm->new_compute_particle_index = 0;
+	ResetSpriteBufferLoopIndex(pm);
 	tfxU32 next_buffer = pm->current_ebuff ^ 1;
 
 	tfxU32 depth_starting_index[tfxLAYERS];
@@ -17460,6 +17461,34 @@ void MoveEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, f
 tfxAPI tfx_vec3_t GetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
 	TFX_ASSERT(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
 	return pm->effects[effect_index].local_position;
+}
+
+tfxAPI tfx_sprite_soa_t* GetEffectSpriteBuffer(tfx_particle_manager_t* pm, tfxEffectID effect_index, tfxU32 layer, tfxU32* sprite_count) {
+	TFX_ASSERT(ValidEffectID(pm, effect_index));	//Not a valid effect id. Make sure that when you call AddEffectToParticleManager you check that it returns true.
+	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
+		*sprite_count = 0;
+		return nullptr;
+	}
+	tfxU32 sprite_buffer_index = pm->effects[effect_index].sprite_buffer_index;
+	TFX_ASSERT(sprite_buffer_index < pm->effect_sprite_buffers.capacity);		//The sprite buffer index for the effect was not valid.
+	*sprite_count = pm->effect_sprite_buffers[sprite_buffer_index].sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+	return &pm->effect_sprite_buffers[sprite_buffer_index].sprites[pm->current_sprite_buffer][layer];
+}
+
+bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfxU32 layer, tfx_sprite_soa_t **sprites_soa, tfx_effect_sprites_t **effect_sprites, tfxU32 *sprite_count) {
+	if (pm->effect_index_position[layer] >= pm->effects_in_use[0][pm->current_ebuff].current_size) {
+		*sprites_soa = nullptr;
+		*effect_sprites = nullptr;
+		*sprite_count = 0;
+		return false;
+	}
+	tfxU32 effect_index = pm->effects_in_use[0][pm->current_ebuff][pm->effect_index_position[layer]++];
+	tfxU32 sprite_buffer_index = pm->effects[effect_index].sprite_buffer_index;
+	TFX_ASSERT(sprite_buffer_index < pm->effect_sprite_buffers.capacity);		//The sprite buffer index for the effect was not valid.
+	*sprite_count = pm->effect_sprite_buffers[sprite_buffer_index].sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+	*sprites_soa = &pm->effect_sprite_buffers[sprite_buffer_index].sprites[pm->current_sprite_buffer][layer];
+	*effect_sprites = &pm->effect_sprite_buffers[sprite_buffer_index];
+	return true;
 }
 
 void SetEffectRotation(tfx_particle_manager_t *pm, tfxEffectID effect_index, float rotation) {
