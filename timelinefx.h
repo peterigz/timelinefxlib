@@ -6157,8 +6157,6 @@ tfxINTERNAL void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 inde
 tfxINTERNAL inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index);
 tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
-//Dump sprites for Debugging
-tfxAPI inline void DumpSprites(tfx_particle_manager_t *pm, tfxU32 layer);
 tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 GrabParticleLocationLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 tfxINTERNAL tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
@@ -7210,7 +7208,7 @@ tfxAPI inline tfx_vec2_t GetSpriteHandle(tfx_particle_manager_t* pm, tfxU32 prop
 }
 
 /*
-Get the total number of sprites within the layer of the particle manager
+Get the total number of sprites within the layer of the particle manager.
 * @param pm					A pointer to an initialised tfx_particle_manager_t.
 * @param layer				The layer of the sprites to the count of
 */
@@ -7219,12 +7217,16 @@ tfxAPI inline tfxU32 SpritesInLayerCount(tfx_particle_manager_t *pm, tfxU32 laye
 }
 
 /*
-Get a pointer to the sprite buffer in the particle manager. You can use this access all the sprites for rendering.
+Get a pointer to the sprite buffer in the particle manager. You can use this access all the sprites for rendering. Note that this will return a nullptr if the particle manager has
+tfxParticleManagerFlags_use_effect_sprite_buffers flag set. Otherwise you can use GetNextSpriteBuffer if grouping sprites by effect.
 * @param pm					A pointer to an initialised tfx_particle_manager_t.
 * @param layer				The layer of the sprites to the count of
 */
 tfxAPI inline tfx_sprite_soa_t *SpritesInLayer(tfx_particle_manager_t *pm, tfxU32 layer) {
-	return &pm->sprites[pm->current_sprite_buffer][layer];
+	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
+		return &pm->sprites[pm->current_sprite_buffer][layer];
+	}
+	return nullptr;
 }
 
 /*
@@ -7375,6 +7377,16 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 */
 tfxAPI inline tfx_sprite_transform2d_t *GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
 	return &pm->sprites[(index & 0x40000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
+}
+
+/*
+Get the transform vectors for a 2d sprite's previous position so that you can use that to interpolate between that and the current sprite position
+* @param pm				A pointer to a tfx_particle_manager_t.
+* @param layer			The index of the sprite layer
+* @param index			The sprite index of the sprite that you want the captured sprite for.
+*/
+tfxAPI inline tfx_sprite_transform2d_t *GetCapturedSprite2dTransform(tfx_effect_sprites_t *effect_sprites, tfxU32 layer, tfxU32 index) {
+	return &effect_sprites->sprites[(index & 0x40000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
 }
 
 /*
