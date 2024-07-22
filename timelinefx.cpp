@@ -16865,7 +16865,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
 	work_entry->layer = properties.layer;
 	if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
-		work_entry->sprites = &pm->effect_sprite_buffers[emitter.root_index].sprites[pm->current_sprite_buffer][work_entry->layer];
+		work_entry->sprites = &pm->effect_sprite_buffers[pm->effects[emitter.root_index].sprite_buffer_index].sprites[pm->current_sprite_buffer][work_entry->layer];
 	} else {
 		work_entry->sprites = &pm->sprites[pm->current_sprite_buffer][work_entry->layer];
 	}
