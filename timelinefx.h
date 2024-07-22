@@ -5384,6 +5384,7 @@ struct tfx_effect_state_t {
 	tfxU32 info_index;
 	tfxU32 parent_particle_index;
 	tfx_library_t *library;
+	tfxKey path_hash;
 
 	//Spawn controls
 	tfx_parent_spawn_controls_t spawn_controls;

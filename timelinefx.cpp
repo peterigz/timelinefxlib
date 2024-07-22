@@ -10612,6 +10612,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	}
 	tfx_emitter_properties_t *properties = GetEffectProperties(effect);
 	tfx_effect_state_t &new_effect = pm->effects[parent_index];
+	new_effect.path_hash = effect->path_hash;
 	new_effect.global_attributes = effect->global;
 	new_effect.transform_attributes = effect->transform_attributes;
 	new_effect.age = -add_delayed_spawning;
@@ -10637,6 +10638,9 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	}
 	else if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers && is_sub_emitter) {
 		new_effect.sprite_buffer_index = pm->effects[root_effect_index].sprite_buffer_index;
+	}
+	else {
+		new_effect.sprite_buffer_index = tfxINVALID;
 	}
 
 	tfxU32 seed_index = 0;
@@ -10908,13 +10912,13 @@ void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index) {
 }
 
 void FreeEffectSpriteList(tfx_particle_manager_t *pm, tfxU32 index) {
-	if (pm->free_sprite_lists.ValidKey(pm->emitters[index].path_hash) && pm->emitters[index].particles_index != tfxINVALID) {
-		pm->free_sprite_lists.At(pm->emitters[index].path_hash).push_back(pm->emitters[index].particles_index);
+	if (pm->free_sprite_lists.ValidKey(pm->effects[index].path_hash)) {
+		pm->free_sprite_lists.At(pm->effects[index].path_hash).push_back(pm->effects[index].sprite_buffer_index);
 	}
-	else if(pm->emitters[index].particles_index != tfxINVALID) {
+	else if(pm->effects[index].sprite_buffer_index != tfxINVALID) {
 		tfx_vector_t<tfxU32> new_indexes;
-		new_indexes.push_back(pm->emitters[index].particles_index);
-		pm->free_sprite_lists.Insert(pm->emitters[index].path_hash, new_indexes);
+		new_indexes.push_back(pm->effects[index].sprite_buffer_index);
+		pm->free_sprite_lists.Insert(pm->effects[index].path_hash, new_indexes);
 	}
 }
 
@@ -17472,6 +17476,7 @@ tfxAPI tfx_sprite_soa_t* GetEffectSpriteBuffer(tfx_particle_manager_t* pm, tfxEf
 }
 
 bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfxU32 layer, tfx_sprite_soa_t **sprites_soa, tfx_effect_sprites_t **effect_sprites, tfxU32 *sprite_count) {
+	TFX_ASSERT(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers);	//Particle manager should be initialised with sprite grouping by effect enabled first
 	if (pm->effect_index_position[layer] >= pm->effects_in_use[0][pm->current_ebuff].current_size) {
 		*sprites_soa = nullptr;
 		*effect_sprites = nullptr;
