@@ -10634,7 +10634,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	pm->sort_passes = tfxMax(effect->sort_passes, pm->sort_passes);
 	pm->sort_passes = tfxMin(5, pm->sort_passes);
 	if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers && !is_sub_emitter) {
-		new_effect.sprite_buffer_index = GrabSpriteLists(pm, effect->path_hash, (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d), 100);
+		new_effect.sprite_buffer_index = GrabSpriteLists(pm, new_effect.path_hash, (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d) > 0, 100);
 	}
 	else if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers && is_sub_emitter) {
 		new_effect.sprite_buffer_index = pm->effects[root_effect_index].sprite_buffer_index;
@@ -13704,9 +13704,9 @@ tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool i
 	return index;
 }
 
-tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount) {
-	if (pm->free_sprite_lists.ValidKey(emitter_hash)) {
-		tfx_vector_t<tfxU32> &free_banks = pm->free_sprite_lists.At(emitter_hash);
+tfxU32 GrabSpriteLists(tfx_particle_manager_t* pm, tfxKey effect_hash, bool is_3d, tfxU32 reserve_amount) {
+	if (pm->free_sprite_lists.ValidKey(effect_hash)) {
+		tfx_vector_t<tfxU32>& free_banks = pm->free_sprite_lists.At(effect_hash);
 		if (free_banks.current_size) {
 			for (tfxEachLayer) {
 				pm->effect_sprite_buffers[free_banks.back()].sprite_buffer[0][layer].current_size = 0;
@@ -13714,12 +13714,16 @@ tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_
 					pm->effect_sprite_buffers[free_banks.back()].sprite_buffer[1][layer].current_size = 0;
 				}
 			}
+			memset(pm->effect_sprite_buffers[free_banks.back()].sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+			memset(pm->effect_sprite_buffers[free_banks.back()].active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
 			return free_banks.pop_back();
 		}
 	}
 	tfx_effect_sprites_t new_effect_sprites;
+	memset(new_effect_sprites.sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(new_effect_sprites.active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
 	tfxU32 index = pm->effect_sprite_buffers.locked_push_back(new_effect_sprites);
-	tfx_effect_sprites_t& effect_sprites = pm->effect_sprite_buffers.back();
+	tfx_effect_sprites_t& effect_sprites = pm->effect_sprite_buffers[index];
 	if (is_3d) {
 		for (tfxEachLayer) {
 			InitSpriteBufferSoA(&effect_sprites.sprite_buffer[0][layer], &effect_sprites.sprites[0][layer], reserve_amount, tfxSpriteBufferMode_3d);
