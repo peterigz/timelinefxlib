@@ -5365,7 +5365,8 @@ struct tfx_effect_state_t {
 	float timeout_counter;
 	float timeout;
 	tfx_vec3_t handle;
-	tfxEffectPropertyFlags property_flags;
+	tfxEmitterPropertyFlags property_flags;
+	tfxEffectPropertyFlags effect_flags;
 	float loop_length;
 	//Position, scale and rotation values
 	tfx_vec3_t translation;
@@ -5394,6 +5395,7 @@ struct tfx_effect_state_t {
 	float overal_scale;
 	float noise_base_offset;
 	tfxEmitterStateFlags state_flags;
+	tfxU32 sort_passes;
 
 	//When organising sprites per effect this is the index to the sprite buffers containing all the effects.
 	tfxU32 sprite_buffer_index;
@@ -5750,6 +5752,7 @@ struct tfx_spawn_work_entry_t {
 	tfxEffectPropertyFlags parent_property_flags;
 	tfx_particle_soa_t *particle_data;
 	tfx_vector_t<tfx_effect_emitter_t> *sub_effects;
+	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
 	tfxU32 seed;
 	float tween;
 	tfxU32 max_spawn_count;
@@ -5776,7 +5779,8 @@ struct tfx_control_work_entry_t {
 	tfxU32 layer;
 	tfx_emitter_properties_t *properties;
 	tfx_sprite_soa_t *sprites;
-	tfx_emitter_path_t* path;
+	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
+	tfx_emitter_path_t *path;
 	bool sample_path_life;
 	float overal_scale;
 	float global_stretch;
@@ -5917,6 +5921,7 @@ struct tfx_effect_sprites_t {
 	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 active_particles_count[tfxLAYERS];
+	tfxU32 depth_starting_index[tfxLAYERS];
 };
 
 //Use the particle manager to add multiple effects to your scene 
@@ -5931,8 +5936,8 @@ struct tfx_particle_manager_t {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_sprite_lists;
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
-	tfx_sort_work_entry_t sorting_work_entry[tfxLAYERS];
 
+	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
 	tfx_vector_t<tfx_spawn_work_entry_t> spawn_work;
 	tfx_vector_t<tfx_control_work_entry_t> control_work;
 	tfx_vector_t<tfx_particle_age_work_entry_t> age_work;
@@ -5962,19 +5967,19 @@ struct tfx_particle_manager_t {
 	//todo: document compute controllers once we've established this is how we'll be doing it.
 	void *compute_controller_ptr;
 	tfx_vector_t<unsigned int> free_compute_controllers;
-	unsigned int new_compute_particle_index;
-	unsigned int new_particles_count;
+	tfxU32 new_compute_particle_index;
+	tfxU32 new_particles_count;
 	void *new_compute_particle_ptr;
 	//The maximum number of effects that can be updated per frame in the particle manager. If you're running effects with particles that have sub effects then this number might need 
 	//to be relatively high depending on your needs. Use Init to udpate the sizes if you need to. Best to call Init at the start with the max numbers that you'll need for your application and don't adjust after.
-	unsigned int max_effects;
+	tfxU32 max_effects;
 	//The maximum number of particles that can be updated per frame per layer. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
-	unsigned int max_cpu_particles_per_layer[tfxLAYERS];
+	tfxU32 max_cpu_particles_per_layer[tfxLAYERS];
 	//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
-	unsigned int max_new_compute_particles;
+	tfxU32 max_new_compute_particles;
 	//The current effect buffer in use, can be either 0 or 1
-	unsigned int current_ebuff;
-	unsigned int next_ebuff;
+	tfxU32 current_ebuff;
+	tfxU32 next_ebuff;
 	//For looping through active effects with GetNextEffect function
 	tfxU32 effect_index_position[tfxLAYERS];
 
@@ -5988,8 +5993,8 @@ struct tfx_particle_manager_t {
 
 	tfx_random_t random;
 	tfx_random_t threaded_random;
-	unsigned int max_compute_controllers;
-	unsigned int highest_compute_controller_index;
+	tfxU32 max_compute_controllers;
+	tfxU32 highest_compute_controller_index;
 	tfx_compute_fx_global_state_t compute_global_state;
 	tfxU32 sort_passes;
 	tfx_lookup_mode lookup_mode;
@@ -6003,7 +6008,7 @@ struct tfx_particle_manager_t {
 	float animation_length_in_time;
 
 	//These can possibly be removed at some point, they're debugging variables
-	unsigned int particle_id;
+	tfxU32 particle_id;
 	tfxParticleManagerFlags flags;
 	//The length of time that passed since the last time Update() was called
 	float frame_length;
@@ -6160,7 +6165,7 @@ tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
 tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 GrabParticleLocationLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
-tfxINTERNAL tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey effect_hash, bool is_3d, tfxU32 reserve_amount);
+tfxINTERNAL tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey effect_hash, bool is_3d, bool is_ordered, tfxU32 reserve_amount);
 
 //--------------------------------
 //Profilings
@@ -6730,7 +6735,7 @@ tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfx_particle_manager_t *pm, tfxParticl
 tfxINTERNAL tfxU32 AllocatePathQuaterion(tfx_particle_manager_t *pm, tfxU32 amount);
 tfxINTERNAL void FreePathQuaternion(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreePMParticleIndex(tfx_particle_manager_t *pm, tfxU32 *index);
-tfxINTERNAL tfxU32 PushPMDepthIndex(tfx_particle_manager_t *pm, tfxU32 layer, tfx_depth_index_t depth_index);
+tfxINTERNAL tfxU32 PushPMDepthIndex(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx_depth_index_t depth_index);
 tfxINTERNAL void ResetPMFlags(tfx_particle_manager_t *pm);
 tfxINTERNAL tfxU32 GetParticleSpriteIndex(tfx_particle_manager_t *pm, tfxParticleID id);
 tfxINTERNAL unsigned int GetControllerMemoryUsage(tfx_particle_manager_t *pm);
@@ -6744,6 +6749,7 @@ tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index)
 tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
 tfxINTERNAL void FreeAllSpawnLocationLists(tfx_particle_manager_t *pm);
 tfxINTERNAL void FreeAllSpriteBuffers(tfx_particle_manager_t *pm);
+tfxINTERNAL void OrderEffectSprites(tfx_effect_sprites_t* sprites, tfxU32 layer, tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
 tfxINTERNAL void EnableCompute(tfx_particle_manager_t *pm) { pm->flags |= tfxParticleManagerFlags_use_compute_shader; }
@@ -6916,6 +6922,7 @@ tfxAPI_EDITOR void FlagEffectAs3D(tfx_effect_emitter_t *effect, bool flag);
 tfxAPI_EDITOR void FlagEffectsAs3D(tfx_library_t *library);
 tfxAPI_EDITOR bool Is3DEffect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR bool IsOrderedEffect(tfx_effect_emitter_t *effect);
+tfxAPI_EDITOR bool IsOrderedEffectState(tfx_effect_state_t *effect);
 tfxAPI_EDITOR tfx_particle_manager_mode GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfx_preview_camera_settings_t *GetEffectCameraSettings(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR float GetEffectHighestLoopLength(tfx_effect_emitter_t *effect);
