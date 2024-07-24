@@ -13492,15 +13492,19 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, 
 			list.free_all();
 		}
 		pm->free_sprite_lists.FreeAll();
+		pm->effect_sprite_buffers.clear();
 	}
 	else {
-		for (tfx_effect_sprites_t& buffer : pm->effect_sprite_buffers) {
+		for (tfxBucketLoop(pm->effect_sprite_buffers)) {
 			for (tfxEachLayer) {
-				ClearSoABuffer(&buffer.sprite_buffer[0][layer]);
+				ClearSoABuffer(&pm->effect_sprite_buffers[i].sprite_buffer[0][layer]);
 				if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-					ClearSoABuffer(&buffer.sprite_buffer[1][layer]);
+					ClearSoABuffer(&pm->effect_sprite_buffers[i].sprite_buffer[1][layer]);
 				}
 			}
+		}
+		for (auto index : pm->effects_in_use[0][pm->current_ebuff]) {
+			FreeEffectSpriteList(pm, index);
 		}
 	}
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
@@ -13574,6 +13578,7 @@ void FreeParticleManager(tfx_particle_manager_t *pm) {
 	pm->spawn_work.free();
 	pm->control_work.free();
 	pm->age_work.free();
+	pm->effect_sprite_buffers.free_all();
 	for (int i = 0; i != pm->path_quaternions.current_size; ++i) {
 		if (pm->path_quaternions[i]) {
 			tfxFREE(pm->path_quaternions[i]);
@@ -16911,6 +16916,13 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		else if (offset > 0) {
+			//Can we eliminate this? The only reason that we do the below is to fill gaps in the buffer when life variation is used. Life variation means that 
+			//particles expire at different rates so we have to manually fill the wholes in the ring buffer. What if we "pretend" that each particle spawns with the 
+			//maximum life possible but sample the graphs based on the actual life that it has. Then we expire the particle based on the maximum life value so 
+			//we don't have to do the below. This means that we'd still be processing particles that have already expired (but their scaling could be set to 0 so they're
+			//not drawn) but only needing to bump the start index of the ring buffer rather then the memory moving that's done below and is pretty slow.
+			//This would be an interesting experiment to run and profile because it would be nice to not have to do the below. My intuition tells me that below is
+			//slower then just processing extra particles each frame because memory work is slower in general.
 			tfxU32 next_index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i + offset);
 			if (flags & tfxParticleFlags_has_sub_effects) {
 				pm.particle_indexes[bank.particle_index[index]] = MakeParticleID(emitter.particles_index, next_index);
