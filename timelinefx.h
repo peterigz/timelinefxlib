@@ -5915,6 +5915,7 @@ struct tfx_animation_manager_t {
 	bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
 };
 
+//Used when a particle manager is grouping sprites by effect. This way effects can be individually ordered and drawn/not drawn in that order however you need
 struct tfx_effect_sprites_t {
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
@@ -5922,6 +5923,11 @@ struct tfx_effect_sprites_t {
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 depth_starting_index[tfxLAYERS];
+};
+
+struct tfx_effect_index_t {
+	tfxEffectID index;
+	float depth;
 };
 
 //Use the particle manager to add multiple effects to your scene 
@@ -5944,10 +5950,10 @@ struct tfx_particle_manager_t {
 	tfx_vector_t<tfxParticleID> particle_indexes;
 	tfx_vector_t<tfxU32> free_particle_indexes;
 	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
-	tfx_vector_t<tfxU32> effects_in_use[tfxMAXDEPTH][2];
+	tfx_vector_t<tfx_effect_index_t> effects_in_use[tfxMAXDEPTH][2];
 	tfx_vector_t<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 	tfx_vector_t<tfxU32> emitters_check_capture;
-	tfx_vector_t<tfxU32> free_effects;
+	tfx_vector_t<tfx_effect_index_t> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
 	tfx_vector_t<tfxU32> free_path_quaternions;
 	tfx_vector_t<tfx_path_quaternion_t*> path_quaternions;
@@ -6729,7 +6735,7 @@ tfxINTERNAL void InitialiseAnimationManager(tfx_animation_manager_t *animation_m
 //--------------------------------
 //Particle manager internal functions
 //--------------------------------
-tfxINTERNAL tfxU32 GetPMEffectSlot(tfx_particle_manager_t *pm);
+tfxINTERNAL tfx_effect_index_t GetPMEffectSlot(tfx_particle_manager_t *pm);
 tfxINTERNAL tfxU32 GetPMEmitterSlot(tfx_particle_manager_t *pm);
 tfxINTERNAL tfxU32 GetPMParticleIndexSlot(tfx_particle_manager_t *pm, tfxParticleID particle_id);
 tfxINTERNAL tfxU32 AllocatePathQuaterion(tfx_particle_manager_t *pm, tfxU32 amount);
@@ -7442,7 +7448,7 @@ Get the buffer of effect indexes in the particle manager.
 * @param depth			The depth of the list that you want. 0 are top level effects and anything higher are sub effects within those effects
 * @returns				Pointer to the tfxvec of effect indexes
 */
-tfxAPI tfx_vector_t<tfxU32> *GetPMEffectBuffer(tfx_particle_manager_t *pm, tfxU32 depth);
+tfxAPI tfx_vector_t<tfx_effect_index_t> *GetPMEffectBuffer(tfx_particle_manager_t *pm, tfxU32 depth);
 
 /*
 Get the buffer of emitter indexes in the particle manager.
