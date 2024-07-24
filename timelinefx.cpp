@@ -14157,7 +14157,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		tfxU32 free_space = 0;
 
 		emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
-		if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation) {
+		if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
 			free_space = FreeSpriteBufferSpace(&sprite_buffer);
 			if (emitter.sprites_count + max_spawn_count > free_space) {
 				GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1);
@@ -14213,11 +14213,11 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		tfxU32 free_space = 0;
 
 		emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
-		if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation) {
+		if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
 			free_space = FreeSpriteBufferSpace(&sprite_buffer);
 			if (emitter.sprites_count + max_spawn_count > free_space) {
 				GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1);
-				if (!(pm->flags & tfxParticleManagerFlags_unordered)) {
+				if (ordered_effect) {
 					depth_indexes.reserve(sprite_buffer.capacity);
 				}
 			}
@@ -16604,7 +16604,7 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
 			depth_index.depth = entry->particle_data->age[index];
-			entry->particle_data->depth_index[index] = PushPMDepthIndex(entry->depth_indexes,  depth_index);
+			entry->particle_data->depth_index[index] = PushPMDepthIndex(entry->depth_indexes, depth_index);
 		}
 	}
 }
