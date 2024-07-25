@@ -14161,7 +14161,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_soa_buffer_t &sprite_buffer = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers ? pm->effect_sprite_buffers[pm->effects[emitter.root_index].sprite_buffer_index].sprite_buffer[pm->current_sprite_buffer][layer] : pm->sprite_buffer[pm->current_sprite_buffer][layer];
 	tfxU32& sprite_index_point = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers ? pm->effect_sprite_buffers[pm->effects[emitter.root_index].sprite_buffer_index].sprite_index_point[layer] : pm->sprite_index_point[layer];
 	tfxU32& active_particles_count = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers ? pm->effect_sprite_buffers[pm->effects[emitter.root_index].sprite_buffer_index].active_particles_count[layer] : pm->active_particles_count[layer];
-	tfx_vector_t<tfx_depth_index_t> &depth_indexes = !ordered_effect ? pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]] : pm->effect_sprite_buffers[pm->effects[emitter.root_index].sprite_buffer_index].depth_indexes[layer][pm->current_depth_index_buffer[layer]];
+	tfx_vector_t<tfx_depth_index_t>& depth_indexes = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers ? pm->effect_sprite_buffers[pm->effects[emitter.root_index].sprite_buffer_index].depth_indexes[layer][pm->current_depth_index_buffer[layer]] : pm->depth_indexes[layer][pm->current_depth_index_buffer[layer]];
 	if (ordered_effect) {
 		spawn_work_entry->depth_indexes = &depth_indexes;
 	}
@@ -17601,14 +17601,6 @@ void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library
 
 	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && !(pm->flags & tfxParticleManagerFlags_unordered)) {
 		for (tfxEachLayer) {
-			/*
-			tfx_particle_soa_t lists;
-			tfxU32 index = pm->particle_arrays.locked_push_back(lists);
-			tfx_soa_buffer_t buffer;
-			pm->particle_array_buffers.push_back(buffer);
-			InitParticleSoA2d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), layer_max_values[layer]);
-			TFX_ASSERT(index == pm->particle_array_buffers.current_size - 1);
-			*/
 			pm->depth_indexes[layer][0].reserve(pm->max_cpu_particles_per_layer[layer]);
 			pm->depth_indexes[layer][1].reserve(pm->max_cpu_particles_per_layer[layer]);
 		}
