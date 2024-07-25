@@ -2363,6 +2363,17 @@ enum tfx_particle_manager_mode {
 	tfxParticleManagerMode_ordered_by_depth_guaranteed
 };
 
+enum tfx_particle_manager_setup {
+	tfxParticleManagerSetup_2d_unordered,
+	tfxParticleManagerSetup_2d_ordered_by_age,
+	tfxParticleManagerSetup_2d_group_sprites_by_effect,
+	tfxParticleManagerSetup_3d_unordered,
+	tfxParticleManagerSetup_3d_ordered_by_age,
+	tfxParticleManagerSetup_3d_ordered_by_depth,
+	tfxParticleManagerSetup_3d_ordered_by_depth_guaranteed,
+	tfxParticleManagerSetup_3d_group_sprites_by_effect,
+};
+
 enum tfx_billboarding_option {
 	tfxBillboarding_align_to_camera = 0,			//Align to Camera only
 	tfxBillboarding_free_align = 1,					//Free align
@@ -2402,7 +2413,8 @@ enum tfx_particle_manager_flag_bits {
 	tfxParticleManagerFlags_using_uids = 1 << 15,
 	tfxParticleManagerFlags_2d_and_3d = 1 << 16,
 	tfxParticleManagerFlags_update_bounding_boxes = 1 << 17,
-	tfxParticleManagerFlags_use_effect_sprite_buffers = 1 << 18
+	tfxParticleManagerFlags_use_effect_sprite_buffers = 1 << 18,
+	tfxParticleManagerFlags_auto_order_effects = 1 << 19,
 };
 
 enum tfx_vector_align_type {
@@ -5930,6 +5942,33 @@ struct tfx_effect_index_t {
 	float depth;
 };
 
+struct tfx_particle_manager_info_t {
+	tfxU32 layer_max_values[tfxLAYERS];		//The maximum number of sprites for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
+	tfxU32 max_effects;						//The maximum number of effects that can be updated at the same time.
+	tfx_particle_manager_mode order_mode;	//When not grouping sprites by effect, you can set the mode of the particle manager to order sprites or not.
+											//When set to false, all sprites will be kept together in a large list.
+	tfxU32 multi_threaded_batch_size;		//The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
+	tfxU32 sort_passes;						//when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
+	bool double_buffer_sprites;				//Set to true to double buffer sprites so that you can interpolate between the old and new positions for smoother animations.
+	bool dynamic_sprite_allocation;			//Set to true to automatically resize the sprite buffers if they run out of space. Not applicable when grouping sprites by effect.
+	bool group_sprites_by_effect;			//Set to true to group all sprites by effect. Effects can then be drawn in specific orders or not drawn at all on an effect by effect basis.
+	bool auto_order_effects;				//When group_sprites_by_effect is true then you can set this to true to sort the effects each frame. Use SetPMCamera in 3d to set the effect depth to the distance the camera, in 2d the depth is set to the effect y position.
+	bool is_3d;								//All effects are 3d
+
+	tfx_particle_manager_info_t() :
+		layer_max_values{},
+		max_effects(1000),
+		order_mode(tfxParticleManagerMode_unordered),
+		multi_threaded_batch_size(4096),
+		sort_passes(3),
+		double_buffer_sprites(true),
+		dynamic_sprite_allocation(true),
+		group_sprites_by_effect(false),
+		auto_order_effects(false),
+		is_3d(false)
+	{}
+};
+
 //Use the particle manager to add multiple effects to your scene 
 struct tfx_particle_manager_t {
 	tfx_vector_t<tfx_soa_buffer_t> particle_array_buffers;
@@ -5962,6 +6001,9 @@ struct tfx_particle_manager_t {
 	tfx_library_t *library;
 
 	tfx_work_queue_t work_queue;
+
+	//The info config that was used to initialise the particle manager. This can be used to alter and the reconfigure the particle manager
+	tfx_particle_manager_info_t info;
 
 	//Banks of sprites. All emitters write their sprite data to these banks. 
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
@@ -7034,7 +7076,22 @@ inline tfxAPI void ListEffectNames(tfx_library_t *library) {
 //[Particle Manager functions]
 
 /*
-Initialise a tfx_particle_manager_t for 3d usage
+Create a tfx_particle_manager_info_t object which contains configuration data that you can pass to InitializeParticleManager to setup a particle manager. You can tweak the config after calling this
+function if needed to fine tune the settings.
+* @param setup					A tfx_particle_manager_setup enum which you can use to set the info based on some commonly used templates
+*/
+tfxAPI tfx_particle_manager_info_t CreateParticleManagerInfo(tfx_particle_manager_setup setup);
+
+/*
+Initialize a particle manager with a tfx_particle_manager_info_t object which contains setup data for how to configure the particle manager. See CreateParticleManagerInfo
+* @param pm						A pointer to an unitialised tfx_particle_manager_t. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
+* @param library				A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
+* @param info					A tfx_particle_manager_info_t pointer containing the configuration for the particle manager.
+*/
+tfxAPI void InitializeParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_particle_manager_info_t info);
+
+/*
+Initialise a tfx_particle_manager_t for 3d usage. Also see InitializeParticleManager and CreateParticleManagerInfo as an alternative way to set up a particle manager.
 * @param pm						A pointer to an unitialised tfx_particle_manager_t. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
 * @param library				A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
 * @param layer_max_values		An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
@@ -7102,7 +7159,22 @@ in mind that you can just use more than one particle manager and utilised differ
 * @param sort_passes			The number of sort passes if you're using depth sorted effects
 * @param is_3d					True if the particle manager should be configured for 3d effects.
 */
-void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager_mode mode, tfxU32 sort_passes, bool is_3d);
+tfxAPI void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager_mode mode, tfxU32 sort_passes, bool is_3d);
+
+/*
+Turn on and off whether the particle manager should sort the effects by depth order. Use SetPMCamera to set the position of the camera that the particle manager will 
+use to update the depth of each effect in the scene (3d mode). In 2d mode the depth will be auto set to the y position of the effect.
+* @param pm						A pointer to an intialised tfx_particle_manager_t.
+* @param yesno					A boolean, set to true or false if you want auto ordering on or off respectively
+*/
+tfxAPI inline void TogglePMOrderEffects(tfx_particle_manager_t *pm, bool yesno) {
+	if (yesno) {
+		pm->flags |= tfxParticleManagerFlags_auto_order_effects;
+	}
+	else {
+		pm->flags &= ~tfxParticleManagerFlags_auto_order_effects;
+	}
+}
 
 /*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
@@ -7114,7 +7186,7 @@ could reduce the numbers as well if needed (they don't take a lot of space thoug
 * @param control_work_max		The maximum amount of control work entries
 * @param age_work_max			The maximum amount of age_work work entries
 */
-void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max);
+tfxAPI void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max);
 
 /*Free the memory for a specific emitter type. When an emitter is created it creates memory to store all of the particles that it updates each frame. If you have
 multiple emitters of the same type then their particle lists are resused rather then freed as they expire. When they're freed then the unused list is added to a list
