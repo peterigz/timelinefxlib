@@ -5761,7 +5761,8 @@ struct tfx_spawn_work_entry_t {
 	tfxU32 parent_index;
 	tfx_emission_type emission_type;
 	tfxEmitterPropertyFlags property_flags;
-	tfxEffectPropertyFlags parent_property_flags;
+	tfxEmitterPropertyFlags parent_property_flags;
+	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;
 	tfx_vector_t<tfx_effect_emitter_t> *sub_effects;
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;

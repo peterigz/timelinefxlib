@@ -14137,7 +14137,8 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	if (parent_effect.age < emitter.delay_spawning) {
 		return;
 	}
-	bool ordered_effect = (parent_effect.effect_flags & tfxEffectPropertyFlags_age_order) || (parent_effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
+	spawn_work_entry->root_effect_flags = pm->effects[emitter.root_index].effect_flags;
+	bool ordered_effect = (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_age_order) || (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
 	emitter.delay_spawning = -pm->frame_length;
 
 	//e.state_flags |= e.parent->state_flags & tfxEmitterStateFlags_stop_spawning;
@@ -16684,6 +16685,7 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 	const float velocity_adjuster = lookup_callback(&pm.library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame);
 	const tfxU32 layer = properties.layer;
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.properties_index].emission_direction;
+	bool ordered_effect = (entry->parent_property_flags & tfxEffectPropertyFlags_age_order) || (entry->parent_property_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
 
 	//Micro Update
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -16747,14 +16749,14 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 		if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
 			entry->particle_data->noise_offset[index] = 0; 
 		}
-		if (pm.flags & tfxParticleManagerFlags_order_by_depth) {
+		if (pm.flags & tfxParticleManagerFlags_order_by_depth || (pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers && entry->root_effect_flags & tfxEffectPropertyFlags_depth_draw_order)) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
 			tfx_vec3_t world_minus_camera = world_position - pm.camera_position;
 			depth_index.depth = LengthVec3NoSqR(&world_minus_camera);
 			entry->particle_data->depth_index[index] = PushPMDepthIndex(entry->depth_indexes, depth_index);
 		}
-		else if (pm.flags & tfxParticleManagerFlags_ordered_by_age) {
+		else if (pm.flags & tfxParticleManagerFlags_ordered_by_age || (pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers && entry->root_effect_flags & tfxEffectPropertyFlags_age_order)) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
 			depth_index.depth = entry->particle_data->age[index];
