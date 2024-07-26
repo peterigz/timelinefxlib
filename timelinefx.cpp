@@ -10980,7 +10980,6 @@ void OrderEffectSprites(tfx_effect_sprites_t* sprites, tfxU32 layer, tfx_particl
 		}
 		TFX_ASSERT(sprites->depth_indexes[layer][next_depth_buffer].current_size == sprites->depth_indexes[layer][pm->current_depth_index_buffer[layer]].current_size);
 		sprites->depth_indexes[layer][pm->current_depth_index_buffer[layer]].clear();
-		pm->current_depth_index_buffer[layer] = next_depth_buffer;
 	}
 }
 
@@ -11153,6 +11152,9 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			for (tfxEachLayer) {
 				OrderEffectSprites(&sprites, layer, pm);
 			}
+		}
+		for (tfxEachLayer) {
+			pm->current_depth_index_buffer[layer] = pm->current_depth_index_buffer[layer] ^ 1;
 		}
 	}
 
@@ -16950,10 +16952,10 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 				pm.particle_indexes[bank.particle_index[index]] = MakeParticleID(emitter.particles_index, next_index);
 			}
 
-			if (pm.flags & tfxParticleManagerFlags_order_by_depth) {
+			if (pm.flags & tfxParticleManagerFlags_order_by_depth || (pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers && effect.effect_flags & tfxEffectPropertyFlags_depth_draw_order)) {
 				(*depth_indexes)[bank.depth_index[index]].particle_id = MakeParticleID(emitter.particles_index, next_index);
 			}
-			else if (pm.flags & tfxParticleManagerFlags_ordered_by_age) {
+			else if (pm.flags & tfxParticleManagerFlags_ordered_by_age || (pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers && effect.effect_flags & tfxEffectPropertyFlags_age_order)) {
 				(*depth_indexes)[bank.depth_index[index]].particle_id = MakeParticleID(emitter.particles_index, next_index);
 				(*depth_indexes)[bank.depth_index[index]].depth = bank.age[index];
 			}
