@@ -11245,8 +11245,10 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 					}
 				}
 				sprites.depth_indexes[layer][pm->current_depth_buffer_index[layer]].clear();
-				pm->current_depth_buffer_index[layer] = pm->current_depth_buffer_index[layer] ^ 1;
 			}
+		}
+		for (tfxEachLayer) {
+			pm->current_depth_buffer_index[layer] = pm->current_depth_buffer_index[layer] ^ 1;
 		}
 	}
 
