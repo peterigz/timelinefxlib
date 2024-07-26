@@ -2819,7 +2819,7 @@ bool IsOrderedEffect(tfx_effect_emitter_t* effect) {
 
 bool IsOrderedEffectState(tfx_effect_state_t* effect) {
 	tfxEffectPropertyFlags ordered_flags = tfxEffectPropertyFlags_age_order | tfxEffectPropertyFlags_depth_draw_order;
-	return (effect->property_flags & ordered_flags) > 0;
+	return (effect->effect_flags & ordered_flags) > 0;
 }
 
 tfx_particle_manager_mode GetRequiredParticleManagerMode(tfx_effect_emitter_t *effect) {
