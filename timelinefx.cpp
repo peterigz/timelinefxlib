@@ -12853,6 +12853,7 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 
 	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
 	bool relative_position = emitter.property_flags & tfxEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
+	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -12884,7 +12885,7 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (pm.flags & tfxParticleManagerFlags_3d_effects) { //Predictable
-			if (!(pm.flags & tfxParticleManagerFlags_unordered)) {	//Predictable
+			if (is_ordered) {	//Predictable
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
 					sprites.transform_3d[sprite_depth_index].rotations.x = 0.f;
@@ -12902,7 +12903,7 @@ void ControlParticleSpin(tfx_work_queue_t* queue, void* data) {
 			}
 		}
 		else {
-			if (!(pm.flags & tfxParticleManagerFlags_unordered)) {		//Predictable
+			if (is_ordered) {		//Predictable
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
 					sprites.transform_2d[sprite_depth_index].rotation = rotations_z.a[j];
@@ -12944,6 +12945,8 @@ void ControlParticleSpin3d(tfx_work_queue_t* queue, void* data) {
 	const tfxWideFloat e_world_rotations_y = tfxWideSetSingle(emitter.world_rotations.y);
 	const tfxWideFloat e_world_rotations_z = tfxWideSetSingle(emitter.world_rotations.z);
 	bool relative_position = emitter.property_flags & tfxEmitterPropertyFlags_relative_position || (emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine);
+
+	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -12991,7 +12994,7 @@ void ControlParticleSpin3d(tfx_work_queue_t* queue, void* data) {
 		tfx__readbarrier;
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (!(pm.flags & tfxParticleManagerFlags_unordered)) {	//Predictable
+		if (is_ordered) {	//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				sprites.transform_3d[sprite_depth_index].rotations.x = rotations_x.a[j];
@@ -13042,6 +13045,7 @@ void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
 	if (sample_based_on_path_position) {
 		path = &pm.library->paths[emitter.path_attributes];
 	}
+	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -13087,7 +13091,7 @@ void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (pm.flags & tfxParticleManagerFlags_3d_effects) { //Predictable
-			if (!(pm.flags & tfxParticleManagerFlags_unordered)) {	//Predictable
+			if (is_ordered) {	//Predictable
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
 					sprites.transform_3d[sprite_depth_index].scale.x = scale_x.a[j];
@@ -13103,7 +13107,7 @@ void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		else {
-			if (!(pm.flags & tfxParticleManagerFlags_unordered)) {	//Predictable
+			if (is_ordered) {	//Predictable
 				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 					tfxU32 sprite_depth_index = bank.depth_index[index + j];
 					sprites.transform_2d[sprite_depth_index].scale.x = scale_x.a[j];
@@ -13152,6 +13156,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	if (sample_based_on_path_position) {
 		path = &pm.library->paths[emitter.path_attributes];
 	}
+	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -13199,7 +13204,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (!(pm.flags & tfxParticleManagerFlags_unordered)) {	//Predictable
+		if (is_ordered) {	//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				sprites.color[sprite_depth_index].color = packed_color.a[j];
@@ -13251,6 +13256,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
+	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -13283,7 +13289,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (!(pm.flags & tfxParticleManagerFlags_unordered)) {				//Predictable
+		if (is_ordered) {				//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j];
@@ -13345,12 +13351,13 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
+	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (!(pm.flags & tfxParticleManagerFlags_unordered)) {				//Predictable
+		if (is_ordered) {				//Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j];
