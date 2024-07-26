@@ -5936,6 +5936,7 @@ struct tfx_effect_sprites_t {
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 depth_starting_index[tfxLAYERS];
+	tfxU32 current_depth_buffer_index[tfxLAYERS];
 };
 
 struct tfx_effect_index_t {
