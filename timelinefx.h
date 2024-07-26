@@ -6011,7 +6011,7 @@ struct tfx_particle_manager_t {
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 current_sprite_buffer;
-	tfxU32 current_depth_index_buffer[tfxLAYERS];
+	tfxU32 current_depth_buffer_index[tfxLAYERS];
 
 	//todo: document compute controllers once we've established this is how we'll be doing it.
 	void *compute_controller_ptr;
