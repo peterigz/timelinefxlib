@@ -13876,25 +13876,26 @@ tfxU32 GrabSpriteLists(tfx_particle_manager_t* pm, tfxKey effect_hash, bool is_3
 	bool uids = (pm->flags & tfxParticleManagerFlags_using_uids) > 0;
 	if (is_3d) {
 		for (tfxEachLayer) {
-			if (is_ordered) {
-				effect_sprites.depth_indexes[layer][0].reserve(reserve_amount);
-				effect_sprites.depth_indexes[layer][1].reserve(reserve_amount);
-			}
 			InitSpriteBufferSoA(&effect_sprites.sprite_buffer[0][layer], &effect_sprites.sprites[0][layer], reserve_amount, tfxSpriteBufferMode_3d, uids);
 			if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
 				InitSpriteBufferSoA(&effect_sprites.sprite_buffer[1][layer], &effect_sprites.sprites[1][layer], reserve_amount, tfxSpriteBufferMode_3d, uids);
+			}
+			//Match the capacity of the the sprite buffer so that it's increase in size at the same time as the sprite buffer when that too runs out of space.
+			if (is_ordered) {
+				effect_sprites.depth_indexes[layer][0].reserve(effect_sprites.sprite_buffer[0][layer].capacity);
+				effect_sprites.depth_indexes[layer][1].reserve(effect_sprites.sprite_buffer[1][layer].capacity);
 			}
 		}
 	}
 	else {
 		for (tfxEachLayer) {
-			if (is_ordered) {
-				effect_sprites.depth_indexes[layer][0].reserve(reserve_amount);
-				effect_sprites.depth_indexes[layer][1].reserve(reserve_amount);
-			}
 			InitSpriteBufferSoA(&effect_sprites.sprite_buffer[0][layer], &effect_sprites.sprites[0][layer], reserve_amount, tfxSpriteBufferMode_2d, uids);
 			if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
 				InitSpriteBufferSoA(&effect_sprites.sprite_buffer[1][layer], &effect_sprites.sprites[1][layer], reserve_amount, tfxSpriteBufferMode_2d, uids);
+			}
+			if (is_ordered) {
+				effect_sprites.depth_indexes[layer][0].reserve(effect_sprites.sprite_buffer[0][layer].capacity);
+				effect_sprites.depth_indexes[layer][1].reserve(effect_sprites.sprite_buffer[1][layer].capacity);
 			}
 		}
 	}
