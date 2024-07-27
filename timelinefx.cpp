@@ -17552,6 +17552,7 @@ void InitializeParticleManager(tfx_particle_manager_t* pm, tfx_library_t* librar
 	InitCommonParticleManager(pm, library, info.layer_max_values, info.max_effects, info.order_mode, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);
 
 	pm->flags |= info.is_3d ? tfxParticleManagerFlags_3d_effects : 0;
+	pm->flags |= info.auto_order_effects ? tfxParticleManagerFlags_auto_order_effects : 0;
 
 	for (tfxEachLayer) {
 		pm->max_cpu_particles_per_layer[layer] = info.layer_max_values[layer];
