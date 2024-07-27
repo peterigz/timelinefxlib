@@ -14100,7 +14100,7 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 	}
 
 	if (effect.state_flags & tfxEffectStateFlags_remove) {
-		pm->emitters[index].timeout = 1;
+		effect.timeout = 1;
 		effect.highest_particle_age = 0;
 	}
 
@@ -14115,6 +14115,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_particle_manager_t *pm = spawn_work_entry->pm;
 
 	tfx_emitter_state_t &emitter = pm->emitters[emitter_index];
+
+	tfx_effect_state_t &parent_effect = pm->effects[emitter.parent_index];
+	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_remove;
 
 	tfx_vec3_t local_rotations;
 	tfx_library_t *library = pm->library;
@@ -14144,8 +14147,6 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfxU32 layer = properties.layer;
 
-	tfx_effect_state_t &parent_effect = pm->effects[emitter.parent_index];
-
 	parent_effect.timeout_counter = 0;
 	if (parent_effect.age < emitter.delay_spawning) {
 		return;
@@ -14155,9 +14156,8 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	emitter.delay_spawning = -pm->frame_length;
 
 	//e.state_flags |= e.parent->state_flags & tfxEmitterStateFlags_stop_spawning;
-	emitter.state_flags |= parent_effect.state_flags & tfxEffectStateFlags_no_tween;
-	emitter.state_flags |= parent_effect.state_flags & tfxEffectStateFlags_stop_spawning;
-	emitter.state_flags |= parent_effect.state_flags & tfxEffectStateFlags_remove;
+	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_no_tween;
+	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_stop_spawning;
 	spawn_work_entry->parent_spawn_controls = &parent_effect.spawn_controls;
 	spawn_work_entry->parent_property_flags = parent_effect.property_flags;
 	spawn_work_entry->parent_index = emitter.parent_index;
@@ -14309,8 +14309,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 
 	if (emitter.state_flags & tfxEmitterStateFlags_remove) {
-		emitter.timeout = 1;
+		emitter.timeout = 0;
 		emitter.highest_particle_age = 0;
+		return;
 	}
 
 	emitter.state_flags &= ~tfxEmitterStateFlags_no_tween_this_update;
@@ -16891,7 +16892,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 
 	const tfxWideInt remove_flag = tfxWideSetSinglei(tfxParticleFlags_remove);
 	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
-	const tfxWideInt remove = tfxWideSetSinglei(emitter.state_flags & tfxParticleFlags_remove);
+	const tfxWideInt remove = tfxWideSetSinglei(emitter.state_flags & tfxEmitterStateFlags_remove);
 	const tfxWideInt single = tfxWideGreateri(tfxWideSetSinglei(emitter.property_flags & tfxEmitterPropertyFlags_single), tfxWideSetZeroi);
 	const tfxWideInt not_single = tfxWideXOri(single, tfxWideSetSinglei(-1));
 	const tfxWideInt wrap = tfxWideEqualsi(tfxWideSetSinglei(emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite), tfxWideSetZeroi);

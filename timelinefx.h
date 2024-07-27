@@ -5313,22 +5313,21 @@ struct tfx_emitter_state_t {
 	float delay_spawning;
 	float timeout_counter;
 	float timeout;
+	float amount_remainder;
+	float spawn_quantity;
+	float qty_step_size;
 	tfx_vec3_t handle;
 	tfxEmitterPropertyFlags property_flags;
-	float loop_length;
 	//Position, scale and rotation values
 	tfx_vec3_t local_position;
 	tfx_vec3_t world_position;
 	tfx_vec3_t captured_position;
 	tfx_vec3_t world_rotations;
 
+	float loop_length;
 	tfx_quaternion_t rotation;
 	tfx_vec2_t image_handle;
 	tfx_bounding_box_t bounding_box;
-
-	float amount_remainder;
-	float spawn_quantity;
-	float qty_step_size;
 
 	tfxU32 emitter_attributes;
 	tfxU32 transform_attributes;
