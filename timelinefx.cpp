@@ -10975,7 +10975,7 @@ void OrderEffectSprites(tfx_effect_sprites_t* sprites, tfxU32 layer, tfx_particl
 			while (second_index < sprites->depth_indexes[layer][sprites->current_depth_buffer_index[layer]].current_size) {
 				tfxU32 bank = ParticleBank(sprites->depth_indexes[layer][sprites->current_depth_buffer_index[layer]][second_index].particle_id);
 				tfxU32 index = ParticleIndex(sprites->depth_indexes[layer][sprites->current_depth_buffer_index[layer]][second_index].particle_id);
-				pm->particle_arrays[ParticleBank(sprites->depth_indexes[layer][sprites->current_depth_buffer_index[layer]][second_index].particle_id)].depth_index[ParticleIndex(sprites->depth_indexes[layer][sprites->current_depth_buffer_index[layer]][second_index].particle_id)] = sprites->depth_indexes[layer][next_depth_buffer].current_size;
+				pm->particle_arrays[bank].depth_index[index] = sprites->depth_indexes[layer][next_depth_buffer].current_size;
 				sprites->depth_indexes[layer][next_depth_buffer].push_back(sprites->depth_indexes[layer][sprites->current_depth_buffer_index[layer]][second_index++]);
 			}
 		}
@@ -14521,9 +14521,12 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		}
 	}
 
+	work_entry->depth_index_start = work_entry->depth_indexes ? work_entry->depth_indexes->current_size : 0;
+
 	if (work_entry->amount_to_spawn > 0) {
 		if (emitter.state_flags & tfxEmitterStateFlags_is_in_ordered_effect) {
 			pm->deffered_spawn_work.push_back(work_entry);
+			work_entry->depth_indexes->current_size += work_entry->amount_to_spawn;
 		}
 		else {
 			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork2d);
@@ -14630,9 +14633,12 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		}
 	}
 
+	work_entry->depth_index_start = work_entry->depth_indexes ? work_entry->depth_indexes->current_size : 0;
+
 	if (work_entry->amount_to_spawn > 0) {
 		if (emitter.state_flags & tfxEmitterStateFlags_is_in_ordered_effect) {
 			pm->deffered_spawn_work.push_back(work_entry);
+			work_entry->depth_indexes->current_size += work_entry->amount_to_spawn;
 		}
 		else {
 			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork3d);
@@ -16660,7 +16666,8 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
 			depth_index.depth = entry->particle_data->age[index];
-			entry->particle_data->depth_index[index] = PushPMDepthIndex(entry->depth_indexes, depth_index);
+			entry->particle_data->depth_index[index] = entry->depth_index_start;
+			(*entry->depth_indexes)[entry->depth_index_start++] = depth_index;
 		}
 	}
 }
@@ -16789,13 +16796,15 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
 			tfx_vec3_t world_minus_camera = tfx_vec3_t(local_position_x, local_position_y, local_position_z) - pm.camera_position;
 			depth_index.depth = LengthVec3NoSqR(&world_minus_camera);
-			entry->particle_data->depth_index[index] = PushPMDepthIndex(entry->depth_indexes, depth_index);
+			entry->particle_data->depth_index[index] = entry->depth_index_start;
+			(*entry->depth_indexes)[entry->depth_index_start++] = depth_index;
 		}
 		else if (pm.flags & tfxParticleManagerFlags_ordered_by_age || (pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers && entry->root_effect_flags & tfxEffectPropertyFlags_age_order)) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
 			depth_index.depth = entry->particle_data->age[index];
-			entry->particle_data->depth_index[index] = PushPMDepthIndex(entry->depth_indexes, depth_index);
+			entry->particle_data->depth_index[index] = entry->depth_index_start;
+			(*entry->depth_indexes)[entry->depth_index_start++] = depth_index;
 		}
 	}
 }

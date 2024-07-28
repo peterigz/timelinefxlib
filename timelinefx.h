@@ -5770,6 +5770,7 @@ struct tfx_spawn_work_entry_t {
 	tfx_particle_soa_t *particle_data;
 	tfx_vector_t<tfx_effect_emitter_t> *sub_effects;
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
+	tfxU32 depth_index_start;
 	tfxU32 seed;
 	float tween;
 	tfxU32 max_spawn_count;
