@@ -11098,6 +11098,8 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	}
 
 	for (tfx_spawn_work_entry_t* spawn_work : pm->deffered_spawn_work) {
+		//We deffer any spawn work to here for any emitters that have ordered effects so that the required buffer space can be calculated
+		//before doing any spawning.
 		tfxAddWorkQueueEntry(&pm->work_queue, spawn_work, pm->flags & tfxParticleManagerFlags_3d_effects ? DoSpawnWork3d : DoSpawnWork2d);
 	}
 	pm->deffered_spawn_work.clear();
@@ -14490,11 +14492,6 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 
 	tfx_soa_buffer_t &buffer = pm->particle_array_buffers[emitter.particles_index];
 
-	if (!(pm->flags & tfxParticleManagerFlags_unordered)) {
-		//We must complete all work first before potentially growing the particle_array_buffers as some threads may still be working in the buffer
-		//tfxCompleteAllWork(&pm->work_queue);
-	}
-
 	bool grew = false;
 	work_entry->spawn_start_index = AddRows(&buffer, work_entry->amount_to_spawn, true, grew);
 	if (grew && work_entry->depth_indexes) {
@@ -14599,12 +14596,6 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		work_entry->amount_to_spawn = (tfxU32)emitter.spawn_quantity;
 	}
 
-	if (!(pm->flags & tfxParticleManagerFlags_unordered)) {
-		//We must complete all work first before potentially growing the particle_array_buffers as some threads may still be working in the buffer
-		//This could be a lot better if we know when in the depth buffer to put new particles which we should be able to work out. For now though, the
-		//spawning of depth or age ordered particles is single threaded to avoid race conditions pushing indexes into the depth array
-		//tfxCompleteAllWork(&pm->work_queue);
-	}
 	bool grew = false;
 	tfxU32 start_index = pm->particle_array_buffers[emitter.particles_index].start_index;
 	work_entry->spawn_start_index = AddRows(&pm->particle_array_buffers[emitter.particles_index], work_entry->amount_to_spawn, true, grew);
@@ -14615,8 +14606,6 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		tfx_particle_soa_t &bank = pm->particle_arrays[emitter.particles_index];
 		//TFX_ASSERT(pm->particle_array_buffers[particles_index].start_index == 0); //If start_index isn't 0 after the arrays grew then something went wrong with the allocation
 		for (int i = 0; i != pm->particle_array_buffers[emitter.particles_index].current_size - work_entry->amount_to_spawn; ++i) {
-			//tfxU32 depth_index = bank.depth_index[i];
-			//tfxU32 depth_id = pm->depth_indexes[layer][pm->current_depth_buffer_index[layer]][bank.depth_index[i]].particle_id;
 			(*work_entry->depth_indexes)[bank.depth_index[i]].particle_id = MakeParticleID(emitter.particles_index, i);
 		}
 	}
