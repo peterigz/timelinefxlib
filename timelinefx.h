@@ -2572,7 +2572,8 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_has_path = 1 << 25,
 	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,				//This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
-	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28
+	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28,
+	tfxEmitterStateFlags_is_in_ordered_effect = 1 << 29
 	//tfxEmitterStateFlags_simple_motion_smoothstep = 1 << 30
 };
 
@@ -3950,7 +3951,11 @@ extern int tfxNumberOfThreadsInAdditionToMain;
 extern bool tfxThreadUsage[];		//Used for debugging to see which threads were utilised each frame
 
 #ifndef tfxMAX_QUEUES
-#define tfxMAX_QUEUES 512
+#define tfxMAX_QUEUES 64
+#endif
+
+#ifndef tfxMAX_QUEUE_ENTRIES
+#define tfxMAX_QUEUE_ENTRIES 512
 #endif
 
 struct tfx_work_queue_t {
@@ -3958,7 +3963,7 @@ struct tfx_work_queue_t {
 	tfxU32 volatile entry_completion_count = 0;
 	tfxLONG volatile next_read_entry = 0;
 	tfxLONG volatile next_write_entry = 0;
-	tfx_work_queue_entry_t entries[tfxMAX_QUEUES];
+	tfx_work_queue_entry_t entries[tfxMAX_QUEUE_ENTRIES];
 };
 
 struct tfx_queue_processor_t {
@@ -3997,7 +4002,7 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 
 	if (queue) {
 		tfxU32 original_read_entry = queue->next_read_entry;
-		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUES;
+		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUE_ENTRIES;
 
 		if (original_read_entry != queue->next_write_entry) {
 			tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -4012,7 +4017,7 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 
 tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
 	tfxU32 original_read_entry = queue->next_read_entry;
-	tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUES;
+	tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUE_ENTRIES;
 
 	if (original_read_entry != queue->next_write_entry) {
 		tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
@@ -4030,7 +4035,7 @@ tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data
 		return;
 	}
 
-	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_QUEUES;
+	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_QUEUE_ENTRIES;
 	while (new_entry_to_write == queue->next_read_entry) {		//Not enough room in work queue
 		//We can do this because we're single producer
 		tfxDoNextWorkQueueEntry(queue);
@@ -6002,6 +6007,7 @@ struct tfx_particle_manager_t {
 	tfx_library_t *library;
 
 	tfx_work_queue_t work_queue;
+	tfx_vector_t<tfx_spawn_work_entry_t*> deffered_spawn_work;
 
 	//The info config that was used to initialise the particle manager. This can be used to alter and the reconfigure the particle manager
 	tfx_particle_manager_info_t info;
