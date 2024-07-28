@@ -11150,8 +11150,11 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	else if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
 		for (tfx_effect_index_t effect_index : pm->effects_in_use[0][next_buffer]) {
 			tfx_effect_sprites_t& sprites = pm->effect_sprite_buffers[pm->effects[effect_index.index].sprite_buffer_index];
-			for (tfxEachLayer) {
-				OrderEffectSprites(&sprites, layer, pm);
+			if (IsOrderedEffectState(&pm->effects[effect_index.index])) {
+				tfx_effect_sprites_t& sprites = pm->effect_sprite_buffers[pm->effects[effect_index.index].sprite_buffer_index];
+				for (tfxEachLayer) {
+					OrderEffectSprites(&sprites, layer, pm);
+				}
 			}
 		}
 	}
