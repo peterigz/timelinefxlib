@@ -10729,7 +10729,6 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			state_flags |= emitter_properties->emission_type == tfxLine && e.property_flags & tfxEmitterPropertyFlags_edge_traversal && (state_flags & tfxEmitterStateFlags_loop || state_flags & tfxEmitterStateFlags_kill) ? tfxEmitterStateFlags_is_line_loop_or_kill : 0;
 			state_flags |= (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d) && (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
 			state_flags |= emitter_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
-			state_flags |= IsOrderedEffect(effect) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
 			if (emitter_properties->emission_type == tfxPath) {
 				tfx_emitter_path_t *path = &pm->library->paths[emitter.path_attributes];
 				state_flags |= (path->rotation_range > 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
@@ -10776,10 +10775,12 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			if (is_sub_emitter) {
 				state_flags |= tfxEmitterStateFlags_is_sub_emitter;
 				emitter.root_index = root_effect_index;
+				state_flags |= IsOrderedEffectState(&pm->effects[root_effect_index]) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
 			}
 			else {
 				emitter.root_index = parent_index.index;
 				emitter.highest_particle_age = pm->frame_length * 2.f;
+				state_flags |= IsOrderedEffect(effect) ? tfxEmitterStateFlags_is_in_ordered_effect : 0;
 			}
 
 			if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_location_source) {
