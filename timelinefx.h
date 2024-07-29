@@ -6216,9 +6216,9 @@ tfxINTERNAL void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 inde
 //--------------------------------
 //Internal functions used either by the library or editor
 //--------------------------------
-tfxINTERNAL inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index);
-tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id);
-tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id);
+tfxINTERNAL inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
+tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id) { return id & 0x000FFFFF; }
+tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
 tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 GrabParticleLocationLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 tfxINTERNAL tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey effect_hash, bool is_3d, bool is_ordered, tfxU32 reserve_amount);
