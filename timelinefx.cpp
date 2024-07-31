@@ -9979,7 +9979,7 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 		float lerp_offset = (next_compressed_time - real_time) / (next_compressed_time - compressed_time);
 		if (real_time >= compressed_time && frame_done == false) {
 			for (tfxU32 i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
-				//Add to compress sprites but make invalid captured indexed create the offset
+				//Add to compress sprites but make the invalid captured indexed create the offset
 				sprite_data->compressed.frame_meta[compressed_frame].sprite_count[layer]++;
 				sprite_data->compressed.frame_meta[compressed_frame].total_sprites++;
 				c_sprites.captured_index[ci] = sprites.captured_index[i];
@@ -9998,7 +9998,8 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 				}
 				ci++;
 				if (ci >= sprite_data->compressed_sprites_buffer.capacity) {
-					GrowArrays(&sprite_data->compressed_sprites_buffer, ci, sprite_data->compressed_sprites_buffer.capacity + 1, true);	//Failed to grow sprite compression array
+					bool result = GrowArrays(&sprite_data->compressed_sprites_buffer, ci, sprite_data->compressed_sprites_buffer.capacity + 1, true);	
+					TFX_ASSERT(result);		//Failed to grow sprite compression array
 				}
 			}
 			frame_done = true;
@@ -10026,7 +10027,8 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 					}
 					ci++;
 					if (ci >= sprite_data->compressed_sprites_buffer.capacity) {
-						GrowArrays(&sprite_data->compressed_sprites_buffer, ci, sprite_data->compressed_sprites_buffer.capacity + 1, true);	//Failed to grow sprite compression array
+						bool result = GrowArrays(&sprite_data->compressed_sprites_buffer, ci, sprite_data->compressed_sprites_buffer.capacity + 1, true);
+						TFX_ASSERT(result);		//Failed to grow sprite compression array
 					}
 				}
 			}
@@ -14548,13 +14550,6 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		}
 	}
 
-	if (pm->flags & tfxParticleManagerFlags_recording_sprites && pm->flags & tfxParticleManagerFlags_using_uids) {
-		for (int i = 0; i != work_entry->amount_to_spawn; ++i) {
-			tfxU32 index = GetCircularIndex(&pm->particle_array_buffers[emitter.particles_index], work_entry->spawn_start_index + i);
-			work_entry->particle_data->uid[index] = RandomRange(&pm->random, tfxMAX_UINT);
-		}
-	}
-
 	if (work_entry->amount_to_spawn > 0 && emitter.property_flags & tfxEmitterPropertyFlags_single) {
 		emitter.state_flags |= tfxEmitterStateFlags_single_shot_done;
 	}
@@ -14649,13 +14644,6 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		}
 		else {
 			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork3d);
-		}
-	}
-
-	if (pm->flags & tfxParticleManagerFlags_recording_sprites && pm->flags & tfxParticleManagerFlags_using_uids) {
-		for (int i = 0; i != work_entry->amount_to_spawn; ++i) {
-			tfxU32 index = GetCircularIndex(&pm->particle_array_buffers[emitter.particles_index], work_entry->spawn_start_index + i);
-			work_entry->particle_data->uid[index] = RandomRange(&pm->random, tfxMAX_UINT);
 		}
 	}
 
@@ -14798,7 +14786,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 		//Set the age of the particle to an interpolated value between 0 and the length of the frame depending on how many particles are being spawned this frame
 		age = age_accumulator;
-		entry->particle_data->uid[index] = RandomRange(&random, tfxMAX_INT);
+		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc();
 		age_accumulator += frame_fraction;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxParticleManagerFlags_recording_sprites) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
