@@ -9608,7 +9608,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	tfx_vector_t<tfx_frame_meta_t> tmp_frame_meta;
 	tfxU32 sprites_in_layers = 0;
 	tfx_vec3_t pm_camera_position = pm->camera_position;
-	tfxU32 preview_effect_index;
+	tfxEffectID preview_effect_index;
 
 	//For now, record sprite data with sprites stored in the particle manager rather then each effect.
 	tfxParticleManagerFlags pm_effect_sprites_flag = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers;
@@ -9690,7 +9690,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				break;
 		}
 		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames) {
-			DisablePMSpawning(pm, true);
+			SoftExpireEffect(pm, preview_effect_index);
 		}
 
 	}
@@ -9894,7 +9894,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				break;
 		}
 		if (start_counting_extra_frames && extra_frame_count++ >= extra_frames) {
-			DisablePMSpawning(pm, true);
+			SoftExpireEffect(pm, preview_effect_index);
 		}
 
 	}
@@ -10939,10 +10939,12 @@ void FreeEffectSpriteList(tfx_particle_manager_t *pm, tfxU32 index) {
 
 void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index) {
 	if (pm->free_particle_location_lists.ValidKey(pm->emitters[index].path_hash) && pm->emitters[index].spawn_locations_index != tfxINVALID) {
+		ClearSoABuffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
 		pm->free_particle_location_lists.At(pm->emitters[index].path_hash).push_back(pm->emitters[index].spawn_locations_index);
 	}
 	else if(pm->emitters[index].spawn_locations_index != tfxINVALID) {
 		tfx_vector_t<tfxU32> new_indexes;
+		ClearSoABuffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
 		new_indexes.push_back(pm->emitters[index].spawn_locations_index);
 		pm->free_particle_location_lists.Insert(pm->emitters[index].path_hash, new_indexes);
 	}
@@ -11172,6 +11174,9 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
 			int particles_to_update = bank.current_size;
 			tfxU32 running_start_index = 0;
+			if (pm->emitters[index].property_flags & tfxEmitterPropertyFlags_spawn_location_source && pm->emitters[index].spawn_locations_index != tfxINVALID) {
+				ClearSoABuffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
+			}
 			while (particles_to_update > 0) {
 				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
 				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
@@ -14186,9 +14191,10 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	bool ordered_effect = (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_age_order) || (spawn_work_entry->root_effect_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
 	emitter.delay_spawning = -pm->frame_length;
 
-	//e.state_flags |= e.parent->state_flags & tfxEmitterStateFlags_stop_spawning;
 	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_no_tween;
-	emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_stop_spawning;
+	if (properties.emission_type != tfxOtherEmitter) {
+		emitter.state_flags |= parent_effect.state_flags & tfxEmitterStateFlags_stop_spawning;
+	}
 	spawn_work_entry->parent_spawn_controls = &parent_effect.spawn_controls;
 	spawn_work_entry->parent_property_flags = parent_effect.property_flags;
 	spawn_work_entry->parent_index = emitter.parent_index;
@@ -14364,7 +14370,7 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfx_random_t *random, tfxU32
 		emitter.spawn_quantity *= lookup_callback(&pm->library->global_graphs[parent->global_attributes].amount, emitter.frame);
 	}
 
-	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning || parent->state_flags & tfxEffectStateFlags_stop_spawning) {
+	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
 		return 0;
 	}
 
@@ -14562,10 +14568,9 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 	tfx_particle_manager_t *pm = work_entry->pm;
 	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	const tfx_emitter_properties_t &properties = *work_entry->properties;
-	const tfxEmitterStateFlags parent_state_flags = pm->effects[work_entry->parent_index].state_flags;
 	const tfxU32 layer = properties.layer;
 
-	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || parent_state_flags & tfxEffectStateFlags_stop_spawning)
+	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning)
 		return 0;
 	if (emitter.spawn_quantity == 0)
 		return 0;
@@ -16955,7 +16960,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 		tfxWideStorei((tfxWideIntLoader*)&bank.single_loop_count[index], single_loop_count);
 	}
 
-	if (IsOrderedEffectState(&effect) && pm.flags& tfxParticleManagerFlags_use_effect_sprite_buffers) {
+	if (IsOrderedEffectState(&effect) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
 		depth_indexes = &pm.effect_sprite_buffers[effect.sprite_buffer_index].depth_indexes[layer][pm.effect_sprite_buffers[effect.sprite_buffer_index].current_depth_buffer_index[layer]];
 	}
 	else {
