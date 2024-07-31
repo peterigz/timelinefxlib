@@ -5421,10 +5421,9 @@ struct tfx_effect_state_t {
 	void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 } TFX_ALIGN_AFFIX(16);
 
-//An tfx_effect_emitter_t can either be an effect which stores emitters and global graphs for affecting all the attributes in the emitters
-//Or it can be an emitter which spawns all of the particles. Effectors are stored in the particle manager effects list buffer.
+//An tfx_effect_emitter_t can either be an effect which stores effects and global graphs for affecting all the attributes in the emitters
+//Or it can be an emitter which spawns all of the particles. 
 //This is only for library storage, when using to update each frame this is copied to tfx_effect_state_t and tfx_emitter_state_t for realtime updates
-//suited for realtime use.
 struct tfx_effect_emitter_t {
 	//Required for frame by frame updating
 	//The current state of the effect/emitter used in the editor only at this point
@@ -5933,7 +5932,7 @@ struct tfx_animation_manager_t {
 	bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
 };
 
-//Used when a particle manager is grouping sprites by effect. This way effects can be individually ordered and drawn/not drawn in that order however you need
+//Used when a particle manager is grouping sprites by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
 struct tfx_effect_sprites_t {
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
@@ -7202,9 +7201,16 @@ of free particle banks for that emitter type so that they can then be recycled i
 specific emitter then you can call this function to do that.
 NOTE: No emitters of the type passed to the function must be in use in the particle manager.
 * @param pm						A pointer to an intialised tfx_particle_manager_t.
-* @param emitter_hash			The path hash for the emitter. Called path_hash in the tfx_effect_emitter_t struct.
+* @param emitter				A pointer to a valid tfx_effect_emitter_t of type tfxEmitterType
 */
-tfxAPI void FreeParticleLists(tfx_particle_manager_t* pm, tfxKey emitter_hash);
+tfxAPI void FreeParticleListsMemory(tfx_particle_manager_t* pm, tfx_effect_emitter_t *emitter);
+
+/*
+Free all the memory that is associated with an effect. Depending on the configuration of the particle manager this might be sprites, particle lists and spawn location lists.
+* @param pm						A pointer to an intialised tfx_particle_manager_t.
+* @param emitter				A pointer to a valid tfx_effect_emitter_t of type tfxEffectType
+*/
+tfxAPI void FreeEffectListsMemory(tfx_particle_manager_t* pm, tfx_effect_emitter_t *effect);
 
 /*
 Get the current particle count for a particle manager

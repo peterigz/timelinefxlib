@@ -6054,9 +6054,9 @@ void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index) {
 
 void CompileLibraryFactorGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_factor_attributes_t &g = library->emitter_attributes[index].factor;
-	CompileColorOvertime(&g.life);
-	CompileColorOvertime(&g.velocity);
-	CompileColorOvertime(&g.size);
+	CompileGraphOvertime(&g.life);
+	CompileGraphOvertime(&g.velocity);
+	CompileGraphOvertime(&g.size);
 	CompileGraphOvertime(&g.intensity);
 }
 
@@ -11975,7 +11975,7 @@ void ControlParticlePosition3dMotionRandomness(tfx_work_queue_t* queue, void* da
 		tfxControlParticleLoopSetup;
 		tfxControlParticleSampleOverPathLife;
 
-		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader*)&bank.velocity_normal[index]);
+		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 		UnPackWide10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 
 		life = tfxWideMul(life, max_life);
@@ -12006,15 +12006,15 @@ void ControlParticlePosition3dMotionRandomness(tfx_work_queue_t* queue, void* da
 		velocity_normal_x = tfxWideDiv(velocity_normal_x, length);
 		velocity_normal_y = tfxWideDiv(velocity_normal_y, length);
 		velocity_normal_z = tfxWideDiv(velocity_normal_z, length);
-		tfxWideInt packed_normal = PackWide10bitUnsigned(velocity_normal_x, velocity_normal_y, velocity_normal_z);
 		//--
 
 		tfxWideFloat current_velocity_x = tfxWideMul(velocity_normal_x, velocity_scalar);
 		tfxWideFloat current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
 		tfxWideFloat current_velocity_z = tfxWideMul(velocity_normal_z, velocity_scalar);
 
+		tfxWideInt packed_normal = PackWide10bitUnsigned(velocity_normal_x, velocity_normal_y, velocity_normal_z);
 		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi)));
-		tfxWideStorei((tfxWideIntLoader*)&bank.velocity_normal[index], normal_to_store);
+		tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
 		tfxWideStore(&bank.noise_offset[index], speed);
 
 		tfxWideFloat local_position_x = tfxWideLoad(&bank.position_x[index]);
@@ -12023,7 +12023,6 @@ void ControlParticlePosition3dMotionRandomness(tfx_work_queue_t* queue, void* da
 
 		tfxControlParticleUpdatePosition;
 	}
-
 }
 
 //Used for emitters that have simple motion randomness only with orbital emission type
@@ -13911,20 +13910,50 @@ tfxU32 GrabSpriteLists(tfx_particle_manager_t* pm, tfxKey effect_hash, bool is_3
 	return index;
 }
 
-void FreeParticleLists(tfx_particle_manager_t* pm, tfxKey emitter_hash) {
-	if (pm->free_particle_lists.ValidKey(emitter_hash)) {
-		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter_hash);
+void FreeParticleListsMemory(tfx_particle_manager_t* pm, tfx_effect_emitter_t *emitter) {
+	if (pm->free_particle_lists.ValidKey(emitter->path_hash)) {
+		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter->path_hash);
 		for (tfxU32 i : free_banks) {
 			FreeSoABuffer(&pm->particle_array_buffers[i]);
 		}
-		free_banks.clear();
+		free_banks.free();
 	}
-	if (pm->free_particle_location_lists.ValidKey(emitter_hash)) {
-		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_location_lists.At(emitter_hash);
+	if (pm->free_particle_location_lists.ValidKey(emitter->path_hash)) {
+		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_location_lists.At(emitter->path_hash);
 		for (tfxU32 i : free_banks) {
 			FreeSoABuffer(&pm->particle_location_buffers[i]);
 		}
-		free_banks.clear();
+		free_banks.free();
+	}
+	for (tfx_effect_emitter_t &effect : GetEffectInfo(emitter)->sub_effectors) {
+		FreeEffectListsMemory(pm, &effect);
+	}
+}
+
+tfxAPI void FreeEffectListsMemory(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect) {
+	if (effect->type == tfxFolder) {
+		for (tfx_effect_emitter_t &sub_effect : GetEffectInfo(effect)->sub_effectors) {
+			FreeEffectListsMemory(pm, &sub_effect);
+		}
+	}
+	if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
+		if (pm->free_sprite_lists.ValidKey(effect->path_hash)) {
+			tfx_vector_t<tfxU32> &free_banks = pm->free_sprite_lists.At(effect->path_hash);
+			for (tfxU32 i : free_banks) {
+				for (tfxEachLayer) {
+					FreeSoABuffer(&pm->effect_sprite_buffers[i].sprite_buffer[0][layer]);
+					pm->effect_sprite_buffers[i].depth_indexes[0][layer].free();
+					if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
+						FreeSoABuffer(&pm->effect_sprite_buffers[i].sprite_buffer[1][layer]);
+						pm->effect_sprite_buffers[i].depth_indexes[1][layer].free();
+					}
+				}
+			}
+			free_banks.free();
+		}
+	}
+	for (tfx_effect_emitter_t &emitter : GetEffectInfo(effect)->sub_effectors) {
+		FreeParticleListsMemory(pm, &emitter);
 	}
 }
 
@@ -14585,6 +14614,18 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		work_entry->amount_to_spawn = (tfxU32)emitter.spawn_quantity;
 	}
 
+	work_entry->emission_type = properties.emission_type;
+	if (work_entry->emission_type == tfxOtherEmitter) {
+		if (emitter.spawn_locations_index == tfxINVALID) {
+			work_entry->amount_to_spawn = 0;
+		} else {
+			tfx_soa_buffer_t& spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
+			if (spawn_point_buffer.current_size == 0) {
+				work_entry->amount_to_spawn = 0;
+			}
+		}
+	}
+
 	bool grew = false;
 	tfxU32 start_index = pm->particle_array_buffers[emitter.particles_index].start_index;
 	work_entry->spawn_start_index = AddRows(&pm->particle_array_buffers[emitter.particles_index], work_entry->amount_to_spawn, true, grew);
@@ -14596,18 +14637,6 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		//TFX_ASSERT(pm->particle_array_buffers[particles_index].start_index == 0); //If start_index isn't 0 after the arrays grew then something went wrong with the allocation
 		for (int i = 0; i != pm->particle_array_buffers[emitter.particles_index].current_size - work_entry->amount_to_spawn; ++i) {
 			(*work_entry->depth_indexes)[bank.depth_index[i]].particle_id = MakeParticleID(emitter.particles_index, i);
-		}
-	}
-	work_entry->emission_type = properties.emission_type;
-
-	if (work_entry->emission_type == tfxOtherEmitter) {
-		if (emitter.spawn_locations_index == tfxINVALID) {
-			work_entry->amount_to_spawn = 0;
-		} else {
-			tfx_soa_buffer_t& spawn_point_buffer = pm->particle_location_buffers[emitter.spawn_locations_index];
-			if (spawn_point_buffer.current_size == 0) {
-				work_entry->amount_to_spawn = 0;
-			}
 		}
 	}
 
