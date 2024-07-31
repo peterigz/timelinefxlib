@@ -14696,10 +14696,9 @@ void DoSpawnWork3d(tfx_work_queue_t *queue, void *data) {
 	SpawnParticleMicroUpdate3d(&pm->work_queue, work_entry);
 	if (emitter.control_profile & tfxEmitterControlProfile_noise) {
 		SpawnParticleNoise(&pm->work_queue, work_entry);
+	} else if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
+		SpawnParticleMotionRandomness(&pm->work_queue, work_entry);
 	}
-	//if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
-		//SpawnParticleMotionRandomness(&pm->work_queue, work_entry);
-	//}
 	SpawnParticleImageFrame(&pm->work_queue, work_entry);
 	SpawnParticleSize3d(&pm->work_queue, work_entry);
 	SpawnParticleSpin3d(&pm->work_queue, work_entry);
@@ -14731,10 +14730,9 @@ void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
 	SpawnParticleMicroUpdate2d(&pm->work_queue, work_entry);
 	if (emitter.control_profile & tfxEmitterControlProfile_noise) {
 		SpawnParticleNoise(&pm->work_queue, work_entry);
+	} else if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
+		SpawnParticleMotionRandomness(&pm->work_queue, work_entry);
 	}
-	//if (emitter.control_profile & tfxEmitterControlProfile_motion_randomness) {
-		//SpawnParticleMotionRandomness(&pm->work_queue, work_entry);
-	//}
 	SpawnParticleImageFrame(&pm->work_queue, work_entry);
 	SpawnParticleSize2d(&pm->work_queue, work_entry);
 	SpawnParticleSpin2d(&pm->work_queue, work_entry);
