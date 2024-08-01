@@ -2437,7 +2437,7 @@ enum tfx_path_generator_type {
 
 enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_none,
-	tfxPathFlags_3d = 1 << 0,
+	tfxPathFlags_2d = 1 << 0,
 	tfxPathFlags_mode_origin = 1 << 1,
 	tfxPathFlags_mode_node = 1 << 2,
 	tfxPathFlags_space_nodes_evenly = 1 << 3,
@@ -5038,7 +5038,10 @@ struct tfx_emitter_path_t {
 	tfx_graph_t offset_z;
 	tfx_graph_t distance;
 	float rotation_range;
-	float rotation_pitch;
+	union {
+		float rotation_pitch;	//3d paths
+		float rotation_offset;	//For 2d paths
+	};
 	float rotation_yaw;
 	tfxU32 maximum_active_paths;
 	tfxU32 maximum_paths;
@@ -6333,9 +6336,13 @@ tfxAPI_EDITOR float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b);
 tfxAPI_EDITOR tfx_vec3_t CylinderSurfaceNormal(float x, float z, float width, float depth);
 tfxAPI_EDITOR tfx_vec3_t EllipseSurfaceNormal(float x, float y, float z, float width, float height, float depth);
 tfxAPI_EDITOR void EllipseSurfaceNormalWide(const tfxWideFloat *x, const tfxWideFloat *y, const tfxWideFloat *z, const tfxWideFloat *width, const tfxWideFloat *height, tfxWideFloat *depth, tfxWideFloat *normal_x, tfxWideFloat *normal_y, tfxWideFloat *normal_z);
+tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline2DSoA(const float* p_x, const float* p_y, int p0, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3DSoA(const float* p_x, const float* p_y, const float *p_z, int p0, float t);
+tfxAPI_EDITOR tfx_vec2_t CatmullRomSpline2D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
+tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient2DSoA(const float *px, const float *py, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
+tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3DSoA(const float *px, const float *py, const float *pz, float t);
 tfxAPI_EDITOR void CatmullRomSpline3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL float GetCatmullSegment(tfx_vector_t<tfx_vec4_t>* nodes, float length);
 //Quake 3 inverse square root
@@ -6497,6 +6504,7 @@ tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_
 tfxINTERNAL void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, tfxWideFloat cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);
 tfxAPI_EDITOR tfx_vec3_t GetEmissionDirection3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
 tfxAPI_EDITOR tfx_quaternion_t GetPathRotation(tfx_random_t *random, float range, float pitch, float yaw, bool y_axis_only);
+tfxAPI_EDITOR tfx_quaternion_t GetPathRotation2d(tfx_random_t *random, float range, float angle);
 tfxINTERNAL void TransformEffector2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform2d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void TransformEffector3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position = true, bool relative_angle = false);
 tfxINTERNAL void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
@@ -6513,6 +6521,7 @@ tfxINTERNAL void SpawnParticlePoint2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleEllipse2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void SpawnParticlePath2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleNoise(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleMotionRandomness(tfx_work_queue_t *queue, void *data);
@@ -6578,7 +6587,8 @@ tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t 
 tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
 tfxINTERNAL void InitParticleLocationSoA3d(tfx_soa_buffer_t* buffer, tfx_spawn_points_soa_t* soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitParticleLocationSoA2d(tfx_soa_buffer_t* buffer, tfx_spawn_points_soa_t* soa, tfxU32 reserve_amount);
-tfxAPI_EDITOR void InitPathsSoA(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
+tfxAPI_EDITOR void InitPathsSoA2d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
+tfxAPI_EDITOR void InitPathsSoA3d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 
 tfxAPI_EDITOR void InitEmitterProperites(tfx_emitter_properties_t *properties);
 tfxINTERNAL void CopyEmitterProperites(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);
@@ -6725,7 +6735,8 @@ tfxINTERNAL inline bool IsGraphParticleSize(tfx_graph_type type) {
 tfxAPI_EDITOR void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size = 8);
 tfxAPI_EDITOR void ResetPathGraphs(tfx_emitter_path_t *path, tfx_path_generator_type generator);
 tfxAPI_EDITOR void BuildPathNodesComplex(tfx_emitter_path_t* path);
-tfxAPI_EDITOR void BuildPathNodes(tfx_emitter_path_t* path);
+tfxAPI_EDITOR void BuildPathNodes3d(tfx_emitter_path_t* path);
+tfxAPI_EDITOR void BuildPathNodes2d(tfx_emitter_path_t* path);
 tfxINTERNAL void FreePathGraphs(tfx_emitter_path_t *path);
 tfxINTERNAL void CopyPathGraphs(tfx_emitter_path_t* src, tfx_emitter_path_t *dst);
 tfxINTERNAL tfxU32 CreateEmitterPathAttributes(tfx_effect_emitter_t* emitter, bool add_node);
