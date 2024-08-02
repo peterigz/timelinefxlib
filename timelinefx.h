@@ -2392,6 +2392,7 @@ enum tfx_emitter_control_profile_flag_bits {
 	tfxEmitterControlProfile_edge_traversal = 1 << 5,
 	tfxEmitterControlProfile_edge_kill = 1 << 6,
 	tfxEmitterControlProfile_edge_loop = 1 << 7,
+	tfxEmitterControlProfile_stretch = 1 << 8
 };
 
 enum tfx_particle_manager_flag_bits {
@@ -6329,7 +6330,7 @@ tfxINTERNAL float HasLength(tfx_vec3_t const *v);
 tfxAPI tfx_vec3_t NormalizeVec3(tfx_vec3_t const *v);
 tfxAPI tfx_vec4_t NormalizeVec4(tfx_vec4_t const *v);
 tfxINTERNAL tfx_vec3_t Cross(tfx_vec3_t *a, tfx_vec3_t *b);
-tfxINTERNAL void CrossWide(tfxWideFloat* ax, tfxWideFloat* ay, tfxWideFloat* az, tfxWideFloat* bx, tfxWideFloat* by, tfxWideFloat* bz, tfxWideFloat* rx, tfxWideFloat* ry, tfxWideFloat* rz);
+tfxINTERNAL void CrossWide(tfxWideFloat ax, tfxWideFloat ay, tfxWideFloat az, tfxWideFloat *bx, tfxWideFloat *by, tfxWideFloat *bz, tfxWideFloat *rx, tfxWideFloat *ry, tfxWideFloat *rz);
 tfxINTERNAL float DotProductVec4(const tfx_vec4_t *a, const tfx_vec4_t *b);
 tfxINTERNAL float DotProductVec3(const tfx_vec3_t *a, const tfx_vec3_t *b);
 tfxAPI_EDITOR float DotProductVec2(const tfx_vec2_t *a, const tfx_vec2_t *b);
@@ -6343,7 +6344,10 @@ tfxAPI_EDITOR tfx_vec2_t CatmullRomSplineGradient2DSoA(const float *px, const fl
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSpline3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3D(const tfx_vec4_t* p0, const tfx_vec4_t* p1, const tfx_vec4_t* p2, const tfx_vec4_t* p3, float t);
 tfxAPI_EDITOR tfx_vec3_t CatmullRomSplineGradient3DSoA(const float *px, const float *py, const float *pz, float t);
-tfxAPI_EDITOR void CatmullRomSpline3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
+tfxAPI_EDITOR void CatmullRomSpline2DWide(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, tfxWideFloat *vx, tfxWideFloat *vy);
+tfxAPI_EDITOR void CatmullRomSplineGradient2DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, tfxWideFloat *vx, tfxWideFloat *vy);
+tfxAPI_EDITOR void CatmullRomSpline3DWide(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
+tfxAPI_EDITOR void CatmullRomSplineGradient3DWide(tfxWideArrayi *i, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL float GetCatmullSegment(tfx_vector_t<tfx_vec4_t>* nodes, float length);
 //Quake 3 inverse square root
 tfxINTERNAL float QuakeSqrt(float number);
@@ -6370,6 +6374,7 @@ tfxINTERNAL tfx_mat4_t TransformMatrix4(const tfx_mat4_t *in, const tfx_mat4_t *
 tfxAPI_EDITOR void TransformMatrix4Vec3(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxAPI_EDITOR void TransformQuaternionVec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxAPI_EDITOR void TransformQuaternionVec2(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y);
+tfxAPI_EDITOR void TransformPackedQuaternionVec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y);
 tfxAPI_EDITOR void TransformPackedQuaternionVec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxINTERNAL void TransformMatrix4Vec2(const tfx_mat4_t *mat, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void MaskedTransformMatrix2(const tfxWideFloat *r0c, const tfxWideFloat *r1c, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *mask, tfxWideFloat *xor_mask);
@@ -6564,6 +6569,7 @@ tfxINTERNAL void ControlParticleUID(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticleTransform2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void ControlParticlePositionPath2d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void ControlParticlePosition3dBasic(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void ControlParticlePosition3dOrbital(tfx_work_queue_t *queue, void *data);
