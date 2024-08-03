@@ -4134,28 +4134,58 @@ void ResetPathGraphs(tfx_emitter_path_t* path, tfx_path_generator_type generator
 		}
 		break;
 		case tfxPathGenerator_arc:
-		ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
-		AddGraphNode(&path->angle_x, 1.f, tfx180Radians);
+			if (path->flags & tfxPathFlags_2d) {
+				ResetGraph(&path->distance, 25.f, path->distance.graph_preset, true, 1.f);
+				AddGraphNode(&path->angle_x, 1.f, tfx180Radians);
+			} else {
+				ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
+				AddGraphNode(&path->angle_x, 1.f, tfx180Radians);
+			}
 		break;
 		case tfxPathGenerator_loop:
-		ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
-		ResetGraph(&path->angle_x, -tfx90Radians, path->angle_x.graph_preset, true, 1.f);
-		AddGraphNode(&path->angle_x, .25f, -tfx90Radians);
-		AddGraphNode(&path->angle_x, .75f, tfx270Radians);
+			if (path->flags & tfxPathFlags_2d) {
+				ResetGraph(&path->distance, 25.f, path->distance.graph_preset, true, 1.f);
+				ResetGraph(&path->angle_x, tfx90Radians, path->angle_x.graph_preset, true, 1.f);
+				AddGraphNode(&path->angle_x, .25f, tfx90Radians);
+				AddGraphNode(&path->angle_x, .75f, -tfx270Radians);
+			}
+			else {
+				ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
+				ResetGraph(&path->angle_x, -tfx90Radians, path->angle_x.graph_preset, true, 1.f);
+				AddGraphNode(&path->angle_x, .25f, -tfx90Radians);
+				AddGraphNode(&path->angle_x, .75f, tfx270Radians);
+			}
 		break;
 		case tfxPathGenerator_s_curve:
-		ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
-		ResetGraph(&path->angle_x, -0.f, path->angle_x.graph_preset, true, 1.f);
-		AddGraphNode(&path->angle_x, .25f, DegreesToRadians(20.f));
-		AddGraphNode(&path->angle_x, .75f, DegreesToRadians(-20.f));
-		AddGraphNode(&path->angle_x, 1.f, DegreesToRadians(0.f));
+			if (path->flags & tfxPathFlags_2d) {
+				ResetGraph(&path->distance, 25.f, path->distance.graph_preset, true, 1.f);
+				ResetGraph(&path->angle_x, DegreesToRadians(90.f), path->angle_x.graph_preset, true, 1.f);
+				AddGraphNode(&path->angle_x, .25f, DegreesToRadians(110.f));
+				AddGraphNode(&path->angle_x, .75f, DegreesToRadians(70.f));
+				AddGraphNode(&path->angle_x, 1.f, DegreesToRadians(90.f));
+			}
+			else {
+				ResetGraph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
+				ResetGraph(&path->angle_x, -0.f, path->angle_x.graph_preset, true, 1.f);
+				AddGraphNode(&path->angle_x, .25f, DegreesToRadians(20.f));
+				AddGraphNode(&path->angle_x, .75f, DegreesToRadians(-20.f));
+				AddGraphNode(&path->angle_x, 1.f, DegreesToRadians(0.f));
+			}
 		break;
 		case tfxPathGenerator_bend:
-		ResetGraph(&path->distance, 0.4f, path->distance.graph_preset, true, 1.f);
-		AddGraphNode(&path->angle_x, .5f, 0.f);
-		AddGraphNode(&path->angle_x, .6f, tfx90Radians);
-		path->builder_parameters.x = .5f;
-		path->builder_parameters.y = .1f;
+			if (path->flags & tfxPathFlags_2d) {
+				ResetGraph(&path->distance, 25.f, path->distance.graph_preset, true, 1.f);
+				AddGraphNode(&path->angle_x, .5f, 0.f);
+				AddGraphNode(&path->angle_x, .6f, tfx90Radians);
+				path->builder_parameters.x = .5f;
+				path->builder_parameters.y = .1f;
+			}else{
+				ResetGraph(&path->distance, 0.4f, path->distance.graph_preset, true, 1.f);
+				AddGraphNode(&path->angle_x, .5f, 0.f);
+				AddGraphNode(&path->angle_x, .6f, tfx90Radians);
+				path->builder_parameters.x = .5f;
+				path->builder_parameters.y = .1f;
+			}
 		break;
 		default:
 		break;
@@ -4593,19 +4623,19 @@ void BuildPathNodes2d(tfx_emitter_path_t *path) {
 		while (i < path->node_count) {
 			float angle = GetGraphValue(&path->angle_y, age);
 			float radius = GetGraphValue(&path->offset_x, age);
-			position = {cosf(angle) * radius, -sinf(angle) * radius};
+			position = {sinf(angle) * radius, -cosf(angle) * radius};
 			age += age_inc;
-			path_nodes[i++] = position;
+			path_nodes[i++] = position + path->offset.xy();
 		}
 	}
 	else if (path->generator_type == tfxPathGenerator_arc) {
 		tfx_vec2_t offset, position;
 		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
-		tfx_vec2_t distance = {};
+		float distance;
 		while (i < path->node_count) {
 			float angle = GetGraphValue(&path->angle_x, age);
-			distance = { 0.f, GetGraphValue(&path->distance, age)};
-			position = {cosf(angle) * distance.x, -sinf(angle) * distance.y};
+			distance = GetGraphValue(&path->distance, age);
+			position += {sinf(angle) *distance, -cosf(angle) * distance};
 			age += age_inc;
 			path_nodes[i++] = position + path->offset.xy();
 		}
@@ -4613,11 +4643,11 @@ void BuildPathNodes2d(tfx_emitter_path_t *path) {
 	else if (path->generator_type == tfxPathGenerator_loop) {
 		tfx_vec2_t offset, position;
 		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
-		tfx_vec2_t distance = {};
+		float distance;
 		while (i < path->node_count) {
 			float angle = GetGraphValue(&path->angle_x, age);
-			distance = { 0.f, GetGraphValue(&path->distance, age)};
-			position = {cosf(angle) * distance.x, -sinf(angle) * distance.y};
+			distance = GetGraphValue(&path->distance, age);
+			position += {sinf(angle) * distance, -cosf(angle) * distance};
 			age += age_inc;
 			path_nodes[i++] = position + path->offset.xy();
 		}
@@ -4625,11 +4655,11 @@ void BuildPathNodes2d(tfx_emitter_path_t *path) {
 	else if (path->generator_type == tfxPathGenerator_s_curve) {
 		tfx_vec2_t offset, position;
 		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
-		tfx_vec2_t distance = {};
+		float distance;
 		while (i < path->node_count) {
 			float angle = GetGraphValue(&path->angle_x, age);
-			distance = { 0.f, GetGraphValue(&path->distance, age)};
-			position = {cosf(angle) * distance.x, -sinf(angle) * distance.y};
+			distance = GetGraphValue(&path->distance, age);
+			position += {sinf(angle) * distance, -cosf(angle) * distance};
 			age += age_inc;
 			path_nodes[i++] = position + path->offset.xy();
 		}
@@ -4637,7 +4667,7 @@ void BuildPathNodes2d(tfx_emitter_path_t *path) {
 	else if (path->generator_type == tfxPathGenerator_bend) {
 		tfx_vec2_t offset, position;
 		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
-		tfx_vec2_t distance = {};
+		float distance;
 		if (path->builder_parameters.x + path->builder_parameters.y == 0) {
 			for (tfxBucketLoop(path->angle_x.nodes)) {
 				if (i == 1) {
@@ -4650,8 +4680,8 @@ void BuildPathNodes2d(tfx_emitter_path_t *path) {
 		}
 		while (i < path->node_count) {
 			float angle = GetGraphValue(&path->angle_x, age);
-			distance = { 0.f, GetGraphValue(&path->distance, age)};
-			position = {cosf(angle) * distance.x, -sinf(angle) * distance.y};
+			distance = GetGraphValue(&path->distance, age);
+			position += {sinf(angle) *distance, -cosf(angle) * distance};
 			age += age_inc;
 			path_nodes[i++] = position + path->offset.xy();
 		}
@@ -4662,19 +4692,19 @@ void BuildPathNodes2d(tfx_emitter_path_t *path) {
 		while (i < path->node_count) {
 			float angle = GetGraphValue(&path->angle_x, age);
 			offset = { GetGraphValue(&path->offset_x, age), GetGraphValue(&path->offset_y, age)};
-			position = {cosf(angle) * offset.x, -sinf(angle) * offset.y};
+			position = {sinf(angle) * offset.x, -cosf(angle) * offset.y};
 			age += age_inc;
 			path_nodes[i++] = position;
 		}
 	}
 	else if (path->generator_type == tfxPathGenerator_free_mode_distance) {
-		tfx_vec2_t distance = { 0.f, GetGraphValue(&path->distance, 0.f)};
-		tfx_vec2_t position = distance;
+		float distance = GetGraphValue(&path->distance, 0.f);
+		tfx_vec2_t position = { distance, 0.f };
 		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
 		while (i < path->node_count) {
 			float angle = GetGraphValue(&path->angle_x, age);
-			distance = { 0.f, GetGraphValue(&path->distance, age)};
-			position = {cosf(angle) * distance.x, -sinf(angle) * distance.y};
+			distance = GetGraphValue(&path->distance, age);
+			position += {sinf(angle) * distance, -cosf(angle) * distance};
 			age += age_inc;
 			path_nodes[i++] = position + path->offset.xy();
 		}
@@ -8598,6 +8628,12 @@ tfx_vec2_t GetGraphInitialZoom(tfx_graph_t *graph) {
 		break;
 	case tfx_graph_preset::tfxColorPreset:
 		break;
+	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
+		return tfx_vec2_t(0.0017f, 5.f);
+		break;
+	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
+		return tfx_vec2_t(0.0017f, 2.5f);
+		break;
 	default:
 		return tfx_vec2_t(0.1f, 0.1f);
 		break;
@@ -11911,7 +11947,7 @@ void ControlParticlePositionPath2d(tfx_work_queue_t *queue, void *data) {
 			l = tfxWideAdd(l, tfxWideMul(stretch_velocity_y, stretch_velocity_y));
 			l = tfxWideMul(tfxWideRSqrt(l), l);
 
-			p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(0.01f)));
+			p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(velocity_scalar, tfxWideSetSingle(0.015f)));
 			stretch_velocity_x = tfxWideDiv(stretch_velocity_x, l);
 			stretch_velocity_y = tfxWideDiv(stretch_velocity_y, l);
 
