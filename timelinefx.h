@@ -241,6 +241,7 @@ extern "C" {
 		/*	This is basically a terminator block that free blocks can point to if they're at the end
 			of a free list. */
 		tfx_header null_block;
+		//todo: just make thead safe by default and remove these conditions
 #if defined(TFX_THREAD_SAFE)
 		/* Multithreading protection*/
 		volatile tfxLONG access;
