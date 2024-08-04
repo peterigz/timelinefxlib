@@ -6690,6 +6690,7 @@ tfxAPI_EDITOR bool IsGlobalGraph(tfx_graph_type type);
 tfxAPI_EDITOR bool IsEmitterGraph(tfx_graph_type type);
 tfxAPI_EDITOR bool IsTransformGraph(tfx_graph_type type);
 tfxAPI_EDITOR bool IsGlobalPercentageGraph(tfx_graph_type type);
+tfxAPI_EDITOR bool IsEmitterSizeGraph(tfx_graph_type type);
 tfxAPI_EDITOR bool IsAngleGraph(tfx_graph_type type);
 tfxAPI_EDITOR bool IsAngleOvertimeGraph(tfx_graph_type type);
 tfxAPI_EDITOR bool IsEverythingElseGraph(tfx_graph_type type);

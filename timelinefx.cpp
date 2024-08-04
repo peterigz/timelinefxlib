@@ -8896,6 +8896,10 @@ bool IsGlobalPercentageGraph(tfx_graph_type type) {
 	return type >= tfxGlobal_life && type <= tfxGlobal_splatter;
 }
 
+bool IsEmitterSizeGraph(tfx_graph_type type) {
+	return type >= tfxProperty_emitter_width && type <= tfxProperty_emitter_depth;
+}
+
 bool IsAngleGraph(tfx_graph_type type) {
 	return (type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw || type == tfxProperty_emission_pitch || type == tfxProperty_emission_yaw || type == tfxProperty_emission_range ||
 		type == tfxProperty_arc_offset || type == tfxProperty_arc_size || type == tfxBase_roll_spin || type == tfxVariation_roll_spin || type == tfxBase_pitch_spin || type == tfxVariation_pitch_spin || 
