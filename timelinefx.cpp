@@ -15259,14 +15259,10 @@ void DoSpawnWork2d(tfx_work_queue_t *queue, void *data) {
 	tfx_spawn_work_entry_t *work_entry = static_cast<tfx_spawn_work_entry_t*>(data);
 	tfx_particle_manager_t *pm = work_entry->pm;
 	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
+	SpawnParticleAge(&pm->work_queue, work_entry);
 	if (work_entry->emission_type == tfxOtherEmitter) {
 		SpawnParticleOtherEmitter2d(&pm->work_queue, work_entry);
-		SpawnParticleAge(&pm->work_queue, work_entry);
-	}
-	else {
-		SpawnParticleAge(&pm->work_queue, work_entry);
-	}
-	if (work_entry->emission_type == tfxPoint) {
+	} else if (work_entry->emission_type == tfxPoint) {
 		SpawnParticlePoint2d(&pm->work_queue, work_entry);
 	} else if (work_entry->emission_type == tfxArea) {
 		SpawnParticleArea2d(&pm->work_queue, work_entry);
@@ -15844,15 +15840,15 @@ void SpawnParticleOtherEmitter2d(tfx_work_queue_t* queue, void* data) {
 		return;
 	}
 
-	tfx_soa_buffer_t& spawn_point_buffer = pm.particle_location_buffers[emitter.spawn_locations_index];
-	tfx_spawn_points_soa_t& spawn_points = pm.particle_location_arrays[emitter.spawn_locations_index];
+	tfx_soa_buffer_t &spawn_point_buffer = pm.particle_location_buffers[emitter.spawn_locations_index];
+	tfx_spawn_points_soa_t &spawn_points = pm.particle_location_arrays[emitter.spawn_locations_index];
 	if (spawn_point_buffer.current_size == 0) {
 		entry->amount_to_spawn = 0;
 		return;
 	}
 
-	if ((tfxU32)emitter.grid_coords.x >= spawn_point_buffer.current_size) {
-		emitter.grid_coords.x = 0.f;
+	if (entry->emission_type == tfxOtherEmitter) {
+		emitter.grid_coords.x = emitter.grid_coords.y;
 	}
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
