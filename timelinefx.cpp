@@ -14935,6 +14935,11 @@ tfxU32 NewSpritesNeeded(tfx_particle_manager_t *pm, tfx_random_t *random, tfxU32
 		emitter.path_stagger_counter += pm->frame_length;
 	}
 
+	if (properties->emission_type == tfxOtherEmitter && emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) {
+		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_array_buffers[emitter.spawn_locations_index];
+		emitter.spawn_quantity *= spawn_point_buffer.current_size;
+	}
+
 	float step_size = 0;
 	if (!(emitter.property_flags & tfxEmitterPropertyFlags_single)) {
 		if (emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && (properties->emission_type == tfxArea || properties->emission_type == tfxEllipse)) {
