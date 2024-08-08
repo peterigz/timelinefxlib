@@ -4122,12 +4122,13 @@ void ResetPathGraphs(tfx_emitter_path_t* path, tfx_path_generator_type generator
 	ResetGraph(&path->distance, 0.f, path->distance.graph_preset, true, 1.f);
 	switch (generator) {
 		case tfxPathGenerator_spiral:
-		AddGraphNode(&path->angle_y, 1.f, tfxPI2);
 		if (path->flags & tfxPathFlags_2d) {
+			AddGraphNode(&path->angle_x, 1.f, tfxPI2);
 			ResetGraph(&path->offset_x, 0.f, path->offset_x.graph_preset, true, 1.f);
 			AddGraphNode(&path->offset_x, 1.f, 200.f);
 		}
 		else {
+			AddGraphNode(&path->angle_y, 1.f, tfxPI2);
 			ResetGraph(&path->offset_x, 2.f, path->offset_x.graph_preset, true, 1.f);
 			AddGraphNode(&path->offset_x, 1.f, 2.f);
 			AddGraphNode(&path->offset_y, 1.f, 5.f);
@@ -4621,7 +4622,7 @@ void BuildPathNodes2d(tfx_emitter_path_t *path) {
 		tfx_vec2_t position;
 		float age_inc = 1.f / node_count; float age = 0.f; int i = 0;
 		while (i < path->node_count) {
-			float angle = GetGraphValue(&path->angle_y, age);
+			float angle = GetGraphValue(&path->angle_x, age);
 			float radius = GetGraphValue(&path->offset_x, age);
 			position = {sinf(angle) * radius, -cosf(angle) * radius};
 			age += age_inc;
