@@ -2499,6 +2499,10 @@ tfx_package_t CreatePackage(const char *file_path) {
 bool ValidatePackage(tfx_package_t *package) {
 	if (package->header.magic_number != tfxMAGIC_NUMBER) return false;			//Package hasn't been initialised
 
+	if (package->flags & tfxPackageFlags_loaded_from_memory) {
+		return true;
+	}
+
 	FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
 	if (!file) {
 		return false;
@@ -2532,19 +2536,26 @@ tfx_package_t::~tfx_package_t() {
 
 tfx_package_entry_info_t *GetPackageFile(tfx_package_t *package, const char *name) {
 	if (!package->inventory.entries.ValidName(name)) {
-		return nullptr;									//File not found in inventory
+		return nullptr;										//File not found in inventory
 	}
-	TFX_ASSERT(ValidatePackage(package));						//The file on disk has changed since the package was loaded! Maybe this should return null instead?
+	TFX_ASSERT(ValidatePackage(package));					//The file on disk has changed since the package was loaded! Maybe this should return null instead?
 															//Also: function call in assert, sort this out!
 	tfx_package_entry_info_t *entry = &package->inventory.entries.At(name);
 	if (entry->data.Size() != entry->file_size) {
-		//FILE *file = tfx__open_file(file_path.c_str(), "rb");
-		FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
-		TFX_ASSERT(file);		//couldn't open the file!
-        tfx__fseek(file, entry->offset_from_start_of_file, SEEK_SET);
-		entry->data.Resize(entry->file_size);
-		fread(entry->data.data, 1, entry->file_size, file);
-		fclose(file);
+		if (!(package->flags & tfxPackageFlags_loaded_from_memory)) {
+			FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
+			TFX_ASSERT(file);		//couldn't open the file!
+			tfx__fseek(file, entry->offset_from_start_of_file, SEEK_SET);
+			entry->data.Resize(entry->file_size);
+			fread(entry->data.data, 1, entry->file_size, file);
+			fclose(file);
+		}
+		else {
+			entry->data.Resize(entry->file_size);
+			char *point_in_file = package->file_data.data + entry->offset_from_start_of_file;
+			TFX_ASSERT(entry->offset_from_start_of_file + entry->file_size < package->file_size);	//Invalid entry/package data, make sure the package file is not corrupt
+			memcpy(entry->data.data, point_in_file, entry->file_size);
+		}
 	}
 	return entry;
 }
@@ -2596,6 +2607,12 @@ void CopyStringToStream(tfx_stream_t *dst, tfx_str_t *src) {
 	dst->FreeAll();
 	dst->Resize(src->current_size);
 	memcpy(dst->data, src->data, src->current_size);
+}
+
+void CopyDataToStream(tfx_stream_t *dst, const void *src, tfxU64 size) {
+	dst->FreeAll();
+	dst->Resize(size);
+	memcpy(dst->data, src, size);
 }
 
 // Reads the whole file on disk into memory and returns the pointer
@@ -2789,6 +2806,7 @@ tfxErrorFlags LoadPackage(const char *file_name, tfx_package_t *package) {
 
 tfxErrorFlags LoadPackage(tfx_stream_t *stream, tfx_package_t *package) {
 	//Note: tfx_stream_t does not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
+	package->flags |= tfxPackageFlags_loaded_from_memory;
 	package->file_data = *stream;
 	package->file_data.Seek(0);
 	if (package->file_data.Size() == 0)
@@ -9885,6 +9903,23 @@ tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*
 
 	tfx_package_t package;
 	error = LoadPackage(filename, &package);
+	if (error != 0) {
+		FreePackage(&package);
+		return error;
+	}
+	error = LoadEffectLibraryPackage(&package, lib, shape_loader, user_data);
+
+	FreePackage(&package);
+	return error;
+}
+
+tfxErrorFlags LoadEffectLibrary(const void *data, tfxU32 size, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+	tfxErrorFlags error = 0;
+
+	tfx_stream_t data_stream;
+	CopyDataToStream(&data_stream, data, size);
+	tfx_package_t package;
+	error = LoadPackage(&data_stream, &package);
 	if (error != 0) {
 		FreePackage(&package);
 		return error;

@@ -2330,6 +2330,7 @@ typedef tfxU32 tfxAnimationInstanceFlags;		//tfx_animation_instance_flag_bits
 typedef tfxU32 tfxAnimationManagerFlags;		//tfx_animation_manager_flag_bits
 typedef tfxU32 tfxEmitterPathFlags;				//tfx_emitter_path_flag_bits
 typedef tfxU32 tfxEmitterControlProfileFlags;	//tfx_emitter_control_profile_flag_bits
+typedef tfxU32 tfxPackageFlags;					//tfx_package_flag_bits
 
 enum tfx_error_flag_bits {
 	tfxErrorCode_success = 0,
@@ -2347,6 +2348,11 @@ enum tfx_error_flag_bits {
 	tfxErrorCode_sprite_data_is_3d_but_animation_manager_is_2d = 1 << 11,
 	tfxErrorCode_sprite_data_is_2d_but_animation_manager_is_3d = 1 << 12,
 	tfxErrorCode_library_loaded_without_shape_loader = 1 << 13
+};
+
+enum tfx_package_flag_bits {
+	tfxPackageFlags_none = 0,
+	tfxPackageFlags_loaded_from_memory = 1
 };
 
 enum tfx_effect_cloning_flag_bits {
@@ -3870,7 +3876,7 @@ inline void tfxCopyBucketArray(tfx_bucket_array_t<T> *dst, tfx_bucket_array_t<T>
 struct tfx_stream_t {
 	tfxU64 size = 0;
 	tfxU64 position = 0;
-	char* data = nullptr;
+	char *data = nullptr;
 
 	inline tfx_stream_t() { size = position = 0; data = nullptr; }
 	inline tfx_stream_t(tfxU64 qty) { size = position = 0; data = nullptr; Resize(qty); }
@@ -4813,9 +4819,9 @@ struct tfx_package_t {
 	tfx_package_inventory_t inventory;
 	tfxU64 file_size = 0;						//The total file size of the package, should match file size on disk
 	tfx_stream_t file_data;						//Dump of the data from the package file on disk
+	tfxPackageFlags flags = 0;
 
 	~tfx_package_t();
-
 };
 
 //------------------------------------------------------------
@@ -6254,6 +6260,7 @@ tfxAPI_EDITOR void FreePackage(tfx_package_t *package);
 tfxAPI_EDITOR void CopyStream(tfx_stream_t *dst, tfx_stream_t *src);
 tfxAPI_EDITOR void CopyStreamToString(tfx_str_t *dst, tfx_stream_t *src);
 tfxAPI_EDITOR void CopyStringToStream(tfx_stream_t *dst, tfx_str_t *src);
+tfxAPI_EDITOR void CopyDataToStream(tfx_stream_t *dst, const void *src, tfxU64 size);
 
 //Some file IO functions for the editor
 tfxAPI_EDITOR bool HasDataValue(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key);
@@ -7062,6 +7069,33 @@ tfxAPI int ValidateEffectPackage(const char *filename);
 	tfxErrorCode_invalid_inventory
 */
 tfxAPI tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
+
+/**
+* Loads an effect library package from memory into the provided tfx_library_t object.
+*
+* @param data			A pointer to a memory buffer containing the library to be loaded
+* @param size			The size of the memory buffer containing the library to be loaded
+* @param lib			A reference to a tfx_library_t object that will hold the loaded effect library data.
+* @param shape_loader	A pointer to a function that will be used to load image data into the effect library package.
+*						The function has the following signature: void shape_loader(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data).
+* @param user_data		A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
+* @param read_only		A boolean value that determines whether the effect library data will be loaded in read-only mode. (Maybe removed in the future).
+*
+* @return A tfxErrorFlags value that indicates whether the function succeeded or failed. The possible return values are:
+	tfxErrorCode_success = 0
+	tfxErrorCode_incorrect_package_format
+	tfxErrorCode_data_could_not_be_loaded
+	tfxErrorCode_could_not_add_shape
+	tfxErrorCode_error_loading_shapes
+	tfxErrorCode_some_data_not_loaded
+	tfxErrorCode_unable_to_open_file
+	tfxErrorCode_unable_to_read_file
+	tfxErrorCode_wrong_file_size
+	tfxErrorCode_invalid_format
+	tfxErrorCode_no_inventory
+	tfxErrorCode_invalid_inventory
+*/
+tfxAPI tfxErrorFlags LoadEffectLibrary(const void *data, tfxU32 size, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
 
 /**
 * Loads a sprite data file into an animation manager
