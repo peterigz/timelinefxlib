@@ -5,6 +5,7 @@
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
 #define TFX_EXTRA_DEBUGGING
+//Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
 //#define tfxUSEAVX
 
 /*
@@ -1540,6 +1541,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideGreater(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_GT_OS)
 #define tfxWideGreateri _mm256_cmpgt_epi32
 #define tfxWideLess(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LT_OS)
+#define tfxWideLessi(v1, v2) _mm256_cmpgt_epi32(v2, v1)
 #define tfxWideLessEqeual(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_LE_OS)
 #define tfxWideEquals(v1, v2) _mm256_cmp_ps(v1, v2, _CMP_EQ_OS)
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
@@ -1586,6 +1588,8 @@ const __m256i tfxWIDEFF = _mm256_set1_epi32(0xFF);
 const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
 const __m256 tfxMAXUINTf = _mm256_set1_ps((float)UINT32_MAX);
 const __m256 tfxDEGREERANGEMR = _mm256_set1_ps(0.392699f);
+
+tfxINTERNAL const __m256 SIGNMASK = _mm256_castsi256_ps(_mm256_set1_epi32(0x80000000));
 
 typedef union {
 	__m256i m;

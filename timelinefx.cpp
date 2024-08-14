@@ -3215,7 +3215,7 @@ void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat velocity_normal_x, tfx
 	rotation_angle.a[1] = acosf(dir_z.a[1]);
 	rotation_angle.a[2] = acosf(dir_z.a[2]);
 	rotation_angle.a[3] = acosf(dir_z.a[3]);
-#if defined(tfxAVX)
+#if defined(tfxUSEAVX)
 	rotation_angle.a[4] = acosf(dir_z.a[4]);
 	rotation_angle.a[5] = acosf(dir_z.a[5]);
 	rotation_angle.a[6] = acosf(dir_z.a[6]);
@@ -11949,7 +11949,7 @@ void ControlParticlePositionPath2d(tfx_work_queue_t *queue, void *data) {
 			tfxParticleNoise2dLoopUnroll(2);
 			tfxParticleNoise2dLoopUnroll(3);
 
-#if defined(tfxAVX)
+#if defined(tfxUSEAVX)
 			tfxParticleNoise2dLoopUnroll(4);
 			tfxParticleNoise2dLoopUnroll(5);
 			tfxParticleNoise2dLoopUnroll(6);
@@ -12191,7 +12191,7 @@ void ControlParticlePositionPath3d(tfx_work_queue_t* queue, void* data) {
 			tfxParticleNoise3dLoopUnroll(2)
 			tfxParticleNoise3dLoopUnroll(3)
 
-#if defined(tfxAVX)
+#if defined(tfxUSEAVX)
 			tfxParticleNoise3dLoopUnroll(4)
 			tfxParticleNoise3dLoopUnroll(5)
 			tfxParticleNoise3dLoopUnroll(6)
@@ -12467,7 +12467,7 @@ void ControlParticlePosition3dNoise(tfx_work_queue_t* queue, void* data) {
 		tfxParticleNoise3dLoopUnroll(1)	
 		tfxParticleNoise3dLoopUnroll(2)	
 		tfxParticleNoise3dLoopUnroll(3)	
-		#if defined(tfxAVX)	
+		#if defined(tfxUSEAVX)	
 		tfxParticleNoise3dLoopUnroll(4)	
 		tfxParticleNoise3dLoopUnroll(5)	
 		tfxParticleNoise3dLoopUnroll(6)	
@@ -12547,7 +12547,7 @@ void ControlParticlePosition3dNoiseOrbital(tfx_work_queue_t* queue, void* data) 
 		tfxParticleNoise3dLoopUnroll(1)
 		tfxParticleNoise3dLoopUnroll(2)
 		tfxParticleNoise3dLoopUnroll(3)
-#if defined(tfxAVX)	
+#if defined(tfxUSEAVX)	
 		tfxParticleNoise3dLoopUnroll(4)
 		tfxParticleNoise3dLoopUnroll(5)
 		tfxParticleNoise3dLoopUnroll(6)
@@ -13152,7 +13152,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 			tfxParticleNoise2dLoopUnroll(2);
 			tfxParticleNoise2dLoopUnroll(3);
 
-#if defined(tfxAVX)
+#if defined(tfxUSEAVX)
 			tfxParticleNoise2dLoopUnroll(4);
 			tfxParticleNoise2dLoopUnroll(5);
 			tfxParticleNoise2dLoopUnroll(6);
