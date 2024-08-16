@@ -14821,10 +14821,10 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			free_space = FreeSpriteBufferSpace(&sprite_buffer);
 			if (emitter.sprites_count + max_spawn_count > free_space) {
 				GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1);
-				if (ordered_effect) {
-					depth_indexes.reserve(sprite_buffer.capacity);
-				}
 			}
+            if (ordered_effect) {
+                depth_indexes.reserve(sprite_buffer.capacity);
+            }
 		}
 		else {
 			free_space = sprite_buffer.capacity - active_particles_count;
@@ -14877,10 +14877,10 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			free_space = FreeSpriteBufferSpace(&sprite_buffer);
 			if (emitter.sprites_count + max_spawn_count > free_space) {
 				GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1);
-				if (ordered_effect) {
-					depth_indexes.reserve(sprite_buffer.capacity);
-				}
 			}
+            if (ordered_effect && depth_indexes.capacity < sprite_buffer.capacity) {
+                depth_indexes.reserve(sprite_buffer.capacity);
+            }
 		}
 		else {
 			free_space = sprite_buffer.capacity - active_particles_count;
@@ -15142,6 +15142,7 @@ tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work
 		if (emitter.state_flags & tfxEmitterStateFlags_is_in_ordered_effect) {
 			pm->deffered_spawn_work.push_back(work_entry);
 			work_entry->depth_indexes->current_size += work_entry->amount_to_spawn;
+            TFX_ASSERT(work_entry->depth_indexes->current_size < work_entry->depth_indexes->capacity);
 		}
 		else {
 			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork2d);
@@ -15238,6 +15239,7 @@ tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data) {
 		if (emitter.state_flags & tfxEmitterStateFlags_is_in_ordered_effect) {
 			pm->deffered_spawn_work.push_back(work_entry);
 			work_entry->depth_indexes->current_size += work_entry->amount_to_spawn;
+            TFX_ASSERT(work_entry->depth_indexes->current_size < work_entry->depth_indexes->capacity);
 		}
 		else {
 			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, DoSpawnWork3d);
@@ -17937,6 +17939,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 			AddRows(&pm->particle_location_buffers[emitter.spawn_locations_index], buffer.current_size - spawn_point_buffer.current_size, true, grew);
 		}
 		spawn_point_buffer.current_size = particle_buffer.current_size;
+        TFX_ASSERT(spawn_point_buffer.current_size < spawn_point_buffer.capacity);
 		spawn_point_buffer.start_index = particle_buffer.start_index;
 	}
 
