@@ -4072,33 +4072,6 @@ tfxU32 CountAllEffectLookupValues(tfx_effect_emitter_t *effect) {
 	return count;
 }
 
-void CompileEffectGraphs(tfx_effect_emitter_t *effect) {
-	for (tfxU32 t = (tfxU32)tfxTransform_translate_x; t != (tfxU32)tfxEmitterGraphMaxIndex; ++t) {
-		CompileGraph(GetEffectGraphByType(effect, tfx_graph_type(t)));
-	}
-	if (effect->type == tfxEffectType) {
-		for (tfxU32 t = (tfxU32)tfxGlobal_life; t != (tfxU32)tfxProperty_emission_pitch; ++t) {
-			CompileGraph(GetEffectGraphByType(effect, tfx_graph_type(t)));
-		}
-	}
-	else if (effect->type == tfxEmitterType) {
-		for (tfxU32 t = (tfxU32)tfxProperty_emission_pitch; t != (tfxU32)tfxOvertime_velocity; ++t) {
-			CompileGraph(GetEffectGraphByType(effect, (tfx_graph_type)t));
-		}
-		for (tfxU32 t = (tfxU32)tfxOvertime_velocity; t != (tfxU32)tfxTransform_translate_x; ++t) {
-			if (IsColorGraph((tfx_graph_type)t)) {
-				CompileColorOvertime(GetEffectGraphByType(effect, (tfx_graph_type)t));
-			}
-			else {
-				CompileGraphOvertime(GetEffectGraphByType(effect, (tfx_graph_type)t));
-			}
-		}
-	}
-	for (auto &sub : GetEffectInfo(effect)->sub_effectors) {
-		CompileEffectGraphs(&sub);
-	}
-}
-
 void InitialisePathGraphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	path->angle_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	path->angle_x.type = tfxPath_angle_x;
@@ -6269,6 +6242,7 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 		CompileColorOvertime(&g.overtime.red);
 		CompileColorOvertime(&g.overtime.green);
 		CompileColorOvertime(&g.overtime.blue);
+		CompileColorRamp(&g.overtime);
 		CompileGraphOvertime(&g.overtime.blendfactor);
 		CompileGraphOvertime(&g.overtime.intensity);
 		CompileGraphOvertime(&g.overtime.velocity_turbulance);
@@ -6382,6 +6356,7 @@ void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index) {
 	CompileColorOvertime(&g.red);
 	CompileColorOvertime(&g.green);
 	CompileColorOvertime(&g.blue);
+	CompileColorRamp(&g);
 	CompileGraphOvertime(&g.blendfactor);
 	CompileGraphOvertime(&g.intensity);
 	CompileGraphOvertime(&g.velocity_turbulance);
@@ -6413,6 +6388,7 @@ void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index) {
 	CompileColorOvertime(&g.red);
 	CompileColorOvertime(&g.green);
 	CompileColorOvertime(&g.blue);
+	CompileColorRamp(&g);
 }
 
 void SetLibraryMinMaxData(tfx_library_t *library) {
@@ -8539,12 +8515,14 @@ void CopyGraph(tfx_graph_t *from, tfx_graph_t *to, bool compile) {
 		to->nodes.push_back(from->nodes[i]);
 	}
 	if (compile) {
-		if (IsColorGraph(from))
+		if (IsColorGraph(from)) {
 			CompileColorOvertime(to);
-		else if (IsOvertimeGraph(from))
+		}
+		else if (IsOvertimeGraph(from)) {
 			CompileGraphOvertime(to);
-		else
+		} else {
 			CompileGraph(to);
+		}
 	}
 }
 
@@ -8760,6 +8738,10 @@ void CompileGraph(tfx_graph_t *graph) {
 }
 
 void CompileGraphOvertime(tfx_graph_t *graph) {
+	if (graph->type == tfxOvertime_intensity) {
+		CompileGraphRampOvertime(graph);
+		return;
+	}
 	if (graph->nodes.size() > 1) {
 		graph->lookup.last_frame = tfxU32(graph->lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
 		graph->lookup.values.resize(graph->lookup.last_frame + 1);
@@ -8773,6 +8755,23 @@ void CompileGraphOvertime(tfx_graph_t *graph) {
 		graph->lookup.values.resize(1);
 		graph->lookup.values[0] = GetGraphFirstValue(graph);
 	}
+}
+
+void CompileGraphRampOvertime(tfx_graph_t *graph) {
+	//if (graph->nodes.size() > 1) {
+		graph->lookup.last_frame = tfxCOLOR_RAMP_WIDTH - 1;
+		graph->lookup.values.resize(tfxCOLOR_RAMP_WIDTH);
+		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
+			float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * graph->lookup.life;
+			graph->lookup.values[f] = GetGraphValue(graph, age, graph->lookup.life);
+		}
+		graph->lookup.values[graph->lookup.last_frame] = GetGraphLastValue(graph);
+	//}
+	//else {
+		//graph->lookup.last_frame = 0;
+		//graph->lookup.values.resize(1);
+		//graph->lookup.values[0] = GetGraphFirstValue(graph);
+	//}
 }
 
 void CompileColorOvertime(tfx_graph_t *graph, float gamma) {
@@ -8789,6 +8788,25 @@ void CompileColorOvertime(tfx_graph_t *graph, float gamma) {
 		graph->lookup.values.resize(1);
 		graph->lookup.values[0] = GammaCorrect(GetGraphFirstValue(graph), gamma);
 	}
+}
+
+void CompileColorRamp(tfx_overtime_attributes_t *attributes, float gamma) {
+	float r, g, b, a;
+	for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
+		float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * attributes->red.lookup.life;
+		r = GammaCorrect(GetGraphValue(&attributes->red, age, attributes->red.lookup.life), gamma);
+		g = GammaCorrect(GetGraphValue(&attributes->green, age, attributes->green.lookup.life), gamma);
+		b = GammaCorrect(GetGraphValue(&attributes->blue, age, attributes->blue.lookup.life), gamma);
+		a = GammaCorrect(GetGraphValue(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
+		attributes->color_ramp.colors[f].r = tfxU32(r * 255.f);
+		attributes->color_ramp.colors[f].g = tfxU32(g * 255.f);
+		attributes->color_ramp.colors[f].b = tfxU32(b * 255.f);
+		attributes->color_ramp.colors[f].a = tfxU32(a * 255.f);
+	}
+	attributes->color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(GetGraphLastValue(&attributes->red) * 255.f);
+	attributes->color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(GetGraphLastValue(&attributes->green) * 255.f);
+	attributes->color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(GetGraphLastValue(&attributes->blue) * 255.f);
+	attributes->color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(GetGraphLastValue(&attributes->blendfactor) * 255.f);
 }
 
 float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime) {
@@ -13836,6 +13854,104 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 
 }
 
+void ControlParticleColor2(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
+	tfx_particle_manager_t &pm = *work_entry->pm;
+	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
+
+	const tfxWideFloat global_intensity = tfxWideSetSingle(work_entry->global_intensity);
+
+	tfxU32 running_sprite_index = work_entry->sprites_index;
+
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+	tfxU32 start_diff = work_entry->start_diff;
+
+	tfx_color_ramp_t &ramp = work_entry->graphs->color_ramp;
+	const tfxWideInt last_frame_intensity = tfxWideSetSinglei(work_entry->graphs->intensity.lookup.last_frame);
+	tfxWideArrayi wide_alpha;
+	tfxWideArray wide_intensity;
+	tfxWideArrayi lookup_frame;
+	tfxWideArrayi packed_color;
+	tfx_sprite_soa_t &sprites = *work_entry->sprites;
+	tfxWideFloat life;
+	tfxWideArrayi ramp_index;
+	tfxWideFloat color_ramp_size = tfxWideSetSingle(tfxCOLOR_RAMP_WIDTH);
+	tfxWideInt color_ramp_sizei = tfxWideSetSinglei(tfxCOLOR_RAMP_WIDTH - 1);
+	tfxWideInt alpha_mask = tfxWideSetSinglei(0xFF000000);
+
+	bool sample_based_on_path_position = emitter.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling && work_entry->properties->emission_type == tfxPath;
+
+	tfx_emitter_path_t *path;
+	if (sample_based_on_path_position) {
+		path = &pm.library->paths[emitter.path_attributes];
+	}
+	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
+
+	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
+		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
+
+		const tfxWideFloat intensity_factor = tfxWideLoad(&bank.intensity_factor[index]);
+		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
+		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
+		tfx__readbarrier;
+
+		if (sample_based_on_path_position) {
+			const tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
+			life = tfxWideDiv(path_position, tfxWideSetSingle(path->node_count - 3.f));
+		}
+		else {
+			life = tfxWideDiv(age, max_age);
+		}
+		life = tfxWideMul(life, color_ramp_size);
+		ramp_index.m = tfxWideMini(tfxWideConverti(life), color_ramp_sizei);
+
+		const tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
+
+		//----Color changes
+		wide_intensity.m = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
+
+		if (!(emitter.state_flags & tfxEmitterStateFlags_random_color)) {
+			packed_color.m = tfxWideLookupSetColor(ramp.colors, ramp_index);
+		}
+		else {
+			packed_color.m = tfxWideLoadi((tfxWideIntLoader *)&bank.color[index]);
+			wide_alpha.m = tfxWideAndi(tfxWideLookupSetColor(ramp.colors, ramp_index), alpha_mask);
+			packed_color.m = tfxWideOri(packed_color.m, wide_alpha.m);
+		}
+
+		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
+		if (is_ordered) {	//Predictable
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				tfxU32 sprite_depth_index = bank.depth_index[index + j];
+				sprites.color[sprite_depth_index].color = packed_color.a[j];
+				sprites.intensity[sprite_depth_index] = wide_intensity.a[j];
+				running_sprite_index++;
+			}
+		}
+		else {
+			/*
+			This works when compiled on MSVC but not g++ due to data alignment issues when start diff is >0 and running_index
+			becomes unaligned to 16 bytes when storing with intrinsics. There's really not a huge speed gain anyway.
+			Can remove this if no easy work around can be found that makes it worth doing.
+			if (start_diff == 0 && limit_index == tfxDataWidth) {
+				tfxWideStorei((tfxWideIntLoader*)&sprites.color[running_sprite_index].color, packed_color.m);
+				tfxWideStore(&sprites.intensity[running_sprite_index], wide_intensity.m);
+				running_sprite_index += tfxDataWidth;
+			} else {
+			*/
+			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+				sprites.color[running_sprite_index].color = packed_color.a[j];
+				sprites.intensity[running_sprite_index++] = wide_intensity.a[j];
+			}
+			//}
+		}
+		start_diff = 0;
+	}
+
+}
+
 void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t*>(data);
@@ -17984,7 +18100,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 			ControlParticleSpin(&pm->work_queue, work_entry);
 		}
 		ControlParticleSize(&pm->work_queue, work_entry);
-		ControlParticleColor(&pm->work_queue, work_entry);
+		ControlParticleColor2(&pm->work_queue, work_entry);
 		ControlParticleImageFrame(&pm->work_queue, work_entry);
 	}
 }

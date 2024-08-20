@@ -1147,6 +1147,7 @@ struct tfx_str512_t;
 #define TFX_VERSION_NUMBER 6.18.2024
 
 #define tfxMAX_FRAME 20000.f
+#define tfxCOLOR_RAMP_WIDTH 256
 #define tfxNullParent 0xFFFFFFFF
 #define tfxINVALID 0xFFFFFFFF
 #define tfxINVALID_SPRITE 0x0FFFFFFF
@@ -1568,6 +1569,7 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideEqualsi _mm256_cmpeq_epi32 
 #define tfxWideLookupSet(lookup, index) tfxWideSet(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSeti(lookup, index) tfxWideSeti(lookup[index.a[7]], lookup[index.a[6]], lookup[index.a[5]], lookup[index.a[4]], lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetColor(lookup, index) tfxWideSeti(lookup[index.a[7]].color, lookup[index.a[6]].color, lookup[index.a[5]].color, lookup[index.a[4]].color, lookup[index.a[3]].color, lookup[index.a[2]].color, lookup[index.a[1]].color, lookup[index.a[0]].color )
 #define tfxWideLookupSetMember(lookup, member, index) tfxWideSet(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
 #define tfxWideLookupSetMemberi(lookup, member, index) tfxWideSeti(lookup[index.a[7]].member, lookup[index.a[6]].member, lookup[index.a[5]].member, lookup[index.a[4]].member, lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
 #define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet(lookup1[index1.a[7]].lookup2[index2.a[7]], lookup1[index1.a[6]].lookup2[index2.a[6]], lookup1[index1.a[5]].lookup2[index2.a[5]], lookup1[index1.a[4]].lookup2[index2.a[4]], lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
@@ -1796,9 +1798,10 @@ typedef union {
 
 #define tfxWideLookupSet(lookup, index) tfx128Set( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
 #define tfxWideLookupSetMember(lookup, member, index) tfx128Set( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSetMemberi(lookup, member, index) tfx128iSet( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSetMemberi(lookup, member, index) tfx128Seti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
 #define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfx128Set( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
-#define tfxWideLookupSeti(lookup, index) tfx128iSet( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSeti(lookup, index) tfx128Seti( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetColor(lookup, index) tfx128Seti( lookup[index.a[3]].color, lookup[index.a[2]].color, lookup[index.a[1]].color, lookup[index.a[0]].color )
 #define tfxWideLookupSetOffset(lookup, index, offset) tfx128Set( lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
 #endif
@@ -1868,6 +1871,12 @@ tfxINTERNAL uint64_t tfx__rdtsc() {
 }
 
 #endif
+
+inline tfxWideArrayi tfxConvertWideArray(tfxWideInt in) {
+	tfxWideArrayi out;
+	out.m = in;
+	return out;
+}
 
 /*
 Copyright (c) 2013, Robin Lobel
@@ -4863,6 +4872,10 @@ struct tfx_graph_lookup_t {
 	tfx_graph_lookup_t() : last_frame(0), life(0) {}
 };
 
+struct tfx_color_ramp_t {
+	tfx_rgba8_t colors[tfxCOLOR_RAMP_WIDTH];
+};
+
 struct tfx_graph_id_t {
 	tfx_graph_category category;
 	tfx_graph_type type = tfxEmitterGraphMaxIndex;
@@ -5013,6 +5026,7 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
+	tfx_color_ramp_t color_ramp;
 };
 
 struct tfx_factor_attributes_t {
@@ -6675,7 +6689,9 @@ tfxAPI_EDITOR float inline GetVectorAngle(float x, float y) { return atan2(x, -y
 tfxAPI_EDITOR bool CompareNodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxAPI_EDITOR void CompileGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void CompileGraphOvertime(tfx_graph_t *graph);
+tfxAPI_EDITOR void CompileGraphRampOvertime(tfx_graph_t *graph);
 tfxAPI_EDITOR void CompileColorOvertime(tfx_graph_t *graph, float gamma = tfxGAMMA);
+tfxAPI_EDITOR void CompileColorRamp(tfx_overtime_attributes_t *attributes, float gamma = tfxGAMMA);
 tfxAPI_EDITOR float GetMaxLife(tfx_effect_emitter_t *e);
 tfxAPI_EDITOR float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime);
 tfxAPI_EDITOR float LookupFast(tfx_graph_t *graph, float frame);
@@ -6961,7 +6977,6 @@ void *GetEffectUserData(tfx_effect_emitter_t *e);
 
 tfxINTERNAL bool IsRootEffect(tfx_effect_emitter_t *effect);
 tfxINTERNAL void ResetEffectParents(tfx_effect_emitter_t *effect);
-tfxINTERNAL void CompileEffectGraphs(tfx_effect_emitter_t *effect);
 tfxINTERNAL void FreeEffectGraphs(tfx_effect_emitter_t *effect);
 tfxINTERNAL tfxU32 CountAllEffectLookupValues(tfx_effect_emitter_t *effect);
 tfxINTERNAL float GetEffectLoopLength(tfx_effect_emitter_t *effect);
