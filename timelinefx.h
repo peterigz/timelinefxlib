@@ -2175,11 +2175,16 @@ enum tfx_graph_type : unsigned char {
 	tfxOvertime_red,
 	tfxOvertime_green,
 	tfxOvertime_blue,
+	//tfxOvertime_red_hint,
+	//tfxOvertime_green_hint,
+	//tfxOvertime_blue_hint,
 	tfxOvertime_blendfactor,
 	tfxOvertime_velocity_turbulance,
 	tfxOvertime_direction_turbulance,
 	tfxOvertime_velocity_adjuster,
 	tfxOvertime_intensity,
+	//tfxOvertime_hint_intensity,
+	//tfxOvertime_mix_balance,
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
@@ -5250,6 +5255,8 @@ struct tfx_emitter_properties_t {
 	tfxParticleControlFlags compute_flags;
 	//Offset to draw particles at
 	tfx_vec2_t image_handle;
+	//image handle packed into 16bit floats
+	tfxU64 image_handle_packed;
 	//Offset of emitters and effects
 	tfx_vec3_t emitter_handle;
 	//When single flag is set, spawn this amount of particles in one go
@@ -5758,8 +5765,7 @@ struct tfx_compute_particle_t {
 
 struct alignas(16) tfx_gpu_image_data_t {
 	tfx_vec4_t uv;
-	tfxU32 uv_xy;
-	tfxU32 uv_zw;
+	tfxU64 uv_packed;
 	tfx_vec2_t image_size;
 	tfxU32 texture_array_index;
 	float animation_frames;
@@ -6415,6 +6421,7 @@ tfxAPI_EDITOR float tfxClampf(float lower, float upper, float value);
 tfxAPI_EDITOR tfxU32 Pack10bit(tfx_vec3_t const *v, tfxU32 extra);
 tfxINTERNAL tfxU32 Pack10bitUnsigned(tfx_vec3_t const *v);
 tfxAPI_EDITOR tfxU32 Pack16bit(float x, float y);
+tfxAPI_EDITOR tfxU32 Pack16bit2SScaled(float x, float y, float max_value);
 tfxAPI_EDITOR tfxU32 Pack8bit(tfx_vec3_t v);
 tfxAPI_EDITOR tfxU32 Pack8bitQuaternion(tfx_quaternion_t v);
 tfxAPI_EDITOR tfxU32 Pack16bitUnsigned(float x, float y);

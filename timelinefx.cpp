@@ -1896,6 +1896,12 @@ tfxU32 Pack16bit(float x, float y) {
 	return u.out;
 }
 
+tfxU32 Pack16bit2SScaled(float x, float y, float max_value) {
+	int16_t x_scaled = (int16_t)(x * 32767.0f / max_value);
+	int16_t y_scaled = (int16_t)(y * 32767.0f / max_value);
+	return ((tfxU64)x_scaled) | ((tfxU64)y_scaled << 16);
+}
+
 tfxU32 Pack8bit(tfx_vec3_t v) {
 	union
 	{
@@ -9847,6 +9853,8 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 			if (effect_stack.back().property_flags & tfxEmitterPropertyFlags_image_handle_auto_center) {
 				lib->emitter_properties[effect_stack.back().property_index].image_handle = { .5f, .5f };
 			}
+			tfx_vec2_t handle = lib->emitter_properties[effect_stack.back().property_index].image_handle;
+			lib->emitter_properties[effect_stack.back().property_index].image_handle_packed = Pack16bit2SScaled(handle.x, handle.y, 128.f);
 			effect_stack.back().property_flags |= tfxEmitterPropertyFlags_enabled;
 			if (effect_stack.back().path_attributes != tfxINVALID) {
 				if (Is3DEffect(&effect_stack.parent())) {
