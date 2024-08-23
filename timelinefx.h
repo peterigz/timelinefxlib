@@ -1119,7 +1119,8 @@ tfx_allocator *tfxGetAllocator();
 #define tfxEXTRACT_SPRITE_ALIGNMENT(property_index) ((property_index & tfxSPRITE_ALIGNMENT_MASK) >> 24)
 #define tfxEXTRACT_SPRITE_IMAGE_FRAME(property_index) ((property_index & tfxSPRITE_IMAGE_FRAME_MASK) >> 16)
 #define tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_index) (property_index & tfxPROPERTY_INDEX_MASK)
-#define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938) | ((tfxU16)(y * 127.9960938) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
+#define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938f) | ((tfxU16)(y * 127.9960938f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
+#define tfxPACK_SIZE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 7.999755859f) | ((tfxU16)(y * 7.999755859f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
 #define tfxCIRCLENODES 16
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
@@ -5907,7 +5908,8 @@ struct tfx_animation_buffer_metrics_t {
 };
 
 struct alignas(16) tfx_animation_emitter_properties_t {
-	tfx_vec2_t handle;
+	tfx_vec2_t handle;		//image handle
+	tfxU32 handle_packed;
 	tfxU32 flags;
 	tfxU32 start_frame_index;
 	float animation_frames;

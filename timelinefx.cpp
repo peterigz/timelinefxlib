@@ -7035,8 +7035,9 @@ void AssignFrameMetaProperty(tfx_frame_meta_t *metrics, tfx_str_t *field, tfx_ve
 }
 
 void AssignAnimationEmitterProperty(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfx_vec2_t value, tfxU32 file_version) {
-	if (*field == "handle")
+	if (*field == "handle") {
 		properties->handle = value;
+	}
 }
 
 void AssignAnimationEmitterProperty(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, float value, tfxU32 file_version) {
@@ -9628,6 +9629,7 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 		}
 		else if (context == tfxEndEmitter) {
 			TFX_ASSERT(emitter_properties_stack.current_size);
+			emitter_properties_stack.back().handle_packed = Pack16bit2SScaled(emitter_properties_stack.back().handle.x, emitter_properties_stack.back().handle.y, 128.f);
 			animation_manager->emitter_properties.push_back_copy(emitter_properties_stack.pop_back());
 		}
 
@@ -10609,6 +10611,7 @@ void AddEffectEmitterProperties(tfx_animation_manager_t *animation_manager, tfx_
 		if (effect->library->emitter_properties[effect->property_index].animation_property_index != tfxINVALID) {
 			tfx_animation_emitter_properties_t properties;
 			properties.handle = effect->library->emitter_properties[effect->property_index].image_handle;
+			properties.handle_packed = effect->library->emitter_properties[effect->property_index].image_handle_packed;
 			properties.flags = effect->property_flags;
 			tfx_image_data_t &image = *effect->library->emitter_properties[effect->property_index].image;
 			properties.animation_frames = image.animation_frames;
