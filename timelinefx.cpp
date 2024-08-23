@@ -13756,114 +13756,6 @@ void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
 
 void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
-	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t*>(data);
-	tfx_particle_manager_t &pm = *work_entry->pm;
-	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
-	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
-
-	const tfxWideFloat global_intensity = tfxWideSetSingle(work_entry->global_intensity);
-
-	tfxU32 running_sprite_index = work_entry->sprites_index;
-
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	tfxU32 start_diff = work_entry->start_diff;
-
-	const tfxWideInt last_frame_color = tfxWideSetSinglei(work_entry->graphs->red.lookup.last_frame);
-	const tfxWideInt last_frame_intensity = tfxWideSetSinglei(work_entry->graphs->intensity.lookup.last_frame);
-	const tfxWideInt last_frame_opacity = tfxWideSetSinglei(work_entry->graphs->blendfactor.lookup.last_frame);
-	tfxWideArray wide_alpha;
-	tfxWideArray wide_intensity;
-	tfxWideArrayi lookup_frame;
-	tfxWideArrayi packed_color;
-	tfx_sprite_soa_t &sprites = *work_entry->sprites;
-	tfxWideFloat life;
-
-	bool sample_based_on_path_position =  emitter.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling && work_entry->properties->emission_type == tfxPath;
-
-	tfx_emitter_path_t* path;
-	if (sample_based_on_path_position) {
-		path = &pm.library->paths[emitter.path_attributes];
-	}
-	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
-
-	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
-		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
-
-		const tfxWideFloat intensity_factor = tfxWideLoad(&bank.intensity_factor[index]);
-		const tfxWideFloat age = tfxWideLoad(&bank.age[index]);
-		const tfxWideFloat max_age = tfxWideLoad(&bank.max_age[index]);
-		tfx__readbarrier;
-
-		if (sample_based_on_path_position) {
-			const tfxWideFloat path_position = tfxWideLoad(&bank.path_position[index]);
-			life = tfxWideDiv(path_position, tfxWideSetSingle(path->node_count - 3.f));
-			life = tfxWideMul(life, max_life);
-		}
-		else {
-			life = tfxWideDiv(age, max_age);
-			life = tfxWideMul(life, max_life);
-		}
-
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), last_frame_color);
-		const tfxWideFloat lookup_red = tfxWideLookupSet(work_entry->graphs->red.lookup.values, lookup_frame);
-
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), last_frame_color);
-		const tfxWideFloat lookup_green = tfxWideLookupSet(work_entry->graphs->green.lookup.values, lookup_frame);
-
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), last_frame_color);
-		const tfxWideFloat lookup_blue = tfxWideLookupSet(work_entry->graphs->blue.lookup.values, lookup_frame);
-
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), last_frame_intensity);
-		const tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, lookup_frame);
-
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), last_frame_opacity);
-		const tfxWideFloat lookup_opacity = tfxWideLookupSet(work_entry->graphs->blendfactor.lookup.values, lookup_frame);
-
-		//----Color changes
-		wide_alpha.m = tfxWideMul(tfxWIDE255, lookup_opacity);
-		wide_intensity.m = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
-
-		if (!(emitter.state_flags & tfxEmitterStateFlags_random_color)) {
-			packed_color.m = PackWideColor(tfxWideMul(tfxWIDE255, lookup_red), tfxWideMul(tfxWIDE255, lookup_green), tfxWideMul(tfxWIDE255, lookup_blue), wide_alpha.m);
-		}
-		else {
-			packed_color.m = tfxWideLoadi((tfxWideIntLoader*)&bank.color[index]);
-			packed_color.m = tfxWideOri(packed_color.m, tfxWideShiftLeft(tfxWideConverti(wide_alpha.m), 24));
-		}
-
-		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
-		if (is_ordered) {	//Predictable
-			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				tfxU32 sprite_depth_index = bank.depth_index[index + j];
-				sprites.color[sprite_depth_index].color = packed_color.a[j];
-				sprites.intensity[sprite_depth_index] = wide_intensity.a[j];
-				running_sprite_index++;
-			}
-		}
-		else {
-			/*
-			This works when compiled on MSVC but not g++ due to data alignment issues when start diff is >0 and running_index
-			becomes unaligned to 16 bytes when storing with intrinsics. There's really not a huge speed gain anyway.
-			Can remove this if no easy work around can be found that makes it worth doing.
-			if (start_diff == 0 && limit_index == tfxDataWidth) {
-				tfxWideStorei((tfxWideIntLoader*)&sprites.color[running_sprite_index].color, packed_color.m);
-				tfxWideStore(&sprites.intensity[running_sprite_index], wide_intensity.m);
-				running_sprite_index += tfxDataWidth;
-			} else {
-			*/
-				for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-					sprites.color[running_sprite_index].color = packed_color.a[j];
-					sprites.intensity[running_sprite_index++] = wide_intensity.a[j];
-				}
-			//}
-		}
-		start_diff = 0;
-	}
-
-}
-
-void ControlParticleColor2(tfx_work_queue_t *queue, void *data) {
-	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_particle_manager_t &pm = *work_entry->pm;
 	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
@@ -13880,7 +13772,6 @@ void ControlParticleColor2(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt last_frame_intensity = tfxWideSetSinglei(work_entry->graphs->intensity.lookup.last_frame);
 	tfxWideArrayi wide_alpha;
 	tfxWideArray wide_intensity;
-	tfxWideArrayi lookup_frame;
 	tfxWideArrayi packed_color;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
 	tfxWideFloat life;
@@ -18108,7 +17999,7 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 			ControlParticleSpin(&pm->work_queue, work_entry);
 		}
 		ControlParticleSize(&pm->work_queue, work_entry);
-		ControlParticleColor2(&pm->work_queue, work_entry);
+		ControlParticleColor(&pm->work_queue, work_entry);
 		ControlParticleImageFrame(&pm->work_queue, work_entry);
 	}
 }
