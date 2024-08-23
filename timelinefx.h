@@ -69,6 +69,7 @@
 #include <math.h>
 
 //type defs
+typedef uint16_t tfxU16;
 typedef uint32_t tfxU32;
 typedef unsigned int tfxEmitterID;
 typedef int32_t tfxS32;
@@ -1118,6 +1119,7 @@ tfx_allocator *tfxGetAllocator();
 #define tfxEXTRACT_SPRITE_ALIGNMENT(property_index) ((property_index & tfxSPRITE_ALIGNMENT_MASK) >> 24)
 #define tfxEXTRACT_SPRITE_IMAGE_FRAME(property_index) ((property_index & tfxSPRITE_IMAGE_FRAME_MASK) >> 16)
 #define tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_index) (property_index & tfxPROPERTY_INDEX_MASK)
+#define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938) | ((tfxU16)(y * 127.9960938) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
 #define tfxCIRCLENODES 16
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
