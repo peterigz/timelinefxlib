@@ -3485,6 +3485,12 @@ void ResetEmitterOvertimeGraphs(tfx_effect_emitter_t *effect, bool add_node, boo
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.blue, 1.f, tfxColorPreset, add_node); library->emitter_attributes[emitter_attributes].overtime.blue.type = tfxOvertime_blue;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.blendfactor, 1.f, tfxOpacityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.blendfactor.type = tfxOvertime_blendfactor;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.intensity, 1.f, tfxIntensityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.intensity.type = tfxOvertime_intensity;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.red_hint, 1.f, tfxColorPreset, add_node); library->emitter_attributes[emitter_attributes].overtime.red_hint.type = tfxOvertime_red_hint;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.green_hint, 1.f, tfxColorPreset, add_node); library->emitter_attributes[emitter_attributes].overtime.green_hint.type = tfxOvertime_green_hint;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.blue_hint, 1.f, tfxColorPreset, add_node); library->emitter_attributes[emitter_attributes].overtime.blue_hint.type = tfxOvertime_blue_hint;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint, 1.f, tfxOpacityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint.type = tfxOvertime_blendfactor_hint;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.hint_intensity, 1.f, tfxIntensityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.hint_intensity.type = tfxOvertime_hint_intensity;
+	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.color_mix_balance, 1.f, tfxOpacityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.color_mix_balance.type = tfxOvertime_color_mix_balance;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.velocity_turbulance, 30.f, tfxVelocityTurbulancePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.velocity_turbulance.type = tfxOvertime_velocity_turbulance;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.stretch, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.stretch.type = tfxOvertime_stretch;
 	ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.direction_turbulance, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.direction_turbulance.type = tfxOvertime_direction_turbulance;
@@ -3598,6 +3604,12 @@ void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].overtime.blue.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.blue, 1.f, tfxColorPreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.blendfactor.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.blendfactor, 1.f, tfxOpacityOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.intensity.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.intensity, 1.f, tfxIntensityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.red_hint.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.red_hint, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.green_hint.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.green_hint, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.blue_hint.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.blue_hint, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint, 1.f, tfxOpacityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.hint_intensity.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.hint_intensity, 1.f, tfxIntensityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.color_mix_balance.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.color_mix_balance, 1.f, tfxOpacityOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.velocity_turbulance.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.velocity_turbulance, 0.f, tfxFrameratePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.direction_turbulance.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.direction_turbulance, 0.f, tfxPercentOvertime);
 		if (library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster.nodes.size() == 0) ResetGraph(&library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster, 1.f, tfxGlobalPercentPreset);
@@ -3620,6 +3632,12 @@ void AddEmitterColorOvertime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_
 	AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.red, frame, color.r);
 	AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.green, frame, color.g);
 	AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blue, frame, color.b);
+}
+
+void AddEmitterColorHintOvertime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color) {
+	AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.red_hint, frame, color.r);
+	AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.green_hint, frame, color.g);
+	AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blue_hint, frame, color.b);
 }
 
 void SetEffectUserData(tfx_effect_emitter_t *effect, void *data) {
@@ -3921,6 +3939,12 @@ void DisableAllEmittersExcept(tfx_effect_emitter_t *effect, tfx_effect_emitter_t
 		else
 			e.property_flags &= ~tfxEmitterPropertyFlags_enabled;
 	}
+}
+
+tfx_emitter_attributes_t *GetEmitterAttributes(tfx_effect_emitter_t *emitter) {
+	TFX_ASSERT(emitter->type == tfxEmitterType);			//Must be an emitter
+	TFX_ASSERT(emitter->emitter_attributes != tfxINVALID);	//Must be a valid emitter_attributes index into the library;
+	return &emitter->library->emitter_attributes[emitter->emitter_attributes];
 }
 
 tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfx_graph_type type) {
@@ -5007,11 +5031,17 @@ void InitialiseOvertimeAttributes(tfx_overtime_attributes_t *attributes, tfxU32 
 	attributes->red.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->blue.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->green.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->red_hint.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->blue_hint.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->green_hint.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->blendfactor.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->blendfactor_hint.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->velocity_turbulance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->direction_turbulance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->velocity_adjuster.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->hint_intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	attributes->color_mix_balance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->direction.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->noise_resolution.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
 	attributes->motion_randomness.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
@@ -5036,11 +5066,17 @@ void FreeOvertimeAttributes(tfx_overtime_attributes_t *attributes) {
 	FreeGraph(&attributes->red);
 	FreeGraph(&attributes->green);
 	FreeGraph(&attributes->blue);
+	FreeGraph(&attributes->red_hint);
+	FreeGraph(&attributes->green_hint);
+	FreeGraph(&attributes->blue_hint);
 	FreeGraph(&attributes->blendfactor);
+	FreeGraph(&attributes->blendfactor_hint);
 	FreeGraph(&attributes->velocity);
 	FreeGraph(&attributes->direction_turbulance);
 	FreeGraph(&attributes->velocity_adjuster);
 	FreeGraph(&attributes->intensity);
+	FreeGraph(&attributes->hint_intensity);
+	FreeGraph(&attributes->color_mix_balance);
 	FreeGraph(&attributes->direction);
 	FreeGraph(&attributes->noise_resolution);
 	FreeGraph(&attributes->motion_randomness);
@@ -5059,11 +5095,17 @@ void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtim
 	CopyGraphNoLookups(&src->red, &dst->red);
 	CopyGraphNoLookups(&src->green, &dst->green);
 	CopyGraphNoLookups(&src->blue, &dst->blue);
+	CopyGraphNoLookups(&src->red_hint, &dst->red_hint);
+	CopyGraphNoLookups(&src->green_hint, &dst->green_hint);
+	CopyGraphNoLookups(&src->blue_hint, &dst->blue_hint);
 	CopyGraphNoLookups(&src->blendfactor, &dst->blendfactor);
+	CopyGraphNoLookups(&src->blendfactor_hint, &dst->blendfactor_hint);
 	CopyGraphNoLookups(&src->velocity_turbulance, &dst->velocity_turbulance);
 	CopyGraphNoLookups(&src->direction_turbulance, &dst->direction_turbulance);
 	CopyGraphNoLookups(&src->velocity_adjuster, &dst->velocity_adjuster);
 	CopyGraphNoLookups(&src->intensity, &dst->intensity);
+	CopyGraphNoLookups(&src->hint_intensity, &dst->hint_intensity);
+	CopyGraphNoLookups(&src->color_mix_balance, &dst->color_mix_balance);
 	CopyGraphNoLookups(&src->direction, &dst->direction);
 	CopyGraphNoLookups(&src->noise_resolution, &dst->noise_resolution);
 	CopyGraphNoLookups(&src->motion_randomness, &dst->motion_randomness);
@@ -5079,14 +5121,14 @@ void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attribu
 	CopyGraph(&src->pitch_spin, &dst->pitch_spin);
 	CopyGraph(&src->yaw_spin, &dst->yaw_spin);
 	CopyGraph(&src->stretch, &dst->stretch);
-	CopyGraph(&src->red, &dst->red);
-	CopyGraph(&src->green, &dst->green);
-	CopyGraph(&src->blue, &dst->blue);
-	CopyGraph(&src->blendfactor, &dst->blendfactor);
+	CopyGraphColor(src, dst);
+	CopyGraphColorHint(src, dst);
 	CopyGraph(&src->velocity_turbulance, &dst->velocity_turbulance);
 	CopyGraph(&src->direction_turbulance, &dst->direction_turbulance);
 	CopyGraph(&src->velocity_adjuster, &dst->velocity_adjuster);
 	CopyGraph(&src->intensity, &dst->intensity);
+	CopyGraph(&src->hint_intensity, &dst->hint_intensity);
+	CopyGraph(&src->color_mix_balance, &dst->color_mix_balance);
 	CopyGraph(&src->direction, &dst->direction);
 	CopyGraph(&src->noise_resolution, &dst->noise_resolution);
 	CopyGraph(&src->motion_randomness, &dst->motion_randomness);
@@ -6359,12 +6401,11 @@ void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index) {
 
 void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
-	CompileColorOvertime(&g.red);
-	CompileColorOvertime(&g.green);
-	CompileColorOvertime(&g.blue);
 	CompileColorRamp(&g);
-	CompileGraphOvertime(&g.blendfactor);
+	CompileColorRampHint(&g);
 	CompileGraphOvertime(&g.intensity);
+	CompileGraphOvertime(&g.hint_intensity);
+	CompileGraphOvertime(&g.color_mix_balance);
 	CompileGraphOvertime(&g.velocity_turbulance);
 	CompileGraphOvertime(&g.width);
 	CompileGraphOvertime(&g.height);
@@ -6391,10 +6432,8 @@ void CompileLibraryFactorGraph(tfx_library_t *library, tfxU32 index) {
 
 void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
-	CompileColorOvertime(&g.red);
-	CompileColorOvertime(&g.green);
-	CompileColorOvertime(&g.blue);
 	CompileColorRamp(&g);
+	CompileColorRampHint(&g);
 }
 
 void SetLibraryMinMaxData(tfx_library_t *library) {
@@ -6472,6 +6511,12 @@ void SetLibraryMinMaxData(tfx_library_t *library) {
 	library->graph_min_max[tfxOvertime_blue] = GetMinMaxGraphValues(tfxColorPreset);
 	library->graph_min_max[tfxOvertime_blendfactor] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
 	library->graph_min_max[tfxOvertime_intensity] = GetMinMaxGraphValues(tfxIntensityOvertimePreset);
+	library->graph_min_max[tfxOvertime_red_hint] = GetMinMaxGraphValues(tfxColorPreset);
+	library->graph_min_max[tfxOvertime_green_hint] = GetMinMaxGraphValues(tfxColorPreset);
+	library->graph_min_max[tfxOvertime_blue_hint] = GetMinMaxGraphValues(tfxColorPreset);
+	library->graph_min_max[tfxOvertime_blendfactor_hint] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
+	library->graph_min_max[tfxOvertime_hint_intensity] = GetMinMaxGraphValues(tfxIntensityOvertimePreset);
+	library->graph_min_max[tfxOvertime_color_mix_balance] = GetMinMaxGraphValues(tfxOpacityOvertimePreset);
 	library->graph_min_max[tfxOvertime_velocity_turbulance] = GetMinMaxGraphValues(tfxFrameratePreset);
 	library->graph_min_max[tfxOvertime_direction_turbulance] = GetMinMaxGraphValues(tfxPercentOvertime);
 	library->graph_min_max[tfxOvertime_velocity_adjuster] = GetMinMaxGraphValues(tfxGlobalPercentPreset);
@@ -6632,6 +6677,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("alt_size_lifetime_sampling", tfxBool);
 	names_and_types.Insert("use_simple_motion_randomness", tfxBool);
 	names_and_types.Insert("spawn_location_source", tfxBool);
+	names_and_types.Insert("use_color_hint", tfxBool);
 	//names_and_types.Insert("simple_motion_smoothstep", tfxBool);
 
 	//Graphs
@@ -6703,11 +6749,18 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("overtime_red", tfxFloat);
 	names_and_types.Insert("overtime_green", tfxFloat);
 	names_and_types.Insert("overtime_blue", tfxFloat);
+	names_and_types.Insert("overtime_opacity", tfxFloat);	//Legacy
 	names_and_types.Insert("overtime_blendfactor", tfxFloat);
+	names_and_types.Insert("overtime_intensity", tfxFloat);
+	names_and_types.Insert("overtime_red_hint", tfxFloat);
+	names_and_types.Insert("overtime_green_hint", tfxFloat);
+	names_and_types.Insert("overtime_blue_hint", tfxFloat);
+	names_and_types.Insert("overtime_blendfactor_hint", tfxFloat);
+	names_and_types.Insert("overtime_hint_intensity", tfxFloat);
+	names_and_types.Insert("overtime_color_mix_balance", tfxFloat);
 	names_and_types.Insert("overtime_velocity_turbulance", tfxFloat);
 	names_and_types.Insert("overtime_direction_turbulance", tfxFloat);
 	names_and_types.Insert("overtime_velocity_adjuster", tfxFloat);
-	names_and_types.Insert("overtime_intensity", tfxFloat);
 	names_and_types.Insert("overtime_direction", tfxFloat);
 	names_and_types.Insert("overtime_noise_resolution", tfxFloat);
 	names_and_types.Insert("overtime_motion_randomness", tfxFloat);
@@ -6943,8 +6996,15 @@ void AssignGraphData(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *v
 		if ((*values)[0] == "overtime_red") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.red, &n); }
 		if ((*values)[0] == "overtime_green") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.green, &n); }
 		if ((*values)[0] == "overtime_blue") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blue, &n); }
-		if ((*values)[0] == "overtime_opacity") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blendfactor, &n); }
+		if ((*values)[0] == "overtime_blendfactor") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blendfactor, &n); }
+		if ((*values)[0] == "overtime_opacity") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blendfactor, &n); }	//Legacy
 		if ((*values)[0] == "overtime_intensity") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.intensity, &n); }
+		if ((*values)[0] == "overtime_red_hint") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.red_hint, &n); }
+		if ((*values)[0] == "overtime_green_hint") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.green_hint, &n); }
+		if ((*values)[0] == "overtime_blue_hint") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blue_hint, &n); }
+		if ((*values)[0] == "overtime_blendfactor_hint") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blendfactor_hint, &n); }
+		if ((*values)[0] == "overtime_intensity_hint") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.hint_intensity, &n); }
+		if ((*values)[0] == "overtime_color_mix_balance") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.color_mix_balance, &n); }
 		if ((*values)[0] == "overtime_velocity_turbulance") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.velocity_turbulance, &n); }
 		if ((*values)[0] == "overtime_spin") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.spin, &n); }
 		if ((*values)[0] == "overtime_roll_spin") { tfx_attribute_node_t n; AssignNodeData(&n, values); AddGraphNode(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.spin, &n); }
@@ -7359,6 +7419,9 @@ void AssignEffectorProperty(tfx_effect_emitter_t *effect, tfx_str_t *field, bool
 	if (*field == "spawn_location_source") {
 		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_spawn_location_source; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_spawn_location_source; }
 	}
+	if (*field == "use_color_hint") {
+		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_use_color_hint; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_use_color_hint; }
+	}
 	//if (*field == "simple_motion_smoothstep") {
 		//if (value) { effect->property_flags |= tfxEmitterPropertyFlags_simple_motion_smoothstep; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_simple_motion_smoothstep; }
 	//}
@@ -7438,6 +7501,7 @@ void StreamProperties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlag
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
 	file->AddLine("use_simple_motion_randomness=%i", (flags & tfxEmitterPropertyFlags_use_simple_motion_randomness));
 	file->AddLine("spawn_location_source=%i", (flags & tfxEmitterPropertyFlags_spawn_location_source));
+	file->AddLine("use_color_hint=%i", (flags & tfxEmitterPropertyFlags_use_color_hint));
 	//file->AddLine("simple_motion_smoothstep=%i", (flags & tfxEmitterPropertyFlags_simple_motion_smoothstep));
 }
 
@@ -7503,6 +7567,10 @@ bool IsFactorGraph(tfx_graph_t *graph) {
 
 bool IsColorGraph(tfx_graph_t *graph) {
 	return graph->type >= tfxOvertime_red && graph->type <= tfxOvertime_blue;
+}
+
+bool IsBlendfactorGraph(tfx_graph_t *graph) {
+	return graph->type == tfxOvertime_blendfactor || graph->type == tfxOvertime_blendfactor_hint;
 }
 
 bool IsGlobalGraph(tfx_graph_t *graph) {
@@ -8533,6 +8601,42 @@ void CopyGraph(tfx_graph_t *from, tfx_graph_t *to, bool compile) {
 	}
 }
 
+void CopyGraphColor(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to, bool compile) {
+	ClearGraph(&to->red);
+	ClearGraph(&to->green);
+	ClearGraph(&to->blue);
+	for (tfxBucketLoop(from->red.nodes)) {
+		to->red.nodes.push_back(from->red.nodes[i]);
+	}
+	for (tfxBucketLoop(from->green.nodes)) {
+		to->green.nodes.push_back(from->green.nodes[i]);
+	}
+	for (tfxBucketLoop(from->blue.nodes)) {
+		to->blue.nodes.push_back(from->blue.nodes[i]);
+	}
+	if (compile) {
+		CompileColorRamp(to, tfxGAMMA);
+	}
+}
+
+void CopyGraphColorHint(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to, bool compile) {
+	ClearGraph(&to->red_hint);
+	ClearGraph(&to->green_hint);
+	ClearGraph(&to->blue_hint);
+	for (tfxBucketLoop(from->red_hint.nodes)) {
+		to->red.nodes.push_back(from->red_hint.nodes[i]);
+	}
+	for (tfxBucketLoop(from->green_hint.nodes)) {
+		to->green_hint.nodes.push_back(from->green_hint.nodes[i]);
+	}
+	for (tfxBucketLoop(from->blue.nodes)) {
+		to->blue_hint.nodes.push_back(from->blue_hint.nodes[i]);
+	}
+	if (compile) {
+		CompileColorRampHint(to, tfxGAMMA);
+	}
+}
+
 bool SortGraph(tfx_graph_t *graph) {
 	bool needed_sorting = false;
 	for (tfxU32 i = 1; i < graph->nodes.current_size; ++i) {
@@ -8814,6 +8918,25 @@ void CompileColorRamp(tfx_overtime_attributes_t *attributes, float gamma) {
 	attributes->color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(GetGraphLastValue(&attributes->green) * 255.f);
 	attributes->color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(GetGraphLastValue(&attributes->blue) * 255.f);
 	attributes->color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(GetGraphLastValue(&attributes->blendfactor) * 255.f);
+}
+
+void CompileColorRampHint(tfx_overtime_attributes_t *attributes, float gamma) {
+	float r, g, b, a;
+	for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
+		float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * attributes->red.lookup.life;
+		r = GammaCorrect(GetGraphValue(&attributes->red_hint, age, attributes->red.lookup.life), gamma);
+		g = GammaCorrect(GetGraphValue(&attributes->green_hint, age, attributes->green.lookup.life), gamma);
+		b = GammaCorrect(GetGraphValue(&attributes->blue_hint, age, attributes->blue.lookup.life), gamma);
+		a = GammaCorrect(GetGraphValue(&attributes->blendfactor_hint, age, attributes->blendfactor_hint.lookup.life), gamma);
+		attributes->color_ramp_hint.colors[f].r = tfxU32(r * 255.f);
+		attributes->color_ramp_hint.colors[f].g = tfxU32(g * 255.f);
+		attributes->color_ramp_hint.colors[f].b = tfxU32(b * 255.f);
+		attributes->color_ramp_hint.colors[f].a = tfxU32(a * 255.f);
+	}
+	attributes->color_ramp_hint.colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(GetGraphLastValue(&attributes->red_hint) * 255.f);
+	attributes->color_ramp_hint.colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(GetGraphLastValue(&attributes->green_hint) * 255.f);
+	attributes->color_ramp_hint.colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(GetGraphLastValue(&attributes->blue_hint) * 255.f);
+	attributes->color_ramp_hint.colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(GetGraphLastValue(&attributes->blendfactor_hint) * 255.f);
 }
 
 float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime) {

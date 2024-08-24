@@ -2100,7 +2100,7 @@ enum tfx_graph_category : unsigned int {
 #define	TFX_PROPERTY_COUNT  10
 #define	TFX_BASE_COUNT  10
 #define	TFX_VARIATION_COUNT  12
-#define	TFX_OVERTIME_COUNT  19
+#define	TFX_OVERTIME_COUNT  25
 #define	TFX_FACTOR_COUNT  4
 #define	TFX_TRANSFORM_COUNT  6
 
@@ -2178,16 +2178,17 @@ enum tfx_graph_type : unsigned char {
 	tfxOvertime_red,
 	tfxOvertime_green,
 	tfxOvertime_blue,
-	//tfxOvertime_red_hint,
-	//tfxOvertime_green_hint,
-	//tfxOvertime_blue_hint,
 	tfxOvertime_blendfactor,
+	tfxOvertime_red_hint,
+	tfxOvertime_green_hint,
+	tfxOvertime_blue_hint,
+	tfxOvertime_blendfactor_hint,
 	tfxOvertime_velocity_turbulance,
 	tfxOvertime_direction_turbulance,
 	tfxOvertime_velocity_adjuster,
 	tfxOvertime_intensity,
-	//tfxOvertime_hint_intensity,
-	//tfxOvertime_mix_balance,
+	tfxOvertime_hint_intensity,
+	tfxOvertime_color_mix_balance,
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
@@ -2559,7 +2560,8 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,		//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,		//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
 	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29,		//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
-	tfxEmitterPropertyFlags_spawn_location_source = 1 << 30				//This emitter is the source for another emitter that uses it to spawn particles at the location of this emitters' particles
+	tfxEmitterPropertyFlags_spawn_location_source = 1 << 30,			//This emitter is the source for another emitter that uses it to spawn particles at the location of this emitters' particles
+	tfxEmitterPropertyFlags_use_color_hint = 1 << 31					//Activate a second color to tint the particles and mix between the two colors.
 };
 
 enum tfx_particle_flag_bits : unsigned int {
@@ -4914,11 +4916,17 @@ struct tfx_effect_lookup_data_t {
 	tfx_graph_lookup_index_t overtime_red;
 	tfx_graph_lookup_index_t overtime_green;
 	tfx_graph_lookup_index_t overtime_blue;
-	tfx_graph_lookup_index_t overtime_opacity;
+	tfx_graph_lookup_index_t overtime_blendfactor;
+	tfx_graph_lookup_index_t overtime_red_hint;
+	tfx_graph_lookup_index_t overtime_green_hint;
+	tfx_graph_lookup_index_t overtime_blue_hint;
+	tfx_graph_lookup_index_t overtime_blendfactor_hint;
 	tfx_graph_lookup_index_t overtime_velocity_turbulance;
 	tfx_graph_lookup_index_t overtime_direction_turbulance;
 	tfx_graph_lookup_index_t overtime_velocity_adjuster;
 	tfx_graph_lookup_index_t overtime_intensity;
+	tfx_graph_lookup_index_t overtime_hint_intensity;
+	tfx_graph_lookup_index_t overtime_color_mix_overtime;
 	tfx_graph_lookup_index_t overtime_direction;
 	tfx_graph_lookup_index_t overtime_noise_resolution;
 	tfx_graph_lookup_index_t overtime_motion_randomness;
@@ -5027,14 +5035,21 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t green;
 	tfx_graph_t blue;
 	tfx_graph_t blendfactor;
+	tfx_graph_t red_hint;
+	tfx_graph_t green_hint;
+	tfx_graph_t blue_hint;
+	tfx_graph_t blendfactor_hint;
 	tfx_graph_t velocity_turbulance;
 	tfx_graph_t direction_turbulance;
 	tfx_graph_t velocity_adjuster;
 	tfx_graph_t intensity;
+	tfx_graph_t hint_intensity;
+	tfx_graph_t color_mix_balance;
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
 	tfx_color_ramp_t color_ramp;
+	tfx_color_ramp_t color_ramp_hint;
 };
 
 struct tfx_factor_attributes_t {
@@ -5259,7 +5274,7 @@ struct tfx_emitter_properties_t {
 	//Offset to draw particles at
 	tfx_vec2_t image_handle;
 	//image handle packed into 16bit floats
-	tfxU64 image_handle_packed;
+	tfxU32 image_handle_packed;
 	//Offset of emitters and effects
 	tfx_vec3_t emitter_handle;
 	//When single flag is set, spawn this amount of particles in one go
@@ -6674,12 +6689,15 @@ tfxAPI_EDITOR void ClearGraphToOne(tfx_graph_t *graph, float value);
 tfxAPI_EDITOR void ClearGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void FreeGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void CopyGraph(tfx_graph_t *graph, tfx_graph_t *to, bool compile = true);
+tfxAPI_EDITOR void CopyGraphColor(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to, bool compile = true);
+tfxAPI_EDITOR void CopyGraphColorHint(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to, bool compile = true);
 tfxAPI_EDITOR bool SortGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void FlipGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void ReIndexGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_vec2_t GetGraphInitialZoom3d(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsColorGraph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool IsBlendfactorGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsOvertimeGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsFactorGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool IsGlobalGraph(tfx_graph_t *graph);
@@ -6703,6 +6721,7 @@ tfxAPI_EDITOR void CompileGraphOvertime(tfx_graph_t *graph);
 tfxAPI_EDITOR void CompileGraphRampOvertime(tfx_graph_t *graph);
 tfxAPI_EDITOR void CompileColorOvertime(tfx_graph_t *graph, float gamma = tfxGAMMA);
 tfxAPI_EDITOR void CompileColorRamp(tfx_overtime_attributes_t *attributes, float gamma = tfxGAMMA);
+tfxAPI_EDITOR void CompileColorRampHint(tfx_overtime_attributes_t *attributes, float gamma = tfxGAMMA);
 tfxAPI_EDITOR float GetMaxLife(tfx_effect_emitter_t *e);
 tfxAPI_EDITOR float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime);
 tfxAPI_EDITOR float LookupFast(tfx_graph_t *graph, float frame);
@@ -7015,9 +7034,11 @@ tfxAPI_EDITOR void ResetEmitterFactorGraphs(tfx_effect_emitter_t *effect, bool a
 tfxAPI_EDITOR void ResetEmitterGraphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
 
 tfxAPI_EDITOR void AddEmitterColorOvertime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color);
+tfxAPI_EDITOR void AddEmitterColorHintOvertime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color);
 tfxAPI_EDITOR void UpdateEffectMaxLife(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfx_graph_t* GetEffectGraphByType(tfx_effect_emitter_t *effect, tfx_graph_type type);
 tfxAPI_EDITOR tfxU32 GetEffectGraphIndexByType(tfx_effect_emitter_t *effect, tfx_graph_type type);
+tfxAPI_EDITOR tfx_emitter_attributes_t *GetEmitterAttributes(tfx_effect_emitter_t *emitter);
 tfxAPI_EDITOR void InitialiseUninitialisedGraphs(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR void SetEffectName(tfx_effect_emitter_t *effect, const char *n);
 tfxAPI_EDITOR bool RenameSubEffector(tfx_effect_emitter_t *effect, const char *new_name);
