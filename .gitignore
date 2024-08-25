@@ -7,5 +7,6 @@
 *.lib
 *.lib
 Bin/Debug/TimelineFX.pdb
+Bin/
 TimelineFX.vcxproj
 .DS_Store
