@@ -15553,13 +15553,13 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 		}
 
 		if (emitter.state_flags & tfxEmitterStateFlags_random_color) {
-			float age = RandomRange(&random, max_age);
-			color = tfx_rgba8_t(255.f * lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].overtime.red, age, max_age),
-				255.f * lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].overtime.green, age, max_age),
-				255.f * lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].overtime.blue, age, max_age), alpha);
+			float age = RandomRange(&random, max_age) / max_age * (tfxCOLOR_RAMP_WIDTH - 1.f);
+			color = library->emitter_attributes[emitter.emitter_attributes].overtime.color_ramp.colors[(int)age];
+			color.a = (tfxU32)alpha;
 		}
 		else {
-			color = tfx_rgba8_t(255.f * first_red_value, 255.f * first_green_value, 255.f * first_blue_value, alpha);
+			color = library->emitter_attributes[emitter.emitter_attributes].overtime.color_ramp.colors[0];
+			color.a = (tfxU32)alpha;
 		}
 
 		entry->highest_particle_age = fmaxf(entry->highest_particle_age, (max_age * loop_count) + pm.frame_length + 1);
