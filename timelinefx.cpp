@@ -14959,7 +14959,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 		emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
 		if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
-			if (emitter.sprites_count + max_spawn_count >= sprite_buffer.capacity) {
+			if (emitter.sprites_count + sprite_buffer.current_size + max_spawn_count >= sprite_buffer.capacity) {
 				GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1);
 			}
             if (ordered_effect) {
@@ -15014,7 +15014,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 		emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
 		if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
-			if (emitter.sprites_count + max_spawn_count >= sprite_buffer.capacity) {
+			if (emitter.sprites_count + sprite_buffer.current_size + max_spawn_count >= sprite_buffer.capacity) {
 				GrowArrays(&sprite_buffer, sprite_buffer.capacity, sprite_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1);
 			}
             if (ordered_effect && depth_indexes.capacity < sprite_buffer.capacity) {
