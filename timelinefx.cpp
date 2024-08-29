@@ -18287,6 +18287,10 @@ void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	tfxInitialiseThreads(&tfxThreadQueues);
 }
 
+void SetColorRampFormat(tfx_color_ramp_format color_format) {
+	tfxStore->color_ramp_format = color_format;
+}
+
 tfx_pool_stats_t CreateMemorySnapshot(tfx_header *first_block) {
 	tfx_pool_stats_t stats = { 0 };
 	tfx_header *current_block = first_block;
