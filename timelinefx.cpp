@@ -8941,6 +8941,54 @@ tfxKey HashColorRamp(tfx_color_ramp_t *ramp) {
 	return hash;
 }
 
+tfx_bitmap_t tfxCreateBitmap(int width, int height, int channels) {
+	TFX_ASSERT(width > 0 && height > 0 && channels > 0);
+	tfx_bitmap_t bitmap = {};
+    bitmap.size = width * height * channels;
+    if (bitmap.size > 0) {
+        bitmap.data = (tfx_byte*)tfxALLOCATE(bitmap.size);
+        bitmap.width = width;
+        bitmap.height = height;
+        bitmap.channels = channels;
+        bitmap.stride = width * channels;
+    }
+	return bitmap;
+}
+void tfxPlotBitmap(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color) {
+
+    tfx_size pos = y * image->stride + (x * image->channels);
+
+    if (pos >= image->size) {
+        return;
+    }
+
+    if (image->channels == 4) {
+		*(image->data + pos) = color.r;
+		*(image->data + pos + 1) = color.g;
+		*(image->data + pos + 2) = color.b;
+		*(image->data + pos + 3) = color.a;
+    }
+    else if (image->channels == 3) {
+		*(image->data + pos) = color.r;
+		*(image->data + pos + 1) = color.g;
+		*(image->data + pos + 2) = color.b;
+    }
+    else if (image->channels == 2) {
+		*(image->data + pos) = color.r;
+		*(image->data + pos + 3) = color.a;
+    }
+    else if (image->channels == 1) {
+		*(image->data + pos) = color.r;
+    }
+
+}
+
+void tfxFreeBitamp(tfx_bitmap_t *bitmap) {
+	if (bitmap->data) {
+		tfxFREE(bitmap->data);
+	}
+}
+
 tfx_color_ramp_t CompileColorRamp(tfx_overtime_attributes_t *attributes, float gamma) {
 	float r, g, b, a;
 	tfx_color_ramp_t color_ramp;
@@ -8996,6 +9044,47 @@ void InsertColorRampsAndSetIndexes(tfx_library_t *library, tfx_color_ramp_t *ram
 	attributes->color_hint_ramp_index = library->color_ramps.GetIndex(hint_ramp_hash);
 	TFX_ASSERT(attributes->color_ramp_index != -1);
 	TFX_ASSERT(attributes->color_hint_ramp_index != -1);
+}
+
+void CreateColorRampBitmaps(tfx_library_t *library) {
+	tfxU32 index = 0;
+	tfxU32 y = 0;
+	for (tfx_color_ramp_t &ramp : library->color_ramps.data) {
+		tfxU32 layer = index / 256;
+		if (library->color_ramp_bitmaps.size() <= layer) {
+			tfx_bitmap_t bitmap = tfxCreateBitmap(tfxCOLOR_RAMP_WIDTH, 256, 4);
+			library->color_ramp_bitmaps.push_back(bitmap);
+		}
+		tfx_bitmap_t &current_bitmap = library->color_ramp_bitmaps[layer];
+		for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
+			tfx_rgba8_t color = ramp.colors[x];
+			if (tfxStore->color_ramp_format == tfx_color_format_bgra) {
+				color.color = tfx_SWIZZLE_RGBA_TO_BGRA(color.color);
+			}
+			tfxPlotBitmap(&current_bitmap, x, y, color);
+		}
+		index++;
+		y = index % 256;
+	}
+}
+
+void UpdateColorRampBitmap(tfx_library_t *library, tfx_index ramp_index) {
+	tfx_color_ramp_t &ramp = library->color_ramps[ramp_index];
+	tfxU32 layer = ramp_index / 256;
+	TFX_ASSERT(layer <= library->color_ramp_bitmaps.size());	//You should call CreateColorRampBitmaps first
+	if (library->color_ramp_bitmaps.size() <= layer) {
+		tfx_bitmap_t bitmap = tfxCreateBitmap(tfxCOLOR_RAMP_WIDTH, 256, 4);
+		library->color_ramp_bitmaps.push_back(bitmap);
+	}
+	tfx_bitmap_t &current_bitmap = library->color_ramp_bitmaps[layer];
+	tfxU32 y = ramp_index % 256;
+	for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
+		tfx_rgba8_t color = ramp.colors[x];
+		if (tfxStore->color_ramp_format == tfx_color_format_bgra) {
+			color.color = tfx_SWIZZLE_RGBA_TO_BGRA(color.color);
+		}
+		tfxPlotBitmap(&current_bitmap, x, y, color);
+	}
 }
 
 float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime) {

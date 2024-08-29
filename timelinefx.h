@@ -83,7 +83,7 @@ typedef short tfxShort;
 typedef unsigned short tfxUShort;
 
 //---------------------------------------
-/*    Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
+/*  Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
 	This is my own memory allocator from https://github.com/peterigz/zloc
 	This is used in TimelineFX to manage memory allocation. A large pool is created and allocated from. New pools are created if it runs out of space
 	(and you initialised TimelineFX to do so).
@@ -101,6 +101,7 @@ typedef int tfx_index;
 typedef unsigned int tfx_sl_bitmap;
 typedef unsigned int tfx_uint;
 typedef int tfx_bool;
+typedef unsigned char tfx_byte;
 typedef void *tfx_pool;
 
 #if !defined (TFX_ASSERT)
@@ -4482,6 +4483,7 @@ struct tfx_rgba8_t {
 	tfx_rgba8_t(int _r, int _g, int _b, int _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
 	tfx_rgba8_t(tfx_rgba8_t _c, char _a) : r(_c.r), g(_c.g), b(_c.b), a((char)_a) { }
 };
+#define tfx_SWIZZLE_RGBA_TO_BGRA(rgba) ((rgba & 0xFF000000) | ((rgba & 0x00FF0000) >> 16) | (rgba & 0x0000FF00) | ((rgba & 0x000000FF) << 16))
 
 struct tfx_rgb_t {
 	float r, g, b;
@@ -4888,6 +4890,15 @@ struct tfx_graph_lookup_t {
 
 struct tfx_color_ramp_t {
 	tfx_rgba8_t colors[tfxCOLOR_RAMP_WIDTH];
+};
+
+struct tfx_bitmap_t {
+    int width;
+    int height;
+    int channels;
+    int stride;
+    tfx_size size;
+    tfx_byte *data;
 };
 
 struct tfx_graph_id_t {
@@ -6179,6 +6190,7 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 	tfx_storage_map_t<tfx_color_ramp_t> color_ramps;
+	tfx_vector_t<tfx_bitmap_t> color_ramp_bitmaps;
 
 	tfx_bucket_array_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
@@ -6727,7 +6739,12 @@ tfxAPI_EDITOR void CompileColorOvertime(tfx_graph_t *graph, float gamma = tfxGAM
 tfxAPI_EDITOR tfx_color_ramp_t CompileColorRamp(tfx_overtime_attributes_t *attributes, float gamma = tfxGAMMA);
 tfxAPI_EDITOR tfx_color_ramp_t CompileColorRampHint(tfx_overtime_attributes_t *attributes, float gamma = tfxGAMMA);
 tfxAPI_EDITOR tfxKey HashColorRamp(tfx_color_ramp_t *ramp);
+tfxAPI_EDITOR tfx_bitmap_t tfxCreateBitmap(int width, int height, int channels);
+tfxAPI_EDITOR void tfxPlotBitmap(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color);
+tfxAPI_EDITOR void tfxFreeBitamp(tfx_bitmap_t *bitmap);
 tfxAPI_EDITOR void InsertColorRampsAndSetIndexes(tfx_library_t *library, tfx_color_ramp_t *ramp, tfx_color_ramp_t *ramp_hint, tfx_overtime_attributes_t *attributes);
+tfxAPI_EDITOR void CreateColorRampBitmaps(tfx_library_t *library);
+tfxAPI_EDITOR void UpdateColorRampBitmap(tfx_library_t *library, tfx_index ramp_index);
 tfxAPI_EDITOR float GetMaxLife(tfx_effect_emitter_t *e);
 tfxAPI_EDITOR float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime);
 tfxAPI_EDITOR float LookupFast(tfx_graph_t *graph, float frame);
