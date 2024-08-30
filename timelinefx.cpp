@@ -5084,6 +5084,8 @@ void FreeOvertimeAttributes(tfx_overtime_attributes_t *attributes) {
 	FreeGraph(&attributes->direction);
 	FreeGraph(&attributes->noise_resolution);
 	FreeGraph(&attributes->motion_randomness);
+	attributes->color_ramp_bitmap_indexes[0] = 0;
+	attributes->color_ramp_bitmap_indexes[1] = 0;
 }
 
 void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst) {
@@ -5113,6 +5115,10 @@ void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtim
 	CopyGraphNoLookups(&src->direction, &dst->direction);
 	CopyGraphNoLookups(&src->noise_resolution, &dst->noise_resolution);
 	CopyGraphNoLookups(&src->motion_randomness, &dst->motion_randomness);
+	dst->color_ramp_bitmap_indexes[0] = src->color_ramp_bitmap_indexes[0];
+	dst->color_ramp_bitmap_indexes[1] = src->color_ramp_bitmap_indexes[1];
+	tfxUnFlagColorRampIDAsEdited(dst->color_ramp_bitmap_indexes[0]);
+	tfxUnFlagColorRampIDAsEdited(dst->color_ramp_bitmap_indexes[1]);
 }
 
 void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst) {
@@ -5136,6 +5142,10 @@ void CopyOvertimeAttributes(tfx_overtime_attributes_t *src, tfx_overtime_attribu
 	CopyGraph(&src->direction, &dst->direction);
 	CopyGraph(&src->noise_resolution, &dst->noise_resolution);
 	CopyGraph(&src->motion_randomness, &dst->motion_randomness);
+	dst->color_ramp_bitmap_indexes[0] = src->color_ramp_bitmap_indexes[0];
+	dst->color_ramp_bitmap_indexes[1] = src->color_ramp_bitmap_indexes[1];
+	tfxUnFlagColorRampIDAsEdited(dst->color_ramp_bitmap_indexes[0]);
+	tfxUnFlagColorRampIDAsEdited(dst->color_ramp_bitmap_indexes[1]);
 }
 
 void FreeFactorAttributes(tfx_factor_attributes_t *attributes) {
@@ -6107,6 +6117,11 @@ void ClearLibrary(tfx_library_t *library) {
 	for (tfx_transform_attributes_t &transform_attributes : library->transform_attributes) {
 		FreeTransformAttributes(&transform_attributes);
 	}
+	for (tfx_bitmap_t &bitmap : library->color_ramp_bitmaps) {
+		tfxFreeBitmap(&bitmap);
+	}
+	library->color_ramp_ids.FreeAll();
+	library->color_ramp_bitmaps.free();
 	library->global_graphs.free();
 	library->emitter_attributes.free();
 	library->transform_attributes.free();
@@ -6136,6 +6151,7 @@ void ClearLibrary(tfx_library_t *library) {
 	library->free_keyframes.free_all();
 
 	library->uid = 0;
+	library->color_ramp_count = 0;
 }
 
 void UpdateLibraryComputeNodes(tfx_library_t *library) {
@@ -6312,10 +6328,10 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 		CompileGraphOvertime(&g.factor.velocity);
 		CompileGraphOvertime(&g.factor.size);
 		CompileGraphOvertime(&g.factor.intensity);
-		tfx_color_ramp_t color_ramp = CompileColorRamp(&g.overtime);
-		tfx_color_ramp_t color_hint_ramp = CompileColorRampHint(&g.overtime);
-		InsertColorRampsAndSetIndexes(library, &color_ramp, &color_hint_ramp, &g.overtime);
+		g.overtime.color_ramps[0] = CompileColorRamp(&g.overtime);
+		g.overtime.color_ramps[1] = CompileColorRampHint(&g.overtime);
 	}
+	CreateColorRampBitmaps(library);
 }
 
 void CompileLibraryGlobalGraph(tfx_library_t *library, tfxU32 index) {
@@ -6404,9 +6420,10 @@ void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index) {
 
 void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
-	tfx_color_ramp_t color_ramp = CompileColorRamp(&g);
-	tfx_color_ramp_t color_hint_ramp = CompileColorRampHint(&g);
-	InsertColorRampsAndSetIndexes(library, &color_ramp, &color_hint_ramp, &g);
+	g.color_ramps[0] = CompileColorRamp(&g);
+	g.color_ramps[1] = CompileColorRampHint(&g);
+	EditColorRampBitmap(library, &g, 0);
+	EditColorRampBitmap(library, &g, 1);
 	CompileGraphOvertime(&g.intensity);
 	CompileGraphOvertime(&g.hint_intensity);
 	CompileGraphOvertime(&g.color_mix_balance);
@@ -6436,9 +6453,10 @@ void CompileLibraryFactorGraph(tfx_library_t *library, tfxU32 index) {
 
 void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
-	tfx_color_ramp_t color_ramp = CompileColorRamp(&g);
-	tfx_color_ramp_t color_hint_ramp = CompileColorRampHint(&g);
-	InsertColorRampsAndSetIndexes(library, &color_ramp, &color_hint_ramp, &g);
+	g.color_ramps[0] = CompileColorRamp(&g);
+	g.color_ramps[0] = CompileColorRampHint(&g);
+	EditColorRampBitmap(library, &g, 0);
+	EditColorRampBitmap(library, &g, 1);
 }
 
 void SetLibraryMinMaxData(tfx_library_t *library) {
@@ -8983,7 +9001,7 @@ void tfxPlotBitmap(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color) {
 
 }
 
-void tfxFreeBitamp(tfx_bitmap_t *bitmap) {
+void tfxFreeBitmap(tfx_bitmap_t *bitmap) {
 	if (bitmap->data) {
 		tfxFREE(bitmap->data);
 	}
@@ -9031,59 +9049,61 @@ tfx_color_ramp_t CompileColorRampHint(tfx_overtime_attributes_t *attributes, flo
 	return color_ramp_hint;
 }
 
-void InsertColorRampsAndSetIndexes(tfx_library_t *library, tfx_color_ramp_t *ramp, tfx_color_ramp_t *ramp_hint, tfx_overtime_attributes_t *attributes) {
-	tfxKey ramp_hash = HashColorRamp(ramp);
-	tfxKey hint_ramp_hash = HashColorRamp(ramp_hint);
-	if (!library->color_ramps.ValidKey(ramp_hash)) {
-		library->color_ramps.Insert(ramp_hash, *ramp);
-	}
-	if (!library->color_ramps.ValidKey(hint_ramp_hash)) {
-		library->color_ramps.Insert(hint_ramp_hash, *ramp_hint);
-	}
-	attributes->color_ramp_index = library->color_ramps.GetIndex(ramp_hash);
-	attributes->color_hint_ramp_index = library->color_ramps.GetIndex(hint_ramp_hash);
-	TFX_ASSERT(attributes->color_ramp_index != -1);
-	TFX_ASSERT(attributes->color_hint_ramp_index != -1);
-}
-
-void CreateColorRampBitmaps(tfx_library_t *library) {
-	tfxU32 index = 0;
-	tfxU32 y = 0;
-	for (tfx_color_ramp_t &ramp : library->color_ramps.data) {
-		tfxU32 layer = index / 256;
-		if (library->color_ramp_bitmaps.size() <= layer) {
-			tfx_bitmap_t bitmap = tfxCreateBitmap(tfxCOLOR_RAMP_WIDTH, 256, 4);
-			library->color_ramp_bitmaps.push_back(bitmap);
+void PlotColorRamp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ramp, tfxU32 y) {
+	for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
+		tfx_rgba8_t color = ramp->colors[x];
+		if (tfxStore->color_ramp_format == tfx_color_format_bgra) {
+			color.color = tfx_SWIZZLE_RGBA_TO_BGRA(color.color);
 		}
-		tfx_bitmap_t &current_bitmap = library->color_ramp_bitmaps[layer];
-		for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
-			tfx_rgba8_t color = ramp.colors[x];
-			if (tfxStore->color_ramp_format == tfx_color_format_bgra) {
-				color.color = tfx_SWIZZLE_RGBA_TO_BGRA(color.color);
-			}
-			tfxPlotBitmap(&current_bitmap, x, y, color);
-		}
-		index++;
-		y = index % 256;
+		tfxPlotBitmap(bitmap, x, y, color);
 	}
 }
 
-void UpdateColorRampBitmap(tfx_library_t *library, tfx_index ramp_index) {
-	tfx_color_ramp_t &ramp = library->color_ramps[ramp_index];
-	tfxU32 layer = ramp_index / 256;
-	TFX_ASSERT(layer <= library->color_ramp_bitmaps.size());	//You should call CreateColorRampBitmaps first
+tfxU32 AddColorRampToBitmaps(tfx_library_t *library, tfx_color_ramp_t *ramp) {
+	tfxU32 layer = library->color_ramp_count / 256;
+	tfxU32 y = library->color_ramp_count % 256;
 	if (library->color_ramp_bitmaps.size() <= layer) {
 		tfx_bitmap_t bitmap = tfxCreateBitmap(tfxCOLOR_RAMP_WIDTH, 256, 4);
 		library->color_ramp_bitmaps.push_back(bitmap);
 	}
 	tfx_bitmap_t &current_bitmap = library->color_ramp_bitmaps[layer];
-	tfxU32 y = ramp_index % 256;
-	for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
-		tfx_rgba8_t color = ramp.colors[x];
-		if (tfxStore->color_ramp_format == tfx_color_format_bgra) {
-			color.color = tfx_SWIZZLE_RGBA_TO_BGRA(color.color);
+	PlotColorRamp(&current_bitmap, ramp, y);
+	tfxU32 ramp_id = tfxMakeColorRampIndex(layer, y);
+	library->color_ramp_count++;
+	return ramp_id;
+}
+
+void CreateColorRampBitmaps(tfx_library_t *library) {
+	tfxU32 y = 0;
+	library->color_ramp_bitmaps.clear();
+	library->color_ramp_ids.Clear();
+	library->color_ramp_count = 0;
+	for (tfx_emitter_attributes_t &a : library->emitter_attributes) {
+		for (int i = 0; i != 2; ++i) {
+			tfx_color_ramp_t &ramp = a.overtime.color_ramps[i];
+			tfxKey hash = tfxXXHash64::hash(ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+			if (library->color_ramp_ids.ValidKey(hash)) {
+				a.overtime.color_ramp_bitmap_indexes[i] = library->color_ramp_ids.At(hash);
+			}
+			else {
+				a.overtime.color_ramp_bitmap_indexes[i] = AddColorRampToBitmaps(library, &ramp);
+				library->color_ramp_ids.Insert(hash, a.overtime.color_ramp_bitmap_indexes[i]);
+			}
 		}
-		tfxPlotBitmap(&current_bitmap, x, y, color);
+	}
+}
+
+void EditColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id) {
+	tfx_color_ramp_t &ramp = a->color_ramps[ramp_id];
+	if (!tfxColorRampIsEdited(a->color_ramp_bitmap_indexes[ramp_id])) {
+		a->color_ramp_bitmap_indexes[ramp_id] = AddColorRampToBitmaps(library, &ramp);
+		tfxFlagColorRampIDAsEdited(a->color_ramp_bitmap_indexes[ramp_id]);
+	}
+	else {
+		tfxU32 layer = tfxColorRampLayer(a->color_ramp_bitmap_indexes[ramp_id]);
+		tfxU32 index = tfxColorRampIndex(a->color_ramp_bitmap_indexes[ramp_id]);
+		tfx_bitmap_t &bitmap = library->color_ramp_bitmaps[layer];
+		PlotColorRamp(&bitmap, &ramp, index);
 	}
 }
 
@@ -14044,7 +14064,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
 	tfxU32 start_diff = work_entry->start_diff;
 
-	tfx_color_ramp_t &ramp = pm.library->color_ramps[work_entry->graphs->color_ramp_index];
+	tfx_color_ramp_t &ramp = work_entry->graphs->color_ramps[0];
 	const tfxWideInt last_frame_intensity = tfxWideSetSinglei(work_entry->graphs->intensity.lookup.last_frame);
 	tfxWideArrayi wide_alpha;
 	tfxWideArray wide_intensity;
@@ -15658,7 +15678,7 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 	const float first_green_value = GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.green);
 	const float first_blue_value = GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.blue);
 	const float first_alpha_value = GetGraphFirstValue(&library->emitter_attributes[emitter.emitter_attributes].overtime.blendfactor);
-	const tfx_index color_ramp_index = library->emitter_attributes[emitter.emitter_attributes].overtime.color_ramp_index;
+	const tfx_color_ramp_t &color_ramp = library->emitter_attributes[emitter.emitter_attributes].overtime.color_ramps[0];
 
 	TFX_ASSERT(random.seeds[0] > 0);
 
@@ -15719,11 +15739,11 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 		if (emitter.state_flags & tfxEmitterStateFlags_random_color) {
 			float age = RandomRange(&random, max_age) / max_age * (tfxCOLOR_RAMP_WIDTH - 1.f);
-			color = library->color_ramps[color_ramp_index].colors[(int)age];
+			color = color_ramp.colors[(int)age];
 			color.a = (tfxU32)alpha;
 		}
 		else {
-			color = library->color_ramps[color_ramp_index].colors[0];
+			color = color_ramp.colors[0];
 			color.a = (tfxU32)alpha;
 		}
 

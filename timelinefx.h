@@ -4892,6 +4892,11 @@ struct tfx_color_ramp_t {
 	tfx_rgba8_t colors[tfxCOLOR_RAMP_WIDTH];
 };
 
+struct tfx_color_ramp_hash_t {
+	tfxKey hash;		//A hash of the color ramp
+	tfxU32 index;		//The index to lookup the ramp in the bitmap array
+};
+
 struct tfx_bitmap_t {
     int width;
     int height;
@@ -5063,8 +5068,8 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
-	tfx_index color_ramp_index;
-	tfx_index color_hint_ramp_index;
+	tfx_color_ramp_t color_ramps[2];
+	tfx_index color_ramp_bitmap_indexes[2];
 };
 
 struct tfx_factor_attributes_t {
@@ -6189,8 +6194,9 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_effect_emitter_info_t> effect_infos;
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
-	tfx_storage_map_t<tfx_color_ramp_t> color_ramps;
+	tfx_storage_map_t<tfxU32> color_ramp_ids;
 	tfx_vector_t<tfx_bitmap_t> color_ramp_bitmaps;
+	tfxU32 color_ramp_count;
 
 	tfx_bucket_array_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
@@ -6225,6 +6231,7 @@ struct tfx_library_t {
 
 	tfx_library_t() :
 		uid(0),
+		color_ramp_count(0),
 		effect_paths("EffectLib effect paths map", "EffectLib effect paths data"),
 		particle_shapes("EffectLib shapes map", "EffectLib shapes data"),
 		effects(tfxCONSTRUCTOR_VEC_INIT("effects")),
@@ -6285,6 +6292,12 @@ tfxINTERNAL void ResizeParticleSoACallback(tfx_soa_buffer_t *buffer, tfxU32 inde
 //--------------------------------
 //Internal functions used either by the library or editor
 //--------------------------------
+#define tfxMakeColorRampIndex(layer, y) ((layer & 0x00007FFF) << 16) + y
+#define tfxColorRampIndex(id) (id & 0x0000FFFF)
+#define tfxColorRampLayer(id) ((id & 0x7FFF0000) >> 16)
+#define tfxFlagColorRampIDAsEdited(id) id |= 0x80000000
+#define tfxUnFlagColorRampIDAsEdited(id) id &= ~0x80000000
+#define tfxColorRampIsEdited(id) (id & 0x80000000)
 tfxINTERNAL inline tfxParticleID MakeParticleID(tfxU32 bank_index, tfxU32 particle_index) { return ((bank_index & 0x00000FFF) << 20) + particle_index; }
 tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
@@ -6741,10 +6754,11 @@ tfxAPI_EDITOR tfx_color_ramp_t CompileColorRampHint(tfx_overtime_attributes_t *a
 tfxAPI_EDITOR tfxKey HashColorRamp(tfx_color_ramp_t *ramp);
 tfxAPI_EDITOR tfx_bitmap_t tfxCreateBitmap(int width, int height, int channels);
 tfxAPI_EDITOR void tfxPlotBitmap(tfx_bitmap_t *image, int x, int y, tfx_rgba8_t color);
-tfxAPI_EDITOR void tfxFreeBitamp(tfx_bitmap_t *bitmap);
-tfxAPI_EDITOR void InsertColorRampsAndSetIndexes(tfx_library_t *library, tfx_color_ramp_t *ramp, tfx_color_ramp_t *ramp_hint, tfx_overtime_attributes_t *attributes);
+tfxAPI_EDITOR void tfxFreeBitmap(tfx_bitmap_t *bitmap);
+tfxAPI_EDITOR void PlotColorRamp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ramp, tfxU32 y);
 tfxAPI_EDITOR void CreateColorRampBitmaps(tfx_library_t *library);
-tfxAPI_EDITOR void UpdateColorRampBitmap(tfx_library_t *library, tfx_index ramp_index);
+tfxAPI_EDITOR void EditColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id);
+tfxAPI_EDITOR tfxU32 AddColorRampToBitmaps(tfx_library_t *library, tfx_color_ramp_t *ramp);
 tfxAPI_EDITOR float GetMaxLife(tfx_effect_emitter_t *e);
 tfxAPI_EDITOR float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime);
 tfxAPI_EDITOR float LookupFast(tfx_graph_t *graph, float frame);
