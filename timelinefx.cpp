@@ -297,11 +297,11 @@ namespace tfx {
 		tfx128Array gi0x, gi0y, gi0z, gi1x, gi1y, gi1z, gi2x, gi2y, gi2z, gi3x, gi3y, gi3z;
 
 		tfxNoise3dGradientLoopUnroll(0)
-			tfxNoise3dGradientLoopUnroll(1)
-			tfxNoise3dGradientLoopUnroll(2)
-			tfxNoise3dGradientLoopUnroll(3)
+		tfxNoise3dGradientLoopUnroll(1)
+		tfxNoise3dGradientLoopUnroll(2)
+		tfxNoise3dGradientLoopUnroll(3)
 
-			tfx128 n0 = _mm_mul_ps(t0q, Dot128XYZ(&gi0x.m, &gi0y.m, &gi0z.m, &x0, &y0, &z0));
+		tfx128 n0 = _mm_mul_ps(t0q, Dot128XYZ(&gi0x.m, &gi0y.m, &gi0z.m, &x0, &y0, &z0));
 		tfx128 n1 = _mm_mul_ps(t1q, Dot128XYZ(&gi1x.m, &gi1y.m, &gi1z.m, &x1, &y1, &z1));
 		tfx128 n2 = _mm_mul_ps(t2q, Dot128XYZ(&gi2x.m, &gi2y.m, &gi2z.m, &x2, &y2, &z2));
 		tfx128 n3 = _mm_mul_ps(t3q, Dot128XYZ(&gi3x.m, &gi3y.m, &gi3z.m, &x3, &y3, &z3));
