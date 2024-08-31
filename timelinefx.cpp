@@ -1982,6 +1982,17 @@ tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
 	return tfxWideOri(converted_x, converted_y);
 }
 
+tfxWideInt PackWide16bitUNorm(tfxWideFloat &v_x, tfxWideFloat &v_y) {
+	tfxWideFloat w65535 = tfxWideSetSingle(65535.f);
+	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w65535));
+	converted_y = tfxWideAndi(converted_y, bits16);
+	converted_y = tfxWideShiftLeft(converted_y, 16);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w65535));
+	converted_x = tfxWideAndi(converted_x, bits16);
+	return tfxWideOri(converted_x, converted_y);
+}
+
 tfxWideInt PackWide16bitStretch(tfxWideFloat &v_x, tfxWideFloat &v_y) {
 	tfxWideFloat w32k = tfxWideSetSingle(32767.f);
 	tfxWideFloat max_stretch = tfxWideSetSingle(655.34f);    //Maximum stretch is 50.f
@@ -14099,8 +14110,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 		else {
 			life = tfxWideDiv(age, max_age);
 		}
-		life = tfxWideMul(life, color_ramp_size);
-		ramp_index.m = tfxWideMini(tfxWideConverti(life), color_ramp_sizei);
+		ramp_index.m = tfxWideMini(tfxWideConverti(tfxWideMul(life, color_ramp_size)), color_ramp_sizei);
 
 		const tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
 
@@ -14116,12 +14126,15 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 			packed_color.m = tfxWideOri(packed_color.m, wide_alpha.m);
 		}
 
+		tfxWideArrayi packed_lerp_values = { PackWide16bit(life, tfxWideSetZero) };
+
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (is_ordered) {    //Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				sprites.color[sprite_depth_index].color = packed_color.a[j];
 				sprites.intensity[sprite_depth_index] = wide_intensity.a[j];
+				sprites.lerp_values[sprite_depth_index] = packed_lerp_values.a[j];
 				running_sprite_index++;
 			}
 		}
@@ -14138,7 +14151,9 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 			*/
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.color[running_sprite_index].color = packed_color.a[j];
-				sprites.intensity[running_sprite_index++] = wide_intensity.a[j];
+				sprites.lerp_values[running_sprite_index] = packed_lerp_values.a[j];
+				sprites.intensity[running_sprite_index] = wide_intensity.a[j];
+				running_sprite_index++;
 			}
 			//}
 		}
@@ -18470,6 +18485,7 @@ void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_so
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, intensity));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, stretch));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, alignment));
+	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, lerp_values));
 	FinishSoABufferSetup(buffer, soa, reserve_amount);
 }
 
@@ -18483,6 +18499,7 @@ void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, t
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, intensity));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, stretch));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, alignment));
+	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, lerp_values));
 	FinishSoABufferSetup(buffer, soa, reserve_amount);
 }
 
@@ -18508,6 +18525,7 @@ void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, stretch));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, alignment));
 	}
+	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, lerp_values));
 	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_soa_t, color));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_soa_t, intensity));
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
