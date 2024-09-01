@@ -14115,7 +14115,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 16));
 	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[1]) << 8));
 	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[1])));
-	tfxWideInt texture_layer = {tfxWideShiftLeft(tfxWideSetSinglei(work_entry->properties->image->image_index), 8)};
+	//tfxWideInt texture_layer = {tfxWideShiftLeft(tfxWideSetSinglei(work_entry->properties->image->image_index), 8)};
 
 	int test_index1 = tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[0]);
 	int test_layer1 = tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]);
@@ -14158,7 +14158,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 
 		tfxWideArrayi packed_lerp_values = { tfxWideShiftLeft(ramp_index.m, 24) };
 		packed_lerp_values.m = tfxWideOri(packed_lerp_values.m, tfxWideShiftLeft(lookup_color_mix, 16));
-		packed_lerp_values.m = tfxWideOri(packed_lerp_values.m, texture_layer);
+		//packed_lerp_values.m = tfxWideOri(packed_lerp_values.m, texture_layer);
 
 		tfxWideArrayi packed_intensities = { PackWide16bit2SScaled(lookup_intensity, hint_intensity, 128.f) };
 
@@ -14215,6 +14215,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 	tfxEmitterStateFlags property_flags = emitter.property_flags;
 	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
+	tfxWideInt texture_layer = {tfxWideShiftLeft(tfxWideSetSinglei(work_entry->properties->image->image_index), 8)};
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
