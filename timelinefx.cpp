@@ -1982,6 +1982,17 @@ tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
 	return tfxWideOri(converted_x, converted_y);
 }
 
+tfxWideInt PackWide16bit2SScaled(tfxWideFloat v_x, tfxWideFloat  v_y, float max_value) {
+	tfxWideFloat w32k = tfxWideSetSingle(32767.f / max_value);
+	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
+	converted_y = tfxWideAndi(converted_y, bits16);
+	converted_y = tfxWideShiftLeft(converted_y, 16);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w32k));
+	converted_x = tfxWideAndi(converted_x, bits16);
+	return tfxWideOri(converted_x, converted_y);
+}
+
 tfxWideInt PackWide16bitUNorm(tfxWideFloat &v_x, tfxWideFloat &v_y) {
 	tfxWideFloat w65535 = tfxWideSetSingle(65535.f);
 	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
@@ -2874,6 +2885,8 @@ void UpdateEffectMaxLife(tfx_effect_emitter_t *effect) {
 	GetEffectGraphByType(effect, tfxOvertime_blue)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_blendfactor)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_intensity)->lookup.life = info->max_life;
+	GetEffectGraphByType(effect, tfxOvertime_hint_intensity)->lookup.life = info->max_life;
+	GetEffectGraphByType(effect, tfxOvertime_color_mix_balance)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_velocity)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_width)->lookup.life = info->max_life;
 	GetEffectGraphByType(effect, tfxOvertime_height)->lookup.life = info->max_life;
@@ -6320,6 +6333,8 @@ void CompileAllLibraryGraphs(tfx_library_t *library) {
 
 		CompileGraphOvertime(&g.overtime.blendfactor);
 		CompileGraphOvertime(&g.overtime.intensity);
+		CompileGraphOvertime(&g.overtime.hint_intensity);
+		CompileGraphOvertime(&g.overtime.color_mix_balance);
 		CompileGraphOvertime(&g.overtime.velocity_turbulance);
 		CompileGraphOvertime(&g.overtime.width);
 		CompileGraphOvertime(&g.overtime.height);
@@ -6465,7 +6480,7 @@ void CompileLibraryFactorGraph(tfx_library_t *library, tfxU32 index) {
 void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
 	g.color_ramps[0] = CompileColorRamp(&g);
-	g.color_ramps[0] = CompileColorRampHint(&g);
+	g.color_ramps[1] = CompileColorRampHint(&g);
 	EditColorRampBitmap(library, &g, 0);
 	EditColorRampBitmap(library, &g, 1);
 }
@@ -7633,7 +7648,7 @@ bool IsFactorGraph(tfx_graph_t *graph) {
 }
 
 bool IsColorGraph(tfx_graph_t *graph) {
-	return graph->type >= tfxOvertime_red && graph->type <= tfxOvertime_blue;
+	return graph->type >= tfxOvertime_red && graph->type <= tfxOvertime_blendfactor_hint;
 }
 
 bool IsBlendfactorGraph(tfx_graph_t *graph) {
@@ -8700,6 +8715,20 @@ void CopyGraphColorHint(tfx_overtime_attributes_t *from, tfx_overtime_attributes
 		to->blue_hint.nodes.push_back(from->blue_hint.nodes[i]);
 	}
 }
+void CopyGraphColors(tfx_graph_t *from_red, tfx_graph_t *from_blue, tfx_graph_t *from_green, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue) {
+	ClearGraph(to_red);
+	ClearGraph(to_green);
+	ClearGraph(to_blue);
+	for (tfxBucketLoop(from_red->nodes)) {
+		to_red->nodes.push_back(from_red->nodes[i]);
+	}
+	for (tfxBucketLoop(from_green->nodes)) {
+		to_green->nodes.push_back(from_green->nodes[i]);
+	}
+	for (tfxBucketLoop(from_blue->nodes)) {
+		to_blue->nodes.push_back(from_blue->nodes[i]);
+	}
+}
 
 bool SortGraph(tfx_graph_t *graph) {
 	bool needed_sorting = false;
@@ -8913,7 +8942,7 @@ void CompileGraph(tfx_graph_t *graph) {
 }
 
 void CompileGraphOvertime(tfx_graph_t *graph) {
-	if (graph->type == tfxOvertime_intensity) {
+	if (graph->type == tfxOvertime_intensity || graph->type == tfxOvertime_color_mix_balance || graph->type == tfxOvertime_hint_intensity) {
 		CompileGraphRampOvertime(graph);
 		return;
 	}
@@ -9093,7 +9122,7 @@ void CreateColorRampBitmaps(tfx_library_t *library) {
 		for (int i = 0; i != 2; ++i) {
 			tfx_color_ramp_t &ramp = a.overtime.color_ramps[i];
 			tfxKey hash = tfxXXHash64::hash(ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
-			if (library->color_ramp_ids.ValidKey(hash)) {
+			if (library->color_ramp_ids.ValidKey(hash)) {	//0 = main color, 1 = color hint
 				a.overtime.color_ramp_bitmap_indexes[i] = library->color_ramp_ids.At(hash);
 			}
 			else {
@@ -10551,9 +10580,9 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 
 				memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].captured_index, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].uid, sizeof(tfx_unique_sprite_id_t) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].color, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+				//memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].color, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].property_indexes, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensity, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+				memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensities, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].stretch, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				int index_offset = frame_meta[frame].index_offset[layer];
@@ -10568,7 +10597,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				if (running_count[layer][frame] > 0 && pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0) {
 					memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.uid, sizeof(tfx_unique_sprite_id_t) * temp_sprites_buffer.current_size);
-					memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.color, sizeof(tfxU32) * temp_sprites_buffer.current_size);
+					//memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.color, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 					memcpy(sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.property_indexes, sizeof(tfxU32) * temp_sprites_buffer.current_size);
 					memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.intensity, sizeof(float) * temp_sprites_buffer.current_size);
 					memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.alignment, sizeof(tfxU32) * temp_sprites_buffer.current_size);
@@ -14076,16 +14105,22 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	tfxU32 start_diff = work_entry->start_diff;
 
 	tfx_color_ramp_t &ramp = work_entry->graphs->color_ramps[0];
-	const tfxWideInt last_frame_intensity = tfxWideSetSinglei(work_entry->graphs->intensity.lookup.last_frame);
-	tfxWideArrayi wide_alpha;
-	tfxWideArray wide_intensity;
-	tfxWideArrayi packed_color;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
 	tfxWideFloat life;
 	tfxWideArrayi ramp_index;
 	tfxWideFloat color_ramp_size = tfxWideSetSingle(tfxCOLOR_RAMP_WIDTH);
 	tfxWideInt color_ramp_sizei = tfxWideSetSinglei(tfxCOLOR_RAMP_WIDTH - 1);
-	tfxWideInt alpha_mask = tfxWideSetSinglei(0xFF000000);
+	tfxWideArrayi color_ramp_indexes;
+	color_ramp_indexes.m = tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 24);
+	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 16));
+	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[1]) << 8));
+	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[1])));
+	tfxWideInt texture_layer = {tfxWideShiftLeft(tfxWideSetSinglei(work_entry->properties->image->image_index), 8)};
+
+	int test_index1 = tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[0]);
+	int test_layer1 = tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]);
+	int test_index2 = tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[1]);
+	int test_layer2 = tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[1]);
 
 	bool sample_based_on_path_position = emitter.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling && work_entry->properties->emission_type == tfxPath;
 
@@ -14094,6 +14129,9 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 		path = &pm.library->paths[emitter.path_attributes];
 	}
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
+	bool is_mixed_color = emitter.property_flags & tfxEmitterPropertyFlags_use_color_hint;
+	tfxWideInt lookup_color_mix;
+	tfxWideFloat hint_intensity;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -14111,30 +14149,26 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 			life = tfxWideDiv(age, max_age);
 		}
 		ramp_index.m = tfxWideMini(tfxWideConverti(tfxWideMul(life, color_ramp_size)), color_ramp_sizei);
-
-		const tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
+		tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
+		lookup_color_mix = is_mixed_color ? tfxWideConverti(tfxWideMul(tfxWideLookupSet(work_entry->graphs->color_mix_balance.lookup.values, ramp_index), tfxWIDE255)) : tfxWideSetZeroi;
+		hint_intensity = is_mixed_color ? tfxWideLookupSet(work_entry->graphs->hint_intensity.lookup.values, ramp_index) : tfxWideSetZero;
 
 		//----Color changes
-		wide_intensity.m = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
+		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
 
-		if (!(emitter.state_flags & tfxEmitterStateFlags_random_color)) {
-			packed_color.m = tfxWideLookupSetColor(ramp.colors, ramp_index);
-		}
-		else {
-			packed_color.m = tfxWideLoadi((tfxWideIntLoader *)&bank.color[index]);
-			wide_alpha.m = tfxWideAndi(tfxWideLookupSetColor(ramp.colors, ramp_index), alpha_mask);
-			packed_color.m = tfxWideOri(packed_color.m, wide_alpha.m);
-		}
+		tfxWideArrayi packed_lerp_values = { tfxWideShiftLeft(ramp_index.m, 24) };
+		packed_lerp_values.m = tfxWideOri(packed_lerp_values.m, tfxWideShiftLeft(lookup_color_mix, 16));
+		packed_lerp_values.m = tfxWideOri(packed_lerp_values.m, texture_layer);
 
-		tfxWideArrayi packed_lerp_values = { PackWide16bit(life, tfxWideSetZero) };
+		tfxWideArrayi packed_intensities = { PackWide16bit2SScaled(lookup_intensity, hint_intensity, 128.f) };
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (is_ordered) {    //Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
-				sprites.color[sprite_depth_index].color = packed_color.a[j];
-				sprites.intensity[sprite_depth_index] = wide_intensity.a[j];
-				sprites.lerp_values[sprite_depth_index] = packed_lerp_values.a[j];
+				sprites.intensities[sprite_depth_index] = packed_intensities.a[j];
+				sprites.lerp_values_texture_array[sprite_depth_index] = packed_lerp_values.a[j];
+				sprites.color_ramp_indexes[sprite_depth_index] = color_ramp_indexes.a[j];
 				running_sprite_index++;
 			}
 		}
@@ -14150,9 +14184,9 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 			} else {
 			*/
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.color[running_sprite_index].color = packed_color.a[j];
-				sprites.lerp_values[running_sprite_index] = packed_lerp_values.a[j];
-				sprites.intensity[running_sprite_index] = wide_intensity.a[j];
+				sprites.intensities[running_sprite_index] = packed_intensities.a[j];
+				sprites.lerp_values_texture_array[running_sprite_index] = packed_lerp_values.a[j];
+				sprites.color_ramp_indexes[running_sprite_index] = color_ramp_indexes.a[j];
 				running_sprite_index++;
 			}
 			//}
@@ -18525,9 +18559,9 @@ void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, stretch));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, alignment));
 	}
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, lerp_values));
-	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_soa_t, color));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_soa_t, intensity));
+	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, lerp_values_texture_array));
+	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_soa_t, color_ramp_indexes));
+	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, intensities));
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 

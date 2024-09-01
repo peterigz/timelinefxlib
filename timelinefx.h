@@ -5666,11 +5666,11 @@ struct tfx_sprite_soa_t {                       //3d takes 56 bytes of bandwidth
 	tfx_unique_sprite_id_t *uid;                //Unique particle id of the sprite, only used when recording sprite data
 	tfx_sprite_transform3d_t *transform_3d;     //Transform data for 3d sprites
 	tfx_sprite_transform2d_t *transform_2d;     //Transform data for 2d sprites
-	tfx_rgba8_t *color;                         //The color tint of the sprite and blend factor in alpha channel
-	float *intensity;                           //The multiplier for the sprite color
+	tfxU32 *intensities;                        //The multiplier for the sprite color, there are 2 intensity values, one for each color that can be mixed in the particle
 	float *stretch;                             //Multiplier for how much the particle is stretched in the shader
 	tfxU32 *alignment;                          //The alignment of the particle. 2 16bit floats for 2d and 3 8bit floats for 3d
-	tfxU32 *lerp_values;						//The particle lifetime and color mix balance packed into 16bit snorm floats
+	tfxU32 *lerp_values_texture_array;			//Packed: [lifetime, color_mix_balance, texture_array_index, unused]
+	tfxU32 *color_ramp_indexes;					//The indexes to lookup the color in the color ramp textures.
 };
 
 enum tfxSpriteBufferMode {
@@ -6479,6 +6479,7 @@ tfxAPI_EDITOR tfx_vec2_t UnPack16bit(tfxU32 in);
 tfxINTERNAL tfx_vec2_t UnPack16bitUnsigned(tfxU32 in);
 tfxINTERNAL tfxWideInt PackWide16bitStretch(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxAPI_EDITOR tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y);
+tfxAPI_EDITOR tfxWideInt PackWide16bit2SScaled(tfxWideFloat v_x, tfxWideFloat  v_y, float max_value);
 tfxAPI_EDITOR tfxWideInt PackWide16bitUNorm(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxAPI_EDITOR void UnPackWide16bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y);
 tfxAPI tfxWideInt PackWide8bitXYZ(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
@@ -6722,6 +6723,8 @@ tfxAPI_EDITOR void ClearGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void FreeGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void CopyGraph(tfx_graph_t *graph, tfx_graph_t *to, bool compile = true);
 tfxAPI_EDITOR void CopyGraphColor(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to);
+tfxAPI_EDITOR void CopyGraphColorHint(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to);
+tfxAPI_EDITOR void CopyGraphColors(tfx_graph_t *from_red, tfx_graph_t *from_blue, tfx_graph_t *from_green, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue);
 tfxAPI_EDITOR void CopyGraphColorHint(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to);
 tfxAPI_EDITOR bool SortGraph(tfx_graph_t *graph);
 tfxAPI_EDITOR void FlipGraph(tfx_graph_t *graph);
@@ -7639,16 +7642,6 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 */
 tfxAPI inline tfx_sprite_transform2d_t *GetCapturedSprite2dTransform(tfx_effect_sprites_t *effect_sprites, tfxU32 layer, tfxU32 index) {
 	return &effect_sprites->sprites[(index & 0x40000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
-}
-
-/*
-Get the intensity for a sprite's previous frame so that you can use that to interpolate between that and the current sprite intensity
-* @param pm                A pointer to a tfx_particle_manager_t.
-* @param layer            The index of the sprite layer
-* @param index            The sprite index of the sprite that you want the captured sprite for.
-*/
-tfxAPI inline float *GetCapturedSprite3dIntensity(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return &pm->sprites[(index & 0x40000000) >> 30][layer].intensity[index & 0x0FFFFFFF];
 }
 
 /*
