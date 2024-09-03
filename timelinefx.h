@@ -5224,7 +5224,7 @@ struct tfx_image_data_t {
 	tfxU32 shape_index;
 	//Name of the image
 	tfx_str_t name;
-	//A hash of the image data for a unique and which can also be used to see if an image has already been loaded
+	//A hash of the image data for a unique id and which can also be used to see if an image has already been loaded
 	tfxU64 image_hash;
 	//The size of one frame of the image
 	tfx_vec2_t image_size;
@@ -5666,11 +5666,11 @@ struct tfx_sprite_soa_t {                       //3d takes 56 bytes of bandwidth
 	tfx_unique_sprite_id_t *uid;                //Unique particle id of the sprite, only used when recording sprite data
 	tfx_sprite_transform3d_t *transform_3d;     //Transform data for 3d sprites
 	tfx_sprite_transform2d_t *transform_2d;     //Transform data for 2d sprites
-	tfxU32 *intensities;                        //The multiplier for the sprite color, there are 2 intensity values, one for each color that can be mixed in the particle
+	tfxU32 *intensity_life;                     //The multiplier for the sprite color and the lifetime of the particle (0..1)
 	float *stretch;                             //Multiplier for how much the particle is stretched in the shader
 	tfxU32 *alignment;                          //The alignment of the particle. 2 16bit floats for 2d and 3 8bit floats for 3d
-	tfxU32 *lerp_values_texture_array;			//Packed: [lifetime, color_mix_balance, texture_array_index, unused]
-	tfxU32 *color_ramp_indexes;					//The indexes to lookup the color in the color ramp textures.
+	float *sharpness;							//Alpha sharpness for the texture dissolve/alpha calculations
+	tfxU32 *indexes;							//The indexes to lookup the color in the color ramp textures and the image texture data
 };
 
 enum tfxSpriteBufferMode {
@@ -6193,6 +6193,7 @@ struct tfx_library_t {
 	tfx_storage_map_t<tfx_effect_emitter_t *> effect_paths;
 	tfx_vector_t<tfx_effect_emitter_t> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
+	tfx_gpu_shapes_t gpu_shapes;
 	tfx_vector_t<tfx_effect_emitter_info_t> effect_infos;
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
@@ -6230,6 +6231,7 @@ struct tfx_library_t {
 	bool dirty = false;
 	tfx_str_t library_file_path;
 	tfxU32 uid;
+	void(*uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
 
 	tfx_library_t() :
 		uid(0),
@@ -6888,7 +6890,8 @@ tfxAPI_EDITOR tfx_graph_t *tfxGetGraph(tfx_library_t *library, tfx_graph_id_t gr
 
 tfxAPI_EDITOR int GetEffectLibraryStats(const char *filename, tfx_effect_library_stats_t *stats);
 tfxAPI_EDITOR tfx_effect_library_stats_t CreateLibraryStats(tfx_library_t *lib);
-tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data = nullptr);
+tfxINTERNAL tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data = nullptr);
+tfxAPI_EDITOR void UpdateLibraryGPUImageData(tfx_library_t *library);
 
 //--------------------------------
 //Animation manager internal functions - animation manager is used to playback pre-recorded effects
@@ -7170,7 +7173,7 @@ tfxAPI int ValidateEffectPackage(const char *filename);
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
+tfxAPI tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data);
 
 /**
 * Loads an effect library package from memory into the provided tfx_library_t object.
@@ -7197,7 +7200,7 @@ tfxAPI tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib,
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags LoadEffectLibrary(const void *data, tfxU32 size, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
+tfxAPI tfxErrorFlags LoadEffectLibrary(const void *data, tfxU32 size, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data);
 
 /**
 * Loads a sprite data file into an animation manager
@@ -8243,7 +8246,7 @@ and upload it to the gpu.
 * @param library                A pointer to some image data where the image data is. You can use GetParticleShapes with a tfx_library_t or tfx_animation_manager_t for this
 * @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 */
-tfxAPI tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_vec4_t(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
+tfxAPI tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
 
 /*
 Get a pointer to the GPU shapes which you can use in a memcpy

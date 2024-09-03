@@ -5361,6 +5361,11 @@ void BuildAllLibraryPaths(tfx_library_t *library) {
 	}
 }
 
+void UpdateLibraryGPUImageData(tfx_library_t *library) {
+	library->gpu_shapes.list.free();
+	library->gpu_shapes = BuildGPUShapeData(&library->particle_shapes.data, library->uv_lookup);
+}
+
 void AddLibraryPath(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, tfx_str256_t *path) {
 	if (library->effect_paths.ValidName(path->c_str())) {
 		*path = FindNewPathName(library, *path);
@@ -5549,7 +5554,7 @@ tfx_effect_emitter_t *LibraryMoveDown(tfx_library_t *library, tfx_effect_emitter
 	return nullptr;
 }
 
-tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_vec4_t(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	TFX_ASSERT(particle_shapes->size());        //There are no shapes to copy!
 	tfxU32 index = 0;
 	tfx_gpu_shapes_t shape_data;
@@ -5558,7 +5563,7 @@ tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shap
 			tfx_gpu_image_data_t cs;
 			cs.animation_frames = shape.animation_frames;
 			cs.image_size = shape.image_size;
-			cs.uv = uv_lookup(shape.ptr, &cs, 0);
+			uv_lookup(shape.ptr, &cs, 0);
 			shape_data.list.push_back_copy(cs);
 			shape.compute_shape_index = index++;
 		}
@@ -5568,7 +5573,7 @@ tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shap
 				tfx_gpu_image_data_t cs;
 				cs.animation_frames = shape.animation_frames;
 				cs.image_size = shape.image_size;
-				cs.uv = uv_lookup(shape.ptr, &cs, f);
+				uv_lookup(shape.ptr, &cs, f);
 				shape_data.list.push_back_copy(cs);
 				index++;
 			}
@@ -9975,7 +9980,7 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 	return error;
 }
 
-tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data) {
 
 	TFX_ASSERT(shape_loader);            //Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 	if (!tfxStore->data_types.initialised)
@@ -10250,13 +10255,15 @@ tfxErrorFlags LoadEffectLibraryPackage(tfx_package_t *package, tfx_library_t *li
 		UpdateLibraryComputeNodes(lib);
 		BuildAllLibraryPaths(lib);
 		SetLibraryMinMaxData(lib);
+		lib->uv_lookup = uv_lookup;
+		UpdateLibraryGPUImageData(lib);
 	}
 	lib->uid = uid;
 
 	return error;
 }
 
-tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data) {
 
 	tfxErrorFlags error = 0;
 
@@ -10266,13 +10273,13 @@ tfxErrorFlags LoadEffectLibrary(const char *filename, tfx_library_t *lib, void(*
 		FreePackage(&package);
 		return error;
 	}
-	error = LoadEffectLibraryPackage(&package, lib, shape_loader, user_data);
+	error = LoadEffectLibraryPackage(&package, lib, shape_loader, uv_lookup, user_data);
 
 	FreePackage(&package);
 	return error;
 }
 
-tfxErrorFlags LoadEffectLibrary(const void *data, tfxU32 size, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+tfxErrorFlags LoadEffectLibrary(const void *data, tfxU32 size, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data) {
 	tfxErrorFlags error = 0;
 
 	tfx_stream_t data_stream;
@@ -10283,7 +10290,7 @@ tfxErrorFlags LoadEffectLibrary(const void *data, tfxU32 size, tfx_library_t *li
 		FreePackage(&package);
 		return error;
 	}
-	error = LoadEffectLibraryPackage(&package, lib, shape_loader, user_data);
+	error = LoadEffectLibraryPackage(&package, lib, shape_loader, uv_lookup, user_data);
 
 	FreePackage(&package);
 	return error;
@@ -10582,7 +10589,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].uid, sizeof(tfx_unique_sprite_id_t) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				//memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].color, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].property_indexes, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensities, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
+				memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensity_life, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].stretch, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
 				int index_offset = frame_meta[frame].index_offset[layer];
@@ -14110,17 +14117,6 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	tfxWideArrayi ramp_index;
 	tfxWideFloat color_ramp_size = tfxWideSetSingle(tfxCOLOR_RAMP_WIDTH);
 	tfxWideInt color_ramp_sizei = tfxWideSetSinglei(tfxCOLOR_RAMP_WIDTH - 1);
-	tfxWideArrayi color_ramp_indexes;
-	color_ramp_indexes.m = tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 24);
-	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 16));
-	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[1]) << 8));
-	color_ramp_indexes.m = tfxWideOri(color_ramp_indexes.m, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[1])));
-	//tfxWideInt texture_layer = {tfxWideShiftLeft(tfxWideSetSinglei(work_entry->properties->image->image_index), 8)};
-
-	int test_index1 = tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[0]);
-	int test_layer1 = tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]);
-	int test_index2 = tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[1]);
-	int test_layer2 = tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[1]);
 
 	bool sample_based_on_path_position = emitter.property_flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling && work_entry->properties->emission_type == tfxPath;
 
@@ -14130,8 +14126,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	}
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 	bool is_mixed_color = emitter.property_flags & tfxEmitterPropertyFlags_use_color_hint;
-	tfxWideInt lookup_color_mix;
-	tfxWideFloat hint_intensity;
+	tfxWideArray sharpness;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -14150,25 +14145,19 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 		}
 		ramp_index.m = tfxWideMini(tfxWideConverti(tfxWideMul(life, color_ramp_size)), color_ramp_sizei);
 		tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
-		lookup_color_mix = is_mixed_color ? tfxWideConverti(tfxWideMul(tfxWideLookupSet(work_entry->graphs->color_mix_balance.lookup.values, ramp_index), tfxWIDE255)) : tfxWideSetZeroi;
-		hint_intensity = is_mixed_color ? tfxWideLookupSet(work_entry->graphs->hint_intensity.lookup.values, ramp_index) : tfxWideSetZero;
+		sharpness.m = tfxWideLookupSet(work_entry->graphs->color_mix_balance.lookup.values, ramp_index);
 
 		//----Color changes
 		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
 
-		tfxWideArrayi packed_lerp_values = { tfxWideShiftLeft(ramp_index.m, 24) };
-		packed_lerp_values.m = tfxWideOri(packed_lerp_values.m, tfxWideShiftLeft(lookup_color_mix, 16));
-		//packed_lerp_values.m = tfxWideOri(packed_lerp_values.m, texture_layer);
-
-		tfxWideArrayi packed_intensities = { PackWide16bit2SScaled(lookup_intensity, hint_intensity, 128.f) };
+		tfxWideArrayi packed_intensity_life = { PackWide16bit2SScaled(lookup_intensity, life, 128.f) };
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (is_ordered) {    //Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
-				sprites.intensities[sprite_depth_index] = packed_intensities.a[j];
-				sprites.lerp_values_texture_array[sprite_depth_index] = packed_lerp_values.a[j];
-				sprites.color_ramp_indexes[sprite_depth_index] = color_ramp_indexes.a[j];
+				sprites.intensity_life[sprite_depth_index] = packed_intensity_life.a[j];
+				sprites.sharpness[sprite_depth_index] = sharpness.a[j];
 				running_sprite_index++;
 			}
 		}
@@ -14184,9 +14173,8 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 			} else {
 			*/
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-				sprites.intensities[running_sprite_index] = packed_intensities.a[j];
-				sprites.lerp_values_texture_array[running_sprite_index] = packed_lerp_values.a[j];
-				sprites.color_ramp_indexes[running_sprite_index] = color_ramp_indexes.a[j];
+				sprites.intensity_life[running_sprite_index] = packed_intensity_life.a[j];
+				sprites.sharpness[running_sprite_index] = sharpness.a[j];
 				running_sprite_index++;
 			}
 			//}
@@ -14215,7 +14203,11 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 	tfxEmitterStateFlags property_flags = emitter.property_flags;
 	const tfxWideInt xor_capture_after_transform_flag = tfxWideXOri(tfxWideSetSinglei(tfxParticleFlags_capture_after_transform), tfxWideSetSinglei(-1));
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
-	tfxWideInt texture_layer = {tfxWideShiftLeft(tfxWideSetSinglei(work_entry->properties->image->image_index), 8)};
+
+	tfxWideInt color_ramp_indexes;
+	color_ramp_indexes = tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 24);
+	color_ramp_indexes = tfxWideOri(color_ramp_indexes, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 16));
+	tfxWideInt image_start_index = tfxWideSetSinglei(image->compute_shape_index);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
@@ -14254,6 +14246,8 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 			image_frame.m = tfxWideMod(image_frame.m, frames);
 		}
 
+		tfxWideArrayi image_indexes = { tfxWideOri(color_ramp_indexes, tfxWideAddi(tfxWideConverti(image_frame.m), image_start_index)) };
+
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (is_ordered) {                //Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
@@ -14264,7 +14258,8 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 				sprites.captured_index[sprite_depth_index] = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[sprite_depth_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + sprite_depth_index;
-				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + emitter.properties_index | capture;
+				sprites.property_indexes[sprite_depth_index] = (billboard_option << 24) + emitter.properties_index | capture;
+				sprites.indexes[sprite_depth_index] = image_indexes.a[j];
 				bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
 				running_sprite_index++;
 			}
@@ -14277,7 +14272,8 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 				sprites.captured_index[running_sprite_index] = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 				sprites.captured_index[running_sprite_index] |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 				sprites_index = (work_entry->layer << 28) + running_sprite_index;
-				sprites.property_indexes[running_sprite_index] = (billboard_option << 24) + ((tfxU32)image_frame.a[j] << 16) + emitter.properties_index | capture;
+				sprites.property_indexes[running_sprite_index] = (billboard_option << 24) + emitter.properties_index | capture;
+				sprites.indexes[running_sprite_index] = image_indexes.a[j];
 				bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
 				running_sprite_index++;
 			}
@@ -18560,9 +18556,9 @@ void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, stretch));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, alignment));
 	}
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, lerp_values_texture_array));
-	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_soa_t, color_ramp_indexes));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, intensities));
+	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, sharpness));
+	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_soa_t, indexes));
+	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, intensity_life));
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
