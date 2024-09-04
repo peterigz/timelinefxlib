@@ -5669,7 +5669,7 @@ struct tfx_sprite_soa_t {                       //3d takes 56 bytes of bandwidth
 	tfxU32 *intensity_life;                     //The multiplier for the sprite color and the lifetime of the particle (0..1)
 	float *stretch;                             //Multiplier for how much the particle is stretched in the shader
 	tfxU32 *alignment;                          //The alignment of the particle. 2 16bit floats for 2d and 3 8bit floats for 3d
-	float *sharpness;							//Alpha sharpness for the texture dissolve/alpha calculations
+	tfxU32 *curved_alpha;						//Alpha sharpness for the texture dissolve/alpha calculations
 	tfxU32 *indexes;							//The indexes to lookup the color in the color ramp textures and the image texture data
 };
 

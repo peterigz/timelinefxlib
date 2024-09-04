@@ -14126,7 +14126,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 	}
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 	bool is_mixed_color = emitter.property_flags & tfxEmitterPropertyFlags_use_color_hint;
-	tfxWideArray sharpness;
+	tfxWideArrayi curved_alpha;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -14145,19 +14145,21 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 		}
 		ramp_index.m = tfxWideMini(tfxWideConverti(tfxWideMul(life, color_ramp_size)), color_ramp_sizei);
 		tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
-		sharpness.m = tfxWideLookupSet(work_entry->graphs->color_mix_balance.lookup.values, ramp_index);
+		tfxWideFloat dissolve_lerp = tfxWideLookupSet(work_entry->graphs->color_mix_balance.lookup.values, ramp_index);
+		tfxWideFloat sharpness = tfxWideLookupSet(work_entry->graphs->hint_intensity.lookup.values, ramp_index);
 
 		//----Color changes
 		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
 
 		tfxWideArrayi packed_intensity_life = { PackWide16bit2SScaled(lookup_intensity, life, 128.f) };
+		curved_alpha = { PackWide16bit(dissolve_lerp, sharpness) };
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (is_ordered) {    //Predictable
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				tfxU32 sprite_depth_index = bank.depth_index[index + j];
 				sprites.intensity_life[sprite_depth_index] = packed_intensity_life.a[j];
-				sprites.sharpness[sprite_depth_index] = sharpness.a[j];
+				sprites.curved_alpha[sprite_depth_index] = curved_alpha.a[j];
 				running_sprite_index++;
 			}
 		}
@@ -14174,7 +14176,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 			*/
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				sprites.intensity_life[running_sprite_index] = packed_intensity_life.a[j];
-				sprites.sharpness[running_sprite_index] = sharpness.a[j];
+				sprites.curved_alpha[running_sprite_index] = curved_alpha.a[j];
 				running_sprite_index++;
 			}
 			//}
@@ -18556,7 +18558,7 @@ void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, stretch));
 		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, alignment));
 	}
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, sharpness));
+	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, curved_alpha));
 	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_soa_t, indexes));
 	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, intensity_life));
 	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
