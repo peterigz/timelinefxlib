@@ -2192,8 +2192,8 @@ enum tfx_graph_type : unsigned char {
 	tfxOvertime_direction_turbulance,
 	tfxOvertime_velocity_adjuster,
 	tfxOvertime_intensity,
-	tfxOvertime_hint_intensity,
-	tfxOvertime_color_mix_balance,
+	tfxOvertime_alpha_sharpness,
+	tfxOvertime_curved_alpha,
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
@@ -5063,8 +5063,8 @@ struct tfx_overtime_attributes_t {
 	tfx_graph_t direction_turbulance;
 	tfx_graph_t velocity_adjuster;
 	tfx_graph_t intensity;
-	tfx_graph_t hint_intensity;
-	tfx_graph_t color_mix_balance;
+	tfx_graph_t alpha_sharpness;
+	tfx_graph_t curved_alpha;
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
