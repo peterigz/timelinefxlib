@@ -6449,15 +6449,17 @@ void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraph(&g.weight);
 }
 
-void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index) {
+void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index, bool including_color_graphs) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
-	g.color_ramps[0] = CompileColorRamp(&g);
-	g.color_ramps[1] = CompileColorRampHint(&g);
-	EditColorRampBitmap(library, &g, 0);
-	EditColorRampBitmap(library, &g, 1);
-	CompileGraphOvertime(&g.intensity);
-	CompileGraphOvertime(&g.alpha_sharpness);
-	CompileGraphOvertime(&g.curved_alpha);
+	if (including_color_graphs) {
+		g.color_ramps[0] = CompileColorRamp(&g);
+		g.color_ramps[1] = CompileColorRampHint(&g);
+		EditColorRampBitmap(library, &g, 0);
+		EditColorRampBitmap(library, &g, 1);
+		CompileGraphOvertime(&g.intensity);
+		CompileGraphOvertime(&g.alpha_sharpness);
+		CompileGraphOvertime(&g.curved_alpha);
+	}
 	CompileGraphOvertime(&g.velocity_turbulance);
 	CompileGraphOvertime(&g.width);
 	CompileGraphOvertime(&g.height);

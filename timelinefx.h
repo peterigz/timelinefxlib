@@ -7028,7 +7028,7 @@ tfxAPI_EDITOR void CompileLibraryEmitterGraphs(tfx_library_t *library, tfxU32 in
 tfxAPI_EDITOR void CompileLibraryPropertyGraph(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryBaseGraph(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index);
-tfxAPI_EDITOR void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index);
+tfxAPI_EDITOR void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index, bool including_color_graphs = true);
 tfxAPI_EDITOR void CompileLibraryFactorGraph(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryColorGraphs(tfx_library_t *library, tfxU32 index);
 tfxAPI_EDITOR void CompileLibraryGraphsOfEffect(tfx_library_t *library, tfx_effect_emitter_t *effect, tfxU32 depth = 0);
