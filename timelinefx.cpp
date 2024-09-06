@@ -8499,7 +8499,7 @@ void ResetGraph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_n
 		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 255.f };
 		break;
 	case tfx_graph_preset::tfxIntensityOvertimePreset:
-		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 5.f };
+		graph->min = { 0.f, 0.f }; graph->max = { 1.f, 10.f };
 		break;
 	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
 		graph->min = { 0.f, -4320.f }; graph->max = { 1.f, 4320.f };
@@ -8591,7 +8591,7 @@ tfx_vec4_t GetMinMaxGraphValues(tfx_graph_preset preset) {
 		mm = { 0.f, 0.f, 1.f, 255.f };
 		break;
 	case tfx_graph_preset::tfxIntensityOvertimePreset:
-		mm = { 0.f, 0.f, 1.f, 5.f };
+		mm = { 0.f, 0.f, 1.f, 10.f };
 		break;
 	default:
 		mm = { 0.f, 0.f, tfxMAX_FRAME, 20.f };
