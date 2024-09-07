@@ -3881,7 +3881,7 @@ void CloneEffect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter_t *cl
 			CompileLibraryPropertyGraph(clone->library, clone->emitter_attributes);
 			CompileLibraryBaseGraph(clone->library, clone->emitter_attributes);
 			CompileLibraryVariationGraph(clone->library, clone->emitter_attributes);
-			CompileLibraryOvertimeGraph(clone->library, clone->emitter_attributes);
+			CompileLibraryOvertimeGraph(clone->library, clone->emitter_attributes, false);
 			CompileLibraryFactorGraph(clone->library, clone->emitter_attributes);
 		}
 		if (clone->path_attributes != tfxINVALID) {
@@ -5139,6 +5139,8 @@ void CopyOvertimeAttributesNoLookups(tfx_overtime_attributes_t *src, tfx_overtim
 	CopyGraphNoLookups(&src->direction, &dst->direction);
 	CopyGraphNoLookups(&src->noise_resolution, &dst->noise_resolution);
 	CopyGraphNoLookups(&src->motion_randomness, &dst->motion_randomness);
+	dst->color_ramps[0] = src->color_ramps[0];
+	dst->color_ramps[1] = src->color_ramps[1];
 	dst->color_ramp_bitmap_indexes[0] = src->color_ramp_bitmap_indexes[0];
 	dst->color_ramp_bitmap_indexes[1] = src->color_ramp_bitmap_indexes[1];
 	tfxUnFlagColorRampIDAsEdited(dst->color_ramp_bitmap_indexes[0]);
@@ -6449,17 +6451,17 @@ void CompileLibraryVariationGraph(tfx_library_t *library, tfxU32 index) {
 	CompileGraph(&g.weight);
 }
 
-void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index, bool including_color_graphs) {
+void CompileLibraryOvertimeGraph(tfx_library_t *library, tfxU32 index, bool including_color_ramps) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
-	if (including_color_graphs) {
+	if (including_color_ramps) {
 		g.color_ramps[0] = CompileColorRamp(&g);
 		g.color_ramps[1] = CompileColorRampHint(&g);
 		EditColorRampBitmap(library, &g, 0);
 		EditColorRampBitmap(library, &g, 1);
-		CompileGraphOvertime(&g.intensity);
-		CompileGraphOvertime(&g.alpha_sharpness);
-		CompileGraphOvertime(&g.curved_alpha);
 	}
+	CompileGraphOvertime(&g.intensity);
+	CompileGraphOvertime(&g.alpha_sharpness);
+	CompileGraphOvertime(&g.curved_alpha);
 	CompileGraphOvertime(&g.velocity_turbulance);
 	CompileGraphOvertime(&g.width);
 	CompileGraphOvertime(&g.height);
