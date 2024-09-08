@@ -5560,7 +5560,7 @@ tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shap
 	TFX_ASSERT(particle_shapes->size());        //There are no shapes to copy!
 	tfxU32 index = 0;
 	tfx_gpu_shapes_t shape_data;
-	for (auto &shape : *particle_shapes) {
+	for (tfx_image_data_t &shape : *particle_shapes) {
 		if (shape.animation_frames == 1) {
 			tfx_gpu_image_data_t cs;
 			cs.animation_frames = shape.animation_frames;
