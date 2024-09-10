@@ -3100,6 +3100,49 @@ struct tfx_vector_t {
 
 };
 
+#define tfxCastBuffer(type, buffer) static_cast<type*>(buffer->data)
+#define tfxCastBufferRef(type, buffer) static_cast<type*>(buffer.data)
+
+struct tfx_buffer_t {
+	tfxU32 current_size;
+	tfxU32 capacity;
+	tfxU32 struct_size;
+	tfxU32 alignment;
+	void *data;
+
+	inline				tfx_buffer_t() {  struct_size = current_size = capacity = alignment = 0; data = nullptr; }
+	inline void         free() { if (data) { current_size = capacity = alignment = 0; tfxFREE(data); data = nullptr; } }
+	inline void         clear() { if (data) { current_size = 0; } }
+	inline void			reserve(tfxU32 new_capacity) {
+		TFX_ASSERT(struct_size);	//Must assign a value to struct size
+		if (new_capacity <= capacity) return;
+		void *new_data;
+		if (alignment != 0) {
+			new_data = tfxALLOCATE_ALIGNED((size_t)new_capacity * struct_size, alignment);
+		}
+		else {
+			new_data = tfxALLOCATE((size_t)new_capacity * struct_size);
+		}
+		TFX_ASSERT(new_data);    //Unable to allocate memory. todo: better handling
+		if (data) {
+			memcpy(new_data, data, (size_t)current_size * struct_size);
+			tfxFREE(data);
+		}
+		data = new_data;
+		capacity = new_capacity;
+	}
+	inline tfxU32       _grow_capacity(tfxU32 size) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > size ? new_capacity : size; }
+	inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
+	inline void         resize_bytes(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
+	inline tfxU32		size_in_bytes() { return current_size * struct_size; }
+	inline const tfxU32	size_in_bytes() const { return current_size * struct_size; }
+};
+inline tfx_buffer_t tfxCreateBuffer(tfxU32 struct_size) {
+	tfx_buffer_t buffer;
+	buffer.struct_size = struct_size;
+	return buffer;
+}
+
 //Simple storage map for storing things by key/pair. The data will be in order that you add items, but the map will be in key order so just do a foreach on the data
 //and use At() to retrieve data items by name use [] overload to fetch by index if you have that.
 //Should not be used to constantly insert/remove things every frame, it's designed for setting up lists and fetching values in loops (by index preferably), and modifying based on user interaction or setting up new situation.
@@ -5405,7 +5448,7 @@ struct tfx_emitter_state_t {
 
 	float loop_length;
 	tfx_quaternion_t rotation;
-	tfx_vec2_t image_handle;
+	tfxU64 image_handle_packed;
 	tfx_bounding_box_t bounding_box;
 
 	tfxU32 emitter_attributes;
@@ -5634,26 +5677,50 @@ struct tfx_spawn_points_soa_t {
 };
 
 struct tfx_sprite_transform2d_t {
-	tfx_vec2_t position;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
-	tfx_vec2_t scale;                        //Scale
+	tfx_vec2_t position;							//The position of the sprite, x, y - world, z, w = captured for interpolating
+	tfx_vec2_t scale;								//Scale
 	float rotation;
 };
 
 struct tfx_sprite_transform3d_t {
-	tfx_vec3_t position;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
-	tfx_vec3_t rotations;                    //Rotations of the sprite
-	tfx_vec2_t scale;                        //Scale
+	tfx_vec3_t position;							//The position of the sprite, x, y - world, z, w = captured for interpolating
+	tfx_vec3_t rotations;							//Rotations of the sprite
+	tfx_vec2_t scale;								//Scale
 };
 
 //When exporting effects as sprite data each frame gets frame meta containing information about the frame such as bounding box and sprite count/offset into the buffer
 struct tfx_frame_meta_t {
-	tfxU32 index_offset[tfxLAYERS];        //All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
-	tfxU32 sprite_count[tfxLAYERS];        //The number of sprites in the frame for each layer
-	tfxU32 total_sprites;                //The total number of sprites for all layers in the frame
-	tfx_vec3_t min_corner;                //Bounding box min corner
-	tfx_vec3_t max_corner;                //Bounding box max corner. The bounding box can be used to decide if this frame needs to be drawn
-	tfx_vec3_t bb_center_point;            //The center point of the bounding box. For the fastest checking against a viewing frustum, you can combine this with radius
-	float radius;                        //The radius of the bounding box
+	tfxU32 index_offset[tfxLAYERS];					//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
+	tfxU32 sprite_count[tfxLAYERS];					//The number of sprites in the frame for each layer
+	tfxU32 total_sprites;							//The total number of sprites for all layers in the frame
+	tfx_vec3_t min_corner;							//Bounding box min corner
+	tfx_vec3_t max_corner;							//Bounding box max corner. The bounding box can be used to decide if this frame needs to be drawn
+	tfx_vec3_t bb_center_point;						//The center point of the bounding box. For the fastest checking against a viewing frustum, you can combine this with radius
+	float radius;									//The radius of the bounding box
+};
+
+//This is the exact struct to upload to the GPU for 2d sprites, so timelinefx will prepare buffers so that they're ready to just
+//upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the sprites
+//in a different way if you don't have this option for some reason, but the former way is by far the most efficient.
+struct tfx_sprite_instance_t {						//44 bytes
+	tfx_vec4_t position_stretch_rotation;           //The position of the sprite, rotation in w, stretch in z
+	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
+	tfxU32 intensity_life;							//Multiplier for the color and life of particle
+	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image
+	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
+	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
+};
+
+struct tfx_billboard_instance_t {					//56 bytes
+	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
+	tfx_vec3_t rotations;				            //Rotations of the sprite
+	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
+	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfxU32 intensity_life;							//Multiplier for the color and life of particle
+	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image
+	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
+	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 };
 
 //This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
@@ -5818,18 +5885,6 @@ struct tfx_gpu_shapes_t {
 	tfx_vector_t<tfx_gpu_image_data_t> list;
 };
 
-//Struct to contain a static state of a particle in a frame of animation. Used in the editor for recording frames of animation so probably not needed here really!
-struct tfx_particle_frame_t {
-	tfxU32 property_indexes;    //The image frame of animation index packed with alignment option flag and property_index
-	tfxU32 captured_index;
-	tfx_sprite_transform3d_t transform;
-	tfx_rgba8_t color;                //The color tint of the sprite and blend factor in a
-	float intensity;
-	float depth;
-	tfxU32 alignment;
-	float stretch;
-};
-
 struct tfx_spawn_work_entry_t {
 	tfx_random_t random;
 	tfx_particle_manager_t *pm;
@@ -5871,6 +5926,7 @@ struct tfx_control_work_entry_t {
 	tfxU32 layer;
 	tfx_emitter_properties_t *properties;
 	tfx_sprite_soa_t *sprites;
+	tfx_buffer_t *sprite_instances;
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
 	tfx_emitter_path_t *path;
 	bool sample_path_life;
@@ -6013,6 +6069,7 @@ struct tfx_effect_sprites_t {
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
+	tfx_buffer_t instance_buffer[2][tfxLAYERS];
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 depth_starting_index[tfxLAYERS];
@@ -6091,6 +6148,7 @@ struct tfx_particle_manager_t {
 	//Banks of sprites. All emitters write their sprite data to these banks. 
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
+	tfx_buffer_t instance_buffer[2][tfxLAYERS];
 	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 current_sprite_buffer;
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
@@ -6398,7 +6456,6 @@ tfxAPI_EDITOR tfx_rgba8_t ConvertFloatColor(float color_array[4]);
 tfxINTERNAL int SortIcospherePoints(void const *left, void const *right);
 tfxINTERNAL int SortDepth(void const *left, void const *right);
 tfxINTERNAL void InsertionSortDepth(tfx_work_queue_t *queue, void *work_entry);
-tfxAPI_EDITOR void InsertionSortParticleFrame(tfx_vector_t<tfx_particle_frame_t> *particles);
 tfxINTERNAL tfx128 Dot128XYZ(const tfx128 *x1, const tfx128 *y1, const tfx128 *z1, const tfx128 *x2, const tfx128 *y2, const tfx128 *z);
 tfxINTERNAL tfx128 Dot128XY(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2);
 tfxAPI_EDITOR tfx_hsv_t RGBtoHSV(tfx_rgb_t in);
@@ -6591,6 +6648,58 @@ tfxINTERNAL inline tfxU32 SeedGen(tfxU32 h)
 //--------------------------------
 //Particle manager internal functions
 //--------------------------------
+template<typename T>
+inline void WriteParticleColorSpriteData(T *sprites, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index) {
+	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+		sprites[running_sprite_index].intensity_life = packed_intensity_life.a[j];
+		sprites[running_sprite_index].curved_alpha = curved_alpha.a[j];
+		running_sprite_index++;
+	}
+}
+
+template<typename T>
+inline void WriteParticleColorSpriteDataOrdered(T *sprites, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index) {
+	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+		tfxU32 sprite_depth_index = depth_index[index + j];
+		sprites[sprite_depth_index].intensity_life = packed_intensity_life.a[j];
+		sprites[sprite_depth_index].curved_alpha = curved_alpha.a[j];
+		running_sprite_index++;
+	}
+}
+
+template<typename T>
+inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags property_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
+	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+		int index_j = index + j;
+		tfxU32 &sprites_index = bank.sprite_index[index_j];
+		tfxU32 capture = flags.a[j];
+		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+		sprites[running_sprite_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
+		sprites_index = layer + running_sprite_index;
+		sprites[running_sprite_index].indexes = image_indexes.a[j];
+		sprites[running_sprite_index].indexes |= (billboard_option << 13) | capture;
+		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
+		running_sprite_index++;
+	}
+}
+
+template<typename T>
+inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags property_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
+	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
+		int index_j = index + j;
+		tfxU32 sprite_depth_index = bank.depth_index[index_j];
+		tfxU32 &sprites_index = bank.sprite_index[index_j];
+		tfxU32 capture = flags.a[j];
+		sprites[sprite_depth_index].captured_index = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+		sprites[sprite_depth_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
+		sprites_index = layer + sprite_depth_index;
+		sprites[sprite_depth_index].indexes = image_indexes.a[j];
+		sprites[sprite_depth_index].indexes |= (billboard_option << 13) | capture;
+		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
+		running_sprite_index++;
+	}
+}
+
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxINTERNAL void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, tfxWideFloat cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);
