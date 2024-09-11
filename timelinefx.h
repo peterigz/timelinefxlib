@@ -7742,8 +7742,8 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 * @param layer            The index of the sprite layer
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline tfx_sprite_transform2d_t *GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return &pm->sprites[(index & 0x40000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
+tfxAPI inline tfx_vec2_t GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
+	return static_cast<tfx_sprite_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30][layer].data)[index & 0x0FFFFFFF].position_stretch_rotation.xy();
 }
 
 /*
