@@ -15278,7 +15278,6 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
 		emitter.sprites_count += max_spawn_count;
 		emitter.sprites_index = sprite_index_point;
-		tfxPrint("Sprint index point: %i", sprite_index_point);
 		sprite_index_point += emitter.sprites_count;
 
 		if (emitter.state_flags & tfxEmitterStateFlags_is_sub_emitter) {
