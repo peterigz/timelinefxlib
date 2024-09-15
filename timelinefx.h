@@ -1223,6 +1223,7 @@ for(tfxEachLayer)
 You can then use layer inside the loop to get the current layer
 */
 #define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
+#define tfxForEachLayer for (int layer = 0; layer != tfxLAYERS; ++layer)
 
 //Internal use macro
 
@@ -5710,6 +5711,7 @@ struct tfx_sprite_instance_t {						//44 bytes
 	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
+	tfxU32 padding;
 };
 
 struct tfx_billboard_instance_t {					//56 bytes
@@ -6071,7 +6073,6 @@ struct tfx_effect_sprites_t {
 	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
 	tfx_buffer_t instance_buffer[2][tfxLAYERS];
 	tfxU32 sprite_index_point[tfxLAYERS];
-	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 depth_starting_index[tfxLAYERS];
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
 };
@@ -6149,7 +6150,6 @@ struct tfx_particle_manager_t {
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfx_buffer_t instance_buffer[2][tfxLAYERS];
-	tfxU32 active_particles_count[tfxLAYERS];
 	tfxU32 current_sprite_buffer;
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
 
@@ -6176,6 +6176,7 @@ struct tfx_particle_manager_t {
 	tfxU32 emitter_start_size[tfxMAXDEPTH];
 
 	tfxU32 sprite_index_point[tfxLAYERS];
+	tfxU32 cumulative_index_point[tfxLAYERS];
 
 	int mt_batch_size;
 	std::mutex particle_index_mutex;
@@ -6673,9 +6674,10 @@ inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm,
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
+		tfxU32 actual_layer = layer >> 28;
 		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[running_sprite_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
-		sprites_index = layer + running_sprite_index;
+		sprites_index = layer + running_sprite_index + pm.cumulative_index_point[layer >> 28];
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
 		sprites[running_sprite_index].indexes |= (billboard_option << 13) | capture;
 		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
@@ -6692,7 +6694,7 @@ inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager
 		tfxU32 capture = flags.a[j];
 		sprites[sprite_depth_index].captured_index = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[sprite_depth_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
-		sprites_index = layer + sprite_depth_index;
+		sprites_index = layer + sprite_depth_index + pm.cumulative_index_point[layer >> 28];
 		sprites[sprite_depth_index].indexes = image_indexes.a[j];
 		sprites[sprite_depth_index].indexes |= (billboard_option << 13) | capture;
 		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;

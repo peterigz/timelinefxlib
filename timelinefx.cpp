@@ -11763,9 +11763,9 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->current_sprite_buffer = pm->flags & tfxParticleManagerFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0;
 
 	memset(pm->sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(pm->cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 
 	for (tfxEachLayer) {
-		pm->active_particles_count[layer] = pm->sprite_buffer[pm->flags & tfxParticleManagerFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0][layer].current_size;
 		ClearSoABuffer(&pm->sprite_buffer[pm->current_sprite_buffer][layer]);
 		pm->instance_buffer[pm->current_sprite_buffer][layer].clear();
 	}
@@ -11791,7 +11791,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				tfx_effect_sprites_t &effect_sprites = pm->effect_sprite_buffers[pm->effects[current_index.index].sprite_buffer_index];
 				memset(effect_sprites.sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 				for (tfxEachLayer) {
-					effect_sprites.active_particles_count[layer] = effect_sprites.sprite_buffer[pm->flags & tfxParticleManagerFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0][layer].current_size;
 					ClearSoABuffer(&effect_sprites.sprite_buffer[pm->current_sprite_buffer][layer]);
 					effect_sprites.instance_buffer[pm->current_sprite_buffer][layer].clear();
 				}
@@ -11870,6 +11869,10 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 		pm->effects[pm->emitters[index].parent_index].highest_particle_age = pm->emitters[index].highest_particle_age + pm->frame_length;
 	}
 	pm->spawn_work.clear();
+
+	pm->cumulative_index_point[1] = pm->instance_buffer[pm->current_sprite_buffer][0].current_size;
+	pm->cumulative_index_point[2] = pm->cumulative_index_point[1] + pm->instance_buffer[pm->current_sprite_buffer][1].current_size;
+	pm->cumulative_index_point[3] = pm->cumulative_index_point[2] + pm->instance_buffer[pm->current_sprite_buffer][2].current_size;
 
 	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && !(pm->flags & tfxParticleManagerFlags_unordered)) {
 		for (tfxEachLayer) {
@@ -14514,7 +14517,6 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, 
 	pm->spawn_work.clear();
 	pm->control_work.clear();
 	pm->age_work.clear();
-	memset(pm->active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
 	for (int i = 0; i != pm->path_quaternions.current_size; ++i) {
 		if (pm->path_quaternions[i]) {
 			tfxFREE(pm->path_quaternions[i]);
@@ -14828,13 +14830,11 @@ tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey effect_hash, bool is_3
 				}
 			}
 			memset(pm->effect_sprite_buffers[free_banks.back()].sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
-			memset(pm->effect_sprite_buffers[free_banks.back()].active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
 			return free_banks.pop_back();
 		}
 	}
 	tfx_effect_sprites_t new_effect_sprites;
 	memset(new_effect_sprites.sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
-	memset(new_effect_sprites.active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(new_effect_sprites.depth_starting_index, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(new_effect_sprites.current_depth_buffer_index, 0, sizeof(tfxU32) * tfxLAYERS);
 	tfxU32 index = pm->effect_sprite_buffers.locked_push_back(new_effect_sprites);
@@ -15175,7 +15175,6 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_soa_buffer_t &sprite_buffer = effect_sprites ? effect_sprites->sprite_buffer[pm->current_sprite_buffer][layer] : pm->sprite_buffer[pm->current_sprite_buffer][layer];
 	tfx_buffer_t &instance_buffer = effect_sprites ? effect_sprites->instance_buffer[pm->current_sprite_buffer][layer] : pm->instance_buffer[pm->current_sprite_buffer][layer];
 	tfxU32 &sprite_index_point = effect_sprites ? effect_sprites->sprite_index_point[layer] : pm->sprite_index_point[layer];
-	tfxU32 &active_particles_count = effect_sprites ? effect_sprites->active_particles_count[layer] : pm->active_particles_count[layer];
 	tfx_vector_t<tfx_depth_index_t> &depth_indexes = effect_sprites ? effect_sprites->depth_indexes[layer][effect_sprites->current_depth_buffer_index[layer]] : pm->depth_indexes[layer][pm->current_depth_buffer_index[layer]];
 
 	if (ordered_effect) {
@@ -15203,8 +15202,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			}
 		}
 		else {
-			free_space = sprite_buffer.capacity - active_particles_count;
-			if (emitter.sprites_count + max_spawn_count > free_space) {
+			if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
 				if (free_space > emitter.sprites_count) {
 					max_spawn_count = free_space - emitter.sprites_count;
 				}
@@ -15234,8 +15232,6 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			}
 		}
 
-		active_particles_count += amount_spawned;
-
 		TFX_ASSERT(amount_spawned <= max_spawn_count);
 		sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
 		instance_buffer.current_size -= (max_spawn_count - amount_spawned);
@@ -15262,8 +15258,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			}
 		}
 		else {
-			free_space = sprite_buffer.capacity - active_particles_count;
-			if (emitter.sprites_count + max_spawn_count > free_space) {
+			if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
 				if (free_space > emitter.sprites_count) {
 					max_spawn_count = free_space - emitter.sprites_count;
 				}
@@ -15291,11 +15286,11 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			}
 		}
 
-		active_particles_count += amount_spawned;
-
-		sprite_buffer.current_size -= (max_spawn_count - amount_spawned);
-		instance_buffer.current_size -= (max_spawn_count - amount_spawned);
-		sprite_index_point -= (max_spawn_count - amount_spawned);
+		TFX_ASSERT(amount_spawned <= max_spawn_count);
+		tfxU32 spawn_difference = max_spawn_count - amount_spawned;
+		sprite_buffer.current_size -= spawn_difference;
+		instance_buffer.current_size -= spawn_difference;
+		sprite_index_point -= spawn_difference;
 	}
 
 	emitter.age += pm->frame_length;
@@ -18836,7 +18831,6 @@ void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *librar
 	pm->spawn_work.reserve(effects_limit);
 	pm->control_work.reserve(effects_limit);
 	pm->age_work.reserve(effects_limit);
-	memset(pm->active_particles_count, 0, sizeof(tfxU32) * tfxLAYERS);
 	for (tfxEachLayer) {
 		pm->current_depth_buffer_index[layer] = 0;
 	}
