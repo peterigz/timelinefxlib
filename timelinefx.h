@@ -6071,7 +6071,7 @@ struct tfx_effect_sprites_t {
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
-	tfx_buffer_t instance_buffer[2][tfxLAYERS];
+	tfx_buffer_t instance_buffer[2];
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 depth_starting_index[tfxLAYERS];
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
@@ -6149,7 +6149,7 @@ struct tfx_particle_manager_t {
 	//Banks of sprites. All emitters write their sprite data to these banks. 
 	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
-	tfx_buffer_t instance_buffer[2][tfxLAYERS];
+	tfx_buffer_t instance_buffer[2];
 	tfxU32 current_sprite_buffer;
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
 
@@ -6659,9 +6659,9 @@ inline void WriteParticleColorSpriteData(T *sprites, tfxU32 start_diff, tfxU32 l
 }
 
 template<typename T>
-inline void WriteParticleColorSpriteDataOrdered(T *sprites, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index) {
+inline void WriteParticleColorSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-		tfxU32 sprite_depth_index = depth_index[index + j];
+		tfxU32 sprite_depth_index = depth_index[index + j] + pm.cumulative_index_point[layer];
 		sprites[sprite_depth_index].intensity_life = packed_intensity_life.a[j];
 		sprites[sprite_depth_index].curved_alpha = curved_alpha.a[j];
 		running_sprite_index++;
@@ -6674,10 +6674,9 @@ inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm,
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
-		tfxU32 actual_layer = layer >> 28;
 		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[running_sprite_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
-		sprites_index = layer + running_sprite_index + pm.cumulative_index_point[layer >> 28];
+		sprites_index = layer + running_sprite_index;
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
 		sprites[running_sprite_index].indexes |= (billboard_option << 13) | capture;
 		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
@@ -6689,12 +6688,12 @@ template<typename T>
 inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags property_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
-		tfxU32 sprite_depth_index = bank.depth_index[index_j];
+		tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[layer >> 28];
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
 		sprites[sprite_depth_index].captured_index = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[sprite_depth_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
-		sprites_index = layer + sprite_depth_index + pm.cumulative_index_point[layer >> 28];
+		sprites_index = layer + sprite_depth_index;
 		sprites[sprite_depth_index].indexes = image_indexes.a[j];
 		sprites[sprite_depth_index].indexes |= (billboard_option << 13) | capture;
 		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
@@ -7745,7 +7744,7 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI inline tfx_vec2_t GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return static_cast<tfx_sprite_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30][layer].data)[index & 0x0FFFFFFF].position_stretch_rotation.xy();
+	return static_cast<tfx_sprite_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30].data)[index & 0x0FFFFFFF].position_stretch_rotation.xy();
 }
 
 /*
