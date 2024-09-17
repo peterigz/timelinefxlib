@@ -5509,7 +5509,6 @@ struct tfx_effect_state_t {
 	tfx_vec3_t captured_position;
 	tfx_vec3_t local_rotations;
 	tfx_vec3_t world_rotations;
-	//Todo: save space and use a quaternion here?
 	tfx_bounding_box_t bounding_box;
 
 	tfxU32 global_attributes;
@@ -5711,7 +5710,7 @@ struct tfx_sprite_instance_t {						//44 bytes
 	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	tfxU32 padding;
+	tfxU32 uid;
 };
 
 struct tfx_billboard_instance_t {					//56 bytes
@@ -6674,9 +6673,9 @@ inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm,
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
-		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+		sprites[running_sprite_index].captured_index = capture == 0 ? running_sprite_index : sprites_index;
 		sprites[running_sprite_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
-		sprites_index = layer + running_sprite_index;
+		sprites_index = running_sprite_index;
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
 		sprites[running_sprite_index].indexes |= (billboard_option << 13) | capture;
 		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;
@@ -7029,7 +7028,7 @@ tfxINTERNAL unsigned int GetControllerMemoryUsage(tfx_particle_manager_t *pm);
 tfxINTERNAL unsigned int GetParticleMemoryUsage(tfx_particle_manager_t *pm);
 tfxINTERNAL void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_id);
 tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning);
-tfxINTERNAL void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
+tfxAPI_EDITOR void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeEffectSpriteList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index);

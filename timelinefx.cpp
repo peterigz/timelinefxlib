@@ -14021,7 +14021,7 @@ void ControlParticleSize(tfx_work_queue_t *queue, void *data) {
 
 	tfx_emitter_path_t *path;
 	tfxWideFloat life;
-	float packed_scale_amount = pm.flags & tfxParticleManagerFlags_3d_effects ? 128.f : 4096.f;
+	float packed_scale_amount = pm.flags & tfxParticleManagerFlags_3d_effects ? 128.f : 8192.f;
 
 	bool sample_based_on_path_position = emitter.property_flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling && work_entry->properties->emission_type == tfxPath;
 
@@ -14178,7 +14178,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 				WriteParticleColorSpriteDataOrdered(sprites, pm, work_entry->layer, start_diff, limit_index, bank.depth_index, index, packed_intensity_life, curved_alpha, running_sprite_index);
 			}
 			else {
-				WriteParticleColorSpriteData(sprites, start_diff, limit_index, bank.depth_index, index, packed_intensity_life, curved_alpha, running_sprite_index);
+				WriteParticleColorSpriteData(sprites, start_diff, limit_index,bank.depth_index, index, packed_intensity_life, curved_alpha, running_sprite_index);
 			}
 		}
 		else {
@@ -14312,6 +14312,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_sprite_soa_t &sprites = *work_entry->sprites;
+	tfx_sprite_instance_t *instance = tfxCastBuffer(tfx_sprite_instance_t, work_entry->sprite_instances);
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index]) && pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers));
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
@@ -14322,16 +14323,19 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[work_entry->layer];
-				sprites.uid[sprite_depth_index].uid = bank.uid[index_j];
-				sprites.uid[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
+				//sprites.uid[sprite_depth_index].uid = bank.uid[index_j];
+				instance[sprite_depth_index].uid = bank.uid[index_j];
+				//sprites.uid[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				running_sprite_index++;
 			}
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				sprites.uid[running_sprite_index].uid = bank.uid[index_j];
-				sprites.uid[running_sprite_index++].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
+				//sprites.uid[running_sprite_index].uid = bank.uid[index_j];
+				instance[running_sprite_index].uid = bank.uid[index_j];
+				//sprites.uid[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
+				running_sprite_index++;
 			}
 		}
 		start_diff = 0;
@@ -15051,14 +15055,18 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 		tfxParticleID parent_particle_id = pm->particle_indexes[effect.parent_particle_index];
 		if (parent_particle_id != tfxINVALID) {
 			tfxU32 sprite_id = GetParticleSpriteIndex(pm, parent_particle_id);
-			tfxU32 sprite_layer = (sprite_id & 0xF0000000) >> 28;
 			tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
 			if (sprite_id != tfxINVALID) {
-				tfx_sprite_soa_t &sprites = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers ? pm->effect_sprite_buffers[effect.sprite_buffer_index].sprites[pm->current_sprite_buffer ^ 1][sprite_layer] : pm->sprites[pm->current_sprite_buffer ^ 1][sprite_layer];
-				if (effect.property_flags & tfxEmitterPropertyFlags_effect_is_3d)
-					TransformEffector3d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.rotation, &sprites.transform_3d[sprite_index], true, effect.property_flags & tfxEmitterPropertyFlags_relative_angle);
-				else
-					TransformEffector2d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.rotation, &sprites.transform_2d[sprite_index], true, effect.property_flags & tfxEmitterPropertyFlags_relative_angle);
+				if (effect.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
+					tfx_billboard_instance_t *sprites = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers ? tfxCastBufferRef(tfx_billboard_instance_t, pm->effect_sprite_buffers[effect.sprite_buffer_index].instance_buffer[pm->current_sprite_buffer ^ 1]) : tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer[pm->current_sprite_buffer ^ 1]);
+					tfx_sprite_transform3d_t transform = { sprites[sprite_index].position_stretch.xyz(), sprites[sprite_index].rotations };
+					TransformEffector3d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.rotation, &transform, true, effect.property_flags &tfxEmitterPropertyFlags_relative_angle);
+				}
+				else {
+					tfx_sprite_instance_t *sprites = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers ? tfxCastBufferRef(tfx_sprite_instance_t, pm->effect_sprite_buffers[effect.sprite_buffer_index].instance_buffer[pm->current_sprite_buffer ^ 1]) : tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer[pm->current_sprite_buffer ^ 1]);
+					tfx_sprite_transform2d_t transform = { sprites[sprite_index].position_stretch_rotation.xy(), {0.f, 0.f}, sprites[sprite_index].position_stretch_rotation.w };
+					TransformEffector2d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.rotation, &transform, true, effect.property_flags & tfxEmitterPropertyFlags_relative_angle);
+				}
 
 				effect.world_position += properties.emitter_handle * effect.overal_scale;
 				if (effect.state_flags & tfxEffectStateFlags_no_tween_this_update || effect.state_flags & tfxEffectStateFlags_no_tween) {
