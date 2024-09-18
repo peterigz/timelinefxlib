@@ -2989,7 +2989,7 @@ struct tfx_vector_t {
 	typedef value_type *iterator;
 	typedef const value_type *const_iterator;
 
-	inline tfx_vector_t() { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME; }
+	inline tfx_vector_t() : locked(0), current_size(0), capacity(0), alignment(0), data(nullptr) {}
 	inline tfx_vector_t(const char *name_init) { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME_INIT(name_init); }
 	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
@@ -3027,7 +3027,7 @@ struct tfx_vector_t {
 	inline void         resize_bytes(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 	inline void         resize(tfxU32 new_size, const T &v) { if (new_size > capacity) reserve(_grow_capacity(new_size)); if (new_size > current_size) for (tfxU32 n = current_size; n < new_size; n++) memcpy(&data[n], &v, sizeof(v)); current_size = new_size; }
 	inline void         shrink(tfxU32 new_size) { TFX_ASSERT(new_size <= current_size); current_size = new_size; }
-	inline void            set_alignment(tfxU32 align_to) { TFX_ASSERT(0 == (align_to & (align_to - 1)) && "must align to a power of two"); alignment = align_to; }
+	inline void         set_alignment(tfxU32 align_to) { TFX_ASSERT(0 == (align_to & (align_to - 1)) && "must align to a power of two"); alignment = align_to; }
 	inline void         reserve(tfxU32 new_capacity) {
 		if (new_capacity <= capacity)
 			return;
@@ -5489,6 +5489,20 @@ struct tfx_emitter_state_t {
 	tfx_vec3_t angle_offsets;
 } TFX_ALIGN_AFFIX(16);
 
+struct tfx_depth_index_t {
+	tfxParticleID particle_id;
+	float depth;
+};
+
+//Used when a particle manager is grouping sprites by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
+struct tfx_effect_sprites_t {
+	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
+	tfxU32 sprite_start_index;
+	tfxU32 depth_starting_index[tfxLAYERS];
+	tfxU32 current_depth_buffer_index[tfxLAYERS];
+	tfxU32 sprite_count;
+};
+
 //This is a struct that stores an effect state that is currently active in a particle manager.
 struct tfx_effect_state_t {
 	tfx_quaternion_t rotation;
@@ -5531,7 +5545,7 @@ struct tfx_effect_state_t {
 	tfxU32 sort_passes;
 
 	//When organising sprites per effect this is the index to the sprite buffers containing all the effects.
-	tfxU32 sprite_buffer_index;
+	tfx_effect_sprites_t sprites;
 
 	//User Data
 	void *user_data;
@@ -5615,11 +5629,6 @@ struct tfx_compute_sprite_t {    //64 bytes
 	tfx_vec2_t position;            //The position of the sprite
 	tfx_rgba8_t color;                //The color tint of the sprite
 	tfxU32 parameters;    //4 extra parameters packed into a tfxU32: blend_mode, image layer index, shader function index, blend type
-};
-
-struct tfx_depth_index_t {
-	tfxParticleID particle_id;
-	float depth;
 };
 
 struct tfx_unique_sprite_id_t {
@@ -6065,17 +6074,6 @@ struct tfx_animation_manager_t {
 	bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
 };
 
-//Used when a particle manager is grouping sprites by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
-struct tfx_effect_sprites_t {
-	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
-	tfx_sprite_soa_t sprites[2][tfxLAYERS];
-	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
-	tfx_buffer_t instance_buffer[2];
-	tfxU32 sprite_index_point[tfxLAYERS];
-	tfxU32 depth_starting_index[tfxLAYERS];
-	tfxU32 current_depth_buffer_index[tfxLAYERS];
-};
-
 struct tfx_effect_index_t {
 	tfxEffectID index;
 	float depth;
@@ -6114,11 +6112,9 @@ struct tfx_particle_manager_t {
 	tfx_bucket_array_t<tfx_particle_soa_t> particle_arrays;
 	tfx_vector_t<tfx_soa_buffer_t> particle_location_buffers;
 	tfx_bucket_array_t<tfx_spawn_points_soa_t> particle_location_arrays;
-	tfx_bucket_array_t<tfx_effect_sprites_t> effect_sprite_buffers;
 
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
-	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_sprite_lists;
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 
 	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
@@ -6127,7 +6123,6 @@ struct tfx_particle_manager_t {
 	tfx_vector_t<tfx_particle_age_work_entry_t> age_work;
 	tfx_vector_t<tfxParticleID> particle_indexes;
 	tfx_vector_t<tfxU32> free_particle_indexes;
-	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
 	tfx_vector_t<tfx_effect_index_t> effects_in_use[tfxMAXDEPTH][2];
 	tfx_vector_t<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
 	tfx_vector_t<tfxU32> emitters_check_capture;
@@ -6150,7 +6145,6 @@ struct tfx_particle_manager_t {
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfx_buffer_t instance_buffer[2];
 	tfxU32 current_sprite_buffer;
-	tfxU32 current_depth_buffer_index[tfxLAYERS];
 
 	//todo: document compute controllers once we've established this is how we'll be doing it.
 	void *compute_controller_ptr;
@@ -6169,7 +6163,7 @@ struct tfx_particle_manager_t {
 	tfxU32 current_ebuff;
 	tfxU32 next_ebuff;
 	//For looping through active effects with GetNextEffect function
-	tfxU32 effect_index_position[tfxLAYERS];
+	tfxU32 effect_index_position;
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
 	tfxU32 emitter_start_size[tfxMAXDEPTH];
@@ -6365,7 +6359,6 @@ tfxINTERNAL inline tfxU32 ParticleIndex(tfxParticleID id) { return id & 0x000FFF
 tfxINTERNAL inline tfxU32 ParticleBank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
 tfxINTERNAL tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 GrabParticleLocationLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
-tfxINTERNAL tfxU32 GrabSpriteLists(tfx_particle_manager_t *pm, tfxKey effect_hash, bool is_3d, bool is_ordered, tfxU32 reserve_amount);
 
 //--------------------------------
 //Profilings
@@ -7030,11 +7023,9 @@ tfxINTERNAL void FreeComputeSlot(tfx_particle_manager_t *pm, unsigned int slot_i
 tfxINTERNAL tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning);
 tfxAPI_EDITOR void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
-tfxINTERNAL void FreeEffectSpriteList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
 tfxINTERNAL void FreeAllSpawnLocationLists(tfx_particle_manager_t *pm);
-tfxINTERNAL void FreeAllSpriteBuffers(tfx_particle_manager_t *pm);
 tfxINTERNAL void OrderEffectSprites(tfx_effect_sprites_t *sprites, tfxU32 layer, tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
@@ -7727,16 +7718,6 @@ tfxAPI inline tfx_sprite_transform3d_t *GetCapturedSprite3dTransform(tfx_particl
 }
 
 /*
-Get the transform vectors for a 3d sprite's previous position so that you can use that to interpolate between that and the current sprite position
-* @param pm                A pointer to a tfx_effect_sprites_t object.
-* @param layer            The index of the sprite layer
-* @param index            The sprite index of the sprite that you want the captured sprite for.
-*/
-tfxAPI inline tfx_sprite_transform3d_t *GetCapturedEffectSprite3dTransform(tfx_effect_sprites_t *effect_sprites, tfxU32 layer, tfxU32 index) {
-	return &effect_sprites->sprites[(index & 0x40000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
-}
-
-/*
 Get the transform vectors for a 2d sprite's previous position so that you can use that to interpolate between that and the current sprite position
 * @param pm                A pointer to a tfx_particle_manager_t.
 * @param layer            The index of the sprite layer
@@ -7744,16 +7725,6 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 */
 tfxAPI inline tfx_vec2_t GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
 	return static_cast<tfx_sprite_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30].data)[index & 0x0FFFFFFF].position_stretch_rotation.xy();
-}
-
-/*
-Get the transform vectors for a 2d sprite's previous position so that you can use that to interpolate between that and the current sprite position
-* @param pm                A pointer to a tfx_particle_manager_t.
-* @param layer            The index of the sprite layer
-* @param index            The sprite index of the sprite that you want the captured sprite for.
-*/
-tfxAPI inline tfx_sprite_transform2d_t *GetCapturedSprite2dTransform(tfx_effect_sprites_t *effect_sprites, tfxU32 layer, tfxU32 index) {
-	return &effect_sprites->sprites[(index & 0x40000000) >> 30][layer].transform_2d[index & 0x0FFFFFFF];
 }
 
 /*
@@ -7973,7 +7944,7 @@ then a nullptr is returned.
 * @param tfxU32            Pass in a pointer to a tfxU32 which will be set to the number of sprites in the buffer.
 * @return                tfx_sprite_soa_t pointer with all the arrays for each sprite.
 */
-tfxAPI tfx_sprite_soa_t *GetEffectSpriteBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 layer, tfxU32 *sprite_count);
+tfxAPI tfx_sprite_instance_t *GetEffectSpriteBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 layer, tfxU32 *sprite_count);
 
 /*
 When use a particle manager that has the use_effect_sprite_buffers flag set, you can use this function to get each sprite buffer for every effect that is currently active in the particle manager. Generally you would call this inside
@@ -7986,16 +7957,7 @@ a for loop for each layer.
 * @param tfxU32            Pass in a pointer to a tfxU32 which will be set to the number of sprites in the buffer.
 * @return                true or false if the next sprite buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
 */
-tfxAPI bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfxU32 layer, tfx_sprite_soa_t **sprites_soa, tfx_effect_sprites_t **effect_sprites, tfxU32 *sprite_count);
-
-/*
-When use a particle manager that has the use_effect_sprite_buffers flag set, you can use this function to reset the index after using GetEffectSpriteBuffer so that you can loop over the sprite buffers again.
-Generally you will need to reset each time as the particles may be rendered more times then UpdateParticleManager is called if you're using a fixed update rate for your logic.
-* @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
-*/
-inline tfxAPI void ResetSpriteBufferLoopIndex(tfx_particle_manager_t *pm) {
-	memset(pm->effect_index_position, 0, sizeof(tfxU32) * tfxLAYERS);
-}
+tfxAPI bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfx_sprite_instance_t **sprites_soa, tfx_effect_sprites_t **effect_sprites, tfxU32 *sprite_count);
 
 /*
 Set the rotation of a 2d effect
