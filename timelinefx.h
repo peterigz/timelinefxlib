@@ -6145,6 +6145,7 @@ struct tfx_particle_manager_t {
 	tfx_sprite_soa_t sprites[2][tfxLAYERS];
 	tfx_buffer_t instance_buffer[2];
 	tfxU32 current_sprite_buffer;
+	tfxU32 highest_depth_index;
 
 	//todo: document compute controllers once we've established this is how we'll be doing it.
 	void *compute_controller_ptr;
@@ -6195,6 +6196,10 @@ struct tfx_particle_manager_t {
 	tfxParticleManagerFlags flags;
 	//The length of time that passed since the last time Update() was called
 	float frame_length;
+	//You can cap the frame length to a maximum amount which I put in mainly for when stepping through 
+	//with a debugger and you don't want to advance the particles too much because obviously a lot of
+	//time is passing between frames because you're stepping through the code. Default is 240ms.
+	float max_frame_length;
 	tfxWideFloat frame_length_wide;
 	float update_time;
 	tfxWideFloat update_time_wide;
@@ -6217,7 +6222,8 @@ struct tfx_particle_manager_t {
 		current_sprite_buffer(0),
 		free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_compute_controllers")),
 		library(nullptr),
-		sort_passes(0)
+		sort_passes(0),
+		max_frame_length(240.f)
 	{
 	}
 	~tfx_particle_manager_t();

@@ -11728,7 +11728,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	tfxCompleteAllWork(&pm->work_queue);
 
-	pm->frame_length = elapsed_time;
+	pm->frame_length = tfx__Min(elapsed_time, pm->max_frame_length);
 	pm->frame_length_wide = tfxWideSetSingle(pm->frame_length);
 	pm->update_frequency = 1000.f / elapsed_time;
 	pm->update_time = 1.f / pm->update_frequency;
@@ -11749,6 +11749,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 		ClearSoABuffer(&pm->sprite_buffer[pm->current_sprite_buffer][layer]);
 	}
 	pm->instance_buffer[pm->current_sprite_buffer].clear();
+	pm->highest_depth_index = 0;
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
 	tfxU32 emitter_start_size[tfxMAXDEPTH];
@@ -11919,6 +11920,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				work_entry.emitter_index = index;
 				work_entry.start_index = running_start_index;
 				work_entry.end_index = particles_to_update > pm->mt_batch_size ? running_start_index + pm->mt_batch_size : running_start_index + particles_to_update;
+				work_entry.sprite_instances = &pm->instance_buffer[pm->current_sprite_buffer];
 				tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], work_entry.start_index);
 				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 				work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
@@ -17778,6 +17780,7 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 			depth_index.depth = entry->particle_data->age[index];
 			entry->particle_data->depth_index[index] = entry->depth_index_start;
 			(*entry->depth_indexes)[entry->depth_index_start] = depth_index;
+			TFX_ASSERT(entry->depth_index_start < pm.instance_buffer[pm.current_sprite_buffer].current_size);
 			entry->depth_index_start++;
 		}
 	}
@@ -17911,14 +17914,16 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 			tfx_vec3_t world_minus_camera = tfx_vec3_t(local_position_x, local_position_y, local_position_z) - pm.camera_position;
 			depth_index.depth = LengthVec3NoSqR(&world_minus_camera);
 			entry->particle_data->depth_index[index] = entry->depth_index_start;
-			(*entry->depth_indexes)[entry->depth_index_start++] = depth_index;
+			(*entry->depth_indexes)[entry->depth_index_start] = depth_index;
+			entry->depth_index_start++;
 		}
 		else if (pm.flags & tfxParticleManagerFlags_ordered_by_age || (pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers && entry->root_effect_flags & tfxEffectPropertyFlags_age_order)) {
 			tfx_depth_index_t depth_index;
 			depth_index.particle_id = MakeParticleID(emitter.particles_index, index);
 			depth_index.depth = entry->particle_data->age[index];
 			entry->particle_data->depth_index[index] = entry->depth_index_start;
-			(*entry->depth_indexes)[entry->depth_index_start++] = depth_index;
+			(*entry->depth_indexes)[entry->depth_index_start] = depth_index;
+			entry->depth_index_start++;
 		}
 	}
 }
@@ -18202,7 +18207,6 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	effect_sprites.sprite_start_index = tfx__Min(work_entry->sprites_index, effect_sprites.sprite_start_index);
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
 	work_entry->sprites = &pm->sprites[pm->current_sprite_buffer][work_entry->layer];
-	work_entry->sprite_instances = &pm->instance_buffer[pm->current_sprite_buffer];
 	//if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
 		tfx_effect_sprites_t &sprites = pm->effects[emitter.root_index].sprites;
 		work_entry->depth_indexes = &sprites.depth_indexes[work_entry->layer][sprites.current_depth_buffer_index[work_entry->layer]];
