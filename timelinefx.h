@@ -6716,7 +6716,8 @@ tfxAPI_EDITOR void UpdateEmitterControlProfile(tfx_effect_emitter_t *emitter);
 
 tfxAPI_EDITOR void CompletePMWork(tfx_particle_manager_t *pm);
 
-tfxINTERNAL tfxU32 SpawnParticles2d(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *spawn_work_entry, tfxU32 max_spawn_count);
+tfxINTERNAL tfxU32 SpawnParticles(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work_entry);
+
 tfxINTERNAL void SpawnParticlePoint2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleLine2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleArea2d(tfx_work_queue_t *queue, void *data);
@@ -6737,7 +6738,6 @@ tfxINTERNAL void SpawnParticleSpin2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void DoSpawnWork3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void DoSpawnWork2d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL tfxU32 SpawnParticles3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticlePoint3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleOtherEmitter2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void SpawnParticleOtherEmitter3d(tfx_work_queue_t *queue, void *data);
