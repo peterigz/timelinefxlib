@@ -1890,6 +1890,15 @@ tfxU32 Pack16bit2SScaled(float x, float y, float max_value) {
 	return ((tfxU64)x_scaled) | ((tfxU64)y_scaled << 16);
 }
 
+tfx_vec2_t UnPack16bit2SScaled(tfxU32 packed, float max_value) {
+	int16_t x_scaled = (int16_t)(packed & 0xFFFF);
+	int16_t y_scaled = (int16_t)((packed >> 16) & 0xFFFF);
+	tfx_vec2_t unpacked;
+	unpacked.x = (float)x_scaled * max_value / 32767.0f;
+	unpacked.y = (float)y_scaled * max_value / 32767.0f;
+	return unpacked;
+}
+
 tfxU32 Pack8bit(tfx_vec3_t v) {
 	union
 	{
@@ -11748,6 +11757,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	memset(pm->sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(pm->cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(pm->layer_sizes, 0, sizeof(tfxU32) * tfxLAYERS);
 
 	for (tfxEachLayer) {
 		ClearSoABuffer(&pm->sprite_buffer[pm->current_sprite_buffer][layer]);
@@ -15069,114 +15079,63 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 	if (emitter.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
 		Transform3d(&emitter.world_rotations, &local_rotations, &spawn_work_entry->overal_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
-
-		if (emitter.state_flags & tfxEmitterStateFlags_no_tween_this_update || emitter.state_flags & tfxEmitterStateFlags_no_tween) {
-			emitter.captured_position = emitter.world_position;
-		}
-
-		tfxU32 free_space = 0;
-
-		emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
-		if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
-			if (emitter.sprites_count + sprite_buffer.current_size + max_spawn_count >= sprite_buffer.capacity) {
-				tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1;
-				GrowArrays(&sprite_buffer, sprite_buffer.capacity, new_size);
-				instance_buffer.resize(new_size);
-			}
-		}
-		else {
-			if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
-				if (free_space > emitter.sprites_count) {
-					max_spawn_count = free_space - emitter.sprites_count;
-				}
-				else {
-					max_spawn_count = tfxMin(free_space, max_spawn_count);
-				}
-			}
-			TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
-		}
-
-		sprite_buffer.current_size += max_spawn_count + emitter.sprites_count;
-		instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
-		emitter.sprites_count += max_spawn_count;
-		emitter.sprites_index = sprite_index_point;
-		effect_sprites.sprite_count += emitter.sprites_count;
-		sprite_index_point += emitter.sprites_count;
-
-		spawn_work_entry->max_spawn_count = max_spawn_count;
-
-		if (emitter.state_flags & tfxEmitterStateFlags_is_sub_emitter) {
-			if (emitter.age > 0 && !(pm->flags & tfxParticleManagerFlags_disable_spawning)) {
-				amount_spawned = SpawnParticles(pm, spawn_work_entry);
-			}
-		}
-		else {
-			if (!(pm->flags & tfxParticleManagerFlags_disable_spawning)) {
-				amount_spawned = SpawnParticles(pm, spawn_work_entry);
-			}
-		}
-
-		TFX_ASSERT(amount_spawned <= max_spawn_count);
-		tfxU32 spawn_difference = max_spawn_count - amount_spawned;
-		sprite_buffer.current_size -= spawn_difference;
-		instance_buffer.current_size -= spawn_difference;
-		sprite_index_point -= spawn_difference;
 	}
 	else {
 		Transform2d(&emitter.world_rotations, &local_rotations, &spawn_work_entry->overal_scale, &emitter.world_position, &emitter.local_position, &translation, &emitter.rotation, &parent_effect);
-
-		if (emitter.state_flags & tfxEmitterStateFlags_no_tween_this_update || emitter.state_flags & tfxEmitterStateFlags_no_tween) {
-			emitter.captured_position = emitter.world_position;
-		}
-
-		tfxU32 free_space = 0;
-
-		emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
-		if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
-			if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
-				tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1;
-				GrowArrays(&sprite_buffer, sprite_buffer.capacity, new_size);
-				instance_buffer.resize(new_size);
-			}
-		}
-		else {
-			if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
-				if (free_space > emitter.sprites_count) {
-					max_spawn_count = free_space - emitter.sprites_count;
-				}
-				else {
-					max_spawn_count = tfxMin(free_space, max_spawn_count);
-				}
-			}
-			TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
-		}
-
-		sprite_buffer.current_size += max_spawn_count + emitter.sprites_count;
-		instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
-		effect_sprites.sprite_count += emitter.sprites_count;
-		emitter.sprites_count += max_spawn_count;
-		emitter.sprites_index = sprite_index_point;
-		sprite_index_point += emitter.sprites_count;
-
-		spawn_work_entry->max_spawn_count = max_spawn_count;
-
-		if (emitter.state_flags & tfxEmitterStateFlags_is_sub_emitter) {
-			if (emitter.age > 0 && !(pm->flags & tfxParticleManagerFlags_disable_spawning)) {
-				amount_spawned = SpawnParticles(pm, spawn_work_entry);
-			}
-		}
-		else {
-			if (!(pm->flags & tfxParticleManagerFlags_disable_spawning)) {
-				amount_spawned = SpawnParticles(pm, spawn_work_entry);
-			}
-		}
-
-		TFX_ASSERT(amount_spawned <= max_spawn_count);
-		tfxU32 spawn_difference = max_spawn_count - amount_spawned;
-		sprite_buffer.current_size -= spawn_difference;
-		instance_buffer.current_size -= spawn_difference;
-		sprite_index_point -= spawn_difference;
 	}
+
+	if (emitter.state_flags & tfxEmitterStateFlags_no_tween_this_update || emitter.state_flags & tfxEmitterStateFlags_no_tween) {
+		emitter.captured_position = emitter.world_position;
+	}
+
+	tfxU32 free_space = 0;
+
+	emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
+	if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
+		if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
+			tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1;
+			GrowArrays(&sprite_buffer, sprite_buffer.capacity, new_size);
+			instance_buffer.resize(new_size);
+		}
+	}
+	else {
+		if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
+			if (free_space > emitter.sprites_count) {
+				max_spawn_count = free_space - emitter.sprites_count;
+			}
+			else {
+				max_spawn_count = tfxMin(free_space, max_spawn_count);
+			}
+		}
+		TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
+	}
+
+	sprite_buffer.current_size += max_spawn_count + emitter.sprites_count;
+	instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
+	effect_sprites.sprite_count += emitter.sprites_count;
+	emitter.sprites_count += max_spawn_count;
+	emitter.sprites_index = sprite_index_point;
+	sprite_index_point += emitter.sprites_count;
+
+	spawn_work_entry->max_spawn_count = max_spawn_count;
+
+	if (emitter.state_flags & tfxEmitterStateFlags_is_sub_emitter) {
+		if (emitter.age > 0 && !(pm->flags & tfxParticleManagerFlags_disable_spawning)) {
+			amount_spawned = SpawnParticles(pm, spawn_work_entry);
+		}
+	}
+	else {
+		if (!(pm->flags & tfxParticleManagerFlags_disable_spawning)) {
+			amount_spawned = SpawnParticles(pm, spawn_work_entry);
+		}
+	}
+
+	TFX_ASSERT(amount_spawned <= max_spawn_count);
+	tfxU32 spawn_difference = max_spawn_count - amount_spawned;
+	sprite_buffer.current_size -= spawn_difference;
+	instance_buffer.current_size -= spawn_difference;
+	sprite_index_point -= spawn_difference;
+	pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
 
 	emitter.age += pm->frame_length;
 	if (!(emitter.property_flags & tfxEmitterPropertyFlags_single) || (emitter.property_flags & tfxEmitterPropertyFlags_single && properties.single_shot_limit > 0) || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {

@@ -5717,7 +5717,7 @@ struct tfx_sprite_instance_t {						//44 bytes
 	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfxU32 intensity_life;							//Multiplier for the color and life of particle
 	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image
-	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
+	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	tfxU32 uid;
 };
@@ -5729,7 +5729,7 @@ struct tfx_billboard_instance_t {					//56 bytes
 	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfxU32 intensity_life;							//Multiplier for the color and life of particle
 	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image
-	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
+	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 };
 
@@ -5886,6 +5886,7 @@ struct alignas(16) tfx_gpu_image_data_t {
 	tfx_vec2_t image_size;
 	tfxU32 texture_array_index;
 	float animation_frames;
+	float max_radius;
 #ifdef tfxCUSTOM_GPU_IMAGE_DATA
 	//add addition image data if needed
 #endif
@@ -6171,6 +6172,7 @@ struct tfx_particle_manager_t {
 
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 cumulative_index_point[tfxLAYERS];
+	tfxU32 layer_sizes[tfxLAYERS];
 
 	int mt_batch_size;
 	std::mutex particle_index_mutex;
@@ -6535,6 +6537,7 @@ tfxAPI_EDITOR tfxU32 Pack8bitQuaternion(tfx_quaternion_t v);
 tfxAPI_EDITOR tfxU32 Pack16bitUnsigned(float x, float y);
 tfxAPI_EDITOR tfx_vec2_t UnPack16bit(tfxU32 in);
 tfxINTERNAL tfx_vec2_t UnPack16bitUnsigned(tfxU32 in);
+tfxAPI_EDITOR tfx_vec2_t UnPack16bit2SScaled(tfxU32 value, float max_value);
 tfxINTERNAL tfxWideInt PackWide16bitStretch(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxAPI_EDITOR tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y);
 tfxAPI_EDITOR tfxWideInt PackWide16bit2SScaled(tfxWideFloat v_x, tfxWideFloat  v_y, float max_value);
