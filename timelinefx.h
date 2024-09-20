@@ -1070,7 +1070,11 @@ void tfxAddHostMemoryPool(size_t size);
 void *tfxAllocate(size_t size);
 void *tfxReallocate(void *memory, size_t size);
 void *tfxAllocateAligned(size_t size, size_t alignment);
+//Do a safe copy where checks are made to ensure that the boundaries of the memory block being copied to are respected
+//This assumes that dst is the start address of the block. If you're copying to a range that is offset from the beginning
+//of the block then you can use tfx_SafeCopyBlock instead.
 tfx_bool tfx_SafeCopy(void *dst, void *src, tfx_size size);
+tfx_bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size size);
 tfx_bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size);
 tfx_allocator *tfxGetAllocator();
 

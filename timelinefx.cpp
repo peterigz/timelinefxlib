@@ -87,12 +87,23 @@ tfx_allocator *tfxGetAllocator() {
 
 tfx_bool tfx_SafeCopy(void *dst, void *src, tfx_size size) {
 	tfx_header *block = tfx__block_from_allocation(dst);
-	if (block->size < size) {
+	if (size > block->size) {
 		return 0;
 	}
 	tfx_header *next_physical_block = tfx__next_physical_block(block);
 	ptrdiff_t diff_check = (ptrdiff_t)((char *)dst + size) - (ptrdiff_t)next_physical_block;
-	if (diff_check >= 0) {
+	if (diff_check > 0) {
+		return 0;
+	}
+	memcpy(dst, src, size);
+	return 1;
+}
+
+tfx_bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size size) {
+	tfx_header *block = tfx__block_from_allocation(dst_block_start);
+	tfx_header *next_physical_block = tfx__next_physical_block(block);
+	ptrdiff_t diff_check = (ptrdiff_t)((char *)dst + size) - (ptrdiff_t)next_physical_block;
+	if (diff_check > 0) {
 		return 0;
 	}
 	memcpy(dst, src, size);
