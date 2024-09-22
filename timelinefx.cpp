@@ -10322,17 +10322,6 @@ void SetTemplateUserDataAll(tfx_effect_template_t *t, void *data) {
 	}
 }
 
-void InvalidateNewSpriteCapturedIndex(tfx_particle_manager_t *pm) {
-	for (tfxU32 layer = 0; layer != tfxLAYERS; ++layer) {
-		tfx_sprite_soa_t &sprites = pm->sprites[pm->current_sprite_buffer][layer];
-		for (tfxU32 i = 0; i != pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size; ++i) {
-			if ((sprites.captured_index[i] & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(sprites.captured_index[i] & 0x80000000)) {
-				sprites.captured_index[i] = tfxINVALID;
-			}
-		}
-	}
-}
-
 void ResetSpriteDataLerpOffset(tfx_sprite_data_t *sprite_data) {
 	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
 	for (int i = 0; i != sprite_data->real_time_sprites_buffer.current_size; ++i) {
@@ -10424,12 +10413,12 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 					memset(&meta, 0, sizeof(tfx_frame_meta_t));
 					tmp_frame_meta.push_back(meta);
 				}
-				tmp_frame_meta[frame].sprite_count[layer] += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
-				tmp_frame_meta[frame].total_sprites += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
-				total_sprites += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
-				sprites_in_layers += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+				tmp_frame_meta[frame].sprite_count[layer] += pm->layer_sizes[layer];
+				tmp_frame_meta[frame].total_sprites += pm->layer_sizes[layer];
+				total_sprites += pm->layer_sizes[layer];
+				sprites_in_layers += pm->layer_sizes[layer];
 				particles_started = total_sprites > 0;
-				particles_processed_last_frame |= pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0;
+				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
 		}
 
@@ -10563,81 +10552,88 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	while (frame < frames && offset < 99999) {
 		tfxU32 count_this_frame = 0;
 		UpdateParticleManager(pm, frame_length);
-		InvalidateNewSpriteCapturedIndex(pm);
+		if (is_3d) {
+			InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer[pm->current_sprite_buffer]), pm);
+		}
+		else {
+			InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer[pm->current_sprite_buffer]), pm);
+		}
 		bool particles_processed_last_frame = false;
 
 		if (offset >= start_frame) {
+			tfx_sprite_instance_t *sprites = tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer[pm->current_sprite_buffer]);
+			tfx_billboard_instance_t *billboards = tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer[pm->current_sprite_buffer]);
 			for (tfxEachLayer) {
 				tfxU32 meta_count = frame_meta[frame].sprite_count[layer];
-				tfxU32 pm_count = pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
-				if (running_count[layer][frame] > 0 && pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0) {
+				tfxU32 pm_count = pm->layer_sizes[layer];
+				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
 					Resize(&temp_sprites_buffer, running_count[layer][frame]);
-					memcpy(temp_sprites.captured_index, sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
 					memcpy(temp_sprites.uid, sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], sizeof(tfx_unique_sprite_id_t) * running_count[layer][frame]);
-					memcpy(temp_sprites.color, sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
-					memcpy(temp_sprites.property_indexes, sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
-					memcpy(temp_sprites.intensity, sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
-					memcpy(temp_sprites.alignment, sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], sizeof(tfxU32) * running_count[layer][frame]);
-					memcpy(temp_sprites.stretch, sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], sizeof(float) * running_count[layer][frame]);
 					if (is_3d) {
-						memcpy(temp_sprites.transform_3d, sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], sizeof(tfx_sprite_transform3d_t) * running_count[layer][frame]);
+						memcpy(temp_sprites.billboard_instance, sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer], sizeof(tfx_billboard_instance_t) * running_count[layer][frame]);
+						if (captured_offset[layer] > 0) {
+							for (int temp_i = 0; temp_i != temp_sprites_buffer.current_size; ++temp_i) {
+								if (temp_sprites.billboard_instance[temp_i].captured_index != tfxINVALID) {
+									temp_sprites.billboard_instance[temp_i].captured_index += captured_offset[layer];
+								}
+							}
+						}
 					}
 					else {
-						memcpy(temp_sprites.transform_2d, sprite_data->real_time_sprites.transform_2d + frame_meta[frame].index_offset[layer], sizeof(tfx_sprite_transform2d_t) * running_count[layer][frame]);
-					}
-					if (captured_offset[layer] > 0) {
-						for (int temp_i = 0; temp_i != temp_sprites_buffer.current_size; ++temp_i) {
-							if (temp_sprites.captured_index[temp_i] != tfxINVALID)
-								temp_sprites.captured_index[temp_i] += captured_offset[layer];
+						memcpy(temp_sprites.sprite_instance, sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer], sizeof(tfx_sprite_instance_t) * running_count[layer][frame]);
+						if (captured_offset[layer] > 0) {
+							for (int temp_i = 0; temp_i != temp_sprites_buffer.current_size; ++temp_i) {
+								if (temp_sprites.sprite_instance[temp_i].captured_index != tfxINVALID) {
+									temp_sprites.sprite_instance[temp_i].captured_index += captured_offset[layer];
+								}
+							}
 						}
 					}
 				}
-				else if (captured_offset[layer] > 0 && pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size == 0) {
-					for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
-						if (sprite_data->real_time_sprites.captured_index[index] != tfxINVALID)
-							sprite_data->real_time_sprites.captured_index[index] += captured_offset[layer];
-					}
-				}
-
-				memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].captured_index, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].uid, sizeof(tfx_unique_sprite_id_t) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				//memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].color, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				memcpy(sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].property_indexes, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].intensity_life, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].alignment, sizeof(tfxU32) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].stretch, sizeof(float) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				int index_offset = frame_meta[frame].index_offset[layer];
-				int current_size = pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
-				if (is_3d) {
-					memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].transform_3d, sizeof(tfx_sprite_transform3d_t) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				}
-				else {
-					memcpy(sprite_data->real_time_sprites.transform_2d + frame_meta[frame].index_offset[layer], pm->sprites[pm->current_sprite_buffer][layer].transform_2d, sizeof(tfx_sprite_transform2d_t) * pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size);
-				}
-
-				if (running_count[layer][frame] > 0 && pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0) {
-					memcpy(sprite_data->real_time_sprites.captured_index + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.captured_index, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.uid, sizeof(tfx_unique_sprite_id_t) * temp_sprites_buffer.current_size);
-					//memcpy(sprite_data->real_time_sprites.color + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.color, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-					memcpy(sprite_data->real_time_sprites.property_indexes + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.property_indexes, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-					memcpy(sprite_data->real_time_sprites.intensity + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.intensity, sizeof(float) * temp_sprites_buffer.current_size);
-					memcpy(sprite_data->real_time_sprites.alignment + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.alignment, sizeof(tfxU32) * temp_sprites_buffer.current_size);
-					memcpy(sprite_data->real_time_sprites.stretch + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.stretch, sizeof(float) * temp_sprites_buffer.current_size);
+				else if (captured_offset[layer] > 0 && pm->layer_sizes[layer] == 0) {
 					if (is_3d) {
-						memcpy(sprite_data->real_time_sprites.transform_3d + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.transform_3d, sizeof(tfx_sprite_transform3d_t) * temp_sprites_buffer.current_size);
+						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
+							if (sprite_data->real_time_sprites.billboard_instance[index].captured_index != tfxINVALID) {
+								sprite_data->real_time_sprites.billboard_instance[index].captured_index += captured_offset[layer];
+							}
+						}
 					}
 					else {
-						memcpy(sprite_data->real_time_sprites.transform_2d + frame_meta[frame].index_offset[layer] + pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size, temp_sprites.transform_2d, sizeof(tfx_sprite_transform2d_t) * temp_sprites_buffer.current_size);
+						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
+							if (sprite_data->real_time_sprites.billboard_instance[index].captured_index != tfxINVALID) {
+								sprite_data->real_time_sprites.billboard_instance[index].captured_index += captured_offset[layer];
+							}
+						}
 					}
-					captured_offset[layer] = pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
 				}
-				else if (pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size == 0) {
+
+				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], &pm->unique_sprite_ids[pm->current_sprite_buffer] + pm->cumulative_index_point[layer], sizeof(tfx_unique_sprite_id_t) * pm->layer_sizes[layer]);
+				int index_offset = frame_meta[frame].index_offset[layer];
+				int current_size = pm->layer_sizes[layer];
+				if (is_3d) {
+					memcpy(sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer], billboards + pm->cumulative_index_point[layer], sizeof(tfx_billboard_instance_t) * pm->layer_sizes[layer]);
+				}
+				else {
+					memcpy(sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer], sprites + pm->cumulative_index_point[layer], sizeof(tfx_sprite_transform2d_t) * pm->layer_sizes[layer]);
+				}
+
+				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
+					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.uid, sizeof(tfx_unique_sprite_id_t) *temp_sprites_buffer.current_size);
+					if (is_3d) {
+						memcpy(sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.billboard_instance, sizeof(tfx_billboard_instance_t) * temp_sprites_buffer.current_size);
+					}
+					else {
+						memcpy(sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.sprite_instance, sizeof(tfx_sprite_instance_t) * temp_sprites_buffer.current_size);
+					}
+					captured_offset[layer] = pm->layer_sizes[layer];
+				}
+				else if (pm->layer_sizes[layer] == 0) {
 					captured_offset[layer] = 0;
 				}
-				running_count[layer][frame] += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
-				total_sprites += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
+				running_count[layer][frame] += pm->layer_sizes[layer];
+				total_sprites += pm->layer_sizes[layer];
 				particles_started = total_sprites > 0;
-				particles_processed_last_frame |= pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size > 0;
+				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
 		}
 
@@ -10664,25 +10660,47 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	//total sprites should not exceed the capacity of the sprite buffer
 	TFX_ASSERT(sprite_data->real_time_sprites_buffer.current_size <= sprite_data->real_time_sprites_buffer.capacity);
 	ResetSpriteDataLerpOffset(sprite_data);
-	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
+
+	tfx_sprite_instance_t *sprites = sprite_data->real_time_sprites.sprite_instance;
+	tfx_billboard_instance_t *billboards = sprite_data->real_time_sprites.billboard_instance;
 
 	for (int i = 0; i != anim.real_frames; ++i) {
 		for (tfxEachLayer) {
-			for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
-				if (sprites.captured_index[j] == tfxINVALID) continue;
-				int frame = i - 1;
-				frame = frame < 0 ? anim.real_frames - 1 : frame;
-				tfxU32 wrap_bit = sprites.captured_index[j] & 0x80000000;
-				tfxU32 *captured_index = &sprites.captured_index[j];
-				sprites.captured_index[j] = (sprites.captured_index[j] & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
-				captured_index = &sprites.captured_index[j];
-				sprites.captured_index[j] |= wrap_bit;
+			if (is_3d) {
+				for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
+					if (billboards[j].captured_index == tfxINVALID) continue;
+					int frame = i - 1;
+					frame = frame < 0 ? anim.real_frames - 1 : frame;
+					tfxU32 wrap_bit = billboards[j].captured_index & 0x80000000;
+					tfxU32 *captured_index = &billboards[j].captured_index;
+					billboards[j].captured_index = (billboards[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
+					captured_index = &billboards[j].captured_index;
+					billboards[j].captured_index |= wrap_bit;
+				}
+			}
+			else {
+				for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
+					if (sprites[j].captured_index == tfxINVALID) continue;
+					int frame = i - 1;
+					frame = frame < 0 ? anim.real_frames - 1 : frame;
+					tfxU32 wrap_bit = sprites[j].captured_index & 0x80000000;
+					tfxU32 *captured_index = &sprites[j].captured_index;
+					sprites[j].captured_index = (sprites[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
+					captured_index = &sprites[j].captured_index;
+					sprites[j].captured_index |= wrap_bit;
+				}
 			}
 		}
 	}
 
-	WrapSingleParticleSprites(sprite_data);
-	ClearWrapBit(sprite_data);
+	if (is_3d) {
+		WrapSingleParticleSprites(sprite_data->real_time_sprites.billboard_instance, sprite_data);
+		ClearWrapBit(sprite_data->real_time_sprites.billboard_instance, sprite_data);
+	}
+	else {
+		WrapSingleParticleSprites(sprite_data->real_time_sprites.sprite_instance, sprite_data);
+		ClearWrapBit(sprite_data->real_time_sprites.sprite_instance, sprite_data);
+	}
 
 	FreeSoABuffer(&temp_sprites_buffer);
 	DisablePMSpawning(pm, false);
@@ -10743,19 +10761,14 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 				//Add to compress sprites but make the invalid captured indexed create the offset
 				sprite_data->compressed.frame_meta[compressed_frame].sprite_count[layer]++;
 				sprite_data->compressed.frame_meta[compressed_frame].total_sprites++;
-				c_sprites.captured_index[ci] = sprites.captured_index[i];
 				c_sprites.uid[ci] = sprites.uid[i];
-				c_sprites.lerp_offset[ci] = sprites.captured_index[i] == tfxINVALID ? lerp_offset : 1.f;
-				c_sprites.color[ci] = sprites.color[i];
-				c_sprites.property_indexes[ci] = sprites.property_indexes[i];
-				c_sprites.intensity[ci] = sprites.intensity[i];
-				c_sprites.alignment[ci] = sprites.alignment[i];
-				c_sprites.stretch[ci] = sprites.stretch[i];
 				if (is_3d) {
-					c_sprites.transform_3d[ci] = sprites.transform_3d[i];
+					c_sprites.lerp_offset[ci] = sprites.billboard_instance[i].captured_index == tfxINVALID ? lerp_offset : 1.f;
+					c_sprites.billboard_instance[ci] = sprites.billboard_instance[i];
 				}
 				else {
-					c_sprites.transform_2d[ci] = sprites.transform_2d[i];
+					c_sprites.lerp_offset[ci] = sprites.sprite_instance[i].captured_index == tfxINVALID ? lerp_offset : 1.f;
+					c_sprites.sprite_instance[ci] = sprites.sprite_instance[i];
 				}
 				ci++;
 				if (ci >= sprite_data->compressed_sprites_buffer.capacity) {
@@ -10768,23 +10781,26 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 		}
 		else if (real_time > compressed_time && real_time < next_compressed_time && f < anim.real_frames) {
 			for (tfxU32 i = SpriteDataIndexOffset(sprite_data, f, layer); i != SpriteDataEndIndex(sprite_data, f, layer); ++i) {
-				if (sprites.captured_index[i] == tfxINVALID) {
+				bool captured = false;
+				if (is_3d) {
+					captured = sprites.billboard_instance[i].captured_index == tfxINVALID;
+				}
+				else {
+					captured = sprites.sprite_instance[i].captured_index == tfxINVALID;
+				}
+				if (captured) {
 					//Add to compressed sprites frame but add the lerp offset
 					sprite_data->compressed.frame_meta[compressed_frame].sprite_count[layer]++;
 					sprite_data->compressed.frame_meta[compressed_frame].total_sprites++;
-					c_sprites.captured_index[ci] = tfxINVALID;
 					c_sprites.uid[ci] = sprites.uid[i];
 					c_sprites.lerp_offset[ci] = lerp_offset;
-					c_sprites.color[ci] = sprites.color[i];
-					c_sprites.property_indexes[ci] = sprites.property_indexes[i];
-					c_sprites.intensity[ci] = sprites.intensity[i];
-					c_sprites.alignment[ci] = sprites.alignment[i];
-					c_sprites.stretch[ci] = sprites.stretch[i];
 					if (is_3d) {
-						c_sprites.transform_3d[ci] = sprites.transform_3d[i];
+						c_sprites.billboard_instance[ci].captured_index = tfxINVALID;
+						c_sprites.billboard_instance[ci] = sprites.billboard_instance[i];
 					}
 					else {
-						c_sprites.transform_2d[ci] = sprites.transform_2d[i];
+						c_sprites.sprite_instance[ci].captured_index = tfxINVALID;
+						c_sprites.sprite_instance[ci] = sprites.sprite_instance[i];
 					}
 					ci++;
 					if (ci >= sprite_data->compressed_sprites_buffer.capacity) {
@@ -10792,6 +10808,7 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 						TFX_ASSERT(result);        //Failed to grow sprite compression array
 					}
 				}
+
 			}
 			f++;
 		}
@@ -10831,6 +10848,7 @@ void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect
 	progress->store(tfxCompressFrames);
 	while (f < (int)sprite_data->compressed.frame_count) {
 		tfx_compress_work_entry_t *entry = &compress_work.next();
+		entry->is_3d = is_3d;
 		entry->sprite_data = sprite_data;
 		entry->frame = f;
 		if (tfxNumberOfThreadsInAdditionToMain > 0) {
@@ -10855,52 +10873,11 @@ void LinkUpSpriteCapturedIndexes(tfx_work_queue_t *queue, void *work_entry) {
 	tfx_sprite_data_t *sprite_data = static_cast<tfx_sprite_data_t *>(entry->sprite_data);
 	tfx_sprite_data_soa_t &c_sprites = sprite_data->compressed_sprites;
 
-	int frame = entry->frame - 1;
-	int frame_pair[2];
-	frame_pair[0] = entry->frame;
-	frame_pair[1] = frame < 0 ? sprite_data->compressed.frame_count - 1 : frame;
-	for (tfxEachLayer) {
-		for (int i = sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer]; i != sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer]; ++i) {
-			if (c_sprites.captured_index[i] != tfxINVALID) {
-				tfxU32 age_diff = 0xFFFFFFFF;
-				for (int j = sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer]; j != sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[1]].sprite_count[layer]; ++j) {
-					if (c_sprites.uid[j].uid == c_sprites.uid[i].uid) {
-						tfxU32 diff = c_sprites.uid[i].age - c_sprites.uid[j].age;
-						age_diff = diff < age_diff ? diff : age_diff;
-						c_sprites.captured_index[i] = age_diff == diff ? j : c_sprites.captured_index[i];
-						if (age_diff < 2) break;
-					}
-				}
-			}
-		}
+	if (entry->is_3d) {
+		LinkSpriteDataCapturedIndexes(sprite_data->compressed_sprites.billboard_instance, entry->frame, sprite_data);
 	}
-}
-
-void WrapSingleParticleSprites(tfx_sprite_data_t *sprite_data) {
-	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
-	for (tfxEachLayer) {
-		for (int i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
-			if (sprites.captured_index[i] != tfxINVALID && sprites.captured_index[i] & 0x80000000) {
-				for (int j = sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer]; j != sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer] + sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].sprite_count[layer]; ++j) {
-					if (sprites.uid[j].uid == sprites.uid[i].uid) {
-						sprites.captured_index[i] = j;
-					}
-				}
-			}
-		}
-	}
-}
-
-void ClearWrapBit(tfx_sprite_data_t *sprite_data) {
-	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
-	for (int i = 0; i != sprite_data->normal.frame_count; ++i) {
-		for (tfxEachLayer) {
-			for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
-				if (sprites.captured_index[j] == tfxINVALID) continue;
-				tfxU32 wrap_bit = 0x80000000;
-				sprites.captured_index[j] &= ~wrap_bit;
-			}
-		}
+	else {
+		LinkSpriteDataCapturedIndexes(sprite_data->compressed_sprites.sprite_instance, entry->frame, sprite_data);
 	}
 }
 
@@ -11038,20 +11015,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 		metrics.start_offset = animation_manager->sprite_data_3d.current_size;
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfx_sprite_data3d_t sprite;
-			sprite.alignment = sprites.alignment[i];
-			sprite.captured_index = sprites.captured_index[i];
-			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
-			sprite.color = sprites.color[i];
-			sprite.property_indexes = sprites.property_indexes[i];
-			tfxU32 property_index = sprite.property_indexes & tfxPROPERTY_INDEX_MASK;
-			sprite.property_indexes &= ~tfxPROPERTY_INDEX_MASK;
-			sprite.property_indexes += effect->library->emitter_properties[property_index].animation_property_index;
-			sprite.intensity = sprites.intensity[i];
+			memcpy(&sprite, &sprites.billboard_instance[i], sizeof(tfx_billboard_instance_t));
 			sprite.lerp_offset = sprites.lerp_offset[i];
-			sprite.stretch = sprites.stretch[i];
-			sprite.position = sprites.transform_3d[i].position;
-			sprite.rotations = sprites.transform_3d[i].rotations;
-			sprite.scale = sprites.transform_3d[i].scale;
 			animation_manager->sprite_data_3d.push_back_copy(sprite);
 		}
 		metrics.total_memory_for_sprites = sizeof(tfx_sprite_data3d_t) * metrics.total_sprites;
@@ -11060,20 +11025,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 		metrics.start_offset = animation_manager->sprite_data_2d.current_size;
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfx_sprite_data2d_t sprite;
-			sprite.alignment = sprites.alignment[i];
-			sprite.captured_index = sprites.captured_index[i];
-			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
-			sprite.color = sprites.color[i];
-			sprite.property_indexes = sprites.property_indexes[i];
-			tfxU32 property_index = sprite.property_indexes & tfxPROPERTY_INDEX_MASK;
-			sprite.property_indexes &= ~tfxPROPERTY_INDEX_MASK;
-			sprite.property_indexes += effect->library->emitter_properties[property_index].animation_property_index;
-			sprite.intensity = sprites.intensity[i];
+			memcpy(&sprite, &sprites.sprite_instance[i], sizeof(tfx_sprite_instance_t));
 			sprite.lerp_offset = sprites.lerp_offset[i];
-			sprite.stretch = sprites.stretch[i];
-			sprite.position = sprites.transform_2d[i].position;
-			sprite.rotation = sprites.transform_2d[i].rotation;
-			sprite.scale = sprites.transform_2d[i].scale;
 			animation_manager->sprite_data_2d.push_back_copy(sprite);
 		}
 		metrics.total_memory_for_sprites = sizeof(tfx_sprite_data2d_t) * metrics.total_sprites;
@@ -11770,9 +11723,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	memset(pm->cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(pm->layer_sizes, 0, sizeof(tfxU32) * tfxLAYERS);
 
-	for (tfxEachLayer) {
-		ClearSoABuffer(&pm->sprite_buffer[pm->current_sprite_buffer][layer]);
-	}
 	pm->instance_buffer[pm->current_sprite_buffer].clear();
 	pm->highest_depth_index = 0;
 
@@ -13204,7 +13154,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 	const tfx_billboarding_option billboard_option = work_entry->properties->billboard_option;
 	const tfx_emission_type emission_type = work_entry->properties->emission_type;
 	const tfxU32 sprite_layer = work_entry->properties->layer;
-	tfx_sprite_soa_t &sprites = *work_entry->sprites;
+	tfx_billboard_instance_t *sprites = tfxCastBuffer(tfx_billboard_instance_t, work_entry->sprite_instances);
 
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index])));
 
@@ -13331,15 +13281,15 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[work_entry->layer];
-				sprites.alignment[sprite_depth_index] = alignment_packed.a[j];
-				sprites.stretch[sprite_depth_index] = p_stretch.a[j];
-				sprites.transform_3d[sprite_depth_index].position.x = position_x.a[j];
-				sprites.transform_3d[sprite_depth_index].position.y = position_y.a[j];
-				sprites.transform_3d[sprite_depth_index].position.z = position_z.a[j];
-				bank.captured_position_x[index_j] = sprites.transform_3d[sprite_depth_index].position.x;
-				bank.captured_position_y[index_j] = sprites.transform_3d[sprite_depth_index].position.y;
-				bank.captured_position_z[index_j] = sprites.transform_3d[sprite_depth_index].position.z;
-				tfx_vec3_t sprite_plus_camera_position = sprites.transform_3d[sprite_depth_index].position - pm.camera_position;
+				sprites[sprite_depth_index].alignment = alignment_packed.a[j];
+				sprites[sprite_depth_index].position_stretch.w = p_stretch.a[j];
+				sprites[sprite_depth_index].position_stretch.x = position_x.a[j];
+				sprites[sprite_depth_index].position_stretch.y = position_y.a[j];
+				sprites[sprite_depth_index].position_stretch.z = position_z.a[j];
+				bank.captured_position_x[index_j] = sprites[sprite_depth_index].position_stretch.x;
+				bank.captured_position_y[index_j] = sprites[sprite_depth_index].position_stretch.y;
+				bank.captured_position_z[index_j] = sprites[sprite_depth_index].position_stretch.z;
+				tfx_vec3_t sprite_plus_camera_position = sprites[sprite_depth_index].position_stretch.xyz() - pm.camera_position;
 				(*work_entry->depth_indexes)[sprite_depth_index].depth = LengthVec3NoSqR(&sprite_plus_camera_position);
 				if (pm.flags & tfxParticleManagerFlags_update_bounding_boxes) {
 					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
@@ -13355,14 +13305,14 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				sprites.stretch[running_sprite_index] = p_stretch.a[j];
-				sprites.alignment[running_sprite_index] = alignment_packed.a[j];
-				sprites.transform_3d[running_sprite_index].position.x = position_x.a[j];
-				sprites.transform_3d[running_sprite_index].position.y = position_y.a[j];
-				sprites.transform_3d[running_sprite_index].position.z = position_z.a[j];
-				bank.captured_position_x[index_j] = sprites.transform_3d[running_sprite_index].position.x;
-				bank.captured_position_y[index_j] = sprites.transform_3d[running_sprite_index].position.y;
-				bank.captured_position_z[index_j] = sprites.transform_3d[running_sprite_index].position.z;
+				sprites[running_sprite_index].position_stretch.w = p_stretch.a[j];
+				sprites[running_sprite_index].alignment = alignment_packed.a[j];
+				sprites[running_sprite_index].position_stretch.x = position_x.a[j];
+				sprites[running_sprite_index].position_stretch.y = position_y.a[j];
+				sprites[running_sprite_index].position_stretch.z = position_z.a[j];
+				bank.captured_position_x[index_j] = sprites[running_sprite_index].position_stretch.x;
+				bank.captured_position_y[index_j] = sprites[running_sprite_index].position_stretch.y;
+				bank.captured_position_z[index_j] = sprites[running_sprite_index].position_stretch.z;
 				if (pm.flags & tfxParticleManagerFlags_update_bounding_boxes) {
 					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
 					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
@@ -14317,7 +14267,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 	tfxU32 start_diff = work_entry->start_diff;
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
-	tfx_sprite_soa_t &sprites = *work_entry->sprites;
+	tfx_vector_t<tfx_unique_sprite_id_t> &sprite_uids = *work_entry->sprite_uids;
 	tfx_sprite_instance_t *instance = tfxCastBuffer(tfx_sprite_instance_t, work_entry->sprite_instances);
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index])));
 
@@ -14329,18 +14279,16 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[work_entry->layer];
-				//sprites.uid[sprite_depth_index].uid = bank.uid[index_j];
-				instance[sprite_depth_index].uid = bank.uid[index_j];
-				//sprites.uid[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
+				sprite_uids[sprite_depth_index].uid = bank.uid[index_j];
+				sprite_uids[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				running_sprite_index++;
 			}
 		}
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				//sprites.uid[running_sprite_index].uid = bank.uid[index_j];
-				instance[running_sprite_index].uid = bank.uid[index_j];
-				//sprites.uid[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
+				sprite_uids[running_sprite_index].uid = bank.uid[index_j];
+				sprite_uids[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				running_sprite_index++;
 			}
 		}
@@ -14358,33 +14306,9 @@ tfx_vector_t<tfxU32> *GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU32 dept
 
 void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on) {
 	if (switch_on) {
-		for (tfxEachLayer) {
-			if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
-				FreeSoABuffer(&pm->sprite_buffer[0][layer]);
-				if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-					FreeSoABuffer(&pm->sprite_buffer[1][layer]);
-				}
-
-				if (pm->flags & tfxParticleManagerFlags_2d_and_3d) {
-					InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((pm->max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_both, true);
-					if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-						InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax((pm->max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_both, true);
-					}
-				}
-				else if (pm->flags & tfxParticleManagerFlags_3d_effects) {
-					InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((pm->max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d, true);
-					if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-						InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax((pm->max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d, true);
-					}
-				}
-				else {
-					InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((pm->max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d, true);
-					if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-						InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax((pm->max_cpu_particles_per_layer[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d, true);
-					}
-				}
-			}
-			pm->flags |= tfxParticleManagerFlags_using_uids;
+		pm->unique_sprite_ids[0].reserve(pm->max_cpu_particles_per_layer[0]);
+		if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
+			pm->unique_sprite_ids[0].reserve(pm->max_cpu_particles_per_layer[0]);
 		}
 	}
 	else {
@@ -14417,26 +14341,10 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 
 	pm->flags |= current_flags;
 
-	for (tfxEachLayer) {
-		ClearSoABuffer(&pm->sprite_buffer[0][layer]);
-		if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-			ClearSoABuffer(&pm->sprite_buffer[1][layer]);
-		}
-		/*
-		if (pm->flags & tfxParticleManagerFlags_ordered_by_age || pm->flags & tfxParticleManagerFlags_order_by_depth) {
-			if (pm->depth_indexes[layer][0].capacity < pm->max_cpu_particles_per_layer[layer]) {
-				pm->depth_indexes[layer][0].reserve(pm->max_cpu_particles_per_layer[layer]);
-			}
-			if (pm->depth_indexes[layer][1].capacity < pm->max_cpu_particles_per_layer[layer]) {
-				pm->depth_indexes[layer][1].reserve(pm->max_cpu_particles_per_layer[layer]);
-			}
-			pm->depth_indexes[layer][0].clear();
-			pm->depth_indexes[layer][1].clear();
-		}
-		*/
-	}
 	pm->instance_buffer[0].clear();
+	pm->unique_sprite_ids[0].clear();
 	if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
+		pm->unique_sprite_ids[0].clear();
 		pm->instance_buffer[1].clear();
 	}
 
@@ -14457,14 +14365,6 @@ void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU
 
 void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, bool free_sprite_buffers) {
 	tfxCompleteAllWork(&pm->work_queue);
-	for (tfxEachLayer) {
-		ClearSoABuffer(&pm->sprite_buffer[0][layer]);
-		if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-			ClearSoABuffer(&pm->sprite_buffer[1][layer]);
-		}
-		//pm->depth_indexes[layer][0].clear();
-		//pm->depth_indexes[layer][1].clear();
-	}
 	if (free_particle_banks) {
 		FreeAllParticleLists(pm);
 		FreeAllSpawnLocationLists(pm);
@@ -14536,17 +14436,11 @@ void FreeParticleManager(tfx_particle_manager_t *pm) {
 	}
 	pm->free_particle_location_lists.FreeAll();
 
-	for (tfxEachLayer) {
-		ClearSoABuffer(&pm->sprite_buffer[0][layer]);
-		if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-			ClearSoABuffer(&pm->sprite_buffer[1][layer]);
-		}
-		//pm->depth_indexes[layer][0].free();
-		//pm->depth_indexes[layer][1].free();
-	}
+	pm->unique_sprite_ids[0].free();
 	pm->instance_buffer[0].free();
 	if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
 		pm->instance_buffer[1].free();
+		pm->unique_sprite_ids[1].free();
 	}
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		pm->effects_in_use[depth][0].free();
@@ -15079,7 +14973,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfxU32 max_spawn_count = NewSpritesNeeded(pm, &spawn_work_entry->random, emitter_index, &parent_effect, &properties);
 	tfx_effect_sprites_t &effect_sprites = pm->effects[emitter.root_index].sprites;
 
-	tfx_soa_buffer_t &sprite_buffer = pm->sprite_buffer[pm->current_sprite_buffer][layer];
+	tfx_vector_t<tfx_unique_sprite_id_t> &uid_buffer = pm->unique_sprite_ids[pm->current_sprite_buffer];
 	tfx_buffer_t &instance_buffer = pm->instance_buffer[pm->current_sprite_buffer];
 	tfxU32 &sprite_index_point = pm->sprite_index_point[layer];
 	tfx_vector_t<tfx_depth_index_t> &depth_indexes =  effect_sprites.depth_indexes[layer][effect_sprites.current_depth_buffer_index[layer]];
@@ -15105,7 +14999,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
 		if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
 			tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1;
-			GrowArrays(&sprite_buffer, sprite_buffer.capacity, new_size);
+			if (pm->flags & tfxParticleManagerFlags_recording_sprites && pm->flags & tfxParticleManagerFlags_using_uids) {
+				uid_buffer.resize(new_size);
+			}
 			instance_buffer.resize(new_size);
 		}
 	}
@@ -15121,7 +15017,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
 	}
 
-	sprite_buffer.current_size += max_spawn_count + emitter.sprites_count;
+	uid_buffer.current_size += max_spawn_count + emitter.sprites_count;
 	instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
 	effect_sprites.sprite_count += emitter.sprites_count;
 	emitter.sprites_count += max_spawn_count;
@@ -15143,7 +15039,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 	TFX_ASSERT(amount_spawned <= max_spawn_count);
 	tfxU32 spawn_difference = max_spawn_count - amount_spawned;
-	sprite_buffer.current_size -= spawn_difference;
+	uid_buffer.current_size -= spawn_difference;
 	instance_buffer.current_size -= spawn_difference;
 	sprite_index_point -= spawn_difference;
 	pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
@@ -18084,14 +17980,9 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	tfx_effect_sprites_t &effect_sprites = pm->effects[emitter.root_index].sprites;
 	effect_sprites.sprite_start_index = tfx__Min(work_entry->sprites_index, effect_sprites.sprite_start_index);
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
-	work_entry->sprites = &pm->sprites[pm->current_sprite_buffer][work_entry->layer];
-	//if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
-		tfx_effect_sprites_t &sprites = pm->effects[emitter.root_index].sprites;
-		work_entry->depth_indexes = &sprites.depth_indexes[work_entry->layer][sprites.current_depth_buffer_index[work_entry->layer]];
-	//}
-	//else {
-		//work_entry->depth_indexes = &pm->depth_indexes[work_entry->layer][pm->current_depth_buffer_index[work_entry->layer]];
-	//}
+	work_entry->sprite_uids = &pm->unique_sprite_ids[pm->current_sprite_buffer];
+	tfx_effect_sprites_t &sprites = pm->effects[emitter.root_index].sprites;
+	work_entry->depth_indexes = &sprites.depth_indexes[work_entry->layer][sprites.current_depth_buffer_index[work_entry->layer]];
 	work_entry->overal_scale = pm->effects[emitter.parent_index].overal_scale;
 	work_entry->path = emitter.path_attributes != tfxINVALID ? &pm->library->paths[emitter.path_attributes] : nullptr;
 	work_entry->node_count = work_entry->path ? work_entry->path->node_count : 0.f;
@@ -18267,85 +18158,31 @@ tfx_profile_tag_t::tfx_profile_tag_t(tfxU32 id, const char *name) {
 }
 
 void InitSpriteData3dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount) {
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, property_indexes));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, captured_index));
 	AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_data_soa_t, uid));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, lerp_offset));
-	AddStructArray(buffer, sizeof(tfx_sprite_transform3d_t), offsetof(tfx_sprite_data_soa_t, transform_3d));
-	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_data_soa_t, color));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, intensity));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, stretch));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, alignment));
+	AddStructArray(buffer, sizeof(tfx_billboard_instance_t), offsetof(tfx_sprite_data_soa_t, billboard_instance));
 	FinishSoABufferSetup(buffer, soa, reserve_amount);
 }
 
 void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount) {
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, property_indexes));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, captured_index));
 	AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_data_soa_t, uid));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, lerp_offset));
-	AddStructArray(buffer, sizeof(tfx_sprite_transform3d_t), offsetof(tfx_sprite_data_soa_t, transform_3d));
-	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_data_soa_t, color));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, intensity));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, stretch));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, alignment));
+	AddStructArray(buffer, sizeof(tfx_billboard_instance_t), offsetof(tfx_sprite_data_soa_t, billboard_instance));
 	FinishSoABufferSetup(buffer, soa, reserve_amount);
 }
 
 void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount) {
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, property_indexes));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, captured_index));
 	AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_data_soa_t, uid));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, lerp_offset));
-	AddStructArray(buffer, sizeof(tfx_sprite_transform2d_t), offsetof(tfx_sprite_data_soa_t, transform_2d));
-	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_data_soa_t, color));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, intensity));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, stretch));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, alignment));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, lerp_values));
+	AddStructArray(buffer, sizeof(tfx_sprite_instance_t), offsetof(tfx_sprite_data_soa_t, sprite_instance));
 	FinishSoABufferSetup(buffer, soa, reserve_amount);
 }
 
 void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount) {
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, property_indexes));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, captured_index));
 	AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_data_soa_t, uid));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, lerp_offset));
-	AddStructArray(buffer, sizeof(tfx_sprite_transform2d_t), offsetof(tfx_sprite_data_soa_t, transform_2d));
-	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_data_soa_t, color));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, intensity));
-	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, stretch));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, alignment));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_data_soa_t, lerp_values));
+	AddStructArray(buffer, sizeof(tfx_sprite_instance_t), offsetof(tfx_sprite_data_soa_t, sprite_instance));
 	FinishSoABufferSetup(buffer, soa, reserve_amount);
-}
-
-void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid) {
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, property_indexes));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, captured_index));
-	if (use_uid)
-		AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_soa_t, uid));
-	if (mode == tfxSpriteBufferMode_2d) {
-		AddStructArray(buffer, sizeof(tfx_sprite_transform2d_t), offsetof(tfx_sprite_soa_t, transform_2d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, stretch));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, alignment));
-	}
-	else if (mode == tfxSpriteBufferMode_3d) {
-		AddStructArray(buffer, sizeof(tfx_sprite_transform3d_t), offsetof(tfx_sprite_soa_t, transform_3d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, stretch));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, alignment));
-	}
-	else {
-		AddStructArray(buffer, sizeof(tfx_sprite_transform2d_t), offsetof(tfx_sprite_soa_t, transform_2d));
-		AddStructArray(buffer, sizeof(tfx_sprite_transform3d_t), offsetof(tfx_sprite_soa_t, transform_3d));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, stretch));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, stretch));
-		AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, alignment));
-	}
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, curved_alpha));
-	AddStructArray(buffer, sizeof(tfx_rgba8_t), offsetof(tfx_sprite_soa_t, indexes));
-	AddStructArray(buffer, sizeof(tfxU32), offsetof(tfx_sprite_soa_t, intensity_life));
-	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
 void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
@@ -18614,12 +18451,6 @@ void InitializeParticleManager(tfx_particle_manager_t *pm, tfx_library_t *librar
 
 	for (tfxEachLayer) {
 		pm->max_cpu_particles_per_layer[layer] = info.layer_max_values[layer];
-		if (!info.group_sprites_by_effect) {
-			InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((info.layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), info.is_3d ? tfxSpriteBufferMode_3d : tfxSpriteBufferMode_2d);
-			if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-				InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax((info.layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), info.is_3d ? tfxSpriteBufferMode_3d : tfxSpriteBufferMode_2d);
-			}
-		}
 	}
 
 	if (!info.group_sprites_by_effect) {
@@ -18651,31 +18482,15 @@ void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library
 
 	pm->flags |= tfxParticleManagerFlags_3d_effects;
 
-	for (tfxEachLayer) {
-		pm->max_cpu_particles_per_layer[layer] = layer_max_values[layer];
-		if (!group_sprites_by_effect) {
-			InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d);
-			if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-				InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_3d);
-			}
-		}
-	}
-
-	if (!group_sprites_by_effect) {
-		pm->instance_buffer[0] = tfxCreateBuffer(sizeof(tfx_billboard_instance_t));
-		pm->instance_buffer[0].reserve(tfxMax((layer_max_values[0] / tfxDataWidth + 1) * tfxDataWidth, 8));
-		if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-			pm->instance_buffer[1] = tfxCreateBuffer(sizeof(tfx_billboard_instance_t));
-			pm->instance_buffer[1].reserve(tfxMax((layer_max_values[0] / tfxDataWidth + 1) * tfxDataWidth, 8));
-		}
+	pm->instance_buffer[0] = tfxCreateBuffer(sizeof(tfx_billboard_instance_t));
+	pm->instance_buffer[0].reserve(tfxMax((layer_max_values[0] / tfxDataWidth + 1) * tfxDataWidth, 8));
+	if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
+		pm->instance_buffer[1] = tfxCreateBuffer(sizeof(tfx_billboard_instance_t));
+		pm->instance_buffer[1].reserve(tfxMax((layer_max_values[0] / tfxDataWidth + 1) * tfxDataWidth, 8));
 	}
 
 	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && (pm->flags & tfxParticleManagerFlags_ordered_by_age || pm->flags & tfxParticleManagerFlags_order_by_depth)) {
 		FreeAllParticleLists(pm);
-		//for (tfxEachLayer) {
-			//pm->depth_indexes[layer][0].reserve(pm->max_cpu_particles_per_layer[layer]);
-			//pm->depth_indexes[layer][1].reserve(pm->max_cpu_particles_per_layer[layer]);
-		//}
 	}
 
 }
@@ -18686,17 +18501,6 @@ void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library
 
 	InitCommonParticleManager(pm, library, layer_max_values, effects_limit, mode, double_buffered_sprites, dynamic_sprite_allocation, group_sprites_by_effect, mt_batch_size);
 
-	for (tfxEachLayer) {
-		pm->max_cpu_particles_per_layer[layer] = layer_max_values[layer];
-
-		if (!group_sprites_by_effect) {
-			InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d);
-			if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-				InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, 8), tfxSpriteBufferMode_2d);
-			}
-		}
-	}
-
 	if (!group_sprites_by_effect) {
 		pm->instance_buffer[0] = tfxCreateBuffer(sizeof(tfx_sprite_instance_t));
 		pm->instance_buffer[0].reserve(tfxMax((layer_max_values[0] / tfxDataWidth + 1) * tfxDataWidth, 8));
@@ -18705,14 +18509,6 @@ void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library
 			pm->instance_buffer[1].reserve(tfxMax((layer_max_values[0] / tfxDataWidth + 1) * tfxDataWidth, 8));
 		}
 	}
-
-	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && !(pm->flags & tfxParticleManagerFlags_unordered)) {
-		//for (tfxEachLayer) {
-			//pm->depth_indexes[layer][0].reserve(pm->max_cpu_particles_per_layer[layer]);
-			//pm->depth_indexes[layer][1].reserve(pm->max_cpu_particles_per_layer[layer]);
-		//}
-	}
-
 
 }
 
@@ -18723,18 +18519,6 @@ void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *libra
 
 	for (tfxEachLayer) {
 		pm->max_cpu_particles_per_layer[layer] = layer_max_values[layer];
-
-		if (!group_sprites_by_effect) {
-			InitSpriteBufferSoA(&pm->sprite_buffer[0][layer], &pm->sprites[0][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, tfxDataWidth * 2), tfxSpriteBufferMode_both);
-			if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-				InitSpriteBufferSoA(&pm->sprite_buffer[1][layer], &pm->sprites[1][layer], tfxMax((layer_max_values[layer] / tfxDataWidth + 1) * tfxDataWidth, tfxDataWidth * 2), tfxSpriteBufferMode_both);
-			}
-		}
-
-		//if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && !(pm->flags & tfxParticleManagerFlags_unordered)) {
-			//pm->depth_indexes[layer][0].reserve(layer_max_values[layer]);
-			//pm->depth_indexes[layer][1].reserve(layer_max_values[layer]);
-		//}
 	}
 
 	if (!group_sprites_by_effect) {

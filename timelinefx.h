@@ -2686,6 +2686,8 @@ typedef tfxU64 tfxAddress;
 #else
 typedef tfxU32 tfxAddress;
 #endif
+#define tfxSPRITE_SIZE_SSCALE	0.25000762962736f
+#define tfxSPRITE_HANDLE_SSCALE 0.00390636921292f
 
 //These constants are the min an max levels for the emitter attribute graphs
 const float tfxLIFE_MIN = 0.f;
@@ -5219,7 +5221,7 @@ struct tfx_preview_camera_settings_t {
 	bool attach_effect_to_camera;
 };
 
-//this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
+//todo: this probably only needs to be in the editor, no use for it in the library? Maybe in the future as an alternative way to play back effects...
 struct tfx_sprite_sheet_settings_t {
 	tfx_vec3_t position;
 	tfx_vec2_t frame_size;
@@ -5715,15 +5717,14 @@ struct tfx_frame_meta_t {
 //This is the exact struct to upload to the GPU for 2d sprites, so timelinefx will prepare buffers so that they're ready to just
 //upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the sprites
 //in a different way if you don't have this option for some reason, but the former way is by far the most efficient.
-struct tfx_sprite_instance_t {						//44 bytes
+struct tfx_sprite_instance_t {						//48 bytes
 	tfx_vec4_t position_stretch_rotation;           //The position of the sprite, rotation in w, stretch in z
 	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfxU32 intensity_life;							//Multiplier for the color and life of particle
-	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image
+	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	tfxU32 uid;
 };
 
 struct tfx_billboard_instance_t {					//56 bytes
@@ -5732,7 +5733,7 @@ struct tfx_billboard_instance_t {					//56 bytes
 	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfxU32 intensity_life;							//Multiplier for the color and life of particle
-	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image
+	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 };
@@ -5762,45 +5763,34 @@ enum tfxSpriteBufferMode {
 
 //These structs are for animation sprite data that you can upload to the gpu
 struct alignas(16) tfx_sprite_data3d_t {    //60 bytes aligning to 64
-	tfx_vec3_t position;
-	float lerp_offset;
-	tfx_vec3_t rotations;
-	float stretch;
-	tfx_vec2_t scale;
-	tfxU32 property_indexes;
-	tfxU32 captured_index;
-	tfxU32 alignment;
-	tfx_rgba8_t color;
-	float intensity;
-	//Free space for extra 4 bytes if needed
+	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
+	tfx_vec3_t rotations;				            //Rotations of the sprite
+	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
+	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfxU32 intensity_life;							//Multiplier for the color and life of particle
+	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
+	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
+	float lerp_offset;								
 };
 
 struct alignas(16) tfx_sprite_data2d_t {    //48 bytes
-	tfx_vec2_t position;
-	tfx_vec2_t scale;
-	float rotation;
-	tfxU32 property_indexes;
-	tfxU32 captured_index;
-	tfxU32 alignment;
-	tfx_rgba8_t color;
+	tfx_vec4_t position_stretch_rotation;           //The position of the sprite, rotation in w, stretch in z
+	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
+	tfxU32 intensity_life;							//Multiplier for the color and life of particle
+	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
+	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	float lerp_offset;
-	float stretch;
-	float intensity;
 };
 
 //Animation sprite data that is used on the cpu to bake the data
-struct tfx_sprite_data_soa_t {    //64 bytes or 60 after uid is removed as it's only needed for compressing the sprite data down to size.
-	tfxU32 *property_indexes;    //The image frame of animation index packed with alignment option flag and property_index
-	tfxU32 *captured_index;
+struct tfx_sprite_data_soa_t {
+	tfx_sprite_instance_t *sprite_instance;
+	tfx_billboard_instance_t *billboard_instance;
 	tfx_unique_sprite_id_t *uid;
 	float *lerp_offset;
-	tfx_sprite_transform3d_t *transform_3d;
-	tfx_sprite_transform2d_t *transform_2d;
-	tfx_rgba8_t *color;            //The color tint of the sprite and blend factor in a
-	float *intensity;
-	float *stretch;
-	tfxU32 *alignment;            //normalised alignment vector 3 floats packed into 10bits each with 2 bits left over
-	tfxU32 *lerp_values;		 
 };
 
 struct tfx_wide_lerp_transform_result_t {
@@ -5940,7 +5930,7 @@ struct tfx_control_work_entry_t {
 	tfx_overtime_attributes_t *graphs;
 	tfxU32 layer;
 	tfx_emitter_properties_t *properties;
-	tfx_sprite_soa_t *sprites;
+	tfx_vector_t<tfx_unique_sprite_id_t> *sprite_uids;
 	tfx_buffer_t *sprite_instances;
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
 	tfx_emitter_path_t *path;
@@ -5968,6 +5958,7 @@ struct tfx_sort_work_entry_t {
 struct tfx_compress_work_entry_t {
 	tfx_sprite_data_t *sprite_data;
 	tfxU32 frame;
+	bool is_3d;
 };
 
 struct tfx_sprite_index_range_t {
@@ -6146,8 +6137,7 @@ struct tfx_particle_manager_t {
 	tfx_particle_manager_info_t info;
 
 	//Banks of sprites. All emitters write their sprite data to these banks. 
-	tfx_soa_buffer_t sprite_buffer[2][tfxLAYERS];
-	tfx_sprite_soa_t sprites[2][tfxLAYERS];
+	tfx_vector_t <tfx_unique_sprite_id_t> unique_sprite_ids[2];
 	tfx_buffer_t instance_buffer[2];
 	tfxU32 current_sprite_buffer;
 	tfxU32 highest_depth_index;
@@ -6706,6 +6696,68 @@ inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager
 	}
 }
 
+template<typename T>
+void WrapSingleParticleSprites(T *instance, tfx_sprite_data_t *sprite_data) {
+	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
+	for (tfxEachLayer) {
+		for (int i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
+			if (instance[i].captured_index != tfxINVALID && instance[i].captured_index & 0x80000000) {
+				for (int j = sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer]; j != sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].index_offset[layer] + sprite_data->normal.frame_meta[sprite_data->normal.frame_count - 1].sprite_count[layer]; ++j) {
+					if (sprites.uid[j].uid == sprites.uid[i].uid) {
+						instance[i].captured_index = j;
+					}
+				}
+			}
+		}
+	}
+}
+
+template<typename T>
+void ClearWrapBit(T* instance, tfx_sprite_data_t *sprite_data) {
+	for (int i = 0; i != sprite_data->normal.frame_count; ++i) {
+		for (tfxEachLayer) {
+			for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
+				if (instance[j].captured_index == tfxINVALID) continue;
+				tfxU32 wrap_bit = 0x80000000;
+				instance[j].captured_index &= ~wrap_bit;
+			}
+		}
+	}
+}
+
+template<typename T>
+void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_sprite_data_t *sprite_data) {
+	tfx_sprite_data_soa_t &c_sprites = sprite_data->compressed_sprites;
+	int frame = entry_frame - 1;
+	int frame_pair[2];
+	frame_pair[0] = entry_frame;
+	frame_pair[1] = frame < 0 ? sprite_data->compressed.frame_count - 1 : frame;
+	for (tfxEachLayer) {
+		for (int i = sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer]; i != sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer]; ++i) {
+			if (instance[i].captured_index != tfxINVALID) {
+				tfxU32 age_diff = 0xFFFFFFFF;
+				for (int j = sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer]; j != sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[1]].sprite_count[layer]; ++j) {
+					if (c_sprites.uid[j].uid == c_sprites.uid[i].uid) {
+						tfxU32 diff = c_sprites.uid[i].age - c_sprites.uid[j].age;
+						age_diff = diff < age_diff ? diff : age_diff;
+						instance[i].captured_index = age_diff == diff ? j : instance[i].captured_index;
+						if (age_diff < 2) break;
+					}
+				}
+			}
+		}
+	}
+}
+
+template<typename T>
+void InvalidateNewSpriteCapturedIndex(T* instance, tfx_particle_manager_t *pm) {
+	for (tfxU32 i = 0; i != pm->instance_buffer[pm->current_sprite_buffer].current_size; ++i) {
+		if ((instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000)) {
+			instance[i].captured_index = tfxINVALID;
+		}
+	}
+}
+
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxINTERNAL void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, tfxWideFloat cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);
@@ -6790,7 +6842,6 @@ tfxINTERNAL void InitSpriteData3dSoACompression(tfx_soa_buffer_t *buffer, tfx_sp
 tfxINTERNAL void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void InitSpriteBufferSoA(tfx_soa_buffer_t *buffer, tfx_sprite_soa_t *soa, tfxU32 reserve_amount, tfxSpriteBufferMode mode, bool use_uid = false);
 tfxINTERNAL void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
 tfxINTERNAL void InitParticleSoA3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
 tfxINTERNAL void InitParticleLocationSoA3d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
@@ -7073,12 +7124,9 @@ tfxINTERNAL float LookupLibraryPreciseOvertimeNodeList(tfx_library_t *library, t
 tfxINTERNAL float LookupLibraryPreciseNodeList(tfx_library_t *library, tfx_graph_type graph_type, int index, float age);
 tfxINTERNAL float LookupLibraryFastOvertimeValueList(tfx_library_t *library, tfx_graph_type graph_type, int index, float age, float life);
 tfxINTERNAL float LookupLibraryFastValueList(tfx_library_t *library, tfx_graph_type graph_type, int index, float age);
-tfxINTERNAL void InvalidateNewSpriteCapturedIndex(tfx_particle_manager_t *pm);
 tfxINTERNAL void ResetSpriteDataLerpOffset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, std::atomic_int *progress);
 tfxINTERNAL void LinkUpSpriteCapturedIndexes(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void WrapSingleParticleSprites(tfx_sprite_data_t *sprite_data);
-tfxINTERNAL void ClearWrapBit(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL void MaybeGrowLibraryInfos(tfx_library_t *library);
 tfxINTERNAL void BuildAllLibraryPaths(tfx_library_t *library);
 
@@ -7579,37 +7627,11 @@ tfxAPI inline tfx_vec2_t GetSpriteHandle(tfx_particle_manager_t *pm, tfxU32 prop
 }
 
 /*
-Get the total number of sprites within the layer of the particle manager.
-* @param pm                    A pointer to an initialised tfx_particle_manager_t.
-* @param layer                The layer of the sprites to the count of
-*/
-tfxAPI inline tfxU32 SpritesInLayerCount(tfx_particle_manager_t *pm, tfxU32 layer) {
-	return pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
-}
-
-/*
-Get a pointer to the sprite buffer in the particle manager. You can use this access all the sprites for rendering. Note that this will return a nullptr if the particle manager has
-tfxParticleManagerFlags_use_effect_sprite_buffers flag set. Otherwise you can use GetNextSpriteBuffer if grouping sprites by effect.
-* @param pm                    A pointer to an initialised tfx_particle_manager_t.
-* @param layer                The layer of the sprites to the count of
-*/
-tfxAPI inline tfx_sprite_soa_t *SpritesInLayer(tfx_particle_manager_t *pm, tfxU32 layer) {
-	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
-		return &pm->sprites[pm->current_sprite_buffer][layer];
-	}
-	return nullptr;
-}
-
-/*
 Get the total number of 3d sprites ready for rendering in the particle manager
 * @param pm                    A pointer to an initialised tfx_particle_manager_t.
 */
 tfxAPI inline tfxU32 TotalSpriteCount(tfx_particle_manager_t *pm) {
-	tfxU32 count = 0;
-	for (tfxEachLayer) {
-		count += pm->sprite_buffer[pm->current_sprite_buffer][layer].current_size;
-	}
-	return count;
+	return pm->instance_buffer[pm->current_sprite_buffer].current_size;
 }
 
 /*
@@ -7726,8 +7748,8 @@ Get the transform vectors for a 3d sprite's previous position so that you can us
 * @param layer            The index of the sprite layer
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline tfx_sprite_transform3d_t *GetCapturedSprite3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return &pm->sprites[(index & 0x40000000) >> 30][layer].transform_3d[index & 0x0FFFFFFF];
+tfxAPI inline tfx_vec3_t GetCapturedSprite3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
+	return static_cast<tfx_billboard_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30].data)[index & 0x0FFFFFFF].position_stretch.xyz();
 }
 
 /*
@@ -7825,66 +7847,6 @@ tfxAPI inline tfxU32 CompressedSpriteDataEndIndex(tfx_sprite_data_t *sprite_data
 	TFX_ASSERT(frame < sprite_data->compressed.frame_meta.size());            //frame is outside index range
 	TFX_ASSERT(layer < tfxLAYERS);                                //layer is outside index range
 	return sprite_data->compressed.frame_meta[frame].index_offset[layer] + sprite_data->compressed.frame_meta[frame].sprite_count[layer];
-}
-
-/*
-Get the 3d transform struct of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
-* @param index            The index of the sprite you want to retrieve
-* @returns                tfx_sprite_transform3d_t reference
-*/
-tfxAPI inline tfx_sprite_transform3d_t *GetSpriteData3dTransform(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
-	return &sprites->transform_3d[index];
-}
-
-/*
-Get the 2d transform struct of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
-* @param index            The index of the sprite you want to retrieve
-* @returns                tfx_sprite_transform2d_t reference
-*/
-tfxAPI inline tfx_sprite_transform2d_t *GetSpriteData2dTransform(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
-	return &sprites->transform_2d[index];
-}
-
-/*
-Get the intensity of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
-* @param index            The index of the sprite you want to retrieve
-* @returns                float of the intensity value
-*/
-tfxAPI inline float GetSpriteDataIntensity(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
-	return sprites->intensity[index];
-}
-
-/*
-Get the alignment of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
-* @param index            The index of the sprite you want to retrieve
-* @returns                tfxU32
-*/
-tfxAPI inline tfxU32 GetSpriteDataAlignment(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
-	return sprites->alignment[index];
-}
-
-/*
-Get the image frame of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
-* @param index            The index of the sprite you want to retrieve
-* @returns                tfxU32 of the frame value
-*/
-tfxAPI inline tfxU32 GetSpriteDataFrame(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
-	return (sprites->property_indexes[index] & 0x00FF0000) >> 16;
-}
-
-/*
-Get the color of a sprite data by its index in the sprite data struct of arrays
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
-* @param index            The index of the sprite you want to retrieve
-* @returns                tfx_rgba8_t of the frame value
-*/
-tfxAPI inline tfx_rgba8_t GetSpriteDataColor(tfx_sprite_data_soa_t *sprites, tfxU32 index) {
-	return sprites->color[index];
 }
 
 /*
@@ -8601,13 +8563,33 @@ tfxAPI inline float IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index)
 	return float((sprites->property_indexes[sprite_index] & 0x00008000) >> 15);
 }
 
+template<typename T>
+tfxAPI inline tfx_vec2_t GetSpriteScale(T *sprite) {
+	int16_t x_scaled = (int16_t)(sprite->size_handle & 0xFFFF);
+	int16_t y_scaled = (int16_t)((sprite->size_handle >> 16) & 0xFFFF);
+	tfx_vec2_t unpacked;
+	unpacked.x = (float)x_scaled * tfxSPRITE_SIZE_SSCALE;
+	unpacked.y = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
+	return unpacked;
+}
+
+template<typename T>
+tfxAPI inline tfx_vec2_t GetSpriteHandle(T *sprite) {
+	int16_t x_scaled = (int16_t)((sprite->size_handle >> 48 )& 0xFFFF);
+	int16_t y_scaled = (int16_t)((sprite->size_handle >> 32) & 0xFFFF);
+	tfx_vec2_t unpacked;
+	unpacked.x = (float)x_scaled * tfxSPRITE_HANDLE_SSCALE;
+	unpacked.y = (float)y_scaled * tfxSPRITE_HANDLE_SSCALE;
+	return unpacked;
+}
+
 #ifdef tfxINTEL
 /*
 Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
-* @param tween                The interpolation value between 0 and 1. You should pass in the value from your timing function
-* @param current            The current tfx_rgba8_t color
-* @param captured            The captured tfx_rgba8_t color
-* @returns tfx_rgba8_t            The interpolated tfx_rgba8_t
+* @param tween						The interpolation value between 0 and 1. You should pass in the value from your timing function
+* @param current					The current tfx_rgba8_t color
+* @param captured					The captured tfx_rgba8_t color
+* @returns tfx_rgba8_t				The interpolated tfx_rgba8_t
 */
 tfxAPI inline tfx_rgba8_t TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
 	tfx128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
