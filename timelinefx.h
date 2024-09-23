@@ -5640,6 +5640,7 @@ struct tfx_compute_sprite_t {    //64 bytes
 struct tfx_unique_sprite_id_t {
 	tfxU32 uid;
 	tfxU32 age;
+	tfxU32 property_index;
 };
 
 //These all point into a tfx_soa_buffer_t, initialised with InitParticleSoA. Current Bandwidth: 108 bytes
@@ -5725,6 +5726,7 @@ struct tfx_sprite_instance_t {						//48 bytes
 	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
+	tfxU32 padding;
 };
 
 struct tfx_billboard_instance_t {					//56 bytes
@@ -5771,7 +5773,8 @@ struct alignas(16) tfx_sprite_data3d_t {    //60 bytes aligning to 64
 	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	float lerp_offset;								
+	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
+	tfxU32 padding;
 };
 
 struct alignas(16) tfx_sprite_data2d_t {    //48 bytes
@@ -5782,7 +5785,7 @@ struct alignas(16) tfx_sprite_data2d_t {    //48 bytes
 	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	float lerp_offset;
+	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
 };
 
 //Animation sprite data that is used on the cpu to bake the data
@@ -5930,7 +5933,6 @@ struct tfx_control_work_entry_t {
 	tfx_overtime_attributes_t *graphs;
 	tfxU32 layer;
 	tfx_emitter_properties_t *properties;
-	tfx_vector_t<tfx_unique_sprite_id_t> *sprite_uids;
 	tfx_buffer_t *sprite_instances;
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
 	tfx_emitter_path_t *path;

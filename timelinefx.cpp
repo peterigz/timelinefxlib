@@ -10420,6 +10420,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				particles_started = total_sprites > 0;
 				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
+			//tfxPrint("First Update Parse: %i, %i | %i", tmp_frame_meta[frame].sprite_count[0], tmp_frame_meta[frame].sprite_count[1], tmp_frame_meta[frame].total_sprites);
 		}
 
 		if (auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && particles_started && sprites_in_layers == 0) {
@@ -10477,11 +10478,12 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	tmp_frame_meta.free_all();
 
 	tfxU32 last_count = 0;
-	for (auto &meta : frame_meta) {
+	for (tfx_frame_meta_t &meta : frame_meta) {
 		for (tfxEachLayer) {
 			meta.index_offset[layer] = last_count;
 			last_count += meta.sprite_count[layer];
 		}
+		//tfxPrint("Initial Counts: %i, %i | %i, %i", meta.sprite_count[0], meta.sprite_count[1], meta.index_offset[0], meta.index_offset[1]);
 	}
 
 	ReconfigureParticleManager(pm, GetRequiredParticleManagerMode(effect), effect->sort_passes, Is3DEffect(effect));
@@ -10567,6 +10569,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				tfxU32 meta_count = frame_meta[frame].sprite_count[layer];
 				tfxU32 pm_count = pm->layer_sizes[layer];
 				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
+					//Copy sprites that have looped round (for looped effects) into a temporary buffer, to be copied back after the fresh sprites have been copied
 					Resize(&temp_sprites_buffer, running_count[layer][frame]);
 					memcpy(temp_sprites.uid, sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], sizeof(tfx_unique_sprite_id_t) * running_count[layer][frame]);
 					if (is_3d) {
@@ -10607,17 +10610,19 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 					}
 				}
 
-				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], &pm->unique_sprite_ids[pm->current_sprite_buffer] + pm->cumulative_index_point[layer], sizeof(tfx_unique_sprite_id_t) * pm->layer_sizes[layer]);
+				//Copy fresh sprites this frame
+				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->unique_sprite_ids[pm->current_sprite_buffer].data + pm->cumulative_index_point[layer], sizeof(tfx_unique_sprite_id_t) * pm->layer_sizes[layer]);
 				int index_offset = frame_meta[frame].index_offset[layer];
 				int current_size = pm->layer_sizes[layer];
 				if (is_3d) {
 					memcpy(sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer], billboards + pm->cumulative_index_point[layer], sizeof(tfx_billboard_instance_t) * pm->layer_sizes[layer]);
 				}
 				else {
-					memcpy(sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer], sprites + pm->cumulative_index_point[layer], sizeof(tfx_sprite_transform2d_t) * pm->layer_sizes[layer]);
+					memcpy(sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer], sprites + pm->cumulative_index_point[layer], sizeof(tfx_sprite_instance_t) * pm->layer_sizes[layer]);
 				}
 
 				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
+					//Copy sprites that have looped round (for looped effects)
 					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.uid, sizeof(tfx_unique_sprite_id_t) *temp_sprites_buffer.current_size);
 					if (is_3d) {
 						memcpy(sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.billboard_instance, sizeof(tfx_billboard_instance_t) * temp_sprites_buffer.current_size);
@@ -10635,6 +10640,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				particles_started = total_sprites > 0;
 				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
+			//tfxPrint("Just copied to %i, %i from %i, %i, QTY: %i, %i", frame_meta[frame].index_offset[0], frame_meta[frame].index_offset[1], pm->cumulative_index_point[0], pm->cumulative_index_point[1], pm->layer_sizes[0], pm->layer_sizes[1]);
 		}
 
 		offset++;
@@ -11016,7 +11022,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfx_sprite_data3d_t sprite;
 			memcpy(&sprite, &sprites.billboard_instance[i], sizeof(tfx_billboard_instance_t));
-			sprite.lerp_offset = sprites.lerp_offset[i];
+			sprite.additional = tfxU32(sprites.lerp_offset[i] * 65535.f);
+			sprite.additional |= (effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index << 16);
 			animation_manager->sprite_data_3d.push_back_copy(sprite);
 		}
 		metrics.total_memory_for_sprites = sizeof(tfx_sprite_data3d_t) * metrics.total_sprites;
@@ -11026,7 +11033,8 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfx_sprite_data2d_t sprite;
 			memcpy(&sprite, &sprites.sprite_instance[i], sizeof(tfx_sprite_instance_t));
-			sprite.lerp_offset = sprites.lerp_offset[i];
+			sprite.additional = tfxU32(sprites.lerp_offset[i] * 65535.f);
+			sprite.additional |= (effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index << 16);
 			animation_manager->sprite_data_2d.push_back_copy(sprite);
 		}
 		metrics.total_memory_for_sprites = sizeof(tfx_sprite_data2d_t) * metrics.total_sprites;
@@ -14267,7 +14275,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 	tfxU32 start_diff = work_entry->start_diff;
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
-	tfx_vector_t<tfx_unique_sprite_id_t> &sprite_uids = *work_entry->sprite_uids;
+	tfx_vector_t<tfx_unique_sprite_id_t> &sprite_uids = pm.unique_sprite_ids[pm.current_sprite_buffer];
 	tfx_sprite_instance_t *instance = tfxCastBuffer(tfx_sprite_instance_t, work_entry->sprite_instances);
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index])));
 
@@ -14281,6 +14289,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[work_entry->layer];
 				sprite_uids[sprite_depth_index].uid = bank.uid[index_j];
 				sprite_uids[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
+				sprite_uids[sprite_depth_index].property_index = emitter.properties_index;
 				running_sprite_index++;
 			}
 		}
@@ -14289,6 +14298,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 				int index_j = index + j;
 				sprite_uids[running_sprite_index].uid = bank.uid[index_j];
 				sprite_uids[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
+				sprite_uids[running_sprite_index].property_index = emitter.properties_index;
 				running_sprite_index++;
 			}
 		}
@@ -14308,8 +14318,9 @@ void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on) {
 	if (switch_on) {
 		pm->unique_sprite_ids[0].reserve(pm->max_cpu_particles_per_layer[0]);
 		if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
-			pm->unique_sprite_ids[0].reserve(pm->max_cpu_particles_per_layer[0]);
+			pm->unique_sprite_ids[1].reserve(pm->max_cpu_particles_per_layer[0]);
 		}
+		pm->flags |= tfxParticleManagerFlags_using_uids;
 	}
 	else {
 		pm->flags &= ~tfxParticleManagerFlags_using_uids;
@@ -15017,7 +15028,6 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
 	}
 
-	uid_buffer.current_size += max_spawn_count + emitter.sprites_count;
 	instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
 	effect_sprites.sprite_count += emitter.sprites_count;
 	emitter.sprites_count += max_spawn_count;
@@ -15039,10 +15049,12 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 	TFX_ASSERT(amount_spawned <= max_spawn_count);
 	tfxU32 spawn_difference = max_spawn_count - amount_spawned;
-	uid_buffer.current_size -= spawn_difference;
 	instance_buffer.current_size -= spawn_difference;
 	sprite_index_point -= spawn_difference;
 	pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
+	if (pm->flags & tfxParticleManagerFlags_recording_sprites && pm->flags & tfxParticleManagerFlags_using_uids) {
+		uid_buffer.current_size = instance_buffer.current_size;
+	}
 
 	emitter.age += pm->frame_length;
 	if (!(emitter.property_flags & tfxEmitterPropertyFlags_single) || (emitter.property_flags & tfxEmitterPropertyFlags_single && properties.single_shot_limit > 0) || emitter.state_flags & tfxEmitterStateFlags_stop_spawning) {
@@ -17980,7 +17992,6 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	tfx_effect_sprites_t &effect_sprites = pm->effects[emitter.root_index].sprites;
 	effect_sprites.sprite_start_index = tfx__Min(work_entry->sprites_index, effect_sprites.sprite_start_index);
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
-	work_entry->sprite_uids = &pm->unique_sprite_ids[pm->current_sprite_buffer];
 	tfx_effect_sprites_t &sprites = pm->effects[emitter.root_index].sprites;
 	work_entry->depth_indexes = &sprites.depth_indexes[work_entry->layer][sprites.current_depth_buffer_index[work_entry->layer]];
 	work_entry->overal_scale = pm->effects[emitter.parent_index].overal_scale;
