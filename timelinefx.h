@@ -5708,7 +5708,9 @@ struct tfx_sprite_transform3d_t {
 struct tfx_frame_meta_t {
 	tfxU32 index_offset[tfxLAYERS];					//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
 	tfxU32 sprite_count[tfxLAYERS];					//The number of sprites in the frame for each layer
+	tfxU32 cumulative_offset[tfxLAYERS];			//The cumulative number of sprites in the frame for each layer
 	tfxU32 total_sprites;							//The total number of sprites for all layers in the frame
+	tfxU32 captured_offset;							//The amount to offset the captured index by
 	tfx_vec3_t min_corner;							//Bounding box min corner
 	tfx_vec3_t max_corner;							//Bounding box max corner. The bounding box can be used to decide if this frame needs to be drawn
 	tfx_vec3_t bb_center_point;						//The center point of the bounding box. For the fastest checking against a viewing frustum, you can combine this with radius
@@ -6699,7 +6701,7 @@ inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager
 }
 
 template<typename T>
-void WrapSingleParticleSprites(T *instance, tfx_sprite_data_t *sprite_data) {
+inline void WrapSingleParticleSprites(T *instance, tfx_sprite_data_t *sprite_data) {
 	tfx_sprite_data_soa_t &sprites = sprite_data->real_time_sprites;
 	for (tfxEachLayer) {
 		for (int i = sprite_data->normal.frame_meta[0].index_offset[layer]; i != sprite_data->normal.frame_meta[0].index_offset[layer] + sprite_data->normal.frame_meta[0].sprite_count[layer]; ++i) {
@@ -6715,7 +6717,7 @@ void WrapSingleParticleSprites(T *instance, tfx_sprite_data_t *sprite_data) {
 }
 
 template<typename T>
-void ClearWrapBit(T* instance, tfx_sprite_data_t *sprite_data) {
+inline void ClearWrapBit(T* instance, tfx_sprite_data_t *sprite_data) {
 	for (int i = 0; i != sprite_data->normal.frame_count; ++i) {
 		for (tfxEachLayer) {
 			for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
@@ -6728,7 +6730,25 @@ void ClearWrapBit(T* instance, tfx_sprite_data_t *sprite_data) {
 }
 
 template<typename T>
-void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_sprite_data_t *sprite_data) {
+inline void SpriteDataOffsetCapturedIndexes(T* instance, tfx_sprite_data_t *sprite_data, tfxU32 current_frame, tfxU32 real_frames) {
+	for (tfxEachLayer) {
+		for (int j = SpriteDataIndexOffset(sprite_data, current_frame, layer); j != SpriteDataEndIndex(sprite_data, current_frame, layer); ++j) {
+			if (instance[j].captured_index == tfxINVALID) continue;
+			int frame = current_frame - 1;
+			frame = frame < 0 ? real_frames - 1 : frame;
+			tfxU32 wrap_bit = instance[j].captured_index & 0x80000000;
+			instance[j].captured_index = (instance[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].captured_offset + sprite_data->normal.frame_meta[frame].cumulative_offset[layer];
+			tfxPrint("%i) %u, %u, %u, %u, %u, %u", j, instance[j].captured_index, sprite_data->real_time_sprites.uid[instance[j].captured_index].uid, sprite_data->real_time_sprites.uid[instance[j].captured_index].age, sprite_data->real_time_sprites.uid[j].uid, sprite_data->real_time_sprites.uid[j].age, sprite_data->normal.frame_meta[frame].captured_offset);
+			TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
+			instance[j].captured_index |= wrap_bit;
+		}
+		tfxPrint("---------------------");
+	}
+	tfxPrint("*****************************");
+}
+
+template<typename T>
+inline void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_sprite_data_t *sprite_data) {
 	tfx_sprite_data_soa_t &c_sprites = sprite_data->compressed_sprites;
 	int frame = entry_frame - 1;
 	int frame_pair[2];
@@ -6752,7 +6772,7 @@ void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_sprite_data
 }
 
 template<typename T>
-void InvalidateNewSpriteCapturedIndex(T* instance, tfx_particle_manager_t *pm) {
+inline void InvalidateNewSpriteCapturedIndex(T* instance, tfx_particle_manager_t *pm) {
 	for (tfxU32 i = 0; i != pm->instance_buffer[pm->current_sprite_buffer].current_size; ++i) {
 		if ((instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000)) {
 			instance[i].captured_index = tfxINVALID;
@@ -7775,7 +7795,8 @@ a for loop to iterate over the sprites in a pre-recorded effect
 tfxAPI inline tfxU32 SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
 	TFX_ASSERT(frame < sprite_data->normal.frame_meta.size());            //frame is outside index range
 	TFX_ASSERT(layer < tfxLAYERS);                                //layer is outside index range
-	return sprite_data->normal.frame_meta[frame].index_offset[layer];
+	tfxU32 index = sprite_data->normal.frame_meta[frame].index_offset[layer];
+	return index;
 }
 
 /*

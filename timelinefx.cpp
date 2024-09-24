@@ -10420,7 +10420,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				particles_started = total_sprites > 0;
 				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
-			//tfxPrint("First Update Parse: %i, %i | %i", tmp_frame_meta[frame].sprite_count[0], tmp_frame_meta[frame].sprite_count[1], tmp_frame_meta[frame].total_sprites);
+			//tfxPrint("%i) First Update Parse: %i, %i | %i", frame, tmp_frame_meta[frame].sprite_count[0], tmp_frame_meta[frame].sprite_count[1], tmp_frame_meta[frame].total_sprites);
 		}
 
 		if (auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && particles_started && sprites_in_layers == 0) {
@@ -10479,11 +10479,15 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 
 	tfxU32 last_count = 0;
 	for (tfx_frame_meta_t &meta : frame_meta) {
+		meta.captured_offset = last_count;
+		tfxU32 layer_counts = 0;
 		for (tfxEachLayer) {
 			meta.index_offset[layer] = last_count;
+			meta.cumulative_offset[layer] = 0;
 			last_count += meta.sprite_count[layer];
+			layer_counts = last_count;
 		}
-		//tfxPrint("Initial Counts: %i, %i | %i, %i", meta.sprite_count[0], meta.sprite_count[1], meta.index_offset[0], meta.index_offset[1]);
+		tfxPrint("Initial Counts: %i, %i | %i, %i, %u, %u, %u", meta.sprite_count[0], meta.sprite_count[1], meta.index_offset[0], meta.index_offset[1], meta.captured_offset, meta.cumulative_offset[0], meta.cumulative_offset[1]);
 	}
 
 	ReconfigureParticleManager(pm, GetRequiredParticleManagerMode(effect), effect->sort_passes, Is3DEffect(effect));
@@ -10587,6 +10591,8 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 						if (captured_offset[layer] > 0) {
 							for (int temp_i = 0; temp_i != temp_sprites_buffer.current_size; ++temp_i) {
 								if (temp_sprites.sprite_instance[temp_i].captured_index != tfxINVALID) {
+									tfxU32 ci = temp_sprites.sprite_instance[temp_i].captured_index & 0xFFFFFFF;
+									ci += captured_offset[layer];
 									temp_sprites.sprite_instance[temp_i].captured_index += captured_offset[layer];
 								}
 							}
@@ -10603,8 +10609,10 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 					}
 					else {
 						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
-							if (sprite_data->real_time_sprites.billboard_instance[index].captured_index != tfxINVALID) {
-								sprite_data->real_time_sprites.billboard_instance[index].captured_index += captured_offset[layer];
+							if (sprite_data->real_time_sprites.sprite_instance[index].captured_index != tfxINVALID) {
+								tfxU32 ci = sprite_data->real_time_sprites.sprite_instance[index].captured_index & 0xFFFFFFF;
+								ci += captured_offset[layer];
+								sprite_data->real_time_sprites.sprite_instance[index].captured_index += captured_offset[layer];
 							}
 						}
 					}
@@ -10623,14 +10631,21 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 
 				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
 					//Copy sprites that have looped round (for looped effects)
-					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.uid, sizeof(tfx_unique_sprite_id_t) *temp_sprites_buffer.current_size);
+					memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.uid, sizeof(tfx_unique_sprite_id_t) * temp_sprites_buffer.current_size);
 					if (is_3d) {
 						memcpy(sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.billboard_instance, sizeof(tfx_billboard_instance_t) * temp_sprites_buffer.current_size);
 					}
 					else {
 						memcpy(sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer] + pm->layer_sizes[layer], temp_sprites.sprite_instance, sizeof(tfx_sprite_instance_t) * temp_sprites_buffer.current_size);
 					}
+					tfxU32 layer_offset = 0;
+					for (int l = 0; l <= layer; ++l) {
+						layer_offset += pm->layer_sizes[l];
+					}
 					captured_offset[layer] = pm->layer_sizes[layer];
+					if (layer < tfxLAYERS - 1) {
+						sprite_data->normal.frame_meta[frame].cumulative_offset[layer + 1] += pm->layer_sizes[layer];
+					}
 				}
 				else if (pm->layer_sizes[layer] == 0) {
 					captured_offset[layer] = 0;
@@ -10666,38 +10681,23 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	//total sprites should not exceed the capacity of the sprite buffer
 	TFX_ASSERT(sprite_data->real_time_sprites_buffer.current_size <= sprite_data->real_time_sprites_buffer.capacity);
 	ResetSpriteDataLerpOffset(sprite_data);
+	tfxPrint("00000000000000008888888888888880000000000000000");
+	for (int i = 0; i != sprite_data->real_time_sprites_buffer.current_size; ++i) {
+		tfx_sprite_instance_t *instance = sprite_data->real_time_sprites.sprite_instance;
+		tfx_unique_sprite_id_t *id = sprite_data->real_time_sprites.uid;
+		tfxPrint("%i) %u, %u, %u", i, instance[i].captured_index & 0xFFFFFFF, id[i].uid, id[i].age);
+	}
 
-	tfx_sprite_instance_t *sprites = sprite_data->real_time_sprites.sprite_instance;
-	tfx_billboard_instance_t *billboards = sprite_data->real_time_sprites.billboard_instance;
-
-	for (int i = 0; i != anim.real_frames; ++i) {
-		for (tfxEachLayer) {
-			if (is_3d) {
-				for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
-					if (billboards[j].captured_index == tfxINVALID) continue;
-					int frame = i - 1;
-					frame = frame < 0 ? anim.real_frames - 1 : frame;
-					tfxU32 wrap_bit = billboards[j].captured_index & 0x80000000;
-					tfxU32 *captured_index = &billboards[j].captured_index;
-					billboards[j].captured_index = (billboards[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
-					captured_index = &billboards[j].captured_index;
-					billboards[j].captured_index |= wrap_bit;
-				}
-			}
-			else {
-				for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
-					if (sprites[j].captured_index == tfxINVALID) continue;
-					int frame = i - 1;
-					frame = frame < 0 ? anim.real_frames - 1 : frame;
-					tfxU32 wrap_bit = sprites[j].captured_index & 0x80000000;
-					tfxU32 *captured_index = &sprites[j].captured_index;
-					sprites[j].captured_index = (sprites[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
-					captured_index = &sprites[j].captured_index;
-					sprites[j].captured_index |= wrap_bit;
-				}
-			}
+	if (is_3d) {
+		for (int i = 1; i != anim.real_frames; ++i) {
+			SpriteDataOffsetCapturedIndexes(sprite_data->real_time_sprites.billboard_instance, sprite_data, i, anim.real_frames);
+		}
+	} else {
+		for (int i = 1; i != anim.real_frames; ++i) {
+			SpriteDataOffsetCapturedIndexes(sprite_data->real_time_sprites.sprite_instance, sprite_data, i, anim.real_frames);
 		}
 	}
+
 
 	if (is_3d) {
 		WrapSingleParticleSprites(sprite_data->real_time_sprites.billboard_instance, sprite_data);
