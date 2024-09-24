@@ -10689,11 +10689,11 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	}
 
 	if (is_3d) {
-		for (int i = 1; i != anim.real_frames; ++i) {
+		for (int i = 0; i != anim.real_frames; ++i) {
 			SpriteDataOffsetCapturedIndexes(sprite_data->real_time_sprites.billboard_instance, sprite_data, i, anim.real_frames);
 		}
 	} else {
-		for (int i = 1; i != anim.real_frames; ++i) {
+		for (int i = 0; i != anim.real_frames; ++i) {
 			SpriteDataOffsetCapturedIndexes(sprite_data->real_time_sprites.sprite_instance, sprite_data, i, anim.real_frames);
 		}
 	}
