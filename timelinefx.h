@@ -6730,21 +6730,25 @@ inline void ClearWrapBit(T* instance, tfx_sprite_data_t *sprite_data) {
 }
 
 template<typename T>
-inline void SpriteDataOffsetCapturedIndexes(T* instance, tfx_sprite_data_t *sprite_data, tfxU32 current_frame, tfxU32 real_frames) {
+inline void SpriteDataOffsetCapturedIndexes(T* instance, tfx_sprite_data_t *sprite_data, tfxU32 previous_frame, tfxU32 current_frame) {
+	tfxU32 layer_offset = 0;
 	for (tfxEachLayer) {
 		for (int j = SpriteDataIndexOffset(sprite_data, current_frame, layer); j != SpriteDataEndIndex(sprite_data, current_frame, layer); ++j) {
 			if (instance[j].captured_index == tfxINVALID) continue;
-			int frame = current_frame - 1;
-			frame = frame < 0 ? real_frames - 1 : frame;
 			tfxU32 wrap_bit = instance[j].captured_index & 0x80000000;
-			instance[j].captured_index = (instance[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[frame].captured_offset + sprite_data->normal.frame_meta[frame].cumulative_offset[layer];
-			tfxPrint("%i) %u, %u, %u, %u, %u, %u", j, instance[j].captured_index, sprite_data->real_time_sprites.uid[instance[j].captured_index].uid, sprite_data->real_time_sprites.uid[instance[j].captured_index].age, sprite_data->real_time_sprites.uid[j].uid, sprite_data->real_time_sprites.uid[j].age, sprite_data->normal.frame_meta[frame].captured_offset);
-			TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
+			instance[j].captured_index = (instance[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[previous_frame].index_offset[layer];
+			if (sprite_data->real_time_sprites.uid[instance[j].captured_index].uid != sprite_data->real_time_sprites.uid[j].uid) {
+				//tfxPrint("%i) %u, %u, %u, %u, %u, %u", j, instance[j].captured_index, sprite_data->real_time_sprites.uid[instance[j].captured_index].uid, sprite_data->real_time_sprites.uid[instance[j].captured_index].age, sprite_data->real_time_sprites.uid[j].uid, sprite_data->real_time_sprites.uid[j].age, sprite_data->normal.frame_meta[previous_frame].captured_offset);
+			}
+			//TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
 			instance[j].captured_index |= wrap_bit;
 		}
-		tfxPrint("---------------------");
+		if (layer > 0) {
+			layer_offset += sprite_data->normal.frame_meta[previous_frame].cumulative_offset[layer];
+		}
+		//tfxPrint("--------- %i - %i ------------", current_frame, layer);
 	}
-	tfxPrint("*****************************");
+	//tfxPrint("************* end of frame %i ****************", current_frame);
 }
 
 template<typename T>
