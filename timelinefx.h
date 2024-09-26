@@ -6738,18 +6738,13 @@ inline void SpriteDataOffsetCapturedIndexes(T* instance, tfx_sprite_data_t *spri
 			if (instance[j].captured_index == tfxINVALID) continue;
 			tfxU32 wrap_bit = instance[j].captured_index & 0x80000000;
 			instance[j].captured_index = (instance[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[previous_frame].index_offset[layer];
-			if (sprite_data->real_time_sprites.uid[instance[j].captured_index].uid != sprite_data->real_time_sprites.uid[j].uid) {
-				//tfxPrint("%i) %u, %u, %u, %u, %u, %u", j, instance[j].captured_index, sprite_data->real_time_sprites.uid[instance[j].captured_index].uid, sprite_data->real_time_sprites.uid[instance[j].captured_index].age, sprite_data->real_time_sprites.uid[j].uid, sprite_data->real_time_sprites.uid[j].age, sprite_data->normal.frame_meta[previous_frame].captured_offset);
-			}
-			//TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
+			TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
 			instance[j].captured_index |= wrap_bit;
 		}
 		if (layer > 0) {
 			layer_offset += sprite_data->normal.frame_meta[previous_frame].cumulative_offset[layer];
 		}
-		//tfxPrint("--------- %i - %i ------------", current_frame, layer);
 	}
-	//tfxPrint("************* end of frame %i ****************", current_frame);
 }
 
 template<typename T>

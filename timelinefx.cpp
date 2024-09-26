@@ -10426,7 +10426,6 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				particles_started = total_sprites > 0;
 				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
-			//tfxPrint("%i) First Update Parse: %i, %i | %i", frame, tmp_frame_meta[frame].sprite_count[0], tmp_frame_meta[frame].sprite_count[1], tmp_frame_meta[frame].total_sprites);
 		}
 
 		if (auto_set_length && !(anim.animation_flags & tfxAnimationFlags_loop) && particles_started && sprites_in_layers == 0) {
@@ -10451,8 +10450,6 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 		}
 
 	}
-
-	tfxPrint("--------------- * ----------------");
 
 	progress->store(tfxBakeSpriteData);
 
@@ -10495,7 +10492,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 			last_count += meta.sprite_count[layer];
 			layer_counts = last_count;
 		}
-		tfxPrint("Initial Counts: %i, %i, %i, %i | %i, %i, %i, %i", meta.sprite_count[0], meta.sprite_count[1], meta.sprite_count[2], meta.sprite_count[3], meta.index_offset[0], meta.index_offset[1], meta.index_offset[2], meta.index_offset[3]);
+		//tfxPrint("Initial Counts: %i, %i, %i, %i | %i, %i, %i, %i", meta.sprite_count[0], meta.sprite_count[1], meta.sprite_count[2], meta.sprite_count[3], meta.index_offset[0], meta.index_offset[1], meta.index_offset[2], meta.index_offset[3]);
 	}
 
 	ReconfigureParticleManager(pm, GetRequiredParticleManagerMode(effect), effect->sort_passes, Is3DEffect(effect));
@@ -10698,6 +10695,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	//total sprites should not exceed the capacity of the sprite buffer
 	TFX_ASSERT(sprite_data->real_time_sprites_buffer.current_size <= sprite_data->real_time_sprites_buffer.capacity);
 	ResetSpriteDataLerpOffset(sprite_data);
+	/*
 	tfxPrint("00000000000000008888888888888880000000000000000");
 	for (int i = 0; i != frames; ++i) {
 		int frame = i - 1;
@@ -10732,6 +10730,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 			}
 		}
 	}
+	*/
 
 	for (int i = 0; i != anim.real_frames; ++i) {
 		int previous_frame = i - 1;
@@ -14238,7 +14237,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 	tfxWideInt color_ramp_indexes;
 	color_ramp_indexes = tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 24);
 	color_ramp_indexes = tfxWideOri(color_ramp_indexes, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 16));
-	tfxWideInt image_start_index = tfxWideSetSinglei(image->compute_shape_index);
+	tfxWideInt image_start_index = tfxWideSetSinglei((pm.flags & tfxParticleManagerFlags_recording_sprites) ? 0 : image->compute_shape_index);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index])));
@@ -15068,19 +15067,19 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 		emitter.captured_position = emitter.world_position;
 	}
 
-	tfxU32 free_space = 0;
-
 	emitter.sprites_count = pm->particle_array_buffers[emitter.particles_index].current_size;
 	if (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation || pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
 		if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
-			tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count - free_space) + 1;
+			tfxU32 new_size = instance_buffer.capacity + (emitter.sprites_count + max_spawn_count) + 1;
 			if (pm->flags & tfxParticleManagerFlags_recording_sprites && pm->flags & tfxParticleManagerFlags_using_uids) {
-				uid_buffer.resize(new_size);
+				uid_buffer.reserve(new_size);
 			}
-			instance_buffer.resize(new_size);
+			instance_buffer.reserve(new_size);
 		}
 	}
 	else {
+		TFX_ASSERT(0);	//Todo: Re-implement this
+		/*
 		if (emitter.sprites_count + instance_buffer.current_size + max_spawn_count >= instance_buffer.capacity) {
 			if (free_space > emitter.sprites_count) {
 				max_spawn_count = free_space - emitter.sprites_count;
@@ -15090,6 +15089,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			}
 		}
 		TFX_ASSERT(free_space >= max_spawn_count);    //Trying to spawn particles when no space left in sprite buffer. If this is hit then there's a bug in TimelineFX!
+		*/
 	}
 
 	instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
@@ -15114,6 +15114,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	TFX_ASSERT(amount_spawned <= max_spawn_count);
 	tfxU32 spawn_difference = max_spawn_count - amount_spawned;
 	instance_buffer.current_size -= spawn_difference;
+	TFX_ASSERT(instance_buffer.current_size < instance_buffer.capacity);
 	sprite_index_point -= spawn_difference;
 	pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
 	if (pm->flags & tfxParticleManagerFlags_recording_sprites && pm->flags & tfxParticleManagerFlags_using_uids) {
@@ -15511,9 +15512,6 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 		//to get different numbers. When the UID is incrementle then future particles will just get the same seed unless the UID can be staggered enough. Hence I 
 		//just use clock cycles which serves the purpose well enough. It's kind of hard to explain but see more in ControlParticleSimpleRandomMovement
 		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc();
-		if (pm.flags & tfxParticleManagerFlags_recording_sprites) {
-			tfxPrint("%u) UID: %u", properties.layer, entry->particle_data->uid[index]);
-		}
 		age_accumulator += frame_fraction;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxParticleManagerFlags_recording_sprites) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
