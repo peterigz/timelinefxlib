@@ -10364,6 +10364,12 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	tfxParticleManagerFlags pm_effect_sprites_flag = pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers;
 	pm->flags &= ~tfxParticleManagerFlags_use_effect_sprite_buffers;
 	ReconfigureParticleManager(pm, GetRequiredParticleManagerMode(effect), effect->sort_passes, Is3DEffect(effect));
+	tfxU32 struct_size = sizeof(tfx_sprite_instance_t);
+	if (is_3d) struct_size = sizeof(tfx_billboard_instance_t);
+	for (tfxEachLayer) {
+		pm->instance_buffer_for_recording[0][layer] = tfxCreateBuffer(struct_size);
+		pm->instance_buffer_for_recording[1][layer] = tfxCreateBuffer(struct_size);
+	}
 	pm->flags |= tfxParticleManagerFlags_recording_sprites;
 	if (!(pm->flags & tfxParticleManagerFlags_using_uids)) {
 		ToggleSpritesWithUID(pm, true);
@@ -10446,6 +10452,8 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 
 	}
 
+	tfxPrint("--------------- * ----------------");
+
 	progress->store(tfxBakeSpriteData);
 
 	frames = tmp_frame_meta.size();
@@ -10487,7 +10495,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 			last_count += meta.sprite_count[layer];
 			layer_counts = last_count;
 		}
-		tfxPrint("Initial Counts: %i, %i | %i, %i, %u", meta.sprite_count[0], meta.sprite_count[1], meta.index_offset[0], meta.index_offset[1], meta.captured_offset);
+		tfxPrint("Initial Counts: %i, %i, %i, %i | %i, %i, %i, %i", meta.sprite_count[0], meta.sprite_count[1], meta.sprite_count[2], meta.sprite_count[3], meta.index_offset[0], meta.index_offset[1], meta.index_offset[2], meta.index_offset[3]);
 	}
 
 	ReconfigureParticleManager(pm, GetRequiredParticleManagerMode(effect), effect->sort_passes, Is3DEffect(effect));
@@ -10562,17 +10570,16 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	while (frame < frames && offset < 99999) {
 		tfxU32 count_this_frame = 0;
 		UpdateParticleManager(pm, frame_length);
-		if (is_3d) {
-			InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer[pm->current_sprite_buffer]), pm);
-		}
-		else {
-			InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer[pm->current_sprite_buffer]), pm);
+		for (tfxEachLayer) {
+			if (is_3d) {
+				InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm, layer);
+			} else {
+				InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm, layer);
+			}
 		}
 		bool particles_processed_last_frame = false;
 
 		if (offset >= start_frame) {
-			tfx_sprite_instance_t *sprites = tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer[pm->current_sprite_buffer]);
-			tfx_billboard_instance_t *billboards = tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer[pm->current_sprite_buffer]);
 			for (tfxEachLayer) {
 				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
 					//Copy sprites that have looped round (for looped effects) into a temporary buffer, to be copied back after the fresh sprites have been copied
@@ -10587,8 +10594,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 								}
 							}
 						}
-					}
-					else {
+					} else {
 						memcpy(temp_sprites[layer].sprite_instance, sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer], sizeof(tfx_sprite_instance_t) * running_count[layer][frame]);
 						if (captured_offset[layer] > 0) {
 							for (int temp_i = 0; temp_i != temp_sprites_buffer[layer].current_size; ++temp_i) {
@@ -10600,16 +10606,14 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 							}
 						}
 					}
-				}
-				else if (captured_offset[layer] > 0 && pm->layer_sizes[layer] == 0) {
+				} else if (captured_offset[layer] > 0 && pm->layer_sizes[layer] == 0) {
 					if (is_3d) {
 						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
 							if (sprite_data->real_time_sprites.billboard_instance[index].captured_index != tfxINVALID) {
 								sprite_data->real_time_sprites.billboard_instance[index].captured_index += captured_offset[layer];
 							}
 						}
-					}
-					else {
+					} else {
 						for (int index = SpriteDataIndexOffset(sprite_data, frame, layer); index != SpriteDataEndIndex(sprite_data, frame, layer); ++index) {
 							if (sprite_data->real_time_sprites.sprite_instance[index].captured_index != tfxINVALID) {
 								tfxU32 ci = sprite_data->real_time_sprites.sprite_instance[index].captured_index & 0xFFFFFFF;
@@ -10620,17 +10624,18 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 					}
 				}
 			}
-
-			for (tfxEachLayer) {
+			for(tfxEachLayer) {
+				tfx_sprite_instance_t *sprites = tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]);
+				tfx_billboard_instance_t *billboards = tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]);
 				//Copy fresh sprites this frame
-				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->unique_sprite_ids[pm->current_sprite_buffer].data + pm->cumulative_index_point[layer], sizeof(tfx_unique_sprite_id_t) * pm->layer_sizes[layer]);
+				memcpy(sprite_data->real_time_sprites.uid + frame_meta[frame].index_offset[layer], pm->unique_sprite_ids[pm->current_sprite_buffer][layer].data, sizeof(tfx_unique_sprite_id_t) * pm->layer_sizes[layer]);
 				int index_offset = frame_meta[frame].index_offset[layer];
 				int current_size = pm->layer_sizes[layer];
 				if (is_3d) {
-					memcpy(sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer], billboards + pm->cumulative_index_point[layer], sizeof(tfx_billboard_instance_t) * pm->layer_sizes[layer]);
+					memcpy(sprite_data->real_time_sprites.billboard_instance + frame_meta[frame].index_offset[layer], billboards, sizeof(tfx_billboard_instance_t) * pm->layer_sizes[layer]);
 				}
 				else {
-					memcpy(sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer], sprites + pm->cumulative_index_point[layer], sizeof(tfx_sprite_instance_t) * pm->layer_sizes[layer]);
+					memcpy(sprite_data->real_time_sprites.sprite_instance + frame_meta[frame].index_offset[layer], sprites, sizeof(tfx_sprite_instance_t) * pm->layer_sizes[layer]);
 				}
 
 				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
@@ -10659,7 +10664,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				particles_started = total_sprites > 0;
 				particles_processed_last_frame |= pm->layer_sizes[layer] > 0;
 			}
-			//tfxPrint("Just copied to %i, %i from %i, %i, QTY: %i, %i", frame_meta[frame].index_offset[0], frame_meta[frame].index_offset[1], pm->cumulative_index_point[0], pm->cumulative_index_point[1], pm->layer_sizes[0], pm->layer_sizes[1]);
+			//tfxPrint("Just copied to %i, %i from %i, %i, QTY: %i, %i", frame_meta[frame].index_offset[0], frame_meta[frame].index_offset[1], pm->cumulative_index_point_for_recording[0], pm->cumulative_index_point_for_recording[1], pm->layer_sizes[0], pm->layer_sizes[1]);
 		}
 
 		offset++;
@@ -10702,12 +10707,12 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 			tfxPrint("-------- Layer %i ------", layer);
 			for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
 				tfx_sprite_instance_t *instance = sprite_data->real_time_sprites.sprite_instance;
+				tfx_unique_sprite_id_t *id = sprite_data->real_time_sprites.uid;
 				if (instance[j].captured_index == tfxINVALID) {
-					tfxPrint("%i) Invalid capture", j);
+					tfxPrint("%i) Invalid capture, %u", j, id[j].uid);
 					continue;
 				}
-				tfx_unique_sprite_id_t *id = sprite_data->real_time_sprites.uid;
-				//tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].captured_offset + sprite_data->normal.frame_meta[i].cumulative_offset[layer] + layer_offset;
+				//tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].captured_offset;
 				tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
 				printf("%i) %u -> %u (offset: %u - %u, %u), %u, %u", 
 					j, 
@@ -10725,10 +10730,6 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				}
 				//TFX_ASSERT(sprite_data->real_time_sprites.uid[new_capture].uid == sprite_data->real_time_sprites.uid[j].uid);
 			}
-			if (layer > 0) {
-				layer_offset += sprite_data->normal.frame_meta[i].cumulative_offset[layer];
-			}
-			tfxPrint("Layer Offset: %i", layer_offset);
 		}
 	}
 
@@ -10772,6 +10773,10 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 
 	pm->camera_position = pm_camera_position;
 	ToggleSpritesWithUID(pm, false);
+	for (tfxEachLayer) {
+		pm->instance_buffer_for_recording[0][layer].free();
+		pm->instance_buffer_for_recording[1][layer].free();
+	}
 }
 
 void CompressSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, std::atomic_int *progress) {
@@ -11774,8 +11779,8 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->current_sprite_buffer = pm->flags & tfxParticleManagerFlags_double_buffer_sprites ? pm->current_sprite_buffer ^ 1 : 0;
 
 	memset(pm->sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
-	memset(pm->cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(pm->layer_sizes, 0, sizeof(tfxU32) * tfxLAYERS);
+	memset(pm->cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 
 	pm->instance_buffer[pm->current_sprite_buffer].clear();
 	pm->highest_depth_index = 0;
@@ -11875,10 +11880,11 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->spawn_work.clear();
 
 	if (!(pm->flags & tfxParticleManagerFlags_recording_sprites)) {
+		pm->cumulative_index_point[0] = 0;
 		pm->cumulative_index_point[1] = pm->sprite_index_point[0];
 		pm->cumulative_index_point[2] = pm->cumulative_index_point[1] + pm->sprite_index_point[1];
 		pm->cumulative_index_point[3] = pm->cumulative_index_point[2] + pm->sprite_index_point[2];
-	}
+	} 
 
 	/*
 	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && !(pm->flags & tfxParticleManagerFlags_unordered)) {
@@ -11932,6 +11938,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 		}
 	//}
 
+	bool is_recording = (pm->flags & tfxParticleManagerFlags_recording_sprites) > 0;
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		for (int index : pm->emitters_in_use[depth][next_buffer]) {
 			tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
@@ -11951,7 +11958,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				work_entry.emitter_index = index;
 				work_entry.start_index = running_start_index;
 				work_entry.end_index = particles_to_update > pm->mt_batch_size ? running_start_index + pm->mt_batch_size : running_start_index + particles_to_update;
-				work_entry.sprite_instances = &pm->instance_buffer[pm->current_sprite_buffer];
+				work_entry.sprite_instances = !is_recording ? &pm->instance_buffer[pm->current_sprite_buffer] : &pm->instance_buffer_for_recording[pm->current_sprite_buffer][work_entry.properties->layer];
 				tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], work_entry.start_index);
 				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
 				work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
@@ -14323,7 +14330,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 	tfxU32 start_diff = work_entry->start_diff;
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
-	tfx_vector_t<tfx_unique_sprite_id_t> &sprite_uids = pm.unique_sprite_ids[pm.current_sprite_buffer];
+	tfx_vector_t<tfx_unique_sprite_id_t> &sprite_uids = pm.unique_sprite_ids[pm.current_sprite_buffer][work_entry->layer];
 	tfx_sprite_instance_t *instance = tfxCastBuffer(tfx_sprite_instance_t, work_entry->sprite_instances);
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index])));
 
@@ -14364,9 +14371,11 @@ tfx_vector_t<tfxU32> *GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU32 dept
 
 void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on) {
 	if (switch_on) {
-		pm->unique_sprite_ids[0].reserve(pm->max_cpu_particles_per_layer[0]);
-		if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
-			pm->unique_sprite_ids[1].reserve(pm->max_cpu_particles_per_layer[0]);
+		for (tfxEachLayer) {
+			pm->unique_sprite_ids[0][layer].reserve(pm->max_cpu_particles_per_layer[layer]);
+			if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
+				pm->unique_sprite_ids[1][layer].reserve(pm->max_cpu_particles_per_layer[layer]);
+			}
 		}
 		pm->flags |= tfxParticleManagerFlags_using_uids;
 	}
@@ -14401,10 +14410,12 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 	pm->flags |= current_flags;
 
 	pm->instance_buffer[0].clear();
-	pm->unique_sprite_ids[0].clear();
-	if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
-		pm->unique_sprite_ids[0].clear();
-		pm->instance_buffer[1].clear();
+	for (tfxEachLayer) {
+		pm->unique_sprite_ids[0][layer].clear();
+		if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
+			pm->unique_sprite_ids[0][layer].clear();
+			pm->instance_buffer[1].clear();
+		}
 	}
 
 	memset(pm->sprite_index_point, 0, 4 * tfxLAYERS);
@@ -14495,11 +14506,15 @@ void FreeParticleManager(tfx_particle_manager_t *pm) {
 	}
 	pm->free_particle_location_lists.FreeAll();
 
-	pm->unique_sprite_ids[0].free();
+	for (tfxEachLayer) {
+		pm->unique_sprite_ids[0][layer].free();
+		if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
+			pm->unique_sprite_ids[1][layer].free();
+		}
+	}
 	pm->instance_buffer[0].free();
 	if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
 		pm->instance_buffer[1].free();
-		pm->unique_sprite_ids[1].free();
 	}
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		pm->effects_in_use[depth][0].free();
@@ -15032,8 +15047,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfxU32 max_spawn_count = NewSpritesNeeded(pm, &spawn_work_entry->random, emitter_index, &parent_effect, &properties);
 	tfx_effect_sprites_t &effect_sprites = pm->effects[emitter.root_index].sprites;
 
-	tfx_vector_t<tfx_unique_sprite_id_t> &uid_buffer = pm->unique_sprite_ids[pm->current_sprite_buffer];
-	tfx_buffer_t &instance_buffer = pm->instance_buffer[pm->current_sprite_buffer];
+	tfx_vector_t<tfx_unique_sprite_id_t> &uid_buffer = pm->unique_sprite_ids[pm->current_sprite_buffer][layer];
+	bool is_recording = (pm->flags & tfxParticleManagerFlags_recording_sprites) > 0;
+	tfx_buffer_t &instance_buffer = !is_recording ? pm->instance_buffer[pm->current_sprite_buffer] : pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer];
 	tfxU32 &sprite_index_point = pm->sprite_index_point[layer];
 	tfx_vector_t<tfx_depth_index_t> &depth_indexes =  effect_sprites.depth_indexes[layer][effect_sprites.current_depth_buffer_index[layer]];
 
@@ -15489,7 +15505,15 @@ void SpawnParticleAge(tfx_work_queue_t *queue, void *data) {
 
 		//Set the age of the particle to an interpolated value between 0 and the length of the frame depending on how many particles are being spawned this frame
 		age = age_accumulator;
+		//I don't have any better idea than this for a unique id generation. Because of the way the simple random movement works it uses the uid of the particle
+		//as a random seed to so that we don't have to store any extra values related to the random movement. This means that the uid needs to be staggered enough
+		//so that particles don't share seeds. This might sound strange because they are UIDs but there's a few random numbers generated for each particle and we offset from the uid
+		//to get different numbers. When the UID is incrementle then future particles will just get the same seed unless the UID can be staggered enough. Hence I 
+		//just use clock cycles which serves the purpose well enough. It's kind of hard to explain but see more in ControlParticleSimpleRandomMovement
 		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc();
+		if (pm.flags & tfxParticleManagerFlags_recording_sprites) {
+			tfxPrint("%u) UID: %u", properties.layer, entry->particle_data->uid[index]);
+		}
 		age_accumulator += frame_fraction;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxParticleManagerFlags_recording_sprites) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);
@@ -17568,6 +17592,8 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 	const float angle_roll_offset = properties.angle_offsets.roll;
 	const tfx_emission_type emission_type = properties.emission_type;
 	const tfxU32 layer = properties.layer;
+	bool is_recording = (pm.flags & tfxParticleManagerFlags_recording_sprites) > 0;
+	tfx_buffer_t &instance_buffer = !is_recording ? pm.instance_buffer[pm.current_sprite_buffer] : pm.instance_buffer_for_recording[pm.current_sprite_buffer][layer];
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = GetCircularIndex(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -17613,7 +17639,7 @@ void SpawnParticleMicroUpdate2d(tfx_work_queue_t *queue, void *data) {
 			depth_id.depth = entry->particle_data->age[index];
 			entry->particle_data->depth_index[index] = entry->depth_index_start;
 			(*entry->depth_indexes)[entry->depth_index_start] = depth_id;
-			TFX_ASSERT(entry->depth_index_start < pm.instance_buffer[pm.current_sprite_buffer].current_size);
+			TFX_ASSERT(entry->depth_index_start < instance_buffer.current_size);
 			entry->depth_index_start++;
 		}
 	}
@@ -17675,6 +17701,8 @@ void SpawnParticleMicroUpdate3d(tfx_work_queue_t *queue, void *data) {
 	const tfxU32 layer = properties.layer;
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.properties_index].emission_direction;
 	bool ordered_effect = (entry->parent_property_flags & tfxEffectPropertyFlags_age_order) || (entry->parent_property_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
+	bool is_recording = (pm.flags & tfxParticleManagerFlags_recording_sprites) > 0;
+	tfx_buffer_t &instance_buffer = !is_recording ? pm.instance_buffer[pm.current_sprite_buffer] : pm.instance_buffer_for_recording[pm.current_sprite_buffer][layer];
 
 	//Micro Update
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {

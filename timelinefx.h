@@ -6141,8 +6141,9 @@ struct tfx_particle_manager_t {
 	tfx_particle_manager_info_t info;
 
 	//Banks of sprites. All emitters write their sprite data to these banks. 
-	tfx_vector_t <tfx_unique_sprite_id_t> unique_sprite_ids[2];
+	tfx_vector_t <tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
 	tfx_buffer_t instance_buffer[2];
+	tfx_buffer_t instance_buffer_for_recording[2][tfxLAYERS];
 	tfxU32 current_sprite_buffer;
 	tfxU32 highest_depth_index;
 
@@ -6673,7 +6674,7 @@ inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm,
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
-		sprites[running_sprite_index].captured_index = capture == 0 ? running_sprite_index : sprites_index;
+		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[running_sprite_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = running_sprite_index;
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
@@ -6776,8 +6777,8 @@ inline void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_spri
 }
 
 template<typename T>
-inline void InvalidateNewSpriteCapturedIndex(T* instance, tfx_particle_manager_t *pm) {
-	for (tfxU32 i = 0; i != pm->instance_buffer[pm->current_sprite_buffer].current_size; ++i) {
+inline void InvalidateNewSpriteCapturedIndex(T* instance, tfx_particle_manager_t *pm, tfxU32 layer) {
+	for (tfxU32 i = 0; i != pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer].current_size; ++i) {
 		if ((instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000)) {
 			instance[i].captured_index = tfxINVALID;
 		}
