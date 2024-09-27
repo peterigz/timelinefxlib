@@ -10683,14 +10683,6 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 
 	}
 
-	tfxU32 running_offset = 0;
-	for (int f = 0; f != frames; ++f) {
-		//sprite_data->normal.frame_meta[f].captured_offset += running_offset;
-		for (tfxEachLayer) {
-			running_offset += sprite_data->normal.frame_meta[f].cumulative_offset[layer];
-		}
-	}
-
 	sprite_data->real_time_sprites_buffer.current_size = total_sprites;
 	//total sprites should not exceed the capacity of the sprite buffer
 	TFX_ASSERT(sprite_data->real_time_sprites_buffer.current_size <= sprite_data->real_time_sprites_buffer.capacity);
