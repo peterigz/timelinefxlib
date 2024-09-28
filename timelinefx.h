@@ -5721,7 +5721,7 @@ struct tfx_frame_meta_t {
 //upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the sprites
 //in a different way if you don't have this option for some reason, but the former way is by far the most efficient.
 struct tfx_sprite_instance_t {						//48 bytes
-	tfx_vec4_t position_stretch_rotation;           //The position of the sprite, rotation in w, stretch in z
+	tfx_vec4_t position;           //The position of the sprite, rotation in w, stretch in z
 	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfxU32 intensity_life;							//Multiplier for the color and life of particle
@@ -5732,7 +5732,7 @@ struct tfx_sprite_instance_t {						//48 bytes
 };
 
 struct tfx_billboard_instance_t {					//56 bytes
-	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
+	tfx_vec4_t position;							//The position of the sprite, x, y - world, z, w = captured for interpolating
 	tfx_vec3_t rotations;				            //Rotations of the sprite
 	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
@@ -6757,15 +6757,23 @@ inline void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_spri
 	for (tfxEachLayer) {
 		for (int i = sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer]; i != sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer]; ++i) {
 			if (instance[i].captured_index != tfxINVALID) {
-				tfxU32 age_diff = 0xFFFFFFFF;
+				int age_diff = 0x7FFFFFFF;
 				for (int j = sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer]; j != sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[1]].sprite_count[layer]; ++j) {
-					if (c_sprites.uid[j].uid == c_sprites.uid[i].uid) {
-						tfxU32 diff = c_sprites.uid[i].age - c_sprites.uid[j].age;
-						age_diff = diff < age_diff ? diff : age_diff;
+					//Find particles of the same uid and only if they haven't already been linked up to another particle already (the first bit in age will be flagged in this case)
+					if (c_sprites.uid[j].uid == c_sprites.uid[i].uid && !(c_sprites.uid[j].age & 0x80000000)) {
+						int diff = (int)(0x7FFFFFFF & c_sprites.uid[i].age) - (int)(0x7FFFFFFF & c_sprites.uid[j].age);
+						age_diff = diff >= 0 && diff < age_diff ? diff : age_diff;
+						//We link up the captured index to the particle in the previous frame with the smallest difference in age
+						//Make sure that the particle we're linking to is younger than the current particle
+						//instance[i].captured_index = diff < 0 ? tfxINVALID : instance[i].captured_index;
 						instance[i].captured_index = age_diff == diff ? j : instance[i].captured_index;
-						if (age_diff < 2) break;
+						if (age_diff < 2 && diff >= 0) {	//We can just break if the age is less than 2 but not if we found and older particle. It's possible to find an older particle if the animation has been looped
+							//If the compression is high this won't be hit because the distance in time between the compressed frames will be high
+							break;
+						}
 					}
 				}
+				c_sprites.uid[instance[i].captured_index].age |= 0x80000000;
 			}
 		}
 	}
@@ -7771,7 +7779,7 @@ Get the transform vectors for a 3d sprite's previous position so that you can us
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI inline tfx_vec3_t GetCapturedSprite3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return static_cast<tfx_billboard_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30].data)[index & 0x0FFFFFFF].position_stretch.xyz();
+	return static_cast<tfx_billboard_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30].data)[index & 0x0FFFFFFF].position.xyz();
 }
 
 /*
@@ -7781,7 +7789,7 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI inline tfx_vec2_t GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return static_cast<tfx_sprite_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30].data)[index & 0x0FFFFFFF].position_stretch_rotation.xy();
+	return static_cast<tfx_sprite_instance_t*>(pm->instance_buffer[(index & 0x40000000) >> 30].data)[index & 0x0FFFFFFF].position.xy();
 }
 
 /*
