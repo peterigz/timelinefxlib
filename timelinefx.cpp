@@ -10690,6 +10690,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 
 	/*
 	tfxPrint("00000000000000008888888888888880000000000000000");
+	bool wrong = false;
 	for (int i = 0; i != frames; ++i) {
 		int frame = i - 1;
 		frame = frame < 0 ? frames - 1 : frame;
@@ -10697,31 +10698,46 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 		int layer = 0;
 		//for (tfxEachLayer) {
 			tfxPrint("-------- Layer %i ------", layer);
+			tfx_unique_sprite_id_t *id = sprite_data->real_time_sprites.uid;
+			tfx_sprite_instance_t *instance = sprite_data->real_time_sprites.sprite_instance;
 			for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
-				tfx_sprite_instance_t *instance = sprite_data->real_time_sprites.sprite_instance;
-				tfx_unique_sprite_id_t *id = sprite_data->real_time_sprites.uid;
 				if (instance[j].captured_index == tfxINVALID) {
-					tfxPrint("%i) Invalid capture, %u, %u", j, id[j].uid, (tfxU32)(instance[j].size_handle >> 32));
+					tfxPrint("%i) Invalid capture, %u", j, id[j].uid);
 					continue;
-				}
-				//tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].captured_offset;
-				tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
-				printf("%i) %u -> %u (offset: %u - %u, %u), %u, %u, %u", 
-					j, 
-					instance[j].captured_index & 0xFFFFFFF, 
-					new_capture, 
-					sprite_data->normal.frame_meta[frame].index_offset[layer],
-					id[new_capture].uid, 
-					id[new_capture].age, 
-					id[j].uid, 
-					id[j].age,
-					(tfxU32)(instance[j].size_handle >> 32));
-				if (sprite_data->real_time_sprites.uid[new_capture].uid != sprite_data->real_time_sprites.uid[j].uid) {
-					tfxPrint(" **** Wrong *****");
+				} else if (instance[j].captured_index != tfxINVALID && id[j].age == 0) {
+					for (int k = SpriteDataIndexOffset(sprite_data, frame, layer); k != SpriteDataEndIndex(sprite_data, frame, layer); ++k) {
+						if (id[k].uid == id[j].uid) {
+							tfxU32 new_capture = k;
+							tfxPrint("%i) %u - %i", j, id[j].uid, k);
+							break;
+						}
+					}
 				} else {
-					tfxPrint("");
+					//tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].captured_offset;
+					tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
+					printf("%i) %u -> %u (offset: %u - %u, %u), %u, %u",
+						j,
+						instance[j].captured_index & 0xFFFFFFF,
+						new_capture,
+						sprite_data->normal.frame_meta[frame].index_offset[layer],
+						id[new_capture].uid,
+						id[new_capture].age,
+						id[j].uid,
+						id[j].age);
+					if (sprite_data->real_time_sprites.uid[new_capture].uid != sprite_data->real_time_sprites.uid[j].uid) {
+						tfxPrint(" **** Wrong *****");
+						wrong = true;
+					} else {
+						tfxPrint("");
+					}
 				}
 				//TFX_ASSERT(sprite_data->real_time_sprites.uid[new_capture].uid == sprite_data->real_time_sprites.uid[j].uid);
+			}
+			if (wrong) {
+				for (int j = SpriteDataIndexOffset(sprite_data, frame, layer); j != SpriteDataEndIndex(sprite_data, frame, layer); ++j) {
+					tfxPrint("%i) %u", j, id[j].uid);
+				}
+				TFX_ASSERT(0);
 			}
 		//}
 	}
@@ -11478,6 +11494,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 
 			state_flags = tfxEmitterStateFlags_no_tween_this_update;
 			state_flags |= parent_state_flags & tfxEffectStateFlags_no_tween;
+			state_flags |= (e.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite) && emitter_properties->single_shot_limit == 0 ? tfxEmitterStateFlags_wrap_single_sprite : 0;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_play_once;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_single && !(pm->flags & tfxParticleManagerFlags_disable_spawning) ? tfxEmitterStateFlags_is_single : 0;
 			state_flags |= e.property_flags & tfxEmitterPropertyFlags_base_uniform_size;
@@ -14287,18 +14304,18 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 		if (pm.flags & tfxParticleManagerFlags_3d_effects) { //Predictable
 			tfx_billboard_instance_t *sprites = tfxCastBuffer(tfx_billboard_instance_t, work_entry->sprite_instances);
 			if (is_ordered) {
-				WriteParticleImageSpriteDataOrdered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, property_flags, billboard_option, index, running_sprite_index);
+				WriteParticleImageSpriteDataOrdered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index);
 			}
 			else {
-				WriteParticleImageSpriteData(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, property_flags, billboard_option, index, running_sprite_index);
+				WriteParticleImageSpriteData(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index);
 			}
 		}
 		else {
 			tfx_sprite_instance_t *sprites = tfxCastBuffer(tfx_sprite_instance_t, work_entry->sprite_instances);
 			if (is_ordered) {
-				WriteParticleImageSpriteDataOrdered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, property_flags, billboard_option, index, running_sprite_index);
+				WriteParticleImageSpriteDataOrdered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index);
 			} else {
-				WriteParticleImageSpriteData(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, property_flags, billboard_option, index, running_sprite_index);
+				WriteParticleImageSpriteData(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index);
 			}
 		}
 
@@ -14339,6 +14356,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 	tfx_vector_t<tfx_unique_sprite_id_t> &sprite_uids = pm.unique_sprite_ids[pm.current_sprite_buffer][work_entry->layer];
 	tfx_sprite_instance_t *instance = tfxCastBuffer(tfx_sprite_instance_t, work_entry->sprite_instances);
 	bool is_ordered = (!(pm.flags & tfxParticleManagerFlags_unordered) || (IsOrderedEffectState(&pm.effects[emitter.root_index])));
+	bool is_wrapped = emitter.state_flags & tfxEmitterStateFlags_wrap_single_sprite;
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
 		tfxU32 index = GetCircularIndex(&work_entry->pm->particle_array_buffers[emitter.particles_index], i) / tfxDataWidth * tfxDataWidth;
@@ -14348,7 +14366,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[work_entry->layer];
-				bool new_id = bank.age[index_j] == 0 && bank.single_loop_count[index_j] > 0 ? true : false;
+				bool new_id = bank.age[index_j] == 0 && bank.single_loop_count[index_j] > 0 && !is_wrapped ? true : false;
 				sprite_uids[sprite_depth_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[sprite_depth_index].uid;
 				sprite_uids[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
@@ -14359,7 +14377,7 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				bool new_id = bank.age[index_j] == 0 && bank.single_loop_count[index_j] > 0 ? true : false;
+				bool new_id = bank.age[index_j] == 0 && bank.single_loop_count[index_j] > 0 && !is_wrapped ? true : false;
 				sprite_uids[running_sprite_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
 				bank.uid[index_j] = sprite_uids[running_sprite_index].uid;
 				sprite_uids[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);

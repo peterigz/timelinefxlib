@@ -2557,7 +2557,7 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_play_once = 1 << 14,                        //Play the animation once only
 	tfxEmitterPropertyFlags_random_start_frame = 1 << 15,                //Start the animation of the image from a random frame
 	tfxEmitterPropertyFlags_wrap_single_sprite = 1 << 16,                //When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
-	tfxEmitterPropertyFlags_is_in_folder = 1 << 17,                        //This effect is located inside a folder
+	tfxEmitterPropertyFlags_is_in_folder = 1 << 17,                        //This effect is located inside a folder. Todo: move this to effect properties
 	tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 18,                    //Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
 	tfxEmitterPropertyFlags_effect_is_3d = 1 << 19,                        //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
 	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 20,                //Spawn on grid points but randomly rather then in sequence
@@ -2614,8 +2614,8 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_is_bottom_emitter = 1 << 26,                //This emitter has no child effects, so can spawn particles that could be used in a compute shader if it's enabled
 	tfxEmitterStateFlags_has_rotated_path = 1 << 27,
 	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28,
-	tfxEmitterStateFlags_is_in_ordered_effect = 1 << 29
-	//tfxEmitterStateFlags_simple_motion_smoothstep = 1 << 30
+	tfxEmitterStateFlags_is_in_ordered_effect = 1 << 29,
+	tfxEmitterStateFlags_wrap_single_sprite = 1 << 30
 };
 
 enum tfx_effect_state_flag_bits : unsigned int {
@@ -6669,13 +6669,13 @@ inline void WriteParticleColorSpriteDataOrdered(T *sprites, tfx_particle_manager
 }
 
 template<typename T>
-inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags property_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
+inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
 		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-		sprites[running_sprite_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
+		sprites[running_sprite_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = running_sprite_index;
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
 		sprites[running_sprite_index].indexes |= (billboard_option << 13) | capture;
@@ -6685,14 +6685,14 @@ inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm,
 }
 
 template<typename T>
-inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags property_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
+inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
 		tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[layer >> 28];
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
 		sprites[sprite_depth_index].captured_index = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
-		sprites[sprite_depth_index].captured_index |= property_flags & tfxEmitterPropertyFlags_wrap_single_sprite ? 0x80000000 : 0;
+		sprites[sprite_depth_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + sprite_depth_index;
 		sprites[sprite_depth_index].indexes = image_indexes.a[j];
 		sprites[sprite_depth_index].indexes |= (billboard_option << 13) | capture;
@@ -6735,11 +6735,30 @@ inline void SpriteDataOffsetCapturedIndexes(T* instance, tfx_sprite_data_t *spri
 	tfxU32 layer_offset = 0;
 	for (tfxEachLayer) {
 		for (int j = SpriteDataIndexOffset(sprite_data, current_frame, layer); j != SpriteDataEndIndex(sprite_data, current_frame, layer); ++j) {
-			if (instance[j].captured_index == tfxINVALID) continue;
-			tfxU32 wrap_bit = instance[j].captured_index & 0x80000000;
-			instance[j].captured_index = (instance[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[previous_frame].index_offset[layer];
-			TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
-			instance[j].captured_index |= wrap_bit;
+			if (instance[j].captured_index == tfxINVALID) {
+				//If the captured index of the sprite is invalid then this is the first frame of the sprite and therefore nothing to interpolate with in the previous
+				//frame
+				continue;
+			} else if (instance[j].captured_index != tfxINVALID && sprite_data->real_time_sprites.uid[j].age == 0) {
+				//This deals with wrapped single sprites where captured index is not invalid yet it's age is 0. Usually only captured indexes that have an age of 0
+				//are invalid because there is no previous frame of the sprite to interpolate with but we do want that to happen with a wrapped sprite. So it means
+				//that we have to manually find the wrapped sprite in the previous frame.
+				for (int k = SpriteDataIndexOffset(sprite_data, previous_frame, layer); k != SpriteDataEndIndex(sprite_data, previous_frame, layer); ++k) {
+					if (sprite_data->real_time_sprites.uid[k].uid == sprite_data->real_time_sprites.uid[j].uid) {
+						tfxU32 wrap_bit = instance[j].captured_index & 0x80000000;
+						instance[j].captured_index = k;
+						TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
+						instance[j].captured_index |= wrap_bit;
+						break;
+					}
+				}
+			} else {
+				//Add the index offset of the frame to realign the captured index of the sprite.
+				tfxU32 wrap_bit = instance[j].captured_index & 0x80000000;
+				instance[j].captured_index = (instance[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[previous_frame].index_offset[layer];
+				TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
+				instance[j].captured_index |= wrap_bit;
+			}
 		}
 		if (layer > 0) {
 			layer_offset += sprite_data->normal.frame_meta[previous_frame].cumulative_offset[layer];
@@ -6791,7 +6810,7 @@ inline void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_spri
 template<typename T>
 inline void InvalidateNewSpriteCapturedIndex(T* instance, tfx_vector_t<tfx_unique_sprite_id_t> &uids, tfx_particle_manager_t *pm, tfxU32 layer) {
 	for (tfxU32 i = 0; i != pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer].current_size; ++i) {
-		if (uids[i].age == 0 || (instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000)) {
+		if ((uids[i].age == 0 && !(instance[i].captured_index & 0x80000000)) || (instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000)) {
 			instance[i].captured_index = tfxINVALID;
 		}
 	}
