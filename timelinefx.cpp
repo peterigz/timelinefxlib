@@ -10569,9 +10569,9 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 		UpdateParticleManager(pm, frame_length);
 		for (tfxEachLayer) {
 			if (is_3d) {
-				InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm, layer);
+				InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
 			} else {
-				InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm, layer);
+				InvalidateNewSpriteCapturedIndex(tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
 			}
 		}
 		bool particles_processed_last_frame = false;
@@ -10694,18 +10694,19 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 		int frame = i - 1;
 		frame = frame < 0 ? frames - 1 : frame;
 		tfxU32 layer_offset = 0;
-		for (tfxEachLayer) {
+		int layer = 0;
+		//for (tfxEachLayer) {
 			tfxPrint("-------- Layer %i ------", layer);
 			for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
 				tfx_sprite_instance_t *instance = sprite_data->real_time_sprites.sprite_instance;
 				tfx_unique_sprite_id_t *id = sprite_data->real_time_sprites.uid;
 				if (instance[j].captured_index == tfxINVALID) {
-					tfxPrint("%i) Invalid capture, %u", j, id[j].uid);
+					tfxPrint("%i) Invalid capture, %u, %u", j, id[j].uid, (tfxU32)(instance[j].size_handle >> 32));
 					continue;
 				}
 				//tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].captured_offset;
 				tfxU32 new_capture = (instance[j].captured_index & 0xFFFFFFF) + sprite_data->normal.frame_meta[frame].index_offset[layer];
-				printf("%i) %u -> %u (offset: %u - %u, %u), %u, %u", 
+				printf("%i) %u -> %u (offset: %u - %u, %u), %u, %u, %u", 
 					j, 
 					instance[j].captured_index & 0xFFFFFFF, 
 					new_capture, 
@@ -10713,7 +10714,8 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 					id[new_capture].uid, 
 					id[new_capture].age, 
 					id[j].uid, 
-					id[j].age);
+					id[j].age,
+					(tfxU32)(instance[j].size_handle >> 32));
 				if (sprite_data->real_time_sprites.uid[new_capture].uid != sprite_data->real_time_sprites.uid[j].uid) {
 					tfxPrint(" **** Wrong *****");
 				} else {
@@ -10721,7 +10723,7 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 				}
 				//TFX_ASSERT(sprite_data->real_time_sprites.uid[new_capture].uid == sprite_data->real_time_sprites.uid[j].uid);
 			}
-		}
+		//}
 	}
 	*/
 
@@ -14324,6 +14326,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 }
 
 void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
+	//This function is only run when recording sprite data
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_particle_manager_t &pm = *work_entry->pm;
@@ -14345,7 +14348,9 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
 				tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[work_entry->layer];
-				sprite_uids[sprite_depth_index].uid = bank.uid[index_j];
+				bool new_id = bank.age[index_j] == 0 && bank.single_loop_count[index_j] > 0 ? true : false;
+				sprite_uids[sprite_depth_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
+				bank.uid[index_j] = sprite_uids[sprite_depth_index].uid;
 				sprite_uids[sprite_depth_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				sprite_uids[sprite_depth_index].property_index = emitter.properties_index;
 				running_sprite_index++;
@@ -14354,7 +14359,9 @@ void ControlParticleUID(tfx_work_queue_t *queue, void *data) {
 		else {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				sprite_uids[running_sprite_index].uid = bank.uid[index_j];
+				bool new_id = bank.age[index_j] == 0 && bank.single_loop_count[index_j] > 0 ? true : false;
+				sprite_uids[running_sprite_index].uid = new_id ? (tfxU32)tfx__rdtsc() : bank.uid[index_j];
+				bank.uid[index_j] = sprite_uids[running_sprite_index].uid;
 				sprite_uids[running_sprite_index].age = tfxU32((bank.age[index_j] + 0.1f) / pm.frame_length);
 				sprite_uids[running_sprite_index].property_index = emitter.properties_index;
 				running_sprite_index++;
@@ -14496,6 +14503,16 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, 
 	}
 	pm->path_quaternions.clear();
 	pm->free_path_quaternions.clear();
+	pm->instance_buffer[0].clear();
+	if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
+		pm->instance_buffer[1].clear();
+	}
+	for (tfxEachLayer) {
+		pm->instance_buffer_for_recording[0][layer].clear();
+		if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
+			pm->instance_buffer_for_recording[1][layer].clear();
+		}
+	}
 }
 
 void FreeParticleManager(tfx_particle_manager_t *pm) {
@@ -17948,7 +17965,7 @@ void ControlParticleAge(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 
 		tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
-		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWideSetSinglei(1), expired));
+		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWIDEONEi, expired));
 		tfxWideInt loop_limit = tfxWideEqualsi(single_loop_count, single_shot_limit);
 		tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(tfxWideAndi(single, expired), xor_state_flags_no_spawning), tfxWideSetSinglei(-1));
 		age = tfxWideAnd(age, tfxWideCast(loop_age));

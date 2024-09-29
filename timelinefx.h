@@ -1849,7 +1849,7 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 &x) {
 	return _mm_sub_ps(fi, j);
 }
 
-tfxINTERNAL uint64_t tfx__rdtsc() {
+tfxINTERNAL inline uint64_t tfx__rdtsc() {
 	return __rdtsc();
 }
 
@@ -1875,7 +1875,7 @@ typedef union {
 
 #define tfxFloor128 vrndmq_f32
 
-tfxINTERNAL uint64_t tfx__rdtsc() {
+tfxINTERNAL inline uint64_t tfx__rdtsc() {
 	return mach_absolute_time();
 }
 
@@ -6758,31 +6758,40 @@ inline void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_spri
 		for (int i = sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer]; i != sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer]; ++i) {
 			if (instance[i].captured_index != tfxINVALID) {
 				int age_diff = 0x7FFFFFFF;
+				bool captured_found = false;
 				for (int j = sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer]; j != sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[1]].sprite_count[layer]; ++j) {
 					//Find particles of the same uid and only if they haven't already been linked up to another particle already (the first bit in age will be flagged in this case)
 					if (c_sprites.uid[j].uid == c_sprites.uid[i].uid && !(c_sprites.uid[j].age & 0x80000000)) {
 						int diff = (int)(0x7FFFFFFF & c_sprites.uid[i].age) - (int)(0x7FFFFFFF & c_sprites.uid[j].age);
-						age_diff = diff >= 0 && diff < age_diff ? diff : age_diff;
+						if (diff < 0) continue;
+						age_diff = diff < age_diff ? diff : age_diff;
 						//We link up the captured index to the particle in the previous frame with the smallest difference in age
 						//Make sure that the particle we're linking to is younger than the current particle
 						//instance[i].captured_index = diff < 0 ? tfxINVALID : instance[i].captured_index;
+						captured_found = false;
 						instance[i].captured_index = age_diff == diff ? j : instance[i].captured_index;
-						if (age_diff < 2 && diff >= 0) {	//We can just break if the age is less than 2 but not if we found and older particle. It's possible to find an older particle if the animation has been looped
+						//tfxPrint("%i (%i)) UID: %u: CI: %i, SI: %i - CIAge: %i, SAge: %i - Age Diff: %u, Diff: %u, Cap.index: %u, CPosy: %.2f SPosy: %.2f, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle >> 32));
+						if (age_diff < 2) {	//We can just break if the age is less than 2 but not if we found and older particle. It's possible to find an older particle if the animation has been looped
 							//If the compression is high this won't be hit because the distance in time between the compressed frames will be high
+							//tfxPrint("\t Linked %i to %i: uid, %u, captured index: %u", i, j, c_sprites.uid[j].uid, instance[i].captured_index);
 							break;
 						}
 					}
 				}
-				c_sprites.uid[instance[i].captured_index].age |= 0x80000000;
+				if (captured_found) {
+					c_sprites.uid[instance[i].captured_index].age |= 0x80000000;
+				}
+			} else {
+				//tfxPrint("%i (%i)) UID: %u: CI: %i, Cap: %u, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, instance[i].captured_index, tfxU32(instance[i].size_handle >> 32));
 			}
 		}
 	}
 }
 
 template<typename T>
-inline void InvalidateNewSpriteCapturedIndex(T* instance, tfx_particle_manager_t *pm, tfxU32 layer) {
+inline void InvalidateNewSpriteCapturedIndex(T* instance, tfx_vector_t<tfx_unique_sprite_id_t> &uids, tfx_particle_manager_t *pm, tfxU32 layer) {
 	for (tfxU32 i = 0; i != pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer].current_size; ++i) {
-		if ((instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000)) {
+		if (uids[i].age == 0 || (instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000)) {
 			instance[i].captured_index = tfxINVALID;
 		}
 	}
