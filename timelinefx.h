@@ -3110,6 +3110,8 @@ struct tfx_vector_t {
 #define tfxCastBuffer(type, buffer) static_cast<type*>(buffer->data)
 #define tfxCastBufferRef(type, buffer) static_cast<type*>(buffer.data)
 
+//This simple container struct was created for storing sprites in the particle manager. I didn't want this templated because either 2d or 3d sprites could be used so
+//I wanted to cast as needed when writing and using the sprite data. See simple cast macros above tfxCastBuffer and tfxCastBufferRef
 struct tfx_buffer_t {
 	tfxU32 current_size;
 	tfxU32 capacity;
@@ -6676,7 +6678,7 @@ inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm,
 		tfxU32 capture = flags.a[j];
 		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[running_sprite_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
-		sprites_index = running_sprite_index;
+		sprites_index = layer + running_sprite_index;
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
 		sprites[running_sprite_index].indexes |= (billboard_option << 13) | capture;
 		bank.flags[index_j] &= ~tfxParticleFlags_capture_after_transform;

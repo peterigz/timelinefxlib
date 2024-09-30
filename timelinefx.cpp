@@ -12395,14 +12395,7 @@ void ControlParticlePositionPath2d(tfx_work_queue_t *queue, void *data) {
 			}
 
 			tfxWideArrayi packed;
-			packed.m = PackWide16bit(stretch_velocity_x, stretch_velocity_y);
-
-			/*
-			float sx[4], sy[4];
-			tfxWideStore(sx, stretch_velocity_x);
-			tfxWideStore(sy, stretch_velocity_y);
-			tfxPrint("%f, %f", sx[0], sy[0]);
-			*/
+			packed.m = PackWide16bit(tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_y)));
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			if (!(pm.flags & tfxParticleManagerFlags_unordered)) {    //Predictable
@@ -13671,7 +13664,7 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfxWideArrayi packed;
-		packed.m = PackWide16bit(stretch_velocity_x, stretch_velocity_y);
+		packed.m = PackWide16bit(tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_y)));
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (!(pm.flags & tfxParticleManagerFlags_unordered)) {    //Predictable
@@ -14952,14 +14945,16 @@ void UpdatePMEffect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_inde
 		if (parent_particle_id != tfxINVALID) {
 			tfxU32 sprite_id = GetParticleSpriteIndex(pm, parent_particle_id);
 			tfxU32 sprite_index = sprite_id & 0x0FFFFFFF;
+			tfxU32 sprite_layer = (sprite_id & 0xF0000000) >> 28;
+			tfx_buffer_t *instance_buffer = pm->flags & tfxParticleManagerFlags_recording_sprites ? &pm->instance_buffer_for_recording[pm->current_sprite_buffer ^ 1][sprite_layer] : &pm->instance_buffer[pm->current_sprite_buffer ^ 1];
 			if (sprite_id != tfxINVALID) {
 				if (effect.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
-					tfx_billboard_instance_t *sprites = tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer[pm->current_sprite_buffer ^ 1]);
+					tfx_billboard_instance_t *sprites = tfxCastBuffer(tfx_billboard_instance_t, instance_buffer);
 					tfx_sprite_transform3d_t transform = { sprites[sprite_index].position.xyz(), sprites[sprite_index].rotations };
 					TransformEffector3d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.rotation, &transform, true, effect.property_flags &tfxEmitterPropertyFlags_relative_angle);
 				}
 				else {
-					tfx_sprite_instance_t *sprites = tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer[pm->current_sprite_buffer ^ 1]);
+					tfx_sprite_instance_t *sprites = tfxCastBuffer(tfx_sprite_instance_t, instance_buffer);
 					tfx_sprite_transform2d_t transform = { sprites[sprite_index].position.xy(), {0.f, 0.f}, sprites[sprite_index].position.w };
 					TransformEffector2d(&effect.world_rotations, &effect.local_rotations, &effect.world_position, &effect.local_position, &effect.rotation, &transform, true, effect.property_flags & tfxEmitterPropertyFlags_relative_angle);
 				}
