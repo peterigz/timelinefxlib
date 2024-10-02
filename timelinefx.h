@@ -3146,9 +3146,10 @@ struct tfx_buffer_t {
 	inline tfxU32		size_in_bytes() { return current_size * struct_size; }
 	inline const tfxU32	size_in_bytes() const { return current_size * struct_size; }
 };
-inline tfx_buffer_t tfxCreateBuffer(tfxU32 struct_size) {
+inline tfx_buffer_t tfxCreateBuffer(tfxU32 struct_size, tfxU32 alignment) {
 	tfx_buffer_t buffer;
 	buffer.struct_size = struct_size;
+	buffer.alignment = alignment;
 	return buffer;
 }
 
@@ -4549,6 +4550,44 @@ struct tfx_hsv_t {
 	tfx_hsv_t(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
 };
 
+struct tfx_float16x4_t {
+	union {
+		struct {
+			tfxU16 x : 16;
+			tfxU16 y : 16;
+			tfxU16 z : 16;
+			tfxU16 w : 16;
+		};
+		struct {
+			tfxU32 xy : 32;
+			tfxU32 zw : 32;
+		};
+		struct { tfxU64 packed; };
+	};
+};
+
+struct tfx_float16x2_t {
+	union {
+		struct {
+			tfxU16 x : 16;
+			tfxU16 y : 16;
+		};
+		struct { tfxU32 packed; };
+	};
+};
+
+struct tfx_float8x4_t {
+	union {
+		struct {
+			tfx_byte x : 8;
+			tfx_byte y : 8;
+			tfx_byte z : 8;
+			tfx_byte w : 8;
+		};
+		struct { tfxU32 packed; };
+	};
+};
+
 const tfxWideFloat one_div_127_wide = tfxWideSetSingle(1 / 127.f);
 const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
 const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
@@ -5722,26 +5761,27 @@ struct tfx_frame_meta_t {
 //This is the exact struct to upload to the GPU for 2d sprites, so timelinefx will prepare buffers so that they're ready to just
 //upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the sprites
 //in a different way if you don't have this option for some reason, but the former way is by far the most efficient.
-struct tfx_sprite_instance_t {						//48 bytes
-	tfx_vec4_t position;           //The position of the sprite, rotation in w, stretch in z
-	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
-	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
-	tfxU32 intensity_life;							//Multiplier for the color and life of particle
-	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+struct tfx_sprite_instance_t {			//44 bytes + padding to 48
+	tfx_vec4_t position;							//The position of the sprite, rotation in w, stretch in z
+	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float16x2_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
+	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
+	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	tfxU32 padding;
 };
 
-struct tfx_billboard_instance_t {					//56 bytes
-	tfx_vec4_t position;							//The position of the sprite, x, y - world, z, w = captured for interpolating
-	tfx_vec3_t rotations;				            //Rotations of the sprite
-	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
-	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
-	tfxU32 intensity_life;							//Multiplier for the color and life of particle
-	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+struct tfx_billboard_instance_t {		//56 bytes + padding to 64
+	tfx_vec4_t position;							//The position of the billboard
+	tfx_vec3_t rotations;				            //Rotations of the billboard with stretch in w
+	tfx_float8x4_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
+	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
+	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
+	tfxU32 padding[2];
 };
 
 //This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
@@ -5771,10 +5811,10 @@ enum tfxSpriteBufferMode {
 struct alignas(16) tfx_sprite_data3d_t {    //60 bytes aligning to 64
 	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
 	tfx_vec3_t rotations;				            //Rotations of the sprite
-	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
-	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
-	tfxU32 intensity_life;							//Multiplier for the color and life of particle
-	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfx_float8x4_t alignment;						//normalised alignment vector 3 floats packed into 8bits
+	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
+	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
@@ -5783,10 +5823,10 @@ struct alignas(16) tfx_sprite_data3d_t {    //60 bytes aligning to 64
 
 struct alignas(16) tfx_sprite_data2d_t {    //48 bytes
 	tfx_vec4_t position_stretch_rotation;           //The position of the sprite, rotation in w, stretch in z
-	tfxU64 size_handle;								//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
-	tfxU32 alignment;								//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
-	tfxU32 intensity_life;							//Multiplier for the color and life of particle
-	tfxU32 curved_alpha;							//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
+	tfx_float16x2_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
+	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
+	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
@@ -6654,8 +6694,8 @@ tfxINTERNAL inline tfxU32 SeedGen(tfxU32 h)
 template<typename T>
 inline void WriteParticleColorSpriteData(T *sprites, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-		sprites[running_sprite_index].intensity_life = packed_intensity_life.a[j];
-		sprites[running_sprite_index].curved_alpha = curved_alpha.a[j];
+		sprites[running_sprite_index].intensity_life.packed = packed_intensity_life.a[j];
+		sprites[running_sprite_index].curved_alpha.packed = curved_alpha.a[j];
 		running_sprite_index++;
 	}
 }
@@ -6664,8 +6704,8 @@ template<typename T>
 inline void WriteParticleColorSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		tfxU32 sprite_depth_index = depth_index[index + j] + pm.cumulative_index_point[layer];
-		sprites[sprite_depth_index].intensity_life = packed_intensity_life.a[j];
-		sprites[sprite_depth_index].curved_alpha = curved_alpha.a[j];
+		sprites[sprite_depth_index].intensity_life.packed = packed_intensity_life.a[j];
+		sprites[sprite_depth_index].curved_alpha.packed = curved_alpha.a[j];
 		running_sprite_index++;
 	}
 }
@@ -8626,8 +8666,9 @@ tfxAPI inline float IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index)
 
 template<typename T>
 tfxAPI inline tfx_vec2_t GetSpriteScale(T *sprite) {
-	int16_t x_scaled = (int16_t)(sprite->size_handle & 0xFFFF);
-	int16_t y_scaled = (int16_t)((sprite->size_handle >> 16) & 0xFFFF);
+	tfx_float16x4_t size_handle = sprite->size_handle;
+	int16_t x_scaled = (int16_t)size_handle.x;
+	int16_t y_scaled = (int16_t)size_handle.y;
 	tfx_vec2_t unpacked;
 	unpacked.x = (float)x_scaled * tfxSPRITE_SIZE_SSCALE;
 	unpacked.y = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
@@ -8636,8 +8677,9 @@ tfxAPI inline tfx_vec2_t GetSpriteScale(T *sprite) {
 
 template<typename T>
 tfxAPI inline tfx_vec2_t GetSpriteHandle(T *sprite) {
-	int16_t x_scaled = (int16_t)((sprite->size_handle >> 48 )& 0xFFFF);
-	int16_t y_scaled = (int16_t)((sprite->size_handle >> 32) & 0xFFFF);
+	tfx_float16x4_t size_handle = sprite->size_handle;
+	int16_t x_scaled = (int16_t)size_handle.z;
+	int16_t y_scaled = (int16_t)size_handle.w;
 	tfx_vec2_t unpacked;
 	unpacked.x = (float)x_scaled * tfxSPRITE_HANDLE_SSCALE;
 	unpacked.y = (float)y_scaled * tfxSPRITE_HANDLE_SSCALE;
