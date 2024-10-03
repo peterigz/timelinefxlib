@@ -2403,6 +2403,7 @@ enum tfx_particle_manager_mode {
 };
 
 enum tfx_particle_manager_setup {
+	tfxParticleManagerSetup_none,
 	tfxParticleManagerSetup_2d_unordered,
 	tfxParticleManagerSetup_2d_ordered_by_age,
 	tfxParticleManagerSetup_2d_group_sprites_by_effect,
@@ -2455,6 +2456,7 @@ enum tfx_particle_manager_flag_bits {
 	tfxParticleManagerFlags_update_bounding_boxes = 1 << 17,
 	tfxParticleManagerFlags_use_effect_sprite_buffers = 1 << 18,
 	tfxParticleManagerFlags_auto_order_effects = 1 << 19,
+	tfxParticleManagerFlags_direct_to_staging_buffer = 1 << 20,
 };
 
 enum tfx_vector_align_type {
@@ -3130,7 +3132,7 @@ struct tfx_buffer_t {
 			new_data = tfxALLOCATE_ALIGNED((size_t)new_capacity * struct_size, alignment);
 		}
 		else {
-			new_data = tfxALLOCATE((size_t)new_capacity * struct_size);
+			new_data = tfxREALLOCATE(data, (size_t)new_capacity * struct_size);
 		}
 		TFX_ASSERT(new_data);    //Unable to allocate memory. todo: better handling
 		if (data) {
@@ -3151,6 +3153,13 @@ inline tfx_buffer_t tfxCreateBuffer(tfxU32 struct_size, tfxU32 alignment) {
 	buffer.struct_size = struct_size;
 	buffer.alignment = alignment;
 	return buffer;
+}
+inline void tfxReconfigureBuffer(tfx_buffer_t *buffer, size_t new_struct_size) {
+	if ((tfxU32)new_struct_size == buffer->struct_size) return;
+	tfxU32 size_in_bytes = buffer->capacity * buffer->struct_size;
+	tfxU32 new_capacity = size_in_bytes / (tfxU32)new_struct_size;
+	buffer->capacity = new_capacity;
+	buffer->struct_size = (tfxU32)new_struct_size;
 }
 
 //Simple storage map for storing things by key/pair. The data will be in order that you add items, but the map will be in key order so just do a foreach on the data
@@ -6133,6 +6142,10 @@ struct tfx_particle_manager_info_t {
 	bool group_sprites_by_effect;           //Set to true to group all sprites by effect. Effects can then be drawn in specific orders or not drawn at all on an effect by effect basis.
 	bool auto_order_effects;                //When group_sprites_by_effect is true then you can set this to true to sort the effects each frame. Use SetPMCamera in 3d to set the effect depth to the distance the camera, in 2d the depth is set to the effect y position.
 	bool is_3d;                             //All effects are 3d
+	bool write_direct_to_staging_buffer;	//Make the particle manager write directly to the staging buffer. Use SetStagingBuffer before you call UpdateParticleManager
+	void *user_data;						//User data that will get passed into the grow_staging_buffer_callback function which you can use to grow the buffer
+	//If you need the staging buffer to be grown dynamically then you can use this call back to do that. It should return true if the buffer was successfully grown or false otherwise.
+	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_particle_manager_t *pm, void *user_data);	
 
 	tfx_particle_manager_info_t() :
 		max_particles(10000),
@@ -6144,7 +6157,9 @@ struct tfx_particle_manager_info_t {
 		dynamic_sprite_allocation(true),
 		group_sprites_by_effect(false),
 		auto_order_effects(false),
-		is_3d(false)
+		is_3d(false),
+		write_direct_to_staging_buffer(false),
+		grow_staging_buffer_callback(nullptr)
 	{}
 };
 
@@ -7517,63 +7532,6 @@ Initialize a particle manager with a tfx_particle_manager_info_t object which co
 tfxAPI void InitializeParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_particle_manager_info_t info);
 
 /*
-Initialise a tfx_particle_manager_t for 3d usage. Also see InitializeParticleManager and CreateParticleManagerInfo as an alternative way to set up a particle manager.
-* @param pm                     A pointer to an unitialised tfx_particle_manager_t. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
-* @param library                A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
-* @param max_particles          An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
-* @param effects_limit          The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
-* @param mode                   The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
-	tfxParticleManagerMode_unordered                    Particles will be updated by emitter. No ordering is maintained, each emitter will spawn and update their particles in turn and sprites will be ordered
-														according to that sequence.
-	tfxParticleManagerMode_ordered_by_age               Particles will be kept in age order, older particles will be drawn first and newer ones last
-	tfxParticleManagerMode_ordered_by_depth             Particles will be drawn in depth order or distance from the camera. You can specify the number of sort passes when setting up the effects in TimelineFX editor
-	tfxParticleManagerMode_ordered_by_depth_guaranteed  Particles will be sorted each update and kept in depth order
-* @param double_buffer_sprites  True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
-* @param dynamic_allocation     If set to true then when the max_particles is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
-								many particles you will need to display while developing you're game/app. Default is false.
-* @param mt_batch_size          When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048
-
-*/
-tfxAPI void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles, unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
-
-/*
-Initialise a tfx_particle_manager_t for 2d usage
-* @param pm                     A pointer to an unitialised tfx_particle_manager_t. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
-* @param library                A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
-* @param max_particles          An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
-* @param effects_limit          The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
-* @param mode                   The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
-	tfxParticleManagerMode_unordered                    Particles will be updated by emitter. No ordering is maintained, each emitter will spawn and update their particles in turn and sprites will be ordered
-														according to that sequence.
-	tfxParticleManagerMode_ordered_by_age               Particles will be kept in age order, older particles will be drawn first and newer ones last
-* @param double_buffer_sprites  True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
-* @param dynamic_allocation     If set to true then when the max_particles is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
-								many particles you will need to display while developing you're game/app. Default is false.
-* @param mt_batch_size          When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048.
-
-*/
-tfxAPI void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles, unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
-
-/*
-Initialise a tfx_particle_manager_t for both 2d and 3d. This just allocates buffers for both 2d and 3d anticipating that you'll be using ReconfigureParticleManager to switch between 2d/3d modes. If you want to update
-both 2d and 3d particles at the same time then just use 2 separate particle managers instead as a particle manager can only update one type of particle 2d or 3d.
-* @param pm                       A pointer to an unitialised tfx_particle_manager_t. If you want to reconfigure a particle manager for a different usage then you can call ReconfigureParticleManager.
-* @param library                  A pointer to a tfx_library_t that you will be using to add all of the effects from to the particle manager.
-* @param max_particles            An array of unsigned ints representing the maximum amount of particles you want available for each layer. This will allocate the appropriate amount of memory ahead of time.
-* @param effects_limit            The maximum amount of effects and emitters that can be updated in a single frame. This will allocate the appropriate amount of memory ahead of time. Default: 1000.
-* @param mode                     The operation mode of the particle manager regarding how particles are ordered. Default value: tfxParticleManagerMode_unordered. Possible modes are:
-	tfxParticleManagerMode_unordered                    Particles will be updated by emitter. No ordering is maintained, each emitter will spawn and update their particles in turn and sprites will be ordered
-														according to that sequence.
-	tfxParticleManagerMode_ordered_by_age               Particles will be kept in age order, older particles will be drawn first and newer ones last
-* @param double_buffer_sprites    True or False, whether the last frame of sprites is kept so that you can use to do interpolations for smoother animation
-* @param dynamic_allocation       If set to true then when the max_particles is hit for a layer the sprite and particle memory allocation will be grown dynamically. This can be useful when you're unsure of how
-								  many particles you will need to display while developing you're game/app. Default is false.
-* @param mt_batch_size            When using multithreading you can alter the size of each batch of particles that each thread will update. The default is 2048.
-
-*/
-tfxAPI void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles, unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffer_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 multi_threaded_batch_size);
-
-/*
 Reconfigure a particle manager to make it work in a different mode. A particle manager can only run in a single mode at time like unordered, depth ordered etc so use this to change that. Also bear
 in mind that you can just use more than one particle manager and utilised different modes that way as well. The modes that you need will depend on the effects that you're adding to the particle manager.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
@@ -7586,6 +7544,18 @@ in mind that you can just use more than one particle manager and utilised differ
 * @param is_3d                    True if the particle manager should be configured for 3d effects.
 */
 tfxAPI void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager_mode mode, tfxU32 sort_passes, bool is_3d);
+
+/*
+Set the staging buffer used in the particle manager. The particle manager flags must be set with tfxParticleManagerFlags_direct_to_staging_buffer when the particle
+manager was created. Depending on the renderer you use you may have to call this before each time you update the particle manager so you can set the buffer to the
+current frame in flight. This will probably apply in any modern renderer like vulkan, metal or dx12.
+Note: It's up to you to ensure that the staging buffer has enough capacity. The particle manager will assume that the size_in_bytes that you pass to the particle
+manager is correct and if tfxParticleManagerFlags_dynamic_sprite_allocation is set will attempt to grow the buffer by calling the callback you set to do this.
+* @param pm                       A pointer to an intialised tfx_particle_manager_t.
+* @param stagin_buffer            A pointer to the staging buffer where all the sprites/billboards are written to
+* @param size_in_bytes            The size in bytes of the staging buffer
+*/
+tfxAPI void SetStagingBuffer(tfx_particle_manager_t *pm, void *staging_buffer, tfxU32 size_in_bytes);
 
 /*
 Turn on and off whether the particle manager should sort the effects by depth order. Use SetPMCamera to set the position of the camera that the particle manager will

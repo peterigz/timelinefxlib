@@ -11772,7 +11772,10 @@ void OrderEffectSprites(tfx_effect_sprites_t *sprites, tfxU32 layer, tfx_particl
 void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	tfxPROFILE;
 
-	TFX_ASSERT(elapsed_time >= 0);    //Time can only flow. (Just return here, no need to update if no time has passed)
+	if (pm->flags & tfxParticleManagerFlags_direct_to_staging_buffer) {
+		TFX_ASSERT(pm->instance_buffer.data);	//You must call SetStagingBuffer if flagging the particle manager to write direct to staging buffer
+	}
+	if(elapsed_time <= 0) return;
 
 	tfxCompleteAllWork(&pm->work_queue);
 
@@ -14409,7 +14412,11 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 	}
 	pm->free_particle_lists.FreeAll();
 
-	tfxParticleManagerFlags current_flags = (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation) | (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) | (pm->flags & tfxParticleManagerFlags_2d_and_3d) | (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers);
+	tfxParticleManagerFlags current_flags = (pm->flags & tfxParticleManagerFlags_dynamic_sprite_allocation) | 
+											(pm->flags & tfxParticleManagerFlags_double_buffer_sprites) | 
+											(pm->flags & tfxParticleManagerFlags_2d_and_3d) | 
+											(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) |
+											(pm->flags & tfxParticleManagerFlags_direct_to_staging_buffer);
 
 	if (mode == tfxParticleManagerMode_unordered)
 		pm->flags = tfxParticleManagerFlags_unordered;
@@ -14420,10 +14427,14 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 	else if (mode == tfxParticleManagerMode_ordered_by_age)
 		pm->flags = tfxParticleManagerFlags_ordered_by_age;
 
-	if (is_3d)
+	tfxU32 size_in_bytes = pm->instance_buffer.capacity * pm->instance_buffer.struct_size;
+	if (is_3d) {
 		pm->flags |= tfxParticleManagerFlags_3d_effects;
-	else
+		tfxReconfigureBuffer(&pm->instance_buffer, sizeof(tfx_billboard_instance_t));
+	} else {
 		pm->flags &= ~tfxParticleManagerFlags_3d_effects;
+		tfxReconfigureBuffer(&pm->instance_buffer, sizeof(tfx_sprite_instance_t));
+	}
 
 	pm->flags |= current_flags;
 
@@ -14441,6 +14452,14 @@ void ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager
 	pm->effects.clear();
 
 	pm->sort_passes = req_sort_passes;
+}
+
+void SetStagingBuffer(tfx_particle_manager_t *pm, void *staging_buffer, tfxU32 size_in_bytes) {
+	TFX_ASSERT(pm->flags & tfxParticleManagerFlags_direct_to_staging_buffer);		//Particle manager must be flagged to write direct to staging before on creation
+	TFX_ASSERT(staging_buffer);		//Staging buffer is null!
+	tfxU32 unit_size = size_in_bytes / pm->instance_buffer.struct_size;
+	pm->instance_buffer.data = staging_buffer;
+	pm->instance_buffer.capacity = unit_size;
 }
 
 void SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
@@ -15096,7 +15115,15 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 			if (pm->flags & tfxParticleManagerFlags_recording_sprites && pm->flags & tfxParticleManagerFlags_using_uids) {
 				uid_buffer.reserve(new_size);
 			}
-			instance_buffer.reserve(new_size);
+			if (pm->flags & tfxParticleManagerFlags_direct_to_staging_buffer && pm->info.grow_staging_buffer_callback) {
+				if (!pm->info.grow_staging_buffer_callback(new_size, pm, pm->info.user_data)) {
+					max_spawn_count = 0;
+				}
+			} else if(pm->flags & tfxParticleManagerFlags_direct_to_staging_buffer) {
+				max_spawn_count = 0;
+			} else {
+				instance_buffer.reserve(new_size);
+			}
 		}
 	}
 	else {
@@ -18478,9 +18505,7 @@ bool ValidEffectID(tfx_particle_manager_t *pm, tfxEffectID id) {
 
 tfx_particle_manager_info_t CreateParticleManagerInfo(tfx_particle_manager_setup setup) {
 	tfx_particle_manager_info_t info;
-	for (tfxEachLayer) {
-		info.max_particles = 5000;
-	}
+	info.max_particles = 5000;
 	switch (setup) {
 	case tfxParticleManagerSetup_2d_unordered:
 		break;
@@ -18579,68 +18604,22 @@ void InitializeParticleManager(tfx_particle_manager_t *pm, tfx_library_t *librar
 		pm->max_cpu_particles_per_layer[layer] = info.max_particles;
 	}
 
-	if (!info.group_sprites_by_effect) {
-		if (pm->flags & tfxParticleManagerFlags_3d_effects) {
-			pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_billboard_instance_t), 16);
-		}
-		else {
-			pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_sprite_instance_t), 16);
-		}
+	if (pm->flags & tfxParticleManagerFlags_3d_effects) {
+		pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_billboard_instance_t), 16);
+	}
+	else {
+		pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_sprite_instance_t), 16);
+	}
+	if (info.write_direct_to_staging_buffer) {
+		pm->flags |= tfxParticleManagerFlags_direct_to_staging_buffer;
+		pm->instance_buffer.data = nullptr;
+	} else {
 		pm->instance_buffer.reserve(tfxMax((info.max_particles / tfxDataWidth + 1) * tfxDataWidth, 8));
 	}
 
 	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && (pm->flags & tfxParticleManagerFlags_ordered_by_age || pm->flags & tfxParticleManagerFlags_order_by_depth)) {
 		FreeAllParticleLists(pm);
-		//for (tfxEachLayer) {
-			//pm->depth_indexes[layer][0].reserve(pm->max_cpu_particles_per_layer[layer]);
-			//pm->depth_indexes[layer][1].reserve(pm->max_cpu_particles_per_layer[layer]);
-		//}
 	}
-}
-
-void InitParticleManagerFor3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles, unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size) {
-	TFX_ASSERT(pm->flags == 0);        //You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
-
-	InitCommonParticleManager(pm, library, max_particles, effects_limit, mode, double_buffered_sprites, dynamic_sprite_allocation, group_sprites_by_effect, mt_batch_size);
-
-	pm->flags |= tfxParticleManagerFlags_3d_effects;
-
-	pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_billboard_instance_t), 16);
-
-	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && (pm->flags & tfxParticleManagerFlags_ordered_by_age || pm->flags & tfxParticleManagerFlags_order_by_depth)) {
-		FreeAllParticleLists(pm);
-	}
-
-}
-
-void InitParticleManagerFor2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles, unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size) {
-	TFX_ASSERT(pm->flags == 0);        //You must use a particle manager that has not been initialised already. You can call reconfigure if you want to re-initialise a particle manager
-	TFX_ASSERT(mode == tfxParticleManagerMode_unordered || mode == tfxParticleManagerMode_ordered_by_age);    //Only these 2 modes are available for 2d effects
-
-	InitCommonParticleManager(pm, library, max_particles, effects_limit, mode, double_buffered_sprites, dynamic_sprite_allocation, group_sprites_by_effect, mt_batch_size);
-
-	if (!group_sprites_by_effect) {
-		pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_sprite_instance_t), 16);
-	}
-
-}
-
-void InitParticleManagerForBoth(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles, unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size) {
-	InitCommonParticleManager(pm, library, max_particles, effects_limit, mode, double_buffered_sprites, dynamic_sprite_allocation, group_sprites_by_effect, mt_batch_size);
-
-	pm->flags |= tfxParticleManagerFlags_2d_and_3d;
-
-	for (tfxEachLayer) {
-		pm->max_cpu_particles_per_layer[layer] = max_particles;
-	}
-
-	if (!group_sprites_by_effect) {
-		pm->instance_buffer = tfxCreateBuffer(sizeof(tfx_billboard_instance_t), 16);
-		pm->instance_buffer.reserve(tfxMax((max_particles / tfxDataWidth + 1) * tfxDataWidth, 8));
-	}
-
-	pm->flags |= dynamic_sprite_allocation ? tfxParticleManagerFlags_dynamic_sprite_allocation : 0;
-
 }
 
 void SetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index, float x, float y) {
