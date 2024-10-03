@@ -7573,6 +7573,23 @@ tfxAPI inline void TogglePMOrderEffects(tfx_particle_manager_t *pm, bool yesno) 
 }
 
 /*
+Get the sprite buffer in the particle manager containing all the 2d sprites that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
+This will be a pointer to the start of the buffer for uploading all the sprites. If you want to do this for each effect then you can call GetEffectSpriteBuffer.
+* @param pm                       A pointer to an intialised tfx_particle_manager_t.
+*/
+tfxAPI inline tfx_sprite_instance_t *GetSpriteBuffer(tfx_particle_manager_t *pm) {
+	return tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer);
+}
+
+/*
+Get the billboard buffer in the particle manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
+* @param pm                       A pointer to an intialised tfx_particle_manager_t.
+*/
+tfxAPI inline tfx_billboard_instance_t *GetBillboardBuffer(tfx_particle_manager_t *pm) {
+	return tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer);
+}
+
+/*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
 more than enough for most situations. However you can increase the sizes here if needed. You only need to set this manually if you hit one of the asserts when these
 run out of space or you anticipate a huge amount of emitters and particles to be used (> million). On the other hand, you might be tight on memory in which case you
