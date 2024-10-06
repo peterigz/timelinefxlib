@@ -2883,9 +2883,11 @@ struct tfx_str_t {
 	}
 	inline void SanitizeLineFeeds() {
 		if (current_size > 1) {
-			char test = back();
-			while (back() == '\n' || back() == '\r' || back() == '\0') {
+			while (current_size > 1 && back() == '\n' || back() == '\r' || back() == '\0') {
 				pop();
+				if (current_size <= 1) {
+					break;
+				}
 			}
 			NullTerminate();
 		}
