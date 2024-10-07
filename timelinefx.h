@@ -3120,7 +3120,7 @@ struct tfx_vector_t {
 #define tfxCastBuffer(type, buffer) static_cast<type*>(buffer->data)
 #define tfxCastBufferRef(type, buffer) static_cast<type*>(buffer.data)
 
-//This simple container struct was created for storing sprites in the particle manager. I didn't want this templated because either 2d or 3d sprites could be used so
+//This simple container struct was created for storing instance_data in the particle manager. I didn't want this templated because either 2d or 3d instance_data could be used so
 //I wanted to cast as needed when writing and using the sprite data. See simple cast macros above tfxCastBuffer and tfxCastBufferRef
 struct tfx_buffer_t {
 	tfxU32 current_size;
@@ -5548,13 +5548,13 @@ struct tfx_depth_index_t {
 	float depth;
 };
 
-//Used when a particle manager is grouping sprites by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
-struct tfx_effect_sprites_t {
+//Used when a particle manager is grouping instance_data by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
+struct tfx_effect_instance_data_t {
 	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
-	tfxU32 sprite_start_index;
 	tfxU32 depth_starting_index[tfxLAYERS];
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
-	tfxU32 sprite_count;
+	tfxU32 instance_start_index;
+	tfxU32 instance_count;
 };
 
 //This is a struct that stores an effect state that is currently active in a particle manager.
@@ -5598,8 +5598,8 @@ struct tfx_effect_state_t {
 	tfxEmitterStateFlags state_flags;
 	tfxU32 sort_passes;
 
-	//When organising sprites per effect this is the index to the sprite buffers containing all the effects.
-	tfx_effect_sprites_t sprites;
+	//When organising instance_data per effect this is the index to the sprite buffers containing all the effects.
+	tfx_effect_instance_data_t instance_data;
 
 	//User Data
 	void *user_data;
@@ -5755,9 +5755,9 @@ struct tfx_sprite_transform3d_t {
 //When exporting effects as sprite data each frame gets frame meta containing information about the frame such as bounding box and sprite count/offset into the buffer
 struct tfx_frame_meta_t {
 	tfxU32 index_offset[tfxLAYERS];					//All sprite data is contained in a single buffer and this is the offset to the first sprite in the range
-	tfxU32 sprite_count[tfxLAYERS];					//The number of sprites in the frame for each layer
-	tfxU32 cumulative_offset[tfxLAYERS];			//The cumulative number of sprites in the frame for each layer
-	tfxU32 total_sprites;							//The total number of sprites for all layers in the frame
+	tfxU32 sprite_count[tfxLAYERS];					//The number of instance_data in the frame for each layer
+	tfxU32 cumulative_offset[tfxLAYERS];			//The cumulative number of instance_data in the frame for each layer
+	tfxU32 total_sprites;							//The total number of instance_data for all layers in the frame
 	tfxU32 captured_offset;							//The amount to offset the captured index by
 	tfx_vec3_t min_corner;							//Bounding box min corner
 	tfx_vec3_t max_corner;							//Bounding box max corner. The bounding box can be used to decide if this frame needs to be drawn
@@ -5765,8 +5765,8 @@ struct tfx_frame_meta_t {
 	float radius;									//The radius of the bounding box
 };
 
-//This is the exact struct to upload to the GPU for 2d sprites, so timelinefx will prepare buffers so that they're ready to just
-//upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the sprites
+//This is the exact struct to upload to the GPU for 2d instance_data, so timelinefx will prepare buffers so that they're ready to just
+//upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the instance_data
 //in a different way if you don't have this option for some reason, but the former way is by far the most efficient.
 struct tfx_sprite_instance_t {			//44 bytes + padding to 48
 	tfx_vec4_t position;							//The position of the sprite, rotation in w, stretch in z
@@ -5791,16 +5791,16 @@ struct tfx_billboard_instance_t {		//56 bytes + padding to 64
 	tfxU32 padding[2];
 };
 
-//This struct of arrays is used for both 2d and 3d sprites, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
-//InitSprite3dSoA is called to initialise 3d sprites and InitSprite2dArray for 2d sprites. This is all managed internally by the particle manager. It's convenient to have both 2d and
-//3d in one struct like this as it makes it a lot easier to use the same control functions where we can. Also note that stretch and alignment for 3d sprites are packed into
+//This struct of arrays is used for both 2d and 3d instance_data, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
+//InitSprite3dSoA is called to initialise 3d instance_data and InitSprite2dArray for 2d instance_data. This is all managed internally by the particle manager. It's convenient to have both 2d and
+//3d in one struct like this as it makes it a lot easier to use the same control functions where we can. Also note that stretch and alignment for 3d instance_data are packed into
 //stretch_alignment_x and alignment_yz as 16bit floats. 2d uses the float for stretch and packs xy alignment into alignment_yz
 struct tfx_sprite_soa_t {                       //3d takes 56 bytes of bandwidth, 2d takes 40 bytes of bandwidth
 	tfxU32 *property_indexes;                   //The image frame of animation index packed with alignment option flag and property_index
 	tfxU32 *captured_index;                     //The index of the sprite in the previous frame so that it can be looked up and interpolated with
 	tfx_unique_sprite_id_t *uid;                //Unique particle id of the sprite, only used when recording sprite data
-	tfx_sprite_transform3d_t *transform_3d;     //Transform data for 3d sprites
-	tfx_sprite_transform2d_t *transform_2d;     //Transform data for 2d sprites
+	tfx_sprite_transform3d_t *transform_3d;     //Transform data for 3d instance_data
+	tfx_sprite_transform2d_t *transform_2d;     //Transform data for 2d instance_data
 	tfxU32 *intensity_life;                     //The multiplier for the sprite color and the lifetime of the particle (0..1)
 	float *stretch;                             //Multiplier for how much the particle is stretched in the shader
 	tfxU32 *alignment;                          //The alignment of the particle. 2 16bit floats for 2d and 3 8bit floats for 3d
@@ -6038,7 +6038,7 @@ struct tfx_effect_data_t {
 struct tfx_animation_instance_t {
 	tfx_vec3_t position;                //position that the instance should be played at
 	float scale;                        //Scales the overal size of the animation
-	tfxU32 sprite_count;                //The number of sprites to be drawn
+	tfxU32 sprite_count;                //The number of instance_data to be drawn
 	tfxU32 frame_count;                    //The number of frames in the animation
 	tfxU32 offset_into_sprite_data;        //The starting ofset in the buffer that contains all the sprite data
 	tfxU32 info_index;                    //Index into the effect_animation_info storage map to get at the frame meta
@@ -6087,11 +6087,11 @@ struct tfx_animation_manager_t {
 	//Any instances deemed not in view can be culled for example by not adding them to the queue
 	tfx_vector_t<tfx_animation_instance_t> render_queue;
 	//The compute shader needs to know when to switch from one animation instance to another as it
-	//progresses through all the sprites that need to be rendered. So this array of offsets tells
+	//progresses through all the instance_data that need to be rendered. So this array of offsets tells
 	//it when to do this. So 0 will always be in the first slot, then the second element will be 
-	//the total number of sprites to be drawn for the first animation instance and so on. When the
+	//the total number of instance_data to be drawn for the first animation instance and so on. When the
 	//global index is more than or equal to the next element then we start on the next animation
-	//instance and draw those sprites.
+	//instance and draw those instance_data.
 	tfx_vector_t<tfxU32> offsets;
 	//We also need to upload some emitter properties to the GPU as well such as the sprite handle.
 	//These can be looked up byt the sprite in the compute shader and the values applied to the sprite
@@ -6129,15 +6129,15 @@ struct tfx_effect_index_t {
 };
 
 struct tfx_particle_manager_info_t {
-	tfxU32 max_particles;					//The maximum number of sprites for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
+	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time.
-	tfx_particle_manager_mode order_mode;   //When not grouping sprites by effect, you can set the mode of the particle manager to order sprites or not.
-											//When set to false, all sprites will be kept together in a large list.
+	tfx_particle_manager_mode order_mode;   //When not grouping instance_data by effect, you can set the mode of the particle manager to order instance_data or not.
+											//When set to false, all instance_data will be kept together in a large list.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
-	bool double_buffer_sprites;             //Set to true to double buffer sprites so that you can interpolate between the old and new positions for smoother animations.
-	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Not applicable when grouping sprites by effect.
-	bool group_sprites_by_effect;           //Set to true to group all sprites by effect. Effects can then be drawn in specific orders or not drawn at all on an effect by effect basis.
+	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations.
+	bool dynamic_sprite_allocation;         //Set to true to automatically resize the sprite buffers if they run out of space. Not applicable when grouping instance_data by effect.
+	bool group_sprites_by_effect;           //Set to true to group all instance_data by effect. Effects can then be drawn in specific orders or not drawn at all on an effect by effect basis.
 	bool auto_order_effects;                //When group_sprites_by_effect is true then you can set this to true to sort the effects each frame. Use SetPMCamera in 3d to set the effect depth to the distance the camera, in 2d the depth is set to the effect y position.
 	bool is_3d;                             //All effects are 3d
 	bool write_direct_to_staging_buffer;	//Make the particle manager write directly to the staging buffer. Use SetStagingBuffer before you call UpdateParticleManager
@@ -6195,7 +6195,7 @@ struct tfx_particle_manager_t {
 	//The info config that was used to initialise the particle manager. This can be used to alter and the reconfigure the particle manager
 	tfx_particle_manager_info_t info;
 
-	//Banks of sprites. All emitters write their sprite data to these banks. 
+	//Banks of instance_data. All emitters write their sprite data to these banks. 
 	tfx_vector_t <tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
 	tfx_buffer_t instance_buffer;
 	tfx_buffer_t instance_buffer_for_recording[2][tfxLAYERS];
@@ -6795,7 +6795,7 @@ inline void SpriteDataOffsetCapturedIndexes(T* instance, tfx_sprite_data_t *spri
 				//frame
 				continue;
 			} else if (instance[j].captured_index != tfxINVALID && sprite_data->real_time_sprites.uid[j].age == 0) {
-				//This deals with wrapped single sprites where captured index is not invalid yet it's age is 0. Usually only captured indexes that have an age of 0
+				//This deals with wrapped single instance_data where captured index is not invalid yet it's age is 0. Usually only captured indexes that have an age of 0
 				//are invalid because there is no previous frame of the sprite to interpolate with but we do want that to happen with a wrapped sprite. So it means
 				//that we have to manually find the wrapped sprite in the previous frame.
 				for (int k = SpriteDataIndexOffset(sprite_data, previous_frame, layer); k != SpriteDataEndIndex(sprite_data, previous_frame, layer); ++k) {
@@ -6844,7 +6844,7 @@ inline void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_spri
 						//instance[i].captured_index = diff < 0 ? tfxINVALID : instance[i].captured_index;
 						captured_found = false;
 						instance[i].captured_index = age_diff == diff ? j : instance[i].captured_index;
-						//tfxPrint("%i (%i)) UID: %u: CI: %i, SI: %i - CIAge: %i, SAge: %i - Age Diff: %u, Diff: %u, Cap.index: %u, CPosy: %.2f SPosy: %.2f, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle >> 32));
+						//tfxPrint("%i (%i)) UID: %u: CI: %i, SI: %i - CIAge: %i, SAge: %i - Age Diff: %u, Diff: %u, Cap.index: %u, CPosy: %.2f SPosy: %.2f, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].instance_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle >> 32));
 						if (age_diff < 2) {	//We can just break if the age is less than 2 but not if we found and older particle. It's possible to find an older particle if the animation has been looped
 							//If the compression is high this won't be hit because the distance in time between the compressed frames will be high
 							//tfxPrint("\t Linked %i to %i: uid, %u, captured index: %u", i, j, c_sprites.uid[j].uid, instance[i].captured_index);
@@ -6856,7 +6856,7 @@ inline void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_spri
 					c_sprites.uid[instance[i].captured_index].age |= 0x80000000;
 				}
 			} else {
-				//tfxPrint("%i (%i)) UID: %u: CI: %i, Cap: %u, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, instance[i].captured_index, tfxU32(instance[i].size_handle >> 32));
+				//tfxPrint("%i (%i)) UID: %u: CI: %i, Cap: %u, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].instance_count[layer], c_sprites.uid[i].uid, i, instance[i].captured_index, tfxU32(instance[i].size_handle >> 32));
 			}
 		}
 	}
@@ -7203,7 +7203,7 @@ tfxINTERNAL void FreeParticleList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeSpawnLocationList(tfx_particle_manager_t *pm, tfxU32 index);
 tfxINTERNAL void FreeAllParticleLists(tfx_particle_manager_t *pm);
 tfxINTERNAL void FreeAllSpawnLocationLists(tfx_particle_manager_t *pm);
-tfxINTERNAL void OrderEffectSprites(tfx_effect_sprites_t *sprites, tfxU32 layer, tfx_particle_manager_t *pm);
+tfxINTERNAL void OrderEffectSprites(tfx_effect_instance_data_t *sprites, tfxU32 layer, tfx_particle_manager_t *pm);
 
 //Compute stuff doesn't work currently
 tfxINTERNAL void EnableCompute(tfx_particle_manager_t *pm) { pm->flags |= tfxParticleManagerFlags_use_compute_shader; }
@@ -7555,7 +7555,7 @@ current frame in flight. This will probably apply in any modern renderer like vu
 Note: It's up to you to ensure that the staging buffer has enough capacity. The particle manager will assume that the size_in_bytes that you pass to the particle
 manager is correct and if tfxParticleManagerFlags_dynamic_sprite_allocation is set will attempt to grow the buffer by calling the callback you set to do this.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
-* @param stagin_buffer            A pointer to the staging buffer where all the sprites/billboards are written to
+* @param stagin_buffer            A pointer to the staging buffer where all the instance_data/billboards are written to
 * @param size_in_bytes            The size in bytes of the staging buffer
 */
 tfxAPI void SetStagingBuffer(tfx_particle_manager_t *pm, void *staging_buffer, tfxU32 size_in_bytes);
@@ -7576,8 +7576,8 @@ tfxAPI inline void TogglePMOrderEffects(tfx_particle_manager_t *pm, bool yesno) 
 }
 
 /*
-Get the sprite buffer in the particle manager containing all the 2d sprites that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
-This will be a pointer to the start of the buffer for uploading all the sprites. If you want to do this for each effect then you can call GetEffectSpriteBuffer.
+Get the sprite buffer in the particle manager containing all the 2d instance_data that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
+This will be a pointer to the start of the buffer for uploading all the instance_data. If you want to do this for each effect then you can call GetEffectSpriteBuffer.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 */
 tfxAPI inline tfx_sprite_instance_t *GetSpriteBuffer(tfx_particle_manager_t *pm) {
@@ -7615,7 +7615,7 @@ NOTE: No emitters of the type passed to the function must be in use in the parti
 tfxAPI void FreeParticleListsMemory(tfx_particle_manager_t *pm, tfx_effect_emitter_t *emitter);
 
 /*
-Free all the memory that is associated with an effect. Depending on the configuration of the particle manager this might be sprites, particle lists and spawn location lists.
+Free all the memory that is associated with an effect. Depending on the configuration of the particle manager this might be instance_data, particle lists and spawn location lists.
 * @param pm                        A pointer to an intialised tfx_particle_manager_t.
 * @param emitter                A pointer to a valid tfx_effect_emitter_t of type tfxEffectType
 */
@@ -7699,7 +7699,7 @@ tfxAPI void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed);
 Get the image pointer for a sprite. Use this when rendering particles in your renderer. The pointer that is returned will be the pointer that you set in your shape loader function
 used when loading an effect library.
 * @param pm                    A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param property_indexes    The value in the sprites->property_indexs[i] when iterating over the sprites in your render function
+* @param property_indexes    The value in the instance_data->property_indexs[i] when iterating over the instance_data in your render function
   @returns                    void* pointer to the image
 */
 tfxAPI inline void *GetSpriteImagePointer(tfx_particle_manager_t *pm, tfxU32 property_indexes) {
@@ -7709,7 +7709,7 @@ tfxAPI inline void *GetSpriteImagePointer(tfx_particle_manager_t *pm, tfxU32 pro
 /*
 Get the handle of the sprite. Use this when rendering particles in your renderer.
 * @param pm                    A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param property_indexes    The value in the sprites->property_indexs[i] when iterating over the sprites in your render function
+* @param property_indexes    The value in the instance_data->property_indexs[i] when iterating over the instance_data in your render function
   @returns                    tfx_vec_2 containing the x and y values of the handle.
 */
 tfxAPI inline tfx_vec2_t GetSpriteHandle(tfx_particle_manager_t *pm, tfxU32 property_indexes) {
@@ -7717,7 +7717,7 @@ tfxAPI inline tfx_vec2_t GetSpriteHandle(tfx_particle_manager_t *pm, tfxU32 prop
 }
 
 /*
-Get the total number of 3d sprites ready for rendering in the particle manager
+Get the total number of 3d instance_data ready for rendering in the particle manager
 * @param pm                    A pointer to an initialised tfx_particle_manager_t.
 */
 tfxAPI inline tfxU32 TotalSpriteCount(tfx_particle_manager_t *pm) {
@@ -7725,7 +7725,7 @@ tfxAPI inline tfxU32 TotalSpriteCount(tfx_particle_manager_t *pm) {
 }
 
 /*
-Clear all particles, sprites and effects in a particle manager. If you don't need to use the particle manager again then call FreeParticleManager to also
+Clear all particles, instance_data and effects in a particle manager. If you don't need to use the particle manager again then call FreeParticleManager to also
 free all the memory associated with the particle manager.
 * @param pm                        A pointer to an initialised tfx_particle_manager_t.
 * @param free_particle_banks    Set to true if you want to free the memory associated with the particle banks and release back to the memory pool
@@ -7780,7 +7780,7 @@ More for use in the editor, this function updates emitter base values for any ef
 tfxAPI void UpdatePMBaseValues(tfx_particle_manager_t *pm);
 
 /*
-Set the tfx_library_t that the particle manager will use to render sprites and lookup all of the various properties required to update emitters and particles.
+Set the tfx_library_t that the particle manager will use to render instance_data and lookup all of the various properties required to update emitters and particles.
 This is also set when you initialise a particle manager
 * @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param lib            A pointer to a tfx_library_t
@@ -7854,8 +7854,8 @@ tfxAPI inline tfx_vec2_t GetCapturedSprite2dTransform(tfx_particle_manager_t *pm
 
 /*
 Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side SpriteDataEndIndex to create
-a for loop to iterate over the sprites in a pre-recorded effect
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
+a for loop to iterate over the instance_data in a pre-recorded effect
+* @param sprite_data    A pointer to tfx_sprite_data_t containing all the instance_data and frame data
 * @param frame            The index of the frame you want the offset for
 * @param layer            The sprite layer
 * @returns                tfxU32 containing the index offset
@@ -7900,8 +7900,8 @@ tfxAPI tfx_vector_t<tfxU32> *GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU
 
 /*
 Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation that has been compresssed into fewer frames. Can be used along side SpriteDataIndexOffset to create
-a for loop to iterate over the sprites in a pre-recorded effect
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
+a for loop to iterate over the instance_data in a pre-recorded effect
+* @param sprite_data    A pointer to tfx_sprite_data_t containing all the instance_data and frame data
 * @param frame            The index of the frame you want the offset for
 * @param layer            The sprite layer
 * @returns                tfxU32 containing the index offset
@@ -7914,8 +7914,8 @@ tfxAPI inline tfxU32 CompressedSpriteDataIndexOffset(tfx_sprite_data_t *sprite_d
 
 /*
 Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side SpriteDataEndIndex to create
-a for loop to iterate over the sprites in a pre-recorded effect
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
+a for loop to iterate over the instance_data in a pre-recorded effect
+* @param sprite_data    A pointer to tfx_sprite_data_t containing all the instance_data and frame data
 * @param frame            The index of the frame you want the end index for
 * @param layer            The sprite layer
 * @returns                tfxU32 containing the end offset
@@ -7928,8 +7928,8 @@ tfxAPI inline tfxU32 SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 f
 
 /*
 Get the end index offset into the sprite memory for sprite data containing a pre recorded effect animation that has been compressed into fewer frames. Can be used along side CompressedSpriteDataIndexOffset to create
-a for loop to iterate over the sprites in a pre-recorded effect
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the sprites and frame data
+a for loop to iterate over the instance_data in a pre-recorded effect
+* @param sprite_data    A pointer to tfx_sprite_data_t containing all the instance_data and frame data
 * @param frame            The index of the frame you want the end index for
 * @param layer            The sprite layer
 * @returns                tfxU32 containing the end offset
@@ -8002,28 +8002,45 @@ Get the current position of an effect
 tfxAPI tfx_vec3_t GetEffectPosition(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 
 /*
-When use a particle manager that has the use_effect_sprite_buffers flag set, you can use this function to get the sprite buffer of a specific effect. If the particle manager does not have this flag set
-then a nullptr is returned.
-* @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
-* @param effect_index    The index of the effect. This is the index returned when calling AddEffectToParticleManager
-* @param tfxU32            The index of the sprite layer that you want
-* @param tfxU32            Pass in a pointer to a tfxU32 which will be set to the number of sprites in the buffer.
-* @return                tfx_sprite_soa_t pointer with all the arrays for each sprite.
+You can use this function to get the sprite buffer of a specific effect. 
+* @param pm						A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param effect_index			The index of the effect. This is the index returned when calling AddEffectToParticleManager
+* @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
+* @return						tfx_sprite_instance_t pointer to the buffer
 */
-tfxAPI tfx_sprite_instance_t *GetEffectSpriteBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 layer, tfxU32 *sprite_count);
+tfxAPI tfx_sprite_instance_t *GetEffectSpriteBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 *sprite_count);
 
 /*
-When use a particle manager that has the use_effect_sprite_buffers flag set, you can use this function to get each sprite buffer for every effect that is currently active in the particle manager. Generally you would call this inside
-a for loop for each layer.
-* @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
-* @param tfxU32            The index of the sprite layer that you want
-* @param tfx_sprite_soa_t    Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
-* @param tfx_effect_sprites_t    Pass in a second pointer which will be set to the tfx_effect_sprites_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered sprites (to interpolated with the previous frame).
-*                                You can use this with functions like GetCapturedEffectSprite3dTransform.
-* @param tfxU32            Pass in a pointer to a tfxU32 which will be set to the number of sprites in the buffer.
-* @return                true or false if the next sprite buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
+You can use this function to get the billboard buffer of a specific effect. 
+* @param pm						A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param effect_index			The index of the effect. This is the index returned when calling AddEffectToParticleManager
+* @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
+* @return						tfx_billboard_instance_t pointer to the buffer
 */
-tfxAPI bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfx_sprite_instance_t **sprites_soa, tfx_effect_sprites_t **effect_sprites, tfxU32 *sprite_count);
+tfxAPI tfx_billboard_instance_t *GetEffectBillboardBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 *sprite_count);
+
+/*
+You can use this function to get each sprite buffer for every effect that is currently active in the particle manager. Generally you would call this inside a for loop for each layer.
+* @param pm						A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param tfxU32					The index of the sprite layer that you want
+* @param tfx_sprite_instance_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
+* @param tfx_effect_instance_data_t   Pass in a second pointer which will be set to the tfx_effect_instance_data_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered instance_data (to interpolated with the previous frame).
+*                               You can use this with functions like GetCapturedEffectSprite3dTransform.
+* @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
+* @return						true or false if the next sprite buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
+*/
+tfxAPI bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfx_sprite_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
+
+/*
+You can use this function to get each billboard buffer for every effect that is currently active in the particle manager. Generally you would call this inside a for loop for each layer.
+* @param pm						A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param tfx_sprite_billboard_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
+* @param tfx_effect_instance_data_t   Pass in a second pointer which will be set to the tfx_effect_instance_data_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered instance_data (to interpolated with the previous frame).
+*                               You can use this with functions like GetCapturedEffectSprite3dTransform.
+* @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
+* @return						true or false if the next billboard buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
+*/
+tfxAPI bool GetNextBillboardBuffer(tfx_particle_manager_t *pm, tfx_billboard_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
 
 /*
 Set the rotation of a 2d effect
@@ -8228,7 +8245,7 @@ Get an animation instance from an animation manager
 tfxAPI tfx_animation_instance_t *GetAnimationInstance(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id);
 
 /*
-Initialise an Animation Manager for use with 3d sprites. This must be run before using an animation manager. An animation manager is used
+Initialise an Animation Manager for use with 3d instance_data. This must be run before using an animation manager. An animation manager is used
 to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in
 real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work
 to calculate the state of particles between frames for smooth animation.
@@ -8241,7 +8258,7 @@ to calculate the state of particles between frames for smooth animation.
 tfxAPI void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity);
 
 /*
-Initialise an Animation Manager for use with 2d sprites. This must be run before using an animation manager. An animation manager is used
+Initialise an Animation Manager for use with 2d instance_data. This must be run before using an animation manager. An animation manager is used
 to playback pre recorded particle effects as opposed to using a particle manager that simulates the particles in
 real time. This pre-recorded data can be uploaded to the gpu for a compute shader to do all the interpolation work
 to calculate the state of particles between frames for smooth animation.
@@ -8357,10 +8374,10 @@ tfxAPI inline tfx_animation_buffer_metrics_t GetAnimationBufferMetrics(tfx_anima
 }
 
 /*
-Get the total number of sprites that need to be drawn by an animation manager this frame. You can use this in your renderer
+Get the total number of instance_data that need to be drawn by an animation manager this frame. You can use this in your renderer
 to draw your sprite instances
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
-* @returns                        tfxU32 of the number of sprites
+* @returns                        tfxU32 of the number of instance_data
 */
 tfxAPI inline tfxU32 GetTotalSpritesThatNeedDrawing(tfx_animation_manager_t *animation_manager) {
 	return animation_manager->buffer_metrics.total_sprites_to_draw;
@@ -8428,9 +8445,9 @@ tfxAPI inline size_t GetGPUShapesSizeInBytes(tfx_gpu_shapes_t *particle_shapes) 
 }
 
 /*
-Get the total number of sprites in an animation manger's sprite data buffer
+Get the total number of instance_data in an animation manger's sprite data buffer
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
-* @returns tfxU32                The number of sprites in the buffer
+* @returns tfxU32                The number of instance_data in the buffer
 */
 tfxAPI inline tfxU32 GetTotalSpriteDataCount(tfx_animation_manager_t *animation_manager) {
 	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
@@ -8440,9 +8457,9 @@ tfxAPI inline tfxU32 GetTotalSpriteDataCount(tfx_animation_manager_t *animation_
 }
 
 /*
-Get the total number of sprites in an animation manger's sprite data buffer
+Get the total number of instance_data in an animation manger's sprite data buffer
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
-* @returns tfxU32                The number of sprites in the buffer
+* @returns tfxU32                The number of instance_data in the buffer
 */
 tfxAPI inline size_t GetSpriteDataSizeInBytes(tfx_animation_manager_t *animation_manager) {
 	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
@@ -8607,7 +8624,7 @@ Set the single spawn amount for an emitter. Only affects emitters that have the 
 tfxAPI void SetTemplateSingleSpawnAmount(tfx_effect_template_t *t, const char *emitter_path, tfxU32 amount);
 
 /*
-Interpolate between 2 tfxVec3s. You can make use of this in your render function when rendering sprites and interpolating between captured and current positions
+Interpolate between 2 tfxVec3s. You can make use of this in your render function when rendering instance_data and interpolating between captured and current positions
 * @param tween                The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param world                The current tvxVec3 position
 * @param captured            The captured tvxVec3 position
@@ -8620,7 +8637,7 @@ tfxAPI inline tfx_vec3_t Tween3d(float tween, const tfx_vec3_t *world, const tfx
 }
 
 /*
-Interpolate between 2 tfxVec2s. You can make use of this in your render function when rendering sprites and interpolating between captured and current positions
+Interpolate between 2 tfxVec2s. You can make use of this in your render function when rendering instance_data and interpolating between captured and current positions
 * @param tween        The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param world        The current tvxVec2 position
 * @param captured    The captured tvxVec2 position
@@ -8633,7 +8650,7 @@ tfxAPI inline tfx_vec2_t Tween2d(float tween, const tfx_vec2_t *world, const tfx
 }
 
 /*
-Interpolate between 2 float. You can make use of this in your render function when rendering sprites and interpolating between captured and current float values like intensity
+Interpolate between 2 float. You can make use of this in your render function when rendering instance_data and interpolating between captured and current float values like intensity
 * @param tween        The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param world        The current tvxVec2 position
 * @param captured    The captured tvxVec2 position
@@ -8646,7 +8663,7 @@ tfxAPI inline float TweenFloat(float tween, const float current, const float cap
 /*
 Check if a particle sprite is newly spawned. This means that there will be no captured index to interpolate with so if you want you can opt to not draw the sprite or
 draw the sprite but with 0 alpha. A float is returned, either 0.f or 1.f so you can use that to multiply the alpha value or scale of the sprite to not draw it.
-* @param sprites    A pointer to a tfx_sprite_soa_t
+* @param instance_data    A pointer to a tfx_sprite_soa_t
 * @param index        The index of the sprite that you're checking
 * @returns float    0.f if it IS the first frame of the sprite otherwise 1.f.
 */
@@ -8678,7 +8695,7 @@ tfxAPI inline tfx_vec2_t GetSpriteHandle(T *sprite) {
 
 #ifdef tfxINTEL
 /*
-Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
+Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering instance_data and interpolating between captured and current colors
 * @param tween						The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param current					The current tfx_rgba8_t color
 * @param captured					The captured tfx_rgba8_t color
@@ -8728,7 +8745,7 @@ tfxAPI inline tfx_wide_lerp_transform_result_t InterpolateSpriteTransform(const 
 #elif defined(tfxARM)
 
 /*
-Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering sprites and interpolating between captured and current colors
+Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering instance_data and interpolating between captured and current colors
 * @param tween                The interpolation value between 0 and 1. You should pass in the value from your timing function
 * @param current            The current tfx_rgba8_t color
 * @param captured            The captured tfx_rgba8_t color
