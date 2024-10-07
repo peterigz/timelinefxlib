@@ -48,6 +48,10 @@
 #define tfxMAX_MEMORY_POOLS 32
 #endif
 
+#ifndef tfxMAX_THREADS
+#define tfxMAX_THREADS 64
+#endif
+
 #if defined(__x86_64__) || defined(__i386__) || defined(_M_X64)
 #define tfxINTEL
 #include <immintrin.h>
@@ -3003,7 +3007,9 @@ struct tfx_vector_t {
 	inline tfx_vector_t(const char *name_init) { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME_INIT(name_init); }
 	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
-	inline ~tfx_vector_t() { if (data) { tfxFREE(data); } data = nullptr; current_size = capacity = alignment = 0; }
+	inline ~tfx_vector_t() { 
+		if (data) { tfxFREE(data); } data = nullptr; current_size = capacity = alignment = 0; 
+	}
 
 	inline bool            empty() { return current_size == 0; }
 	inline bool            full() { return current_size == capacity; }
@@ -4023,29 +4029,9 @@ struct tfx_stream_t {
 };
 
 //-----------------------------------------------------------
-//Section: Multithreading_Work_Queues
+//Section: Global_Variables
 //-----------------------------------------------------------
-
-//Tried to keep this as simple as possible, was originally based on Casey Muratory's Hand Made Hero threading which used the Windows API for
-//threading but for the sake of supporting other platforms I changed it to use std::thread which was actually a lot more simple to do then 
-//I expected. I just had to swap the semaphores for condition_variable and that was pretty much it other then obviously using std::thread as well.
-//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue and then
-//each emitter that the particle manager uses will be given it's own thread.
-struct tfx_work_queue_t;
-
-#define tfxWORKQUEUECALLBACK(name) void name(tfx_work_queue_t *queue, void *data)
-typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
-
-struct tfx_work_queue_entry_t {
-	tfxWorkQueueCallback *call_back = nullptr;
-	void *data = nullptr;
-};
-
-typedef tfxU32 tfxWorkQueueFlags;
-
-enum tfxWorkQueueFlag_ {
-	tfxWorkQueueFlag_none = 0
-};
+extern const tfxU32 tfxPROFILE_COUNT;
 
 extern int tfxNumberOfThreadsInAdditionToMain;
 extern bool tfxThreadUsage[];        //Used for debugging to see which threads were utilised each frame
@@ -4057,6 +4043,16 @@ extern bool tfxThreadUsage[];        //Used for debugging to see which threads w
 #ifndef tfxMAX_QUEUE_ENTRIES
 #define tfxMAX_QUEUE_ENTRIES 512
 #endif
+
+struct tfx_work_queue_t;
+
+#define tfxWORKQUEUECALLBACK(name) void name(tfx_work_queue_t *queue, void *data)
+typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
+
+struct tfx_work_queue_entry_t {
+	tfxWorkQueueCallback *call_back = nullptr;
+	void *data = nullptr;
+};
 
 struct tfx_work_queue_t {
 	tfxU32 volatile entry_completion_goal = 0;
@@ -4071,18 +4067,61 @@ struct tfx_queue_processor_t {
 	std::condition_variable empty_condition;
 	std::condition_variable full_condition;
 	tfxU32 count;
+	volatile bool end_all_threads;
 	//These point to the queues stored in particle managers and anything else that needs a queue with multithreading
 	tfx_work_queue_t *queues[tfxMAX_QUEUES];
 };
 
-extern tfx_queue_processor_t tfxThreadQueues;
+struct tfx_data_types_dictionary_t {
+	bool initialised = false;
+	tfx_storage_map_t<tfx_data_type> names_and_types;
+	tfx_data_types_dictionary_t() :
+		names_and_types("Data Types Storage Map", "Data Types Storage Data")
+	{}
+	void Init();
+};
+
+//Global variables
+struct tfx_storage_t {
+	tfxU32 memory_pool_count;
+	size_t default_memory_pool_size;
+	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
+	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
+	tfx_data_types_dictionary_t data_types;
+	float circle_path_x[tfxCIRCLENODES];
+	float circle_path_z[tfxCIRCLENODES];
+	tfx_color_ramp_format color_ramp_format;
+	tfx_queue_processor_t tfxThreadQueues;
+	std::thread threads[tfxMAX_THREADS];
+	tfxU32 thread_count;
+};
+
+extern tfx_storage_t *tfxStore;
+extern tfx_allocator *tfxMemoryAllocator;
+
+//-----------------------------------------------------------
+//Section: Multithreading_Work_Queues
+//-----------------------------------------------------------
+
+//Tried to keep this as simple as possible, was originally based on Casey Muratory's Hand Made Hero threading which used the Windows API for
+//threading but for the sake of supporting other platforms I changed it to use std::thread which was actually a lot more simple to do then 
+//I expected. I just had to swap the semaphores for condition_variable and that was pretty much it other then obviously using std::thread as well.
+//There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue and then
+//each emitter that the particle manager uses will be given it's own thread.
+
+
+typedef tfxU32 tfxWorkQueueFlags;
+
+enum tfxWorkQueueFlag_ {
+	tfxWorkQueueFlag_none = 0
+};
 
 tfxINTERNAL inline void InitialiseThreadQueues(tfx_queue_processor_t *queues) {
 	queues->count = 0;
 	memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void *));
 }
 
-tfxINTERNAL inline tfx_work_queue_t *tfxGetQueueWithWork(tfx_queue_processor_t *thread_processor) {
+tfxINTERNAL tfx_work_queue_t *tfxGetQueueWithWork(tfx_queue_processor_t *thread_processor) {
 	std::unique_lock<std::mutex> lock(thread_processor->mutex);
 	thread_processor->full_condition.wait(lock, [&]() { return thread_processor->count > 0; });
 	tfx_work_queue_t *queue = thread_processor->queues[--thread_processor->count];
@@ -4097,7 +4136,7 @@ tfxINTERNAL inline void tfxPushQueueWork(tfx_queue_processor_t *thread_processor
 	thread_processor->full_condition.notify_one();
 }
 
-tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processor) {
+tfxINTERNAL inline bool tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processor) {
 	tfx_work_queue_t *queue = tfxGetQueueWithWork(queue_processor);
 
 	if (queue) {
@@ -4113,6 +4152,7 @@ tfxINTERNAL inline void tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 			}
 		}
 	}
+	return queue_processor->end_all_threads ? true : false;
 }
 
 tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
@@ -4146,7 +4186,7 @@ tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data
 
 	tfx__writebarrier;
 
-	tfxPushQueueWork(&tfxThreadQueues, queue);
+	tfxPushQueueWork(&tfxStore->tfxThreadQueues, queue);
 	queue->next_write_entry = new_entry_to_write;
 
 }
@@ -4167,52 +4207,8 @@ tfxINTERNAL inline void tfxInitialiseWorkQueue(tfx_work_queue_t *queue) {
 	queue->next_write_entry = 0;
 }
 
-tfxINTERNAL inline bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queues) {
-	InitialiseThreadQueues(&tfxThreadQueues);
-
-	//todo: create a function to close all the threads 
-
-	tfxU32 threads_initialised = 0;
-	for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
-		std::thread([thread_queues]() {
-			for (;;) {
-				tfxDoNextWorkQueue(thread_queues);
-			}
-			}).detach();
-
-		threads_initialised++;
-	}
-	return true;
-}
-
-//-----------------------------------------------------------
-//Section: Global_Variables
-//-----------------------------------------------------------
-extern const tfxU32 tfxPROFILE_COUNT;
-
-struct tfx_data_types_dictionary_t {
-	bool initialised = false;
-	tfx_storage_map_t<tfx_data_type> names_and_types;
-	tfx_data_types_dictionary_t() :
-		names_and_types("Data Types Storage Map", "Data Types Storage Data")
-	{}
-	void Init();
-};
-
-//Global variables
-struct tfx_storage_t {
-	tfxU32 memory_pool_count;
-	size_t default_memory_pool_size;
-	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
-	tfx_pool *memory_pools[tfxMAX_MEMORY_POOLS];
-	tfx_data_types_dictionary_t data_types;
-	float circle_path_x[tfxCIRCLENODES];
-	float circle_path_z[tfxCIRCLENODES];
-	tfx_color_ramp_format color_ramp_format;
-};
-
-extern tfx_storage_t *tfxStore;
-extern tfx_allocator *tfxMemoryAllocator;
+bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queues);
+void tfxThreadWorker(tfx_queue_processor_t *queue_processor);
 
 //-----------------------------------------------------------
 //Section: Vector_Math
@@ -7404,6 +7400,11 @@ Initialise TimelineFX. Must be called before any functionality of TimelineFX is 
 * @param memory_pool_size    The size of each memory pool to contain all objects created in TimelineFX, recommended to be at least 64MB
 */
 tfxAPI void InitialiseTimelineFX(int max_threads, size_t memory_pool_size);
+
+/*
+Cleanup up all threads and memory used by timelinefx
+*/
+tfxAPI void EndTimelineFX();
 
 /*
 Set the color format used for storing color ramps. Color ramps are generated by particle emitters and dictate how the particle colors change over the lifetime

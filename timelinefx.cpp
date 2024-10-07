@@ -18240,7 +18240,6 @@ tfxU32 tfxCurrentSnapshot = 0;
 tfx_profile_t tfxProfileArray[tfxPROFILE_COUNT];
 int tfxNumberOfThreadsInAdditionToMain = 0;
 bool tfxThreadUsage[32];
-tfx_queue_processor_t tfxThreadQueues;
 
 tfx_storage_t *tfxStore = 0;
 tfx_allocator *tfxMemoryAllocator = 0;
@@ -18252,6 +18251,26 @@ void InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
 }
 
+bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queues) {
+	//todo: create a function to close all the threads 
+	for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
+		tfxStore->threads[thread_index] = std::thread(tfxThreadWorker, &tfxStore->tfxThreadQueues);
+		tfxStore->thread_count++;
+	}
+	return true;
+}
+
+void tfxThreadWorker(tfx_queue_processor_t *queue_processor) {
+	TFX_ASSERT(queue_processor);
+	for (;;) {
+		if(tfxDoNextWorkQueue(queue_processor)) break;
+	}
+}
+
+void EndThread(tfx_work_queue_t *queue, void *data) {
+	return;
+}
+
 //Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
 //max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
 void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
@@ -18260,7 +18279,7 @@ void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 		TFX_ASSERT(memory_pool);    //unable to allocate initial memory pool
 		tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
 	}
-	tfxStore = (tfx_storage_t *)tfx_Allocate(tfxMemoryAllocator, sizeof(tfx_storage_t));
+	tfxStore = (tfx_storage_t *)tfx_AllocateAligned(tfxMemoryAllocator, sizeof(tfx_storage_t), 16);
 	memset(tfxStore, 0, sizeof(tfx_storage_t));
 	tfxStore->default_memory_pool_size = memory_pool_size;
 	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
@@ -18269,7 +18288,31 @@ void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 	lookup_callback = LookupFast;
 	lookup_overtime_callback = LookupFastOvertime;
-	tfxInitialiseThreads(&tfxThreadQueues);
+	tfxInitialiseThreads(&tfxStore->tfxThreadQueues);
+}
+
+void EndTimelineFX() {
+	tfxStore->tfxThreadQueues.end_all_threads = true;
+	tfx__writebarrier;
+	tfx_work_queue_t end_queue{};
+	tfxU32 thread_count = tfxStore->thread_count;
+	while (thread_count > 0) {
+		tfxAddWorkQueueEntry(&end_queue, nullptr, EndThread);
+		tfxCompleteAllWork(&end_queue);
+		thread_count--;
+	}
+	for (int i = 0; i != tfxStore->thread_count; ++i) {
+		tfxStore->threads[i].join();
+	}
+	int pool_count = tfxStore->memory_pool_count;
+	tfx__unlock_thread_access(tfxMemoryAllocator);
+	for (int i = 0; i != 6; ++i) {
+		tfxIcospherePoints[i].free();
+	}
+	for (int i = pool_count - 1; i != 0; --i) {
+		free(tfxStore->memory_pools[i]);
+	}
+	free(tfxMemoryAllocator);
 }
 
 void SetColorRampFormat(tfx_color_ramp_format color_format) {
