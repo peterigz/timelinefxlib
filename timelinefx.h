@@ -8042,6 +8042,11 @@ You can use this function to get each billboard buffer for every effect that is 
 */
 tfxAPI bool GetNextBillboardBuffer(tfx_particle_manager_t *pm, tfx_billboard_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
 
+/*After calling GetNextBillboard/SpriteBuffer in a while loop you can call this to reset the index for the next frame
+* @param pm						A pointer to a tfx_particle_manager_t
+*/
+tfxAPI bool ResetInstanceBufferLoopIndex(tfx_particle_manager_t *pm);
+
 /*
 Set the rotation of a 2d effect
 * @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed. Note that this must be called after UpdateParticleManager in order to override the current rotation of the effect that was
