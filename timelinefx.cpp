@@ -12096,12 +12096,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			}
 			effects_in_use[j + 1] = key;
 		}
-		tfxU32 running_instance_offset = 0;
-		for (tfxU32 i = 0; i != effects_in_use.current_size; ++i) {
-			tfx_effect_instance_data_t &instance_data = pm->effects[effects_in_use[i].index].instance_data;
-			instance_data.instance_start_index += running_instance_offset;
-			running_instance_offset += instance_data.instance_count;
-		}
 	}
 
 	if (pm->flags & tfxParticleManagerFlags_update_bounding_boxes) {
@@ -14181,6 +14175,7 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
 	tfx_particle_manager_t &pm = *work_entry->pm;
 	tfx_emitter_state_t &emitter = pm.emitters[work_entry->emitter_index];
+	tfxU32 captured_offset = (pm.flags & tfxParticleManagerFlags_use_effect_sprite_buffers) ? pm.effects[emitter.root_index].instance_data.instance_start_index : 0;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 	tfx_image_data_t *image = work_entry->properties->image;
 	const tfx_billboarding_option billboard_option = work_entry->properties->billboard_option;
@@ -14244,18 +14239,18 @@ void ControlParticleImageFrame(tfx_work_queue_t *queue, void *data) {
 		if (pm.flags & tfxParticleManagerFlags_3d_effects) { //Predictable
 			tfx_billboard_instance_t *sprites = tfxCastBuffer(tfx_billboard_instance_t, work_entry->sprite_instances);
 			if (is_ordered) {
-				WriteParticleImageSpriteDataOrdered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index);
+				WriteParticleImageSpriteDataOrdered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index, captured_offset);
 			}
 			else {
-				WriteParticleImageSpriteData(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index);
+				WriteParticleImageSpriteData(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index, captured_offset);
 			}
 		}
 		else {
 			tfx_sprite_instance_t *sprites = tfxCastBuffer(tfx_sprite_instance_t, work_entry->sprite_instances);
 			if (is_ordered) {
-				WriteParticleImageSpriteDataOrdered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index);
+				WriteParticleImageSpriteDataOrdered(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index, captured_offset);
 			} else {
-				WriteParticleImageSpriteData(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index);
+				WriteParticleImageSpriteData(sprites, pm, layer, start_diff, limit_index, bank, flags, image_indexes, emitter_flags, billboard_option, index, running_sprite_index, captured_offset);
 			}
 		}
 
