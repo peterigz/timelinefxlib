@@ -12096,6 +12096,12 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			}
 			effects_in_use[j + 1] = key;
 		}
+		tfxU32 running_instance_offset = 0;
+		for (tfxU32 i = 0; i != effects_in_use.current_size; ++i) {
+			tfx_effect_instance_data_t &instance_data = pm->effects[effects_in_use[i].index].instance_data;
+			instance_data.instance_start_index += running_instance_offset;
+			running_instance_offset += instance_data.instance_count;
+		}
 	}
 
 	if (pm->flags & tfxParticleManagerFlags_update_bounding_boxes) {
