@@ -8045,7 +8045,7 @@ tfxAPI bool GetNextBillboardBuffer(tfx_particle_manager_t *pm, tfx_billboard_ins
 /*After calling GetNextBillboard/SpriteBuffer in a while loop you can call this to reset the index for the next frame
 * @param pm						A pointer to a tfx_particle_manager_t
 */
-tfxAPI bool ResetInstanceBufferLoopIndex(tfx_particle_manager_t *pm);
+tfxAPI void ResetInstanceBufferLoopIndex(tfx_particle_manager_t *pm);
 
 /*
 Set the rotation of a 2d effect

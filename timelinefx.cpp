@@ -18708,7 +18708,7 @@ bool GetNextBillboardBuffer(tfx_particle_manager_t *pm, tfx_billboard_instance_t
 	return true;
 }
 
-bool ResetInstanceBufferLoopIndex(tfx_particle_manager_t *pm) {
+void ResetInstanceBufferLoopIndex(tfx_particle_manager_t *pm) {
 	pm->effect_index_position = 0;
 }
 
