@@ -11373,6 +11373,8 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	pm->sort_passes = tfxMin(5, pm->sort_passes);
 	new_effect.sort_passes = pm->sort_passes;
 	new_effect.instance_data.instance_start_index = tfxINVALID;
+	new_effect.emitter_indexes[0].clear();
+	new_effect.emitter_indexes[1].clear();
 
 	tfxU32 seed_index = 0;
 	struct hash_index_pair_t {
@@ -11387,10 +11389,9 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			if (index == tfxINVALID) {
 				break;
 			}
-
+			new_effect.emitter_indexes[pm->current_ebuff].push_back(index);
 			tfx_emitter_state_t &emitter = pm->emitters[index];
 			emitter.particles_index = tfxINVALID;
-			pm->emitters_in_use[hierarchy_depth][buffer].push_back(index);
 			pm->emitters[index].parent_index = parent_index.index;
 			tfx_emitter_properties_t *emitter_properties = GetEffectProperties(&e);
 			emitter.path_quaternions = nullptr;
@@ -11720,6 +11721,19 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	tfxCompleteAllWork(&pm->work_queue);
 
+	if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers && pm->flags & tfxParticleManagerFlags_auto_order_effects) {
+		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[0][pm->current_ebuff];
+		for (tfxU32 i = 1; i < effects_in_use.current_size; ++i) {
+			tfx_effect_index_t key = effects_in_use[i];
+			int j = i - 1;
+			while (j >= 0 && key.depth > effects_in_use[j].depth) {
+				effects_in_use[j + 1] = effects_in_use[j];
+				--j;
+			}
+			effects_in_use[j + 1] = key;
+		}
+	}
+
 	pm->frame_length = tfx__Min(elapsed_time, pm->max_frame_length);
 	pm->frame_length_wide = tfxWideSetSingle(pm->frame_length);
 	pm->update_frequency = 1000.f / elapsed_time;
@@ -11745,74 +11759,76 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	tfxU32 emitter_start_size[tfxMAXDEPTH];
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		effects_start_size[depth] = pm->effects_in_use[depth][pm->current_ebuff].current_size;
-		emitter_start_size[depth] = pm->emitters_in_use[depth][pm->current_ebuff].current_size;
 	}
+
+	pm->control_emitter_queue.clear();
 
 	//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 
 		pm->effects_in_use[depth][next_buffer].clear();
-		pm->emitters_in_use[depth][next_buffer].clear();
 
 		for (int i = 0; i != effects_start_size[depth]; ++i) {
-			tfx_effect_index_t &current_index = pm->effects_in_use[depth][pm->current_ebuff][i];
-			float &timeout_counter = pm->effects[current_index.index].timeout_counter;
+			tfx_effect_index_t &effect_index = pm->effects_in_use[depth][pm->current_ebuff][i];
+			tfx_effect_state_t &effect = pm->effects[effect_index.index];
+			float &timeout_counter = effect.timeout_counter;
+			effect.emitter_indexes[next_buffer].clear();
+			emitter_start_size[depth] = effect.emitter_indexes[pm->current_ebuff].current_size;
 
 			if (depth == 0) {
-				tfx_effect_instance_data_t &effect_sprites = pm->effects[current_index.index].instance_data;
+				tfx_effect_instance_data_t &effect_sprites = pm->effects[effect_index.index].instance_data;
 				effect_sprites.instance_start_index = tfxINVALID;
 				effect_sprites.instance_count = 0;
 			}
 
-			UpdatePMEffect(pm, current_index.index);
+			UpdatePMEffect(pm, effect_index.index);
 			if (pm->flags & tfxParticleManagerFlags_auto_order_effects) {
-				tfx_vec3_t effect_to_camera = pm->effects[current_index.index].world_position - pm->camera_position;
-				current_index.depth = (pm->flags & tfxParticleManagerFlags_3d_effects) ? Vec3FastLength(&effect_to_camera) : current_index.depth = pm->effects[current_index.index].world_position.y;
+				tfx_vec3_t effect_to_camera = pm->effects[effect_index.index].world_position - pm->camera_position;
+				effect_index.depth = (pm->flags & tfxParticleManagerFlags_3d_effects) ? Vec3FastLength(&effect_to_camera) : effect_index.depth = pm->effects[effect_index.index].world_position.y;
 			}
-			if (timeout_counter <= pm->effects[current_index.index].timeout) {
-				pm->effects_in_use[depth][next_buffer].push_back(current_index);
-			}
-			else {
-				pm->free_effects.push_back(current_index);
-			}
-		}
-
-		for (int i = 0; i != emitter_start_size[depth]; ++i) {
-			//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-			//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-			//would cause more work entries to be created.
-			TFX_ASSERT(pm->spawn_work.current_size != pm->spawn_work.capacity);
-			tfx_spawn_work_entry_t *spawn_work_entry = &pm->spawn_work.next();
-			tfxU32 current_index = pm->emitters_in_use[depth][pm->current_ebuff][i];
-			spawn_work_entry->random = pm->threaded_random;
-			spawn_work_entry->depth = depth;
-			spawn_work_entry->emitter_index = current_index;
-			spawn_work_entry->next_buffer = next_buffer;
-			spawn_work_entry->properties = &pm->library->emitter_properties[pm->emitters[current_index].properties_index];
-			spawn_work_entry->sub_effects = &pm->library->effect_infos[pm->emitters[current_index].info_index].sub_effectors;
-			spawn_work_entry->amount_to_spawn = 0;
-			spawn_work_entry->highest_particle_age = pm->emitters[current_index].highest_particle_age;
-			spawn_work_entry->pm = pm;
-			spawn_work_entry->depth_indexes = nullptr;
-
-			float &timeout_counter = pm->emitters[current_index].timeout_counter;
-
-			UpdatePMEmitter(&pm->work_queue, spawn_work_entry);
-			if (timeout_counter <= pm->emitters[current_index].timeout) {
-				pm->emitters_in_use[depth][next_buffer].push_back(current_index);
+			if (timeout_counter <= pm->effects[effect_index.index].timeout) {
+				pm->effects_in_use[depth][next_buffer].push_back(effect_index);
 			}
 			else {
-				pm->free_emitters.push_back(current_index);
-				if (pm->emitters[current_index].path_quaternions) {
-					FreePathQuaternion(pm, pm->emitters[current_index].path_quaternion_index);
-				}
-				//if (pm->flags & tfxParticleManagerFlags_use_compute_shader && pm->emitters[current_index].property_flags & tfxEmitterPropertyFlags_is_bottom_emitter)
-					//FreeComputeSlot(pm->emitters[current_index].compute_slot_id);
-				if (pm->flags & tfxParticleManagerFlags_unordered) {
-					FreeParticleList(pm, current_index);
-				}
-				if (pm->emitters[current_index].spawn_locations_index != tfxINVALID) {
-					FreeSpawnLocationList(pm, current_index);
+				pm->free_effects.push_back(effect_index);
+			}
+
+			for (int emitter_index : pm->effects[effect_index.index].emitter_indexes[pm->current_ebuff]) {
+				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+				//would cause more work entries to be created.
+				TFX_ASSERT(pm->spawn_work.current_size != pm->spawn_work.capacity);
+				tfx_spawn_work_entry_t *spawn_work_entry = &pm->spawn_work.next();
+				spawn_work_entry->random = pm->threaded_random;
+				spawn_work_entry->depth = depth;
+				spawn_work_entry->emitter_index = emitter_index;
+				spawn_work_entry->next_buffer = next_buffer;
+				spawn_work_entry->properties = &pm->library->emitter_properties[pm->emitters[emitter_index].properties_index];
+				spawn_work_entry->sub_effects = &pm->library->effect_infos[pm->emitters[emitter_index].info_index].sub_effectors;
+				spawn_work_entry->amount_to_spawn = 0;
+				spawn_work_entry->highest_particle_age = pm->emitters[emitter_index].highest_particle_age;
+				spawn_work_entry->pm = pm;
+				spawn_work_entry->depth_indexes = nullptr;
+
+				float &timeout_counter = pm->emitters[emitter_index].timeout_counter;
+
+				UpdatePMEmitter(&pm->work_queue, spawn_work_entry);
+				if (timeout_counter <= pm->emitters[emitter_index].timeout) {
+					effect.emitter_indexes[next_buffer].push_back(emitter_index);
+					pm->control_emitter_queue.push_back(emitter_index);
+				} else {
+					pm->free_emitters.push_back(emitter_index);
+					if (pm->emitters[emitter_index].path_quaternions) {
+						FreePathQuaternion(pm, pm->emitters[emitter_index].path_quaternion_index);
+					}
+					//if (pm->flags & tfxParticleManagerFlags_use_compute_shader && pm->emitters[emitter_index].property_flags & tfxEmitterPropertyFlags_is_bottom_emitter)
+						//FreeComputeSlot(pm->emitters[emitter_index].compute_slot_id);
+					if (pm->flags & tfxParticleManagerFlags_unordered) {
+						FreeParticleList(pm, emitter_index);
+					}
+					if (pm->emitters[emitter_index].spawn_locations_index != tfxINVALID) {
+						FreeSpawnLocationList(pm, emitter_index);
+					}
 				}
 			}
 		}
@@ -11842,125 +11858,80 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 		pm->cumulative_index_point[3] = pm->cumulative_index_point[2] + pm->sprite_index_point[2];
 	} 
 
-	/*
-	if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) && !(pm->flags & tfxParticleManagerFlags_unordered)) {
-		for (tfxEachLayer) {
-			tfxU32 current_depth_buffer = pm->current_depth_buffer_index[layer];
-			tfx_vector_t<tfx_depth_index_t> &current_depth_indexes = pm->depth_indexes[layer][current_depth_buffer];
-			if (depth_starting_index[layer] < current_depth_indexes.current_size) {
-				tfxU32 next_depth_buffer = current_depth_buffer ^ 1;
-				tfx_vector_t<tfx_depth_index_t> &next_depth_indexes = pm->depth_indexes[layer][next_depth_buffer];
-				if (next_depth_indexes.capacity < current_depth_indexes.capacity) {
-					next_depth_indexes.reserve(current_depth_indexes.capacity);
-				}
-				std::qsort(&current_depth_indexes[depth_starting_index[layer]], current_depth_indexes.current_size - depth_starting_index[layer], sizeof(tfx_depth_index_t), SortDepth);
-				tfxU32 current_depth_index = 0;
-				tfxU32 second_index = depth_starting_index[layer];
-				for (auto &depth_index : current_depth_indexes) {
-					if (depth_starting_index[layer] != 0) {
-						while (second_index < current_depth_indexes.current_size && depth_index.depth < current_depth_indexes[second_index].depth) {
-							pm->particle_arrays[ParticleBank(current_depth_indexes[second_index].particle_id)].depth_index[ParticleIndex(current_depth_indexes[second_index].particle_id)] = next_depth_indexes.current_size;
-							next_depth_indexes.push_back(current_depth_indexes[second_index++]);
-						}
-					}
-					pm->particle_arrays[ParticleBank(depth_index.particle_id)].depth_index[ParticleIndex(depth_index.particle_id)] = next_depth_indexes.current_size;
-					next_depth_indexes.push_back(depth_index);
-					if (++current_depth_index == depth_starting_index[layer])
-						break;
-				}
-				if (depth_starting_index[layer] != 0 && second_index < current_depth_indexes.current_size) {
-					while (second_index < current_depth_indexes.current_size) {
-						tfxU32 bank = ParticleBank(current_depth_indexes[second_index].particle_id);
-						tfxU32 index = ParticleIndex(current_depth_indexes[second_index].particle_id);
-						pm->particle_arrays[bank].depth_index[index] = next_depth_indexes.current_size;
-						next_depth_indexes.push_back(current_depth_indexes[second_index++]);
-					}
-				}
-				TFX_ASSERT(next_depth_indexes.current_size == current_depth_indexes.current_size);
-				current_depth_indexes.clear();
-				pm->current_depth_buffer_index[layer] = next_depth_buffer;
+	for (tfx_effect_index_t effect_index : pm->effects_in_use[0][next_buffer]) {
+		tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
+		if (IsOrderedEffectState(&pm->effects[effect_index.index])) {
+			for (tfxEachLayer) {
+				OrderEffectSprites(&sprites, layer, pm);
 			}
 		}
 	}
-	*/
-	//else if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) {
-		for (tfx_effect_index_t effect_index : pm->effects_in_use[0][next_buffer]) {
-			tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
-			if (IsOrderedEffectState(&pm->effects[effect_index.index])) {
-				for (tfxEachLayer) {
-					OrderEffectSprites(&sprites, layer, pm);
-				}
-			}
-		}
-	//}
 
 	bool is_recording = (pm->flags & tfxParticleManagerFlags_recording_sprites) > 0 && (pm->flags & tfxParticleManagerFlags_using_uids) > 0;
-	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
-		for (int index : pm->emitters_in_use[depth][next_buffer]) {
-			tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
-			int particles_to_update = bank.current_size;
-			tfxU32 running_start_index = 0;
-			if (pm->emitters[index].property_flags & tfxEmitterPropertyFlags_spawn_location_source && pm->emitters[index].spawn_locations_index != tfxINVALID) {
-				ClearSoABuffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
-			}
-			while (particles_to_update > 0) {
-				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-				//would cause more work entries to be created.
-				TFX_ASSERT(pm->control_work.current_size != pm->control_work.capacity);
-				tfx_control_work_entry_t &work_entry = pm->control_work.next();
-				work_entry.properties = &pm->library->emitter_properties[pm->emitters[index].properties_index];
-				work_entry.pm = pm;
-				work_entry.emitter_index = index;
-				work_entry.start_index = running_start_index;
-				work_entry.end_index = particles_to_update > pm->mt_batch_size ? running_start_index + pm->mt_batch_size : running_start_index + particles_to_update;
-				work_entry.sprite_instances = !is_recording ? &pm->instance_buffer : &pm->instance_buffer_for_recording[pm->current_sprite_buffer][work_entry.properties->layer];
-				tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], work_entry.start_index);
-				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
-				work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
-				work_entry.start_diff = circular_start - block_start_index;
-				work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
-				tfx_effect_state_t &parent_effect = pm->effects[pm->emitters[index].parent_index];
-				work_entry.global_stretch = parent_effect.stretch;
-				work_entry.global_noise = parent_effect.noise;
-				work_entry.global_intensity = parent_effect.spawn_controls.intensity;
-				particles_to_update -= pm->mt_batch_size;
-				running_start_index += pm->mt_batch_size;
-				tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticles);
-			}
+	for (int index : pm->control_emitter_queue) {
+		tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
+		int particles_to_update = bank.current_size;
+		tfxU32 running_start_index = 0;
+		if (pm->emitters[index].property_flags & tfxEmitterPropertyFlags_spawn_location_source && pm->emitters[index].spawn_locations_index != tfxINVALID) {
+			ClearSoABuffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
 		}
-
-		tfxCompleteAllWork(&pm->work_queue);
-		pm->control_work.clear();
-
-		{
-			for (int index : pm->emitters_in_use[depth][next_buffer]) {
-				tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
-				//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
-				//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
-				//would cause more work entries to be created.
-				TFX_ASSERT(pm->age_work.current_size != pm->age_work.capacity);
-				tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
-				work_entry.properties = &pm->library->emitter_properties[pm->emitters[index].properties_index];
-				work_entry.start_index = bank.current_size - 1;
-				work_entry.emitter_index = index;
-				tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], 0);
-				tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
-				work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
-				work_entry.start_diff = circular_start - block_start_index;
-				work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
-				work_entry.pm = pm;
-				if (!(pm->flags & tfxParticleManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-					tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticleAge);
-				}
-				else {
-					ControlParticleAge(&pm->work_queue, &work_entry);
-				}
-			}
+		while (particles_to_update > 0) {
+			//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+			//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+			//would cause more work entries to be created.
+			TFX_ASSERT(pm->control_work.current_size != pm->control_work.capacity);
+			tfx_control_work_entry_t &work_entry = pm->control_work.next();
+			work_entry.properties = &pm->library->emitter_properties[pm->emitters[index].properties_index];
+			work_entry.pm = pm;
+			work_entry.emitter_index = index;
+			work_entry.start_index = running_start_index;
+			work_entry.end_index = particles_to_update > pm->mt_batch_size ? running_start_index + pm->mt_batch_size : running_start_index + particles_to_update;
+			work_entry.sprite_instances = !is_recording ? &pm->instance_buffer : &pm->instance_buffer_for_recording[pm->current_sprite_buffer][work_entry.properties->layer];
+			tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], work_entry.start_index);
+			tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+			work_entry.wide_end_index = (tfxU32)(ceilf((float)work_entry.end_index / tfxDataWidth)) * tfxDataWidth;
+			work_entry.start_diff = circular_start - block_start_index;
+			work_entry.wide_end_index = work_entry.wide_end_index - work_entry.start_diff < work_entry.end_index ? work_entry.wide_end_index + tfxDataWidth : work_entry.wide_end_index;
+			tfx_effect_state_t &parent_effect = pm->effects[pm->emitters[index].parent_index];
+			work_entry.global_stretch = parent_effect.stretch;
+			work_entry.global_noise = parent_effect.noise;
+			work_entry.global_intensity = parent_effect.spawn_controls.intensity;
+			particles_to_update -= pm->mt_batch_size;
+			running_start_index += pm->mt_batch_size;
+			tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticles);
 		}
-		tfxCompleteAllWork(&pm->work_queue);
-		pm->age_work.clear();
 	}
+
+	tfxCompleteAllWork(&pm->work_queue);
+	pm->control_work.clear();
+
+	{
+		for (int index : pm->control_emitter_queue) {
+			tfx_soa_buffer_t &bank = pm->particle_array_buffers[pm->emitters[index].particles_index];
+			//If you hit this assert it means there are more then the default amount of work entries being created for updating particles. You can increase the amount
+			//by calling SetPMWorkQueueSizes. It could also hit the limit if you have a small multithreaded_batch_size (set when you created the particle manager) which
+			//would cause more work entries to be created.
+			TFX_ASSERT(pm->age_work.current_size != pm->age_work.capacity);
+			tfx_particle_age_work_entry_t &work_entry = pm->age_work.next();
+			work_entry.properties = &pm->library->emitter_properties[pm->emitters[index].properties_index];
+			work_entry.start_index = bank.current_size - 1;
+			work_entry.emitter_index = index;
+			tfxU32 circular_start = GetCircularIndex(&pm->particle_array_buffers[pm->emitters[index].particles_index], 0);
+			tfxU32 block_start_index = (circular_start / tfxDataWidth) * tfxDataWidth;
+			work_entry.wide_end_index = (tfxU32)(ceilf((float)bank.current_size / tfxDataWidth)) * tfxDataWidth;
+			work_entry.start_diff = circular_start - block_start_index;
+			work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
+			work_entry.pm = pm;
+			if (!(pm->flags & tfxParticleManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
+				tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, ControlParticleAge);
+			}
+			else {
+				ControlParticleAge(&pm->work_queue, &work_entry);
+			}
+		}
+	}
+	tfxCompleteAllWork(&pm->work_queue);
+	pm->age_work.clear();
 
 	//Todo work queue this for each layer
 	/*
@@ -12074,34 +12045,23 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 		for (int i = effects_start_size[depth]; i != pm->effects_in_use[depth][pm->current_ebuff].current_size; ++i) {
 			tfx_effect_index_t current_index = pm->effects_in_use[depth][pm->current_ebuff][i];
 			pm->effects_in_use[depth][next_buffer].push_back(current_index);
-		}
-		for (int i = emitter_start_size[depth]; i != pm->emitters_in_use[depth][pm->current_ebuff].current_size; ++i) {
-			tfxU32 current_index = pm->emitters_in_use[depth][pm->current_ebuff][i];
-			//Make sure to grab a particle list for the sub effect emitters as this doesn't happen when calling AddEffectToParticleManager
-			pm->emitters[current_index].particles_index = GrabParticleLists(pm, pm->emitters[current_index].path_hash, pm->flags & tfxParticleManagerFlags_3d_effects, 100, pm->emitters[current_index].control_profile);
-			pm->emitters_in_use[depth][next_buffer].push_back(current_index);
+			tfx_effect_state_t &effect = pm->effects[current_index.index];
+			for (int i = emitter_start_size[depth]; i != effect.emitter_indexes[pm->current_ebuff].current_size; ++i) {
+				tfxU32 emitter_index = effect.emitter_indexes[pm->current_ebuff][i];
+				//Make sure to grab a particle list for the sub effect emitters as this doesn't happen when calling AddEffectToParticleManager
+				pm->emitters[emitter_index].particles_index = GrabParticleLists(pm, pm->emitters[emitter_index].path_hash, pm->flags & tfxParticleManagerFlags_3d_effects, 100, pm->emitters[emitter_index].control_profile);
+				effect.emitter_indexes[next_buffer].push_back(emitter_index);
+			}
 		}
 	}
 
 	pm->current_ebuff = next_buffer;
 
-	if (pm->flags & tfxParticleManagerFlags_auto_order_effects) {
-		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[0][pm->current_ebuff];
-		for (tfxU32 i = 1; i < effects_in_use.current_size; ++i) {
-			tfx_effect_index_t key = effects_in_use[i];
-			int j = i - 1;
-			while (j >= 0 && key.depth > effects_in_use[j].depth) {
-				effects_in_use[j + 1] = effects_in_use[j];
-				--j;
-			}
-			effects_in_use[j + 1] = key;
-		}
-	}
-
 	if (pm->flags & tfxParticleManagerFlags_update_bounding_boxes) {
 		for (int i = 0; i != pm->effects_in_use[0][pm->current_ebuff].size(); ++i) {
 			tfx_effect_index_t effect_index = pm->effects_in_use[0][pm->current_ebuff][i];
-			tfx_bounding_box_t &effect_bb = pm->effects[effect_index.index].bounding_box;
+			tfx_effect_state_t &effect = pm->effects[effect_index.index];
+			tfx_bounding_box_t &effect_bb = effect.bounding_box;
 			effect_bb.max_corner.x = -FLT_MAX;
 			effect_bb.max_corner.y = -FLT_MAX;
 			effect_bb.max_corner.z = -FLT_MAX;
@@ -12110,16 +12070,19 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			effect_bb.min_corner.z = FLT_MAX;
 		}
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
-			for (int i = 0; i != pm->emitters_in_use[depth][pm->current_ebuff].size(); ++i) {
-				tfxU32 current_index = pm->emitters_in_use[depth][pm->current_ebuff][i];
-				tfx_emitter_state_t &emitter = pm->emitters[current_index];
-				tfx_bounding_box_t &effect_bb = pm->effects[emitter.root_index].bounding_box;
-				effect_bb.max_corner.x = tfx__Max(effect_bb.max_corner.x, emitter.bounding_box.max_corner.x);
-				effect_bb.max_corner.y = tfx__Max(effect_bb.max_corner.y, emitter.bounding_box.max_corner.y);
-				effect_bb.max_corner.z = tfx__Max(effect_bb.max_corner.z, emitter.bounding_box.max_corner.z);
-				effect_bb.min_corner.x = tfx__Min(effect_bb.min_corner.x, emitter.bounding_box.min_corner.x);
-				effect_bb.min_corner.y = tfx__Min(effect_bb.min_corner.y, emitter.bounding_box.min_corner.y);
-				effect_bb.min_corner.z = tfx__Min(effect_bb.min_corner.z, emitter.bounding_box.min_corner.z);
+			for (int i = 0; i != pm->effects_in_use[depth][pm->current_ebuff].size(); ++i) {
+				tfx_effect_index_t effect_index = pm->effects_in_use[0][pm->current_ebuff][i];
+				tfx_effect_state_t &effect = pm->effects[effect_index.index];
+				for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+					tfx_emitter_state_t &emitter = pm->emitters[emitter_index];
+					tfx_bounding_box_t &effect_bb = pm->effects[emitter.root_index].bounding_box;
+					effect_bb.max_corner.x = tfx__Max(effect_bb.max_corner.x, emitter.bounding_box.max_corner.x);
+					effect_bb.max_corner.y = tfx__Max(effect_bb.max_corner.y, emitter.bounding_box.max_corner.y);
+					effect_bb.max_corner.z = tfx__Max(effect_bb.max_corner.z, emitter.bounding_box.max_corner.z);
+					effect_bb.min_corner.x = tfx__Min(effect_bb.min_corner.x, emitter.bounding_box.min_corner.x);
+					effect_bb.min_corner.y = tfx__Min(effect_bb.min_corner.y, emitter.bounding_box.min_corner.y);
+					effect_bb.min_corner.z = tfx__Min(effect_bb.min_corner.z, emitter.bounding_box.min_corner.z);
+				}
 			}
 		}
 	}
@@ -14329,7 +14292,7 @@ tfx_vector_t<tfx_effect_index_t> *GetPMEffectBuffer(tfx_particle_manager_t *pm, 
 }
 
 tfx_vector_t<tfxU32> *GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU32 depth) {
-	return &pm->emitters_in_use[depth][pm->current_ebuff];
+	return &pm->control_emitter_queue;
 }
 
 void ToggleSpritesWithUID(tfx_particle_manager_t *pm, bool switch_on) {
@@ -14433,26 +14396,31 @@ void ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, 
 			ClearSoABuffer(&buffer);
 		}
 		for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
-			for (auto index : pm->emitters_in_use[depth][pm->current_ebuff]) {
-				FreeParticleList(pm, index);
-				if (pm->emitters[index].spawn_locations_index != tfxINVALID) {
-					FreeSpawnLocationList(pm, index);
+			for (tfx_effect_index_t index : pm->effects_in_use[depth][pm->current_ebuff]) {
+				tfx_effect_state_t &effect = pm->effects[index.index];
+				for (tfxU32 emitter_index : effect.emitter_indexes[pm->current_ebuff]) {
+					FreeParticleList(pm, emitter_index);
+					if (pm->emitters[emitter_index].spawn_locations_index != tfxINVALID) {
+						FreeSpawnLocationList(pm, emitter_index);
+					}
 				}
+				effect.emitter_indexes[0].clear();
+				effect.emitter_indexes[1].clear();
 			}
 		}
 	}
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		pm->effects_in_use[depth][0].clear();
 		pm->effects_in_use[depth][1].clear();
-
-		pm->emitters_in_use[depth][0].clear();
-		pm->emitters_in_use[depth][1].clear();
 	}
+	pm->control_emitter_queue.clear();
 	for (tfx_effect_state_t &effect : pm->effects) {
 		for (tfxEachLayer) {
 			effect.instance_data.depth_indexes[layer][0].free();
 			effect.instance_data.depth_indexes[layer][1].free();
 		}
+		effect.emitter_indexes[0].clear();
+		effect.emitter_indexes[1].clear();
 	}
 	pm->free_effects.clear();
 	pm->free_emitters.clear();
@@ -14501,15 +14469,15 @@ void FreeParticleManager(tfx_particle_manager_t *pm) {
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		pm->effects_in_use[depth][0].free();
 		pm->effects_in_use[depth][1].free();
-
-		pm->emitters_in_use[depth][0].free();
-		pm->emitters_in_use[depth][1].free();
 	}
+	pm->control_emitter_queue.free();
 	for (tfx_effect_state_t &effect : pm->effects) {
 		for (tfxEachLayer) {
 			effect.instance_data.depth_indexes[layer][0].free();
 			effect.instance_data.depth_indexes[layer][1].free();
 		}
+		effect.emitter_indexes[0].free();
+		effect.emitter_indexes[1].free();
 	}
 	pm->emitters_check_capture.free();
 	pm->free_effects.free();
@@ -14597,9 +14565,11 @@ tfx_effect_index_t GetPMEffectSlot(tfx_particle_manager_t *pm) {
 	memset(effect_sprites->current_depth_buffer_index, 0, sizeof(tfxU32) * tfxLAYERS);
 	effect_sprites->instance_count = 0;
 	for (tfxEachLayer) {
-		tfx_vector_t<tfx_depth_index_t> depth_test;
 		memset(effect_sprites->depth_indexes, 0, sizeof(tfx_vector_t<tfx_depth_index_t>) * 2 * tfxLAYERS);
 	}
+	tfx_effect_state_t &effect = pm->effects.back();
+	effect.emitter_indexes[0].init();
+	effect.emitter_indexes[1].init();
 	return { pm->effects.current_size - 1, 0.f };
 }
 
@@ -14711,7 +14681,7 @@ tfxU32 EffectCount(tfx_particle_manager_t *pm) {
 tfxU32 EmitterCount(tfx_particle_manager_t *pm) {
 	tfxU32 count = 0;
 	for (int d = 0; d != tfxMAXDEPTH; ++d) {
-		count += pm->emitters_in_use[d][pm->current_ebuff].current_size;
+		count += pm->control_emitter_queue.current_size;
 	}
 	return count;
 }
@@ -18558,10 +18528,8 @@ void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *librar
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		pm->effects_in_use[depth][0].reserve(pm->max_effects);
 		pm->effects_in_use[depth][1].reserve(pm->max_effects);
-
-		pm->emitters_in_use[depth][0].reserve(pm->max_effects);
-		pm->emitters_in_use[depth][1].reserve(pm->max_effects);
 	}
+	pm->control_emitter_queue.reserve(pm->max_effects);
 
 	pm->free_effects.reserve(pm->max_effects);
 	//InitEffectSoA(&pm->effect_buffers, &pm->effects, pm->max_effects);

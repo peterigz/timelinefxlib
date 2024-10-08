@@ -3011,6 +3011,7 @@ struct tfx_vector_t {
 		if (data) { tfxFREE(data); } data = nullptr; current_size = capacity = alignment = 0; 
 	}
 
+	inline void            init() { locked = false; current_size = capacity = alignment = 0; data = nullptr; }
 	inline bool            empty() { return current_size == 0; }
 	inline bool            full() { return current_size == capacity; }
 	inline tfxU32        size() { return current_size; }
@@ -5601,6 +5602,9 @@ struct tfx_effect_state_t {
 	//When organising instance_data per effect this is the index to the sprite buffers containing all the effects.
 	tfx_effect_instance_data_t instance_data;
 
+	//The emitters within this effect.
+	tfx_vector_t<tfxU32> emitter_indexes[2];
+
 	//User Data
 	void *user_data;
 	void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index);
@@ -6179,7 +6183,7 @@ struct tfx_particle_manager_t {
 	tfx_vector_t<tfxParticleID> particle_indexes;
 	tfx_vector_t<tfxU32> free_particle_indexes;
 	tfx_vector_t<tfx_effect_index_t> effects_in_use[tfxMAXDEPTH][2];
-	tfx_vector_t<tfxU32> emitters_in_use[tfxMAXDEPTH][2];
+	tfx_vector_t<tfxU32> control_emitter_queue;
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
@@ -6729,7 +6733,7 @@ inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm,
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
-		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index + captured_offset : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+		sprites[running_sprite_index].captured_index = capture == 0 ? (pm.current_sprite_buffer << 30) + running_sprite_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[running_sprite_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + running_sprite_index;
 		sprites[running_sprite_index].indexes = image_indexes.a[j];
@@ -6746,7 +6750,7 @@ inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager
 		tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[layer >> 28];
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
-		sprites[sprite_depth_index].captured_index = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index + captured_offset : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
+		sprites[sprite_depth_index].captured_index = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
 		sprites[sprite_depth_index].captured_index |= emitter_flags & tfxEmitterStateFlags_wrap_single_sprite ? 0x80000000 : 0;
 		sprites_index = layer + sprite_depth_index;
 		sprites[sprite_depth_index].indexes = image_indexes.a[j];
