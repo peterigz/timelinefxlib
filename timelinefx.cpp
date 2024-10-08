@@ -15005,6 +15005,7 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	bool is_recording = (pm->flags & tfxParticleManagerFlags_recording_sprites) > 0 && (pm->flags & tfxParticleManagerFlags_using_uids) > 0;
 	tfx_buffer_t &instance_buffer = !is_recording ? pm->instance_buffer : pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer];
 	tfxU32 &sprite_index_point = pm->sprite_index_point[layer];
+	effect_sprites.instance_start_index = tfx__Min(sprite_index_point, effect_sprites.instance_start_index);
 	if (ordered_effect) {
 		spawn_work_entry->depth_indexes = &effect_sprites.depth_indexes[layer][effect_sprites.current_depth_buffer_index[layer]];
 	}
@@ -18044,7 +18045,6 @@ void ControlParticles(tfx_work_queue_t *queue, void *data) {
 	work_entry->layer = properties.layer;
 	work_entry->sprites_index = emitter.sprites_index + work_entry->start_index + pm->cumulative_index_point[work_entry->layer];
 	tfx_effect_instance_data_t &effect_sprites = pm->effects[emitter.root_index].instance_data;
-	effect_sprites.instance_start_index = tfx__Min(work_entry->sprites_index, effect_sprites.instance_start_index);
 	work_entry->sprite_buffer_end_index = work_entry->sprites_index + (work_entry->end_index - work_entry->start_index);
 	tfx_effect_instance_data_t &sprites = pm->effects[emitter.root_index].instance_data;
 	work_entry->depth_indexes = &sprites.depth_indexes[work_entry->layer][sprites.current_depth_buffer_index[work_entry->layer]];
