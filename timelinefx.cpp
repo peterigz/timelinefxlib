@@ -13262,7 +13262,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 		if (is_ordered) {
 			for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 				int index_j = index + j;
-				tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[work_entry->layer];
+				tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[work_entry->layer] + captured_offset;
 				sprites[sprite_depth_index].alignment.packed = alignment_packed.a[j];
 				sprites[sprite_depth_index].position.w = p_stretch.a[j];
 				sprites[sprite_depth_index].position.x = position_x.a[j];
@@ -13272,7 +13272,7 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 				bank.captured_position_y[index_j] = sprites[sprite_depth_index].position.y;
 				bank.captured_position_z[index_j] = sprites[sprite_depth_index].position.z;
 				tfx_vec3_t sprite_plus_camera_position = sprites[sprite_depth_index].position.xyz() - pm.camera_position;
-				(*work_entry->depth_indexes)[sprite_depth_index - pm.cumulative_index_point[work_entry->layer]].depth = LengthVec3NoSqR(&sprite_plus_camera_position);
+				(*work_entry->depth_indexes)[sprite_depth_index - pm.cumulative_index_point[work_entry->layer] - captured_offset].depth = LengthVec3NoSqR(&sprite_plus_camera_position);
 				if (pm.flags & tfxParticleManagerFlags_update_bounding_boxes) {
 					bounding_box.min_corner.x = tfx__Min(position_x.a[j], bounding_box.min_corner.x);
 					bounding_box.min_corner.y = tfx__Min(position_y.a[j], bounding_box.min_corner.y);
