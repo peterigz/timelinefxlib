@@ -6718,9 +6718,9 @@ inline void WriteParticleColorSpriteData(T *sprites, tfxU32 start_diff, tfxU32 l
 }
 
 template<typename T>
-inline void WriteParticleColorSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index) {
+inline void WriteParticleColorSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index, tfxU32 captured_offset) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-		tfxU32 sprite_depth_index = depth_index[index + j] + pm.cumulative_index_point[layer];
+		tfxU32 sprite_depth_index = depth_index[index + j] + pm.cumulative_index_point[layer] + captured_offset;
 		sprites[sprite_depth_index].intensity_life.packed = packed_intensity_life.a[j];
 		sprites[sprite_depth_index].curved_alpha.packed = curved_alpha.a[j];
 		running_sprite_index++;
@@ -6728,7 +6728,7 @@ inline void WriteParticleColorSpriteDataOrdered(T *sprites, tfx_particle_manager
 }
 
 template<typename T>
-inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index, tfxU32 captured_offset) {
+inline void WriteParticleImageSpriteData(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
@@ -6747,7 +6747,7 @@ template<typename T>
 inline void WriteParticleImageSpriteDataOrdered(T *sprites, tfx_particle_manager_t &pm, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, tfx_particle_soa_t &bank, tfxWideArrayi &flags, tfxWideArrayi &image_indexes, const tfxEmitterStateFlags emitter_flags, const tfx_billboarding_option billboard_option, tfxU32 index, tfxU32 &running_sprite_index, tfxU32 captured_offset) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		int index_j = index + j;
-		tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[layer >> 28];
+		tfxU32 sprite_depth_index = bank.depth_index[index_j] + pm.cumulative_index_point[layer >> 28] + captured_offset;
 		tfxU32 &sprites_index = bank.sprite_index[index_j];
 		tfxU32 capture = flags.a[j];
 		sprites[sprite_depth_index].captured_index = capture == 0 && bank.single_loop_count[index_j] == 0 ? (pm.current_sprite_buffer << 30) + sprite_depth_index : (!pm.current_sprite_buffer << 30) + (sprites_index & 0x0FFFFFFF);
