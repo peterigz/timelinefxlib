@@ -11764,6 +11764,8 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	pm->control_emitter_queue.clear();
 
+	tfxU32 last_instance_count = 0;
+
 	//Loop over all the effects and emitters, depth by depth, and add spawn jobs to the worker queue
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 
@@ -11844,6 +11846,8 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				} else {
 					memset(instance_data.cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 				}
+				instance_data.instance_start_index = last_instance_count;
+				last_instance_count = instance_data.instance_start_index;
 			}
 		}
 	}
