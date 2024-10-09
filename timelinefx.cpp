@@ -11836,7 +11836,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 			if (depth == 0) {
 				tfx_effect_instance_data_t &instance_data = pm->effects[effect_index.index].instance_data;
-				if (!(pm->flags & tfxParticleManagerFlags_recording_sprites) && (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
+				if (!(pm->flags & tfxParticleManagerFlags_recording_sprites)) {
 					instance_data.cumulative_index_point[0] = 0;
 					instance_data.cumulative_index_point[1] = instance_data.sprite_index_point[0];
 					instance_data.cumulative_index_point[2] = instance_data.cumulative_index_point[1] + instance_data.sprite_index_point[1];
@@ -11865,7 +11865,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	}
 	pm->spawn_work.clear();
 
-	if (!(pm->flags & tfxParticleManagerFlags_recording_sprites) && !(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
+	if (!(pm->flags & tfxParticleManagerFlags_recording_sprites)) {
 		pm->cumulative_index_point[0] = 0;
 		pm->cumulative_index_point[1] = pm->sprite_index_point[0];
 		pm->cumulative_index_point[2] = pm->cumulative_index_point[1] + pm->sprite_index_point[1];
@@ -15017,8 +15017,10 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_vector_t<tfx_unique_sprite_id_t> &uid_buffer = pm->unique_sprite_ids[pm->current_sprite_buffer][layer];
 	bool is_recording = (pm->flags & tfxParticleManagerFlags_recording_sprites) > 0 && (pm->flags & tfxParticleManagerFlags_using_uids) > 0;
 	tfx_buffer_t &instance_buffer = !is_recording ? pm->instance_buffer : pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer];
-	tfxU32 &sprite_index_point = (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) ? instance_data.sprite_index_point[layer] : pm->sprite_index_point[layer];
-	instance_data.instance_start_index = tfx__Min(sprite_index_point, instance_data.instance_start_index);
+	tfxU32 &effect_instance_index_point = instance_data.sprite_index_point[layer];
+	tfxU32 &pm_instance_index_point =  pm->sprite_index_point[layer];
+	tfxU32 &instance_index_point = (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers) ? instance_data.sprite_index_point[layer] : pm->sprite_index_point[layer];
+	instance_data.instance_start_index = tfx__Min(pm_instance_index_point, instance_data.instance_start_index);
 	if (ordered_effect) {
 		spawn_work_entry->depth_indexes = &instance_data.depth_indexes[layer][instance_data.current_depth_buffer_index[layer]];
 	}
@@ -15068,8 +15070,9 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 
 	instance_buffer.current_size += max_spawn_count + emitter.sprites_count;
 	emitter.sprites_count += max_spawn_count;
-	emitter.sprites_index = sprite_index_point;
-	sprite_index_point += emitter.sprites_count;
+	emitter.sprites_index = instance_index_point;
+	effect_instance_index_point += emitter.sprites_count;
+	pm_instance_index_point += emitter.sprites_count;
 
 	spawn_work_entry->max_spawn_count = max_spawn_count;
 
@@ -15088,7 +15091,8 @@ void UpdatePMEmitter(tfx_work_queue_t *work_queue, void *data) {
 	tfxU32 spawn_difference = max_spawn_count - amount_spawned;
 	instance_buffer.current_size -= spawn_difference;
 	TFX_ASSERT(instance_buffer.current_size < instance_buffer.capacity);
-	sprite_index_point -= spawn_difference;
+	pm_instance_index_point -= spawn_difference;
+	effect_instance_index_point -= spawn_difference;
 	pm->layer_sizes[layer] += emitter.sprites_count - spawn_difference;
 	instance_data.instance_count += emitter.sprites_count - spawn_difference;
 
