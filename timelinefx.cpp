@@ -11757,6 +11757,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
 	tfxU32 emitter_start_size[tfxMAXDEPTH];
+	memset(emitter_start_size, 0, tfxMAXDEPTH * sizeof(tfxU32));
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		effects_start_size[depth] = pm->effects_in_use[depth][pm->current_ebuff].current_size;
 	}
