@@ -7217,7 +7217,7 @@ tfxINTERNAL tfx_compute_particle_t *GrabComputeParticle(tfx_particle_manager_t *
 tfxINTERNAL void ResetParticlePtr(tfx_particle_manager_t *pm, void *ptr);
 tfxINTERNAL void ResetControllerPtr(tfx_particle_manager_t *pm, void *ptr);
 tfxINTERNAL void UpdateCompute(tfx_particle_manager_t *pm, void *sampled_particles, unsigned int sample_size = 100);
-tfxINTERNAL void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles[tfxLAYERS], unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
+tfxINTERNAL void InitCommonParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles, unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size);
 tfxINTERNAL bool ValidEffectID(tfx_particle_manager_t *pm, tfxEffectID id);
 
 //--------------------------------
