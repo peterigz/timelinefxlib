@@ -5549,9 +5549,11 @@ struct tfx_depth_index_t {
 	float depth;
 };
 
-//Used when a particle manager is grouping instance_data by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
+//Used when a particle manager is grouping instances by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
 struct tfx_effect_instance_data_t {
 	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
+	tfxU32 sprite_index_point[tfxLAYERS];
+	tfxU32 cumulative_index_point[tfxLAYERS];
 	tfxU32 depth_starting_index[tfxLAYERS];
 	tfxU32 current_depth_buffer_index[tfxLAYERS];
 	tfxU32 instance_start_index;
@@ -5982,6 +5984,8 @@ struct tfx_control_work_entry_t {
 	tfxU32 wide_end_index;
 	tfxU32 start_diff;
 	tfxU32 sprites_index;
+	tfxU32 cumulative_index_point;
+	tfxU32 effect_instance_offset;
 	tfxU32 sprite_buffer_end_index;
 	tfxU32 emitter_index;
 	tfx_particle_manager_t *pm;
