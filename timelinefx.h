@@ -7698,7 +7698,30 @@ Add an effect to a tfx_particle_manager_t.
 tfxAPI bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id);
 
 /*
-Update a particle manager. Call this function each frame in your update loop. It should be called the same number of times per second as set with SetUpdateFrequency.
+Update a particle manager. If you are interpolating particles in the vertex shader then it's important to only call this function once per frame only and idealy in a fixed step loop.
+That means that if your fixed loop has to run twice to catch up (because of low frame rates) then you should still only call this function once but you can multiply the elapsed time
+by the number of ticks. The ellapsed time should be the amount of time that has passed since the last frame so in a fixed step loop this will simply be the update rate in millisecs.
+For example if you're updating 60 frames per second then elapsed time would be 16.666667. Psuedo code would look something like this:
+
+	TimerAccumulate(game->timer);
+	int pending_ticks = TimerPendingTicks(game->timer);	//The number of times the update loop will run this frame.
+
+	while (zest_TimerDoUpdate(game->timer)) {
+		if (pending_ticks > 0) {
+			UpdateParticleManager(&game->pm, FrameLength * pending_ticks);
+			//Set the pending ticks to 0 so we don't run the update again this frame.
+			pending_ticks = 0;
+		}
+
+		TimerUnAccumulate(game->timer);
+	}
+	TimerSet(game->timer);	//Set the timer and calculate the interpolation value. You can pass that to a uniform or push constant for the shader
+
+	//Only upload the sprite/billboard buffer to the gpu if the particle manager was updated.
+	if (TimerUpdateWasRun(game->timer)) {
+		RenderParticles(game->pm, game);
+	}
+
 * @param pm                    A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 */
 tfxAPI void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed);
