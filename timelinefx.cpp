@@ -15255,8 +15255,8 @@ tfxU32 SpawnParticles(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work_e
 	tfx_emitter_state_t &emitter = pm->emitters[work_entry->emitter_index];
 	const tfx_emitter_properties_t &properties = *work_entry->properties;
 	const tfxU32 layer = properties.layer;
-
-	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning || pm->effects[work_entry->parent_index].state_flags & tfxEffectStateFlags_stop_spawning)
+	// Note that adding this in will mess up other emitter emission types and looped sprite recording || pm->effects[work_entry->parent_index].state_flags & tfxEffectStateFlags_stop_spawning
+	if (emitter.state_flags & tfxEmitterStateFlags_single_shot_done || emitter.state_flags & tfxEmitterStateFlags_stop_spawning)
 		return 0;
 	if (emitter.spawn_quantity == 0)
 		return 0;
