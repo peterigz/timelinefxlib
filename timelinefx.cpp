@@ -3797,8 +3797,7 @@ void DeleteEmitterFromEffect(tfx_effect_emitter_t *emitter) {
 		if (current.type == tfxEffectType && !current.parent) {
 			FreeLibraryGlobal(library, current.global);
 			FreeLibraryKeyframes(library, current.transform_attributes);
-		}
-		else if (current.type == tfxEmitterType) {
+		} else if (current.type == tfxEmitterType) {
 			FreeLibraryEmitterAttributes(library, current.emitter_attributes);
 			FreeLibraryKeyframes(library, current.transform_attributes);
 		}
@@ -3823,8 +3822,7 @@ void CleanUpEffect(tfx_effect_emitter_t *effect) {
 			if (current.type == tfxEffectType && !current.parent) {
 				FreeLibraryGlobal(effect->library, current.global);
 				FreeLibraryKeyframes(effect->library, current.transform_attributes);
-			}
-			else if (current.type == tfxEmitterType) {
+			} else if (current.type == tfxEmitterType) {
 				FreeLibraryEmitterAttributes(effect->library, current.emitter_attributes);
 				FreeLibraryKeyframes(effect->library, current.transform_attributes);
 			}
@@ -3864,23 +3862,20 @@ void CloneEffect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter_t *cl
 				CompileLibraryGlobalGraph(clone->library, clone->global);
 				CompileLibraryKeyframeGraph(clone->library, clone->transform_attributes);
 			}
-		}
-		else {
+		} else {
 			clone->transform_attributes = flags & tfxEffectCloningFlags_clone_graphs ? CloneLibraryKeyframes(library, effect_to_clone->transform_attributes, destination_library) : clone->transform_attributes = effect_to_clone->transform_attributes;
 			if (flags & tfxEffectCloningFlags_compile_graphs) {
 				CompileLibraryKeyframeGraph(clone->library, clone->transform_attributes);
 			}
 			if (!(flags & tfxEffectCloningFlags_force_clone_global)) {
 				clone->global = root_parent->global;
-			}
-			else {
+			} else {
 				clone->global = CloneLibraryGlobal(library, root_parent->global, destination_library);
 				if (flags & tfxEffectCloningFlags_compile_graphs)
 					CompileLibraryGlobalGraph(clone->library, clone->global);
 			}
 		}
-	}
-	else if (effect_to_clone->type == tfxEmitterType) {
+	} else if (effect_to_clone->type == tfxEmitterType) {
 		clone->emitter_attributes = flags & tfxEffectCloningFlags_clone_graphs ? CloneLibraryEmitterAttributes(library, effect_to_clone->emitter_attributes, destination_library) : effect_to_clone->emitter_attributes;
 		clone->transform_attributes = flags & tfxEffectCloningFlags_clone_graphs ? CloneLibraryKeyframes(library, effect_to_clone->transform_attributes, destination_library) : effect_to_clone->transform_attributes;
 		UpdateEffectMaxLife(clone);
@@ -3891,6 +3886,10 @@ void CloneEffect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter_t *cl
 			CompileLibraryVariationGraph(clone->library, clone->emitter_attributes);
 			CompileLibraryOvertimeGraph(clone->library, clone->emitter_attributes, false);
 			CompileLibraryFactorGraph(clone->library, clone->emitter_attributes);
+			if (destination_library != effect_to_clone->library) {
+				MaybeInsertColorRampBitmap(destination_library, &destination_library->emitter_attributes[clone->emitter_attributes].overtime, 0);
+				MaybeInsertColorRampBitmap(destination_library, &destination_library->emitter_attributes[clone->emitter_attributes].overtime, 1);
+			}
 		}
 		if (clone->path_attributes != tfxINVALID) {
 			tfx_emitter_path_t path_copy = CopyPath(&library->paths[clone->path_attributes], "");
@@ -9163,6 +9162,16 @@ void EditColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, t
 		tfxU32 index = tfxColorRampIndex(a->color_ramp_bitmap_indexes[ramp_id]);
 		tfx_bitmap_t &bitmap = library->color_ramp_bitmaps[layer];
 		PlotColorRamp(&bitmap, &ramp, index);
+	}
+}
+
+void MaybeInsertColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id) {
+	tfxKey hash = tfxXXHash64::hash(a->color_ramps, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+	if (library->color_ramp_ids.ValidKey(hash)) {
+		a->color_ramp_bitmap_indexes[ramp_id] = library->color_ramp_ids.At(hash);
+	} else {
+		a->color_ramp_bitmap_indexes[ramp_id] = AddColorRampToBitmaps(library, &a->color_ramps[ramp_id]);
+		library->color_ramp_ids.Insert(hash, a->color_ramp_bitmap_indexes[ramp_id]);
 	}
 }
 

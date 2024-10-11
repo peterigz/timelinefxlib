@@ -7053,6 +7053,7 @@ tfxAPI_EDITOR void tfxFreeBitmap(tfx_bitmap_t *bitmap);
 tfxAPI_EDITOR void PlotColorRamp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ramp, tfxU32 y);
 tfxAPI_EDITOR void CreateColorRampBitmaps(tfx_library_t *library);
 tfxAPI_EDITOR void EditColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id);
+tfxAPI_EDITOR void MaybeInsertColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id);
 tfxAPI_EDITOR tfxU32 AddColorRampToBitmaps(tfx_library_t *library, tfx_color_ramp_t *ramp);
 tfxAPI_EDITOR float GetMaxLife(tfx_effect_emitter_t *e);
 tfxAPI_EDITOR float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime);
