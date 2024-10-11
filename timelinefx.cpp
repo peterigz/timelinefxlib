@@ -11585,7 +11585,7 @@ void UpdateEmitterControlProfile(tfx_effect_emitter_t *emitter) {
 	if (props->emission_type == tfxPath) {
 		emitter->control_profile |= tfxEmitterControlProfile_path;
 	}
-	if (emitter->property_flags & tfxEmitterPropertyFlags_edge_traversal) {
+	if (emitter->property_flags & tfxEmitterPropertyFlags_edge_traversal && (props->emission_type == tfxPath || props->emission_type == tfxLine)) {
 		emitter->control_profile |= tfxEmitterControlProfile_edge_traversal;
 		if (props->end_behaviour == tfxLoop) {
 			emitter->control_profile |= tfxEmitterControlProfile_edge_loop;
