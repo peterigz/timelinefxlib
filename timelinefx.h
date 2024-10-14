@@ -6879,6 +6879,13 @@ inline void InvalidateNewSpriteCapturedIndex(T* instance, tfx_vector_t<tfx_uniqu
 	}
 }
 
+template<typename T>
+inline void InvalidateOffsettedSpriteCapturedIndex(T* instance, tfx_vector_t<tfx_unique_sprite_id_t> &uids, tfx_particle_manager_t *pm, tfxU32 layer) {
+	for (tfxU32 i = 0; i != pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer].current_size; ++i) {
+		instance[i].captured_index = tfxINVALID;
+	}
+}
+
 tfxINTERNAL float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position);
 tfxINTERNAL tfx_vec3_t RandomVectorInCone(tfx_random_t *random, tfx_vec3_t cone_direction, float cone_angle);
 tfxINTERNAL void RandomVectorInConeWide(tfxWideInt seed, tfxWideFloat dx, tfxWideFloat dy, tfxWideFloat dz, tfxWideFloat cone_angle, tfxWideFloat *result_x, tfxWideFloat *result_y, tfxWideFloat *result_z);

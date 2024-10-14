@@ -10585,6 +10585,15 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 		bool particles_processed_last_frame = false;
 
 		if (offset >= start_frame) {
+			if (offset == start_frame && start_frame > 0) {
+				for (tfxEachLayer) {
+					if (is_3d) {
+						InvalidateOffsettedSpriteCapturedIndex(tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
+					} else {
+						InvalidateOffsettedSpriteCapturedIndex(tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer]), pm->unique_sprite_ids[pm->current_sprite_buffer][layer], pm, layer);
+					}
+				}
+			}
 			for (tfxEachLayer) {
 				if (running_count[layer][frame] > 0 && pm->layer_sizes[layer] > 0) {
 					//Copy instance_data that have looped round (for looped effects) into a temporary buffer, to be copied back after the fresh instance_data have been copied
