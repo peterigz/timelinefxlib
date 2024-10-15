@@ -5606,6 +5606,7 @@ struct tfx_effect_state_t {
 
 	//The emitters within this effect.
 	tfx_vector_t<tfxU32> emitter_indexes[2];
+	tfxU32 emitter_start_size;
 
 	//User Data
 	void *user_data;
@@ -6230,7 +6231,6 @@ struct tfx_particle_manager_t {
 	tfxU32 effect_index_position;
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
-	tfxU32 emitter_start_size[tfxMAXDEPTH];
 
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 cumulative_index_point[tfxLAYERS];
@@ -6238,6 +6238,7 @@ struct tfx_particle_manager_t {
 
 	int mt_batch_size;
 	std::mutex particle_index_mutex;
+	std::mutex add_effect_mutex;
 
 	tfx_random_t random;
 	tfx_random_t threaded_random;

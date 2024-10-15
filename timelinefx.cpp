@@ -8733,7 +8733,7 @@ void CopyGraphColorHint(tfx_overtime_attributes_t *from, tfx_overtime_attributes
 		to->blue_hint.nodes.push_back(from->blue_hint.nodes[i]);
 	}
 }
-void CopyGraphColors(tfx_graph_t *from_red, tfx_graph_t *from_blue, tfx_graph_t *from_green, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue) {
+void CopyGraphColors(tfx_graph_t *from_red, tfx_graph_t *from_green, tfx_graph_t *from_blue, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue) {
 	ClearGraph(to_red);
 	ClearGraph(to_green);
 	ClearGraph(to_blue);
@@ -11353,6 +11353,7 @@ bool AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t
 
 tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning) {
 	tfxPROFILE;
+	std::lock_guard<std::mutex> lock(pm->add_effect_mutex);
 	TFX_ASSERT(effect->type == tfxEffectType);
 	TFX_ASSERT(effect->library == pm->library);    //The effect must belong to the same library that is assigned to the particle manager
 	if (pm->flags & tfxParticleManagerFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
@@ -11393,6 +11394,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 	new_effect.instance_data.instance_start_index = tfxINVALID;
 	new_effect.emitter_indexes[0].clear();
 	new_effect.emitter_indexes[1].clear();
+	new_effect.emitter_start_size = 0;
 
 	tfxU32 seed_index = 0;
 	struct hash_index_pair_t {
@@ -11407,7 +11409,7 @@ tfxEffectID AddEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 			if (index == tfxINVALID) {
 				break;
 			}
-			new_effect.emitter_indexes[pm->current_ebuff].push_back(index);
+			new_effect.emitter_indexes[pm->current_ebuff].locked_push_back(index);
 			tfx_emitter_state_t &emitter = pm->emitters[index];
 			emitter.particles_index = tfxINVALID;
 			pm->emitters[index].parent_index = parent_index.index;
@@ -11774,8 +11776,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->highest_depth_index = 0;
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
-	tfxU32 emitter_start_size[tfxMAXDEPTH];
-	memset(emitter_start_size, 0, tfxMAXDEPTH * sizeof(tfxU32));
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		effects_start_size[depth] = pm->effects_in_use[depth][pm->current_ebuff].current_size;
 	}
@@ -11794,7 +11794,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			tfx_effect_state_t &effect = pm->effects[effect_index.index];
 			float &timeout_counter = effect.timeout_counter;
 			effect.emitter_indexes[next_buffer].clear();
-			emitter_start_size[depth] = effect.emitter_indexes[pm->current_ebuff].current_size;
+			effect.emitter_start_size = effect.emitter_indexes[pm->current_ebuff].current_size;
 
 			if (depth == 0) {
 				tfx_effect_instance_data_t &instance_data = pm->effects[effect_index.index].instance_data;
@@ -12082,7 +12082,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			tfx_effect_index_t current_index = pm->effects_in_use[depth][pm->current_ebuff][i];
 			pm->effects_in_use[depth][next_buffer].push_back(current_index);
 			tfx_effect_state_t &effect = pm->effects[current_index.index];
-			for (int i = emitter_start_size[depth]; i != effect.emitter_indexes[pm->current_ebuff].current_size; ++i) {
+			for (int i = effect.emitter_start_size; i != effect.emitter_indexes[pm->current_ebuff].current_size; ++i) {
 				tfxU32 emitter_index = effect.emitter_indexes[pm->current_ebuff][i];
 				//Make sure to grab a particle list for the sub effect emitters as this doesn't happen when calling AddEffectToParticleManager
 				pm->emitters[emitter_index].particles_index = GrabParticleLists(pm, pm->emitters[emitter_index].path_hash, pm->flags & tfxParticleManagerFlags_3d_effects, 100, pm->emitters[emitter_index].control_profile);
@@ -14627,7 +14627,7 @@ tfxU32 AllocatePathQuaterion(tfx_particle_manager_t *pm, tfxU32 amount) {
 		return free_index;
 	}
 	else {
-		pm->path_quaternions.push_back(q);
+		pm->path_quaternions.locked_push_back(q);
 	}
 	return pm->path_quaternions.current_size - 1;
 }
