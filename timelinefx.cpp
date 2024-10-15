@@ -9067,22 +9067,38 @@ void tfxFreeBitmap(tfx_bitmap_t *bitmap) {
 
 tfx_color_ramp_t CompileColorRamp(tfx_overtime_attributes_t *attributes, float gamma) {
 	float r, g, b, a;
-	tfx_color_ramp_t color_ramp;
-	for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
-		float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * attributes->red.lookup.life;
-		r = GammaCorrect(GetGraphValue(&attributes->red, age, attributes->red.lookup.life), gamma);
-		g = GammaCorrect(GetGraphValue(&attributes->green, age, attributes->green.lookup.life), gamma);
-		b = GammaCorrect(GetGraphValue(&attributes->blue, age, attributes->blue.lookup.life), gamma);
-		a = GammaCorrect(GetGraphValue(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
-		color_ramp.colors[f].r = tfxU32(r * 255.f);
-		color_ramp.colors[f].g = tfxU32(g * 255.f);
-		color_ramp.colors[f].b = tfxU32(b * 255.f);
-		color_ramp.colors[f].a = tfxU32(a * 255.f);
+	tfx_color_ramp_t color_ramp = attributes->color_ramps[0];
+	if (color_ramp.flags & tfxColorRampFlags_use_sinusoidal_ramp_generation) {
+		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
+			float x = (float)f / tfxCOLOR_RAMP_WIDTH;
+			float age = x * attributes->red.lookup.life;
+
+			r = color_ramp.brightness.x + color_ramp.contrast.x * cosf(tfxPI2 * (color_ramp.frequency.x * x + color_ramp.offsets.x));
+			g = color_ramp.brightness.y + color_ramp.contrast.y * cosf(tfxPI2 * (color_ramp.frequency.y * x + color_ramp.offsets.y));
+			b = color_ramp.brightness.z + color_ramp.contrast.z * cosf(tfxPI2 * (color_ramp.frequency.z * x + color_ramp.offsets.z));
+			a = GammaCorrect(GetGraphValue(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
+			color_ramp.colors[f].r = tfxU32(r * 255.f);
+			color_ramp.colors[f].g = tfxU32(g * 255.f);
+			color_ramp.colors[f].b = tfxU32(b * 255.f);
+			color_ramp.colors[f].a = tfxU32(a * 255.f);
+		}
+	} else {
+		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
+			float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * attributes->red.lookup.life;
+			r = GammaCorrect(GetGraphValue(&attributes->red, age, attributes->red.lookup.life), gamma);
+			g = GammaCorrect(GetGraphValue(&attributes->green, age, attributes->green.lookup.life), gamma);
+			b = GammaCorrect(GetGraphValue(&attributes->blue, age, attributes->blue.lookup.life), gamma);
+			a = GammaCorrect(GetGraphValue(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
+			color_ramp.colors[f].r = tfxU32(r * 255.f);
+			color_ramp.colors[f].g = tfxU32(g * 255.f);
+			color_ramp.colors[f].b = tfxU32(b * 255.f);
+			color_ramp.colors[f].a = tfxU32(a * 255.f);
+		}
+		color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(GetGraphLastValue(&attributes->red) * 255.f);
+		color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(GetGraphLastValue(&attributes->green) * 255.f);
+		color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(GetGraphLastValue(&attributes->blue) * 255.f);
+		color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(GetGraphLastValue(&attributes->blendfactor) * 255.f);
 	}
-	color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(GetGraphLastValue(&attributes->red) * 255.f);
-	color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(GetGraphLastValue(&attributes->green) * 255.f);
-	color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(GetGraphLastValue(&attributes->blue) * 255.f);
-	color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(GetGraphLastValue(&attributes->blendfactor) * 255.f);
 	return color_ramp;
 }
 
