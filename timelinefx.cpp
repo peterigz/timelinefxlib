@@ -11855,7 +11855,6 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 					effect.emitter_indexes[next_buffer].push_back(emitter_index);
 					pm->control_emitter_queue.push_back(emitter_index);
 				} else {
-					pm->free_emitters.push_back(emitter_index);
 					if (pm->emitters[emitter_index].path_quaternions) {
 						FreePathQuaternion(pm, pm->emitters[emitter_index].path_quaternion_index);
 					}
@@ -11867,6 +11866,7 @@ void UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 					if (pm->emitters[emitter_index].spawn_locations_index != tfxINVALID) {
 						FreeSpawnLocationList(pm, emitter_index);
 					}
+					pm->free_emitters.push_back(emitter_index);
 				}
 			}
 
@@ -14753,7 +14753,8 @@ tfxU32 GrabParticleLists(tfx_particle_manager_t *pm, tfxKey emitter_hash, bool i
 		}
 	}
 	tfx_particle_soa_t lists;
-	tfxU32 index = pm->particle_arrays.locked_push_back(lists);
+	pm->particle_arrays.push_back(lists);
+	tfxU32 index = pm->particle_arrays.current_size - 1;
 	tfx_soa_buffer_t buffer;
 	buffer.resize_callback = ResizeParticleSoACallback;
 	buffer.user_data = &pm->particle_arrays.back();
