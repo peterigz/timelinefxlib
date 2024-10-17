@@ -1979,7 +1979,7 @@ tfx_vec2_t UnPack16bitUnsigned(tfxU32 in) {
 	return result;
 }
 
-tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
+tfxWideInt PackWide16bit(tfxWideFloat v_x, tfxWideFloat v_y) {
 	tfxWideFloat w32k = tfxWideSetSingle(32767.f);
 	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
 	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
@@ -1990,7 +1990,7 @@ tfxWideInt PackWide16bit(tfxWideFloat &v_x, tfxWideFloat &v_y) {
 	return tfxWideOri(converted_x, converted_y);
 }
 
-tfxWideInt PackWide16bit2SScaled(tfxWideFloat v_x, tfxWideFloat  v_y, float max_value) {
+tfxWideInt PackWide16bit2SScaled(tfxWideFloat v_x, tfxWideFloat v_y, float max_value) {
 	tfxWideFloat w32k = tfxWideSetSingle(32767.f / max_value);
 	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
 	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w32k));
@@ -3084,6 +3084,97 @@ int GetEffectDepth(tfx_effect_emitter_t *e) {
 	}
 	return depth;
 }
+
+template<typename T>
+void ClearWrapBit(T* instance, tfx_sprite_data_t *sprite_data) {
+    for (int i = 0; i != sprite_data->normal.frame_count; ++i) {
+        for (tfxEachLayer) {
+            for (int j = SpriteDataIndexOffset(sprite_data, i, layer); j != SpriteDataEndIndex(sprite_data, i, layer); ++j) {
+                if (instance[j].captured_index == tfxINVALID) continue;
+                tfxU32 wrap_bit = 0x80000000;
+                instance[j].captured_index &= ~wrap_bit;
+            }
+        }
+    }
+}
+
+template<typename T>
+void SpriteDataOffsetCapturedIndexes(T* instance, tfx_sprite_data_t *sprite_data, tfxU32 previous_frame, tfxU32 current_frame) {
+    tfxU32 layer_offset = 0;
+    for (tfxEachLayer) {
+        for (int j = SpriteDataIndexOffset(sprite_data, current_frame, layer); j != SpriteDataEndIndex(sprite_data, current_frame, layer); ++j) {
+            if (instance[j].captured_index == tfxINVALID) {
+                //If the captured index of the sprite is invalid then this is the first frame of the sprite and therefore nothing to interpolate with in the previous
+                //frame
+                continue;
+            } else if (instance[j].captured_index != tfxINVALID && sprite_data->real_time_sprites.uid[j].age == 0) {
+                //This deals with wrapped single instance_data where captured index is not invalid yet it's age is 0. Usually only captured indexes that have an age of 0
+                //are invalid because there is no previous frame of the sprite to interpolate with but we do want that to happen with a wrapped sprite. So it means
+                //that we have to manually find the wrapped sprite in the previous frame.
+                for (int k = SpriteDataIndexOffset(sprite_data, previous_frame, layer); k != SpriteDataEndIndex(sprite_data, previous_frame, layer); ++k) {
+                    if (sprite_data->real_time_sprites.uid[k].uid == sprite_data->real_time_sprites.uid[j].uid) {
+                        tfxU32 wrap_bit = instance[j].captured_index & 0x80000000;
+                        instance[j].captured_index = k;
+                        TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
+                        instance[j].captured_index |= wrap_bit;
+                        break;
+                    }
+                }
+            } else {
+                //Add the index offset of the frame to realign the captured index of the sprite.
+                tfxU32 wrap_bit = instance[j].captured_index & 0x80000000;
+                instance[j].captured_index = (instance[j].captured_index & 0x0FFFFFFF) + sprite_data->normal.frame_meta[previous_frame].index_offset[layer];
+                TFX_ASSERT(sprite_data->real_time_sprites.uid[instance[j].captured_index].uid == sprite_data->real_time_sprites.uid[j].uid);
+                instance[j].captured_index |= wrap_bit;
+            }
+        }
+        if (layer > 0) {
+            layer_offset += sprite_data->normal.frame_meta[previous_frame].cumulative_offset[layer];
+        }
+    }
+}
+
+template<typename T>
+void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_sprite_data_t *sprite_data) {
+    tfx_sprite_data_soa_t &c_sprites = sprite_data->compressed_sprites;
+    int frame = entry_frame - 1;
+    int frame_pair[2];
+    frame_pair[0] = entry_frame;
+    frame_pair[1] = frame < 0 ? sprite_data->compressed.frame_count - 1 : frame;
+    for (tfxEachLayer) {
+        for (int i = sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer]; i != sprite_data->compressed.frame_meta[frame_pair[0]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer]; ++i) {
+            if (instance[i].captured_index != tfxINVALID) {
+                int age_diff = 0x7FFFFFFF;
+                bool captured_found = false;
+                for (int j = sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer]; j != sprite_data->compressed.frame_meta[frame_pair[1]].index_offset[layer] + sprite_data->compressed.frame_meta[frame_pair[1]].sprite_count[layer]; ++j) {
+                    //Find particles of the same uid and only if they haven't already been linked up to another particle already (the first bit in age will be flagged in this case)
+                    if (c_sprites.uid[j].uid == c_sprites.uid[i].uid && !(c_sprites.uid[j].age & 0x80000000)) {
+                        int diff = (int)(0x7FFFFFFF & c_sprites.uid[i].age) - (int)(0x7FFFFFFF & c_sprites.uid[j].age);
+                        if (diff < 0) continue;
+                        age_diff = diff < age_diff ? diff : age_diff;
+                        //We link up the captured index to the particle in the previous frame with the smallest difference in age
+                        //Make sure that the particle we're linking to is younger than the current particle
+                        //instance[i].captured_index = diff < 0 ? tfxINVALID : instance[i].captured_index;
+                        captured_found = false;
+                        instance[i].captured_index = age_diff == diff ? j : instance[i].captured_index;
+                        //tfxPrint("%i (%i)) UID: %u: CI: %i, SI: %i - CIAge: %i, SAge: %i - Age Diff: %u, Diff: %u, Cap.index: %u, CPosy: %.2f SPosy: %.2f, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].instance_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle >> 32));
+                        if (age_diff < 2) {    //We can just break if the age is less than 2 but not if we found and older particle. It's possible to find an older particle if the animation has been looped
+                            //If the compression is high this won't be hit because the distance in time between the compressed frames will be high
+                            //tfxPrint("\t Linked %i to %i: uid, %u, captured index: %u", i, j, c_sprites.uid[j].uid, instance[i].captured_index);
+                            break;
+                        }
+                    }
+                }
+                if (captured_found) {
+                    c_sprites.uid[instance[i].captured_index].age |= 0x80000000;
+                }
+            } else {
+                //tfxPrint("%i (%i)) UID: %u: CI: %i, Cap: %u, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].instance_count[layer], c_sprites.uid[i].uid, i, instance[i].captured_index, tfxU32(instance[i].size_handle >> 32));
+            }
+        }
+    }
+}
+
 
 float GetEmissionDirection2d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, tfx_vec2_t local_position, tfx_vec2_t world_position) {
 	//float (*effect_lookup_callback)(tfx_graph_t &graph, float age) = common.root_effect->lookup_mode == tfxPrecise ? LookupPrecise : LookupFast;
@@ -14159,7 +14250,7 @@ void ControlParticleColor(tfx_work_queue_t *queue, void *data) {
 		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
 
 		tfxWideArrayi packed_intensity_life = { PackWide16bit2SScaled(lookup_intensity, life, 128.f) };
-		curved_alpha = { PackWide16bit(dissolve_lerp, sharpness) };
+        curved_alpha.m = PackWide16bit(dissolve_lerp, sharpness);
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (pm.flags & tfxParticleManagerFlags_3d_effects) { //Predictable
