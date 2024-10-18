@@ -4070,13 +4070,13 @@ struct tfx_work_queue_t {
 };
 
 struct tfx_queue_processor_t {
-	std::mutex mutex;
 	std::condition_variable empty_condition;
 	std::condition_variable full_condition;
 	tfxU32 count;
 	volatile bool end_all_threads;
 	//These point to the queues stored in particle managers and anything else that needs a queue with multithreading
 	tfx_work_queue_t *queues[tfxMAX_QUEUES];
+    std::mutex mutex;
 };
 
 struct tfx_data_types_dictionary_t {

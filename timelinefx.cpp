@@ -5463,7 +5463,9 @@ void BuildAllLibraryPaths(tfx_library_t *library) {
 
 void UpdateLibraryGPUImageData(tfx_library_t *library) {
 	library->gpu_shapes.list.free();
-	library->gpu_shapes = BuildGPUShapeData(&library->particle_shapes.data, library->uv_lookup);
+    if(library->particle_shapes.Size() > 0) {
+        library->gpu_shapes = BuildGPUShapeData(&library->particle_shapes.data, library->uv_lookup);
+    }
 }
 
 void AddLibraryPath(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, tfx_str256_t *path) {
@@ -5656,6 +5658,7 @@ tfx_effect_emitter_t *LibraryMoveDown(tfx_library_t *library, tfx_effect_emitter
 
 tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	TFX_ASSERT(particle_shapes->size());        //There are no shapes to copy!
+    TFX_ASSERT(uv_lookup);  //You must set a function that applies the uv coordinates for each image you load
 	tfxU32 index = 0;
 	tfx_gpu_shapes_t shape_data;
 	for (tfx_image_data_t &shape : *particle_shapes) {
@@ -6194,6 +6197,11 @@ tfxU32 AddLibraryEmitterProperties(tfx_library_t *library) {
 }
 
 void InitLibrary(tfx_library_t *library) {
+    tfx_color_ramp_t ramp{};
+    for(int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
+        ramp.colors[x].color = 0xFFFFFFFF;
+    }
+    AddColorRampToBitmaps(library, &ramp);
 }
 
 tfx_str64_t GetNameFromPath(tfx_str256_t *path) {
@@ -18336,8 +18344,9 @@ void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 		TFX_ASSERT(memory_pool);    //unable to allocate initial memory pool
 		tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
 	}
+    tfx_storage_t store{};
 	tfxStore = (tfx_storage_t *)tfx_AllocateAligned(tfxMemoryAllocator, sizeof(tfx_storage_t), 16);
-	memset(tfxStore, 0, sizeof(tfx_storage_t));
+    memcpy(tfxStore, &store, sizeof(tfx_storage_t));
 	tfxStore->default_memory_pool_size = memory_pool_size;
 	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
 	tfxStore->memory_pool_count = 1;
@@ -18345,6 +18354,8 @@ void InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
 	lookup_callback = LookupFast;
 	lookup_overtime_callback = LookupFastOvertime;
+    
+    std::unique_lock<std::mutex> lock(tfxStore->tfxThreadQueues.mutex);
 	tfxInitialiseThreads(&tfxStore->tfxThreadQueues);
 }
 
