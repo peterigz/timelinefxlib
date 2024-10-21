@@ -6202,6 +6202,7 @@ void InitLibrary(tfx_library_t *library) {
         ramp.colors[x].color = 0xFFFFFFFF;
     }
     AddColorRampToBitmaps(library, &ramp);
+    library->gpu_shapes.list.set_alignment(16);
 }
 
 tfx_str64_t GetNameFromPath(tfx_str256_t *path) {
@@ -9121,7 +9122,7 @@ tfx_bitmap_t tfxCreateBitmap(int width, int height, int channels) {
 	tfx_bitmap_t bitmap = {};
     bitmap.size = width * height * channels;
     if (bitmap.size > 0) {
-        bitmap.data = (tfx_byte*)tfxALLOCATE(bitmap.size);
+        bitmap.data = (tfx_byte*)tfxALLOCATE_ALIGNED(bitmap.size, 16);
         bitmap.width = width;
         bitmap.height = height;
         bitmap.channels = channels;

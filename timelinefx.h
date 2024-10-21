@@ -4021,7 +4021,7 @@ struct tfx_stream_t {
 	inline void         Resize(tfxU64 new_capacity) {
 		if (new_capacity <= size)
 			return;
-		char *new_data = (char *)tfxALLOCATE((tfxU64)new_capacity * sizeof(char));
+		char *new_data = (char *)tfxALLOCATE_ALIGNED((tfxU64)new_capacity * sizeof(char), 16);
 		memset(new_data, 0, new_capacity);
 		TFX_ASSERT(new_data);    //Unable to allocate memory. Todo: better handling
 		if (data) {
