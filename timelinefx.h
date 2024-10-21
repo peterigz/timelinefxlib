@@ -71,6 +71,7 @@
 
 #include <stdint.h>
 #include <math.h>
+#include <condition_variable>
 
 //type defs
 typedef uint16_t tfxU16;
@@ -1105,7 +1106,8 @@ tfx_allocator *tfxGetAllocator();
 #include <algorithm>
 #include <iostream>                    //temp for std::cout
 #include <mutex>
-#include <thread>                    
+#include <thread>
+#include <atomic>
 #include <cfloat>
 
 #define tfxTWO63 0x8000000000000000u 
