@@ -18429,28 +18429,28 @@ void InitSpriteData3dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_so
 	AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_data_soa_t, uid));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, lerp_offset));
 	AddStructArray(buffer, sizeof(tfx_billboard_instance_t), offsetof(tfx_sprite_data_soa_t, billboard_instance));
-	FinishSoABufferSetup(buffer, soa, reserve_amount);
+	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
 void InitSpriteData3dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount) {
 	AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_data_soa_t, uid));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, lerp_offset));
 	AddStructArray(buffer, sizeof(tfx_billboard_instance_t), offsetof(tfx_sprite_data_soa_t, billboard_instance));
-	FinishSoABufferSetup(buffer, soa, reserve_amount);
+	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
 void InitSpriteData2dSoACompression(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount) {
 	AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_data_soa_t, uid));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, lerp_offset));
 	AddStructArray(buffer, sizeof(tfx_sprite_instance_t), offsetof(tfx_sprite_data_soa_t, sprite_instance));
-	FinishSoABufferSetup(buffer, soa, reserve_amount);
+	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
 void InitSpriteData2dSoA(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount) {
 	AddStructArray(buffer, sizeof(tfx_unique_sprite_id_t), offsetof(tfx_sprite_data_soa_t, uid));
 	AddStructArray(buffer, sizeof(float), offsetof(tfx_sprite_data_soa_t, lerp_offset));
 	AddStructArray(buffer, sizeof(tfx_sprite_instance_t), offsetof(tfx_sprite_data_soa_t, sprite_instance));
-	FinishSoABufferSetup(buffer, soa, reserve_amount);
+	FinishSoABufferSetup(buffer, soa, reserve_amount, 16);
 }
 
 void InitParticleSoA2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
