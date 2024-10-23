@@ -5464,7 +5464,7 @@ void BuildAllLibraryPaths(tfx_library_t *library) {
 void UpdateLibraryGPUImageData(tfx_library_t *library) {
 	library->gpu_shapes.list.free();
     if(library->particle_shapes.Size() > 0) {
-        library->gpu_shapes = BuildGPUShapeData(&library->particle_shapes.data, library->uv_lookup);
+        BuildGPUShapeData(&library->particle_shapes.data, &library->gpu_shapes, library->uv_lookup);
     }
 }
 
@@ -5656,19 +5656,18 @@ tfx_effect_emitter_t *LibraryMoveDown(tfx_library_t *library, tfx_effect_emitter
 	return nullptr;
 }
 
-tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+void BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes_t *shape_data, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	TFX_ASSERT(particle_shapes->size());        //There are no shapes to copy!
     TFX_ASSERT(uv_lookup);  //You must set a function that applies the uv coordinates for each image you load
 	tfxU32 index = 0;
-	tfx_gpu_shapes_t shape_data;
-    shape_data.list.set_alignment(16);
+	shape_data->list.clear();
 	for (tfx_image_data_t &shape : *particle_shapes) {
 		if (shape.animation_frames == 1) {
 			tfx_gpu_image_data_t cs;
 			cs.animation_frames = shape.animation_frames;
 			cs.image_size = shape.image_size;
 			uv_lookup(shape.ptr, &cs, 0);
-			shape_data.list.push_back_copy(cs);
+			shape_data->list.push_back_copy(cs);
 			shape.compute_shape_index = index++;
 		}
 		else {
@@ -5678,12 +5677,11 @@ tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shap
 				cs.animation_frames = shape.animation_frames;
 				cs.image_size = shape.image_size;
 				uv_lookup(shape.ptr, &cs, f);
-				shape_data.list.push_back_copy(cs);
+				shape_data->list.push_back_copy(cs);
 				index++;
 			}
 		}
 	}
-	return shape_data;
 }
 
 void CopyLibraryLookupIndexesData(tfx_library_t *library, void *dst) {

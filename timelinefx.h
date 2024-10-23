@@ -3030,8 +3030,8 @@ struct tfx_vector_t {
 	inline const T &operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
 	inline T &ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
 
-	inline void         free_all() { if (data) { current_size = capacity = alignment = 0; tfxFREE(data); data = nullptr; } }
-	inline void         free() { if (data) { current_size = capacity = alignment = 0; tfxFREE(data); data = nullptr; } }
+	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
+	inline void         free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         clear() { if (data) { current_size = 0; } }
 	inline T *begin() { return data; }
 	inline const T *begin() const { return data; }
@@ -5949,7 +5949,7 @@ struct tfx_compute_particle_t {
 	float local_rotation;
 };
 
-struct alignas(16) tfx_gpu_image_data_t {
+struct tfx_gpu_image_data_t {
 	tfx_vec4_t uv;
 	tfxU64 uv_packed;
 	tfx_vec2_t image_size;
@@ -6393,7 +6393,9 @@ struct tfx_library_t {
 		free_preview_camera_settings(tfxCONSTRUCTOR_VEC_INIT("free_preview_camera_settings")),
 		free_properties(tfxCONSTRUCTOR_VEC_INIT("free_properties")),
 		free_infos(tfxCONSTRUCTOR_VEC_INIT("free_infos"))
-	{}
+	{
+		gpu_shapes.list.set_alignment(16);
+	}
 
 	//Free everything in the library
 
@@ -8374,7 +8376,7 @@ and upload it to the gpu.
 * @param library                A pointer to some image data where the image data is. You can use GetParticleShapes with a tfx_library_t or tfx_animation_manager_t for this
 * @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 */
-tfxAPI tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
+tfxAPI void BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
 
 /*
 Get a pointer to the GPU shapes which you can use in a memcpy
