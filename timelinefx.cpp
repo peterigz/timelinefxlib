@@ -5661,6 +5661,7 @@ tfx_gpu_shapes_t BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shap
     TFX_ASSERT(uv_lookup);  //You must set a function that applies the uv coordinates for each image you load
 	tfxU32 index = 0;
 	tfx_gpu_shapes_t shape_data;
+    shape_data.list.set_alignment(16);
 	for (tfx_image_data_t &shape : *particle_shapes) {
 		if (shape.animation_frames == 1) {
 			tfx_gpu_image_data_t cs;
@@ -11041,6 +11042,8 @@ void InitialiseAnimationManager(tfx_animation_manager_t *animation_manager, tfxU
 	animation_manager->update_frequency = 60.f;
 	animation_manager->user_data = nullptr;
 	animation_manager->maybe_render_instance_callback = nullptr;
+    animation_manager->sprite_data_2d.set_alignment(16);
+    animation_manager->sprite_data_3d.set_alignment(16);
 }
 
 void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
