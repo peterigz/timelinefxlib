@@ -4161,7 +4161,7 @@ tfxINTERNAL inline bool tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processo
 			}
 		}
 	}
-	return queue_processor->end_all_threads ? true : false;
+	return queue_processor->end_all_threads;
 }
 
 tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
@@ -4216,8 +4216,12 @@ tfxINTERNAL inline void tfxInitialiseWorkQueue(tfx_work_queue_t *queue) {
 	queue->next_write_entry = 0;
 }
 
-bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queues);
-void tfxThreadWorker(tfx_queue_processor_t *queue_processor);
+tfxINTERNAL inline void tfxThreadWorker(tfx_queue_processor_t *queue_processor) {
+	TFX_ASSERT(queue_processor);
+	for (;;) {
+		if (tfxDoNextWorkQueue(queue_processor)) break;
+	}
+}
 
 //-----------------------------------------------------------
 //Section: Vector_Math

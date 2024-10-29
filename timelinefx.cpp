@@ -18335,14 +18335,7 @@ bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queues) {
 	return true;
 }
 
-void tfxThreadWorker(tfx_queue_processor_t *queue_processor) {
-	TFX_ASSERT(queue_processor);
-	for (;;) {
-		if(tfxDoNextWorkQueue(queue_processor)) break;
-	}
-}
-
-void EndThread(tfx_work_queue_t *queue, void *data) {
+void tfxEndThread(tfx_work_queue_t *queue, void *data) {
 	return;
 }
 
@@ -18375,7 +18368,7 @@ void EndTimelineFX() {
 	tfx_work_queue_t end_queue{};
 	tfxU32 thread_count = tfxStore->thread_count;
 	while (thread_count > 0) {
-		tfxAddWorkQueueEntry(&end_queue, nullptr, EndThread);
+		tfxAddWorkQueueEntry(&end_queue, nullptr, tfxEndThread);
 		tfxCompleteAllWork(&end_queue);
 		thread_count--;
 	}
