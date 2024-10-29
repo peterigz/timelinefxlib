@@ -10492,8 +10492,13 @@ void RecordSpriteData(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, 
 	tfxU32 struct_size = sizeof(tfx_sprite_instance_t);
 	if (is_3d) struct_size = sizeof(tfx_billboard_instance_t);
 	for (tfxEachLayer) {
+		pm->instance_buffer_for_recording[0][layer].free();
 		pm->instance_buffer_for_recording[0][layer] = tfxCreateBuffer(struct_size, 16);
-		pm->instance_buffer_for_recording[1][layer] = tfxCreateBuffer(struct_size, 16);
+		if (pm->flags & tfxParticleManagerFlags_double_buffer_sprites) {
+			pm->instance_buffer_for_recording[1][layer].free();
+			pm->instance_buffer_for_recording[1][layer] = tfxCreateBuffer(struct_size, 16);
+			
+		}
 	}
 	pm->flags |= tfxParticleManagerFlags_recording_sprites;
 	if (!(pm->flags & tfxParticleManagerFlags_using_uids)) {
