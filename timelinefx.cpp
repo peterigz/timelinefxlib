@@ -3157,7 +3157,8 @@ void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_sprite_data
                         //instance[i].captured_index = diff < 0 ? tfxINVALID : instance[i].captured_index;
                         captured_found = false;
                         instance[i].captured_index = age_diff == diff ? j : instance[i].captured_index;
-                        //tfxPrint("%i (%i)) UID: %u: CI: %i, SI: %i - CIAge: %i, SAge: %i - Age Diff: %u, Diff: %u, Cap.index: %u, CPosy: %.2f SPosy: %.2f, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].instance_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle >> 32));
+						//tfxPrint("%i (%i)) UID: %u: CI: %i, SI: %i - CIAge: %i, SAge: %i - Age Diff: %u, Diff: %u, Cap.index: %u, CPosy: %.2f SPosy: %.2f, H: %u",
+						//	entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle.packed >> 32));
                         if (age_diff < 2) {    //We can just break if the age is less than 2 but not if we found and older particle. It's possible to find an older particle if the animation has been looped
                             //If the compression is high this won't be hit because the distance in time between the compressed frames will be high
                             //tfxPrint("\t Linked %i to %i: uid, %u, captured index: %u", i, j, c_sprites.uid[j].uid, instance[i].captured_index);
@@ -3169,7 +3170,7 @@ void LinkSpriteDataCapturedIndexes(T* instance, int entry_frame, tfx_sprite_data
                     c_sprites.uid[instance[i].captured_index].age |= 0x80000000;
                 }
             } else {
-                //tfxPrint("%i (%i)) UID: %u: CI: %i, Cap: %u, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].instance_count[layer], c_sprites.uid[i].uid, i, instance[i].captured_index, tfxU32(instance[i].size_handle >> 32));
+				//tfxPrint("%i (%i)) UID: %u: CI: %i, Cap: %u, H: %u", entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, instance[i].captured_index, tfxU32(instance[i].size_handle.packed >> 32));
             }
         }
     }
@@ -11160,6 +11161,7 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfx_sprite_data3d_t sprite;
 			memcpy(&sprite, &sprites.billboard_instance[i], sizeof(tfx_billboard_instance_t));
+			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.additional = tfxU32(sprites.lerp_offset[i] * 65535.f);
 			sprite.additional |= (effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index << 16);
 			animation_manager->sprite_data_3d.push_back_copy(sprite);
@@ -11171,6 +11173,7 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 		for (int i = 0; i != metrics.total_sprites; ++i) {
 			tfx_sprite_data2d_t sprite;
 			memcpy(&sprite, &sprites.sprite_instance[i], sizeof(tfx_sprite_instance_t));
+			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.additional = tfxU32(sprites.lerp_offset[i] * 65535.f);
 			sprite.additional |= (effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index << 16);
 			animation_manager->sprite_data_2d.push_back_copy(sprite);
