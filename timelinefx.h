@@ -6091,8 +6091,15 @@ struct alignas(16) tfx_animation_emitter_properties_t {
 	tfxU32 handle_packed;
 	tfxU32 flags;
 	tfxU32 start_frame_index;
+	tfxU32 color_ramp_index;
 	float animation_frames;
-	void *image_ptr;        //Note: not needed on the GPU, only used if you interpolate and render on the cpu for whatever reason
+	float padding;
+};
+
+struct tfx_color_ramp_bitmap_data_t {
+	tfx_storage_map_t<tfxU32> color_ramp_ids;
+	tfx_vector_t<tfx_bitmap_t> color_ramp_bitmaps;
+	tfxU32 color_ramp_count;
 };
 
 //Use the animation manager to control playing of pre-recorded effects
@@ -6138,6 +6145,8 @@ struct tfx_animation_manager_t {
 	//animation instances need to be uploaded every frame, but the sprite data only once before you
 	//start drawing anything
 	tfx_animation_buffer_metrics_t buffer_metrics;
+	//Storage for the color ramps for all the effect sprite data in the animation manager
+	tfx_color_ramp_bitmap_data_t color_ramps;
 	//Bit flag field
 	tfxAnimationManagerFlags flags;
 	//The update frequency that the animations are recorded at. 60 is the recommended default
@@ -6338,9 +6347,7 @@ struct tfx_library_t {
 	tfx_vector_t<tfx_effect_emitter_info_t> effect_infos;
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
-	tfx_storage_map_t<tfxU32> color_ramp_ids;
-	tfx_vector_t<tfx_bitmap_t> color_ramp_bitmaps;
-	tfxU32 color_ramp_count;
+	tfx_color_ramp_bitmap_data_t color_ramps;
 
 	tfx_bucket_array_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
@@ -6376,7 +6383,6 @@ struct tfx_library_t {
 
 	tfx_library_t() :
 		uid(0),
-		color_ramp_count(0),
 		effect_paths("EffectLib effect paths map", "EffectLib effect paths data"),
 		particle_shapes("EffectLib shapes map", "EffectLib shapes data"),
 		effects(tfxCONSTRUCTOR_VEC_INIT("effects")),
@@ -6399,6 +6405,7 @@ struct tfx_library_t {
 		free_infos(tfxCONSTRUCTOR_VEC_INIT("free_infos"))
 	{
 		gpu_shapes.list.set_alignment(16);
+		color_ramps.color_ramp_count = 0;
 	}
 
 	//Free everything in the library
@@ -6997,7 +7004,8 @@ tfxAPI_EDITOR void PlotColorRamp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ramp, t
 tfxAPI_EDITOR void CreateColorRampBitmaps(tfx_library_t *library);
 tfxAPI_EDITOR void EditColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id);
 tfxAPI_EDITOR void MaybeInsertColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id);
-tfxAPI_EDITOR tfxU32 AddColorRampToBitmaps(tfx_library_t *library, tfx_color_ramp_t *ramp);
+tfxAPI_EDITOR tfxU32 AddColorRampToBitmaps(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp);
+tfxAPI_EDITOR void CopyColorRampToAnimationManager(tfx_animation_manager_t *animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxAPI_EDITOR float GetMaxLife(tfx_effect_emitter_t *e);
 tfxAPI_EDITOR float LookupFastOvertime(tfx_graph_t *graph, float age, float lifetime);
 tfxAPI_EDITOR float LookupFast(tfx_graph_t *graph, float frame);

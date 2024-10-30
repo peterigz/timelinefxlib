@@ -6201,7 +6201,7 @@ void InitLibrary(tfx_library_t *library) {
     for(int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
         ramp.colors[x].color = 0xFFFFFFFF;
     }
-    AddColorRampToBitmaps(library, &ramp);
+    AddColorRampToBitmaps(&library->color_ramps, &ramp);
     library->gpu_shapes.list.set_alignment(16);
 }
 
@@ -6255,11 +6255,11 @@ void ClearLibrary(tfx_library_t *library) {
 	for (tfx_transform_attributes_t &transform_attributes : library->transform_attributes) {
 		FreeTransformAttributes(&transform_attributes);
 	}
-	for (tfx_bitmap_t &bitmap : library->color_ramp_bitmaps) {
+	for (tfx_bitmap_t &bitmap : library->color_ramps.color_ramp_bitmaps) {
 		tfxFreeBitmap(&bitmap);
 	}
-	library->color_ramp_ids.FreeAll();
-	library->color_ramp_bitmaps.free();
+	library->color_ramps.color_ramp_ids.FreeAll();
+	library->color_ramps.color_ramp_bitmaps.free();
 	library->global_graphs.free();
 	library->emitter_attributes.free();
 	library->transform_attributes.free();
@@ -6289,7 +6289,7 @@ void ClearLibrary(tfx_library_t *library) {
 	library->free_keyframes.free_all();
 
 	library->uid = 0;
-	library->color_ramp_count = 0;
+	library->color_ramps.color_ramp_count = 0;
 }
 
 void UpdateLibraryComputeNodes(tfx_library_t *library) {
@@ -9233,35 +9233,35 @@ void PlotColorRamp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ramp, tfxU32 y) {
 	}
 }
 
-tfxU32 AddColorRampToBitmaps(tfx_library_t *library, tfx_color_ramp_t *ramp) {
-	tfxU32 layer = library->color_ramp_count / 256;
-	tfxU32 y = library->color_ramp_count % 256;
-	if (library->color_ramp_bitmaps.size() <= layer) {
+tfxU32 AddColorRampToBitmaps(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp) {
+	tfxU32 layer = ramp_data->color_ramp_count / 256;
+	tfxU32 y = ramp_data->color_ramp_count % 256;
+	if (ramp_data->color_ramp_bitmaps.size() <= layer) {
 		tfx_bitmap_t bitmap = tfxCreateBitmap(tfxCOLOR_RAMP_WIDTH, 256, 4);
-		library->color_ramp_bitmaps.push_back(bitmap);
+		ramp_data->color_ramp_bitmaps.push_back(bitmap);
 	}
-	tfx_bitmap_t &current_bitmap = library->color_ramp_bitmaps[layer];
+	tfx_bitmap_t &current_bitmap = ramp_data->color_ramp_bitmaps[layer];
 	PlotColorRamp(&current_bitmap, ramp, y);
 	tfxU32 ramp_id = tfxMakeColorRampIndex(layer, y);
-	library->color_ramp_count++;
+	ramp_data->color_ramp_count++;
 	return ramp_id;
 }
 
 void CreateColorRampBitmaps(tfx_library_t *library) {
 	tfxU32 y = 0;
-	library->color_ramp_bitmaps.clear();
-	library->color_ramp_ids.Clear();
-	library->color_ramp_count = 0;
+	library->color_ramps.color_ramp_bitmaps.clear();
+	library->color_ramps.color_ramp_ids.Clear();
+	library->color_ramps.color_ramp_count = 0;
 	for (tfx_emitter_attributes_t &a : library->emitter_attributes) {
 		for (int i = 0; i != 2; ++i) {
 			tfx_color_ramp_t &ramp = a.overtime.color_ramps[i];
 			tfxKey hash = tfxXXHash64::hash(ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
-			if (library->color_ramp_ids.ValidKey(hash)) {	//0 = main color, 1 = color hint
-				a.overtime.color_ramp_bitmap_indexes[i] = library->color_ramp_ids.At(hash);
+			if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {	//0 = main color, 1 = color hint
+				a.overtime.color_ramp_bitmap_indexes[i] = library->color_ramps.color_ramp_ids.At(hash);
 			}
 			else {
-				a.overtime.color_ramp_bitmap_indexes[i] = AddColorRampToBitmaps(library, &ramp);
-				library->color_ramp_ids.Insert(hash, a.overtime.color_ramp_bitmap_indexes[i]);
+				a.overtime.color_ramp_bitmap_indexes[i] = AddColorRampToBitmaps(&library->color_ramps, &ramp);
+				library->color_ramps.color_ramp_ids.Insert(hash, a.overtime.color_ramp_bitmap_indexes[i]);
 			}
 		}
 	}
@@ -9270,24 +9270,35 @@ void CreateColorRampBitmaps(tfx_library_t *library) {
 void EditColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id) {
 	tfx_color_ramp_t &ramp = a->color_ramps[ramp_id];
 	if (!tfxColorRampIsEdited(a->color_ramp_bitmap_indexes[ramp_id])) {
-		a->color_ramp_bitmap_indexes[ramp_id] = AddColorRampToBitmaps(library, &ramp);
+		a->color_ramp_bitmap_indexes[ramp_id] = AddColorRampToBitmaps(&library->color_ramps, &ramp);
 		tfxFlagColorRampIDAsEdited(a->color_ramp_bitmap_indexes[ramp_id]);
 	}
 	else {
 		tfxU32 layer = tfxColorRampLayer(a->color_ramp_bitmap_indexes[ramp_id]);
 		tfxU32 index = tfxColorRampIndex(a->color_ramp_bitmap_indexes[ramp_id]);
-		tfx_bitmap_t &bitmap = library->color_ramp_bitmaps[layer];
+		tfx_bitmap_t &bitmap = library->color_ramps.color_ramp_bitmaps[layer];
 		PlotColorRamp(&bitmap, &ramp, index);
 	}
 }
 
 void MaybeInsertColorRampBitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id) {
 	tfxKey hash = tfxXXHash64::hash(a->color_ramps, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
-	if (library->color_ramp_ids.ValidKey(hash)) {
-		a->color_ramp_bitmap_indexes[ramp_id] = library->color_ramp_ids.At(hash);
+	if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {
+		a->color_ramp_bitmap_indexes[ramp_id] = library->color_ramps.color_ramp_ids.At(hash);
 	} else {
-		a->color_ramp_bitmap_indexes[ramp_id] = AddColorRampToBitmaps(library, &a->color_ramps[ramp_id]);
-		library->color_ramp_ids.Insert(hash, a->color_ramp_bitmap_indexes[ramp_id]);
+		a->color_ramp_bitmap_indexes[ramp_id] = AddColorRampToBitmaps(&library->color_ramps, &a->color_ramps[ramp_id]);
+		library->color_ramps.color_ramp_ids.Insert(hash, a->color_ramp_bitmap_indexes[ramp_id]);
+	}
+}
+
+void CopyColorRampToAnimationManager(tfx_animation_manager_t *animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp) {
+	tfxKey hash = tfxXXHash64::hash(ramp->colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+	if (animation_manager->color_ramps.color_ramp_ids.ValidKey(hash)) {
+		animation_manager->emitter_properties[properties_index].color_ramp_index = animation_manager->color_ramps.color_ramp_ids.At(hash);
+	} else {
+		tfxU32 ramp_id = AddColorRampToBitmaps(&animation_manager->color_ramps, ramp);
+		animation_manager->emitter_properties[properties_index].color_ramp_index = ramp_id;
+		animation_manager->color_ramps.color_ramp_ids.Insert(hash, ramp_id);
 	}
 }
 
@@ -10108,6 +10119,18 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 			animation_manager->emitter_properties.push_back_copy(emitter_properties_stack.pop_back());
 		}
 
+	}
+
+	tfxU32 bitmap_index = 0;
+	tfx_str_t bitmap_file_name = "color_ramp_0";
+
+	while (FileExists(&package, bitmap_file_name.c_str())) {
+		tfx_package_entry_info_t *bitmap_file = GetPackageFile(&package, bitmap_file_name.c_str());
+		tfx_bitmap_t bitmap = tfxCreateBitmap(tfxCOLOR_RAMP_WIDTH, tfxCOLOR_RAMP_WIDTH, 4);
+		memcpy(bitmap.data, bitmap_file->data.data, bitmap.size);
+		bitmap_file_name.Clear();
+		bitmap_index++;
+		bitmap_file_name.Appendf("color_ramp_%u", bitmap_index);
 	}
 
 	FreePackage(&package);
@@ -11104,9 +11127,11 @@ void AddEffectEmitterProperties(tfx_animation_manager_t *animation_manager, tfx_
 				properties.start_frame_index = image.compute_shape_index;
 			}
 			effect->library->emitter_properties[effect->property_index].animation_property_index = animation_manager->emitter_properties.current_size;
-			properties.image_ptr = image.ptr;
 			tfx__readbarrier;
+			tfxU32 index = animation_manager->emitter_properties.current_size;
+			tfx_overtime_attributes_t &a = effect->library->emitter_attributes[effect->emitter_attributes].overtime;
 			animation_manager->emitter_properties.push_back_copy(properties);
+			CopyColorRampToAnimationManager(animation_manager, index, &a.color_ramps[0]);
 			for (auto &sub : GetEffectInfo(effect)->sub_effectors) {
 				AddEffectEmitterProperties(animation_manager, &sub, has_animated_shape);
 			}
@@ -11168,7 +11193,11 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			memcpy(&sprite, &sprites.billboard_instance[i], sizeof(tfx_billboard_instance_t));
 			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.additional = tfxU32(sprites.lerp_offset[i] * 65535.f);
-			sprite.additional |= (effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index << 16);
+			tfxU32 animation_property_index = effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index;
+			sprite.additional |= (animation_property_index << 16);
+			sprite.indexes &= 0x0000FFFF;
+			sprite.indexes |= (tfxColorRampIndex(animation_manager->emitter_properties[animation_property_index].color_ramp_index) << 24);
+			sprite.indexes |= (tfxColorRampLayer(animation_manager->emitter_properties[animation_property_index].color_ramp_index) << 16);
 			animation_manager->sprite_data_3d.push_back_copy(sprite);
 		}
 		metrics.total_memory_for_sprites = sizeof(tfx_sprite_data3d_t) * metrics.total_sprites;
@@ -11180,7 +11209,11 @@ void AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitte
 			memcpy(&sprite, &sprites.sprite_instance[i], sizeof(tfx_sprite_instance_t));
 			sprite.captured_index += sprite.captured_index == tfxINVALID ? 0 : metrics.start_offset;
 			sprite.additional = tfxU32(sprites.lerp_offset[i] * 65535.f);
-			sprite.additional |= (effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index << 16);
+			tfxU32 animation_property_index = effect->library->emitter_properties[sprites.uid[i].property_index].animation_property_index;
+			sprite.additional |= (animation_property_index << 16);
+			sprite.indexes &= 0x0000FFFF;
+			sprite.indexes |= (tfxColorRampIndex(animation_manager->emitter_properties[animation_property_index].color_ramp_index) << 24);
+			sprite.indexes |= (tfxColorRampLayer(animation_manager->emitter_properties[animation_property_index].color_ramp_index) << 16);
 			animation_manager->sprite_data_2d.push_back_copy(sprite);
 		}
 		metrics.total_memory_for_sprites = sizeof(tfx_sprite_data2d_t) * metrics.total_sprites;
@@ -11336,6 +11369,9 @@ void ResetAnimationManager(tfx_animation_manager_t *animation_manager) {
 	animation_manager->emitter_properties.clear();
 	animation_manager->effect_animation_info.Clear();
 	animation_manager->particle_shapes.Clear();
+	animation_manager->color_ramps.color_ramp_bitmaps.clear();
+	animation_manager->color_ramps.color_ramp_ids.Clear();
+	animation_manager->color_ramps.color_ramp_count = 0;
 
 	animation_manager->buffer_metrics.instances_size = 0;
 	animation_manager->buffer_metrics.instances_size_in_bytes = 0;
