@@ -10131,6 +10131,8 @@ tfxAPI tfxErrorFlags LoadSpriteData(const char *filename, tfx_animation_manager_
 		bitmap_file_name.Clear();
 		bitmap_index++;
 		bitmap_file_name.Appendf("color_ramp_%u", bitmap_index);
+		animation_manager->color_ramps.color_ramp_bitmaps.push_back(bitmap);
+		animation_manager->color_ramps.color_ramp_count++;
 	}
 
 	FreePackage(&package);
