@@ -11071,6 +11071,7 @@ void InitialiseAnimationManager(tfx_animation_manager_t *animation_manager, tfxU
 	animation_manager->maybe_render_instance_callback = nullptr;
     animation_manager->sprite_data_2d.set_alignment(16);
     animation_manager->sprite_data_3d.set_alignment(16);
+	animation_manager->color_ramps.color_ramp_count = 0;
 }
 
 void InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
