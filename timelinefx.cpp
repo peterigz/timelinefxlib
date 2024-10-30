@@ -13368,7 +13368,8 @@ void ControlParticleTransform3d(tfx_work_queue_t *queue, void *data) {
 			l = tfxWideAdd(l, tfxWideMul(alignment_vector_z, alignment_vector_z));
 			l = tfxWideMul(tfxWideRSqrt(l), l);
 
-			p_stretch.m = tfxWideMul(p_stretch.m, tfxWideDiv(l, pm.update_time_wide));    //This is too arbitrary, think up a better solution!
+			//We divide the length by the overal scale because we don't want the stretch to be effected by it.
+			p_stretch.m = tfxWideMul(p_stretch.m, tfxWideDiv(tfxWideDiv(l, e_scale), pm.update_time_wide));    //This is too arbitrary, think up a better solution!
 			alignment_vector_x = tfxWideDiv(alignment_vector_x, l);
 			alignment_vector_y = tfxWideDiv(alignment_vector_y, l);
 			alignment_vector_z = tfxWideDiv(alignment_vector_z, l);
@@ -13718,7 +13719,8 @@ void ControlParticlePosition2d(tfx_work_queue_t *queue, void *data) {
 		l = tfxWideAdd(l, tfxWideMul(stretch_velocity_y, stretch_velocity_y));
 		l = tfxWideMul(tfxWideRSqrt(l), l);
 
-		p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(l, tfxWideSetSingle(0.001f)));
+		//We divide the length by the overal scale because we don't want the stretch to be effected by it.
+		p_stretch.m = tfxWideMul(p_stretch.m, tfxWideMul(tfxWideDiv(l, overal_scale_wide), tfxWideSetSingle(0.001f)));
 		stretch_velocity_x = tfxWideDiv(stretch_velocity_x, l);
 		stretch_velocity_y = tfxWideDiv(stretch_velocity_y, l);
 
