@@ -5793,7 +5793,7 @@ struct tfx_frame_meta_t {
 //This is the exact struct to upload to the GPU for 2d instance_data, so timelinefx will prepare buffers so that they're ready to just
 //upload to the GPU in one go. Of course you don't *have* to do this you could loop over the buffer and draw the instance_data
 //in a different way if you don't have this option for some reason, but the former way is by far the most efficient.
-struct tfx_sprite_instance_t {			//44 bytes + padding to 48
+struct tfx_2d_instance_t {			//44 bytes + padding to 48
 	tfx_vec4_t position;							//The position of the sprite, rotation in w, stretch in z
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
@@ -5801,10 +5801,10 @@ struct tfx_sprite_instance_t {			//44 bytes + padding to 48
 	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	tfxU32 padding;
+	float lerp_offset;
 };
 
-struct tfx_billboard_instance_t {		//56 bytes + padding to 64
+struct tfx_3d_instance_t {		//56 bytes + padding to 64
 	tfx_vec4_t position;							//The position of the billboard
 	tfx_vec3_t rotations;				            //Rotations of the billboard with stretch in w
 	tfx_float8x4_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
@@ -5813,7 +5813,8 @@ struct tfx_billboard_instance_t {		//56 bytes + padding to 64
 	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
-	tfxU32 padding[2];
+	float lerp_offset;
+	tfxU32 padding;
 };
 
 //This struct of arrays is used for both 2d and 3d instance_data, but obviously the transform_3d data is either 2d or 3d depending on which effects you're using in the particle manager.
@@ -5866,8 +5867,8 @@ struct alignas(16) tfx_sprite_data2d_t {    //48 bytes
 
 //Animation sprite data that is used on the cpu to bake the data
 struct tfx_sprite_data_soa_t {
-	tfx_sprite_instance_t *sprite_instance;
-	tfx_billboard_instance_t *billboard_instance;
+	tfx_2d_instance_t *sprite_instance;
+	tfx_3d_instance_t *billboard_instance;
 	tfx_unique_sprite_id_t *uid;
 	float *lerp_offset;
 };
@@ -7540,16 +7541,16 @@ Get the sprite buffer in the particle manager containing all the 2d instance_dat
 This will be a pointer to the start of the buffer for uploading all the instance_data. If you want to do this for each effect then you can call GetEffectSpriteBuffer.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 */
-tfxAPI inline tfx_sprite_instance_t *GetSpriteBuffer(tfx_particle_manager_t *pm) {
-	return tfxCastBufferRef(tfx_sprite_instance_t, pm->instance_buffer);
+tfxAPI inline tfx_2d_instance_t *GetSpriteBuffer(tfx_particle_manager_t *pm) {
+	return tfxCastBufferRef(tfx_2d_instance_t, pm->instance_buffer);
 }
 
 /*
 Get the billboard buffer in the particle manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 */
-tfxAPI inline tfx_billboard_instance_t *GetBillboardBuffer(tfx_particle_manager_t *pm) {
-	return tfxCastBufferRef(tfx_billboard_instance_t, pm->instance_buffer);
+tfxAPI inline tfx_3d_instance_t *GetBillboardBuffer(tfx_particle_manager_t *pm) {
+	return tfxCastBufferRef(tfx_3d_instance_t, pm->instance_buffer);
 }
 
 /*
@@ -7822,7 +7823,7 @@ Get the transform vectors for a 3d sprite's previous position so that you can us
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI inline tfx_vec3_t GetCapturedSprite3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return static_cast<tfx_billboard_instance_t*>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xyz();
+	return static_cast<tfx_3d_instance_t*>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xyz();
 }
 
 /*
@@ -7832,7 +7833,7 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI inline tfx_vec2_t GetCapturedSprite2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index) {
-	return static_cast<tfx_sprite_instance_t*>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xy();
+	return static_cast<tfx_2d_instance_t*>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xy();
 }
 
 /*
@@ -7989,30 +7990,30 @@ You can use this function to get the sprite buffer of a specific effect.
 * @param pm						A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index			The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
-* @return						tfx_sprite_instance_t pointer to the buffer
+* @return						tfx_2d_instance_t pointer to the buffer
 */
-tfxAPI tfx_sprite_instance_t *GetEffectSpriteBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 *sprite_count);
+tfxAPI tfx_2d_instance_t *GetEffectSpriteBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 *sprite_count);
 
 /*
 You can use this function to get the billboard buffer of a specific effect. 
 * @param pm						A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index			The index of the effect. This is the index returned when calling AddEffectToParticleManager
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
-* @return						tfx_billboard_instance_t pointer to the buffer
+* @return						tfx_3d_instance_t pointer to the buffer
 */
-tfxAPI tfx_billboard_instance_t *GetEffectBillboardBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 *sprite_count);
+tfxAPI tfx_3d_instance_t *GetEffectBillboardBuffer(tfx_particle_manager_t *pm, tfxEffectID effect_index, tfxU32 *sprite_count);
 
 /*
 You can use this function to get each sprite buffer for every effect that is currently active in the particle manager. Generally you would call this inside a for loop for each layer.
 * @param pm						A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param tfxU32					The index of the sprite layer that you want
-* @param tfx_sprite_instance_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
+* @param tfx_2d_instance_t	Pass in a pointer which will be set to the current sprite buffer containing all of the sprite data for this frame.
 * @param tfx_effect_instance_data_t   Pass in a second pointer which will be set to the tfx_effect_instance_data_t containing all of the sprite buffer data. This can be used to gain access to all the sprite data if using double buffered instance_data (to interpolated with the previous frame).
 *                               You can use this with functions like GetCapturedEffectSprite3dTransform.
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
 * @return						true or false if the next sprite buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
 */
-tfxAPI bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfx_sprite_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
+tfxAPI bool GetNextSpriteBuffer(tfx_particle_manager_t *pm, tfx_2d_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
 
 /*
 You can use this function to get each billboard buffer for every effect that is currently active in the particle manager. Generally you would call this inside a for loop for each layer.
@@ -8023,7 +8024,7 @@ You can use this function to get each billboard buffer for every effect that is 
 * @param tfxU32					Pass in a pointer to a tfxU32 which will be set to the number of instance_data in the buffer.
 * @return						true or false if the next billboard buffer was found. False will be returned once there are no more effect sprite buffers in the particle manager
 */
-tfxAPI bool GetNextBillboardBuffer(tfx_particle_manager_t *pm, tfx_billboard_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
+tfxAPI bool GetNextBillboardBuffer(tfx_particle_manager_t *pm, tfx_3d_instance_t **sprites_soa, tfx_effect_instance_data_t **effect_sprites, tfxU32 *sprite_count);
 
 /*After calling GetNextBillboard/SpriteBuffer in a while loop you can call this to reset the index for the next frame
 * @param pm						A pointer to a tfx_particle_manager_t
