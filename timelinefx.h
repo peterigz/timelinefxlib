@@ -7492,7 +7492,7 @@ tfxAPI inline tfx_2d_instance_t *tfx_Get2dInstanceBuffer(tfx_particle_manager_t 
 Get the billboard buffer in the particle manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 */
-tfxAPI inline tfx_3d_instance_t *Get3dInstanceBuffer(tfx_particle_manager_t *pm) {
+tfxAPI inline tfx_3d_instance_t *tfx_Get3dInstanceBuffer(tfx_particle_manager_t *pm) {
 	return tfxCastBufferRef(tfx_3d_instance_t, pm->instance_buffer);
 }
 
