@@ -1016,8 +1016,8 @@ tfx_rgb_t tfx__hsv_to_rgb(tfx_hsv_t in)
 	return out;
 }
 
-float tfx__degrees_to_radians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
-float tfx__radians_to_degrees(float radians) { return radians * 57.295779513082320876798154814105f; }
+float tfx_DegreesToRadians(float degrees) { return degrees * 0.01745329251994329576923690768489f; }
+float tfx_RadiansToDegrees(float radians) { return radians * 57.295779513082320876798154814105f; }
 
 float tfx__length_vec3_nosqr(tfx_vec3_t const *v) {
 	return v->x * v->x + v->y * v->y + v->z * v->z;
@@ -3142,7 +3142,7 @@ void tfx__emitter_property_graphs(tfx_effect_emitter_t *effect, bool add_node, b
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.emitter_height, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.emitter_height.type = tfxProperty_emitter_height;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.emitter_depth, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.emitter_depth.type = tfxProperty_emitter_depth;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.extrusion, 0.f, tfxDimensionsPreset, add_node); library->emitter_attributes[emitter_attributes].properties.extrusion.type = tfxProperty_extrusion;
-	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.arc_size, tfx__degrees_to_radians(360.f), tfxArcPreset, add_node); library->emitter_attributes[emitter_attributes].properties.arc_size.type = tfxProperty_arc_size;
+	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.arc_size, tfx_DegreesToRadians(360.f), tfxArcPreset, add_node); library->emitter_attributes[emitter_attributes].properties.arc_size.type = tfxProperty_arc_size;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.arc_offset, 0.f, tfxArcPreset, add_node); library->emitter_attributes[emitter_attributes].properties.arc_offset.type = tfxProperty_arc_offset;
 	if (compile) {
 		tfx__compile_library_property_graphs(library, emitter_attributes);
@@ -3276,7 +3276,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_emitter_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].properties.emitter_height.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.emitter_height, 0.f, tfxDimensionsPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.emitter_depth.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.emitter_depth, 0.f, tfxDimensionsPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.extrusion.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.extrusion, 0.f, tfxDimensionsPreset);
-		if (library->emitter_attributes[emitter_attributes].properties.arc_size.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.arc_size, tfx__degrees_to_radians(360.f), tfxArcPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.arc_size.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.arc_size, tfx_DegreesToRadians(360.f), tfxArcPreset);
 		if (library->emitter_attributes[emitter_attributes].properties.arc_offset.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.arc_offset, 0.f, tfxArcPreset);
 
 		if (library->emitter_attributes[emitter_attributes].variation.life.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].variation.life, 0.f, tfxLifePreset);
@@ -3883,17 +3883,17 @@ void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_generator_type ge
 	case tfxPathGenerator_s_curve:
 		if (path->flags & tfxPathFlags_2d) {
 			tfx__reset_graph(&path->distance, 25.f, path->distance.graph_preset, true, 1.f);
-			tfx__reset_graph(&path->angle_x, tfx__degrees_to_radians(90.f), path->angle_x.graph_preset, true, 1.f);
-			tfx__add_graph_node_values(&path->angle_x, .25f, tfx__degrees_to_radians(110.f));
-			tfx__add_graph_node_values(&path->angle_x, .75f, tfx__degrees_to_radians(70.f));
-			tfx__add_graph_node_values(&path->angle_x, 1.f, tfx__degrees_to_radians(90.f));
+			tfx__reset_graph(&path->angle_x, tfx_DegreesToRadians(90.f), path->angle_x.graph_preset, true, 1.f);
+			tfx__add_graph_node_values(&path->angle_x, .25f, tfx_DegreesToRadians(110.f));
+			tfx__add_graph_node_values(&path->angle_x, .75f, tfx_DegreesToRadians(70.f));
+			tfx__add_graph_node_values(&path->angle_x, 1.f, tfx_DegreesToRadians(90.f));
 		}
 		else {
 			tfx__reset_graph(&path->distance, .4f, path->distance.graph_preset, true, 1.f);
 			tfx__reset_graph(&path->angle_x, -0.f, path->angle_x.graph_preset, true, 1.f);
-			tfx__add_graph_node_values(&path->angle_x, .25f, tfx__degrees_to_radians(20.f));
-			tfx__add_graph_node_values(&path->angle_x, .75f, tfx__degrees_to_radians(-20.f));
-			tfx__add_graph_node_values(&path->angle_x, 1.f, tfx__degrees_to_radians(0.f));
+			tfx__add_graph_node_values(&path->angle_x, .25f, tfx_DegreesToRadians(20.f));
+			tfx__add_graph_node_values(&path->angle_x, .75f, tfx_DegreesToRadians(-20.f));
+			tfx__add_graph_node_values(&path->angle_x, 1.f, tfx_DegreesToRadians(0.f));
 		}
 		break;
 	case tfxPathGenerator_bend:
@@ -5573,17 +5573,17 @@ tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library_t *library, tfx_effect
 	a.color_option = tfx_export_color_options::tfxFullColor;
 	a.export_option = tfx_export_options::tfxSpriteSheet;
 	a.camera_settings.camera_floor_height = -10.f;
-	a.camera_settings.camera_fov = tfx__degrees_to_radians(60);
-	a.camera_settings.camera_pitch = tfx__degrees_to_radians(-30.f);
-	a.camera_settings.camera_yaw = tfx__degrees_to_radians(-90.f);
+	a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
+	a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
+	a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
 	a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	a.camera_settings.camera_isometric = false;
 	a.camera_settings.camera_isometric_scale = 5.f;
 	a.camera_settings.camera_hide_floor = false;
 	a.camera_settings_orthographic.camera_floor_height = -10.f;
-	a.camera_settings_orthographic.camera_fov = tfx__degrees_to_radians(60);
-	a.camera_settings_orthographic.camera_pitch = tfx__degrees_to_radians(-30.f);
-	a.camera_settings_orthographic.camera_yaw = tfx__degrees_to_radians(-90.f);
+	a.camera_settings_orthographic.camera_fov = tfx_DegreesToRadians(60);
+	a.camera_settings_orthographic.camera_pitch = tfx_DegreesToRadians(-30.f);
+	a.camera_settings_orthographic.camera_yaw = tfx_DegreesToRadians(-90.f);
 	a.camera_settings_orthographic.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	a.camera_settings_orthographic.camera_isometric = true;
 	a.camera_settings_orthographic.camera_isometric_scale = 5.f;
@@ -5611,17 +5611,17 @@ void tfx__add_library_sprite_sheet_settings_sub(tfx_library_t *library, tfx_effe
 		a.color_option = tfx_export_color_options::tfxFullColor;
 		a.export_option = tfx_export_options::tfxSpriteSheet;
 		a.camera_settings.camera_floor_height = -10.f;
-		a.camera_settings.camera_fov = tfx__degrees_to_radians(60);
-		a.camera_settings.camera_pitch = tfx__degrees_to_radians(-30.f);
-		a.camera_settings.camera_yaw = tfx__degrees_to_radians(-90.f);
+		a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
+		a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
+		a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
 		a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 		a.camera_settings.camera_isometric = false;
 		a.camera_settings.camera_isometric_scale = 5.f;
 		a.camera_settings.camera_hide_floor = false;
 		a.camera_settings_orthographic.camera_floor_height = -10.f;
-		a.camera_settings_orthographic.camera_fov = tfx__degrees_to_radians(60);
-		a.camera_settings_orthographic.camera_pitch = tfx__degrees_to_radians(-30.f);
-		a.camera_settings_orthographic.camera_yaw = tfx__degrees_to_radians(-90.f);
+		a.camera_settings_orthographic.camera_fov = tfx_DegreesToRadians(60);
+		a.camera_settings_orthographic.camera_pitch = tfx_DegreesToRadians(-30.f);
+		a.camera_settings_orthographic.camera_yaw = tfx_DegreesToRadians(-90.f);
 		a.camera_settings_orthographic.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 		a.camera_settings_orthographic.camera_isometric = true;
 		a.camera_settings_orthographic.camera_isometric_scale = 5.f;
@@ -5653,9 +5653,9 @@ tfxU32 tfx__add_library_sprite_data_settings(tfx_library_t *library, tfx_effect_
 	a.needs_exporting = 0;
 	a.recording_frame_rate = 60.f;
 	//a.camera_settings.camera_floor_height = -10.f;
-	//a.camera_settings.camera_fov = tfx__degrees_to_radians(60);
-	//a.camera_settings.camera_pitch = tfx__degrees_to_radians(-30.f);
-	//a.camera_settings.camera_yaw = tfx__degrees_to_radians(-90.f);
+	//a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
+	//a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
+	//a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
 	//a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	//a.camera_settings.camera_isometric = false;
 	//a.camera_settings.camera_isometric_scale = 5.f;
@@ -5695,9 +5695,9 @@ tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library_t *library, t
 	TFX_ASSERT(effect->type == tfxEffectType || effect->type == tfxStage);
 	tfx_preview_camera_settings_t a{};
 	a.camera_settings.camera_floor_height = -10.f;
-	a.camera_settings.camera_fov = tfx__degrees_to_radians(60);
-	a.camera_settings.camera_pitch = tfx__degrees_to_radians(-30.f);
-	a.camera_settings.camera_yaw = tfx__degrees_to_radians(-90.f);
+	a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
+	a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
+	a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
 	a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	a.camera_settings.camera_isometric = false;
 	a.camera_settings.camera_isometric_scale = 5.f;
@@ -5714,9 +5714,9 @@ void tfx__add_library_preview_camera_settings_sub_effects(tfx_library_t *library
 	if (effect->type == tfxEffectType) {
 		tfx_preview_camera_settings_t a{};
 		a.camera_settings.camera_floor_height = -10.f;
-		a.camera_settings.camera_fov = tfx__degrees_to_radians(60);
-		a.camera_settings.camera_pitch = tfx__degrees_to_radians(-30.f);
-		a.camera_settings.camera_yaw = tfx__degrees_to_radians(-90.f);
+		a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
+		a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
+		a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
 		a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 		a.camera_settings.camera_isometric = false;
 		a.camera_settings.camera_isometric_scale = 5.f;
@@ -5740,9 +5740,9 @@ void tfx__add_library_preview_camera_settings_sub_effects(tfx_library_t *library
 tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library_t *library) {
 	tfx_preview_camera_settings_t a{};
 	a.camera_settings.camera_floor_height = -10.f;
-	a.camera_settings.camera_fov = tfx__degrees_to_radians(60);
-	a.camera_settings.camera_pitch = tfx__degrees_to_radians(-30.f);
-	a.camera_settings.camera_yaw = tfx__degrees_to_radians(-90.f);
+	a.camera_settings.camera_fov = tfx_DegreesToRadians(60);
+	a.camera_settings.camera_pitch = tfx_DegreesToRadians(-30.f);
+	a.camera_settings.camera_yaw = tfx_DegreesToRadians(-90.f);
 	a.camera_settings.camera_position = tfx_vec3_t(0.f, 3.5f, 7.5f);
 	a.camera_settings.camera_isometric = false;
 	a.camera_settings.camera_isometric_scale = 5.f;

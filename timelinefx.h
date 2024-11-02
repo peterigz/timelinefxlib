@@ -6552,8 +6552,8 @@ tfxINTERNAL tfx128 tfx__dot128_xyz(const tfx128 *x1, const tfx128 *y1, const tfx
 tfxINTERNAL tfx128 tfx__dot128_xy(const tfx128 *x1, const tfx128 *y1, const tfx128 *x2, const tfx128 *y2);
 tfxAPI_EDITOR tfx_hsv_t tfx__rgb_to_hsv(tfx_rgb_t in);
 tfxAPI_EDITOR tfx_rgb_t tfx__hsv_to_rgb(tfx_hsv_t in);
-tfxAPI_EDITOR float tfx__degrees_to_radians(float degrees);
-tfxAPI_EDITOR float tfx__radians_to_degrees(float radians);
+tfxAPI float tfx_DegreesToRadians(float degrees);
+tfxAPI float tfx_RadiansToDegrees(float radians);
 
 tfxAPI_EDITOR float tfx__length_vec3_nosqr(tfx_vec3_t const *v);
 tfxINTERNAL float tfx__length_vec4_nosqr(tfx_vec4_t const *v);
