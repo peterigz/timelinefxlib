@@ -6931,7 +6931,6 @@ tfxAPI_EDITOR tfx_vec2_t tfx__get_cubic_bezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx
 tfxAPI_EDITOR tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
 tfxAPI_EDITOR tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t);
 tfxAPI_EDITOR float tfx__get_bezier_value(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
-tfxAPI_EDITOR float tfx__get_distance(float fromx, float fromy, float tox, float toy);
 tfxAPI_EDITOR float inline tfx__get_vector_angle(float x, float y) { return atan2(x, -y); }
 tfxAPI_EDITOR bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxAPI_EDITOR void tfx__compile_graph(tfx_graph_t *graph);
@@ -8679,8 +8678,13 @@ tfxAPI inline tfx_wide_lerp_transform_result_t tfx_InterpolateSpriteTransform(co
 	return out;
 }
 
-
 #endif
+
+tfxAPI inline float tfx_GetDistance(float fromx, float fromy, float tox, float toy) {
+	float w = tox - fromx;
+	float h = toy - fromy;
+	return sqrtf(w * w + h * h);
+}
 
 } //namespace
 #endif

@@ -7603,15 +7603,6 @@ tfx_graph_t::~tfx_graph_t() {
 
 const float BEZIER_ACCURACY = 0.01f;
 
-float tfx__get_distance(float fromx, float fromy, float tox, float toy) {
-
-	float w = tox - fromx;
-	float h = toy - fromy;
-
-	return sqrtf(w * w + h * h);
-
-}
-
 tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
 	tfx_vec2_t b;
 	float ti = 1.f - t;
@@ -17314,7 +17305,7 @@ void tfx__spawn_particle_micro_update_2d(tfx_work_queue_t *queue, void *data) {
 			float splatx = tfx_RandomRangeFromTo(&random, -splatter, splatter);
 			float splaty = tfx_RandomRangeFromTo(&random, -splatter, splatter);
 
-			while (tfx__get_distance(0, 0, splatx, splaty) >= splattertemp && splattertemp > 0) {
+			while (tfx_GetDistance(0, 0, splatx, splaty) >= splattertemp && splattertemp > 0) {
 				splatx = tfx_RandomRangeFromTo(&random, -splatter, splatter);
 				splaty = tfx_RandomRangeFromTo(&random, -splatter, splatter);
 			}
