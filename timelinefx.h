@@ -7214,10 +7214,6 @@ tfxAPI_EDITOR void tfx__clear_library(tfx_library_t *library);
 tfxAPI_EDITOR void tfx__init_library(tfx_library_t *library);
 tfxAPI_EDITOR tfx_str256_t tfx__find_new_path_name(tfx_library_t *library, const tfx_str256_t &path);
 tfxINTERNAL tfx_str64_t tfx__get_name_from_path(tfx_str256_t *path);
-//Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
-//You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
-//These are mainly for use by the editor, use effect templates instead, see tfx_PrepareEffectTemplate.
-tfxAPI_EDITOR tfx_effect_emitter_t *tfx__get_library_effect_by_path(tfx_library_t *library, const char *path);
 tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library_t *library, const char *path);
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library_t *library, tfxKey key);
 //Get an effect by it's path hash key
@@ -7419,6 +7415,14 @@ inline tfxAPI void ListEffectNames(tfx_library_t *library) {
 		printf("%i) %s\n", index++, tfx_GettEffectInfo(&effect)->name.c_str());
 	}
 }
+
+/*
+Get an effect in the library by it's path. So for example, if you want to get a pointer to the emitter "spark" in effect "explosion" then you could do GetEffect("explosion/spark")
+You will need this function to apply user data and update callbacks to effects and emitters before adding the effect to the particle manager
+* @param tfx_library_t                A valid pointer to a tfx_library_t
+* @param const char *path             Path to the effect or emitter
+*/
+tfxAPI tfx_effect_emitter_t *tfx_GetLibraryEffectPath(tfx_library_t *library, const char *path);
 
 //[Particle Manager functions]
 

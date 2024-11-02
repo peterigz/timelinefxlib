@@ -5121,7 +5121,7 @@ tfx_effect_emitter_t *tfx__add_library_stage(tfx_library_t *library, tfx_str64_t
 	return &library->effects.back();
 }
 
-tfx_effect_emitter_t *tfx__get_library_effect_by_path(tfx_library_t *library, const char *path) {
+tfx_effect_emitter_t *tfx_GetLibraryEffectPath(tfx_library_t *library, const char *path) {
 	TFX_ASSERT(library->effect_paths.ValidName(path));        //Effect was not found by that name
 	return library->effect_paths.At(path);
 }
@@ -5140,7 +5140,7 @@ tfx_effect_emitter_t *tfx__get_library_effect_by_key(tfx_library_t *library, tfx
 }
 
 void tfx__prepare_library_effect_template_path(tfx_library_t *library, tfx_str256_t path, tfx_effect_template_t *effect_template) {
-	tfx_effect_emitter_t *effect = tfx__get_library_effect_by_path(library, path.c_str());
+	tfx_effect_emitter_t *effect = tfx_GetLibraryEffectPath(library, path.c_str());
 	TFX_ASSERT(effect);                                //Effect was not found, make sure the path exists
 	TFX_ASSERT(effect->type == tfxEffectType);        //The effect must be an effect type, not an emitter
 	effect_template->original_effect_hash = effect->path_hash;
@@ -11006,7 +11006,7 @@ void tfx_ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter
 	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
 	tfx_effect_emitter_t *emitter = t->paths.At(emitter_path);
 	tfx_graph_t *graph = tfx__get_effect_graph_by_type(emitter, graph_type);
-	tfx_effect_emitter_t *original_emitter = tfx__get_library_effect_by_path(t->effect.library, emitter_path);
+	tfx_effect_emitter_t *original_emitter = tfx_GetLibraryEffectPath(t->effect.library, emitter_path);
 	tfx_graph_t *original_graph = tfx__get_effect_graph_by_type(original_emitter, graph_type);
 	tfx__copy_graph(original_graph, graph, false);
 	tfx__multiply_all_graph_values(graph, amount);
