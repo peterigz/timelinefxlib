@@ -7127,7 +7127,7 @@ tfxINTERNAL void AddTemplatePath(tfx_effect_template_t *effect_template, tfx_eff
 //--------------------------------
 //Library functions, internal/Editor functions
 //--------------------------------
-tfxAPI tfx_effect_emitter_info_t *tfx_GettEffectInfo(tfx_effect_emitter_t *e);                    //Required by editor
+tfxAPI tfx_effect_emitter_info_t *tfx_GetEffectInfo(tfx_effect_emitter_t *e);                    //Required by editor
 tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library_t *library, tfx_str256_t path, tfx_effect_template_t *effect);
 tfxINTERNAL void tfx__prepare_library_effect_template_effect(tfx_library_t *library, tfx_effect_emitter_t *effect, tfx_effect_template_t *effect_template);
 //Copy the shape data to a memory location, like a staging buffer ready to be uploaded to the GPU for use in a compute shader
@@ -7412,7 +7412,7 @@ Output all the effect names in a library to the console
 inline tfxAPI void ListEffectNames(tfx_library_t *library) {
 	tfxU32 index = 0;
 	for (auto &effect : library->effects) {
-		printf("%i) %s\n", index++, tfx_GettEffectInfo(&effect)->name.c_str());
+		printf("%i) %s\n", index++, tfx_GetEffectInfo(&effect)->name.c_str());
 	}
 }
 
@@ -8098,7 +8098,7 @@ Get the name of an effect
 * @returns                const char * name
 */
 inline tfxAPI const char *tfx_GetEffectName(tfx_effect_emitter_t *effect) {
-	return tfx_GettEffectInfo(effect)->name.c_str();
+	return tfx_GetEffectInfo(effect)->name.c_str();
 }
 
 //-------Functions related to tfx_animation_manager_t--------
