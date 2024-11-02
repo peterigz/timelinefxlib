@@ -6560,7 +6560,7 @@ tfxINTERNAL float tfx__length_vec4_nosqr(tfx_vec4_t const *v);
 tfxAPI_EDITOR float tfx__length_vec3(tfx_vec3_t const *v);
 tfxINTERNAL float tfx__length_vec4(tfx_vec4_t const *v);
 tfxINTERNAL float tfx__has_length_vec3(tfx_vec3_t const *v);
-tfxAPI tfx_vec3_t tfx_NormaliseVec3(tfx_vec3_t const *v);
+tfxAPI tfx_vec3_t tfx_NormalizeVec3(tfx_vec3_t const *v);
 tfxAPI tfx_vec4_t tfx_NormalizeVec4(tfx_vec4_t const *v);
 tfxINTERNAL tfx_vec3_t tfx__cross_product_vec3(tfx_vec3_t *a, tfx_vec3_t *b);
 tfxINTERNAL void tfx__wide_cross_product(tfxWideFloat ax, tfxWideFloat ay, tfxWideFloat az, tfxWideFloat *bx, tfxWideFloat *by, tfxWideFloat *bz, tfxWideFloat *rx, tfxWideFloat *ry, tfxWideFloat *rz);

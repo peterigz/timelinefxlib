@@ -857,7 +857,7 @@ int tfx__vertex_for_edge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_v
 	point_cache->Insert(key, vertices->size());
 
 	tfx_vec3_t edge_sum = (*vertices)[first] + (*vertices)[second];
-	tfx_vec3_t point = tfx_NormaliseVec3(&edge_sum);
+	tfx_vec3_t point = tfx_NormalizeVec3(&edge_sum);
 	vertices->push_back(point);
 
 	return vertices->size() - 1;
@@ -1039,7 +1039,7 @@ float tfx__has_length_vec3(tfx_vec3_t const *v) {
 	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
 }
 
-tfx_vec3_t tfx_NormaliseVec3(tfx_vec3_t const *v) {
+tfx_vec3_t tfx_NormalizeVec3(tfx_vec3_t const *v) {
 	float length = tfx__length_vec3(v);
 	return length > 0.f ? tfx_vec3_t(v->x / length, v->y / length, v->z / length) : *v;
 }
@@ -2966,7 +2966,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			else
 				to_handle = world_position - emitter.world_position;
 
-			to_handle = tfx_NormaliseVec3(&to_handle);
+			to_handle = tfx_NormalizeVec3(&to_handle);
 
 		}
 		else if (emission_direction == tfxInwards) {
@@ -2976,7 +2976,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			else
 				to_handle = emitter.world_position - world_position;
 
-			to_handle = tfx_NormaliseVec3(&to_handle);
+			to_handle = tfx_NormalizeVec3(&to_handle);
 
 		}
 		else if (emission_direction == tfxBothways) {
@@ -2997,7 +2997,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			}
 
 			emitter.emission_alternator = !emitter.emission_alternator;
-			to_handle = tfx_NormaliseVec3(&to_handle);
+			to_handle = tfx_NormalizeVec3(&to_handle);
 		}
 		else if (emission_direction == tfxSurface && emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
 			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
