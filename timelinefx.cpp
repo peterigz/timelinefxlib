@@ -10808,12 +10808,16 @@ void tfx_SetAnimationManagerUserData(tfx_animation_manager_t *animation_manager,
 	animation_manager->user_data = user_data;
 }
 
-tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library_t *library, const char *path) {
+tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettingsByPath(tfx_library_t *library, const char *path) {
 	if (library->effect_paths.ValidName(path)) {
 		tfx_effect_emitter_t *effect = tfx_GetLibraryEffectPath(library, path);
 		return &library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 	}
 	return nullptr;
+}
+
+tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library_t *library, tfx_effect_emitter_t *effect) {
+	return &library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 }
 
 tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager_t *animation_manager, tfxKey path, tfxU32 start_frame) {

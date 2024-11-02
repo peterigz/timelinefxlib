@@ -8175,12 +8175,20 @@ to cull instances that are outside of the view frustum for example
 tfxAPI void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager_t *animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data)));
 
 /*
+Get the sprite data settings for an effect in a library. Sprite data settings are the settings for an effect in the editor relating to setting up pre-baked effects
+* @param library				Pointer to the tfx_library_t where the effect is stored
+* @param effect					Pointer the the effect that you want the sprite settings for.
+* @returns						Pointer to the tfx_sprite_data_settings
+*/
+tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library_t *library, tfx_effect_emitter_t *effect);
+
+/*
 Get the sprite data settings for an effect in a library by it's path. Sprite data settings are the settings for an effect in the editor relating to setting up pre-baked effects
 * @param library				Pointer to the tfx_library_t where the effect is stored
 * @param path					const char* string of the path to the effect. Must be the path to a root effect.
 * @returns						Pointer to the tfx_sprite_data_settings
 */
-tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library_t *library, const char *path);
+tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettingsByPath(tfx_library_t *library, const char *path);
 
 /*
 Set the user data in a tfx_animation_manager_t which can get passed through to callback functions when updated the animation manager
