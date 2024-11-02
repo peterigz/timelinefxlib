@@ -857,7 +857,7 @@ int tfx__vertex_for_edge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_v
 	point_cache->Insert(key, vertices->size());
 
 	tfx_vec3_t edge_sum = (*vertices)[first] + (*vertices)[second];
-	tfx_vec3_t point = tfx__normalize_vec3(&edge_sum);
+	tfx_vec3_t point = tfx_NormaliseVec3(&edge_sum);
 	vertices->push_back(point);
 
 	return vertices->size() - 1;
@@ -1039,12 +1039,12 @@ float tfx__has_length_vec3(tfx_vec3_t const *v) {
 	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
 }
 
-tfx_vec3_t tfx__normalize_vec3(tfx_vec3_t const *v) {
+tfx_vec3_t tfx_NormaliseVec3(tfx_vec3_t const *v) {
 	float length = tfx__length_vec3(v);
 	return length > 0.f ? tfx_vec3_t(v->x / length, v->y / length, v->z / length) : *v;
 }
 
-tfx_vec4_t tfx__normalize_vec4(tfx_vec4_t const *v) {
+tfx_vec4_t tfx_NormalizeVec4(tfx_vec4_t const *v) {
 	if (v->x == 0 && v->y == 0 && v->z == 0 && v->w == 0) return tfx_vec4_t(1.f, 0.f, 0.f, 0.f);
 	float length = tfx__length_vec4(v);
 	return tfx_vec4_t(v->x / length, v->y / length, v->z / length, v->w / length);
@@ -1423,7 +1423,7 @@ tfx_vec3_t tfx__normalize_vec3_fast(tfx_vec3_t const *v) {
 	return *v * tfx__quake_sqrt(tfx__dot_product_vec3(v, v));
 }
 
-tfx_vec2_t tfx__normalize_vec2(tfx_vec2_t const *v) {
+tfx_vec2_t tfx_NormaliseVec2(tfx_vec2_t const *v) {
 	float length = tfx__vec2_length_fast(v);
 	return tfx_vec2_t(v->x / length, v->y / length);
 }
@@ -2966,7 +2966,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			else
 				to_handle = world_position - emitter.world_position;
 
-			to_handle = tfx__normalize_vec3(&to_handle);
+			to_handle = tfx_NormaliseVec3(&to_handle);
 
 		}
 		else if (emission_direction == tfxInwards) {
@@ -2976,7 +2976,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			else
 				to_handle = emitter.world_position - world_position;
 
-			to_handle = tfx__normalize_vec3(&to_handle);
+			to_handle = tfx_NormaliseVec3(&to_handle);
 
 		}
 		else if (emission_direction == tfxBothways) {
@@ -2997,7 +2997,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			}
 
 			emitter.emission_alternator = !emitter.emission_alternator;
-			to_handle = tfx__normalize_vec3(&to_handle);
+			to_handle = tfx_NormaliseVec3(&to_handle);
 		}
 		else if (emission_direction == tfxSurface && emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
 			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
@@ -16576,7 +16576,7 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 		if (path->extrusion_type == tfxExtrusionLinear) {
 			if (properties.emission_direction == tfxPathGradient) {
 				velocity_direction = tfx__catmull_rom_spline_gradient_2d_soa(&path->node_soa.x[node], &path->node_soa.y[node], t);
-				velocity_direction = tfx__normalize_vec2(&velocity_direction);
+				velocity_direction = tfx_NormaliseVec2(&velocity_direction);
 			}
 			float radius = extrusion * .5f;
 			path_offset = tfx_RandomRangeFromTo(&random, -radius, radius);
@@ -16595,7 +16595,7 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 			local_position_y = ry * radius * emitter.emitter_size.y;
 			if (properties.emission_direction == tfxPathGradient) {
 				velocity_direction = tfx__catmull_rom_spline_gradient_2d_soa(&path->node_soa.x[node], &path->node_soa.y[node], t);
-				velocity_direction = tfx__normalize_vec2(&velocity_direction);
+				velocity_direction = tfx_NormaliseVec2(&velocity_direction);
 				rx = cosf(path_offset);
 				ry = sinf(path_offset);
 				tfx_vec2_t v = velocity_direction;
