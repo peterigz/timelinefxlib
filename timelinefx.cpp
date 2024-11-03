@@ -857,7 +857,7 @@ int tfx__vertex_for_edge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_v
 	point_cache->Insert(key, vertices->size());
 
 	tfx_vec3_t edge_sum = (*vertices)[first] + (*vertices)[second];
-	tfx_vec3_t point = tfx_NormalizeVec3(&edge_sum);
+	tfx_vec3_t point = tfx__normalize_vec3(&edge_sum);
 	vertices->push_back(point);
 
 	return vertices->size() - 1;
@@ -1039,12 +1039,12 @@ float tfx__has_length_vec3(tfx_vec3_t const *v) {
 	return (v->x == 0 && v->y == 0 && v->z == 0) ? 0.f : 1.f;
 }
 
-tfx_vec3_t tfx_NormalizeVec3(tfx_vec3_t const *v) {
+tfx_vec3_t tfx__normalize_vec3(tfx_vec3_t const *v) {
 	float length = tfx__length_vec3(v);
 	return length > 0.f ? tfx_vec3_t(v->x / length, v->y / length, v->z / length) : *v;
 }
 
-tfx_vec4_t tfx_NormalizeVec4(tfx_vec4_t const *v) {
+tfx_vec4_t tfx__normalize_vec4(tfx_vec4_t const *v) {
 	if (v->x == 0 && v->y == 0 && v->z == 0 && v->w == 0) return tfx_vec4_t(1.f, 0.f, 0.f, 0.f);
 	float length = tfx__length_vec4(v);
 	return tfx_vec4_t(v->x / length, v->y / length, v->z / length, v->w / length);
@@ -1064,13 +1064,11 @@ void tfx__wide_cross_product(tfxWideFloat ax, tfxWideFloat ay, tfxWideFloat az, 
 	*rz = tfxWideSub(tfxWideMul(ax, *by), tfxWideMul(ay, *bx));
 }
 
-float tfx__dot_product_vec4(const tfx_vec4_t *a, const tfx_vec4_t *b)
-{
+float tfx__dot_product_vec4(const tfx_vec4_t *a, const tfx_vec4_t *b) {
 	return (a->x * b->x + a->y * b->y + a->z * b->z + a->w * b->w);
 }
 
-float tfx__dot_product_vec3(const tfx_vec3_t *a, const tfx_vec3_t *b)
-{
+float tfx__dot_product_vec3(const tfx_vec3_t *a, const tfx_vec3_t *b) {
 	return (a->x * b->x + a->y * b->y + a->z * b->z);
 }
 
@@ -1079,14 +1077,14 @@ float tfx__dot_product_vec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
 	return (a->x * b->x + a->y * b->y);
 }
 
-tfx_quaternion_t QuaternionFromAxisAngle(float x, float y, float z, float angle) {
+tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle) {
 	float half_angle = angle * .5f;
 	float sin_half_angle = sinf(half_angle);
 
 	return tfx_quaternion_t(cos(half_angle), x * sin_half_angle, y * sin_half_angle, z * sin_half_angle);
 }
 
-tfx_quaternion_t QuaternionFromDirection(tfx_vec3_t *normalised_dir) {
+tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t *normalised_dir) {
 	// Initial direction (default y-axis) because this is how paths are generated
 	tfx_vec3_t initial_dir = { 0.0f, 1.0f, 0.0f };
 
@@ -1169,7 +1167,7 @@ void tfx__wide_ellipse_surface_normal(const tfxWideFloat *x, const tfxWideFloat 
 	*normal_z = tfxWideDiv(tfxWideMul(scale, *z), d2);
 }
 
-tfx_vec2_t tfx__catmull_rom_spline_2d(const tfx_vec4_t *p0, const tfx_vec4_t *p1, const tfx_vec4_t *p2, const tfx_vec4_t *p3, float t) {
+void tfx__catmull_rom_spline_2d(const tfx_vec4_t *p0, const tfx_vec4_t *p1, const tfx_vec4_t *p2, const tfx_vec4_t *p3, float t, float vec[2]) {
 	float t2 = t * t;
 	float t3 = t2 * t;
 
@@ -1181,10 +1179,11 @@ tfx_vec2_t tfx__catmull_rom_spline_2d(const tfx_vec4_t *p0, const tfx_vec4_t *p1
 	float x = p0->x * b0 + p1->x * b1 + p2->x * b2 + p3->x * b3;
 	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
 
-	return { x * 0.5f, y * 0.5f };
+	vec[0] = x * 0.5f;
+	vec[1] = y * 0.5f;
 }
 
-tfx_vec2_t tfx__catmull_rom_spline_2d_soa(const float *p_x, const float *p_y, int p0, float t) {
+void tfx__catmull_rom_spline_2d_soa(const float *p_x, const float *p_y, int p0, float t, float vec2[2]) {
 	float t2 = t * t;
 	float t3 = t2 * t;
 
@@ -1200,7 +1199,8 @@ tfx_vec2_t tfx__catmull_rom_spline_2d_soa(const float *p_x, const float *p_y, in
 	float x = p_x[p0] * b0 + p_x[p1] * b1 + p_x[p2] * b2 + p_x[p3] * b3;
 	float y = p_y[p0] * b0 + p_y[p1] * b1 + p_y[p2] * b2 + p_y[p3] * b3;
 
-	return { x * .5f, y * .5f };
+	vec2[0] = x * .5f;
+	vec2[1] = y * .5f;
 }
 
 tfx_vec2_t tfx__catmull_rom_spline_gradient_2d_soa(const float *px, const float *py, float t) {
@@ -1217,7 +1217,7 @@ tfx_vec2_t tfx__catmull_rom_spline_gradient_2d_soa(const float *px, const float 
 	return { x * 0.5f, y * 0.5f };
 }
 
-tfx_vec3_t tfx__catmull_rom_spline_3d_soa(const float *p_x, const float *p_y, const float *p_z, int p0, float t) {
+void tfx__catmull_rom_spline_3d_soa(const float *p_x, const float *p_y, const float *p_z, int p0, float t, float vec[3]) {
 	float t2 = t * t;
 	float t3 = t2 * t;
 
@@ -1234,10 +1234,12 @@ tfx_vec3_t tfx__catmull_rom_spline_3d_soa(const float *p_x, const float *p_y, co
 	float y = p_y[p0] * b0 + p_y[p1] * b1 + p_y[p2] * b2 + p_y[p3] * b3;
 	float z = p_z[p0] * b0 + p_z[p1] * b1 + p_z[p2] * b2 + p_z[p3] * b3;
 
-	return { x * .5f, y * .5f, z * .5f };
+	vec[0] = x * .5f;
+	vec[1] = y * .5f;
+	vec[2] = z * .5f;
 }
 
-tfx_vec3_t tfx__catmull_rom_spline_3d(const tfx_vec4_t *p0, const tfx_vec4_t *p1, const tfx_vec4_t *p2, const tfx_vec4_t *p3, float t) {
+void tfx__catmull_rom_spline_3d(const tfx_vec4_t *p0, const tfx_vec4_t *p1, const tfx_vec4_t *p2, const tfx_vec4_t *p3, float t, float vec[3]) {
 	float t2 = t * t;
 	float t3 = t2 * t;
 
@@ -1250,10 +1252,12 @@ tfx_vec3_t tfx__catmull_rom_spline_3d(const tfx_vec4_t *p0, const tfx_vec4_t *p1
 	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
 	float z = p0->z * b0 + p1->z * b1 + p2->z * b2 + p3->z * b3;
 
-	return { x * 0.5f, y * 0.5f, z * 0.5f };
+	vec[0] = x * 0.5f;
+	vec[1] = y * 0.5f;
+	vec[2] = z * 0.5f;
 }
 
-tfx_vec3_t tfx__catmull_rom_spline_gradient_3d(const tfx_vec4_t *p0, const tfx_vec4_t *p1, const tfx_vec4_t *p2, const tfx_vec4_t *p3, float t) {
+void tfx__catmull_rom_spline_gradient_3d(const tfx_vec4_t *p0, const tfx_vec4_t *p1, const tfx_vec4_t *p2, const tfx_vec4_t *p3, float t, float vec[3]) {
 	float t2 = t * t;
 
 	float b0 = -3.f * t2 + 4.f * t - 1.f;
@@ -1265,7 +1269,9 @@ tfx_vec3_t tfx__catmull_rom_spline_gradient_3d(const tfx_vec4_t *p0, const tfx_v
 	float y = p0->y * b0 + p1->y * b1 + p2->y * b2 + p3->y * b3;
 	float z = p0->z * b0 + p1->z * b1 + p2->z * b2 + p3->z * b3;
 
-	return { x * 0.5f, y * 0.5f, z * 0.5f };
+	vec[0] = x * 0.5f;
+	vec[1] = y * 0.5f;
+	vec[2] = z * 0.5f;
 }
 
 tfx_vec3_t tfx__catmull_rom_spline_gradient_3d_soa(const float *px, const float *py, const float *pz, float t) {
@@ -1690,15 +1696,6 @@ tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value) {
 	return ((tfxU64)x_scaled) | ((tfxU64)y_scaled << 16);
 }
 
-tfx_vec2_t tfx__unpack16bit_2sscaled(tfxU32 packed, float max_value) {
-	int16_t x_scaled = (int16_t)(packed & 0xFFFF);
-	int16_t y_scaled = (int16_t)((packed >> 16) & 0xFFFF);
-	tfx_vec2_t unpacked;
-	unpacked.x = (float)x_scaled * max_value / 32767.0f;
-	unpacked.y = (float)y_scaled * max_value / 32767.0f;
-	return unpacked;
-}
-
 tfxU32 tfx__pack8bit(tfx_vec3_t v) {
 	union
 	{
@@ -1725,16 +1722,6 @@ tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t q) {
 
 	// Pack into a single 32-bit unsigned integer
 	tfxU32 result = (w << 24) | (z << 16) | (y << 8) | x;
-
-	return result;
-}
-
-tfx_vec2_t tfx__unpack16bit(tfxU32 in) {
-	float one_div_32k = 1.f / 32767.f;
-
-	tfx_vec2_t result;
-	result.x = ((signed short)(in & 0x0000FFFF)) * one_div_32k;
-	result.y = ((signed short)((in & 0xFFFF0000) >> 16)) * one_div_32k;
 
 	return result;
 }
@@ -2094,21 +2081,21 @@ tfx_str512_t tfx_stream_t::ReadLine() {
 	return line;
 }
 
-tfx_package_t tfx__create_package(const char *file_path) {
-	tfx_package_t package;
-	package.header.magic_number = tfxMAGIC_NUMBER;
-	package.header.flags = 0;
-	package.header.offset_to_inventory = sizeof(tfx_package_header_t);
-	package.header.file_version = tfxFILE_VERSION;
+tfx_package tfx__create_package(const char *file_path) {
+	tfx_package package = tfx__new_package();
+	package->header.magic_number = tfxMAGIC_NUMBER;
+	package->header.flags = 0;
+	package->header.offset_to_inventory = sizeof(tfx_package_header_t);
+	package->header.file_version = tfxFILE_VERSION;
 
-	package.inventory.magic_number = tfxMAGIC_NUMBER_INVENTORY;
-	package.inventory.entry_count = 0;
+	package->inventory.magic_number = tfxMAGIC_NUMBER_INVENTORY;
+	package->inventory.entry_count = 0;
 
-	package.file_path = file_path;
+	package->file_path = file_path;
 	return package;
 }
 
-bool tfx__validate_package(tfx_package_t *package) {
+bool tfx__validate_package(tfx_package package) {
 	if (package->header.magic_number != tfxMAGIC_NUMBER) return false;            //Package hasn't been initialised
 
 	if (package->flags & tfxPackageFlags_loaded_from_memory) {
@@ -2142,11 +2129,7 @@ void tfx_package_entry_info_t::FreeData() {
 	data.FreeAll();
 }
 
-tfx_package_t::~tfx_package_t() {
-	tfx__free_package(this);
-}
-
-tfx_package_entry_info_t *tfx__get_package_file(tfx_package_t *package, const char *name) {
+tfx_package_entry_info_t *tfx__get_package_file(tfx_package package, const char *name) {
 	if (!package->inventory.entries.ValidName(name)) {
 		return nullptr;                                        //File not found in inventory
 	}
@@ -2164,7 +2147,7 @@ tfx_package_entry_info_t *tfx__get_package_file(tfx_package_t *package, const ch
 		}
 		else {
 			entry->data.Resize(entry->file_size);
-			char *point_in_file = package->file_data.data + entry->offset_from_start_of_file;
+			char *point_in_file = package->file_data->data + entry->offset_from_start_of_file;
 			TFX_ASSERT(entry->offset_from_start_of_file + entry->file_size < package->file_size);    //Invalid entry/package data, make sure the package file is not corrupt
 			memcpy(entry->data.data, point_in_file, entry->file_size);
 		}
@@ -2172,19 +2155,19 @@ tfx_package_entry_info_t *tfx__get_package_file(tfx_package_t *package, const ch
 	return entry;
 }
 
-bool tfx__file_exists_in_package(tfx_package_t *package, const char *file_name) {
+bool tfx__file_exists_in_package(tfx_package package, const char *file_name) {
 	if (package->inventory.entries.ValidName(file_name)) {
 		return true;
 	}
 	return false;
 }
 
-void tfx__add_entry_to_package(tfx_package_t *package, tfx_package_entry_info_t file) {
+void tfx__add_entry_to_package(tfx_package package, tfx_package_entry_info_t file) {
 	package->inventory.entries.Insert(file.file_name, file);
 	package->inventory.entry_count++;
 }
 
-void tfx__add_file_to_package(tfx_package_t *package, const char *file_name, tfx_stream_t *data) {
+void tfx__add_file_to_package(tfx_package package, const char *file_name, tfx_stream data) {
 	tfx_package_entry_info_t entry;
 	entry.file_name = file_name;
 	entry.data = *data;
@@ -2194,42 +2177,42 @@ void tfx__add_file_to_package(tfx_package_t *package, const char *file_name, tfx
 	package->inventory.entry_count++;
 }
 
-void tfx__free_package(tfx_package_t *package) {
+void tfx__free_package(tfx_package package) {
 	for (auto &entry : package->inventory.entries.data) {
 		entry.data.FreeAll();
 	}
 	package->inventory.entries.data.free_all();
 	package->inventory.entries.map.free_all();
-	package->file_data.FreeAll();
+	package->file_data->FreeAll();
 }
 
-void tfx__copy_stream(tfx_stream_t *dst, tfx_stream_t *src) {
+void tfx__copy_stream(tfx_stream dst, tfx_stream src) {
 	dst->FreeAll();
 	dst->Resize(src->size);
 	memcpy(dst->data, src->data, src->size);
 }
 
-void tfx__copy_stream_to_string(tfx_str_t *dst, tfx_stream_t *src) {
+void tfx__copy_stream_to_string(tfx_str_t *dst, tfx_stream src) {
 	dst->free_all();
 	dst->resize((tfxU32)src->size);
 	memcpy(dst->data, src->data, src->size);
 }
 
-void tfx__copy_string_to_stream(tfx_stream_t *dst, tfx_str_t *src) {
+void tfx__copy_string_to_stream(tfx_stream dst, tfx_str_t *src) {
 	dst->FreeAll();
 	dst->Resize(src->current_size);
 	memcpy(dst->data, src->data, src->current_size);
 }
 
-void tfx__copy_data_to_stream(tfx_stream_t *dst, const void *src, tfxU64 size) {
+void tfx__copy_data_to_stream(tfx_stream dst, const void *src, tfxU64 size) {
 	dst->FreeAll();
 	dst->Resize(size);
 	memcpy(dst->data, src, size);
 }
 
 // Reads the whole file on disk into memory and returns the pointer
-tfx_stream_t tfx__read_entire_file(const char *file_name, bool terminate) {
-	tfx_stream_t buffer;
+tfx_stream tfx__read_entire_file(const char *file_name, bool terminate) {
+	tfx_stream buffer = tfx__create_stream();
 	FILE *file = tfx__open_file(file_name, "rb");
 	if (!file) {
 		return buffer;
@@ -2250,22 +2233,22 @@ tfx_stream_t tfx__read_entire_file(const char *file_name, bool terminate) {
 	}
 
 	if (terminate)
-		buffer.Resize((tfxU64)length + 1);
+		buffer->Resize((tfxU64)length + 1);
 	else
-		buffer.Resize(length);
-	if (buffer.data == NULL || fread(buffer.data, 1, length, file) != length) {
-		buffer.FreeAll();
+		buffer->Resize(length);
+	if (buffer->data == NULL || fread(buffer->data, 1, length, file) != length) {
+		buffer->FreeAll();
 		fclose(file);
 		return buffer;
 	}
 	if (terminate)
-		buffer.NullTerminate();
+		buffer->NullTerminate();
 
 	fclose(file);
 	return buffer;
 }
 
-bool tfx__save_package_disk(tfx_package_t *package) {
+bool tfx__save_package_disk(tfx_package package) {
 	if (!package->file_path.Length()) return false;                                            //Package must have a file path
 	if (package->header.magic_number != tfxMAGIC_NUMBER) return false;                        //Header of package must contain correct magic number. Use tfx__create_package to correctly initialise a package.
 	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;            //Inventory of package must contain correct magic number
@@ -2308,15 +2291,18 @@ bool tfx__save_package_disk(tfx_package_t *package) {
 	return true;
 }
 
-tfx_stream_t tfx__save_package_memory(tfx_package_t *package) {
+tfx_stream tfx__save_package_memory(tfx_package package) {
 	if (!package->file_path.Length()) return false;                                            //Package must have a file path
-	if (package->header.magic_number != tfxMAGIC_NUMBER) return false;                        //Header of package must contain correct magic number. tfx__create_package to correctly initialise a package.
+	if (package->header.magic_number != tfxMAGIC_NUMBER) return false;                         //Header of package must contain correct magic number. tfx__create_package to correctly initialise a package.
 	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;            //Inventory of package must contain correct magic number
 
 	//char *file = (char*)malloc(tfx__get_package_size(package));
-	tfx_stream_t file(tfx__get_package_size(package));
-	if (!file.Size())
+	tfx_stream file = tfx__create_stream();
+	TFX_ASSERT(file); //Unable to allocate memory for stream. Out of memory?
+	file->Resize(tfx__get_package_size(package));
+	if (!file->Size()) {
 		return file;
+	}
 
 	//Calculate the offset to the inventory which is stored at the end of the file after the contents
 	tfxU64 inventory_offset = sizeof(tfx_package_header_t);
@@ -2331,28 +2317,28 @@ tfx_stream_t tfx__save_package_memory(tfx_package_t *package) {
 
 	//Write the header, updating the inventory offset before hand
 	package->header.offset_to_inventory = inventory_offset;
-	file.Write(&package->header, sizeof(tfx_package_header_t));
+	file->Write(&package->header, sizeof(tfx_package_header_t));
 
 	//Write the file contents
 	for (auto &entry : package->inventory.entries.data) {
 		//fwrite(entry.data.data, sizeof(char), entry.data.Size(), file);
-		file.Write(entry.data.data, entry.data.Size());
+		file->Write(entry.data.data, entry.data.Size());
 	}
 
 	//Write the inventory
-	file.Write(&package->inventory.magic_number, sizeof(tfxU32));
-	file.Write(&package->inventory.entry_count, sizeof(tfxU32));
+	file->Write(&package->inventory.magic_number, sizeof(tfxU32));
+	file->Write(&package->inventory.entry_count, sizeof(tfxU32));
 	for (auto &entry : package->inventory.entries.data) {
-		file.Write(&entry.file_name.current_size, sizeof(tfxU32));
-		file.Write(entry.file_name.data, entry.file_name.current_size);
-		file.Write(&entry.file_size, sizeof(tfxU64));
-		file.Write(&entry.offset_from_start_of_file, sizeof(tfxU64));
+		file->Write(&entry.file_name.current_size, sizeof(tfxU32));
+		file->Write(entry.file_name.data, entry.file_name.current_size);
+		file->Write(&entry.file_size, sizeof(tfxU64));
+		file->Write(&entry.offset_from_start_of_file, sizeof(tfxU64));
 	}
 
 	return file;
 }
 
-tfxU64 tfx__get_package_size(tfx_package_t *package) {
+tfxU64 tfx__get_package_size(tfx_package package) {
 	tfxU64 space = 0;
 	space += sizeof(tfx_package_header_t);
 
@@ -2374,18 +2360,18 @@ tfxU64 tfx__get_package_size(tfx_package_t *package) {
 	return space;
 }
 
-tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package_t *package) {
+tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package) {
 
 	package->file_data = tfx__read_entire_file(file_name);
-	if (package->file_data.Size() == 0)
+	if (package->file_data->Size() == 0)
 		return tfxErrorCode_unable_to_read_file;            //the file size is smaller then the expected header size
 
-	package->file_size = package->file_data.Size();
+	package->file_size = package->file_data->Size();
 
 	if (package->file_size < sizeof(tfx_package_header_t))
 		return tfxErrorCode_wrong_file_size;                //the file size is smaller then the expected header size
 
-	package->file_data.Read((char *)&package->header, sizeof(tfx_package_header_t));
+	package->file_data->Read((char *)&package->header, sizeof(tfx_package_header_t));
 
 	if (package->header.magic_number != tfxMAGIC_NUMBER)
 		return tfxErrorCode_invalid_format;                //The header doesn't not contain the expected magic number "TFX!", incorrect file format;
@@ -2393,21 +2379,21 @@ tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package_t *packa
 	if (package->header.offset_to_inventory > package->file_size)
 		return tfxErrorCode_no_inventory;                //The offset to the inventory is beyond the size of the file
 
-	package->file_data.Seek(package->header.offset_to_inventory);
-	package->file_data.Read((char *)&package->inventory.magic_number, sizeof(tfxU32));
+	package->file_data->Seek(package->header.offset_to_inventory);
+	package->file_data->Read((char *)&package->inventory.magic_number, sizeof(tfxU32));
 
 	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
 		return tfxErrorCode_invalid_inventory;            //The value at the inventory offset does not equal the expected magic number "INV!"
 
-	package->file_data.Read((char *)&package->inventory.entry_count, sizeof(tfxU32));
+	package->file_data->Read((char *)&package->inventory.entry_count, sizeof(tfxU32));
 	for (int i = 0; i != package->inventory.entry_count; ++i) {
 		tfx_package_entry_info_t entry;
 		tfxU32 file_name_size;
-		package->file_data.Read((char *)&file_name_size, sizeof(tfxU32));
+		package->file_data->Read((char *)&file_name_size, sizeof(tfxU32));
 		entry.file_name.resize(file_name_size);
-		package->file_data.Read(entry.file_name.data, file_name_size);
-		package->file_data.Read((char *)&entry.file_size, sizeof(tfxU64));
-		package->file_data.Read((char *)&entry.offset_from_start_of_file, sizeof(tfxU64));
+		package->file_data->Read(entry.file_name.data, file_name_size);
+		package->file_data->Read((char *)&entry.file_size, sizeof(tfxU64));
+		package->file_data->Read((char *)&entry.offset_from_start_of_file, sizeof(tfxU64));
 		package->inventory.entries.Insert(entry.file_name, entry);
 	}
 
@@ -2416,20 +2402,20 @@ tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package_t *packa
 	return 0;
 }
 
-tfxErrorFlags tfx__load_package_stream(tfx_stream_t *stream, tfx_package_t *package) {
+tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package) {
 	//Note: tfx_stream_t does not copy the memory, only the pointer, so if you FreeAll on the stream you pass in it will also free the file_data here as well
 	package->flags |= tfxPackageFlags_loaded_from_memory;
-	package->file_data = *stream;
-	package->file_data.Seek(0);
-	if (package->file_data.Size() == 0)
+	package->file_data = stream;
+	package->file_data->Seek(0);
+	if (package->file_data->Size() == 0)
 		return tfxErrorCode_unable_to_read_file;            //the file size is smaller then the expected header size
 
-	package->file_size = package->file_data.Size();
+	package->file_size = package->file_data->Size();
 
 	if (package->file_size < sizeof(tfx_package_header_t))
 		return tfxErrorCode_wrong_file_size;                //the file size is smaller then the expected header size
 
-	package->file_data.Read((char *)&package->header, sizeof(tfx_package_header_t));
+	package->file_data->Read((char *)&package->header, sizeof(tfx_package_header_t));
 
 	if (package->header.magic_number != tfxMAGIC_NUMBER)
 		return tfxErrorCode_invalid_format;                //The header doesn't not contain the expected magic number "TFX!", incorrect file format;
@@ -2437,21 +2423,21 @@ tfxErrorFlags tfx__load_package_stream(tfx_stream_t *stream, tfx_package_t *pack
 	if (package->header.offset_to_inventory > package->file_size)
 		return tfxErrorCode_no_inventory;                //The offset to the inventory is beyond the size of the file
 
-	package->file_data.Seek(package->header.offset_to_inventory);
-	package->file_data.Read((char *)&package->inventory.magic_number, sizeof(tfxU32));
+	package->file_data->Seek(package->header.offset_to_inventory);
+	package->file_data->Read((char *)&package->inventory.magic_number, sizeof(tfxU32));
 
 	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY)
 		return tfxErrorCode_invalid_inventory;            //The value at the inventory offset does not equal the expected magic number "INV!"
 
-	package->file_data.Read((char *)&package->inventory.entry_count, sizeof(tfxU32));
+	package->file_data->Read((char *)&package->inventory.entry_count, sizeof(tfxU32));
 	for (int i = 0; i != package->inventory.entry_count; ++i) {
 		tfx_package_entry_info_t entry;
 		tfxU32 file_name_size;
-		package->file_data.Read((char *)&file_name_size, sizeof(tfxU32));
+		package->file_data->Read((char *)&file_name_size, sizeof(tfxU32));
 		entry.file_name.resize(file_name_size);
-		package->file_data.Read(entry.file_name.data, file_name_size);
-		package->file_data.Read((char *)&entry.file_size, sizeof(tfxU64));
-		package->file_data.Read((char *)&entry.offset_from_start_of_file, sizeof(tfxU64));
+		package->file_data->Read(entry.file_name.data, file_name_size);
+		package->file_data->Read((char *)&entry.file_size, sizeof(tfxU64));
+		package->file_data->Read((char *)&entry.offset_from_start_of_file, sizeof(tfxU64));
 		package->inventory.entries.Insert(entry.file_name, entry);
 	}
 
@@ -2534,7 +2520,7 @@ void tfx__flag_effect_as_3d(tfx_effect_emitter_t *effect, bool flag) {
 	}
 }
 
-void tfx__flag_effect_as_3d(tfx_library_t *library) {
+void tfx__flag_effects_as_3d(tfx_library_t *library) {
 	for (tfx_effect_emitter_t &effect : library->effects) {
 		if (effect.type == tfxEffectType) {
 			tfx__flag_effect_as_3d(&effect, tfx__is_3d_effect(&effect));
@@ -2966,7 +2952,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			else
 				to_handle = world_position - emitter.world_position;
 
-			to_handle = tfx_NormalizeVec3(&to_handle);
+			to_handle = tfx__normalize_vec3(&to_handle);
 
 		}
 		else if (emission_direction == tfxInwards) {
@@ -2976,7 +2962,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			else
 				to_handle = emitter.world_position - world_position;
 
-			to_handle = tfx_NormalizeVec3(&to_handle);
+			to_handle = tfx__normalize_vec3(&to_handle);
 
 		}
 		else if (emission_direction == tfxBothways) {
@@ -2997,7 +2983,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 			}
 
 			emitter.emission_alternator = !emitter.emission_alternator;
-			to_handle = tfx_NormalizeVec3(&to_handle);
+			to_handle = tfx__normalize_vec3(&to_handle);
 		}
 		else if (emission_direction == tfxSurface && emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
 			if (emission_type == tfxEllipse || emission_type == tfxIcosphere) {
@@ -3043,7 +3029,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 	return tfx__normalize_vec3_fast(&v);
 }
 
-tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, float angle) {
+tfx_quaternion_t tfx__get_path_rotation_2d(tfx_random_t *random, float range, float angle) {
 	range *= .5f;
 	float v = tfx_RandomRangeFromTo(random, -range, range) + angle;
 	tfx_quaternion_t quaternion;
@@ -3056,8 +3042,8 @@ tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, fl
 	if (y_axis_only) {
 		range *= 0.5f;
 		yaw += tfx_RandomRangeFromTo(random, -range, range);
-		tfx_quaternion_t yaw_quaternion = QuaternionFromAxisAngle(0.0f, 1.0f, 0.0f, yaw);
-		tfx_quaternion_t pitch_quaternion = QuaternionFromAxisAngle(1.0f, 0.0f, 0.0f, pitch);
+		tfx_quaternion_t yaw_quaternion = tfx__quaternion_from_axis_angle(0.0f, 1.0f, 0.0f, yaw);
+		tfx_quaternion_t pitch_quaternion = tfx__quaternion_from_axis_angle(1.0f, 0.0f, 0.0f, pitch);
 		tfx_quaternion_t combined_quaternion = yaw_quaternion * pitch_quaternion;
 		return combined_quaternion;
 	}
@@ -3070,7 +3056,7 @@ tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, fl
 		if (range != 0) {
 			v = tfx__random_vector_in_cone(random, v, range * .5f);
 		}
-		return QuaternionFromDirection(&v);
+		return tfx__quaternion_from_direction(&v);
 	}
 }
 
@@ -3560,7 +3546,8 @@ void tfx__clone_effect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter
 			}
 		}
 		if (clone->path_attributes != tfxINVALID) {
-			tfx_emitter_path_t path_copy = tfx__copy_path(&library->paths[clone->path_attributes], "");
+			tfx_emitter_path_t path_copy;
+			tfx__copy_path(&library->paths[clone->path_attributes], "", &path_copy);
 			clone->path_attributes = destination_library->paths.size();
 			destination_library->paths.push_back(path_copy);
 			if (destination_library->paths.back().flags & tfxPathFlags_2d) {
@@ -3938,24 +3925,22 @@ void tfx__copy_path_graphs(tfx_emitter_path_t *src, tfx_emitter_path_t *dst) {
 	tfx__copy_graph_no_lookups(&src->distance, &dst->distance);
 }
 
-tfx_emitter_path_t tfx__copy_path(tfx_emitter_path_t *src, const char *name) {
-	tfx_emitter_path_t path = {};
-	path.flags = src->flags;
-	path.name = name;
-	path.node_count = src->node_count;
-	path.generator_type = src->generator_type;
-	path.extrusion_type = src->extrusion_type;
-	path.offset = src->offset;
-	path.maximum_active_paths = src->maximum_active_paths;
-	path.maximum_paths = src->maximum_paths;
-	path.rotation_cycle_length = src->rotation_cycle_length;
-	path.rotation_stagger = src->rotation_stagger;
-	path.rotation_range = src->rotation_range;
-	path.rotation_pitch = src->rotation_pitch;
-	path.rotation_yaw = src->rotation_yaw;
-	tfx__initialise_path_graphs(&path);
-	tfx__copy_path_graphs(src, &path);
-	return path;
+void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *path) {
+	path->flags = src->flags;
+	path->name = name;
+	path->node_count = src->node_count;
+	path->generator_type = src->generator_type;
+	path->extrusion_type = src->extrusion_type;
+	path->offset = src->offset;
+	path->maximum_active_paths = src->maximum_active_paths;
+	path->maximum_paths = src->maximum_paths;
+	path->rotation_cycle_length = src->rotation_cycle_length;
+	path->rotation_stagger = src->rotation_stagger;
+	path->rotation_range = src->rotation_range;
+	path->rotation_pitch = src->rotation_pitch;
+	path->rotation_yaw = src->rotation_yaw;
+	tfx__initialise_path_graphs(path);
+	tfx__copy_path_graphs(src, path);
 }
 
 tfxU32 tfx__create_emitter_path_attributes(tfx_effect_emitter_t *emitter, bool add_node) {
@@ -4079,8 +4064,10 @@ void tfx__build_path_nodes_complex(tfx_emitter_path_t *path) {
 			float step = 0.05f;
 			path_nodes[i].w = 0.f;
 			for (float t = 0.0f; t <= 1.0f - step; t += step) {
-				tfx_vec3_t p1 = tfx__catmull_rom_spline_3d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t);
-				tfx_vec3_t p2 = tfx__catmull_rom_spline_3d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step);
+				tfx_vec3_t p1;
+				tfx__catmull_rom_spline_3d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t, &p1.x);
+				tfx_vec3_t p2;
+				tfx__catmull_rom_spline_3d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step, &p2.x);
 				tfx_vec3_t segment = p2 - p1;
 				path_nodes[i].w += tfx__length_vec3(&segment);
 			}
@@ -4090,10 +4077,10 @@ void tfx__build_path_nodes_complex(tfx_emitter_path_t *path) {
 		float segment = 0.f;
 		int i = 1;
 		int c = path->node_count - 1;
-		path->nodes[1] = tfx__catmull_rom_spline_3d(&path_nodes[0], &path_nodes[1], &path_nodes[2], &path_nodes[3], 0.f);
+		tfx__catmull_rom_spline_3d(&path_nodes[0], &path_nodes[1], &path_nodes[2], &path_nodes[3], 0.f, &path->nodes[1].x);
 		float ni = tfx__catmull_rom_segment(&path_nodes, length);
 		ni = ni == (int)ni && ni > 0 ? ni - 0.0001f : ni;
-		path->nodes[c - 1] = tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
+		tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni), &path->nodes[c - 1].x);
 		path->node_soa.x[1] = path->nodes[1].x;
 		path->node_soa.y[1] = path->nodes[1].y;
 		path->node_soa.z[1] = path->nodes[1].z;
@@ -4102,7 +4089,8 @@ void tfx__build_path_nodes_complex(tfx_emitter_path_t *path) {
 		path->node_soa.z[c - 1] = path->nodes[c - 1].z;
 		while (i != c - 1) {
 			ni = tfx__catmull_rom_segment(&path_nodes, segment);
-			tfx_vec3_t position = tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
+			tfx_vec3_t position;
+			tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni), &position.x);
 			path->node_soa.x[i] = position.x;
 			path->node_soa.y[i] = position.y;
 			path->node_soa.z[i] = position.z;
@@ -4268,8 +4256,10 @@ void tfx__build_path_nodes_3d(tfx_emitter_path_t *path) {
 			float step = 0.05f;
 			path_nodes[i].w = 0.f;
 			for (float t = 0.0f; t <= 1.0f - step; t += step) {
-				tfx_vec3_t p1 = tfx__catmull_rom_spline_3d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t);
-				tfx_vec3_t p2 = tfx__catmull_rom_spline_3d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step);
+				tfx_vec3_t p1;
+				tfx__catmull_rom_spline_3d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t, &p1.x);
+				tfx_vec3_t p2;
+				tfx__catmull_rom_spline_3d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step, &p2.x);
 				tfx_vec3_t segment = p2 - p1;
 				path_nodes[i].w += tfx__length_vec3(&segment);
 			}
@@ -4279,13 +4269,14 @@ void tfx__build_path_nodes_3d(tfx_emitter_path_t *path) {
 		float segment = 0.f;
 		int i = 0;
 		int c = path->node_count;
-		path->nodes[1] = tfx__catmull_rom_spline_3d(&path_nodes[0], &path_nodes[1], &path_nodes[2], &path_nodes[3], 0.f);
+		tfx__catmull_rom_spline_3d(&path_nodes[0], &path_nodes[1], &path_nodes[2], &path_nodes[3], 0.f, &path->nodes[1].x);
 		while (i != c) {
 			float ni = tfx__catmull_rom_segment(&path_nodes, segment);
 			if (ni >= path->node_count - 3) {
 				ni = (float)path->node_count - 3.f - 0.0001f;
 			}
-			tfx_vec3_t position = tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
+			tfx_vec3_t position;
+			tfx__catmull_rom_spline_3d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni), &position.x);
 			if (path->flags & tfxPathFlags_reverse_direction) {
 				int node_count = path->node_count - 1;
 				path->node_soa.x[node_count - i] = position.x;
@@ -4440,8 +4431,10 @@ void tfx__build_path_nodes_2d(tfx_emitter_path_t *path) {
 			float step = 0.05f;
 			path_nodes[i].w = 0.f;
 			for (float t = 0.0f; t <= 1.0f - step; t += step) {
-				tfx_vec2_t p1 = tfx__catmull_rom_spline_2d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t);
-				tfx_vec2_t p2 = tfx__catmull_rom_spline_2d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step);
+				tfx_vec2_t p1;
+				tfx__catmull_rom_spline_2d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t, &p1.x);
+				tfx_vec2_t p2;
+				tfx__catmull_rom_spline_2d(&path_nodes[i], &path_nodes[i + 1], &path_nodes[i + 2], &path_nodes[i + 3], t + step, &p2.x);
 				tfx_vec2_t segment = p2 - p1;
 				path_nodes[i].w += tfx__vec2_length_fast(&segment);
 			}
@@ -4451,13 +4444,14 @@ void tfx__build_path_nodes_2d(tfx_emitter_path_t *path) {
 		float segment = 0.f;
 		int i = 0;
 		int c = path->node_count;
-		path->nodes[1] = tfx__catmull_rom_spline_3d(&path_nodes[0], &path_nodes[1], &path_nodes[2], &path_nodes[3], 0.f);
+		tfx__catmull_rom_spline_3d(&path_nodes[0], &path_nodes[1], &path_nodes[2], &path_nodes[3], 0.f, &path->nodes[1].x);
 		while (i != c) {
 			float ni = tfx__catmull_rom_segment(&path_nodes, segment);
 			if (ni >= path->node_count - 3) {
 				ni = (float)path->node_count - 3.f - 0.0001f;
 			}
-			tfx_vec2_t position = tfx__catmull_rom_spline_2d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni));
+			tfx_vec2_t position;
+			tfx__catmull_rom_spline_2d(&path_nodes[(int)ni], &path_nodes[(int)ni + 1], &path_nodes[(int)ni + 2], &path_nodes[(int)ni + 3], ni - int(ni), &position.x);
 			if (path->flags & tfxPathFlags_reverse_direction) {
 				int node_count = path->node_count - 1;
 				path->node_soa.x[node_count - i] = position.x;
@@ -6044,8 +6038,8 @@ void tfx__compile_all_library_graphs(tfx_library_t *library) {
 		tfx__compile_graph_overtime(&g.factor.velocity);
 		tfx__compile_graph_overtime(&g.factor.size);
 		tfx__compile_graph_overtime(&g.factor.intensity);
-		g.overtime.color_ramps[0] = tfx__compile_color_ramp(&g.overtime);
-		g.overtime.color_ramps[1] = tfx__compile_color_ramp_hint(&g.overtime);
+		tfx__compile_color_ramp(&g.overtime, &g.overtime.color_ramps[0]);
+		tfx__compile_color_ramp_hint(&g.overtime, &g.overtime.color_ramps[1]);
 	}
 	tfx__create_color_ramp_bitmaps(library);
 }
@@ -6137,8 +6131,8 @@ void tfx__compile_library_variation_graphs(tfx_library_t *library, tfxU32 index)
 void tfx__compile_library_overtime_graph(tfx_library_t *library, tfxU32 index, bool including_color_ramps) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
 	if (including_color_ramps) {
-		g.color_ramps[0] = tfx__compile_color_ramp(&g);
-		g.color_ramps[1] = tfx__compile_color_ramp_hint(&g);
+		tfx__compile_color_ramp(&g, &g.color_ramps[0]);
+		tfx__compile_color_ramp_hint(&g, &g.color_ramps[1]);
 		tfx__edit_color_ramp_bitmap(library, &g, 0);
 		tfx__edit_color_ramp_bitmap(library, &g, 1);
 	}
@@ -6171,8 +6165,8 @@ void tfx__compile_library_factor_graphs(tfx_library_t *library, tfxU32 index) {
 
 void tfx__compile_library_color_graphs(tfx_library_t *library, tfxU32 index) {
 	tfx_overtime_attributes_t &g = library->emitter_attributes[index].overtime;
-	g.color_ramps[0] = tfx__compile_color_ramp(&g);
-	g.color_ramps[1] = tfx__compile_color_ramp_hint(&g);
+	tfx__compile_color_ramp(&g, &g.color_ramps[0]);
+	tfx__compile_color_ramp_hint(&g, &g.color_ramps[1]);
 	tfx__edit_color_ramp_bitmap(library, &g, 0);
 	tfx__edit_color_ramp_bitmap(library, &g, 1);
 }
@@ -7615,16 +7609,6 @@ tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p
 	return b;
 }
 
-tfx_vec2_t tfx__get_quad_bezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t) {
-	tfx_vec2_t b;
-	float ti = 1.f - t;
-	float ti2 = ti * ti;
-	float t2 = t * t;
-	b.x = ti2 * p0.x + 2.f * t * ti * p1.x + t2 * p2.x;
-	b.y = ti2 * p0.y + 2.f * t * ti * p1.y + t2 * p2.y;
-	return b;
-}
-
 tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
 	tfx_vec2_t b;
 	float ti = 1.f - t;
@@ -7636,18 +7620,6 @@ tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t 
 	b.y = ti3 * p0.y + 3.f * t * ti2 * p1.y + 3.f * t2 * ti * p2.y + t3 * p3.y;
 	b.x = tfx__Clamp(p0.x, p2.x, b.x);
 	b.y = tfx__Clamp(ymin, ymax, b.y);
-	return b;
-}
-
-tfx_vec2_t tfx__get_cubic_bezier(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t) {
-	tfx_vec2_t b;
-	float ti = 1.f - t;
-	float ti3 = ti * ti * ti;
-	float ti2 = ti * ti;
-	float t3 = t * t * t;
-	float t2 = t * t;
-	b.x = ti3 * p0.x + 3.f * t * ti2 * p1.x + 3.f * t2 * ti * p2.x + t3 * p3.x;
-	b.y = ti3 * p0.y + 3.f * t * ti2 * p1.y + 3.f * t2 * ti * p2.y + t3 * p3.y;
 	return b;
 }
 
@@ -8450,166 +8422,6 @@ void tfx__reindex_graph(tfx_graph_t *graph) {
 	}
 }
 
-tfx_vec2_t tfx__get_graph_initial_zoom(tfx_graph_t *graph) {
-	switch (graph->graph_preset) {
-	case tfx_graph_preset::tfxOpacityOvertimePreset:
-		return tfx_vec2_t(.0017f, 0.00275f);
-	case tfx_graph_preset::tfxGlobalPercentPreset:
-		return tfx_vec2_t(10.f, 0.005f);
-		break;
-	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
-		return tfx_vec2_t(10.f, 0.006f);
-		break;
-	case tfx_graph_preset::tfxGlobalOpacityPreset:
-		return tfx_vec2_t(10.f, 0.003f);
-		break;
-	case tfx_graph_preset::tfxLifePreset:
-		return tfx_vec2_t(10.f, 3.5f);
-		break;
-	case tfx_graph_preset::tfxAnglePreset:
-		return tfx_vec2_t(10.f, 1.f);
-		break;
-	case tfx_graph_preset::tfxArcPreset:
-		return tfx_vec2_t(10.f, 1.f);
-		break;
-	case tfx_graph_preset::tfxEmissionRangePreset:
-		return tfx_vec2_t(10.f, .5f);
-		break;
-	case tfx_graph_preset::tfxAmountPreset:
-		return tfx_vec2_t(10.f, 1.25f);
-		break;
-	case tfx_graph_preset::tfxFrameratePreset:
-		return tfx_vec2_t(0.0017f, .5f);
-		break;
-	case tfx_graph_preset::tfxVelocityTurbulancePreset:
-		return tfx_vec2_t(0.0017f, .1f);
-		break;
-	case tfx_graph_preset::tfxDimensionsPreset:
-	case tfx_graph_preset::tfxTranslationPreset:
-	case tfx_graph_preset::tfxVelocityPreset:
-	case tfx_graph_preset::tfxWeightPreset:
-	case tfx_graph_preset::tfxWeightVariationPreset:
-	case tfx_graph_preset::tfxSpinPreset:
-	case tfx_graph_preset::tfxSpinVariationPreset:
-		return tfx_vec2_t(10.f, 2.5f);
-		break;
-	case tfx_graph_preset::tfxNoiseResolutionPreset:
-		return tfx_vec2_t(10.f, 1.f);
-		break;
-	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
-		return tfx_vec2_t(10.f, .01f);
-		break;
-	case tfx_graph_preset::tfxDirectionOvertimePreset:
-		return tfx_vec2_t(0.0017f, 1.f);
-		break;
-	case tfx_graph_preset::tfxWeightOvertimePreset:
-	case tfx_graph_preset::tfxVelocityOvertimePreset:
-	case tfx_graph_preset::tfxSpinOvertimePreset:
-	case tfx_graph_preset::tfxDirectionVariationPreset:
-	case tfx_graph_preset::tfxPercentOvertime:
-		return tfx_vec2_t(0.0017f, 0.0035f);
-		break;
-	case tfx_graph_preset::tfxIntensityOvertimePreset:
-		return tfx_vec2_t(0.0017f, 0.01115f);
-		break;
-	case tfx_graph_preset::tfxColorPreset:
-		break;
-	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
-		return tfx_vec2_t(0.0017f, 5.f);
-		break;
-	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
-		return tfx_vec2_t(0.0017f, 2.5f);
-		break;
-	default:
-		return tfx_vec2_t(0.1f, 0.1f);
-		break;
-	}
-
-	return tfx_vec2_t(0.1f, 0.1f);
-}
-
-tfx_vec2_t tfx__get_graph_initial_zoom_3d(tfx_graph_t *graph) {
-	switch (graph->graph_preset) {
-	case tfx_graph_preset::tfxOpacityOvertimePreset:
-		return tfx_vec2_t(.0017f, 0.00275f);
-	case tfx_graph_preset::tfxGlobalPercentPreset:
-		return tfx_vec2_t(10.f, 0.005f);
-		break;
-	case tfx_graph_preset::tfxGlobalPercentPresetSigned:
-		return tfx_vec2_t(10.f, 0.006f);
-		break;
-	case tfx_graph_preset::tfxGlobalOpacityPreset:
-		return tfx_vec2_t(10.f, 0.003f);
-		break;
-	case tfx_graph_preset::tfxLifePreset:
-		return tfx_vec2_t(10.f, 3.5f);
-		break;
-	case tfx_graph_preset::tfxAnglePreset:
-		return tfx_vec2_t(10.f, 1.f);
-		break;
-	case tfx_graph_preset::tfxArcPreset:
-		return tfx_vec2_t(10.f, 1.f);
-		break;
-	case tfx_graph_preset::tfxEmissionRangePreset:
-		return tfx_vec2_t(10.f, .5f);
-		break;
-	case tfx_graph_preset::tfxAmountPreset:
-		return tfx_vec2_t(10.f, 1.25f);
-		break;
-	case tfx_graph_preset::tfxFrameratePreset:
-		return tfx_vec2_t(0.0017f, .01f);
-		break;
-	case tfx_graph_preset::tfxDimensionsPreset:
-	case tfx_graph_preset::tfxTranslationPreset:
-	case tfx_graph_preset::tfxVelocityPreset:
-		return tfx_vec2_t(10.f, 0.01f);
-		break;
-	case tfx_graph_preset::tfxWeightPreset:
-	case tfx_graph_preset::tfxWeightVariationPreset:
-		return tfx_vec2_t(10.f, 1.f);
-		break;
-	case tfx_graph_preset::tfxVelocityTurbulancePreset:
-		return tfx_vec2_t(0.0017f, .01f);
-		break;
-	case tfx_graph_preset::tfxSpinPreset:
-	case tfx_graph_preset::tfxSpinVariationPreset:
-		return tfx_vec2_t(10.f, 2.5f);
-		break;
-	case tfx_graph_preset::tfxNoiseResolutionPreset:
-		return tfx_vec2_t(10.f, .01f);
-		break;
-	case tfx_graph_preset::tfxNoiseOffsetVariationPreset:
-		return tfx_vec2_t(10.f, .01f);
-		break;
-	case tfx_graph_preset::tfxDirectionOvertimePreset:
-		return tfx_vec2_t(0.0017f, 1.f);
-		break;
-	case tfx_graph_preset::tfxWeightOvertimePreset:
-	case tfx_graph_preset::tfxVelocityOvertimePreset:
-	case tfx_graph_preset::tfxSpinOvertimePreset:
-	case tfx_graph_preset::tfxDirectionVariationPreset:
-	case tfx_graph_preset::tfxPercentOvertime:
-		return tfx_vec2_t(0.0017f, 0.0035f);
-		break;
-	case tfx_graph_preset::tfxIntensityOvertimePreset:
-		return tfx_vec2_t(0.0017f, 0.01115f);
-		break;
-	case tfx_graph_preset::tfxColorPreset:
-		break;
-	case tfx_graph_preset::tfxPathDirectionOvertimePreset:
-		return tfx_vec2_t(0.0017f, 5.f);
-		break;
-	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
-		return tfx_vec2_t(0.0017f, .05f);
-		break;
-	default:
-		return tfx_vec2_t(0.1f, 0.1f);
-		break;
-	}
-
-	return tfx_vec2_t(0.1f, 0.1f);
-}
-
 void tfx__compile_graph(tfx_graph_t *graph) {
 	float last_frame = tfx__get_graph_last_frame(graph, 60.f);
 	graph->lookup.last_frame = tfxU32(last_frame / tfxLOOKUP_FREQUENCY);
@@ -8732,22 +8544,21 @@ void tfx__free_bitmap(tfx_bitmap_t *bitmap) {
 	}
 }
 
-tfx_color_ramp_t tfx__compile_color_ramp(tfx_overtime_attributes_t *attributes, float gamma) {
+void tfx__compile_color_ramp(tfx_overtime_attributes_t *attributes, tfx_color_ramp_t *color_ramp, float gamma) {
 	float r, g, b, a;
-	tfx_color_ramp_t color_ramp = attributes->color_ramps[0];
-	if (color_ramp.flags & tfxColorRampFlags_use_sinusoidal_ramp_generation) {
+	if (color_ramp->flags & tfxColorRampFlags_use_sinusoidal_ramp_generation) {
 		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 			float x = (float)f / tfxCOLOR_RAMP_WIDTH;
 			float age = x * attributes->red.lookup.life;
 
-			r = color_ramp.brightness.x + color_ramp.contrast.x * cosf(tfxPI2 * (color_ramp.frequency.x * x + color_ramp.offsets.x));
-			g = color_ramp.brightness.y + color_ramp.contrast.y * cosf(tfxPI2 * (color_ramp.frequency.y * x + color_ramp.offsets.y));
-			b = color_ramp.brightness.z + color_ramp.contrast.z * cosf(tfxPI2 * (color_ramp.frequency.z * x + color_ramp.offsets.z));
+			r = color_ramp->brightness.x + color_ramp->contrast.x * cosf(tfxPI2 * (color_ramp->frequency.x * x + color_ramp->offsets.x));
+			g = color_ramp->brightness.y + color_ramp->contrast.y * cosf(tfxPI2 * (color_ramp->frequency.y * x + color_ramp->offsets.y));
+			b = color_ramp->brightness.z + color_ramp->contrast.z * cosf(tfxPI2 * (color_ramp->frequency.z * x + color_ramp->offsets.z));
 			a = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
-			color_ramp.colors[f].r = tfxU32(r * 255.f);
-			color_ramp.colors[f].g = tfxU32(g * 255.f);
-			color_ramp.colors[f].b = tfxU32(b * 255.f);
-			color_ramp.colors[f].a = tfxU32(a * 255.f);
+			color_ramp->colors[f].r = tfxU32(r * 255.f);
+			color_ramp->colors[f].g = tfxU32(g * 255.f);
+			color_ramp->colors[f].b = tfxU32(b * 255.f);
+			color_ramp->colors[f].a = tfxU32(a * 255.f);
 		}
 	} else {
 		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
@@ -8756,38 +8567,35 @@ tfx_color_ramp_t tfx__compile_color_ramp(tfx_overtime_attributes_t *attributes, 
 			g = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->green, age, attributes->green.lookup.life), gamma);
 			b = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blue, age, attributes->blue.lookup.life), gamma);
 			a = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
-			color_ramp.colors[f].r = tfxU32(r * 255.f);
-			color_ramp.colors[f].g = tfxU32(g * 255.f);
-			color_ramp.colors[f].b = tfxU32(b * 255.f);
-			color_ramp.colors[f].a = tfxU32(a * 255.f);
+			color_ramp->colors[f].r = tfxU32(r * 255.f);
+			color_ramp->colors[f].g = tfxU32(g * 255.f);
+			color_ramp->colors[f].b = tfxU32(b * 255.f);
+			color_ramp->colors[f].a = tfxU32(a * 255.f);
 		}
-		color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(&attributes->red) * 255.f);
-		color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(&attributes->green) * 255.f);
-		color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(&attributes->blue) * 255.f);
-		color_ramp.colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(&attributes->blendfactor) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(&attributes->red) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(&attributes->green) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(&attributes->blue) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(&attributes->blendfactor) * 255.f);
 	}
-	return color_ramp;
 }
 
-tfx_color_ramp_t tfx__compile_color_ramp_hint(tfx_overtime_attributes_t *attributes, float gamma) {
+void tfx__compile_color_ramp_hint(tfx_overtime_attributes_t *attributes, tfx_color_ramp_t *color_ramp, float gamma) {
 	float r, g, b, a;
-	tfx_color_ramp_t color_ramp_hint;
 	for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 		float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * attributes->red.lookup.life;
 		r = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->red_hint, age, attributes->red.lookup.life), gamma);
 		g = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->green_hint, age, attributes->green.lookup.life), gamma);
 		b = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blue_hint, age, attributes->blue.lookup.life), gamma);
 		a = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blendfactor_hint, age, attributes->blendfactor_hint.lookup.life), gamma);
-		color_ramp_hint.colors[f].r = tfxU32(r * 255.f);
-		color_ramp_hint.colors[f].g = tfxU32(g * 255.f);
-		color_ramp_hint.colors[f].b = tfxU32(b * 255.f);
-		color_ramp_hint.colors[f].a = tfxU32(a * 255.f);
+		color_ramp->colors[f].r = tfxU32(r * 255.f);
+		color_ramp->colors[f].g = tfxU32(g * 255.f);
+		color_ramp->colors[f].b = tfxU32(b * 255.f);
+		color_ramp->colors[f].a = tfxU32(a * 255.f);
 	}
-	color_ramp_hint.colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(&attributes->red_hint) * 255.f);
-	color_ramp_hint.colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(&attributes->green_hint) * 255.f);
-	color_ramp_hint.colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(&attributes->blue_hint) * 255.f);
-	color_ramp_hint.colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(&attributes->blendfactor_hint) * 255.f);
-	return color_ramp_hint;
+	color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(&attributes->red_hint) * 255.f);
+	color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(&attributes->green_hint) * 255.f);
+	color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(&attributes->blue_hint) * 255.f);
+	color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(&attributes->blendfactor_hint) * 255.f);
 }
 
 void tfx__plot_color_ramp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ramp, tfxU32 y) {
@@ -9111,15 +8919,18 @@ void tfx__add_data_value_float(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_
 	config->Insert(key, entry);
 }
 
-tfx_str_t tfx__get_data_str_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
-	return config->At(key).str_value;
+const char* tfx__get_data_str_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
+	return config->At(key).str_value.c_str();
 }
+
 int tfx__get_data_int_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
 	return config->At(key).int_value;
 }
+
 tfx_rgba8_t tfx__get_data_color_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
 	return config->At(key).color_value;
 }
+
 float tfx__get_data_float_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
 	return config->At(key).float_value;
 }
@@ -11232,7 +11043,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager_t *pm, tfx_
 					}
 					for (int qi = 0; qi != emitter.active_paths; ++qi) {
 						if (path->flags & tfxPathFlags_2d) {
-							tfx_quaternion_t q = tfx__get_path_rotation_3d(&pm->random, path->rotation_range, path->rotation_pitch);
+							tfx_quaternion_t q = tfx__get_path_rotation_2d(&pm->random, path->rotation_range, path->rotation_pitch);
 							emitter.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
 						}
 						else {
@@ -16489,7 +16300,7 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 				int index = (qi + emitter.path_start_index) % path->maximum_active_paths;
 				emitter.path_quaternions[qi].age += pm.frame_length;
 				if (emitter.path_quaternions[qi].age >= path->rotation_cycle_length) {
-					tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch);
+					tfx_quaternion_t q = tfx__get_path_rotation_2d(&random, path->rotation_range, path->rotation_pitch);
 					emitter.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
 					emitter.path_quaternions[qi].age = 0.f;
 					emitter.path_cycle_count--;
@@ -16506,7 +16317,7 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 			emitter.last_path_index = emitter.active_paths;
 			qi = (emitter.path_start_index + emitter.active_paths++) % path->maximum_active_paths;
 			TFX_ASSERT(qi < path->maximum_active_paths);
-			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch);
+			tfx_quaternion_t q = tfx__get_path_rotation_2d(&random, path->rotation_range, path->rotation_pitch);
 			emitter.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
 			emitter.path_quaternions[qi].cycles = 0;
 			if (emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) {
@@ -16535,7 +16346,7 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 			node = tfx_RandomRangeZeroToMaxInt(&random, path->node_count - 3);
 			t = (float)tfx_RandomRangeZeroToMaxInt(&random, (int)grid_points.x) * increment;
 			path_position = (float)node + t;
-			point = tfx__catmull_rom_spline_2d_soa(path->node_soa.x, path->node_soa.y, node, t);
+			tfx__catmull_rom_spline_2d_soa(path->node_soa.x, path->node_soa.y, node, t, &point.x);
 		}
 		else if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 			float &grid_coord = emitter.path_quaternions[qi].grid_coord;
@@ -16557,7 +16368,7 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 			if (new_path) {
 				if (emitter.state_flags & tfxEmitterStateFlags_has_rotated_path && path->rotation_stagger == 0) {
 					if (path->maximum_paths == 0 || emitter.path_cycle_count > 0) {
-						tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch);
+						tfx_quaternion_t q = tfx__get_path_rotation_2d(&random, path->rotation_range, path->rotation_pitch);
 						emitter.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
 						emitter.path_cycle_count--;
 					}
@@ -16575,14 +16386,14 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 			node = (int)grid_coord;
 			t = grid_coord - (int)grid_coord;
 			path_position = (float)node + t;
-			point = tfx__catmull_rom_spline_2d_soa(path->node_soa.x, path->node_soa.y, node, t);
+			tfx__catmull_rom_spline_2d_soa(path->node_soa.x, path->node_soa.y, node, t, &point.x);
 		}
 		else {
 			node = tfx_RandomRangeZeroToMaxInt(&random, path->node_count - 3);
 			t = tfx_GenerateRandom(&random);
 			path_position = (float)node + t;
 
-			point = tfx__catmull_rom_spline_2d_soa(path->node_soa.x, path->node_soa.y, node, t);
+			tfx__catmull_rom_spline_2d_soa(path->node_soa.x, path->node_soa.y, node, t, &point.x);
 		}
 
 		if (path->extrusion_type == tfxExtrusionLinear) {
@@ -16905,7 +16716,7 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 			node = tfx_RandomRangeZeroToMaxInt(&random, path->node_count - 3);
 			t = (float)tfx_RandomRangeZeroToMaxInt(&random, (int)grid_points.x) * increment;
 			path_position = (float)node + t;
-			point = tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
+			tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t, &point.x);
 		}
 		else if (emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid) {
 			float &grid_coord = emitter.path_quaternions[qi].grid_coord;
@@ -16945,14 +16756,14 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 			node = (int)grid_coord;
 			t = grid_coord - (int)grid_coord;
 			path_position = (float)node + t;
-			point = tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
+			tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t, &point.x);
 		}
 		else {
 			node = tfx_RandomRangeZeroToMaxInt(&random, path->node_count - 3);
 			t = tfx_GenerateRandom(&random);
 			path_position = (float)node + t;
 
-			point = tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t);
+			tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, node, t, &point.x);
 		}
 
 		if (path->extrusion_type == tfxExtrusionLinear) {
