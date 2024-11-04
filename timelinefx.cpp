@@ -10422,7 +10422,7 @@ bool tfx_AddRawEffectToParticleManager(tfx_particle_manager_t *pm, tfx_effect_em
 
 tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning) {
 	tfxPROFILE;
-	std::lock_guard<std::mutex> lock(pm->add_effect_mutex);
+	tfx__sync_lock(&pm->add_effect_mutex);
 	TFX_ASSERT(effect->type == tfxEffectType);
 	TFX_ASSERT(effect->library == pm->library);    //The effect must belong to the same library that is assigned to the particle manager
 	if (pm->flags & tfxParticleManagerFlags_use_compute_shader && pm->highest_compute_controller_index >= pm->max_compute_controllers && pm->free_compute_controllers.empty()) {
@@ -10656,6 +10656,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager_t *pm, tfx_
 	}
 
 	new_effect.state_flags |= tfxEmitterStateFlags_no_tween_this_update;
+	tfx__sync_unlock(&pm->add_effect_mutex);
 	return parent_index.index;
 }
 
@@ -13701,22 +13702,24 @@ void tfx__free_path_quaternion(tfx_particle_manager_t *pm, tfxU32 index) {
 
 tfxU32 tfx__get_particle_index_slot(tfx_particle_manager_t *pm, tfxParticleID particle_id) {
 	//Todo: ideally we want a better thread safe container for this
-	std::lock_guard<std::mutex> lock(pm->particle_index_mutex);
+	tfx__sync_lock(&pm->particle_index_mutex);
 	if (!pm->free_particle_indexes.empty()) {
 		pm->particle_indexes[pm->free_particle_indexes.back()] = particle_id;
 		return pm->free_particle_indexes.pop_back();
 	}
 	pm->particle_indexes.push_back(particle_id);
+	tfx__sync_unlock(&pm->particle_index_mutex);
 	return pm->particle_indexes.current_size - 1;
 }
 
 void tfx__free_particle_index(tfx_particle_manager_t *pm, tfxU32 *index) {
 	//Todo: ideally we want a better thread safe container for this
 	//Note: since changing the threading to thread per emitter this is probably not needed now?
-	std::lock_guard<std::mutex> lock(pm->particle_index_mutex);
+	tfx__sync_lock(&pm->particle_index_mutex);
 	pm->particle_indexes[*index] = tfxINVALID;
 	pm->free_particle_indexes.push_back(*index);
 	*index = tfxINVALID;
+	tfx__sync_unlock(&pm->particle_index_mutex);
 }
 
 tfxU32 tfx__push_depth_index(tfx_vector_t<tfx_depth_index_t> *depth_indexes, tfx_depth_index_t depth_index) {
@@ -17240,7 +17243,6 @@ const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
 tfxU32 tfxCurrentSnapshot = 0;
 tfx_profile_t tfxProfileArray[tfxPROFILE_COUNT];
 int tfxNumberOfThreadsInAdditionToMain = 0;
-bool tfxThreadUsage[32];
 
 tfx_storage_t *tfxStore = 0;
 tfx_allocator *tfxMemoryAllocator = 0;
@@ -17282,7 +17284,7 @@ void tfx_InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
 	tfxStore->memory_pool_count = 1;
 
-	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)std::thread::hardware_concurrency() - 1);
+	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)tfx_HardwareConcurrency() - 1);
 	lookup_callback = tfx__lookup_fast;
 	lookup_overtime_callback = tfx__lookup_fast_overtime;
     
@@ -17602,6 +17604,8 @@ void tfx__init_common_particle_manager(tfx_particle_manager_t *pm, tfx_library_t
 	pm->mt_batch_size = mt_batch_size;
 	pm->work_queue = { 0 };
 	pm->library = library;
+	InitializeCriticalSection(&pm->add_effect_mutex.mutex);
+	InitializeCriticalSection(&pm->particle_index_mutex.mutex);
 
 	if (pm->particle_arrays.bucket_list.current_size == 0) {
 		//todo need to be able to adjust the arena size

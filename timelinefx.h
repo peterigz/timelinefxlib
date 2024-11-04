@@ -1106,7 +1106,6 @@ typedef unsigned short tfxUShort;
 #include <cctype>                    //std::is_digit
 #include <algorithm>
 #include <iostream>                    //temp for std::cout
-#include <mutex>
 #include <cfloat>
 
 #define tfxTWO63 0x8000000000000000u 
@@ -4074,7 +4073,6 @@ tfxAPI_EDITOR inline void tfx_FreeStream(tfx_stream stream) {
 extern const tfxU32 tfxPROFILE_COUNT;
 
 extern int tfxNumberOfThreadsInAdditionToMain;
-extern bool tfxThreadUsage[];        //Used for debugging to see which threads were utilised each frame
 
 #ifndef tfxMAX_QUEUES
 #define tfxMAX_QUEUES 64
@@ -4082,6 +4080,13 @@ extern bool tfxThreadUsage[];        //Used for debugging to see which threads w
 
 #ifndef tfxMAX_QUEUE_ENTRIES
 #define tfxMAX_QUEUE_ENTRIES 512
+#endif
+
+#ifdef _WIN32
+#include <windows.h>
+#include <process.h>
+#else
+#include <pthread.h>
 #endif
 
 struct tfx_work_queue_t;
@@ -4165,13 +4170,6 @@ extern tfx_allocator *tfxMemoryAllocator;
 //I expected. I just had to swap the semaphores for condition_variable and that was pretty much it other then obviously using std::thread as well.
 //There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue and then
 //each emitter that the particle manager uses will be given it's own thread.
-
-#ifdef _WIN32
-#include <windows.h>
-#include <process.h>
-#else
-#include <pthread.h>
-#endif
 
 // Platform-specific atomic operations
 tfxINTERNAL inline tfxU32 tfx__atomic_increment(volatile tfxU32 *value) {
@@ -6478,8 +6476,8 @@ struct tfx_particle_manager_t {
 	tfxU32 layer_sizes[tfxLAYERS];
 
 	int mt_batch_size;
-	std::mutex particle_index_mutex;
-	std::mutex add_effect_mutex;
+	tfx_sync_t particle_index_mutex;
+	tfx_sync_t add_effect_mutex;
 
 	tfx_random_t random;
 	tfx_random_t threaded_random;
