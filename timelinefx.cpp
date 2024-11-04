@@ -17604,8 +17604,8 @@ void tfx__init_common_particle_manager(tfx_particle_manager_t *pm, tfx_library_t
 	pm->mt_batch_size = mt_batch_size;
 	pm->work_queue = { 0 };
 	pm->library = library;
-	InitializeCriticalSection(&pm->add_effect_mutex.mutex);
-	InitializeCriticalSection(&pm->particle_index_mutex.mutex);
+	tfx__sync_init(&pm->add_effect_mutex);
+	tfx__sync_init(&pm->particle_index_mutex);
 
 	if (pm->particle_arrays.bucket_list.current_size == 0) {
 		//todo need to be able to adjust the arena size
