@@ -1076,7 +1076,6 @@ tfx_allocator *tfxGetAllocator();
 
 #include <stdint.h>
 #include <math.h>
-#include <condition_variable>
 
 //type defs
 typedef uint16_t tfxU16;
@@ -1108,8 +1107,6 @@ typedef unsigned short tfxUShort;
 #include <algorithm>
 #include <iostream>                    //temp for std::cout
 #include <mutex>
-#include <thread>
-#include <atomic>
 #include <cfloat>
 
 #define tfxTWO63 0x8000000000000000u 
@@ -4092,27 +4089,40 @@ struct tfx_work_queue_t;
 #define tfxWORKQUEUECALLBACK(name) void name(tfx_work_queue_t *queue, void *data)
 typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
 
+// Callback function type
+typedef void (*tfx_work_queue_callback)(struct tfx_work_queue_t *queue, void *data);
+
 struct tfx_work_queue_entry_t {
-	tfxWorkQueueCallback *call_back = nullptr;
-	void *data = nullptr;
+	tfx_work_queue_callback call_back;
+	void *data;
 };
 
 struct tfx_work_queue_t {
-	tfxU32 volatile entry_completion_goal = 0;
-	tfxU32 volatile entry_completion_count = 0;
-	tfxLONG volatile next_read_entry = 0;
-	tfxLONG volatile next_write_entry = 0;
+	volatile tfx_uint entry_completion_goal;
+	volatile tfx_uint entry_completion_count;
+	volatile int next_read_entry;
+	volatile int next_write_entry;
 	tfx_work_queue_entry_t entries[tfxMAX_QUEUE_ENTRIES];
 };
 
+// Platform-specific synchronization wrapper
+struct tfx_sync_t {
+#ifdef _WIN32
+	CRITICAL_SECTION mutex;
+	CONDITION_VARIABLE empty_condition;
+	CONDITION_VARIABLE full_condition;
+#else
+	pthread_mutex_t mutex;
+	pthread_cond_t empty_condition;
+	pthread_cond_t full_condition;
+#endif
+};
+
 struct tfx_queue_processor_t {
-	std::condition_variable empty_condition;
-	std::condition_variable full_condition;
-	tfxU32 count;
-	volatile bool end_all_threads;
-	//These point to the queues stored in particle managers and anything else that needs a queue with multithreading
+	tfx_sync_t sync;
+	tfx_uint count;
+	volatile tfx_bool end_all_threads;
 	tfx_work_queue_t *queues[tfxMAX_QUEUES];
-    std::mutex mutex;
 };
 
 struct tfx_data_types_dictionary_t {
@@ -4134,8 +4144,12 @@ struct tfx_storage_t {
 	float circle_path_x[tfxCIRCLENODES];
 	float circle_path_z[tfxCIRCLENODES];
 	tfx_color_ramp_format color_ramp_format;
-	tfx_queue_processor_t tfxThreadQueues;
-	std::thread threads[tfxMAX_THREADS];
+	tfx_queue_processor_t thread_queues;
+#ifdef _WIN32
+	HANDLE threads[tfxMAX_THREADS];
+#else
+	pthread_t threads[tfxMAX_THREADS];
+#endif
 	tfxU32 thread_count;
 };
 
@@ -4152,68 +4166,184 @@ extern tfx_allocator *tfxMemoryAllocator;
 //There is a single thread pool created to serve multiple queues. Currently each particle manager that you create will have it's own queue and then
 //each emitter that the particle manager uses will be given it's own thread.
 
+#ifdef _WIN32
+#include <windows.h>
+#include <process.h>
+#else
+#include <pthread.h>
+#endif
 
-typedef tfxU32 tfxWorkQueueFlags;
-
-enum tfxWorkQueueFlag_ {
-	tfxWorkQueueFlag_none = 0
-};
-
-tfxINTERNAL inline void InitialiseThreadQueues(tfx_queue_processor_t *queues) {
-	queues->count = 0;
-	memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void *));
+// Platform-specific atomic operations
+tfxINTERNAL inline tfxU32 tfx__atomic_increment(volatile tfxU32 *value) {
+#ifdef _WIN32
+	return InterlockedIncrement((LONG *)value);
+#else
+	return __sync_fetch_and_add(value, 1) + 1;
+#endif
 }
 
-tfxINTERNAL tfx_work_queue_t *tfxGetQueueWithWork(tfx_queue_processor_t *thread_processor) {
-	std::unique_lock<std::mutex> lock(thread_processor->mutex);
-	thread_processor->full_condition.wait(lock, [&]() { return thread_processor->count > 0; });
-	tfx_work_queue_t *queue = thread_processor->queues[--thread_processor->count];
-	thread_processor->empty_condition.notify_one();
+tfxINTERNAL inline bool tfx__atomic_compare_exchange(volatile int *dest, int exchange, int comparand) {
+#ifdef _WIN32
+	return InterlockedCompareExchange((LONG *)dest, exchange, comparand) == comparand;
+#else
+	return __sync_bool_compare_and_swap(dest, comparand, exchange);
+#endif
+}
+
+tfxINTERNAL inline void tfx__memory_barrier(void) {
+#ifdef _WIN32
+	MemoryBarrier();
+#else
+	__sync_synchronize();
+#endif
+}
+
+// Initialize synchronization primitives
+tfxINTERNAL inline void tfx__sync_init(tfx_sync_t *sync) {
+#ifdef _WIN32
+	InitializeCriticalSection(&sync->mutex);
+	InitializeConditionVariable(&sync->empty_condition);
+	InitializeConditionVariable(&sync->full_condition);
+#else
+	pthread_mutex_init(&sync->mutex, NULL);
+	pthread_cond_init(&sync->empty_condition, NULL);
+	pthread_cond_init(&sync->full_condition, NULL);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_cleanup(tfx_sync_t *sync) {
+#ifdef _WIN32
+	DeleteCriticalSection(&sync->mutex);
+#else
+	pthread_mutex_destroy(&sync->mutex);
+	pthread_cond_destroy(&sync->empty_condition);
+	pthread_cond_destroy(&sync->full_condition);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_lock(tfx_sync_t *sync) {
+#ifdef _WIN32
+	EnterCriticalSection(&sync->mutex);
+#else
+	pthread_mutex_lock(&sync->mutex);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_unlock(tfx_sync_t *sync) {
+#ifdef _WIN32
+	LeaveCriticalSection(&sync->mutex);
+#else
+	pthread_mutex_unlock(&sync->mutex);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_wait_empty(tfx_sync_t *sync) {
+#ifdef _WIN32
+	SleepConditionVariableCS(&sync->empty_condition, &sync->mutex, INFINITE);
+#else
+	pthread_cond_wait(&sync->empty_condition, &sync->mutex);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_wait_full(tfx_sync_t *sync) {
+#ifdef _WIN32
+	SleepConditionVariableCS(&sync->full_condition, &sync->mutex, INFINITE);
+#else
+	pthread_cond_wait(&sync->full_condition, &sync->mutex);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_signal_empty(tfx_sync_t *sync) {
+#ifdef _WIN32
+	WakeConditionVariable(&sync->empty_condition);
+#else
+	pthread_cond_signal(&sync->empty_condition);
+#endif
+}
+
+tfxINTERNAL inline void tfx__sync_signal_full(tfx_sync_t *sync) {
+#ifdef _WIN32
+	WakeConditionVariable(&sync->full_condition);
+#else
+	pthread_cond_signal(&sync->full_condition);
+#endif
+}
+
+// Initialize queue processor
+tfxINTERNAL inline void tfx__initialise_thread_queues(tfx_queue_processor_t *queues) {
+	queues->count = 0;
+	memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void *));
+	tfx__sync_init(&queues->sync);
+	queues->end_all_threads = false;
+}
+
+tfxINTERNAL inline void tfx__cleanup_thread_queues(tfx_queue_processor_t *queues) {
+	tfx__sync_cleanup(&queues->sync);
+}
+
+tfxINTERNAL inline tfx_work_queue_t *tfx__get_queue_with_work(tfx_queue_processor_t *thread_processor) {
+	tfx__sync_lock(&thread_processor->sync);
+
+	while (thread_processor->count == 0 && !thread_processor->end_all_threads) {
+		tfx__sync_wait_full(&thread_processor->sync);
+	}
+
+	tfx_work_queue_t *queue = NULL;
+	if (thread_processor->count > 0) {
+		queue = thread_processor->queues[--thread_processor->count];
+		tfx__sync_signal_empty(&thread_processor->sync);
+	}
+
+	tfx__sync_unlock(&thread_processor->sync);
 	return queue;
 }
 
-tfxINTERNAL inline void tfxPushQueueWork(tfx_queue_processor_t *thread_processor, tfx_work_queue_t *queue) {
-	std::unique_lock<std::mutex> lock(thread_processor->mutex);
-	thread_processor->empty_condition.wait(lock, [&]() { return thread_processor->count < tfxMAX_QUEUES; });
+tfxINTERNAL inline void tfx__push_queue_work(tfx_queue_processor_t *thread_processor, tfx_work_queue_t *queue) {
+	tfx__sync_lock(&thread_processor->sync);
+
+	while (thread_processor->count >= tfxMAX_QUEUES) {
+		tfx__sync_wait_empty(&thread_processor->sync);
+	}
+
 	thread_processor->queues[thread_processor->count++] = queue;
-	thread_processor->full_condition.notify_one();
+	tfx__sync_signal_full(&thread_processor->sync);
+
+	tfx__sync_unlock(&thread_processor->sync);
 }
 
-tfxINTERNAL inline bool tfxDoNextWorkQueue(tfx_queue_processor_t *queue_processor) {
-	tfx_work_queue_t *queue = tfxGetQueueWithWork(queue_processor);
+tfxINTERNAL inline tfx_bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_processor) {
+	tfx_work_queue_t *queue = tfx__get_queue_with_work(queue_processor);
 
 	if (queue) {
 		tfxU32 original_read_entry = queue->next_read_entry;
 		tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUE_ENTRIES;
 
 		if (original_read_entry != queue->next_write_entry) {
-			tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
-			if (index == original_read_entry) {
-				tfx_work_queue_entry_t entry = queue->entries[index];
+			if (tfx__atomic_compare_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry)) {
+				tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
 				entry.call_back(queue, entry.data);
-				tfx__increment(&queue->entry_completion_count);
+				tfx__atomic_increment(&queue->entry_completion_count);
 			}
 		}
 	}
 	return queue_processor->end_all_threads;
 }
 
-tfxINTERNAL inline void tfxDoNextWorkQueueEntry(tfx_work_queue_t *queue) {
+tfxINTERNAL inline void tfx__do_next_work_queue_entry(tfx_work_queue_t *queue) {
 	tfxU32 original_read_entry = queue->next_read_entry;
 	tfxU32 new_original_read_entry = (original_read_entry + 1) % tfxMAX_QUEUE_ENTRIES;
 
 	if (original_read_entry != queue->next_write_entry) {
-		tfxU32 index = tfx__compare_and_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry);
-		if (index == original_read_entry) {
-			tfx_work_queue_entry_t entry = queue->entries[index];
+		if (tfx__atomic_compare_exchange(&queue->next_read_entry, new_original_read_entry, original_read_entry)) {
+			tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
 			entry.call_back(queue, entry.data);
-			tfx__increment(&queue->entry_completion_count);
+			tfx__atomic_increment(&queue->entry_completion_count);
 		}
 	}
 }
 
-tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data, tfxWorkQueueCallback call_back) {
-	if (!tfxNumberOfThreadsInAdditionToMain) {
+tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void *data, tfx_work_queue_callback call_back) {
+	if (!tfxStore->thread_count) {
 		call_back(queue, data);
 		return;
 	}
@@ -4221,40 +4351,101 @@ tfxINTERNAL inline void tfxAddWorkQueueEntry(tfx_work_queue_t *queue, void *data
 	tfxU32 new_entry_to_write = (queue->next_write_entry + 1) % tfxMAX_QUEUE_ENTRIES;
 	while (new_entry_to_write == queue->next_read_entry) {        //Not enough room in work queue
 		//We can do this because we're single producer
-		tfxDoNextWorkQueueEntry(queue);
+		tfx__do_next_work_queue_entry(queue);
 	}
 	queue->entries[queue->next_write_entry].data = data;
 	queue->entries[queue->next_write_entry].call_back = call_back;
-	tfx__increment(&queue->entry_completion_goal);
+	tfx__atomic_increment(&queue->entry_completion_goal);
 
 	tfx__writebarrier;
 
-	tfxPushQueueWork(&tfxStore->tfxThreadQueues, queue);
+	tfx__push_queue_work(&tfxStore->thread_queues, queue);
 	queue->next_write_entry = new_entry_to_write;
 
 }
 
-tfxINTERNAL inline void tfxCompleteAllWork(tfx_work_queue_t *queue) {
-	tfx_work_queue_entry_t entry = {};
+tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
+	tfx_work_queue_entry_t entry = { 0 };
 	while (queue->entry_completion_goal != queue->entry_completion_count) {
-		tfxDoNextWorkQueueEntry(queue);
+		tfx__do_next_work_queue_entry(queue);
 	}
 	queue->entry_completion_count = 0;
 	queue->entry_completion_goal = 0;
 }
 
-tfxINTERNAL inline void tfxInitialiseWorkQueue(tfx_work_queue_t *queue) {
-	queue->entry_completion_count = 0;
-	queue->entry_completion_goal = 0;
-	queue->next_read_entry = 0;
-	queue->next_write_entry = 0;
+#ifdef _WIN32
+tfxINTERNAL inline unsigned WINAPI tfx__thread_worker(void *arg) {
+#else
+inline void *tfx__thread_worker(void *arg) {
+#endif
+	tfx_queue_processor_t *queue_processor = (tfx_queue_processor_t *)arg;
+	while (!tfx__do_next_work_queue(queue_processor)) {
+		// Continue processing
+	}
+	return 0;
 }
 
-tfxINTERNAL inline void tfxThreadWorker(tfx_queue_processor_t *queue_processor) {
-	TFX_ASSERT(queue_processor);
-	for (;;) {
-		if (tfxDoNextWorkQueue(queue_processor)) break;
+// Thread creation helper function
+tfxINTERNAL inline bool tfx__create_worker_thread(tfx_storage_t *storage, int thread_index) {
+#ifdef _WIN32
+	storage->threads[thread_index] = (HANDLE)_beginthreadex(
+		NULL,
+		0,
+		tfx__thread_worker,
+		&storage->thread_queues,
+		0,
+		NULL
+	);
+	return storage->threads[thread_index] != NULL;
+#else
+	return pthread_create(
+		&storage->threads[thread_index],
+		NULL,
+		tfx__thread_worker,
+		&storage->thread_queues
+	) == 0;
+#endif
+}
+
+// Thread cleanup helper function
+tfxINTERNAL inline void tfx__cleanup_thread(tfx_storage_t * storage, int thread_index) {
+#ifdef _WIN32
+	if (storage->threads[thread_index]) {
+		WaitForSingleObject(storage->threads[thread_index], INFINITE);
+		CloseHandle(storage->threads[thread_index]);
+		storage->threads[thread_index] = NULL;
 	}
+#else
+	pthread_join(storage->threads[thread_index], NULL);
+#endif
+}
+
+tfxAPI inline unsigned int tfx_HardwareConcurrency(void) {
+#ifdef _WIN32
+	SYSTEM_INFO sysinfo;
+	GetSystemInfo(&sysinfo);
+	return sysinfo.dwNumberOfProcessors;
+#else
+#ifdef _SC_NPROCESSORS_ONLN
+	long count = sysconf(_SC_NPROCESSORS_ONLN);
+	return (count > 0) ? (unsigned int)count : 0;
+#else
+	return 0;
+#endif
+#endif
+}
+
+// Safe version that always returns at least 1
+tfxAPI inline unsigned int tfx_HardwareConcurrencySafe(void) {
+	unsigned int count = tfx_HardwareConcurrency();
+	return count > 0 ? count : 1;
+}
+
+// Helper function to get a good default thread count for thread pools
+// Usually hardware threads - 1 to leave a core for the OS/main thread
+tfxAPI inline unsigned int tfx_GetDefaultThreadCount(void) {
+	unsigned int count = tfx_HardwareConcurrency();
+	return count > 1 ? count - 1 : 1;
 }
 
 //-----------------------------------------------------------

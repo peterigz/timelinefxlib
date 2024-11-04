@@ -9928,14 +9928,14 @@ void tfx__compress_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t 
 		entry->sprite_data = sprite_data;
 		entry->frame = f;
 		if (tfxNumberOfThreadsInAdditionToMain > 0) {
-			tfxAddWorkQueueEntry(&pm->work_queue, entry, tfx__link_up_sprite_captured_indexes);
+			tfx__add_work_queue_entry(&pm->work_queue, entry, tfx__link_up_sprite_captured_indexes);
 		}
 		else {
 			tfx__link_up_sprite_captured_indexes(&pm->work_queue, entry);
 		}
 		f++;
 	}
-	tfxCompleteAllWork(&pm->work_queue);
+	tfx__complete_all_work(&pm->work_queue);
 	compress_work.free();
 	progress->store(tfxBakingDone);
 
@@ -10808,7 +10808,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	}
 	if(elapsed_time <= 0) return;
 
-	tfxCompleteAllWork(&pm->work_queue);
+	tfx__complete_all_work(&pm->work_queue);
 
 	if (pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers && pm->flags & tfxParticleManagerFlags_auto_order_effects) {
 		tfx_vector_t<tfx_effect_index_t> &effects_in_use = pm->effects_in_use[0][pm->current_ebuff];
@@ -10942,11 +10942,11 @@ void tfx_UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	for (tfx_spawn_work_entry_t *spawn_work : pm->deffered_spawn_work) {
 		//We deffer any spawn work to here for any emitters that have ordered effects so that the required buffer space can be calculated
 		//before doing any spawning.
-		tfxAddWorkQueueEntry(&pm->work_queue, spawn_work, pm->flags & tfxParticleManagerFlags_3d_effects ? tfx__do_spawn_work_2d : tfx__do_spawn_work_3d);
+		tfx__add_work_queue_entry(&pm->work_queue, spawn_work, pm->flags & tfxParticleManagerFlags_3d_effects ? tfx__do_spawn_work_2d : tfx__do_spawn_work_3d);
 	}
 	pm->deffered_spawn_work.clear();
 
-	tfxCompleteAllWork(&pm->work_queue);
+	tfx__complete_all_work(&pm->work_queue);
 	tfx_AdvanceRandom(&pm->threaded_random);
 
 	for (auto &work_entry : pm->spawn_work) {
@@ -11003,11 +11003,11 @@ void tfx_UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			work_entry.global_intensity = parent_effect.spawn_controls.intensity;
 			particles_to_update -= pm->mt_batch_size;
 			running_start_index += pm->mt_batch_size;
-			tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, tfx__control_particles);
+			tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_particles);
 		}
 	}
 
-	tfxCompleteAllWork(&pm->work_queue);
+	tfx__complete_all_work(&pm->work_queue);
 	pm->control_work.clear();
 
 	{
@@ -11028,14 +11028,14 @@ void tfx_UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 			work_entry.wide_end_index += work_entry.wide_end_index - work_entry.start_diff < bank.current_size ? tfxDataWidth : 0;
 			work_entry.pm = pm;
 			if (!(pm->flags & tfxParticleManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain) {
-				tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, tfx__control_particle_age);
+				tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__control_particle_age);
 			}
 			else {
 				tfx__control_particle_age(&pm->work_queue, &work_entry);
 			}
 		}
 	}
-	tfxCompleteAllWork(&pm->work_queue);
+	tfx__complete_all_work(&pm->work_queue);
 	pm->age_work.clear();
 
 	//Todo work queue this for each layer
@@ -11080,7 +11080,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 				work_entry.bank = &pm->particle_arrays;
 				work_entry.depth_indexes = &pm->depth_indexes[layer][pm->current_depth_buffer_index[layer]];
 				if (!(pm->flags & tfxParticleManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
-					tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, tfx__insertion_sort_depth);
+					tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__insertion_sort_depth);
 				}
 				else {
 					tfx__insertion_sort_depth(&pm->work_queue, &work_entry);
@@ -11117,7 +11117,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 						work_entry.bank = &pm->particle_arrays;
 						work_entry.depth_indexes = &effect.instance_data.depth_indexes[layer][effect.instance_data.current_depth_buffer_index[layer]];
 						if (!(pm->flags & tfxParticleManagerFlags_single_threaded) && tfxNumberOfThreadsInAdditionToMain > 0) {
-							tfxAddWorkQueueEntry(&pm->work_queue, &work_entry, tfx__insertion_sort_depth);
+							tfx__add_work_queue_entry(&pm->work_queue, &work_entry, tfx__insertion_sort_depth);
 						}
 						else {
 							tfx__insertion_sort_depth(&pm->work_queue, &work_entry);
@@ -13479,7 +13479,7 @@ void tfx_SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, 
 }
 
 void tfx_ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_banks, bool free_sprite_buffers) {
-	tfxCompleteAllWork(&pm->work_queue);
+	tfx__complete_all_work(&pm->work_queue);
 	if (free_particle_banks) {
 		tfx__free_all_particle_lists(pm);
 		tfx__free_all_spawn_location_lists(pm);
@@ -14309,7 +14309,7 @@ tfxU32 tfx__new_sprites_needed(tfx_particle_manager_t *pm, tfx_random_t *random,
 }
 
 void tfx__complete_particle_manager_work(tfx_particle_manager_t *pm) {
-	tfxCompleteAllWork(&pm->work_queue);
+	tfx__complete_all_work(&pm->work_queue);
 }
 
 tfxU32 tfx__spawn_particles(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *work_entry) {
@@ -14405,7 +14405,7 @@ tfxU32 tfx__spawn_particles(tfx_particle_manager_t *pm, tfx_spawn_work_entry_t *
 			pm->deffered_spawn_work.push_back(work_entry);
 		}
 		else {
-			tfxAddWorkQueueEntry(&pm->work_queue, work_entry, pm->flags & tfxParticleManagerFlags_3d_effects ? tfx__do_spawn_work_2d : tfx__do_spawn_work_3d);
+			tfx__add_work_queue_entry(&pm->work_queue, work_entry, pm->flags & tfxParticleManagerFlags_3d_effects ? tfx__do_spawn_work_2d : tfx__do_spawn_work_3d);
 		}
 	}
 
@@ -17252,11 +17252,13 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
 }
 
-bool tfxInitialiseThreads(tfx_queue_processor_t *thread_queues) {
+bool tfx_InitialiseThreads(tfx_storage_t *storage) {
 	//todo: create a function to close all the threads 
+	int thread_count = 0;
 	for (int thread_index = 0; thread_index < tfxNumberOfThreadsInAdditionToMain; ++thread_index) {
-		tfxStore->threads[thread_index] = std::thread(tfxThreadWorker, &tfxStore->tfxThreadQueues);
-		tfxStore->thread_count++;
+		if (tfx__create_worker_thread(storage, thread_index)) {
+			storage->thread_count++;
+		}
 	}
 	return true;
 }
@@ -17284,22 +17286,22 @@ void tfx_InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	lookup_callback = tfx__lookup_fast;
 	lookup_overtime_callback = tfx__lookup_fast_overtime;
     
-    std::unique_lock<std::mutex> lock(tfxStore->tfxThreadQueues.mutex);
-	tfxInitialiseThreads(&tfxStore->tfxThreadQueues);
+	tfx_InitialiseThreads(tfxStore);
+	tfx__initialise_thread_queues(&tfxStore->thread_queues);
 }
 
 void tfx_EndTimelineFX() {
-	tfxStore->tfxThreadQueues.end_all_threads = true;
+	tfxStore->thread_queues.end_all_threads = true;
 	tfx__writebarrier;
 	tfx_work_queue_t end_queue{};
 	tfxU32 thread_count = tfxStore->thread_count;
 	while (thread_count > 0) {
-		tfxAddWorkQueueEntry(&end_queue, nullptr, tfxEndThread);
-		tfxCompleteAllWork(&end_queue);
+		tfx__add_work_queue_entry(&end_queue, nullptr, tfxEndThread);
+		tfx__complete_all_work(&end_queue);
 		thread_count--;
 	}
 	for (int i = 0; i != tfxStore->thread_count; ++i) {
-		tfxStore->threads[i].join();
+		tfx__cleanup_thread(tfxStore, i);
 	}
 	int pool_count = tfxStore->memory_pool_count;
 	tfx__unlock_thread_access(tfxMemoryAllocator);
@@ -17598,7 +17600,7 @@ void tfx__init_common_particle_manager(tfx_particle_manager_t *pm, tfx_library_t
 	pm->threaded_random = tfx_NewRandom(tfx_Millisecs());
 	pm->max_effects = effects_limit;
 	pm->mt_batch_size = mt_batch_size;
-	tfxInitialiseWorkQueue(&pm->work_queue);
+	pm->work_queue = { 0 };
 	pm->library = library;
 
 	if (pm->particle_arrays.bucket_list.current_size == 0) {
