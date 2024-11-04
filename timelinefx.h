@@ -52,41 +52,6 @@
 #define tfxMAX_THREADS 64
 #endif
 
-#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64)
-#define tfxINTEL
-#include <immintrin.h>
-#elif defined(__arm__) || defined(__aarch64__)
-#include <arm_neon.h>
-#include <mach/mach_time.h>
-#define tfxARM
-#endif
-
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
-#define tfxWINDOWS
-#elif __APPLE__
-#define tfxMAC
-#elif __linux__
-#define tfxLINUX
-#endif
-
-#include <stdint.h>
-#include <math.h>
-#include <condition_variable>
-
-//type defs
-typedef uint16_t tfxU16;
-typedef uint32_t tfxU32;
-typedef unsigned int tfxEmitterID;
-typedef int32_t tfxS32;
-typedef uint64_t tfxU64;
-typedef int64_t tfxS64;
-typedef tfxU32 tfxEffectID;
-typedef tfxU32 tfxAnimationID;
-typedef tfxU64 tfxKey;
-typedef tfxU32 tfxParticleID;
-typedef short tfxShort;
-typedef unsigned short tfxUShort;
-
 //---------------------------------------
 /*  Zest_Pocket_Allocator, a Two Level Segregated Fit memory allocator
 	This is my own memory allocator from https://github.com/peterigz/zloc
@@ -123,12 +88,12 @@ typedef void *tfx_pool;
 #define tfx__64BIT
 typedef size_t tfx_size;
 typedef size_t tfx_fl_bitmap;
-typedef int32_t tfxLONG;
+typedef int tfxLONG;
 #define TFX_ONE 1ULL
 #else
 typedef size_t tfx_size;
 typedef size_t tfx_fl_bitmap;
-typedef int32_t tfxLONG;
+typedef int tfxLONG;
 #define TFX_ONE 1U
 #endif
 
@@ -298,7 +263,7 @@ extern "C" {
 		return InterlockedExchange((volatile LONG *)target, value);
 	}
 
-	static inline uint32_t tfx__increment(uint32_t volatile *target) {
+	static inline unsigned int tfx__increment(unsigned int volatile *target) {
 		return InterlockedIncrement(target);
 	}
 #endif
@@ -342,7 +307,7 @@ extern "C" {
 		return __sync_lock_test_and_set(target, value);
 	}
 
-	static inline uint32_t tfx__increment(uint32_t volatile *target) {
+	static inline unsigned int tfx__increment(unsigned int volatile *target) {
 		return __sync_add_and_fetch(target, 1);
 	}
 
@@ -1092,6 +1057,41 @@ tfx_allocator *tfxGetAllocator();
 //----------------------------------------------------------
 //Header_Includes_and_Typedefs
 //----------------------------------------------------------
+#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64)
+#define tfxINTEL
+#include <immintrin.h>
+#elif defined(__arm__) || defined(__aarch64__)
+#include <arm_neon.h>
+#include <mach/mach_time.h>
+#define tfxARM
+#endif
+
+#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#define tfxWINDOWS
+#elif __APPLE__
+#define tfxMAC
+#elif __linux__
+#define tfxLINUX
+#endif
+
+#include <stdint.h>
+#include <math.h>
+#include <condition_variable>
+
+//type defs
+typedef uint16_t tfxU16;
+typedef uint32_t tfxU32;
+typedef unsigned int tfxEmitterID;
+typedef int32_t tfxS32;
+typedef uint64_t tfxU64;
+typedef int64_t tfxS64;
+typedef tfxU32 tfxEffectID;
+typedef tfxU32 tfxAnimationID;
+typedef tfxU64 tfxKey;
+typedef tfxU32 tfxParticleID;
+typedef short tfxShort;
+typedef unsigned short tfxUShort;
+
 #if defined(_WIN32)
 #include <SDKDDKVer.h>
 #ifndef WIN_LEAN_AND_MEAN
@@ -6768,7 +6768,6 @@ tfxINTERNAL void tfx__copy_transform_attributes(tfx_transform_attributes_t *src,
 tfxINTERNAL void tfx__copy_global_attributes_no_lookups(tfx_global_attributes_t *src, tfx_global_attributes_t *dst);
 tfxINTERNAL void tfx__copy_global_attributes(tfx_global_attributes_t *src, tfx_global_attributes_t *dst);
 tfxINTERNAL int tfx__get_effect_library_stats(const char *filename, tfx_effect_library_stats_t *stats);
-tfxINTERNAL void tfx_UpdateLibraryGPUImageData(tfx_library_t *library);
 tfxINTERNAL void tfx__toggle_sprites_with_uid(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL tfxU32 tfx__get_library_lookup_indexes_size_in_bytes(tfx_library_t *library);
 tfxINTERNAL tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library_t *library);
@@ -7360,6 +7359,13 @@ tfxAPI tfxErrorFlags tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 si
 	tfxErrorCode_invalid_inventory
 */
 tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager_t *animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
+
+/*
+* Updates all the image data in the library using the uv_lookup that you set when loading a library. This allows you to add all of the uv data for
+* the shapes that are loaded into the texture.
+* @param tfx_library_t                A valid pointer to a tfx_library_t
+*/
+tfxAPI void tfx_UpdateLibraryGPUImageData(tfx_library_t *library);
 
 /*
 Output all the effect names in a library to the console
