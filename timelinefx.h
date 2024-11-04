@@ -1102,10 +1102,7 @@ typedef unsigned short tfxUShort;
 //Might possibly replace some of these in the future
 #include <stdio.h>
 #include <stdarg.h>                    //va_list
-#include <chrono>                    //std::chrono::high_resolution_clock
-#include <cctype>                    //std::is_digit
 #include <algorithm>
-#include <iostream>                    //temp for std::cout
 #include <cfloat>
 
 #define tfxTWO63 0x8000000000000000u 
@@ -1204,8 +1201,6 @@ struct tfx_str512_t;
 #define tfxCONSTRUCTOR_VEC_INIT(name) 
 #define tfxCONSTRUCTOR_VEC_INIT2(name) 
 
-typedef std::chrono::high_resolution_clock tfxClock;
-
 /*    Functions come in 3 flavours:
 1) INTERNAL where they're only meant for internal use by the library and not for any use outside it. Note that these functions are declared as static.
 2) API where they're meant for access within your games that you're developing
@@ -1289,17 +1284,60 @@ inline tfxU32 tfx_AtomicAdd32(tfxU32 volatile *value, tfxU32 amount_to_add) {
 }
 #endif
 
-tfxINTERNAL inline tfxU32 tfx_Millisecs() {
-	auto now = tfxClock::now().time_since_epoch();
-	auto m = std::chrono::duration_cast<std::chrono::milliseconds>(now).count();
+#ifdef _WIN32
+tfxINTERNAL tfxU32 tfx_Millisecs(void) {
+	LARGE_INTEGER frequency, counter;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&counter);
+	tfxU64 ms = (tfxU64)(counter.QuadPart * 1000LL / frequency.QuadPart);
+	return (tfxU32)ms;
+}
+
+tfxINTERNAL tfxU64 tfx_Microsecs(void) {
+	LARGE_INTEGER frequency, counter;
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&counter);
+	tfxU64 us = (tfxU64)(counter.QuadPart * 1000000LL / frequency.QuadPart);
+	return (tfxU64)us;
+}
+#elif defined(__APPLE__)
+#include <mach/mach_time.h>
+tfxINTERNAL inline tfxU32 tfx_Millisecs(void) {
+	static mach_timebase_info_data_t timebase_info;
+	if (timebase_info.denom == 0) {
+		mach_timebase_info(&timebase_info);
+	}
+
+	uint64_t time_ns = mach_absolute_time() * timebase_info.numer / timebase_info.denom;
+	tfxU32 ms = (tfxU32)(time_ns / 1000000);
+	return (tfxU32)ms;
+}
+
+tfxINTERNAL inline tfxU64 tfx_Microsecs(void) {
+	static mach_timebase_info_data_t timebase_info;
+	if (timebase_info.denom == 0) {
+		mach_timebase_info(&timebase_info);
+	}
+
+	uint64_t time_ns = mach_absolute_time() * timebase_info.numer / timebase_info.denom;
+	tfxU64 us = (tfxU64)(time_ns / 1000);
+	return us;
+}
+#else
+tfxINTERNAL inline tfxU32 tfx_Millisecs(void) {
+	struct timespec now;
+	clock_gettime(CLOCK_REALTIME, &now);
+	long m = now.tv_sec * 1000 + now.tv_nsec / 1000000;
 	return (tfxU32)m;
 }
 
-tfxINTERNAL inline uint64_t tfx_Microsecs() {
-	auto now = tfxClock::now().time_since_epoch();
-	auto m = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
-	return m;
+tfxINTERNAL inline tfxU64 tfx_Microsecs(void) {
+	struct timespec now;
+	clock_gettime(CLOCK_REALTIME, &now);
+	tfxU64 us = now.tv_sec * 1000000ULL + now.tv_nsec / 1000;
+	return (tfxU64)us;
 }
+#endif
 
 //-----------------------------------------------------------
 //Section: XXHash_Implementation
@@ -6716,7 +6754,7 @@ tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, t
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_str_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_str_t *file);
 tfxAPI_EDITOR void tfx__split_string_stack(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
-tfxAPI_EDITOR bool tfx__string_is_uint(const tfx_str_t s);
+tfxAPI_EDITOR bool tfx__string_is_uint(const char *s);
 tfxAPI_EDITOR void tfx__assign_property_line(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version);
 tfxAPI_EDITOR void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
 tfxAPI_EDITOR void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str_t *field, float value);
@@ -6833,7 +6871,7 @@ tfxINTERNAL tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, 
 tfxINTERNAL tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
 tfxINTERNAL tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t);
 tfxINTERNAL float tfx__get_bezier_value(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
-tfxINTERNAL float inline tfx__get_vector_angle(float x, float y) { return atan2(x, -y); }
+tfxINTERNAL inline float tfx__get_vector_angle(float x, float y) { return atan2f(x, -y); }
 tfxINTERNAL bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxINTERNAL void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph);
 tfxINTERNAL void tfx__compile_color_overtime(tfx_graph_t *graph, float gamma = tfxGAMMA);
@@ -6934,7 +6972,7 @@ tfxAPI_EDITOR void tfx__init_library(tfx_library_t *library);
 tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library_t *library, const char *path);
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library_t *library, tfxKey key);
 tfxAPI_EDITOR tfx_effect_emitter_t *tfx__get_library_effect_by_key(tfx_library_t *library, tfxKey key);
-tfxAPI_EDITOR void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], std::atomic_int *progress);
+tfxAPI_EDITOR void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], int *progress);
 tfxINTERNAL void tfx__build_path_nodes_complex(tfx_emitter_path_t *path);
 tfxINTERNAL void tfx__free_overtime_attributes(tfx_overtime_attributes_t *attributes);
 tfxINTERNAL void tfx__copy_overtime_attributes_no_lookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
@@ -7408,7 +7446,7 @@ tfxINTERNAL void tfx__add_template_path(tfx_effect_template_t *effect_template, 
 //--------------------------------
 tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library_t *library, tfx_str256_t path, tfx_effect_template_t *effect);
 tfxINTERNAL void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprites);
-tfxINTERNAL void tfx__compress_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, std::atomic_int *progress);
+tfxINTERNAL void tfx__compress_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, int *progress);
 tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__build_all_library_paths(tfx_library_t *library);
 tfxINTERNAL tfx_str64_t tfx__get_name_from_path(tfx_str256_t *path);
@@ -7751,7 +7789,7 @@ For example if you're updating 60 frames per second then elapsed time would be 1
 	TimerAccumulate(game->timer);
 	int pending_ticks = TimerPendingTicks(game->timer);	//The number of times the update loop will run this frame.
 
-	while (zest_TimerDoUpdate(game->timer)) {
+	while (tfx_TimerDoUpdate(game->timer)) {
 		if (pending_ticks > 0) {
 			tfx_UpdateParticleManager(&game->pm, FrameLength * pending_ticks);
 			//Set the pending ticks to 0 so we don't run the update again this frame.

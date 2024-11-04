@@ -1055,7 +1055,7 @@ tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, floa
 	float half_angle = angle * .5f;
 	float sin_half_angle = sinf(half_angle);
 
-	return tfx_quaternion_t(cos(half_angle), x * sin_half_angle, y * sin_half_angle, z * sin_half_angle);
+	return tfx_quaternion_t(cosf(half_angle), x * sin_half_angle, y * sin_half_angle, z * sin_half_angle);
 }
 
 tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t *normalised_dir) {
@@ -2828,7 +2828,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_librar
 	}
 
 	float pitch = asinf(-to_handle.y);
-	float yaw = atan2(to_handle.x, to_handle.z);
+	float yaw = atan2f(to_handle.x, to_handle.z);
 	tfx_vec3_t direction;
 	direction.z = cosf(emission_yaw + yaw) * cosf(emission_pitch + pitch);
 	direction.y = -sinf(emission_pitch + pitch);
@@ -8593,13 +8593,13 @@ void tfx__split_string_vec(const tfx_str_t str, tfx_vector_t<tfx_str256_t> *pair
 	}
 }
 
-bool tfx__string_is_uint(const tfx_str_t s) {
-
-	for (auto c : s) {
-		if (!std::isdigit(c) && c != 0)
+bool tfx__string_is_uint(const char *s) {
+	if (!s) return false;  
+	for (size_t i = 0; s[i] != '\0'; i++) {
+		if (!isdigit((unsigned char)s[i])) {
 			return false;
+		}
 	}
-
 	return true;
 }
 
@@ -9382,7 +9382,7 @@ void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], std::atomic_int *progress) {
+void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], int *progress) {
 	TFX_ASSERT(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 	float frame_length = 1000.f / update_frequency;
@@ -9396,7 +9396,7 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 	bool start_counting_extra_frames = false;
 	pm->animation_length_in_time = (float)frames * frame_length - 1.f;
 	bool is_3d = tfx__is_3d_effect(effect);
-	progress->store(tfxCalculateFrames);
+	*progress = tfxCalculateFrames;
 
 	anim.recording_frame_rate = tfxMin(tfxMax(30.f, anim.recording_frame_rate), 240.f);
 
@@ -9509,7 +9509,7 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 
 	}
 
-	progress->store(tfxBakeSpriteData);
+	*progress = tfxBakeSpriteData;
 
 	frames = tmp_frame_meta.size();
 
@@ -9798,8 +9798,8 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 	}
 }
 
-void tfx__compress_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, std::atomic_int *progress) {
-	progress->store(tfxLinkUpSprites);
+void tfx__compress_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, int *progress) {
+	*progress = tfxLinkUpSprites;
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 	tfx_sprite_data_t *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
 	if (is_3d) {
@@ -9921,7 +9921,7 @@ void tfx__compress_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t 
 	anim.frames_after_compression = sprite_data->compressed.frame_count;
 	tfx_vector_t<tfx_compress_work_entry_t> compress_work;
 	compress_work.reserve((int)sprite_data->compressed.frame_count);
-	progress->store(tfxCompressFrames);
+	*progress = tfxCompressFrames;
 	while (f < (int)sprite_data->compressed.frame_count) {
 		tfx_compress_work_entry_t *entry = &compress_work.next();
 		entry->is_3d = is_3d;
@@ -9937,7 +9937,7 @@ void tfx__compress_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t 
 	}
 	tfx__complete_all_work(&pm->work_queue);
 	compress_work.free();
-	progress->store(tfxBakingDone);
+	*progress = tfxBakingDone;
 
 	TrimSoABuffer(&sprite_data->compressed_sprites_buffer);
 	sprite_data->compressed.total_memory_for_sprites = (tfxU32)sprite_data->compressed_sprites_buffer.current_arena_size;
@@ -10069,7 +10069,7 @@ void tfx_AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_em
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 	if (!effect->library->pre_recorded_effects.ValidKey(effect->path_hash)) {
 		TFX_ASSERT(pm);        //You must pass an appropriate particle manager if the animation needs recording
-		std::atomic_int progress;
+		int progress;
 		tfx__record_sprite_data(pm, effect, animation_manager->update_frequency, &camera_position.x, &progress);
 	}
 
@@ -10311,7 +10311,7 @@ void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_
 }
 
 void tfx_RecordTemplateEffect(tfx_effect_template_t *t, tfx_particle_manager_t *pm, float update_frequency, float camera_position[3]) {
-	std::atomic_int progress;
+	int progress;
 	tfx__record_sprite_data(pm, &t->effect, update_frequency, camera_position, &progress);
 }
 
