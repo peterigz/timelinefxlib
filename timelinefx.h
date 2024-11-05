@@ -62,6 +62,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <stdio.h>
 
 #define tfx__Min(a, b) (((a) < (b)) ? (a) : (b))
 #define tfx__Max(a, b) (((a) > (b)) ? (a) : (b))
@@ -122,14 +123,12 @@ typedef int tfxLONG;
 #endif
 
 #ifdef TFX_OUTPUT_NOTICE_MESSAGES
-#include <stdio.h>
 #define TFX_PRINT_NOTICE(message_f, ...) printf(message_f"\033[0m", __VA_ARGS__)
 #else
 #define TFX_PRINT_NOTICE(message_f, ...)
 #endif
 
 #ifdef TFX_OUTPUT_ERROR_MESSAGES
-#include <stdio.h>
 #define TFX_PRINT_ERROR(message_f, ...) printf(message_f"\033[0m", __VA_ARGS__)
 #else
 #define TFX_PRINT_ERROR(message_f, ...)
@@ -801,10 +800,6 @@ extern "C" {
 //Implementation
 #if defined(TFX_ALLOCATOR_IMPLEMENTATION)
 
-#include <limits.h>
-#include <stddef.h>
-#include <string.h>
-
 //Definitions
 	void *tfx_BlockUserExtensionPtr(const tfx_header *block) {
 		return (char *)block + sizeof(tfx_header);
@@ -1075,7 +1070,9 @@ tfx_allocator *tfxGetAllocator();
 #endif
 
 #include <stdint.h>
+#include <cfloat>
 #include <math.h>
+#include <new>
 
 //type defs
 typedef uint16_t tfxU16;
@@ -1098,12 +1095,6 @@ typedef unsigned short tfxUShort;
 #endif
 #include <Windows.h>
 #endif
-
-//Might possibly replace some of these in the future
-#include <stdio.h>
-#include <stdarg.h>                    //va_list
-#include <algorithm>
-#include <cfloat>
 
 #define tfxTWO63 0x8000000000000000u 
 #define tfxTWO64f (tfxTWO63*2.0)
@@ -2874,7 +2865,7 @@ struct tfx_str_t {
 	inline char &back() { TFX_ASSERT(current_size > 0); return strbuffer()[current_size - 1]; }
 	inline const char &back() const { TFX_ASSERT(current_size > 0); return strbuffer()[current_size - 1]; }
 	inline void         pop() { TFX_ASSERT(current_size > 0); current_size--; }
-	inline void            push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void *)(data + current_size)) char(v); current_size++; }
+	inline void         push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void *)(data + current_size)) char(v); current_size++; }
 
 	inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 	inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
@@ -4121,7 +4112,6 @@ extern int tfxNumberOfThreadsInAdditionToMain;
 #endif
 
 #ifdef _WIN32
-#include <windows.h>
 #include <process.h>
 #else
 #include <pthread.h>
@@ -7057,6 +7047,8 @@ tfxAPI_EDITOR bool tfx__is_ordered_effect(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfx_particle_manager_mode tfx__get_required_particle_manager_mode(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_emitter_t *effect);
 tfxAPI_EDITOR float tfx__get_effect_highest_loop_length(tfx_effect_emitter_t *effect);
+tfxINTERNAL void tfx__swap_effects(tfx_effect_emitter_t *left, tfx_effect_emitter_t *right);
+tfxINTERNAL void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right);
 tfxINTERNAL tfx_effect_emitter_t *tfx__add_effect(tfx_effect_emitter_t *effect);
 tfxINTERNAL void tfx__reset_emitter_base_graphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
 tfxINTERNAL void tfx__emitter_property_graphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
