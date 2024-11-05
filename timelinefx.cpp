@@ -808,15 +808,19 @@ void tfx__make_icospheres() {
 
 	tfx_storage_map_t<int> point_cache;
 
+	tfx_vector_t<tfx_face_t> sub_triangles;
 	for (int i = 0; i < subdivisions; ++i)
 	{
-		triangles = tfx__sub_divide_icosphere(&point_cache, &vertices, &triangles);
+		tfx__sub_divide_icosphere(&point_cache, &vertices, &triangles, &sub_triangles);
 		TFX_ASSERT(tfxIcospherePoints[i].capacity == vertices.current_size);    //Must be the same size
 		memcpy(tfxIcospherePoints[i].data, vertices.data, vertices.current_size * sizeof(tfx_vec3_t));
 		tfxIcospherePoints[i].current_size = vertices.current_size;
 		qsort(tfxIcospherePoints[i].data, tfxIcospherePoints[i].current_size, sizeof(tfx_vec3_t), tfx__sort_icosphere_points);
 	}
-
+	vertices.free();
+	triangles.free();
+	sub_triangles.free();
+	point_cache.FreeAll();
 }
 
 int tfx__vertex_for_edge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, int first, int second)
@@ -837,10 +841,8 @@ int tfx__vertex_for_edge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_v
 	return vertices->size() - 1;
 }
 
-tfx_vector_t<tfx_face_t> tfx__sub_divide_icosphere(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, tfx_vector_t<tfx_face_t> *triangles)
+void tfx__sub_divide_icosphere(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, tfx_vector_t<tfx_face_t> *triangles, tfx_vector_t<tfx_face_t> *result)
 {
-	tfx_vector_t<tfx_face_t> result;
-
 	for (tfx_face_t face : *triangles)
 	{
 		int mid[3];
@@ -849,13 +851,14 @@ tfx_vector_t<tfx_face_t> tfx__sub_divide_icosphere(tfx_storage_map_t<int> *point
 			mid[edge] = tfx__vertex_for_edge(point_cache, vertices, face.v[edge], face.v[(edge + 1) % 3]);
 		}
 
-		result.push_back({ face.v[0], mid[0], mid[2] });
-		result.push_back({ face.v[1], mid[1], mid[0] });
-		result.push_back({ face.v[2], mid[2], mid[1] });
-		result.push_back({ mid[0], mid[1], mid[2] });
+		result->push_back({ face.v[0], mid[0], mid[2] });
+		result->push_back({ face.v[1], mid[1], mid[0] });
+		result->push_back({ face.v[2], mid[2], mid[1] });
+		result->push_back({ mid[0], mid[1], mid[2] });
 	}
 
-	return result;
+	triangles->copy(*result);
+	result->clear();
 }
 
 int tfx__sort_icosphere_points(void const *left, void const *right) {
@@ -1990,8 +1993,8 @@ void tfx__free_package(tfx_package package) {
 	for (auto &entry : package->inventory.entries.data) {
 		entry.data.FreeAll();
 	}
-	package->inventory.entries.data.free_all();
-	package->inventory.entries.map.free_all();
+	package->inventory.entries.data.free();
+	package->inventory.entries.map.free();
 	if (package->file_data) {
 		tfx_FreeStream(package->file_data);
 	}
@@ -2005,7 +2008,7 @@ void tfx__copy_stream(tfx_stream dst, tfx_stream src) {
 }
 
 void tfx__copy_stream_to_string(tfx_str_t *dst, tfx_stream src) {
-	dst->free_all();
+	dst->free();
 	dst->resize((tfxU32)src->size);
 	memcpy(dst->data, src->data, src->size);
 }
@@ -3290,8 +3293,8 @@ void tfx__clean_up_effect(tfx_effect_emitter_t *effect) {
 			for (auto &sub : tfx_GetEffectInfo(&current)->sub_effectors) {
 				stack.push_back(sub);
 			}
-			tfx_GetEffectInfo(&current)->sub_effectors.free_all();
-			tfx_GetEffectInfo(&current)->path.free_all();
+			tfx_GetEffectInfo(&current)->sub_effectors.free();
+			tfx_GetEffectInfo(&current)->path.free();
 			tfx__free_library_properties(effect->library, current.property_index);
 			tfx_free_library_info(effect->library, current.info_index);
 		}
@@ -3776,6 +3779,7 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_emitter_t *emitter, bool a
 		tfx__reset_graph(&path.distance, 0.f, path.offset_z.graph_preset, add_node, 1.f);
 		emitter->path_attributes = emitter->library->paths.size();
 		emitter->library->paths.push_back(path);
+		tfx__mark_path_free(&path);
 	}
 	return emitter->path_attributes;
 }
@@ -3797,6 +3801,7 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library_t *library) {
 	path.rotation_stagger = 0.f;
 	tfx__initialise_path_graphs(&path);
 	library->paths.push_back(path);
+	tfx__mark_path_free(&path);
 	return library->paths.size() - 1;
 }
 
@@ -3924,7 +3929,7 @@ void tfx__build_path_nodes_complex(tfx_emitter_path_t *path) {
 			path->node_soa.length[i] = path_nodes[i].w;
 		}
 	}
-	path_nodes.free_all();
+	path_nodes.free();
 }
 
 void tfx__build_path_nodes_3d(tfx_emitter_path_t *path) {
@@ -4122,7 +4127,7 @@ void tfx__build_path_nodes_3d(tfx_emitter_path_t *path) {
 			}
 		}
 	}
-	path_nodes.free_all();
+	path_nodes.free();
 }
 
 void tfx__build_path_nodes_2d(tfx_emitter_path_t *path) {
@@ -4293,7 +4298,18 @@ void tfx__build_path_nodes_2d(tfx_emitter_path_t *path) {
 			}
 		}
 	}
-	path_nodes.free_all();
+	path_nodes.free();
+}
+
+void tfx__mark_path_free(tfx_emitter_path_t *path) {
+	path->nodes.mark_free();
+	path->angle_x.nodes.mark_free();
+	path->angle_y.nodes.mark_free();
+	path->angle_z.nodes.mark_free();
+	path->distance.nodes.mark_free();
+	path->offset_x.nodes.mark_free();
+	path->offset_y.nodes.mark_free();
+	path->offset_z.nodes.mark_free();
 }
 
 void tfx__initialise_global_attributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size) {
@@ -4982,6 +4998,7 @@ void tfx__update_library_particle_shape_references(tfx_library_t *library, tfxKe
 			stack.push_back(&sub);
 		}
 	}
+	stack.free();
 }
 
 tfx_effect_emitter_t *tfx__library_move_up(tfx_library_t *library, tfx_effect_emitter_t *effect) {
@@ -5536,7 +5553,7 @@ void tfx__clear_library(tfx_library_t *library) {
 	for (auto &e : library->effects) {
 		tfx__free_effect_graphs(&e);
 	}
-	library->effects.free_all();
+	library->effects.free();
 	library->effect_paths.FreeAll();
 	library->particle_shapes.FreeAll();
 	for (tfx_global_attributes_t &global : library->global_graphs) {
@@ -5556,30 +5573,30 @@ void tfx__clear_library(tfx_library_t *library) {
 	library->global_graphs.free();
 	library->emitter_attributes.free();
 	library->transform_attributes.free();
-	library->paths.free_all();
-	library->sprite_sheet_settings.free_all();
-	library->preview_camera_settings.free_all();
-	library->all_nodes.free_all();
-	library->node_lookup_indexes.free_all();
-	library->compiled_lookup_indexes.free_all();
-	library->compiled_lookup_values.free_all();
+	library->paths.free();
+	library->sprite_sheet_settings.free();
+	library->preview_camera_settings.free();
+	library->all_nodes.free();
+	library->node_lookup_indexes.free();
+	library->compiled_lookup_indexes.free();
+	library->compiled_lookup_values.free();
 	library->emitter_properties.free();
-	library->graph_min_max.free_all();
+	library->graph_min_max.free();
 	for (auto &info : library->effect_infos) {
-		info.sub_effectors.free_all();
+		info.sub_effectors.free();
 	}
-	library->effect_infos.free_all();
+	library->effect_infos.free();
 	tfx__allocate_library_preview_camera_settings(library);
 	library->pre_recorded_effects.FreeAll();
 
-	library->free_global_graphs.free_all();
-	library->free_keyframe_graphs.free_all();
-	library->free_emitter_attributes.free_all();
-	library->free_animation_settings.free_all();
-	library->free_preview_camera_settings.free_all();
-	library->free_infos.free_all();
-	library->free_properties.free_all();
-	library->free_keyframes.free_all();
+	library->free_global_graphs.free();
+	library->free_keyframe_graphs.free();
+	library->free_emitter_attributes.free();
+	library->free_animation_settings.free();
+	library->free_preview_camera_settings.free();
+	library->free_infos.free();
+	library->free_properties.free();
+	library->free_keyframes.free();
 
 	library->uid = 0;
 	library->color_ramps.color_ramp_count = 0;
@@ -5644,6 +5661,7 @@ void tfx__update_library_compute_nodes(tfx_library_t *library) {
 			}
 		}
 	}
+	stack.free();
 }
 
 void tfx__compile_library_graphs_of_effect(tfx_library_t *library, tfx_effect_emitter_t *effect, tfxU32 depth) {
@@ -5702,6 +5720,7 @@ void tfx__compile_all_library_graphs(tfx_library_t *library) {
 		tfx__compile_graph(&g.translation_y);
 		tfx__compile_graph(&g.translation_z);
 	}
+	int index = 0;
 	for (auto &g : library->emitter_attributes) {
 		tfx__compile_graph(&g.properties.arc_offset);
 		tfx__compile_graph(&g.properties.arc_size);
@@ -5763,6 +5782,7 @@ void tfx__compile_all_library_graphs(tfx_library_t *library) {
 		tfx__compile_graph_overtime(&g.factor.intensity);
 		tfx__compile_color_ramp(&g.overtime, &g.overtime.color_ramps[0]);
 		tfx__compile_color_ramp_hint(&g.overtime, &g.overtime.color_ramps[1]);
+		index++;
 	}
 	tfx__create_color_ramp_bitmaps(library);
 }
@@ -7181,7 +7201,7 @@ tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
 }
 
 tfx_graph_t::~tfx_graph_t() {
-	//nodes.free_all();
+	//nodes.free();
 	//Free();
 }
 
@@ -7874,8 +7894,14 @@ void tfx__clear_graph(tfx_graph_t *graph) {
 
 void tfx__free_graph(tfx_graph_t *graph) {
 	//Explicitly free the nodes
-	graph->nodes.free_all();
+	graph->nodes.free();
 	graph->lookup.values.free();
+}
+
+void tfx__mark_graph_free(tfx_graph_t *graph) {
+	//Explicitly free the nodes
+	graph->nodes.mark_free();
+	graph->lookup.values.mark_free();
 }
 
 void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to, bool compile) {
@@ -8567,6 +8593,7 @@ bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_ma
 	}
 
 	fclose(fp);
+	pair.free();
 	return true;
 
 }
@@ -8706,6 +8733,7 @@ int tfx_GetShapeCountInLibrary(const char *filename) {
 		}
 	}
 
+	pair.free();
 	tfx__free_package(package);
 	return shape_count;
 }
@@ -9153,6 +9181,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 				emitter.property_index = tfx__allocate_library_emitter_properties(lib);
 				emitter.transform_attributes = tfx__allocate_library_key_frames(lib);
 				tfx__add_library_emitter_graphs(lib, &emitter);
+				tfxPrint("%u", emitter.emitter_attributes);
 				tfx__add_library_transform_graphs(lib, &emitter);
 				emitter.type = tfx_effect_emitter_type::tfxEmitterType;
 				tfx__reset_emitter_graphs(&emitter, false, false);
@@ -9339,6 +9368,9 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 		tfx_UpdateLibraryGPUImageData(lib);
 	}
 	lib->uid = uid;
+
+	effect_stack.free();
+	pair.free();
 
 	return error;
 }
@@ -9550,7 +9582,7 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 
 	tfx_vector_t<tfx_frame_meta_t> &frame_meta = sprite_data->normal.frame_meta;
 	memcpy(frame_meta.data, tmp_frame_meta.data, tmp_frame_meta.size_in_bytes());
-	tmp_frame_meta.free_all();
+	tmp_frame_meta.free();
 
 	tfxU32 last_count = 0;
 	for (tfx_frame_meta_t &meta : frame_meta) {
@@ -10301,15 +10333,15 @@ void tfx_ResetAnimationManager(tfx_animation_manager_t *animation_manager) {
 }
 
 void tfx_FreeAnimationManager(tfx_animation_manager_t *animation_manager) {
-	animation_manager->free_instances.free_all();
-	animation_manager->instances_in_use[0].free_all();
-	animation_manager->instances_in_use[1].free_all();
-	animation_manager->render_queue.free_all();
-	animation_manager->instances.free_all();
-	animation_manager->offsets.free_all();
-	animation_manager->sprite_data_2d.free_all();
-	animation_manager->sprite_data_3d.free_all();
-	animation_manager->emitter_properties.free_all();
+	animation_manager->free_instances.free();
+	animation_manager->instances_in_use[0].free();
+	animation_manager->instances_in_use[1].free();
+	animation_manager->render_queue.free();
+	animation_manager->instances.free();
+	animation_manager->offsets.free();
+	animation_manager->sprite_data_2d.free();
+	animation_manager->sprite_data_3d.free();
+	animation_manager->emitter_properties.free();
 	animation_manager->effect_animation_info.FreeAll();
 	animation_manager->buffer_metrics = { 0 };
 	animation_manager->flags = 0;
@@ -10754,6 +10786,7 @@ void tfx__free_particle_list(tfx_particle_manager_t *pm, tfxU32 index) {
 		tfx_vector_t<tfxU32> new_indexes;
 		new_indexes.push_back(pm->emitters[index].particles_index);
 		pm->free_particle_lists.Insert(pm->emitters[index].path_hash, new_indexes);
+		new_indexes.mark_free();
 	}
 }
 
@@ -10767,6 +10800,7 @@ void tfx__free_spawn_location_list(tfx_particle_manager_t *pm, tfxU32 index) {
 		ClearSoABuffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
 		new_indexes.push_back(pm->emitters[index].spawn_locations_index);
 		pm->free_particle_location_lists.Insert(pm->emitters[index].path_hash, new_indexes);
+		new_indexes.mark_free();
 	}
 }
 
@@ -13376,7 +13410,7 @@ void tfx__toggle_sprites_with_uid(tfx_particle_manager_t *pm, bool switch_on) {
 void tfx_ReconfigureParticleManager(tfx_particle_manager_t *pm, tfx_particle_manager_mode mode, tfxU32 req_sort_passes, bool is_3d) {
 	tfx_ClearParticleManager(pm, true, true);
 	for (auto &bank : pm->free_particle_lists.data) {
-		bank.free_all();
+		bank.free();
 	}
 	pm->free_particle_lists.FreeAll();
 
@@ -13443,11 +13477,11 @@ void tfx_ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_ban
 		tfx__free_all_particle_lists(pm);
 		tfx__free_all_spawn_location_lists(pm);
 		for (auto &list : pm->free_particle_lists.data) {
-			list.free_all();
+			list.free();
 		}
 		pm->free_particle_lists.FreeAll();
 		for (auto &list : pm->free_particle_location_lists.data) {
-			list.free_all();
+			list.free();
 		}
 		pm->free_particle_location_lists.FreeAll();
 	}
@@ -13514,11 +13548,11 @@ void tfx_ClearParticleManager(tfx_particle_manager_t *pm, bool free_particle_ban
 void tfx_FreeParticleManager(tfx_particle_manager_t *pm) {
 	tfx__free_all_particle_lists(pm);
 	for (auto &list : pm->free_particle_lists.data) {
-		list.free_all();
+		list.free();
 	}
 	pm->free_particle_lists.FreeAll();
 	for (auto &list : pm->free_particle_location_lists.data) {
-		list.free_all();
+		list.free();
 	}
 	pm->free_particle_location_lists.FreeAll();
 
@@ -17490,14 +17524,14 @@ void tfx__copy_emitter_properties(tfx_emitter_properties_t *from_properties, tfx
 void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 	if (sprite_data->compressed_sprites_buffer.data == sprite_data->real_time_sprites_buffer.data) {
 		FreeSoABuffer(&sprite_data->real_time_sprites_buffer);
-		sprite_data->normal.frame_meta.free_all();
+		sprite_data->normal.frame_meta.free();
 		sprite_data->compressed_sprites_buffer = tfx_soa_buffer_t();
 	}
 	else {
 		FreeSoABuffer(&sprite_data->compressed_sprites_buffer);
 		FreeSoABuffer(&sprite_data->real_time_sprites_buffer);
-		sprite_data->normal.frame_meta.free_all();
-		sprite_data->compressed.frame_meta.free_all();
+		sprite_data->normal.frame_meta.free();
+		sprite_data->compressed.frame_meta.free();
 	}
 }
 

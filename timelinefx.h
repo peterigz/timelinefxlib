@@ -1187,7 +1187,6 @@ struct tfx_str512_t;
 //No longer in use, cleanup! This is from an old memory tracking thing before I switched to a new memory allocator.
 #define tfxINIT_VEC_NAME 
 #define tfxINIT_VEC_NAME_INIT 
-#define tfxINIT_VEC_NAME_SRC_COPY 
 #define tfxCONSTRUCTOR_VEC_DEF 
 #define tfxCONSTRUCTOR_VEC_INIT(name) 
 #define tfxCONSTRUCTOR_VEC_INIT2(name) 
@@ -2856,7 +2855,7 @@ struct tfx_str_t {
 	inline char &operator[](tfxU32 i) { TFX_ASSERT(i < current_size); return data[i]; }
 	inline const char &operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
 
-	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
+	inline void         free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { current_size = 0; }
 	inline char *begin() { return strbuffer(); }
 	inline const char *begin() const { return strbuffer(); }
@@ -2865,7 +2864,7 @@ struct tfx_str_t {
 	inline char &back() { TFX_ASSERT(current_size > 0); return strbuffer()[current_size - 1]; }
 	inline const char &back() const { TFX_ASSERT(current_size > 0); return strbuffer()[current_size - 1]; }
 	inline void         pop() { TFX_ASSERT(current_size > 0); current_size--; }
-	inline void         push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); new((void *)(data + current_size)) char(v); current_size++; }
+	inline void         push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); data[current_size] = char(v); current_size++; }
 
 	inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 	inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
@@ -2898,7 +2897,7 @@ struct tfx_str_t {
 
 	tfx_str_t(const char *text) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	tfx_str_t(const tfx_str_t &src) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
-	inline void operator=(const char *text) { if (!text) { free_all(); return; } size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
+	inline void operator=(const char *text) { if (!text) { free(); return; } size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
 	inline void operator=(const tfx_str_t &src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
 	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
 	inline bool operator==(const tfx_str_t string) { return !strcmp(c_str(), string.c_str()); }
@@ -3059,12 +3058,9 @@ struct tfx_vector_t {
 	typedef const value_type *const_iterator;
 
 	inline tfx_vector_t() : locked(0), current_size(0), capacity(0), alignment(0), data(nullptr) {}
-	inline tfx_vector_t(const char *name_init) { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME_INIT(name_init); }
-	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; tfxINIT_VEC_NAME_SRC_COPY; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
-	inline tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
-	inline ~tfx_vector_t() { 
-		if (data) { tfxFREE(data); } data = nullptr; current_size = capacity = alignment = 0; 
-	}
+	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
+	//inline tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
+	inline ~tfx_vector_t() { TFX_ASSERT(data == nullptr); } //You must manually free containers or mark as safe to ignore
 
 	inline void            init() { locked = false; current_size = capacity = alignment = 0; data = nullptr; }
 	inline bool            empty() { return current_size == 0; }
@@ -3077,7 +3073,7 @@ struct tfx_vector_t {
 	inline const T &operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
 	inline T &ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
 
-	inline void         free_all() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
+	inline void         mark_free() { if (data) { current_size = capacity = 0; data = nullptr; } }
 	inline void         free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         clear() { if (data) { current_size = 0; } }
 	inline T *begin() { return data; }
@@ -3094,6 +3090,7 @@ struct tfx_vector_t {
 	inline const T &back() const { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
 	inline T &parent() { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
 	inline const T &parent() const { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
+	inline void			copy(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 	inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
 	inline void         resize_bytes(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
@@ -3138,7 +3135,9 @@ struct tfx_vector_t {
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
-		new((void *)(data + current_size)) T(v);
+		//new((void *)(data + current_size)) T(v);
+		memset(data + current_size, 0, sizeof(T));
+		data[current_size] = v;
 		//memcpy(&data[current_size], &v, sizeof(T));
 		current_size++; return data[current_size - 1];
 	}
@@ -3287,8 +3286,8 @@ struct tfx_storage_map_t {
 	}
 
 	inline void FreeAll() {
-		data.free_all();
-		map.free_all();
+		data.free();
+		map.free();
 	}
 
 	inline tfxU32 Size() {
@@ -3735,7 +3734,7 @@ inline void FreeSoABuffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_arena_size = buffer->current_size = buffer->capacity = 0;
 	if (buffer->data)
 		tfxFREE(buffer->data);
-	buffer->array_ptrs.free_all();
+	buffer->array_ptrs.free();
 	ResetSoABuffer(buffer);
 }
 
@@ -3821,9 +3820,16 @@ struct tfx_bucket_array_t {
 
 	tfx_bucket_array_t() : size_of_each_bucket(8), current_size(0), capacity(0), locked(0) {}
 
-	inline bool            empty() { return current_size == 0; }
+	inline bool          empty() { return current_size == 0; }
 	inline tfxU32        size() { return current_size; }
-	inline void            free_all() {
+	inline void          mark_free() {
+		for (tfx_bucket_t<T> *bucket : bucket_list) {
+			bucket->data.mark_free();
+		}
+		current_size = capacity = 0;
+		bucket_list.mark_free();
+	}
+	inline void            free() {
 		for (tfx_bucket_t<T> *bucket : bucket_list) {
 			bucket->data.free();
 			tfxFREE(bucket);
@@ -4011,7 +4017,7 @@ inline void tfxCopyBucketArray(tfx_bucket_array_t<T> *dst, tfx_bucket_array_t<T>
 	if (src == dst) {
 		return;
 	}
-	dst->free_all();
+	dst->free();
 	for (tfx_bucket_t<T> *bucket : src->bucket_list) {
 		tfx_bucket_t<T> *copy = dst->add_bucket(src->size_of_each_bucket);
 		copy->data = bucket->data;
@@ -6545,7 +6551,6 @@ struct tfx_particle_manager_t {
 		highest_compute_controller_index(0),
 		new_compute_particle_ptr(nullptr),
 		compute_controller_ptr(nullptr),
-		sorting_work_entry{ 0 },
 		max_compute_controllers(10000),
 		max_new_compute_particles(10000),
 		new_compute_particle_index(0),
@@ -6820,6 +6825,7 @@ tfxAPI_EDITOR void tfx__reset_graph(tfx_graph_t *graph, float first_node_value, 
 tfxAPI_EDITOR void tfx__reset_graph_nodes(tfx_graph_t *graph, float first_node_value, tfx_graph_preset preset, bool add_node = true);
 tfxAPI_EDITOR void tfx__clear_graph_to_one(tfx_graph_t *graph, float value);
 tfxAPI_EDITOR void tfx__free_graph(tfx_graph_t *graph);
+tfxAPI_EDITOR void tfx__mark_graph_free(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__copy_graph(tfx_graph_t *graph, tfx_graph_t *to, bool compile = true);
 tfxAPI_EDITOR void tfx__copy_graph_color(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to);
 tfxAPI_EDITOR void tfx__copy_graph_color_hint(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to);
@@ -6915,6 +6921,7 @@ tfxAPI_EDITOR void tfx__initialise_path_graphs(tfx_emitter_path_t *path, tfxU32 
 tfxAPI_EDITOR void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_generator_type generator);
 tfxAPI_EDITOR void tfx__build_path_nodes_3d(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__build_path_nodes_2d(tfx_emitter_path_t *path);
+tfxAPI_EDITOR void tfx__mark_path_free(tfx_emitter_path_t *path);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library_t *library);
 tfxAPI_EDITOR void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *emitter_path);
 tfxAPI_EDITOR bool tfx__has_translation_key_frames(tfx_transform_attributes_t *graphs);
@@ -7082,7 +7089,7 @@ tfxINTERNAL tfx_vec2_t tfx__str_to_vec2(tfx_vector_t<tfx_str256_t> *str);
 tfxAPI_EDITOR float tfx__quake_sqrt(float number);
 tfxINTERNAL void tfx__make_icospheres();
 tfxINTERNAL int tfx__vertex_for_edge(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, int first, int second);
-tfxINTERNAL tfx_vector_t<tfx_face_t> tfx__sub_divide_icosphere(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, tfx_vector_t<tfx_face_t> *triangles);
+tfxINTERNAL void tfx__sub_divide_icosphere(tfx_storage_map_t<int> *point_cache, tfx_vector_t<tfx_vec3_t> *vertices, tfx_vector_t<tfx_face_t> *triangles, tfx_vector_t<tfx_face_t> *result);
 tfxINTERNAL int tfx__sort_icosphere_points(void const *left, void const *right);
 tfxINTERNAL int tfx__sort_depth(void const *left, void const *right);
 tfxINTERNAL void tfx__insertion_sort_depth(tfx_work_queue_t *queue, void *work_entry);
