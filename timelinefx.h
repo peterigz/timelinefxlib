@@ -1133,7 +1133,6 @@ struct tfx_compute_particle_t;
 struct tfx_sprite_sheet_settings_t;
 struct tfx_sprite_data_settings_t;
 struct tfx_library_t;
-struct tfx_str_t;
 struct tfx_str16_t;
 struct tfx_str32_t;
 struct tfx_str64_t;
@@ -2841,71 +2840,34 @@ tfxMAKE_HANDLE(tfx_package)
 //Section: String_Buffers
 //-----------------------------------------------------------
 
-//Very simple string builder
+//Very simple string builder for short stack based strings
+template<size_t N>
 struct tfx_str_t {
-	char *data;
+	char data[N];
 	tfxU32 capacity;
 	tfxU32 current_size;
-	bool is_local_buffer;
 
-	inline tfx_str_t() : current_size(0), capacity(0), data(nullptr), is_local_buffer(false) {}
-	inline ~tfx_str_t() { if (data && !is_local_buffer) { tfxFREE(data); data = nullptr; } current_size = capacity = 0; }
+	inline tfx_str_t() : current_size(0), capacity(N) { memset(data, '\0', N); }
 
 	inline bool            empty() { return current_size == 0; }
 	inline char &operator[](tfxU32 i) { TFX_ASSERT(i < current_size); return data[i]; }
 	inline const char &operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
 
-	inline void         free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { current_size = 0; }
-	inline char *begin() { return strbuffer(); }
-	inline const char *begin() const { return strbuffer(); }
-	inline char *end() { return strbuffer() + current_size; }
-	inline const char *end() const { return strbuffer() + current_size; }
-	inline char &back() { TFX_ASSERT(current_size > 0); return strbuffer()[current_size - 1]; }
-	inline const char &back() const { TFX_ASSERT(current_size > 0); return strbuffer()[current_size - 1]; }
+	inline char			*begin() { return data; }
+	inline const char	*begin() const { return data; }
+	inline char			*end() { return data + current_size; }
+	inline const char	*end() const { return data + current_size; }
+	inline char			back() { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
+	inline const char	back() const { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
 	inline void         pop() { TFX_ASSERT(current_size > 0); current_size--; }
-	inline void         push_back(const char v) { if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); data[current_size] = char(v); current_size++; }
+	inline void         push_back(const char v) { TFX_ASSERT(current_size < capacity); data[current_size] = char(v); current_size++; }
 
-	inline tfxU32       _grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
-	inline void         resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
-	inline void         reserve(tfxU32 new_capacity) {
-		if (new_capacity <= capacity) return;
-		char *new_data = (char *)tfxALLOCATE((size_t)new_capacity * sizeof(char));
-		memset(new_data, '\0', new_capacity * sizeof(char));
-		TFX_ASSERT(new_data);    //unable to allocate memory. Todo: proper handling
-		if (data && !is_local_buffer) {
-			if (tfx_SafeCopy(new_data, data, (size_t)current_size * sizeof(char))) {
-				tfxFREE(data);
-			}
-			else {
-				//Failed to copy
-				TFX_ASSERT(0);
-			}
-		}
-		else if (is_local_buffer) {
-			if (tfx_SafeCopy(new_data, strbuffer(), (size_t)current_size * sizeof(char))) {
-			}
-			else {
-				//Failed to copy
-				TFX_ASSERT(0);
-			}
-		}
-		data = new_data;
-		is_local_buffer = false;
-		capacity = new_capacity;
-	}
-
-	tfx_str_t(const char *text) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-	tfx_str_t(const tfx_str_t &src) : data(nullptr), current_size(0), capacity(0), is_local_buffer(false) { size_t length = src.Length(); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, src.data, length); current_size = (tfxU32)length; NullTerminate(); }
-	inline void operator=(const char *text) { if (!text) { free(); return; } size_t length = tfx__strlen(text, 512); if (!length) { Clear(); return; }; if (capacity < length) reserve((tfxU32)length); TFX_ASSERT(data); memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); }
-	inline void operator=(const tfx_str_t &src) { Clear(); resize(src.current_size); memcpy(data, src.strbuffer(), (size_t)current_size * sizeof(char)); }
-	inline bool operator==(const char *string) { return !strcmp(string, c_str()); }
-	inline bool operator==(const tfx_str_t string) { return !strcmp(c_str(), string.c_str()); }
-	inline bool operator!=(const char *string) { return strcmp(string, c_str()); }
-	inline bool operator!=(const tfx_str_t string) { return strcmp(c_str(), string.c_str()); }
-	inline const char *strbuffer() const { return is_local_buffer ? (char *)this + sizeof(tfx_str_t) : data; }
-	inline char *strbuffer() { return is_local_buffer ? (char *)this + sizeof(tfx_str_t) : data; }
-	inline const char *c_str() const { return current_size ? strbuffer() : ""; }
+	inline bool operator==(const char *string) { return !strcmp(string, data); }
+	inline bool operator==(const tfx_str_t string) { return !strcmp(data, string.c_str()); }
+	inline bool operator!=(const char *string) { return strcmp(string, data); }
+	inline bool operator!=(const tfx_str_t string) { return strcmp(data, string.c_str()); }
+	inline const char *c_str() const { return data; }
 	int Find(const char *needle);
 	tfx_str_t Lower();
 	inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
@@ -2913,129 +2875,40 @@ struct tfx_str_t {
 	void Setf(const char *format, ...);
 	void Appendf(const char *format, ...);
 	void Appendv(const char *format, va_list args);
-	inline void Append(char c) {
-		if (current_size) {
-			pop();
-		}
-		push_back(c);
-		NullTerminate();
-	}
-	inline void Pop() {
-		if (!Length()) return;
-		if (back() == 0)
-			pop();
-		pop();
-		NullTerminate();
-	}
-	inline void Trim(char c = ' ') {
-		if (!Length()) return;
-		if (back() == 0)
-			pop();
-		while (back() == c && current_size) {
-			pop();
-		}
-		NullTerminate();
-	}
-	inline void TrimToZero() {
-		if (current_size < capacity) {
-			tfx_bool result = tfx_SafeMemset(data, data + current_size, '\0', capacity - current_size);
-			TFX_ASSERT(result);
-		}
-	}
-	inline void TrimFront(char c = ' ') {
-		if (!Length()) return;
-		tfxU32 pos = 0;
-		while (strbuffer()[pos] == c && pos < current_size) {
-			pos++;
-		}
-		if (pos < current_size) {
-			memcpy(strbuffer(), strbuffer() + pos, current_size - pos);
-		}
-		current_size -= pos;
-	}
-	inline void SanitizeLineFeeds() {
-		if (current_size > 1) {
-			while (current_size > 1 && back() == '\n' || back() == '\r' || back() == '\0') {
-				pop();
-				if (current_size <= 1) {
-					break;
-				}
-			}
-			NullTerminate();
-		}
-	}
+	inline void Append(char c) { if (current_size) { pop(); } push_back(c); NullTerminate(); }
+	inline void Pop() { if (!Length()) return; if (back() == 0) pop(); pop(); NullTerminate(); }
+	inline void Trim(char c = ' ') { if (!Length()) return; if (back() == 0) pop(); while (back() == c && current_size) { pop(); } NullTerminate(); }
+	inline void TrimToZero() { if (current_size < capacity) { tfx_bool result = memcpy(data, data + current_size, '\0', capacity - current_size); TFX_ASSERT(result); } }
+	inline void TrimFront(char c = ' ') { if (!Length()) return; tfxU32 pos = 0; while (data[pos] == c && pos < current_size) { pos++; } if (pos < current_size) { memcpy(data, data + pos, current_size - pos); } current_size -= pos; }
+	inline void SanitizeLineFeeds() { if (current_size > 1) { while (current_size > 1 && back() == '\n' || back() == '\r' || back() == '\0') { pop(); if (current_size <= 1) { break; } } NullTerminate(); } }
 	void NullTerminate() { push_back('\0'); }
-	bool SaveToFile(const char *file_name);
 	const bool IsInt() const;
 	const bool IsFloat() const;
 } TFX_PACKED_STRUCT;
 
-#define tfxStrType(type, size)        \
-struct type : public tfx_str_t { \
-char buffer[size];                \
-type() { memset(buffer, 0, size); data = buffer; capacity = size; current_size = 0; is_local_buffer = true; NullTerminate(); } \
-inline void operator=(const tfx_str_t& src) { \
-	data = buffer; \
-	is_local_buffer = true; \
-	capacity = size; size_t length = src.Length(); \
-	if (!length) { \
-		Clear(); return; \
-	}; \
-	resize(src.current_size); \
-	memcpy(data, src.strbuffer(), length); \
-	current_size = (tfxU32)length; \
-	NullTerminate(); \
-} \
-inline void operator=(const type& src) { \
-	data = buffer; \
-	is_local_buffer = true; \
-	capacity = size; size_t length = src.Length(); \
-	if (!length) { \
-		Clear(); return; \
-	}; \
-	resize(src.current_size); \
-	memcpy(data, src.strbuffer(), length); \
-	current_size = (tfxU32)length; \
-	NullTerminate(); \
-} \
-inline void operator=(const char *text) { data = buffer; is_local_buffer = true; capacity = size; size_t length = tfx__strlen(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
-type(const char *text) { memset(buffer, 0, size); data = buffer; is_local_buffer = true; capacity = size; size_t length = tfx__strlen(text, size); if (!length) { Clear(); return; } memcpy(data, text, length); current_size = (tfxU32)length; NullTerminate(); } \
-type(const tfx_str_t &src) { \
-	memset(buffer, 0, size); \
-	data = buffer; \
-	is_local_buffer = true; \
-	capacity = size; size_t length = src.Length(); \
-	if (!length) { \
-		Clear(); return; \
-	}; \
-	resize(src.current_size); \
-	memcpy(data, src.strbuffer(), length); \
-	current_size = (tfxU32)length; \
-	NullTerminate(); \
-} \
-type(const type &src) { \
-	memset(buffer, 0, size); \
-	data = buffer; \
-	is_local_buffer = true; \
-	capacity = size; size_t length = src.Length(); \
-	if (!length) { \
-		Clear(); return; \
-	}; \
-	resize(src.current_size); \
-	memcpy(data, src.strbuffer(), length); \
-	current_size = (tfxU32)length; \
-	NullTerminate(); \
-} \
-inline int Find(const char *needle) { type compare = needle; type lower = Lower(); compare = compare.Lower(); if (compare.Length() > Length()) return -1; tfxU32 pos = 0; int found = 0; while (compare.Length() + pos <= Length()) { if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) { return pos; } ++pos; } return -1; } \
-inline type Lower() { type convert = *this; for (auto &c : convert) { c = tolower(c); } return convert; } \
-} TFX_PACKED_STRUCT;
+#define tfx_str16_t tfx_str_t<16>
+#define tfx_str32_t tfx_str_t<32>
+#define tfx_str64_t tfx_str_t<64>
+#define tfx_str128_t tfx_str_t<128>
+#define tfx_str256_t tfx_str_t<256>
+#define tfx_str512_t tfx_str_t<512>
+#define tfx_str1024_t tfx_str_t<1024>
 
-tfxStrType(tfx_str512_t, 512);
-tfxStrType(tfx_str256_t, 256);
-tfxStrType(tfx_str128_t, 128);
-tfxStrType(tfx_str64_t, 64);
-tfxStrType(tfx_str32_t, 32);
-tfxStrType(tfx_str16_t, 16);
+// --Begin Pocket_text_buffer for bigger text buffers on the heap
+struct tfx_text_t {
+	tfxU32 size;
+	char *str;
+};
+
+tfxAPI inline tfx_text_t tfx_NewText() { tfx_text_t text{}; return text; };
+tfxAPI void tfx_SetText(tfx_text_t *buffer, const char *text);
+tfxAPI void tfx_ResizeText(tfx_text_t *buffer, tfxU32 size);
+tfxAPI void tfx_SetTextf(tfx_text_t *buffer, const char *text, ...);
+tfxAPI void tfx_SetTextfv(tfx_text_t *buffer, const char *text, va_list args);
+tfxAPI void tfx_FreeText(tfx_text_t *buffer);
+tfxAPI tfx_uint tfx_TextSize(tfx_text_t *buffer);      //Will include a null terminator
+tfxAPI tfx_uint tfx_TextLength(tfx_text_t *buffer);    //Uses strlen to get the length
+// --End pocket text buffer
 
 //-----------------------------------------------------------
 //Containers_and_Memory
@@ -3126,7 +2999,9 @@ struct tfx_vector_t {
 		while (tfx__compare_and_exchange((tfxLONG volatile *)&locked, 1, 0) > 1);
 		if (current_size == capacity)
 			reserve(_grow_capacity(current_size + 1));
-		new((void *)(data + current_size)) T(v);
+		//new((void *)(data + current_size)) T(v);
+		memset(data + current_size, 0, sizeof(T));
+		data[current_size] = v;
 		tfxU32 index = current_size++;
 		tfx__exchange((tfxLONG volatile *)&locked, 0);
 		return index;
@@ -3260,8 +3135,8 @@ struct tfx_storage_map_t {
 	}
 
 	//Insert a new T value into the storage
-	inline void Insert(tfx_str_t name, const T &value) {
-		tfxKey key = tfxXXHash64::hash(name.c_str(), name.Length(), 0);
+	inline void Insert(const char *name, tfxU32 length, const T &value) {
+		tfxKey key = tfxXXHash64::hash(name, length, 0);
 		SetIndex(key, value);
 	}
 
@@ -3302,9 +3177,9 @@ struct tfx_storage_map_t {
 		return index < data.current_size;
 	}
 
-	inline bool ValidName(const char *name) {
+	inline bool ValidName(const char *name, tfxU32 length = 0) {
 		TFX_ASSERT(name);    //Can't search for anything that's null
-		return GetIndex(name) > -1;
+		return GetIndex(name, length) > -1;
 	}
 
 	inline bool ValidKey(tfxKey key) {
@@ -3313,10 +3188,6 @@ struct tfx_storage_map_t {
 
 	inline bool ValidIntName(tfxU32 name) {
 		return GetIntIndex(name) > -1;
-	}
-
-	inline bool ValidName(const tfx_str_t &name) {
-		return GetIndex(name) > -1;
 	}
 
 	//Remove an item from the data. Slow function, 2 memmoves and then the map has to be iterated and indexes reduced by one
@@ -3375,12 +3246,6 @@ struct tfx_storage_map_t {
 		return data[index];
 	}
 
-	inline T &At(const tfx_str_t &name) {
-		int index = GetIndex(name.c_str());
-		TFX_ASSERT(index > -1);                        //Key was not found
-		return data[index];
-	}
-
 	inline T &AtInt(int name) {
 		int index = GetIntIndex(name);
 		TFX_ASSERT(index > -1);                        //Key was not found
@@ -3409,8 +3274,8 @@ struct tfx_storage_map_t {
 		data[it->index] = value;
 	}
 
-	int GetIndex(const char *name) {
-		tfxKey key = tfxXXHash64::hash(name, strlen(name), 0);
+	int GetIndex(const char *name, tfxU32 length = 0) {
+		tfxKey key = tfxXXHash64::hash(name, length ? length : strlen(name), 0);
 		pair *it = LowerBound(key);
 		if (it == map.end() || it->key != key)
 			return -1;
@@ -3419,14 +3284,6 @@ struct tfx_storage_map_t {
 
 	int GetIntIndex(int name) {
 		tfxKey key = name;
-		pair *it = LowerBound(key);
-		if (it == map.end() || it->key != key)
-			return -1;
-		return it->index;
-	}
-
-	int GetIndex(const tfx_str_t &name) {
-		tfxKey key = tfxXXHash64::hash(name.c_str(), name.Length(), 0);
 		pair *it = LowerBound(key);
 		if (it == map.end() || it->key != key)
 			return -1;
@@ -4030,16 +3887,23 @@ inline void tfxCopyBucketArray(tfx_bucket_array_t<T> *dst, tfx_bucket_array_t<T>
 #define tfxBucketLoop(bucket) int i = 0; i != bucket.current_size; ++i
 #define tfxBucketLoopNI(bucket) int ni = 0; ni != bucket.current_size; ++ni
 
+struct tfx_line_t {
+	const char *start;
+	const char *end;
+	tfxU32 length;
+};
+
 //A char buffer you can use to load a file into and read from
 //Has no deconstructor so make sure you call FreeAll() when done
 //This is meant for limited usage in timeline fx only and not recommended for use outside!
 struct tfx_stream_t {
-	tfxU64 size = 0;
-	tfxU64 position = 0;
-	char *data = nullptr;
+	tfxU64 size;
+	tfxU64 capacity;
+	tfxU64 position;
+	char *data;
 
-	inline tfx_stream_t() { size = position = 0; data = nullptr; }
-	inline tfx_stream_t(tfxU64 qty) { size = position = 0; data = nullptr; Resize(qty); }
+	inline tfx_stream_t() { size = position = capacity = 0; data = nullptr; }
+	inline tfx_stream_t(tfxU64 qty) { size = position = capacity = 0; data = nullptr; Resize(qty); }
 
 	inline bool Read(char *dst, tfxU64 count) {
 		if (count + position <= size) {
@@ -4049,7 +3913,7 @@ struct tfx_stream_t {
 		}
 		return false;
 	}
-	tfx_str512_t ReadLine();
+	tfx_line_t ReadLine();
 	inline bool Write(void *src, tfxU64 count) {
 		if (count + position <= size) {
 			memcpy(data + position, src, count);
@@ -4058,6 +3922,9 @@ struct tfx_stream_t {
 		}
 		return false;
 	}
+	void AddLine(const char *format, ...);
+	void Appendf(const char *format, ...);
+	void Appendv(const char *format, va_list args);
 	inline bool EoF() { return position >= size; }
 	inline void Seek(tfxU64 offset) {
 		if (offset < size)
@@ -4073,9 +3940,13 @@ struct tfx_stream_t {
 	inline void            FreeAll() { if (data) { size = position = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { if (data) { size = 0; } }
 
-	inline void         Resize(tfxU64 new_capacity) {
-		if (new_capacity <= size)
+	inline void         GrowSize(tfxU64 extra_size) {
+		Resize(size + extra_size);
+	}
+	inline void         Reserve(tfxU64 new_capacity) {
+		if (new_capacity <= capacity) {
 			return;
+		}
 		char *new_data = (char *)tfxALLOCATE_ALIGNED((tfxU64)new_capacity * sizeof(char), 16);
 		memset(new_data, 0, new_capacity);
 		TFX_ASSERT(new_data);    //Unable to allocate memory. Todo: better handling
@@ -4083,7 +3954,16 @@ struct tfx_stream_t {
 			memcpy(new_data, data, (tfxU64)size * sizeof(char));
 			tfxFREE(data);
 		}
-		data = new_data; size = new_capacity;
+		data = new_data; 
+		capacity = new_capacity;
+	}
+	inline void         Resize(tfxU64 new_size) {
+		if (new_size <= capacity) {
+			size = new_size;
+			return;
+		}
+		Reserve(new_size);
+		size = new_size;
 		position = 0;
 	}
 	inline void            NullTerminate() { *(data + size) = '\0'; }
@@ -5197,7 +5077,7 @@ struct tfx_package_header_t {
 };
 
 struct tfx_package_entry_info_t {
-	tfx_str_t file_name;                        //The name of the file stored in the package
+	tfx_str512_t file_name;                        //The name of the file stored in the package
 	tfxU64 offset_from_start_of_file = 0;        //Offset from the start of the file to where the file is located
 	tfxU64 file_size = 0;                        //The size of the file
 	tfx_stream_t data;                            //The file data
@@ -5218,7 +5098,7 @@ struct tfx_package_inventory_t {
 };
 
 struct tfx_package_t {
-	tfx_str_t file_path;
+	tfx_text_t file_path;
 	tfx_package_header_t header;
 	tfx_package_inventory_t inventory;
 	tfxU64 file_size;                        //The total file size of the package, should match file size on disk
@@ -5516,7 +5396,7 @@ static float(*lookup_callback)(tfx_graph_t *graph, float age);
 static float(*lookup_random_callback)(tfx_graph_t *graph, float age, tfx_random_t *random);
 
 struct tfx_shape_data_t {
-	char name[64];
+	tfx_str64_t name;
 	tfxU32 frame_count = 0;
 	tfxU32 width = 0;
 	tfxU32 height = 0;
@@ -5602,7 +5482,7 @@ struct tfx_image_data_t {
 	//Index of the image, deprecated, image hash should be used now instead.
 	tfxU32 shape_index;
 	//Name of the image
-	tfx_str_t name;
+	tfx_str64_t name;
 	//A hash of the image data for a unique id and which can also be used to see if an image has already been loaded
 	tfxU64 image_hash;
 	//The size of one frame of the image
@@ -5622,7 +5502,7 @@ struct tfx_image_data_t {
 	tfxCUSTOM_IMAGE_DATA
 #endif // tfxCUSTOM_IMAGE_DATA
 
-		tfx_image_data_t() :
+	tfx_image_data_t() :
 		image_index(0),
 		shape_index(0),
 		ptr(nullptr),
@@ -5716,7 +5596,7 @@ struct tfx_effect_emitter_info_t {
 	//Name of the effect
 	tfx_str64_t name;
 	//The path of the effect in the library
-	tfx_str_t path;
+	tfx_str512_t path;
 	//Every effect and emitter in the library gets a unique id
 	tfxU32 uid;
 	//The max_radius of the emitter, taking into account all the particles that have spawned and active (editor only)
@@ -6622,7 +6502,7 @@ struct tfx_library_t {
 	tfx_str64_t name;
 	bool open_library = false;
 	bool dirty = false;
-	tfx_str_t library_file_path;
+	tfx_text_t library_file_path;
 	tfxU32 uid;
 	void(*uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
 
@@ -6671,7 +6551,7 @@ struct tfx_effect_template_t {
 struct tfx_data_entry_t {
 	tfx_data_type type = tfxSInt;
 	tfx_str32_t key;
-	tfx_str_t str_value;
+	tfx_str512_t str_value;
 	int int_value = 0;
 	tfx_rgba8_t color_value = {};
 	bool bool_value = 0;
@@ -6724,8 +6604,8 @@ tfxAPI_EDITOR tfx_package_entry_info_t *tfx__get_package_file(tfx_package packag
 tfxAPI_EDITOR void tfx__add_entry_to_package(tfx_package package, tfx_package_entry_info_t file);
 tfxAPI_EDITOR bool tfx__file_exists_in_package(tfx_package package, const char *file_name);
 tfxAPI_EDITOR void tfx__free_package(tfx_package package);
-tfxAPI_EDITOR void tfx__copy_stream_to_string(tfx_str_t *dst, tfx_stream src);
-tfxAPI_EDITOR void tfx__copy_string_to_stream(tfx_stream dst, tfx_str_t *src);
+tfxAPI_EDITOR void tfx__copy_stream_to_text(tfx_text_t *dst, tfx_stream src);
+tfxAPI_EDITOR void tfx__copy_text_to_stream(tfx_stream dst, tfx_text_t *src);
 tfxAPI_EDITOR void tfx__copy_data_to_stream(tfx_stream dst, const void *src, tfxU64 size);
 tfxINTERNAL tfxU64 tfx__get_package_size(tfx_package package);
 tfxINTERNAL bool tfx__validate_package(tfx_package package);
@@ -6733,29 +6613,29 @@ tfxINTERNAL void tfx__add_file_to_package(tfx_package package, const char *file_
 tfxINTERNAL void tfx__copy_stream(tfx_stream dst, tfx_stream src);
 
 //Some file IO functions for the editor
-tfxAPI_EDITOR bool tfx__has_data_value(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key);
-tfxAPI_EDITOR void tfx__add_data_value_str(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, const char *value);
-tfxAPI_EDITOR void tfx__add_data_value_int(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, int value);
-tfxAPI_EDITOR void tfx__add_color_value(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, tfx_rgba8_t value);
-tfxAPI_EDITOR void tfx__add_data_value_bool(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, bool value);
-tfxAPI_EDITOR void tfx__add_data_value_float(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, float value);
+tfxAPI_EDITOR bool tfx__has_data_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
+tfxAPI_EDITOR void tfx__add_data_value_str(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, const char *value);
+tfxAPI_EDITOR void tfx__add_data_value_int(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, int value);
+tfxAPI_EDITOR void tfx__add_color_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, tfx_rgba8_t value);
+tfxAPI_EDITOR void tfx__add_data_value_bool(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, bool value);
+tfxAPI_EDITOR void tfx__add_data_value_float(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, float value);
 tfxAPI_EDITOR const char* tfx__get_data_str_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
 tfxAPI_EDITOR tfx_rgba8_t tfx__get_data_color_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
 tfxAPI_EDITOR float tfx__get_data_float_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
 tfxAPI_EDITOR bool tfx__save_data_file(tfx_storage_map_t<tfx_data_entry_t> *config, const char *path = "");
 tfxAPI_EDITOR bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char *path);
-tfxAPI_EDITOR void tfx__stream_emitter_properties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file);
-tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_str_t *file);
-tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_str_t *file);
-tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_str_t *file);
-tfxAPI_EDITOR void tfx__split_string_stack(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
+tfxAPI_EDITOR void tfx__stream_emitter_properties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool tfx__string_is_uint(const char *s);
 tfxAPI_EDITOR void tfx__assign_property_line(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version);
-tfxAPI_EDITOR void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
-tfxAPI_EDITOR void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str_t *field, float value);
-tfxAPI_EDITOR void tfx__assign_effector_property_bool(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value);
-tfxAPI_EDITOR void tfx__assign_effector_property_int(tfx_effect_emitter_t *effect, tfx_str_t *field, int value);
-tfxAPI_EDITOR void tfx__assign_effector_property_str(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t &value);
+tfxAPI_EDITOR void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
+tfxAPI_EDITOR void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str256_t *field, float value);
+tfxAPI_EDITOR void tfx__assign_effector_property_bool(tfx_effect_emitter_t *effect, tfx_str256_t *field, bool value);
+tfxAPI_EDITOR void tfx__assign_effector_property_int(tfx_effect_emitter_t *effect, tfx_str256_t *field, int value);
+tfxAPI_EDITOR void tfx__assign_effector_property_str(tfx_effect_emitter_t *effect, tfx_str256_t *field, const char *value);
 tfxAPI_EDITOR void tfx__assign_graph_data(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *values);
 tfxAPI_EDITOR tfx_hsv_t tfx__rgb_to_hsv(tfx_rgb_t in);
 tfxAPI_EDITOR tfx_rgb_t tfx__hsv_to_rgb(tfx_hsv_t in);
@@ -6777,6 +6657,8 @@ tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_emitter_t *emi
 tfxAPI_EDITOR void tfx__complete_particle_manager_work(tfx_particle_manager_t *pm);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
+tfxINTERNAL void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
+tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxINTERNAL tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t v);
@@ -6797,9 +6679,9 @@ tfxINTERNAL void tfx__wide_catmull_rom_spline_2d(tfxWideArrayi *pi, tfxWideFloat
 tfxINTERNAL void tfx__wide_catmull_tom_spline_3d(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL void tfx__catmull_rom_spline_2d(const tfx_vec4_t *p0, const tfx_vec4_t *p1, const tfx_vec4_t *p2, const tfx_vec4_t *p3, float t, float vec[2]);
 tfxINTERNAL float tfx__length_vec3_nosqr(tfx_vec3_t const *v);
-tfxINTERNAL void tfx__assign_effector_property_u64(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU64 value, tfxU32 file_version);
-tfxINTERNAL void tfx__add_data_value_double(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, double value);
-tfxINTERNAL void tfx__add_color_value_from_int(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, tfxU32 value);
+tfxINTERNAL void tfx__assign_effector_property_u64(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU64 value, tfxU32 file_version);
+tfxINTERNAL void tfx__add_data_value_double(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, double value);
+tfxINTERNAL void tfx__add_color_value_from_int(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, tfxU32 value);
 tfxINTERNAL int tfx__get_data_int_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
 
 //--------------------------------
@@ -6995,7 +6877,7 @@ tfxINTERNAL int tfx__get_effect_library_stats(const char *filename, tfx_effect_l
 tfxINTERNAL void tfx__toggle_sprites_with_uid(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL tfxU32 tfx__get_library_lookup_indexes_size_in_bytes(tfx_library_t *library);
 tfxINTERNAL tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library_t *library);
-tfxINTERNAL void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, tfx_str256_t *path);
+tfxINTERNAL void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, const char *path);
 tfxINTERNAL tfxU32 tfx__add_library_global(tfx_library_t *library);
 tfxINTERNAL tfxU32 tfx__add_library_emitter_attributes(tfx_library_t *library);
 tfxINTERNAL void tfx__free_library_global(tfx_library_t *library, tfxU32 index);
@@ -7012,7 +6894,7 @@ tfxINTERNAL void tfx__compile_library_global_graphs(tfx_library_t *library, tfxU
 tfxINTERNAL void tfx__compile_library_key_frame_graphs(tfx_library_t *library, tfxU32 index);
 tfxINTERNAL void tfx__compile_library_emitter_graphs(tfx_library_t *library, tfxU32 index);
 tfxINTERNAL void tfx__compile_library_factor_graphs(tfx_library_t *library, tfxU32 index);
-tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library_t *library, const tfx_str256_t &path);
+tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library_t *library, const char *path);
 
 //Effect/Emitter functions
 tfxAPI_EDITOR void tfx__set_effect_user_data(tfx_effect_emitter_t *e, void *data);
@@ -7064,21 +6946,20 @@ tfxINTERNAL void tfx__reset_emitter_overtime_graphs(tfx_effect_emitter_t *effect
 tfxINTERNAL void tfx__reset_emitter_factor_graphs(tfx_effect_emitter_t *effect, bool add_node = true, bool compile = true);
 tfxINTERNAL void tfx__enable_emitter(tfx_effect_emitter_t *effect);
 tfxINTERNAL bool tfx__is_ordered_effect_state(tfx_effect_state_t *effect);
-tfxINTERNAL void tfx__split_string_vec(const tfx_str_t s, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
-tfxINTERNAL void tfx__assign_stage_property_u32(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value);
-tfxINTERNAL void tfx__assign_stage_property_float(tfx_effect_emitter_t *effect, tfx_str_t *field, float value);
-tfxINTERNAL void tfx__assign_stage_property_bool(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value);
-tfxINTERNAL void tfx__assign_stage_property_int(tfx_effect_emitter_t *effect, tfx_str_t *field, int value);
-tfxINTERNAL void tfx__assign_stage_property_str(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t *value);
-tfxINTERNAL void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfxU64 value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, float value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfx_str_t value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_frame_meta_property_u32(tfx_frame_meta_t *metrics, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str_t *field, tfx_vec3_t value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_animation_emitter_property_u32(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfxU32 value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_animation_emitter_property_float(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, float value, tfxU32 file_version);
-tfxINTERNAL void tfx__assign_animation_emitter_property_vec2(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfx_vec2_t value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_stage_property_u32(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU32 value);
+tfxINTERNAL void tfx__assign_stage_property_float(tfx_effect_emitter_t *effect, tfx_str256_t *field, float value);
+tfxINTERNAL void tfx__assign_stage_property_bool(tfx_effect_emitter_t *effect, tfx_str256_t *field, bool value);
+tfxINTERNAL void tfx__assign_stage_property_int(tfx_effect_emitter_t *effect, tfx_str256_t *field, int value);
+tfxINTERNAL void tfx__assign_stage_property_str(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfx_str256_t *value);
+tfxINTERNAL void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU64 value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, float value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, const char *value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_frame_meta_property_u32(tfx_frame_meta_t *metrics, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str256_t *field, tfx_vec3_t value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_animation_emitter_property_u32(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_animation_emitter_property_float(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, float value, tfxU32 file_version);
+tfxINTERNAL void tfx__assign_animation_emitter_property_vec2(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, tfx_vec2_t value, tfxU32 file_version);
 tfxINTERNAL void tfx__assign_node_data(tfx_attribute_node_t *node, tfx_vector_t<tfx_str256_t> *values);
 tfxINTERNAL tfx_vec3_t tfx__str_to_vec3(tfx_vector_t<tfx_str256_t> *str);
 tfxINTERNAL tfx_vec2_t tfx__str_to_vec2(tfx_vector_t<tfx_str256_t> *str);
@@ -7438,17 +7319,17 @@ tfxINTERNAL tfxU32 tfx__count_library_emitter_lookup_values(tfx_library_t *libra
 //--------------------------------
 //Effect templates
 //--------------------------------
-tfxINTERNAL void tfx__add_template_path(tfx_effect_template_t *effect_template, tfx_effect_emitter_t *effect_emitter, tfx_str256_t path);
+tfxINTERNAL void tfx__add_template_path(tfx_effect_template_t *effect_template, tfx_effect_emitter_t *effect_emitter, const char *path);
 
 //--------------------------------
 //Library functions, internal/Editor functions
 //--------------------------------
-tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library_t *library, tfx_str256_t path, tfx_effect_template_t *effect);
+tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library_t *library, const char *path, tfx_effect_template_t *effect);
 tfxINTERNAL void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void tfx__compress_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, int *progress);
 tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__build_all_library_paths(tfx_library_t *library);
-tfxINTERNAL tfx_str64_t tfx__get_name_from_path(tfx_str256_t *path);
+tfxINTERNAL tfx_str64_t tfx__get_name_from_path(const char *path);
 tfxINTERNAL bool tfx__is_root_effect(tfx_effect_emitter_t *effect);
 tfxINTERNAL void tfx__reset_effect_parents(tfx_effect_emitter_t *effect);
 tfxINTERNAL void tfx__free_effect_graphs(tfx_effect_emitter_t *effect);
@@ -8649,7 +8530,7 @@ Get an emitter or sub effect from an effect template.
 * @param path                    A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
 * @returns                        A pointer to the root effect
 */
-tfxAPI tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template_t *t, tfx_str256_t *path);
+tfxAPI tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template_t *t, const char *path);
 
 /*
 Get an emitter path that an emitter is using. The emitter must have the path emission type set or nullptr will be returned
@@ -8665,7 +8546,7 @@ Set the user data for any effect or emitter in the effect template. This user da
 * @param path                    A path to the effect or emitter in the effect template
 * @param data                    A pointer to the user data
 */
-tfxAPI void tfx_SetTemplateUserData(tfx_effect_template_t *t, tfx_str256_t *path, void *data);
+tfxAPI void tfx_SetTemplateUserData(tfx_effect_template_t *t, const char *path, void *data);
 
 /*
 Set the user data for the root effect in an effect template

@@ -1719,32 +1719,8 @@ int tfx_FormatString(char *buf, size_t buf_size, const char *fmt, va_list args) 
 	return w;
 }
 
-void tfx_str_t::Appendv(const char *format, va_list args) {
-	va_list args_copy;
-	va_copy(args_copy, args);
-
-	int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
-	if (len <= 0)
-	{
-		va_end(args_copy);
-		return;
-	}
-
-	const int write_off = (current_size != 0) ? current_size : 1;
-	const int needed_sz = write_off + len;
-	if (write_off + (tfxU32)len >= capacity)
-	{
-		int new_capacity = capacity * 2;
-		reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
-	}
-
-	resize(needed_sz);
-	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
-	va_end(args_copy);
-
-}
-
-int tfx_str_t::Find(const char *needle) {
+template<size_t N>
+int tfx_str_t<N>::Find(const char *needle) {
 	tfx_str_t compare = needle;
 	tfx_str_t lower = Lower();
 	compare = compare.Lower();
@@ -1759,7 +1735,8 @@ int tfx_str_t::Find(const char *needle) {
 	return -1;
 }
 
-tfx_str_t tfx_str_t::Lower() {
+template<size_t N>
+tfx_str_t<N> tfx_str_t<N>::Lower() {
 	tfx_str_t convert = *this;
 	for (auto &c : convert) {
 		c = tolower(c);
@@ -1767,7 +1744,8 @@ tfx_str_t tfx_str_t::Lower() {
 	return convert;
 }
 
-void tfx_str_t::AddLine(const char *format, ...) {
+template<size_t N>
+void tfx_str_t<N>::AddLine(const char *format, ...) {
 	va_list args;
 	va_start(args, format);
 	Appendv(format, args);
@@ -1775,22 +1753,8 @@ void tfx_str_t::AddLine(const char *format, ...) {
 	Append('\n');
 }
 
-bool tfx_str_t::SaveToFile(const char *file_name) {
-	FILE *file = tfx__open_file(file_name, "wb");
-	if (!file)
-		return false;
-
-	tfxU32 l = Length();
-	if (fwrite(data, sizeof(char), Length(), file) != Length()) {
-		fclose(file);
-		return false;
-	}
-
-	fclose(file);
-	return true;
-}
-
-const bool tfx_str_t::IsInt() const {
+template<size_t N>
+const bool tfx_str_t<N>::IsInt() const {
 	if (!Length()) return false;
 	for (auto c : *this) {
 		if (c >= '0' && c <= '9');
@@ -1801,7 +1765,8 @@ const bool tfx_str_t::IsInt() const {
 	return true;
 }
 
-const bool tfx_str_t::IsFloat() const {
+template<size_t N>
+const bool tfx_str_t<N>::IsFloat() const {
 	if (!Length()) return false;
 	int dot_count = 0;
 	for (auto c : *this) {
@@ -1816,7 +1781,8 @@ const bool tfx_str_t::IsFloat() const {
 	return dot_count == 1;
 }
 
-void tfx_str_t::Setf(const char *format, ...) {
+template<size_t N>
+void tfx_str_t<N>::Setf(const char *format, ...) {
 	Clear();
 	va_list args;
 	va_start(args, format);
@@ -1833,20 +1799,15 @@ void tfx_str_t::Setf(const char *format, ...) {
 
 	const int write_off = (current_size != 0) ? current_size : 1;
 	const int needed_sz = write_off + len;
-	if (write_off + (tfxU32)len >= capacity)
-	{
-		int new_capacity = capacity * 2;
-		reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
-	}
-
-	resize(needed_sz);
-	tfx_FormatString(&strbuffer()[write_off - 1], (size_t)len + 1, format, args_copy);
+	TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
+	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
 	va_end(args_copy);
 
 	va_end(args);
 }
 
-void tfx_str_t::Appendf(const char *format, ...) {
+template<size_t N>
+void tfx_str_t<N>::Appendf(const char *format, ...) {
 	va_list args;
 	va_start(args, format);
 
@@ -1862,33 +1823,174 @@ void tfx_str_t::Appendf(const char *format, ...) {
 
 	const int write_off = (current_size != 0) ? current_size : 1;
 	const int needed_sz = write_off + len;
-	if (write_off + (tfxU32)len >= capacity)
-	{
-		int new_capacity = capacity * 2;
-		reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
-	}
-
-	resize(needed_sz);
-	tfx_FormatString(&strbuffer()[write_off - 1], (size_t)len + 1, format, args_copy);
+	TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
+	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
 	va_end(args_copy);
 
 	va_end(args);
 }
 
-tfx_str512_t tfx_stream_t::ReadLine() {
-	tfx_str512_t line;
+template<size_t N>
+void tfx_str_t<N>::Appendv(const char *format, va_list args) {
+	va_list args_copy;
+	va_copy(args_copy, args);
+
+	int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+	if (len <= 0)
+	{
+		va_end(args_copy);
+		return;
+	}
+
+	const int write_off = (current_size != 0) ? current_size : 1;
+	const int needed_sz = write_off + len;
+	TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
+	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
+	va_end(args_copy);
+
+}
+
+void tfx_SetText(tfx_text_t *buffer, const char *text) {
+	if (!text) {
+		tfx_FreeText(buffer);
+		return;
+	}
+	tfxU32 length = (tfxU32)strlen(text) + 1;
+	tfx_ResizeText(buffer, length);
+	tfx__strcpy(buffer->str, length, text);
+}
+
+void tfx_ResizeText(tfx_text_t *buffer, tfxU32 size) {
+	if (size > buffer->size) {
+		tfxREALLOCATE(buffer->str, size);
+	}
+}
+
+void tfx_SetTextfv(tfx_text_t *buffer, const char *text, va_list args)
+{
+	va_list args2;
+	va_copy(args2, args);
+
+#ifdef _MSC_VER
+	int len = vsnprintf(NULL, 0, text, args);
+	TFX_ASSERT(len >= 0);
+	tfx_ResizeText(buffer, (tfxU32)(len + 1));
+	len = vsnprintf(buffer->str, len + 1, text, args2);
+#else
+	int len = vsnprintf(buffer->str ? buffer->str : NULL, (size_t)tfx_TextSize(buffer), text, args);
+	TFX_ASSERT(len >= 0);
+
+	if (tfx_TextSize(buffer) < len + 1)
+	{
+		tfx_vec_resize(buffer->str, len + 1);
+		len = vsnprintf(buffer->str, (size_t)len + 1, text, args2);
+	}
+#endif
+
+	TFX_ASSERT(buffer->str);
+}
+
+void tfx_SetTextf(tfx_text_t *buffer, const char *text, ...) {
+	va_list args;
+	va_start(args, text);
+	tfx_SetTextfv(buffer, text, args);
+	va_end(args);
+}
+
+void tfx_FreeText(tfx_text_t *buffer) {
+	tfxFREE(buffer->str);
+	buffer->str = 0;
+}
+
+tfxU32 tfx_TextLength(tfx_text_t *buffer) {
+	return (tfxU32)strlen(buffer->str);
+}
+
+tfxU32 tfx_TextSize(tfx_text_t *buffer) {
+	return buffer->size;
+}
+
+tfx_line_t tfx_stream_t::ReadLine() {
+	tfx_line_t line{};
 	if (EoF()) return line;
 
+	line.start = data + position;
 	while (!EoF()) {
-		char current = *(data + position);
-		if (current == '\n') {
+		if (data[position] == '\n') {
+			line.end = data + position;
 			position++;
 			break;
 		}
-		line.Append(current);
 		position++;
 	}
 	return line;
+}
+
+void tfx_stream_t::AddLine(const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+	Appendv(format, args);
+	va_end(args);
+	if (size + 1 >= capacity) {
+		tfxU64 new_capacity = capacity * 2;
+		Reserve(new_capacity);
+	}
+	data[size] = '\n';
+	size++;
+}
+
+void tfx_stream_t::Appendf(const char *format, ...) {
+	va_list args;
+	va_start(args, format);
+
+	va_list args_copy;
+	va_copy(args_copy, args);
+
+	int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+	if (len <= 0)
+	{
+		va_end(args_copy);
+		return;
+	}
+
+	const tfxU64 write_off = (size != 0) ? size : 1;
+	const tfxU64 needed_sz = write_off + len;
+	if (write_off + (tfxU32)len >= capacity)
+	{
+		tfxU64 new_capacity = capacity * 2;
+		Reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
+	}
+
+	Resize(needed_sz);
+	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
+	va_end(args_copy);
+
+	va_end(args);
+}
+
+void tfx_stream_t::Appendv(const char *format, va_list args) {
+	va_list args_copy;
+	va_copy(args_copy, args);
+
+	int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+	if (len <= 0)
+	{
+		va_end(args_copy);
+		return;
+	}
+
+	const tfxU64 write_off = (size != 0) ? size : 1;
+	const tfxU64 needed_sz = write_off + len;
+	if (write_off + (tfxU32)len >= capacity)
+	{
+		tfxU64 new_capacity = capacity * 2;
+		Reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
+	}
+
+	Resize(needed_sz);
+	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
+	va_end(args_copy);
+
 }
 
 tfx_package tfx__create_package(const char *file_path) {
@@ -1902,7 +2004,7 @@ tfx_package tfx__create_package(const char *file_path) {
 	package->inventory.magic_number = tfxMAGIC_NUMBER_INVENTORY;
 	package->inventory.entry_count = 0;
 
-	package->file_path = file_path;
+	tfx_SetText(&package->file_path, file_path);
 	package->file_data = tfx__create_stream();
 	return package;
 }
@@ -1914,7 +2016,7 @@ bool tfx__validate_package(tfx_package package) {
 		return true;
 	}
 
-	FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
+	FILE *file = tfx__open_file(package->file_path.str, "rb");
 	if (!file) {
 		return false;
 	}
@@ -1950,7 +2052,7 @@ tfx_package_entry_info_t *tfx__get_package_file(tfx_package package, const char 
 	tfx_package_entry_info_t *entry = &package->inventory.entries.At(name);
 	if (entry->data.Size() != entry->file_size) {
 		if (!(package->flags & tfxPackageFlags_loaded_from_memory)) {
-			FILE *file = tfx__open_file(package->file_path.c_str(), "rb");
+			FILE *file = tfx__open_file(package->file_path.str, "rb");
 			TFX_ASSERT(file);        //couldn't open the file!
 			tfx__fseek(file, entry->offset_from_start_of_file, SEEK_SET);
 			entry->data.Resize(entry->file_size);
@@ -1975,17 +2077,17 @@ bool tfx__file_exists_in_package(tfx_package package, const char *file_name) {
 }
 
 void tfx__add_entry_to_package(tfx_package package, tfx_package_entry_info_t file) {
-	package->inventory.entries.Insert(file.file_name, file);
+	package->inventory.entries.Insert(file.file_name.c_str(), file.file_name.Length(), file);
 	package->inventory.entry_count++;
 }
 
 void tfx__add_file_to_package(tfx_package package, const char *file_name, tfx_stream data) {
 	tfx_package_entry_info_t entry;
-	entry.file_name = file_name;
+	entry.file_name.Setf("%s", file_name);
 	entry.data = *data;
 	entry.file_size = data->size;
 
-	package->inventory.entries.Insert(entry.file_name, entry);
+	package->inventory.entries.Insert(entry.file_name.c_str(), entry);
 	package->inventory.entry_count++;
 }
 
@@ -2007,16 +2109,15 @@ void tfx__copy_stream(tfx_stream dst, tfx_stream src) {
 	memcpy(dst->data, src->data, src->size);
 }
 
-void tfx__copy_stream_to_string(tfx_str_t *dst, tfx_stream src) {
-	dst->free();
-	dst->resize((tfxU32)src->size);
-	memcpy(dst->data, src->data, src->size);
+void tfx__copy_stream_to_text(tfx_text_t *dst, tfx_stream src) {
+	tfx_ResizeText(dst, (tfxU32)src->size);
+	memcpy(dst->str, src->data, src->size);
 }
 
-void tfx__copy_string_to_stream(tfx_stream dst, tfx_str_t *src) {
+void tfx__copy_text_to_stream(tfx_stream dst, tfx_text_t *src) {
 	dst->FreeAll();
-	dst->Resize(src->current_size);
-	memcpy(dst->data, src->data, src->current_size);
+	dst->Resize(src->size);
+	memcpy(dst->data, src->str, src->size);
 }
 
 void tfx__copy_data_to_stream(tfx_stream dst, const void *src, tfxU64 size) {
@@ -2064,11 +2165,11 @@ tfx_stream tfx__read_entire_file(const char *file_name, bool terminate) {
 }
 
 bool tfx__save_package_disk(tfx_package package) {
-	if (!package->file_path.Length()) return false;                                            //Package must have a file path
+	if (!tfx_TextLength(&package->file_path)) return false;                                            //Package must have a file path
 	if (package->header.magic_number != tfxMAGIC_NUMBER) return false;                        //Header of package must contain correct magic number. Use tfx__create_package to correctly initialise a package.
 	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;            //Inventory of package must contain correct magic number
 
-	FILE *file = tfx__open_file(package->file_path.c_str(), "wb");
+	FILE *file = tfx__open_file(package->file_path.str, "wb");
 	if (!file)
 		return false;
 
@@ -2203,14 +2304,14 @@ tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package)
 		tfx_package_entry_info_t entry;
 		tfxU32 file_name_size;
 		package->file_data->Read((char *)&file_name_size, sizeof(tfxU32));
-		entry.file_name.resize(file_name_size);
+		TFX_ASSERT(file_name_size <= 512);	//file name of package entry is greater than max of 512, maybe the file is corrupt?
 		package->file_data->Read(entry.file_name.data, file_name_size);
 		package->file_data->Read((char *)&entry.file_size, sizeof(tfxU64));
 		package->file_data->Read((char *)&entry.offset_from_start_of_file, sizeof(tfxU64));
-		package->inventory.entries.Insert(entry.file_name, entry);
+		package->inventory.entries.Insert(entry.file_name.c_str(), entry);
 	}
 
-	package->file_path = file_name;
+	tfx_SetText(&package->file_path, file_name);
 
 	return 0;
 }
@@ -2249,11 +2350,11 @@ tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package) {
 		tfx_package_entry_info_t entry;
 		tfxU32 file_name_size;
 		package->file_data->Read((char *)&file_name_size, sizeof(tfxU32));
-		entry.file_name.resize(file_name_size);
+		TFX_ASSERT(file_name_size <= 512);	//file name of package entry is greater than max of 512, maybe the file is corrupt?
 		package->file_data->Read(entry.file_name.data, file_name_size);
 		package->file_data->Read((char *)&entry.file_size, sizeof(tfxU64));
 		package->file_data->Read((char *)&entry.offset_from_start_of_file, sizeof(tfxU64));
-		package->inventory.entries.Insert(entry.file_name, entry);
+		package->inventory.entries.Insert(entry.file_name.c_str(), entry);
 	}
 
 	return 0;
@@ -2436,7 +2537,7 @@ tfx_effect_emitter_t *tfx__add_effect(tfx_effect_emitter_t *e) {
 	new_effect.library = e->library;
 	tfx_GetEffectInfo(&new_effect)->uid = ++e->library->uid;
 	new_effect.type = tfx_effect_emitter_type::tfxEffectType;
-	tfx_GetEffectInfo(&new_effect)->name = "New Effect";
+	tfx_GetEffectInfo(&new_effect)->name.Setf("New Effect");
 	tfx_GetEffectInfo(e)->sub_effectors.push_back(new_effect);
 	tfx__update_library_effect_paths(e->library);
 	tfx__reindex_effect(e);
@@ -3127,7 +3228,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_emitter_t *effect) {
 }
 
 void tfx__set_effect_name(tfx_effect_emitter_t *effect, const char *n) {
-	tfx_GetEffectInfo(effect)->name = n;
+	tfx_GetEffectInfo(effect)->name.Setf(n);
 }
 
 void tfx__add_emitter_color_overtime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color) {
@@ -3294,7 +3395,7 @@ void tfx__clean_up_effect(tfx_effect_emitter_t *effect) {
 				stack.push_back(sub);
 			}
 			tfx_GetEffectInfo(&current)->sub_effectors.free();
-			tfx_GetEffectInfo(&current)->path.free();
+			tfx_GetEffectInfo(&current)->path.Clear();
 			tfx__free_library_properties(effect->library, current.property_index);
 			tfx_free_library_info(effect->library, current.info_index);
 		}
@@ -3391,12 +3492,13 @@ void tfx__clone_effect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter
 	}
 }
 
-void tfx__add_template_path(tfx_effect_template_t *effect_template, tfx_effect_emitter_t *effect_emitter, tfx_str256_t path) {
+void tfx__add_template_path(tfx_effect_template_t *effect_template, tfx_effect_emitter_t *effect_emitter, const char *path) {
 	effect_template->paths.Insert(path, effect_emitter);
 	for (auto &sub : tfx_GetEffectInfo(effect_emitter)->sub_effectors) {
-		tfx_str256_t sub_path = path;
+		tfx_str512_t sub_path;
+		sub_path.Setf(path);
 		sub_path.Appendf("/%s", tfx_GetEffectInfo(&sub)->name.c_str());
-		tfx__add_template_path(effect_template, &sub, sub_path);
+		tfx__add_template_path(effect_template, &sub, sub_path.c_str());
 	}
 }
 
@@ -3737,7 +3839,7 @@ void tfx__copy_path_graphs(tfx_emitter_path_t *src, tfx_emitter_path_t *dst) {
 
 void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *path) {
 	path->flags = src->flags;
-	path->name = name;
+	path->name.Setf(name);
 	path->node_count = src->node_count;
 	path->generator_type = src->generator_type;
 	path->extrusion_type = src->extrusion_type;
@@ -3757,7 +3859,6 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_emitter_t *emitter, bool a
 	if (emitter->path_attributes == tfxINVALID) {
 		tfx_emitter_path_t path = {};
 		path.flags = 0;
-		path.name = "";
 		path.node_count = 32;
 		path.extrusion_type = tfxExtrusionArc;
 		path.generator_type = tfxPathGenerator_spiral;
@@ -3787,7 +3888,7 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_emitter_t *emitter, bool a
 tfxU32 tfx__add_emitter_path_attributes(tfx_library_t *library) {
 	tfx_emitter_path_t path = {};
 	path.flags = 0;
-	path.name = "";
+	path.name;
 	path.node_count = 32;
 	path.extrusion_type = tfxExtrusionArc;
 	path.generator_type = tfxPathGenerator_spiral;
@@ -4825,10 +4926,11 @@ bool tfx__library_name_exists(tfx_library_t *library, tfx_effect_emitter_t *effe
 void tfx__update_library_effect_paths(tfx_library_t *library) {
 	library->effect_paths.Clear();
 	for (auto &e : library->effects) {
-		tfx_str256_t path = tfx_GetEffectInfo(&e)->name;
+		tfx_str512_t path;
+		path.Setf(tfx_GetEffectInfo(&e)->name.c_str());
 		tfx_GetEffectInfo(&e)->path = path;
 		e.path_hash = tfxXXHash64::hash(path.c_str(), path.Length(), 0);
-		tfx__add_library_path(library, &e, &path);
+		tfx__add_library_path(library, &e, path.c_str());
 	}
 }
 
@@ -4850,20 +4952,21 @@ void tfx_UpdateLibraryGPUImageData(tfx_library_t *library) {
     }
 }
 
-void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, tfx_str256_t *path) {
-	if (library->effect_paths.ValidName(path->c_str())) {
-		*path = tfx__find_new_path_name(library, *path);
-		tfx_GetEffectInfo(effect_emitter)->path = *path;
+void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, const char *path) {
+	if (library->effect_paths.ValidName(path)) {
+		tfx_str256_t new_path = tfx__find_new_path_name(library, path);
+		tfx_GetEffectInfo(effect_emitter)->path.Setf(new_path.c_str());
 		tfx_GetEffectInfo(effect_emitter)->name = tfx__get_name_from_path(path);
-		effect_emitter->path_hash = tfxXXHash64::hash(path->c_str(), path->Length(), 0);
+		effect_emitter->path_hash = tfxXXHash64::hash(new_path.c_str(), new_path.Length(), 0);
 	}
 	library->effect_paths.Insert(*path, effect_emitter);
 	for (auto &sub : tfx_GetEffectInfo(effect_emitter)->sub_effectors) {
-		tfx_str256_t sub_path = *path;
+		tfx_str256_t sub_path;
+		sub_path.Setf(path);
 		sub_path.Appendf("/%s", tfx_GetEffectInfo(&sub)->name.c_str());
-		tfx_GetEffectInfo(&sub)->path = sub_path;
+		tfx_GetEffectInfo(&sub)->path.Setf(sub_path.c_str());
 		sub.path_hash = tfxXXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
-		tfx__add_library_path(library, &sub, &sub_path);
+		tfx__add_library_path(library, &sub, sub_path.c_str());
 	}
 }
 
@@ -4934,10 +5037,10 @@ tfx_effect_emitter_t *tfx__get_library_effect_by_key(tfx_library_t *library, tfx
 	return library->effect_paths.At(key);
 }
 
-void tfx__prepare_library_effect_template_path(tfx_library_t *library, tfx_str256_t path, tfx_effect_template_t *effect_template) {
-	tfx_effect_emitter_t *effect = tfx_GetLibraryEffectPath(library, path.c_str());
+void tfx__prepare_library_effect_template_path(tfx_library_t *library, const char *path, tfx_effect_template_t *effect_template) {
+	tfx_effect_emitter_t *effect = tfx_GetLibraryEffectPath(library, path);
 	TFX_ASSERT(effect);                                //Effect was not found, make sure the path exists
-	TFX_ASSERT(effect->type == tfxEffectType);        //The effect must be an effect type, not an emitter
+	TFX_ASSERT(effect->type == tfxEffectType);         //The effect must be an effect type, not an emitter
 	effect_template->original_effect_hash = effect->path_hash;
 	tfx__clone_effect(effect, &effect_template->effect, &effect_template->effect, library, tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_compile_graphs);
 	tfx__add_template_path(effect_template, &effect_template->effect, tfx_GetEffectInfo(&effect_template->effect)->name.c_str());
@@ -5264,6 +5367,7 @@ tfxU32 tfx__clone_library_emitter_attributes(tfx_library_t *library, tfxU32 sour
 tfxU32 tfx__clone_library_info(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library) {
 	tfxU32 index = tfx__allocate_library_effect_emitter_info(destination_library);
 	destination_library->effect_infos[index] = library->effect_infos[source_index];
+	destination_library->effect_infos[index].sub_effectors.init();
 	return index;
 }
 
@@ -5515,19 +5619,19 @@ void tfx__init_library(tfx_library_t *library) {
     library->gpu_shapes.list.set_alignment(16);
 }
 
-tfx_str64_t tfx__get_name_from_path(tfx_str256_t *path) {
-	tfx_str16_t extension;
+tfx_str64_t tfx__get_name_from_path(const char *path) {
+	tfx_str64_t extension;
 	tmpStack(tfx_str256_t, file_split);
-	tfx__split_string_stack(*path, &file_split, '/');
+	tfx__split_string_stack(path, (int)strlen(path), &file_split, '/');
 	if (file_split.size()) {
-		extension = file_split.back();
+		extension.Setf(file_split.back().c_str());
 	}
 	return extension;
 }
 
-tfx_str256_t tfx__find_new_path_name(tfx_library_t *library, const tfx_str256_t &path) {
+tfx_str256_t tfx__find_new_path_name(tfx_library_t *library, const char *path) {
 	tmpStack(tfx_str256_t, name);
-	tfx__split_string_stack(path, &name, 46);
+	tfx__split_string_stack(path, (int)strlen(path), &name, 46);
 	tfx_str256_t new_path;
 	if (name.size() > 2) {
 		for (int i = 0; i != name.size() - 2; ++i) {
@@ -5538,7 +5642,7 @@ tfx_str256_t tfx__find_new_path_name(tfx_library_t *library, const tfx_str256_t 
 		new_path.Appendf(name[0].c_str());
 	}
 	else {
-		new_path = path;
+		new_path.Setf(path);
 	}
 	tfx_str256_t find_name = new_path;
 	int index = 1;
@@ -6447,25 +6551,26 @@ void tfx__assign_node_data(tfx_attribute_node_t *n, tfx_vector_t<tfx_str256_t> *
 		n->flags |= tfxAttributeNodeFlags_curves_initialised;
 }
 
-void tfx__assign_stage_property_u32(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value) {
+void tfx__assign_stage_property_u32(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU32 value) {
 }
 
-void tfx__assign_stage_property_float(tfx_effect_emitter_t *effect, tfx_str_t *field, float value) {
+void tfx__assign_stage_property_float(tfx_effect_emitter_t *effect, tfx_str256_t *field, float value) {
 }
 
-void tfx__assign_stage_property_bool(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value) {
+void tfx__assign_stage_property_bool(tfx_effect_emitter_t *effect, tfx_str256_t *field, bool value) {
 }
 
-void tfx__assign_stage_property_int(tfx_effect_emitter_t *effect, tfx_str_t *field, int value) {
+void tfx__assign_stage_property_int(tfx_effect_emitter_t *effect, tfx_str256_t *field, int value) {
 }
 
-void tfx__assign_stage_property_str(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t *value) {
+void tfx__assign_stage_property_str(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfx_str256_t *value) {
 	if (*field == "name") {
-		tfx_GetEffectInfo(effect)->name = *value;
+		TFX_ASSERT(value->Length() <= 64);	//File corrupt? length of name should be less than 64.
+		tfx_GetEffectInfo(effect)->name.Setf(value->c_str());
 	}
 }
 
-void tfx__assign_frame_meta_property_u32(tfx_frame_meta_t *metrics, tfx_str_t *field, tfxU32 value, tfxU32 file_version) {
+void tfx__assign_frame_meta_property_u32(tfx_frame_meta_t *metrics, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	if (*field == "total_sprites")
 		metrics->total_sprites = value;
 }
@@ -6480,7 +6585,7 @@ tfx_vec2_t tfx__str_to_vec2(tfx_vector_t<tfx_str256_t> *str) {
 	return tfx_vec2_t((float)atof((*str)[0].c_str()), (float)atof((*str)[1].c_str()));
 }
 
-void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str_t *field, tfx_vec3_t value, tfxU32 file_version) {
+void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str256_t *field, tfx_vec3_t value, tfxU32 file_version) {
 	if (*field == "min_corner") {
 		metrics->min_corner = value;
 	}
@@ -6493,23 +6598,23 @@ void tfx__assign_frame_meta_property_vec3(tfx_frame_meta_t *metrics, tfx_str_t *
 	}
 }
 
-void tfx__assign_animation_emitter_property_vec2(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfx_vec2_t value, tfxU32 file_version) {
+void tfx__assign_animation_emitter_property_vec2(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, tfx_vec2_t value, tfxU32 file_version) {
 	if (*field == "handle") {
 		properties->handle = value;
 	}
 }
 
-void tfx__assign_animation_emitter_property_float(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, float value, tfxU32 file_version) {
+void tfx__assign_animation_emitter_property_float(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, float value, tfxU32 file_version) {
 	if (*field == "animation_frames")
 		properties->animation_frames = value;
 }
 
-void tfx__assign_animation_emitter_property_u32(tfx_animation_emitter_properties_t *properties, tfx_str_t *field, tfxU32 value, tfxU32 file_version) {
+void tfx__assign_animation_emitter_property_u32(tfx_animation_emitter_properties_t *properties, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	if (*field == "flags") properties->flags = value;
 	if (*field == "start_frame_index") properties->start_frame_index = value;
 }
 
-void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfxU32 value, tfxU32 file_version) {
+void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	if (*field == "start_offset")
 		metrics->start_offset = value;
 	if (*field == "frames_after_compression")
@@ -6529,7 +6634,7 @@ void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *met
 }
 
 void tfx__assign_property_line(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version) {
-	switch (tfxStore->data_types.names_and_types.At((*pair)[0])) {
+	switch (tfxStore->data_types.names_and_types.At((*pair)[0].c_str())) {
 	case tfxUInt64:
 		tfx__assign_effector_property_u64(effect, &(*pair)[0], (tfxU64)strtoull((*pair)[1].c_str(), NULL, 10), file_version);
 		break;
@@ -6546,31 +6651,32 @@ void tfx__assign_property_line(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_st
 		tfx__assign_effector_property_bool(effect, &(*pair)[0], (bool)(atoi((*pair)[1].c_str())));
 		break;
 	case tfxString:
-		tfx__assign_effector_property_str(effect, &(*pair)[0], (*pair)[1]);
+		tfx__assign_effector_property_str(effect, &(*pair)[0], (*pair)[1].c_str());
 		break;
 	default:
 		break;
 	}
 }
 
-void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfxU64 value, tfxU32 file_version) {
+void tfx__assign_sprite_data_metrics_property_u64(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, tfxU64 value, tfxU32 file_version) {
 	if (*field == "path_hash") metrics->path_hash = value;
 }
 
-void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, float value, tfxU32 file_version) {
+void tfx__assign_sprite_data_metrics_property_float(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, float value, tfxU32 file_version) {
 	if (*field == "animation_length_in_time") metrics->animation_length_in_time = value;
 }
 
-void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *metrics, tfx_str_t *field, tfx_str_t value, tfxU32 file_version) {
-	if (*field == "name") metrics->name = value;
+void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *metrics, tfx_str256_t *field, const char *value, tfxU32 file_version) {
+	TFX_ASSERT(strlen(value) <= 64);	//Trying to assign property that is too large
+	if (*field == "name") metrics->name.Setf(value);
 }
 
-void tfx__assign_effector_property_u64(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU64 value, tfxU32 file_version) {
+void tfx__assign_effector_property_u64(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU64 value, tfxU32 file_version) {
 	if (*field == "image_hash") tfx__get_effect_properties(effect)->image_hash = value;
 	if (*field == "paired_emitter_hash") tfx__get_effect_properties(effect)->paired_emitter_hash = value;
 }
 
-void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str_t *field, tfxU32 value, tfxU32 file_version) {
+void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	tfx_emitter_properties_t *emitter_properties = tfx__get_effect_properties(effect);
 	if (*field == "image_index") emitter_properties->image_index = value;
 	if (*field == "spawn_amount") emitter_properties->spawn_amount = value;
@@ -6613,7 +6719,7 @@ void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str_t *
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->node_count = value;
 	}
 }
-void tfx__assign_effector_property_int(tfx_effect_emitter_t *effect, tfx_str_t *field, int value) {
+void tfx__assign_effector_property_int(tfx_effect_emitter_t *effect, tfx_str256_t *field, int value) {
 	tfx_emitter_properties_t *emitter_properties = tfx__get_effect_properties(effect);
 	if (*field == "emission_type") emitter_properties->emission_type = (tfx_emission_type)value;
 	if (*field == "emission_direction") emitter_properties->emission_direction = (tfx_emission_direction)value;
@@ -6629,12 +6735,13 @@ void tfx__assign_effector_property_int(tfx_effect_emitter_t *effect, tfx_str_t *
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->generator_type = (tfx_path_generator_type)value;
 	}
 }
-void tfx__assign_effector_property_str(tfx_effect_emitter_t *effect, tfx_str_t *field, tfx_str_t &value) {
+void tfx__assign_effector_property_str(tfx_effect_emitter_t *effect, tfx_str256_t *field, const char *value) {
+	TFX_ASSERT(strlen(value) <= 64);	//Trying to assign a property that is too large
 	if (*field == "name") {
-		tfx_GetEffectInfo(effect)->name = value;
+		tfx_GetEffectInfo(effect)->name.Setf(value);
 	}
 }
-void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str_t *field, float value) {
+void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str256_t *field, float value) {
 	tfx_emitter_properties_t *emitter_properties = tfx__get_effect_properties(effect);
 	if (*field == "position_x") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.x = value;
 	if (*field == "position_y") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.y = value;
@@ -6711,7 +6818,7 @@ void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str_t *fiel
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->offset.z = value;
 	}
 }
-void tfx__assign_effector_property_bool(tfx_effect_emitter_t *effect, tfx_str_t *field, bool value) {
+void tfx__assign_effector_property_bool(tfx_effect_emitter_t *effect, tfx_str256_t *field, bool value) {
 	if (*field == "loop") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_loop : 0;
 	if (*field == "seamless") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_seamless : 0;
 	if (*field == "export_with_transparency") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
@@ -6878,7 +6985,7 @@ void tfx__assign_effector_property_bool(tfx_effect_emitter_t *effect, tfx_str_t 
 
 }
 
-void tfx__stream_emitter_properties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_str_t *file) {
+void tfx__stream_emitter_properties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_stream_t *file) {
 	file->AddLine("image_hash=%llu", property->image_hash);
 	file->AddLine("image_handle_x=%f", property->image_handle.x);
 	file->AddLine("image_handle_y=%f", property->image_handle.y);
@@ -6937,7 +7044,7 @@ void tfx__stream_emitter_properties(tfx_emitter_properties_t *property, tfxEmitt
 	//file->AddLine("simple_motion_smoothstep=%i", (flags & tfxEmitterPropertyFlags_simple_motion_smoothstep));
 }
 
-void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_str_t *file) {
+void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file) {
 	tfx_emitter_properties_t *properties = tfx__get_effect_properties(effect);
 	file->AddLine("is_3d=%i", (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d));
 	file->AddLine("draw_order_by_age=%i", effect->effect_flags & tfxEffectPropertyFlags_age_order);
@@ -6953,7 +7060,7 @@ void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_str_t *file
 	file->AddLine("global_uniform_size=%i", (effect->effect_flags & tfxEffectPropertyFlags_global_uniform_size));
 }
 
-void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_str_t *file) {
+void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file) {
 	if (effect->path_attributes != tfxINVALID) {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];
 		file->AddLine("path_is_2d=%i", (path->flags & tfxPathFlags_2d));
@@ -6977,7 +7084,7 @@ void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_str_t *file) 
 	}
 }
 
-void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_str_t *file) {
+void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file) {
 
 	for (tfxBucketLoop(graph->nodes)) {
 		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
@@ -8431,69 +8538,69 @@ void tfx__push_translation_points(tfx_effect_emitter_t *e, tfx_vector_t<tfx_vec3
 	points->push_back(point);
 }
 
-bool tfx__has_data_value(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key) {
+bool tfx__has_data_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key) {
 	return config->ValidName(key);
 }
 
-void tfx__add_data_value_str(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, const char *value) {
+void tfx__add_data_value_str(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, const char *value) {
 	tfx_data_entry_t entry;
 	entry.type = tfxString;
-	entry.key = key;
-	entry.str_value = value;
+	entry.key.Setf(key);
+	entry.str_value.Setf(value);
 	entry.str_value.SanitizeLineFeeds();
 	config->Insert(key, entry);
 }
 
-void tfx__add_data_value_int(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, int value) {
+void tfx__add_data_value_int(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, int value) {
 	tfx_data_entry_t entry;
 	entry.type = tfxSInt;
-	entry.key = key;
+	entry.key.Setf(key);
 	entry.int_value = value;
 	entry.bool_value = (bool)value;
 	config->Insert(key, entry);
 }
 
-void tfx__add_color_value(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, tfx_rgba8_t color) {
+void tfx__add_color_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, tfx_rgba8_t color) {
 	tfx_data_entry_t entry;
 	entry.type = tfxColor;
-	entry.key = key;
+	entry.key.Setf("%s", key);
 	entry.int_value = (int)color.color;
 	entry.color_value = color;
 	entry.bool_value = (bool)color.color;
 	config->Insert(key, entry);
 }
 
-void tfx__add_color_value_from_int(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, tfxU32 color) {
+void tfx__add_color_value_from_int(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, tfxU32 color) {
 	tfx_data_entry_t entry;
 	entry.type = tfxColor;
-	entry.key = key;
+	entry.key.Setf("%s", key);
 	entry.int_value = color;
 	entry.color_value.color = color;
 	entry.bool_value = (bool)color;
 	config->Insert(key, entry);
 }
 
-void tfx__add_data_value_bool(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, bool value) {
+void tfx__add_data_value_bool(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, bool value) {
 	tfx_data_entry_t entry;
 	entry.type = tfxBool;
-	entry.key = key;
+	entry.key.Setf("%s", key);
 	entry.bool_value = value;
 	entry.int_value = (int)value;
 	config->Insert(key, entry);
 }
 
-void tfx__add_data_value_double(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, double value) {
+void tfx__add_data_value_double(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, double value) {
 	tfx_data_entry_t entry;
 	entry.type = tfxDouble;
-	entry.key = key;
+	entry.key.Setf("%s", key);
 	entry.double_value = value;
 	config->Insert(key, entry);
 }
 
-void tfx__add_data_value_float(tfx_storage_map_t<tfx_data_entry_t> *config, tfx_str32_t key, float value) {
+void tfx__add_data_value_float(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key, float value) {
 	tfx_data_entry_t entry;
 	entry.type = tfxFloat;
-	entry.key = key;
+	entry.key.Setf("%s", key);
 	entry.float_value = value;
 	config->Insert(key, entry);
 }
@@ -8522,7 +8629,8 @@ bool tfx__save_data_file(tfx_storage_map_t<tfx_data_entry_t> *config, const char
 
 	if (config->Size()) {
 		for (auto &entry : config->data) {
-			tfx_str512_t ini_line = entry.key;
+			tfx_str512_t ini_line;
+			ini_line.Setf("%s", entry.key.c_str());
 			ini_line.Appendf("=");
 			switch (entry.type) {
 			case tfxString:
@@ -8565,28 +8673,27 @@ bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_ma
 	tfx_vector_t<tfx_str256_t> pair;
 	while (fgets(buffer, max_line_length, fp)) {
 		buffer[strcspn(buffer, "\n")] = 0;
-		tfx_str512_t str = buffer;
+		tfx_line_t line = tfx__read_line(buffer);
 		pair.clear();
-		tfx__split_string_vec(str, &pair, 61);
+		tfx__split_string_vec(line.start, line.length, &pair, 61);
 		if (pair.size() == 2) {
-			tfx_str256_t key = pair[0];
-			if (data_types->names_and_types.ValidName(pair[0])) {
-				tfx_data_type t = data_types->names_and_types.At(pair[0]);
+			if (data_types->names_and_types.ValidName(pair[0].c_str()), pair[0].Length()) {
+				tfx_data_type t = data_types->names_and_types.At(pair[0].c_str());
 				if (t == tfxBool) {
-					tfx__add_data_value_bool(config, key, (bool)atoi(pair[1].c_str()));
+					tfx__add_data_value_bool(config, pair[0].c_str(), (bool)atoi(pair[1].c_str()));
 				}
 				if (t == tfxSInt) {
-					tfx__add_data_value_int(config, key, atoi(pair[1].c_str()));
+					tfx__add_data_value_int(config, pair[0].c_str(), atoi(pair[1].c_str()));
 				}
 				else if (t == tfxFloat) {
-					tfx__add_data_value_float(config, key, (float)atof(pair[1].c_str()));
+					tfx__add_data_value_float(config, pair[0].c_str(), (float)atof(pair[1].c_str()));
 				}
 				else if (t == tfxString) {
-					tfx__add_data_value_str(config, key, pair[1].c_str());
+					tfx__add_data_value_str(config, pair[0].c_str(), pair[1].c_str());
 				}
 				else if (t == tfxColor) {
 					char *endptr;
-					tfx__add_color_value_from_int(config, key, (tfxU32)strtoul(pair[1].c_str(), &endptr, 10));
+					tfx__add_color_value_from_int(config, pair[0].c_str(), (tfxU32)strtoul(pair[1].c_str(), &endptr, 10));
 				}
 			}
 		}
@@ -8598,37 +8705,54 @@ bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_ma
 
 }
 
-void tfx__split_string_stack(const tfx_str_t str, tfx_vector_t<tfx_str256_t> *pair, char delim) {
-	tfx_str256_t line;
-	for (char c : str) {
-		if (c == delim && line.Length() && c != 0) {
-			pair->push_back(line);
-			line.Clear();
+tfx_line_t tfx__read_line(const char *s) {
+	tfx_line_t line{};
+	if (!s) return line;
+
+	int position = 0;
+	line.start = s;
+	while (s[position] != '\0') {
+		if (s[position] == '\n') {
+			line.end = s + position;
+			position++;
+			break;
 		}
-		else if (c != 0) {
-			line.Append(c);
+		position++;
+	}
+	return line;
+}
+
+void tfx__split_string_stack(const char *str, int length, tfx_vector_t<tfx_str256_t> *pair, char delim) {
+	tfx_str256_t item;
+	for (int i = 0; i != length; ++i) {
+		if (str[i] == delim && item.Length() && str[i] != 0) {
+			pair->push_back(item);
+			item.Clear();
+		}
+		else if (str[i] != 0) {
+			item.Append(str[i]);
 		}
 	}
 
-	if (line.Length()) {
-		pair->push_back(line);
+	if (item.Length()) {
+		pair->push_back(item);
 	}
 }
 
-void tfx__split_string_vec(const tfx_str_t str, tfx_vector_t<tfx_str256_t> *pair, char delim) {
-	tfx_str256_t line;
-	for (char c : str) {
-		if (c == delim && line.Length() && c != 0) {
-			pair->push_back(line);
-			line.Clear();
+void tfx__split_string_vec(const char *str, int length, tfx_vector_t<tfx_str256_t> *pair, char delim) {
+	tfx_str256_t item;
+	for (int i = 0; i != length; ++i) {
+		if (str[i] == delim && item.Length() && str[i] != 0) {
+			pair->push_back(item);
+			item.Clear();
 		}
-		else if (c != 0) {
-			line.Append(c);
+		else if (str[i] != 0) {
+			item.Append(str[i]);
 		}
 	}
 
-	if (line.Length()) {
-		pair->push_back(line);
+	if (item.Length()) {
+		pair->push_back(item);
 	}
 }
 
@@ -8706,19 +8830,19 @@ int tfx_GetShapeCountInLibrary(const char *filename) {
 
 	while (!data->data.EoF()) {
 		pair.clear();
-		tfx_str128_t line = data->data.ReadLine();
+		tfx_line_t line = data->data.ReadLine();
 		bool context_set = false;
-		if (tfx__string_is_uint(line.c_str())) {
-			context = atoi(line.c_str());
+		if (tfx__string_is_uint(line.start)) {
+			context = atoi(line.start);
 			if (context == tfxEndShapes)
 				break;
 			context_set = true;
 		}
 		if (context_set == false) {
-			tfx__split_string_stack(line.c_str(), &pair);
+			tfx__split_string_stack(line.start, line.length, &pair);
 			if (pair.size() != 2) {
 				pair.clear();
-				tfx__split_string_stack(line.c_str(), &pair, 44);
+				tfx__split_string_stack(line.start, line.length, &pair, 44);
 				if (pair.size() < 2) {
 					error = 1;
 					break;
@@ -8762,19 +8886,19 @@ int tfx__get_effect_library_stats(const char *filename, tfx_effect_library_stats
 	tmpStack(tfx_str256_t, pair);
 	while (!data->data.EoF()) {
 		pair.clear();
-		tfx_str128_t line = data->data.ReadLine();
+		tfx_line_t line = data->data.ReadLine();
 		bool context_set = false;
-		if (tfx__string_is_uint(line.c_str())) {
+		if (tfx__string_is_uint(line.start)) {
 			context_set = true;
 			if (context == tfxEndEmitter) {
 				inside_emitter = false;
 			}
 		}
 		if (context_set == false) {
-			tfx__split_string_stack(line.c_str(), &pair);
+			tfx__split_string_stack(line.start, line.length, &pair);
 			if (pair.size() != 2) {
 				pair.clear();
-				tfx__split_string_stack(line.c_str(), &pair, 44);
+				tfx__split_string_stack(line.start, line.length, &pair, 44);
 				if (pair.size() < 2) {
 					error = 1;
 					break;
@@ -8887,11 +9011,11 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	int context = 0;
 
 	while (!data->data.EoF()) {
-		tfx_str512_t line = data->data.ReadLine();
+		tfx_line_t line = data->data.ReadLine();
 		bool context_set = false;
 
-		if (tfx__string_is_uint(line.c_str())) {
-			context = atoi(line.c_str());
+		if (tfx__string_is_uint(line.start)) {
+			context = atoi(line.start);
 			if (context == tfxEndOfFile) {
 				break;
 			}
@@ -8913,10 +9037,10 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 		if (context_set == false) {
 			pair.clear();
-			tfx__split_string_stack(line.c_str(), &pair);
+			tfx__split_string_stack(line.start, line.length, &pair);
 			if (pair.size() != 2) {
 				pair.clear();
-				tfx__split_string_stack(line.c_str(), &pair, ',');
+				tfx__split_string_stack(line.start, line.length, &pair, ',');
 				if (pair.size() < 2) {
 					error |= tfxErrorCode_some_data_not_loaded;
 					continue;
@@ -8924,8 +9048,8 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			}
 
 			if (context == tfxStartEffectAnimationInfo) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0])) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0])) {
+				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
+					switch (tfxStore->data_types.names_and_types.At(pair[0].c_str())) {
 					case tfxUint:
 						tfx__assign_sprite_data_metrics_property_u32(&metrics_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
@@ -8933,7 +9057,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 						tfx__assign_sprite_data_metrics_property_float(&metrics_stack.back(), &pair[0], (float)atof(pair[1].c_str()), package->header.file_version);
 						break;
 					case tfxString:
-						tfx__assign_sprite_data_metrics_property_str(&metrics_stack.back(), &pair[0], pair[1], package->header.file_version);
+						tfx__assign_sprite_data_metrics_property_str(&metrics_stack.back(), &pair[0], pair[1].c_str(), package->header.file_version);
 						break;
 					default:
 						break;
@@ -8944,14 +9068,14 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 				}
 			}
 			else if (context == tfxStartFrameMeta) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0])) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0])) {
+				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
+					switch (tfxStore->data_types.names_and_types.At(pair[0].c_str())) {
 					case tfxUint:
 						tfx__assign_frame_meta_property_u32(&frame_meta_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
 					case tfxFloat3:
 						multi.clear();
-						tfx__split_string_stack(pair[1], &multi, ',');
+						tfx__split_string_stack(pair[1].c_str(), pair[1].Length(), & multi, ',');
 						tfx__assign_frame_meta_property_vec3(&frame_meta_stack.back(), &pair[0], tfx__str_to_vec3(&multi), package->header.file_version);
 						break;
 					default:
@@ -8960,8 +9084,8 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 				}
 			}
 			else if (context == tfxStartEmitter) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0])) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0])) {
+				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
+					switch (tfxStore->data_types.names_and_types.At(pair[0].c_str())) {
 					case tfxUint:
 						tfx__assign_animation_emitter_property_u32(&emitter_properties_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
@@ -8970,7 +9094,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 						break;
 					case tfxFloat2:
 						multi.clear();
-						tfx__split_string_stack(pair[1], &multi, ',');
+						tfx__split_string_stack(pair[1].c_str(), pair[1].Length(), &multi, ',');
 						tfx__assign_animation_emitter_property_vec2(&emitter_properties_stack.back(), &pair[0], tfx__str_to_vec2(&multi), package->header.file_version);
 						break;
 					default:
@@ -8999,7 +9123,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			if (context == tfxStartShapes && shape_loader != nullptr) {
 				if (pair.size() >= 5) {
 					tfx_shape_data_t s;
-					tfx__strcpy(s.name, pair[0].c_str());
+					s.name.Setf(pair[0].c_str());
 					s.shape_index = atoi(pair[1].c_str());
 					s.frame_count = atoi(pair[2].c_str());
 					s.width = atoi(pair[3].c_str());
@@ -9012,7 +9136,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 						s.import_filter = 0;
 					}
 
-					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, s.name);
+					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, s.name.c_str());
 					if (shape_entry) {
 						tfx_image_data_t image_data;
 						image_data.shape_index = s.shape_index;
@@ -9026,7 +9150,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 						}
 						TFX_ASSERT(s.image_hash == image_data.image_hash);
 
-						shape_loader(s.name, &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
+						shape_loader(s.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
 						if (!image_data.ptr) {
 							//uid = -6;
@@ -9056,7 +9180,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 		}
 		else if (context == tfxEndEffectAnimationInfo) {
 			TFX_ASSERT(metrics_stack.current_size);
-			animation_manager->effect_animation_info.Insert(metrics_stack.back().name, metrics_stack.back());
+			animation_manager->effect_animation_info.Insert(metrics_stack.back().name.c_str(), metrics_stack.back());
 			metrics_stack.pop();
 		}
 		else if (context == tfxEndEmitter) {
@@ -9068,7 +9192,8 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	}
 
 	tfxU32 bitmap_index = 0;
-	tfx_str_t bitmap_file_name = "color_ramp_0";
+	tfx_str256_t bitmap_file_name;
+	bitmap_file_name.Setf("color_ramp_0");
 
 	while (tfx__file_exists_in_package(package, bitmap_file_name.c_str())) {
 		tfx_package_entry_info_t *bitmap_file = tfx__get_package_file(package, bitmap_file_name.c_str());
@@ -9124,11 +9249,11 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 	tmpStack(tfx_str256_t, pair);
 
 	while (!data->data.EoF()) {
-		tfx_str512_t line = data->data.ReadLine();
+		tfx_line_t line = data->data.ReadLine();
 		bool context_set = false;
 
-		if (tfx__string_is_uint(line.c_str())) {
-			context = atoi(line.c_str());
+		if (tfx__string_is_uint(line.start)) {
+			context = atoi(line.start);
 			if (context == tfxEndOfFile)
 				break;
 
@@ -9193,10 +9318,10 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 
 		if (context_set == false) {
 			pair.clear();
-			tfx__split_string_stack(line.c_str(), &pair);
+			tfx__split_string_stack(line.start, line.length, &pair);
 			if (pair.size() != 2) {
 				pair.clear();
-				tfx__split_string_stack(line.c_str(), &pair, 44);
+				tfx__split_string_stack(line.start, line.length, &pair, 44);
 				if (pair.size() < 2) {
 					error |= tfxErrorCode_some_data_not_loaded;
 					continue;
@@ -9204,7 +9329,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 			}
 
 			if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0])) {
+				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
 					tfx__assign_property_line(&effect_stack.back(), &pair, package->header.file_version);
 				}
 				else {
@@ -9219,8 +9344,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 					tfx__assign_graph_data(&effect_stack.back(), &pair);
 			}
 			else if (context == tfxStartStage) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0])) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0])) {
+				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
+					switch (tfxStore->data_types.names_and_types.At(pair[0].c_str())) {
 					case tfxUint:
 						tfx__assign_stage_property_u32(&effect_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()));
 						break;
@@ -9248,7 +9373,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 			if (context == tfxStartShapes) {
 				if (pair.size() >= 5) {
 					tfx_shape_data_t s;
-					tfx__strcpy(s.name, pair[0].c_str());
+					tfx__strcpy(s.name.data, pair[0].c_str());
 					s.shape_index = atoi(pair[1].c_str());
 					s.frame_count = atoi(pair[2].c_str());
 					s.width = atoi(pair[3].c_str());
@@ -9261,7 +9386,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 						s.import_filter = 0;
 					}
 
-					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, s.name);
+					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, s.name.c_str());
 					if (shape_entry) {
 						tfx_image_data_t image_data;
 						image_data.shape_index = s.shape_index;
@@ -9275,7 +9400,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 						}
 						TFX_ASSERT(s.image_hash == image_data.image_hash);
 
-						shape_loader(s.name, &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
+						shape_loader(s.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
 						if (!image_data.ptr) {
 							//uid = -6;
@@ -10417,8 +10542,8 @@ tfx_effect_emitter_t *tfx_GetEffectFromTemplate(tfx_effect_template_t *t) {
 	return &t->effect;
 }
 
-tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template_t *t, tfx_str256_t *path) {
-	if (t->paths.ValidName(*path)) return t->paths.At(*path); return nullptr;
+tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template_t *t, const char *path) {
+	if (t->paths.ValidName(path)) return t->paths.At(path); return nullptr;
 }
 
 tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_emitter_t *e) {
@@ -10429,15 +10554,13 @@ tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_emitter_t *e) {
 	return nullptr;
 }
 
-void tfx_SetTemplateUserData(tfx_effect_template_t *t, tfx_str256_t *path, void *data) {
-	if (t->paths.ValidName(*path)) t->paths.At(*path)->user_data = data;
+void tfx_SetTemplateUserData(tfx_effect_template_t *t, const char *path, void *data) {
+	if (t->paths.ValidName(path)) t->paths.At(path)->user_data = data;
 }
 
 void tfx_SetTemplateEffectUserData(tfx_effect_template_t *t, void *data) {
 	t->effect.user_data = data;
 }
-
-void tfx_SetTemplateUserDataAll(tfx_effect_template_t *t, void *data);
 
 void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template_t *t, void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index)) {
 	t->effect.update_callback = update_callback;
