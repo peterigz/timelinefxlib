@@ -3034,7 +3034,7 @@ struct tfx_vector_t {
 
 	inline tfx_vector_t() : locked(0), current_size(0), capacity(0), alignment(0), data(nullptr) {}
 	inline tfx_vector_t(const tfx_vector_t<T> &src) { locked = false; current_size = capacity = alignment = 0; data = nullptr; resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
-	//inline tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
+	inline tfx_vector_t<T> &operator=(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); return *this; }
 	inline ~tfx_vector_t() { TFX_ASSERT(data == nullptr); } //You must manually free containers or mark as safe to ignore
 
 	inline void            init() { locked = false; current_size = capacity = alignment = 0; data = nullptr; }
@@ -3114,8 +3114,8 @@ struct tfx_vector_t {
 		}
 		//new((void *)(data + current_size)) T(v);
 		memset(data + current_size, 0, sizeof(T));
-		//data[current_size] = v;
-		memcpy(&data[current_size], &v, sizeof(T));
+		data[current_size] = v;
+		//memcpy(&data[current_size], &v, sizeof(T));
 		current_size++; return data[current_size - 1];
 	}
 	inline T &push_back_copy(const T &v) {
@@ -7383,7 +7383,7 @@ tfxINTERNAL inline bool tfx__is_graph_particle_size(tfx_graph_type type) {
 		type == tfxOvertime_width || type == tfxOvertime_height;
 }
 
-tfxINTERNAL void tfx__free_path_graphs(tfx_emitter_path_t *path);
+tfxAPI_EDITOR void tfx__free_path_graphs(tfx_emitter_path_t *path);
 tfxINTERNAL void tfx__copy_path_graphs(tfx_emitter_path_t *src, tfx_emitter_path_t *dst);
 tfxINTERNAL tfxU32 tfx__create_emitter_path_attributes(tfx_effect_emitter_t *emitter, bool add_node);
 tfxINTERNAL void tfx__initialise_global_attributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size = 8);
