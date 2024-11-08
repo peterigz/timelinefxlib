@@ -270,7 +270,7 @@ extern "C" {
 #define tfx__strlen strnlen_s
 #define tfx__writebarrier _WriteBarrier();
 #define tfx__readbarrier _ReadBarrier();
-#define tfx__strcpy strcpy_s
+#define tfx__strcpy(dst, size, src) strcpy_s(dst, size, src)
 #define tfx__fseek _fseeki64
 #define tfx__ftell _ftelli64
 #define TFX_ALIGN_AFFIX(v)
@@ -313,7 +313,7 @@ extern "C" {
 #define tfx__strlen strnlen
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
-#define tfx__strcpy strcpy
+#define tfx__strcpy(left, right, size) strcpy(left, right)
 #define tfx__fseek fseeko
 #define tfx__ftell ftello
 #define TFX_ALIGN_AFFIX(v)            __attribute__((aligned(v)))
@@ -2840,20 +2840,29 @@ tfxMAKE_HANDLE(tfx_package)
 //Section: String_Buffers
 //-----------------------------------------------------------
 
+int tfx_FormatString(char *buf, size_t buf_size, const char *fmt, va_list args);
+
 //Very simple string builder for short stack based strings
 template<size_t N>
 struct tfx_str_t {
 	char data[N];
-	tfxU32 capacity;
+	static constexpr tfxU32 capacity = N;
 	tfxU32 current_size;
 
-	inline tfx_str_t() : current_size(0), capacity(N) { memset(data, '\0', N); }
+	inline tfx_str_t() : current_size(0) { memset(data, '\0', N); }
+	inline tfx_str_t(const char *text) : current_size(0) { 
+		size_t text_len = strlen(text);
+		TFX_ASSERT(text_len < capacity); //String is too big for the buffer size allowed
+		memset(data, '\0', N); 
+		tfx__strcpy(data, N, text);
+		current_size = text_len + 1;
+	}
 
 	inline bool            empty() { return current_size == 0; }
 	inline char &operator[](tfxU32 i) { TFX_ASSERT(i < current_size); return data[i]; }
 	inline const char &operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
 
-	inline void         Clear() { current_size = 0; }
+	inline void         Clear() { current_size = 0; memset(data, '\0', N); }
 	inline char			*begin() { return data; }
 	inline const char	*begin() const { return data; }
 	inline char			*end() { return data + current_size; }
@@ -2868,22 +2877,131 @@ struct tfx_str_t {
 	inline bool operator!=(const char *string) { return strcmp(string, data); }
 	inline bool operator!=(const tfx_str_t string) { return strcmp(data, string.c_str()); }
 	inline const char *c_str() const { return data; }
-	int Find(const char *needle);
-	tfx_str_t Lower();
+	int Find(const char *needle) {
+		tfx_str_t compare = needle;
+		tfx_str_t lower = Lower();
+		compare = compare.Lower();
+		if (compare.Length() > Length()) return -1;
+		tfxU32 pos = 0;
+		while (compare.Length() + pos <= Length()) {
+			if (strncmp(lower.data + pos, compare.data, compare.Length()) == 0) {
+				return pos;
+			}
+			++pos;
+		}
+		return -1;
+	}
+	tfx_str_t Lower() {
+		tfx_str_t convert = *this;
+		for (auto &c : convert) {
+			c = tolower(c);
+		}
+		return convert;
+	}
 	inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
-	void AddLine(const char *format, ...);
-	void Setf(const char *format, ...);
-	void Appendf(const char *format, ...);
-	void Appendv(const char *format, va_list args);
+	void AddLine(const char *format, ...) {
+		va_list args;
+		va_start(args, format);
+		Appendv(format, args);
+		va_end(args);
+		Append('\n');
+	}
+	void Set(const char *text) { size_t len = strlen(text); TFX_ASSERT(len < capacity - 1); tfx__strcpy(data, N, text); current_size = (tfxU32)len; NullTerminate(); };
+	void Setf(const char *format, ...) {
+		Clear();
+		va_list args;
+		va_start(args, format);
+
+		va_list args_copy;
+		va_copy(args_copy, args);
+
+		int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		if (len <= 0)
+		{
+			va_end(args_copy);
+			return;
+		}
+
+		const int write_off = (current_size != 0) ? current_size : 1;
+		const int needed_sz = write_off + len;
+		TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
+		tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
+		va_end(args_copy);
+
+		va_end(args);
+		current_size = len + 1;
+	}
+	void Appendf(const char *format, ...) {
+		va_list args;
+		va_start(args, format);
+
+		va_list args_copy;
+		va_copy(args_copy, args);
+
+		int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		if (len <= 0)
+		{
+			va_end(args_copy);
+			return;
+		}
+
+		const int write_off = (current_size != 0) ? current_size : 1;
+		const int needed_sz = write_off + len;
+		TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
+		tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
+		va_end(args_copy);
+
+		va_end(args);
+		current_size += len;
+	}
+	void Appendv(const char *format, va_list args) {
+		va_list args_copy;
+		va_copy(args_copy, args);
+
+		int len = tfx_FormatString(NULL, 0, format, args);         // FIXME-OPT: could do a first pass write attempt, likely successful on first pass.
+		if (len <= 0)
+		{
+			va_end(args_copy);
+			return;
+		}
+
+		const int write_off = (current_size != 0) ? current_size : 1;
+		const int needed_sz = write_off + len;
+		TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
+		tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
+		va_end(args_copy);
+
+	}
 	inline void Append(char c) { if (current_size) { pop(); } push_back(c); NullTerminate(); }
 	inline void Pop() { if (!Length()) return; if (back() == 0) pop(); pop(); NullTerminate(); }
 	inline void Trim(char c = ' ') { if (!Length()) return; if (back() == 0) pop(); while (back() == c && current_size) { pop(); } NullTerminate(); }
-	inline void TrimToZero() { if (current_size < capacity) { tfx_bool result = memcpy(data, data + current_size, '\0', capacity - current_size); TFX_ASSERT(result); } }
+	inline void TrimToZero() { if (current_size < capacity) { memset(data + current_size, '\0', capacity - current_size); } }
 	inline void TrimFront(char c = ' ') { if (!Length()) return; tfxU32 pos = 0; while (data[pos] == c && pos < current_size) { pos++; } if (pos < current_size) { memcpy(data, data + pos, current_size - pos); } current_size -= pos; }
 	inline void SanitizeLineFeeds() { if (current_size > 1) { while (current_size > 1 && back() == '\n' || back() == '\r' || back() == '\0') { pop(); if (current_size <= 1) { break; } } NullTerminate(); } }
-	void NullTerminate() { push_back('\0'); }
-	const bool IsInt() const;
-	const bool IsFloat() const;
+	inline void NullTerminate() { push_back('\0'); }
+	inline const bool IsInt() {
+		if (!Length()) return false;
+		for (auto c : *this) {
+			if (c >= '0' && c <= '9');
+			else {
+				return false;
+			}
+		}
+		return true;
+	}
+	inline const bool IsFloat() {
+		if (!Length()) return false;
+		int dot_count = 0;
+		for (auto c : *this) {
+			if (c >= '0' && c <= '9');
+			else if (c == '.' && dot_count == 0) {
+				dot_count++;
+			} else {
+				return false;
+			}
+		}
+		return dot_count == 1;
+	}
 } TFX_PACKED_STRUCT;
 
 #define tfx_str16_t tfx_str_t<16>
@@ -2893,22 +3011,6 @@ struct tfx_str_t {
 #define tfx_str256_t tfx_str_t<256>
 #define tfx_str512_t tfx_str_t<512>
 #define tfx_str1024_t tfx_str_t<1024>
-
-// --Begin Pocket_text_buffer for bigger text buffers on the heap
-struct tfx_text_t {
-	tfxU32 size;
-	char *str;
-};
-
-tfxAPI inline tfx_text_t tfx_NewText() { tfx_text_t text{}; return text; };
-tfxAPI void tfx_SetText(tfx_text_t *buffer, const char *text);
-tfxAPI void tfx_ResizeText(tfx_text_t *buffer, tfxU32 size);
-tfxAPI void tfx_SetTextf(tfx_text_t *buffer, const char *text, ...);
-tfxAPI void tfx_SetTextfv(tfx_text_t *buffer, const char *text, va_list args);
-tfxAPI void tfx_FreeText(tfx_text_t *buffer);
-tfxAPI tfx_uint tfx_TextSize(tfx_text_t *buffer);      //Will include a null terminator
-tfxAPI tfx_uint tfx_TextLength(tfx_text_t *buffer);    //Uses strlen to get the length
-// --End pocket text buffer
 
 //-----------------------------------------------------------
 //Containers_and_Memory
@@ -3012,8 +3114,8 @@ struct tfx_vector_t {
 		}
 		//new((void *)(data + current_size)) T(v);
 		memset(data + current_size, 0, sizeof(T));
-		data[current_size] = v;
-		//memcpy(&data[current_size], &v, sizeof(T));
+		//data[current_size] = v;
+		memcpy(&data[current_size], &v, sizeof(T));
 		current_size++; return data[current_size - 1];
 	}
 	inline T &push_back_copy(const T &v) {
@@ -3135,13 +3237,13 @@ struct tfx_storage_map_t {
 	}
 
 	//Insert a new T value into the storage
-	inline void Insert(const char *name, tfxU32 length, const T &value) {
+	inline void InsertWithLength(const char *name, tfxU32 length, const T &value) {
 		tfxKey key = tfxXXHash64::hash(name, length, 0);
 		SetIndex(key, value);
 	}
 
 	//Insert a new T value into the storage
-	void Insert(tfxKey key, const T &value) {
+	inline void Insert(tfxKey key, const T &value) {
 		SetIndex(key, value);
 	}
 
@@ -3890,8 +3992,21 @@ inline void tfxCopyBucketArray(tfx_bucket_array_t<T> *dst, tfx_bucket_array_t<T>
 struct tfx_line_t {
 	const char *start;
 	const char *end;
-	tfxU32 length;
+	int length;
 };
+
+tfxAPI_EDITOR inline int tfx_FindInLine(tfx_line_t *line, const char *needle) {
+	size_t needle_length = strlen(needle);
+	if (needle_length > line->length) return -1;
+	tfxU32 pos = 0;
+	while (needle_length + pos <= line->length) {
+		if (strncmp(line->start + pos, needle, needle_length) == 0) {
+			return pos;
+		}
+		++pos;
+	}
+	return -1;
+}
 
 //A char buffer you can use to load a file into and read from
 //Has no deconstructor so make sure you call FreeAll() when done
@@ -3925,17 +4040,27 @@ struct tfx_stream_t {
 	void AddLine(const char *format, ...);
 	void Appendf(const char *format, ...);
 	void Appendv(const char *format, va_list args);
+	void SetText(const char *text);
 	inline bool EoF() { return position >= size; }
+	inline void AddReturn() { if (size + 1 >= capacity) { tfxU64 new_capacity = capacity * 2; Reserve(new_capacity); } data[size] = '\n'; size++; }
 	inline void Seek(tfxU64 offset) {
 		if (offset < size)
 			position = offset;
 		else
 			position = size;
 	}
+	inline void TrimToZero() {
+		if (size < capacity) {
+			tfx_bool result = tfx_SafeMemset(data, data + size, '\0', capacity - size);
+			TFX_ASSERT(result);
+		}
+	}
 
 	inline bool            Empty() { return size == 0; }
 	inline tfxU64        Size() { return size; }
 	inline const tfxU64    Size() const { return size; }
+	inline tfxU64        Length() { return data[size] == '\0' && size > 0 ? size - 1 : size; }
+	inline const tfxU64    Length() const { return data[size] == '\0' && size > 0 ? size - 1 : size; }
 
 	inline void            FreeAll() { if (data) { size = position = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { if (data) { size = 0; } }
@@ -5098,7 +5223,7 @@ struct tfx_package_inventory_t {
 };
 
 struct tfx_package_t {
-	tfx_text_t file_path;
+	tfx_stream_t file_path;
 	tfx_package_header_t header;
 	tfx_package_inventory_t inventory;
 	tfxU64 file_size;                        //The total file size of the package, should match file size on disk
@@ -6502,7 +6627,7 @@ struct tfx_library_t {
 	tfx_str64_t name;
 	bool open_library = false;
 	bool dirty = false;
-	tfx_text_t library_file_path;
+	tfx_stream_t library_file_path;
 	tfxU32 uid;
 	void(*uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
 
@@ -6550,7 +6675,7 @@ struct tfx_effect_template_t {
 
 struct tfx_data_entry_t {
 	tfx_data_type type = tfxSInt;
-	tfx_str32_t key;
+	tfx_str64_t key;
 	tfx_str512_t str_value;
 	int int_value = 0;
 	tfx_rgba8_t color_value = {};
@@ -6604,13 +6729,11 @@ tfxAPI_EDITOR tfx_package_entry_info_t *tfx__get_package_file(tfx_package packag
 tfxAPI_EDITOR void tfx__add_entry_to_package(tfx_package package, tfx_package_entry_info_t file);
 tfxAPI_EDITOR bool tfx__file_exists_in_package(tfx_package package, const char *file_name);
 tfxAPI_EDITOR void tfx__free_package(tfx_package package);
-tfxAPI_EDITOR void tfx__copy_stream_to_text(tfx_text_t *dst, tfx_stream src);
-tfxAPI_EDITOR void tfx__copy_text_to_stream(tfx_stream dst, tfx_text_t *src);
 tfxAPI_EDITOR void tfx__copy_data_to_stream(tfx_stream dst, const void *src, tfxU64 size);
+tfxAPI_EDITOR void tfx__copy_stream(tfx_stream dst, tfx_stream src);
 tfxINTERNAL tfxU64 tfx__get_package_size(tfx_package package);
 tfxINTERNAL bool tfx__validate_package(tfx_package package);
 tfxINTERNAL void tfx__add_file_to_package(tfx_package package, const char *file_name, tfx_stream data);
-tfxINTERNAL void tfx__copy_stream(tfx_stream dst, tfx_stream src);
 
 //Some file IO functions for the editor
 tfxAPI_EDITOR bool tfx__has_data_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
@@ -6628,8 +6751,10 @@ tfxAPI_EDITOR void tfx__stream_emitter_properties(tfx_emitter_properties_t *prop
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_graph_line(const char *name, tfx_graph_t *graph, tfx_str256_t *line);
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool tfx__string_is_uint(const char *s);
+tfxAPI_EDITOR bool tfx__line_is_uint(tfx_line_t *line);
 tfxAPI_EDITOR void tfx__assign_property_line(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version);
 tfxAPI_EDITOR void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version);
 tfxAPI_EDITOR void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str256_t *field, float value);
