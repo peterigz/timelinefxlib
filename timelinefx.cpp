@@ -3436,37 +3436,37 @@ tfxU32 tfx__count_all_effect_lookup_values(tfx_effect_emitter_t *effect) {
 }
 
 void tfx__initialise_path_graphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
-	path->angle_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	tfxInitBucketArray<tfx_attribute_node_t>(&path->angle_x.nodes ,bucket_size);
 	path->angle_x.type = tfxPath_angle_x;
 	path->angle_x.graph_preset = tfxPathDirectionOvertimePreset;
 	path->angle_x.nodes.bucket_list.init();
 	tfx__reset_graph(&path->angle_x, 0.f, path->angle_x.graph_preset, true, 1.f);
-	path->angle_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	tfxInitBucketArray<tfx_attribute_node_t>(&path->angle_y.nodes, bucket_size);
 	path->angle_y.type = tfxPath_angle_y;
 	path->angle_y.graph_preset = tfxPathDirectionOvertimePreset;
 	path->angle_y.nodes.bucket_list.init();
 	tfx__reset_graph(&path->angle_y, 0.f, path->angle_y.graph_preset, true, 1.f);
-	path->angle_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	tfxInitBucketArray<tfx_attribute_node_t>(&path->angle_z.nodes, bucket_size);
 	path->angle_z.type = tfxPath_angle_z;
 	path->angle_z.graph_preset = tfxPathDirectionOvertimePreset;
 	path->angle_z.nodes.bucket_list.init();
 	tfx__reset_graph(&path->angle_z, 0.f, path->angle_z.graph_preset, true, 1.f);
-	path->offset_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_x.nodes, bucket_size);
 	path->offset_x.type = tfxPath_offset_x;
 	path->offset_x.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_x.nodes.bucket_list.init();
 	tfx__reset_graph(&path->offset_x, 0.f, path->offset_x.graph_preset, true, 1.f);
-	path->offset_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_y.nodes ,bucket_size);
 	path->offset_y.type = tfxPath_offset_y;
 	path->offset_y.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_y.nodes.bucket_list.init();
 	tfx__reset_graph(&path->offset_y, 0.f, path->offset_y.graph_preset, true, 1.f);
-	path->offset_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_z.nodes ,bucket_size);
 	path->offset_z.type = tfxPath_offset_z;
 	path->offset_z.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_z.nodes.bucket_list.init();
 	tfx__reset_graph(&path->offset_z, 0.f, path->offset_z.graph_preset, true, 1.f);
-	path->distance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&path->distance.nodes ,bucket_size);
 	path->distance.type = tfxPath_distance;
 	path->distance.graph_preset = tfxPathTranslationOvertimePreset;
 	path->distance.nodes.bucket_list.init();
@@ -4139,23 +4139,23 @@ void tfx__build_path_nodes_2d(tfx_emitter_path_t *path) {
 }
 
 void tfx__initialise_global_attributes(tfx_global_attributes_t *attributes, tfxU32 bucket_size) {
-	attributes->life.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->amount.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->velocity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->noise.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->weight.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->pitch_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->yaw_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->stretch.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->overal_scale.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->splatter.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->emitter_width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->emitter_height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->emitter_depth.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->life.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->amount.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->velocity.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->noise.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->width.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->height.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->weight.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->pitch_spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->yaw_spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->stretch.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->overal_scale.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->intensity.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->splatter.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emitter_width.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emitter_height.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emitter_depth.nodes ,bucket_size);
 }
 
 void tfx__free_global_attributes(tfx_global_attributes_t *attributes) {
@@ -4221,12 +4221,12 @@ void tfx__copy_global_attributes(tfx_global_attributes_t *src, tfx_global_attrib
 }
 
 void tfx__initialise_transform_attributes(tfx_transform_attributes_t *attributes, tfxU32 bucket_size) {
-	attributes->roll.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->pitch.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->yaw.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->translation_x.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->translation_y.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->translation_z.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->roll.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->pitch.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->yaw.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->translation_x.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->translation_y.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->translation_z.nodes ,bucket_size);
 }
 
 void tfx__free_transform_attributes(tfx_transform_attributes_t *attributes) {
@@ -4284,16 +4284,16 @@ void tfx__add_translation_nodes(tfx_transform_attributes_t *keyframes, float fra
 }
 
 void tfx__initialise_property_attributes(tfx_property_attributes_t *attributes, tfxU32 bucket_size) {
-	attributes->emission_pitch.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->emission_yaw.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->emission_range.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->splatter.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->emitter_width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->emitter_height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->emitter_depth.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->extrusion.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->arc_size.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->arc_offset.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emission_pitch.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emission_yaw.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emission_range.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->splatter.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emitter_width.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emitter_height.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->emitter_depth.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->extrusion.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->arc_size.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->arc_offset.nodes ,bucket_size);
 }
 
 void tfx__free_property_attributes(tfx_property_attributes_t *attributes) {
@@ -4338,66 +4338,66 @@ void tfx__copy_property_attributes(tfx_property_attributes_t *src, tfx_property_
 }
 
 void tfx__initialise_base_attributes(tfx_base_attributes_t *attributes, tfxU32 bucket_size) {
-	attributes->life.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->amount.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->velocity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->weight.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->pitch_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->yaw_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->noise_offset.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->life.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->amount.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->velocity.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->width.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->height.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->weight.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->pitch_spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->yaw_spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->noise_offset.nodes ,bucket_size);
 }
 
 void tfx__initialise_variation_attributes(tfx_variation_attributes_t *attributes, tfxU32 bucket_size) {
-	attributes->life.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->amount.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->velocity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->weight.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->pitch_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->yaw_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->noise_offset.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->noise_resolution.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->motion_randomness.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->life.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->amount.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->velocity.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->width.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->height.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->weight.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->pitch_spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->yaw_spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->noise_offset.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->noise_resolution.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->motion_randomness.nodes ,bucket_size);
 }
 
 void tfx__initialise_overtime_attributes(tfx_overtime_attributes_t *attributes, tfxU32 bucket_size) {
-	attributes->velocity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->width.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->height.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->weight.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->pitch_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->yaw_spin.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->stretch.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->red.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->blue.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->green.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->red_hint.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->blue_hint.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->green_hint.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->blendfactor.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->blendfactor_hint.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->velocity_turbulance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->direction_turbulance.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->velocity_adjuster.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->alpha_sharpness.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->curved_alpha.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->direction.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->noise_resolution.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->motion_randomness.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->velocity.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->width.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->height.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->weight.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->pitch_spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->yaw_spin.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->stretch.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->red.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->blue.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->green.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->red_hint.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->blue_hint.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->green_hint.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->blendfactor.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->blendfactor_hint.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->velocity_turbulance.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->direction_turbulance.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->velocity_adjuster.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->intensity.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->alpha_sharpness.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->curved_alpha.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->direction.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->noise_resolution.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->motion_randomness.nodes ,bucket_size);
 }
 
 void tfx__initialise_factor_attributes(tfx_factor_attributes_t *attributes, tfxU32 bucket_size) {
-	attributes->life.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->velocity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->size.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
-	attributes->intensity.nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->life.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->velocity.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->size.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->intensity.nodes ,bucket_size);
 }
 
 void tfx__free_overtime_attributes(tfx_overtime_attributes_t *attributes) {
@@ -5091,7 +5091,17 @@ tfxU32 tfx__clone_library_emitter_attributes(tfx_library_t *library, tfxU32 sour
 
 tfxU32 tfx__clone_library_info(tfx_library_t *library, tfxU32 source_index, tfx_library_t *destination_library) {
 	tfxU32 index = tfx__allocate_library_effect_emitter_info(destination_library);
-	destination_library->effect_infos[index] = library->effect_infos[source_index];
+	destination_library->effect_infos[index].lookup_node_index = library->effect_infos[source_index].lookup_node_index;
+	destination_library->effect_infos[index].lookup_value_index = library->effect_infos[source_index].lookup_value_index;
+	destination_library->effect_infos[index].max_life = library->effect_infos[source_index].max_life;
+	destination_library->effect_infos[index].max_radius = library->effect_infos[source_index].max_radius;
+	destination_library->effect_infos[index].name = library->effect_infos[source_index].name;
+	destination_library->effect_infos[index].path = library->effect_infos[source_index].path;
+	destination_library->effect_infos[index].preview_camera_settings = library->effect_infos[source_index].preview_camera_settings;
+	destination_library->effect_infos[index].sprite_data_settings_index = library->effect_infos[source_index].sprite_data_settings_index;
+	destination_library->effect_infos[index].sprite_sheet_settings_index = library->effect_infos[source_index].sprite_sheet_settings_index;
+	destination_library->effect_infos[index].uid = library->effect_infos[source_index].uid;
+	destination_library->effect_infos[index].sub_effectors.copy(library->effect_infos[source_index].sub_effectors);
 	return index;
 }
 
@@ -5335,7 +5345,15 @@ tfxU32 tfx__allocate_library_emitter_properties(tfx_library_t *library) {
 }
 
 void tfx__init_library(tfx_library_t *library) {
+	tfx_color_ramp_t ramp{};
+	for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
+		ramp.colors[x].color = 0xFFFFFFFF;
+	}
+	tfxKey hash = tfxXXHash64::hash(ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+	tfxU32 id = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
+	library->color_ramps.color_ramp_ids.Insert(hash, id);
     library->gpu_shapes.list.set_alignment(16);
+	library->library_file_path.SetText("");
 }
 
 tfx_str64_t tfx__get_name_from_path(const char *path) {
@@ -5750,7 +5768,7 @@ void tfx__compile_library_color_graphs(tfx_library_t *library, tfxU32 index) {
 
 void tfx__set_library_min_max_data(tfx_library_t *library) {
 	library->graph_min_max.clear();
-	library->graph_min_max.create_pool(tfxEmitterGraphMaxIndex);
+	library->graph_min_max.resize(tfxEmitterGraphMaxIndex);
 
 	library->graph_min_max[tfxGlobal_life] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
 	library->graph_min_max[tfxGlobal_amount] = tfx__get_min_max_graph_values(tfxGlobalPercentPreset);
@@ -7033,7 +7051,7 @@ tfx_graph_t::tfx_graph_t() {
 	max.x = 1000.f;
 	max.y = 1000.f;
 	effector = nullptr;
-	nodes = tfxCreateBucketArray<tfx_attribute_node_t>(8);
+	tfxInitBucketArray<tfx_attribute_node_t>(&nodes, 8);
 }
 
 tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
@@ -7046,7 +7064,7 @@ tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
 	max.x = 1000.f;
 	max.y = 1000.f;
 	effector = nullptr;
-	nodes = tfxCreateBucketArray<tfx_attribute_node_t>(bucket_size);
+	tfxInitBucketArray<tfx_attribute_node_t>(&nodes, bucket_size);
 }
 
 tfx_graph_t::~tfx_graph_t() {
@@ -7747,12 +7765,6 @@ void tfx__free_graph(tfx_graph_t *graph) {
 	graph->lookup.values.free();
 }
 
-void tfx__mark_graph_free(tfx_graph_t *graph) {
-	//Explicitly free the nodes
-	graph->nodes.mark_free();
-	graph->lookup.values.mark_free();
-}
-
 void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to, bool compile) {
 	tfx__clear_graph(to);
 	for (tfxBucketLoop(from->nodes, i)) {
@@ -8052,6 +8064,9 @@ tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tf
 
 void tfx__create_color_ramp_bitmaps(tfx_library_t *library) {
 	tfxU32 y = 0;
+	for (tfx_bitmap_t &bitmap : library->color_ramps.color_ramp_bitmaps) {
+		tfx__free_bitmap(&bitmap);
+	}
 	library->color_ramps.color_ramp_bitmaps.clear();
 	library->color_ramps.color_ramp_ids.Clear();
 	library->color_ramps.color_ramp_count = 0;
@@ -10653,10 +10668,9 @@ void tfx__free_particle_list(tfx_particle_manager_t *pm, tfxU32 index) {
 		pm->free_particle_lists.At(pm->emitters[index].path_hash).push_back(pm->emitters[index].particles_index);
 	}
 	else if (pm->emitters[index].particles_index != tfxINVALID) {
-		tfx_vector_t<tfxU32> new_indexes;
+		pm->free_particle_lists.Insert(pm->emitters[index].path_hash, {});
+		tfx_vector_t<tfxU32> &new_indexes = pm->free_particle_lists.At(pm->emitters[index].path_hash);
 		new_indexes.push_back(pm->emitters[index].particles_index);
-		pm->free_particle_lists.Insert(pm->emitters[index].path_hash, new_indexes);
-		new_indexes.mark_free();
 	}
 }
 
@@ -10666,11 +10680,10 @@ void tfx__free_spawn_location_list(tfx_particle_manager_t *pm, tfxU32 index) {
 		pm->free_particle_location_lists.At(pm->emitters[index].path_hash).push_back(pm->emitters[index].spawn_locations_index);
 	}
 	else if (pm->emitters[index].spawn_locations_index != tfxINVALID) {
-		tfx_vector_t<tfxU32> new_indexes;
+		pm->free_particle_location_lists.Insert(pm->emitters[index].path_hash, {});
+		tfx_vector_t<tfxU32> &new_indexes = pm->free_particle_location_lists.At(pm->emitters[index].path_hash);
 		tfx__clear_soa_buffer(&pm->particle_location_buffers[pm->emitters[index].spawn_locations_index]);
 		new_indexes.push_back(pm->emitters[index].spawn_locations_index);
-		pm->free_particle_location_lists.Insert(pm->emitters[index].path_hash, new_indexes);
-		new_indexes.mark_free();
 	}
 }
 
@@ -17470,8 +17483,8 @@ void tfx__init_common_particle_manager(tfx_particle_manager_t *pm, tfx_library_t
 	tfx__sync_init(&pm->particle_index_mutex);
 
 	if (pm->particle_arrays.bucket_list.current_size == 0) {
-		//todo need to be able to adjust the arena size
-		pm->particle_arrays = tfxCreateBucketArray<tfx_particle_soa_t>(32);
+		//todo need to be able to adjust the bucket size
+		tfxInitBucketArray<tfx_particle_soa_t>(&pm->particle_arrays, 32);
 	}
 
 	pm->flags = 0;
