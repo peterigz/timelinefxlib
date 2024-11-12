@@ -1737,16 +1737,17 @@ tfx_line_t tfx_stream_t::ReadLine() {
 }
 
 void tfx_stream_t::AddLine(const char *format, ...) {
+	if (!size) {
+		if (!data) {
+			Reserve(strlen(format) * 2);
+		}
+		NullTerminate();
+	}
 	va_list args;
 	va_start(args, format);
 	Appendv(format, args);
 	va_end(args);
-	if (size + 1 >= capacity) {
-		tfxU64 new_capacity = capacity * 2;
-		Reserve(new_capacity);
-	}
-	data[size] = '\n';
-	size++;
+	Append('\n');
 }
 
 void tfx_stream_t::Appendf(const char *format, ...) {
@@ -1765,9 +1766,8 @@ void tfx_stream_t::Appendf(const char *format, ...) {
 
 	const tfxU64 write_off = (size != 0) ? size : 1;
 	const tfxU64 needed_sz = write_off + len;
-	if (write_off + (tfxU32)len >= capacity)
-	{
-		tfxU64 new_capacity = capacity * 2;
+	if (write_off + (tfxU32)len >= capacity) {
+		tfxU64 new_capacity = capacity + write_off + (tfxU32)len;
 		Reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
 	}
 
@@ -1789,18 +1789,16 @@ void tfx_stream_t::Appendv(const char *format, va_list args) {
 		return;
 	}
 
-	const tfxU64 write_off = (size != 0) ? size : 1;
-	const tfxU64 needed_sz = write_off + len;
-	if (write_off + (tfxU32)len >= capacity)
-	{
-		tfxU64 new_capacity = capacity * 2;
+	const int write_off = ((int)size != 0) ? (int)size : 1;
+	const int needed_sz = write_off + len;
+	if(write_off + (tfxU32)len >= capacity) {
+		tfxU64 new_capacity = capacity + write_off + (tfxU32)len;
 		Reserve(needed_sz > new_capacity ? needed_sz : new_capacity);
 	}
-
-	Resize(needed_sz);
 	tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
-	va_end(args_copy);
 
+	va_end(args_copy);
+	size += len;
 }
 
 void tfx_stream_t::SetText(const char *text) {
@@ -2323,6 +2321,7 @@ tfx_effect_emitter_t *tfx__add_emitter_to_effect(tfx_effect_emitter_t *effect, t
 	TFX_ASSERT(tfx_GetEffectInfo(emitter)->name.Length());                //Emitter must have a name so that a hash can be generated
 	emitter->type = tfx_effect_emitter_type::tfxEmitterType;
 	emitter->library = effect->library;
+	emitter->parent = effect;
 	tfx_GetEffectInfo(emitter)->uid = ++effect->library->uid;
 	tfx_GetEffectInfo(effect)->sub_effectors.push_back(*emitter);
 	tfx__update_library_effect_paths(effect->library);
@@ -3126,13 +3125,13 @@ void tfx__reset_effect_parents(tfx_effect_emitter_t *effect) {
 }
 
 void tfx__swap_effects(tfx_effect_emitter_t *left, tfx_effect_emitter_t *right) {
-	tfx_effect_emitter_t temp = *left;
+	tfx_effect_emitter_t temp = *right;
 	*right = *left;
 	*left = temp;
 }
 
 void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right) {
-	tfx_depth_index_t temp = *left;
+	tfx_depth_index_t temp = *right;
 	*right = *left;
 	*left = temp;
 }
@@ -3186,6 +3185,7 @@ void tfx__delete_emitter_from_effect(tfx_effect_emitter_t *emitter) {
 	if (library) {
 		tfx__update_library_effect_paths(library);
 	}
+	stack.free();
 }
 
 void tfx__clean_up_effect(tfx_effect_emitter_t *effect) {
@@ -3209,6 +3209,7 @@ void tfx__clean_up_effect(tfx_effect_emitter_t *effect) {
 			tfx__free_library_properties(effect->library, current.property_index);
 			tfx_free_library_info(effect->library, current.info_index);
 		}
+		stack.free();
 	}
 
 	tfx__reindex_effect(effect);
@@ -3266,11 +3267,10 @@ void tfx__clone_effect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter
 			}
 		}
 		if (clone->path_attributes != tfxINVALID) {
-			tfx_emitter_path_t path_copy = destination_library->paths.push_back({});
+			tfx_emitter_path_t &path_copy = destination_library->paths.push_back({});
 			tfx_emitter_path_t &src_path = library->paths[clone->path_attributes];
 			tfx__copy_path(&library->paths[clone->path_attributes], "", &path_copy);
-			clone->path_attributes = destination_library->paths.size();
-			tfx__free_path_graphs(&path_copy);
+			clone->path_attributes = destination_library->paths.size() - 1;
 			if (destination_library->paths.back().flags & tfxPathFlags_2d) {
 				tfx__build_path_nodes_2d(&destination_library->paths.back());
 			}
@@ -4655,7 +4655,7 @@ void tfx__update_library_effect_paths(tfx_library_t *library) {
 		path.Set(tfx_GetEffectInfo(&e)->name.c_str());
 		tfx_GetEffectInfo(&e)->path = path;
 		e.path_hash = tfxXXHash64::hash(path.c_str(), path.Length(), 0);
-		tfx__add_library_path(library, &e, path.c_str());
+		tfx__add_library_path(library, &e, path.c_str(), false);
 	}
 }
 
@@ -4677,21 +4677,22 @@ void tfx_UpdateLibraryGPUImageData(tfx_library_t *library) {
     }
 }
 
-void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, const char *path) {
-	if (library->effect_paths.ValidName(path)) {
+void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, const char *path, bool skip_existing) {
+	if (library->effect_paths.ValidName(path) && !skip_existing) {
 		tfx_str256_t new_path = tfx__find_new_path_name(library, path);
 		tfx_GetEffectInfo(effect_emitter)->path.Set(new_path.c_str());
 		tfx_GetEffectInfo(effect_emitter)->name = tfx__get_name_from_path(path);
 		effect_emitter->path_hash = tfxXXHash64::hash(new_path.c_str(), new_path.Length(), 0);
 	}
-	library->effect_paths.Insert(path, effect_emitter);
+	tfxKey hash = library->effect_paths.Insert(path, effect_emitter);
+	effect_emitter->path_hash = hash;
 	for (auto &sub : tfx_GetEffectInfo(effect_emitter)->sub_effectors) {
 		tfx_str256_t sub_path;
 		sub_path.Set(path);
 		sub_path.Appendf("/%s", tfx_GetEffectInfo(&sub)->name.c_str());
 		tfx_GetEffectInfo(&sub)->path.Set(sub_path.c_str());
 		sub.path_hash = tfxXXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
-		tfx__add_library_path(library, &sub, sub_path.c_str());
+		tfx__add_library_path(library, &sub, sub_path.c_str(), skip_existing);
 	}
 }
 
@@ -4903,6 +4904,7 @@ bool tfx__is_library_shape_used(tfx_library_t *library, tfxKey image_hash) {
 			effect_stack.push_back(&sub);
 		}
 	}
+	effect_stack.free();
 	return false;
 }
 
@@ -5363,6 +5365,7 @@ tfx_str64_t tfx__get_name_from_path(const char *path) {
 	if (file_split.size()) {
 		extension.Set(file_split.back().c_str());
 	}
+	file_split.free();
 	return extension;
 }
 
@@ -5387,6 +5390,7 @@ tfx_str256_t tfx__find_new_path_name(tfx_library_t *library, const char *path) {
 		find_name = new_path;
 		find_name.Appendf(".%i", index++);
 	}
+	name.free();
 	return find_name;
 }
 
@@ -6846,7 +6850,7 @@ void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file)
 	}
 }
 
-void tfx__stream_graph_line(const char *name, tfx_graph_t *graph, tfx_str256_t *file) {
+void tfx__stream_graph_line(const char *name, tfx_graph_t *graph, tfx_str512_t *file) {
 	for (tfxBucketLoop(graph->nodes, i)) {
 		file->AddLine("%s,%f,%f,%i,%f,%f,%f,%f", name, graph->nodes[i].frame, graph->nodes[i].value, (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve), graph->nodes[i].left.x, graph->nodes[i].left.y, graph->nodes[i].right.x, graph->nodes[i].right.y);
 	}
@@ -8690,6 +8694,7 @@ int tfx__get_effect_library_stats(const char *filename, tfx_effect_library_stats
 		}
 	}
 
+	pair.free();
 	return error;
 }
 
@@ -8719,6 +8724,7 @@ tfx_effect_library_stats_t tfx__create_library_stats(tfx_library_t *lib) {
 	}
 	stats.total_shapes = lib->particle_shapes.data.size();
 
+	stack.free();
 	return stats;
 }
 
@@ -8979,6 +8985,12 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 		error |= tfxErrorCode_library_loaded_without_shape_loader;
 	}
 
+	metrics_stack.free();
+	frame_meta_stack.free();
+	emitter_properties_stack.free();
+	pair.free();
+	multi.free();
+
 	return error;
 }
 
@@ -8991,7 +9003,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 	tfx__init_library(lib);
 
 	if (tfxIcospherePoints[0].current_size == 0) {
-		//tfx__make_icospheres();
+		tfx__make_icospheres();
 	}
 
 	tfx_package_entry_info_t *data = tfx__get_package_file(package, "data.txt");
@@ -9173,6 +9185,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 						}
 					} else {
 						//Maybe don't actually need to break here, just means for some a reason a shaped couldn't be loaded, but no reason not to load the effects anyway
+						//output a warning here that the shape didn't load.
 						//uid = -7;
 						//break;
 					}
@@ -9302,6 +9315,7 @@ void tfx_SetTemplateUserDataAll(tfx_effect_template_t *t, void *data) {
 			stack.push_back(&sub);
 		}
 	}
+	stack.free();
 }
 
 void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
@@ -9452,13 +9466,12 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 		sprite_data->normal.frame_meta.zero();
 	}
 	else {
-		tfx_sprite_data_t data;
-		data.normal.frame_count = frames;
-		data.normal.animation_length_in_time = frames * frame_length;
-		data.normal.frame_meta.resize(frames);
-		data.normal.frame_meta.zero();
-		effect->library->pre_recorded_effects.Insert(effect->path_hash, data);
+		effect->library->pre_recorded_effects.Insert(effect->path_hash, {});
 		sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
+		sprite_data->normal.frame_count = frames;
+		sprite_data->normal.animation_length_in_time = frames * frame_length;
+		sprite_data->normal.frame_meta.resize(frames);
+		sprite_data->normal.frame_meta.zero();
 	}
 
 	anim.real_frames = frames;
@@ -9714,8 +9727,10 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 	}
 	else {
 		sprite_data->compressed_sprites = sprite_data->real_time_sprites;
-		sprite_data->compressed_sprites_buffer = sprite_data->real_time_sprites_buffer;
-		sprite_data->compressed = sprite_data->normal;
+		tfx__copy_soa_buffer(&sprite_data->compressed_sprites_buffer, &sprite_data->real_time_sprites_buffer);
+		memcpy(&sprite_data->compressed, &sprite_data->normal, sizeof(tfx_sprite_data_metrics_t));
+		sprite_data->compressed.frame_meta.init();;
+		sprite_data->compressed.frame_meta.copy(sprite_data->normal.frame_meta);
 		anim.frames_after_compression = sprite_data->normal.frame_count;
 	}
 
@@ -9724,6 +9739,10 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 	for (tfxEachLayer) {
 		pm->instance_buffer_for_recording[0][layer].free();
 		pm->instance_buffer_for_recording[1][layer].free();
+	}
+
+	for (tfxEachLayer) {
+		running_count[layer].free();
 	}
 }
 
@@ -10209,6 +10228,7 @@ void tfx_ResetAnimationManager(tfx_animation_manager_t *animation_manager) {
 	animation_manager->sprite_data_2d.clear();
 	animation_manager->sprite_data_3d.clear();
 	animation_manager->emitter_properties.clear();
+	animation_manager->sprite_data_settings.clear();
 	animation_manager->effect_animation_info.Clear();
 	animation_manager->particle_shapes.Clear();
 	animation_manager->color_ramps.color_ramp_bitmaps.clear();
@@ -10228,6 +10248,11 @@ void tfx_FreeAnimationManager(tfx_animation_manager_t *animation_manager) {
 	animation_manager->sprite_data_3d.free();
 	animation_manager->emitter_properties.free();
 	animation_manager->effect_animation_info.FreeAll();
+	animation_manager->sprite_data_settings.free();
+	animation_manager->particle_shapes.FreeAll();
+	animation_manager->color_ramps.color_ramp_bitmaps.free();
+	animation_manager->color_ramps.color_ramp_ids.FreeAll();
+	animation_manager->color_ramps.color_ramp_count = 0;
 	animation_manager->buffer_metrics = { 0 };
 	animation_manager->flags = 0;
 }
@@ -17408,7 +17433,7 @@ void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 	if (sprite_data->compressed_sprites_buffer.data == sprite_data->real_time_sprites_buffer.data) {
 		tfx__free_soa_buffer(&sprite_data->real_time_sprites_buffer);
 		sprite_data->normal.frame_meta.free();
-		sprite_data->compressed_sprites_buffer = tfx_soa_buffer_t();
+		tfx__reset_soa_buffer(&sprite_data->compressed_sprites_buffer);
 	}
 	else {
 		tfx__free_soa_buffer(&sprite_data->compressed_sprites_buffer);

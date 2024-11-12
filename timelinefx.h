@@ -2900,6 +2900,9 @@ struct tfx_str_t {
 	}
 	inline tfxU32 Length() const { return current_size ? current_size - 1 : 0; }
 	void AddLine(const char *format, ...) {
+		if (!current_size) {
+			NullTerminate();
+		}
 		va_list args;
 		va_start(args, format);
 		Appendv(format, args);
@@ -2969,8 +2972,9 @@ struct tfx_str_t {
 		const int needed_sz = write_off + len;
 		TFX_ASSERT(write_off + (tfxU32)len < capacity);	//Trying to write outside of buffer space, string too small!
 		tfx_FormatString(&data[write_off - 1], (size_t)len + 1, format, args_copy);
-		va_end(args_copy);
 
+		va_end(args_copy);
+		current_size += len;
 	}
 	inline void Append(char c) { if (current_size) { pop(); } push_back(c); NullTerminate(); }
 	inline void Pop() { if (!Length()) return; if (back() == 0) pop(); pop(); NullTerminate(); }
@@ -3605,6 +3609,13 @@ inline void tfx__resize_soa_buffer(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
 	buffer->current_size = new_size;
 }
 
+//Copy a buffer
+inline void tfx__copy_soa_buffer(tfx_soa_buffer_t *dst, tfx_soa_buffer_t *src) {
+	memcpy(dst, src, sizeof(tfx_soa_buffer_t));
+	dst->array_ptrs.init();
+	dst->array_ptrs.copy(src->array_ptrs);
+}
+
 //Increase current size of a SoA Buffer and grow if necessary. This will not shrink the capacity so if new_size is not bigger than the
 //current capacity then nothing will happen
 inline void tfx__set_soa_capacity(tfx_soa_buffer_t *buffer, tfxU32 new_size) {
@@ -4024,6 +4035,7 @@ struct tfx_stream_t {
 	void Appendf(const char *format, ...);
 	void Appendv(const char *format, va_list args);
 	void SetText(const char *text);
+	inline void Append(char c) { if (size) { size--; } data[size] = c; size++; NullTerminate(); }
 	inline bool EoF() { return position >= size; }
 	inline void AddReturn() { if (size + 1 >= capacity) { tfxU64 new_capacity = capacity * 2; Reserve(new_capacity); } data[size] = '\n'; size++; }
 	inline void Seek(tfxU64 offset) {
@@ -4042,8 +4054,8 @@ struct tfx_stream_t {
 	inline bool            Empty() { return size == 0; }
 	inline tfxU64        Size() { return size; }
 	inline const tfxU64    Size() const { return size; }
-	inline tfxU64        Length() { return data[size] == '\0' && size > 0 ? size - 1 : size; }
-	inline const tfxU64    Length() const { return data[size] == '\0' && size > 0 ? size - 1 : size; }
+	inline tfxU64        Length() { if (!data) { return 0; } return data[size] == '\0' && size > 0 ? size - 1 : size; }
+	inline const tfxU64    Length() const { if (!data) { return 0; } return data[size] == '\0' && size > 0 ? size - 1 : size; }
 
 	inline void            Free() { if (data) { size = position = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void         Clear() { if (data) { size = 0; } }
@@ -4074,7 +4086,7 @@ struct tfx_stream_t {
 		size = new_size;
 		position = 0;
 	}
-	inline void            NullTerminate() { *(data + size) = '\0'; }
+	inline void            NullTerminate() { *(data + size++) = '\0'; }
 
 };
 
@@ -6691,7 +6703,7 @@ tfxAPI_EDITOR void tfx__stream_emitter_properties(tfx_emitter_properties_t *prop
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file);
-tfxAPI_EDITOR void tfx__stream_graph_line(const char *name, tfx_graph_t *graph, tfx_str256_t *line);
+tfxAPI_EDITOR void tfx__stream_graph_line(const char *name, tfx_graph_t *graph, tfx_str512_t *line);
 tfxAPI_EDITOR void tfx__split_string_stack(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxAPI_EDITOR bool tfx__string_is_uint(const char *s);
 tfxAPI_EDITOR bool tfx__line_is_uint(tfx_line_t *line);
@@ -6722,7 +6734,7 @@ tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_emitter_t *emi
 tfxAPI_EDITOR void tfx__complete_particle_manager_work(tfx_particle_manager_t *pm);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
-tfxINTERNAL void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
+tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
 tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
@@ -6939,7 +6951,7 @@ tfxINTERNAL int tfx__get_effect_library_stats(const char *filename, tfx_effect_l
 tfxINTERNAL void tfx__toggle_sprites_with_uid(tfx_particle_manager_t *pm, bool switch_on);
 tfxINTERNAL tfxU32 tfx__get_library_lookup_indexes_size_in_bytes(tfx_library_t *library);
 tfxINTERNAL tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library_t *library);
-tfxINTERNAL void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, const char *path);
+tfxINTERNAL void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_emitter, const char *path, bool skip_existing);
 tfxINTERNAL tfxU32 tfx__add_library_global(tfx_library_t *library);
 tfxINTERNAL tfxU32 tfx__add_library_emitter_attributes(tfx_library_t *library);
 tfxINTERNAL void tfx__free_library_global(tfx_library_t *library, tfxU32 index);
