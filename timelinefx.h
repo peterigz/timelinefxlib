@@ -8,6 +8,26 @@
 //Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
 //#define tfxUSEAVX
 
+/*    Functions come in 3 flavours:
+1) INTERNAL where they're only meant for internal use by the library and not for any use outside it. Note that these functions are declared as static.
+2) API where they're meant for access within your games that you're developing
+3) EDITOR where they can be accessed from outside the library but really they're mainly useful for editing the effects such as in in the TimelineFX Editor.
+
+All functions in the library will be marked this way for clarity and naturally the API functions will all be properly documented.
+*/
+//Function marker for any functions meant for external/api use
+#ifdef __cplusplus
+#define tfxAPI extern "C"
+#define tfxAPI_EDITOR extern "C"
+#else
+#define tfxAPI 
+#define tfxAPI_EDITOR 
+#endif    
+
+//Function marker for any functions meant mainly for use by the TimelineFX editor and are related to editing effects
+//For internal functions
+#define tfxINTERNAL static    
+
 /*
 	Timeline FX C++ library
 
@@ -300,7 +320,7 @@ extern "C" {
 
 	static inline tfxLONG tfx__compare_and_exchange(volatile tfxLONG *target, tfxLONG value, tfxLONG original) {
 		return __sync_val_compare_and_swap(target, original, value);
-	}
+}
 
 	static inline tfxLONG tfx__exchange(volatile tfxLONG *target, tfxLONG value) {
 		return __sync_lock_test_and_set(target, value);
@@ -634,8 +654,7 @@ extern "C" {
 			//If there are more free blocks in this size class then shift the next one down and terminate the prev_free_block
 			allocator->segregated_lists[fli][sli] = block->next_free_block;
 			allocator->segregated_lists[fli][sli]->prev_free_block = tfx__null_block(allocator);
-		}
-		else {
+		} else {
 			//There's no more free blocks in this size class so flag the second level bitmap for this class to 0.
 			allocator->segregated_lists[fli][sli] = tfx__null_block(allocator);
 			allocator->second_level_bitmaps[fli] &= ~(1U << sli);
@@ -770,8 +789,7 @@ extern "C" {
 		}
 		if (sli == tfx__SECOND_LEVEL_INDEX_COUNT - 1) {
 			sli = -1;
-		}
-		else {
+		} else {
 			sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
 		}
 		if (sli == -1) {
@@ -783,8 +801,7 @@ extern "C" {
 				tfx__unlock_thread_access(allocator);
 				return split_block;
 			}
-		}
-		else {
+		} else {
 			tfx_header *block = tfx__pop_block(allocator, fli, sli);
 			tfx_header *split_block = tfx__maybe_split_block(allocator, block, size, 0);
 			tfx__unlock_thread_access(allocator);
@@ -952,8 +969,7 @@ extern "C" {
 				memcpy(allocation, ptr, smallest_size);
 				tfx_Free(allocator, ptr);
 			}
-		}
-		else {
+		} else {
 			//Reallocation is possible
 			if (adjusted_size > current_size)
 			{
@@ -1000,8 +1016,7 @@ extern "C" {
 				tfx__block_set_used(block);
 			}
 			TFX_ASSERT(tfx__ptr_is_aligned(tfx__block_user_ptr(block), alignment));    //pointer not aligned to requested alignment
-		}
-		else {
+		} else {
 			tfx__unlock_thread_access(allocator);
 			return 0;
 		}
@@ -1070,9 +1085,8 @@ tfx_allocator *tfxGetAllocator();
 #endif
 
 #include <stdint.h>
-#include <cfloat>
+#include <float.h>
 #include <math.h>
-#include <new>
 
 //type defs
 typedef uint16_t tfxU16;
@@ -1121,7 +1135,6 @@ typedef unsigned short tfxUShort;
 #define tfxCIRCLENODES 16
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
-namespace tfx {
 //----------------------------------------------------------
 //Forward declarations
 
@@ -1183,13 +1196,6 @@ struct tfx_str512_t;
 #define tfxFREE(memory) free(memory)
 #endif
 
-//No longer in use, cleanup! This is from an old memory tracking thing before I switched to a new memory allocator.
-#define tfxINIT_VEC_NAME 
-#define tfxINIT_VEC_NAME_INIT 
-#define tfxCONSTRUCTOR_VEC_DEF 
-#define tfxCONSTRUCTOR_VEC_INIT(name) 
-#define tfxCONSTRUCTOR_VEC_INIT2(name) 
-
 /*    Functions come in 3 flavours:
 1) INTERNAL where they're only meant for internal use by the library and not for any use outside it. Note that these functions are declared as static.
 2) API where they're meant for access within your games that you're developing
@@ -1213,6 +1219,7 @@ All functions in the library will be marked this way for clarity and naturally t
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
 #endif 
+
 
 /*
 Helper macro to place inside a for loop, for example:
@@ -1342,17 +1349,12 @@ tfxINTERNAL inline tfxU64 tfx_Microsecs(void) {
 
 enum { tfx__HASH_MAX_BUFFER_SIZE = 31 + 1 };
 
-struct tfx_hasher_t {
+typedef struct tfx_hasher_s {
 	tfxU64      state[4];
 	unsigned char buffer[tfx__HASH_MAX_BUFFER_SIZE];
 	tfxU64      buffer_size;
 	tfxU64      total_length;
-};
-
-tfxINTERNAL bool tfx__is_aligned(void *ptr, size_t alignment) {
-	uintptr_t address = (uintptr_t)ptr;
-	return (address % alignment) == 0;
-}
+} tfx_hasher_t;
 
 tfxINTERNAL inline tfxU64 tfx__hash_rotate_left(tfxU64 x, unsigned char bits) {
 	return (x << bits) | (x >> (64 - bits));
@@ -1369,9 +1371,9 @@ tfxINTERNAL inline void tfx__hasher_process(const void *data, tfxU64 *state0, tf
 	*state2 = tfx__hash_process_single(*state2, blocks[2]);
 	*state3 = tfx__hash_process_single(*state3, blocks[3]);
 }
-tfxINTERNAL inline bool tfx__hasher_add(tfx_hasher_t *hasher, const void *input, tfxU64 length)
+tfxINTERNAL inline int tfx__hasher_add(tfx_hasher_t *hasher, const void *input, tfxU64 length)
 {
-	if (!input || length == 0) return false;
+	if (!input || length == 0) return 0;
 
 	hasher->total_length += length;
 	unsigned char *data = (unsigned char *)input;
@@ -1380,7 +1382,7 @@ tfxINTERNAL inline bool tfx__hasher_add(tfx_hasher_t *hasher, const void *input,
 	{
 		while (length-- > 0)
 			hasher->buffer[hasher->buffer_size++] = *data++;
-		return true;
+		return 1;
 	}
 
 	const unsigned char *stop = data + length;
@@ -1395,7 +1397,7 @@ tfxINTERNAL inline bool tfx__hasher_add(tfx_hasher_t *hasher, const void *input,
 	}
 
 	tfxU64 s0 = hasher->state[0], s1 = hasher->state[1], s2 = hasher->state[2], s3 = hasher->state[3];
-	bool test = tfx__is_aligned(&s0, 8);
+	int test = tfx__ptr_is_aligned(&s0, 8);
 	while (data <= stopBlock)
 	{
 		tfx__hasher_process(data, &s0, &s1, &s2, &s3);
@@ -1407,7 +1409,7 @@ tfxINTERNAL inline bool tfx__hasher_add(tfx_hasher_t *hasher, const void *input,
 	for (tfxU64 i = 0; i < hasher->buffer_size; i++)
 		hasher->buffer[i] = data[i];
 
-	return true;
+	return 1;
 }
 
 tfxINTERNAL inline tfxU64 tfx__get_hash(tfx_hasher_t *hasher)
@@ -1449,12 +1451,12 @@ tfxINTERNAL inline tfxU64 tfx__get_hash(tfx_hasher_t *hasher)
 }
 
 tfxAPI_EDITOR inline void tfx__hash_initialise(tfx_hasher_t *hasher, tfxU64 seed) {
-	hasher->state[0] = seed + tfx__PRIME1 + tfx__PRIME2; hasher->state[1] = seed + tfx__PRIME2; hasher->state[2] = seed; hasher->state[3] = seed - tfx__PRIME1; hasher->buffer_size = 0; hasher->total_length = 0; 
+	hasher->state[0] = seed + tfx__PRIME1 + tfx__PRIME2; hasher->state[1] = seed + tfx__PRIME2; hasher->state[2] = seed; hasher->state[3] = seed - tfx__PRIME1; hasher->buffer_size = 0; hasher->total_length = 0;
 }
 
 //The only command you need for the hasher. Just used internally by the hash map.
 tfxAPI_EDITOR inline tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, tfxU64 seed) {
-	tfx__hash_initialise(hasher, seed); tfx__hasher_add(hasher, input, length); return (tfxKey)tfx__get_hash(hasher); 
+	tfx__hash_initialise(hasher, seed); tfx__hasher_add(hasher, input, length); return (tfxKey)tfx__get_hash(hasher);
 }
 //-- End of Pocket Hasher
 
@@ -1529,33 +1531,33 @@ typedef __m256i tfxWideIntLoader;
 #define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfxWideSet(lookup1[index1.a[7]].lookup2[index2.a[7]], lookup1[index1.a[6]].lookup2[index2.a[6]], lookup1[index1.a[5]].lookup2[index2.a[5]], lookup1[index1.a[4]].lookup2[index2.a[4]], lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
 #define tfxWideLookupSetOffset(lookup, index, offset) tfxWideSet(lookup[index.a[7] + offset], lookup[index.a[6] + offset], lookup[index.a[5] + offset], lookup[index.a[4] + offset], lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
 
-const __m256 tfxWIDEF3_4 = _mm256_set1_ps(1.0f / 3.0f);
-const __m256 tfxWIDEG3_4 = _mm256_set1_ps(1.0f / 6.0f);
-const __m256 tfxWIDEG32_4 = _mm256_set1_ps((1.0f / 6.0f) * 2.f);
-const __m256 tfxWIDEG33_4 = _mm256_set1_ps((1.0f / 6.0f) * 3.f);
-const __m256i tfxWIDEONEi = _mm256_set1_epi32(1);
-const __m256 tfxWIDEMINUSONE = _mm256_set1_ps(-1.f);
-const __m256i tfxWIDEMINUSONEi = _mm256_set1_epi32(-1);
-const __m256 tfxWIDEONE = _mm256_set1_ps(1.f);
-const __m256 tfxWIDE255 = _mm256_set1_ps(255.f);
-const __m256 tfxWIDEZERO = _mm256_set1_ps(0.f);
-const __m256 tfxWIDETHIRTYTWO = _mm256_set1_ps(32.f);
-const __m256i tfxWIDEFF = _mm256_set1_epi32(0xFF);
-const __m256 tfxPWIDESIX = _mm256_set1_ps(0.6f);
-const __m256 tfxMAXUINTf = _mm256_set1_ps((float)UINT32_MAX);
-const __m256 tfxDEGREERANGEMR = _mm256_set1_ps(0.392699f);
-
-tfxINTERNAL const __m256 SIGNMASK = _mm256_castsi256_ps(_mm256_set1_epi32(0x80000000));
+#define tfxWideSetConst(value) {value, value, value, value, value, value, value, value}
 
 typedef union {
-	__m256i m;
 	int a[8];
+	__m256i m;
 } tfxWideArrayi;
 
 typedef union {
-	__m256 m;
 	float a[8];
+	__m256 m;
 } tfxWideArray;
+
+const __m256 tfxWIDEF3_4 = tfxWideSetConst(1.0f / 3.0f);
+const __m256 tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
+const __m256 tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
+const __m256 tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
+const __m256i tfxWIDEONEi = tfxWideSetConst(1);
+const __m256 tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
+const __m256i tfxWIDEMINUSONEi = tfxWideSetConst(-1);
+const __m256 tfxWIDEONE = tfxWideSetConst(1.f);
+const __m256 tfxWIDE255 = tfxWideSetConst(255.f);
+const __m256 tfxWIDEZERO = tfxWideSetConst(0.f);
+const __m256 tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
+const __m256 tfxPWIDESIX = tfxWideSetConst(0.6f);
+const __m256 tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
+const __m256 tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
+tfxINTERNAL const __m256 SIGNMASK = tfxWideSetConst(-0.f);
 
 #else
 
@@ -1619,33 +1621,33 @@ typedef __m128i tfxWideIntLoader;
 #define tfxWideEquals _mm_cmpeq_ps
 #define tfxWideShufflei _mm_shuffle_epi32
 
-const __m128 tfxWIDEF3_4 = _mm_set_ps1(1.0f / 3.0f);
-const __m128 tfxWIDEG3_4 = _mm_set_ps1(1.0f / 6.0f);
-const __m128 tfxWIDEG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
-const __m128 tfxWIDEG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
-const __m128i tfxWIDEONEi = _mm_set1_epi32(1);
-const __m128 tfxWIDEMINUSONE = _mm_set1_ps(-1.f);
-const __m128i tfxWIDEMINUSONEi = _mm_set1_epi32(-1);
-const __m128 tfxWIDEONE = _mm_set1_ps(1.f);
-const __m128 tfxWIDE255 = _mm_set1_ps(255.f);
-const __m128 tfxWIDEZERO = _mm_set1_ps(0.f);
-const __m128 tfxWIDETHIRTYTWO = _mm_set1_ps(32.f);
-const __m128i tfxWIDEFF = _mm_set1_epi32(0xFF);
-const __m128 tfxPWIDESIX = _mm_set_ps1(0.6f);
-const __m128 tfxMAXUINTf = _mm_set1_ps((float)UINT32_MAX);
-const __m128 tfxDEGREERANGEMR = _mm_set1_ps(0.392699f);
-
-tfxINTERNAL const __m128 SIGNMASK = _mm_castsi128_ps(_mm_set1_epi32(0x80000000));
+#define tfxWideSetConst(value) {value, value, value, value}
 
 typedef union {
-	__m128i m;
 	int a[4];
+	__m128i m;
 } tfxWideArrayi;
 
 typedef union {
-	__m128 m;
 	float a[4];
+	__m128 m;
 } tfxWideArray;
+
+const tfxWideArray tfxWIDEF3_4 = tfxWideSetConst(1.f / 3.f);
+const tfxWideArray tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
+const tfxWideArray tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
+const tfxWideArray tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
+const tfxWideArrayi tfxWIDEONEi = tfxWideSetConst(1);
+const tfxWideArray tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
+const tfxWideArrayi tfxWIDEMINUSONEi = tfxWideSetConst(-1);
+const tfxWideArray tfxWIDEONE = tfxWideSetConst(1.f);
+const tfxWideArray tfxWIDE255 = tfxWideSetConst(255.f);
+const tfxWideArray tfxWIDEZERO = tfxWideSetConst(0.f);
+const tfxWideArray tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
+const tfxWideArray tfxPWIDESIX = tfxWideSetConst(0.6f);
+const tfxWideArray tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
+const tfxWideArray tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
+const tfxWideArray SIGNMASK = tfxWideSetConst(-0.f);
 
 #elif defined(tfxARM)
 //Arm Intrinsics
@@ -1719,34 +1721,34 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxSIMD_AND_NOT(a,b) vreinterpretq_f32_s32(vandq_s32(vmvnq_s32(vreinterpretq_s32_f32(a)),vreinterpretq_s32_f32(b)))
 #define tfxSIMD_XOR(a,b) vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(a),vreinterpretq_s32_f32(b)))
 
-const float32x4_t tfxWIDEF3_4 = vdupq_n_f32(1.0f / 3.0f);
-const float32x4_t tfxWIDEG3_4 = vdupq_n_f32(1.0f / 6.0f);
-const float32x4_t tfxWIDEG32_4 = vdupq_n_f32((1.0f / 6.0f) * 2.f);
-const float32x4_t tfxWIDEG33_4 = vdupq_n_f32((1.0f / 6.0f) * 3.f);
-const int32x4_t tfxWIDEONEi = vdupq_n_s32(1);
-const float32x4_t tfxWIDEMINUSONE = vdupq_n_f32(-1.f);
-const int32x4_t tfxWIDEMINUSONEi = vdupq_n_s32(-1);
-const float32x4_t tfxWIDEONE = vdupq_n_f32(1.f);
-const float32x4_t tfxWIDE255 = vdupq_n_f32(255.f);
-const float32x4_t tfxWIDEZERO = vdupq_n_f32(0.f);
-const float32x4_t tfxWIDETHIRTYTWO = vdupq_n_f32(32.f);
-const int32x4_t tfxWIDEFF = vdupq_n_s32(0xFF);
-const float32x4_t tfxPWIDESIX = vdupq_n_f32(0.6f);
-const float32x4_t tfxMAXUINTf = vdupq_n_f32((float)UINT32_MAX);
-const float32x4_t tfxDEGREERANGEMR = vdupq_n_f32(0.392699f);
-
-tfxINTERNAL const float32x4_t SIGNMASK = vreinterpretq_s32_f32(vdupq_n_s32(0x80000000));
+#define tfxWideSetConst(value) {value, value, value, value}
 
 typedef union {
-	int32x4_t m;
 	int a[4];
+	int32x4_t m;
 } tfxWideArrayi;
 
 typedef union {
-	float32x4_t m;
 	float a[4];
+	float32x4_t m;
 } tfxWideArray;
 
+const float32x4_t tfxWIDEF3_4 = tfxWideSetConst(1.0f / 3.0f);
+const float32x4_t tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
+const float32x4_t tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
+const float32x4_t tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
+const int32x4_t tfxWIDEONEi = tfxWideSetConst(1);
+const float32x4_t tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
+const int32x4_t tfxWIDEMINUSONEi = tfxWideSetConst(-1);
+const float32x4_t tfxWIDEONE = tfxWideSetConst(1.f);
+const float32x4_t tfxWIDE255 = tfxWideSetConst(255.f);
+const float32x4_t tfxWIDEZERO = tfxWideSetConst(0.f);
+const float32x4_t tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
+const float32x4_t tfxPWIDESIX = tfxWideSetConst(0.6f);
+const float32x4_t tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
+const float32x4_t tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
+
+tfxINTERNAL const float32x4_t SIGNMASK = tfxWideSetConst(-0.f);
 
 #endif
 
@@ -1780,7 +1782,7 @@ typedef union {
 } tfx128Array;
 
 //simd floor function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
-tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 &x) {
+tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 x) {
 	//__m128i v0 = _mm_setzero_si128();
 	//__m128i v1 = _mm_cmpeq_epi32(v0, v0);
 	//__m128i ji = _mm_srli_epi32(v1, 25);
@@ -1864,8 +1866,8 @@ tfxINTERNAL inline tfxWideFloat tfxWideAtan(tfxWideFloat x)
 	//                                      - x*(fabs(x) - 1)
 	//                                      *(0.2447f+0.0663f*fabs(x));
 	return tfxWideSub(tfxWideMul(tfxWideSetSingle(tfxQUARTERPI), x),
-		tfxWideMul(tfxWideMul(x, tfxWideSub(tfxWideAndNot(SIGNMASK, x), tfxWideSetSingle(1.f))),
-			(tfxWideAdd(tfxWideSetSingle(0.2447f), tfxWideMul(tfxWideSetSingle(0.0663f), tfxWideAndNot(SIGNMASK, x))))));
+		tfxWideMul(tfxWideMul(x, tfxWideSub(tfxWideAndNot(SIGNMASK.m, x), tfxWideSetSingle(1.f))),
+			(tfxWideAdd(tfxWideSetSingle(0.2447f), tfxWideMul(tfxWideSetSingle(0.0663f), tfxWideAndNot(SIGNMASK.m, x))))));
 }
 
 /*
@@ -1887,7 +1889,7 @@ float atan2(float y, float x)
 
 tfxINTERNAL inline tfxWideFloat tfxWideAtan2(tfxWideFloat y, tfxWideFloat x)
 {
-	tfxWideFloat absxgreaterthanabsy = tfxWideGreater(tfxWideAndNot(SIGNMASK, x), tfxWideAndNot(SIGNMASK, y));
+	tfxWideFloat absxgreaterthanabsy = tfxWideGreater(tfxWideAndNot(SIGNMASK.m, x), tfxWideAndNot(SIGNMASK.m, y));
 	tfxWideFloat ratio = tfxWideDiv(tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, y), tfxWideAndNot(absxgreaterthanabsy, x)),
 		tfxWideAdd(tfxWideAnd(absxgreaterthanabsy, x), tfxWideAndNot(absxgreaterthanabsy, y)));
 	tfxWideFloat atan = tfxWideAtan(ratio);
@@ -1895,11 +1897,11 @@ tfxINTERNAL inline tfxWideFloat tfxWideAtan2(tfxWideFloat y, tfxWideFloat x)
 	tfxWideFloat xgreaterthan0 = tfxWideGreater(x, tfxWideSetSingle(0.f));
 	tfxWideFloat ygreaterthan0 = tfxWideGreater(y, tfxWideSetSingle(0.f));
 
-	atan = tfxWideXOr(atan, tfxWideAndNot(absxgreaterthanabsy, SIGNMASK)); //negate atan if absx<=absy & x>0
+	atan = tfxWideXOr(atan, tfxWideAndNot(absxgreaterthanabsy, SIGNMASK.m)); //negate atan if absx<=absy & x>0
 
 	tfxWideFloat shift = tfxWideSetSingle(tfxPI);
 	shift = tfxWideSub(shift, tfxWideAndNot(absxgreaterthanabsy, tfxWideSetSingle(tfxHALFPI))); //substract tfxHALFPI if absx<=absy
-	shift = tfxWideXOr(shift, tfxWideAndNot(ygreaterthan0, SIGNMASK)); //negate shift if y<=0
+	shift = tfxWideXOr(shift, tfxWideAndNot(ygreaterthan0, SIGNMASK.m)); //negate shift if y<=0
 	shift = tfxWideAndNot(tfxWideAnd(absxgreaterthanabsy, xgreaterthan0), shift); //null if abs>absy & x>0
 
 	return tfxWideAdd(atan, shift);
@@ -1918,12 +1920,12 @@ inline tfxWideFloat tfxWideCos52s(tfxWideFloat x)
 }
 
 inline void tfxWideSinCos(tfxWideFloat angle, tfxWideFloat *sin, tfxWideFloat *cos) {
-	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK, angle));
+	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK.m, angle));
 
 	//clamp to the range 0..2pi
 
 	//take absolute value
-	angle = tfxWideAndNot(SIGNMASK, angle);
+	angle = tfxWideAndNot(SIGNMASK.m, angle);
 	//fmod(angle,tfxPI2)
 	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWideSetSingle(tfxINVTWOPI)))), tfxWideSetSingle(tfxPI2))); //simplied SSE2 fmod, must always operate on absolute value
 	//if SSE4.1 is always available, comment the line above and uncomment the line below
@@ -1931,25 +1933,25 @@ inline void tfxWideSinCos(tfxWideFloat angle, tfxWideFloat *sin, tfxWideFloat *c
 
 	tfxWideFloat cosangle = angle;
 	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI), angle))));
-	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK.m));
 	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
 
 	tfxWideFloat result = tfxWideCos52s(cosangle);
 
-	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK));
+	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK.m));
 	*cos = result;
 
-	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK)));
+	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK.m)));
 	*sin = tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result))));
 }
 
 inline void tfxWideSinCosAdd(tfxWideFloat angle, tfxWideFloat *sin, tfxWideFloat *cos) {
-	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK, angle));
+	tfxWideFloat anglesign = tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(SIGNMASK.m, angle));
 
 	//clamp to the range 0..2pi
 
 	//take absolute value
-	angle = tfxWideAndNot(SIGNMASK, angle);
+	angle = tfxWideAndNot(SIGNMASK.m, angle);
 	//fmod(angle,tfxPI2)
 	angle = tfxWideSub(angle, tfxWideMul(tfxWideConvert(tfxWideConverti(tfxWideMul(angle, tfxWideSetSingle(tfxINVTWOPI)))), tfxWideSetSingle(tfxPI2))); //simplied SSE2 fmod, must always operate on absolute value
 	//if SSE4.1 is always available, comment the line above and uncomment the line below
@@ -1957,15 +1959,15 @@ inline void tfxWideSinCosAdd(tfxWideFloat angle, tfxWideFloat *sin, tfxWideFloat
 
 	tfxWideFloat cosangle = angle;
 	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI), angle))));
-	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK));
+	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxPI)), SIGNMASK.m));
 	cosangle = tfxWideXOr(cosangle, tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxTHREEHALFPI)), tfxWideXOr(cosangle, tfxWideSub(tfxWideSetSingle(tfxPI2), angle))));
 
 	tfxWideFloat result = tfxWideCos52s(cosangle);
 
-	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK));
+	result = tfxWideXOr(result, tfxWideAnd(tfxWideAnd(tfxWideGreaterEqual(angle, tfxWideSetSingle(tfxHALFPI)), tfxWideLess(angle, tfxWideSetSingle(tfxTHREEHALFPI))), SIGNMASK.m));
 	*cos = tfxWideAdd(*cos, result);
 
-	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK)));
+	tfxWideFloat sinmultiplier = tfxWideMul(anglesign, tfxWideOr(tfxWideSetSingle(1.f), tfxWideAnd(tfxWideGreater(angle, tfxWideSetSingle(tfxPI)), SIGNMASK.m)));
 	*sin = tfxWideAdd(*sin, tfxWideMul(sinmultiplier, tfxWideFastSqrt(tfxWideSub(tfxWideSetSingle(1.f), tfxWideMul(result, result)))));
 }
 /*
@@ -1973,7 +1975,7 @@ End of Robin Lobel code
 */
 
 //simd mod function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
-tfxINTERNAL inline tfxWideFloat tfxWideMod(const tfxWideFloat &a, const tfxWideFloat &aDiv) {
+tfxINTERNAL inline tfxWideFloat tfxWideMod(const tfxWideFloat a, const tfxWideFloat aDiv) {
 	tfxWideFloat c = tfxWideDiv(a, aDiv);
 	tfxWideInt i = tfxWideConverti(c);
 	tfxWideFloat cTrunc = tfxWideConvert(i);
@@ -1989,6 +1991,8 @@ tfxINTERNAL inline tfxWideFloat tfxWideAbs(tfxWideFloat v) {
 tfxINTERNAL inline tfxWideInt tfxWideAbsi(tfxWideInt v) {
 	return tfxWideAndi(tfxWideShiftRight(tfxWideSetSinglei(-1), 1), v);
 }
+
+//End of SIMD setup
 
 //----------------------------------------------------------
 //Section: Enums
@@ -2028,7 +2032,7 @@ enum tfx_graph_preset {
 	tfxPathTranslationOvertimePreset,
 };
 
-enum tfx_graph_category : unsigned int {
+enum tfx_graph_category {
 	tfxGraphCategory_global,
 	tfxGraphCategory_transform,
 	tfxGraphCategory_property,
@@ -2046,29 +2050,31 @@ enum tfx_graph_category : unsigned int {
 	tfxGraphCategory_max
 };
 
-enum tfx_color_ramp_format {
+typedef enum tfx_color_ramp_format {
 	tfx_color_format_rgba,
 	tfx_color_format_bgra
-};
+} tfx_color_ramp_format;
 
-#define	TFX_GLOBAL_COUNT  17
-#define TFX_PROPERTY_COUNT  10
-#define TFX_BASE_COUNT  10
+#define TFX_GLOBAL_COUNT     17
+#define TFX_PROPERTY_COUNT   10
+#define TFX_BASE_COUNT       10
 #define TFX_VARIATION_COUNT  12
-#define TFX_OVERTIME_COUNT  25
-#define TFX_FACTOR_COUNT  4
+#define TFX_OVERTIME_COUNT   25
+#define TFX_FACTOR_COUNT     4
 #define TFX_TRANSFORM_COUNT  6
 
-const int TFX_GLOBAL_START = 0;
-const int TFX_PROPERTY_START = TFX_GLOBAL_COUNT;
-const int TFX_BASE_START = (TFX_PROPERTY_START + TFX_PROPERTY_COUNT);
-const int TFX_VARIATION_START = (TFX_BASE_START + TFX_BASE_COUNT);
-const int TFX_OVERTIME_START = (TFX_VARIATION_START + TFX_VARIATION_COUNT);
-const int TFX_FACTOR_START = (TFX_OVERTIME_START + TFX_OVERTIME_COUNT);
-const int TFX_TRANSFORM_START = (TFX_FACTOR_START + TFX_FACTOR_COUNT);
+enum {
+	TFX_GLOBAL_START = 0,
+	TFX_PROPERTY_START = TFX_GLOBAL_COUNT,
+	TFX_BASE_START = (TFX_PROPERTY_START + TFX_PROPERTY_COUNT),
+	TFX_VARIATION_START = (TFX_BASE_START + TFX_BASE_COUNT),
+	TFX_OVERTIME_START = (TFX_VARIATION_START + TFX_VARIATION_COUNT),
+	TFX_FACTOR_START = (TFX_OVERTIME_START + TFX_OVERTIME_COUNT),
+	TFX_TRANSFORM_START = (TFX_FACTOR_START + TFX_FACTOR_COUNT)
+};
 
 //All the different types of graphs, split into main type: global, property, base, variation and overtime
-enum tfx_graph_type : unsigned char {
+enum tfx_graph_type {
 	tfxGlobal_life,
 	tfxGlobal_amount,
 	tfxGlobal_velocity,
@@ -2175,7 +2181,7 @@ enum tfx_graph_type : unsigned char {
 };
 
 //tfx_effect_emitter_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
-enum tfx_effect_emitter_type : unsigned char {
+enum tfx_effect_emitter_type {
 	tfxEffectType,
 	tfxEmitterType,
 	tfxStage,
@@ -2183,7 +2189,7 @@ enum tfx_effect_emitter_type : unsigned char {
 };
 
 //Different ways that particles can be emitted
-enum tfx_emission_type : unsigned char {
+enum tfx_emission_type {
 	tfxPoint,
 	tfxArea,
 	tfxLine,
@@ -2201,7 +2207,7 @@ enum tfx_path_extrusion_type {
 };
 
 //Determines how for area, line and ellipse emitters the direction that particles should travel when they spawn
-enum tfx_emission_direction : unsigned char {
+enum tfx_emission_direction {
 	tfxInwards,
 	tfxOutwards,
 	tfxBothways,
@@ -2212,7 +2218,7 @@ enum tfx_emission_direction : unsigned char {
 };
 
 //For line effects where traverse line is switched on
-enum tfx_line_traversal_end_behaviour : unsigned char {
+enum tfx_line_traversal_end_behaviour {
 	tfxLoop,
 	tfxKill,
 	tfxLetFree
@@ -2262,7 +2268,7 @@ enum tfx_data_type {
 
 //Block designators for loading effects library and other files like animation sprite data
 //The values of existing enums below must never change or older files won't load anymore!
-enum tfx_effect_library_stream_context : tfxU32 {
+enum tfx_effect_library_stream_context {
 	tfxStartEffect = 0x00FFFF00,
 	tfxEndEffect,
 	tfxStartEmitter,
@@ -2527,7 +2533,7 @@ enum tfx_color_ramp_flag_bits {
 	tfxColorRampFlags_use_sinusoidal_ramp_generation = 1 << 0,			//Use this flag to toggle between sinusoidal color ramp generation
 };
 
-enum tfx_particle_flag_bits : unsigned int {
+enum tfx_particle_flag_bits {
 	tfxParticleFlags_none = 0,
 	tfxParticleFlags_fresh = 1 << 0,                                    //Particle has just spawned this frame    
 	tfxParticleFlags_remove = 1 << 4,                                   //Particle will be removed this or next frame
@@ -2536,7 +2542,7 @@ enum tfx_particle_flag_bits : unsigned int {
 	tfxParticleFlags_capture_after_transform = 1 << 15,                 //Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
 };
 
-enum tfx_emitter_state_flag_bits : unsigned int {
+enum tfx_emitter_state_flag_bits {
 	tfxEmitterStateFlags_none = 0,
 	tfxEmitterStateFlags_random_color = 1 << 0,
 	tfxEmitterStateFlags_relative_position = 1 << 1,                    //Keep the particles position relative to the current position of the emitter
@@ -2571,7 +2577,7 @@ enum tfx_emitter_state_flag_bits : unsigned int {
 	tfxEmitterStateFlags_wrap_single_sprite = 1 << 30
 };
 
-enum tfx_effect_state_flag_bits : unsigned int {
+enum tfx_effect_state_flag_bits {
 	tfxEffectStateFlags_none = 0,
 	tfxEffectStateFlags_stop_spawning = 1 << 3,                            //Tells the emitter to stop spawning
 	tfxEffectStateFlags_remove = 1 << 4,                                //Tells the effect/emitter to remove itself from the particle manager immediately
@@ -2583,7 +2589,7 @@ enum tfx_effect_state_flag_bits : unsigned int {
 	tfxEffectStateFlags_no_tween = 1 << 20
 };
 
-enum tfx_vector_field_flag_bits : unsigned char {
+enum tfx_vector_field_flag_bits {
 	tfxVectorFieldFlags_none = 0,
 	tfxVectorFieldFlags_repeat_horizontal = 1 << 0,                        //Field will repeat horizontally
 	tfxVectorFieldFlags_repeat_vertical = 1 << 1                        //Field will repeat vertically
@@ -2632,7 +2638,7 @@ const int tfxMIN_INT = INT_MIN;
 const tfxS64 tfxMAX_64i = LLONG_MAX;
 const tfxS64 tfxMIN_64i = LLONG_MIN;
 const tfxU64 tfxMAX_64u = ULLONG_MAX;
-const tfxWideFloat tfx180RadiansWide = tfxWideSetSingle(3.14159f);
+const tfxWideArray tfx180RadiansWide = tfxWideSetConst(3.14159f);
 const float tfxGAMMA = 1.f;
 #if defined(__x86_64__) || defined(_M_X64)
 typedef tfxU64 tfxAddress;
@@ -2725,10 +2731,10 @@ static float tfxLOOKUP_FREQUENCY = 10.f;
 static float tfxLOOKUP_FREQUENCY_OVERTIME = 1.f;
 
 //Look up frequency determines the resolution of graphs that are compiled into look up arrays.
-static tfxWideFloat tfxLOOKUP_FREQUENCY_WIDE = tfxWideSetSingle(10.f);
+static tfxWideArray tfxLOOKUP_FREQUENCY_WIDE = tfxWideSetConst(10.f);
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
 //Experiment with lower resolution and use interpolation instead? Could be a lot better on the cache.
-static tfxWideFloat tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetSingle(1.f);
+static tfxWideArray tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetConst(1.f);
 
 //-----------------------------------------------------------
 //Section: forward_declarations
@@ -2751,6 +2757,8 @@ tfxMAKE_HANDLE(tfx_package)
 
 int tfx_FormatString(char *buf, size_t buf_size, const char *fmt, va_list args);
 
+#ifdef __cplusplus
+
 //Very simple string builder for short stack based strings
 template<size_t N>
 struct tfx_str_t {
@@ -2759,10 +2767,10 @@ struct tfx_str_t {
 	tfxU32 current_size;
 
 	inline tfx_str_t() : current_size(0) { memset(data, '\0', N); }
-	inline tfx_str_t(const char *text) : current_size(0) { 
+	inline tfx_str_t(const char *text) : current_size(0) {
 		size_t text_len = strlen(text);
 		TFX_ASSERT(text_len < capacity); //String is too big for the buffer size allowed
-		memset(data, '\0', N); 
+		memset(data, '\0', N);
 		tfx__strcpy(data, N, text);
 		current_size = text_len + 1;
 	}
@@ -2772,10 +2780,10 @@ struct tfx_str_t {
 	inline const char &operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
 
 	inline void         Clear() { current_size = 0; memset(data, '\0', N); }
-	inline char			*begin() { return data; }
-	inline const char	*begin() const { return data; }
-	inline char			*end() { return data + current_size; }
-	inline const char	*end() const { return data + current_size; }
+	inline char *begin() { return data; }
+	inline const char *begin() const { return data; }
+	inline char *end() { return data + current_size; }
+	inline const char *end() const { return data + current_size; }
 	inline char			back() { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
 	inline const char	back() const { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
 	inline void         pop() { TFX_ASSERT(current_size > 0); current_size--; }
@@ -2957,26 +2965,26 @@ struct tfx_vector_t {
 	inline const tfxU32		size() const { return current_size; }
 	inline tfxU32			size_in_bytes() { return current_size * sizeof(T); }
 	inline const tfxU32		size_in_bytes() const { return current_size * sizeof(T); }
-	inline T				&operator[](tfxU32 i) { TFX_ASSERT(i < current_size); return data[i]; }
-	inline const T			&operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
-	inline T				&ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
+	inline T &operator[](tfxU32 i) { TFX_ASSERT(i < current_size); return data[i]; }
+	inline const T &operator[](tfxU32 i) const { TFX_ASSERT(i < current_size); return data[i]; }
+	inline T &ts_at(tfxU32 i) { while (locked > 0); return data[i]; }
 
 	inline void				free() { if (data) { current_size = capacity = 0; tfxFREE(data); data = nullptr; } }
 	inline void				clear() { if (data) { current_size = 0; } }
-	inline T				*begin() { return data; }
-	inline const T			*begin() const { return data; }
-	inline T				*end() { return data + current_size; }
-	inline const T			*end() const { return data + current_size; }
-	inline T				*rend() { return data; }
-	inline const T			*rend() const { return data; }
-	inline T				*rbegin() { return data + current_size; }
-	inline const T			*rbegin() const { return data + current_size; }
-	inline T				&front() { TFX_ASSERT(current_size > 0); return data[0]; }
-	inline const T			&front() const { TFX_ASSERT(current_size > 0); return data[0]; }
-	inline T				&back() { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
-	inline const T			&back() const { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
-	inline T				&parent() { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
-	inline const T			&parent() const { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
+	inline T *begin() { return data; }
+	inline const T *begin() const { return data; }
+	inline T *end() { return data + current_size; }
+	inline const T *end() const { return data + current_size; }
+	inline T *rend() { return data; }
+	inline const T *rend() const { return data; }
+	inline T *rbegin() { return data + current_size; }
+	inline const T *rbegin() const { return data + current_size; }
+	inline T &front() { TFX_ASSERT(current_size > 0); return data[0]; }
+	inline const T &front() const { TFX_ASSERT(current_size > 0); return data[0]; }
+	inline T &back() { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
+	inline const T &back() const { TFX_ASSERT(current_size > 0); return data[current_size - 1]; }
+	inline T &parent() { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
+	inline const T &parent() const { TFX_ASSERT(current_size > 1); return data[current_size - 2]; }
 	inline void				copy(const tfx_vector_t<T> &src) { clear(); resize(src.current_size); memcpy(data, src.data, (size_t)current_size * sizeof(T)); }
 	inline tfxU32			_grow_capacity(tfxU32 sz) const { tfxU32 new_capacity = capacity ? (capacity + capacity / 2) : 8; return new_capacity > sz ? new_capacity : sz; }
 	inline void				resize(tfxU32 new_size) { if (new_size > capacity) reserve(_grow_capacity(new_size)); current_size = new_size; }
@@ -2990,8 +2998,7 @@ struct tfx_vector_t {
 		T *new_data;
 		if (alignment != 0) {
 			new_data = (T *)tfxALLOCATE_ALIGNED((size_t)new_capacity * sizeof(T), alignment);
-		}
-		else {
+		} else {
 			new_data = (T *)tfxALLOCATE((size_t)new_capacity * sizeof(T));
 		}
 		TFX_ASSERT(new_data);    //Unable to allocate memory. todo: better handling
@@ -3038,17 +3045,17 @@ struct tfx_vector_t {
 	}
 	inline void				zero() { TFX_ASSERT(capacity > 0); memset(data, 0, capacity * sizeof(T)); }
 	inline void				pop() { TFX_ASSERT(current_size > 0); current_size--; }
-	inline T				&pop_back() { TFX_ASSERT(current_size > 0); current_size--; return data[current_size]; }
+	inline T &pop_back() { TFX_ASSERT(current_size > 0); current_size--; return data[current_size]; }
 	inline void				push_front(const T &v) { if (current_size == 0) push_back(v); else insert(data, v); }
-	inline T				*erase(const T *it) { TFX_ASSERT(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(T)); current_size--; return data + off; }
+	inline T *erase(const T *it) { TFX_ASSERT(it >= data && it < data + current_size); const ptrdiff_t off = it - data; memmove(data + off, data + off + 1, ((size_t)current_size - (size_t)off - 1) * sizeof(T)); current_size--; return data + off; }
 	inline T				pop_front() { TFX_ASSERT(current_size > 0); T front = data[0]; erase(data); return front; }
-	inline T				*erase(const T *it, const T *it_last) { TFX_ASSERT(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove(data + off, data + off + count, ((size_t)current_size - (size_t)off - count) * sizeof(T)); current_size -= (tfxU32)count; return data + off; }
-	inline T				*erase_unsorted(const T *it) { TFX_ASSERT(it >= data && it < data + current_size);  const ptrdiff_t off = it - data; if (it < data + current_size - 1) memcpy(data + off, data + current_size - 1, sizeof(T)); current_size--; return data + off; }
-	inline T				*insert(const T *it, const T &v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = it - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); memcpy(data + off, &v, sizeof(T)); current_size++; return data + off; }
-	inline T				*insert_after(const T *it, const T &v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = (it + 1) - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); memcpy(data + off, &v, sizeof(T)); current_size++; return data + off; }
+	inline T *erase(const T *it, const T *it_last) { TFX_ASSERT(it >= data && it < data + current_size && it_last > it && it_last <= data + current_size); const ptrdiff_t count = it_last - it; const ptrdiff_t off = it - data; memmove(data + off, data + off + count, ((size_t)current_size - (size_t)off - count) * sizeof(T)); current_size -= (tfxU32)count; return data + off; }
+	inline T *erase_unsorted(const T *it) { TFX_ASSERT(it >= data && it < data + current_size);  const ptrdiff_t off = it - data; if (it < data + current_size - 1) memcpy(data + off, data + current_size - 1, sizeof(T)); current_size--; return data + off; }
+	inline T *insert(const T *it, const T &v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = it - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); memcpy(data + off, &v, sizeof(T)); current_size++; return data + off; }
+	inline T *insert_after(const T *it, const T &v) { TFX_ASSERT(it >= data && it <= data + current_size); const ptrdiff_t off = (it + 1) - data; if (current_size == capacity) reserve(_grow_capacity(current_size + 1)); if (off < (ptrdiff_t)current_size) memmove(data + off + 1, data + off, ((size_t)current_size - (size_t)off) * sizeof(T)); memcpy(data + off, &v, sizeof(T)); current_size++; return data + off; }
 	inline bool				contains(const T &v) const { const T *_data = data;  const T *data_end = data + current_size; while (_data < data_end) if (*_data++ == v) return true; return false; }
-	inline T				*find(const T &v) { T *_data = data;  const T *data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
-	inline const T			*find(const T &v) const { const T *_data = data;  const T *data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
+	inline T *find(const T &v) { T *_data = data;  const T *data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
+	inline const T *find(const T &v) const { const T *_data = data;  const T *data_end = data + current_size; while (_data < data_end) if (*_data == v) break; else ++_data; return _data; }
 	inline bool				find_erase(const T &v) { const T *it = find(v); if (it < data + current_size) { erase(it); return true; } return false; }
 	inline bool				find_erase_unsorted(const T &v) { const T *it = find(v); if (it < data + current_size) { erase_unsorted(it); return true; } return false; }
 	inline tfxU32			index_from_ptr(const T *it) const { TFX_ASSERT(it >= data && it < data + current_size); const ptrdiff_t off = it - data; return (tfxU32)off; }
@@ -3066,7 +3073,7 @@ struct tfx_buffer_t {
 	tfxU32 alignment;
 	void *data;
 
-	inline				tfx_buffer_t() {  struct_size = current_size = capacity = alignment = 0; data = nullptr; }
+	inline				tfx_buffer_t() { struct_size = current_size = capacity = alignment = 0; data = nullptr; }
 	inline void         free() { if (data) { current_size = capacity = alignment = 0; tfxFREE(data); data = nullptr; } }
 	inline void         clear() { if (data) { current_size = 0; } }
 	inline void			reserve(tfxU32 new_capacity) {
@@ -3075,8 +3082,7 @@ struct tfx_buffer_t {
 		void *new_data;
 		if (alignment != 0) {
 			new_data = tfxALLOCATE_ALIGNED((size_t)new_capacity * struct_size, alignment);
-		}
-		else {
+		} else {
 			new_data = tfxREALLOCATE(data, (size_t)new_capacity * struct_size);
 		}
 		TFX_ASSERT(new_data);    //Unable to allocate memory. todo: better handling
@@ -3126,7 +3132,6 @@ struct tfx_storage_map_t {
 	void(*remove_callback)(T &item) = nullptr;
 
 	tfx_storage_map_t() {}
-	tfx_storage_map_t(const char *map_tracker, const char *data_tracker) : map(tfxCONSTRUCTOR_VEC_INIT2(map_tracker)), data(tfxCONSTRUCTOR_VEC_INIT2(data_tracker)) {}
 
 	inline void reserve(tfxU32 size) {
 		if (size > data.capacity) {
@@ -3318,8 +3323,7 @@ struct tfx_storage_map_t {
 			{
 				first = ++mid;
 				count -= count2 + 1;
-			}
-			else
+			} else
 			{
 				count = count2;
 			}
@@ -3340,11 +3344,6 @@ struct tfx_storage_map_t {
 #ifndef tfxMT_STACK_SIZE
 #define tfxMT_STACK_SIZE tfxMegabyte(4)
 #endif
-
-inline tfxU32 tfxIsPowerOf2(tfxU32 v)
-{
-	return ((v & ~(v - 1)) == v);
-}
 
 //Used in tfx_soa_buffer_t to store pointers to arrays inside a struct of arrays
 struct tfx_soa_data_t {
@@ -3477,8 +3476,7 @@ inline bool tfx__grow_soa_arrays(tfx_soa_buffer_t *buffer, tfxU32 first_new_inde
 			if ((buffer->start_index + buffer->current_size - 1) > buffer->capacity) {
 				memcpy((char *)new_data + running_offset, (char *)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 				memcpy((char *)new_data + (capacity - start_index) + running_offset, (char *)buffer->array_ptrs[i].ptr, (size_t)(start_index));
-			}
-			else {
+			} else {
 				memcpy((char *)new_data + running_offset, (char *)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 			}
 			running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
@@ -3636,8 +3634,7 @@ inline void tfx__trim_soa_buffer(tfx_soa_buffer_t *buffer) {
 		if ((buffer->start_index + buffer->current_size - 1) > buffer->capacity) {
 			memcpy((char *)new_data + running_offset, (char *)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 			memcpy((char *)new_data + (capacity - start_index) + running_offset, (char *)buffer->array_ptrs[i].ptr, (size_t)(start_index));
-		}
-		else {
+		} else {
 			memcpy((char *)new_data + running_offset, (char *)buffer->array_ptrs[i].ptr + start_index, (size_t)(capacity - start_index));
 		}
 		running_offset += buffer->array_ptrs[i].unit_size * new_capacity;
@@ -3780,16 +3777,14 @@ struct tfx_bucket_array_t {
 					end2_pushed = false;
 					bucket_list[current_insert_bucket]->data.push_front(end_element);
 					end_pushed = true;
-				}
-				else {
+				} else {
 					end_element = bucket_list[current_insert_bucket]->data.pop_back();
 					end_pushed = false;
 					bucket_list[current_insert_bucket]->data.push_front(end_element2);
 					end2_pushed = true;
 				}
 				alternator = alternator ^ 1;
-			}
-			else {
+			} else {
 				bucket_list[current_insert_bucket]->data.push_front(alternator == 0 ? end_element : end_element2);
 				end_pushed = true;
 				end2_pushed = true;
@@ -3798,8 +3793,7 @@ struct tfx_bucket_array_t {
 		}
 		if (!end_pushed || !end2_pushed) {
 			push_back(!end_pushed ? end_element : end_element2);
-		}
-		else {
+		} else {
 			current_size++;
 		}
 		return &bucket_list[insert_bucket]->data[element_index];
@@ -3984,7 +3978,7 @@ struct tfx_stream_t {
 			memcpy(new_data, data, (tfxU64)size * sizeof(char));
 			tfxFREE(data);
 		}
-		data = new_data; 
+		data = new_data;
 		capacity = new_capacity;
 	}
 	inline void         Resize(tfxU64 new_size) {
@@ -4012,6 +4006,24 @@ tfxAPI_EDITOR inline void tfx_FreeStream(tfx_stream stream) {
 	tfxFREE(stream);
 }
 
+#else
+
+typedef struct tfx_str_s tfx_str_t;
+typedef struct tfx_buffer_s stf_buffer_t;
+typedef struct tfx_storage_map_s tfx_storage_map_t;
+typedef struct tfx_soa_data_s tfx_soa_data_t;
+typedef struct tfx_soa_buffer_s tfx_soa_buffer_t;
+typedef struct tfx_bucket_s tfx_bucket_t;
+typedef struct tfx_bucket_array_s tfx_bucket_array_t;
+typedef struct tfx_line_s tfx_line_t;
+
+#endif	//__cplusplus
+
+inline tfxU32 tfxIsPowerOf2(tfxU32 v)
+{
+	return ((v & ~(v - 1)) == v);
+}
+
 //-----------------------------------------------------------
 //Section: Global_Variables
 //-----------------------------------------------------------
@@ -4033,29 +4045,26 @@ extern int tfxNumberOfThreadsInAdditionToMain;
 #include <pthread.h>
 #endif
 
-struct tfx_work_queue_t;
-
-#define tfxWORKQUEUECALLBACK(name) void name(tfx_work_queue_t *queue, void *data)
-typedef tfxWORKQUEUECALLBACK(tfxWorkQueueCallback);
+typedef struct tfx_work_queue_s tfx_work_queue_t;
 
 // Callback function type
-typedef void (*tfx_work_queue_callback)(struct tfx_work_queue_t *queue, void *data);
+typedef void (*tfx_work_queue_callback)(struct tfx_work_queue_s *queue, void *data);
 
-struct tfx_work_queue_entry_t {
+typedef struct tfx_work_queue_entry_s {
 	tfx_work_queue_callback call_back;
 	void *data;
-};
+} tfx_work_queue_entry_t;
 
-struct tfx_work_queue_t {
+typedef struct tfx_work_queue_s {
 	volatile tfx_uint entry_completion_goal;
 	volatile tfx_uint entry_completion_count;
 	volatile int next_read_entry;
 	volatile int next_write_entry;
 	tfx_work_queue_entry_t entries[tfxMAX_QUEUE_ENTRIES];
-};
+} tfx_work_queue_t;
 
 // Platform-specific synchronization wrapper
-struct tfx_sync_t {
+typedef struct tfx_sync_s {
 #ifdef _WIN32
 	CRITICAL_SECTION mutex;
 	CONDITION_VARIABLE empty_condition;
@@ -4065,26 +4074,24 @@ struct tfx_sync_t {
 	pthread_cond_t empty_condition;
 	pthread_cond_t full_condition;
 #endif
-};
+} tfx_sync_t;
 
-struct tfx_queue_processor_t {
+typedef struct tfx_queue_processor_s {
 	tfx_sync_t sync;
 	tfx_uint count;
 	volatile tfx_bool end_all_threads;
 	tfx_work_queue_t *queues[tfxMAX_QUEUES];
-};
+} tfx_queue_processor_t;
 
-struct tfx_data_types_dictionary_t {
-	bool initialised = false;
-	tfx_storage_map_t<tfx_data_type> names_and_types;
-	tfx_data_types_dictionary_t() :
-		names_and_types("Data Types Storage Map", "Data Types Storage Data")
-	{}
-	void Init();
-};
+typedef struct tfx_data_types_dictionary_s {
+	int initialised;
+	void *names_and_types;
+} tfx_data_types_dictionary_t;
+
+tfxAPI_EDITOR void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary);
 
 //Global variables
-struct tfx_storage_t {
+typedef struct tfx_storage_s {
 	tfxU32 memory_pool_count;
 	size_t default_memory_pool_size;
 	size_t memory_pool_sizes[tfxMAX_MEMORY_POOLS];
@@ -4101,7 +4108,7 @@ struct tfx_storage_t {
 	pthread_t threads[tfxMAX_THREADS];
 #endif
 	tfxU32 thread_count;
-};
+} tfx_storage_t;
 
 extern tfx_storage_t *tfxStore;
 extern tfx_allocator *tfxMemoryAllocator;
@@ -4125,7 +4132,7 @@ tfxINTERNAL inline tfxU32 tfx__atomic_increment(volatile tfxU32 *value) {
 #endif
 }
 
-tfxINTERNAL inline bool tfx__atomic_compare_exchange(volatile int *dest, int exchange, int comparand) {
+tfxINTERNAL inline int tfx__atomic_compare_exchange(volatile int *dest, int exchange, int comparand) {
 #ifdef _WIN32
 	return InterlockedCompareExchange((LONG *)dest, exchange, comparand) == comparand;
 #else
@@ -4217,7 +4224,7 @@ tfxINTERNAL inline void tfx__initialise_thread_queues(tfx_queue_processor_t *que
 	queues->count = 0;
 	memset(queues->queues, 0, tfxMAX_QUEUES * sizeof(void *));
 	tfx__sync_init(&queues->sync);
-	queues->end_all_threads = false;
+	queues->end_all_threads = 0;
 }
 
 tfxINTERNAL inline void tfx__cleanup_thread_queues(tfx_queue_processor_t *queues) {
@@ -4239,7 +4246,7 @@ tfxINTERNAL inline tfx_work_queue_t *tfx__get_queue_with_work(tfx_queue_processo
 
 	tfx__sync_unlock(&thread_processor->sync);
 	return queue;
-}
+	}
 
 tfxINTERNAL inline void tfx__push_queue_work(tfx_queue_processor_t *thread_processor, tfx_work_queue_t *queue) {
 	tfx__sync_lock(&thread_processor->sync);
@@ -4267,7 +4274,7 @@ tfxINTERNAL inline tfx_bool tfx__do_next_work_queue(tfx_queue_processor_t *queue
 				entry.call_back(queue, entry.data);
 				tfx__atomic_increment(&queue->entry_completion_count);
 			}
-		}
+	}
 	}
 	return queue_processor->end_all_threads;
 }
@@ -4281,8 +4288,8 @@ tfxINTERNAL inline void tfx__do_next_work_queue_entry(tfx_work_queue_t *queue) {
 			tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
 			entry.call_back(queue, entry.data);
 			tfx__atomic_increment(&queue->entry_completion_count);
-		}
-	}
+}
+}
 }
 
 tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void *data, tfx_work_queue_callback call_back) {
@@ -4295,7 +4302,7 @@ tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void 
 	while (new_entry_to_write == queue->next_read_entry) {        //Not enough room in work queue
 		//We can do this because we're single producer
 		tfx__do_next_work_queue_entry(queue);
-	}
+}
 	queue->entries[queue->next_write_entry].data = data;
 	queue->entries[queue->next_write_entry].call_back = call_back;
 	tfx__atomic_increment(&queue->entry_completion_goal);
@@ -4311,7 +4318,7 @@ tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
 	tfx_work_queue_entry_t entry = { 0 };
 	while (queue->entry_completion_goal != queue->entry_completion_count) {
 		tfx__do_next_work_queue_entry(queue);
-	}
+}
 	queue->entry_completion_count = 0;
 	queue->entry_completion_goal = 0;
 }
@@ -4329,7 +4336,7 @@ inline void *tfx__thread_worker(void *arg) {
 }
 
 // Thread creation helper function
-tfxINTERNAL inline bool tfx__create_worker_thread(tfx_storage_t *storage, int thread_index) {
+tfxINTERNAL inline int tfx__create_worker_thread(tfx_storage_t * storage, int thread_index) {
 #ifdef _WIN32
 	storage->threads[thread_index] = (HANDLE)_beginthreadex(
 		NULL,
@@ -4390,7 +4397,6 @@ tfxAPI inline unsigned int tfx_GetDefaultThreadCount(void) {
 	unsigned int count = tfx_HardwareConcurrency();
 	return count > 1 ? count - 1 : 1;
 }
-
 //-----------------------------------------------------------
 //Section: Vector_Math
 //-----------------------------------------------------------
@@ -4694,7 +4700,7 @@ struct tfx_bounding_box_t {
 };
 
 inline tfx_wide_vec3_t InterpolateWideVec3(tfxWideFloat &tween, tfx_wide_vec3_t &from, tfx_wide_vec3_t &to) {
-	return to * tween + from * (tfxWideSub(tfxWIDEONE, tween));
+	return to * tween + from * (tfxWideSub(tfxWIDEONE.m, tween));
 }
 
 static inline void ScaleVec4xyz(tfx_vec4_t &v, float scalar) {
@@ -5122,7 +5128,6 @@ struct tfx_package_inventory_t {
 	tfx_storage_map_t<tfx_package_entry_info_t> entries;        //The inventory list
 
 	tfx_package_inventory_t() :
-		entries("Inventory Map", "Inventory Data"),
 		magic_number(0),
 		entry_count(0)
 	{}
@@ -5654,8 +5659,7 @@ struct tfx_effect_emitter_info_t {
 		max_radius(0),
 		sprite_sheet_settings_index(0),
 		preview_camera_settings(0),
-		max_life(0),
-		sub_effectors(tfxCONSTRUCTOR_VEC_INIT("sub_effectors"))
+		max_life(0)
 	{ }
 };
 
@@ -6455,7 +6459,6 @@ struct tfx_particle_manager_t {
 		new_particles_count(0),
 		mt_batch_size(512),
 		current_sprite_buffer(0),
-		free_compute_controllers(tfxCONSTRUCTOR_VEC_INIT(pm "free_compute_controllers")),
 		library(nullptr),
 		sort_passes(0),
 		max_frame_length(240.f)
@@ -6531,8 +6534,7 @@ struct tfx_effect_template_t {
 	tfxKey original_effect_hash;
 
 	tfx_effect_template_t() :
-		original_effect_hash(0),
-		paths("Effect template paths map", "Effect template paths data")
+		original_effect_hash(0)
 	{}
 };
 
@@ -8768,5 +8770,4 @@ tfxAPI inline float tfx_GetDistance(float fromx, float fromy, float tox, float t
 	return sqrtf(w * w + h * h);
 }
 
-} //namespace
 #endif

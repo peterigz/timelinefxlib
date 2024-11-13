@@ -1,8 +1,6 @@
 #define TFX_ALLOCATOR_IMPLEMENTATION
 #include "timelinefx.h"
 
-namespace tfx {
-
 #ifdef _WIN32
 #if defined (_MSC_VER) && (_MSC_VER >= 1400) && (defined (_M_IX86) || defined (_M_X64))
 	FILE *tfx__open_file(const char *file_name, const char *mode) {
@@ -31,58 +29,57 @@ namespace tfx {
 		return fopen(file_name, mode);
 	}
 #endif
-}
 
 size_t tfxGetNextPower(size_t n) {
 	return 1ULL << (tfx__scan_reverse(n) + 1);
 }
 
 void tfxAddHostMemoryPool(size_t size) {
-	TFX_ASSERT(tfx::tfxStore->memory_pool_count < 32);    //Reached the max number of memory pools
-	size_t pool_size = tfx::tfxStore->default_memory_pool_size;
+	TFX_ASSERT(tfxStore->memory_pool_count < 32);    //Reached the max number of memory pools
+	size_t pool_size = tfxStore->default_memory_pool_size;
 	if (pool_size <= size) {
 		pool_size = tfxGetNextPower(size);
 	}
 	TFX_PRINT_NOTICE(TFX_NOTICE_COLOR"%s: Ran out of memory, creating a new pool of size %zu. \n", TFX_NOTICE_NAME, pool_size);
-	tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count] = (tfx_pool *)tfxALLOCATE_POOL(pool_size);
-	TFX_ASSERT(tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
-	tfx_AddPool(tfx::tfxMemoryAllocator, (tfx_pool *)tfx::tfxStore->memory_pools[tfx::tfxStore->memory_pool_count], pool_size);
-	tfx::tfxStore->memory_pool_sizes[tfx::tfxStore->memory_pool_count] = pool_size;
-	tfx::tfxStore->memory_pool_count++;
+	tfxStore->memory_pools[tfxStore->memory_pool_count] = (tfx_pool *)tfxALLOCATE_POOL(pool_size);
+	TFX_ASSERT(tfxStore->memory_pools[tfxStore->memory_pool_count]);    //Unable to allocate more memory. Out of memory?
+	tfx_AddPool(tfxMemoryAllocator, (tfx_pool *)tfxStore->memory_pools[tfxStore->memory_pool_count], pool_size);
+	tfxStore->memory_pool_sizes[tfxStore->memory_pool_count] = pool_size;
+	tfxStore->memory_pool_count++;
 }
 
 void *tfxAllocate(size_t size) {
-	void *allocation = tfx_Allocate(tfx::tfxMemoryAllocator, size);
+	void *allocation = tfx_Allocate(tfxMemoryAllocator, size);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
-		allocation = tfx_Allocate(tfx::tfxMemoryAllocator, size);
+		allocation = tfx_Allocate(tfxMemoryAllocator, size);
 		TFX_ASSERT(allocation);    //Unable to allocate even after adding a pool
 	}
 	return allocation;
 }
 
 void *tfxReallocate(void *memory, size_t size) {
-	void *allocation = tfx_Reallocate(tfx::tfxMemoryAllocator, memory, size);
+	void *allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
-		allocation = tfx_Reallocate(tfx::tfxMemoryAllocator, memory, size);
+		allocation = tfx_Reallocate(tfxMemoryAllocator, memory, size);
 		TFX_ASSERT(allocation);    //Unable to allocate even after adding a pool
 	}
 	return allocation;
 }
 
 void *tfxAllocateAligned(size_t size, size_t alignment) {
-	void *allocation = tfx_AllocateAligned(tfx::tfxMemoryAllocator, size, alignment);
+	void *allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 	if (!allocation) {
 		tfxAddHostMemoryPool(size);
-		allocation = tfx_AllocateAligned(tfx::tfxMemoryAllocator, size, alignment);
+		allocation = tfx_AllocateAligned(tfxMemoryAllocator, size, alignment);
 		TFX_ASSERT(allocation);    //Unable to allocate even after adding a pool
 	}
 	return allocation;
 }
 
 tfx_allocator *tfxGetAllocator() {
-	return tfx::tfxMemoryAllocator;
+	return tfxMemoryAllocator;
 }
 
 tfx_bool tfx_SafeCopy(void *dst, void *src, tfx_size size) {
@@ -122,11 +119,9 @@ tfx_bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size) {
 	return 1;
 }
 
-namespace tfx {
-
-	tfx_storage_t *tfx_GetGlobals() {
-		return tfxStore;
-	}
+tfx_storage_t *tfx_GetGlobals() {
+	return tfxStore;
+}
 
 #define tfxNoise2dPermMOD12LoopUnroll(i)    \
     gi0[i] = tfx_perm_mod12[tfx_permutation_table[ii.a[i] + tfx_permutation_table[jj.a[i]]]];    \
@@ -1665,7 +1660,7 @@ float tfx__gamma_correct(float color, float gamma) {
 }
 
 tfxWideFloat tfx__wide_interpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to) {
-	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
+	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE.m, tween);
 	tfxWideFloat to_lerp = tfxWideMul(*to, tween);
 	tfxWideFloat from_lerp = tfxWideMul(*from, one_minus_tween);
 	tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
@@ -2592,20 +2587,20 @@ tfx_vec3_t tfx__random_vector_in_cone(tfx_random_t *random, tfx_vec3_t cone_dire
 void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat velocity_normal_x, tfxWideFloat velocity_normal_y, tfxWideFloat velocity_normal_z, tfxWideFloat cone_angle, tfxWideFloat *random_x, tfxWideFloat *random_y, tfxWideFloat *random_z) {
 	// Convert cone angle to radians
 
-	cone_angle = tfxWideMin(cone_angle, tfx180RadiansWide);
+	cone_angle = tfxWideMin(cone_angle, tfx180RadiansWide.m);
 	// Calculate the minimum z value for the cone
 	tfxWideFloat min_z = tfxWideCos52s(cone_angle);
 
 	tfxWideFloat max_uint = tfxWideSetSingle((float)UINT32_MAX);
 	// Randomly sample z in [min_z, 1]
 	tfxWideFloat z = tfxWideAdd(tfxWideDiv(tfx__wide_seedgen(seed), max_uint), tfxWideSetSingle(0.5f));
-	z = tfxWideSub(tfxWIDEONE, tfxWideMul(tfxWideSub(tfxWIDEONE, min_z), z));
+	z = tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideSub(tfxWIDEONE.m, min_z), z));
 
 	// Randomly sample ϕ in [0, 2π)
 	tfxWideFloat phi = tfxWideMul(tfxWideAdd(tfxWideDiv(tfx__wide_seedgen(seed), max_uint), tfxWideSetSingle(0.5f)), tfxWideSetSingle(2.f * tfxPI));
 
 	// Calculate the corresponding x and y for the random point on the unit sphere
-	tfxWideFloat sqrt_one_minus_z_squared = tfxWideSub(tfxWIDEONE, tfxWideMul(z, z));
+	tfxWideFloat sqrt_one_minus_z_squared = tfxWideSub(tfxWIDEONE.m, tfxWideMul(z, z));
 	sqrt_one_minus_z_squared = tfxWideMul(tfxWideRSqrt(sqrt_one_minus_z_squared), sqrt_one_minus_z_squared);
 	tfxWideFloat sin;
 	tfxWideFloat cos;
@@ -2646,9 +2641,9 @@ void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat velocity_norm
 	tfxWideFloat cx, cy, cz;
 	tfx__wide_cross_product(rotation_axis_x, rotation_axis_y, rotation_axis_z, &x, &y, &z, &cx, &cy, &cz);
 	//tfx_vec3_t rotated_vector = random_vector * cos + tfx__cross_product_vec3(&rotation_axis, &random_vector) * sin + rotation_axis * tfx__dot_product_vec3(&rotation_axis, &random_vector) * (1.f - cos);
-	*random_x = tfxWideAdd(tfxWideAdd(tfxWideMul(x, cos), tfxWideMul(cx, sin)), tfxWideMul(tfxWideMul(rotation_axis_x, dot), tfxWideSub(tfxWIDEONE, cos)));
-	*random_y = tfxWideAdd(tfxWideAdd(tfxWideMul(y, cos), tfxWideMul(cy, sin)), tfxWideMul(tfxWideMul(rotation_axis_y, dot), tfxWideSub(tfxWIDEONE, cos)));
-	*random_z = tfxWideAdd(tfxWideAdd(tfxWideMul(z, cos), tfxWideMul(cz, sin)), tfxWideMul(tfxWideMul(rotation_axis_z, dot), tfxWideSub(tfxWIDEONE, cos)));
+	*random_x = tfxWideAdd(tfxWideAdd(tfxWideMul(x, cos), tfxWideMul(cx, sin)), tfxWideMul(tfxWideMul(rotation_axis_x, dot), tfxWideSub(tfxWIDEONE.m, cos)));
+	*random_y = tfxWideAdd(tfxWideAdd(tfxWideMul(y, cos), tfxWideMul(cy, sin)), tfxWideMul(tfxWideMul(rotation_axis_y, dot), tfxWideSub(tfxWIDEONE.m, cos)));
+	*random_z = tfxWideAdd(tfxWideAdd(tfxWideMul(z, cos), tfxWideMul(cz, sin)), tfxWideMul(tfxWideMul(rotation_axis_z, dot), tfxWideSub(tfxWIDEONE.m, cos)));
 }
 
 tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position) {
@@ -5857,7 +5852,10 @@ void tfx__set_library_min_max_data(tfx_library_t *library) {
 	library->graph_min_max[tfxOvertime_direction] = tfx__get_min_max_graph_values(tfxDirectionOvertimePreset);
 }
 
-void tfx_data_types_dictionary_t::Init() {
+void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
+	dictionary->names_and_types = tfxALLOCATE(sizeof(tfx_storage_map_t<tfx_data_type>));
+	memset(dictionary->names_and_types, 0, sizeof(tfx_storage_map_t<tfx_data_type>));
+	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(dictionary->names_and_types);
 	names_and_types.data.reserve(300);
 	names_and_types.map.reserve(300);
 	names_and_types.Insert("name", tfxString);
@@ -6149,7 +6147,7 @@ void tfx_data_types_dictionary_t::Init() {
 	names_and_types.Insert("preview_camera_hide_floor", tfxBool);
 	names_and_types.Insert("preview_attach_effect_to_camera", tfxBool);
 
-	initialised = true;
+	dictionary->initialised = true;
 }
 
 int tfx_ValidateEffectPackage(const char *filename) {
@@ -6392,7 +6390,8 @@ void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *met
 }
 
 void tfx__assign_property_line(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version) {
-	switch (tfxStore->data_types.names_and_types.At((*pair)[0].c_str())) {
+	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(tfxStore->data_types.names_and_types);
+	switch (names_and_types.At((*pair)[0].c_str())) {
 	case tfxUInt64:
 		tfx__assign_effector_property_u64(effect, &(*pair)[0], (tfxU64)strtoull((*pair)[1].c_str(), NULL, 10), file_version);
 		break;
@@ -8431,6 +8430,8 @@ bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_ma
 	const size_t max_line_length = 512;
 	char buffer[max_line_length];
 
+	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(data_types->names_and_types);
+
 	tfx_vector_t<tfx_str256_t> pair;
 	while (fgets(buffer, max_line_length, fp)) {
 		buffer[strcspn(buffer, "\n")] = 0;
@@ -8438,8 +8439,8 @@ bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_ma
 		pair.clear();
 		tfx__split_string_vec(line.start, line.length, &pair, 61);
 		if (pair.size() == 2) {
-			if (data_types->names_and_types.ValidName(pair[0].c_str()), pair[0].Length()) {
-				tfx_data_type t = data_types->names_and_types.At(pair[0].c_str());
+			if (names_and_types.ValidName(pair[0].c_str()), pair[0].Length()) {
+				tfx_data_type t = names_and_types.At(pair[0].c_str());
 				if (t == tfxBool) {
 					tfx__add_data_value_bool(config, pair[0].c_str(), (bool)atoi(pair[1].c_str()));
 				}
@@ -8730,8 +8731,9 @@ tfx_effect_library_stats_t tfx__create_library_stats(tfx_library_t *lib) {
 
 tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager_t *animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 	//TFX_ASSERT(shape_loader);            //Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
-	if (!tfxStore->data_types.initialised)
-		tfxStore->data_types.Init();
+	if (!tfxStore->data_types.initialised) {
+		tfx__initialise_dictionary(&tfxStore->data_types);
+	}
 
 	tfx_package package = tfx__create_package("");
 	tfxErrorFlags error = tfx__load_package_file(filename, package);
@@ -8783,6 +8785,8 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 	tfxKey first_shape_hash = 0;
 	int context = 0;
 
+	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(tfxStore->data_types.names_and_types);
+
 	while (!data->data.EoF()) {
 		tfx_line_t line = data->data.ReadLine();
 		bool context_set = false;
@@ -8821,8 +8825,8 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 			}
 
 			if (context == tfxStartEffectAnimationInfo) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0].c_str())) {
+				if (names_and_types.ValidName(pair[0].c_str())) {
+					switch (names_and_types.At(pair[0].c_str())) {
 					case tfxUint:
 						tfx__assign_sprite_data_metrics_property_u32(&metrics_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
@@ -8841,8 +8845,8 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 				}
 			}
 			else if (context == tfxStartFrameMeta) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0].c_str())) {
+				if (names_and_types.ValidName(pair[0].c_str())) {
+					switch (names_and_types.At(pair[0].c_str())) {
 					case tfxUint:
 						tfx__assign_frame_meta_property_u32(&frame_meta_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
@@ -8857,8 +8861,8 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 				}
 			}
 			else if (context == tfxStartEmitter) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0].c_str())) {
+				if (names_and_types.ValidName(pair[0].c_str())) {
+					switch (names_and_types.At(pair[0].c_str())) {
 					case tfxUint:
 						tfx__assign_animation_emitter_property_u32(&emitter_properties_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()), package->header.file_version);
 						break;
@@ -8996,7 +9000,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data) {
 	if (!tfxStore->data_types.initialised) {
-		tfxStore->data_types.Init();
+		tfx__initialise_dictionary(&tfxStore->data_types);
 	}
 
 	tfx_FreeLibrary(lib);
@@ -9023,6 +9027,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 	}
 
 	tfxKey first_shape_hash = 0;
+
+	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(tfxStore->data_types.names_and_types);
 
 	//You must call tfx_InitialiseTimelineFX() before doing anything!    
 	tmpStack(tfx_effect_emitter_t, effect_stack);
@@ -9105,7 +9111,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 			}
 
 			if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
+				if (names_and_types.ValidName(pair[0].c_str())) {
 					tfx__assign_property_line(&effect_stack.back(), &pair, package->header.file_version);
 				} else {
 					error |= tfxErrorCode_some_data_not_loaded;
@@ -9117,8 +9123,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 					tfx__assign_graph_data(&effect_stack.back(), &pair);
 				}
 			} else if (context == tfxStartStage) {
-				if (tfxStore->data_types.names_and_types.ValidName(pair[0].c_str())) {
-					switch (tfxStore->data_types.names_and_types.At(pair[0].c_str())) {
+				if (names_and_types.ValidName(pair[0].c_str())) {
+					switch (names_and_types.At(pair[0].c_str())) {
 					case tfxUint:
 						tfx__assign_stage_property_u32(&effect_stack.back(), &pair[0], (tfxU32)atoi(pair[1].c_str()));
 						break;
@@ -11307,7 +11313,7 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 			}
 
 			tfxWideArrayi packed;
-			packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_y)));
+			packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_y)));
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			if (!(pm.flags & tfxParticleManagerFlags_unordered)) {    //Predictable
@@ -11546,7 +11552,7 @@ tfx__readbarrier;
 tfxWideArrayi lookup_frame_weight;    \
 lookup_frame_weight.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);    \
 const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->weight.lookup.values, lookup_frame_weight);    \
-tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE);    \
+tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE.m);    \
 current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));    \
 current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm.update_time_wide), velocity_adjuster), age_fraction);    \
 current_velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_y, pm.update_time_wide), velocity_adjuster), age_fraction);    \
@@ -11609,18 +11615,19 @@ velocity_normal_z = tfxWideDiv(velocity_normal_z, l);
 tfxWideInt uid = tfxWideLoadi((tfxWideIntLoader*)&bank.uid[index]);    \
 tfxWideInt seed = tfx__wide_seedgen_base(time_step, uid);    \
 tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);    \
-tfxWideArrayi lookup_motion_randomness = { tfxWideMini(tfxWideConverti(life), motion_randomness_last_frame) };    \
+tfxWideArrayi lookup_motion_randomness;    \
+lookup_motion_randomness.m = tfxWideMini(tfxWideConverti(life), motion_randomness_last_frame);	\
 const tfxWideFloat influence = tfxWideMul(tfxWideMul(motion_randomness_base, global_noise), tfxWideLookupSet(work_entry->graphs->motion_randomness.lookup.values, lookup_motion_randomness));    \
 tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);    \
-tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf), tfxWideMul(tfxWideSetSingle(0.01f), influence));    \
+tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));    \
 tfxWideFloat random_x, random_y, random_z;    \
-tfx__wide_random_vector_in_cone(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, tfxWideMul(tfxDEGREERANGEMR, influence), &random_x, &random_y, &random_z);    \
+tfx__wide_random_vector_in_cone(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, tfxWideMul(tfxDEGREERANGEMR.m, influence), &random_x, &random_y, &random_z);    \
 speed = tfxWideAdd(speed, random_speed);    \
 tfxWideFloat length = tfxWideMul(random_x, random_x);    \
 length = tfxWideAdd(length, tfxWideMul(random_y, random_y));    \
 length = tfxWideAdd(length, tfxWideMul(random_z, random_z));    \
 length = tfxWideMul(tfxWideRSqrt(length), length);    \
-tfxWideFloat length_one = tfxWideDiv(tfxWIDEONE, length);    \
+tfxWideFloat length_one = tfxWideDiv(tfxWIDEONE.m, length);    \
 random_x = tfxWideMul(random_x, length_one);    \
 random_y = tfxWideMul(random_y, length_one);    \
 random_z = tfxWideMul(random_z, length_one);    \
@@ -11646,7 +11653,7 @@ void tfx__control_particle_position_basic_3d(tfx_work_queue_t *queue, void *data
 		tfxControlParticleSampleOverPathLife;
 
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 		tfx__wide_unpack10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
@@ -11711,7 +11718,7 @@ void tfx__control_particle_position_orbital_3d(tfx_work_queue_t *queue, void *da
 		//---
 
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
@@ -11758,7 +11765,7 @@ void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data) {
 		tfx__wide_unpack10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
@@ -11842,7 +11849,7 @@ void tfx__control_particle_orbital_noise_3d(tfx_work_queue_t *queue, void *data)
 		//---
 
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
@@ -11913,7 +11920,7 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 		tfx__wide_unpack10bit(velocity_normal, velocity_normal_x, velocity_normal_y, velocity_normal_z);
 
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
@@ -11930,9 +11937,9 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 		//Non Orbit emission direction
 		//Add the random direction to the current velocity
 		//return current * tween + captured * (1.f - tween);
-		velocity_normal_x = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(velocity_normal_x, tfxWideSub(tfxWIDEONE, time_step_fraction)));
-		velocity_normal_y = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(velocity_normal_y, tfxWideSub(tfxWIDEONE, time_step_fraction)));
-		velocity_normal_z = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(velocity_normal_z, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+		velocity_normal_x = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(velocity_normal_x, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
+		velocity_normal_y = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(velocity_normal_y, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
+		velocity_normal_z = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(velocity_normal_z, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
 		length = tfxWideMul(velocity_normal_x, velocity_normal_x);
 		length = tfxWideAdd(length, tfxWideMul(velocity_normal_y, velocity_normal_y));
 		length = tfxWideAdd(length, tfxWideMul(velocity_normal_z, velocity_normal_z));
@@ -11947,7 +11954,7 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 		tfxWideFloat current_velocity_z = tfxWideMul(velocity_normal_z, velocity_scalar);
 
 		tfxWideInt packed_normal = tfx__wide_pack10bit_unsigned(velocity_normal_x, velocity_normal_y, velocity_normal_z);
-		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi)));
+		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi.m)));
 		tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
 		tfxWideStore(&bank.noise_offset[index], speed);
 
@@ -12008,7 +12015,7 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 		//---
 
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		const tfxWideFloat base_velocity = tfxWideLoad(&bank.base_velocity[index]);
 		const tfxWideFloat base_weight = tfxWideLoad(&bank.base_weight[index]);
@@ -12026,9 +12033,9 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 		tfxWideFloat vx, vy, vz;
 		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 		tfx__wide_unpack10bit(velocity_normal, vx, vy, vz);
-		vx = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(vx, tfxWideSub(tfxWIDEONE, time_step_fraction)));
-		vy = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(vy, tfxWideSub(tfxWIDEONE, time_step_fraction)));
-		vz = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(vz, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+		vx = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(vx, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
+		vy = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(vy, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
+		vz = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(vz, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
 		velocity_normal_x = tfxWideAdd(velocity_normal_x, vx);
 		velocity_normal_y = tfxWideAdd(velocity_normal_y, vy);
 		velocity_normal_z = tfxWideAdd(velocity_normal_z, vz);
@@ -12053,7 +12060,7 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 		tfxWideFloat current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
 		tfxWideFloat current_velocity_z = tfxWideMul(velocity_normal_z, velocity_scalar);
 
-		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi)));
+		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi.m)));
 		tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
 		tfxWideStore(&bank.noise_offset[index], speed);
 
@@ -12154,7 +12161,7 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		tfxWideArrayi lookup_frame;
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
@@ -12375,7 +12382,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		tfxWideFloat velocity_normal_x = tfxWideSetZero;
 		tfxWideFloat velocity_normal_y = tfxWideSetZero;
@@ -12548,7 +12555,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		velocity_normal_y = tfxWideAdd(velocity_normal_y, tfxWideMul(lookup_weight, base_weight));
 		stretch_velocity_x = velocity_normal_x;
 		stretch_velocity_y = velocity_normal_y;
-		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE);
+		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE.m);
 		velocity_normal_x = tfxWideMul(tfxWideMul(tfxWideMul(velocity_normal_x, pm.update_time_wide), velocity_adjuster), age_fraction);
 		velocity_normal_y = tfxWideMul(tfxWideMul(tfxWideMul(velocity_normal_y, pm.update_time_wide), velocity_adjuster), age_fraction);
 
@@ -12574,7 +12581,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfxWideArrayi packed;
-		packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_y)));
+		packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_y)));
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (!(pm.flags & tfxParticleManagerFlags_unordered)) {    //Predictable
@@ -12682,7 +12689,7 @@ void tfx__control_particle_transform_2d(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		if (emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
@@ -12783,7 +12790,7 @@ void tfx__control_particle_spin(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		const tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
 
@@ -12881,7 +12888,7 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 		tfxWideFloat life = tfxWideDiv(age, max_age);
 		life = tfxWideMul(life, max_life);
-		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE);
+		life = tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m);
 
 		const tfxWideFloat base_spin = tfxWideLoad(&bank.base_spin[index]);
 		const tfxWideFloat base_pitch_spin = tfxWideLoad(&bank.base_pitch_spin[index]);
@@ -13017,7 +13024,8 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 		scale_x = tfxWideMul(scale_x, overal_scale);
 		scale_y = tfxWideMul(scale_y, overal_scale);
 
-		tfxWideArrayi packed_scale = { tfx__wide_pack16bit_2sscaled(scale_x, scale_y, packed_scale_amount) };
+		tfxWideArrayi packed_scale; 
+		packed_scale.m = tfx__wide_pack16bit_2sscaled(scale_x, scale_y, packed_scale_amount);
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (pm.flags & tfxParticleManagerFlags_3d_effects) { //Predictable
@@ -13114,7 +13122,8 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 		//----Color changes
 		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
 
-		tfxWideArrayi packed_intensity_life = { tfx__wide_pack16bit_2sscaled(lookup_intensity, life, 128.f) };
+		tfxWideArrayi packed_intensity_life;
+		packed_intensity_life.m = tfx__wide_pack16bit_2sscaled(lookup_intensity, life, 128.f);
         curved_alpha.m = tfx__wide_pack16bit(dissolve_lerp, sharpness);
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
@@ -13203,7 +13212,8 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 			image_frame.m = tfxWideMod(image_frame.m, frames);
 		}
 
-		tfxWideArrayi image_indexes = { tfxWideOri(color_ramp_indexes, tfxWideAddi(tfxWideConverti(image_frame.m), image_start_index)) };
+		tfxWideArrayi image_indexes;
+		image_indexes.m = tfxWideOri(color_ramp_indexes, tfxWideAddi(tfxWideConverti(image_frame.m), image_start_index));
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (pm.flags & tfxParticleManagerFlags_3d_effects) { //Predictable
@@ -16895,7 +16905,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 
 		tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
-		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWIDEONEi, expired));
+		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWIDEONEi.m, expired));
 		tfxWideInt loop_limit = tfxWideEqualsi(single_loop_count, single_shot_limit);
 		tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(tfxWideAndi(single, expired), xor_state_flags_no_spawning), tfxWideSetSinglei(-1));
 		age = tfxWideAnd(age, tfxWideCast(loop_age));
@@ -17779,4 +17789,3 @@ void tfx_SetEffectBaseNoiseOffset(tfx_particle_manager_t *pm, tfxEffectID effect
 	pm->effects[effect_index].noise_base_offset = noise_offset;
 }
 
-}        //Namespace
