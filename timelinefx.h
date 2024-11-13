@@ -1196,30 +1196,10 @@ struct tfx_str512_t;
 #define tfxFREE(memory) free(memory)
 #endif
 
-/*    Functions come in 3 flavours:
-1) INTERNAL where they're only meant for internal use by the library and not for any use outside it. Note that these functions are declared as static.
-2) API where they're meant for access within your games that you're developing
-3) EDITOR where they can be accessed from outside the library but really they're mainly useful for editing the effects such as in in the TimelineFX Editor.
-
-All functions in the library will be marked this way for clarity and naturally the API functions will all be properly documented.
-*/
-//Function marker for any functions meant for external/api use
-#ifdef __cplusplus
-#define tfxAPI extern "C"
-#define tfxAPI_EDITOR extern "C"
-#else
-#define tfxAPI
-#endif    
-
-//Function marker for any functions meant mainly for use by the TimelineFX editor and are related to editing effects
-//For internal functions
-#define tfxINTERNAL static    
-
 //Override this for more layers, although currently the editor is fixed at 4
 #ifndef tfxLAYERS
 #define tfxLAYERS 4
 #endif 
-
 
 /*
 Helper macro to place inside a for loop, for example:
@@ -4543,46 +4523,6 @@ struct tfx_vec4_t {
 	inline void operator-=(float v) { x -= v; y -= v; z -= v; w -= v; }
 };
 
-//Wide simd versions of tfx_vec2_t/3 Can probably get rid of these?
-struct tfx_wide_vec3_t {
-	union {
-		struct { tfxWideFloat x, y, z; };
-		struct { tfxWideFloat pitch, yaw, roll; };
-	};
-
-	tfx_wide_vec3_t() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); z = tfxWideSetSingle(0.f); }
-	tfx_wide_vec3_t(tfxWideFloat _x, tfxWideFloat _y, tfxWideFloat _z) { x = _x; y = _y; z = _z; }
-
-	inline tfx_wide_vec3_t operator+(const tfx_wide_vec3_t &v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v.x), tfxWideAdd(y, v.y), tfxWideAdd(z, v.z)); }
-	inline tfx_wide_vec3_t operator-(const tfx_wide_vec3_t &v) const { return tfx_wide_vec3_t(tfxWideSub(x, v.x), tfxWideSub(y, v.y), tfxWideSub(z, v.z)); }
-	inline tfx_wide_vec3_t operator*(const tfx_wide_vec3_t &v) const { return tfx_wide_vec3_t(tfxWideMul(x, v.x), tfxWideMul(y, v.y), tfxWideMul(z, v.z)); }
-	inline tfx_wide_vec3_t operator/(const tfx_wide_vec3_t &v) const { return tfx_wide_vec3_t(tfxWideDiv(x, v.x), tfxWideDiv(y, v.y), tfxWideDiv(z, v.z)); }
-
-	inline tfx_wide_vec3_t operator-() const { return tfx_wide_vec3_t(tfxWideSub(tfxWideSetSingle(0.f), x), tfxWideSub(tfxWideSetSingle(0.f), y), tfxWideSub(tfxWideSetSingle(0.f), z)); }
-
-	inline void operator-=(const tfx_wide_vec3_t &v) { x = tfxWideSub(x, v.x); y = tfxWideSub(y, v.y); z = tfxWideSub(z, v.z); }
-	inline void operator+=(const tfx_wide_vec3_t &v) { x = tfxWideAdd(x, v.x); y = tfxWideAdd(y, v.y); z = tfxWideAdd(z, v.z); }
-	inline void operator*=(const tfx_wide_vec3_t &v) { x = tfxWideMul(x, v.x); y = tfxWideMul(y, v.y); z = tfxWideMul(z, v.z); }
-	inline void operator/=(const tfx_wide_vec3_t &v) { x = tfxWideDiv(x, v.x); y = tfxWideDiv(y, v.y); z = tfxWideDiv(z, v.z); }
-
-	inline tfx_wide_vec3_t operator+(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec3_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
-	inline tfx_wide_vec3_t operator-(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec3_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
-	inline tfx_wide_vec3_t operator*(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec3_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
-	inline tfx_wide_vec3_t operator/(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec3_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v), tfxWideAdd(z, wide_v)); }
-
-	inline tfx_wide_vec3_t operator+(tfxWideFloat v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
-	inline tfx_wide_vec3_t operator-(tfxWideFloat v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
-	inline tfx_wide_vec3_t operator*(tfxWideFloat v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
-	inline tfx_wide_vec3_t operator/(tfxWideFloat v) const { return tfx_wide_vec3_t(tfxWideAdd(x, v), tfxWideAdd(y, v), tfxWideAdd(z, v)); }
-
-	inline void operator*=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideMul(x, wide_v); y = tfxWideMul(y, wide_v); z = tfxWideMul(z, wide_v); }
-	inline void operator/=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideDiv(x, wide_v); y = tfxWideDiv(y, wide_v); z = tfxWideDiv(z, wide_v); }
-	inline void operator+=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideAdd(x, wide_v); y = tfxWideAdd(y, wide_v); z = tfxWideAdd(z, wide_v); }
-	inline void operator-=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideSub(x, wide_v); y = tfxWideSub(y, wide_v); z = tfxWideSub(z, wide_v); }
-
-	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideAdd(tfxWideMul(y, y), tfxWideMul(z, z))); }
-};
-
 struct tfx_wide_vec2_t {
 	tfxWideFloat x, y;
 
@@ -4619,6 +4559,13 @@ struct tfx_wide_vec2_t {
 	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideMul(y, y)); }
 };
 
+//Very simple 2D Matix
+struct tfx_mat2_t {
+
+	float aa, ab, ba, bb;
+
+};
+
 struct tfx_quaternion_t {
 	float w, x, y, z;
 
@@ -4636,60 +4583,11 @@ struct tfx_quaternion_t {
 
 };
 
-tfxINTERNAL inline void ToQuaternion2d(tfx_quaternion_t *q, float angle) {
-	float half_angle = angle / 2.f;
-	q->w = cosf(half_angle);
-	q->x = 0.f;
-	q->y = 0.f;
-	q->z = sinf(half_angle);
-}
-
-tfxINTERNAL inline tfx_vec2_t RotateVectorQuaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v) {
-	float c = q->w;
-	float s = q->z;
-
-	float c2 = c * c;
-	float s2 = s * s;
-	float sc = 2.f * s * c;
-
-	float rotated_x = c2 * v.x - (sc * v.y + s2 * v.x);
-	float rotated_y = sc * v.x + (c2 * v.y - s2 * v.y);
-
-	return tfx_vec2_t(rotated_x, rotated_y);
-}
-
-tfxINTERNAL inline tfx_vec3_t RotateVectorQuaternion(const tfx_quaternion_t *q, tfx_vec3_t v) {
-	tfx_quaternion_t qv(0, v.x, v.y, v.z);
-	tfx_quaternion_t q_conjugate = tfx_quaternion_t(q->w, -q->x, -q->y, -q->z);
-	tfx_quaternion_t result = *q * qv * q_conjugate;
-	return tfx_vec3_t(result.x, result.y, result.z);
-}
-
-// Normalize the quaternion
-tfxINTERNAL inline tfx_quaternion_t NormalizeQuaternion(tfx_quaternion_t *q) {
-	float len = sqrtf(q->w * q->w + q->x * q->x + q->y * q->y + q->z * q->z);
-	return tfx_quaternion_t(q->w / len, q->x / len, q->y / len, q->z / len);
-}
-
-tfxINTERNAL inline tfx_quaternion_t EulerToQuaternion(float pitch, float yaw, float roll) {
-	// Abbreviations for the various angular functions
-
-	float cr = cosf(pitch * 0.5f);
-	float sr = sinf(pitch * 0.5f);
-	float cp = cosf(yaw * 0.5f);
-	float sp = sinf(yaw * 0.5f);
-	float cy = cosf(roll * 0.5f);
-	float sy = sinf(roll * 0.5f);
-
-	tfx_quaternion_t q;
-	q.w = cr * cp * cy + sr * sp * sy;
-	q.x = sr * cp * cy - cr * sp * sy;
-	q.y = cr * sp * cy + sr * cp * sy;
-	q.z = cr * cp * sy - sr * sp * cy;
-
-	return q;
-}
-
+tfxINTERNAL void tfx__to_quaternion2d(tfx_quaternion_t *q, float angle);
+tfxINTERNAL tfx_vec2_t tfx__rotate_vector_quaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v);
+tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(const tfx_quaternion_t *q, tfx_vec3_t v);
+tfxINTERNAL tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t *q);
+tfxINTERNAL tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t *normalised_dir);
 
@@ -4698,10 +4596,6 @@ struct tfx_bounding_box_t {
 	tfx_vec3_t min_corner; float padding1;
 	tfx_vec3_t max_corner; float padding2;
 };
-
-inline tfx_wide_vec3_t InterpolateWideVec3(tfxWideFloat &tween, tfx_wide_vec3_t &from, tfx_wide_vec3_t &to) {
-	return to * tween + from * (tfxWideSub(tfxWIDEONE.m, tween));
-}
 
 static inline void ScaleVec4xyz(tfx_vec4_t &v, float scalar) {
 	v.x *= scalar;
@@ -4722,34 +4616,18 @@ struct tfx_rgba8_t {
 		};
 		struct { tfxU32 color; };
 	};
-
-	/*
-	tfx_rgba8_t(unsigned char _r, unsigned char _g, unsigned char _b, unsigned char _a) : r(_r), g(_g), b(_b), a(_a) { }
-	tfx_rgba8_t(float _r, float _g, float _b, float _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
-	tfx_rgba8_t(tfxU32 _r, tfxU32 _g, tfxU32 _b, tfxU32 _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
-	tfx_rgba8_t(int _r, int _g, int _b, int _a) : r((char)_r), g((char)_g), b((char)_b), a((char)_a) { }
-	tfx_rgba8_t(tfx_rgba8_t _c, char _a) : r(_c.r), g(_c.g), b(_c.b), a((char)_a) { }
-	*/
 };
 #define tfx_SWIZZLE_RGBA_TO_BGRA(rgba) ((rgba & 0xFF000000) | ((rgba & 0x00FF0000) >> 16) | (rgba & 0x0000FF00) | ((rgba & 0x000000FF) << 16))
 
-struct tfx_rgb_t {
+typedef struct tfx_rgb_s {
 	float r, g, b;
-	/*
-	tfx_rgb_t() { r = g = b = 0.f; }
-	tfx_rgb_t(float _r, float _g, float _b) : r(_r), g(_g), b(_b) { }
-	*/
-};
+} tfx_rgb_t;
 
-struct tfx_hsv_t {
+typedef struct tfx_hsv_s {
 	float h, s, v;
-	/*
-	tfx_hsv_t() { h = s = v = 0.f; }
-	tfx_hsv_t(float _h, float _s, float _v) : h(_h), s(_s), v(_v) { }
-	*/
-};
+} tfx_hsv_t;
 
-struct tfx_float16x4_t {
+typedef struct tfx_float16x4_s {
 	union {
 		struct {
 			tfxU16 x : 16;
@@ -4763,9 +4641,9 @@ struct tfx_float16x4_t {
 		};
 		struct { tfxU64 packed; };
 	};
-};
+} tfx_float16x4_t;
 
-struct tfx_float16x2_t {
+typedef struct tfx_float16x2_s {
 	union {
 		struct {
 			tfxU16 x : 16;
@@ -4773,9 +4651,9 @@ struct tfx_float16x2_t {
 		};
 		struct { tfxU32 packed; };
 	};
-};
+} tfx_float16x2_t;
 
-struct tfx_float8x4_t {
+typedef struct tfx_float8x4_s {
 	union {
 		struct {
 			tfx_byte x : 8;
@@ -4785,7 +4663,7 @@ struct tfx_float8x4_t {
 		};
 		struct { tfxU32 packed; };
 	};
-};
+} tfx_float8x4_t;
 
 const tfxWideFloat one_div_127_wide = tfxWideSetSingle(1 / 127.f);
 const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
@@ -4795,18 +4673,18 @@ const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
 #define tfxPACKED_Z_NORMAL_3D 0x1FF7FFFE
 #define tfxPACKED_Y_NORMAL_2D 32767
 
-struct tfx_rgba_t {
+typedef struct tfx_rgba_s {
 	float r, g, b, a;
-	tfx_rgba_t() { r = g = b = a = 1.f; }
-	tfx_rgba_t(float _r, float _g, float _b, float _a) : r(_r), g(_g), b(_b), a(_a) { }
-	tfx_rgba_t(tfx_rgba8_t c) : r((float)c.r *tfxONE_DIV_255), g((float)c.g *tfxONE_DIV_255), b((float)c.b *tfxONE_DIV_255), a((float)c.a *tfxONE_DIV_255) { }
-};
+}tfx_rgba_t;
 
-struct tfx_mat4_t {
+tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba() { return { 1.f, 1.f, 1.f, 1.f }; }
+tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba_from_rgba8(tfx_rgba8_t c) { return { (float)c.r * tfxONE_DIV_255, (float)c.g * tfxONE_DIV_255, (float)c.b * tfxONE_DIV_255, (float)c.a * tfxONE_DIV_255 }; }
+
+typedef struct tfx_mat4_s {
 
 	tfx_vec4_t v[4];
 
-} TFX_ALIGN_AFFIX(16);
+} tfx_mat4_t TFX_ALIGN_AFFIX(16);
 
 tfxINTERNAL inline void tfx__mat4_set2(tfx_mat4_t *mat, float aa, float ab, float ba, float bb) {
 	mat->v[0].c0 = aa; mat->v[0].c1 = ab;
@@ -4823,65 +4701,6 @@ struct tfx_wide_mat4_t {
 struct tfx_mat3_t {
 
 	tfx_vec3_t v[3];
-
-	/*
-	inline tfx_vec3_t operator*(const tfx_vec3_t &vec) const {
-		return tfx_vec3_t(
-			v[0].x * vec.x + v[1].x * vec.y + v[2].x * vec.z,
-			v[0].y * vec.x + v[1].y * vec.y + v[2].y * vec.z,
-			v[0].z * vec.x + v[1].z * vec.y + v[2].z * vec.z);
-	}
-	*/
-
-};
-
-//Very simple 2D Matix
-struct tfx_mat2_t {
-
-	float aa, ab, ba, bb;
-
-	tfx_mat2_t() :aa(1.f), ab(0.f), ba(0.f), bb(1.f) {}
-
-	void Set(float _aa = 1.f, float _ab = 1.f, float _ba = 1.f, float _bb = 1.f) {
-		aa = _aa;
-		ab = _ab;
-		ba = _ba;
-		bb = _bb;
-	}
-
-	void Transpose() {
-		float abt = ab;
-		ab = ba;
-		ba = abt;
-	}
-
-	void Scale(float s) {
-		aa *= s;
-		ab *= s;
-		ba *= s;
-		bb *= s;
-	}
-
-	tfx_mat2_t Transform(const tfx_mat2_t &m) {
-		tfx_mat2_t r;
-		r.aa = aa * m.aa + ab * m.ba; r.ab = aa * m.ab + ab * m.bb;
-		r.ba = ba * m.aa + bb * m.ba; r.bb = ba * m.ab + bb * m.bb;
-		return r;
-	}
-
-	tfx_mat2_t Transform(const tfx_mat4_t &m) {
-		tfx_mat2_t r;
-		r.aa = aa * m.v[0].x + ab * m.v[1].x; r.ab = aa * m.v[0].y + ab * m.v[1].y;
-		r.ba = ba * m.v[0].x + bb * m.v[1].x; r.bb = ba * m.v[0].y + bb * m.v[1].y;
-		return r;
-	}
-
-	tfx_vec2_t TransformVector(const tfx_vec2_t v) {
-		tfx_vec2_t tv = tfx_vec2_t(0.f, 0.f);
-		tv.x = v.x * aa + v.y * ba;
-		tv.y = v.x * ab + v.y * bb;
-		return tv;
-	}
 
 };
 

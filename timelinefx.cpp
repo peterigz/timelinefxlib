@@ -1049,6 +1049,60 @@ float tfx__dot_product_vec2(const tfx_vec2_t *a, const tfx_vec2_t *b)
 	return (a->x * b->x + a->y * b->y);
 }
 
+void tfx__to_quaternion2d(tfx_quaternion_t *q, float angle) {
+	float half_angle = angle / 2.f;
+	q->w = cosf(half_angle);
+	q->x = 0.f;
+	q->y = 0.f;
+	q->z = sinf(half_angle);
+}
+
+tfx_vec2_t tfx__rotate_vector_quaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v) {
+	float c = q->w;
+	float s = q->z;
+
+	float c2 = c * c;
+	float s2 = s * s;
+	float sc = 2.f * s * c;
+
+	float rotated_x = c2 * v.x - (sc * v.y + s2 * v.x);
+	float rotated_y = sc * v.x + (c2 * v.y - s2 * v.y);
+
+	return tfx_vec2_t(rotated_x, rotated_y);
+}
+
+tfx_vec3_t tfx__rotate_vector_quaternion(const tfx_quaternion_t *q, tfx_vec3_t v) {
+	tfx_quaternion_t qv(0, v.x, v.y, v.z);
+	tfx_quaternion_t q_conjugate = tfx_quaternion_t(q->w, -q->x, -q->y, -q->z);
+	tfx_quaternion_t result = *q * qv * q_conjugate;
+	return tfx_vec3_t(result.x, result.y, result.z);
+}
+
+// Normalize the quaternion
+tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t *q) {
+	float len = sqrtf(q->w * q->w + q->x * q->x + q->y * q->y + q->z * q->z);
+	return tfx_quaternion_t(q->w / len, q->x / len, q->y / len, q->z / len);
+}
+
+tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll) {
+	// Abbreviations for the various angular functions
+
+	float cr = cosf(pitch * 0.5f);
+	float sr = sinf(pitch * 0.5f);
+	float cp = cosf(yaw * 0.5f);
+	float sp = sinf(yaw * 0.5f);
+	float cy = cosf(roll * 0.5f);
+	float sy = sinf(roll * 0.5f);
+
+	tfx_quaternion_t q;
+	q.w = cr * cp * cy + sr * sp * sy;
+	q.x = sr * cp * cy - cr * sp * sy;
+	q.y = cr * sp * cy + sr * cp * sy;
+	q.z = cr * cp * sy - sr * sp * cy;
+
+	return q;
+}
+
 tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle) {
 	float half_angle = angle * .5f;
 	float sin_half_angle = sinf(half_angle);
@@ -1080,7 +1134,7 @@ tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t *normalised_dir) {
 		rotation_axis.z * sin_half_angle     // z
 	);
 
-	return NormalizeQuaternion(&result);
+	return tfx__normalize_quaternion(&result);
 }
 
 tfx_vec3_t tfx__cylinder_surface_normal(float x, float z, float width, float depth) {
@@ -1672,26 +1726,26 @@ float tfx__interpolate_float(float tween, float from, float to) {
 }
 
 void tfx__transform_2d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, tfx_effect_state_t *parent) {
-	ToQuaternion2d(out_q, out_local_rotations->roll);
+	tfx__to_quaternion2d(out_q, out_local_rotations->roll);
 	*out_scale = parent->overal_scale;
 
 	out_rotations->roll = parent->world_rotations.roll + out_local_rotations->roll;
 
 	*out_q = *out_q * parent->rotation;
-	tfx_vec2_t rotatevec = RotateVectorQuaternion2d(&parent->rotation, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
+	tfx_vec2_t rotatevec = tfx__rotate_vector_quaternion2d(&parent->rotation, tfx_vec2_t(out_local_position->x + out_translation->x, out_local_position->y + out_translation->y));
 
 	*out_position = parent->world_position.xy() + rotatevec * parent->overal_scale;
 }
 
 void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_effect_state_t *parent) {
-	*out_q = EulerToQuaternion(out_local_rotations->pitch, out_local_rotations->yaw, out_local_rotations->roll);
+	*out_q = tfx__euler_to_quaternion(out_local_rotations->pitch, out_local_rotations->yaw, out_local_rotations->roll);
 	*out_scale = parent->overal_scale;
 
 	*out_rotations = parent->world_rotations + *out_local_rotations;
 
 	*out_q = *out_q * parent->rotation;
 	tfx_vec3_t translated_vec = *out_local_position + *out_translation;
-	tfx_vec3_t rotatevec = RotateVectorQuaternion(&parent->rotation, translated_vec);
+	tfx_vec3_t rotatevec = tfx__rotate_vector_quaternion(&parent->rotation, translated_vec);
 
 	*out_position = parent->world_position + rotatevec;
 }
@@ -2753,7 +2807,7 @@ tfx_quaternion_t tfx__get_path_rotation_2d(tfx_random_t *random, float range, fl
 	range *= .5f;
 	float v = tfx_RandomRangeFromTo(random, -range, range) + angle;
 	tfx_quaternion_t quaternion;
-	ToQuaternion2d(&quaternion, v);
+	tfx__to_quaternion2d(&quaternion, v);
 	return quaternion;
 }
 
@@ -13898,11 +13952,11 @@ void tfx__update_effect(tfx_particle_manager_t *pm, tfxU32 index, tfxU32 parent_
 			effect.world_position += properties.emitter_handle * effect.overal_scale;
 			if (effect.property_flags & tfxEmitterPropertyFlags_effect_is_3d) {
 				effect.world_rotations = effect.local_rotations;
-				effect.rotation = EulerToQuaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
+				effect.rotation = tfx__euler_to_quaternion(effect.local_rotations.pitch, effect.local_rotations.yaw, effect.local_rotations.roll);
 			}
 			else {
 				effect.world_rotations.roll = effect.local_rotations.roll;
-				ToQuaternion2d(&effect.rotation, effect.local_rotations.roll);
+				tfx__to_quaternion2d(&effect.rotation, effect.local_rotations.roll);
 			}
 		}
 
@@ -14846,7 +14900,7 @@ void tfx__spawn_particle_point_2d(tfx_work_queue_t *queue, void *data) {
 				local_position_y = lerp_position.y;
 			}
 			else {
-				tfx_vec2_t rotvec = RotateVectorQuaternion2d(&emitter.rotation, -emitter.handle.xy());
+				tfx_vec2_t rotvec = tfx__rotate_vector_quaternion2d(&emitter.rotation, -emitter.handle.xy());
 				local_position_x = rotvec.x + lerp_position.x;
 				local_position_y = rotvec.y + lerp_position.y;
 			}
@@ -14883,7 +14937,7 @@ void tfx__spawn_particle_point_3d(tfx_work_queue_t *queue, void *data) {
 				local_position_z = lerp_position.z;
 			}
 			else {
-				tfx_vec3_t rotvec = RotateVectorQuaternion(&emitter.rotation, emitter.handle);
+				tfx_vec3_t rotvec = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
 				local_position_x = rotvec.x + lerp_position.x;
 				local_position_y = rotvec.y + lerp_position.y;
 				local_position_z = rotvec.z + lerp_position.z;
@@ -14948,7 +15002,7 @@ void tfx__spawn_particle_other_emitter_3d(tfx_work_queue_t *queue, void *data) {
 				local_position_z = lerp_position_z;
 			}
 			else {
-				tfx_vec3_t rotvec = RotateVectorQuaternion(&emitter.rotation, emitter.handle);
+				tfx_vec3_t rotvec = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
 				local_position_x = rotvec.x + lerp_position_x;
 				local_position_y = rotvec.y + lerp_position_y;
 				local_position_z = rotvec.z + lerp_position_z;
@@ -15009,7 +15063,7 @@ void tfx__spawn_particle_other_emitter_2d(tfx_work_queue_t *queue, void *data) {
 				local_position_y = lerp_position_y;
 			}
 			else {
-				tfx_vec2_t rotvec = RotateVectorQuaternion2d(&emitter.rotation, { emitter.handle.x, emitter.handle.y });
+				tfx_vec2_t rotvec = tfx__rotate_vector_quaternion2d(&emitter.rotation, { emitter.handle.x, emitter.handle.y });
 				local_position_x = rotvec.x + lerp_position_x;
 				local_position_y = rotvec.y + lerp_position_y;
 			}
@@ -15065,7 +15119,7 @@ void tfx__spawn_particle_line_2d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position) && !(emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
 			tfx_vec2_t lerp_position = tfx__interpolate_vec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
-			tfx_vec2_t pos = RotateVectorQuaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
+			tfx_vec2_t pos = tfx__rotate_vector_quaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 		}
@@ -15129,7 +15183,7 @@ void tfx__spawn_particle_line_3d(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position) && !(emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal)) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = RotateVectorQuaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
@@ -15308,7 +15362,7 @@ void tfx__spawn_particle_area_2d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec2_t lerp_position = tfx__interpolate_vec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
-			tfx_vec2_t pos = RotateVectorQuaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
+			tfx_vec2_t pos = tfx__rotate_vector_quaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 		}
@@ -15584,7 +15638,7 @@ void tfx__spawn_particle_area_3d(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = RotateVectorQuaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
@@ -15670,7 +15724,7 @@ void tfx__spawn_particle_ellipse_2d(tfx_work_queue_t *queue, void *data) {
 		//----TForm and Emission
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec2_t lerp_position = tfx__interpolate_vec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
-			tfx_vec2_t pos = RotateVectorQuaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
+			tfx_vec2_t pos = tfx__rotate_vector_quaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 		}
@@ -15879,7 +15933,7 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 			tfx_quaternion_t q = tfx__unpack8bit_quaternion(emitter.path_quaternions[qi].quaternion);
 			entry->particle_data->quaternion[index] = emitter.path_quaternions[qi].quaternion;
 			tfx_vec2_t rp = { local_position_x, local_position_y };
-			rp = RotateVectorQuaternion2d(&q, rp);
+			rp = tfx__rotate_vector_quaternion2d(&q, rp);
 			local_position_x = rp.x;
 			local_position_y = rp.y;
 			emitter.last_path_index++;
@@ -15891,13 +15945,13 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec2_t lerp_position = tfx__interpolate_vec2(tween, emitter.captured_position.xy(), emitter.world_position.xy());
 			tfx_vec2_t position_plus_handle = tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy();
-			tfx_vec2_t pos = RotateVectorQuaternion2d(&emitter.rotation, position_plus_handle);
+			tfx_vec2_t pos = tfx__rotate_vector_quaternion2d(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			if (properties.emission_direction == tfxPathGradient) {
 				tfx_quaternion_t offset_quaternion;
-				ToQuaternion2d(&offset_quaternion, emission_direction);
-				tfx_vec2_t rotated_normal = RotateVectorQuaternion2d(&offset_quaternion, velocity_direction);
+				tfx__to_quaternion2d(&offset_quaternion, emission_direction);
+				tfx_vec2_t rotated_normal = tfx__rotate_vector_quaternion2d(&offset_quaternion, velocity_direction);
 				float direction = atan2f(rotated_normal.y, rotated_normal.x);
 				if (range != 0.f) {
 					direction = tfx_RandomRangeFromTo(&random, -range, range) + direction;
@@ -15907,8 +15961,8 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 		}
 		else if (properties.emission_direction == tfxPathGradient) {
 			tfx_quaternion_t offset_quaternion;
-			ToQuaternion2d(&offset_quaternion, emission_direction);
-			tfx_vec2_t rotated_normal = RotateVectorQuaternion2d(&offset_quaternion, velocity_direction);
+			tfx__to_quaternion2d(&offset_quaternion, emission_direction);
+			tfx_vec2_t rotated_normal = tfx__rotate_vector_quaternion2d(&offset_quaternion, velocity_direction);
 			float direction = atan2f(rotated_normal.y, rotated_normal.x);
 			if (range != 0.f) {
 				direction = tfx_RandomRangeFromTo(&random, -range, range) + direction;
@@ -15995,7 +16049,7 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = RotateVectorQuaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
@@ -16037,7 +16091,7 @@ void tfx__spawn_particle_icosphere(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = RotateVectorQuaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
@@ -16231,7 +16285,7 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 			tfx_quaternion_t q = tfx__unpack8bit_quaternion(emitter.path_quaternions[qi].quaternion);
 			entry->particle_data->quaternion[index] = emitter.path_quaternions[qi].quaternion;
 			tfx_vec3_t rp = { local_position_x, local_position_y, local_position_z };
-			rp = RotateVectorQuaternion(&q, rp);
+			rp = tfx__rotate_vector_quaternion(&q, rp);
 			local_position_x = rp.x;
 			local_position_y = rp.y;
 			local_position_z = rp.z;
@@ -16244,14 +16298,14 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = RotateVectorQuaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
 			if (properties.emission_direction == tfxPathGradient) {
-				tfx_quaternion_t offset_quaternion = EulerToQuaternion(emission_yaw, emission_pitch, 0.f);
-				tfx_vec3_t rotated_normal = RotateVectorQuaternion(&offset_quaternion, velocity_direction);
-				rotated_normal = RotateVectorQuaternion(&emitter.rotation, rotated_normal);
+				tfx_quaternion_t offset_quaternion = tfx__euler_to_quaternion(emission_yaw, emission_pitch, 0.f);
+				tfx_vec3_t rotated_normal = tfx__rotate_vector_quaternion(&offset_quaternion, velocity_direction);
+				rotated_normal = tfx__rotate_vector_quaternion(&emitter.rotation, rotated_normal);
 				if (range != 0.f) {
 					rotated_normal = tfx__random_vector_in_cone(&random, rotated_normal, range);
 				}
@@ -16259,8 +16313,8 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 			}
 		}
 		else if (properties.emission_direction == tfxPathGradient) {
-			tfx_quaternion_t offset_quaternion = EulerToQuaternion(emission_yaw, emission_pitch, 0.f);
-			tfx_vec3_t rotated_normal = RotateVectorQuaternion(&offset_quaternion, velocity_direction);
+			tfx_quaternion_t offset_quaternion = tfx__euler_to_quaternion(emission_yaw, emission_pitch, 0.f);
+			tfx_vec3_t rotated_normal = tfx__rotate_vector_quaternion(&offset_quaternion, velocity_direction);
 			if (range != 0.f) {
 				rotated_normal = tfx__random_vector_in_cone(&random, rotated_normal, range);
 			}
@@ -16318,7 +16372,7 @@ void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = RotateVectorQuaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
@@ -16417,7 +16471,7 @@ void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data) {
 		if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
 			tfx_vec3_t lerp_position = tfx__interpolate_vec3(tween, emitter.captured_position, emitter.world_position);
 			tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-			tfx_vec3_t pos = RotateVectorQuaternion(&emitter.rotation, position_plus_handle);
+			tfx_vec3_t pos = tfx__rotate_vector_quaternion(&emitter.rotation, position_plus_handle);
 			local_position_x = lerp_position.x + pos.x * entry->overal_scale;
 			local_position_y = lerp_position.y + pos.y * entry->overal_scale;
 			local_position_z = lerp_position.z + pos.z * entry->overal_scale;
@@ -16601,7 +16655,7 @@ void tfx__spawn_particle_micro_update_2d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		if (line || emitter.property_flags & tfxEmitterPropertyFlags_relative_position) {
-			tfx_vec2_t rotatevec = RotateVectorQuaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
+			tfx_vec2_t rotatevec = tfx__rotate_vector_quaternion2d(&emitter.rotation, tfx_vec2_t(local_position_x, local_position_y) + emitter.handle.xy());
 		}
 
 		if ((angle_settings & tfxAngleSettingFlags_align_roll || angle_settings & tfxAngleSettingFlags_align_with_emission) && !line) {
@@ -16707,7 +16761,7 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 			}
 			else {
 				tfx_vec3_t position_plus_handle = tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle;
-				tfx_vec3_t rotatevec = RotateVectorQuaternion(&emitter.rotation, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle);
+				tfx_vec3_t rotatevec = tfx__rotate_vector_quaternion(&emitter.rotation, tfx_vec3_t(local_position_x, local_position_y, local_position_z) + emitter.handle);
 				world_position = emitter.world_position + rotatevec * entry->overal_scale;
 			}
 			captured_position_x = world_position.x;
@@ -17132,7 +17186,7 @@ void tfx__transform_effector_2d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_r
 		world_rotations->roll = local_rotations->roll;
 	}
 
-	ToQuaternion2d(q, world_rotations->roll);
+	tfx__to_quaternion2d(q, world_rotations->roll);
 }
 
 void tfx__transform_effector_3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_rotations, tfx_vec3_t *world_position, tfx_vec3_t *local_position, tfx_quaternion_t *q, tfx_sprite_transform3d_t *parent, bool relative_position, bool relative_angle) {
@@ -17146,7 +17200,7 @@ void tfx__transform_effector_3d(tfx_vec3_t *world_rotations, tfx_vec3_t *local_r
 		*world_rotations = *local_rotations;
 	}
 
-	*q = EulerToQuaternion(world_rotations->pitch, world_rotations->yaw, world_rotations->roll);
+	*q = tfx__euler_to_quaternion(world_rotations->pitch, world_rotations->yaw, world_rotations->roll);
 }
 
 const tfxU32 tfxPROFILE_COUNT = __COUNTER__;
