@@ -1328,226 +1328,135 @@ tfxINTERNAL inline tfxU64 tfx_Microsecs(void) {
 }
 #endif
 
-//-----------------------------------------------------------
-//Section: XXHash_Implementation
-//-----------------------------------------------------------
-
+// --Pocket_Hasher, converted to c from Stephen Brumme's XXHash code (https://github.com/stbrumme/xxhash) by Peter Rigby
 /*
-	Start of xxHash code that encompasses the following license
-	MIT License
+	MIT License Copyright (c) 2018 Stephan Brumme
+	Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+	The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
+#define tfx__PRIME1 11400714785074694791ULL
+#define tfx__PRIME2 14029467366897019727ULL
+#define tfx__PRIME3 1609587929392839161ULL
+#define tfx__PRIME4 9650029242287828579ULL
+#define tfx__PRIME5 2870177450012600261ULL
 
-	Copyright (c) 2018 Stephan Brumme
+enum { tfx__HASH_MAX_BUFFER_SIZE = 31 + 1 };
 
-	Permission is hereby granted, free of charge, to any person obtaining a copy
-	of this software and associated documentation files (the "Software"),
-	to deal in the Software without restriction, including without limitation
-	the rights to use, copy, modify, merge, publish, distribute, sublicense,
-	and/or sell copies of the Software, and to permit persons to whom the Software
-	is furnished to do so, subject to the following conditions:
+struct tfx_hasher_t {
+	tfxU64      state[4];
+	unsigned char buffer[tfx__HASH_MAX_BUFFER_SIZE];
+	tfxU64      buffer_size;
+	tfxU64      total_length;
+};
 
-	The above copyright notice and this permission notice shall be included
-	in all copies or substantial portions of the Software.
+tfxINTERNAL bool tfx__is_aligned(void *ptr, size_t alignment) {
+	uintptr_t address = (uintptr_t)ptr;
+	return (address % alignment) == 0;
+}
 
-	THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
-	INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-	PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
-	HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-	OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-	SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-/// XXHash (64 bit), based on Yann Collet's descriptions, see http://cyan4973.github.io/xxHash/
-	How to use:
-	uint64_t myseed = 0;
-	XXHash64 myhash(myseed);
-	myhash.add(pointerToSomeBytes,     numberOfBytes);
-	myhash.add(pointerToSomeMoreBytes, numberOfMoreBytes); // call add() as often as you like to ...
-	// and compute hash:
-	uint64_t result = myhash.hash();
-	// or all of the above in one single line:
-	uint64_t result2 = XXHash64::hash(mypointer, numBytes, myseed);
-	Note: my code is NOT endian-aware !
-**/
-class tfxXXHash64
+tfxINTERNAL inline tfxU64 tfx__hash_rotate_left(tfxU64 x, unsigned char bits) {
+	return (x << bits) | (x >> (64 - bits));
+}
+tfxINTERNAL inline tfxU64 tfx__hash_process_single(tfxU64 previous, tfxU64 input) {
+	return tfx__hash_rotate_left(previous + input * tfx__PRIME2, 31) * tfx__PRIME1;
+}
+tfxINTERNAL inline void tfx__hasher_process(const void *data, tfxU64 *state0, tfxU64 *state1, tfxU64 *state2, tfxU64 *state3) {
+	tfxU64 *block = (tfxU64 *)data;
+	tfxU64 blocks[4];
+	memcpy(blocks, data, sizeof(tfxU64) * 4);
+	*state0 = tfx__hash_process_single(*state0, blocks[0]);
+	*state1 = tfx__hash_process_single(*state1, blocks[1]);
+	*state2 = tfx__hash_process_single(*state2, blocks[2]);
+	*state3 = tfx__hash_process_single(*state3, blocks[3]);
+}
+tfxINTERNAL inline bool tfx__hasher_add(tfx_hasher_t *hasher, const void *input, tfxU64 length)
 {
-public:
-	// create new XXHash (64 bit)
-	/** @param seed your seed value, even zero is a valid seed **/
-	explicit tfxXXHash64(uint64_t seed)
+	if (!input || length == 0) return false;
+
+	hasher->total_length += length;
+	unsigned char *data = (unsigned char *)input;
+
+	if (hasher->buffer_size + length < tfx__HASH_MAX_BUFFER_SIZE)
 	{
-		state[0] = seed + Prime1 + Prime2;
-		state[1] = seed + Prime2;
-		state[2] = seed;
-		state[3] = seed - Prime1;
-		bufferSize = 0;
-		totalLength = 0;
-		memset(buffer, 0, MaxBufferSize);
-	}
-
-	/// add a chunk of bytes
-	/** @param  input  pointer to a continuous block of data
-		@param  length number of bytes
-		@return false if parameters are invalid / zero **/
-	bool add(const void *input, uint64_t length)
-	{
-		// no data ?
-		if (!input || length == 0)
-			return false;
-
-		totalLength += length;
-		// byte-wise access
-		const unsigned char *data = (const unsigned char *)input;
-
-		// unprocessed old data plus new data still fit in temporary buffer ?
-		if (bufferSize + length < MaxBufferSize)
-		{
-			// just add new data
-			while (length-- > 0)
-				buffer[bufferSize++] = *data++;
-			return true;
-		}
-
-		// point beyond last byte
-		const unsigned char *stop = data + length;
-		const unsigned char *stopBlock = stop - MaxBufferSize;
-
-		// some data left from previous update ?
-		if (bufferSize > 0)
-		{
-			// make sure temporary buffer is full (16 bytes)
-			while (bufferSize < MaxBufferSize)
-				buffer[bufferSize++] = *data++;
-
-			// process these 32 bytes (4x8)
-			process(buffer, state[0], state[1], state[2], state[3]);
-		}
-
-		// copying state to local variables helps optimizer A LOT
-		uint64_t s0 = state[0], s1 = state[1], s2 = state[2], s3 = state[3];
-		// 32 bytes at once
-		while (data <= stopBlock)
-		{
-			// local variables s0..s3 instead of state[0]..state[3] are much faster
-			process(data, s0, s1, s2, s3);
-			data += 32;
-		}
-		// copy back
-		state[0] = s0; state[1] = s1; state[2] = s2; state[3] = s3;
-
-		// copy remainder to temporary buffer
-		bufferSize = stop - data;
-		for (uint64_t i = 0; i < bufferSize; i++)
-			buffer[i] = data[i];
-
-		// done
+		while (length-- > 0)
+			hasher->buffer[hasher->buffer_size++] = *data++;
 		return true;
 	}
 
-	/// get current hash
-	/** @return 64 bit XXHash **/
-	uint64_t hash() const
+	const unsigned char *stop = data + length;
+	const unsigned char *stopBlock = stop - tfx__HASH_MAX_BUFFER_SIZE;
+
+	if (hasher->buffer_size > 0)
 	{
-		// fold 256 bit state into one single 64 bit value
-		uint64_t result;
-		if (totalLength >= MaxBufferSize)
-		{
-			result = rotateLeft(state[0], 1) +
-				rotateLeft(state[1], 7) +
-				rotateLeft(state[2], 12) +
-				rotateLeft(state[3], 18);
-			result = (result ^ processSingle(0, state[0])) * Prime1 + Prime4;
-			result = (result ^ processSingle(0, state[1])) * Prime1 + Prime4;
-			result = (result ^ processSingle(0, state[2])) * Prime1 + Prime4;
-			result = (result ^ processSingle(0, state[3])) * Prime1 + Prime4;
-		}
-		else
-		{
-			// internal state wasn't set in add(), therefore original seed is still stored in state2
-			result = state[2] + Prime5;
-		}
+		while (hasher->buffer_size < tfx__HASH_MAX_BUFFER_SIZE)
+			hasher->buffer[hasher->buffer_size++] = *data++;
 
-		result += totalLength;
-
-		// process remaining bytes in temporary buffer
-		const unsigned char *data = buffer;
-		// point beyond last byte
-		const unsigned char *stop = data + bufferSize;
-
-		// at least 8 bytes left ? => eat 8 bytes per step
-		for (; data + 8 <= stop; data += 8)
-			result = rotateLeft(result ^ processSingle(0, *(uint64_t *)data), 27) * Prime1 + Prime4;
-
-		// 4 bytes left ? => eat those
-		if (data + 4 <= stop)
-		{
-			result = rotateLeft(result ^ (*(tfxU32 *)data) * Prime1, 23) * Prime2 + Prime3;
-			data += 4;
-		}
-
-		// take care of remaining 0..3 bytes, eat 1 byte per step
-		while (data != stop)
-			result = rotateLeft(result ^ (*data++) * Prime5, 11) * Prime1;
-
-		// mix bits
-		result ^= result >> 33;
-		result *= Prime2;
-		result ^= result >> 29;
-		result *= Prime3;
-		result ^= result >> 32;
-		return result;
+		tfx__hasher_process(hasher->buffer, &hasher->state[0], &hasher->state[1], &hasher->state[2], &hasher->state[3]);
 	}
 
-
-	/// combine constructor, add() and hash() in one static function (C style)
-	/** @param  input  pointer to a continuous block of data
-		@param  length number of bytes
-		@param  seed your seed value, e.g. zero is a valid seed
-		@return 64 bit XXHash **/
-	static uint64_t hash(const void *input, uint64_t length, uint64_t seed)
+	tfxU64 s0 = hasher->state[0], s1 = hasher->state[1], s2 = hasher->state[2], s3 = hasher->state[3];
+	bool test = tfx__is_aligned(&s0, 8);
+	while (data <= stopBlock)
 	{
-		tfxXXHash64 hasher(seed);
-		hasher.add(input, length);
-		return hasher.hash();
+		tfx__hasher_process(data, &s0, &s1, &s2, &s3);
+		data += 32;
+	}
+	hasher->state[0] = s0; hasher->state[1] = s1; hasher->state[2] = s2; hasher->state[3] = s3;
+
+	hasher->buffer_size = stop - data;
+	for (tfxU64 i = 0; i < hasher->buffer_size; i++)
+		hasher->buffer[i] = data[i];
+
+	return true;
+}
+
+tfxINTERNAL inline tfxU64 tfx__get_hash(tfx_hasher_t *hasher)
+{
+	tfxU64 result;
+	if (hasher->total_length >= tfx__HASH_MAX_BUFFER_SIZE)
+	{
+		result = tfx__hash_rotate_left(hasher->state[0], 1) +
+			tfx__hash_rotate_left(hasher->state[1], 7) +
+			tfx__hash_rotate_left(hasher->state[2], 12) +
+			tfx__hash_rotate_left(hasher->state[3], 18);
+		result = (result ^ tfx__hash_process_single(0, hasher->state[0])) * tfx__PRIME1 + tfx__PRIME4;
+		result = (result ^ tfx__hash_process_single(0, hasher->state[1])) * tfx__PRIME1 + tfx__PRIME4;
+		result = (result ^ tfx__hash_process_single(0, hasher->state[2])) * tfx__PRIME1 + tfx__PRIME4;
+		result = (result ^ tfx__hash_process_single(0, hasher->state[3])) * tfx__PRIME1 + tfx__PRIME4;
+	} else
+	{
+		result = hasher->state[2] + tfx__PRIME5;
 	}
 
-private:
-	/// magic constants :-)
-	static const uint64_t Prime1 = 11400714785074694791ULL;
-	static const uint64_t Prime2 = 14029467366897019727ULL;
-	static const uint64_t Prime3 = 1609587929392839161ULL;
-	static const uint64_t Prime4 = 9650029242287828579ULL;
-	static const uint64_t Prime5 = 2870177450012600261ULL;
-
-	/// temporarily store up to 31 bytes between multiple add() calls
-	static const uint64_t MaxBufferSize = 31 + 1;
-
-	uint64_t      state[4];
-	unsigned char buffer[MaxBufferSize];
-	uint64_t      bufferSize;
-	uint64_t      totalLength;
-
-	/// rotate bits, should compile to a single CPU instruction (ROL)
-	static inline uint64_t rotateLeft(uint64_t x, unsigned char bits)
+	result += hasher->total_length;
+	const unsigned char *data = hasher->buffer;
+	const unsigned char *stop = data + hasher->buffer_size;
+	for (; data + 8 <= stop; data += 8)
+		result = tfx__hash_rotate_left(result ^ tfx__hash_process_single(0, *(tfxU64 *)data), 27) * tfx__PRIME1 + tfx__PRIME4;
+	if (data + 4 <= stop)
 	{
-		return (x << bits) | (x >> (64 - bits));
+		result = tfx__hash_rotate_left(result ^ (*(tfxU32 *)data) * tfx__PRIME1, 23) * tfx__PRIME2 + tfx__PRIME3;
+		data += 4;
 	}
+	while (data != stop)
+		result = tfx__hash_rotate_left(result ^ (*data++) * tfx__PRIME5, 11) * tfx__PRIME1;
+	result ^= result >> 33;
+	result *= tfx__PRIME2;
+	result ^= result >> 29;
+	result *= tfx__PRIME3;
+	result ^= result >> 32;
+	return result;
+}
 
-	/// process a single 64 bit value
-	static inline uint64_t processSingle(uint64_t previous, uint64_t input)
-	{
-		return rotateLeft(previous + input * Prime2, 31) * Prime1;
-	}
+tfxAPI_EDITOR inline void tfx__hash_initialise(tfx_hasher_t *hasher, tfxU64 seed) {
+	hasher->state[0] = seed + tfx__PRIME1 + tfx__PRIME2; hasher->state[1] = seed + tfx__PRIME2; hasher->state[2] = seed; hasher->state[3] = seed - tfx__PRIME1; hasher->buffer_size = 0; hasher->total_length = 0; 
+}
 
-	/// process a block of 4x4 bytes, this is the main part of the XXHash32 algorithm
-	static inline void process(const void *data, uint64_t &state0, uint64_t &state1, uint64_t &state2, uint64_t &state3)
-	{
-		const uint64_t *block = (const uint64_t *)data;
-		state0 = processSingle(state0, block[0]);
-		state1 = processSingle(state1, block[1]);
-		state2 = processSingle(state2, block[2]);
-		state3 = processSingle(state3, block[3]);
-	}
-};
-//End of xxHash code
+//The only command you need for the hasher. Just used internally by the hash map.
+tfxAPI_EDITOR inline tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tfxU64 length, tfxU64 seed) {
+	tfx__hash_initialise(hasher, seed); tfx__hasher_add(hasher, input, length); return (tfxKey)tfx__get_hash(hasher); 
+}
+//-- End of Pocket Hasher
 
 //----------------------------------------------------------
 //Section: SIMD_defines
@@ -3211,11 +3120,12 @@ struct tfx_storage_map_t {
 		pair(tfxKey k, tfxU32 i) : key(k), index(i) {}
 	};
 
+	tfx_hasher_t hasher;
 	tfx_vector_t<pair> map;
 	tfx_vector_t<T> data;
 	void(*remove_callback)(T &item) = nullptr;
 
-	tfx_storage_map_t() : map(tfxCONSTRUCTOR_VEC_INIT("Storage Map map")), data(tfxCONSTRUCTOR_VEC_INIT("Storage Map data")) {}
+	tfx_storage_map_t() {}
 	tfx_storage_map_t(const char *map_tracker, const char *data_tracker) : map(tfxCONSTRUCTOR_VEC_INIT2(map_tracker)), data(tfxCONSTRUCTOR_VEC_INIT2(data_tracker)) {}
 
 	inline void reserve(tfxU32 size) {
@@ -3227,14 +3137,14 @@ struct tfx_storage_map_t {
 
 	//Insert a new T value into the storage
 	inline tfxKey Insert(const char *name, const T &value) {
-		tfxKey key = tfxXXHash64::hash(name, strlen(name), 0);
+		tfxKey key = tfx_Hash(&hasher, name, strlen(name), 0);
 		SetIndex(key, value);
 		return key;
 	}
 
 	//Insert a new T value into the storage
 	inline void InsertWithLength(const char *name, tfxU32 length, const T &value) {
-		tfxKey key = tfxXXHash64::hash(name, length, 0);
+		tfxKey key = tfx_Hash(&hasher, name, length, 0);
 		SetIndex(key, value);
 	}
 
@@ -3255,7 +3165,7 @@ struct tfx_storage_map_t {
 	}
 
 	inline tfxKey MakeKey(const char *name) {
-		return tfxXXHash64::hash(name, strlen(name), 0);
+		return tfx_Hash(&hasher, name, strlen(name), 0);
 	}
 
 	inline void FreeAll() {
@@ -3291,7 +3201,7 @@ struct tfx_storage_map_t {
 	//Remove an item from the data. Slow function, 2 memmoves and then the map has to be iterated and indexes reduced by one
 	//to re-align them
 	inline void Remove(const char *name) {
-		tfxKey key = tfxXXHash64::hash(name, strlen(name), 0);
+		tfxKey key = tfx_Hash(&hasher, name, strlen(name), 0);
 		pair *it = LowerBound(key);
 		if (remove_callback)
 			remove_callback(data[it->index]);
@@ -3373,7 +3283,7 @@ struct tfx_storage_map_t {
 	}
 
 	int GetIndex(const char *name, tfxU32 length = 0) {
-		tfxKey key = tfxXXHash64::hash(name, length ? length : strlen(name), 0);
+		tfxKey key = tfx_Hash(&hasher, name, length ? length : strlen(name), 0);
 		pair *it = LowerBound(key);
 		if (it == map.end() || it->key != key)
 			return -1;
@@ -4184,6 +4094,7 @@ struct tfx_storage_t {
 	float circle_path_z[tfxCIRCLENODES];
 	tfx_color_ramp_format color_ramp_format;
 	tfx_queue_processor_t thread_queues;
+	tfx_hasher_t hasher;
 #ifdef _WIN32
 	HANDLE threads[tfxMAX_THREADS];
 #else

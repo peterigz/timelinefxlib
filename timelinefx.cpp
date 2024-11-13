@@ -4654,7 +4654,7 @@ void tfx__update_library_effect_paths(tfx_library_t *library) {
 		tfx_str512_t path;
 		path.Set(tfx_GetEffectInfo(&e)->name.c_str());
 		tfx_GetEffectInfo(&e)->path = path;
-		e.path_hash = tfxXXHash64::hash(path.c_str(), path.Length(), 0);
+		e.path_hash = tfx_Hash(&tfxStore->hasher, path.c_str(), path.Length(), 0);
 		tfx__add_library_path(library, &e, path.c_str(), false);
 	}
 }
@@ -4682,7 +4682,7 @@ void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_
 		tfx_str256_t new_path = tfx__find_new_path_name(library, path);
 		tfx_GetEffectInfo(effect_emitter)->path.Set(new_path.c_str());
 		tfx_GetEffectInfo(effect_emitter)->name = tfx__get_name_from_path(path);
-		effect_emitter->path_hash = tfxXXHash64::hash(new_path.c_str(), new_path.Length(), 0);
+		effect_emitter->path_hash = tfx_Hash(&tfxStore->hasher, new_path.c_str(), new_path.Length(), 0);
 	}
 	tfxKey hash = library->effect_paths.Insert(path, effect_emitter);
 	effect_emitter->path_hash = hash;
@@ -4691,7 +4691,7 @@ void tfx__add_library_path(tfx_library_t *library, tfx_effect_emitter_t *effect_
 		sub_path.Set(path);
 		sub_path.Appendf("/%s", tfx_GetEffectInfo(&sub)->name.c_str());
 		tfx_GetEffectInfo(&sub)->path.Set(sub_path.c_str());
-		sub.path_hash = tfxXXHash64::hash(sub_path.c_str(), sub_path.Length(), 0);
+		sub.path_hash = tfx_Hash(&tfxStore->hasher, sub_path.c_str(), sub_path.Length(), 0);
 		tfx__add_library_path(library, &sub, sub_path.c_str(), skip_existing);
 	}
 }
@@ -5351,7 +5351,7 @@ void tfx__init_library(tfx_library_t *library) {
 	for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
 		ramp.colors[x].color = 0xFFFFFFFF;
 	}
-	tfxKey hash = tfxXXHash64::hash(ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
 	tfxU32 id = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
 	library->color_ramps.color_ramp_ids.Insert(hash, id);
     library->gpu_shapes.list.set_alignment(16);
@@ -7936,7 +7936,7 @@ void tfx__compile_color_overtime(tfx_graph_t *graph, float gamma) {
 }
 
 tfxKey tfx__hash_color_ramp(tfx_color_ramp_t *ramp) {
-	tfxKey hash = tfxXXHash64::hash(ramp->colors, tfxCOLOR_RAMP_WIDTH * sizeof(tfx_rgba8_t), 0);
+	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp->colors, tfxCOLOR_RAMP_WIDTH * sizeof(tfx_rgba8_t), 0);
 	return hash;
 }
 
@@ -8077,7 +8077,7 @@ void tfx__create_color_ramp_bitmaps(tfx_library_t *library) {
 	for (tfx_emitter_attributes_t &a : library->emitter_attributes) {
 		for (int i = 0; i != 2; ++i) {
 			tfx_color_ramp_t &ramp = a.overtime.color_ramps[i];
-			tfxKey hash = tfxXXHash64::hash(ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+			tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
 			if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {	//0 = main color, 1 = color hint
 				a.overtime.color_ramp_bitmap_indexes[i] = library->color_ramps.color_ramp_ids.At(hash);
 			}
@@ -8104,7 +8104,7 @@ void tfx__edit_color_ramp_bitmap(tfx_library_t *library, tfx_overtime_attributes
 }
 
 void tfx__maybe_insert_color_ramp_bitmap(tfx_library_t *library, tfx_overtime_attributes_t *a, tfxU32 ramp_id) {
-	tfxKey hash = tfxXXHash64::hash(a->color_ramps, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+	tfxKey hash = tfx_Hash(&tfxStore->hasher, a->color_ramps, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
 	if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {
 		a->color_ramp_bitmap_indexes[ramp_id] = library->color_ramps.color_ramp_ids.At(hash);
 	} else {
@@ -8114,7 +8114,7 @@ void tfx__maybe_insert_color_ramp_bitmap(tfx_library_t *library, tfx_overtime_at
 }
 
 void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager_t *animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp) {
-	tfxKey hash = tfxXXHash64::hash(ramp->colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
+	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp->colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
 	if (animation_manager->color_ramps.color_ramp_ids.ValidKey(hash)) {
 		animation_manager->emitter_properties[properties_index].color_ramp_index = animation_manager->color_ramps.color_ramp_ids.At(hash);
 	} else {
@@ -8917,7 +8917,7 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 						image_data.image_size = tfx_vec2_t((float)s.width, (float)s.height);
 						image_data.name = s.name;
 						image_data.import_filter = s.import_filter;
-						image_data.image_hash = tfxXXHash64::hash(shape_entry->data.data, shape_entry->file_size, 0);
+						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
 						if (s.image_hash == 0) {
 							s.image_hash = image_data.image_hash;
 						}
@@ -9166,7 +9166,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 						image_data.image_size = tfx_vec2_t((float)s.width, (float)s.height);
 						image_data.name = s.name;
 						image_data.import_filter = s.import_filter;
-						image_data.image_hash = tfxXXHash64::hash(shape_entry->data.data, shape_entry->file_size, 0);
+						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
 						if (s.image_hash == 0) {
 							s.image_hash = image_data.image_hash;
 						}
@@ -10125,7 +10125,7 @@ tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager_t *animation_
 }
 
 tfxAnimationID tfx_AddAnimationInstance(tfx_animation_manager_t *animation_manager, const char *path, tfxU32 start_frame) {
-	tfxKey path_hash = tfxXXHash64::hash(path, strlen(path), 0);
+	tfxKey path_hash = tfx_Hash(&tfxStore->hasher, path, strlen(path), 0);
 	return tfx_AddAnimationInstanceByKey(animation_manager, path_hash, start_frame);
 }
 
@@ -17152,6 +17152,13 @@ void tfx_InitialiseTimelineFXMemory(size_t memory_pool_size) {
 	void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
 	TFX_ASSERT(memory_pool);    //unable to allocate initial memory pool
 	tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
+    tfx_storage_t store{};
+	tfxStore = (tfx_storage_t *)tfx_AllocateAligned(tfxMemoryAllocator, sizeof(tfx_storage_t), 16);
+    memcpy(tfxStore, &store, sizeof(tfx_storage_t));
+	tfxStore->default_memory_pool_size = memory_pool_size;
+	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
+	tfxStore->memory_pool_count = 1;
+	tfx__hash_initialise(&tfxStore->hasher, 0);
 }
 
 bool tfx_InitialiseThreads(tfx_storage_t *storage) {
@@ -17173,16 +17180,8 @@ void tfxEndThread(tfx_work_queue_t *queue, void *data) {
 //max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
 void tfx_InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
 	if (!tfxMemoryAllocator) {
-		void *memory_pool = tfxALLOCATE_POOL(memory_pool_size);
-		TFX_ASSERT(memory_pool);    //unable to allocate initial memory pool
-		tfxMemoryAllocator = tfx_InitialiseAllocatorWithPool(memory_pool, memory_pool_size, &tfxMemoryAllocator);
+		tfx_InitialiseTimelineFXMemory(memory_pool_size);
 	}
-    tfx_storage_t store{};
-	tfxStore = (tfx_storage_t *)tfx_AllocateAligned(tfxMemoryAllocator, sizeof(tfx_storage_t), 16);
-    memcpy(tfxStore, &store, sizeof(tfx_storage_t));
-	tfxStore->default_memory_pool_size = memory_pool_size;
-	tfxStore->memory_pools[0] = (tfx_pool *)((char *)tfx__allocator_first_block(tfxMemoryAllocator) + tfx__POINTER_SIZE);
-	tfxStore->memory_pool_count = 1;
 
 	tfxNumberOfThreadsInAdditionToMain = max_threads = tfxMin(max_threads - 1 < 0 ? 0 : max_threads - 1, (int)tfx_HardwareConcurrency() - 1);
 	lookup_callback = tfx__lookup_fast;
