@@ -18,15 +18,14 @@ All functions in the library will be marked this way for clarity and naturally t
 //Function marker for any functions meant for external/api use
 #ifdef __cplusplus
 #define tfxAPI extern "C"
-#define tfxAPI_EDITOR extern "C"
 #else
 #define tfxAPI 
-#define tfxAPI_EDITOR 
 #endif    
 
 //Function marker for any functions meant mainly for use by the TimelineFX editor and are related to editing effects
 //For internal functions
 #define tfxINTERNAL static    
+#define tfxAPI_EDITOR 
 
 /*
 	Timeline FX C++ library
@@ -320,7 +319,7 @@ extern "C" {
 
 	static inline tfxLONG tfx__compare_and_exchange(volatile tfxLONG *target, tfxLONG value, tfxLONG original) {
 		return __sync_val_compare_and_swap(target, original, value);
-}
+	}
 
 	static inline tfxLONG tfx__exchange(volatile tfxLONG *target, tfxLONG value) {
 		return __sync_lock_test_and_set(target, value);
@@ -1747,19 +1746,21 @@ typedef __m128 tfx128;
 typedef __m128i tfx128i;
 
 typedef union {
-	__m128i m;
 	int a[4];
+	__m128i m;
 } tfx128iArray;
 
 typedef union {
-	__m128i m;
 	tfxU64 a[2];
+	__m128i m;
 } tfx128iArray64;
 
 typedef union {
-	__m128 m;
 	float a[4];
+	__m128 m;
 } tfx128Array;
+
+#define tfx128SetConst(value) {value, value, value, value}
 
 //simd floor function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
 tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 x) {
@@ -1786,18 +1787,18 @@ typedef float32x4_t tfx128;
 typedef int32x4_t tfx128i;
 
 typedef union {
-	tfx128i m;
 	int a[4];
+	tfx128i m;
 } tfx128iArray;
 
 typedef union {
-	tfx128i m;
 	tfxU64 a[2];
+	tfx128i m;
 } tfx128iArray64;
 
 typedef union {
-	tfx128 m;
 	float a[4];
+	tfx128 m;
 } tfx128Array;
 
 #define tfxFloor128 vrndmq_f32
@@ -2725,10 +2726,8 @@ static tfxWideArray tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetConst(1.f);
 #define tfxNEW(type) (type)tfxALLOCATE(sizeof(type##_t))
 #define tfxNEW_ALIGNED(type, alignment) (type)tfxALLOCATE_ALIGNED(sizeof(type##_t), alignment)
 
-typedef struct tfx_stream_t tfx_stream_t;
 typedef struct tfx_package_t tfx_package_t;
 
-tfxMAKE_HANDLE(tfx_stream)
 tfxMAKE_HANDLE(tfx_package)
 
 //-----------------------------------------------------------
@@ -3974,6 +3973,8 @@ struct tfx_stream_t {
 
 };
 
+tfxMAKE_HANDLE(tfx_stream)
+
 tfxAPI_EDITOR inline tfx_stream tfx__create_stream() {
 	tfx_stream_t blank_stream = { 0 };
 	tfx_stream stream = tfxNEW(tfx_stream);
@@ -3988,6 +3989,38 @@ tfxAPI_EDITOR inline void tfx_FreeStream(tfx_stream stream) {
 
 #else
 
+#define tfx_str_(size)	\
+typedef struct tfx_str##size##_s {	\
+	char data[size];	\
+	tfxU32 current_size;	\
+}tfx_str##size##_t
+
+tfx_str_(32);
+tfx_str_(64);
+tfx_str_(128);
+tfx_str_(256);
+tfx_str_(512);
+
+typedef struct tfx_vector_s {
+	tfxU32 current_size;
+	tfxU32 capacity;
+	tfxU32 volatile locked;
+	tfxU32 alignment;
+	void *data;
+} tfx_vector_t;
+
+typedef struct tfx_storage_map_s {
+	struct pair {
+		tfxKey key;
+		tfxU32 index;
+	};
+
+	tfx_hasher_t hasher;
+	tfx_vector_t map;
+	tfx_vector_t data;
+	void(*remove_callback)(void *item);
+} tfx_storage_map_t;
+
 typedef struct tfx_str_s tfx_str_t;
 typedef struct tfx_buffer_s stf_buffer_t;
 typedef struct tfx_storage_map_s tfx_storage_map_t;
@@ -3996,6 +4029,14 @@ typedef struct tfx_soa_buffer_s tfx_soa_buffer_t;
 typedef struct tfx_bucket_s tfx_bucket_t;
 typedef struct tfx_bucket_array_s tfx_bucket_array_t;
 typedef struct tfx_line_s tfx_line_t;
+typedef struct tfx_stream_s {
+	tfxU64 size;
+	tfxU64 capacity;
+	tfxU64 position;
+	char *data;
+} tfx_stream_t;
+
+tfxMAKE_HANDLE(tfx_stream)
 
 #endif	//__cplusplus
 
@@ -4226,7 +4267,7 @@ tfxINTERNAL inline tfx_work_queue_t *tfx__get_queue_with_work(tfx_queue_processo
 
 	tfx__sync_unlock(&thread_processor->sync);
 	return queue;
-	}
+}
 
 tfxINTERNAL inline void tfx__push_queue_work(tfx_queue_processor_t *thread_processor, tfx_work_queue_t *queue) {
 	tfx__sync_lock(&thread_processor->sync);
@@ -4254,7 +4295,7 @@ tfxINTERNAL inline tfx_bool tfx__do_next_work_queue(tfx_queue_processor_t *queue
 				entry.call_back(queue, entry.data);
 				tfx__atomic_increment(&queue->entry_completion_count);
 			}
-	}
+		}
 	}
 	return queue_processor->end_all_threads;
 }
@@ -4268,8 +4309,8 @@ tfxINTERNAL inline void tfx__do_next_work_queue_entry(tfx_work_queue_t *queue) {
 			tfx_work_queue_entry_t entry = queue->entries[original_read_entry];
 			entry.call_back(queue, entry.data);
 			tfx__atomic_increment(&queue->entry_completion_count);
-}
-}
+		}
+	}
 }
 
 tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void *data, tfx_work_queue_callback call_back) {
@@ -4282,7 +4323,7 @@ tfxINTERNAL inline void tfx__add_work_queue_entry(tfx_work_queue_t *queue, void 
 	while (new_entry_to_write == queue->next_read_entry) {        //Not enough room in work queue
 		//We can do this because we're single producer
 		tfx__do_next_work_queue_entry(queue);
-}
+	}
 	queue->entries[queue->next_write_entry].data = data;
 	queue->entries[queue->next_write_entry].call_back = call_back;
 	tfx__atomic_increment(&queue->entry_completion_goal);
@@ -4298,7 +4339,7 @@ tfxINTERNAL inline void tfx__complete_all_work(tfx_work_queue_t *queue) {
 	tfx_work_queue_entry_t entry = { 0 };
 	while (queue->entry_completion_goal != queue->entry_completion_count) {
 		tfx__do_next_work_queue_entry(queue);
-}
+	}
 	queue->entry_completion_count = 0;
 	queue->entry_completion_goal = 0;
 }
@@ -4381,6 +4422,7 @@ tfxAPI inline unsigned int tfx_GetDefaultThreadCount(void) {
 //Section: Vector_Math
 //-----------------------------------------------------------
 
+#ifdef __cplusplus
 //Just the very basic vector types that we need
 struct tfx_vec2_t {
 	float x, y;
@@ -4523,49 +4565,6 @@ struct tfx_vec4_t {
 	inline void operator-=(float v) { x -= v; y -= v; z -= v; w -= v; }
 };
 
-struct tfx_wide_vec2_t {
-	tfxWideFloat x, y;
-
-	tfx_wide_vec2_t() { x = tfxWideSetSingle(0.f); y = tfxWideSetSingle(0.f); }
-	tfx_wide_vec2_t(tfxWideFloat _x, tfxWideFloat _y) { x = _x; y = _y; }
-
-	inline tfx_wide_vec2_t operator+(const tfx_wide_vec2_t &v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v.x), tfxWideAdd(y, v.y)); }
-	inline tfx_wide_vec2_t operator-(const tfx_wide_vec2_t &v) const { return tfx_wide_vec2_t(tfxWideSub(x, v.x), tfxWideSub(y, v.y)); }
-	inline tfx_wide_vec2_t operator*(const tfx_wide_vec2_t &v) const { return tfx_wide_vec2_t(tfxWideMul(x, v.x), tfxWideMul(y, v.y)); }
-	inline tfx_wide_vec2_t operator/(const tfx_wide_vec2_t &v) const { return tfx_wide_vec2_t(tfxWideDiv(x, v.x), tfxWideDiv(y, v.y)); }
-
-	inline tfx_wide_vec2_t operator-() const { return tfx_wide_vec2_t(tfxWideSub(tfxWideSetSingle(0.f), x), tfxWideSub(tfxWideSetSingle(0.f), y)); }
-
-	inline void operator-=(const tfx_wide_vec2_t &v) { x = tfxWideSub(x, v.x); y = tfxWideSub(y, v.y); }
-	inline void operator+=(const tfx_wide_vec2_t &v) { x = tfxWideAdd(x, v.x); y = tfxWideAdd(y, v.y); }
-	inline void operator*=(const tfx_wide_vec2_t &v) { x = tfxWideMul(x, v.x); y = tfxWideMul(y, v.y); }
-	inline void operator/=(const tfx_wide_vec2_t &v) { x = tfxWideDiv(x, v.x); y = tfxWideDiv(y, v.y); }
-
-	inline tfx_wide_vec2_t operator+(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec2_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
-	inline tfx_wide_vec2_t operator-(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec2_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
-	inline tfx_wide_vec2_t operator*(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec2_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
-	inline tfx_wide_vec2_t operator/(float v) const { tfxWideFloat wide_v = tfxWideSetSingle(v); return tfx_wide_vec2_t(tfxWideAdd(x, wide_v), tfxWideAdd(y, wide_v)); }
-
-	inline tfx_wide_vec2_t operator+(tfxWideFloat v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
-	inline tfx_wide_vec2_t operator-(tfxWideFloat v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
-	inline tfx_wide_vec2_t operator*(tfxWideFloat v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
-	inline tfx_wide_vec2_t operator/(tfxWideFloat v) const { return tfx_wide_vec2_t(tfxWideAdd(x, v), tfxWideAdd(y, v)); }
-
-	inline void operator*=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideMul(x, wide_v); y = tfxWideMul(y, wide_v); }
-	inline void operator/=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideDiv(x, wide_v); y = tfxWideDiv(y, wide_v); }
-	inline void operator+=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideAdd(x, wide_v); y = tfxWideAdd(y, wide_v); }
-	inline void operator-=(float v) { tfxWideFloat wide_v = tfxWideSetSingle(v); x = tfxWideSub(x, wide_v); y = tfxWideSub(y, wide_v); }
-
-	inline tfxWideFloat Squared() { return tfxWideAdd(tfxWideMul(x, x), tfxWideMul(y, y)); }
-};
-
-//Very simple 2D Matix
-struct tfx_mat2_t {
-
-	float aa, ab, ba, bb;
-
-};
-
 struct tfx_quaternion_t {
 	float w, x, y, z;
 
@@ -4583,13 +4582,39 @@ struct tfx_quaternion_t {
 
 };
 
-tfxINTERNAL void tfx__to_quaternion2d(tfx_quaternion_t *q, float angle);
-tfxINTERNAL tfx_vec2_t tfx__rotate_vector_quaternion2d(const tfx_quaternion_t *q, const tfx_vec2_t v);
-tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(const tfx_quaternion_t *q, tfx_vec3_t v);
-tfxINTERNAL tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t *q);
+#else
+
+typedef struct tfx_vec2_s {
+	float x, y;
+} tfx_vec2_t;
+
+typedef struct tfx_vec3_s {
+	union {
+		struct { float x, y, z; };
+		struct { float pitch, yaw, roll; };
+	};
+} tfx_vec3_t;
+
+typedef struct tfx_vec4_s {
+	union {
+		struct { float x, y, z, w; };
+		struct { float c0, c1, c2, c3; };
+	};
+} tfx_vec4_t;
+
+typedef struct tfx_quaternion_s {
+	float w, x, y, z;
+} tfx_quaternion_t;
+
+#endif
+
+tfxINTERNAL void tfx__to_quaternion2d(tfx_quaternion_t * q, float angle);
+tfxINTERNAL tfx_vec2_t tfx__rotate_vector_quaternion2d(const tfx_quaternion_t * q, const tfx_vec2_t v);
+tfxAPI_EDITOR tfx_vec3_t tfx__rotate_vector_quaternion(const tfx_quaternion_t * q, tfx_vec3_t v);
+tfxINTERNAL tfx_quaternion_t tfx__normalize_quaternion(tfx_quaternion_t * q);
 tfxINTERNAL tfx_quaternion_t tfx__euler_to_quaternion(float pitch, float yaw, float roll);
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, float z, float angle);
-tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t *normalised_dir);
+tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t * normalised_dir);
 
 //Note, has padding for the sake of alignment on GPU compute shaders
 struct tfx_bounding_box_t {
@@ -4597,16 +4622,10 @@ struct tfx_bounding_box_t {
 	tfx_vec3_t max_corner; float padding2;
 };
 
-static inline void ScaleVec4xyz(tfx_vec4_t &v, float scalar) {
-	v.x *= scalar;
-	v.y *= scalar;
-	v.z *= scalar;
-}
-
 const float tfxONE_DIV_255 = 1 / 255.f;
 const float TFXONE_DIV_511 = 1 / 511.f;
 
-struct tfx_rgba8_t {
+typedef struct tfx_rgba8_s {
 	union {
 		struct {
 			tfxU32 r : 8;
@@ -4616,7 +4635,7 @@ struct tfx_rgba8_t {
 		};
 		struct { tfxU32 color; };
 	};
-};
+} tfx_rgba8_t;
 #define tfx_SWIZZLE_RGBA_TO_BGRA(rgba) ((rgba & 0xFF000000) | ((rgba & 0x00FF0000) >> 16) | (rgba & 0x0000FF00) | ((rgba & 0x000000FF) << 16))
 
 typedef struct tfx_rgb_s {
@@ -4665,9 +4684,9 @@ typedef struct tfx_float8x4_s {
 	};
 } tfx_float8x4_t;
 
-const tfxWideFloat one_div_127_wide = tfxWideSetSingle(1 / 127.f);
-const tfxWideFloat one_div_511_wide = tfxWideSetSingle(1 / 511.f);
-const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
+const tfxWideArray one_div_127_wide = tfxWideSetConst(1 / 127.f);
+const tfxWideArray one_div_511_wide = tfxWideSetConst(1 / 511.f);
+
 #define tfxPACKED_X_NORMAL_3D 0x3FE7FDFF
 #define tfxPACKED_Y_NORMAL_3D 0x1FFFF9FF
 #define tfxPACKED_Z_NORMAL_3D 0x1FF7FFFE
@@ -4675,18 +4694,16 @@ const tfxWideFloat one_div_32k_wide = tfxWideSetSingle(1 / 32767.f);
 
 typedef struct tfx_rgba_s {
 	float r, g, b, a;
-}tfx_rgba_t;
+} tfx_rgba_t;
 
-tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba() { return { 1.f, 1.f, 1.f, 1.f }; }
-tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba_from_rgba8(tfx_rgba8_t c) { return { (float)c.r * tfxONE_DIV_255, (float)c.g * tfxONE_DIV_255, (float)c.b * tfxONE_DIV_255, (float)c.a * tfxONE_DIV_255 }; }
+tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba() { tfx_rgba_t color = { 1.f, 1.f, 1.f, 1.f }; return color; }
+tfxAPI_EDITOR inline tfx_rgba_t tfx__create_rgba_from_rgba8(tfx_rgba8_t c) { tfx_rgba_t color = { (float)c.r * tfxONE_DIV_255, (float)c.g * tfxONE_DIV_255, (float)c.b * tfxONE_DIV_255, (float)c.a * tfxONE_DIV_255 }; return color; }
 
 typedef struct tfx_mat4_s {
-
 	tfx_vec4_t v[4];
-
 } tfx_mat4_t TFX_ALIGN_AFFIX(16);
 
-tfxINTERNAL inline void tfx__mat4_set2(tfx_mat4_t *mat, float aa, float ab, float ba, float bb) {
+tfxINTERNAL inline void tfx__mat4_set2(tfx_mat4_t * mat, float aa, float ab, float ba, float bb) {
 	mat->v[0].c0 = aa; mat->v[0].c1 = ab;
 	mat->v[1].c0 = ba; mat->v[1].c1 = bb;
 }
@@ -4699,9 +4716,7 @@ struct tfx_wide_mat4_t {
 } TFX_ALIGN_AFFIX(16);;
 
 struct tfx_mat3_t {
-
 	tfx_vec3_t v[3];
-
 };
 
 //-----------------------------------------------------------
@@ -4730,19 +4745,19 @@ const float gradZ[] =
 };
 
 #ifdef tfxINTEL
-const tfx128 tfxF3_4 = _mm_set_ps1(1.0f / 3.0f);
-const tfx128 tfxF2_4 = _mm_set_ps1(.366025403f);
-const tfx128 tfxG2_4 = _mm_set_ps1(0.211324865f);
-const tfx128 tfxG2_4x2 = _mm_set_ps1(0.42264973f);
-const tfx128 tfxG3_4 = _mm_set_ps1(1.0f / 6.0f);
-const tfx128 tfxG32_4 = _mm_set_ps1((1.0f / 6.0f) * 2.f);
-const tfx128 tfxG33_4 = _mm_set_ps1((1.0f / 6.0f) * 3.f);
-const tfx128i tfxONE = _mm_set1_epi32(1);
-const tfx128 tfxONEF = _mm_set1_ps(1.f);
-const tfx128 tfxZERO = _mm_set1_ps(0.f);
-const tfx128 tfxTHIRTYTWO = _mm_set1_ps(32.f);
-const tfx128i tfxFF = _mm_set1_epi32(0xFF);
-const tfx128 tfxPSIX = _mm_set_ps1(0.6f);
+const tfx128Array tfxF3_4 = tfx128SetConst(1.0f / 3.0f);
+const tfx128Array tfxF2_4 = tfx128SetConst(.366025403f);
+const tfx128Array tfxG2_4 = tfx128SetConst(0.211324865f);
+const tfx128Array tfxG2_4x2 = tfx128SetConst(0.42264973f);
+const tfx128Array tfxG3_4 = tfx128SetConst(1.0f / 6.0f);
+const tfx128Array tfxG32_4 = tfx128SetConst((1.0f / 6.0f) * 2.f);
+const tfx128Array tfxG33_4 = tfx128SetConst((1.0f / 6.0f) * 3.f);
+const tfx128iArray tfxONE = tfx128SetConst(1);
+const tfx128Array tfxONEF = tfx128SetConst(1.f);
+const tfx128Array tfxZERO = tfx128SetConst(0.f);
+const tfx128Array tfxTHIRTYTWO = tfx128SetConst(32.f);
+const tfx128iArray tfxFF = tfx128SetConst(0xFF);
+const tfx128Array tfxPSIX = tfx128SetConst(0.6f);
 #elif defined(tfxARM)
 const tfx128 tfxF3_4 = vdupq_n_f32(1.0f / 3.0f);
 const tfx128 tfxF2_4 = vdupq_n_f32(.366025403f);
@@ -4857,14 +4872,15 @@ static const uint8_t tfx_perm_mod12[] =
 };
 
 // 4 noise samples using simd
-tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4);
-tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4);
+tfx128Array tfxNoise4_2d(const tfx128Array x4, const tfx128Array y4);
+tfx128Array tfxNoise4_3d(const tfx128Array x4, const tfx128Array y4, const tfx128Array z4);
 
 //-----------------------------------------------------------
 //Section: Profiling
 //-----------------------------------------------------------
 
-struct tfx_profile_stats_t {
+
+typedef struct tfx_profile_stats_s {
 	tfxU64 cycle_high;
 	tfxU64 cycle_low;
 	tfxU64 cycle_average;
@@ -4872,22 +4888,24 @@ struct tfx_profile_stats_t {
 	tfxU64 time_low;
 	tfxU64 time_average;
 	tfxU32 hit_count;
-};
+} tfx_profile_stats_t;
 
-struct tfx_profile_snapshot_t {
-	tfxU32 hit_count = 0;
-	tfxU64 run_time = 0;
-	tfxU64 cycle_count = 0;
-};
+typedef struct tfx_profile_snapshot_s {
+	tfxU32 hit_count;
+	tfxU64 run_time;
+	tfxU64 cycle_count;
+}tfx_profile_snapshot_t;
 
-struct tfx_profile_t {
+typedef struct tfx_profile_s {
 	const char *name;
 	tfx_profile_snapshot_t snapshots[tfxPROFILER_SAMPLES];
-};
+} tfx_profile_t;
 
 extern const tfxU32 tfxPROFILE_COUNT;
 extern tfxU32 tfxCurrentSnapshot;
 extern tfx_profile_t tfxProfileArray[];
+
+#ifdef __cplusplus
 
 struct tfx_profile_tag_t {
 	tfx_profile_t *profile;
@@ -4904,8 +4922,19 @@ struct tfx_profile_tag_t {
 
 };
 
+#else
+
+typedef struct tfx_profile_tag_s {
+	tfx_profile_t *profile;
+	tfx_profile_snapshot_t *snapshot;
+	tfxU64 start_cycles;
+	tfxU64 start_time;
+} tfx_profile_tag_t;
+
+#endif
+
 #ifdef tfxENABLE_PROFILING 
-#define tfxPROFILE tfx_profile_tag_t tfx_tag((tfxU32)__COUNTER__, __FUNCTION__)
+#define tfxPROFILE tfx_profile_tag_t tfx_tag = {(tfxU32)__COUNTER__, __FUNCTION__};
 #else
 #define tfxPROFILE __COUNTER__
 #endif
@@ -4915,51 +4944,59 @@ struct tfx_profile_tag_t {
 //-----------------------------------------------------------
 
 const tfxU32 tfxMAGIC_NUMBER = 559433300;                //'!XFT'
-const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;        //'!VNI'
+const tfxU32 tfxMAGIC_NUMBER_INVENTORY = 559304265;      //'!VNI'
 const tfxU32 tfxFILE_VERSION = 2;
 
-//Basic package manager used for reading/writing effects files
-struct tfx_package_header_t {
-	tfxU32 magic_number;                        //Magic number to confirm file format
-	tfxU32 file_version;                        //The version of the file
-	tfxU32 flags;                                //Any state_flags for the file
-	tfxU32 reserved0;                            //Reserved for future if needed
-	tfxU64 offset_to_inventory;                    //Memory offset for the inventory of files
-	tfxU64 user_data1;                            //Any data you might find useful
-	tfxU64 user_data2;                            //Any data you might find useful
-	tfxU64 reserved3;                            //More reserved space
-	tfxU64 reserved4;                            //More reserved space
-	tfxU64 reserved5;                            //More reserved space
-};
+typedef struct tfx_package_entry_info_t {
+	tfx_str512_t file_name;                     //The name of the file stored in the package
+	tfxU64 offset_from_start_of_file;           //Offset from the start of the file to where the file is located
+	tfxU64 file_size;                           //The size of the file
+	tfx_stream_t data;                          //The file data
+} tfx_package_entry_info_t;
 
-struct tfx_package_entry_info_t {
-	tfx_str512_t file_name;                        //The name of the file stored in the package
-	tfxU64 offset_from_start_of_file = 0;        //Offset from the start of the file to where the file is located
-	tfxU64 file_size = 0;                        //The size of the file
-	tfx_stream_t data;                            //The file data
+#ifdef __cplusplus
 
-	void FreeData();
-};
-
-struct tfx_package_inventory_t {
+typedef struct tfx_package_inventory_t {
 	tfxU32 magic_number;                        //Magic number to confirm format of the Inventory
-	tfxU32 entry_count;                            //Number of files in the inventory
+	tfxU32 entry_count;                         //Number of files in the inventory
 	tfx_storage_map_t<tfx_package_entry_info_t> entries;        //The inventory list
 
 	tfx_package_inventory_t() :
 		magic_number(0),
 		entry_count(0)
 	{}
-};
+} tfx_package_inventory_t;
 
-struct tfx_package_t {
+#else
+typedef struct tfx_package_inventory_t {
+	tfxU32 magic_number;                        //Magic number to confirm format of the Inventory
+	tfxU32 entry_count;                         //Number of files in the inventory
+	tfx_storage_map_t entries;                  //The inventory list
+} tfx_package_inventory_t;
+#endif
+
+//Basic package manager used for reading/writing effects files
+typedef struct tfx_package_header_t {
+	tfxU32 magic_number;                        //Magic number to confirm file format
+	tfxU32 file_version;                        //The version of the file
+	tfxU32 flags;                               //Any state_flags for the file
+	tfxU32 reserved0;                           //Reserved for future if needed
+	tfxU64 offset_to_inventory;                 //Memory offset for the inventory of files
+	tfxU64 user_data1;                          //Any data you might find useful
+	tfxU64 user_data2;                          //Any data you might find useful
+	tfxU64 reserved3;                           //More reserved space
+	tfxU64 reserved4;                           //More reserved space
+	tfxU64 reserved5;                           //More reserved space
+} tfx_package_header_t;
+
+typedef struct tfx_package_t {
 	tfx_stream_t file_path;
 	tfx_package_header_t header;
 	tfx_package_inventory_t inventory;
-	tfxU64 file_size;                        //The total file size of the package, should match file size on disk
+	tfxU64 file_size;                            //The total file size of the package, should match file size on disk
 	tfx_stream file_data;                        //Dump of the data from the package file on disk
 	tfxPackageFlags flags;
-};
+} tfx_package_t;
 
 //------------------------------------------------------------
 //Section: Struct_Types

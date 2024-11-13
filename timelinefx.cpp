@@ -153,13 +153,13 @@ tfx_storage_t *tfx_GetGlobals() {
 	tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 		tfxPROFILE;
 
-		tfx128 s4 = _mm_mul_ps(_mm_add_ps(x4, y4), tfxF2_4);
+		tfx128 s4 = _mm_mul_ps(_mm_add_ps(x4, y4), tfxF2_4.m);
 		tfx128 x4_s4 = _mm_add_ps(x4, s4);
 		tfx128 y4_s4 = _mm_add_ps(y4, s4);
 		tfx128 i = tfxFloor128(x4_s4);
 		tfx128 j = tfxFloor128(y4_s4);
 		tfx128 t = _mm_add_ps(i, j);
-		t = _mm_mul_ps(t, tfxG2_4);
+		t = _mm_mul_ps(t, tfxG2_4.m);
 
 		tfx128 X0 = _mm_sub_ps(i, t);
 		tfx128 Y0 = _mm_sub_ps(j, t);
@@ -168,17 +168,17 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128iArray i1, j1;
 
-		i1.m = _mm_and_si128(tfxONE, _mm_castps_si128(_mm_cmpgt_ps(x0, y0)));
-		j1.m = _mm_and_si128(tfxONE, _mm_castps_si128(_mm_cmpge_ps(y0, x0)));
+		i1.m = _mm_and_si128(tfxONE.m, _mm_castps_si128(_mm_cmpgt_ps(x0, y0)));
+		j1.m = _mm_and_si128(tfxONE.m, _mm_castps_si128(_mm_cmpge_ps(y0, x0)));
 
-		const tfx128 x1 = _mm_add_ps(_mm_sub_ps(x0, _mm_cvtepi32_ps(i1.m)), tfxG2_4);
-		const tfx128 y1 = _mm_add_ps(_mm_sub_ps(y0, _mm_cvtepi32_ps(j1.m)), tfxG2_4);
-		const tfx128 x2 = _mm_add_ps(_mm_sub_ps(x0, _mm_set1_ps(1.f)), tfxG2_4x2);
-		const tfx128 y2 = _mm_add_ps(_mm_sub_ps(y0, _mm_set1_ps(1.f)), tfxG2_4x2);
+		const tfx128 x1 = _mm_add_ps(_mm_sub_ps(x0, _mm_cvtepi32_ps(i1.m)), tfxG2_4.m);
+		const tfx128 y1 = _mm_add_ps(_mm_sub_ps(y0, _mm_cvtepi32_ps(j1.m)), tfxG2_4.m);
+		const tfx128 x2 = _mm_add_ps(_mm_sub_ps(x0, _mm_set1_ps(1.f)), tfxG2_4x2.m);
+		const tfx128 y2 = _mm_add_ps(_mm_sub_ps(y0, _mm_set1_ps(1.f)), tfxG2_4x2.m);
 
 		tfx128iArray ii, jj;
-		ii.m = _mm_and_si128(_mm_cvttps_epi32(i), tfxFF);
-		jj.m = _mm_and_si128(_mm_cvttps_epi32(j), tfxFF);
+		ii.m = _mm_and_si128(_mm_cvttps_epi32(i), tfxFF.m);
+		jj.m = _mm_and_si128(_mm_cvttps_epi32(j), tfxFF.m);
 
 		int gi0[4], gi1[4], gi2[4];
 
@@ -220,7 +220,7 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		// Skew the input space to determine which simplex cell we're in
 		//float s = (v1.x + v1.y + v1.z) * F3; // Very nice and simple skew factor for 3D
-		tfx128 s4 = _mm_mul_ps(_mm_add_ps(x4, _mm_add_ps(y4, z4)), tfxF3_4);
+		tfx128 s4 = _mm_mul_ps(_mm_add_ps(x4, _mm_add_ps(y4, z4)), tfxF3_4.m);
 		tfx128 x4_s4 = _mm_add_ps(x4, s4);
 		tfx128 y4_s4 = _mm_add_ps(y4, s4);
 		tfx128 z4_s4 = _mm_add_ps(z4, s4);
@@ -229,7 +229,7 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfx128 k = tfxFloor128(z4_s4);
 		tfx128 t = _mm_add_ps(i, j);
 		t = _mm_add_ps(t, k);
-		t = _mm_mul_ps(t, tfxG3_4);
+		t = _mm_mul_ps(t, tfxG3_4.m);
 
 		tfx128 X0 = _mm_sub_ps(i, t); // Unskew the cell origin back to (v1.x,v1.y,v1.z) space
 		tfx128 Y0 = _mm_sub_ps(j, t);
@@ -242,9 +242,9 @@ tfx_storage_t *tfx_GetGlobals() {
 		// Determine which simplex we are in.
 		tfx128iArray i1, i2, j1, j2, k1, k2;
 
-		i1.m = _mm_and_si128(tfxONE, _mm_and_si128(_mm_castps_si128(_mm_cmpge_ps(x0, y0)), _mm_castps_si128(_mm_cmpge_ps(x0, z0))));
-		j1.m = _mm_and_si128(tfxONE, _mm_and_si128(_mm_castps_si128(_mm_cmpgt_ps(y0, x0)), _mm_castps_si128(_mm_cmpge_ps(y0, z0))));
-		k1.m = _mm_and_si128(tfxONE, _mm_and_si128(_mm_castps_si128(_mm_cmpgt_ps(z0, x0)), _mm_castps_si128(_mm_cmpgt_ps(z0, y0))));
+		i1.m = _mm_and_si128(tfxONE.m, _mm_and_si128(_mm_castps_si128(_mm_cmpge_ps(x0, y0)), _mm_castps_si128(_mm_cmpge_ps(x0, z0))));
+		j1.m = _mm_and_si128(tfxONE.m, _mm_and_si128(_mm_castps_si128(_mm_cmpgt_ps(y0, x0)), _mm_castps_si128(_mm_cmpge_ps(y0, z0))));
+		k1.m = _mm_and_si128(tfxONE.m, _mm_and_si128(_mm_castps_si128(_mm_cmpgt_ps(z0, x0)), _mm_castps_si128(_mm_cmpgt_ps(z0, y0))));
 
 		//for i2
 		tfx128i yx_xz = _mm_and_si128(_mm_castps_si128(_mm_cmpge_ps(x0, y0)), _mm_castps_si128(_mm_cmplt_ps(x0, z0)));
@@ -258,27 +258,27 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfx128i yz_zx = _mm_and_si128(_mm_castps_si128(_mm_cmplt_ps(y0, z0)), _mm_castps_si128(_mm_cmpge_ps(x0, z0)));
 		tfx128i xz_zy = _mm_and_si128(_mm_castps_si128(_mm_cmplt_ps(x0, z0)), _mm_castps_si128(_mm_cmpge_ps(y0, z0)));
 
-		i2.m = _mm_and_si128(tfxONE, _mm_or_si128(i1.m, _mm_or_si128(yx_xz, zx_xy)));
-		j2.m = _mm_and_si128(tfxONE, _mm_or_si128(j1.m, _mm_or_si128(xy_yz, zy_yx)));
-		k2.m = _mm_and_si128(tfxONE, _mm_or_si128(k1.m, _mm_or_si128(yz_zx, xz_zy)));
+		i2.m = _mm_and_si128(tfxONE.m, _mm_or_si128(i1.m, _mm_or_si128(yx_xz, zx_xy)));
+		j2.m = _mm_and_si128(tfxONE.m, _mm_or_si128(j1.m, _mm_or_si128(xy_yz, zy_yx)));
+		k2.m = _mm_and_si128(tfxONE.m, _mm_or_si128(k1.m, _mm_or_si128(yz_zx, xz_zy)));
 
-		tfx128 x1 = _mm_add_ps(_mm_sub_ps(x0, _mm_cvtepi32_ps(i1.m)), tfxG3_4);
-		tfx128 y1 = _mm_add_ps(_mm_sub_ps(y0, _mm_cvtepi32_ps(j1.m)), tfxG3_4);
-		tfx128 z1 = _mm_add_ps(_mm_sub_ps(z0, _mm_cvtepi32_ps(k1.m)), tfxG3_4);
-		tfx128 x2 = _mm_add_ps(_mm_sub_ps(x0, _mm_cvtepi32_ps(i2.m)), tfxG32_4);
-		tfx128 y2 = _mm_add_ps(_mm_sub_ps(y0, _mm_cvtepi32_ps(j2.m)), tfxG32_4);
-		tfx128 z2 = _mm_add_ps(_mm_sub_ps(z0, _mm_cvtepi32_ps(k2.m)), tfxG32_4);
-		tfx128 x3 = _mm_add_ps(_mm_sub_ps(x0, tfxONEF), tfxG33_4);
-		tfx128 y3 = _mm_add_ps(_mm_sub_ps(y0, tfxONEF), tfxG33_4);
-		tfx128 z3 = _mm_add_ps(_mm_sub_ps(z0, tfxONEF), tfxG33_4);
+		tfx128 x1 = _mm_add_ps(_mm_sub_ps(x0, _mm_cvtepi32_ps(i1.m)), tfxG3_4.m);
+		tfx128 y1 = _mm_add_ps(_mm_sub_ps(y0, _mm_cvtepi32_ps(j1.m)), tfxG3_4.m);
+		tfx128 z1 = _mm_add_ps(_mm_sub_ps(z0, _mm_cvtepi32_ps(k1.m)), tfxG3_4.m);
+		tfx128 x2 = _mm_add_ps(_mm_sub_ps(x0, _mm_cvtepi32_ps(i2.m)), tfxG32_4.m);
+		tfx128 y2 = _mm_add_ps(_mm_sub_ps(y0, _mm_cvtepi32_ps(j2.m)), tfxG32_4.m);
+		tfx128 z2 = _mm_add_ps(_mm_sub_ps(z0, _mm_cvtepi32_ps(k2.m)), tfxG32_4.m);
+		tfx128 x3 = _mm_add_ps(_mm_sub_ps(x0, tfxONEF.m), tfxG33_4.m);
+		tfx128 y3 = _mm_add_ps(_mm_sub_ps(y0, tfxONEF.m), tfxG33_4.m);
+		tfx128 z3 = _mm_add_ps(_mm_sub_ps(z0, tfxONEF.m), tfxG33_4.m);
 
 		// Work out the hashed gradient indices of the four simplex corners
 		tfx128iArray ii;
-		ii.m = _mm_and_si128(_mm_cvttps_epi32(i), tfxFF);
+		ii.m = _mm_and_si128(_mm_cvttps_epi32(i), tfxFF.m);
 		tfx128iArray jj;
-		jj.m = _mm_and_si128(_mm_cvttps_epi32(j), tfxFF);
+		jj.m = _mm_and_si128(_mm_cvttps_epi32(j), tfxFF.m);
 		tfx128iArray kk;
-		kk.m = _mm_and_si128(_mm_cvttps_epi32(k), tfxFF);
+		kk.m = _mm_and_si128(_mm_cvttps_epi32(k), tfxFF.m);
 		tfx128iArray gi0, gi1, gi2, gi3;
 
 		tfxNoise3dPermModLoopUnroll(0);
@@ -286,10 +286,10 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfxNoise3dPermModLoopUnroll(2);
 		tfxNoise3dPermModLoopUnroll(3);
 
-		tfx128 t0 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX, _mm_mul_ps(x0, x0)), _mm_mul_ps(y0, y0)), _mm_mul_ps(z0, z0));
-		tfx128 t1 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX, _mm_mul_ps(x1, x1)), _mm_mul_ps(y1, y1)), _mm_mul_ps(z1, z1));
-		tfx128 t2 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX, _mm_mul_ps(x2, x2)), _mm_mul_ps(y2, y2)), _mm_mul_ps(z2, z2));
-		tfx128 t3 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX, _mm_mul_ps(x3, x3)), _mm_mul_ps(y3, y3)), _mm_mul_ps(z3, z3));
+		tfx128 t0 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX.m, _mm_mul_ps(x0, x0)), _mm_mul_ps(y0, y0)), _mm_mul_ps(z0, z0));
+		tfx128 t1 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX.m, _mm_mul_ps(x1, x1)), _mm_mul_ps(y1, y1)), _mm_mul_ps(z1, z1));
+		tfx128 t2 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX.m, _mm_mul_ps(x2, x2)), _mm_mul_ps(y2, y2)), _mm_mul_ps(z2, z2));
+		tfx128 t3 = _mm_sub_ps(_mm_sub_ps(_mm_sub_ps(tfxPSIX.m, _mm_mul_ps(x3, x3)), _mm_mul_ps(y3, y3)), _mm_mul_ps(z3, z3));
 
 		tfx128 t0q = _mm_mul_ps(t0, t0);
 		t0q = _mm_mul_ps(t0q, t0q);
@@ -314,17 +314,17 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128 cond;
 
-		cond = _mm_cmplt_ps(t0, tfxZERO);
-		n0 = _mm_or_ps(_mm_andnot_ps(cond, n0), _mm_and_ps(cond, tfxZERO));
-		cond = _mm_cmplt_ps(t1, tfxZERO);
-		n1 = _mm_or_ps(_mm_andnot_ps(cond, n1), _mm_and_ps(cond, tfxZERO));
-		cond = _mm_cmplt_ps(t2, tfxZERO);
-		n2 = _mm_or_ps(_mm_andnot_ps(cond, n2), _mm_and_ps(cond, tfxZERO));
-		cond = _mm_cmplt_ps(t3, tfxZERO);
-		n3 = _mm_or_ps(_mm_andnot_ps(cond, n3), _mm_and_ps(cond, tfxZERO));
+		cond = _mm_cmplt_ps(t0, tfxZERO.m);
+		n0 = _mm_or_ps(_mm_andnot_ps(cond, n0), _mm_and_ps(cond, tfxZERO.m));
+		cond = _mm_cmplt_ps(t1, tfxZERO.m);
+		n1 = _mm_or_ps(_mm_andnot_ps(cond, n1), _mm_and_ps(cond, tfxZERO.m));
+		cond = _mm_cmplt_ps(t2, tfxZERO.m);
+		n2 = _mm_or_ps(_mm_andnot_ps(cond, n2), _mm_and_ps(cond, tfxZERO.m));
+		cond = _mm_cmplt_ps(t3, tfxZERO.m);
+		n3 = _mm_or_ps(_mm_andnot_ps(cond, n3), _mm_and_ps(cond, tfxZERO.m));
 
 		tfx128Array result;
-		result.m = _mm_mul_ps(tfxTHIRTYTWO, _mm_add_ps(n0, _mm_add_ps(n1, _mm_add_ps(n2, n3))));
+		result.m = _mm_mul_ps(tfxTHIRTYTWO.m, _mm_add_ps(n0, _mm_add_ps(n1, _mm_add_ps(n2, n3))));
 		return result;
 	}
 
@@ -416,12 +416,12 @@ tfx_storage_t *tfx_GetGlobals() {
 	tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 		tfxPROFILE;
 
-		tfx128 s4 = vmulq_f32(vaddq_f32(x4, y4), tfxF2_4);
+		tfx128 s4 = vmulq_f32(vaddq_f32(x4, y4), tfxF2_4.m);
 		tfx128 x4_s4 = vaddq_f32(x4, s4);
 		tfx128 y4_s4 = vaddq_f32(y4, s4);
 		tfx128 i = tfxFloor128(x4_s4);
 		tfx128 j = tfxFloor128(y4_s4);
-		tfx128 t = vmulq_f32(vaddq_f32(i, j), tfxG2_4);
+		tfx128 t = vmulq_f32(vaddq_f32(i, j), tfxG2_4.m);
 
 		tfx128 X0 = vsubq_f32(i, t);
 		tfx128 Y0 = vsubq_f32(j, t);
@@ -430,17 +430,17 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128iArray i1, j1;
 
-		i1.m = vandq_s32(tfxONE, vreinterpretq_s32_f32(vcgtq_f32(x0, y0)));
-		j1.m = vandq_s32(tfxONE, vreinterpretq_s32_f32(vcgeq_f32(y0, x0)));
+		i1.m = vandq_s32(tfxONE.m, vreinterpretq_s32_f32(vcgtq_f32(x0, y0)));
+		j1.m = vandq_s32(tfxONE.m, vreinterpretq_s32_f32(vcgeq_f32(y0, x0)));
 
-		const tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG2_4);
-		const tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG2_4);
-		const tfx128 x2 = vaddq_f32(vsubq_f32(x0, vdupq_n_f32(1.f)), tfxG2_4x2);
-		const tfx128 y2 = vaddq_f32(vsubq_f32(y0, vdupq_n_f32(1.f)), tfxG2_4x2);
+		const tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG2_4.m);
+		const tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG2_4.m);
+		const tfx128 x2 = vaddq_f32(vsubq_f32(x0, vdupq_n_f32(1.f)), tfxG2_4x2.m);
+		const tfx128 y2 = vaddq_f32(vsubq_f32(y0, vdupq_n_f32(1.f)), tfxG2_4x2.m);
 
 		tfx128iArray ii, jj;
-		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF);
-		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF);
+		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF.m);
+		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF.m);
 
 		int gi0[4], gi1[4], gi2[4];
 
@@ -479,14 +479,14 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfxPROFILE;
 
 		// Skewing/Unskewing factors for 3D
-		tfx128 s4 = vmulq_f32(vaddq_f32(x4, vaddq_f32(y4, z4)), tfxF3_4);
+		tfx128 s4 = vmulq_f32(vaddq_f32(x4, vaddq_f32(y4, z4)), tfxF3_4.m);
 		tfx128 x4_s4 = vaddq_f32(x4, s4);
 		tfx128 y4_s4 = vaddq_f32(y4, s4);
 		tfx128 z4_s4 = vaddq_f32(z4, s4);
 		tfx128 i = tfxFloor128(x4_s4);
 		tfx128 j = tfxFloor128(y4_s4);
 		tfx128 k = tfxFloor128(z4_s4);
-		tfx128 t = vmulq_f32(vaddq_f32(vaddq_f32(i, j), k), tfxG3_4);
+		tfx128 t = vmulq_f32(vaddq_f32(vaddq_f32(i, j), k), tfxG3_4.m);
 
 		tfx128 X0 = vsubq_f32(i, t); // Unskew the cell origin back to (v1.x,v1.y,v1.z) space
 		tfx128 Y0 = vsubq_f32(j, t);
@@ -499,9 +499,9 @@ tfx_storage_t *tfx_GetGlobals() {
 		// Determine which simplex we are in.
 		tfx128iArray i1, i2, j1, j2, k1, k2;
 
-		i1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0))));
-		j1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(y0, x0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0))));
-		k1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(z0, x0)), vreinterpretq_s32_f32(vcgtq_f32(z0, y0))));
+		i1.m = vandq_s32(tfxONE.m, vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0))));
+		j1.m = vandq_s32(tfxONE.m, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(y0, x0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0))));
+		k1.m = vandq_s32(tfxONE.m, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(z0, x0)), vreinterpretq_s32_f32(vcgtq_f32(z0, y0))));
 
 		//for i2
 		tfx128i yx_xz = vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcltq_f32(x0, z0)));
@@ -515,25 +515,25 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfx128i yz_zx = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(y0, z0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0)));
 		tfx128i xz_zy = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(x0, z0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0)));
 
-		i2.m = vandq_s32(tfxONE, vorrq_s32(i1.m, vorrq_s32(yx_xz, zx_xy)));
-		j2.m = vandq_s32(tfxONE, vorrq_s32(j1.m, vorrq_s32(xy_yz, zy_yx)));
-		k2.m = vandq_s32(tfxONE, vorrq_s32(k1.m, vorrq_s32(yz_zx, xz_zy)));
+		i2.m = vandq_s32(tfxONE.m, vorrq_s32(i1.m, vorrq_s32(yx_xz, zx_xy)));
+		j2.m = vandq_s32(tfxONE.m, vorrq_s32(j1.m, vorrq_s32(xy_yz, zy_yx)));
+		k2.m = vandq_s32(tfxONE.m, vorrq_s32(k1.m, vorrq_s32(yz_zx, xz_zy)));
 
-		tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG3_4);
-		tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG3_4);
-		tfx128 z1 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k1.m)), tfxG3_4);
-		tfx128 x2 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i2.m)), tfxG32_4);
-		tfx128 y2 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j2.m)), tfxG32_4);
-		tfx128 z2 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k2.m)), tfxG32_4);
-		tfx128 x3 = vaddq_f32(vsubq_f32(x0, tfxONEF), tfxG33_4);
-		tfx128 y3 = vaddq_f32(vsubq_f32(y0, tfxONEF), tfxG33_4);
-		tfx128 z3 = vaddq_f32(vsubq_f32(z0, tfxONEF), tfxG33_4);
+		tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG3_4.m);
+		tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG3_4.m);
+		tfx128 z1 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k1.m)), tfxG3_4.m);
+		tfx128 x2 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i2.m)), tfxG32_4.m);
+		tfx128 y2 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j2.m)), tfxG32_4.m);
+		tfx128 z2 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k2.m)), tfxG32_4.m);
+		tfx128 x3 = vaddq_f32(vsubq_f32(x0, tfxONEF.m), tfxG33_4.m);
+		tfx128 y3 = vaddq_f32(vsubq_f32(y0, tfxONEF.m), tfxG33_4.m);
+		tfx128 z3 = vaddq_f32(vsubq_f32(z0, tfxONEF.m), tfxG33_4.m);
 
 		// Work out the hashed gradient indices of the four simplex corners
 		tfx128iArray ii, jj, kk;
-		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF);
-		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF);
-		kk.m = vandq_s32(vcvtq_s32_f32(k), tfxFF);
+		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF.m);
+		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF.m);
+		kk.m = vandq_s32(vcvtq_s32_f32(k), tfxFF.m);
 		tfx128iArray gi0, gi1, gi2, gi3;
 
 		tfxNoise3dPermModLoopUnroll(0);
@@ -541,10 +541,10 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfxNoise3dPermModLoopUnroll(2);
 		tfxNoise3dPermModLoopUnroll(3);
 
-		tfx128 t0 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x0, x0)), vmulq_f32(y0, y0)), vmulq_f32(z0, z0));
-		tfx128 t1 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x1, x1)), vmulq_f32(y1, y1)), vmulq_f32(z1, z1));
-		tfx128 t2 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x2, x2)), vmulq_f32(y2, y2)), vmulq_f32(z2, z2));
-		tfx128 t3 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x3, x3)), vmulq_f32(y3, y3)), vmulq_f32(z3, z3));
+		tfx128 t0 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX.m, vmulq_f32(x0, x0)), vmulq_f32(y0, y0)), vmulq_f32(z0, z0));
+		tfx128 t1 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX.m, vmulq_f32(x1, x1)), vmulq_f32(y1, y1)), vmulq_f32(z1, z1));
+		tfx128 t2 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX.m, vmulq_f32(x2, x2)), vmulq_f32(y2, y2)), vmulq_f32(z2, z2));
+		tfx128 t3 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX.m, vmulq_f32(x3, x3)), vmulq_f32(y3, y3)), vmulq_f32(z3, z3));
 
 		tfx128 t0q = vmulq_f32(t0, t0);
 		t0q = vmulq_f32(t0q, t0q);
@@ -569,17 +569,17 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128 cond;
 
-		cond = vcltq_f32(t0, tfxZERO);
-		n0 = vbslq_f32(cond, tfxZERO, n0);
-		cond = vcltq_f32(t1, tfxZERO);
-		n1 = vbslq_f32(cond, tfxZERO, n1);
-		cond = vcltq_f32(t2, tfxZERO);
-		n2 = vbslq_f32(cond, tfxZERO, n2);
-		cond = vcltq_f32(t3, tfxZERO);
-		n3 = vbslq_f32(cond, tfxZERO, n3);
+		cond = vcltq_f32(t0, tfxZERO.m);
+		n0 = vbslq_f32(cond, tfxZERO.m, n0);
+		cond = vcltq_f32(t1, tfxZERO.m);
+		n1 = vbslq_f32(cond, tfxZERO.m, n1);
+		cond = vcltq_f32(t2, tfxZERO.m);
+		n2 = vbslq_f32(cond, tfxZERO.m, n2);
+		cond = vcltq_f32(t3, tfxZERO.m);
+		n3 = vbslq_f32(cond, tfxZERO.m, n3);
 
 		tfx128Array result;
-		result.m = vmulq_f32(tfxTHIRTYTWO, vaddq_f32(n0, vaddq_f32(n1, vaddq_f32(n2, n3))));
+		result.m = vmulq_f32(tfxTHIRTYTWO.m, vaddq_f32(n0, vaddq_f32(n1, vaddq_f32(n2, n3))));
 		return result;
 	}
 
@@ -1641,9 +1641,9 @@ void tfx__wide_unpack10bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxW
 	x = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x3FF00000)), 20), w511));
 	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), w511));
 	z = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, tfxWideSetSinglei(0x000003FF)), w511));
-	x = tfxWideMul(x, one_div_511_wide);
-	y = tfxWideMul(y, one_div_511_wide);
-	z = tfxWideMul(z, one_div_511_wide);
+	x = tfxWideMul(x, one_div_511_wide.m);
+	y = tfxWideMul(y, one_div_511_wide.m);
+	z = tfxWideMul(z, one_div_511_wide.m);
 }
 
 void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w) {
@@ -1658,14 +1658,14 @@ void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWi
 	y = tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, mask_y), 8), w127));
 	x = tfxWideConvert(tfxWideSubi(tfxWideAndi(in, mask_x), w127));
 
-	x = tfxWideMul(x, one_div_127_wide);
-	y = tfxWideMul(y, one_div_127_wide);
-	z = tfxWideMul(z, one_div_127_wide);
-	w = tfxWideMul(w, one_div_127_wide);
+	x = tfxWideMul(x, one_div_127_wide.m);
+	y = tfxWideMul(y, one_div_127_wide.m);
+	z = tfxWideMul(z, one_div_127_wide.m);
+	w = tfxWideMul(w, one_div_127_wide.m);
 }
 
 tfxWideFloat tfx__wide_unpack10bit_y(tfxWideInt in) {
-	return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide);
+	return tfxWideMul(tfxWideConvert(tfxWideSubi(tfxWideShiftRight(tfxWideAndi(in, tfxWideSetSinglei(0x000FFC00)), 10), tfxWideSetSinglei(511))), one_div_511_wide.m);
 }
 
 tfx_quaternion_t tfx__unpack8bit_quaternion(tfxU32 packed) {
@@ -1901,10 +1901,6 @@ bool tfx__validate_package(tfx_package package) {
 	//Everything seems ok
 	fclose(file);
 	return true;
-}
-
-void tfx_package_entry_info_t::FreeData() {
-	data.Free();
 }
 
 tfx_package_entry_info_t *tfx__get_package_file(tfx_package package, const char *name) {
