@@ -6481,9 +6481,7 @@ typedef struct tfx_data_entry_s {
 //Section: Internal_Functions
 //------------------------------------------------------------
 
-tfxAPI tfx_storage_t *tfx_GetGlobals();
-tfxAPI tfx_pool_stats_t tfx_CreateMemorySnapshot(tfx_header *first_block);
-
+#ifdef __cplusplus
 tfxINTERNAL void tfx__resize_particle_soa_callback(tfx_soa_buffer_t *buffer, tfxU32 index);
 
 //--------------------------------
@@ -6927,23 +6925,6 @@ tfxINTERNAL float tfx__interpolate_float(float tween, float from, float to);
 //--------------------------2d---------------------
 tfxINTERNAL void tfx__transform_particle_position(const float local_position_x, const float local_position_y, const float roll, tfx_vec2_t *world_position, float *world_rotations);
 
-//--------------------------------
-//Random numbers
-//--------------------------------
-tfxAPI tfx_random_t tfx_NewRandom(tfxU32 seed);
-tfxAPI void tfx_AdvanceRandom(tfx_random_t *random);
-tfxAPI void tfx_RandomReSeedTime(tfx_random_t *random);
-tfxAPI void tfx_RandomReSeed2(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2);
-tfxAPI void tfx_RandomReSeed(tfx_random_t *random, tfxU64 seed);
-tfxAPI float tfx_GenerateRandom(tfx_random_t *random);
-tfxAPI float tfx_RandomRangeZeroToMax(tfx_random_t *random, float max);
-tfxAPI float tfx_RandomRangeFromTo(tfx_random_t *random, float from, float to);
-tfxAPI int tfx_RandomRangeFromToInt(tfx_random_t *random, int from, int to);
-tfxAPI tfxU32 tfx_RandomRangeZeroToMaxUInt(tfx_random_t *random, tfxU32 max);
-tfxAPI int tfx_RandomRangeZeroToMaxInt(tfx_random_t *random, int max);
-tfxAPI void tfx_AlterRandomSeedU64(tfx_random_t *random, tfxU64 amount);
-tfxAPI void tfx_AlterRandomSeedU32(tfx_random_t *random, tfxU32 amount);
-
 tfxINTERNAL inline tfxWideInt tfx__wide_seedgen_base(tfxWideInt base, tfxWideInt h)
 {
 	h = tfxWideXOri(base, h);
@@ -7197,7 +7178,6 @@ tfxINTERNAL void tfx__free_animation_instance(tfx_animation_manager_t *animation
 tfxINTERNAL void tfx__add_effect_emitter_properties(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape);
 tfxINTERNAL bool tfx__free_pm_effect_capacity(tfx_particle_manager_t *pm);
 tfxINTERNAL void tfx__initialise_animation_manager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances);
-tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
 
 //--------------------------------
 //Particle manager internal functions
@@ -7256,9 +7236,31 @@ tfxINTERNAL float tfx__get_effect_loop_length(tfx_effect_emitter_t *effect);
 //Section API_Functions
 //------------------------------------------------------------
 
+#endif
+
+tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
+tfxAPI tfx_storage_t *tfx_GetGlobals();
+tfxAPI tfx_pool_stats_t tfx_CreateMemorySnapshot(tfx_header *first_block);
 tfxAPI float tfx_DegreesToRadians(float degrees);
 tfxAPI float tfx_RadiansToDegrees(float radians);
 tfxAPI tfx_effect_emitter_info_t *tfx_GetEffectInfo(tfx_effect_emitter_t *e);
+
+//--------------------------------
+//Random numbers
+//--------------------------------
+tfxAPI tfx_random_t tfx_NewRandom(tfxU32 seed);
+tfxAPI void tfx_AdvanceRandom(tfx_random_t *random);
+tfxAPI void tfx_RandomReSeedTime(tfx_random_t *random);
+tfxAPI void tfx_RandomReSeed2(tfx_random_t *random, tfxU64 seed1, tfxU64 seed2);
+tfxAPI void tfx_RandomReSeed(tfx_random_t *random, tfxU64 seed);
+tfxAPI float tfx_GenerateRandom(tfx_random_t *random);
+tfxAPI float tfx_RandomRangeZeroToMax(tfx_random_t *random, float max);
+tfxAPI float tfx_RandomRangeFromTo(tfx_random_t *random, float from, float to);
+tfxAPI int tfx_RandomRangeFromToInt(tfx_random_t *random, int from, int to);
+tfxAPI tfxU32 tfx_RandomRangeZeroToMaxUInt(tfx_random_t *random, tfxU32 max);
+tfxAPI int tfx_RandomRangeZeroToMaxInt(tfx_random_t *random, int max);
+tfxAPI void tfx_AlterRandomSeedU64(tfx_random_t *random, tfxU64 amount);
+tfxAPI void tfx_AlterRandomSeedU32(tfx_random_t *random, tfxU32 amount);
 
 //[API functions]
 //All the functions below represent all that you will need to call to implement TimelineFX
@@ -7625,9 +7627,7 @@ copied to the gpu in one go.
 * @param property_indexes    The value in the instance_data->property_indexs[i] when iterating over the instance_data in your render function
   @returns                    void* pointer to the image
 */
-tfxAPI inline void *tfx_GetSpriteImagePointer(tfx_particle_manager_t *pm, tfxU32 property_indexes) {
-	return pm->library->emitter_properties[tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_indexes)].image->ptr;
-}
+tfxAPI void *tfx_GetSpriteImagePointer(tfx_particle_manager_t *pm, tfxU32 property_indexes);
 
 /*
 Get the handle of the sprite. Use this when rendering particles in your renderer one sprite at a time.
@@ -7635,14 +7635,7 @@ Get the handle of the sprite. Use this when rendering particles in your renderer
 * @param property_indexes      The value in the instance_data->property_indexs[i] when iterating over the instance_data in your render function
   @out_handle                  Pass in a pointer to a vec2 which will be loaded with the handle values
 */
-tfxAPI inline void tfx_GetSpriteHandle(void *instance, float out_handle[2]) {
-	tfx_2d_instance_t *sprite = static_cast<tfx_2d_instance_t*>(instance);
-	tfx_float16x4_t size_handle = sprite->size_handle;
-	int16_t x_scaled = (int16_t)size_handle.z;
-	int16_t y_scaled = (int16_t)size_handle.w;
-	out_handle[0] = (float)x_scaled * tfxSPRITE_HANDLE_SSCALE;
-	out_handle[1] = (float)y_scaled * tfxSPRITE_HANDLE_SSCALE;
-}
+tfxAPI void tfx_GetSpriteHandle(void *instance, float out_handle[2]);
 
 /*
 Get the total number of instances ready for rendering in the particle manager.
@@ -7673,9 +7666,7 @@ Expire an effect by telling it to stop spawning particles. This means that the e
 * @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index    The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToParticleManager
 */
-tfxAPI inline void tfx_SoftExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
-	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
-}
+tfxAPI void tfx_SoftExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 
 /*
 Soft expire all the effects in a particle manager so that the particles complete their animation first
@@ -7688,10 +7679,7 @@ Expire an effect by telling it to stop spawning particles and remove all associa
 * @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
 * @param effect_index    The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToParticleManager
 */
-tfxAPI inline void tfx_HardExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
-	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
-	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_remove;
-}
+tfxAPI void tfx_HardExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 
 /*
 Get effect user data
@@ -7699,9 +7687,7 @@ Get effect user data
 * @param effect_index    The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToParticleManager
 * @returns                void* pointing to the user data set in the effect. See tfx_effect_template_t::SetUserData() and tfx__set_effect_user_data()
 */
-tfxAPI inline void *tfx_GetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
-	return pm->effects[effect_index].user_data;
-}
+tfxAPI void *tfx_GetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index);
 
 /*
 More for use in the editor, this function updates emitter base values for any effects that are currently running after their graph values have been changed.
@@ -7756,12 +7742,7 @@ Get the transform vectors for a 3d sprite's previous position so that you can us
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 * @param position         This should be a pointer to a vec3 that you pass in that will get loaded with the position of the instance
 */
-tfxAPI inline void tfx_GetCapturedInstance3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
-	tfx_vec3_t position = static_cast<tfx_3d_instance_t*>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xyz();
-	out_position[0] = position.x;
-	out_position[1] = position.y;
-	out_position[2] = position.z;
-}
+tfxAPI void tfx_GetCapturedInstance3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index, float out_position[3]);
 
 /*
 Get the transform vectors for a 2d sprite's previous position so that you can use that to interpolate between that and the current sprite position
@@ -7769,11 +7750,7 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 * @param layer            The index of the sprite layer
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
-tfxAPI inline void tfx_GetCapturedInstance2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
-	tfx_vec2_t position = static_cast<tfx_2d_instance_t*>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xy();
-	out_position[0] = position.x;
-	out_position[1] = position.y;
-}
+tfxAPI void tfx_GetCapturedInstance2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index, float out_position[3]);
 
 /*
 Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side tfx_SpriteDataEndIndex to create
@@ -7783,12 +7760,7 @@ a for loop to iterate over the instance_data in a pre-recorded effect
 * @param layer            The sprite layer
 * @returns                tfxU32 containing the index offset
 */
-tfxAPI inline tfxU32 tfx_SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
-	TFX_ASSERT(frame < sprite_data->normal.frame_meta.size());            //frame is outside index range
-	TFX_ASSERT(layer < tfxLAYERS);                                //layer is outside index range
-	tfxU32 index = sprite_data->normal.frame_meta[frame].index_offset[layer];
-	return index;
-}
+tfxAPI tfxU32 tfx_SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer);
 
 /*
 Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side tfx_SpriteDataEndIndex to create
@@ -7798,11 +7770,7 @@ a for loop to iterate over the instance_data in a pre-recorded effect
 * @param layer            The sprite layer
 * @returns                tfxU32 containing the end offset
 */
-tfxAPI inline tfxU32 tfx_SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
-	TFX_ASSERT(frame < sprite_data->normal.frame_meta.size());            //frame is outside index range
-	TFX_ASSERT(layer < tfxLAYERS);                                //layer is outside index range
-	return sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer];
-}
+tfxAPI tfxU32 tfx_SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer);
 
 /*
 Make a particle manager stop spawning. This will mean that all emitters in the particle manager will no longer spawn any particles so all currently running effects will expire
@@ -8105,9 +8073,7 @@ Get the name of an effect
 * @param pm                A pointer to the effect
 * @returns                const char * name
 */
-tfxAPI inline const char *tfx_GetEffectName(tfx_effect_emitter_t *effect) {
-	return tfx_GetEffectInfo(effect)->name.c_str();
-}
+tfxAPI inline const char *tfx_GetEffectName(tfx_effect_emitter_t *effect);
 
 //-------Functions related to tfx_animation_manager_t--------
 
@@ -8305,9 +8271,7 @@ the instances being rendered if some are being culled in your custom callback if
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to clear
 * @returns int                    The number of instances being updated
 */
-tfxAPI inline tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animation_manager) {
-	return animation_manager->instances_in_use[animation_manager->current_in_use_buffer].size();
-}
+tfxAPI tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animation_manager);
 
 /*
 Create the image data required for GPU shaders such as animation viewer. The image data will contain data such as uv coordinates
@@ -8330,16 +8294,18 @@ tfxAPI inline void *tfx_GetGPUShapesPointer(tfx_gpu_shapes_t *particle_shapes) {
 Get a pointer to the particle shapes data in the animation manager. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
 * @param animation_manager        A pointer the tfx_animation_manager_t
 */
-tfxAPI inline tfx_vector_t<tfx_image_data_t> *tfx_GetParticleShapesAnimationManager(tfx_animation_manager_t *animation_manager) {
-	return &animation_manager->particle_shapes.data;
+tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesAnimationManager(tfx_animation_manager_t *animation_manager, int *count) {
+	*count = animation_manager->particle_shapes.data.current_size;
+	return animation_manager->particle_shapes.data.data;
 }
 
 /*
 Get a pointer to the particle shapes data in the animation manager. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
 * @param animation_manager        A pointer the tfx_animation_manager_t
 */
-tfxAPI inline tfx_vector_t<tfx_image_data_t> *tfx_GetParticleShapesLibrary(tfx_library_t *library) {
-	return &library->particle_shapes.data;
+tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library_t *library, int *count) {
+	*count = library->particle_shapes.data.current_size;
+	return library->particle_shapes.data.data;
 }
 
 /*
@@ -8347,18 +8313,14 @@ Get the number of shapes in the GPU Shape Data buffer. Make sure you call tfx_Bu
 * @param library                A pointer to a tfx_animation_manager_t where the image data will be created.
 * @returns tfxU32                The number of shapes in the buffer
 */
-tfxAPI inline tfxU32 tfx_GetGPUShapeCount(tfx_gpu_shapes_t *particle_shapes) {
-	return particle_shapes->list.size();
-}
+tfxAPI tfxU32 tfx_GetGPUShapeCount(tfx_gpu_shapes_t *particle_shapes);
 
 /*
 Get the size in bytes of the GPU image data in a tfx_library_t
 * @param library                A pointer to a tfx_library_t where the image data exists.
 * @returns size_t                The size in bytes of the image data
 */
-tfxAPI inline size_t tfx_GetGPUShapesSizeInBytes(tfx_gpu_shapes_t *particle_shapes) {
-	return particle_shapes->list.size_in_bytes();
-}
+tfxAPI size_t tfx_GetGPUShapesSizeInBytes(tfx_gpu_shapes_t *particle_shapes);
 
 /*
 Get the total number of instance_data in an animation manger's sprite data buffer
@@ -8377,12 +8339,7 @@ Get the total number of instance_data in an animation manger's sprite data buffe
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32                The number of instance_data in the buffer
 */
-tfxAPI inline size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager_t *animation_manager) {
-	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
-		return animation_manager->sprite_data_3d.size_in_bytes();
-	}
-	return animation_manager->sprite_data_2d.size_in_bytes();
-}
+tfxAPI inline size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager_t *animation_manager);
 
 /*
 Get the buffer memory address for the sprite data in an animation manager
@@ -8546,13 +8503,7 @@ Interpolate between 2 tfxVec3s. You can make use of this in your render function
 * @param captured            The captured tvxVec3 position
 * @returns tfx_vec3_t            The interpolated tfx_vec3_t
 */
-tfxAPI inline void tfx_Lerp3d(float lerp, const tfx_vec3_t *world, const tfx_vec3_t *captured, float out_lerp[3]) {
-	tfx_vec3_t lerped;
-	lerped = *world * lerp + *captured * (1.f - lerp);
-	out_lerp[0] = lerped.x;
-	out_lerp[1] = lerped.y;
-	out_lerp[2] = lerped.z;
-}
+tfxAPI inline void tfx_Lerp3d(float lerp, const tfx_vec3_t *world, const tfx_vec3_t *captured, float out_lerp[3]);
 
 /*
 Interpolate between 2 tfxVec2s. You can make use of this in your render function when rendering instance_data and interpolating between captured and current positions
@@ -8561,12 +8512,7 @@ Interpolate between 2 tfxVec2s. You can make use of this in your render function
 * @param captured    The captured tvxVec2 position
 * @returns tfx_vec2_t    The interpolated tfx_vec2_t
 */
-tfxAPI inline void tfx_Lerp2d(float lerp, const tfx_vec2_t *world, const tfx_vec2_t *captured, float out_lerp[2]) {
-	tfx_vec2_t lerped;
-	lerped = *world * lerp + *captured * (1.f - lerp);
-	out_lerp[0] = lerped.x;
-	out_lerp[1] = lerped.y;
-}
+tfxAPI inline void tfx_Lerp2d(float lerp, const tfx_vec2_t *world, const tfx_vec2_t *captured, float out_lerp[2]);
 
 /*
 Interpolate between 2 float. You can make use of this in your render function when rendering instance_data and interpolating between captured and current float values like intensity
@@ -8586,18 +8532,9 @@ draw the sprite but with 0 alpha. A float is returned, either 0.f or 1.f so you 
 * @param index        The index of the sprite that you're checking
 * @returns float    0.f if it IS the first frame of the sprite otherwise 1.f.
 */
-tfxAPI inline float tfx_IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index) {
-	return float((sprites->property_indexes[sprite_index] & 0x00008000) >> 15);
-}
+tfxAPI inline float tfx_IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index);
 
-tfxAPI inline void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
-	tfx_2d_instance_t *sprite = static_cast<tfx_2d_instance_t*>(instance);
-	tfx_float16x4_t size_handle = sprite->size_handle;
-	int16_t x_scaled = (int16_t)size_handle.x;
-	int16_t y_scaled = (int16_t)size_handle.y;
-	out_scale[0] = (float)x_scaled * tfxSPRITE_SIZE_SSCALE;
-	out_scale[1] = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
-}
+tfxAPI inline void tfx_GetSpriteScale(void *instance, float out_scale[2]);
 
 #ifdef tfxINTEL
 /*

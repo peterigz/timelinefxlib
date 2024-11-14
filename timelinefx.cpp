@@ -11161,6 +11161,109 @@ void tfx_UpdateParticleManager(tfx_particle_manager_t *pm, float elapsed_time) {
 	pm->flags &= ~tfxParticleManagerFlags_update_base_values;
 }
 
+void *tfx_GetSpriteImagePointer(tfx_particle_manager_t *pm, tfxU32 property_indexes) {
+	return pm->library->emitter_properties[tfxEXTRACT_SPRITE_PROPERTY_INDEX(property_indexes)].image->ptr;
+}
+
+void tfx_GetSpriteHandle(void *instance, float out_handle[2]) {
+	tfx_2d_instance_t *sprite = static_cast<tfx_2d_instance_t *>(instance);
+	tfx_float16x4_t size_handle = sprite->size_handle;
+	int16_t x_scaled = (int16_t)size_handle.z;
+	int16_t y_scaled = (int16_t)size_handle.w;
+	out_handle[0] = (float)x_scaled * tfxSPRITE_HANDLE_SSCALE;
+	out_handle[1] = (float)y_scaled * tfxSPRITE_HANDLE_SSCALE;
+}
+
+void tfx_SoftExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
+	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
+}
+
+void tfx_HardExpireEffect(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
+	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_stop_spawning;
+	pm->effects[effect_index].state_flags |= tfxEmitterStateFlags_remove;
+}
+
+void *tfx_GetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index) {
+	return pm->effects[effect_index].user_data;
+}
+
+void tfx_GetCapturedInstance3dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
+	tfx_vec3_t position = static_cast<tfx_3d_instance_t *>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xyz();
+	out_position[0] = position.x;
+	out_position[1] = position.y;
+	out_position[2] = position.z;
+}
+
+void tfx_GetCapturedInstance2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index, float out_position[3]) {
+	tfx_vec2_t position = static_cast<tfx_2d_instance_t *>(pm->instance_buffer.data)[index & 0x0FFFFFFF].position.xy();
+	out_position[0] = position.x;
+	out_position[1] = position.y;
+}
+
+tfxU32 tfx_SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
+	TFX_ASSERT(frame < sprite_data->normal.frame_meta.size());            //frame is outside index range
+	TFX_ASSERT(layer < tfxLAYERS);                                //layer is outside index range
+	tfxU32 index = sprite_data->normal.frame_meta[frame].index_offset[layer];
+	return index;
+}
+
+tfxU32 tfx_SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer) {
+	TFX_ASSERT(frame < sprite_data->normal.frame_meta.size());            //frame is outside index range
+	TFX_ASSERT(layer < tfxLAYERS);                                //layer is outside index range
+	return sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer];
+}
+
+const char *tfx_GetEffectName(tfx_effect_emitter_t *effect) {
+	return tfx_GetEffectInfo(effect)->name.c_str();
+}
+
+tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animation_manager) {
+	return animation_manager->instances_in_use[animation_manager->current_in_use_buffer].size();
+}
+
+tfxU32 tfx_GetGPUShapeCount(tfx_gpu_shapes_t *particle_shapes) {
+	return particle_shapes->list.size();
+}
+
+size_t tfx_GetGPUShapesSizeInBytes(tfx_gpu_shapes_t *particle_shapes) {
+	return particle_shapes->list.size_in_bytes();
+}
+
+size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager_t *animation_manager) {
+	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
+		return animation_manager->sprite_data_3d.size_in_bytes();
+	}
+	return animation_manager->sprite_data_2d.size_in_bytes();
+}
+
+void tfx_Lerp3d(float lerp, const tfx_vec3_t *world, const tfx_vec3_t *captured, float out_lerp[3]) {
+	tfx_vec3_t lerped;
+	lerped = *world * lerp + *captured * (1.f - lerp);
+	out_lerp[0] = lerped.x;
+	out_lerp[1] = lerped.y;
+	out_lerp[2] = lerped.z;
+}
+
+void tfx_Lerp2d(float lerp, const tfx_vec2_t *world, const tfx_vec2_t *captured, float out_lerp[2]) {
+	tfx_vec2_t lerped;
+	lerped = *world * lerp + *captured * (1.f - lerp);
+	out_lerp[0] = lerped.x;
+	out_lerp[1] = lerped.y;
+}
+
+float tfx_IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index) {
+	return float((sprites->property_indexes[sprite_index] & 0x00008000) >> 15);
+}
+
+void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
+	tfx_2d_instance_t *sprite = static_cast<tfx_2d_instance_t*>(instance);
+	tfx_float16x4_t size_handle = sprite->size_handle;
+	int16_t x_scaled = (int16_t)size_handle.x;
+	int16_t y_scaled = (int16_t)size_handle.y;
+	out_scale[0] = (float)x_scaled * tfxSPRITE_SIZE_SSCALE;
+	out_scale[1] = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
+}
+
 #define tfxParticleNoise2dLoopUnroll(n)        \
 x4 = tfx128SetSingle(x.a[n]);    \
 y4 = tfx128SetSingle(y.a[n]);    \
