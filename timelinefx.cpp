@@ -4721,7 +4721,7 @@ void tfx__build_all_library_paths(tfx_library_t *library) {
 void tfx_UpdateLibraryGPUImageData(tfx_library_t *library) {
 	library->gpu_shapes.list.free();
     if(library->particle_shapes.Size() > 0) {
-        tfx_BuildGPUShapeData(&library->particle_shapes.data, &library->gpu_shapes, library->uv_lookup);
+        tfx_BuildLibraryGPUShapeData(library, &library->gpu_shapes, library->uv_lookup);
     }
 }
 
@@ -4904,7 +4904,7 @@ tfx_effect_emitter_t *tfx__library_move_down(tfx_library_t *library, tfx_effect_
 	return nullptr;
 }
 
-void tfx_BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes_t *shape_data, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes_t *shape_data, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	TFX_ASSERT(particle_shapes->size());        //There are no shapes to copy!
     TFX_ASSERT(uv_lookup);  //You must set a function that applies the uv coordinates for each image you load
 	tfxU32 index = 0;
@@ -4930,6 +4930,14 @@ void tfx_BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_
 			}
 		}
 	}
+}
+
+void tfx_BuildLibraryGPUShapeData(tfx_library_t *library, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+	tfx__build_gpu_shape_data(&library->particle_shapes.data, shapes, uv_lookup);
+}
+
+void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_manager, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+	tfx__build_gpu_shape_data(&animation_manager->particle_shapes.data, shapes, uv_lookup);
 }
 
 tfxU32 tfx__get_library_lookup_indexes_size_in_bytes(tfx_library_t *library) {
@@ -11264,6 +11272,13 @@ void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
 	out_scale[1] = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
 }
 
+void ListEffectNames(tfx_library_t *library) {
+	tfxU32 index = 0;
+	for (auto &effect : library->effects) {
+		printf("%i) %s\n", index++, tfx_GetEffectInfo(&effect)->name.c_str());
+	}
+}
+
 #define tfxParticleNoise2dLoopUnroll(n)        \
 x4 = tfx128SetSingle(x.a[n]);    \
 y4 = tfx128SetSingle(y.a[n]);    \
@@ -13464,12 +13479,14 @@ void tfx__control_particle_uid(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
-tfx_vector_t<tfx_effect_index_t> *tfx_GetPMEffectBuffer(tfx_particle_manager_t *pm, tfxU32 depth) {
-	return &pm->effects_in_use[depth][pm->current_ebuff];
+tfx_effect_index_t *tfx_GetPMEffectBuffer(tfx_particle_manager_t *pm, tfxU32 depth, int *count) {
+	*count = pm->effects_in_use[depth][pm->current_ebuff].current_size;
+	return pm->effects_in_use[depth][pm->current_ebuff].data;
 }
 
-tfx_vector_t<tfxU32> *tfx_GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU32 depth) {
-	return &pm->control_emitter_queue;
+tfxU32 *tfx_GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU32 depth, int *count) {
+	*count = pm->control_emitter_queue.current_size;
+	return pm->control_emitter_queue.data;
 }
 
 void tfx__toggle_sprites_with_uid(tfx_particle_manager_t *pm, bool switch_on) {

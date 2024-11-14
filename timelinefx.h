@@ -7169,6 +7169,7 @@ tfxINTERNAL void tfx__initialise_emitter_attributes(tfx_emitter_attributes_t *at
 tfxINTERNAL void tfx__free_emitter_attributes(tfx_emitter_attributes_t *attributes);
 tfxINTERNAL void tfx__free_global_attributes(tfx_global_attributes_t *attributes);
 tfxINTERNAL tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_t *lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data = nullptr);
+tfxINTERNAL void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes_t *shape_data, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
 
 //--------------------------------
 //Animation manager internal functions - animation manager is used to playback pre-recorded effects
@@ -7396,12 +7397,7 @@ tfxAPI void tfx_UpdateLibraryGPUImageData(tfx_library_t *library);
 Output all the effect names in a library to the console
 * @param tfx_library_t                A valid pointer to a tfx_library_t
 */
-tfxAPI inline void ListEffectNames(tfx_library_t *library) {
-	tfxU32 index = 0;
-	for (auto &effect : library->effects) {
-		printf("%i) %s\n", index++, tfx_GetEffectInfo(&effect)->name.c_str());
-	}
-}
+tfxAPI void ListEffectNames(tfx_library_t *library);
 
 /*
 Get an effect in the library by it's index. If you need to get an effect in a folder or an emitter then you can use tfx_GetLibraryEffectPath instead.
@@ -7789,19 +7785,21 @@ tfxAPI inline void tfx_DisablePMSpawning(tfx_particle_manager_t *pm, bool yesno)
 
 /*
 Get the buffer of effect indexes in the particle manager.
-* @param pm                A pointer to a tfx_particle_manager_t.
+* @param pm               A pointer to a tfx_particle_manager_t.
 * @param depth            The depth of the list that you want. 0 are top level effects and anything higher are sub effects within those effects
-* @returns                Pointer to the tfxvec of effect indexes
+* @param count			  A pointer to an int that you can pass in that will be filled with the count of effects in the array
+* @returns                Pointer to the array of effect indexes
 */
-tfxAPI tfx_vector_t<tfx_effect_index_t> *tfx_GetPMEffectBuffer(tfx_particle_manager_t *pm, tfxU32 depth);
+tfxAPI tfx_effect_index_t *tfx_GetPMEffectBuffer(tfx_particle_manager_t *pm, tfxU32 depth, int *count);
 
 /*
 Get the buffer of emitter indexes in the particle manager.
 * @param pm                A pointer to a tfx_particle_manager_t.
 * @param depth            The depth of the list that you want. 0 are top level emitters and anything higher are sub emitters within those effects
+* @param count			  A pointer to an int that you can pass in that will be filled with the count of emitters in the array
 * @returns                Pointer to the tfxvec of effect indexes
 */
-tfxAPI tfx_vector_t<tfxU32> *tfx_GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU32 depth);
+tfxAPI tfxU32 *tfx_GetPMEmitterBuffer(tfx_particle_manager_t *pm, tfxU32 depth, int *count);
 
 /*
 Set the position of a 2d effect
@@ -8274,13 +8272,22 @@ the instances being rendered if some are being culled in your custom callback if
 tfxAPI tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animation_manager);
 
 /*
-Create the image data required for GPU shaders such as animation viewer. The image data will contain data such as uv coordinates
-that the shaders can use to create the sprite data. Once you have built the data you can use GetLibraryImageData to get the buffer
+Create the image data required for shaders from a TimelineFX library. The image data will contain data such as uv coordinates. Once you have built the data you can use GetLibraryImageData to get the buffer
 and upload it to the gpu.
-* @param library                A pointer to some image data where the image data is. You can use tfx_GetParticleShapesAnimationManager with a tfx_library_t or tfx_animation_manager_t for this
+* @param library                  A pointer to a tfx_library_t object
+* @param shapes                   A pointer to a tfx_gpu_shapes_t object which will fill a buffer with all the shapes
 * @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 */
-tfxAPI void tfx_BuildGPUShapeData(tfx_vector_t<tfx_image_data_t> *particle_shapes, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
+tfxAPI void tfx_BuildLibraryGPUShapeData(tfx_library_t *library, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
+
+/*
+Create the image data required for shaders from a TimelineFX library. The image data will contain data such as uv coordinates. Once you have built the data you can use GetLibraryImageData to get the buffer
+and upload it to the gpu.
+* @param animation_manager		  A pointer to an tfx_animation_manager_t object
+* @param shapes                   A pointer to a tfx_gpu_shapes_t object which will fill a buffer with all the shapes
+* @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
+*/
+tfxAPI void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_manager, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
 
 /*
 Get a pointer to the GPU shapes which you can use in a memcpy
