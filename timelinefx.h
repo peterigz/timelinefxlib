@@ -82,6 +82,7 @@ All functions in the library will be marked this way for clarity and naturally t
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdbool.h>
 
 #define tfx__Min(a, b) (((a) < (b)) ? (a) : (b))
 #define tfx__Max(a, b) (((a) > (b)) ? (a) : (b))
@@ -90,7 +91,6 @@ All functions in the library will be marked this way for clarity and naturally t
 typedef int tfx_index;
 typedef unsigned int tfx_sl_bitmap;
 typedef unsigned int tfx_uint;
-typedef int tfx_bool;
 typedef unsigned char tfx_byte;
 typedef void *tfx_pool;
 
@@ -399,7 +399,7 @@ extern "C" {
 		Remove a pool from an allocator. Note that all blocks in the pool must be free and therefore all merged together into one block (this happens
 		automatically as all blocks are freed are merged together into bigger blocks.
 	*/
-	tfx_bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool);
+	bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool);
 
 	/*
 	When using an allocator for managing remote memory, you need to set the bytes per block that a block storing infomation about the remote
@@ -427,15 +427,15 @@ extern "C" {
 	}
 
 	//Read only functions
-	static inline tfx_bool tfx__has_free_block(const tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
+	static inline bool tfx__has_free_block(const tfx_allocator *allocator, tfx_index fli, tfx_index sli) {
 		return allocator->first_level_bitmap & (TFX_ONE << fli) && allocator->second_level_bitmaps[fli] & (1U << sli);
 	}
 
-	static inline tfx_bool tfx__is_used_block(const tfx_header *block) {
+	static inline bool tfx__is_used_block(const tfx_header *block) {
 		return !(block->size & tfx__BLOCK_IS_FREE);
 	}
 
-	static inline tfx_bool tfx__is_free_block(const tfx_header *block) {
+	static inline bool tfx__is_free_block(const tfx_header *block) {
 		//Crashing here? The most likely reason is a pointer into the allocation for this block that became invalid but was still written to at some point.
 		//Most likeyly cause is a tfx_vector_t or similar being resized and allocated elsewhere but you didn't account for this happening and update the pointer. Just index
 		//into the array instead to fix these issues.
@@ -444,7 +444,7 @@ extern "C" {
 		return block->size & tfx__BLOCK_IS_FREE;
 	}
 
-	static inline tfx_bool tfx__prev_is_free_block(const tfx_header *block) {
+	static inline bool tfx__prev_is_free_block(const tfx_header *block) {
 		return block->size & tfx__PREV_BLOCK_IS_FREE;
 	}
 
@@ -454,11 +454,11 @@ extern "C" {
 		return (void *)aligned;
 	}
 
-	static inline tfx_bool tfx__is_aligned(tfx_size size, tfx_size alignment) {
+	static inline bool tfx__is_aligned(tfx_size size, tfx_size alignment) {
 		return (size % alignment) == 0;
 	}
 
-	static inline tfx_bool tfx__ptr_is_aligned(void *ptr, tfx_size alignment) {
+	static inline bool tfx__ptr_is_aligned(void *ptr, tfx_size alignment) {
 		uintptr_t address = (uintptr_t)ptr;
 		return (address % alignment) == 0;
 	}
@@ -503,7 +503,7 @@ extern "C" {
 		return (tfx_header *)((char *)tfx__block_user_ptr(block) + tfx__block_size(block));
 	}
 
-	static inline tfx_bool tfx__next_block_is_free(const tfx_header *block) {
+	static inline bool tfx__next_block_is_free(const tfx_header *block) {
 		return tfx__is_free_block(tfx__next_physical_block(block));
 	}
 
@@ -511,7 +511,7 @@ extern "C" {
 		return (tfx_header *)((char *)allocator + tfx_AllocatorSize() - tfx__POINTER_SIZE);
 	}
 
-	static inline tfx_bool tfx__is_last_block_in_pool(const tfx_header *block) {
+	static inline bool tfx__is_last_block_in_pool(const tfx_header *block) {
 		return tfx__block_size(block) == 0;
 	}
 
@@ -535,7 +535,7 @@ extern "C" {
 				sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
 				while (sli != -1) {
 					tfx_header *block = allocator->segregated_lists[fli][sli];
-					tfx_bool is_free = tfx__is_free_block(block);
+					bool is_free = tfx__is_free_block(block);
 					TFX_ASSERT(is_free);    //The block should be marked as free
 					TFX_ASSERT(block->prev_free_block == &allocator->null_block);    //The first block in in the list should have a prev_free_block that points to the null block in the allocator
 					sli = tfx__find_next_size_up(allocator->second_level_bitmaps[fli], sli);
@@ -904,7 +904,7 @@ extern "C" {
 		return memory;
 	}
 
-	tfx_bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool) {
+	bool tfx_RemovePool(tfx_allocator *allocator, tfx_pool *pool) {
 		tfx__lock_thread_access(allocator);
 		tfx_header *block = tfx__first_block_in_pool(pool);
 
@@ -1054,9 +1054,9 @@ void *tfxAllocateAligned(size_t size, size_t alignment);
 //Do a safe copy where checks are made to ensure that the boundaries of the memory block being copied to are respected
 //This assumes that dst is the start address of the block. If you're copying to a range that is offset from the beginning
 //of the block then you can use tfx_SafeCopyBlock instead.
-tfx_bool tfx_SafeCopy(void *dst, void *src, tfx_size size);
-tfx_bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size size);
-tfx_bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size);
+bool tfx_SafeCopy(void *dst, void *src, tfx_size size);
+bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size size);
+bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size);
 tfx_allocator *tfxGetAllocator();
 
 //---------------------------------------
@@ -3922,7 +3922,7 @@ typedef struct tfx_stream_s {
 	}
 	inline void TrimToZero() {
 		if (size < capacity) {
-			tfx_bool result = tfx_SafeMemset(data, data + size, '\0', capacity - size);
+			bool result = tfx_SafeMemset(data, data + size, '\0', capacity - size);
 			TFX_ASSERT(result);
 		}
 	}
@@ -4093,7 +4093,7 @@ typedef struct tfx_sync_s {
 typedef struct tfx_queue_processor_s {
 	tfx_sync_t sync;
 	tfx_uint count;
-	volatile tfx_bool end_all_threads;
+	volatile bool end_all_threads;
 	tfx_work_queue_t *queues[tfxMAX_QUEUES];
 } tfx_queue_processor_t;
 
@@ -4275,7 +4275,7 @@ tfxINTERNAL inline void tfx__push_queue_work(tfx_queue_processor_t *thread_proce
 	tfx__sync_unlock(&thread_processor->sync);
 }
 
-tfxINTERNAL inline tfx_bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_processor) {
+tfxINTERNAL inline bool tfx__do_next_work_queue(tfx_queue_processor_t *queue_processor) {
 	tfx_work_queue_t *queue = tfx__get_queue_with_work(queue_processor);
 
 	if (queue) {
@@ -5051,9 +5051,9 @@ typedef struct tfx_bitmap_s {
 typedef struct tfx_graph_id_s {
 	tfx_graph_category category;
 	tfx_graph_type type = tfxEmitterGraphMaxIndex;
-	tfxU32 graph_id = 0;
-	tfxU32 node_id = 0;
-	tfxKey path_hash = 0;
+	tfxU32 graph_id;
+	tfxU32 node_id;
+	tfxKey path_hash;
 }tfx_graph_id_t;
 
 typedef struct tfx_graph_lookup_index_s {
@@ -5276,12 +5276,12 @@ static float(*lookup_random_callback)(tfx_graph_t *graph, float age, tfx_random_
 
 typedef struct tfx_shape_data_s {
 	tfx_str64_t name;
-	tfxU32 frame_count = 0;
-	tfxU32 width = 0;
-	tfxU32 height = 0;
-	tfxU32 shape_index = 0;
-	tfxKey image_hash = 0;
-	int import_filter = 0;
+	tfxU32 frame_count;
+	tfxU32 width;
+	tfxU32 height;
+	tfxU32 shape_index;
+	tfxKey image_hash;
+	int import_filter;
 }tfx_shape_data_t;
 
 typedef struct tfx_base_s {
@@ -5325,7 +5325,7 @@ typedef struct tfx_sprite_sheet_settings_s {
 	float max_radius;
 	tfxU32 largest_frame;
 	float playback_speed;
-	float effect_z_offset = 5.f;
+	float effect_z_offset;
 	tfx_export_color_options color_option;
 	tfx_export_options export_option;
 	tfx_camera_settings_t camera_settings;
@@ -5868,10 +5868,10 @@ typedef struct tfx_sprite_data_s {
 }tfx_sprite_data_t;
 
 typedef struct tfx_compute_fx_global_state_s {
-	tfxU32 start_index = 0;
-	tfxU32 current_length = 0;
-	tfxU32 max_index = 0;
-	tfxU32 end_index = 0;
+	tfxU32 start_index;
+	tfxU32 current_length;
+	tfxU32 max_index;
+	tfxU32 end_index;
 }tfx_compute_fx_global_state_t;
 
 typedef struct tfx_compute_controller_s {
@@ -5895,17 +5895,17 @@ typedef struct tfx_compute_particle_s {
 	tfx_vec2_t local_position;
 	tfx_vec2_t base_size;
 
-	float base_velocity = 1;
-	float base_spin = 1;
-	float base_weight = 1;
+	float base_velocity;
+	float base_spin;
+	float base_weight;
 
-	float age = 1;                            //The age of the particle, used by the controller to look up the current state on the graphs
-	float max_age = 1;                        //max age before the particle expires
-	float emission_angle = 1;                //Emission angle of the particle at spawn time
+	float age;                            //The age of the particle, used by the controller to look up the current state on the graphs
+	float max_age;                        //max age before the particle expires
+	float emission_angle;                //Emission angle of the particle at spawn time
 
-	float noise_offset = 1;                    //The random velocity added each frame
-	float noise_resolution = 1;                //The random velocity added each frame
-	float image_frame = 0;
+	float noise_offset;                    //The random velocity added each frame
+	float noise_resolution;                //The random velocity added each frame
+	float image_frame;
 	tfxU32 control_slot_and_layer;    //index to the controller, and also stores the layer in the particle manager that the particle is on (layer << 3)
 	float local_rotation;
 }tfx_compute_particle_t;
@@ -5944,7 +5944,7 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxU32 seed;
 	float tween;
 	tfxU32 max_spawn_count;
-	tfxU32 amount_to_spawn = 0;
+	tfxU32 amount_to_spawn;
 	tfxU32 spawn_start_index;
 	tfxU32 next_buffer;
 	int depth;
@@ -6218,7 +6218,7 @@ typedef struct tfx_particle_manager_s {
 	tfx_vec3_t camera_front;
 	tfx_vec3_t camera_position;
 
-	tfxU32 unique_particle_id = 0;    //Used when recording sprite data
+	tfxU32 unique_particle_id;    //Used when recording sprite data
 	//When using single particles, you can flag the emitter to set the max_age of the particle to the 
 	//length in time of the animation so that it maps nicely to the animation
 	float animation_length_in_time;
@@ -6291,8 +6291,8 @@ typedef struct tfx_library_s {
 
 	//Get an effect from the library by index
 	tfx_str64_t name;
-	bool open_library = false;
-	bool dirty = false;
+	bool open_library;
+	bool dirty;
 	tfx_stream_t library_file_path;
 	tfxU32 uid;
 	void(*uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
@@ -6305,14 +6305,14 @@ typedef struct tfx_effect_template_s {
 }tfx_effect_template_t;
 
 typedef struct tfx_data_entry_s {
-	tfx_data_type type = tfxSInt;
+	tfx_data_type type;
 	tfx_str64_t key;
 	tfx_str512_t str_value;
-	int int_value = 0;
-	tfx_rgba8_t color_value = {};
-	bool bool_value = 0;
-	float float_value = 0;
-	double double_value = 0;
+	int int_value;
+	tfx_rgba8_t color_value;
+	bool bool_value;
+	float float_value;
+	double double_value;
 }tfx_data_entry_t;
 
 //------------------------------------------------------------

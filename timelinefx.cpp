@@ -82,7 +82,7 @@ tfx_allocator *tfxGetAllocator() {
 	return tfxMemoryAllocator;
 }
 
-tfx_bool tfx_SafeCopy(void *dst, void *src, tfx_size size) {
+bool tfx_SafeCopy(void *dst, void *src, tfx_size size) {
 	tfx_header *block = tfx__block_from_allocation(dst);
 	if (size > block->size) {
 		return 0;
@@ -96,7 +96,7 @@ tfx_bool tfx_SafeCopy(void *dst, void *src, tfx_size size) {
 	return 1;
 }
 
-tfx_bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size size) {
+bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size size) {
 	tfx_header *block = tfx__block_from_allocation(dst_block_start);
 	tfx_header *next_physical_block = tfx__next_physical_block(block);
 	ptrdiff_t diff_check = (ptrdiff_t)((char *)dst + size) - (ptrdiff_t)next_physical_block;
@@ -107,7 +107,7 @@ tfx_bool tfx_SafeCopyBlock(void *dst_block_start, void *dst, void *src, tfx_size
 	return 1;
 }
 
-tfx_bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size) {
+bool tfx_SafeMemset(void *allocation, void *dst, int value, tfx_size size) {
 	tfx_header *block = tfx__block_from_allocation(allocation);
 	tfx_header *next_physical_block = tfx__next_physical_block(block);
 	ptrdiff_t diff_check = (ptrdiff_t)((char *)dst + size) - (ptrdiff_t)next_physical_block;
@@ -2129,7 +2129,7 @@ tfxU64 tfx__get_package_size(tfx_package package) {
 
 tfxErrorFlags tfx__load_package_file(const char *file_name, tfx_package package) {
 
-	tfx__read_entire_file(file_name, package->file_data);
+	tfx__read_entire_file(file_name, package->file_data, false);
 	if (package->file_data->Size() == 0)
 		return tfxErrorCode_unable_to_read_file;            //the file size is smaller then the expected header size
 
@@ -17569,6 +17569,7 @@ void tfx__init_common_particle_manager(tfx_particle_manager_t *pm, tfx_library_t
 	pm->current_sprite_buffer = 0;
 	pm->sort_passes = 0;
 	pm->max_frame_length = 240.f;
+	pm->unique_particle_id = 0;
 
 	pm->random = tfx_NewRandom(tfx_Millisecs());
 	pm->threaded_random = tfx_NewRandom(tfx_Millisecs());
