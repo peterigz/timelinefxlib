@@ -1768,7 +1768,7 @@ int tfx_FormatString(char *buf, size_t buf_size, const char *fmt, va_list args) 
 	return w;
 }
 
-tfx_line_t tfx_stream_t::ReadLine() {
+tfx_line_t tfx_stream_s::ReadLine() {
 	tfx_line_t line{};
 	if (EoF()) return line;
 
@@ -1785,7 +1785,7 @@ tfx_line_t tfx_stream_t::ReadLine() {
 	return line;
 }
 
-void tfx_stream_t::AddLine(const char *format, ...) {
+void tfx_stream_s::AddLine(const char *format, ...) {
 	if (!size) {
 		if (!data) {
 			Reserve(strlen(format) * 2);
@@ -1799,7 +1799,7 @@ void tfx_stream_t::AddLine(const char *format, ...) {
 	Append('\n');
 }
 
-void tfx_stream_t::Appendf(const char *format, ...) {
+void tfx_stream_s::Appendf(const char *format, ...) {
 	va_list args;
 	va_start(args, format);
 
@@ -1827,7 +1827,7 @@ void tfx_stream_t::Appendf(const char *format, ...) {
 	va_end(args);
 }
 
-void tfx_stream_t::Appendv(const char *format, va_list args) {
+void tfx_stream_s::Appendv(const char *format, va_list args) {
 	va_list args_copy;
 	va_copy(args_copy, args);
 
@@ -1850,7 +1850,7 @@ void tfx_stream_t::Appendv(const char *format, va_list args) {
 	size += len;
 }
 
-void tfx_stream_t::SetText(const char *text) {
+void tfx_stream_s::SetText(const char *text) {
 	size_t len = strlen(text);
 	Resize(len + 1);
 	tfx__strcpy(data, capacity, text);
@@ -4663,10 +4663,6 @@ void tfx__free_emitter_attributes(tfx_emitter_attributes_t *attributes) {
 	tfx__free_factor_attributes(&attributes->factor);
 }
 
-tfx_effect_emitter_t &tfx_library_t::operator[] (tfxU32 index) {
-	return effects[index];
-}
-
 tfx_effect_emitter_info_t *tfx_GetEffectInfo(tfx_effect_emitter_t *e) {
 	TFX_ASSERT(e->library->effect_infos.size() > e->info_index);
 	return &e->library->effect_infos[e->info_index];
@@ -4788,6 +4784,10 @@ tfx_effect_emitter_t *tfx__add_library_stage(tfx_library_t *library, tfx_str64_t
 	tfx__reindex_library(library);
 	tfx__update_library_effect_paths(library);
 	return &library->effects.back();
+}
+
+tfx_effect_emitter_t *tfx_GetEffectByIndex(tfx_library_t *library, int index) {
+	return &library->effects[index];
 }
 
 tfx_effect_emitter_t *tfx_GetLibraryEffectPath(tfx_library_t *library, const char *path) {
@@ -7094,6 +7094,7 @@ void tfx__clamp_node_curve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node
 	}
 }
 
+/*
 tfx_graph_t::tfx_graph_t() {
 	graph_preset = tfxGlobalPercentPreset;
 	index = 0;
@@ -7119,11 +7120,7 @@ tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
 	effector = nullptr;
 	tfxInitBucketArray<tfx_attribute_node_t>(&nodes, bucket_size);
 }
-
-tfx_graph_t::~tfx_graph_t() {
-	//nodes.free();
-	//Free();
-}
+*/
 
 const float BEZIER_ACCURACY = 0.01f;
 
@@ -7198,6 +7195,12 @@ float tfx__get_bezier_value(const tfx_attribute_node_t *lastec, const tfx_attrib
 	}
 
 	return 0;
+}
+
+void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size) {
+	memset(graph, 0, sizeof(tfx_graph_t));
+	graph->nodes.init();
+	graph->nodes.size_of_each_bucket = node_bucket_size;
 }
 
 tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
@@ -10405,9 +10408,6 @@ void tfx_SetTemplateEffectUserData(tfx_effect_template_t *t, void *data) {
 
 void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template_t *t, void(*update_callback)(tfx_particle_manager_t *pm, tfxEffectID effect_index)) {
 	t->effect.update_callback = update_callback;
-}
-
-tfx_particle_manager_t::~tfx_particle_manager_t() {
 }
 
 bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager_t *pm, tfx_effect_template_t *effect_template, tfxEffectID *effect_id) {
@@ -17557,12 +17557,26 @@ tfx_particle_manager_info_t tfx_CreateParticleManagerInfo(tfx_particle_manager_s
 }
 
 void tfx__init_common_particle_manager(tfx_particle_manager_t *pm, tfx_library_t *library, tfxU32 max_particles, unsigned int effects_limit, tfx_particle_manager_mode mode, bool double_buffered_sprites, bool dynamic_sprite_allocation, bool group_sprites_by_effect, tfxU32 mt_batch_size) {
+	pm->lookup_mode = tfxFast;
+	pm->current_ebuff = 0;
+	pm->highest_compute_controller_index = 0;
+	pm->new_compute_particle_ptr = nullptr;
+	pm->compute_controller_ptr = nullptr;
+	pm->max_compute_controllers = 10000;
+	pm->max_new_compute_particles = 10000;
+	pm->new_compute_particle_index = 0;
+	pm->new_particles_count = 0;
+	pm->current_sprite_buffer = 0;
+	pm->sort_passes = 0;
+	pm->max_frame_length = 240.f;
+
 	pm->random = tfx_NewRandom(tfx_Millisecs());
 	pm->threaded_random = tfx_NewRandom(tfx_Millisecs());
 	pm->max_effects = effects_limit;
 	pm->mt_batch_size = mt_batch_size;
 	pm->work_queue = { 0 };
 	pm->library = library;
+
 	tfx__sync_init(&pm->add_effect_mutex);
 	tfx__sync_init(&pm->particle_index_mutex);
 
