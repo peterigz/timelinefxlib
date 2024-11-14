@@ -5,38 +5,17 @@
 #define tfxPROFILER_SAMPLES 60
 #define TFX_THREAD_SAFE
 #define TFX_EXTRA_DEBUGGING
-//Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
-//#define tfxUSEAVX
-
-/*    Functions come in 3 flavours:
-1) INTERNAL where they're only meant for internal use by the library and not for any use outside it. Note that these functions are declared as static.
-2) API where they're meant for access within your games that you're developing
-3) EDITOR where they can be accessed from outside the library but really they're mainly useful for editing the effects such as in in the TimelineFX Editor.
-
-All functions in the library will be marked this way for clarity and naturally the API functions will all be properly documented.
-*/
-//Function marker for any functions meant for external/api use
-#ifdef __cplusplus
-#define tfxAPI extern "C"
-#else
-#define tfxAPI 
-#endif    
-
-//Function marker for any functions meant mainly for use by the TimelineFX editor and are related to editing effects
-//For internal functions
-#define tfxINTERNAL static    
-#define tfxAPI_EDITOR 
 
 /*
 	Timeline FX C++ library
 
 	This library is for implementing particle effects into your games and applications.
 
-	This library is render agnostic, so you will have to provide your own means to render the particles. You will use ParticleManager::GetParticleBuffer() to get all of the active particles in the particle manager
-	and then use the values in Particle struct to draw a correctly scaled and rotated particle.
+	This library is render agnostic, so you will have to provide your own means to render the particles. There are various API functions in the library that help you do this.
 
-	Currently tested on Windows and MacOS, Intel and ARM processors.
+	Currently tested on Windows and MacOS, Intel and Mac based ARM processors.
 
+	Table of contents
 	Sections in this header file, you can search for the following keywords to jump to that section:
 
 	[Zest_Pocket_Allocator]				A single header library for allocating memory from a large pool.
@@ -56,7 +35,30 @@ All functions in the library will be marked this way for clarity and naturally t
 	[Struct_Types]						All of the structs used for objects in TimelineFX
 	[Internal_Functions]				Mainly internal functions called only by the library but also the Editor, these are marked either tfxINTERNAL or tfxAPI_EDITOR
 	[API_Functions]						The main functions for use by users of the library
+		-[Initialisation_functions]		Startup and shutdown timelinefx
+		-[Global_variable_access]		Any functions that give you access to global variables relating to timelinefx
+		-[Library_functions]			Functions for loading and accessing timelinefx libraries
+		-[Particle_Manager_functions]	Create and update functions for particle managers where the main work is done to update particles every frame
+		-[Animation_manager]			Animation manager functions for playing pre-recorded effect data
+		-[Effect_templates]				Functions for working with effect templates which help modify effects in the library without actually changing the base effect in the library.
+		-[General_helpers]				General math functions and other helpers.
 */
+
+/*    Functions come in 3 flavours:
+1) INTERNAL where they're only meant for internal use by the library and not for any use outside it. Note that these functions are declared as static.
+2) API where they're meant for access within your games that you're developing. These functions are c compatible.
+3) EDITOR where they can be accessed from outside the library but really they're mainly useful for editing the effects such as in in the TimelineFX Editor. These
+   functions are c++ compatabile only and currently not available if you're including the library in a c project.
+
+All functions in the library will be marked this way for clarity and naturally the API functions will all be properly documented.
+*/
+#ifdef __cplusplus
+#define tfxAPI extern "C"
+#else
+#define tfxAPI 
+#endif    
+#define tfxINTERNAL static    
+#define tfxAPI_EDITOR 
 
 //Override this if you'd prefer a different way to allocate the pools for sub allocation in host memory.
 #ifndef tfxALLOCATE_POOL
@@ -1435,6 +1437,10 @@ tfxAPI_EDITOR inline tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tf
 //----------------------------------------------------------
 //Section: SIMD_defines
 //----------------------------------------------------------
+
+//Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
+//Hiding this define here for now until I can test and improve AVX more
+//#define tfxUSEAVX
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
@@ -7271,6 +7277,10 @@ tfxAPI void tfx_AlterRandomSeedU32(tfx_random_t *random, tfxU32 amount);
 //[API functions]
 //All the functions below represent all that you will need to call to implement TimelineFX
 
+//--------------------------------
+//Initialisation_functions
+//--------------------------------
+
 /*
 You don't have to call this, you can just call tfx_InitialiseTimelineFX in order to initialise the memory, but I created this for the sake of the editor which
 needs to load in an ini file before initialising timelinefx which requires the memory pool to be created before hand
@@ -7291,6 +7301,9 @@ Cleanup up all threads and memory used by timelinefx
 */
 tfxAPI void tfx_EndTimelineFX();
 
+//--------------------------------
+//Global_variable_access
+//--------------------------------
 /*
 Set the color format used for storing color ramps. Color ramps are generated by particle emitters and dictate how the particle colors change over the lifetime
 of the particle. They can be uploaded to the GPU so you can set your preference for the color format as you need. The format should be immediately after you
@@ -7299,6 +7312,9 @@ call tfx_InitialiseTimelineFX
 */
 tfxAPI void tfx_SetColorRampFormat(tfx_color_ramp_format color_format);
 
+//--------------------------------
+//Library_functions
+//--------------------------------
 /*
 Initialise TimelineFX. Must be called before any functionality of TimelineFX is used.
 * @param filename        The name of the file where you want to count the number of shapes
@@ -7424,8 +7440,27 @@ Free all the memory used by a library
 */
 tfxAPI void tfx_FreeLibrary(tfx_library_t *library);
 
-//[Particle Manager functions]
+/*
+Create the image data required for shaders from a TimelineFX library. The image data will contain data such as uv coordinates. Once you have built the data you can use GetLibraryImageData to get the buffer
+and upload it to the gpu.
+* @param library                  A pointer to a tfx_library_t object
+* @param shapes                   A pointer to a tfx_gpu_shapes_t object which will fill a buffer with all the shapes
+* @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
+*/
+tfxAPI void tfx_BuildLibraryGPUShapeData(tfx_library_t *library, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
 
+/*
+Get a pointer to the particle shapes data in a library. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
+* @param animation_manager        A pointer the tfx_animation_manager_t
+*/
+tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library_t *library, int *count) {
+	*count = library->particle_shapes.data.current_size;
+	return library->particle_shapes.data.data;
+}
+
+//--------------------------------
+//Particle_Manager_functions
+//--------------------------------
 /*
 Create a tfx_particle_manager_info_t object which contains configuration data that you can pass to tfx_InitializeParticleManager to setup a particle manager. You can tweak the config after calling this
 function if needed to fine tune the settings.
@@ -7462,7 +7497,7 @@ current frame in flight. This will probably apply in any modern renderer like vu
 Note: It's up to you to ensure that the staging buffer has enough capacity. The particle manager will assume that the size_in_bytes that you pass to the particle
 manager is correct and if tfxParticleManagerFlags_dynamic_sprite_allocation is set will attempt to grow the buffer by calling the callback you set to do this.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
-* @param stagin_buffer            A pointer to the staging buffer where all the instance_data/billboards are written to
+* @param staging_buffer           A pointer to the staging buffer where all the instance_data/billboards are written to
 * @param size_in_bytes            The size in bytes of the staging buffer
 */
 tfxAPI void tfx_SetStagingBuffer(tfx_particle_manager_t *pm, void *staging_buffer, tfxU32 size_in_bytes);
@@ -7559,7 +7594,7 @@ tfxAPI inline void tfx_SetSeed(tfx_particle_manager_t *pm, tfxU64 seed) {
 	tfx_RandomReSeed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
 	tfx_RandomReSeed(&pm->threaded_random, seed == 0 ? tfxMAX_UINT : seed);
 }
-
+ 
 /*
 Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
 means that you can tweak an effect without editing the base effect in the library.
@@ -7725,7 +7760,7 @@ Set the effect user data for an effect already added to a particle manager
 * @param effect_index    The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToParticleManager
 * @param user_data        A void* pointing to the user_data that you want to store in the effect
 */
-tfxAPI inline void tfx_SetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index, void *user_data);
+tfxAPI void tfx_SetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effect_index, void *user_data);
 
 /*
 Force a particle manager to only run in single threaded mode. In other words, only use the main thread to update particles
@@ -7752,16 +7787,6 @@ Get the transform vectors for a 2d sprite's previous position so that you can us
 * @param index            The sprite index of the sprite that you want the captured sprite for.
 */
 tfxAPI void tfx_GetCapturedInstance2dTransform(tfx_particle_manager_t *pm, tfxU32 layer, tfxU32 index, float out_position[3]);
-
-/*
-Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side tfx_SpriteDataEndIndex to create
-a for loop to iterate over the instance_data in a pre-recorded effect
-* @param sprite_data    A pointer to tfx_sprite_data_t containing all the instance_data and frame data
-* @param frame            The index of the frame you want the offset for
-* @param layer            The sprite layer
-* @returns                tfxU32 containing the index offset
-*/
-tfxAPI tfxU32 tfx_SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer);
 
 /*
 Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side tfx_SpriteDataEndIndex to create
@@ -8078,7 +8103,10 @@ Get the name of an effect
 */
 tfxAPI inline const char *tfx_GetEffectName(tfx_effect_emitter_t *effect);
 
-//-------Functions related to tfx_animation_manager_t--------
+
+//--------------------------------
+//Animation_manager
+//--------------------------------
 
 /*
 Set the position of a 3d animation
@@ -8166,6 +8194,16 @@ Get the sprite data settings for an effect in a library by it's path. Sprite dat
 * @returns						Pointer to the tfx_sprite_data_settings
 */
 tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettingsByPath(tfx_library_t *library, const char *path);
+
+/*
+Get the index offset into the sprite memory for sprite data containing a pre recorded effect animation. Can be used along side tfx_SpriteDataEndIndex to create
+a for loop to iterate over the instance_data in a pre-recorded effect
+* @param sprite_data    A pointer to tfx_sprite_data_t containing all the instance_data and frame data
+* @param frame            The index of the frame you want the offset for
+* @param layer            The sprite layer
+* @returns                tfxU32 containing the index offset
+*/
+tfxAPI tfxU32 tfx_SpriteDataIndexOffset(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU32 layer);
 
 /*
 Set the user data in a tfx_animation_manager_t which can get passed through to callback functions when updated the animation manager
@@ -8279,15 +8317,6 @@ tfxAPI tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animati
 /*
 Create the image data required for shaders from a TimelineFX library. The image data will contain data such as uv coordinates. Once you have built the data you can use GetLibraryImageData to get the buffer
 and upload it to the gpu.
-* @param library                  A pointer to a tfx_library_t object
-* @param shapes                   A pointer to a tfx_gpu_shapes_t object which will fill a buffer with all the shapes
-* @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
-*/
-tfxAPI void tfx_BuildLibraryGPUShapeData(tfx_library_t *library, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
-
-/*
-Create the image data required for shaders from a TimelineFX library. The image data will contain data such as uv coordinates. Once you have built the data you can use GetLibraryImageData to get the buffer
-and upload it to the gpu.
 * @param animation_manager		  A pointer to an tfx_animation_manager_t object
 * @param shapes                   A pointer to a tfx_gpu_shapes_t object which will fill a buffer with all the shapes
 * @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
@@ -8309,15 +8338,6 @@ Get a pointer to the particle shapes data in the animation manager. This can be 
 tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesAnimationManager(tfx_animation_manager_t *animation_manager, int *count) {
 	*count = animation_manager->particle_shapes.data.current_size;
 	return animation_manager->particle_shapes.data.data;
-}
-
-/*
-Get a pointer to the particle shapes data in the animation manager. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
-* @param animation_manager        A pointer the tfx_animation_manager_t
-*/
-tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library_t *library, int *count) {
-	*count = library->particle_shapes.data.current_size;
-	return library->particle_shapes.data.data;
 }
 
 /*
@@ -8407,6 +8427,10 @@ Get the buffer memory address for the sprite data in an animation manager
 * @returns void*                A pointer to the sprite data memory
 */
 tfxAPI void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager_t *animation_manager);
+
+//--------------------------------
+//Effect_templates
+//--------------------------------
 
 /*
 Reset an effect template and make it empty so you can use it to store another effect.
@@ -8507,6 +8531,10 @@ Set the single spawn amount for an emitter. Only affects emitters that have the 
 * @param amount                A float of the amount that you want to set the single spawn amount to.
 */
 tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template_t *t, const char *emitter_path, tfxU32 amount);
+
+//--------------------------------
+//General_helpers
+//--------------------------------
 
 /*
 Interpolate between 2 tfxVec3s. You can make use of this in your render function when rendering instance_data and interpolating between captured and current positions
