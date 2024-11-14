@@ -3050,6 +3050,11 @@ struct tfx_vector_t {
 #define tfxCastBuffer(type, buffer) static_cast<type*>(buffer->data)
 #define tfxCastBufferRef(type, buffer) static_cast<type*>(buffer.data)
 
+#else
+
+#define tfxCastBuffer(type, buffer) (type*)buffer->data
+#define tfxCastBufferRef(type, buffer) (type*)buffer.data
+
 #endif
 
 //Used in tfx_soa_buffer_t to store pointers to arrays inside a struct of arrays
