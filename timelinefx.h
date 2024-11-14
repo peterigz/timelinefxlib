@@ -2427,7 +2427,7 @@ typedef enum {
 } tfx_angle_setting_flag_bits;
 
 //All the state_flags needed by the ControlParticle function put into one typedef enum save typedef enum
- typedef enum {
+typedef enum {
 	tfxParticleControlFlags_none = 0,
 	tfxParticleControlFlags_random_color = 1 << 0,
 	tfxParticleControlFlags_relative_position = 1 << 1,
@@ -2909,6 +2909,20 @@ struct tfx_str_t {
 //Containers_and_Memory
 //-----------------------------------------------------------
 
+#else
+
+typedef struct tfx_vector_s {
+	tfxU32 current_size;
+	tfxU32 capacity;
+	tfxU32 volatile locked;
+	tfxU32 alignment;
+	void *data;
+} tfx_vector_t;
+
+#endif
+
+#ifdef __cplusplus
+
 //Storage
 //Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut for tfxvec although it's quite a lot different now.
 //std::vector replacement with some extra stuff and tweaks specific to TimelineFX
@@ -3036,6 +3050,41 @@ struct tfx_vector_t {
 #define tfxCastBuffer(type, buffer) static_cast<type*>(buffer->data)
 #define tfxCastBufferRef(type, buffer) static_cast<type*>(buffer.data)
 
+#endif
+
+//Used in tfx_soa_buffer_t to store pointers to arrays inside a struct of arrays
+typedef struct tfx_soa_data_s {
+	void *ptr;				//A pointer to the array in the struct
+	size_t offset;			//The offset to the memory location in the buffer where the array starts
+	size_t unit_size;		//The size of each data type in the array
+}tfx_soa_data_t;
+
+//A buffer designed to contain structs of arrays. If the arrays need to grow then a new memory block is made and all copied over
+//together. All arrays in the struct will be the same capacity but can all have different unit sizes/types.
+//In order to use this you need to first prepare the buffer by calling tfx__add_struct_array for each struct member of the SoA you're setting up. 
+//All members must be of the same struct.
+//Then call tfx__finish_soa_buffer_setup to create the memory for the struct of arrays with an initial reserve amount.
+typedef struct tfx_soa_buffer_s {
+	size_t current_arena_size;				//The current size of the arena that contains all the arrays
+	size_t struct_size;						//The size of the struct (each member unit size added up)
+	tfxU32 current_size;					//current size of each array
+	tfxU32 start_index;						//Start index if you're using the buffer as a ring buffer
+	tfxU32 last_bump;						//the amount the the start index was bumped by the last time tfx__bump_soa_buffer was called
+	tfxU32 capacity;						//capacity of each array
+	tfxU32 block_size;						//Keep the capacity to the nearest block size
+	tfxU32 alignment;						//The alignment of the memory. If you're planning on using simd for the memory, then 16 will be necessary.
+#ifdef __cplusplus
+	tfx_vector_t<tfx_soa_data_t> array_ptrs;    //Container for all the pointers into the arena
+#else
+	tfx_vector_t array_ptrs;    //Container for all the pointers into the arena
+#endif
+	void *user_data;
+	void(*resize_callback)(struct tfx_soa_buffer_s *ring, tfxU32 new_index_start);
+	void *struct_of_arrays;					//Pointer to the struct of arrays. Important that this is a stable pointer! Set with tfx__finish_soa_buffer_setup
+	void *data;								//Pointer to the area in memory that contains all of the array data    
+}tfx_soa_buffer_t;
+
+#ifdef __cplusplus
 //This simple container struct was created for storing instance_data in the particle manager. I didn't want this templated because either 2d or 3d instance_data could be used so
 //I wanted to cast as needed when writing and using the sprite data. See simple cast macros above tfxCastBuffer and tfxCastBufferRef
 struct tfx_buffer_t {
@@ -3317,34 +3366,6 @@ struct tfx_storage_map_t {
 #define tfxMT_STACK_SIZE tfxMegabyte(4)
 #endif
 
-//Used in tfx_soa_buffer_t to store pointers to arrays inside a struct of arrays
-struct tfx_soa_data_t {
-	void *ptr = nullptr;        //A pointer to the array in the struct
-	size_t offset = 0;			//The offset to the memory location in the buffer where the array starts
-	size_t unit_size = 0;		//The size of each data type in the array
-};
-
-//A buffer designed to contain structs of arrays. If the arrays need to grow then a new memory block is made and all copied over
-//together. All arrays in the struct will be the same capacity but can all have different unit sizes/types.
-//In order to use this you need to first prepare the buffer by calling tfx__add_struct_array for each struct member of the SoA you're setting up. 
-//All members must be of the same struct.
-//Then call tfx__finish_soa_buffer_setup to create the memory for the struct of arrays with an initial reserve amount.
-struct tfx_soa_buffer_t {
-	size_t current_arena_size = 0;				//The current size of the arena that contains all the arrays
-	size_t struct_size = 0;						//The size of the struct (each member unit size added up)
-	tfxU32 current_size = 0;					//current size of each array
-	tfxU32 start_index = 0;						//Start index if you're using the buffer as a ring buffer
-	tfxU32 last_bump = 0;						//the amount the the start index was bumped by the last time tfx__bump_soa_buffer was called
-	tfxU32 capacity = 0;						//capacity of each array
-	tfxU32 block_size = tfxDataWidth;			//Keep the capacity to the nearest block size
-	tfxU32 alignment = 4;						//The alignment of the memory. If you're planning on using simd for the memory, then 16 will be necessary.
-	tfx_vector_t<tfx_soa_data_t> array_ptrs;    //Container for all the pointers into the arena
-	void *user_data = nullptr;
-	void(*resize_callback)(tfx_soa_buffer_t *ring, tfxU32 new_index_start) = nullptr;
-	void *struct_of_arrays = nullptr;			//Pointer to the struct of arrays. Important that this is a stable pointer! Set with tfx__finish_soa_buffer_setup
-	void *data = nullptr;						//Pointer to the area in memory that contains all of the array data    
-};
-
 //Note this doesn't free memory, call tfx__free_soa_buffer to do that.
 inline void tfx__reset_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->current_arena_size = 0;
@@ -3353,6 +3374,7 @@ inline void tfx__reset_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->start_index = 0;
 	buffer->last_bump = 0;
 	buffer->capacity = 0;
+	buffer->alignment = 4;
 	buffer->block_size = tfxDataWidth;
 	buffer->user_data = nullptr;
 	buffer->resize_callback = nullptr;
@@ -3878,6 +3900,9 @@ tfxAPI_EDITOR inline int tfx_FindInLine(tfx_line_t *line, const char *needle) {
 	return -1;
 }
 
+#endif
+
+#ifdef __cplusplus
 //A char buffer you can use to load a file into and read from
 //Has no deconstructor so make sure you call Free() when done
 //This is meant for limited usage in timeline fx only and not recommended for use outside!
@@ -3994,14 +4019,6 @@ tfx_str_(128);
 tfx_str_(256);
 tfx_str_(512);
 
-typedef struct tfx_vector_s {
-	tfxU32 current_size;
-	tfxU32 capacity;
-	tfxU32 volatile locked;
-	tfxU32 alignment;
-	void *data;
-} tfx_vector_t;
-
 typedef struct tfx_storage_map_s {
 	struct pair {
 		tfxKey key;
@@ -4014,13 +4031,27 @@ typedef struct tfx_storage_map_s {
 	void(*remove_callback)(void *item);
 } tfx_storage_map_t;
 
+typedef struct tfx_buffer_s {
+	tfxU32 current_size;
+	tfxU32 capacity;
+	tfxU32 struct_size;
+	tfxU32 alignment;
+	void *data;
+} tfx_buffer_t;
+
+typedef struct tfx_bucket_array_s {
+	tfxU32 current_size;
+	tfxU32 capacity;
+	tfxU32 size_of_each_bucket;
+	tfxLONG volatile locked;
+	tfx_vector_t bucket_list;
+} tfx_bucket_array_t;
+
 typedef struct tfx_str_s tfx_str_t;
-typedef struct tfx_buffer_s stf_buffer_t;
 typedef struct tfx_storage_map_s tfx_storage_map_t;
 typedef struct tfx_soa_data_s tfx_soa_data_t;
 typedef struct tfx_soa_buffer_s tfx_soa_buffer_t;
 typedef struct tfx_bucket_s tfx_bucket_t;
-typedef struct tfx_bucket_array_s tfx_bucket_array_t;
 typedef struct tfx_line_s tfx_line_t;
 typedef struct tfx_stream_s {
 	tfxU64 size;
@@ -4610,10 +4641,10 @@ tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_axis_angle(float x, float y, f
 tfxINTERNAL tfx_quaternion_t tfx__quaternion_from_direction(tfx_vec3_t * normalised_dir);
 
 //Note, has padding for the sake of alignment on GPU compute shaders
-struct tfx_bounding_box_t {
+typedef struct tfx_bounding_box_s {
 	tfx_vec3_t min_corner; float padding1;
 	tfx_vec3_t max_corner; float padding2;
-};
+} tfx_bounding_box_t;
 
 const float tfxONE_DIV_255 = 1 / 255.f;
 const float TFXONE_DIV_511 = 1 / 511.f;
@@ -4995,10 +5026,11 @@ typedef struct tfx_package_s {
 //Section: Struct_Types
 //------------------------------------------------------------
 
-typedef struct tfx_face_s {
-	int v[3];
-}tfx_face_t;
+#ifdef __cplusplus
+
 extern tfx_vector_t<tfx_vec3_t> tfxIcospherePoints[6];
+
+#endif
 
 typedef struct tfx_attribute_node_s {
 	float frame;
@@ -5010,19 +5042,49 @@ typedef struct tfx_attribute_node_s {
 	tfxAttributeNodeFlags flags;
 	tfxU32 index;
 
+#ifdef __cplusplus
 	tfx_attribute_node_s() : frame(0.f), value(0.f), flags(0), index(0) { }
 	inline bool operator==(const struct tfx_attribute_node_s &n) { return n.frame == frame && n.value == value; }
+#endif
 }tfx_attribute_node_t;
+
+typedef struct tfx_depth_index_s {
+	tfxParticleID particle_id;
+	float depth;
+}tfx_depth_index_t;
+
+typedef struct tfx_graph_lookup_t {
+#ifdef __cplusplus
+	tfx_vector_t<float> values;
+#else
+	tfx_vector_t values;
+#endif
+	tfxU32 last_frame;
+	float life;
+} tfx_graph_lookup_t;
+
+//Used when a particle manager is grouping instances by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
+typedef struct tfx_effect_instance_data_s {
+#ifdef __cplusplus
+	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
+#else
+	tfx_vector_t depth_indexes[tfxLAYERS][2];
+#endif
+	tfxU32 sprite_index_point[tfxLAYERS];
+	tfxU32 cumulative_index_point[tfxLAYERS];
+	tfxU32 depth_starting_index[tfxLAYERS];
+	tfxU32 current_depth_buffer_index[tfxLAYERS];
+	tfxU32 instance_start_index;
+	tfxU32 instance_count;
+} tfx_effect_instance_data_t;
+
+typedef struct tfx_face_s {
+	int v[3];
+} tfx_face_t;
 
 typedef struct tfx_random_s {
 	tfxU64 seeds[2];
 }tfx_random_t;
-
-typedef struct tfx_graph_lookup_t {
-	tfx_vector_t<float> values;
-	tfxU32 last_frame;
-	float life;
-}tfx_graph_lookup_t;
 
 typedef struct tfx_color_ramp_s {
 	//These vectors are for sinusoidal color ramp generation
@@ -5040,17 +5102,17 @@ typedef struct tfx_color_ramp_hash_s {
 }tfx_color_ramp_hash_t;
 
 typedef struct tfx_bitmap_s {
-    int width;
-    int height;
-    int channels;
-    int stride;
-    tfx_size size;
-    tfx_byte *data;
+	int width;
+	int height;
+	int channels;
+	int stride;
+	tfx_size size;
+	tfx_byte *data;
 }tfx_bitmap_t;
 
 typedef struct tfx_graph_id_s {
 	tfx_graph_category category;
-	tfx_graph_type type = tfxEmitterGraphMaxIndex;
+	tfx_graph_type type;
 	tfxU32 graph_id;
 	tfxU32 node_id;
 	tfxKey path_hash;
@@ -5101,13 +5163,17 @@ typedef struct tfx_graph_s {
 	tfx_graph_preset graph_preset;
 	tfx_graph_type type;
 	tfx_effect_emitter_t *effector;
+#ifdef __cplusplus
 	tfx_bucket_array_t<tfx_attribute_node_t> nodes;
+#else
+	tfx_bucket_array_t nodes;
+#endif
 	tfx_graph_lookup_t lookup;
 	tfxU32 index;
 	float gamma;
 } tfx_graph_t;
 
-tfxAPI_EDITOR void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size);
+tfxAPI_EDITOR void tfx__init_graph(tfx_graph_t * graph, tfxU32 node_bucket_size);
 
 //The following structs group graphs together under the attribute categories Global, Transform, Properties, Base, Variation and Overtime
 typedef struct tfx_global_attributes_s {
@@ -5178,7 +5244,7 @@ typedef struct tfx_variation_attributes_s {
 	tfx_graph_t noise_offset;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
-}tfx_variation_attributes_t;
+} tfx_variation_attributes_t;
 
 typedef struct tfx_overtime_attributes_s {
 	tfx_graph_t velocity;
@@ -5208,14 +5274,14 @@ typedef struct tfx_overtime_attributes_s {
 	tfx_graph_t motion_randomness;
 	tfx_color_ramp_t color_ramps[2];
 	tfx_index color_ramp_bitmap_indexes[2];
-}tfx_overtime_attributes_t;
+} tfx_overtime_attributes_t;
 
 typedef struct tfx_factor_attributes_s {
 	tfx_graph_t life;
 	tfx_graph_t size;
 	tfx_graph_t velocity;
 	tfx_graph_t intensity;
-}tfx_factor_attributes_t;
+} tfx_factor_attributes_t;
 
 typedef struct tfx_path_nodes_soa_s {
 	float *x;
@@ -5256,11 +5322,15 @@ typedef struct tfx_emitter_path_s {
 	float rotation_stagger;
 	tfx_vec3_t offset;
 	tfx_vec3_t builder_parameters;
+#ifdef __cplusplus
 	tfx_vector_t<tfx_vec4_t> nodes;
+#else
+	tfx_vector_t nodes;
+#endif
 	tfx_soa_buffer_t node_buffer;
 	tfx_path_nodes_soa_t node_soa;
 	tfx_path_extrusion_type extrusion_type;
-}tfx_emitter_path_t;
+} tfx_emitter_path_t;
 
 typedef struct tfx_emitter_attributes_s {
 	tfx_property_attributes_t properties;
@@ -5270,9 +5340,9 @@ typedef struct tfx_emitter_attributes_s {
 	tfx_factor_attributes_t factor;
 }tfx_emitter_attributes_t;
 
-static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age, float lifetime);
-static float(*lookup_callback)(tfx_graph_t *graph, float age);
-static float(*lookup_random_callback)(tfx_graph_t *graph, float age, tfx_random_t *random);
+static float(*lookup_overtime_callback)(tfx_graph_t * graph, float age, float lifetime);
+static float(*lookup_callback)(tfx_graph_t * graph, float age);
+static float(*lookup_random_callback)(tfx_graph_t * graph, float age, tfx_random_t * random);
 
 typedef struct tfx_shape_data_s {
 	tfx_str64_t name;
@@ -5521,22 +5591,6 @@ typedef struct tfx_emitter_state_s {
 	tfx_vec3_t angle_offsets;
 }tfx_emitter_state_t TFX_ALIGN_AFFIX(16);
 
-typedef struct tfx_depth_index_s {
-	tfxParticleID particle_id;
-	float depth;
-}tfx_depth_index_t;
-
-//Used when a particle manager is grouping instances by effect. This way effects can be individually ordered and drawn/not drawn in order however you need
-typedef struct tfx_effect_instance_data_s {
-	tfx_vector_t<tfx_depth_index_t> depth_indexes[tfxLAYERS][2];
-	tfxU32 sprite_index_point[tfxLAYERS];
-	tfxU32 cumulative_index_point[tfxLAYERS];
-	tfxU32 depth_starting_index[tfxLAYERS];
-	tfxU32 current_depth_buffer_index[tfxLAYERS];
-	tfxU32 instance_start_index;
-	tfxU32 instance_count;
-}tfx_effect_instance_data_t;
-
 //This is a struct that stores an effect state that is currently active in a particle manager.
 typedef struct tfx_effect_state_s {
 	tfx_quaternion_t rotation;
@@ -5582,7 +5636,11 @@ typedef struct tfx_effect_state_s {
 	tfx_effect_instance_data_t instance_data;
 
 	//The emitters within this effect.
+#ifdef __cplusplus
 	tfx_vector_t<tfxU32> emitter_indexes[2];
+#else
+	tfx_vector_t emitter_indexes[2];
+#endif
 	tfxU32 emitter_start_size;
 
 	//User Data
@@ -5654,7 +5712,11 @@ typedef struct tfx_effect_emitter_info_s {
 	//The maximum amount of life that a particle can be spawned with taking into account base + variation life values
 	float max_life;
 	//List of sub_effects ( effects contain emitters, emitters contain sub effects )
+#ifdef __cplusplus
 	tfx_vector_t<tfx_effect_emitter_t> sub_effectors;
+#else
+	tfx_vector_t sub_effectors;
+#endif
 }tfx_effect_emitter_info_t;
 
 typedef struct tfx_compute_sprite_s {    //64 bytes
@@ -5797,7 +5859,7 @@ typedef enum {
 } tfxSpriteBufferMode;
 
 //These structs are for animation sprite data that you can upload to the gpu
-typedef struct alignas(16) tfx_sprite_data3d_s {    //60 bytes aligning to 64
+typedef struct tfx_sprite_data3d_s {    //60 bytes aligning to 64
 	tfx_vec4_t position_stretch;                    //The position of the sprite, x, y - world, z, w = captured for interpolating
 	tfx_vec3_t rotations;				            //Rotations of the sprite
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 floats packed into 8bits
@@ -5810,7 +5872,7 @@ typedef struct alignas(16) tfx_sprite_data3d_s {    //60 bytes aligning to 64
 	tfxU32 padding;
 }tfx_sprite_data3d_t;
 
-typedef struct alignas(16) tfx_sprite_data2d_s {    //48 bytes
+typedef struct tfx_sprite_data2d_s {    //48 bytes
 	tfx_vec4_t position_stretch_rotation;           //The position of the sprite, rotation in w, stretch in z
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
@@ -5852,7 +5914,11 @@ typedef struct tfx_sprite_data_metrics_s {
 	float animation_length_in_time;
 	tfxU32 total_sprites;
 	tfxU32 total_memory_for_sprites;
+#ifdef __cplusplus
 	tfx_vector_t<tfx_frame_meta_t> frame_meta;
+#else
+	tfx_vector_t frame_meta;
+#endif
 	tfxAnimationManagerFlags flags;
 	tfxAnimationFlags animation_flags;
 }tfx_sprite_data_metrics_t;
@@ -5923,7 +5989,11 @@ typedef struct tfx_gpu_image_data_s {
 }tfx_gpu_image_data_t;
 
 typedef struct tfx_gpu_shapes_s {
+#ifdef __cplusplus
 	tfx_vector_t<tfx_gpu_image_data_t> list;
+#else
+	tfx_vector_t list;
+#endif
 }tfx_gpu_shapes_t;
 
 typedef struct tfx_spawn_work_entry_s {
@@ -5938,8 +6008,13 @@ typedef struct tfx_spawn_work_entry_s {
 	tfxEmitterPropertyFlags parent_property_flags;
 	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;
+#ifdef __cplusplus
 	tfx_vector_t<tfx_effect_emitter_t> *sub_effects;
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
+#else
+	tfx_vector_t *sub_effects;
+	tfx_vector_t *depth_indexes;
+#endif
 	tfxU32 depth_index_start;
 	tfxU32 seed;
 	float tween;
@@ -5969,7 +6044,11 @@ typedef struct tfx_control_work_entry_s {
 	tfxU32 layer;
 	tfx_emitter_properties_t *properties;
 	tfx_buffer_t *sprite_instances;
+#ifdef __cplusplus
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
+#else
+	tfx_vector_t *depth_indexes;
+#endif
 	tfx_emitter_path_t *path;
 	bool sample_path_life;
 	float overal_scale;
@@ -5988,21 +6067,26 @@ typedef struct tfx_particle_age_work_entry_s {
 }tfx_particle_age_work_entry_t;
 
 typedef struct tfx_sort_work_entry_s {
+#ifdef __cplusplus
 	tfx_bucket_array_t<tfx_particle_soa_t> *bank;
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
-}tfx_sort_work_entry_t;
+#else
+	tfx_bucket_array_t *bank;
+	tfx_vector_t *depth_indexes;
+#endif
+} tfx_sort_work_entry_t;
 
 typedef struct tfx_compress_work_entry_s {
 	tfx_sprite_data_t *sprite_data;
 	tfxU32 frame;
 	bool is_3d;
-}tfx_compress_work_entry_t;
+} tfx_compress_work_entry_t;
 
 typedef struct tfx_sprite_index_range_s {
 	tfxU32 start_index;
 	tfxU32 end_index;
 	tfxU32 sprite_count;
-}tfx_sprite_index_range_t;
+} tfx_sprite_index_range_t;
 
 typedef struct tfx_effect_data_s {
 	tfxU32 *global_attributes;
@@ -6041,7 +6125,7 @@ typedef struct tfx_animation_buffer_metrics_s {
 	tfxU32 total_sprites_to_draw;
 }tfx_animation_buffer_metrics_t;
 
-typedef struct alignas(16) tfx_animation_emitter_properties_s {
+typedef struct tfx_animation_emitter_properties_s {
 	tfx_vec2_t handle;        //image handle
 	tfxU32 handle_packed;
 	tfxU32 flags;
@@ -6052,13 +6136,19 @@ typedef struct alignas(16) tfx_animation_emitter_properties_s {
 }tfx_animation_emitter_properties_t;
 
 typedef struct tfx_color_ramp_bitmap_data_t {
+#ifdef __cplusplus
 	tfx_storage_map_t<tfxU32> color_ramp_ids;
 	tfx_vector_t<tfx_bitmap_t> color_ramp_bitmaps;
+#else
+	tfx_storage_map_t color_ramp_ids;
+	tfx_vector_t color_ramp_bitmaps;
+#endif
 	tfxU32 color_ramp_count;
 }tfx_color_ramp_bitmap_data_t;
 
 //Use the animation manager to control playing of pre-recorded effects
 typedef struct tfx_animation_manager_s {
+#ifdef __cplusplus
 	//All of the sprite data for all the animations that you might want to play on the GPU.
 	//This could be deleted once it's uploaded to the GPU
 	//An animation manager can only be used for either 2d or 3d not both
@@ -6068,8 +6158,6 @@ typedef struct tfx_animation_manager_s {
 	tfx_vector_t<tfx_animation_instance_t> instances;
 	//List of instances in use. These index into the instances list above
 	tfx_vector_t<tfxU32> instances_in_use[2];
-	//Flips between 1 and 0 each frame to be used when accessing instances_in_use
-	tfxU32 current_in_use_buffer;
 	//List of free instance indexes
 	tfx_vector_t<tfxU32> free_instances;
 	//List of indexes into the instances list that will actually be sent to the GPU next frame
@@ -6096,6 +6184,21 @@ typedef struct tfx_animation_manager_s {
 	//Other wise if you're adding sprite data from an effect library then the shapes will just be
 	//referenced from there instead
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
+#else
+	tfx_vector_t sprite_data_3d;
+	tfx_vector_t sprite_data_2d;
+	tfx_vector_t instances;
+	tfx_vector_t instances_in_use[2];
+	tfx_vector_t free_instances;
+	tfx_vector_t render_queue;
+	tfx_vector_t offsets;
+	tfx_vector_t emitter_properties;
+	tfx_vector_t sprite_data_settings;
+	tfx_storage_map_t effect_animation_info;
+	tfx_storage_map_t particle_shapes;
+#endif
+	//Flips between 1 and 0 each frame to be used when accessing instances_in_use
+	tfxU32 current_in_use_buffer;
 	//This struct contains the size of the buffers that need to be uploaded to the GPU. Offsets and 
 	//animation instances need to be uploaded every frame, but the sprite data only once before you
 	//start drawing anything
@@ -6123,7 +6226,7 @@ typedef struct tfx_particle_manager_info_s {
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time.
 	tfx_particle_manager_mode order_mode;   //When not grouping instance_data by effect, you can set the mode of the particle manager to order instance_data or not.
-											//When set to false, all instance_data will be kept together in a large list.
+	//When set to false, all instance_data will be kept together in a large list.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
 	tfxU32 sort_passes;                     //when in order by depth mode (not guaranteed order) set the number of sort passes for more accuracy. Anything above 5 and you should just be guaranteed order.
 	bool double_buffer_sprites;             //Set to true to double buffer instance_data so that you can interpolate between the old and new positions for smoother animations.
@@ -6134,20 +6237,19 @@ typedef struct tfx_particle_manager_info_s {
 	bool write_direct_to_staging_buffer;	//Make the particle manager write directly to the staging buffer. Use tfx_SetStagingBuffer before you call tfx_UpdateParticleManager
 	void *user_data;						//User data that will get passed into the grow_staging_buffer_callback function which you can use to grow the buffer
 	//If you need the staging buffer to be grown dynamically then you can use this call back to do that. It should return true if the buffer was successfully grown or false otherwise.
-	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_particle_manager_t *pm, void *user_data);	
+	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_particle_manager_t *pm, void *user_data);
 }tfx_particle_manager_info_t;
 
 //Use the particle manager to add multiple effects to your scene 
 typedef struct tfx_particle_manager_s {
+#ifdef __cplusplus
 	tfx_vector_t<tfx_soa_buffer_t> particle_array_buffers;
 	tfx_bucket_array_t<tfx_particle_soa_t> particle_arrays;
 	tfx_vector_t<tfx_soa_buffer_t> particle_location_buffers;
 	tfx_bucket_array_t<tfx_spawn_points_soa_t> particle_location_arrays;
-
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
-
 	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
 	tfx_vector_t<tfx_spawn_work_entry_t> spawn_work;
 	tfx_vector_t<tfx_control_work_entry_t> control_work;
@@ -6163,16 +6265,42 @@ typedef struct tfx_particle_manager_s {
 	tfx_vector_t<tfx_path_quaternion_t *> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
 	tfx_vector_t<tfx_emitter_state_t> emitters;
-	tfx_library_t *library;
-
-	tfx_work_queue_t work_queue;
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
+	tfx_vector_t <tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
+	tfx_vector_t<unsigned int> free_compute_controllers;
+#else
+	tfx_vector_t particle_array_buffers;
+	tfx_bucket_array_t particle_arrays;
+	tfx_vector_t particle_location_buffers;
+	tfx_bucket_array_t particle_location_arrays;
+	tfx_storage_map_t free_particle_lists;
+	tfx_storage_map_t free_particle_location_lists;
+	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
+	tfx_vector_t sorting_work_entry;
+	tfx_vector_t spawn_work;
+	tfx_vector_t control_work;
+	tfx_vector_t age_work;
+	tfx_vector_t particle_indexes;
+	tfx_vector_t free_particle_indexes;
+	tfx_vector_t effects_in_use[tfxMAXDEPTH][2];
+	tfx_vector_t control_emitter_queue;
+	tfx_vector_t emitters_check_capture;
+	tfx_vector_t free_effects;
+	tfx_vector_t free_emitters;
+	tfx_vector_t free_path_quaternions;
+	tfx_vector_t path_quaternions;
+	tfx_vector_t effects;
+	tfx_vector_t emitters;
+	tfx_vector_t deffered_spawn_work;
+	tfx_vector_t unique_sprite_ids[2][tfxLAYERS];
+	tfx_vector_t free_compute_controllers;
+#endif
 
+	tfx_library_t *library;
+	tfx_work_queue_t work_queue;
 	//The info config that was used to initialise the particle manager. This can be used to alter and the reconfigure the particle manager
 	tfx_particle_manager_info_t info;
-
 	//Banks of instance_data. All emitters write their sprite data to these banks. 
-	tfx_vector_t <tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
 	tfx_buffer_t instance_buffer;
 	tfx_buffer_t instance_buffer_for_recording[2][tfxLAYERS];
 	tfxU32 current_sprite_buffer;
@@ -6180,7 +6308,6 @@ typedef struct tfx_particle_manager_s {
 
 	//todo: document compute controllers once we've established this is how we'll be doing it.
 	void *compute_controller_ptr;
-	tfx_vector_t<unsigned int> free_compute_controllers;
 	tfxU32 new_compute_particle_index;
 	tfxU32 new_particles_count;
 	void *new_compute_particle_ptr;
@@ -6257,14 +6384,13 @@ typedef struct tfx_effect_library_stats_s {
 }tfx_effect_library_stats_t;
 
 typedef struct tfx_library_s {
+#ifdef __cplusplus
 	tfx_storage_map_t<tfx_effect_emitter_t *> effect_paths;
 	tfx_vector_t<tfx_effect_emitter_t> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
-	tfx_gpu_shapes_t gpu_shapes;
 	tfx_vector_t<tfx_effect_emitter_info_t> effect_infos;
 	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
-	tfx_color_ramp_bitmap_data_t color_ramps;
 
 	tfx_bucket_array_t<tfx_emitter_path_t> paths;
 	tfx_vector_t<tfx_global_attributes_t> global_graphs;
@@ -6288,7 +6414,39 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfxU32> free_properties;
 	tfx_vector_t<tfxU32> free_infos;
 	tfx_vector_t<tfxU32> free_keyframes;
+#else
+	tfx_storage_map_t effect_paths;
+	tfx_vector_t effects;
+	tfx_storage_map_t particle_shapes;
+	tfx_vector_t effect_infos;
+	tfx_vector_t emitter_properties;
+	tfx_storage_map_t pre_recorded_effects;
 
+	tfx_bucket_array_t paths;
+	tfx_vector_t global_graphs;
+	tfx_vector_t emitter_attributes;
+	tfx_vector_t transform_attributes;
+	tfx_vector_t sprite_sheet_settings;
+	tfx_vector_t sprite_data_settings;
+	tfx_vector_t preview_camera_settings;
+	tfx_vector_t all_nodes;
+	tfx_vector_t node_lookup_indexes;
+	tfx_vector_t compiled_lookup_values;
+	tfx_vector_t compiled_lookup_indexes;
+	tfx_vector_t graph_min_max;
+
+	tfx_vector_t free_global_graphs;
+	tfx_vector_t free_keyframe_graphs;
+	tfx_vector_t free_emitter_attributes;
+	tfx_vector_t free_animation_settings;
+	tfx_vector_t free_preview_camera_settings;
+	tfx_vector_t free_properties;
+	tfx_vector_t free_infos;
+	tfx_vector_t free_keyframes;
+#endif
+
+	tfx_gpu_shapes_t gpu_shapes;
+	tfx_color_ramp_bitmap_data_t color_ramps;
 	//Get an effect from the library by index
 	tfx_str64_t name;
 	bool open_library;
@@ -6296,10 +6454,14 @@ typedef struct tfx_library_s {
 	tfx_stream_t library_file_path;
 	tfxU32 uid;
 	void(*uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset);
-}tfx_library_t;
+} tfx_library_t;
 
 typedef struct tfx_effect_template_s {
+#ifdef __cplusplus
 	tfx_storage_map_t<tfx_effect_emitter_t *> paths;
+#else
+	tfx_storage_map_t paths;
+#endif
 	tfx_effect_emitter_t effect;
 	tfxKey original_effect_hash;
 }tfx_effect_template_t;
@@ -6554,6 +6716,7 @@ tfxINTERNAL void tfx__push_translation_points(tfx_effect_emitter_t *e, tfx_vecto
 //--------------------------------
 //Grouped graph struct functions
 //--------------------------------
+tfxAPI_EDITOR void tfx__initialise_path(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__initialise_path_graphs(tfx_emitter_path_t *path, tfxU32 bucket_size = 8);
 tfxAPI_EDITOR void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_generator_type generator);
 tfxAPI_EDITOR void tfx__build_path_nodes_3d(tfx_emitter_path_t *path);
@@ -6971,10 +7134,10 @@ tfxINTERNAL void tfx__init_sprite_data_soa_compression_3d(tfx_soa_buffer_t *buff
 tfxINTERNAL void tfx__init_sprite_data_soa_3d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_sprite_data_soa_compression_2d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_sprite_data_soa_2d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__int_particle_soa_2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
-tfxINTERNAL void tfx__int_particle_soa_3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
-tfxINTERNAL void tfx__int_particle_location_soa_3d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__int_particle_location_soa_2d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void tfx__init_particle_soa_2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
+tfxINTERNAL void tfx__init_particle_soa_3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
+tfxINTERNAL void tfx__init_particle_location_soa_3d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void tfx__init_particle_location_soa_2d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__copy_emitter_properties(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);
 tfxINTERNAL inline void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL inline bool tfx__is_graph_transform_rotation(tfx_graph_type type) {

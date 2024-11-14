@@ -3313,6 +3313,7 @@ void tfx__clone_effect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter
 		}
 		if (clone->path_attributes != tfxINVALID) {
 			tfx_emitter_path_t &path_copy = destination_library->paths.push_back({});
+			tfx__reset_soa_buffer(&path_copy.node_buffer);
 			tfx_emitter_path_t &src_path = library->paths[clone->path_attributes];
 			tfx__copy_path(&library->paths[clone->path_attributes], "", &path_copy);
 			clone->path_attributes = destination_library->paths.size() - 1;
@@ -3480,6 +3481,11 @@ tfxU32 tfx__count_all_effect_lookup_values(tfx_effect_emitter_t *effect) {
 	return count;
 }
 
+void tfx__initialise_path(tfx_emitter_path_t *path) {
+	memset(path, 0, sizeof(tfx_emitter_path_t));
+	tfx__reset_soa_buffer(&path->node_buffer);
+}
+
 void tfx__initialise_path_graphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
 	tfxInitBucketArray<tfx_attribute_node_t>(&path->angle_x.nodes ,bucket_size);
 	path->angle_x.type = tfxPath_angle_x;
@@ -3644,6 +3650,7 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_emitter_t *emitter, bool a
 	if (emitter->path_attributes == tfxINVALID) {
 		emitter->path_attributes = emitter->library->paths.size();
 		tfx_emitter_path_t &path = emitter->library->paths.push_back({});
+		tfx__initialise_path(&path);
 		path.flags = 0;
 		path.node_count = 32;
 		path.extrusion_type = tfxExtrusionArc;
@@ -6773,8 +6780,6 @@ void tfx__assign_effector_property_bool(tfx_effect_emitter_t *effect, tfx_str256
 	//}
 	if (*field == "path_is_2d") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_2d; }
-		tfx_emitter_path_t &test = effect->library->paths.back();
-		int d = 0;
 	}
 	if (*field == "path_mode_origin") {
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; if (value) { path->flags |= tfxPathFlags_mode_origin; }
@@ -9527,6 +9532,8 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 	else {
 		effect->library->pre_recorded_effects.Insert(effect->path_hash, {});
 		sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
+		tfx__reset_soa_buffer(&sprite_data->real_time_sprites_buffer);
+		tfx__reset_soa_buffer(&sprite_data->compressed_sprites_buffer);
 		sprite_data->normal.frame_count = frames;
 		sprite_data->normal.animation_length_in_time = frames * frame_length;
 		sprite_data->normal.frame_meta.resize(frames);
@@ -9594,12 +9601,14 @@ void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *e
 	if (is_3d) {
 		tfx__init_sprite_data_soa_3d(&sprite_data->real_time_sprites_buffer, &sprite_data->real_time_sprites, total_sprites);
 		for (tfxEachLayer) {
+			tfx__reset_soa_buffer(&temp_sprites_buffer[layer]);
 			tfx__init_sprite_data_soa_3d(&temp_sprites_buffer[layer], &temp_sprites[layer], 100);
 		}
 	}
 	else {
 		tfx__init_sprite_data_soa_2d(&sprite_data->real_time_sprites_buffer, &sprite_data->real_time_sprites, total_sprites);
 		for (tfxEachLayer) {
+			tfx__reset_soa_buffer(&temp_sprites_buffer[layer]);
 			tfx__init_sprite_data_soa_2d(&temp_sprites_buffer[layer], &temp_sprites[layer], 100);
 		}
 	}
@@ -13754,15 +13763,16 @@ tfxU32 tfx__grab_particle_lists(tfx_particle_manager_t *pm, tfxKey emitter_hash,
 	pm->particle_arrays.push_back(lists);
 	tfxU32 index = pm->particle_arrays.current_size - 1;
 	tfx_soa_buffer_t buffer;
+	tfx__reset_soa_buffer(&buffer);
 	buffer.resize_callback = tfx__resize_particle_soa_callback;
 	buffer.user_data = &pm->particle_arrays.back();
 	pm->particle_array_buffers.push_back(buffer);
 	TFX_ASSERT(index == pm->particle_array_buffers.current_size - 1);
 	if (is_3d) {
-		tfx__int_particle_soa_3d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount, flags);
+		tfx__init_particle_soa_3d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount, flags);
 	}
 	else {
-		tfx__int_particle_soa_2d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount, flags);
+		tfx__init_particle_soa_2d(&pm->particle_array_buffers[index], &pm->particle_arrays.back(), reserve_amount, flags);
 	}
 	return index;
 }
@@ -13810,15 +13820,16 @@ tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager_t *pm,
 	tfx_spawn_points_soa_t lists;
 	tfxU32 index = pm->particle_location_arrays.locked_push_back(lists);
 	tfx_soa_buffer_t buffer;
+	tfx__reset_soa_buffer(&buffer);
 	buffer.resize_callback = nullptr;
 	buffer.user_data = nullptr;
 	pm->particle_location_buffers.push_back(buffer);
 	TFX_ASSERT(index == pm->particle_location_buffers.current_size - 1);
 	if (is_3d) {
-		tfx__int_particle_location_soa_3d(&pm->particle_location_buffers[index], &pm->particle_location_arrays.back(), reserve_amount);
+		tfx__init_particle_location_soa_3d(&pm->particle_location_buffers[index], &pm->particle_location_arrays.back(), reserve_amount);
 	}
 	else {
-		tfx__int_particle_location_soa_2d(&pm->particle_location_buffers[index], &pm->particle_location_arrays.back(), reserve_amount);
+		tfx__init_particle_location_soa_2d(&pm->particle_location_buffers[index], &pm->particle_location_arrays.back(), reserve_amount);
 	}
 	return index;
 }
@@ -17341,7 +17352,7 @@ void tfx__init_sprite_data_soa_2d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
 }
 
-void tfx__int_particle_soa_2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
+void tfx__init_particle_soa_2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, uid));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, sprite_index));
 	tfx__add_struct_array(buffer, sizeof(tfxParticleID), offsetof(tfx_particle_soa_t, particle_index));
@@ -17379,7 +17390,7 @@ void tfx__int_particle_soa_2d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa,
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
 }
 
-void tfx__int_particle_soa_3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
+void tfx__init_particle_soa_3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile) {
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, uid));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_particle_soa_t, sprite_index));
 	tfx__add_struct_array(buffer, sizeof(tfxParticleID), offsetof(tfx_particle_soa_t, particle_index));
@@ -17437,7 +17448,7 @@ void tfx__init_paths_soa_3d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa,
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
 }
 
-void tfx__int_particle_location_soa_3d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount) {
+void tfx__init_particle_location_soa_3d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount) {
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_z));
@@ -17448,7 +17459,7 @@ void tfx__int_particle_location_soa_3d(tfx_soa_buffer_t *buffer, tfx_spawn_point
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
 }
 
-void tfx__int_particle_location_soa_2d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount) {
+void tfx__init_particle_location_soa_2d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount) {
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, position_y));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_spawn_points_soa_t, captured_position_x));
