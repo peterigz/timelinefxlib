@@ -1973,7 +1973,7 @@ tfxINTERNAL inline tfxWideInt tfxWideAbsi(tfxWideInt v) {
 //----------------------------------------------------------
 
 //tfx_graph_t presets to determine limits and scales of different graphs, mainly used for the editor
-enum tfx_graph_preset {
+typedef enum {
 	tfxGlobalPercentPreset,
 	tfxGlobalOpacityPreset,
 	tfxGlobalPercentPresetSigned,
@@ -2004,9 +2004,9 @@ enum tfx_graph_preset {
 	tfxIntensityOvertimePreset,
 	tfxPathDirectionOvertimePreset,
 	tfxPathTranslationOvertimePreset,
-};
+} tfx_graph_preset;
 
-enum tfx_graph_category {
+typedef enum {
 	tfxGraphCategory_global,
 	tfxGraphCategory_transform,
 	tfxGraphCategory_property,
@@ -2022,7 +2022,7 @@ enum tfx_graph_category {
 	tfxGraphCategory_noise,
 	tfxGraphCategory_color,
 	tfxGraphCategory_max
-};
+} tfx_graph_category;
 
 typedef enum tfx_color_ramp_format {
 	tfx_color_format_rgba,
@@ -2048,7 +2048,7 @@ enum {
 };
 
 //All the different types of graphs, split into main type: global, property, base, variation and overtime
-enum tfx_graph_type {
+typedef enum {
 	tfxGlobal_life,
 	tfxGlobal_amount,
 	tfxGlobal_velocity,
@@ -2152,18 +2152,18 @@ enum tfx_graph_type {
 	tfxPath_rotation_pitch,
 	tfxPath_rotation_yaw,
 	tfxGraphMaxIndex
-};
+} tfx_graph_type;
 
 //tfx_effect_emitter_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
-enum tfx_effect_emitter_type {
+typedef enum {
 	tfxEffectType,
 	tfxEmitterType,
 	tfxStage,
 	tfxFolder
-};
+} tfx_effect_emitter_type;
 
 //Different ways that particles can be emitted
-enum tfx_emission_type {
+typedef enum {
 	tfxPoint,
 	tfxArea,
 	tfxLine,
@@ -2173,15 +2173,15 @@ enum tfx_emission_type {
 	tfxPath,
 	tfxOtherEmitter,
 	tfxEmissionTypeMax,
-};
+} tfx_emission_type;
 
-enum tfx_path_extrusion_type {
+typedef enum {
 	tfxExtrusionArc,
 	tfxExtrusionLinear
-};
+} tfx_path_extrusion_type;
 
 //Determines how for area, line and ellipse emitters the direction that particles should travel when they spawn
-enum tfx_emission_direction {
+typedef enum {
 	tfxInwards,
 	tfxOutwards,
 	tfxBothways,
@@ -2189,45 +2189,45 @@ enum tfx_emission_direction {
 	tfxSurface,
 	tfxOrbital,
 	tfxPathGradient
-};
+} tfx_emission_direction;
 
 //For line effects where traverse line is switched on
-enum tfx_line_traversal_end_behaviour {
+typedef enum {
 	tfxLoop,
 	tfxKill,
 	tfxLetFree
-};
+} tfx_line_traversal_end_behaviour;
 
 //Mainly for the editor, maybe this can just be moved there instead?
-enum tfx_export_color_options {
+typedef enum {
 	tfxFullColor,
 	tfxOneColor,
 	tfxGreyScale
-};
+} tfx_export_color_options;
 
 //Mainly for the editor, maybe this can just be moved there instead?
-enum tfx_export_options {
+typedef enum {
 	tfxSpriteSheet,
 	tfxStrip,
 	tfxSeparateImages
-};
+} tfx_export_options;
 
 //tfx_graph_t data can be looked up in one of 2 ways, either by just using linear/bezier interpolation (slower), or look up the value in a pre-compiled look up table.
-enum tfx_lookup_mode {
+typedef enum {
 	tfxPrecise,
 	tfxFast
-};
+} tfx_lookup_mode;
 
-enum tfx_record_progress {
+typedef enum {
 	tfxCalculateFrames,
 	tfxBakeSpriteData,
 	tfxLinkUpSprites,
 	tfxCompressFrames,
 	tfxBakingDone
-};
+} tfx_record_progress;
 
 //Used in file loading - for loading effects library
-enum tfx_data_type {
+typedef enum {
 	tfxString,
 	tfxSInt,
 	tfxUint,
@@ -2238,11 +2238,11 @@ enum tfx_data_type {
 	tfxUInt64,
 	tfxFloat3,
 	tfxFloat2
-};
+} tfx_data_type;
 
 //Block designators for loading effects library and other files like animation sprite data
 //The values of existing enums below must never change or older files won't load anymore!
-enum tfx_effect_library_stream_context {
+typedef enum {
 	tfxStartEffect = 0x00FFFF00,
 	tfxEndEffect,
 	tfxStartEmitter,
@@ -2268,7 +2268,7 @@ enum tfx_effect_library_stream_context {
 	tfxEndFrameMeta,
 	tfxStartFrameOffsets,
 	tfxEndFrameOffsets,
-};
+} tfx_effect_library_stream_context;
 
 typedef tfxU32 tfxEmitterPropertyFlags;         //tfx_emitter_property_flag_bits
 typedef tfxU32 tfxColorRampFlags;		        //tfx_color_ramp_flag_bits
@@ -2290,7 +2290,7 @@ typedef tfxU32 tfxEmitterPathFlags;             //tfx_emitter_path_flag_bits
 typedef tfxU32 tfxEmitterControlProfileFlags;   //tfx_emitter_control_profile_flag_bits
 typedef tfxU32 tfxPackageFlags;                 //tfx_package_flag_bits
 
-enum tfx_error_flag_bits {
+typedef enum {
 	tfxErrorCode_success = 0,
 	tfxErrorCode_incorrect_package_format = 1 << 0,
 	tfxErrorCode_data_could_not_be_loaded = 1 << 1,
@@ -2306,29 +2306,29 @@ enum tfx_error_flag_bits {
 	tfxErrorCode_sprite_data_is_3d_but_animation_manager_is_2d = 1 << 11,
 	tfxErrorCode_sprite_data_is_2d_but_animation_manager_is_3d = 1 << 12,
 	tfxErrorCode_library_loaded_without_shape_loader = 1 << 13
-};
+} tfx_error_flag_bits;
 
-enum tfx_package_flag_bits {
+typedef enum {
 	tfxPackageFlags_none = 0,
 	tfxPackageFlags_loaded_from_memory = 1
-};
+} tfx_package_flag_bits;
 
-enum tfx_effect_cloning_flag_bits {
+typedef enum {
 	tfxEffectCloningFlags_none = 0,
 	tfxEffectCloningFlags_keep_user_data = 1 << 0,
 	tfxEffectCloningFlags_force_clone_global = 1 << 1,
 	tfxEffectCloningFlags_clone_graphs = 1 << 2,
 	tfxEffectCloningFlags_compile_graphs = 1 << 3
-};
+} tfx_effect_cloning_flag_bits;
 
-enum tfx_particle_manager_mode {
+typedef enum {
 	tfxParticleManagerMode_unordered,
 	tfxParticleManagerMode_ordered_by_age,
 	tfxParticleManagerMode_ordered_by_depth,
 	tfxParticleManagerMode_ordered_by_depth_guaranteed
-};
+} tfx_particle_manager_mode;
 
-enum tfx_particle_manager_setup {
+typedef enum {
 	tfxParticleManagerSetup_none,
 	tfxParticleManagerSetup_2d_unordered,
 	tfxParticleManagerSetup_2d_ordered_by_age,
@@ -2338,17 +2338,17 @@ enum tfx_particle_manager_setup {
 	tfxParticleManagerSetup_3d_ordered_by_depth,
 	tfxParticleManagerSetup_3d_ordered_by_depth_guaranteed,
 	tfxParticleManagerSetup_3d_group_sprites_by_effect,
-};
+} tfx_particle_manager_setup;
 
-enum tfx_billboarding_option {
+typedef enum {
 	tfxBillboarding_align_to_camera = 0,            //Align to Camera only
 	tfxBillboarding_free_align = 1,                    //Free align
 	tfxBillboarding_align_to_camera_and_vector = 2,    //Align to camera and vector
 	tfxBillboarding_align_to_vector = 3,            //Align to vector
 	tfxBillboarding_max = 4
-};
+} tfx_billboarding_option;
 
-enum tfx_emitter_control_profile_flag_bits {
+typedef enum {
 	tfxEmitterControlProfile_basic = 0,
 	tfxEmitterControlProfile_noise = 1 << 0,
 	tfxEmitterControlProfile_orbital = 1 << 1,
@@ -2359,9 +2359,9 @@ enum tfx_emitter_control_profile_flag_bits {
 	tfxEmitterControlProfile_edge_kill = 1 << 6,
 	tfxEmitterControlProfile_edge_loop = 1 << 7,
 	tfxEmitterControlProfile_stretch = 1 << 8
-};
+} tfx_emitter_control_profile_flag_bits;
 
-enum tfx_particle_manager_flag_bits {
+typedef enum {
 	tfxParticleManagerFlags_none = 0,
 	tfxParticleManagerFlags_disable_spawning = 1,
 	tfxParticleManagerFlags_force_capture = 2,            //Unused
@@ -2383,16 +2383,16 @@ enum tfx_particle_manager_flag_bits {
 	tfxParticleManagerFlags_use_effect_sprite_buffers = 1 << 18,
 	tfxParticleManagerFlags_auto_order_effects = 1 << 19,
 	tfxParticleManagerFlags_direct_to_staging_buffer = 1 << 20,
-};
+} tfx_particle_manager_flag_bits;
 
-enum tfx_vector_align_type {
+typedef enum {
 	tfxVectorAlignType_motion,
 	tfxVectorAlignType_emission,
 	tfxVectorAlignType_emitter,
 	tfxVectorAlignType_max,
-};
+} tfx_vector_align_type;
 
-enum tfx_path_generator_type {
+typedef enum {
 	tfxPathGenerator_spiral,
 	tfxPathGenerator_loop,
 	tfxPathGenerator_arc,
@@ -2401,9 +2401,9 @@ enum tfx_path_generator_type {
 	tfxPathGenerator_free_mode_origin,
 	tfxPathGenerator_free_mode_distance,
 	tfxPathGenerator_max,
-};
+} tfx_path_generator_type;
 
-enum tfx_emitter_path_flag_bits {
+typedef enum {
 	tfxPathFlags_none,
 	tfxPathFlags_2d = 1 << 0,
 	tfxPathFlags_mode_origin = 1 << 1,
@@ -2411,10 +2411,10 @@ enum tfx_emitter_path_flag_bits {
 	tfxPathFlags_space_nodes_evenly = 1 << 3,
 	tfxPathFlags_reverse_direction = 1 << 4,
 	tfxPathFlags_rotation_range_yaw_only = 1 << 5
-};
+} tfx_emitter_path_flag_bits;
 
 //Particle property that defines how a particle will rotate
-enum tfx_angle_setting_flag_bits {
+typedef enum {
 	tfxAngleSettingFlags_none = 0,                                                        //No flag
 	tfxAngleSettingFlags_align_roll = 1 << 0,                                            //Align the particle with it's direction of travel in 2d
 	tfxAngleSettingFlags_random_roll = 1 << 1,                                            //Chose a random angle at spawn time/state_flags
@@ -2424,10 +2424,10 @@ enum tfx_angle_setting_flag_bits {
 	tfxAngleSettingFlags_random_yaw = 1 << 5,
 	tfxAngleSettingFlags_specify_pitch = 1 << 6,
 	tfxAngleSettingFlags_specify_yaw = 1 << 7
-};
+} tfx_angle_setting_flag_bits;
 
-//All the state_flags needed by the ControlParticle function put into one enum to save space
-enum tfx_particle_control_flag_bits {
+//All the state_flags needed by the ControlParticle function put into one typedef enum save typedef enum
+ typedef enum {
 	tfxParticleControlFlags_none = 0,
 	tfxParticleControlFlags_random_color = 1 << 0,
 	tfxParticleControlFlags_relative_position = 1 << 1,
@@ -2454,9 +2454,9 @@ enum tfx_particle_control_flag_bits {
 	tfxParticleControlFlags_specify_pitch = 1 << 22,
 	tfxParticleControlFlags_random_yaw = 1 << 23,
 	tfxParticleControlFlags_specify_yaw = 1 << 24,
-};
+} tfx_particle_control_flag_bits;
 
-enum tfx_effect_property_flag_bits {
+typedef enum {
 	tfxEffectPropertyFlags_none = 0,
 	tfxEffectPropertyFlags_depth_draw_order = 1 << 1,
 	tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
@@ -2464,9 +2464,9 @@ enum tfx_effect_property_flag_bits {
 	tfxEffectPropertyFlags_use_keyframes = 1 << 4,
 	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,        //In the editor you can specify which effects you want to be included in a spritedata export
 	tfxEffectPropertyFlags_global_uniform_size = 1 << 6,                //Keep the global particle size uniform
-};
+} tfx_effect_property_flag_bits;
 
-enum tfx_emitter_property_flag_bits {
+typedef enum {
 	tfxEmitterPropertyFlags_none = 0,
 	tfxEmitterPropertyFlags_random_color = 1 << 0,                      //Pick a random color from the color overtime gradient rather then change the color over the lifetime of the particle
 	tfxEmitterPropertyFlags_relative_position = 1 << 1,                 //Keep the particles position relative to the current position of the emitter
@@ -2500,23 +2500,23 @@ enum tfx_emitter_property_flag_bits {
 	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29,     //Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
 	tfxEmitterPropertyFlags_spawn_location_source = 1 << 30,            //This emitter is the source for another emitter that uses it to spawn particles at the location of this emitters' particles
 	tfxEmitterPropertyFlags_use_color_hint = 1 << 31	                //Activate a second color to tint the particles and mix between the two colors.
-};
+} tfx_emitter_property_flag_bits;
 
-enum tfx_color_ramp_flag_bits {
+typedef enum {
 	tfxColorRampFlags_none = 0,
 	tfxColorRampFlags_use_sinusoidal_ramp_generation = 1 << 0,			//Use this flag to toggle between sinusoidal color ramp generation
-};
+} tfx_color_ramp_flag_bits;
 
-enum tfx_particle_flag_bits {
+typedef enum {
 	tfxParticleFlags_none = 0,
 	tfxParticleFlags_fresh = 1 << 0,                                    //Particle has just spawned this frame    
 	tfxParticleFlags_remove = 1 << 4,                                   //Particle will be removed this or next frame
 	tfxParticleFlags_has_velocity = 1 << 5,                             //Flagged if the particle is currently moving
 	tfxParticleFlags_has_sub_effects = 1 << 6,                          //Flagged if the particle has sub effects
 	tfxParticleFlags_capture_after_transform = 1 << 15,                 //Particle will be captured after a transfrom, used for traversing lines and looping back to the beginning to avoid lerping imbetween
-};
+} tfx_particle_flag_bits;
 
-enum tfx_emitter_state_flag_bits {
+typedef enum {
 	tfxEmitterStateFlags_none = 0,
 	tfxEmitterStateFlags_random_color = 1 << 0,
 	tfxEmitterStateFlags_relative_position = 1 << 1,                    //Keep the particles position relative to the current position of the emitter
@@ -2549,9 +2549,9 @@ enum tfx_emitter_state_flag_bits {
 	tfxEmitterStateFlags_max_active_paths_reached = 1 << 28,
 	tfxEmitterStateFlags_is_in_ordered_effect = 1 << 29,
 	tfxEmitterStateFlags_wrap_single_sprite = 1 << 30
-};
+} tfx_emitter_state_flag_bits;
 
-enum tfx_effect_state_flag_bits {
+typedef enum {
 	tfxEffectStateFlags_none = 0,
 	tfxEffectStateFlags_stop_spawning = 1 << 3,                            //Tells the emitter to stop spawning
 	tfxEffectStateFlags_remove = 1 << 4,                                //Tells the effect/emitter to remove itself from the particle manager immediately
@@ -2561,24 +2561,24 @@ enum tfx_effect_state_flag_bits {
 	tfxEffectStateFlags_override_orientiation = 1 << 9,                    //Flagged when any of the effect angles are overridden
 	tfxEffectStateFlags_override_size_multiplier = 1 << 10,                //Flagged when any of the effect size multipliers are overridden
 	tfxEffectStateFlags_no_tween = 1 << 20
-};
+} tfx_effect_state_flag_bits;
 
-enum tfx_vector_field_flag_bits {
+typedef enum {
 	tfxVectorFieldFlags_none = 0,
 	tfxVectorFieldFlags_repeat_horizontal = 1 << 0,                        //Field will repeat horizontally
 	tfxVectorFieldFlags_repeat_vertical = 1 << 1                        //Field will repeat vertically
-};
+} tfx_vector_field_flag_bits;
 
-enum tfx_attribute_node_flag_bits {
+typedef enum {
 	tfxAttributeNodeFlags_none = 0,
 	tfxAttributeNodeFlags_is_curve = 1 << 0,
 	tfxAttributeNodeFlags_is_left_curve = 1 << 1,
 	tfxAttributeNodeFlags_is_right_curve = 1 << 2,
 	tfxAttributeNodeFlags_curves_initialised = 1 << 3,
 	tfxAttributeNodeFlags_path_node_accumulate = 1 << 4,
-};
+} tfx_attribute_node_flag_bits;
 
-enum tfx_animation_flag_bits {
+typedef enum {
 	tfxAnimationFlags_none = 0,
 	tfxAnimationFlags_loop = 1 << 0,
 	tfxAnimationFlags_seamless = 1 << 1,
@@ -2586,19 +2586,19 @@ enum tfx_animation_flag_bits {
 	tfxAnimationFlags_export_with_transparency = 1 << 3,
 	tfxAnimationFlags_auto_set_length = 1 << 4,
 	tfxAnimationFlags_orthographic = 1 << 5
-};
+} tfx_animation_flag_bits;
 
-enum tfx_animation_instance_flag_bits {
+typedef enum {
 	tfxAnimationInstanceFlags_none = 0,
 	tfxAnimationInstanceFlags_loop = 1 << 0,
-};
+} tfx_animation_instance_flag_bits;
 
-enum tfx_animation_manager_flag_bits {
+typedef enum {
 	tfxAnimationManagerFlags_none = 0,
 	tfxAnimationManagerFlags_has_animated_shapes = 1 << 0,
 	tfxAnimationManagerFlags_initialised = 1 << 1,
 	tfxAnimationManagerFlags_is_3d = 1 << 2,
-};
+} tfx_animation_manager_flag_bits;
 
 //-----------------------------------------------------------
 //Constants
@@ -5790,11 +5790,11 @@ typedef struct tfx_sprite_soa_s {                       //3d takes 56 bytes of b
 	tfxU32 *indexes;							//The indexes to lookup the color in the color ramp textures and the image texture data
 }tfx_sprite_soa_t;
 
-enum tfxSpriteBufferMode {
+typedef enum {
 	tfxSpriteBufferMode_2d,
 	tfxSpriteBufferMode_3d,
 	tfxSpriteBufferMode_both,
-};
+} tfxSpriteBufferMode;
 
 //These structs are for animation sprite data that you can upload to the gpu
 typedef struct alignas(16) tfx_sprite_data3d_s {    //60 bytes aligning to 64
