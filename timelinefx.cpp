@@ -3360,6 +3360,11 @@ void tfx__add_template_path(tfx_effect_template_t *effect_template, tfx_effect_e
 }
 
 bool tfx_PrepareEffectTemplate(tfx_library_t *library, const char *name, tfx_effect_template_t *effect_template) {
+	TFX_ASSERT_INIT(library->magic);				//Trying to prepare an effect template with an initialised library!
+	TFX_ASSERT_UNINIT(effect_template->magic);		//the effect template has already been initialised! Use ResetTemplate instead to reset a template back to it's original state.
+	effect_template->effect = tfx_NewEffect();
+	effect_template->paths.init();
+	effect_template->magic = tfxINIT_MAGIC;
 	tfx_ResetTemplate(effect_template);
 	if (library->effect_paths.ValidName(name)) {
 		tfx__prepare_library_effect_template_path(library, name, effect_template);
@@ -5418,6 +5423,7 @@ void tfx__init_library(tfx_library_t *library) {
 	library->color_ramps.color_ramp_ids.Insert(hash, id);
     library->gpu_shapes.list.set_alignment(16);
 	library->library_file_path.SetText("");
+	library->paths.init();
 }
 
 tfx_str64_t tfx__get_name_from_path(const char *path) {
@@ -9070,8 +9076,12 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library_
 		tfx__initialise_dictionary(&tfxStore->data_types);
 	}
 
+	if (lib->magic != tfxINIT_MAGIC) {
+		memset(lib, 0, sizeof(tfx_library_t));
+		lib->magic = tfxINIT_MAGIC;
+		tfx__init_library(lib);
+	}
 	tfx_FreeLibrary(lib);
-	tfx__init_library(lib);
 
 	if (tfxIcospherePoints[0].current_size == 0) {
 		tfx__make_icospheres();
@@ -17784,6 +17794,13 @@ void tfx__init_common_particle_manager(tfx_particle_manager_t *pm, tfx_library_t
 }
 
 void tfx_InitializeParticleManager(tfx_particle_manager_t *pm, tfx_library_t *library, tfx_particle_manager_info_t info) {
+	TFX_ASSERT_UNINIT(pm->magic);		//Particle manager has already been initialised, maybe use tfx_ReconfigureParticleManager instead.
+	memset(pm, 0, sizeof(tfx_particle_manager_t));
+	pm->particle_arrays.init();
+	pm->particle_location_arrays.init();
+	pm->free_particle_lists.init();
+	pm->free_particle_location_lists.init();
+	pm->magic = tfxINIT_MAGIC;
 	pm->info = info;
 	tfx__init_common_particle_manager(pm, library, info.max_particles, info.max_effects, info.order_mode, info.double_buffer_sprites, info.dynamic_sprite_allocation, info.group_sprites_by_effect, info.multi_threaded_batch_size);
 

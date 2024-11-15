@@ -100,6 +100,9 @@ typedef void *tfx_pool;
 #define TFX_ASSERT assert
 #endif
 
+#define TFX_ASSERT_INIT(magic) TFX_ASSERT(magic == tfxINIT_MAGIC)
+#define TFX_ASSERT_UNINIT(magic) TFX_ASSERT(magic != tfxINIT_MAGIC)
+
 #define tfx__is_pow2(x) ((x) && !((x) & ((x) - 1)))
 #define tfx__glue2(x, y) x ## y
 #define tfx__glue(x, y) tfx__glue2(x, y)
@@ -1157,6 +1160,8 @@ typedef struct tfx_animation_manager_s tfx_animation_manager_t;
 #define tfxNullParent 0xFFFFFFFF
 #define tfxINVALID 0xFFFFFFFF
 #define tfxINVALID_SPRITE 0x0FFFFFFF
+#define tfxUNINIT_MAGIC 0xDEADBEEF
+#define tfxINIT_MAGIC 0xCAFEBABE
 #define tfxEmitterPropertiesCount 26
 
 #define tfxDel << "=" <<
@@ -3164,6 +3169,8 @@ struct tfx_storage_map_t {
 	void(*remove_callback)(T &item) = nullptr;
 
 	tfx_storage_map_t() {}
+
+	inline void init() { map.init(); data.init(); }
 
 	inline void reserve(tfxU32 size) {
 		if (size > data.capacity) {
@@ -6158,6 +6165,7 @@ typedef struct tfx_color_ramp_bitmap_data_t {
 
 //Use the animation manager to control playing of pre-recorded effects
 typedef struct tfx_animation_manager_s {
+	tfxU32 magic;
 #ifdef __cplusplus
 	//All of the sprite data for all the animations that you might want to play on the GPU.
 	//This could be deleted once it's uploaded to the GPU
@@ -6252,6 +6260,7 @@ typedef struct tfx_particle_manager_info_s {
 
 //Use the particle manager to add multiple effects to your scene 
 typedef struct tfx_particle_manager_s {
+	tfxU32 magic;
 #ifdef __cplusplus
 	tfx_vector_t<tfx_soa_buffer_t> particle_array_buffers;
 	tfx_bucket_array_t<tfx_particle_soa_t> particle_arrays;
@@ -6394,6 +6403,7 @@ typedef struct tfx_effect_library_stats_s {
 }tfx_effect_library_stats_t;
 
 typedef struct tfx_library_s {
+	tfxU32 magic;
 #ifdef __cplusplus
 	tfx_storage_map_t<tfx_effect_emitter_t *> effect_paths;
 	tfx_vector_t<tfx_effect_emitter_t> effects;
@@ -6467,6 +6477,7 @@ typedef struct tfx_library_s {
 } tfx_library_t;
 
 typedef struct tfx_effect_template_s {
+	tfxU32 magic;
 #ifdef __cplusplus
 	tfx_storage_map_t<tfx_effect_emitter_t *> paths;
 #else
@@ -7450,11 +7461,20 @@ tfxAPI void tfx_BuildLibraryGPUShapeData(tfx_library_t *library, tfx_gpu_shapes_
 
 /*
 Get a pointer to the particle shapes data in a library. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
-* @param animation_manager        A pointer the tfx_animation_manager_t
+* @param library        A pointer to a tfx_library_t
+* @param count			A pointer to an int that will be filled with the nubmer of images in the image data array that's returned
 */
 tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library_t *library, int *count) {
 	*count = library->particle_shapes.data.current_size;
 	return library->particle_shapes.data.data;
+}
+
+/*
+Check to see if a library has been initialised or not
+* @param library        A pointer to a tfx_library_t
+*/
+tfxAPI inline bool tfx_LibraryIsInitialised(tfx_library_t *library) {
+	return library->magic == tfxINIT_MAGIC;
 }
 
 //--------------------------------
