@@ -7561,6 +7561,12 @@ Get the billboard buffer in the particle manager containing all the 3d billboard
 tfxAPI tfx_3d_instance_t *tfx_Get3dInstanceBuffer(tfx_particle_manager_t * pm);
 
 /*
+Get the number of instances withing the instance buffer of a particle manager
+* @param pm                       A pointer to an intialised tfx_particle_manager_t.
+*/
+tfxAPI int tfx_GetInstanceCount(tfx_particle_manager_t *pm);
+
+/*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
 more than enough for most situations. However you can increase the sizes here if needed. You only need to set this manually if you hit one of the asserts when these
 run out of space or you anticipate a huge amount of emitters and particles to be used (> million). On the other hand, you might be tight on memory in which case you

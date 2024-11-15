@@ -13637,6 +13637,10 @@ tfx_3d_instance_t *tfx_Get3dInstanceBuffer(tfx_particle_manager_t *pm) {
 	return tfxCastBufferRef(tfx_3d_instance_t, pm->instance_buffer);
 }
 
+int tfx_GetInstanceCount(tfx_particle_manager_t *pm) {
+	return pm->instance_buffer.current_size;
+}
+
 void tfx_SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
 	pm->spawn_work.reserve(spawn_work_max);
 	pm->control_work.reserve(control_work_max);
