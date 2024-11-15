@@ -4943,6 +4943,10 @@ void tfx_BuildLibraryGPUShapeData(tfx_library_t *library, tfx_gpu_shapes_t *shap
 	tfx__build_gpu_shape_data(&library->particle_shapes.data, shapes, uv_lookup);
 }
 
+tfxU32 tfx_GetColorRampBitmapCount(tfx_library_t *library) {
+	return library->color_ramps.color_ramp_bitmaps.current_size;
+}
+
 void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_manager, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	tfx__build_gpu_shape_data(&animation_manager->particle_shapes.data, shapes, uv_lookup);
 }
@@ -5418,6 +5422,7 @@ void tfx__init_library(tfx_library_t *library) {
 	for (int x = 0; x != tfxCOLOR_RAMP_WIDTH; ++x) {
 		ramp.colors[x].color = 0xFFFFFFFF;
 	}
+	library->color_ramps.color_ramp_ids.init();
 	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
 	tfxU32 id = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
 	library->color_ramps.color_ramp_ids.Insert(hash, id);

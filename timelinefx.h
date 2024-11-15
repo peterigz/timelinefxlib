@@ -7470,6 +7470,12 @@ tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library_t *libr
 }
 
 /*
+Get a count of the number of color ramp bitmaps in the library. Color ramps are used to change the color of particles over time and you will need to upload them to the GPU.
+* @param library        A pointer to a tfx_library_t
+*/
+tfxAPI tfxU32 tfx_GetColorRampBitmapCount(tfx_library_t *library);
+
+/*
 Check to see if a library has been initialised or not
 * @param library        A pointer to a tfx_library_t
 */
