@@ -7552,17 +7552,13 @@ Get the sprite buffer in the particle manager containing all the 2d instance_dat
 This will be a pointer to the start of the buffer for uploading all the instance_data. If you want to do this for each effect then you can call tfx_GetEffect2dInstanceBuffer.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 */
-tfxAPI inline tfx_2d_instance_t *tfx_Get2dInstanceBuffer(tfx_particle_manager_t *pm) {
-	return tfxCastBufferRef(tfx_2d_instance_t, pm->instance_buffer);
-}
+tfxAPI tfx_2d_instance_t *tfx_Get2dInstanceBuffer(tfx_particle_manager_t *pm);
 
 /*
 Get the billboard buffer in the particle manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 */
-tfxAPI inline tfx_3d_instance_t *tfx_Get3dInstanceBuffer(tfx_particle_manager_t *pm) {
-	return tfxCastBufferRef(tfx_3d_instance_t, pm->instance_buffer);
-}
+tfxAPI tfx_3d_instance_t *tfx_Get3dInstanceBuffer(tfx_particle_manager_t * pm);
 
 /*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
@@ -8354,10 +8350,10 @@ and upload it to the gpu.
 tfxAPI void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_manager, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
 
 /*
-Get a pointer to the GPU shapes which you can use in a memcpy
+Get a pointer to the GPU shapes which you can use in a memcpy to a staging buffer for uploading to a GPU
 * @param particle_shapes        A pointer the tfx_gpu_shapes_t
 */
-tfxAPI void *tfx_GetGPUShapesPointer(tfx_gpu_shapes_t *particle_shapes);
+tfxAPI void *tfx_GetGPUShapesPointer(tfx_library_t *library);
 
 /*
 Get a pointer to the particle shapes data in the animation manager. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
@@ -8369,18 +8365,18 @@ tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesAnimationManager(tfx_animat
 }
 
 /*
-Get the number of shapes in the GPU Shape Data buffer. Make sure you call tfx_BuildGPUShapeData first or they'll be nothing to return
-* @param library                A pointer to a tfx_animation_manager_t where the image data will be created.
-* @returns tfxU32                The number of shapes in the buffer
+Get the number of shapes in the GPU Shape Data buffer contained within a library. Make sure you call tfx_BuildGPUShapeData first or they'll be nothing to return
+* @param library                A pointer to a tfx_library_t
+* @returns tfxU32               The number of shapes in the buffer
 */
-tfxAPI tfxU32 tfx_GetGPUShapeCount(tfx_gpu_shapes_t *particle_shapes);
+tfxAPI tfxU32 tfx_GetGPUShapeCount(tfx_library_t *library);
 
 /*
 Get the size in bytes of the GPU image data in a tfx_library_t
 * @param library                A pointer to a tfx_library_t where the image data exists.
-* @returns size_t                The size in bytes of the image data
+* @returns size_t               The size in bytes of the image data
 */
-tfxAPI size_t tfx_GetGPUShapesSizeInBytes(tfx_gpu_shapes_t *particle_shapes);
+tfxAPI size_t tfx_GetGPUShapesSizeInBytes(tfx_library_t *library);
 
 /*
 Get the total number of instance_data in an animation manger's sprite data buffer

@@ -4962,8 +4962,8 @@ void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_ma
 	tfx__build_gpu_shape_data(&animation_manager->particle_shapes.data, shapes, uv_lookup);
 }
 
-void *tfx_GetGPUShapesPointer(tfx_gpu_shapes_t *particle_shapes) {
-	return particle_shapes->list.data;
+void *tfx_GetGPUShapesPointer(tfx_library_t *library) {
+	return library->gpu_shapes.list.data;
 }
 
 tfxU32 tfx__get_library_lookup_indexes_size_in_bytes(tfx_library_t *library) {
@@ -11260,12 +11260,12 @@ tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animation_mana
 	return animation_manager->instances_in_use[animation_manager->current_in_use_buffer].size();
 }
 
-tfxU32 tfx_GetGPUShapeCount(tfx_gpu_shapes_t *particle_shapes) {
-	return particle_shapes->list.size();
+tfxU32 tfx_GetGPUShapeCount(tfx_library_t *library) {
+	return library->gpu_shapes.list.size();
 }
 
-size_t tfx_GetGPUShapesSizeInBytes(tfx_gpu_shapes_t *particle_shapes) {
-	return particle_shapes->list.size_in_bytes();
+size_t tfx_GetGPUShapesSizeInBytes(tfx_library_t *library) {
+	return library->gpu_shapes.list.size_in_bytes();
 }
 
 size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager_t *animation_manager) {
@@ -13618,6 +13618,23 @@ void tfx_SetStagingBuffer(tfx_particle_manager_t *pm, void *staging_buffer, tfxU
 	tfxU32 unit_size = size_in_bytes / pm->instance_buffer.struct_size;
 	pm->instance_buffer.data = staging_buffer;
 	pm->instance_buffer.capacity = unit_size;
+}
+
+/*
+Get the sprite buffer in the particle manager containing all the 2d instance_data that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
+This will be a pointer to the start of the buffer for uploading all the instance_data. If you want to do this for each effect then you can call tfx_GetEffect2dInstanceBuffer.
+* @param pm                       A pointer to an intialised tfx_particle_manager_t.
+*/
+tfx_2d_instance_t *tfx_Get2dInstanceBuffer(tfx_particle_manager_t *pm) {
+	return tfxCastBufferRef(tfx_2d_instance_t, pm->instance_buffer);
+}
+
+/*
+Get the billboard buffer in the particle manager containing all the 3d billboards that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
+* @param pm                       A pointer to an intialised tfx_particle_manager_t.
+*/
+tfx_3d_instance_t *tfx_Get3dInstanceBuffer(tfx_particle_manager_t *pm) {
+	return tfxCastBufferRef(tfx_3d_instance_t, pm->instance_buffer);
 }
 
 void tfx_SetPMWorkQueueSizes(tfx_particle_manager_t *pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max) {
