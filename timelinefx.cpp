@@ -2240,6 +2240,7 @@ void tfx__update_effect_max_life(tfx_effect_emitter_t *effect) {
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_velocity_adjuster)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_direction)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_motion_randomness)->lookup.life = info->max_life;
+	tfx__get_effect_graph_by_type(effect, tfxOvertime_noise_resolution)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxFactor_life)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxFactor_velocity)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxFactor_size)->lookup.life = info->max_life;
@@ -4656,11 +4657,11 @@ void tfx__copy_base_attributes(tfx_base_attributes_t *src, tfx_base_attributes_t
 }
 
 void tfx__initialise_emitter_attributes(tfx_emitter_attributes_t *attributes, tfxU32 bucket_size) {
-	//tfx__initialise_property_attributes(&attributes->properties, bucket_size);
-	//tfx__initialise_base_attributes(&attributes->base, bucket_size);
-	//tfx__initialise_variation_attributes(&attributes->variation, bucket_size);
-	//tfx__initialise_overtime_attributes(&attributes->overtime, bucket_size);
-	//tfx__initialise_factor_attributes(&attributes->factor, bucket_size);
+	tfx__initialise_property_attributes(&attributes->properties, bucket_size);
+	tfx__initialise_base_attributes(&attributes->base, bucket_size);
+	tfx__initialise_variation_attributes(&attributes->variation, bucket_size);
+	tfx__initialise_overtime_attributes(&attributes->overtime, bucket_size);
+	tfx__initialise_factor_attributes(&attributes->factor, bucket_size);
 }
 
 void tfx__free_emitter_attributes(tfx_emitter_attributes_t *attributes) {
@@ -7556,6 +7557,9 @@ void tfx__reset_graph_nodes(tfx_graph_t *graph, float v, tfx_graph_preset preset
 void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_node, float max_frames) {
 	graph->nodes.clear();
 	graph->nodes.trim_buckets();
+	if (!max_frames) {
+		max_frames = tfxMAX_FRAME;
+	}
 	switch (preset) {
 	case tfx_graph_preset::tfxGlobalPercentPreset:
 		//We have a epsilon to prevent divide by 0 here
@@ -7663,9 +7667,6 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 		} else {
 			tfx__add_graph_node_values(graph, 0.f, v);
 		}
-	}
-	if (!max_frames) {
-		max_frames = tfxMAX_FRAME;
 	}
 
 	graph->graph_preset = preset;
