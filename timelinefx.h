@@ -7466,16 +7466,19 @@ Get a pointer to the particle shapes data in a library. This can be used with tf
 * @param library        A pointer to a tfx_library_t
 * @param count			A pointer to an int that will be filled with the nubmer of images in the image data array that's returned
 */
-tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library_t *library, int *count) {
-	*count = library->particle_shapes.data.current_size;
-	return library->particle_shapes.data.data;
-}
+tfxAPI tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library_t *library, int *count);
 
 /*
 Get a count of the number of color ramp bitmaps in the library. Color ramps are used to change the color of particles over time and you will need to upload them to the GPU.
 * @param library        A pointer to a tfx_library_t
 */
 tfxAPI tfxU32 tfx_GetColorRampBitmapCount(tfx_library_t *library);
+
+/*
+Get a pointer to a color ramp bitmap in a library. You can use this data to upload the bitmaps to the GPU.
+* @param library        A pointer to a tfx_library_t
+*/
+tfxAPI tfx_bitmap_t *tfx_GetColorRampBitmap(tfx_library_t *library, tfxU32 index);
 
 /*
 Check to see if a library has been initialised or not
@@ -8354,9 +8357,7 @@ tfxAPI void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *anima
 Get a pointer to the GPU shapes which you can use in a memcpy
 * @param particle_shapes        A pointer the tfx_gpu_shapes_t
 */
-tfxAPI inline void *tfx_GetGPUShapesPointer(tfx_gpu_shapes_t *particle_shapes) {
-	return particle_shapes->list.data;
-}
+tfxAPI void *tfx_GetGPUShapesPointer(tfx_gpu_shapes_t *particle_shapes);
 
 /*
 Get a pointer to the particle shapes data in the animation manager. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU

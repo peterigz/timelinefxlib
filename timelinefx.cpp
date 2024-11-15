@@ -4943,12 +4943,27 @@ void tfx_BuildLibraryGPUShapeData(tfx_library_t *library, tfx_gpu_shapes_t *shap
 	tfx__build_gpu_shape_data(&library->particle_shapes.data, shapes, uv_lookup);
 }
 
+tfx_image_data_t *tfx_GetParticleShapesLibrary(tfx_library_t *library, int *count) {
+	*count = library->particle_shapes.data.current_size;
+	return library->particle_shapes.data.data;
+}
+
 tfxU32 tfx_GetColorRampBitmapCount(tfx_library_t *library) {
 	return library->color_ramps.color_ramp_bitmaps.current_size;
 }
 
+tfx_bitmap_t *tfx_GetColorRampBitmap(tfx_library_t *library, tfxU32 index) {
+	TFX_ASSERT(index < library->color_ramps.color_ramp_bitmaps.size());	//index is out of bounds
+	return &library->color_ramps.color_ramp_bitmaps[index];
+}
+
+
 void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_manager, tfx_gpu_shapes_t *shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	tfx__build_gpu_shape_data(&animation_manager->particle_shapes.data, shapes, uv_lookup);
+}
+
+void *tfx_GetGPUShapesPointer(tfx_gpu_shapes_t *particle_shapes) {
+	return particle_shapes->list.data;
 }
 
 tfxU32 tfx__get_library_lookup_indexes_size_in_bytes(tfx_library_t *library) {
