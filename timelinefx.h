@@ -3028,14 +3028,16 @@ struct tfx_vector_t {
 			reserve(_grow_capacity(current_size + 1));
 		}
 		memcpy(&data[current_size], &v, sizeof(T));
-		current_size++; return data[current_size - 1];
+		current_size++; 
+		return data[current_size - 1];
 	}
 	inline T &push_back_copy(const T &v) {
 		if (current_size == capacity) {
 			reserve(_grow_capacity(current_size + 1));
 		}
 		memcpy(&data[current_size], &v, sizeof(v));
-		current_size++; return data[current_size - 1];
+		current_size++; 
+		return data[current_size - 1];
 	}
 	inline T &next() {
 		return push_back(T());
