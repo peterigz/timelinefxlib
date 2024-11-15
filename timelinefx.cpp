@@ -3677,6 +3677,7 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_emitter_t *emitter, bool a
 
 tfxU32 tfx__add_emitter_path_attributes(tfx_library_t *library) {
 	tfx_emitter_path_t &path = library->paths.push_back({});
+	tfx__initialise_path(&path);
 	path.flags = 0;
 	path.name;
 	path.node_count = 32;
@@ -4767,7 +4768,7 @@ tfx_effect_emitter_t *tfx__add_library_effect(tfx_library_t *library, tfx_effect
 }
 
 tfx_effect_emitter_t *tfx__add_new_library_effect(tfx_library_t *library, tfx_str64_t *name) {
-	tfx_effect_emitter_t folder;
+	tfx_effect_emitter_t folder = tfx_NewEffect();
 	folder.info_index = tfx__allocate_library_effect_emitter_info(library);
 	folder.library = library;
 	tfx_GetEffectInfo(&folder)->name = *name;
@@ -4781,7 +4782,7 @@ tfx_effect_emitter_t *tfx__add_new_library_effect(tfx_library_t *library, tfx_st
 }
 
 tfx_effect_emitter_t *tfx__add_library_stage(tfx_library_t *library, tfx_str64_t *name) {
-	tfx_effect_emitter_t stage;
+	tfx_effect_emitter_t stage = tfx_NewEffect();
 	stage.info_index = tfx__allocate_library_effect_emitter_info(library);
 	stage.library = library;
 	tfx_GetEffectInfo(&stage)->name = *name;
@@ -7555,24 +7556,6 @@ void tfx__reset_graph_nodes(tfx_graph_t *graph, float v, tfx_graph_preset preset
 void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool add_node, float max_frames) {
 	graph->nodes.clear();
 	graph->nodes.trim_buckets();
-	if (add_node && preset == tfxWeightOvertimePreset) {
-		tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
-		tfx_attribute_node_t *node = tfx__add_graph_node_values(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
-		tfx__set_node_curve_initialised(node);
-	}
-	else if (add_node) {
-		if (preset == tfxWeightOvertimePreset) {
-			tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
-			tfx_attribute_node_t *node = tfx__add_graph_node_values(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
-			tfx__set_node_curve_initialised(node);
-		}
-		else {
-			tfx__add_graph_node_values(graph, 0.f, v);
-		}
-	}
-	if (!max_frames) {
-		max_frames = tfxMAX_FRAME;
-	}
 	switch (preset) {
 	case tfx_graph_preset::tfxGlobalPercentPreset:
 		//We have a epsilon to prevent divide by 0 here
@@ -7666,6 +7649,23 @@ void tfx__reset_graph(tfx_graph_t *graph, float v, tfx_graph_preset preset, bool
 	case tfx_graph_preset::tfxPathTranslationOvertimePreset:
 		graph->min = { 0.f, -1000.f }; graph->max = { 1.f, 1000.f };
 		break;
+	}
+
+	if (add_node && preset == tfxWeightOvertimePreset) {
+		tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
+		tfx_attribute_node_t *node = tfx__add_graph_node_values(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
+		tfx__set_node_curve_initialised(node);
+	} else if (add_node) {
+		if (preset == tfxWeightOvertimePreset) {
+			tfx__add_graph_node_values(graph, 0.f, 0.f, 0);
+			tfx_attribute_node_t *node = tfx__add_graph_node_values(graph, 1.f, 1.f, tfxAttributeNodeFlags_is_curve, 0.f, 1.f, 1.f, 1.f);
+			tfx__set_node_curve_initialised(node);
+		} else {
+			tfx__add_graph_node_values(graph, 0.f, v);
+		}
+	}
+	if (!max_frames) {
+		max_frames = tfxMAX_FRAME;
 	}
 
 	graph->graph_preset = preset;
@@ -11270,6 +11270,34 @@ void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
 	int16_t y_scaled = (int16_t)size_handle.y;
 	out_scale[0] = (float)x_scaled * tfxSPRITE_SIZE_SSCALE;
 	out_scale[1] = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
+}
+
+tfxAPI tfx_effect_emitter_t tfx_NewEffect() {
+	tfx_effect_emitter_t new_effect{};
+	new_effect.buffer_index = 0;
+	new_effect.path_hash = 0;
+	new_effect.library = nullptr;
+	new_effect.library_index = tfxINVALID;
+	new_effect.parent = nullptr;
+	new_effect.user_data = nullptr;
+	new_effect.update_callback = nullptr;
+	new_effect.effect_flags = tfxEffectPropertyFlags_global_uniform_size | tfxEffectPropertyFlags_none;
+	new_effect.sort_passes = 1;
+	new_effect.info_index = tfxINVALID;
+	new_effect.property_index = tfxINVALID;
+	new_effect.global = tfxINVALID;
+	new_effect.path_attributes = tfxINVALID;
+	new_effect.emitter_attributes = tfxINVALID;
+	new_effect.transform_attributes = tfxINVALID;
+	new_effect.control_profile = 0;
+	new_effect.type = tfxEffectType;
+	new_effect.property_flags = tfxEmitterPropertyFlags_image_handle_auto_center |
+		tfxEmitterPropertyFlags_grid_spawn_clockwise |
+		tfxEmitterPropertyFlags_emitter_handle_auto_center |
+		tfxEmitterPropertyFlags_base_uniform_size |
+		tfxEmitterPropertyFlags_lifetime_uniform_size;
+	new_effect.state_flags = 0;
+	return new_effect;
 }
 
 void ListEffectNames(tfx_library_t *library) {

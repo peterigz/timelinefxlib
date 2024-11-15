@@ -5699,8 +5699,7 @@ typedef struct tfx_effect_emitter_s {
 	//Indexes into library storage
 	tfxU32 info_index;
 	tfxU32 property_index;
-
-}tfx_effect_emitter_t;
+} tfx_effect_emitter_t;
 
 typedef struct tfx_effect_emitter_info_s {
 	//Name of the effect
@@ -7248,7 +7247,7 @@ tfxINTERNAL float tfx__get_effect_loop_length(tfx_effect_emitter_t *effect);
 //Section API_Functions
 //------------------------------------------------------------
 
-#endif
+#endif		//__cpluscplus
 
 tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
 tfxAPI tfx_storage_t *tfx_GetGlobals();
@@ -8572,9 +8571,9 @@ draw the sprite but with 0 alpha. A float is returned, either 0.f or 1.f so you 
 * @param index        The index of the sprite that you're checking
 * @returns float    0.f if it IS the first frame of the sprite otherwise 1.f.
 */
-tfxAPI inline float tfx_IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index);
+tfxAPI float tfx_IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index);
 
-tfxAPI inline void tfx_GetSpriteScale(void *instance, float out_scale[2]);
+tfxAPI void tfx_GetSpriteScale(void *instance, float out_scale[2]);
 
 #ifdef tfxINTEL
 /*
@@ -8681,5 +8680,7 @@ tfxAPI inline float tfx_GetDistance(float fromx, float fromy, float tox, float t
 	float h = toy - fromy;
 	return sqrtf(w * w + h * h);
 }
+
+tfxAPI tfx_effect_emitter_t tfx_NewEffect();
 
 #endif
