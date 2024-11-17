@@ -4695,6 +4695,7 @@ tfx_effect_emitter_info_t *tfx_GetEffectInfo(tfx_effect_emitter_t *e) {
 }
 
 bool tfx__rename_library_effect(tfx_library library, tfx_effect_emitter_t *effect, const char *new_name) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	if (!tfx__library_name_exists(library, effect, new_name) && strlen(new_name) > 0) {
 		tfx__set_effect_name(effect, new_name);
 		tfx__update_library_effect_paths(library);
@@ -4705,6 +4706,7 @@ bool tfx__rename_library_effect(tfx_library library, tfx_effect_emitter_t *effec
 }
 
 bool tfx__library_name_exists(tfx_library library, tfx_effect_emitter_t *effect, const char *name) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	for (auto &e : library->effects) {
 		if (effect->library_index != e.library_index) {
 			if (tfx_GetEffectInfo(&e)->name == name) {
@@ -4716,6 +4718,7 @@ bool tfx__library_name_exists(tfx_library library, tfx_effect_emitter_t *effect,
 }
 
 void tfx__update_library_effect_paths(tfx_library library) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	library->effect_paths.Clear();
 	for (auto &e : library->effects) {
 		tfx_str512_t path;
@@ -4727,6 +4730,7 @@ void tfx__update_library_effect_paths(tfx_library library) {
 }
 
 void tfx__build_all_library_paths(tfx_library library) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	for (tfxBucketLoop(library->paths, i)) {
 		if (library->paths[i].flags & tfxPathFlags_2d) {
 			tfx__build_path_nodes_2d(&library->paths[i]);
@@ -4738,13 +4742,26 @@ void tfx__build_all_library_paths(tfx_library library) {
 }
 
 void tfx_UpdateLibraryGPUImageData(tfx_library library) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	library->gpu_shapes->list.free();
     if(library->particle_shapes.Size() > 0) {
         tfx_BuildLibraryGPUShapeData(library, library->gpu_shapes, library->uv_lookup);
     }
 }
 
+tfxU32 tfx_GetLibraryImageCount(tfx_library library) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
+	return library->particle_shapes.Size();
+}
+
+tfx_image_data_t tfx_GetLibraryImage(tfx_library library, tfxU32 index) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
+	TFX_ASSERT(index < library->particle_shapes.Size());
+	return library->particle_shapes.data[index];
+}
+
 void tfx__add_library_path(tfx_library library, tfx_effect_emitter_t *effect_emitter, const char *path, bool skip_existing) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	if (library->effect_paths.ValidName(path) && !skip_existing) {
 		tfx_str256_t new_path = tfx__find_new_path_name(library, path);
 		tfx_GetEffectInfo(effect_emitter)->path.Set(new_path.c_str());
@@ -4764,6 +4781,7 @@ void tfx__add_library_path(tfx_library library, tfx_effect_emitter_t *effect_emi
 }
 
 tfx_effect_emitter_t *tfx__insert_library_effect(tfx_library library, tfx_effect_emitter_t *effect, tfx_effect_emitter_t *position) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	effect->library_index = library->effects.current_size;
 	effect->type = tfxEffectType;
 	tfx_GetEffectInfo(effect)->uid = ++library->uid;
@@ -4775,6 +4793,7 @@ tfx_effect_emitter_t *tfx__insert_library_effect(tfx_library library, tfx_effect
 }
 
 tfx_effect_emitter_t *tfx__add_library_effect(tfx_library library, tfx_effect_emitter_t *effect) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	effect->library_index = library->effects.current_size;
 	effect->type = tfxEffectType;
 	tfx_GetEffectInfo(effect)->uid = ++library->uid;
@@ -4786,6 +4805,7 @@ tfx_effect_emitter_t *tfx__add_library_effect(tfx_library library, tfx_effect_em
 }
 
 tfx_effect_emitter_t *tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfx_effect_emitter_t folder = tfx_NewEffect();
 	folder.info_index = tfx__allocate_library_effect_emitter_info(library);
 	folder.library = library;
@@ -4800,6 +4820,7 @@ tfx_effect_emitter_t *tfx__add_new_library_effect(tfx_library library, tfx_str64
 }
 
 tfx_effect_emitter_t *tfx__add_library_stage(tfx_library library, tfx_str64_t *name) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfx_effect_emitter_t stage = tfx_NewEffect();
 	stage.info_index = tfx__allocate_library_effect_emitter_info(library);
 	stage.library = library;
@@ -4813,28 +4834,34 @@ tfx_effect_emitter_t *tfx__add_library_stage(tfx_library library, tfx_str64_t *n
 }
 
 tfx_effect_emitter_t *tfx_GetEffectByIndex(tfx_library library, int index) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	return &library->effects[index];
 }
 
 tfx_effect_emitter_t *tfx_GetLibraryEffectPath(tfx_library library, const char *path) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	TFX_ASSERT(library->effect_paths.ValidName(path));        //Effect was not found by that name
 	return library->effect_paths.At(path);
 }
 
 bool tfx__is_valid_effect_path(tfx_library library, const char *path) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	return library->effect_paths.ValidName(path);
 }
 
 bool tfx__is_valid_effect_key(tfx_library library, tfxKey key) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	return library->effect_paths.ValidKey(key);
 }
 
 tfx_effect_emitter_t *tfx__get_library_effect_by_key(tfx_library library, tfxKey key) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	TFX_ASSERT(library->effect_paths.ValidKey(key));            //Effect was not found by that key
 	return library->effect_paths.At(key);
 }
 
 void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template_t *effect_template) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfx_effect_emitter_t *effect = tfx_GetLibraryEffectPath(library, path);
 	TFX_ASSERT(effect);                                //Effect was not found, make sure the path exists
 	TFX_ASSERT(effect->type == tfxEffectType);         //The effect must be an effect type, not an emitter
@@ -4844,6 +4871,7 @@ void tfx__prepare_library_effect_template_path(tfx_library library, const char *
 }
 
 void tfx__reindex_library(tfx_library library) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfxU32 index = 0;
 	for (auto &e : library->effects) {
 		e.library_index = index++;
@@ -4853,6 +4881,7 @@ void tfx__reindex_library(tfx_library library) {
 }
 
 void tfx__update_library_particle_shape_references(tfx_library library, tfxKey default_hash) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfx_vector_t<tfx_effect_emitter_t *> stack;
 	for (auto &effect : library->effects) {
 		stack.push_back(&effect);
@@ -4902,6 +4931,7 @@ void tfx__update_library_particle_shape_references(tfx_library library, tfxKey d
 }
 
 tfx_effect_emitter_t *tfx__library_move_up(tfx_library library, tfx_effect_emitter_t *effect) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	if (effect->library_index > 0) {
 		tfxU32 new_index = effect->library_index - 1;
 		tfx__swap_effects(&library->effects[effect->library_index], &library->effects[new_index]);
@@ -4913,6 +4943,7 @@ tfx_effect_emitter_t *tfx__library_move_up(tfx_library library, tfx_effect_emitt
 }
 
 tfx_effect_emitter_t *tfx__library_move_down(tfx_library library, tfx_effect_emitter_t *effect) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	if (effect->library_index < library->effects.size() - 1) {
 		tfxU32 new_index = effect->library_index + 1;
 		tfx__swap_effects(&library->effects[effect->library_index], &library->effects[new_index]);
@@ -4952,6 +4983,7 @@ void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *particle_shapes, 
 }
 
 void tfx_BuildLibraryGPUShapeData(tfx_library library, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	TFX_CHECK_HANDLE(shapes);	//shapes handle is not initialised. Use tfx_CreateGPUShapes() to create a new tfx_gpu_shapes object
 	tfx__build_gpu_shape_data(&library->particle_shapes.data, shapes, uv_lookup);
 }

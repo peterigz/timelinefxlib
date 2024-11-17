@@ -7404,10 +7404,25 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 /*
 * Updates all the image data in the library using the uv_lookup that you set when loading a library. This allows you to add all of the uv data for
-* the shapes that are loaded into the texture.
+* the shapes that are loaded into the texture. You must have set the uv_lookup callback when loading the library, otherwise you can loop over the 
+* shapes in the library and update the data yourself using the tfx_GetLibraryShapeArray and related functions.
 * @param tfx_library                A valid pointer to a tfx_library
 */
 tfxAPI void tfx_UpdateLibraryGPUImageData(tfx_library library);
+
+/*
+Get the number of shapes stored in the library
+* @param tfx_library                A valid pointer to a tfx_library
+* @return tfxU32					Count of shapes
+*/
+tfxAPI tfxU32 tfx_GetLibraryImageCount(tfx_library library);
+
+/*
+Get a particle image from a library by it's index
+* @param tfx_library                A valid pointer to a tfx_library
+* @return image						A tfx_image_data_t object with all the details of the image
+*/
+tfxAPI tfx_image_data_t tfx_GetLibraryImage(tfx_library library, tfxU32 index);
 
 /*
 Output all the effect names in a library to the console
