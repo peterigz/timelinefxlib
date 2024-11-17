@@ -5011,7 +5011,7 @@ tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library) {
 }
 
 
-void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	tfx__build_gpu_shape_data(&animation_manager->particle_shapes.data, shapes, uv_lookup);
 }
 
@@ -8287,7 +8287,7 @@ void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_overtime_attri
 	}
 }
 
-void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager_t *animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp) {
+void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp) {
 	tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp->colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
 	if (animation_manager->color_ramps.color_ramp_ids.ValidKey(hash)) {
 		animation_manager->emitter_properties[properties_index].color_ramp_index = animation_manager->color_ramps.color_ramp_ids.At(hash);
@@ -8904,7 +8904,7 @@ tfx_effect_library_stats_t tfx__create_library_stats(tfx_library lib) {
 	return stats;
 }
 
-tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager_t *animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
+tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data) {
 	//TFX_ASSERT(shape_loader);            //Must have a shape_loader function to load your shapes with. This will be a custom user function suited for whichever renderer you're using
 	if (!tfxStore->data_types.initialised) {
 		tfx__initialise_dictionary(&tfxStore->data_types);
@@ -10104,7 +10104,10 @@ void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *work_en
 	}
 }
 
-void tfx__initialise_animation_manager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances) {
+tfx_animation_manager tfx__create_animation_manager(tfxU32 max_instances) {
+	tfx_animation_manager animation_manager = tfxNEW(tfx_animation_manager);
+	memset(animation_manager, 0, sizeof(tfx_animation_manager_t));
+	animation_manager->magic = tfxINIT_MAGIC;
 	animation_manager->instances.reserve(max_instances);
 	animation_manager->free_instances.reserve(max_instances);
 	animation_manager->render_queue.reserve(max_instances);
@@ -10119,21 +10122,25 @@ void tfx__initialise_animation_manager(tfx_animation_manager_t *animation_manage
     animation_manager->sprite_data_2d.set_alignment(16);
     animation_manager->sprite_data_3d.set_alignment(16);
 	animation_manager->color_ramps.color_ramp_count = 0;
+	return animation_manager;
 }
 
-void tfx_InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
-	tfx__initialise_animation_manager(animation_manager, max_instances);
+tfx_animation_manager tfx_CreateAnimationManagerFor3d(tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
+	tfx_animation_manager animation_manager = tfx__create_animation_manager(max_instances);
 	animation_manager->sprite_data_3d.reserve(initial_sprite_data_capacity);
 	animation_manager->flags = tfxAnimationManagerFlags_initialised | tfxAnimationManagerFlags_is_3d;
+	return animation_manager;
 }
 
-void tfx_InitialiseAnimationManagerFor2d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
-	tfx__initialise_animation_manager(animation_manager, max_instances);
+tfx_animation_manager tfx_CreateAnimationManagerFor2d(tfxU32 max_instances, tfxU32 initial_sprite_data_capacity) {
+	tfx_animation_manager animation_manager = tfx__create_animation_manager(max_instances);
 	animation_manager->sprite_data_2d.reserve(initial_sprite_data_capacity);
 	animation_manager->flags = tfxAnimationManagerFlags_initialised;
+	return animation_manager;
 }
 
-tfxAnimationID tfx__allocate_animation_instance(tfx_animation_manager_t *animation_manager) {
+tfxAnimationID tfx__allocate_animation_instance(tfx_animation_manager animation_manager) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (animation_manager->free_instances.current_size > 0) {
 		tfxU32 index = animation_manager->free_instances.pop_back();
 		animation_manager->instances_in_use[animation_manager->current_in_use_buffer].push_back(index);
@@ -10147,11 +10154,13 @@ tfxAnimationID tfx__allocate_animation_instance(tfx_animation_manager_t *animati
 	return index;
 }
 
-void tfx__free_animation_instance(tfx_animation_manager_t *animation_manager, tfxU32 index) {
+void tfx__free_animation_instance(tfx_animation_manager animation_manager, tfxU32 index) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	animation_manager->free_instances.push_back(index);
 }
 
-void tfx__add_effect_emitter_properties(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape) {
+void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (effect->type != tfxEmitterType) {
 		for (auto &sub : tfx_GetEffectInfo(effect)->sub_effectors) {
 			tfx__add_effect_emitter_properties(animation_manager, &sub, has_animated_shape);
@@ -10187,7 +10196,8 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager_t *animation_manag
 	}
 }
 
-void tfx_AddEffectShapes(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect) {
+void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (effect->type == tfxEmitterType) {
 		tfx_image_data_t *image_data = tfx__get_effect_properties(effect)->image;
 		if (!animation_manager->particle_shapes.ValidKey(image_data->image_hash)) {
@@ -10204,7 +10214,8 @@ void tfx_AddEffectShapes(tfx_animation_manager_t *animation_manager, tfx_effect_
 	}
 }
 
-void tfx_AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager pm, tfx_vec3_t camera_position) {
+void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager pm, tfx_vec3_t camera_position) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (tfx__is_3d_effect(effect)) {
 		//If you're adding 3d effect sprite data then the animation manager must have been initialised with tfx_InitialiseAnimationManagerFor3d
 		TFX_ASSERT(animation_manager->flags & tfxAnimationManagerFlags_is_3d);
@@ -10278,11 +10289,13 @@ void tfx_AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_em
 	animation_manager->buffer_metrics.sprite_data_size += metrics.total_memory_for_sprites;
 }
 
-void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager_t *animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data))) {
+void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data))) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	animation_manager->maybe_render_instance_callback = maybe_render_instance_callback;
 }
 
-void tfx_SetAnimationManagerUserData(tfx_animation_manager_t *animation_manager, void *user_data) {
+void tfx_SetAnimationManagerUserData(tfx_animation_manager animation_manager, void *user_data) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	animation_manager->user_data = user_data;
 }
 
@@ -10298,7 +10311,8 @@ tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library library,
 	return &library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 }
 
-tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager_t *animation_manager, tfxKey path, tfxU32 start_frame) {
+tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_manager, tfxKey path, tfxU32 start_frame) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	TFX_ASSERT(animation_manager->effect_animation_info.ValidKey(path));                //You must have added the effect sprite data to the animation manager
 	//Call tfx_AddSpriteData to do so
 	if (animation_manager->instances_in_use->current_size >= animation_manager->instances_in_use->capacity) {
@@ -10323,12 +10337,14 @@ tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager_t *animation_
 	return index;
 }
 
-tfxAnimationID tfx_AddAnimationInstance(tfx_animation_manager_t *animation_manager, const char *path, tfxU32 start_frame) {
+tfxAnimationID tfx_AddAnimationInstance(tfx_animation_manager animation_manager, const char *path, tfxU32 start_frame) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	tfxKey path_hash = tfx_Hash(&tfxStore->hasher, path, strlen(path), 0);
 	return tfx_AddAnimationInstanceByKey(animation_manager, path_hash, start_frame);
 }
 
-void tfx_UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float elapsed) {
+void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float elapsed) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	TFX_ASSERT(animation_manager->instances_in_use[animation_manager->current_in_use_buffer].capacity > 0);    //You must call InitialiseAnimationManager before trying to update one
 	tfxU32 next_buffer = animation_manager->current_in_use_buffer ^ 1;
 	animation_manager->instances_in_use[next_buffer].clear();
@@ -10381,7 +10397,8 @@ void tfx_UpdateAnimationManager(tfx_animation_manager_t *animation_manager, floa
 	animation_manager->current_in_use_buffer = animation_manager->current_in_use_buffer ^ 1;
 }
 
-void tfx_CycleAnimationManager(tfx_animation_manager_t *animation_manager) {
+void tfx_CycleAnimationManager(tfx_animation_manager animation_manager) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	TFX_ASSERT(animation_manager->instances_in_use[animation_manager->current_in_use_buffer].capacity > 0);    //You must call InitialiseAnimationManager before trying to update one
 	tfxU32 next_buffer = animation_manager->current_in_use_buffer ^ 1;
 	animation_manager->instances_in_use[next_buffer].clear();
@@ -10408,7 +10425,8 @@ void tfx_CycleAnimationManager(tfx_animation_manager_t *animation_manager) {
 	animation_manager->current_in_use_buffer = animation_manager->current_in_use_buffer ^ 1;
 }
 
-void tfx_ClearAllAnimationInstances(tfx_animation_manager_t *animation_manager) {
+void tfx_ClearAllAnimationInstances(tfx_animation_manager animation_manager) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	animation_manager->free_instances.clear();
 	animation_manager->instances_in_use[0].clear();
 	animation_manager->instances_in_use[1].clear();
@@ -10417,7 +10435,8 @@ void tfx_ClearAllAnimationInstances(tfx_animation_manager_t *animation_manager) 
 	animation_manager->offsets.clear();
 }
 
-void tfx_ResetAnimationManager(tfx_animation_manager_t *animation_manager) {
+void tfx_ResetAnimationManager(tfx_animation_manager animation_manager) {
+	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	animation_manager->free_instances.clear();
 	animation_manager->instances_in_use[0].clear();
 	animation_manager->instances_in_use[1].clear();
@@ -10436,7 +10455,10 @@ void tfx_ResetAnimationManager(tfx_animation_manager_t *animation_manager) {
 	animation_manager->buffer_metrics = { 0 };
 }
 
-void tfx_FreeAnimationManager(tfx_animation_manager_t *animation_manager) {
+void tfx_FreeAnimationManager(tfx_animation_manager animation_manager) {
+	if (!TFX_VALID_HANDLE(animation_manager)) {
+		return;
+	}
 	animation_manager->free_instances.free();
 	animation_manager->instances_in_use[0].free();
 	animation_manager->instances_in_use[1].free();
@@ -10454,9 +10476,10 @@ void tfx_FreeAnimationManager(tfx_animation_manager_t *animation_manager) {
 	animation_manager->color_ramps.color_ramp_count = 0;
 	animation_manager->buffer_metrics = { 0 };
 	animation_manager->flags = 0;
+	tfxFREE(animation_manager);
 }
 
-void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager) {
+void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_manager) {
 	animation_manager->buffer_metrics.instances_size = animation_manager->render_queue.current_size;
 	animation_manager->buffer_metrics.offsets_size = animation_manager->offsets.current_size;
 	animation_manager->buffer_metrics.instances_size_in_bytes = animation_manager->buffer_metrics.instances_size * sizeof(tfx_animation_instance_t) * animation_manager->buffer_metrics.instances_size;
@@ -10511,7 +10534,7 @@ void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template_t *t, const char *emit
 	tfx__get_effect_properties(emitter)->spawn_amount = amount;
 }
 
-void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager_t *animation_manager) {
+void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager animation_manager) {
 	return animation_manager->emitter_properties.data;
 }
 
@@ -11351,8 +11374,51 @@ const char *tfx_GetEffectName(tfx_effect_emitter_t *effect) {
 	return tfx_GetEffectInfo(effect)->name.c_str();
 }
 
-tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animation_manager) {
+tfx_animation_buffer_metrics_t tfx_GetAnimationBufferMetrics(tfx_animation_manager animation_manager) {
+	return animation_manager->buffer_metrics;
+}
+
+tfxU32 tfx_GetTotalSpritesThatNeedDrawing(tfx_animation_manager animation_manager) {
+	return animation_manager->buffer_metrics.total_sprites_to_draw;
+}
+
+tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager animation_manager) {
 	return animation_manager->instances_in_use[animation_manager->current_in_use_buffer].size();
+}
+
+tfx_image_data_t *tfx_GetParticleShapesAnimationManager(tfx_animation_manager animation_manager, int *count) {
+	*count = animation_manager->particle_shapes.data.current_size;
+	return animation_manager->particle_shapes.data.data;
+}
+
+tfxU32 tfx_GetTotalSpriteDataCount(tfx_animation_manager animation_manager) {
+	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
+		return animation_manager->sprite_data_3d.current_size;
+	}
+	return animation_manager->sprite_data_2d.current_size;
+}
+
+void *tfx_GetSpriteDataBufferPointer(tfx_animation_manager animation_manager) {
+	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
+		return animation_manager->sprite_data_3d.data;
+	}
+	return animation_manager->sprite_data_2d.data;
+}
+
+size_t tfx_GetOffsetsSizeInBytes(tfx_animation_manager animation_manager) {
+	return animation_manager->offsets.current_size * sizeof(tfxU32);
+}
+
+size_t tfx_GetAnimationInstancesSizeInBytes(tfx_animation_manager animation_manager) {
+	return animation_manager->render_queue.current_size * sizeof(tfx_animation_instance_t);
+}
+
+size_t tfx_GetAnimationEmitterPropertySizeInBytes(tfx_animation_manager animation_manager) {
+	return animation_manager->emitter_properties.current_size * sizeof(tfx_animation_emitter_properties_t);
+}
+
+tfxU32 tfx_GetAnimationEmitterPropertyCount(tfx_animation_manager animation_manager) {
+	return animation_manager->emitter_properties.current_size;
 }
 
 tfx_gpu_shapes tfx_CreateGPUShapesList() {
@@ -11384,7 +11450,7 @@ size_t tfx_GetGPUShapesSizeInBytes(tfx_gpu_shapes shapes) {
 	return shapes->list.size_in_bytes();
 }
 
-size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager_t *animation_manager) {
+size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager animation_manager) {
 	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
 		return animation_manager->sprite_data_3d.size_in_bytes();
 	}
@@ -18066,22 +18132,22 @@ void tfx_SetEffectPositionVec3(tfx_particle_manager pm, tfxEffectID effect_index
 	pm->effects[effect_index].local_position = position;
 }
 
-void tfx_SetAnimationPosition3d(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float position[3]) {
+void tfx_SetAnimationPosition3d(tfx_animation_manager animation_manager, tfxAnimationID effect_index, float position[3]) {
 	animation_manager->instances[effect_index].position.x = position[0];
 	animation_manager->instances[effect_index].position.y = position[1];
 	animation_manager->instances[effect_index].position.z = position[2];
 }
 
-tfx_animation_instance_t *tfx_GetAnimationInstance(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id) {
+tfx_animation_instance_t *tfx_GetAnimationInstance(tfx_animation_manager animation_manager, tfxAnimationID animation_id) {
 	return &animation_manager->instances[animation_id];
 }
 
-void tfx_SetAnimationPosition2d(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float x, float y) {
+void tfx_SetAnimationPosition2d(tfx_animation_manager animation_manager, tfxAnimationID effect_index, float x, float y) {
 	animation_manager->instances[effect_index].position.x = x;
 	animation_manager->instances[effect_index].position.y = y;
 }
 
-void tfx_SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationID effect_index, float scale) {
+void tfx_SetAnimationScale(tfx_animation_manager animation_manager, tfxAnimationID effect_index, float scale) {
 	animation_manager->instances[effect_index].scale = scale;
 }
 

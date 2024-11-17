@@ -2740,6 +2740,7 @@ typedef struct tfx_package_s tfx_package_t;
 tfxMAKE_HANDLE(tfx_package)
 tfxMAKE_HANDLE(tfx_library);
 tfxMAKE_HANDLE(tfx_particle_manager);
+tfxMAKE_HANDLE(tfx_animation_manager);
 
 //-----------------------------------------------------------
 //Section: String_Buffers
@@ -6179,10 +6180,10 @@ typedef struct tfx_color_ramp_bitmap_data_t {
 	tfxU32 color_ramp_count;
 }tfx_color_ramp_bitmap_data_t;
 
+#ifdef __cplusplus
 //Use the animation manager to control playing of pre-recorded effects
 typedef struct tfx_animation_manager_s {
 	tfxU32 magic;
-#ifdef __cplusplus
 	//All of the sprite data for all the animations that you might want to play on the GPU.
 	//This could be deleted once it's uploaded to the GPU
 	//An animation manager can only be used for either 2d or 3d not both
@@ -6218,19 +6219,6 @@ typedef struct tfx_animation_manager_s {
 	//Other wise if you're adding sprite data from an effect library then the shapes will just be
 	//referenced from there instead
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
-#else
-	tfx_vector_t sprite_data_3d;
-	tfx_vector_t sprite_data_2d;
-	tfx_vector_t instances;
-	tfx_vector_t instances_in_use[2];
-	tfx_vector_t free_instances;
-	tfx_vector_t render_queue;
-	tfx_vector_t offsets;
-	tfx_vector_t emitter_properties;
-	tfx_vector_t sprite_data_settings;
-	tfx_storage_map_t effect_animation_info;
-	tfx_storage_map_t particle_shapes;
-#endif
 	//Flips between 1 and 0 each frame to be used when accessing instances_in_use
 	tfxU32 current_in_use_buffer;
 	//This struct contains the size of the buffers that need to be uploaded to the GPU. Offsets and 
@@ -6248,8 +6236,9 @@ typedef struct tfx_animation_manager_s {
 	//Callback which you can assign in order to decide if an animation instance should be added to the render queue
 	//the next frame. This callback is called inside the tfx_UpdateAnimationManager function. Set the callback
 	//with SetAnimationManagerCallback
-	bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
+	bool((*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data));
 } tfx_animation_manager_t;
+#endif
 
 typedef struct tfx_effect_index_s {
 	tfxEffectID index;
@@ -6658,7 +6647,7 @@ tfxINTERNAL void tfx__plot_color_ramp(tfx_bitmap_t *bitmap, tfx_color_ramp_t *ra
 tfxINTERNAL void tfx__create_color_ramp_bitmaps(tfx_library library);
 tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_overtime_attributes_t *a, tfxU32 ramp_id);
 tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp);
-tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager_t *animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
+tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_emitter_t *e);
 tfxINTERNAL float tfx__lookup_fast_overtime(tfx_graph_t *graph, float age, float lifetime);
 tfxINTERNAL float tfx__lookup_fast(tfx_graph_t *graph, float frame);
@@ -7156,11 +7145,11 @@ tfxINTERNAL void tfx__build_gpu_shape_data(tfx_vector_t<tfx_image_data_t> *parti
 //--------------------------------
 //Animation manager internal functions - animation manager is used to playback pre-recorded effects
 //--------------------------------
-tfxINTERNAL tfxAnimationID tfx__allocate_animation_instance(tfx_animation_manager_t *animation_manager);
-tfxINTERNAL void tfx__free_animation_instance(tfx_animation_manager_t *animation_manager, tfxU32 index);
-tfxINTERNAL void tfx__add_effect_emitter_properties(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape);
+tfxINTERNAL tfxAnimationID tfx__allocate_animation_instance(tfx_animation_manager animation_manager);
+tfxINTERNAL void tfx__free_animation_instance(tfx_animation_manager animation_manager, tfxU32 index);
+tfxINTERNAL void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape);
 tfxINTERNAL bool tfx__free_pm_effect_capacity(tfx_particle_manager pm);
-tfxINTERNAL void tfx__initialise_animation_manager(tfx_animation_manager_t *animation_manager, tfxU32 max_instances);
+tfxINTERNAL tfx_animation_manager tfx__create_animation_manager(tfxU32 max_instances);
 
 //--------------------------------
 //Particle manager internal functions
@@ -7221,7 +7210,7 @@ tfxINTERNAL float tfx__get_effect_loop_length(tfx_effect_emitter_t *effect);
 
 #endif		//__cpluscplus
 
-tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager_t *animation_manager);
+tfxAPI void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_manager);
 tfxAPI tfx_storage_t *tfx_GetGlobals();
 tfxAPI tfx_pool_stats_t tfx_CreateMemorySnapshot(tfx_header *first_block);
 tfxAPI float tfx_DegreesToRadians(float degrees);
@@ -7373,7 +7362,7 @@ tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager_t *animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
+tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_manager animation_manager, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void *user_data);
 
 /*
 * Updates all the image data in the library using the uv_lookup that you set when loading a library. This allows you to add all of the uv data for
@@ -7591,7 +7580,7 @@ then the effect will look the same each time. Note that seed of 0 is invalid, it
 * @param pm                            A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 * @param seed                        An unsigned int representing the seed (Any value other then 0)
 */
-tfxAPI inline void tfx_SetSeed(tfx_particle_manager pm, tfxU64 seed);
+tfxAPI void tfx_SetSeed(tfx_particle_manager pm, tfxU64 seed);
  
 /*
 Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
@@ -7675,7 +7664,7 @@ tfxAPI void tfx_GetSpriteHandle(void *instance, float out_handle[2]);
 Get the total number of instances ready for rendering in the particle manager.
 * @param pm                    A pointer to an initialised tfx_particle_manager_t.
 */
-tfxAPI inline tfxU32 tfx_TotalSpriteCount(tfx_particle_manager pm);
+tfxAPI tfxU32 tfx_TotalSpriteCount(tfx_particle_manager pm);
 
 /*
 Clear all particles, instance_data and effects in a particle manager. If you don't need to use the particle manager again then call tfx_FreeParticleManager to also
@@ -7755,7 +7744,7 @@ Force a particle manager to only run in single threaded mode. In other words, on
 * @param pm                A pointer to a tfx_particle_manager_t.
 * @param switch_on        true or false to use a single thread or not
 */
-tfxAPI inline void tfx_ForcePMSingleThreaded(tfx_particle_manager pm, bool switch_on);
+tfxAPI void tfx_ForcePMSingleThreaded(tfx_particle_manager pm, bool switch_on);
 
 /*
 Get the transform vectors for a 3d sprite's previous position so that you can use that to interpolate between that and the current sprite position
@@ -7790,7 +7779,7 @@ as the remaining particles come to the end of their life. Any single particles w
 * @param pm                A pointer to a tfx_particle_manager_t.
 * @param yesno            True = disable spawning, false = enable spawning
 */
-tfxAPI inline void tfx_DisablePMSpawning(tfx_particle_manager pm, bool yesno);
+tfxAPI void tfx_DisablePMSpawning(tfx_particle_manager pm, bool yesno);
 
 /*
 Get the buffer of effect indexes in the particle manager.
@@ -8080,7 +8069,7 @@ Get the name of an effect
 * @param pm                A pointer to the effect
 * @returns                const char * name
 */
-tfxAPI inline const char *tfx_GetEffectName(tfx_effect_emitter_t *effect);
+tfxAPI const char *tfx_GetEffectName(tfx_effect_emitter_t *effect);
 
 
 //--------------------------------
@@ -8093,7 +8082,7 @@ Set the position of a 3d animation
 * @param effect_index            The index of the effect. This is the index returned when calling tfx_AddAnimationInstance
 * @param position                A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void tfx_SetAnimationPosition3d(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float position[3]);
+tfxAPI void tfx_SetAnimationPosition3d(tfx_animation_manager animation_manager, tfxAnimationID animation_id, float position[3]);
 
 /*
 Set the position of a 2d animation
@@ -8102,7 +8091,7 @@ Set the position of a 2d animation
 * @param x                        A float of the x position
 * @param y                        A float of the y position
 */
-tfxAPI void tfx_SetAnimationPosition2d(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float x, float y);
+tfxAPI void tfx_SetAnimationPosition2d(tfx_animation_manager animation_manager, tfxAnimationID animation_id, float x, float y);
 
 /*
 Set the scale of a 3d animation
@@ -8110,7 +8099,7 @@ Set the scale of a 3d animation
 * @param effect_index            The index of the effect. This is the index returned when calling tfx_AddAnimationInstance
 * @param scale                    A multiplier that will determine the overal size/scale of the effect
 */
-tfxAPI void tfx_SetAnimationScale(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id, float scale);
+tfxAPI void tfx_SetAnimationScale(tfx_animation_manager animation_manager, tfxAnimationID animation_id, float scale);
 
 /*
 Get an animation instance from an animation manager
@@ -8118,7 +8107,7 @@ Get an animation instance from an animation manager
 * @param tfxAnimationID            The index of the effect. This is the index returned when calling tfx_AddAnimationInstance
 * @returns pointer to instance    Pointer to a tfx_animation_instance_t
 */
-tfxAPI tfx_animation_instance_t *tfx_GetAnimationInstance(tfx_animation_manager_t *animation_manager, tfxAnimationID animation_id);
+tfxAPI tfx_animation_instance_t *tfx_GetAnimationInstance(tfx_animation_manager animation_manager, tfxAnimationID animation_id);
 
 /*
 Initialise an Animation Manager for use with 3d instance_data. This must be run before using an animation manager. An animation manager is used
@@ -8131,7 +8120,7 @@ to calculate the state of particles between frames for smooth animation.
 								beyond this amount but it gives you a chance to reserve a decent amount to start with to
 								save too much mem copies as the data grows
 */
-tfxAPI void tfx_InitialiseAnimationManagerFor3d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity);
+tfxAPI tfx_animation_manager tfx_CreateAnimationManagerFor3d(tfxU32 max_instances, tfxU32 initial_sprite_data_capacity);
 
 /*
 Initialise an Animation Manager for use with 2d instance_data. This must be run before using an animation manager. An animation manager is used
@@ -8144,19 +8133,19 @@ to calculate the state of particles between frames for smooth animation.
 								beyond this amount but it gives you a chance to reserve a decent amount to start with to
 								save too much mem copies as the data grows
 */
-tfxAPI void tfx_InitialiseAnimationManagerFor2d(tfx_animation_manager_t *animation_manager, tfxU32 max_instances, tfxU32 initial_sprite_data_capacity);
+tfxAPI tfx_animation_manager tfx_CreateAnimationManagerFor2d(tfxU32 max_instances, tfxU32 initial_sprite_data_capacity);
 
 /*
 Set the callback that you can use to determine whether or not a tfx_animation_instance_t should be added to the next frame's render queue. You can use this
 to cull instances that are outside of the view frustum for example
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param callback                Pointer to the callback you want to use. It must have the following signature:
-								bool(*maybe_render_instance_callback(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data))
+								bool(*maybe_render_instance_callback(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data))
 								Values passed into the callback function are a pointer to the animation manager, a pointer to the instance being processed, a pointer to
 								the frame meta of the instance, this will contain the bounding box and radius of the instance from the current frame of the instance and a pointer
 								to any user data that you set that might contain the camera frustum that you want to check against.
 */
-tfxAPI void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager_t *animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager_t *animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data)));
+tfxAPI void tfx_SetAnimationManagerInstanceCallback(tfx_animation_manager animation_manager, bool((*maybe_render_instance_callback)(tfx_animation_manager animation_manager, tfx_animation_instance_t *instance, tfx_frame_meta_t *meta, void *user_data)));
 
 /*
 Get the sprite data settings for an effect in a library. Sprite data settings are the settings for an effect in the editor relating to setting up pre-baked effects
@@ -8189,7 +8178,7 @@ Set the user data in a tfx_animation_manager_t which can get passed through to c
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @param user_data                void* pointer to the data that you want to set
 */
-tfxAPI void tfx_SetAnimationManagerUserData(tfx_animation_manager_t *animation_manager, void *user_data);
+tfxAPI void tfx_SetAnimationManagerUserData(tfx_animation_manager animation_manager, void *user_data);
 
 /*
 Add sprite data to an animation manager sprite data buffer from an effect. This will record the
@@ -8199,7 +8188,7 @@ to the GPU
 * @param effect_index            The index of the effect. This is the index returned when calling tfx_AddAnimationInstance
 * @param position                A tfx_vec3_t vector object containing the x, y and z coordinates
 */
-tfxAPI void tfx_AddSpriteData(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager pm, tfx_vec3_t camera_position);
+tfxAPI void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager pm, tfx_vec3_t camera_position);
 
 /*
 Add an animation instance to the animation manager.
@@ -8209,7 +8198,7 @@ Add an animation instance to the animation manager.
 * @returns                        The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 								Return tfxINVALID if there is no room in the animation manager
 */
-tfxAPI tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager_t *animation_manager, tfxKey path, tfxU32 start_frame);
+tfxAPI tfxAnimationID tfx_AddAnimationInstanceByKey(tfx_animation_manager animation_manager, tfxKey path, tfxU32 start_frame);
 
 /*
 Add an animation instance to the animation manager.
@@ -8219,14 +8208,14 @@ Add an animation instance to the animation manager.
 * @returns                        The index id of the animation instance. You can use this to reference the animation when changing position, scale etc
 								Return tfxINVALID if there is no room in the animation manager
 */
-tfxAPI tfxAnimationID tfx_AddAnimationInstance(tfx_animation_manager_t *animation_manager, const char *path, tfxU32 start_frame);
+tfxAPI tfxAnimationID tfx_AddAnimationInstance(tfx_animation_manager animation_manager, const char *path, tfxU32 start_frame);
 
 /*
 Update an animation manager to advance the time and frames of all instances currently playing.
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to update
 * @param start_frame            Starting frame of the animation
 */
-tfxAPI void tfx_UpdateAnimationManager(tfx_animation_manager_t *animation_manager, float elapsed);
+tfxAPI void tfx_UpdateAnimationManager(tfx_animation_manager animation_manager, float elapsed);
 
 /*
 Add an effect's shapes to an animation manager. You can use this function if you're manually recording particle effects and adding them to an animation
@@ -8234,20 +8223,20 @@ manager rather then just using the editor.
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to update
 * @param effect                    A pointer to the effect whose shapes you want to add
 */
-tfxAPI void tfx_AddEffectShapes(tfx_animation_manager_t *animation_manager, tfx_effect_emitter_t *effect);
+tfxAPI void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect);
 
 /*
 Update an animation manager so that the effects do not expire they just loop forever instead regardless of whether they're a looped effect or not.
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to update
 */
-tfxAPI void tfx_CycleAnimationManager(tfx_animation_manager_t *animation_manager);
+tfxAPI void tfx_CycleAnimationManager(tfx_animation_manager animation_manager);
 
 /*
 Clears all animation instances currently in play in an animation manager, resulting in all currently running animations
 from being drawn
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to clear
 */
-tfxAPI void tfx_ClearAllAnimationInstances(tfx_animation_manager_t *animation_manager);
+tfxAPI void tfx_ClearAllAnimationInstances(tfx_animation_manager animation_manager);
 
 /*
 Clears all data from the animation manager including sprite data, metrics and instances. Essentially resetting everything back to
@@ -8255,14 +8244,14 @@ it's initialisation point
 from being drawn
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to reset
 */
-tfxAPI void tfx_ResetAnimationManager(tfx_animation_manager_t *animation_manager);
+tfxAPI void tfx_ResetAnimationManager(tfx_animation_manager animation_manager);
 
 /*
-Frees all data from the animation manager including sprite data, metrics and instances.
+Frees all data from the animation manager including sprite data, metrics and instances and also the handle itself
 from being drawn
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to reset
 */
-tfxAPI void tfx_FreeAnimationManager(tfx_animation_manager_t *animation_manager);
+tfxAPI void tfx_FreeAnimationManager(tfx_animation_manager animation_manager);
 
 /*
 Get the tfx_animation_buffer_metrics_t from an animation manager. This will contain the info you need to upload the sprite data,
@@ -8271,9 +8260,7 @@ data can be done ahead of time.
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @returns                        tfx_animation_buffer_metrics_t containing buffer sizes
 */
-tfxAPI inline tfx_animation_buffer_metrics_t tfx_GetAnimationBufferMetrics(tfx_animation_manager_t *animation_manager) {
-	return animation_manager->buffer_metrics;
-}
+tfxAPI tfx_animation_buffer_metrics_t tfx_GetAnimationBufferMetrics(tfx_animation_manager animation_manager);
 
 /*
 Get the total number of instance_data that need to be drawn by an animation manager this frame. You can use this in your renderer
@@ -8281,9 +8268,7 @@ to draw your sprite instances
 * @param animation_manager        A pointer to a tfx_animation_manager_t where the effect animation is being managed
 * @returns                        tfxU32 of the number of instance_data
 */
-tfxAPI inline tfxU32 tfx_GetTotalSpritesThatNeedDrawing(tfx_animation_manager_t *animation_manager) {
-	return animation_manager->buffer_metrics.total_sprites_to_draw;
-}
+tfxAPI tfxU32 tfx_GetTotalSpritesThatNeedDrawing(tfx_animation_manager animation_manager);
 
 /*
 Get the total number of instances being processed by an animation manager. This will not necessarily be the same number as
@@ -8291,7 +8276,7 @@ the instances being rendered if some are being culled in your custom callback if
 * @param animation_manager        A pointer to a tfx_animation_manager_t that you want to clear
 * @returns int                    The number of instances being updated
 */
-tfxAPI tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager_t *animation_manager);
+tfxAPI tfxU32 tfx_GetTotalInstancesBeingUpdated(tfx_animation_manager animation_manager);
 
 /*
 Create the image data required for shaders from a TimelineFX library. The image data will contain data such as uv coordinates. Once you have built the data you can use GetLibraryImageData to get the buffer
@@ -8300,90 +8285,69 @@ and upload it to the gpu.
 * @param shapes                   A pointer to a tfx_gpu_shapes_t object which will fill a buffer with all the shapes
 * @param uv_lookup                A function pointer to a function that you need to set up in order to get the uv coordinates from whatever renderer you're using
 */
-tfxAPI void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
+tfxAPI void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset));
 
 /*
 Get a pointer to the particle shapes data in the animation manager. This can be used with tfx_BuildGPUShapeData when you want to upload the data to the GPU
 * @param animation_manager        A pointer the tfx_animation_manager_t
 */
-tfxAPI inline tfx_image_data_t *tfx_GetParticleShapesAnimationManager(tfx_animation_manager_t *animation_manager, int *count) {
-	*count = animation_manager->particle_shapes.data.current_size;
-	return animation_manager->particle_shapes.data.data;
-}
+tfxAPI tfx_image_data_t *tfx_GetParticleShapesAnimationManager(tfx_animation_manager animation_manager, int *count);
 
 /*
 Get the total number of instance_data in an animation manger's sprite data buffer
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32                The number of instance_data in the buffer
 */
-tfxAPI inline tfxU32 tfx_GetTotalSpriteDataCount(tfx_animation_manager_t *animation_manager) {
-	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
-		return animation_manager->sprite_data_3d.current_size;
-	}
-	return animation_manager->sprite_data_2d.current_size;
-}
+tfxAPI tfxU32 tfx_GetTotalSpriteDataCount(tfx_animation_manager animation_manager);
 
 /*
 Get the total number of instance_data in an animation manger's sprite data buffer
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32                The number of instance_data in the buffer
 */
-tfxAPI inline size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager_t *animation_manager);
+tfxAPI size_t tfx_GetSpriteDataSizeInBytes(tfx_animation_manager animation_manager);
 
 /*
 Get the buffer memory address for the sprite data in an animation manager
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns void*                A pointer to the sprite data memory
 */
-tfxAPI inline void *tfx_GetSpriteDataBufferPointer(tfx_animation_manager_t *animation_manager) {
-	if (animation_manager->flags & tfxAnimationManagerFlags_is_3d) {
-		return animation_manager->sprite_data_3d.data;
-	}
-	return animation_manager->sprite_data_2d.data;
-}
+tfxAPI void *tfx_GetSpriteDataBufferPointer(tfx_animation_manager animation_manager);
 
 /*
 Get the size in bytes of the offsets buffer in an animation manager
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t                Size in bytes of the offsets buffer
 */
-tfxAPI inline size_t tfx_GetOffsetsSizeInBytes(tfx_animation_manager_t *animation_manager) {
-	return animation_manager->offsets.current_size * sizeof(tfxU32);
-}
+tfxAPI size_t tfx_GetOffsetsSizeInBytes(tfx_animation_manager animation_manager);
 
 /*
 Get the size in bytes of the render queue of animation instances buffer in an animation manager
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t                Size in bytes of the instances buffer
 */
-tfxAPI inline size_t tfx_GetAnimationInstancesSizeInBytes(tfx_animation_manager_t *animation_manager) {
-	return animation_manager->render_queue.current_size * sizeof(tfx_animation_instance_t);
-}
+tfxAPI size_t tfx_GetAnimationInstancesSizeInBytes(tfx_animation_manager animation_manager);
 
 /*
 Get the size in bytes of the animation emitter properties list
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns size_t                Size in bytes of the properties bufffer
 */
-tfxAPI inline size_t tfx_GetAnimationEmitterPropertySizeInBytes(tfx_animation_manager_t *animation_manager) {
-	return animation_manager->emitter_properties.current_size * sizeof(tfx_animation_emitter_properties_t);
-}
+tfxAPI size_t tfx_GetAnimationEmitterPropertySizeInBytes(tfx_animation_manager animation_manager);
 
 /*
 Get the number of emitter properties being using by the animation manager
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns tfxU32                Number of emitter properties
 */
-tfxAPI inline tfxU32 tfx_GetAnimationEmitterPropertyCount(tfx_animation_manager_t *animation_manager) {
-	return animation_manager->emitter_properties.current_size;
-}
+tfxAPI tfxU32 tfx_GetAnimationEmitterPropertyCount(tfx_animation_manager animation_manager);
 
 /*
 Get the buffer memory address for the sprite data in an animation manager
 * @param animation_manager        A pointer to a tfx_animation_manager_t to get the sprite data from
 * @returns void*                A pointer to the sprite data memory
 */
-tfxAPI void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager_t *animation_manager);
+tfxAPI void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager animation_manager);
 
 //--------------------------------
 //Effect_templates
@@ -8500,7 +8464,7 @@ Interpolate between 2 tfxVec3s. You can make use of this in your render function
 * @param captured            The captured tvxVec3 position
 * @returns tfx_vec3_t            The interpolated tfx_vec3_t
 */
-tfxAPI inline void tfx_Lerp3d(float lerp, const tfx_vec3_t *world, const tfx_vec3_t *captured, float out_lerp[3]);
+tfxAPI void tfx_Lerp3d(float lerp, const tfx_vec3_t *world, const tfx_vec3_t *captured, float out_lerp[3]);
 
 /*
 Interpolate between 2 tfxVec2s. You can make use of this in your render function when rendering instance_data and interpolating between captured and current positions
@@ -8509,7 +8473,7 @@ Interpolate between 2 tfxVec2s. You can make use of this in your render function
 * @param captured    The captured tvxVec2 position
 * @returns tfx_vec2_t    The interpolated tfx_vec2_t
 */
-tfxAPI inline void tfx_Lerp2d(float lerp, const tfx_vec2_t *world, const tfx_vec2_t *captured, float out_lerp[2]);
+tfxAPI void tfx_Lerp2d(float lerp, const tfx_vec2_t *world, const tfx_vec2_t *captured, float out_lerp[2]);
 
 /*
 Interpolate between 2 float. You can make use of this in your render function when rendering instance_data and interpolating between captured and current float values like intensity
