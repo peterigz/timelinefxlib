@@ -4970,6 +4970,14 @@ tfx_bitmap_t *tfx_GetColorRampBitmap(tfx_library library, tfxU32 index) {
 	return &library->color_ramps.color_ramp_bitmaps[index];
 }
 
+bool tfx_LibraryIsInitialised(tfx_library library) {
+	return TFX_VALID_HANDLE(library);
+}
+
+tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library) {
+	return library->gpu_shapes;
+}
+
 
 void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager_t *animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	tfx__build_gpu_shape_data(&animation_manager->particle_shapes.data, shapes, uv_lookup);

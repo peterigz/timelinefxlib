@@ -2938,7 +2938,7 @@ typedef struct tfx_vector_s {
 #ifdef __cplusplus
 
 //Storage
-//Credit to ocornut https://github.com/ocornut/imgui/commits?author=ocornut for tfxvec although it's quite a lot different now.
+//Credit to ocornut https://github.com/ocornut for tfxvec although it's quite a lot different now.
 //std::vector replacement with some extra stuff and tweaks specific to TimelineFX
 template<typename T>
 struct tfx_vector_t {
@@ -7475,9 +7475,14 @@ tfxAPI tfx_bitmap_t *tfx_GetColorRampBitmap(tfx_library library, tfxU32 index);
 Check to see if a library has been initialised or not
 * @param library        A pointer to a tfx_library_t
 */
-tfxAPI inline bool tfx_LibraryIsInitialised(tfx_library library) {
-	return library->magic == tfxINIT_MAGIC;
-}
+tfxAPI bool tfx_LibraryIsInitialised(tfx_library library);
+
+/*
+Get the gpu shapes handle in library. The gpu shapes handle can be used to upload the image data for particle shapes to the gpu using functions like tfx_GetGPUShapesArray, tfx_GetGPUShapesSizeInBytes, 
+tfx_GetGPUShapesCount etc.
+* @param library        A handle to a tfx_library
+*/
+tfxAPI tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library);
 
 //--------------------------------
 //Particle_Manager_functions
