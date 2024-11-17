@@ -100,10 +100,12 @@ typedef void *tfx_pool;
 #define TFX_ASSERT assert
 #endif
 
+#define TFX_DEPRECATED assert(0 && "Function is deprecated");
+
 #define TFX_ASSERT_INIT(magic) TFX_ASSERT(magic == tfxINIT_MAGIC)
 #define TFX_ASSERT_UNINIT(magic) TFX_ASSERT(magic != tfxINIT_MAGIC)
 #define TFX_CHECK_HANDLE(handle) TFX_ASSERT(handle && *((tfxU32*)handle) == tfxINIT_MAGIC)
-#define TFX_VALID_HANDLE(handle) handle && *((tfxU32*)handle) == tfxINIT_MAGIC
+#define TFX_VALID_HANDLE(handle) (handle && *((tfxU32*)handle) == tfxINIT_MAGIC)
 
 #define tfx__is_pow2(x) ((x) && !((x) & ((x) - 1)))
 #define tfx__glue2(x, y) x ## y
@@ -2318,7 +2320,8 @@ typedef enum {
 	tfxErrorCode_invalid_inventory = 1 << 10,
 	tfxErrorCode_sprite_data_is_3d_but_animation_manager_is_2d = 1 << 11,
 	tfxErrorCode_sprite_data_is_2d_but_animation_manager_is_3d = 1 << 12,
-	tfxErrorCode_library_loaded_without_shape_loader = 1 << 13
+	tfxErrorCode_library_loaded_without_shape_loader = 1 << 13,
+	tfxErrorCode_library_object_could_not_be_created = 1 << 14
 } tfx_error_flag_bits;
 
 typedef enum {
@@ -5602,6 +5605,7 @@ typedef struct tfx_emitter_state_s {
 	tfxU32 sprites_index;
 	tfxU32 seed_index;
 	tfxKey path_hash;
+	tfx_library library;
 
 	//Control Data
 	tfxU32 particles_index;
@@ -6296,7 +6300,7 @@ typedef struct tfx_particle_manager_s {
 	tfx_vector_t<tfx_effect_state_t> effects;
 	tfx_vector_t<tfx_emitter_state_t> emitters;
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
-	tfx_vector_t <tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
+	tfx_vector_t<tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
 	tfx_vector_t<unsigned int> free_compute_controllers;
 #else
 	tfx_vector_t particle_array_buffers;
@@ -6326,7 +6330,6 @@ typedef struct tfx_particle_manager_s {
 	tfx_vector_t free_compute_controllers;
 #endif
 
-	tfx_library library;
 	tfx_work_queue_t work_queue;
 	//The info config that was used to initialise the particle manager. This can be used to alter and the reconfigure the particle manager
 	tfx_particle_manager_info_t info;
@@ -6416,6 +6419,7 @@ typedef struct tfx_effect_library_stats_s {
 #ifdef __cplusplus
 typedef struct tfx_library_s {
 	tfxU32 magic;
+	tfxErrorFlags error_flags;
 	tfx_storage_map_t<tfx_effect_emitter_t *> effect_paths;
 	tfx_vector_t<tfx_effect_emitter_t> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
@@ -6771,7 +6775,6 @@ tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library library, const char *pa
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR tfx_effect_emitter_t *tfx__get_library_effect_by_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR void tfx__record_sprite_data(tfx_particle_manager_t *pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], int *progress);
-tfxINTERNAL void tfx__prep_library(tfx_library library);
 tfxINTERNAL void tfx__build_path_nodes_complex(tfx_emitter_path_t *path);
 tfxINTERNAL void tfx__free_overtime_attributes(tfx_overtime_attributes_t *attributes);
 tfxINTERNAL void tfx__copy_overtime_attributes_no_lookups(tfx_overtime_attributes_t *src, tfx_overtime_attributes_t *dst);
@@ -7335,40 +7338,29 @@ tfxAPI int tfx_ValidateEffectPackage(const char *filename);
 /**
 * Loads an effect library package from the specified filename into the provided tfx_library_t object.
 *
-* @param filename        A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
-* @param lib            A reference to a tfx_library_t object that will hold the loaded effect library data.
-* @param shape_loader    A pointer to a function that will be used to load image data into the effect library package.
-*                        The function has the following signature: void shape_loader(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data).
+* @param filename         A pointer to a null-terminated string that contains the path and filename of the effect library package to be loaded.
+* @param shape_loader     A pointer to a function that will be used to load image data into the effect library package.
+*                         The function has the following signature: void shape_loader(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data).
 * @param user_data        A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
-* @param read_only        A boolean value that determines whether the effect library data will be loaded in read-only mode. (Maybe removed in the future).
-*
-* @return A tfxErrorFlags value that indicates whether the function succeeded or failed. The possible return values are:
-	tfxErrorCode_success = 0
-	tfxErrorCode_incorrect_package_format
-	tfxErrorCode_data_could_not_be_loaded
-	tfxErrorCode_could_not_add_shape
-	tfxErrorCode_error_loading_shapes
-	tfxErrorCode_some_data_not_loaded
-	tfxErrorCode_unable_to_open_file
-	tfxErrorCode_unable_to_read_file
-	tfxErrorCode_wrong_file_size
-	tfxErrorCode_invalid_format
-	tfxErrorCode_no_inventory
-	tfxErrorCode_invalid_inventory
+* @return tfx_library	  A handle to a library object
 */
-tfxAPI tfxErrorFlags tfx_LoadEffectLibrary(const char *filename, tfx_library lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data);
+tfxAPI tfx_library tfx_LoadEffectLibrary(const char *filename, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data);
 
 /**
 * Loads an effect library package from memory into the provided tfx_library_t object pointer.
 *
-* @param data            A pointer to a memory buffer containing the library to be loaded
-* @param size            The size of the memory buffer containing the library to be loaded
-* @param lib            A reference to a tfx_library_t object that will hold the loaded effect library data.
-* @param shape_loader    A pointer to a function that will be used to load image data into the effect library package.
-*                        The function has the following signature: void shape_loader(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data).
+* @param data             A pointer to a memory buffer containing the library to be loaded
+* @param size             The size of the memory buffer containing the library to be loaded
+* @param shape_loader     A pointer to a function that will be used to load image data into the effect library package.
+*                         The function has the following signature: void shape_loader(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data).
 * @param user_data        A pointer to user-defined data that will be passed to the shape_loader function. This parameter is optional and can be set to nullptr if not needed.
-* @param read_only        A boolean value that determines whether the effect library data will be loaded in read-only mode. (Maybe removed in the future).
-*
+* @return tfx_library	  A handle to a library object
+*/
+tfxAPI tfx_library tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 size, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data);
+
+/*
+Get the error flags from a library. When you load a library from file or memory, if something goes wrong then the error status is stored in the library object and you can retrieve it with this command.
+* @param lib            A handle to a tfx_library object that will hold the loaded effect library data.
 * @return A tfxErrorFlags value that indicates whether the function succeeded or failed. The possible return values are:
 	tfxErrorCode_success = 0
 	tfxErrorCode_incorrect_package_format
@@ -7383,7 +7375,7 @@ tfxAPI tfxErrorFlags tfx_LoadEffectLibrary(const char *filename, tfx_library lib
 	tfxErrorCode_no_inventory
 	tfxErrorCode_invalid_inventory
 */
-tfxAPI tfxErrorFlags tfx_LoadEffectLibraryFromMemory(const void *data, tfxU32 size, tfx_library lib, void(*shape_loader)(const char *filename, tfx_image_data_t *image_data, void *raw_image_data, int image_size, void *user_data), void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset), void *user_data);
+tfxAPI tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library);
 
 /**
 * Loads a sprite data file into an animation manager
@@ -7757,14 +7749,6 @@ tfxAPI void *tfx_GetEffectUserData(tfx_particle_manager_t *pm, tfxEffectID effec
 More for use in the editor, this function updates emitter base values for any effects that are currently running after their graph values have been changed.
 */
 tfxAPI void tfx_UpdatePMBaseValues(tfx_particle_manager_t *pm);
-
-/*
-Set the tfx_library_t that the particle manager will use to render instance_data and lookup all of the various properties required to update emitters and particles.
-This is also set when you initialise a particle manager
-* @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
-* @param lib            A pointer to a tfx_library_t
-*/
-tfxAPI void tfx_SetPMLibrary(tfx_particle_manager_t *pm, tfx_library library);
 
 /*
 Set the particle manager camera. This is used to calculate particle depth if you're using depth ordered particles so it needs to be updated each frame.
