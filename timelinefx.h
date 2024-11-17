@@ -7514,14 +7514,7 @@ use to update the depth of each effect in the scene (3d mode). In 2d mode the de
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 * @param yesno                    A boolean, set to true or false if you want auto ordering on or off respectively
 */
-tfxAPI inline void tfx_TogglePMOrderEffects(tfx_particle_manager pm, bool yesno) {
-	if (yesno) {
-		pm->flags |= tfxParticleManagerFlags_auto_order_effects;
-	}
-	else {
-		pm->flags &= ~tfxParticleManagerFlags_auto_order_effects;
-	}
-}
+tfxAPI void tfx_TogglePMOrderEffects(tfx_particle_manager pm, bool yesno);
 
 /*
 Get the sprite buffer in the particle manager containing all the 2d instance_data that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
@@ -7598,10 +7591,7 @@ then the effect will look the same each time. Note that seed of 0 is invalid, it
 * @param pm                            A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
 * @param seed                        An unsigned int representing the seed (Any value other then 0)
 */
-tfxAPI inline void tfx_SetSeed(tfx_particle_manager pm, tfxU64 seed) {
-	tfx_RandomReSeed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
-	tfx_RandomReSeed(&pm->threaded_random, seed == 0 ? tfxMAX_UINT : seed);
-}
+tfxAPI inline void tfx_SetSeed(tfx_particle_manager pm, tfxU64 seed);
  
 /*
 Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
@@ -7685,9 +7675,7 @@ tfxAPI void tfx_GetSpriteHandle(void *instance, float out_handle[2]);
 Get the total number of instances ready for rendering in the particle manager.
 * @param pm                    A pointer to an initialised tfx_particle_manager_t.
 */
-tfxAPI inline tfxU32 tfx_TotalSpriteCount(tfx_particle_manager pm) {
-	return pm->instance_buffer.current_size;
-}
+tfxAPI inline tfxU32 tfx_TotalSpriteCount(tfx_particle_manager pm);
 
 /*
 Clear all particles, instance_data and effects in a particle manager. If you don't need to use the particle manager again then call tfx_FreeParticleManager to also
@@ -7767,9 +7755,7 @@ Force a particle manager to only run in single threaded mode. In other words, on
 * @param pm                A pointer to a tfx_particle_manager_t.
 * @param switch_on        true or false to use a single thread or not
 */
-tfxAPI inline void tfx_ForcePMSingleThreaded(tfx_particle_manager pm, bool switch_on) {
-	if (switch_on) pm->flags |= tfxParticleManagerFlags_single_threaded; else pm->flags &= ~tfxParticleManagerFlags_single_threaded;
-}
+tfxAPI inline void tfx_ForcePMSingleThreaded(tfx_particle_manager pm, bool switch_on);
 
 /*
 Get the transform vectors for a 3d sprite's previous position so that you can use that to interpolate between that and the current sprite position
@@ -7804,14 +7790,7 @@ as the remaining particles come to the end of their life. Any single particles w
 * @param pm                A pointer to a tfx_particle_manager_t.
 * @param yesno            True = disable spawning, false = enable spawning
 */
-tfxAPI inline void tfx_DisablePMSpawning(tfx_particle_manager pm, bool yesno) {
-	if (yesno) {
-		pm->flags |= tfxParticleManagerFlags_disable_spawning;
-	}
-	else {
-		pm->flags &= ~tfxParticleManagerFlags_disable_spawning;
-	}
-}
+tfxAPI inline void tfx_DisablePMSpawning(tfx_particle_manager pm, bool yesno);
 
 /*
 Get the buffer of effect indexes in the particle manager.

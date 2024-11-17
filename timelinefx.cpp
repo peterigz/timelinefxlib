@@ -13757,6 +13757,28 @@ void tfx_SetStagingBuffer(tfx_particle_manager pm, void *staging_buffer, tfxU32 
 	pm->instance_buffer.capacity = unit_size;
 }
 
+void tfx_TogglePMOrderEffects(tfx_particle_manager pm, bool yesno) {
+	if (yesno) {
+		pm->flags |= tfxParticleManagerFlags_auto_order_effects;
+	}
+	else {
+		pm->flags &= ~tfxParticleManagerFlags_auto_order_effects;
+	}
+}
+
+void tfx_SetSeed(tfx_particle_manager pm, tfxU64 seed) {
+	tfx_RandomReSeed(&pm->random, seed == 0 ? tfxMAX_UINT : seed);
+	tfx_RandomReSeed(&pm->threaded_random, seed == 0 ? tfxMAX_UINT : seed);
+}
+
+tfxU32 tfx_TotalSpriteCount(tfx_particle_manager pm) {
+	return pm->instance_buffer.current_size;
+}
+
+void tfx_ForcePMSingleThreaded(tfx_particle_manager pm, bool switch_on) {
+	if (switch_on) pm->flags |= tfxParticleManagerFlags_single_threaded; else pm->flags &= ~tfxParticleManagerFlags_single_threaded;
+}
+
 /*
 Get the sprite buffer in the particle manager containing all the 2d instance_data that were created the last frame. You can use this to copy to a staging buffer to upload to the gpu.
 This will be a pointer to the start of the buffer for uploading all the instance_data. If you want to do this for each effect then you can call tfx_GetEffect2dInstanceBuffer.
@@ -14226,6 +14248,15 @@ void tfx__dump_snapshots(tfx_storage_map_t<tfx_vector_t<tfx_profile_snapshot_t>>
 void tfx_SetEffectUserData(tfx_particle_manager pm, tfxU32 effect_index, void *data) {
 	TFX_ASSERT(effect_index < pm->effects.current_size);    //effect index is out of bounds of the array
 	pm->effects[effect_index].user_data = data;
+}
+
+void tfx_DisablePMSpawning(tfx_particle_manager pm, bool yesno) {
+	if (yesno) {
+		pm->flags |= tfxParticleManagerFlags_disable_spawning;
+	}
+	else {
+		pm->flags &= ~tfxParticleManagerFlags_disable_spawning;
+	}
 }
 
 void tfx__update_effect(tfx_particle_manager pm, tfxU32 index, tfxU32 parent_index) {
