@@ -2741,6 +2741,7 @@ tfxMAKE_HANDLE(tfx_package)
 tfxMAKE_HANDLE(tfx_library);
 tfxMAKE_HANDLE(tfx_particle_manager);
 tfxMAKE_HANDLE(tfx_animation_manager);
+tfxMAKE_HANDLE(tfx_effect_template);
 
 //-----------------------------------------------------------
 //Section: String_Buffers
@@ -6235,6 +6236,7 @@ typedef struct tfx_effect_index_s {
 	float depth;
 }tfx_effect_index_t;
 
+//This struct is used for configuring a particle manager on creation
 typedef struct tfx_particle_manager_info_s {
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time.
@@ -6416,16 +6418,14 @@ typedef struct tfx_library_s {
 } tfx_library_t;
 #endif
 
+#ifdef __cplusplus
 typedef struct tfx_effect_template_s {
 	tfxU32 magic;
-#ifdef __cplusplus
 	tfx_storage_map_t<tfx_effect_emitter_t *> paths;
-#else
-	tfx_storage_map_t paths;
-#endif
 	tfx_effect_emitter_t effect;
 	tfxKey original_effect_hash;
 }tfx_effect_template_t;
+#endif
 
 typedef struct tfx_data_entry_s {
 	tfx_data_type type;
@@ -7177,12 +7177,12 @@ tfxINTERNAL tfxU32 tfx__count_library_emitter_lookup_values(tfx_library library,
 //--------------------------------
 //Effect templates
 //--------------------------------
-tfxINTERNAL void tfx__add_template_path(tfx_effect_template_t *effect_template, tfx_effect_emitter_t *effect_emitter, const char *path);
+tfxINTERNAL void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_emitter_t *effect_emitter, const char *path);
 
 //--------------------------------
 //Library functions, internal/Editor functions
 //--------------------------------
-tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template_t *effect);
+tfxINTERNAL void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect);
 tfxINTERNAL void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprites);
 tfxINTERNAL void tfx__compress_sprite_data(tfx_particle_manager pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, int *progress);
 tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
@@ -7580,7 +7580,7 @@ means that you can tweak an effect without editing the base effect in the librar
 * @param effect_template            The empty tfx_effect_template_t object that you want the effect loading into
 //Returns true on success.
 */
-tfxAPI bool tfx_PrepareEffectTemplate(tfx_library library, const char *name, tfx_effect_template_t *effect_template);
+tfxAPI bool tfx_PrepareEffectTemplate(tfx_library library, const char *name, tfx_effect_template effect_template);
 
 /*
 Add an effect to a tfx_particle_manager_t from an effect template
@@ -7590,7 +7590,7 @@ Add an effect to a tfx_particle_manager_t from an effect template
 							For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
   @returns                    True if the effect was succesfully added.
 */
-tfxAPI bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager pm, tfx_effect_template_t *effect, tfxEffectID *effect_id);
+tfxAPI bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager pm, tfx_effect_template effect, tfxEffectID *effect_id);
 
 /*
 Add an effect to a tfx_particle_manager_t. Generally you should always call tfx_AddEffectTemplateToParticleManager and use templates to organise your effects but if you want to just
@@ -8347,27 +8347,27 @@ tfxAPI void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manage
 Reset an effect template and make it empty so you can use it to store another effect.
 * @param t                        A pointer to a tfx_effect_template_t
 */
-tfxAPI void tfx_ResetTemplate(tfx_effect_template_t *t);
+tfxAPI void tfx_ResetTemplate(tfx_effect_template t);
 
 /*
 Get the root effect from the template
 * @param t                        A pointer to a tfx_effect_template_t
 * @returns                        A pointer to the root effect
 */
-tfxAPI tfx_effect_emitter_t *tfx_GetEffectFromTemplate(tfx_effect_template_t *t);
+tfxAPI tfx_effect_emitter_t *tfx_GetEffectFromTemplate(tfx_effect_template t);
 
 /*
 Get an emitter or sub effect from an effect template.
 * @param t                        A pointer to a tfx_effect_template_t
-* @param path                    A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
+* @param path                     A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
 * @returns                        A pointer to the root effect
 */
-tfxAPI tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template_t *t, const char *path);
+tfxAPI tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template t, const char *path);
 
 /*
 Get an emitter path that an emitter is using. The emitter must have the path emission type set or nullptr will be returned
 * @param t                        A pointer to a tfx_effect_emitter_t
-* @param path                    A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
+* @param path                     A path to the emitter or sub effect that you want to retrieve. Must be a valid path. Example path might be: "Explosion/Smoke"
 * @returns                        A pointer to the root effect
 */
 tfxAPI tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_emitter_t *e);
@@ -8375,73 +8375,73 @@ tfxAPI tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_emitter_t *e);
 /*
 Set the user data for any effect or emitter in the effect template. This user data will get passed through to any update callback functions
 * @param t                        A pointer to a tfx_effect_template_t
-* @param path                    A path to the effect or emitter in the effect template
-* @param data                    A pointer to the user data
+* @param path                     A path to the effect or emitter in the effect template
+* @param data                     A pointer to the user data
 */
-tfxAPI void tfx_SetTemplateUserData(tfx_effect_template_t *t, const char *path, void *data);
+tfxAPI void tfx_SetTemplateUserData(tfx_effect_template t, const char *path, void *data);
 
 /*
 Set the user data for the root effect in an effect template
 * @param t                        A pointer to a tfx_effect_template_t
-* @param data                    A pointer to the user data
+* @param data                     A pointer to the user data
 */
-tfxAPI void tfx_SetTemplateEffectUserData(tfx_effect_template_t *t, void *data);
+tfxAPI void tfx_SetTemplateEffectUserData(tfx_effect_template t, void *data);
 
 /*
 Set the same user data for all effects and emitters/sub effects in the effect template
 * @param t                        A pointer to a tfx_effect_template_t
-* @param data                    A pointer to the user data that will be set to all effects and emitters in the template
+* @param data                     A pointer to the user data that will be set to all effects and emitters in the template
 */
-tfxAPI void tfx_SetTemplateUserDataAll(tfx_effect_template_t *t, void *data);
+tfxAPI void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data);
 
 /*
 Set an update callback for the root effect in the effect template.
 * @param t                        A pointer to a tfx_effect_template_t
-* @param update_callback        A pointer to the call back function
+* @param update_callback          A pointer to the call back function
 */
-tfxAPI void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template_t *t, void(*update_callback)(tfx_particle_manager pm, tfxEffectID effect_index));
+tfxAPI void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_callback)(tfx_particle_manager pm, tfxEffectID effect_index));
 
 /*
 Pre-record this effect into a sprite cache so that you can play the effect back without the need to actually caclulate particles in realtime.
-	* @param pm            Reference to a pm that will be used to run the particle simulation and record the sprite data
-	* @param path        const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
-	* @param camera        Array of 3 floats with the camera position (only needed for 3d effects that are sorted by depth
+	* @param pm					  Reference to a pm that will be used to run the particle simulation and record the sprite data
+	* @param path				  const *char of a path to the emitter in the effect.Must be a valid path, for example: "My Effect/My Emitter"
+	* @param camera				  Array of 3 floats with the camera position (only needed for 3d effects that are sorted by depth
 */
-tfxAPI void tfx_RecordTemplateEffect(tfx_effect_template_t *t, tfx_particle_manager pm, float update_frequency, float camera_position[3]);
+tfxAPI void tfx_RecordTemplateEffect(tfx_effect_template t, tfx_particle_manager pm, float update_frequency, float camera_position[3]);
 
 /*
 Disable an emitter within an effect. Disabling an emitter will stop it being added to the particle manager when calling tfx_AddEffectTemplateToParticleManager
-* @param path        const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
+* @param path					  const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
 */
-tfxAPI void tfx_DisableTemplateEmitter(tfx_effect_template_t *t, const char *path);
+tfxAPI void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path);
 
 /*
 Enable an emitter within an effect so that it is added to the particle manager when calling tfx_AddEffectTemplateToParticleManager. Emitters are enabled by default.
-* @param path        const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
+* @param path					  const *char of a path to the emitter in the effect. Must be a valid path, for example: "My Effect/My Emitter"
 */
-tfxAPI void tfx_EnableTemplateEmitter(tfx_effect_template_t *t, const char *path);
+tfxAPI void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path);
 
 /*
 Scale all nodes on a global graph graph of the effect
-* @param global_type        tfx_graph_type of the global graph that you want to scale. Must be a global graph or an assert will be called
-* @param amount                A float of the amount that you want to scale the multiplier by.
+* @param global_type			  tfx_graph_type of the global graph that you want to scale. Must be a global graph or an assert will be called
+* @param amount					  A float of the amount that you want to scale the multiplier by.
 */
-tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfx_graph_type global_type, float amount);
+tfxAPI void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_graph_type global_type, float amount);
 
 /*
 Scale all nodes on an emitter graph
-* @param emitter_path        const *char of the emitter path
-* @param global_type        tfx_graph_type of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
-* @param amount                A float of the amount that you want to scale the graph by.
+* @param emitter_path			  const *char of the emitter path
+* @param global_type			  tfx_graph_type of the emitter graph that you want to scale. Must be an emitter graph or an assert will be called
+* @param amount                   A float of the amount that you want to scale the graph by.
 */
-tfxAPI void tfx_ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter_path, tfx_graph_type graph_type, float amount);
+tfxAPI void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_graph_type graph_type, float amount);
 
 /*
 Set the single spawn amount for an emitter. Only affects emitters that have the single spawn flag set.
-* @param emitter_path        const *char of the emitter path
-* @param amount                A float of the amount that you want to set the single spawn amount to.
+* @param emitter_path			 const *char of the emitter path
+* @param amount					 A float of the amount that you want to set the single spawn amount to.
 */
-tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template_t *t, const char *emitter_path, tfxU32 amount);
+tfxAPI void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount);
 
 //--------------------------------
 //General_helpers

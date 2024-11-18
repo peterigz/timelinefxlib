@@ -3361,7 +3361,7 @@ void tfx__clone_effect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter
 	}
 }
 
-void tfx__add_template_path(tfx_effect_template_t *effect_template, tfx_effect_emitter_t *effect_emitter, const char *path) {
+void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_emitter_t *effect_emitter, const char *path) {
 	effect_template->paths.Insert(path, effect_emitter);
 	for (auto &sub : tfx_GetEffectInfo(effect_emitter)->sub_effectors) {
 		tfx_str512_t sub_path;
@@ -3371,7 +3371,7 @@ void tfx__add_template_path(tfx_effect_template_t *effect_template, tfx_effect_e
 	}
 }
 
-bool tfx_PrepareEffectTemplate(tfx_library library, const char *name, tfx_effect_template_t *effect_template) {
+bool tfx_PrepareEffectTemplate(tfx_library library, const char *name, tfx_effect_template effect_template) {
 	TFX_ASSERT_INIT(library->magic);				//Trying to prepare an effect template with an initialised library!
 	TFX_ASSERT_UNINIT(effect_template->magic);		//the effect template has already been initialised! Use ResetTemplate instead to reset a template back to it's original state.
 	effect_template->effect = tfx_NewEffect();
@@ -4860,7 +4860,7 @@ tfx_effect_emitter_t *tfx__get_library_effect_by_key(tfx_library library, tfxKey
 	return library->effect_paths.At(key);
 }
 
-void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template_t *effect_template) {
+void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect_template) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfx_effect_emitter_t *effect = tfx_GetLibraryEffectPath(library, path);
 	TFX_ASSERT(effect);                                //Effect was not found, make sure the path exists
@@ -9485,7 +9485,7 @@ tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library) {
 	return library->error_flags;
 }
 
-void tfx_SetTemplateUserDataAll(tfx_effect_template_t *t, void *data) {
+void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data) {
 	tmpStack(tfx_effect_emitter_t *, stack);
 	stack.push_back(&t->effect);
 	while (stack.size()) {
@@ -10471,26 +10471,26 @@ void tfx_UpdateAnimationManagerBufferMetrics(tfx_animation_manager animation_man
 	animation_manager->buffer_metrics.offsets_size_in_bytes = animation_manager->buffer_metrics.offsets_size * sizeof(tfxU32) * animation_manager->buffer_metrics.instances_size;
 }
 
-void tfx_RecordTemplateEffect(tfx_effect_template_t *t, tfx_particle_manager pm, float update_frequency, float camera_position[3]) {
+void tfx_RecordTemplateEffect(tfx_effect_template t, tfx_particle_manager pm, float update_frequency, float camera_position[3]) {
 	int progress;
 	tfx__record_sprite_data(pm, &t->effect, update_frequency, camera_position, &progress);
 }
 
-void tfx_DisableTemplateEmitter(tfx_effect_template_t *t, const char *path) {
+void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path) {
 	TFX_ASSERT(t->paths.ValidName(path));            //Must be a valid path to the emitter
 	tfx_effect_emitter_t *emitter = t->paths.At(path);
 	TFX_ASSERT(emitter->type == tfxEmitterType);    //Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those. 
 	emitter->property_flags &= ~tfxEmitterPropertyFlags_enabled;
 }
 
-void tfx_EnableTemplateEmitter(tfx_effect_template_t *t, const char *path) {
+void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path) {
 	TFX_ASSERT(t->paths.ValidName(path));            //Must be a valid path to the emitter
 	tfx_effect_emitter_t *emitter = t->paths.At(path);
 	TFX_ASSERT(emitter->type == tfxEmitterType);    //Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those
 	emitter->property_flags |= tfxEmitterPropertyFlags_enabled;
 }
 
-void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfx_graph_type global_type, float amount) {
+void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_graph_type global_type, float amount) {
 	TFX_ASSERT(tfx__is_global_graph_type(global_type));
 	tfx_graph_t *graph = tfx__get_effect_graph_by_type(&t->effect, global_type);
 	tfx_effect_emitter_t *original_effect = tfx__get_library_effect_by_key(t->effect.library, t->original_effect_hash);
@@ -10500,7 +10500,7 @@ void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template_t *t, tfx_graph_type 
 	tfx__compile_graph(graph);
 }
 
-void tfx_ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter_path, tfx_graph_type graph_type, float amount) {
+void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_graph_type graph_type, float amount) {
 	TFX_ASSERT(tfx__is_emitter_graph_type(graph_type));        //Must be an emitter graph type. This is any property, base, variaion or overtime graph
 	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
 	tfx_effect_emitter_t *emitter = t->paths.At(emitter_path);
@@ -10512,7 +10512,7 @@ void tfx_ScaleTemplateEmitterGraph(tfx_effect_template_t *t, const char *emitter
 	tfx__compile_graph(graph);
 }
 
-void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template_t *t, const char *emitter_path, tfxU32 amount) {
+void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount) {
 	TFX_ASSERT(amount >= 0);                            //Amount must not be less than 0
 	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
 	tfx_effect_emitter_t *emitter = t->paths.At(emitter_path);
@@ -10523,18 +10523,18 @@ void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manager anima
 	return animation_manager->emitter_properties.data;
 }
 
-void tfx_ResetTemplate(tfx_effect_template_t *t) {
+void tfx_ResetTemplate(tfx_effect_template t) {
 	if (t->paths.Size()) {
 		t->paths.Clear();
 		tfx__clean_up_effect(&t->effect);
 	}
 }
 
-tfx_effect_emitter_t *tfx_GetEffectFromTemplate(tfx_effect_template_t *t) {
+tfx_effect_emitter_t *tfx_GetEffectFromTemplate(tfx_effect_template t) {
 	return &t->effect;
 }
 
-tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template_t *t, const char *path) {
+tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template t, const char *path) {
 	if (t->paths.ValidName(path)) return t->paths.At(path); return nullptr;
 }
 
@@ -10546,19 +10546,19 @@ tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_emitter_t *e) {
 	return nullptr;
 }
 
-void tfx_SetTemplateUserData(tfx_effect_template_t *t, const char *path, void *data) {
+void tfx_SetTemplateUserData(tfx_effect_template t, const char *path, void *data) {
 	if (t->paths.ValidName(path)) t->paths.At(path)->user_data = data;
 }
 
-void tfx_SetTemplateEffectUserData(tfx_effect_template_t *t, void *data) {
+void tfx_SetTemplateEffectUserData(tfx_effect_template t, void *data) {
 	t->effect.user_data = data;
 }
 
-void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template_t *t, void(*update_callback)(tfx_particle_manager pm, tfxEffectID effect_index)) {
+void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_callback)(tfx_particle_manager pm, tfxEffectID effect_index)) {
 	t->effect.update_callback = update_callback;
 }
 
-bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager pm, tfx_effect_template_t *effect_template, tfxEffectID *effect_id) {
+bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager pm, tfx_effect_template effect_template, tfxEffectID *effect_id) {
 	tfxEffectID id;
 	id = tfx__add_effect_to_particle_manager(pm, &effect_template->effect, pm->current_ebuff, 0, false, 0, 0.f);
 	if (effect_id) {
