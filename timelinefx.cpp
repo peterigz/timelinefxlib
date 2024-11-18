@@ -1775,12 +1775,12 @@ tfx_line_t tfx_stream_s::ReadLine() {
 	line.start = data + position;
 	while (!EoF()) {
 		if (data[position] == '\n') {
-			line.end = data + position;
 			position++;
 			break;
 		}
 		position++;
 	}
+	line.end = data + position - 1;
 	line.length = int(line.end - line.start);
 	return line;
 }
@@ -8656,12 +8656,13 @@ tfx_line_t tfx__read_line(const char *s) {
 	line.start = s;
 	while (s[position] != '\0') {
 		if (s[position] == '\n') {
-			line.end = s + position;
 			position++;
 			break;
 		}
 		position++;
 	}
+	line.end = s + position;
+	line.length = position;
 	return line;
 }
 
