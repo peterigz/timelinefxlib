@@ -5376,16 +5376,6 @@ static float(*lookup_overtime_callback)(tfx_graph_t * graph, float age, float li
 static float(*lookup_callback)(tfx_graph_t * graph, float age);
 static float(*lookup_random_callback)(tfx_graph_t * graph, float age, tfx_random_t * random);
 
-typedef struct tfx_shape_data_s {
-	tfx_str64_t name;
-	tfxU32 frame_count;
-	tfxU32 width;
-	tfxU32 height;
-	tfxU32 shape_index;
-	tfxKey image_hash;
-	int import_filter;
-}tfx_shape_data_t;
-
 typedef struct tfx_base_s {
 	tfx_vec2_t size;
 	float velocity;

@@ -9074,43 +9074,34 @@ tfxAPI tfxErrorFlags tfx_LoadSpriteData(const char *filename, tfx_animation_mana
 
 			if (context == tfxStartShapes && shape_loader != nullptr) {
 				if (pair.size() >= 5) {
-					tfx_shape_data_t s;
-					s.name.Set(pair[0].c_str());
-					s.shape_index = atoi(pair[1].c_str());
-					s.frame_count = atoi(pair[2].c_str());
-					s.width = atoi(pair[3].c_str());
-					s.height = atoi(pair[4].c_str());
-					s.import_filter = atoi(pair[5].c_str());
+					tfx_image_data_t image_data;
+					image_data.name.Set(pair[0].c_str());
+					image_data.shape_index = atoi(pair[1].c_str());
+					image_data.animation_frames = (float)atoi(pair[2].c_str());
+					image_data.image_size = { (float)atoi(pair[3].c_str()), (float)atoi(pair[4].c_str()) };
+					image_data.import_filter = atoi(pair[5].c_str());
 					if (pair.current_size > 6) {
-						s.image_hash = strtoull(pair[6].c_str(), NULL, 10);
+						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
 					}
-					if (s.import_filter < 0 || s.import_filter>1) {
-						s.import_filter = 0;
+					if (image_data.import_filter < 0 || image_data.import_filter > 1) {
+						image_data.import_filter = 0;
 					}
 
-					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, s.name.c_str());
+					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, image_data.name.c_str());
 					if (shape_entry) {
-						tfx_image_data_t image_data;
-						image_data.shape_index = s.shape_index;
-						image_data.animation_frames = (float)s.frame_count;
-						image_data.image_size = tfx_vec2_t((float)s.width, (float)s.height);
-						image_data.name = s.name;
-						image_data.import_filter = s.import_filter;
 						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
-						if (s.image_hash == 0) {
-							s.image_hash = image_data.image_hash;
-						}
-						TFX_ASSERT(s.image_hash == image_data.image_hash);
+						TFX_ASSERT(image_data.image_hash != 0);
 
-						shape_loader(s.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
+						shape_loader(image_data.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 
 						if (!image_data.ptr) {
 							//uid = -6;
 						}
 						else {
 							animation_manager->particle_shapes.Insert(image_data.image_hash, image_data);
-							if (first_shape_hash == 0)
-								first_shape_hash = s.image_hash;
+							if (first_shape_hash == 0) {
+								first_shape_hash = image_data.image_hash;
+							}
 						}
 					}
 					else {
@@ -9323,44 +9314,38 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 			if (context == tfxStartShapes) {
 				if (pair.size() >= 5) {
-					tfx_shape_data_t s;
-					tfx__strcpy(s.name.data, s.name.capacity, pair[0].c_str());
-					s.shape_index = atoi(pair[1].c_str());
-					s.frame_count = atoi(pair[2].c_str());
-					s.width = atoi(pair[3].c_str());
-					s.height = atoi(pair[4].c_str());
-					s.import_filter = atoi(pair[5].c_str());
+					tfx_image_data_t image_data;
+					tfx__strcpy(image_data.name.data, image_data.name.capacity, pair[0].c_str());
+					image_data.shape_index = atoi(pair[1].c_str());
+					image_data.animation_frames = (float)atoi(pair[2].c_str());
+					image_data.image_size = { (float)atoi(pair[3].c_str()), (float)atoi(pair[4].c_str()) };
+					image_data.import_filter = atoi(pair[5].c_str());
 					if (pair.current_size > 6) {
-						s.image_hash = strtoull(pair[6].c_str(), NULL, 10);
+						image_data.image_hash = strtoull(pair[6].c_str(), NULL, 10);
 					}
-					if (s.import_filter < 0 || s.import_filter>1) {
-						s.import_filter = 0;
+					if (image_data.import_filter < 0 || image_data.import_filter>1) {
+						image_data.import_filter = 0;
 					}
 
-					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, s.name.c_str());
+					tfx_package_entry_info_t *shape_entry = tfx__get_package_file(package, image_data.name.c_str());
 					if (shape_entry) {
-						tfx_image_data_t image_data;
-						image_data.shape_index = s.shape_index;
-						image_data.animation_frames = (float)s.frame_count;
-						image_data.image_size = tfx_vec2_t((float)s.width, (float)s.height);
-						image_data.name = s.name;
-						image_data.import_filter = s.import_filter;
 						image_data.image_hash = tfx_Hash(&tfxStore->hasher, shape_entry->data.data, shape_entry->file_size, 0);
-						if (s.image_hash == 0) {
-							s.image_hash = image_data.image_hash;
+						if (image_data.image_hash == 0) {
+							image_data.image_hash = image_data.image_hash;
 						}
-						TFX_ASSERT(s.image_hash == image_data.image_hash);
+						TFX_ASSERT(image_data.image_hash == image_data.image_hash);
 
 						if (shape_loader) {
-							shape_loader(s.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
+							shape_loader(image_data.name.c_str(), &image_data, shape_entry->data.data, (tfxU32)shape_entry->file_size, user_data);
 						}
 
 						if (!image_data.ptr) {
 							//uid = -6;
 						} else {
 							lib->particle_shapes.Insert(image_data.image_hash, image_data);
-							if (first_shape_hash == 0)
-								first_shape_hash = s.image_hash;
+							if (first_shape_hash == 0) {
+								first_shape_hash = image_data.image_hash;
+							}
 						}
 					} else {
 						//Maybe don't actually need to break here, just means for some a reason a shaped couldn't be loaded, but no reason not to load the effects anyway
