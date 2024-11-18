@@ -3373,7 +3373,7 @@ void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_emit
 
 tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *name) {
 	TFX_ASSERT_INIT(library->magic);				//Trying to create an effect template with an uninitialised library!
-	if (library->effect_paths.ValidName(name)) {
+	if (!library->effect_paths.ValidName(name)) {
 		return nullptr;
 	}
 	tfx_effect_template effect_template = tfxNEW(tfx_effect_template);
