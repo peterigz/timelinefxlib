@@ -7521,8 +7521,8 @@ run out of space or you anticipate a huge amount of emitters and particles to be
 could reduce the numbers as well if needed (they don't take a lot of space though)
 * @param pm                        A pointer to an intialised tfx_particle_manager_t.
 * @param spawn_work_max            The maximum amount of spawn work entries
-* @param control_work_max        The maximum amount of control work entries
-* @param age_work_max            The maximum amount of age_work work entries
+* @param control_work_max          The maximum amount of control work entries
+* @param age_work_max              The maximum amount of age_work work entries
 */
 tfxAPI void tfx_SetPMWorkQueueSizes(tfx_particle_manager pm, tfxU32 spawn_work_max, tfxU32 control_work_max, tfxU32 age_work_max);
 
@@ -7532,74 +7532,64 @@ of free particle banks for that emitter type so that they can then be recycled i
 specific emitter then you can call this function to do that.
 NOTE: No emitters of the type passed to the function must be in use in the particle manager.
 * @param pm                        A pointer to an intialised tfx_particle_manager_t.
-* @param emitter                A pointer to a valid tfx_effect_emitter_t of type tfxEmitterType
+* @param emitter                   A pointer to a valid tfx_effect_emitter_t of type tfxEmitterType
 */
 tfxAPI void tfx_FreeParticleListsMemory(tfx_particle_manager pm, tfx_effect_emitter_t *emitter);
 
 /*
 Free all the memory that is associated with an effect. Depending on the configuration of the particle manager this might be instance_data, particle lists and spawn location lists.
 * @param pm                        A pointer to an intialised tfx_particle_manager_t.
-* @param emitter                A pointer to a valid tfx_effect_emitter_t of type tfxEffectType
+* @param emitter                   A pointer to a valid tfx_effect_emitter_t of type tfxEffectType
 */
 tfxAPI void tfx_FreeEffectListsMemory(tfx_particle_manager pm, tfx_effect_emitter_t *effect);
 
 /*
 Get the current particle count for a particle manager
 * @param pm                        A pointer to an tfx_particle_manager_t
-* @returns tfxU32                The total number of particles currently being updated
+* @returns tfxU32                  The total number of particles currently being updated
 */
 tfxAPI tfxU32 tfx_ParticleCount(tfx_particle_manager pm);
 
 /*
 Get the current number of effects that are currently being updated by a particle manager
 * @param pm                        A pointer to an tfx_particle_manager_t
-* @returns tfxU32                The total number of effects currently being updated
+* @returns tfxU32                  The total number of effects currently being updated
 */
 tfxAPI tfxU32 tfx_EffectCount(tfx_particle_manager pm);
 
 /*
 Get the current number of emitters that are currently being updated by a particle manager
 * @param pm                        A pointer to an tfx_particle_manager_t
-* @returns tfxU32                The total number of emitters currently being updated
+* @returns tfxU32                  The total number of emitters currently being updated
 */
 tfxAPI tfxU32 tfx_EmitterCount(tfx_particle_manager pm);
 
 /*
 Set the seed for the particle manager for random number generation. Setting the seed can determine how an emitters spawns particles, so if you set the seed before adding an effect to the particle manager
 then the effect will look the same each time. Note that seed of 0 is invalid, it must be 1 or greater.
-* @param pm                            A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param seed                        An unsigned int representing the seed (Any value other then 0)
+* @param pm                        A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param seed                      An unsigned int representing the seed (Any value other then 0)
 */
 tfxAPI void tfx_SetSeed(tfx_particle_manager pm, tfxU64 seed);
- 
-/*
-Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
-means that you can tweak an effect without editing the base effect in the library.
-* @param library                    A reference to a tfx_library_t that should be loaded with tfx_LoadEffectLibrary
-* @param name                        The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
-* @param effect_template            The empty tfx_effect_template_t object that you want the effect loading into
-//Returns true on success.
-*/
-tfxAPI bool tfx_PrepareEffectTemplate(tfx_library library, const char *name, tfx_effect_template effect_template);
 
 /*
 Add an effect to a tfx_particle_manager_t from an effect template
-* @param pm                    A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param effect_template    The tfx_effect_template_t object that you want to add to the particle manager. It must have already been prepared by calling tfx_PrepareEffectTemplate
-* @param effect_id            pointer to a tfxEffectID of the effect which will be set after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
-							For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
-  @returns                    True if the effect was succesfully added.
+* @param pm                         A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param effect_template			The tfx_effect_template_t object that you want to add to the particle manager. It must have already been prepared by calling tfx_PrepareEffectTemplate
+* @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
+									For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
+  @returns							True if the effect was succesfully added.
 */
 tfxAPI bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager pm, tfx_effect_template effect, tfxEffectID *effect_id);
 
 /*
 Add an effect to a tfx_particle_manager_t. Generally you should always call tfx_AddEffectTemplateToParticleManager and use templates to organise your effects but if you want to just
 test things out you can add an effect direct from a library using this command.
-* @param pm                    A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
-* @param effect                tfx_effect_emitter_t object that you want to add to the particle manager.
-* @param effect_id            pointer to a tfxEffectID of the effect which will be set after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
-							For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
-  @returns                    True if the effect was succesfully added.
+* @param pm							A pointer to an initialised tfx_particle_manager_t. The particle manager must have already been initialised by calling InitFor3d or InitFor2d
+* @param effect						tfx_effect_emitter_t object that you want to add to the particle manager.
+* @param effect_id					pointer to a tfxEffectID of the effect which will be set after it's been added to the particle manager. This index can then be used to manipulate the effect in the particle manager as it's update
+									For example by calling tfx_SetEffectPosition2d. This will be set to tfxINVALID if the function is unable to add the effect to the particle manager if it's out of space and reached it's effect limit.
+  @returns							True if the effect was succesfully added.
 */
 tfxAPI bool tfx_AddRawEffectToParticleManager(tfx_particle_manager pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id);
 
@@ -8342,6 +8332,22 @@ tfxAPI void *tfx_GetAnimationEmitterPropertiesBufferPointer(tfx_animation_manage
 //--------------------------------
 //Effect_templates
 //--------------------------------
+ 
+/*
+Prepare a tfx_effect_template_t that you can use to customise effects in the library in various ways before adding them into a particle manager for updating and rendering. Using a template like this
+means that you can tweak an effect without editing the base effect in the library.
+* @param library                    A reference to a tfx_library_t that should be loaded with tfx_LoadEffectLibrary
+* @param name                       The name of the effect in the library that you want to use for the template. If the effect is in a folder then use normal pathing: "My Folder/My effect"
+//Returns handle					Handle to the newly created effect template or nullptr if the effect couldn't be found in the library
+*/
+tfxAPI tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *name);
+ 
+/*
+Delete an effect template and free all memory associated with it
+* @param effect_template            A handle to the effect template to be deleted
+//Returns handle					Handle to the newly created effect template or nullptr if the effect couldn't be found in the library
+*/
+tfxAPI void tfx_FreeEffectTemplate(tfx_effect_template effect_template);
 
 /*
 Reset an effect template and make it empty so you can use it to store another effect.

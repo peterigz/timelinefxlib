@@ -3371,21 +3371,25 @@ void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_emit
 	}
 }
 
-bool tfx_PrepareEffectTemplate(tfx_library library, const char *name, tfx_effect_template effect_template) {
-	TFX_ASSERT_INIT(library->magic);				//Trying to prepare an effect template with an initialised library!
-	TFX_ASSERT_UNINIT(effect_template->magic);		//the effect template has already been initialised! Use ResetTemplate instead to reset a template back to it's original state.
+tfx_effect_template tfx_CreateEffectTemplate(tfx_library library, const char *name) {
+	TFX_ASSERT_INIT(library->magic);				//Trying to create an effect template with an uninitialised library!
+	if (library->effect_paths.ValidName(name)) {
+		return nullptr;
+	}
+	tfx_effect_template effect_template = tfxNEW(tfx_effect_template);
+	memset(effect_template, 0, sizeof(tfx_effect_template_t));
 	effect_template->effect = tfx_NewEffect();
 	effect_template->paths.init();
 	effect_template->magic = tfxINIT_MAGIC;
 	tfx_ResetTemplate(effect_template);
-	if (library->effect_paths.ValidName(name)) {
-		tfx__prepare_library_effect_template_path(library, name, effect_template);
-		return true;
-	}
-	else {
-		TFX_ASSERT(0);    //Not a valid effect name, make sure the effect exists in the library, name is case sensitive.
-	}
-	return false;
+	tfx__prepare_library_effect_template_path(library, name, effect_template);
+	return effect_template;
+}
+
+void tfx_FreeEffectTemplate(tfx_effect_template effect_template) {
+	TFX_CHECK_HANDLE(effect_template);	//Not a valid tfx_effect_template handle. 
+	tfx_ResetTemplate(effect_template);
+	tfxFREE(effect_template);
 }
 
 void tfx__enable_all_emitters(tfx_effect_emitter_t *effect) {
@@ -10531,10 +10535,12 @@ void tfx_ResetTemplate(tfx_effect_template t) {
 }
 
 tfx_effect_emitter_t *tfx_GetEffectFromTemplate(tfx_effect_template t) {
+	TFX_CHECK_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	return &t->effect;
 }
 
 tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template t, const char *path) {
+	TFX_CHECK_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	if (t->paths.ValidName(path)) return t->paths.At(path); return nullptr;
 }
 
@@ -10547,18 +10553,23 @@ tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_emitter_t *e) {
 }
 
 void tfx_SetTemplateUserData(tfx_effect_template t, const char *path, void *data) {
+	TFX_CHECK_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	if (t->paths.ValidName(path)) t->paths.At(path)->user_data = data;
 }
 
 void tfx_SetTemplateEffectUserData(tfx_effect_template t, void *data) {
+	TFX_CHECK_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	t->effect.user_data = data;
 }
 
 void tfx_SetTemplateEffectUpdateCallback(tfx_effect_template t, void(*update_callback)(tfx_particle_manager pm, tfxEffectID effect_index)) {
+	TFX_CHECK_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	t->effect.update_callback = update_callback;
 }
 
 bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager pm, tfx_effect_template effect_template, tfxEffectID *effect_id) {
+	TFX_CHECK_HANDLE(pm);				//Not a valid particle manager handle
+	TFX_CHECK_HANDLE(effect_template);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	tfxEffectID id;
 	id = tfx__add_effect_to_particle_manager(pm, &effect_template->effect, pm->current_ebuff, 0, false, 0, 0.f);
 	if (effect_id) {
@@ -10568,6 +10579,7 @@ bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager pm, tfx_effect_
 }
 
 bool tfx_AddRawEffectToParticleManager(tfx_particle_manager pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id) {
+	TFX_CHECK_HANDLE(pm);				//Not a valid particle manager handle
 	tfxEffectID id;
 	id = tfx__add_effect_to_particle_manager(pm, effect, pm->current_ebuff, 0, false, 0, 0.f);
 	if (effect_id) {
