@@ -5016,6 +5016,8 @@ tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library) {
 
 
 void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
+	TFX_CHECK_HANDLE(shapes);				//shapes handle is not initialised. Use tfx_CreateGPUShapes() to create a new tfx_gpu_shapes object
+	TFX_CHECK_HANDLE(animation_manager);	//animation_manager handle not initialised! Use tfx_CreateAnimationManagerFor2d/3d and load or record sprite data into it.
 	tfx__build_gpu_shape_data(&animation_manager->particle_shapes.data, shapes, uv_lookup);
 }
 
