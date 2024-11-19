@@ -7777,7 +7777,7 @@ Get the buffer of emitter indexes in the particle manager.
 * @param count			  A pointer to an int that you can pass in that will be filled with the count of emitters in the array
 * @returns                Pointer to the tfxvec of effect indexes
 */
-tfxAPI tfxU32 *tfx_GetPMEmitterBuffer(tfx_particle_manager pm, tfxU32 depth, int *count);
+tfxAPI tfxU32 *tfx_GetPMEmitterBuffer(tfx_particle_manager pm, int *count);
 
 /*
 Set the position of a 2d effect

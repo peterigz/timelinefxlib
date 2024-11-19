@@ -5042,6 +5042,7 @@ bool tfx__is_library_shape_used(tfx_library library, tfxKey image_hash) {
 		auto current = effect_stack.pop_back();
 		if (current->type == tfxEmitterType) {
 			if (tfx__get_effect_properties(current)->image->image_hash == image_hash) {
+				effect_stack.free();
 				return true;
 			}
 		}
@@ -10648,7 +10649,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 			if (index == tfxINVALID) {
 				break;
 			}
-			new_effect.emitter_indexes[pm->current_ebuff].locked_push_back(index);
+			new_effect.emitter_indexes[pm->current_ebuff].push_back(index);
 			tfx_emitter_state_t &emitter = pm->emitters[index];
 			emitter.particles_index = tfxINVALID;
 			pm->emitters[index].parent_index = parent_index.index;
@@ -10752,6 +10753,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 			if (emitter.particles_index == tfxINVALID) {
 				if (!is_sub_emitter) {
 					emitter.particles_index = tfx__grab_particle_lists(pm, e.path_hash, (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d), 100, e.control_profile);
+					TFX_ASSERT(emitter.particles_index != tfxINVALID);
 				}
 			}
 
@@ -10827,9 +10829,9 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 	}
 
 	new_effect.state_flags |= tfxEmitterStateFlags_no_tween_this_update;
-	tfx__sync_unlock(&pm->add_effect_mutex);
 	source_emitters.free();
 	target_emitters.free();
+	tfx__sync_unlock(&pm->add_effect_mutex);
 	return parent_index.index;
 }
 
@@ -11055,7 +11057,9 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 				pm->effects_in_use[depth][next_buffer].push_back(effect_index);
 			}
 			else {
+				tfx__sync_lock(&pm->add_effect_mutex);
 				pm->free_effects.push_back(effect_index);
+				tfx__sync_unlock(&pm->add_effect_mutex);
 			}
 
 			for (int emitter_index : pm->effects[effect_index.index].emitter_indexes[pm->current_ebuff]) {
@@ -11077,12 +11081,14 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 				spawn_work_entry->depth_indexes = nullptr;
 
 				float &timeout_counter = pm->emitters[emitter_index].timeout_counter;
+				TFX_ASSERT(pm->emitters[emitter_index].particles_index != tfxINVALID);
 
 				tfx__update_emitter(&pm->work_queue, spawn_work_entry);
 				if (timeout_counter <= pm->emitters[emitter_index].timeout) {
 					effect.emitter_indexes[next_buffer].push_back(emitter_index);
 					pm->control_emitter_queue.push_back(emitter_index);
 				} else {
+					tfx__sync_lock(&pm->add_effect_mutex);
 					if (pm->emitters[emitter_index].path_quaternions) {
 						tfx__free_path_quaternion(pm, pm->emitters[emitter_index].path_quaternion_index);
 					}
@@ -11095,6 +11101,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 						tfx__free_spawn_location_list(pm, emitter_index);
 					}
 					pm->free_emitters.push_back(emitter_index);
+					tfx__sync_unlock(&pm->add_effect_mutex);
 				}
 			}
 
@@ -11276,6 +11283,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 				tfxU32 emitter_index = effect.emitter_indexes[pm->current_ebuff][i];
 				//Make sure to grab a particle list for the sub effect emitters as this doesn't happen when calling tfx_AddEffectTemplateToParticleManager
 				pm->emitters[emitter_index].particles_index = tfx__grab_particle_lists(pm, pm->emitters[emitter_index].path_hash, pm->flags & tfxParticleManagerFlags_3d_effects, 100, pm->emitters[emitter_index].control_profile);
+				TFX_ASSERT(pm->emitters[emitter_index].particles_index != tfxINVALID);
 				effect.emitter_indexes[next_buffer].push_back(emitter_index);
 			}
 		}
@@ -13746,7 +13754,7 @@ tfx_effect_index_t *tfx_GetPMEffectBuffer(tfx_particle_manager pm, tfxU32 depth,
 	return pm->effects_in_use[depth][pm->current_ebuff].data;
 }
 
-tfxU32 *tfx_GetPMEmitterBuffer(tfx_particle_manager pm, tfxU32 depth, int *count) {
+tfxU32 *tfx_GetPMEmitterBuffer(tfx_particle_manager pm, int *count) {
 	*count = pm->control_emitter_queue.current_size;
 	return pm->control_emitter_queue.data;
 }
@@ -13903,8 +13911,8 @@ void tfx_ClearParticleManager(tfx_particle_manager pm, bool free_particle_banks,
 						tfx__free_spawn_location_list(pm, emitter_index);
 					}
 				}
-				effect.emitter_indexes[0].clear();
-				effect.emitter_indexes[1].clear();
+				effect.emitter_indexes[0].free();
+				effect.emitter_indexes[1].free();
 			}
 		}
 	}
@@ -13918,8 +13926,8 @@ void tfx_ClearParticleManager(tfx_particle_manager pm, bool free_particle_banks,
 			effect.instance_data.depth_indexes[layer][0].free();
 			effect.instance_data.depth_indexes[layer][1].free();
 		}
-		effect.emitter_indexes[0].clear();
-		effect.emitter_indexes[1].clear();
+		effect.emitter_indexes[0].free();
+		effect.emitter_indexes[1].free();
 	}
 	pm->free_effects.clear();
 	pm->free_emitters.clear();
@@ -14096,10 +14104,10 @@ void tfx__free_path_quaternion(tfx_particle_manager pm, tfxU32 index) {
 }
 
 tfxU32 tfx__get_particle_index_slot(tfx_particle_manager pm, tfxParticleID particle_id) {
-	//Todo: ideally we want a better thread safe container for this
 	tfx__sync_lock(&pm->particle_index_mutex);
 	if (!pm->free_particle_indexes.empty()) {
 		pm->particle_indexes[pm->free_particle_indexes.back()] = particle_id;
+		tfx__sync_unlock(&pm->particle_index_mutex);
 		return pm->free_particle_indexes.pop_back();
 	}
 	pm->particle_indexes.push_back(particle_id);
@@ -14108,8 +14116,6 @@ tfxU32 tfx__get_particle_index_slot(tfx_particle_manager pm, tfxParticleID parti
 }
 
 void tfx__free_particle_index(tfx_particle_manager pm, tfxU32 *index) {
-	//Todo: ideally we want a better thread safe container for this
-	//Note: since changing the threading to thread per emitter this is probably not needed now?
 	tfx__sync_lock(&pm->particle_index_mutex);
 	pm->particle_indexes[*index] = tfxINVALID;
 	pm->free_particle_indexes.push_back(*index);
