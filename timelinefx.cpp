@@ -12217,17 +12217,17 @@ void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data) {
 		tfxControlParticleUpdateNoise;
 
 		tfxParticleNoise3dLoopUnroll(0)
-			tfxParticleNoise3dLoopUnroll(1)
-			tfxParticleNoise3dLoopUnroll(2)
-			tfxParticleNoise3dLoopUnroll(3)
+		tfxParticleNoise3dLoopUnroll(1)
+		tfxParticleNoise3dLoopUnroll(2)
+		tfxParticleNoise3dLoopUnroll(3)
 #if defined(tfxUSEAVX)    
-			tfxParticleNoise3dLoopUnroll(4)
-			tfxParticleNoise3dLoopUnroll(5)
-			tfxParticleNoise3dLoopUnroll(6)
-			tfxParticleNoise3dLoopUnroll(7)
+		tfxParticleNoise3dLoopUnroll(4)
+		tfxParticleNoise3dLoopUnroll(5)
+		tfxParticleNoise3dLoopUnroll(6)
+		tfxParticleNoise3dLoopUnroll(7)
 #endif    
 
-			noise_x.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_x.m));
+		noise_x.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_x.m));
 		noise_y.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_y.m));
 		noise_z.m = tfxWideMul(global_noise, tfxWideMul(lookup_velocity_turbulance, noise_z.m));
 
