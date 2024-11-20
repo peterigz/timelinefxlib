@@ -2286,6 +2286,7 @@ typedef enum {
 } tfx_effect_library_stream_context;
 
 typedef tfxU32 tfxEmitterPropertyFlags;         //tfx_emitter_property_flag_bits
+typedef tfxU32 tfxEmitterPropertyExtFlags;      //tfx_emitter_property_flag_ext_bits
 typedef tfxU32 tfxColorRampFlags;		        //tfx_color_ramp_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
 typedef tfxU32 tfxVectorFieldFlags;             //tfx_vector_field_flag_bits
@@ -2517,6 +2518,11 @@ typedef enum {
 	tfxEmitterPropertyFlags_spawn_location_source = 1 << 30,            //This emitter is the source for another emitter that uses it to spawn particles at the location of this emitters' particles
 	tfxEmitterPropertyFlags_use_color_hint = 1 << 31	                //Activate a second color to tint the particles and mix between the two colors.
 } tfx_emitter_property_flag_bits;
+
+typedef enum {
+	tfxEmitterPropertyExtFlags_none = 0,
+	tfxEmitterPropertyExtFlags_spawn_location_only = 0,
+} tfx_emitter_property_ext_flag_bits;
 
 typedef enum {
 	tfxColorRampFlags_none = 0,
@@ -7038,7 +7044,9 @@ tfxINTERNAL void tfx__do_spawn_work_3d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__spawn_particle_point_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_other_emitter_single_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_other_emitter_single_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_line_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_area_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data);
