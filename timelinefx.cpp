@@ -14651,7 +14651,7 @@ tfxU32 tfx__new_sprites_needed(tfx_particle_manager pm, tfx_random_t *random, tf
 		emitter.path_stagger_counter += pm->frame_length;
 	}
 
-	if (emitter.spawn_locations_index != tfxINVALID && properties->emission_type == tfxOtherEmitter && emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio) {
+	if (emitter.spawn_locations_index != tfxINVALID && properties->emission_type == tfxOtherEmitter && emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && !(emitter.property_flags & tfxEmitterPropertyFlags_single)) {
 		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_array_buffers[emitter.spawn_locations_index];
 		emitter.spawn_quantity *= spawn_point_buffer.current_size;
 	}
@@ -15505,34 +15505,26 @@ void tfx__spawn_particle_other_emitter_single_3d(tfx_work_queue_t *queue, void *
 
 	tfxU32 spawned = 0;
 	for (int s = 0; s != spawn_point_buffer.current_size; ++s) {
-		int spawn_index = s;
-		spawn_index = tfx__get_circular_index(&spawn_point_buffer, spawn_index);
+		int spawn_index = tfx__get_circular_index(&spawn_point_buffer, s);
+		float x = spawn_points.position_x[spawn_index];
+		float y = spawn_points.position_y[spawn_index];
+		float z = spawn_points.position_z[spawn_index];
 		for (int i = 0; i != amount_to_spawn; ++i) {
 			TFX_ASSERT(spawned < entry->amount_to_spawn);
-			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
+			tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + spawned);
 			float &local_position_x = entry->particle_data->position_x[index];
 			float &local_position_y = entry->particle_data->position_y[index];
 			float &local_position_z = entry->particle_data->position_z[index];
 
-			local_position_x = spawn_points.position_x[spawn_index];
-			local_position_y = spawn_points.position_y[spawn_index];
-			local_position_z = spawn_points.position_z[spawn_index];
+			local_position_x = x;
+			local_position_y = y;
+			local_position_z = z;
 
-			if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position)) {
-				tween = 1.f - entry->particle_data->age[index] / pm.frame_length;
-				float lerp_position_x = tfx__interpolate_float(tween, spawn_points.captured_position_x[spawn_index], spawn_points.position_x[spawn_index]);
-				float lerp_position_y = tfx__interpolate_float(tween, spawn_points.captured_position_y[spawn_index], spawn_points.position_y[spawn_index]);
-				float lerp_position_z = tfx__interpolate_float(tween, spawn_points.captured_position_z[spawn_index], spawn_points.position_z[spawn_index]);
-				if (emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center) {
-					local_position_x = lerp_position_x;
-					local_position_y = lerp_position_y;
-					local_position_z = lerp_position_z;
-				} else {
-					tfx_vec3_t rotvec = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
-					local_position_x = rotvec.x + lerp_position_x;
-					local_position_y = rotvec.y + lerp_position_y;
-					local_position_z = rotvec.z + lerp_position_z;
-				}
+			if (!(emitter.property_flags & tfxEmitterPropertyFlags_relative_position) && !(emitter.property_flags & tfxEmitterPropertyFlags_emitter_handle_auto_center)) {
+				tfx_vec3_t rotvec = tfx__rotate_vector_quaternion(&emitter.rotation, emitter.handle);
+				local_position_x = rotvec.x + local_position_x;
+				local_position_y = rotvec.y + local_position_y;
+				local_position_z = rotvec.z + local_position_z;
 			}
 			spawned++;
 		}
