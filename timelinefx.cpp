@@ -10442,6 +10442,9 @@ void tfx_ResetAnimationManager(tfx_animation_manager animation_manager) {
 	animation_manager->sprite_data_settings.clear();
 	animation_manager->effect_animation_info.Clear();
 	animation_manager->particle_shapes.Clear();
+	for (tfx_bitmap_t &bitmap : animation_manager->color_ramps.color_ramp_bitmaps) {
+		tfx__free_bitmap(&bitmap);
+	}
 	animation_manager->color_ramps.color_ramp_bitmaps.clear();
 	animation_manager->color_ramps.color_ramp_ids.Clear();
 	animation_manager->color_ramps.color_ramp_count = 0;
@@ -13774,6 +13777,12 @@ void tfx__toggle_sprites_with_uid(tfx_particle_manager pm, bool switch_on) {
 		pm->flags |= tfxParticleManagerFlags_using_uids;
 	}
 	else {
+		for (tfxEachLayer) {
+			pm->unique_sprite_ids[0][layer].free();
+			if (!(pm->flags & tfxParticleManagerFlags_use_effect_sprite_buffers)) {
+				pm->unique_sprite_ids[1][layer].free();
+			}
+		}
 		pm->flags &= ~tfxParticleManagerFlags_using_uids;
 	}
 }
@@ -18019,8 +18028,9 @@ void tfx__copy_emitter_properties(tfx_emitter_properties_t *from_properties, tfx
 void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data) {
 	if (sprite_data->compressed_sprites_buffer.data == sprite_data->real_time_sprites_buffer.data) {
 		tfx__free_soa_buffer(&sprite_data->real_time_sprites_buffer);
-		sprite_data->normal.frame_meta.free();
 		tfx__reset_soa_buffer(&sprite_data->compressed_sprites_buffer);
+		sprite_data->normal.frame_meta.free();
+		sprite_data->compressed.frame_meta.free();
 	}
 	else {
 		tfx__free_soa_buffer(&sprite_data->compressed_sprites_buffer);

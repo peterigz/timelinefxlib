@@ -21,7 +21,7 @@
 	[Zest_Pocket_Allocator]				A single header library for allocating memory from a large pool.
 	[Header_Includes_and_Typedefs]		Just your basic header stuff for setting up typedefs and some #defines
 	[OS_Specific_Functions]				OS specific multithreading and file access
-	[XXHash_Implementation]				XXHasher for the storage map.
+	[Pocket_Hasher]						XXHasher for the storage map.
 	[SIMD_defines]						Defines for SIMD intrinsics
 	[Enums]								All the definitions for enums and bit flags
 	[Constants]							Various constant definitions
