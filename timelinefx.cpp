@@ -1612,11 +1612,24 @@ tfxWideInt tfx__wide_pack8bit_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v
 	tfxWideInt bits8 = tfxWideSetSinglei(0xFF);
 	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w127));
 	converted_x = tfxWideAndi(converted_x, bits8);
-	//converted_x = tfxWideShiftLeft(converted_x, 0);
 	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w127));
 	converted_y = tfxWideAndi(converted_y, bits8);
 	converted_y = tfxWideShiftLeft(converted_y, 8);
 	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w127));
+	converted_z = tfxWideAndi(converted_z, bits8);
+	converted_z = tfxWideShiftLeft(converted_z, 16);
+	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
+}
+
+tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z) {
+	tfxWideFloat w255 = tfxWideSetSingle(255.f);
+	tfxWideInt bits8 = tfxWideSetSinglei(0xFF);
+	tfxWideInt converted_x = tfxWideConverti(tfxWideMul(v_x, w255));
+	converted_x = tfxWideAndi(converted_x, bits8);
+	tfxWideInt converted_y = tfxWideConverti(tfxWideMul(v_y, w255));
+	converted_y = tfxWideAndi(converted_y, bits8);
+	converted_y = tfxWideShiftLeft(converted_y, 8);
+	tfxWideInt converted_z = tfxWideConverti(tfxWideMul(v_z, w255));
 	converted_z = tfxWideAndi(converted_z, bits8);
 	converted_z = tfxWideShiftLeft(converted_z, 16);
 	return tfxWideOri(tfxWideOri(converted_x, converted_y), converted_z);
@@ -2238,6 +2251,7 @@ void tfx__update_effect_max_life(tfx_effect_emitter_t *effect) {
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_intensity)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_alpha_sharpness)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_curved_alpha)->lookup.life = info->max_life;
+	tfx__get_effect_graph_by_type(effect, tfxOvertime_texture_influence)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_velocity)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_width)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_height)->lookup.life = info->max_life;
@@ -2961,6 +2975,7 @@ void tfx__reset_emitter_overtime_graphs(tfx_effect_emitter_t *effect, bool add_n
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint, 1.f, tfxOpacityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint.type = tfxOvertime_blendfactor_hint;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.alpha_sharpness, 1.f, tfxOpacityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.alpha_sharpness.type = tfxOvertime_alpha_sharpness;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.curved_alpha, 1.f, tfxOpacityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.curved_alpha.type = tfxOvertime_curved_alpha;
+	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.texture_influence, 0.f, tfxOpacityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.texture_influence.type = tfxOvertime_texture_influence;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.velocity_turbulance, 30.f, tfxVelocityTurbulancePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.velocity_turbulance.type = tfxOvertime_velocity_turbulance;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.stretch, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.stretch.type = tfxOvertime_stretch;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.direction_turbulance, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.direction_turbulance.type = tfxOvertime_direction_turbulance;
@@ -3080,6 +3095,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_emitter_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint, 1.f, tfxOpacityOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.alpha_sharpness.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.alpha_sharpness, 0.f, tfxOpacityOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.curved_alpha.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.curved_alpha, 1.f, tfxOpacityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.texture_influence.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.texture_influence, 0.f, tfxOpacityOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.velocity_turbulance.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.velocity_turbulance, 0.f, tfxFrameratePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.direction_turbulance.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.direction_turbulance, 0.f, tfxPercentOvertime);
 		if (library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.velocity_adjuster, 1.f, tfxGlobalPercentPreset);
@@ -4463,6 +4479,7 @@ void tfx__initialise_overtime_attributes(tfx_overtime_attributes_t *attributes, 
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->intensity.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->alpha_sharpness.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->curved_alpha.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->texture_influence.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->direction.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->noise_resolution.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->motion_randomness.nodes ,bucket_size);
@@ -4498,6 +4515,7 @@ void tfx__free_overtime_attributes(tfx_overtime_attributes_t *attributes) {
 	tfx__free_graph(&attributes->intensity);
 	tfx__free_graph(&attributes->alpha_sharpness);
 	tfx__free_graph(&attributes->curved_alpha);
+	tfx__free_graph(&attributes->texture_influence);
 	tfx__free_graph(&attributes->direction);
 	tfx__free_graph(&attributes->noise_resolution);
 	tfx__free_graph(&attributes->motion_randomness);
@@ -4529,6 +4547,7 @@ void tfx__copy_overtime_attributes_no_lookups(tfx_overtime_attributes_t *src, tf
 	tfx__copy_graph_no_lookups(&src->intensity, &dst->intensity);
 	tfx__copy_graph_no_lookups(&src->alpha_sharpness, &dst->alpha_sharpness);
 	tfx__copy_graph_no_lookups(&src->curved_alpha, &dst->curved_alpha);
+	tfx__copy_graph_no_lookups(&src->texture_influence, &dst->texture_influence);
 	tfx__copy_graph_no_lookups(&src->direction, &dst->direction);
 	tfx__copy_graph_no_lookups(&src->noise_resolution, &dst->noise_resolution);
 	tfx__copy_graph_no_lookups(&src->motion_randomness, &dst->motion_randomness);
@@ -4558,6 +4577,7 @@ void tfx__copy_overtime_attributes(tfx_overtime_attributes_t *src, tfx_overtime_
 	tfx__copy_graph(&src->intensity, &dst->intensity);
 	tfx__copy_graph(&src->alpha_sharpness, &dst->alpha_sharpness);
 	tfx__copy_graph(&src->curved_alpha, &dst->curved_alpha);
+	tfx__copy_graph(&src->texture_influence, &dst->texture_influence);
 	tfx__copy_graph(&src->direction, &dst->direction);
 	tfx__copy_graph(&src->noise_resolution, &dst->noise_resolution);
 	tfx__copy_graph(&src->motion_randomness, &dst->motion_randomness);
@@ -5794,6 +5814,7 @@ void tfx__compile_all_library_graphs(tfx_library library) {
 		tfx__compile_graph_overtime(&g.overtime.intensity);
 		tfx__compile_graph_overtime(&g.overtime.alpha_sharpness);
 		tfx__compile_graph_overtime(&g.overtime.curved_alpha);
+		tfx__compile_graph_overtime(&g.overtime.texture_influence);
 		tfx__compile_graph_overtime(&g.overtime.velocity_turbulance);
 		tfx__compile_graph_overtime(&g.overtime.width);
 		tfx__compile_graph_overtime(&g.overtime.height);
@@ -5915,6 +5936,7 @@ void tfx__compile_library_overtime_graph(tfx_library library, tfxU32 index, bool
 	tfx__compile_graph_overtime(&g.intensity);
 	tfx__compile_graph_overtime(&g.alpha_sharpness);
 	tfx__compile_graph_overtime(&g.curved_alpha);
+	tfx__compile_graph_overtime(&g.texture_influence);
 	tfx__compile_graph_overtime(&g.velocity_turbulance);
 	tfx__compile_graph_overtime(&g.width);
 	tfx__compile_graph_overtime(&g.height);
@@ -6191,6 +6213,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overtime_blendfactor_hint", tfxFloat);
 	names_and_types.Insert("overtime_alpha_sharpness", tfxFloat);
 	names_and_types.Insert("overtime_curved_alpha", tfxFloat);
+	names_and_types.Insert("overtime_texture_influence", tfxFloat);
 	names_and_types.Insert("overtime_velocity_turbulance", tfxFloat);
 	names_and_types.Insert("overtime_direction_turbulance", tfxFloat);
 	names_and_types.Insert("overtime_velocity_adjuster", tfxFloat);
@@ -6438,7 +6461,7 @@ void tfx__assign_graph_data(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str25
 		if ((*values)[0] == "overtime_blendfactor_hint") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blendfactor_hint, &n); }
 		if ((*values)[0] == "overtime_alpha_sharpness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.alpha_sharpness, &n); }
 		if ((*values)[0] == "overtime_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.curved_alpha, &n); }
-		if ((*values)[0] == "overtime_color_mix_balance") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.curved_alpha, &n); }
+		if ((*values)[0] == "overtime_texture_influence") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.texture_influence, &n); }
 		if ((*values)[0] == "overtime_velocity_turbulance") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.velocity_turbulance, &n); }
 		if ((*values)[0] == "overtime_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.spin, &n); }
 		if ((*values)[0] == "overtime_roll_spin") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.spin, &n); }
@@ -8064,7 +8087,7 @@ void tfx__compile_graph(tfx_graph_t *graph) {
 }
 
 void tfx__compile_graph_overtime(tfx_graph_t *graph) {
-	if (graph->type == tfxOvertime_intensity || graph->type == tfxOvertime_curved_alpha || graph->type == tfxOvertime_alpha_sharpness) {
+	if (graph->type == tfxOvertime_intensity || graph->type == tfxOvertime_curved_alpha || graph->type == tfxOvertime_alpha_sharpness || graph->type == tfxOvertime_texture_influence) {
 		tfx__compile_graph_ramp_overtime(graph);
 		return;
 	}
@@ -13572,13 +13595,14 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
 		tfxWideFloat dissolve_lerp = tfxWideLookupSet(work_entry->graphs->curved_alpha.lookup.values, ramp_index);
 		tfxWideFloat sharpness = tfxWideLookupSet(work_entry->graphs->alpha_sharpness.lookup.values, ramp_index);
+		tfxWideFloat texture_influence = tfxWideLookupSet(work_entry->graphs->texture_influence.lookup.values, ramp_index);
 
 		//----Color changes
 		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
 
 		tfxWideArrayi packed_intensity_life;
 		packed_intensity_life.m = tfx__wide_pack16bit_2sscaled(lookup_intensity, life, 128.f);
-        curved_alpha.m = tfx__wide_pack16bit(dissolve_lerp, sharpness);
+        curved_alpha.m = tfx__wide_pack8bitunorm_xyz(dissolve_lerp, sharpness, texture_influence);
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (pm->flags & tfxParticleManagerFlags_3d_effects) { //Predictable

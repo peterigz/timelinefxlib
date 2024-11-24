@@ -2048,7 +2048,7 @@ typedef enum tfx_color_ramp_format {
 #define TFX_PROPERTY_COUNT   10
 #define TFX_BASE_COUNT       10
 #define TFX_VARIATION_COUNT  12
-#define TFX_OVERTIME_COUNT   25
+#define TFX_OVERTIME_COUNT   26
 #define TFX_FACTOR_COUNT     4
 #define TFX_TRANSFORM_COUNT  6
 
@@ -2139,6 +2139,7 @@ typedef enum {
 	tfxOvertime_intensity,
 	tfxOvertime_alpha_sharpness,
 	tfxOvertime_curved_alpha,
+	tfxOvertime_texture_influence,
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
@@ -5190,6 +5191,7 @@ typedef struct tfx_effect_lookup_data_s {
 	tfx_graph_lookup_index_t overtime_intensity;
 	tfx_graph_lookup_index_t overtime_hint_intensity;
 	tfx_graph_lookup_index_t overtime_color_mix_overtime;
+	tfx_graph_lookup_index_t overtime_texture_influence;
 	tfx_graph_lookup_index_t overtime_direction;
 	tfx_graph_lookup_index_t overtime_noise_resolution;
 	tfx_graph_lookup_index_t overtime_motion_randomness;
@@ -5308,6 +5310,7 @@ typedef struct tfx_overtime_attributes_s {
 	tfx_graph_t intensity;
 	tfx_graph_t alpha_sharpness;
 	tfx_graph_t curved_alpha;
+	tfx_graph_t texture_influence;
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
@@ -5845,7 +5848,7 @@ typedef struct tfx_2d_instance_s {			//44 bytes + padding to 48
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
-	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the texture influence value packed into 3 bit unorms
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	float lerp_offset;
@@ -5857,7 +5860,7 @@ typedef struct tfx_3d_instance_s {		//56 bytes + padding to 64
 	tfx_float8x4_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
-	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the texture influence value packed into 3 bit unorms
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	float lerp_offset;
@@ -6548,6 +6551,7 @@ tfxINTERNAL tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t v);
 tfxINTERNAL tfxWideInt tfx__wide_pack16bit(tfxWideFloat v_x, tfxWideFloat v_y);
 tfxINTERNAL tfxWideInt tfx__wide_pack16bit_2sscaled(tfxWideFloat v_x, tfxWideFloat  v_y, float max_value);
 tfxINTERNAL tfxWideInt tfx__wide_pack8bit_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
+tfxINTERNAL tfxWideInt tfx__wide_pack8bitunorm_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
 tfxINTERNAL void tfx__wide_unpack8bit(tfxWideInt in, tfxWideFloat &x, tfxWideFloat &y, tfxWideFloat &z, tfxWideFloat &w);
 tfxINTERNAL tfx_quaternion_t tfx__unpack8bit_quaternion(tfxU32 in);
 tfxINTERNAL tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager pm, tfx_library library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position);
