@@ -81,10 +81,15 @@ All functions in the library will be marked this way for clarity and naturally t
 */
 //---------------------------------------
 #include <assert.h>
+#include <limits.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <inttypes.h>
+#include <stdint.h>
+#include <string.h>
 
 #define tfx__Min(a, b) (((a) < (b)) ? (a) : (b))
 #define tfx__Max(a, b) (((a) > (b)) ? (a) : (b))
@@ -341,7 +346,7 @@ extern "C" {
 #define tfx__strlen strnlen
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
-#define tfx__strcpy(left, right, size) strcpy(left, right)
+#define tfx__strcpy(dst, size, src) strcpy(dst, src)
 #define tfx__fseek fseeko
 #define tfx__ftell ftello
 #define TFX_ALIGN_AFFIX(v)            __attribute__((aligned(v)))
@@ -1080,7 +1085,12 @@ tfx_allocator *tfxGetAllocator();
 #include <immintrin.h>
 #elif defined(__arm__) || defined(__aarch64__)
 #include <arm_neon.h>
+#if defined(__APPLE__)
 #include <mach/mach_time.h>
+#else
+#include <unistd.h>
+#include <time.h>
+#endif
 #define tfxARM
 #endif
 
@@ -1735,7 +1745,7 @@ const float32x4_t tfxPWIDESIX = tfxWideSetConst(0.6f);
 const float32x4_t tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
 const float32x4_t tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
 
-tfxINTERNAL const float32x4_t SIGNMASK = tfxWideSetConst(-0.f);
+tfxINTERNAL const tfxWideArray SIGNMASK = tfxWideSetConst(-0.f);
 
 #endif
 
@@ -1812,7 +1822,14 @@ typedef union {
 #define tfxFloor128 vrndmq_f32
 
 tfxINTERNAL inline uint64_t tfx__rdtsc() {
+#if defined(__APPLE__)
 	return mach_absolute_time();
+#else
+	// https://stackoverflow.com/a/78053906/1495627
+	uint64_t cntvct;
+	asm volatile ("mrs %0, cntvct_el0; " : "=r"(cntvct) :: "memory");
+	return cntvct;
+#endif
 }
 
 #endif
@@ -8574,7 +8591,7 @@ tfxAPI inline tfx_rgba8_t tfx_TweenColor(float tween, const tfx_rgba8_t current,
 	color1 = vaddq_f32(color1, color2);
 	color1 = vmulq_f32(color1, vdupq_n_f32(255.f));
 	tfx128i packed = vcvtq_s32_f32(color1);
-	return tfx_rgba8_t(vgetq_lane_s32(packed, 0), vgetq_lane_s32(packed, 1), vgetq_lane_s32(packed, 2), vgetq_lane_s32(packed, 3));
+	return tfx_rgba8_t{.r = (tfxU32) vgetq_lane_s32(packed, 0), .g = (tfxU32) vgetq_lane_s32(packed, 1), .b = (tfxU32) vgetq_lane_s32(packed, 2), .a = (tfxU32) vgetq_lane_s32(packed, 3)};
 }
 
 

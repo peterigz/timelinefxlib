@@ -1,5 +1,6 @@
 #define TFX_ALLOCATOR_IMPLEMENTATION
 #include "timelinefx.h"
+#include <ctype.h>
 
 #ifdef _WIN32
 #if defined (_MSC_VER) && (_MSC_VER >= 1400) && (defined (_M_IX86) || defined (_M_X64))
@@ -416,12 +417,12 @@ tfx_storage_t *tfx_GetGlobals() {
 	tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
 		tfxPROFILE;
 
-		tfx128 s4 = vmulq_f32(vaddq_f32(x4, y4), tfxF2_4.m);
+		tfx128 s4 = vmulq_f32(vaddq_f32(x4, y4), tfxF2_4);
 		tfx128 x4_s4 = vaddq_f32(x4, s4);
 		tfx128 y4_s4 = vaddq_f32(y4, s4);
 		tfx128 i = tfxFloor128(x4_s4);
 		tfx128 j = tfxFloor128(y4_s4);
-		tfx128 t = vmulq_f32(vaddq_f32(i, j), tfxG2_4.m);
+		tfx128 t = vmulq_f32(vaddq_f32(i, j), tfxG2_4);
 
 		tfx128 X0 = vsubq_f32(i, t);
 		tfx128 Y0 = vsubq_f32(j, t);
@@ -430,17 +431,17 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128iArray i1, j1;
 
-		i1.m = vandq_s32(tfxONE.m, vreinterpretq_s32_f32(vcgtq_f32(x0, y0)));
-		j1.m = vandq_s32(tfxONE.m, vreinterpretq_s32_f32(vcgeq_f32(y0, x0)));
+		i1.m = vandq_s32(tfxONE, vreinterpretq_s32_f32(vcgtq_f32(x0, y0)));
+		j1.m = vandq_s32(tfxONE, vreinterpretq_s32_f32(vcgeq_f32(y0, x0)));
 
-		const tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG2_4.m);
-		const tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG2_4.m);
-		const tfx128 x2 = vaddq_f32(vsubq_f32(x0, vdupq_n_f32(1.f)), tfxG2_4x2.m);
-		const tfx128 y2 = vaddq_f32(vsubq_f32(y0, vdupq_n_f32(1.f)), tfxG2_4x2.m);
+		const tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG2_4);
+		const tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG2_4);
+		const tfx128 x2 = vaddq_f32(vsubq_f32(x0, vdupq_n_f32(1.f)), tfxG2_4x2);
+		const tfx128 y2 = vaddq_f32(vsubq_f32(y0, vdupq_n_f32(1.f)), tfxG2_4x2);
 
 		tfx128iArray ii, jj;
-		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF.m);
-		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF.m);
+		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF);
+		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF);
 
 		int gi0[4], gi1[4], gi2[4];
 
@@ -479,14 +480,14 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfxPROFILE;
 
 		// Skewing/Unskewing factors for 3D
-		tfx128 s4 = vmulq_f32(vaddq_f32(x4, vaddq_f32(y4, z4)), tfxF3_4.m);
+		tfx128 s4 = vmulq_f32(vaddq_f32(x4, vaddq_f32(y4, z4)), tfxF3_4);
 		tfx128 x4_s4 = vaddq_f32(x4, s4);
 		tfx128 y4_s4 = vaddq_f32(y4, s4);
 		tfx128 z4_s4 = vaddq_f32(z4, s4);
 		tfx128 i = tfxFloor128(x4_s4);
 		tfx128 j = tfxFloor128(y4_s4);
 		tfx128 k = tfxFloor128(z4_s4);
-		tfx128 t = vmulq_f32(vaddq_f32(vaddq_f32(i, j), k), tfxG3_4.m);
+		tfx128 t = vmulq_f32(vaddq_f32(vaddq_f32(i, j), k), tfxG3_4);
 
 		tfx128 X0 = vsubq_f32(i, t); // Unskew the cell origin back to (v1.x,v1.y,v1.z) space
 		tfx128 Y0 = vsubq_f32(j, t);
@@ -499,9 +500,9 @@ tfx_storage_t *tfx_GetGlobals() {
 		// Determine which simplex we are in.
 		tfx128iArray i1, i2, j1, j2, k1, k2;
 
-		i1.m = vandq_s32(tfxONE.m, vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0))));
-		j1.m = vandq_s32(tfxONE.m, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(y0, x0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0))));
-		k1.m = vandq_s32(tfxONE.m, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(z0, x0)), vreinterpretq_s32_f32(vcgtq_f32(z0, y0))));
+		i1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0))));
+		j1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(y0, x0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0))));
+		k1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(z0, x0)), vreinterpretq_s32_f32(vcgtq_f32(z0, y0))));
 
 		//for i2
 		tfx128i yx_xz = vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcltq_f32(x0, z0)));
@@ -515,25 +516,25 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfx128i yz_zx = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(y0, z0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0)));
 		tfx128i xz_zy = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(x0, z0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0)));
 
-		i2.m = vandq_s32(tfxONE.m, vorrq_s32(i1.m, vorrq_s32(yx_xz, zx_xy)));
-		j2.m = vandq_s32(tfxONE.m, vorrq_s32(j1.m, vorrq_s32(xy_yz, zy_yx)));
-		k2.m = vandq_s32(tfxONE.m, vorrq_s32(k1.m, vorrq_s32(yz_zx, xz_zy)));
+		i2.m = vandq_s32(tfxONE, vorrq_s32(i1.m, vorrq_s32(yx_xz, zx_xy)));
+		j2.m = vandq_s32(tfxONE, vorrq_s32(j1.m, vorrq_s32(xy_yz, zy_yx)));
+		k2.m = vandq_s32(tfxONE, vorrq_s32(k1.m, vorrq_s32(yz_zx, xz_zy)));
 
-		tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG3_4.m);
-		tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG3_4.m);
-		tfx128 z1 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k1.m)), tfxG3_4.m);
-		tfx128 x2 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i2.m)), tfxG32_4.m);
-		tfx128 y2 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j2.m)), tfxG32_4.m);
-		tfx128 z2 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k2.m)), tfxG32_4.m);
-		tfx128 x3 = vaddq_f32(vsubq_f32(x0, tfxONEF.m), tfxG33_4.m);
-		tfx128 y3 = vaddq_f32(vsubq_f32(y0, tfxONEF.m), tfxG33_4.m);
-		tfx128 z3 = vaddq_f32(vsubq_f32(z0, tfxONEF.m), tfxG33_4.m);
+		tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG3_4);
+		tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG3_4);
+		tfx128 z1 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k1.m)), tfxG3_4);
+		tfx128 x2 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i2.m)), tfxG32_4);
+		tfx128 y2 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j2.m)), tfxG32_4);
+		tfx128 z2 = vaddq_f32(vsubq_f32(z0, vcvtq_f32_s32(k2.m)), tfxG32_4);
+		tfx128 x3 = vaddq_f32(vsubq_f32(x0, tfxONEF), tfxG33_4);
+		tfx128 y3 = vaddq_f32(vsubq_f32(y0, tfxONEF), tfxG33_4);
+		tfx128 z3 = vaddq_f32(vsubq_f32(z0, tfxONEF), tfxG33_4);
 
 		// Work out the hashed gradient indices of the four simplex corners
 		tfx128iArray ii, jj, kk;
-		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF.m);
-		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF.m);
-		kk.m = vandq_s32(vcvtq_s32_f32(k), tfxFF.m);
+		ii.m = vandq_s32(vcvtq_s32_f32(i), tfxFF);
+		jj.m = vandq_s32(vcvtq_s32_f32(j), tfxFF);
+		kk.m = vandq_s32(vcvtq_s32_f32(k), tfxFF);
 		tfx128iArray gi0, gi1, gi2, gi3;
 
 		tfxNoise3dPermModLoopUnroll(0);
@@ -541,10 +542,10 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfxNoise3dPermModLoopUnroll(2);
 		tfxNoise3dPermModLoopUnroll(3);
 
-		tfx128 t0 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX.m, vmulq_f32(x0, x0)), vmulq_f32(y0, y0)), vmulq_f32(z0, z0));
-		tfx128 t1 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX.m, vmulq_f32(x1, x1)), vmulq_f32(y1, y1)), vmulq_f32(z1, z1));
-		tfx128 t2 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX.m, vmulq_f32(x2, x2)), vmulq_f32(y2, y2)), vmulq_f32(z2, z2));
-		tfx128 t3 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX.m, vmulq_f32(x3, x3)), vmulq_f32(y3, y3)), vmulq_f32(z3, z3));
+		tfx128 t0 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x0, x0)), vmulq_f32(y0, y0)), vmulq_f32(z0, z0));
+		tfx128 t1 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x1, x1)), vmulq_f32(y1, y1)), vmulq_f32(z1, z1));
+		tfx128 t2 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x2, x2)), vmulq_f32(y2, y2)), vmulq_f32(z2, z2));
+		tfx128 t3 = vsubq_f32(vsubq_f32(vsubq_f32(tfxPSIX, vmulq_f32(x3, x3)), vmulq_f32(y3, y3)), vmulq_f32(z3, z3));
 
 		tfx128 t0q = vmulq_f32(t0, t0);
 		t0q = vmulq_f32(t0q, t0q);
@@ -569,17 +570,17 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128 cond;
 
-		cond = vcltq_f32(t0, tfxZERO.m);
-		n0 = vbslq_f32(cond, tfxZERO.m, n0);
-		cond = vcltq_f32(t1, tfxZERO.m);
-		n1 = vbslq_f32(cond, tfxZERO.m, n1);
-		cond = vcltq_f32(t2, tfxZERO.m);
-		n2 = vbslq_f32(cond, tfxZERO.m, n2);
-		cond = vcltq_f32(t3, tfxZERO.m);
-		n3 = vbslq_f32(cond, tfxZERO.m, n3);
+		cond = vcltq_f32(t0, tfxZERO);
+		n0 = vbslq_f32(cond, tfxZERO, n0);
+		cond = vcltq_f32(t1, tfxZERO);
+		n1 = vbslq_f32(cond, tfxZERO, n1);
+		cond = vcltq_f32(t2, tfxZERO);
+		n2 = vbslq_f32(cond, tfxZERO, n2);
+		cond = vcltq_f32(t3, tfxZERO);
+		n3 = vbslq_f32(cond, tfxZERO, n3);
 
 		tfx128Array result;
-		result.m = vmulq_f32(tfxTHIRTYTWO.m, vaddq_f32(n0, vaddq_f32(n1, vaddq_f32(n2, n3))));
+		result.m = vmulq_f32(tfxTHIRTYTWO, vaddq_f32(n0, vaddq_f32(n1, vaddq_f32(n2, n3))));
 		return result;
 	}
 
@@ -1727,7 +1728,7 @@ float tfx__gamma_correct(float color, float gamma) {
 }
 
 tfxWideFloat tfx__wide_interpolate(tfxWideFloat tween, tfxWideFloat *from, tfxWideFloat *to) {
-	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE.m, tween);
+	tfxWideFloat one_minus_tween = tfxWideSub(tfxWIDEONE, tween);
 	tfxWideFloat to_lerp = tfxWideMul(*to, tween);
 	tfxWideFloat from_lerp = tfxWideMul(*from, one_minus_tween);
 	tfxWideFloat result = tfxWideAdd(from_lerp, to_lerp);
@@ -2083,8 +2084,8 @@ bool tfx__save_package_disk(tfx_package package) {
 
 tfx_stream tfx__save_package_memory(tfx_package package) {
 	TFX_CHECK_HANDLE(package);		//package has not been initialised. Use tfx__create_package to properly create a new package handle.
-	if (package->header.magic_number != tfxMAGIC_NUMBER) return false;                         //Header of package must contain correct magic number. tfx__create_package to correctly initialise a package.
-	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;            //Inventory of package must contain correct magic number
+	if (package->header.magic_number != tfxMAGIC_NUMBER) return nullptr;                         //Header of package must contain correct magic number. tfx__create_package to correctly initialise a package.
+	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return nullptr;            //Inventory of package must contain correct magic number
 
 	tfx_stream file = tfx__create_stream();
 	TFX_ASSERT(file); //Unable to allocate memory for stream. Out of memory?
@@ -2671,13 +2672,13 @@ void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat velocity_norm
 	tfxWideFloat max_uint = tfxWideSetSingle((float)UINT32_MAX);
 	// Randomly sample z in [min_z, 1]
 	tfxWideFloat z = tfxWideAdd(tfxWideDiv(tfx__wide_seedgen(seed), max_uint), tfxWideSetSingle(0.5f));
-	z = tfxWideSub(tfxWIDEONE.m, tfxWideMul(tfxWideSub(tfxWIDEONE.m, min_z), z));
+	z = tfxWideSub(tfxWIDEONE, tfxWideMul(tfxWideSub(tfxWIDEONE, min_z), z));
 
 	// Randomly sample ϕ in [0, 2π)
 	tfxWideFloat phi = tfxWideMul(tfxWideAdd(tfxWideDiv(tfx__wide_seedgen(seed), max_uint), tfxWideSetSingle(0.5f)), tfxWideSetSingle(2.f * tfxPI));
 
 	// Calculate the corresponding x and y for the random point on the unit sphere
-	tfxWideFloat sqrt_one_minus_z_squared = tfxWideSub(tfxWIDEONE.m, tfxWideMul(z, z));
+	tfxWideFloat sqrt_one_minus_z_squared = tfxWideSub(tfxWIDEONE, tfxWideMul(z, z));
 	sqrt_one_minus_z_squared = tfxWideMul(tfxWideRSqrt(sqrt_one_minus_z_squared), sqrt_one_minus_z_squared);
 	tfxWideFloat sin;
 	tfxWideFloat cos;
@@ -2718,9 +2719,9 @@ void tfx__wide_random_vector_in_cone(tfxWideInt seed, tfxWideFloat velocity_norm
 	tfxWideFloat cx, cy, cz;
 	tfx__wide_cross_product(rotation_axis_x, rotation_axis_y, rotation_axis_z, &x, &y, &z, &cx, &cy, &cz);
 	//tfx_vec3_t rotated_vector = random_vector * cos + tfx__cross_product_vec3(&rotation_axis, &random_vector) * sin + rotation_axis * tfx__dot_product_vec3(&rotation_axis, &random_vector) * (1.f - cos);
-	*random_x = tfxWideAdd(tfxWideAdd(tfxWideMul(x, cos), tfxWideMul(cx, sin)), tfxWideMul(tfxWideMul(rotation_axis_x, dot), tfxWideSub(tfxWIDEONE.m, cos)));
-	*random_y = tfxWideAdd(tfxWideAdd(tfxWideMul(y, cos), tfxWideMul(cy, sin)), tfxWideMul(tfxWideMul(rotation_axis_y, dot), tfxWideSub(tfxWIDEONE.m, cos)));
-	*random_z = tfxWideAdd(tfxWideAdd(tfxWideMul(z, cos), tfxWideMul(cz, sin)), tfxWideMul(tfxWideMul(rotation_axis_z, dot), tfxWideSub(tfxWIDEONE.m, cos)));
+	*random_x = tfxWideAdd(tfxWideAdd(tfxWideMul(x, cos), tfxWideMul(cx, sin)), tfxWideMul(tfxWideMul(rotation_axis_x, dot), tfxWideSub(tfxWIDEONE, cos)));
+	*random_y = tfxWideAdd(tfxWideAdd(tfxWideMul(y, cos), tfxWideMul(cy, sin)), tfxWideMul(tfxWideMul(rotation_axis_y, dot), tfxWideSub(tfxWIDEONE, cos)));
+	*random_z = tfxWideAdd(tfxWideAdd(tfxWideMul(z, cos), tfxWideMul(cz, sin)), tfxWideMul(tfxWideMul(rotation_axis_z, dot), tfxWideSub(tfxWIDEONE, cos)));
 }
 
 tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager pm, tfx_library library, tfx_random_t *random, tfx_emitter_state_t &emitter, float emission_pitch, float emission_yaw, tfx_vec3_t local_position, tfx_vec3_t world_position) {
@@ -11780,7 +11781,7 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 			}
 
 			tfxWideArrayi packed;
-			packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_y)));
+			packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_y)));
 
 			tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 			if (!(pm.flags & tfxParticleManagerFlags_unordered)) {    //Predictable
@@ -12020,7 +12021,7 @@ tfx__readbarrier;
 tfxWideArrayi lookup_frame_weight;    \
 lookup_frame_weight.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);    \
 const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->weight.lookup.values, lookup_frame_weight);    \
-tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE.m);    \
+tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE);    \
 current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));    \
 current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm.update_time_wide), velocity_adjuster), age_fraction);    \
 current_velocity_y = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_y, pm.update_time_wide), velocity_adjuster), age_fraction);    \
@@ -12087,15 +12088,15 @@ tfxWideArrayi lookup_motion_randomness;    \
 lookup_motion_randomness.m = tfxWideMini(tfxWideConverti(life), motion_randomness_last_frame);	\
 const tfxWideFloat influence = tfxWideMul(tfxWideMul(motion_randomness_base, global_noise), tfxWideLookupSet(work_entry->graphs->motion_randomness.lookup.values, lookup_motion_randomness));    \
 tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);    \
-tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));    \
+tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf), tfxWideMul(tfxWideSetSingle(0.01f), influence));    \
 tfxWideFloat random_x, random_y, random_z;    \
-tfx__wide_random_vector_in_cone(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, tfxWideMul(tfxDEGREERANGEMR.m, influence), &random_x, &random_y, &random_z);    \
+tfx__wide_random_vector_in_cone(seed, velocity_normal_x, velocity_normal_y, velocity_normal_z, tfxWideMul(tfxDEGREERANGEMR, influence), &random_x, &random_y, &random_z);    \
 speed = tfxWideAdd(speed, random_speed);    \
 tfxWideFloat length = tfxWideMul(random_x, random_x);    \
 length = tfxWideAdd(length, tfxWideMul(random_y, random_y));    \
 length = tfxWideAdd(length, tfxWideMul(random_z, random_z));    \
 length = tfxWideMul(tfxWideRSqrt(length), length);    \
-tfxWideFloat length_one = tfxWideDiv(tfxWIDEONE.m, length);    \
+tfxWideFloat length_one = tfxWideDiv(tfxWIDEONE, length);    \
 random_x = tfxWideMul(random_x, length_one);    \
 random_y = tfxWideMul(random_y, length_one);    \
 random_z = tfxWideMul(random_z, length_one);    \
@@ -12410,9 +12411,9 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 		//Non Orbit emission direction
 		//Add the random direction to the current velocity
 		//return current * tween + captured * (1.f - tween);
-		velocity_normal_x = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(velocity_normal_x, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
-		velocity_normal_y = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(velocity_normal_y, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
-		velocity_normal_z = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(velocity_normal_z, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
+		velocity_normal_y = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(velocity_normal_y, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+		velocity_normal_z = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(velocity_normal_z, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+		velocity_normal_x = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(velocity_normal_x, tfxWideSub(tfxWIDEONE, time_step_fraction)));
 		length = tfxWideMul(velocity_normal_x, velocity_normal_x);
 		length = tfxWideAdd(length, tfxWideMul(velocity_normal_y, velocity_normal_y));
 		length = tfxWideAdd(length, tfxWideMul(velocity_normal_z, velocity_normal_z));
@@ -12427,7 +12428,7 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 		tfxWideFloat current_velocity_z = tfxWideMul(velocity_normal_z, velocity_scalar);
 
 		tfxWideInt packed_normal = tfx__wide_pack10bit_unsigned(velocity_normal_x, velocity_normal_y, velocity_normal_z);
-		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi.m)));
+		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi)));
 		tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
 		tfxWideStore(&bank.noise_offset[index], speed);
 
@@ -12507,9 +12508,9 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 		tfxWideFloat vx, vy, vz;
 		tfxWideInt velocity_normal = tfxWideLoadi((tfxWideIntLoader *)&bank.velocity_normal[index]);
 		tfx__wide_unpack10bit(velocity_normal, vx, vy, vz);
-		vx = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(vx, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
-		vy = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(vy, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
-		vz = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(vz, tfxWideSub(tfxWIDEONE.m, time_step_fraction)));
+		vy = tfxWideAdd(tfxWideMul(random_y, time_step_fraction), tfxWideMul(vy, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+		vz = tfxWideAdd(tfxWideMul(random_z, time_step_fraction), tfxWideMul(vz, tfxWideSub(tfxWIDEONE, time_step_fraction)));
+		vx = tfxWideAdd(tfxWideMul(random_x, time_step_fraction), tfxWideMul(vx, tfxWideSub(tfxWIDEONE, time_step_fraction)));
 		velocity_normal_x = tfxWideAdd(velocity_normal_x, vx);
 		velocity_normal_y = tfxWideAdd(velocity_normal_y, vy);
 		velocity_normal_z = tfxWideAdd(velocity_normal_z, vz);
@@ -12534,7 +12535,7 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 		tfxWideFloat current_velocity_y = tfxWideMul(velocity_normal_y, velocity_scalar);
 		tfxWideFloat current_velocity_z = tfxWideMul(velocity_normal_z, velocity_scalar);
 
-		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi.m)));
+		tfxWideInt normal_to_store = tfxWideOri(tfxWideAndi(packed_normal, time_changed_mask), tfxWideAndi(velocity_normal, tfxWideXOri(time_changed_mask, tfxWIDEMINUSONEi)));
 		tfxWideStorei((tfxWideIntLoader *)&bank.velocity_normal[index], normal_to_store);
 		tfxWideStore(&bank.noise_offset[index], speed);
 
@@ -13030,7 +13031,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		velocity_normal_y = tfxWideAdd(velocity_normal_y, tfxWideMul(lookup_weight, base_weight));
 		stretch_velocity_x = velocity_normal_x;
 		stretch_velocity_y = velocity_normal_y;
-		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE.m);
+		tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm->frame_length_wide), tfxWIDEONE);
 		velocity_normal_x = tfxWideMul(tfxWideMul(tfxWideMul(velocity_normal_x, pm->update_time_wide), velocity_adjuster), age_fraction);
 		velocity_normal_y = tfxWideMul(tfxWideMul(tfxWideMul(velocity_normal_y, pm->update_time_wide), velocity_adjuster), age_fraction);
 
@@ -13056,7 +13057,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		tfxWideArrayi packed;
-		packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE.m, tfxWideMin(tfxWIDEONE.m, stretch_velocity_y)));
+		packed.m = tfx__wide_pack16bit(tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_x)), tfxWideMax(tfxWIDEMINUSONE, tfxWideMin(tfxWIDEONE, stretch_velocity_y)));
 
 		tfxU32 limit_index = running_sprite_index + tfxDataWidth > work_entry->sprite_buffer_end_index ? work_entry->sprite_buffer_end_index - running_sprite_index : tfxDataWidth;
 		if (!(pm->flags & tfxParticleManagerFlags_unordered)) {    //Predictable
@@ -17516,7 +17517,7 @@ void tfx__control_particle_age(tfx_work_queue_t *queue, void *data) {
 		tfx__readbarrier;
 
 		tfxWideInt expired = tfxWideCasti(tfxWideGreaterEqual(age, max_age));
-		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWIDEONEi.m, expired));
+		single_loop_count = tfxWideAddi(single_loop_count, tfxWideAndi(tfxWIDEONEi, expired));
 		tfxWideInt loop_limit = tfxWideEqualsi(single_loop_count, single_shot_limit);
 		tfxWideInt loop_age = tfxWideXOri(tfxWideAndi(tfxWideAndi(single, expired), xor_state_flags_no_spawning), tfxWideSetSinglei(-1));
 		age = tfxWideAnd(age, tfxWideCast(loop_age));
