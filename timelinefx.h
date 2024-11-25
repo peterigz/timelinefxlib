@@ -2017,6 +2017,7 @@ typedef enum {
 	tfxColorPreset,
 	tfxPercentOvertime,
 	tfxIntensityOvertimePreset,
+	tfxGradientMapperOvertimePreset,
 	tfxPathDirectionOvertimePreset,
 	tfxPathTranslationOvertimePreset,
 } tfx_graph_preset;
@@ -2139,7 +2140,7 @@ typedef enum {
 	tfxOvertime_intensity,
 	tfxOvertime_alpha_sharpness,
 	tfxOvertime_curved_alpha,
-	tfxOvertime_texture_influence,
+	tfxOvertime_gradient_mapper,
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
@@ -5191,7 +5192,7 @@ typedef struct tfx_effect_lookup_data_s {
 	tfx_graph_lookup_index_t overtime_intensity;
 	tfx_graph_lookup_index_t overtime_hint_intensity;
 	tfx_graph_lookup_index_t overtime_color_mix_overtime;
-	tfx_graph_lookup_index_t overtime_texture_influence;
+	tfx_graph_lookup_index_t overtime_gradient_mapper;
 	tfx_graph_lookup_index_t overtime_direction;
 	tfx_graph_lookup_index_t overtime_noise_resolution;
 	tfx_graph_lookup_index_t overtime_motion_randomness;
@@ -5310,7 +5311,7 @@ typedef struct tfx_overtime_attributes_s {
 	tfx_graph_t intensity;
 	tfx_graph_t alpha_sharpness;
 	tfx_graph_t curved_alpha;
-	tfx_graph_t texture_influence;
+	tfx_graph_t gradient_mapper;
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
