@@ -12668,7 +12668,7 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 		tfxWideFloat alignment_vector_y;
 		tfxWideFloat alignment_vector_z;
 
-		if (property_flags & tfxEmitterPropertyFlags_relative_position && emission_type != tfxPath) {
+		if (property_flags & tfxEmitterPropertyFlags_relative_position && emission_type != tfxPath && emission_type != tfxOtherEmitter) {
 			position_x.m = tfxWideAdd(position_x.m, e_handle_x);
 			position_y.m = tfxWideAdd(position_y.m, e_handle_y);
 			position_z.m = tfxWideAdd(position_z.m, e_handle_z);
@@ -12682,6 +12682,10 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 			position_x.m = tfxWideAdd(tfxWideMul(position_x.m, e_scale), e_world_position_x);
 			position_y.m = tfxWideAdd(tfxWideMul(position_y.m, e_scale), e_world_position_y);
 			position_z.m = tfxWideAdd(tfxWideMul(position_z.m, e_scale), e_world_position_z);
+		} else if (property_flags & tfxEmitterPropertyFlags_relative_position && emission_type == tfxOtherEmitter) {
+			position_x.m = tfxWideMul(position_x.m, e_scale);
+			position_y.m = tfxWideMul(position_y.m, e_scale);
+			position_z.m = tfxWideMul(position_z.m, e_scale);
 		}
 
 		captured_position_x.m = tfxWideAdd(tfxWideAnd(position_x.m, capture_flag.m), tfxWideAnd(captured_position_x.m, xor_capture_flag));
