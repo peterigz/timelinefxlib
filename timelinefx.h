@@ -5848,8 +5848,8 @@ typedef struct tfx_2d_instance_s {			//44 bytes + padding to 48
 	tfx_vec4_t position;							//The position of the sprite, rotation in w, stretch in z
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
-	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
-	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the texture influence value packed into 3 bit unorms
+	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
+	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the gradient mapper value packed into 3 bit unorms
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	float lerp_offset;
@@ -5860,8 +5860,8 @@ typedef struct tfx_3d_instance_s {		//56 bytes + padding to 64
 	tfx_vec3_t rotations;				            //Rotations of the billboard with stretch in w
 	tfx_float8x4_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
-	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
-	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the texture influence value packed into 3 bit unorms
+	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
+	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	float lerp_offset;
@@ -5878,10 +5878,10 @@ typedef struct tfx_sprite_soa_s {                       //3d takes 56 bytes of b
 	tfx_unique_sprite_id_t *uid;                //Unique particle id of the sprite, only used when recording sprite data
 	tfx_sprite_transform3d_t *transform_3d;     //Transform data for 3d instance_data
 	tfx_sprite_transform2d_t *transform_2d;     //Transform data for 2d instance_data
-	tfxU32 *intensity_life;                     //The multiplier for the sprite color and the lifetime of the particle (0..1)
+	tfxU32 *intensity_gradient_map;                     //The multiplier for the sprite color and the lifetime of the particle (0..1)
 	float *stretch;                             //Multiplier for how much the particle is stretched in the shader
 	tfxU32 *alignment;                          //The alignment of the particle. 2 16bit floats for 2d and 3 8bit floats for 3d
-	tfxU32 *curved_alpha;						//Alpha sharpness for the texture dissolve/alpha calculations
+	tfxU32 *curved_alpha_life;						//Alpha sharpness for the texture dissolve/alpha calculations
 	tfxU32 *indexes;							//The indexes to lookup the color in the color ramp textures and the image texture data
 }tfx_sprite_soa_t;
 
@@ -5897,8 +5897,8 @@ typedef struct tfx_sprite_data3d_s {    //60 bytes aligning to 64
 	tfx_vec3_t rotations;				            //Rotations of the sprite
 	tfx_float8x4_t alignment;						//normalised alignment vector 3 floats packed into 8bits
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
-	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
-	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
+	tfx_float16x2_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
@@ -5909,8 +5909,8 @@ typedef struct tfx_sprite_data2d_s {    //48 bytes
 	tfx_vec4_t position_stretch_rotation;           //The position of the sprite, rotation in w, stretch in z
 	tfx_float16x4_t size_handle;					//Size of the sprite in pixels and the handle packed into a u64 (4 16bit floats)
 	tfx_float16x2_t alignment;						//normalised alignment vector 2 floats packed into 16bits or 3 8bit floats for 3d
-	tfx_float16x2_t intensity_life;					//Multiplier for the color and life of particle
-	tfx_float16x2_t curved_alpha;					//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
+	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color and life of particle
+	tfx_float16x2_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image 2 16bit floats packed
 	tfxU32 indexes;									//[color ramp y index, color ramp texture array index, capture flag, image data index (1 bit << 15), billboard alignment (2 bits << 13), image data index max 8191 images]
 	tfxU32 captured_index;							//Index to the sprite in the buffer from the previous frame for interpolation
 	tfxU32 additional;								//Padding, but also used to pack lerp offset and property index
@@ -6929,20 +6929,20 @@ tfxINTERNAL inline tfxWideFloat tfx__wide_seedgen(tfxWideInt h)
 //Particle manager internal functions
 //--------------------------------
 template<typename T>
-tfxINTERNAL inline void tfx__write_particle_color_sprite_data(T *sprites, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index) {
+tfxINTERNAL inline void tfx__write_particle_color_sprite_data(T *sprites, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha_life, tfxU32 &running_sprite_index) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
-		sprites[running_sprite_index].intensity_life.packed = packed_intensity_life.a[j];
-		sprites[running_sprite_index].curved_alpha.packed = curved_alpha.a[j];
+		sprites[running_sprite_index].intensity_gradient_map.packed = packed_intensity_life.a[j];
+		sprites[running_sprite_index].curved_alpha_life.packed = curved_alpha_life.a[j];
 		running_sprite_index++;
 	}
 }
 
 template<typename T>
-tfxINTERNAL inline void tfx__write_particle_color_sprite_data_ordered(T *sprites, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha, tfxU32 &running_sprite_index, tfxU32 instance_offset) {
+tfxINTERNAL inline void tfx__write_particle_color_sprite_data_ordered(T *sprites, tfxU32 layer, tfxU32 start_diff, tfxU32 limit_index, const tfxU32 *depth_index, tfxU32 index, const tfxWideArrayi &packed_intensity_life, const tfxWideArrayi &curved_alpha_life, tfxU32 &running_sprite_index, tfxU32 instance_offset) {
 	for (tfxU32 j = start_diff; j < tfxMin(limit_index + start_diff, tfxDataWidth); ++j) {
 		tfxU32 sprite_depth_index = depth_index[index + j] + instance_offset;
-		sprites[sprite_depth_index].intensity_life.packed = packed_intensity_life.a[j];
-		sprites[sprite_depth_index].curved_alpha.packed = curved_alpha.a[j];
+		sprites[sprite_depth_index].intensity_gradient_map.packed = packed_intensity_life.a[j];
+		sprites[sprite_depth_index].curved_alpha_life.packed = curved_alpha_life.a[j];
 		running_sprite_index++;
 	}
 }
