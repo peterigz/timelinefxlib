@@ -82,9 +82,15 @@ All functions in the library will be marked this way for clarity and naturally t
 //---------------------------------------
 #include <assert.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <stddef.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <inttypes.h>
+#include <stdint.h>
+#include <string.h>
+#include <ctype.h>
 
 #define tfx__Min(a, b) (((a) < (b)) ? (a) : (b))
 #define tfx__Max(a, b) (((a) > (b)) ? (a) : (b))
@@ -341,7 +347,7 @@ extern "C" {
 #define tfx__strlen strnlen
 #define tfx__writebarrier __asm__ __volatile__ ("" : : : "memory");
 #define tfx__readbarrier __asm__ __volatile__ ("" : : : "memory");
-#define tfx__strcpy(left, right, size) strcpy(left, right)
+#define tfx__strcpy(dst, size, src) strcpy(dst, src)
 #define tfx__fseek fseeko
 #define tfx__ftell ftello
 #define TFX_ALIGN_AFFIX(v)            __attribute__((aligned(v)))
@@ -1447,6 +1453,8 @@ tfxAPI_EDITOR inline tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tf
 //Section: SIMD_defines
 //----------------------------------------------------------
 
+#define tfx128SetConst(value) {value, value, value, value}
+
 //Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
 //Hiding this define here for now until I can test and improve AVX more
 //#define tfxUSEAVX
@@ -1720,22 +1728,22 @@ typedef union {
 	float32x4_t m;
 } tfxWideArray;
 
-const float32x4_t tfxWIDEF3_4 = tfxWideSetConst(1.0f / 3.0f);
-const float32x4_t tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
-const float32x4_t tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
-const float32x4_t tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
-const int32x4_t tfxWIDEONEi = tfxWideSetConst(1);
-const float32x4_t tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
-const int32x4_t tfxWIDEMINUSONEi = tfxWideSetConst(-1);
-const float32x4_t tfxWIDEONE = tfxWideSetConst(1.f);
-const float32x4_t tfxWIDE255 = tfxWideSetConst(255.f);
-const float32x4_t tfxWIDEZERO = tfxWideSetConst(0.f);
-const float32x4_t tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
-const float32x4_t tfxPWIDESIX = tfxWideSetConst(0.6f);
-const float32x4_t tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
-const float32x4_t tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
+const tfxWideArray tfxWIDEF3_4 = tfxWideSetConst(1.0f / 3.0f);
+const tfxWideArray tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
+const tfxWideArray tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
+const tfxWideArray tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
+const tfxWideArrayi tfxWIDEONEi = tfxWideSetConst(1);
+const tfxWideArray tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
+const tfxWideArrayi tfxWIDEMINUSONEi = tfxWideSetConst(-1);
+const tfxWideArray tfxWIDEONE = tfxWideSetConst(1.f);
+const tfxWideArray tfxWIDE255 = tfxWideSetConst(255.f);
+const tfxWideArray tfxWIDEZERO = tfxWideSetConst(0.f);
+const tfxWideArray tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
+const tfxWideArray tfxPWIDESIX = tfxWideSetConst(0.6f);
+const tfxWideArray tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
+const tfxWideArray tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
 
-tfxINTERNAL const float32x4_t SIGNMASK = tfxWideSetConst(-0.f);
+tfxINTERNAL const tfxWideArray SIGNMASK = tfxWideSetConst(-0.f);
 
 #endif
 
@@ -1767,8 +1775,6 @@ typedef union {
 	float a[4];
 	__m128 m;
 } tfx128Array;
-
-#define tfx128SetConst(value) {value, value, value, value}
 
 //simd floor function thanks to Stephanie Rancourt: http://dss.stephanierct.com/DevBlog/?p=8
 tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 x) {
@@ -4808,7 +4814,6 @@ const float gradZ[] =
 	1, 1,-1,-1
 };
 
-#ifdef tfxINTEL
 const tfx128Array tfxF3_4 = tfx128SetConst(1.0f / 3.0f);
 const tfx128Array tfxF2_4 = tfx128SetConst(.366025403f);
 const tfx128Array tfxG2_4 = tfx128SetConst(0.211324865f);
@@ -4822,21 +4827,6 @@ const tfx128Array tfxZERO = tfx128SetConst(0.f);
 const tfx128Array tfxTHIRTYTWO = tfx128SetConst(32.f);
 const tfx128iArray tfxFF = tfx128SetConst(0xFF);
 const tfx128Array tfxPSIX = tfx128SetConst(0.6f);
-#elif defined(tfxARM)
-const tfx128 tfxF3_4 = vdupq_n_f32(1.0f / 3.0f);
-const tfx128 tfxF2_4 = vdupq_n_f32(.366025403f);
-const tfx128 tfxG2_4 = vdupq_n_f32(0.211324865f);
-const tfx128 tfxG2_4x2 = vdupq_n_f32(0.42264973f);
-const tfx128 tfxG3_4 = vdupq_n_f32(1.0f / 6.0f);
-const tfx128 tfxG32_4 = vdupq_n_f32((1.0f / 6.0f) * 2.f);
-const tfx128 tfxG33_4 = vdupq_n_f32((1.0f / 6.0f) * 3.f);
-const tfx128i tfxONE = vdupq_n_s32(1);
-const tfx128 tfxONEF = vdupq_n_f32(1.f);
-const tfx128 tfxZERO = vdupq_n_f32(0.f);
-const tfx128 tfxTHIRTYTWO = vdupq_n_f32(32.f);
-const tfx128i tfxFF = vdupq_n_s32(0xFF);
-const tfx128 tfxPSIX = vdupq_n_f32(0.6f);
-#endif
 
 static const float tfxGRADIENTS_3D[] =
 {
@@ -8507,29 +8497,6 @@ tfxAPI float tfx_IsFirstFrame(tfx_sprite_soa_t *sprites, tfxU32 sprite_index);
 tfxAPI void tfx_GetSpriteScale(void *instance, float out_scale[2]);
 
 #ifdef tfxINTEL
-/*
-Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering instance_data and interpolating between captured and current colors
-* @param tween						The interpolation value between 0 and 1. You should pass in the value from your timing function
-* @param current					The current tfx_rgba8_t color
-* @param captured					The captured tfx_rgba8_t color
-* @returns tfx_rgba8_t				The interpolated tfx_rgba8_t
-*/
-tfxAPI inline tfx_rgba8_t tfx_TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
-	tfx128 color1 = _mm_set_ps((float)current.a, (float)current.b, (float)current.g, (float)current.r);
-	tfx128 color2 = _mm_set_ps((float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r);
-	tfx128 wide_tween = _mm_set1_ps(tween);
-	tfx128 wide_tween_m1 = _mm_sub_ps(_mm_set1_ps(1.f), wide_tween);
-	color1 = _mm_div_ps(color1, _mm_set1_ps(255.f));
-	color2 = _mm_div_ps(color2, _mm_set1_ps(255.f));
-	color1 = _mm_mul_ps(color1, wide_tween);
-	color2 = _mm_mul_ps(color2, wide_tween_m1);
-	color1 = _mm_add_ps(color1, color2);
-	color1 = _mm_mul_ps(color1, _mm_set1_ps(255.f));
-	tfx128iArray packed;
-	packed.m = _mm_cvtps_epi32(color1);
-	tfx_rgba8_t color = { (unsigned char)packed.a[0], (unsigned char)packed.a[1], (unsigned char)packed.a[2], (unsigned char)packed.a[3] };
-	return color;
-}
 
 /*
 Interpolate all sprite transform data in a single function. This will interpolate position, scale and rotation.
@@ -8557,27 +8524,6 @@ tfxAPI inline tfx_wide_lerp_transform_result_t tfx_InterpolateSpriteTransform(co
 }
 
 #elif defined(tfxARM)
-
-/*
-Interpolate between 2 colors in tfx_rgba8_t format. You can make use of this in your render function when rendering instance_data and interpolating between captured and current colors
-* @param tween                The interpolation value between 0 and 1. You should pass in the value from your timing function
-* @param current            The current tfx_rgba8_t color
-* @param captured            The captured tfx_rgba8_t color
-* @returns tfx_rgba8_t            The interpolated tfx_rgba8_t
-*/
-tfxAPI inline tfx_rgba8_t tfx_TweenColor(float tween, const tfx_rgba8_t current, const tfx_rgba8_t captured) {
-	tfx128 color1 = { (float)current.a, (float)current.b, (float)current.g, (float)current.r };
-	tfx128 color2 = { (float)captured.a, (float)captured.b, (float)captured.g, (float)captured.r };
-	tfx128 wide_tween = vdupq_n_f32(tween);
-	tfx128 wide_tween_m1 = vsubq_f32(vdupq_n_f32(1.f), wide_tween);
-	color1 = vmulq_f32(vdivq_f32(color1, vdupq_n_f32(255.f)), wide_tween);
-	color2 = vmulq_f32(vdivq_f32(color2, vdupq_n_f32(255.f)), wide_tween_m1);
-	color1 = vaddq_f32(color1, color2);
-	color1 = vmulq_f32(color1, vdupq_n_f32(255.f));
-	tfx128i packed = vcvtq_s32_f32(color1);
-	return tfx_rgba8_t(vgetq_lane_s32(packed, 0), vgetq_lane_s32(packed, 1), vgetq_lane_s32(packed, 2), vgetq_lane_s32(packed, 3));
-}
-
 
 /*
 Interpolate all sprite transform data in a single function. This will interpolate position, scale and rotation.

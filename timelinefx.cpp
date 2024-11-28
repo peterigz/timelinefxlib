@@ -2083,8 +2083,8 @@ bool tfx__save_package_disk(tfx_package package) {
 
 tfx_stream tfx__save_package_memory(tfx_package package) {
 	TFX_CHECK_HANDLE(package);		//package has not been initialised. Use tfx__create_package to properly create a new package handle.
-	if (package->header.magic_number != tfxMAGIC_NUMBER) return false;                         //Header of package must contain correct magic number. tfx__create_package to correctly initialise a package.
-	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return false;            //Inventory of package must contain correct magic number
+	if (package->header.magic_number != tfxMAGIC_NUMBER) return 0;                         //Header of package must contain correct magic number. tfx__create_package to correctly initialise a package.
+	if (package->inventory.magic_number != tfxMAGIC_NUMBER_INVENTORY) return 0;            //Inventory of package must contain correct magic number
 
 	tfx_stream file = tfx__create_stream();
 	TFX_ASSERT(file); //Unable to allocate memory for stream. Out of memory?
