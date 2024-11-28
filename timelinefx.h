@@ -3976,7 +3976,7 @@ typedef struct tfx_stream_s {
 	void SetText(const char *text);
 	inline void Append(char c) { if (size) { size--; } data[size] = c; size++; NullTerminate(); }
 	inline bool EoF() { return position >= size; }
-	inline void AddReturn() { if (size + 1 >= capacity) { tfxU64 new_capacity = capacity * 2; Reserve(new_capacity); } data[size] = '\n'; size++; }
+	inline void AddReturn() { if (size + 1 >= capacity) { tfxU64 new_capacity = capacity * 2; Reserve(new_capacity); } Append('\n'); }
 	inline void Seek(tfxU64 offset) {
 		if (offset < size)
 			position = offset;
