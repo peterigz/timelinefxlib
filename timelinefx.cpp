@@ -17804,6 +17804,19 @@ void tfxEndThread(tfx_work_queue_t *queue, void *data) {
 	return;
 }
 
+// Safe version that always returns at least 1
+unsigned int tfx_HardwareConcurrencySafe(void) {
+    unsigned int count = tfx_HardwareConcurrency();
+    return count > 0 ? count : 1;
+}
+
+// Helper function to get a good default thread count for thread pools
+// Usually hardware threads - 1 to leave a core for the OS/main thread
+unsigned int tfx_GetDefaultThreadCount(void) {
+    unsigned int count = tfx_HardwareConcurrency();
+    return count > 1 ? count - 1 : 1;
+}
+
 //Passing a max_threads value of 0 or 1 will make timeline fx run in single threaded mode. 2 or more will be multithreaded.
 //max_threads includes the main thread so for example if you set it to 4 then there will be the main thread plus an additional 3 threads.
 void tfx_InitialiseTimelineFX(int max_threads, size_t memory_pool_size) {
