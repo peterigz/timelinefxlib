@@ -1653,13 +1653,13 @@ typedef int32_t tfxWideIntLoader;
 #define tfxWideLoadi vld1q_s32
 inline __attribute__((always_inline)) float32x4_t tfx__128_SET(float e3, float e2, float e1, float e0) {
 	float32x4_t r;
-	alignas(16) float data[4] = { e0, e1, e2, e3 };
+	float data[4] __attribute__((aligned(16))) = { e0, e1, e2, e3 };
 	r = vld1q_f32(data);
 	return r;
 }
 inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, int e1, int e0) {
 	int32x4_t r;
-	alignas(16) int data[4] = { e0, e1, e2, e3 };
+	int data[4] __attribute__((aligned(16))) = { e0, e1, e2, e3 };
 	r = vld1q_s32(data);
 	return r;
 }
