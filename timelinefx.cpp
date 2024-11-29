@@ -2517,7 +2517,7 @@ void tfx__link_sprite_data_captured_indexes(T* instance, int entry_frame, tfx_sp
                         captured_found = false;
                         instance[i].captured_index = age_diff == diff ? j : instance[i].captured_index;
 						//tfxPrint("%i (%i)) UID: %u: CI: %i, SI: %i - CIAge: %i, SAge: %i - Age Diff: %u, Diff: %u, Cap.index: %u, CPosy: %.2f SPosy: %.2f, H: %u",
-						//	entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle.packed >> 32));
+							//entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle.packed >> 32));
                         if (age_diff < 2) {    //We can just break if the age is less than 2 but not if we found and older particle. It's possible to find an older particle if the animation has been looped
                             //If the compression is high this won't be hit because the distance in time between the compressed frames will be high
                             //tfxPrint("\t Linked %i to %i: uid, %u, captured index: %u", i, j, c_sprites.uid[j].uid, instance[i].captured_index);
@@ -11109,6 +11109,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 				spawn_work_entry->highest_particle_age = pm->emitters[emitter_index].highest_particle_age;
 				spawn_work_entry->pm = pm;
 				spawn_work_entry->depth_indexes = nullptr;
+                spawn_work_entry->particle_uid = emitter_index * 100000;
 
 				float &timeout_counter = pm->emitters[emitter_index].timeout_counter;
 				//if (pm->emitters[emitter_index].particles_index == tfxINVALID) {
@@ -15030,7 +15031,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 		//so that particles don't share seeds. This might sound strange because they are UIDs but there's a few random numbers generated for each particle and we offset from the uid
 		//to get different numbers. When the UID is incrementle then future particles will just get the same seed unless the UID can be staggered enough. Hence I 
 		//just use clock cycles which serves the purpose well enough. It's kind of hard to explain but see more in ControlParticleSimpleRandomMovement
-		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc();
+		entry->particle_data->uid[index] = (tfxU32)tfx__rdtsc() + entry->particle_uid++;
 		age_accumulator += frame_fraction;
 		if (emitter.property_flags & tfxEmitterPropertyFlags_wrap_single_sprite && pm.flags & tfxParticleManagerFlags_recording_sprites) {
 			max_age = tfx__Max(pm.animation_length_in_time, 1.f);

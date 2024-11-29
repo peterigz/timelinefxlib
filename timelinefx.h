@@ -6045,6 +6045,7 @@ typedef struct tfx_spawn_work_entry_s {
 	float qty_step_size;
 	float highest_particle_age;
 	float overal_scale;
+    tfxU32 particle_uid;
 }tfx_spawn_work_entry_t;
 
 typedef struct tfx_control_work_entry_s {
