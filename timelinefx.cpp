@@ -10629,7 +10629,10 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 		return tfxINVALID;
 	}
 	tfx_effect_index_t parent_index = tfx__get_effect_slot(pm);
-	if (parent_index.index == tfxINVALID) {
+    tfx__readbarrier;
+    pm->effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
+    tfxPrint("%i, %f", parent_index.index, parent_index.depth);
+    if (parent_index.index == tfxINVALID) {
 		return tfxINVALID;
 	}
 	if (!is_sub_emitter) {
@@ -10657,7 +10660,6 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 	float range = properties->noise_base_offset_range;
 	new_effect.noise_base_offset = tfx_RandomRangeZeroToMax(&pm->random, range);
 	//tfxPrint("Adding new effect %u, count: %u, buffer: %i", parent_index, pm->effects_in_use[hierarchy_depth][buffer].current_size, buffer);
-	pm->effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
 	pm->sort_passes = tfxMax(effect->sort_passes, pm->sort_passes);
 	pm->sort_passes = tfxMin(5, pm->sort_passes);
 	new_effect.sort_passes = pm->sort_passes;
@@ -10681,9 +10683,11 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 			}
 			new_effect.emitter_indexes[pm->current_ebuff].push_back(index);
 			tfx_emitter_state_t &emitter = pm->emitters[index];
+            tfx__readbarrier;
 			emitter.particles_index = tfxINVALID;
 			pm->emitters[index].parent_index = parent_index.index;
 			tfx_emitter_properties_t *emitter_properties = tfx__get_effect_properties(&e);
+            emitter.grid_coords = tfx_vec3_t();
 			emitter.library = effect->library;
 			emitter.path_quaternions = nullptr;
 			emitter.path_hash = e.path_hash;
@@ -10696,7 +10700,6 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 			emitter.age = 0.f;
 			emitter.frame = 0.f;
 			emitter.local_position = tfx_vec3_t();
-			emitter.grid_coords = tfx_vec3_t();
 			emitter.grid_direction = tfx_vec3_t();
 			emitter.property_flags = e.property_flags;
 			emitter.image_size = emitter_properties->image->image_size;
@@ -14093,10 +14096,13 @@ bool tfx__free_pm_effect_capacity(tfx_particle_manager pm) {
 }
 
 tfx_effect_index_t tfx__get_effect_slot(tfx_particle_manager pm) {
+    tfx_effect_index_t parent_index;
 	if (!pm->free_effects.empty()) {
+        tfx__readbarrier;
 		return pm->free_effects.pop_back();
 	}
 	if (pm->effects.current_size == pm->effects.capacity) {
+        tfx__readbarrier;
 		return { tfxINVALID, 0.f };
 	}
 	pm->effects.current_size++;
@@ -14111,7 +14117,10 @@ tfx_effect_index_t tfx__get_effect_slot(tfx_particle_manager pm) {
 	tfx_effect_state_t &effect = pm->effects.back();
 	effect.emitter_indexes[0].init();
 	effect.emitter_indexes[1].init();
-	return { pm->effects.current_size - 1, 0.f };
+    parent_index.index = pm->effects.current_size - 1;
+    parent_index.depth = 0.f;
+    tfx__readbarrier;
+    return parent_index;
 }
 
 tfxU32 tfx__get_emitter_slot(tfx_particle_manager pm) {
