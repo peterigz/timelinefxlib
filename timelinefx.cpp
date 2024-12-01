@@ -2518,7 +2518,7 @@ void tfx__link_sprite_data_captured_indexes(T* instance, int entry_frame, tfx_sp
                         instance[i].captured_index = age_diff == diff ? j : instance[i].captured_index;
 						//tfxPrint("%i (%i)) UID: %u: CI: %i, SI: %i - CIAge: %i, SAge: %i - Age Diff: %u, Diff: %u, Cap.index: %u, CPosy: %.2f SPosy: %.2f, H: %u",
 							//entry_frame, sprite_data->compressed.frame_meta[frame_pair[0]].sprite_count[layer], c_sprites.uid[i].uid, i, j, c_sprites.uid[i].age, c_sprites.uid[j].age, age_diff, diff, instance[i].captured_index, instance[i].position.y, instance[j].position.y, tfxU32(instance[j].size_handle.packed >> 32));
-                        if (age_diff < 2) {    //We can just break if the age is less than 2 but not if we found and older particle. It's possible to find an older particle if the animation has been looped
+                        if (age_diff < 2) {    //We can just break if the age is less than 2 but not if we found an older particle. It's possible to find an older particle if the animation has been looped
                             //If the compression is high this won't be hit because the distance in time between the compressed frames will be high
                             //tfxPrint("\t Linked %i to %i: uid, %u, captured index: %u", i, j, c_sprites.uid[j].uid, instance[i].captured_index);
                             break;
@@ -10631,7 +10631,6 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 	tfx_effect_index_t parent_index = tfx__get_effect_slot(pm);
     tfx__readbarrier;
     pm->effects_in_use[hierarchy_depth][buffer].push_back(parent_index);
-    tfxPrint("%i, %f", parent_index.index, parent_index.depth);
     if (parent_index.index == tfxINVALID) {
 		return tfxINVALID;
 	}
