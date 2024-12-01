@@ -2778,7 +2778,7 @@ struct tfx_str_t {
 		TFX_ASSERT(text_len < capacity); //String is too big for the buffer size allowed
 		memset(data, '\0', N);
 		tfx__strcpy(data, N, text);
-		current_size = text_len + 1;
+		current_size = (tfxU32)text_len + 1;
 	}
 
 	inline bool            empty() { return current_size == 0; }
@@ -2904,7 +2904,7 @@ struct tfx_str_t {
 	inline void Trim(char c = ' ') { if (!Length()) return; if (back() == 0) pop(); while (back() == c && current_size) { pop(); } NullTerminate(); }
 	inline void TrimToZero() { if (current_size < capacity) { memset(data + current_size, '\0', capacity - current_size); } }
 	inline void TrimFront(char c = ' ') { if (!Length()) return; tfxU32 pos = 0; while (data[pos] == c && pos < current_size) { pos++; } if (pos < current_size) { memcpy(data, data + pos, current_size - pos); } current_size -= pos; }
-	inline void SanitizeLineFeeds() { if (current_size > 1) { while (current_size > 1 && back() == '\n' || back() == '\r' || back() == '\0') { pop(); if (current_size <= 1) { break; } } NullTerminate(); } }
+	inline void SanitizeLineFeeds() { if (current_size > 1) { while (current_size > 1 && (back() == '\n' || back() == '\r' || back() == '\0')) { pop(); if (current_size <= 1) { break; } } NullTerminate(); } }
 	inline void NullTerminate() { push_back('\0'); }
 	inline const bool IsInt() {
 		if (!Length()) return false;
@@ -6988,7 +6988,7 @@ template<typename T> tfxINTERNAL void tfx__link_sprite_data_captured_indexes(T* 
 template<typename T>
 tfxINTERNAL inline void tfx__invalidate_new_captured_index(T* instance, tfx_vector_t<tfx_unique_sprite_id_t> &uids, tfx_particle_manager pm, tfxU32 layer) {
 	for (tfxU32 i = 0; i != pm->instance_buffer_for_recording[pm->current_sprite_buffer][layer].current_size; ++i) {
-		if ((uids[i].age == 0 && !(instance[i].captured_index & 0x80000000)) || (instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000)) {
+		if ((uids[i].age == 0 && !(instance[i].captured_index & 0x80000000)) || ((instance[i].captured_index & 0xC0000000) >> 30 == pm->current_sprite_buffer && !(instance[i].captured_index & 0x80000000))) {
 			instance[i].captured_index = tfxINVALID;
 		}
 	}

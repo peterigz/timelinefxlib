@@ -1570,7 +1570,7 @@ tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v) {
 tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value) {
 	int16_t x_scaled = (int16_t)(x * 32767.0f / max_value);
 	int16_t y_scaled = (int16_t)(y * 32767.0f / max_value);
-	return ((tfxU64)x_scaled) | ((tfxU64)y_scaled << 16);
+	return ((tfxU32)x_scaled) | ((tfxU32)y_scaled << 16);
 }
 
 tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t q) {
@@ -3717,7 +3717,7 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
 	tfx_emitter_path_t &path = library->paths.push_back({});
 	tfx__initialise_path(&path);
 	path.flags = 0;
-	path.name;
+	path.name.Clear();
 	path.node_count = 32;
 	path.extrusion_type = tfxExtrusionArc;
 	path.generator_type = tfxPathGenerator_spiral;
@@ -18143,6 +18143,7 @@ tfx_particle_manager_info_t tfx_CreateParticleManagerInfo(tfx_particle_manager_s
 		info.order_mode = tfxParticleManagerMode_ordered_by_depth_guaranteed;
 		info.is_3d = true;
 		break;
+    default: break;
 	}
 
 	return info;
