@@ -309,8 +309,7 @@ extern "C" {
 #define TFX_ALIGN_AFFIX(v)
 #define TFX_PACKED_STRUCT
 
-#elif defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 8)) && \
-      (defined(__i386__) || defined(__x86_64__)) || defined(__clang__)
+#elif defined(__GNUC__) || defined(__clang__)
 	/* GNU C/C++ or Clang support on x86/x64 architectures. */
 
 	static inline int tfx__scan_reverse(tfx_size bitmap)
@@ -1674,6 +1673,7 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideSetSingle vdupq_n_f32
 #define tfxWideSeti vld1q_s32
 #define tfxWideSetSinglei vdupq_n_s32
+#define tfxWideSetSingleu vdupq_n_u32
 #define tfxWideAdd vaddq_f32
 #define tfxWideSub vsubq_f32
 #define tfxWideMul vmulq_f32
@@ -1682,10 +1682,12 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideSubi vsubq_s32
 #define tfxWideMuli vmulq_s32
 #define tfxWideRSqrt vrsqrteq_f32 // for reciprocal square root approximation
-#define tfxWideShiftRight vshrq_n_u32
-#define tfxWideShiftLeft vshlq_n_u32
+//#define tfxWideShiftRight vshrq_n_u32
+//#define tfxWideShiftLeft vshlq_n_u32
+#define tfxWideShiftRight vshrq_n_s32
+#define tfxWideShiftLeft vshlq_n_s32
 #define tfxWideGreaterEqual(a, b) vreinterpretq_f32_u32(vcgeq_f32(a, b))
-#define tfxWideGreater(a, b) vreinterpretq_s32_u32(vcgeq_f32(a,b))
+#define tfxWideGreater(a, b) vreinterpretq_f32_u32(vcgeq_f32(a,b))
 #define tfxWideGreateri vcgtq_s32
 #define tfxWideLessEqual(a, b) vreinterpretq_f32_u32(vcleq_f32(a, b))
 #define tfxWideLess(a, b) vreinterpretq_f32_u32(vcltq_f32(a, b))
@@ -1694,6 +1696,9 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideStorei vst1q_s32
 #define tfxWideCasti vreinterpretq_s32_f32
 #define tfxWideCast vreinterpretq_f32_s32
+#define tfxWideCastfu vreinterpretq_f32_u32
+#define tfxWideCastiu vreinterpretq_s32_u32
+#define tfxWideCastui vreinterpretq_u32_s32
 #define tfxWideConverti vcvtq_s32_f32
 #define tfxWideConvert vcvtq_f32_s32
 #define tfxWideMin vminq_f32
@@ -1715,6 +1720,8 @@ inline __attribute__((always_inline)) int32x4_t tfx__128i_SET(int e3, int e2, in
 #define tfxWideEquals(a, b) vreinterpretq_f32_u32(vceqq_f32(a, b))
 
 #define tfxSIMD_AND(a,b) vreinterpretq_f32_s32(vandq_s32(vreinterpretq_s32_f32(a),vreinterpretq_s32_f32(b)))
+#define tfxSIMD_AND_i(a,b) vreinterpretq_f32_s32(vandq_s32(a, b))
+#define tfxSIMD_AND_u(a,b) vreinterpretq_f32_u32(vandq_u32(a, b))
 #define tfxSIMD_AND_NOT(a,b) vreinterpretq_f32_s32(vandq_s32(vmvnq_s32(vreinterpretq_s32_f32(a)),vreinterpretq_s32_f32(b)))
 #define tfxSIMD_XOR(a,b) vreinterpretq_f32_s32(veorq_s32(vreinterpretq_s32_f32(a),vreinterpretq_s32_f32(b)))
 
@@ -1803,6 +1810,7 @@ tfxINTERNAL inline uint64_t tfx__rdtsc() {
 
 typedef float32x4_t tfx128;
 typedef int32x4_t tfx128i;
+typedef uint32x4_t tfx128u;
 
 typedef union {
 	int a[4];
@@ -1995,7 +2003,7 @@ tfxINTERNAL inline tfxWideFloat tfxWideAbs(tfxWideFloat v) {
 }
 
 tfxINTERNAL inline tfxWideInt tfxWideAbsi(tfxWideInt v) {
-	return tfxWideAndi(tfxWideShiftRight(tfxWideSetSinglei(-1), 1), v);
+	return tfxWideAndi((tfxWideShiftRight(tfxWideSetSinglei(-1), 1)), v);
 }
 
 //End of SIMD setup

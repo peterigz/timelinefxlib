@@ -431,8 +431,8 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128iArray i1, j1;
 
-		i1.m = vandq_s32(tfxONE, vreinterpretq_s32_f32(vcgtq_f32(x0, y0)));
-		j1.m = vandq_s32(tfxONE, vreinterpretq_s32_f32(vcgeq_f32(y0, x0)));
+		i1.m = vandq_s32(tfxONE, vreinterpretq_s32_u32(vcgtq_f32(x0, y0)));
+		j1.m = vandq_s32(tfxONE, vreinterpretq_s32_u32(vcgeq_f32(y0, x0)));
 
 		const tfx128 x1 = vaddq_f32(vsubq_f32(x0, vcvtq_f32_s32(i1.m)), tfxG2_4);
 		const tfx128 y1 = vaddq_f32(vsubq_f32(y0, vcvtq_f32_s32(j1.m)), tfxG2_4);
@@ -461,15 +461,15 @@ tfx_storage_t *tfx_GetGlobals() {
 
 		tfx128 t0 = vsubq_f32(vsubq_f32(vdupq_n_f32(0.5f), vmulq_f32(x0, x0)), vmulq_f32(y0, y0));
 		tfx128 t02 = vmulq_f32(t0, t0);
-		n0 = tfxSIMD_AND(vmulq_f32(vmulq_f32(t02, t02), tfx__dot128_xy(&gx0, &gy0, &x0, &y0)), vcgeq_f32(t0, vdupq_n_f32(0.f)));
+		n0 = tfxSIMD_AND((vmulq_f32(vmulq_f32(t02, t02), tfx__dot128_xy(&gx0, &gy0, &x0, &y0))), vcvtq_f32_u32(vcgeq_f32(t0, vdupq_n_f32(0.f))));
 
 		tfx128 t1 = vsubq_f32(vsubq_f32(vdupq_n_f32(0.5f), vmulq_f32(x1, x1)), vmulq_f32(y1, y1));
 		tfx128 t12 = vmulq_f32(t1, t1);
-		n1 = tfxSIMD_AND(vmulq_f32(vmulq_f32(t12, t12), tfx__dot128_xy(&gx1, &gy1, &x1, &y1)), vcgeq_f32(t1, vdupq_n_f32(0.f)));
+		n1 = tfxSIMD_AND(vmulq_f32(vmulq_f32(t12, t12), tfx__dot128_xy(&gx1, &gy1, &x1, &y1)), vcvtq_f32_u32(vcgeq_f32(t1, vdupq_n_f32(0.f))));
 
 		tfx128 t2 = vsubq_f32(vsubq_f32(vdupq_n_f32(0.5f), vmulq_f32(x2, x2)), vmulq_f32(y2, y2));
 		tfx128 t22 = vmulq_f32(t2, t2);
-		n2 = tfxSIMD_AND(vmulq_f32(vmulq_f32(t22, t22), tfx__dot128_xy(&gx2, &gy2, &x2, &y2)), vcgeq_f32(t2, vdupq_n_f32(0.f)));
+		n2 = tfxSIMD_AND(vmulq_f32(vmulq_f32(t22, t22), tfx__dot128_xy(&gx2, &gy2, &x2, &y2)), vcvtq_f32_u32(vcgeq_f32(t2, vdupq_n_f32(0.f))));
 
 		tfx128Array result;
 		result.m = vmulq_f32(vdupq_n_f32(45.23065f), vaddq_f32(n0, vaddq_f32(n1, n2)));
@@ -500,21 +500,21 @@ tfx_storage_t *tfx_GetGlobals() {
 		// Determine which simplex we are in.
 		tfx128iArray i1, i2, j1, j2, k1, k2;
 
-		i1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0))));
-		j1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(y0, x0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0))));
-		k1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_f32(vcgtq_f32(z0, x0)), vreinterpretq_s32_f32(vcgtq_f32(z0, y0))));
+		i1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_u32(vcgeq_f32(x0, y0)), vreinterpretq_s32_u32(vcgeq_f32(x0, z0))));
+		j1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_u32(vcgtq_f32(y0, x0)), vreinterpretq_s32_u32(vcgeq_f32(y0, z0))));
+		k1.m = vandq_s32(tfxONE, vandq_s32(vreinterpretq_s32_u32(vcgtq_f32(z0, x0)), vreinterpretq_s32_u32(vcgtq_f32(z0, y0))));
 
 		//for i2
-		tfx128i yx_xz = vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, y0)), vreinterpretq_s32_f32(vcltq_f32(x0, z0)));
-		tfx128i zx_xy = vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(x0, z0)), vreinterpretq_s32_f32(vcltq_f32(x0, y0)));
+		tfx128i yx_xz = vandq_s32(vreinterpretq_s32_u32(vcgeq_f32(x0, y0)), vreinterpretq_s32_u32(vcltq_f32(x0, z0)));
+		tfx128i zx_xy = vandq_s32(vreinterpretq_s32_u32(vcgeq_f32(x0, z0)), vreinterpretq_s32_u32(vcltq_f32(x0, y0)));
 
 		//for j2
-		tfx128i xy_yz = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(x0, y0)), vreinterpretq_s32_f32(vcltq_f32(y0, z0)));
-		tfx128i zy_yx = vandq_s32(vreinterpretq_s32_f32(vcgeq_f32(y0, z0)), vreinterpretq_s32_f32(vcgeq_f32(x0, y0)));
+		tfx128i xy_yz = vandq_s32(vreinterpretq_s32_u32(vcltq_f32(x0, y0)), vreinterpretq_s32_u32(vcltq_f32(y0, z0)));
+		tfx128i zy_yx = vandq_s32(vreinterpretq_s32_u32(vcgeq_f32(y0, z0)), vreinterpretq_s32_u32(vcgeq_f32(x0, y0)));
 
 		//for k2
-		tfx128i yz_zx = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(y0, z0)), vreinterpretq_s32_f32(vcgeq_f32(x0, z0)));
-		tfx128i xz_zy = vandq_s32(vreinterpretq_s32_f32(vcltq_f32(x0, z0)), vreinterpretq_s32_f32(vcgeq_f32(y0, z0)));
+		tfx128i yz_zx = vandq_s32(vreinterpretq_s32_u32(vcltq_f32(y0, z0)), vreinterpretq_s32_u32(vcgeq_f32(x0, z0)));
+		tfx128i xz_zy = vandq_s32(vreinterpretq_s32_u32(vcltq_f32(x0, z0)), vreinterpretq_s32_u32(vcgeq_f32(y0, z0)));
 
 		i2.m = vandq_s32(tfxONE, vorrq_s32(i1.m, vorrq_s32(yx_xz, zx_xy)));
 		j2.m = vandq_s32(tfxONE, vorrq_s32(j1.m, vorrq_s32(xy_yz, zy_yx)));
@@ -568,7 +568,7 @@ tfx_storage_t *tfx_GetGlobals() {
 		tfx128 n2 = vmulq_f32(t2q, tfx__dot128_xyz(&gi2x.m, &gi2y.m, &gi2z.m, &x2, &y2, &z2));
 		tfx128 n3 = vmulq_f32(t3q, tfx__dot128_xyz(&gi3x.m, &gi3y.m, &gi3z.m, &x3, &y3, &z3));
 
-		tfx128 cond;
+		tfx128u cond;
 
 		cond = vcltq_f32(t0, tfxZERO);
 		n0 = vbslq_f32(cond, tfxZERO, n0);
