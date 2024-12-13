@@ -4483,6 +4483,8 @@ void tfx__initialise_overtime_attributes(tfx_overtime_attributes_t *attributes, 
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->direction.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->noise_resolution.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->motion_randomness.nodes ,bucket_size);
+	 attributes->color_ramps[0].flags = 0;
+	 attributes->color_ramps[1].flags = 0;
 }
 
 void tfx__initialise_factor_attributes(tfx_factor_attributes_t *attributes, tfxU32 bucket_size) {
