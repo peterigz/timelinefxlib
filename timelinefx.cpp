@@ -150,7 +150,7 @@ tfx_storage_t *tfx_GetGlobals() {
 
 #ifdef tfxINTEL
 	//A 2d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
+	tfx128Array tfxNoise4_2d(const tfx128 x4, const tfx128 y4) {
 		tfxPROFILE;
 
 		tfx128 s4 = _mm_mul_ps(_mm_add_ps(x4, y4), tfxF2_4.m);
@@ -214,7 +214,7 @@ tfx_storage_t *tfx_GetGlobals() {
 	}
 
 	//A 3d Simd (SSE3) version of simplex noise allowing you to do 4 samples with 1 call for a speed boost
-	tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
+	tfx128Array tfxNoise4_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4) {
 		tfxPROFILE;
 		// Skewing/Unskewing factors for 3D
 
@@ -413,7 +413,7 @@ tfx_storage_t *tfx_GetGlobals() {
 
 #elif defined(tfxARM)
 
-	tfx128Array tfxNoise4_2d(const tfx128 &x4, const tfx128 &y4) {
+	tfx128Array tfxNoise4_2d(const tfx128 x4, const tfx128 y4) {
 		tfxPROFILE;
 
 		tfx128 s4 = vmulq_f32(vaddq_f32(x4, y4), tfxF2_4.m);
@@ -475,7 +475,7 @@ tfx_storage_t *tfx_GetGlobals() {
 		return result;
 	}
 
-	tfx128Array tfxNoise4_3d(const tfx128 &x4, const tfx128 &y4, const tfx128 &z4) {
+	tfx128Array tfxNoise4_3d(const tfx128 x4, const tfx128 y4, const tfx128 z4) {
 		tfxPROFILE;
 
 		// Skewing/Unskewing factors for 3D
@@ -2241,7 +2241,7 @@ tfxErrorFlags tfx__load_package_stream(tfx_stream stream, tfx_package package) {
 	return 0;
 }
 
-void tfx__update_effect_max_life(tfx_effect_emitter_t *effect) {
+void tfx__update_effect_max_life(tfx_effect_descriptor_t *effect) {
 	tfx_effect_emitter_info_t *info = tfx_GetEffectInfo(effect);
 	info->max_life = tfx__get_max_life(effect);
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_red)->lookup.life = info->max_life;
@@ -2273,7 +2273,7 @@ void tfx__update_effect_max_life(tfx_effect_emitter_t *effect) {
 	tfx__get_effect_graph_by_type(effect, tfxFactor_intensity)->lookup.life = info->max_life;
 }
 
-bool tfx__is_finite_emitter(tfx_effect_emitter_t *emitter) {
+bool tfx__is_finite_emitter(tfx_effect_descriptor_t *emitter) {
 	if (emitter->property_flags & tfxEmitterPropertyFlags_single && tfx__get_effect_properties(emitter)->single_shot_limit == 0) {
 		return false;
 	}
@@ -2284,7 +2284,7 @@ bool tfx__is_finite_emitter(tfx_effect_emitter_t *emitter) {
 	return true;
 }
 
-bool tfx__is_finite_effect(tfx_effect_emitter_t *effect) {
+bool tfx__is_finite_effect(tfx_effect_descriptor_t *effect) {
 	TFX_ASSERT(effect->type == tfxEffectType);
 	for (auto &e : tfx_GetEffectInfo(effect)->sub_effectors) {
 		float qty = tfx__get_graph_last_value(&e.library->emitter_attributes[e.emitter_attributes].base.amount) + tfx__get_graph_last_value(&e.library->emitter_attributes[e.emitter_attributes].variation.amount);
@@ -2304,7 +2304,7 @@ bool tfx__is_finite_effect(tfx_effect_emitter_t *effect) {
 	return true;
 }
 
-void tfx__flag_effect_as_3d(tfx_effect_emitter_t *effect, bool flag) {
+void tfx__flag_effect_as_3d(tfx_effect_descriptor_t *effect, bool flag) {
 	if (flag) {
 		effect->property_flags |= tfxEmitterPropertyFlags_effect_is_3d;
 	}
@@ -2317,23 +2317,23 @@ void tfx__flag_effect_as_3d(tfx_effect_emitter_t *effect, bool flag) {
 }
 
 void tfx__flag_effects_as_3d(tfx_library library) {
-	for (tfx_effect_emitter_t &effect : library->effects) {
+	for (tfx_effect_descriptor_t &effect : library->effects) {
 		if (effect.type == tfxEffectType) {
 			tfx__flag_effect_as_3d(&effect, tfx__is_3d_effect(&effect));
 		}
 		else {
-			for (tfx_effect_emitter_t &sub : tfx_GetEffectInfo(&effect)->sub_effectors) {
+			for (tfx_effect_descriptor_t &sub : tfx_GetEffectInfo(&effect)->sub_effectors) {
 				tfx__flag_effect_as_3d(&effect, tfx__is_3d_effect(&sub));
 			}
 		}
 	}
 }
 
-bool tfx__is_3d_effect(tfx_effect_emitter_t *effect) {
+bool tfx__is_3d_effect(tfx_effect_descriptor_t *effect) {
 	return effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d;
 }
 
-bool tfx__is_ordered_effect(tfx_effect_emitter_t *effect) {
+bool tfx__is_ordered_effect(tfx_effect_descriptor_t *effect) {
 	tfxEffectPropertyFlags ordered_flags = tfxEffectPropertyFlags_age_order | tfxEffectPropertyFlags_depth_draw_order;
 	return (effect->effect_flags & ordered_flags) > 0;
 }
@@ -2343,7 +2343,7 @@ bool tfx__is_ordered_effect_state(tfx_effect_state_t *effect) {
 	return (effect->effect_flags & ordered_flags) > 0;
 }
 
-tfx_particle_manager_mode tfx__get_required_particle_manager_mode(tfx_effect_emitter_t *effect) {
+tfx_particle_manager_mode tfx__get_required_particle_manager_mode(tfx_effect_descriptor_t *effect) {
 	if (effect->type == tfxEffectType) {
 		if (effect->effect_flags & tfxEffectPropertyFlags_guaranteed_order && effect->effect_flags & tfxEffectPropertyFlags_depth_draw_order) {
 			return tfxParticleManagerMode_ordered_by_depth_guaranteed;
@@ -2373,15 +2373,15 @@ tfx_particle_manager_mode tfx__get_required_particle_manager_mode(tfx_effect_emi
 	return tfxParticleManagerMode_unordered;
 }
 
-tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_emitter_t *effect) {
+tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_descriptor_t *effect) {
 	return &effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings];
 }
 
-float tfx__get_effect_loop_length(tfx_effect_emitter_t *effect) {
+float tfx__get_effect_loop_length(tfx_effect_descriptor_t *effect) {
 	return tfx__get_effect_properties(effect)->loop_length;
 }
 
-float tfx__get_effect_highest_loop_length(tfx_effect_emitter_t *effect) {
+float tfx__get_effect_highest_loop_length(tfx_effect_descriptor_t *effect) {
 	float loop_length = tfx__get_effect_loop_length(effect);
 	for (auto &sub : tfx_GetEffectInfo(effect)->sub_effectors) {
 		loop_length = tfxMax(tfx__get_effect_highest_loop_length(&sub), loop_length);
@@ -2389,9 +2389,9 @@ float tfx__get_effect_highest_loop_length(tfx_effect_emitter_t *effect) {
 	return loop_length;
 }
 
-tfx_effect_emitter_t *tfx__add_emitter_to_effect(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *emitter) {
+tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *emitter) {
 	TFX_ASSERT(tfx_GetEffectInfo(emitter)->name.Length());                //Emitter must have a name so that a hash can be generated
-	emitter->type = tfx_effect_emitter_type::tfxEmitterType;
+	emitter->type = tfx_effect_descriptor_type::tfxEmitterType;
 	emitter->library = effect->library;
 	emitter->parent = effect;
 	tfx_GetEffectInfo(emitter)->uid = ++effect->library->uid;
@@ -2401,9 +2401,9 @@ tfx_effect_emitter_t *tfx__add_emitter_to_effect(tfx_effect_emitter_t *effect, t
 	return &tfx_GetEffectInfo(effect)->sub_effectors.back();
 }
 
-tfx_effect_emitter_t *tfx__add_effect_to_emitter(tfx_effect_emitter_t *emitter, tfx_effect_emitter_t *effect) {
+tfx_effect_descriptor_t *tfx__add_effect_to_emitter(tfx_effect_descriptor_t *emitter, tfx_effect_descriptor_t *effect) {
 	TFX_ASSERT(tfx_GetEffectInfo(effect)->name.Length());                //Effect must have a name so that a hash can be generated
-	effect->type = tfx_effect_emitter_type::tfxEffectType;
+	effect->type = tfx_effect_descriptor_type::tfxEffectType;
 	effect->library = emitter->library;
 	effect->parent = emitter;
 	tfx_GetEffectInfo(effect)->uid = ++emitter->library->uid;
@@ -2413,11 +2413,11 @@ tfx_effect_emitter_t *tfx__add_effect_to_emitter(tfx_effect_emitter_t *emitter, 
 	return &tfx_GetEffectInfo(emitter)->sub_effectors.back();
 }
 
-tfx_effect_emitter_t *tfx__add_effect(tfx_effect_emitter_t *e) {
-	tfx_effect_emitter_t new_effect;
+tfx_effect_descriptor_t *tfx__add_effect(tfx_effect_descriptor_t *e) {
+	tfx_effect_descriptor_t new_effect;
 	new_effect.library = e->library;
 	tfx_GetEffectInfo(&new_effect)->uid = ++e->library->uid;
-	new_effect.type = tfx_effect_emitter_type::tfxEffectType;
+	new_effect.type = tfx_effect_descriptor_type::tfxEffectType;
 	tfx_GetEffectInfo(&new_effect)->name.Set("New Effect");
 	tfx_GetEffectInfo(e)->sub_effectors.push_back(new_effect);
 	tfx__update_library_effect_paths(e->library);
@@ -2425,15 +2425,15 @@ tfx_effect_emitter_t *tfx__add_effect(tfx_effect_emitter_t *e) {
 	return &tfx_GetEffectInfo(e)->sub_effectors.back();
 }
 
-tfxU32 tfx__count_all_effects(tfx_effect_emitter_t *effect, tfxU32 amount) {
+tfxU32 tfx__count_all_effects(tfx_effect_descriptor_t *effect, tfxU32 amount) {
 	for (auto &sub : tfx_GetEffectInfo(effect)->sub_effectors) {
 		amount = tfx__count_all_effects(&sub, amount);
 	}
 	return ++amount;
 }
 
-int tfx__get_effect_depth(tfx_effect_emitter_t *e) {
-	tfx_effect_emitter_t *current_parent = e->parent;
+int tfx__get_effect_depth(tfx_effect_descriptor_t *e) {
+	tfx_effect_descriptor_t *current_parent = e->parent;
 	int depth = 0;
 	while (current_parent) {
 		if (current_parent->type == tfxEmitterType) {
@@ -2857,7 +2857,7 @@ tfx_quaternion_t tfx__get_path_rotation_3d(tfx_random_t *random, float range, fl
 	}
 }
 
-void tfx__reset_effect_graphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+void tfx__reset_effect_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 global = effect->global;
 	tfx__reset_graph(&library->global_graphs[global].life, 1.f, tfxGlobalPercentPreset, add_node); library->global_graphs[global].life.type = tfxGlobal_life;
@@ -2882,7 +2882,7 @@ void tfx__reset_effect_graphs(tfx_effect_emitter_t *effect, bool add_node, bool 
 	}
 }
 
-void tfx__reset_transform_graphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+void tfx__reset_transform_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 transform_attributes = effect->transform_attributes;
 	tfx__reset_graph(&library->transform_attributes[transform_attributes].roll, 0.f, tfxAnglePreset, add_node); library->transform_attributes[transform_attributes].roll.type = tfxTransform_roll;
@@ -2896,7 +2896,7 @@ void tfx__reset_transform_graphs(tfx_effect_emitter_t *effect, bool add_node, bo
 	}
 }
 
-void tfx__reset_emitter_base_graphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+void tfx__reset_emitter_base_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 emitter_attributes = effect->emitter_attributes;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].base.life, 1000.f, tfxLifePreset, add_node); library->emitter_attributes[emitter_attributes].base.life.type = tfxBase_life;
@@ -2914,7 +2914,7 @@ void tfx__reset_emitter_base_graphs(tfx_effect_emitter_t *effect, bool add_node,
 	}
 }
 
-void tfx__emitter_property_graphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+void tfx__emitter_property_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 emitter_attributes = effect->emitter_attributes;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.emission_pitch, 0.f, tfxAnglePreset, add_node); library->emitter_attributes[emitter_attributes].properties.emission_pitch.type = tfxProperty_emission_pitch;
@@ -2932,7 +2932,7 @@ void tfx__emitter_property_graphs(tfx_effect_emitter_t *effect, bool add_node, b
 	}
 }
 
-void tfx__reset_emitter_variation_graphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+void tfx__reset_emitter_variation_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 emitter_attributes = effect->emitter_attributes;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].variation.life, 0.f, tfxLifePreset, add_node); library->emitter_attributes[emitter_attributes].variation.life.type = tfxVariation_life;
@@ -2952,7 +2952,7 @@ void tfx__reset_emitter_variation_graphs(tfx_effect_emitter_t *effect, bool add_
 	}
 }
 
-void tfx__reset_emitter_overtime_graphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+void tfx__reset_emitter_overtime_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 emitter_attributes = effect->emitter_attributes;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.velocity, 1.f, tfxVelocityOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.velocity.type = tfxOvertime_velocity;
@@ -2987,7 +2987,7 @@ void tfx__reset_emitter_overtime_graphs(tfx_effect_emitter_t *effect, bool add_n
 	}
 }
 
-void tfx__reset_emitter_factor_graphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+void tfx__reset_emitter_factor_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 emitter_attributes = effect->emitter_attributes;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.life, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].factor.life.type = tfxFactor_life;
@@ -2999,7 +2999,7 @@ void tfx__reset_emitter_factor_graphs(tfx_effect_emitter_t *effect, bool add_nod
 	}
 }
 
-void tfx__reset_emitter_graphs(tfx_effect_emitter_t *effect, bool add_node, bool compile) {
+void tfx__reset_emitter_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx__reset_emitter_base_graphs(effect, add_node, compile);
 	tfx__emitter_property_graphs(effect, add_node, compile);
 	tfx__reset_emitter_variation_graphs(effect, add_node, compile);
@@ -3008,7 +3008,7 @@ void tfx__reset_emitter_graphs(tfx_effect_emitter_t *effect, bool add_node, bool
 	tfx__reset_emitter_factor_graphs(effect, add_node, compile);
 }
 
-void tfx__initialise_unitialised_graphs(tfx_effect_emitter_t *effect) {
+void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 	tfx_library library = effect->library;
 	tfxU32 transform_attributes = effect->transform_attributes;
 	if (library->transform_attributes[transform_attributes].translation_x.nodes.size() == 0) tfx__reset_graph(&library->transform_attributes[transform_attributes].translation_x, 0.f, tfxTranslationPreset);
@@ -3110,35 +3110,35 @@ void tfx__initialise_unitialised_graphs(tfx_effect_emitter_t *effect) {
 	}
 }
 
-void tfx__set_effect_name(tfx_effect_emitter_t *effect, const char *n) {
+void tfx__set_effect_name(tfx_effect_descriptor_t *effect, const char *n) {
 	tfx_GetEffectInfo(effect)->name.Set(n);
 }
 
-void tfx__add_emitter_color_overtime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color) {
+void tfx__add_emitter_color_overtime(tfx_effect_descriptor_t *effect, float frame, tfx_rgb_t color) {
 	tfx__add_graph_node_values(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.red, frame, color.r);
 	tfx__add_graph_node_values(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.green, frame, color.g);
 	tfx__add_graph_node_values(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blue, frame, color.b);
 }
 
-void tfx__add_emitter_color_hint_overtime(tfx_effect_emitter_t *effect, float frame, tfx_rgb_t color) {
+void tfx__add_emitter_color_hint_overtime(tfx_effect_descriptor_t *effect, float frame, tfx_rgb_t color) {
 	tfx__add_graph_node_values(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.red_hint, frame, color.r);
 	tfx__add_graph_node_values(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.green_hint, frame, color.g);
 	tfx__add_graph_node_values(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.blue_hint, frame, color.b);
 }
 
-void tfx__set_effect_user_data(tfx_effect_emitter_t *effect, void *data) {
+void tfx__set_effect_user_data(tfx_effect_descriptor_t *effect, void *data) {
 	effect->user_data = data;
 }
 
-void *tfx__get_effect_user_data(tfx_effect_emitter_t *effect) {
+void *tfx__get_effect_user_data(tfx_effect_descriptor_t *effect) {
 	return effect->user_data;
 }
 
-tfx_emitter_properties_t *tfx__get_effect_properties(tfx_effect_emitter_t *effect) {
+tfx_emitter_properties_t *tfx__get_effect_properties(tfx_effect_descriptor_t *effect) {
 	return &effect->library->emitter_properties[effect->property_index];
 }
 
-bool tfx__rename_sub_effector(tfx_effect_emitter_t *emitter, const char *new_name) {
+bool tfx__rename_sub_effector(tfx_effect_descriptor_t *emitter, const char *new_name) {
 	TFX_ASSERT(emitter->parent);    //Must be an emitter or sub effect with a parent
 	if (!tfx__effect_name_exists(emitter->parent, emitter, new_name) && strlen(new_name) > 0) {
 		tfx__set_effect_name(emitter, new_name);
@@ -3149,7 +3149,7 @@ bool tfx__rename_sub_effector(tfx_effect_emitter_t *emitter, const char *new_nam
 	return false;
 }
 
-bool tfx__effect_name_exists(tfx_effect_emitter_t *in_effect, tfx_effect_emitter_t *excluding_effect, const char *name) {
+bool tfx__effect_name_exists(tfx_effect_descriptor_t *in_effect, tfx_effect_descriptor_t *excluding_effect, const char *name) {
 	for (auto &e : tfx_GetEffectInfo(in_effect)->sub_effectors) {
 		if (excluding_effect != &e) {
 			if (tfx_GetEffectInfo(&e)->name == name) {
@@ -3161,7 +3161,7 @@ bool tfx__effect_name_exists(tfx_effect_emitter_t *in_effect, tfx_effect_emitter
 	return false;
 }
 
-void tfx__reindex_effect(tfx_effect_emitter_t *effect) {
+void tfx__reindex_effect(tfx_effect_descriptor_t *effect) {
 	tfxU32 index = 0;
 	for (auto &e : tfx_GetEffectInfo(effect)->sub_effectors) {
 		e.library_index = index++;
@@ -3170,11 +3170,11 @@ void tfx__reindex_effect(tfx_effect_emitter_t *effect) {
 	}
 }
 
-tfx_effect_emitter_t *tfx__get_root_effect(tfx_effect_emitter_t *effect) {
+tfx_effect_descriptor_t *tfx__get_root_effect(tfx_effect_descriptor_t *effect) {
 	if (!effect->parent || effect->parent->type == tfxFolder) {
 		return effect;
 	}
-	tfx_effect_emitter_t *p = effect->parent;
+	tfx_effect_descriptor_t *p = effect->parent;
 	tfxU32 timeout = 0;
 	while (p || ++timeout < 100) {
 		if (!p->parent)
@@ -3184,22 +3184,22 @@ tfx_effect_emitter_t *tfx__get_root_effect(tfx_effect_emitter_t *effect) {
 	return nullptr;
 }
 
-bool tfx__is_root_effect(tfx_effect_emitter_t *effect) {
+bool tfx__is_root_effect(tfx_effect_descriptor_t *effect) {
 	if (effect->type != tfxEffectType) return false;
 	if (effect->type == tfxEffectType && !effect->parent) return true;
 	if (effect->parent && effect->parent->type == tfxFolder) return true;
 	return false;
 }
 
-void tfx__reset_effect_parents(tfx_effect_emitter_t *effect) {
+void tfx__reset_effect_parents(tfx_effect_descriptor_t *effect) {
 	effect->parent = nullptr;
 	for (auto &e : tfx_GetEffectInfo(effect)->sub_effectors) {
 		tfx__reset_effect_parents(effect);
 	}
 }
 
-void tfx__swap_effects(tfx_effect_emitter_t *left, tfx_effect_emitter_t *right) {
-	tfx_effect_emitter_t temp = *right;
+void tfx__swap_effects(tfx_effect_descriptor_t *left, tfx_effect_descriptor_t *right) {
+	tfx_effect_descriptor_t temp = *right;
 	*right = *left;
 	*left = temp;
 }
@@ -3210,8 +3210,8 @@ void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right) {
 	*left = temp;
 }
 
-tfx_effect_emitter_t *tfx__move_effect_up(tfx_effect_emitter_t *emitter) {
-	tfx_effect_emitter_t *parent = emitter->parent;
+tfx_effect_descriptor_t *tfx__move_effect_up(tfx_effect_descriptor_t *emitter) {
+	tfx_effect_descriptor_t *parent = emitter->parent;
 	if (emitter->library_index > 0) {
 		tfxU32 new_index = emitter->library_index - 1;
 		tfx__swap_effects(&tfx_GetEffectInfo(parent)->sub_effectors[emitter->library_index], &tfx_GetEffectInfo(parent)->sub_effectors[new_index]);
@@ -3223,8 +3223,8 @@ tfx_effect_emitter_t *tfx__move_effect_up(tfx_effect_emitter_t *emitter) {
 	return nullptr;
 }
 
-tfx_effect_emitter_t *tfx__move_effect_down(tfx_effect_emitter_t *emitter) {
-	tfx_effect_emitter_t *parent = emitter->parent;
+tfx_effect_descriptor_t *tfx__move_effect_down(tfx_effect_descriptor_t *emitter) {
+	tfx_effect_descriptor_t *parent = emitter->parent;
 	if (emitter->library_index < tfx_GetEffectInfo(parent)->sub_effectors.size() - 1) {
 		tfxU32 new_index = emitter->library_index + 1;
 		tfx__swap_effects(&tfx_GetEffectInfo(parent)->sub_effectors[emitter->library_index], &tfx_GetEffectInfo(parent)->sub_effectors[new_index]);
@@ -3235,13 +3235,13 @@ tfx_effect_emitter_t *tfx__move_effect_down(tfx_effect_emitter_t *emitter) {
 	return nullptr;
 }
 
-void tfx__delete_emitter_from_effect(tfx_effect_emitter_t *emitter) {
-	tfx_effect_emitter_t *parent = emitter->parent;
+void tfx__delete_emitter_from_effect(tfx_effect_descriptor_t *emitter) {
+	tfx_effect_descriptor_t *parent = emitter->parent;
 	tfx_library library = emitter->library;
-	tmpStack(tfx_effect_emitter_t, stack);
+	tmpStack(tfx_effect_descriptor_t, stack);
 	stack.push_back(*emitter);
 	while (stack.size()) {
-		tfx_effect_emitter_t &current = stack.pop_back();
+		tfx_effect_descriptor_t &current = stack.pop_back();
 		if (current.type == tfxEffectType && !current.parent) {
 			tfx__free_library_global(library, current.global);
 			tfx__free_library_key_frames(library, current.transform_attributes);
@@ -3262,12 +3262,12 @@ void tfx__delete_emitter_from_effect(tfx_effect_emitter_t *emitter) {
 	stack.free();
 }
 
-void tfx__clean_up_effect(tfx_effect_emitter_t *effect) {
+void tfx__clean_up_effect(tfx_effect_descriptor_t *effect) {
 	if (tfx_GetEffectInfo(effect)->sub_effectors.size()) {
-		tmpStack(tfx_effect_emitter_t, stack);
+		tmpStack(tfx_effect_descriptor_t, stack);
 		stack.push_back(*effect);
 		while (stack.size()) {
-			tfx_effect_emitter_t current = stack.pop_back();
+			tfx_effect_descriptor_t current = stack.pop_back();
 			if (current.type == tfxEffectType && !current.parent) {
 				tfx__free_library_global(effect->library, current.global);
 				tfx__free_library_key_frames(effect->library, current.transform_attributes);
@@ -3289,7 +3289,7 @@ void tfx__clean_up_effect(tfx_effect_emitter_t *effect) {
 	tfx__reindex_effect(effect);
 }
 
-void tfx__clone_effect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter_t *clone, tfx_effect_emitter_t *root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
+void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_descriptor_t *clone, tfx_effect_descriptor_t *root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
 	*clone = *effect_to_clone;
 	clone->info_index = tfx__clone_library_info(clone->library, effect_to_clone->info_index, destination_library);
 	if (clone->type != tfxFolder) {
@@ -3357,14 +3357,14 @@ void tfx__clone_effect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter
 
 	for (auto &e : tfx_GetEffectInfo(effect_to_clone)->sub_effectors) {
 		if (e.type == tfxEmitterType) {
-			tfx_effect_emitter_t emitter_copy;
+			tfx_effect_descriptor_t emitter_copy;
 			tfx__clone_effect(&e, &emitter_copy, root_parent, destination_library, flags);
 			if (!(flags & tfxEffectCloningFlags_keep_user_data))
 				emitter_copy.user_data = nullptr;
 			tfx__add_emitter_to_effect(clone, &emitter_copy);
 		}
 		else if (e.type == tfxEffectType) {
-			tfx_effect_emitter_t effect_copy;
+			tfx_effect_descriptor_t effect_copy;
 			if (clone->type == tfxFolder)
 				tfx__clone_effect(&e, &effect_copy, &effect_copy, destination_library, flags);
 			else
@@ -3377,7 +3377,7 @@ void tfx__clone_effect(tfx_effect_emitter_t *effect_to_clone, tfx_effect_emitter
 	}
 }
 
-void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_emitter_t *effect_emitter, const char *path) {
+void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_descriptor_t *effect_emitter, const char *path) {
 	effect_template->paths.Insert(path, effect_emitter);
 	for (auto &sub : tfx_GetEffectInfo(effect_emitter)->sub_effectors) {
 		tfx_str512_t sub_path;
@@ -3408,25 +3408,25 @@ void tfx_FreeEffectTemplate(tfx_effect_template effect_template) {
 	tfxFREE(effect_template);
 }
 
-void tfx__enable_all_emitters(tfx_effect_emitter_t *effect) {
+void tfx__enable_all_emitters(tfx_effect_descriptor_t *effect) {
 	for (auto &e : tfx_GetEffectInfo(effect)->sub_effectors) {
 		e.property_flags |= tfxEmitterPropertyFlags_enabled;
 		tfx__enable_all_emitters(&e);
 	}
 }
 
-void tfx__enable_emitter(tfx_effect_emitter_t *effect) {
+void tfx__enable_emitter(tfx_effect_descriptor_t *effect) {
 	effect->property_flags |= tfxEmitterPropertyFlags_enabled;
 }
 
-void tfx__disable_all_emitters(tfx_effect_emitter_t *effect) {
+void tfx__disable_all_emitters(tfx_effect_descriptor_t *effect) {
 	for (auto &e : tfx_GetEffectInfo(effect)->sub_effectors) {
 		e.property_flags &= ~tfxEmitterPropertyFlags_enabled;
 		tfx__disable_all_emitters(&e);
 	}
 }
 
-void tfx__disable_all_emitters_except(tfx_effect_emitter_t *effect, tfx_effect_emitter_t *emitter) {
+void tfx__disable_all_emitters_except(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *emitter) {
 	for (auto &e : tfx_GetEffectInfo(effect)->sub_effectors) {
 		if (e.library_index == emitter->library_index)
 			e.property_flags |= tfxEmitterPropertyFlags_enabled;
@@ -3435,13 +3435,13 @@ void tfx__disable_all_emitters_except(tfx_effect_emitter_t *effect, tfx_effect_e
 	}
 }
 
-tfx_emitter_attributes_t *tfx__get_emitter_attributes(tfx_effect_emitter_t *emitter) {
+tfx_emitter_attributes_t *tfx__get_emitter_attributes(tfx_effect_descriptor_t *emitter) {
 	TFX_ASSERT(emitter->type == tfxEmitterType);            //Must be an emitter
 	TFX_ASSERT(emitter->emitter_attributes != tfxINVALID);    //Must be a valid emitter_attributes index into the library;
 	return &emitter->library->emitter_attributes[emitter->emitter_attributes];
 }
 
-tfx_graph_t *tfx__get_effect_graph_by_type(tfx_effect_emitter_t *effect, tfx_graph_type type) {
+tfx_graph_t *tfx__get_effect_graph_by_type(tfx_effect_descriptor_t *effect, tfx_graph_type type) {
 	tfx_library library = effect->library;
 
 	if (type < TFX_GLOBAL_COUNT) {
@@ -3476,7 +3476,7 @@ tfx_graph_t *tfx__get_effect_graph_by_type(tfx_effect_emitter_t *effect, tfx_gra
 
 }
 
-tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_emitter_t *effect, tfx_graph_type type) {
+tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_descriptor_t *effect, tfx_graph_type type) {
 
 	if (type < TFX_GLOBAL_COUNT) {
 		return effect->global;
@@ -3490,7 +3490,7 @@ tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_emitter_t *effect, tfx_gra
 
 }
 
-void tfx__free_effect_graphs(tfx_effect_emitter_t *effect) {
+void tfx__free_effect_graphs(tfx_effect_descriptor_t *effect) {
 
 	tfx_library library = effect->library;
 
@@ -3505,7 +3505,7 @@ void tfx__free_effect_graphs(tfx_effect_emitter_t *effect) {
 	}
 }
 
-tfxU32 tfx__count_all_effect_lookup_values(tfx_effect_emitter_t *effect) {
+tfxU32 tfx__count_all_effect_lookup_values(tfx_effect_descriptor_t *effect) {
 	tfxU32 count = 0;
 	if (effect->type == tfxEffectType) {
 		count += tfx__count_library_global_lookup_values(effect->library, effect->global);
@@ -3684,7 +3684,7 @@ void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_
 	tfx__copy_path_graphs(src, path);
 }
 
-tfxU32 tfx__create_emitter_path_attributes(tfx_effect_emitter_t *emitter, bool add_node) {
+tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor_t *emitter, bool add_node) {
 	if (emitter->path_attributes == tfxINVALID) {
 		emitter->path_attributes = emitter->library->paths.size();
 		tfx_emitter_path_t &path = emitter->library->paths.push_back({});
@@ -4715,12 +4715,12 @@ void tfx__free_emitter_attributes(tfx_emitter_attributes_t *attributes) {
 	tfx__free_factor_attributes(&attributes->factor);
 }
 
-tfx_effect_emitter_info_t *tfx_GetEffectInfo(tfx_effect_emitter_t *e) {
+tfx_effect_emitter_info_t *tfx_GetEffectInfo(tfx_effect_descriptor_t *e) {
 	TFX_ASSERT(e->library->effect_infos.size() > e->info_index);
 	return &e->library->effect_infos[e->info_index];
 }
 
-bool tfx__rename_library_effect(tfx_library library, tfx_effect_emitter_t *effect, const char *new_name) {
+bool tfx__rename_library_effect(tfx_library library, tfx_effect_descriptor_t *effect, const char *new_name) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	if (!tfx__library_name_exists(library, effect, new_name) && strlen(new_name) > 0) {
 		tfx__set_effect_name(effect, new_name);
@@ -4731,7 +4731,7 @@ bool tfx__rename_library_effect(tfx_library library, tfx_effect_emitter_t *effec
 	return false;
 }
 
-bool tfx__library_name_exists(tfx_library library, tfx_effect_emitter_t *effect, const char *name) {
+bool tfx__library_name_exists(tfx_library library, tfx_effect_descriptor_t *effect, const char *name) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	for (auto &e : library->effects) {
 		if (effect->library_index != e.library_index) {
@@ -4786,7 +4786,7 @@ tfx_image_data_t tfx_GetLibraryImage(tfx_library library, tfxU32 index) {
 	return library->particle_shapes.data[index];
 }
 
-void tfx__add_library_path(tfx_library library, tfx_effect_emitter_t *effect_emitter, const char *path, bool skip_existing) {
+void tfx__add_library_path(tfx_library library, tfx_effect_descriptor_t *effect_emitter, const char *path, bool skip_existing) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	if (library->effect_paths.ValidName(path) && !skip_existing) {
 		tfx_str256_t new_path = tfx__find_new_path_name(library, path);
@@ -4806,19 +4806,19 @@ void tfx__add_library_path(tfx_library library, tfx_effect_emitter_t *effect_emi
 	}
 }
 
-tfx_effect_emitter_t *tfx__insert_library_effect(tfx_library library, tfx_effect_emitter_t *effect, tfx_effect_emitter_t *position) {
+tfx_effect_descriptor_t *tfx__insert_library_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *position) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	effect->library_index = library->effects.current_size;
 	effect->type = tfxEffectType;
 	tfx_GetEffectInfo(effect)->uid = ++library->uid;
 	effect->library = library;
-	tfx_effect_emitter_t *inserted_effect = library->effects.insert_after(position, *effect);
+	tfx_effect_descriptor_t *inserted_effect = library->effects.insert_after(position, *effect);
 	tfx__reindex_library(library);
 	tfx__update_library_effect_paths(library);
 	return inserted_effect;
 }
 
-tfx_effect_emitter_t *tfx__add_library_effect(tfx_library library, tfx_effect_emitter_t *effect) {
+tfx_effect_descriptor_t *tfx__add_library_effect(tfx_library library, tfx_effect_descriptor_t *effect) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	effect->library_index = library->effects.current_size;
 	effect->type = tfxEffectType;
@@ -4830,9 +4830,9 @@ tfx_effect_emitter_t *tfx__add_library_effect(tfx_library library, tfx_effect_em
 	return &library->effects.back();
 }
 
-tfx_effect_emitter_t *tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name) {
+tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
-	tfx_effect_emitter_t folder = tfx_NewEffect();
+	tfx_effect_descriptor_t folder = tfx_NewEffect();
 	folder.info_index = tfx__allocate_library_effect_emitter_info(library);
 	folder.library = library;
 	tfx_GetEffectInfo(&folder)->name = *name;
@@ -4845,9 +4845,9 @@ tfx_effect_emitter_t *tfx__add_new_library_effect(tfx_library library, tfx_str64
 	return &library->effects.back();
 }
 
-tfx_effect_emitter_t *tfx__add_library_stage(tfx_library library, tfx_str64_t *name) {
+tfx_effect_descriptor_t *tfx__add_library_stage(tfx_library library, tfx_str64_t *name) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
-	tfx_effect_emitter_t stage = tfx_NewEffect();
+	tfx_effect_descriptor_t stage = tfx_NewEffect();
 	stage.info_index = tfx__allocate_library_effect_emitter_info(library);
 	stage.library = library;
 	tfx_GetEffectInfo(&stage)->name = *name;
@@ -4859,12 +4859,12 @@ tfx_effect_emitter_t *tfx__add_library_stage(tfx_library library, tfx_str64_t *n
 	return &library->effects.back();
 }
 
-tfx_effect_emitter_t *tfx_GetEffectByIndex(tfx_library library, int index) {
+tfx_effect_descriptor_t *tfx_GetEffectByIndex(tfx_library library, int index) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	return &library->effects[index];
 }
 
-tfx_effect_emitter_t *tfx_GetLibraryEffectPath(tfx_library library, const char *path) {
+tfx_effect_descriptor_t *tfx_GetLibraryEffectPath(tfx_library library, const char *path) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	TFX_ASSERT(library->effect_paths.ValidName(path));        //Effect was not found by that name
 	return library->effect_paths.At(path);
@@ -4880,7 +4880,7 @@ bool tfx__is_valid_effect_key(tfx_library library, tfxKey key) {
 	return library->effect_paths.ValidKey(key);
 }
 
-tfx_effect_emitter_t *tfx__get_library_effect_by_key(tfx_library library, tfxKey key) {
+tfx_effect_descriptor_t *tfx__get_library_effect_by_key(tfx_library library, tfxKey key) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	TFX_ASSERT(library->effect_paths.ValidKey(key));            //Effect was not found by that key
 	return library->effect_paths.At(key);
@@ -4888,7 +4888,7 @@ tfx_effect_emitter_t *tfx__get_library_effect_by_key(tfx_library library, tfxKey
 
 void tfx__prepare_library_effect_template_path(tfx_library library, const char *path, tfx_effect_template effect_template) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
-	tfx_effect_emitter_t *effect = tfx_GetLibraryEffectPath(library, path);
+	tfx_effect_descriptor_t *effect = tfx_GetLibraryEffectPath(library, path);
 	TFX_ASSERT(effect);                                //Effect was not found, make sure the path exists
 	TFX_ASSERT(effect->type == tfxEffectType);         //The effect must be an effect type, not an emitter
 	effect_template->original_effect_hash = effect->path_hash;
@@ -4908,12 +4908,12 @@ void tfx__reindex_library(tfx_library library) {
 
 void tfx__update_library_particle_shape_references(tfx_library library, tfxKey default_hash) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
-	tfx_vector_t<tfx_effect_emitter_t *> stack;
+	tfx_vector_t<tfx_effect_descriptor_t *> stack;
 	for (auto &effect : library->effects) {
 		stack.push_back(&effect);
 	}
 	while (stack.size()) {
-		tfx_effect_emitter_t &current = *stack.pop_back();
+		tfx_effect_descriptor_t &current = *stack.pop_back();
 		if (current.type == tfxEmitterType) {
 			bool shape_found = false;
 			tfxKey hash = library->emitter_properties[current.property_index].image_hash;
@@ -4956,7 +4956,7 @@ void tfx__update_library_particle_shape_references(tfx_library library, tfxKey d
 	stack.free();
 }
 
-tfx_effect_emitter_t *tfx__library_move_up(tfx_library library, tfx_effect_emitter_t *effect) {
+tfx_effect_descriptor_t *tfx__library_move_up(tfx_library library, tfx_effect_descriptor_t *effect) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	if (effect->library_index > 0) {
 		tfxU32 new_index = effect->library_index - 1;
@@ -4968,7 +4968,7 @@ tfx_effect_emitter_t *tfx__library_move_up(tfx_library library, tfx_effect_emitt
 	return nullptr;
 }
 
-tfx_effect_emitter_t *tfx__library_move_down(tfx_library library, tfx_effect_emitter_t *effect) {
+tfx_effect_descriptor_t *tfx__library_move_down(tfx_library library, tfx_effect_descriptor_t *effect) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	if (effect->library_index < library->effects.size() - 1) {
 		tfxU32 new_index = effect->library_index + 1;
@@ -5056,7 +5056,7 @@ tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library library) {
 }
 
 bool tfx__is_library_shape_used(tfx_library library, tfxKey image_hash) {
-	tmpStack(tfx_effect_emitter_t *, effect_stack);
+	tmpStack(tfx_effect_descriptor_t *, effect_stack);
 	for (auto &effect : library->effects) {
 		effect_stack.push_back(&effect);
 	}
@@ -5281,23 +5281,23 @@ tfxU32 tfx__clone_library_properties(tfx_library library, tfx_emitter_properties
 	return dst_index;
 }
 
-void tfx__add_library_emitter_graphs(tfx_library library, tfx_effect_emitter_t *emitter) {
+void tfx__add_library_emitter_graphs(tfx_library library, tfx_effect_descriptor_t *emitter) {
 	emitter->emitter_attributes = tfx__add_library_emitter_attributes(library);
 }
 
-void tfx__add_library_transform_graphs(tfx_library library, tfx_effect_emitter_t *emitter) {
+void tfx__add_library_transform_graphs(tfx_library library, tfx_effect_descriptor_t *emitter) {
 	emitter->transform_attributes = tfx__allocate_library_key_frames(library);
 }
 
-void tfx__add_library_effect_graphs(tfx_library library, tfx_effect_emitter_t *effect) {
-	tfx_effect_emitter_t *root_effect = tfx__get_root_effect(effect);
+void tfx__add_library_effect_graphs(tfx_library library, tfx_effect_descriptor_t *effect) {
+	tfx_effect_descriptor_t *root_effect = tfx__get_root_effect(effect);
 	if (root_effect == effect)
 		effect->global = tfx__add_library_global(library);
 	else
 		effect->global = root_effect->global;
 }
 
-tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library library, tfx_effect_emitter_t *effect) {
+tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library library, tfx_effect_descriptor_t *effect) {
 	TFX_ASSERT(effect->type == tfxEffectType);
 	tfx_sprite_sheet_settings_t a{};
 	a.frames = 32;
@@ -5335,7 +5335,7 @@ tfxU32 tfx__add_library_sprite_sheet_settings(tfx_library library, tfx_effect_em
 	return tfx_GetEffectInfo(effect)->sprite_sheet_settings_index;
 }
 
-void tfx__add_library_sprite_sheet_settings_sub(tfx_library library, tfx_effect_emitter_t *effect) {
+void tfx__add_library_sprite_sheet_settings_sub(tfx_library library, tfx_effect_descriptor_t *effect) {
 	if (effect->type == tfxEffectType) {
 		tfx_sprite_sheet_settings_t a{};
 		a.frames = 32;
@@ -5381,7 +5381,7 @@ void tfx__add_library_sprite_sheet_settings_sub(tfx_library library, tfx_effect_
 	}
 }
 
-tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_emitter_t *effect) {
+tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_descriptor_t *effect) {
 	TFX_ASSERT(effect->type == tfxEffectType);
 	tfx_sprite_data_settings_t a{};
 	a.real_frames = 32;
@@ -5407,7 +5407,7 @@ tfxU32 tfx__add_library_sprite_data_settings(tfx_library library, tfx_effect_emi
 	return tfx_GetEffectInfo(effect)->sprite_data_settings_index;
 }
 
-void tfx__add_library_sprite_data_settings_sub(tfx_library library, tfx_effect_emitter_t *effect) {
+void tfx__add_library_sprite_data_settings_sub(tfx_library library, tfx_effect_descriptor_t *effect) {
 	if (effect->type == tfxEffectType) {
 		tfx_sprite_data_settings_t a{};
 		a.real_frames = 32;
@@ -5433,7 +5433,7 @@ void tfx__add_library_sprite_data_settings_sub(tfx_library library, tfx_effect_e
 	}
 }
 
-tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_effect_emitter_t *effect) {
+tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_effect_descriptor_t *effect) {
 	TFX_ASSERT(effect->type == tfxEffectType || effect->type == tfxStage);
 	tfx_preview_camera_settings_t a{};
 	a.camera_settings.camera_floor_height = -10.f;
@@ -5452,7 +5452,7 @@ tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_
 	return tfx_GetEffectInfo(effect)->preview_camera_settings;
 }
 
-void tfx__add_library_preview_camera_settings_sub_effects(tfx_library library, tfx_effect_emitter_t *effect) {
+void tfx__add_library_preview_camera_settings_sub_effects(tfx_library library, tfx_effect_descriptor_t *effect) {
 	if (effect->type == tfxEffectType) {
 		tfx_preview_camera_settings_t a{};
 		a.camera_settings.camera_floor_height = -10.f;
@@ -5660,7 +5660,7 @@ void tfx_FreeLibrary(tfx_library library) {
 void tfx__update_library_compute_nodes(tfx_library library) {
 	tfxU32 running_node_index = 0;
 	tfxU32 running_value_index = 0;
-	tmpStack(tfx_effect_emitter_t *, stack);
+	tmpStack(tfx_effect_descriptor_t *, stack);
 	library->all_nodes.clear();
 	library->node_lookup_indexes.clear();
 	library->compiled_lookup_values.clear();
@@ -5668,7 +5668,7 @@ void tfx__update_library_compute_nodes(tfx_library library) {
 	for (auto &effect : library->effects) {
 		stack.push_back(&effect);
 		while (!stack.empty()) {
-			tfx_effect_emitter_t *current = stack.pop_back();
+			tfx_effect_descriptor_t *current = stack.pop_back();
 			if (current->type == tfxFolder) {
 				for (auto &sub : tfx_GetEffectInfo(current)->sub_effectors) {
 					stack.push_back(&sub);
@@ -5719,7 +5719,7 @@ void tfx__update_library_compute_nodes(tfx_library library) {
 	stack.free();
 }
 
-void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_emitter_t *effect, tfxU32 depth) {
+void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfxU32 depth) {
 	tfx_effect_emitter_info_t *info = tfx_GetEffectInfo(effect);
 	if (effect->type == tfxEffectType && depth == 0) {
 		tfx__compile_library_key_frame_graphs(library, effect->transform_attributes);
@@ -6373,7 +6373,7 @@ int tfx_ValidateEffectPackage(const char *filename) {
 	return 0;
 }
 
-void tfx__assign_graph_data(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *values) {
+void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_str256_t> *values) {
 	if (values->size() > 0) {
 		if ((*values)[0] == "global_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->global_graphs[effect->global].amount, &n); }
 		if ((*values)[0] == "global_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->global_graphs[effect->global].height, &n); }
@@ -6515,19 +6515,19 @@ void tfx__assign_node_data(tfx_attribute_node_t *n, tfx_vector_t<tfx_str256_t> *
 		n->flags |= tfxAttributeNodeFlags_curves_initialised;
 }
 
-void tfx__assign_stage_property_u32(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU32 value) {
+void tfx__assign_stage_property_u32(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU32 value) {
 }
 
-void tfx__assign_stage_property_float(tfx_effect_emitter_t *effect, tfx_str256_t *field, float value) {
+void tfx__assign_stage_property_float(tfx_effect_descriptor_t *effect, tfx_str256_t *field, float value) {
 }
 
-void tfx__assign_stage_property_bool(tfx_effect_emitter_t *effect, tfx_str256_t *field, bool value) {
+void tfx__assign_stage_property_bool(tfx_effect_descriptor_t *effect, tfx_str256_t *field, bool value) {
 }
 
-void tfx__assign_stage_property_int(tfx_effect_emitter_t *effect, tfx_str256_t *field, int value) {
+void tfx__assign_stage_property_int(tfx_effect_descriptor_t *effect, tfx_str256_t *field, int value) {
 }
 
-void tfx__assign_stage_property_str(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfx_str256_t *value) {
+void tfx__assign_stage_property_str(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfx_str256_t *value) {
 	if (*field == "name") {
 		TFX_ASSERT(value->Length() <= 64);	//File corrupt? length of name should be less than 64.
 		tfx_GetEffectInfo(effect)->name.Set(value->c_str());
@@ -6597,7 +6597,7 @@ void tfx__assign_sprite_data_metrics_property_u32(tfx_sprite_data_metrics_t *met
 		metrics->animation_flags = value;
 }
 
-void tfx__assign_property_line(tfx_effect_emitter_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version) {
+void tfx__assign_property_line(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_str256_t> *pair, tfxU32 file_version) {
 	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(tfxStore->data_types.names_and_types);
 	switch (names_and_types.At((*pair)[0].c_str())) {
 	case tfxUInt64:
@@ -6636,12 +6636,12 @@ void tfx__assign_sprite_data_metrics_property_str(tfx_sprite_data_metrics_t *met
 	if (*field == "name") metrics->name.Set(value);
 }
 
-void tfx__assign_effector_property_u64(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU64 value, tfxU32 file_version) {
+void tfx__assign_effector_property_u64(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU64 value, tfxU32 file_version) {
 	if (*field == "image_hash") tfx__get_effect_properties(effect)->image_hash = value;
 	if (*field == "paired_emitter_hash") tfx__get_effect_properties(effect)->paired_emitter_hash = value;
 }
 
-void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
+void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	tfx_emitter_properties_t *emitter_properties = tfx__get_effect_properties(effect);
 	if (*field == "image_index") emitter_properties->image_index = value;
 	if (*field == "spawn_amount") emitter_properties->spawn_amount = value;
@@ -6684,7 +6684,7 @@ void tfx__assign_effector_property_u32(tfx_effect_emitter_t *effect, tfx_str256_
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->node_count = value;
 	}
 }
-void tfx__assign_effector_property_int(tfx_effect_emitter_t *effect, tfx_str256_t *field, int value) {
+void tfx__assign_effector_property_int(tfx_effect_descriptor_t *effect, tfx_str256_t *field, int value) {
 	tfx_emitter_properties_t *emitter_properties = tfx__get_effect_properties(effect);
 	if (*field == "emission_type") emitter_properties->emission_type = (tfx_emission_type)value;
 	if (*field == "emission_direction") emitter_properties->emission_direction = (tfx_emission_direction)value;
@@ -6700,13 +6700,13 @@ void tfx__assign_effector_property_int(tfx_effect_emitter_t *effect, tfx_str256_
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)];  path->generator_type = (tfx_path_generator_type)value;
 	}
 }
-void tfx__assign_effector_property_str(tfx_effect_emitter_t *effect, tfx_str256_t *field, const char *value) {
+void tfx__assign_effector_property_str(tfx_effect_descriptor_t *effect, tfx_str256_t *field, const char *value) {
 	TFX_ASSERT(strlen(value) <= 64);	//Trying to assign a property that is too large
 	if (*field == "name") {
 		tfx_GetEffectInfo(effect)->name.Set(value);
 	}
 }
-void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str256_t *field, float value) {
+void tfx__assign_effector_property(tfx_effect_descriptor_t *effect, tfx_str256_t *field, float value) {
 	tfx_emitter_properties_t *emitter_properties = tfx__get_effect_properties(effect);
 	if (*field == "position_x") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.x = value;
 	if (*field == "position_y") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].position.y = value;
@@ -6783,7 +6783,7 @@ void tfx__assign_effector_property(tfx_effect_emitter_t *effect, tfx_str256_t *f
 		tfx_emitter_path_t *path = &effect->library->paths[tfx__create_emitter_path_attributes(effect, false)]; path->offset.z = value;
 	}
 }
-void tfx__assign_effector_property_bool(tfx_effect_emitter_t *effect, tfx_str256_t *field, bool value) {
+void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str256_t *field, bool value) {
 	if (*field == "loop") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_loop : 0;
 	if (*field == "seamless") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_seamless : 0;
 	if (*field == "export_with_transparency") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].animation_flags |= value ? tfxAnimationFlags_export_with_transparency : 0;
@@ -7009,7 +7009,7 @@ void tfx__stream_emitter_properties(tfx_emitter_properties_t *property, tfxEmitt
 	//file->AddLine("simple_motion_smoothstep=%i", (flags & tfxEmitterPropertyFlags_simple_motion_smoothstep));
 }
 
-void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file) {
+void tfx__stream_effect_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file) {
 	tfx_emitter_properties_t *properties = tfx__get_effect_properties(effect);
 	file->AddLine("is_3d=%i", (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d));
 	file->AddLine("draw_order_by_age=%i", effect->effect_flags & tfxEffectPropertyFlags_age_order);
@@ -7025,7 +7025,7 @@ void tfx__stream_effect_properties(tfx_effect_emitter_t *effect, tfx_stream_t *f
 	file->AddLine("global_uniform_size=%i", (effect->effect_flags & tfxEffectPropertyFlags_global_uniform_size));
 }
 
-void tfx__stream_path_properties(tfx_effect_emitter_t *effect, tfx_stream_t *file) {
+void tfx__stream_path_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file) {
 	if (effect->path_attributes != tfxINVALID) {
 		tfx_emitter_path_t *path = &effect->library->paths[effect->path_attributes];
 		file->AddLine("path_is_2d=%i", (path->flags & tfxPathFlags_2d));
@@ -8404,7 +8404,7 @@ float tfx__get_random_precise(tfx_graph_t *graph, float frame, tfx_random_t *ran
 	return tfx__get_graph_random_value(graph, frame, random);
 }
 
-float tfx__get_max_life(tfx_effect_emitter_t *e) {
+float tfx__get_max_life(tfx_effect_descriptor_t *e) {
 	tfx_graph_t &life = *tfx__get_effect_graph_by_type(e, tfxBase_life);
 	tfx_graph_t &life_variation = *tfx__get_effect_graph_by_type(e, tfxVariation_life);
 	float templife = 0;
@@ -8482,7 +8482,7 @@ bool tfx__has_node_at_frame(tfx_graph_t *graph, float frame) {
 	return false;
 }
 
-bool tfx__has_key_frames(tfx_effect_emitter_t *e) {
+bool tfx__has_key_frames(tfx_effect_descriptor_t *e) {
 	TFX_ASSERT(e->transform_attributes < e->library->transform_attributes.size());        //Must be a valid keyframes index into the library
 	tfx_transform_attributes_t &keyframes = e->library->transform_attributes[e->transform_attributes];
 	tfxU32 size = keyframes.translation_x.nodes.size() +
@@ -8491,7 +8491,7 @@ bool tfx__has_key_frames(tfx_effect_emitter_t *e) {
 	return size > 0;
 }
 
-bool tfx__has_more_than_one_key_frame(tfx_effect_emitter_t *e) {
+bool tfx__has_more_than_one_key_frame(tfx_effect_descriptor_t *e) {
 	TFX_ASSERT(e->transform_attributes < e->library->transform_attributes.size());        //Must be a valid keyframes index into the library
 	tfx_transform_attributes_t &keyframes = e->library->transform_attributes[e->transform_attributes];
 	return    keyframes.translation_x.nodes.size() > 1 ||
@@ -8499,7 +8499,7 @@ bool tfx__has_more_than_one_key_frame(tfx_effect_emitter_t *e) {
 		keyframes.translation_z.nodes.size() > 1;
 }
 
-void tfx__push_translation_points(tfx_effect_emitter_t *e, tfx_vector_t<tfx_vec3_t> *points, float frame) {
+void tfx__push_translation_points(tfx_effect_descriptor_t *e, tfx_vector_t<tfx_vec3_t> *points, float frame) {
 	TFX_ASSERT(e->transform_attributes < e->library->transform_attributes.size());        //Must be a valid keyframes index into the library
 	tfx_transform_attributes_t *keyframes = &e->library->transform_attributes[e->transform_attributes];
 	tfx_vec3_t point(lookup_callback(&keyframes->translation_x, frame),
@@ -8916,12 +8916,12 @@ tfx_effect_library_stats_t tfx__create_library_stats(tfx_library lib) {
 	stats.total_effects = lib->effects.size();
 	stats.total_node_lookup_indexes = lib->node_lookup_indexes.size();
 	stats.total_attribute_nodes = lib->all_nodes.size();
-	tmpStack(tfx_effect_emitter_t, stack);
+	tmpStack(tfx_effect_descriptor_t, stack);
 	for (auto &effect : lib->effects) {
 		stack.push_back(effect);
 	}
 	while (!stack.empty()) {
-		tfx_effect_emitter_t &current = stack.pop_back();
+		tfx_effect_descriptor_t &current = stack.pop_back();
 		if (current.parent) {
 			if (current.type == tfxEffectType) {
 				stats.total_sub_effects++;
@@ -9231,7 +9231,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 	tfx_storage_map_t<tfx_data_type> &names_and_types = *static_cast<tfx_storage_map_t<tfx_data_type> *>(tfxStore->data_types.names_and_types);
 
 	//You must call tfx_InitialiseTimelineFX() before doing anything!    
-	tmpStack(tfx_effect_emitter_t, effect_stack);
+	tmpStack(tfx_effect_descriptor_t, effect_stack);
 	tmpStack(tfx_str256_t, pair);
 
 	while (!data->data.EoF()) {
@@ -9245,23 +9245,23 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 
 			context_set = true;
 			if (context == tfxStartFolder) {
-				tfx_effect_emitter_t effect{};
+				tfx_effect_descriptor_t effect{};
 				effect.library = lib;
-				effect.type = tfx_effect_emitter_type::tfxFolder;
+				effect.type = tfx_effect_descriptor_type::tfxFolder;
 				effect.info_index = tfx__allocate_library_effect_emitter_info(lib);
 				tfx_GetEffectInfo(&effect)->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartStage) {
-				tfx_effect_emitter_t effect{};
+				tfx_effect_descriptor_t effect{};
 				effect.library = lib;
-				effect.type = tfx_effect_emitter_type::tfxStage;
+				effect.type = tfx_effect_descriptor_type::tfxStage;
 				effect.info_index = tfx__allocate_library_effect_emitter_info(lib);
 				tfx__add_library_preview_camera_settings_effect(lib, &effect);
 				effect.transform_attributes = tfx__allocate_library_key_frames(lib);
 				tfx_GetEffectInfo(&effect)->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartEffect) {
-				tfx_effect_emitter_t effect{};
+				tfx_effect_descriptor_t effect{};
 				effect.library = lib;
 				effect.info_index = tfx__allocate_library_effect_emitter_info(lib);
 				effect.property_index = tfx__allocate_library_emitter_properties(lib);
@@ -9273,14 +9273,14 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				}
 				tfx__add_library_transform_graphs(lib, &effect);
 				tfx__reset_transform_graphs(&effect, false, false);
-				effect.type = tfx_effect_emitter_type::tfxEffectType;
+				effect.type = tfx_effect_descriptor_type::tfxEffectType;
 				tfx__add_library_sprite_sheet_settings(lib, &effect);
 				tfx__add_library_sprite_data_settings(lib, &effect);
 				tfx__add_library_preview_camera_settings_effect(lib, &effect);
 				tfx_GetEffectInfo(&effect)->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartEmitter) {
-				tfx_effect_emitter_t emitter = {};
+				tfx_effect_descriptor_t emitter = {};
 				emitter.path_attributes = tfxINVALID;
 				emitter.effect_flags = 0;
 				emitter.property_flags = 0;
@@ -9290,7 +9290,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				emitter.transform_attributes = tfx__allocate_library_key_frames(lib);
 				tfx__add_library_emitter_graphs(lib, &emitter);
 				tfx__add_library_transform_graphs(lib, &emitter);
-				emitter.type = tfx_effect_emitter_type::tfxEmitterType;
+				emitter.type = tfx_effect_descriptor_type::tfxEmitterType;
 				tfx__reset_emitter_graphs(&emitter, false, false);
 				tfx__reset_transform_graphs(&emitter, false, false);
 				tfx_GetEffectInfo(&emitter)->uid = uid++;
@@ -9522,10 +9522,10 @@ tfxErrorFlags tfx_GetLibraryErrorStatus(tfx_library library) {
 }
 
 void tfx_SetTemplateUserDataAll(tfx_effect_template t, void *data) {
-	tmpStack(tfx_effect_emitter_t *, stack);
+	tmpStack(tfx_effect_descriptor_t *, stack);
 	stack.push_back(&t->effect);
 	while (stack.size()) {
-		tfx_effect_emitter_t *current = stack.pop_back();
+		tfx_effect_descriptor_t *current = stack.pop_back();
 		current->user_data = data;
 		for (auto &sub : tfx_GetEffectInfo(current)->sub_effectors) {
 			stack.push_back(&sub);
@@ -9541,7 +9541,7 @@ void tfx__reset_sprite_data_lerp_offset(tfx_sprite_data_t *sprite_data) {
 	}
 }
 
-void tfx__record_sprite_data(tfx_particle_manager pm, tfx_effect_emitter_t *effect, float update_frequency, float camera_position[3], int *progress) {
+void tfx__record_sprite_data(tfx_particle_manager pm, tfx_effect_descriptor_t *effect, float update_frequency, float camera_position[3], int *progress) {
 	TFX_ASSERT(update_frequency > 0); //Update frequency must be greater then 0. 60 is recommended for best results
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 	float frame_length = 1000.f / update_frequency;
@@ -9966,7 +9966,7 @@ void tfx__record_sprite_data(tfx_particle_manager pm, tfx_effect_emitter_t *effe
 	}
 }
 
-void tfx__compress_sprite_data(tfx_particle_manager pm, tfx_effect_emitter_t *effect, bool is_3d, float frame_length, int *progress) {
+void tfx__compress_sprite_data(tfx_particle_manager pm, tfx_effect_descriptor_t *effect, bool is_3d, float frame_length, int *progress) {
 	*progress = tfxLinkUpSprites;
 	tfx_sprite_data_settings_t &anim = effect->library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 	tfx_sprite_data_t *sprite_data = &effect->library->pre_recorded_effects.At(effect->path_hash);
@@ -10180,7 +10180,7 @@ void tfx__free_animation_instance(tfx_animation_manager animation_manager, tfxU3
 	animation_manager->free_instances.push_back(index);
 }
 
-void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect, bool *has_animated_shape) {
+void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager, tfx_effect_descriptor_t *effect, bool *has_animated_shape) {
 	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (effect->type != tfxEmitterType) {
 		for (auto &sub : tfx_GetEffectInfo(effect)->sub_effectors) {
@@ -10217,7 +10217,7 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 	}
 }
 
-void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect) {
+void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_descriptor_t *effect) {
 	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (effect->type == tfxEmitterType) {
 		tfx_image_data_t *image_data = tfx__get_effect_properties(effect)->image;
@@ -10235,7 +10235,7 @@ void tfx_AddEffectShapes(tfx_animation_manager animation_manager, tfx_effect_emi
 	}
 }
 
-void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_emitter_t *effect, tfx_particle_manager pm, tfx_vec3_t camera_position) {
+void tfx_AddSpriteData(tfx_animation_manager animation_manager, tfx_effect_descriptor_t *effect, tfx_particle_manager pm, tfx_vec3_t camera_position) {
 	TFX_CHECK_HANDLE(animation_manager);		//Not a valid animation manager handle!
 	if (tfx__is_3d_effect(effect)) {
 		//If you're adding 3d effect sprite data then the animation manager must have been initialised with tfx_InitialiseAnimationManagerFor3d
@@ -10322,13 +10322,13 @@ void tfx_SetAnimationManagerUserData(tfx_animation_manager animation_manager, vo
 
 tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettingsByPath(tfx_library library, const char *path) {
 	if (library->effect_paths.ValidName(path)) {
-		tfx_effect_emitter_t *effect = tfx_GetLibraryEffectPath(library, path);
+		tfx_effect_descriptor_t *effect = tfx_GetLibraryEffectPath(library, path);
 		return &library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 	}
 	return nullptr;
 }
 
-tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library library, tfx_effect_emitter_t *effect) {
+tfx_sprite_data_settings_t *tfx_GetEffectSpriteDataSettings(tfx_library library, tfx_effect_descriptor_t *effect) {
 	return &library->sprite_data_settings[tfx_GetEffectInfo(effect)->sprite_data_settings_index];
 }
 
@@ -10517,14 +10517,14 @@ void tfx_RecordTemplateEffect(tfx_effect_template t, tfx_particle_manager pm, fl
 
 void tfx_DisableTemplateEmitter(tfx_effect_template t, const char *path) {
 	TFX_ASSERT(t->paths.ValidName(path));            //Must be a valid path to the emitter
-	tfx_effect_emitter_t *emitter = t->paths.At(path);
+	tfx_effect_descriptor_t *emitter = t->paths.At(path);
 	TFX_ASSERT(emitter->type == tfxEmitterType);    //Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those. 
 	emitter->property_flags &= ~tfxEmitterPropertyFlags_enabled;
 }
 
 void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path) {
 	TFX_ASSERT(t->paths.ValidName(path));            //Must be a valid path to the emitter
-	tfx_effect_emitter_t *emitter = t->paths.At(path);
+	tfx_effect_descriptor_t *emitter = t->paths.At(path);
 	TFX_ASSERT(emitter->type == tfxEmitterType);    //Must be an emitter that you're trying to remove. Use RemoveSubEffect if you're trying to remove one of those
 	emitter->property_flags |= tfxEmitterPropertyFlags_enabled;
 }
@@ -10532,7 +10532,7 @@ void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path) {
 void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_graph_type global_type, float amount) {
 	TFX_ASSERT(tfx__is_global_graph_type(global_type));
 	tfx_graph_t *graph = tfx__get_effect_graph_by_type(&t->effect, global_type);
-	tfx_effect_emitter_t *original_effect = tfx__get_library_effect_by_key(t->effect.library, t->original_effect_hash);
+	tfx_effect_descriptor_t *original_effect = tfx__get_library_effect_by_key(t->effect.library, t->original_effect_hash);
 	tfx_graph_t *original_graph = tfx__get_effect_graph_by_type(original_effect, global_type);
 	tfx__copy_graph(original_graph, graph, false);
 	tfx__multiply_all_graph_values(graph, amount);
@@ -10542,9 +10542,9 @@ void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_graph_type glo
 void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_graph_type graph_type, float amount) {
 	TFX_ASSERT(tfx__is_emitter_graph_type(graph_type));        //Must be an emitter graph type. This is any property, base, variaion or overtime graph
 	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
-	tfx_effect_emitter_t *emitter = t->paths.At(emitter_path);
+	tfx_effect_descriptor_t *emitter = t->paths.At(emitter_path);
 	tfx_graph_t *graph = tfx__get_effect_graph_by_type(emitter, graph_type);
-	tfx_effect_emitter_t *original_emitter = tfx_GetLibraryEffectPath(t->effect.library, emitter_path);
+	tfx_effect_descriptor_t *original_emitter = tfx_GetLibraryEffectPath(t->effect.library, emitter_path);
 	tfx_graph_t *original_graph = tfx__get_effect_graph_by_type(original_emitter, graph_type);
 	tfx__copy_graph(original_graph, graph, false);
 	tfx__multiply_all_graph_values(graph, amount);
@@ -10554,7 +10554,7 @@ void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_pa
 void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount) {
 	TFX_ASSERT(amount >= 0);                            //Amount must not be less than 0
 	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
-	tfx_effect_emitter_t *emitter = t->paths.At(emitter_path);
+	tfx_effect_descriptor_t *emitter = t->paths.At(emitter_path);
 	tfx__get_effect_properties(emitter)->spawn_amount = amount;
 }
 
@@ -10569,17 +10569,17 @@ void tfx_ResetTemplate(tfx_effect_template t) {
 	}
 }
 
-tfx_effect_emitter_t *tfx_GetEffectFromTemplate(tfx_effect_template t) {
+tfx_effect_descriptor_t *tfx_GetEffectFromTemplate(tfx_effect_template t) {
 	TFX_CHECK_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	return &t->effect;
 }
 
-tfx_effect_emitter_t *tfx_GetEmitterFromTemplate(tfx_effect_template t, const char *path) {
+tfx_effect_descriptor_t *tfx_GetEmitterFromTemplate(tfx_effect_template t, const char *path) {
 	TFX_CHECK_HANDLE(t);	//Not a valid tfx_effect_template handle. Use tfx_CreateEffectTemplate to create a new template.
 	if (t->paths.ValidName(path)) return t->paths.At(path); return nullptr;
 }
 
-tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_emitter_t *e) {
+tfx_emitter_path_t *tfx_GetEmitterPath(tfx_effect_descriptor_t *e) {
 	if (e->path_attributes != tfxINVALID) {
 		TFX_ASSERT(e->library->paths.size() > e->path_attributes); //The emitter path attributes is out of bounds. This really shouldn't happen, either a bug in the library or the path attributes was set manually and incorrectly.
 		return &e->library->paths[e->path_attributes];
@@ -10613,7 +10613,7 @@ bool tfx_AddEffectTemplateToParticleManager(tfx_particle_manager pm, tfx_effect_
 	return id != tfxINVALID;
 }
 
-bool tfx_AddRawEffectToParticleManager(tfx_particle_manager pm, tfx_effect_emitter_t *effect, tfxEffectID *effect_id) {
+bool tfx_AddRawEffectToParticleManager(tfx_particle_manager pm, tfx_effect_descriptor_t *effect, tfxEffectID *effect_id) {
 	TFX_CHECK_HANDLE(pm);				//Not a valid particle manager handle
 	tfxEffectID id;
 	id = tfx__add_effect_to_particle_manager(pm, effect, pm->current_ebuff, 0, false, 0, 0.f);
@@ -10623,7 +10623,7 @@ bool tfx_AddRawEffectToParticleManager(tfx_particle_manager pm, tfx_effect_emitt
 	return id != tfxINVALID;
 }
 
-tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_effect_emitter_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning) {
+tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_effect_descriptor_t *effect, int buffer, int hierarchy_depth, bool is_sub_emitter, tfxU32 root_effect_index, float add_delayed_spawning) {
 	tfxPROFILE;
 	tfx__sync_lock(&pm->add_effect_mutex);
 	TFX_ASSERT(effect->type == tfxEffectType);
@@ -10868,7 +10868,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 	return parent_index.index;
 }
 
-void tfx__update_emitter_control_profile(tfx_effect_emitter_t *emitter) {
+void tfx__update_emitter_control_profile(tfx_effect_descriptor_t *emitter) {
 	tfx_emitter_properties_t *props = tfx__get_effect_properties(emitter);
 	emitter->control_profile = 0;
 	if (emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness && tfx__get_graph_max_value(&emitter->library->emitter_attributes[emitter->emitter_attributes].overtime.motion_randomness) > 0.f) {
@@ -11416,7 +11416,7 @@ tfxU32 tfx_SpriteDataEndIndex(tfx_sprite_data_t *sprite_data, tfxU32 frame, tfxU
 	return sprite_data->normal.frame_meta[frame].index_offset[layer] + sprite_data->normal.frame_meta[frame].sprite_count[layer];
 }
 
-const char *tfx_GetEffectName(tfx_effect_emitter_t *effect) {
+const char *tfx_GetEffectName(tfx_effect_descriptor_t *effect) {
 	return tfx_GetEffectInfo(effect)->name.c_str();
 }
 
@@ -11541,8 +11541,8 @@ void tfx_GetSpriteScale(void *instance, float out_scale[2]) {
 	out_scale[1] = (float)y_scaled * tfxSPRITE_SIZE_SSCALE;
 }
 
-tfxAPI tfx_effect_emitter_t tfx_NewEffect() {
-	tfx_effect_emitter_t new_effect{};
+tfxAPI tfx_effect_descriptor_t tfx_NewEffect() {
+	tfx_effect_descriptor_t new_effect{};
 	new_effect.buffer_index = 0;
 	new_effect.path_hash = 0;
 	new_effect.library = nullptr;
@@ -14260,7 +14260,7 @@ tfxU32 tfx__grab_particle_lists(tfx_particle_manager pm, tfxKey emitter_hash, bo
 	return index;
 }
 
-void tfx_FreeParticleListsMemory(tfx_particle_manager pm, tfx_effect_emitter_t *emitter) {
+void tfx_FreeParticleListsMemory(tfx_particle_manager pm, tfx_effect_descriptor_t *emitter) {
 	if (pm->free_particle_lists.ValidKey(emitter->path_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter->path_hash);
 		for (tfxU32 i : free_banks) {
@@ -14275,18 +14275,18 @@ void tfx_FreeParticleListsMemory(tfx_particle_manager pm, tfx_effect_emitter_t *
 		}
 		free_banks.free();
 	}
-	for (tfx_effect_emitter_t &effect : tfx_GetEffectInfo(emitter)->sub_effectors) {
+	for (tfx_effect_descriptor_t &effect : tfx_GetEffectInfo(emitter)->sub_effectors) {
 		tfx_FreeEffectListsMemory(pm, &effect);
 	}
 }
 
-tfxAPI void tfx_FreeEffectListsMemory(tfx_particle_manager pm, tfx_effect_emitter_t *effect) {
+tfxAPI void tfx_FreeEffectListsMemory(tfx_particle_manager pm, tfx_effect_descriptor_t *effect) {
 	if (effect->type == tfxFolder) {
-		for (tfx_effect_emitter_t &sub_effect : tfx_GetEffectInfo(effect)->sub_effectors) {
+		for (tfx_effect_descriptor_t &sub_effect : tfx_GetEffectInfo(effect)->sub_effectors) {
 			tfx_FreeEffectListsMemory(pm, &sub_effect);
 		}
 	}
-	for (tfx_effect_emitter_t &emitter : tfx_GetEffectInfo(effect)->sub_effectors) {
+	for (tfx_effect_descriptor_t &emitter : tfx_GetEffectInfo(effect)->sub_effectors) {
 		tfx_FreeParticleListsMemory(pm, &emitter);
 	}
 }
