@@ -2404,7 +2404,6 @@ tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *eff
 tfx_effect_descriptor_t tfx__new_effect_descriptor() {
 	tfx_effect_descriptor_t effect = {};
 	effect.emitter_attributes = tfxINVALID;
-	effect.ribbon_attributes = tfxINVALID;
 	effect.global = tfxINVALID;
 	effect.path_attributes = tfxINVALID;
 	effect.transform_attributes = tfxINVALID;
@@ -4511,6 +4510,8 @@ void tfx__initialise_overtime_attributes(tfx_overtime_attributes_t *attributes, 
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->motion_randomness.nodes ,bucket_size);
 	 attributes->color_ramps[0].flags = 0;
 	 attributes->color_ramps[1].flags = 0;
+	 attributes->color_ramp_bitmap_indexes[0] = 0;
+	 attributes->color_ramp_bitmap_indexes[1] = 0;
 }
 
 void tfx__initialise_factor_attributes(tfx_factor_attributes_t *attributes, tfxU32 bucket_size) {

@@ -2531,6 +2531,7 @@ typedef enum {
 
 typedef enum {
 	tfxRibbonPropertyFlags_none = 0,
+	tfxRibbonPropertyFlags_use_path_from_another_emitter = 1 << 0
 } tfx_ribbon_property_flag_bits;
 
 typedef enum {
@@ -5321,7 +5322,7 @@ typedef struct tfx_path_nodes_soa_s {
 	float *y;
 	float *z;
 	float *length;
-}tfx_path_nodes_soa_t;
+} tfx_path_nodes_soa_t;
 
 typedef struct tfx_path_quaternion_s {
 	tfxU32 quaternion;
@@ -5371,11 +5372,11 @@ typedef struct tfx_emitter_attributes_s {
 	tfx_variation_attributes_t variation;
 	tfx_overtime_attributes_t overtime;
 	tfx_factor_attributes_t factor;
-}tfx_emitter_attributes_t;
+} tfx_emitter_attributes_t;
 
-static float(*lookup_overtime_callback)(tfx_graph_t * graph, float age, float lifetime);
-static float(*lookup_callback)(tfx_graph_t * graph, float age);
-static float(*lookup_random_callback)(tfx_graph_t * graph, float age, tfx_random_t * random);
+static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age, float lifetime);
+static float(*lookup_callback)(tfx_graph_t *graph, float age);
+static float(*lookup_random_callback)(tfx_graph_t *graph, float age, tfx_random_t * random);
 
 typedef struct tfx_base_s {
 	tfx_vec2_t size;
@@ -5737,7 +5738,6 @@ typedef struct tfx_effect_descriptor_s {
 	tfxU32 emitter_attributes;
 	tfxU32 transform_attributes;
 	tfxU32 path_attributes;
-	tfxU32 ribbon_attributes;
 	//The type of function that should be called to update particle positions
 	tfxEmitterControlProfileFlags control_profile;
 	//Pointer to the immediate parent
@@ -6822,6 +6822,7 @@ tfxINTERNAL tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library libr
 tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descriptor_t *effect_emitter, const char *path, bool skip_existing);
 tfxINTERNAL tfxU32 tfx__add_library_global(tfx_library library);
 tfxINTERNAL tfxU32 tfx__add_library_emitter_attributes(tfx_library library);
+tfxINTERNAL tfxU32 tfx__add_library_ribbon_attributes(tfx_library library);
 tfxINTERNAL void tfx__free_library_global(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_key_frames(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_emitter_attributes(tfx_library library, tfxU32 index);
@@ -6836,6 +6837,7 @@ tfxINTERNAL void tfx__compile_library_global_graphs(tfx_library library, tfxU32 
 tfxINTERNAL void tfx__compile_library_key_frame_graphs(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__compile_library_emitter_graphs(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__compile_library_factor_graphs(tfx_library library, tfxU32 index);
+tfxINTERNAL void tfx__compile_library_ribbon_graphs(tfx_library library, tfxU32 index);
 tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path);
 
 //Effect/Emitter functions
