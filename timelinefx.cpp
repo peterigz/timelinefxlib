@@ -2401,6 +2401,32 @@ tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *eff
 	return &tfx_GetEffectInfo(effect)->sub_effectors.back();
 }
 
+tfx_effect_descriptor_t tfx__new_effect_descriptor() {
+	tfx_effect_descriptor_t effect = {};
+	effect.emitter_attributes = tfxINVALID;
+	effect.ribbon_attributes = tfxINVALID;
+	effect.global = tfxINVALID;
+	effect.path_attributes = tfxINVALID;
+	effect.transform_attributes = tfxINVALID;
+	return effect;
+}
+
+tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *effect, tfx_str64_t *name) {
+	TFX_ASSERT(name->Length() > 0);                //Must have a name so that a hash can be generated
+	tfx_effect_descriptor_t ribbon = tfx__new_effect_descriptor();
+	ribbon.type = tfx_effect_descriptor_type::tfxRibbonType;
+	ribbon.library = effect->library;
+	ribbon.parent = effect;
+	ribbon.info_index = tfx__allocate_library_descriptor_info(ribbon.library);
+	ribbon.property_index = tfx__allocate_library_descriptor_properties(ribbon.library);
+	tfx_GetEffectInfo(&ribbon)->name = *name;
+	tfx_GetEffectInfo(&ribbon)->uid = ++effect->library->uid;
+	tfx_GetEffectInfo(effect)->sub_effectors.push_back(ribbon);
+	tfx__update_library_effect_paths(effect->library);
+	tfx__reindex_effect(effect);
+	return &tfx_GetEffectInfo(effect)->sub_effectors.back();
+}
+
 tfx_effect_descriptor_t *tfx__add_effect_to_emitter(tfx_effect_descriptor_t *emitter, tfx_effect_descriptor_t *effect) {
 	TFX_ASSERT(tfx_GetEffectInfo(effect)->name.Length());                //Effect must have a name so that a hash can be generated
 	effect->type = tfx_effect_descriptor_type::tfxEffectType;
@@ -4833,7 +4859,7 @@ tfx_effect_descriptor_t *tfx__add_library_effect(tfx_library library, tfx_effect
 tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_str64_t *name) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfx_effect_descriptor_t folder = tfx_NewEffect();
-	folder.info_index = tfx__allocate_library_effect_emitter_info(library);
+	folder.info_index = tfx__allocate_library_descriptor_info(library);
 	folder.library = library;
 	tfx_GetEffectInfo(&folder)->name = *name;
 	folder.type = tfxFolder;
@@ -4848,7 +4874,7 @@ tfx_effect_descriptor_t *tfx__add_new_library_effect(tfx_library library, tfx_st
 tfx_effect_descriptor_t *tfx__add_library_stage(tfx_library library, tfx_str64_t *name) {
 	TFX_CHECK_HANDLE(library);	//Not a valid library handle
 	tfx_effect_descriptor_t stage = tfx_NewEffect();
-	stage.info_index = tfx__allocate_library_effect_emitter_info(library);
+	stage.info_index = tfx__allocate_library_descriptor_info(library);
 	stage.library = library;
 	tfx_GetEffectInfo(&stage)->name = *name;
 	stage.type = tfxStage;
@@ -5260,7 +5286,7 @@ tfxU32 tfx__clone_library_emitter_attributes(tfx_library library, tfxU32 source_
 }
 
 tfxU32 tfx__clone_library_info(tfx_library library, tfxU32 source_index, tfx_library destination_library) {
-	tfxU32 index = tfx__allocate_library_effect_emitter_info(destination_library);
+	tfxU32 index = tfx__allocate_library_descriptor_info(destination_library);
 	destination_library->effect_infos[index].lookup_node_index = library->effect_infos[source_index].lookup_node_index;
 	destination_library->effect_infos[index].lookup_value_index = library->effect_infos[source_index].lookup_value_index;
 	destination_library->effect_infos[index].max_life = library->effect_infos[source_index].max_life;
@@ -5276,7 +5302,7 @@ tfxU32 tfx__clone_library_info(tfx_library library, tfxU32 source_index, tfx_lib
 }
 
 tfxU32 tfx__clone_library_properties(tfx_library library, tfx_emitter_properties_t *source, tfx_library destination_library) {
-	tfxU32 dst_index = tfx__allocate_library_emitter_properties(destination_library);
+	tfxU32 dst_index = tfx__allocate_library_descriptor_properties(destination_library);
 	tfx__copy_emitter_properties(source, &destination_library->emitter_properties[dst_index]);
 	return dst_index;
 }
@@ -5496,7 +5522,7 @@ tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library library) {
 	return library->preview_camera_settings.size() - 1;
 }
 
-tfxU32 tfx__allocate_library_effect_emitter_info(tfx_library library) {
+tfxU32 tfx__allocate_library_descriptor_info(tfx_library library) {
 	tfx_effect_emitter_info_t info{};
 	if (library->free_infos.size()) {
 		return library->free_infos.pop_back();
@@ -5505,7 +5531,7 @@ tfxU32 tfx__allocate_library_effect_emitter_info(tfx_library library) {
 	return library->effect_infos.size() - 1;
 }
 
-tfxU32 tfx__allocate_library_emitter_properties(tfx_library library) {
+tfxU32 tfx__allocate_library_descriptor_properties(tfx_library library) {
 	if (library->free_properties.size()) {
 		return library->free_properties.pop_back();
 	}
@@ -9248,14 +9274,14 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				tfx_effect_descriptor_t effect{};
 				effect.library = lib;
 				effect.type = tfx_effect_descriptor_type::tfxFolder;
-				effect.info_index = tfx__allocate_library_effect_emitter_info(lib);
+				effect.info_index = tfx__allocate_library_descriptor_info(lib);
 				tfx_GetEffectInfo(&effect)->uid = uid++;
 				effect_stack.push_back(effect);
 			} else if (context == tfxStartStage) {
 				tfx_effect_descriptor_t effect{};
 				effect.library = lib;
 				effect.type = tfx_effect_descriptor_type::tfxStage;
-				effect.info_index = tfx__allocate_library_effect_emitter_info(lib);
+				effect.info_index = tfx__allocate_library_descriptor_info(lib);
 				tfx__add_library_preview_camera_settings_effect(lib, &effect);
 				effect.transform_attributes = tfx__allocate_library_key_frames(lib);
 				tfx_GetEffectInfo(&effect)->uid = uid++;
@@ -9263,8 +9289,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			} else if (context == tfxStartEffect) {
 				tfx_effect_descriptor_t effect{};
 				effect.library = lib;
-				effect.info_index = tfx__allocate_library_effect_emitter_info(lib);
-				effect.property_index = tfx__allocate_library_emitter_properties(lib);
+				effect.info_index = tfx__allocate_library_descriptor_info(lib);
+				effect.property_index = tfx__allocate_library_descriptor_properties(lib);
 				effect.transform_attributes = tfx__allocate_library_key_frames(lib);
 				if (effect_stack.size() <= 1) { //Only root effects get the global graphs
 					tfx__add_library_effect_graphs(lib, &effect);
@@ -9285,8 +9311,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				emitter.effect_flags = 0;
 				emitter.property_flags = 0;
 				emitter.library = lib;
-				emitter.info_index = tfx__allocate_library_effect_emitter_info(lib);
-				emitter.property_index = tfx__allocate_library_emitter_properties(lib);
+				emitter.info_index = tfx__allocate_library_descriptor_info(lib);
+				emitter.property_index = tfx__allocate_library_descriptor_properties(lib);
 				emitter.transform_attributes = tfx__allocate_library_key_frames(lib);
 				tfx__add_library_emitter_graphs(lib, &emitter);
 				tfx__add_library_transform_graphs(lib, &emitter);
@@ -10678,7 +10704,10 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 	tmpStack(hash_index_pair_t, target_emitters);
 	for (auto &e : tfx_GetEffectInfo(effect)->sub_effectors) {
 		if (e.property_flags & tfxEmitterPropertyFlags_enabled) {
-			tfxU32 index = tfx__get_emitter_slot(pm);
+			tfxU32 index = tfxINVALID;
+			if (e.type == tfxEmitterType) {
+				index = tfx__get_emitter_slot(pm);
+			}
 			if (index == tfxINVALID) {
 				break;
 			}

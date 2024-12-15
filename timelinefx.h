@@ -6777,8 +6777,8 @@ tfxAPI_EDITOR void tfx__add_library_sprite_data_settings_sub(tfx_library library
 tfxAPI_EDITOR tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library library, tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR void tfx__add_library_preview_camera_settings_sub_effects(tfx_library library, tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library library);
-tfxAPI_EDITOR tfxU32 tfx__allocate_library_effect_emitter_info(tfx_library library);
-tfxAPI_EDITOR tfxU32 tfx__allocate_library_emitter_properties(tfx_library library);
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_info(tfx_library library);
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_key_frames(tfx_library library);
 tfxAPI_EDITOR void tfx__update_library_compute_nodes(tfx_library library);
 tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
@@ -6841,8 +6841,10 @@ tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library library, const char
 //Effect/Emitter functions
 tfxAPI_EDITOR void tfx__set_effect_user_data(tfx_effect_descriptor_t *e, void *data);
 tfxAPI_EDITOR void *tfx__get_effect_user_data(tfx_effect_descriptor_t *e);
+tfxAPI_EDITOR tfx_effect_descriptor_t tfx__new_effect_descriptor();
 tfxAPI_EDITOR tfx_emitter_properties_t *tfx__get_effect_properties(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e);
+tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *effect, tfx_str64_t *name);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_effect_to_emitter(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR int tfx__get_effect_depth(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfxU32 tfx__count_all_effects(tfx_effect_descriptor_t *effect, tfxU32 amount);
@@ -7257,7 +7259,7 @@ tfxINTERNAL void tfx__compress_sprite_data(tfx_particle_manager pm, tfx_effect_d
 tfxINTERNAL void tfx__link_up_sprite_captured_indexes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__build_all_library_paths(tfx_library library);
 tfxINTERNAL tfx_str64_t tfx__get_name_from_path(const char *path);
-tfxINTERNAL bool tfx__is_root_effect(tfx_effect_descriptor_t *effect);
+tfxAPI_EDITOR bool tfx__is_root_effect(tfx_effect_descriptor_t *effect);
 tfxINTERNAL void tfx__reset_effect_parents(tfx_effect_descriptor_t *effect);
 tfxINTERNAL void tfx__free_effect_graphs(tfx_effect_descriptor_t *effect);
 tfxINTERNAL tfxU32 tfx__count_all_effect_lookup_values(tfx_effect_descriptor_t *effect);
