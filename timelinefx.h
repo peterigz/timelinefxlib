@@ -6038,6 +6038,29 @@ typedef struct tfx_ribbon_segment_s {
 	tfx_vec4_t position_and_width;
 } tfx_ribbon_segment_t;
 
+typedef struct tfx_ribbon_vertex_s {
+	tfx_vec4_t position;
+	tfx_vec4_t uv;
+	tfx_rgba8_t color;
+	tfxU32 padding[3];
+} tfx_ribbon_vertex_t;
+
+typedef struct tfx_ribbon_instance_s {
+	float width_scale;
+	tfxU32 start_index;
+} tfx_ribbon_instance_t;
+
+typedef struct tfx_ribbon_globals_s  {
+	tfx_vec4_t camera_position;
+	float uv_scale;
+	float uv_offset;
+	float width_scale_multiplier;
+	tfxU32 segment_count;
+	tfxU32 tessellation;  // Added tessellation factor
+	tfxU32 index_offset;
+	tfxU32 ribbon_count;
+} tfx_ribbon_globals_t;
+
 typedef struct tfx_ribbon_segment_soa_s {
 	float *x;
 	float *y;
@@ -6054,7 +6077,6 @@ typedef struct tfx_ribbon_buffer_info_s {
 	tfxU32 triangles_per_segment; 
 	tfxU32 indices_per_segment;  
 } tfx_ribbon_buffer_info_t;
-
 
 typedef struct tfx_compute_fx_global_state_s {
 	tfxU32 start_index;
@@ -6590,6 +6612,7 @@ tfxINTERNAL tfxU32 tfx__grab_particle_lists(tfx_particle_manager pm, tfxKey emit
 tfxINTERNAL tfxU32 tfx__grab_ribbon_segment_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxKey segment_count);
+tfxAPI_EDITOR tfx_ribbon_buffer_info_t tfx__generate_ribbon_buffer_info(tfxU32 tessellation, tfxU32 maxSegments, tfxU32 max_ribbons);
 
 //--------------------------------
 //Profilings

@@ -14526,6 +14526,14 @@ void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxKey segment_cou
 	pm->ribbon_segments_buckets.Insert(segment_count, buffer);
 }
 
+tfx_ribbon_buffer_info_t tfx__generate_ribbon_buffer_info(tfxU32 tessellation, tfxU32 maxSegments, tfxU32 max_ribbons) {
+	tfx_ribbon_buffer_info_t info{};
+	info.vertices_per_segment = (tessellation + 1) * 2; 
+	info.triangles_per_segment = tessellation * 4;     
+	info.indices_per_segment = info.triangles_per_segment * 3;
+	return info;
+}
+
 void tfx__gather_stats(tfx_profile_t *profile, tfx_profile_stats_t *stat) {
 	stat->cycle_high = 0;
 	stat->cycle_low = tfxMAX_64u;
