@@ -1315,7 +1315,7 @@ void tfx__wide_catmull_rom_spline_2d(tfxWideArrayi *pi, tfxWideFloat t, float *x
 	*vy = tfxWideMul(tfxWideAdd(tfxWideAdd(tfxWideAdd(tfxWideMul(py0, b0), tfxWideMul(py1, b1)), tfxWideMul(py2, b2)), tfxWideMul(py3, b3)), tfxWideSetSingle(.5f));
 }
 
-void tfx__wide_catmull_tom_spline_3d(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz) {
+void tfx__wide_catmull_rom_spline_3d(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz) {
 	//This calculates the position on a catmull rom spline for 4 (sse) or 8 (avx) particles at a time.
 	//pi contains the first index in the path node list, t is the % of the segment on the path to calcuate for. 
 	tfxWideFloat t2 = tfxWideMul(t, t);
@@ -2418,7 +2418,7 @@ tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *
 	ribbon.parent = effect;
 	ribbon.info_index = tfx__allocate_library_descriptor_info(ribbon.library);
 	ribbon.property_index = tfx__allocate_library_ribbon_properties(ribbon.library);
-	ribbon.library->emitter_properties[ribbon.property_index].emission_type = tfxOtherEmitter;
+	ribbon.library->ribbon_properties[ribbon.property_index].emission_type = tfxOtherEmitter;
 	tfx_GetEffectInfo(&ribbon)->name = *name;
 	tfx_GetEffectInfo(&ribbon)->uid = ++effect->library->uid;
 	tfx_GetEffectInfo(effect)->sub_effectors.push_back(ribbon);
@@ -10862,7 +10862,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 			} else if (e.type == tfxRibbonType) {
 				index = tfx__get_ribbon_slot(pm);
 				new_effect.ribbon_indexes[pm->current_ebuff].push_back(index);
-				tfx_ribbon_state_t &ribbon = pm->ribbons[index];
+				tfx_ribbon_emitter_state_t &ribbon = pm->ribbons[index];
 				ribbon.library = effect->library;
 				ribbon.parent_index = parent_index.index;
 				ribbon.info_index = e.info_index;
@@ -10870,10 +10870,11 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				ribbon.emitter_attributes = e.emitter_attributes;
 				ribbon.transform_attributes = e.transform_attributes;
 				ribbon.path_attributes = e.path_attributes;
+				ribbon.seed_index = seed_index++;
 				tfxEmitterStateFlags &state_flags = ribbon.state_flags;
 				const tfxEmitterStateFlags &parent_state_flags = new_effect.state_flags;
-				tfx_ribbon_properties_t *emitter_properties = tfx__get_ribbon_properties(&e);
-				if (emitter_properties->emission_type == tfxPath) {
+				tfx_ribbon_properties_t *ribbon_properties = tfx__get_ribbon_properties(&e);
+				if (ribbon_properties->emission_type == tfxPath) {
 					tfx_emitter_path_t *path = &ribbon.library->paths[ribbon.path_attributes];
 					tfx_path_state_t &path_state = ribbon.path_state;
 					state_flags |= (path->rotation_range > 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
@@ -10886,6 +10887,8 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 					path_state.path_quaternions[0].cycles = 0;
 					path_state.path_cycle_count = path->maximum_paths;
 					path_state.path_start_index = 0;
+					ribbon_properties->segment_count = path->node_count;
+					ribbon.segment_count = path->node_count;
 					if (ribbon.state_flags & tfxEmitterStateFlags_has_rotated_path) {
 						for (int qi = 0; qi != path->maximum_active_paths; ++qi) {
 							path_state.path_quaternions[qi].cycles = tfxINVALID;
@@ -10908,8 +10911,13 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 							}
 						}
 					}
+					ribbon.ribbon_segments_index = tfx__grab_ribbon_segment_lists(pm, e.path_hash, (effect->property_flags & tfxEmitterPropertyFlags_effect_is_3d), path->maximum_active_paths * ribbon_properties->segment_count, e.control_profile);
+					if (!pm->ribbon_segments_buckets.ValidKey((tfxKey)ribbon.segment_count)) {
+						tfx__init_ribbon_segment_buffer(pm, (tfxKey)ribbon.segment_count);
+					}
+				} else {
+
 				}
-				tfx__readbarrier;
 			}
 
 			/*if (pm->flags & tfxParticleManagerFlags_use_compute_shader && tfx_GetEffectInfo(e)->sub_effectors.empty()) {
@@ -12030,7 +12038,7 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 		t.m = tfxWideSub(path_position, tfxWideConvert(node_index.m));
 		tfxWideArray point_x;
 		tfxWideArray point_z;
-		tfx__wide_catmull_tom_spline_3d(&node_index, t.m, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x.m, &local_position_y, &point_z.m);
+		tfx__wide_catmull_rom_spline_3d(&node_index, t.m, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x.m, &local_position_y, &point_z.m);
 		if (path->extrusion_type == tfxExtrusionArc) {
 			tfxWideFloat radius = tfxWideAdd(tfxWideMul(point_x.m, point_x.m), tfxWideMul(point_z.m, point_z.m));
 			tfxWideFloat length_mask = tfxWideGreater(radius, tfxWideSetZero);
@@ -13353,6 +13361,36 @@ void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, void *data) {
 
 }
 
+void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_control_ribbon_segment_work_entry_t *work_entry = static_cast<tfx_control_ribbon_segment_work_entry_t *>(data);
+	tfxU32 ribbon_index = work_entry->ribbon_index;
+	tfx_particle_manager_t &pm = *work_entry->pm;
+	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbons[ribbon_index];
+	tfx_ribbon_segment_soa_t &bank = work_entry->pm->ribbon_segment_arrays[ribbon_emitter.ribbon_segments_index];
+	tfx_library library = ribbon_emitter.library;
+	tfx_ribbon_segment_soa_t *segment_data = &pm.ribbon_segment_arrays[ribbon_emitter.ribbon_segments_index];
+
+	//There must be a path setup for the emitter.
+	TFX_ASSERT(ribbon_emitter.path_attributes != tfxINVALID);
+	tfx_emitter_path_t *path = &library->paths[ribbon_emitter.path_attributes];
+	tfxWideFloat node_count = tfxWideSetSingle((float)path->node_count - 3.f);
+	tfx_ribbon_segment_t *segments = tfxCastBufferRef(tfx_ribbon_segment_t, pm.ribbon_segments_buckets.At((tfxKey)ribbon_emitter.segment_count));
+
+	for (tfxU32 i = 0; i < ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths - tfxDataWidth; i += tfxDataWidth) {
+
+		tfxU32 path_index = i / ribbon_emitter.segment_count;
+		TFX_ASSERT(path_index < path->maximum_active_paths);
+
+		tfxWideFloat x = tfxWideLoad(&segment_data->x[i]);
+		tfxWideFloat y = tfxWideLoad(&segment_data->y[i]);
+		tfxWideFloat z = tfxWideLoad(&segment_data->z[i]);
+		tfxWideFloat width = tfxWideLoad(&segment_data->width[i]);
+
+	}
+
+}
+
 void tfx__control_particle_spin(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_control_work_entry_t *work_entry = static_cast<tfx_control_work_entry_t *>(data);
@@ -14152,6 +14190,10 @@ void tfx_FreeParticleManager(tfx_particle_manager pm) {
 		effect.ribbon_indexes[0].free();
 		effect.ribbon_indexes[1].free();
 	}
+	for (tfx_ribbon_emitter_state_t &ribbon : pm->ribbons) {
+		ribbon.ribbons[0].free();
+		ribbon.ribbons[1].free();
+	}
 	pm->emitters_check_capture.free();
 	pm->free_effects.free();
 	pm->free_emitters.free();
@@ -14261,10 +14303,13 @@ tfxU32 tfx__get_ribbon_slot(tfx_particle_manager pm) {
 	if (!pm->free_ribbons.empty()) {
 		return pm->free_ribbons.pop_back();
 	}
-	if (pm->emitters.current_size == pm->ribbons.capacity) {
+	if (pm->ribbons.current_size == pm->ribbons.capacity) {
 		return tfxINVALID;
 	}
 	pm->ribbons.current_size++;
+	tfx_ribbon_emitter_state_t &ribbon = pm->ribbons.back();
+	ribbon.ribbons[0].init();
+	ribbon.ribbons[1].init();
 	return pm->ribbons.current_size - 1;
 }
 
@@ -14393,6 +14438,31 @@ tfxU32 tfx__grab_particle_lists(tfx_particle_manager pm, tfxKey emitter_hash, bo
 	return index;
 }
 
+tfxU32 tfx__grab_ribbon_segment_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags) {
+	if (pm->free_ribbon_segment_lists.ValidKey(emitter_hash)) {
+		tfx_vector_t<tfxU32> &free_banks = pm->free_ribbon_segment_lists.At(emitter_hash);
+		if (free_banks.current_size) {
+			pm->ribbon_segment_buffers[free_banks.back()].current_size = 0;
+			return free_banks.pop_back();
+		}
+	}
+	tfx_ribbon_segment_soa_t lists;
+	pm->ribbon_segment_arrays.push_back(lists);
+	tfxU32 index = pm->ribbon_segment_arrays.current_size - 1;
+	tfx_soa_buffer_t buffer;
+	tfx__reset_soa_buffer(&buffer);
+	buffer.user_data = &pm->ribbon_segment_arrays.back();
+	pm->ribbon_segment_buffers.push_back(buffer);
+	TFX_ASSERT(index == pm->ribbon_segment_buffers.current_size - 1);
+	if (is_3d) {
+		tfx__init_ribbon_segment_soa_3d(&pm->ribbon_segment_buffers[index], &pm->ribbon_segment_arrays.back(), reserve_amount);
+	}
+	else {
+		tfx__init_ribbon_segment_soa_2d(&pm->ribbon_segment_buffers[index], &pm->ribbon_segment_arrays.back(), reserve_amount);
+	}
+	return index;
+}
+
 void tfx_FreeParticleListsMemory(tfx_particle_manager pm, tfx_effect_descriptor_t *emitter) {
 	if (pm->free_particle_lists.ValidKey(emitter->path_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_lists.At(emitter->path_hash);
@@ -14413,7 +14483,7 @@ void tfx_FreeParticleListsMemory(tfx_particle_manager pm, tfx_effect_descriptor_
 	}
 }
 
-tfxAPI void tfx_FreeEffectListsMemory(tfx_particle_manager pm, tfx_effect_descriptor_t *effect) {
+void tfx_FreeEffectListsMemory(tfx_particle_manager pm, tfx_effect_descriptor_t *effect) {
 	if (effect->type == tfxFolder) {
 		for (tfx_effect_descriptor_t &sub_effect : tfx_GetEffectInfo(effect)->sub_effectors) {
 			tfx_FreeEffectListsMemory(pm, &sub_effect);
@@ -14424,7 +14494,7 @@ tfxAPI void tfx_FreeEffectListsMemory(tfx_particle_manager pm, tfx_effect_descri
 	}
 }
 
-tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount) {
+tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount) {
 	if (pm->free_particle_location_lists.ValidKey(emitter_hash)) {
 		tfx_vector_t<tfxU32> &free_banks = pm->free_particle_location_lists.At(emitter_hash);
 		if (free_banks.current_size) {
@@ -14448,6 +14518,12 @@ tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tf
 		tfx__init_particle_location_soa_2d(&pm->particle_location_buffers[index], &pm->particle_location_arrays.back(), reserve_amount);
 	}
 	return index;
+}
+
+void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxKey segment_count) {
+	tfx_buffer_t buffer = tfxCreateBuffer(sizeof(tfx_ribbon_segment_t), 16);
+	buffer.reserve((tfxU32)segment_count * 1000);
+	pm->ribbon_segments_buckets.Insert(segment_count, buffer);
 }
 
 void tfx__gather_stats(tfx_profile_t *profile, tfx_profile_stats_t *stat) {
@@ -14624,10 +14700,10 @@ void tfx__update_ribbon(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx_particle_manager pm = ribbon_work_entry->pm;
 
-	tfx_ribbon_state_t &ribbon = pm->ribbons[emitter_index];
+	tfx_ribbon_emitter_state_t &ribbon = pm->ribbons[emitter_index];
 
 	tfx_effect_state_t &parent_effect = pm->effects[ribbon.parent_index];
-	ribbon.state_flags |= parent_effect.state_flags & tfxRibbonStateFlags_remove;
+	ribbon.state_flags |= parent_effect.state_flags & tfxRibbonEmitterStateFlags_remove;
 
 	tfx_ribbon_properties_t &properties = *ribbon_work_entry->properties;
 
@@ -14664,6 +14740,9 @@ void tfx__update_ribbon(tfx_work_queue_t *work_queue, void *data) {
 	ribbon_work_entry->parent_index = ribbon.parent_index;
 	ribbon_work_entry->overal_scale = parent_effect.overal_scale;
 	tfx__update_ribbon_state(pm, ribbon, ribbon.parent_index, ribbon_work_entry->parent_spawn_controls, ribbon_work_entry);
+	if (properties.emission_type == tfxPath) {
+		tfx__spawn_ribbon_path_3d(&pm->work_queue, data);
+	}
 }
 
 void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
@@ -17099,6 +17178,81 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 
 }
 
+void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data) {
+	tfxPROFILE;
+	tfx_ribbon_work_entry_t *entry = static_cast<tfx_ribbon_work_entry_t *>(data);
+	tfx_random_t random = entry->random;
+	tfx_particle_manager_t &pm = *entry->pm;
+	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbons[entry->ribbon_index];
+	tfx_ribbon_segment_soa_t *segment_data = &pm.ribbon_segment_arrays[ribbon_emitter.ribbon_segments_index];
+	tfx_library library = ribbon_emitter.library;
+	tfx_AlterRandomSeedU32(&random, 26 + ribbon_emitter.seed_index);
+	const tfx_ribbon_properties_t &properties = *entry->properties;
+	tfx_vec3_t half_emitter_size = ribbon_emitter.emitter_size * .5f;
+	tfx_emitter_path_t *path = &library->paths[ribbon_emitter.path_attributes];
+	float total_grid_points = (float)path->node_count - 3.f;
+	float arc_size = lookup_callback(&library->emitter_attributes[ribbon_emitter.emitter_attributes].properties.arc_size, ribbon_emitter.frame);
+	float arc_offset = lookup_callback(&library->emitter_attributes[ribbon_emitter.emitter_attributes].properties.arc_offset, ribbon_emitter.frame);
+	float extrusion = lookup_callback(&library->emitter_attributes[ribbon_emitter.emitter_attributes].properties.extrusion, ribbon_emitter.frame);
+	tfx_vec3_t point;
+	bool has_rotation = path->rotation_range > 0 || path->rotation_pitch != 0 || path->rotation_yaw != 0;
+
+	if (path->rotation_cycle_length > 0) {
+		if ((ribbon_emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && ribbon_emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) ||
+			!(ribbon_emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid)
+			) {
+			for (int qi = 0; qi != ribbon_emitter.path_state.active_paths; ++qi) {
+				int index = (qi + ribbon_emitter.path_state.path_start_index) % path->maximum_active_paths;
+				ribbon_emitter.path_state.path_quaternions[qi].age += pm.frame_length;
+				if (ribbon_emitter.path_state.path_quaternions[qi].age >= path->rotation_cycle_length) {
+					tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+					ribbon_emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+					ribbon_emitter.path_state.path_quaternions[qi].age = 0.f;
+					ribbon_emitter.path_state.path_cycle_count--;
+				}
+			}
+		}
+	}
+
+	tfxU32 qi = (ribbon_emitter.path_state.path_start_index + ribbon_emitter.path_state.last_path_index) % path->maximum_active_paths;
+	TFX_ASSERT(qi < path->maximum_active_paths);
+
+	if (path->rotation_stagger > 0 && ribbon_emitter.path_state.path_stagger_counter >= path->rotation_stagger) {
+		if (ribbon_emitter.path_state.active_paths < path->maximum_active_paths && (ribbon_emitter.path_state.path_cycle_count > 0 || path->maximum_paths == 0)) {
+			ribbon_emitter.path_state.last_path_index = ribbon_emitter.path_state.active_paths;
+			qi = (ribbon_emitter.path_state.path_start_index + ribbon_emitter.path_state.active_paths++) % path->maximum_active_paths;
+			TFX_ASSERT(qi < path->maximum_active_paths);
+			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
+			ribbon_emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+			ribbon_emitter.path_state.path_quaternions[qi].cycles = 0;
+			ribbon_emitter.path_state.path_cycle_count--;
+			ribbon_emitter.path_state.path_stagger_counter = 0.f;
+		}
+	}
+
+	int dead_paths = 0;
+	int node = 0;
+	float t = 0.f;
+
+	for (int i = 0; i != ribbon_emitter.path_state.active_paths; ++i) {
+		tfx_ribbon_t ribbon{};
+		ribbon.quaternion = ribbon_emitter.path_state.path_quaternions[i].quaternion;
+		ribbon.length = ribbon_emitter.segment_count;
+		ribbon_emitter.ribbons[pm.current_ebuff].push_back(ribbon);
+	}
+
+	tfx_ribbon_segment_t *segments = tfxCastBufferRef(tfx_ribbon_segment_t, pm.ribbon_segments_buckets.At((tfxKey)ribbon_emitter.segment_count));
+
+	for (tfxU32 i = 0; i < ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths; ++i) {
+
+		tfxU32 path_index = i / ribbon_emitter.segment_count;
+		TFX_ASSERT(path_index < path->maximum_active_paths);
+
+		segments[i].position_and_width = path[path_index].nodes[i];
+	}
+
+}
+
 void tfx__spawn_particle_icosphere_random(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
@@ -17578,7 +17732,7 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 	}
 }
 
-void tfx__update_ribbon_state(tfx_particle_manager pm, tfx_ribbon_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry) {
+void tfx__update_ribbon_state(tfx_particle_manager pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry) {
 	tfxPROFILE;
 
 	tfx_library library = ribbon.library;
@@ -18231,6 +18385,21 @@ void tfx__init_particle_soa_3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
 }
 
+tfxINTERNAL void tfx__init_ribbon_segment_soa_3d(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount) {
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, x));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, y));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, z));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, width));
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
+}
+
+tfxINTERNAL void tfx__init_ribbon_segment_soa_2d(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount) {
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, x));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, y));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_segment_soa_t, width));
+	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);
+}
+
 void tfx__init_paths_soa_2d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount) {
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, x));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_path_nodes_soa_t, y));
@@ -18394,6 +18563,11 @@ void tfx__init_common_particle_manager(tfx_particle_manager pm, tfxU32 max_parti
 	if (pm->particle_arrays.bucket_list.current_size == 0) {
 		//todo need to be able to adjust the bucket size
 		tfxInitBucketArray<tfx_particle_soa_t>(&pm->particle_arrays, 32);
+	}
+
+	if (pm->ribbon_segment_arrays.bucket_list.current_size == 0) {
+		//todo need to be able to adjust the bucket size
+		tfxInitBucketArray<tfx_ribbon_segment_soa_t>(&pm->ribbon_segment_arrays, 32);
 	}
 
 	pm->flags = 0;
