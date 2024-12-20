@@ -2175,6 +2175,8 @@ typedef enum {
 	tfxPath_rotation_range,
 	tfxPath_rotation_pitch,
 	tfxPath_rotation_yaw,
+
+	tfxRibbon_path_start_overtime,
 	tfxGraphMaxIndex
 } tfx_graph_type;
 
@@ -2536,7 +2538,8 @@ typedef enum {
 
 typedef enum {
 	tfxRibbonPropertyFlags_none = 0,
-	tfxRibbonPropertyFlags_use_path_from_another_emitter = 1 << 0
+	tfxRibbonPropertyFlags_use_path_from_another_emitter = 1 << 0,
+	tfxRibbonPropertyFlags_static						 = 1 << 1,
 } tfx_ribbon_property_flag_bits;
 
 typedef enum {
@@ -5726,6 +5729,9 @@ typedef struct tfx_ribbon_emitter_state_s {
 	tfx_vec3_t local_position;
 	tfx_vec3_t world_position;
 	tfx_vec3_t captured_position;
+	tfx_vec3_t local_rotations;
+	tfx_vec3_t world_rotations;
+	tfx_quaternion_t rotation;
 
 	tfx_bounding_box_t bounding_box;
 
@@ -5762,6 +5768,8 @@ typedef struct tfx_effect_descriptor_s {
 	tfxEmitterStateFlags state_flags;
 	//Property flags for emitters
 	tfxEmitterPropertyFlags property_flags;
+	//Property flags for ribbons
+	tfxRibbonPropertyFlags ribbon_property_flags;
 	//Flags specific to effects
 	tfxEffectPropertyFlags effect_flags;
 	//A link to the library that this effect/emitter belongs to
@@ -6044,8 +6052,6 @@ typedef struct tfx_ribbon_segment_s {
 typedef struct tfx_ribbon_vertex_s {
 	tfx_vec4_t position;
 	tfx_vec4_t uv;
-	tfx_rgba8_t color;
-	tfxU32 padding[3];
 } tfx_ribbon_vertex_t;
 
 typedef struct tfx_ribbon_instance_s {
@@ -6059,6 +6065,8 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	tfxU32 tessellation;  
 	tfxU32 index_offset;
 	tfxU32 ribbon_count;
+	tfxU32 ribbon_offset;
+	tfxU32 segment_offset;
 } tfx_ribbon_bucket_globals_t;
 
 typedef struct tfx_ribbon_segment_soa_s {
@@ -6088,6 +6096,15 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_vector_t<tfx_ribbon_t> ribbons;
 } tfx_ribbon_bucket_t;
 
+typedef struct tfx_ribbon_dispatch_s {
+	tfx_ribbon_bucket_t *ribbon_data;
+	tfxU32 index_offset;
+	tfxU32 index_count;
+	tfxU32 ribbon_offset;
+	tfxU32 segment_offset;
+	tfxU32 total_segments;
+} tfx_ribbon_dispatch_t;
+
 typedef struct tfx_compute_fx_global_state_s {
 	tfxU32 start_index;
 	tfxU32 current_length;
@@ -6110,7 +6127,7 @@ typedef struct tfx_compute_controller_s {
 	float stretch;
 	float frame_rate;
 	float noise_resolution;
-}tfx_compute_controller_t;
+} tfx_compute_controller_t;
 
 typedef struct tfx_compute_particle_s {
 	tfx_vec2_t local_position;
@@ -6409,6 +6426,11 @@ typedef struct tfx_particle_manager_info_s {
 	bool(*grow_staging_buffer_callback)(tfxU32 new_size, tfx_particle_manager pm, void *user_data);
 }tfx_particle_manager_info_t;
 
+typedef struct tfx_ribbon_buffer_requirements_s {
+	tfxU32 segment_buffer_size_in_bytes;
+	tfxU32 ribbon_buffer_size_in_bytes;
+} tfx_ribbon_buffer_requirements_t;
+
 //Use the particle manager to add multiple effects to your scene 
 #ifdef __cplusplus
 typedef struct tfx_particle_manager_s {
@@ -6435,6 +6457,7 @@ typedef struct tfx_particle_manager_s {
 	tfx_vector_t<tfxU32> free_particle_indexes;
 	tfx_vector_t<tfx_effect_index_t> effects_in_use[tfxMAXDEPTH][2];
 	tfx_vector_t<tfxU32> control_emitter_queue;
+	tfx_vector_t<tfxU32> control_ribbon_queue;
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
@@ -6476,6 +6499,10 @@ typedef struct tfx_particle_manager_s {
 	tfxU32 next_ebuff;
 	//For looping through active effects with GetNextEffect function
 	tfxU32 effect_index_position;
+	//For looping through ribbon compute dispatches
+	tfxU32 ribbon_index_position;
+	tfx_ribbon_buffer_requirements_t ribbon_buffer_requirements;
+	tfx_ribbon_dispatch_t last_ribbon_dispatch;
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
 
@@ -7725,6 +7752,12 @@ Get a struct containing the info you need to compute and render ribbons of a spe
 * @returns						  A tfx_ribbon_buffer_info_t struct
 */
 tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_particle_manager pm, tfxU32 ribbon_length);
+
+tfxAPI bool tfx_NextRibbonDispatch(tfx_particle_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
+
+tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements(tfx_particle_manager pm);
+
+tfxAPI void tfx_CopyRibbonDataToStagingBuffers(tfx_particle_manager pm, void *segments_dst, void *ribbons_dst);
 
 /*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
