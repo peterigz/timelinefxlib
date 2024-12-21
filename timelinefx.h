@@ -1458,7 +1458,7 @@ tfxAPI_EDITOR inline tfxKey tfx_Hash(tfx_hasher_t *hasher, const void *input, tf
 
 //Currently there's no advantage to using avx so I have some work to do optimising there, probably to do with cache and general memory bandwidth
 //Hiding this define here for now until I can test and improve AVX more
-//#define tfxUSEAVX
+#define tfxUSEAVX
 
 //Define tfxUSEAVX if you want to compile and use AVX simd operations for updating particles, otherwise SSE will be
 //used by default
@@ -1539,21 +1539,7 @@ typedef union {
 	__m256 m;
 } tfxWideArray;
 
-const __m256 tfxWIDEF3_4 = tfxWideSetConst(1.0f / 3.0f);
-const __m256 tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
-const __m256 tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
-const __m256 tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
-const __m256i tfxWIDEONEi = tfxWideSetConst(1);
-const __m256 tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
-const __m256i tfxWIDEMINUSONEi = tfxWideSetConst(-1);
-const __m256 tfxWIDEONE = tfxWideSetConst(1.f);
-const __m256 tfxWIDE255 = tfxWideSetConst(255.f);
-const __m256 tfxWIDEZERO = tfxWideSetConst(0.f);
-const __m256 tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
-const __m256 tfxPWIDESIX = tfxWideSetConst(0.6f);
-const __m256 tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
-const __m256 tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
-tfxINTERNAL const __m256 SIGNMASK = tfxWideSetConst(-0.f);
+const tfxWideArrayi tfxBASEINDEX = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
 #else
 
@@ -1628,22 +1614,6 @@ typedef union {
 	float a[4];
 	__m128 m;
 } tfxWideArray;
-
-const tfxWideArray tfxWIDEF3_4 = tfxWideSetConst(1.f / 3.f);
-const tfxWideArray tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
-const tfxWideArray tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
-const tfxWideArray tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
-const tfxWideArrayi tfxWIDEONEi = tfxWideSetConst(1);
-const tfxWideArray tfxWIDEMINUSONE = tfxWideSetConst(-1.f);
-const tfxWideArrayi tfxWIDEMINUSONEi = tfxWideSetConst(-1);
-const tfxWideArray tfxWIDEONE = tfxWideSetConst(1.f);
-const tfxWideArray tfxWIDE255 = tfxWideSetConst(255.f);
-const tfxWideArray tfxWIDEZERO = tfxWideSetConst(0.f);
-const tfxWideArray tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
-const tfxWideArray tfxPWIDESIX = tfxWideSetConst(0.6f);
-const tfxWideArray tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
-const tfxWideArray tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
-const tfxWideArray SIGNMASK = tfxWideSetConst(-0.f);
 
 #elif defined(tfxARM)
 //Arm Intrinsics
@@ -1729,7 +1699,21 @@ typedef union {
 	float32x4_t m;
 } tfxWideArray;
 
-const tfxWideArray tfxWIDEF3_4 = tfxWideSetConst(1.0f / 3.0f);
+#endif
+
+#define tfxWideLookupSet(lookup, index) tfx128Set( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetMember(lookup, member, index) tfx128Set( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSetMemberi(lookup, member, index) tfx128Seti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
+#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfx128Set( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
+#define tfxWideLookupSeti(lookup, index) tfx128Seti( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
+#define tfxWideLookupSetColor(lookup, index) tfx128Seti( lookup[index.a[3]].color, lookup[index.a[2]].color, lookup[index.a[1]].color, lookup[index.a[0]].color )
+#define tfxWideLookupSetOffset(lookup, index, offset) tfx128Set( lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
+
+const tfxWideArrayi tfxBASEINDEX = { 0, 1, 2, 3 };
+
+#endif
+
+const tfxWideArray tfxWIDEF3_4 = tfxWideSetConst(1.f / 3.f);
 const tfxWideArray tfxWIDEG3_4 = tfxWideSetConst(1.0f / 6.0f);
 const tfxWideArray tfxWIDEG32_4 = tfxWideSetConst((1.0f / 6.0f) * 2.f);
 const tfxWideArray tfxWIDEG33_4 = tfxWideSetConst((1.0f / 6.0f) * 3.f);
@@ -1743,20 +1727,7 @@ const tfxWideArray tfxWIDETHIRTYTWO = tfxWideSetConst(32.f);
 const tfxWideArray tfxPWIDESIX = tfxWideSetConst(0.6f);
 const tfxWideArray tfxMAXUINTf = tfxWideSetConst((float)UINT32_MAX);
 const tfxWideArray tfxDEGREERANGEMR = tfxWideSetConst(0.392699f);
-
-tfxINTERNAL const tfxWideArray SIGNMASK = tfxWideSetConst(-0.f);
-
-#endif
-
-#define tfxWideLookupSet(lookup, index) tfx128Set( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSetMember(lookup, member, index) tfx128Set( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSetMemberi(lookup, member, index) tfx128Seti( lookup[index.a[3]].member, lookup[index.a[2]].member, lookup[index.a[1]].member, lookup[index.a[0]].member )
-#define tfxWideLookupSet2(lookup1, lookup2, index1, index2) tfx128Set( lookup1[index1.a[3]].lookup2[index2.a[3]], lookup1[index1.a[2]].lookup2[index2.a[2]], lookup1[index1.a[1]].lookup2[index2.a[1]], lookup1[index1.a[0]].lookup2[index2.a[0]] )
-#define tfxWideLookupSeti(lookup, index) tfx128Seti( lookup[index.a[3]], lookup[index.a[2]], lookup[index.a[1]], lookup[index.a[0]] )
-#define tfxWideLookupSetColor(lookup, index) tfx128Seti( lookup[index.a[3]].color, lookup[index.a[2]].color, lookup[index.a[1]].color, lookup[index.a[0]].color )
-#define tfxWideLookupSetOffset(lookup, index, offset) tfx128Set( lookup[index.a[3] + offset], lookup[index.a[2] + offset], lookup[index.a[1] + offset], lookup[index.a[0] + offset] )
-
-#endif
+const tfxWideArray SIGNMASK = tfxWideSetConst(-0.f);
 
 #ifdef tfxINTEL
 typedef __m128 tfx128;
@@ -1791,6 +1762,12 @@ tfxINTERNAL inline tfx128 tfxFloor128(const tfx128 x) {
 	j = _mm_and_ps(igx, j);
 	return _mm_sub_ps(fi, j);
 }
+
+#ifdef tfxUSEAVX
+#define tfxWideFloor _mm256_floor_ps
+#else
+#define tfxWideFloor tfxFloor128
+#endif
 
 tfxINTERNAL inline uint64_t tfx__rdtsc() {
 	return __rdtsc();

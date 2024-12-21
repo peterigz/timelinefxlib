@@ -17363,33 +17363,30 @@ void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data) {
 		segments.resize(ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths);
 
 		if (ribbon_emitter.property_flags & tfxRibbonPropertyFlags_static) {
-			tfxU32 num_path_nodes = path->node_count - 3;
-			float points_per_segment = (float)ribbon_emitter.segment_count / num_path_nodes;
-			float remainder = 0;
-			tfxU32 current_point = 0;
-			float step_size = 1.f / points_per_segment;
-			/*
-			for (tfxU32 i = 0; i < num_path_nodes; ++i) {
-				// For other segments, distribute points evenly
-				for (float t = remainder; t < 1.f; t += step_size) {
-					tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, i, t, &point.x);
-					segments[current_point].position_and_width = point + ribbon_emitter.world_position;
-					segments[current_point].position_and_width.w = 0.05f;
-					++current_point;
-					if (current_point == segments.current_size) break;
-					remainder = t > 0.f ? 1.f - t : 0.f;
+			tfxWideFloat segment_count = tfxWideSetSingle(float(ribbon_emitter.segment_count - 1));
+			tfxWideFloat num_path_nodes = tfxWideSetSingle(float(path->node_count - 3));
+			tfxWideFloat inv_segment_count = tfxWideDiv(tfxWIDEONE.m, segment_count);
+			tfxWideFloat scaled_path_nodes = tfxWideMul(num_path_nodes, inv_segment_count);
+			tfxWideFloat world_x = tfxWideSetSingle(ribbon_emitter.world_position.x);
+			tfxWideFloat world_y = tfxWideSetSingle(ribbon_emitter.world_position.y);
+			tfxWideFloat world_z = tfxWideSetSingle(ribbon_emitter.world_position.z);
+			for (tfxU32 i = 0; i < ribbon_emitter.segment_count; i += tfxDataWidth) {
+				tfxWideArrayi pi;
+				tfxWideInt index = tfxWideSetSinglei(i);
+				pi.m = tfxWideAddi(tfxBASEINDEX.m, index);
+				tfxWideFloat indexf = tfxWideConvert(pi.m);
+				tfxWideFloat node = tfxWideMul(tfxWideConvert(pi.m), scaled_path_nodes);
+				pi.m = tfxWideConverti(node);
+				tfxWideFloat t = tfxWideSub(node, tfxWideFloor(node));
+				tfxWideArray point_x, point_y, point_z;
+				tfx__wide_catmull_rom_spline_3d(&pi, t, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x.m, &point_y.m, &point_z.m);
+				point_x.m = tfxWideAdd(world_x, point_x.m);
+				point_y.m = tfxWideAdd(world_y, point_y.m);
+				point_z.m = tfxWideAdd(world_z, point_z.m);
+				for (int j = 0; j != tfxDataWidth; ++j) {
+					segments[j + i].position_and_width = { point_x.a[j], point_y.a[j], point_z.a[j] };
+					segments[j + i].position_and_width.w = 0.05f;
 				}
-				if (current_point == segments.current_size) break;
-			}
-			*/
-			for (tfxU32 i = 0; i < ribbon_emitter.segment_count; ++i) {
-				// For other segments, distribute points evenly
-				float node = float(i) / (ribbon_emitter.segment_count - 1.f) * num_path_nodes;
-				float t = node - (int)node;
-				tfx__catmull_rom_spline_3d_soa(path->node_soa.x, path->node_soa.y, path->node_soa.z, (int)node, t, &point.x);
-				segments[i].position_and_width = point + ribbon_emitter.world_position;
-				segments[i].position_and_width.w = 0.05f;
-				remainder = t > 0.f ? 1.f - t : 0.f;
 			}
 			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths;
 		} else {
