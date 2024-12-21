@@ -6024,12 +6024,11 @@ typedef struct tfx_sprite_data_s {
 
 typedef struct tfx_ribbon_segment_s {
 	tfx_vec4_t position_and_width;
+	tfxU32 texture_indexes;
+	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color of the ribbon
+	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
+	tfx_float16x2_t ribbon_position;				//normalised position of the vertex on the ribbon
 } tfx_ribbon_segment_t;
-
-typedef struct tfx_ribbon_vertex_s {
-	tfx_vec4_t position;
-	tfx_vec4_t uv;
-} tfx_ribbon_vertex_t;
 
 typedef struct tfx_ribbon_instance_s {
 	float width_scale;
@@ -6054,7 +6053,8 @@ typedef struct tfx_ribbon_segment_soa_s {
 } tfx_ribbon_segment_soa_t;
 
 typedef struct tfx_3d_ribbon_vertex_s {
-	tfx_vec4_t position;
+	tfx_vec3_t position;
+	tfxU32 segment_index;
 } tfx_3d_ribbon_vertex_t;
 
 typedef struct tfx_ribbon_buffer_info_s {
@@ -6093,11 +6093,11 @@ typedef struct tfx_compute_controller_s {
 	tfx_vec2_t position;
 	float line_length;
 	float angle_offset;
-	tfx_vec4_t scale_rotation;                //Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
+	tfx_vec4_t scale_rotation;              //Scale and rotation (x, y = scale, z = rotation, w = velocity_adjuster)
 	float end_frame;
-	tfxU32 normalised_values;        //Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, position_negator, opacity
+	tfxU32 normalised_values;				//Contains normalized values which are generally either 0 or 255, normalised in the shader to 0 and 1 (except opacity): age_rate, line_negator, spin_negator, position_negator, opacity
 	tfxParticleControlFlags flags;
-	tfxU32 image_data_index;        //index into the shape buffer on the gpu. CopyComputeShapeData must be called to prepare the data.
+	tfxU32 image_data_index;				//index into the shape buffer on the gpu. CopyComputeShapeData must be called to prepare the data.
 	tfx_vec2_t image_handle;
 	tfx_vec2_t emitter_handle;
 	float noise_offset;
