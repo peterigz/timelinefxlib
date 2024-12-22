@@ -14856,6 +14856,7 @@ void tfx__update_ribbon_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx__update_ribbon_emitter_state(pm, ribbon, ribbon.parent_index, ribbon_work_entry->parent_spawn_controls, ribbon_work_entry);
 	if (properties.emission_type == tfxPath) {
+		ribbon_work_entry->graphs = &library->emitter_attributes[ribbon.emitter_attributes].overtime;
 		tfx__spawn_ribbon_path_3d(&pm->work_queue, data);
 	}
 }
@@ -17362,6 +17363,7 @@ void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data) {
 
 		tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket->segments;
 		segments.resize(ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths);
+		tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes[0]) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes[0]) << 16) | properties.image->compute_shape_index;
 
 		if (ribbon_emitter.property_flags & tfxRibbonPropertyFlags_static) {
 			tfxWideFloat segment_count = tfxWideSetSingle(float(ribbon_emitter.segment_count - 1));
@@ -17387,7 +17389,7 @@ void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data) {
 				for (int j = 0; j != tfxDataWidth; ++j) {
 					segments[j + i].position_and_width = { point_x.a[j], point_y.a[j], point_z.a[j] };
 					segments[j + i].position_and_width.w = 0.05f;
-					segments[j + i].texture_indexes = properties.image->compute_shape_index;
+					segments[j + i].texture_indexes = texture_indexes;
 				}
 			}
 			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths;

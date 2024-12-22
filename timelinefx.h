@@ -6192,6 +6192,7 @@ typedef struct tfx_ribbon_work_entry_s {
 	tfxRibbonPropertyFlags property_flags;
 	tfxEffectPropertyFlags effect_flags;
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
+	tfx_overtime_attributes_t *graphs;
 	float overal_scale;
 }tfx_ribbon_work_entry_t;
 
