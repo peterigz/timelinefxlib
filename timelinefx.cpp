@@ -17311,6 +17311,7 @@ void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data) {
 	float arc_offset = lookup_callback(&library->emitter_attributes[ribbon_emitter.emitter_attributes].properties.arc_offset, ribbon_emitter.frame);
 	float extrusion = lookup_callback(&library->emitter_attributes[ribbon_emitter.emitter_attributes].properties.extrusion, ribbon_emitter.frame);
 	bool has_rotation = path->rotation_range > 0 || path->rotation_pitch != 0 || path->rotation_yaw != 0;
+	tfx_image_data_t *image = entry->properties->image;
 
 	if (path->rotation_cycle_length > 0) {
 		if ((ribbon_emitter.property_flags & tfxEmitterPropertyFlags_spawn_on_grid && ribbon_emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_random) ||
@@ -17386,6 +17387,7 @@ void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data) {
 				for (int j = 0; j != tfxDataWidth; ++j) {
 					segments[j + i].position_and_width = { point_x.a[j], point_y.a[j], point_z.a[j] };
 					segments[j + i].position_and_width.w = 0.05f;
+					segments[j + i].texture_indexes = properties.image->compute_shape_index;
 				}
 			}
 			ribbon_bucket->buffer_info.index_count = ribbon_bucket->buffer_info.indices_per_segment * ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths;

@@ -5541,6 +5541,9 @@ typedef struct tfx_ribbon_properties_s {
 	tfxKey image_hash;
 	tfx_emission_type emission_type;
 	tfx_vec3_t emitter_handle;
+	float frame_rate;
+	float end_frame;
+	tfx_image_data_t *image;
 	float path_start_offset;
 	float path_size_fraction;
 } tfx_ribbon_properties_t;
