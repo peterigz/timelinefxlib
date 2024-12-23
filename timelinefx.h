@@ -5570,6 +5570,7 @@ typedef struct tfx_path_state_s {
 	tfxU32 path_cycle_count;
 	tfxU32 active_paths;
 	tfxU32 path_start_index;
+	tfxU32 ribbon_index;
 } tfx_path_state_t;
 
 //This is a struct that stores an emitter state that is currently active in a particle manager.
@@ -5731,6 +5732,12 @@ typedef struct tfx_ribbon_emitter_state_s {
 	tfxKey path_hash;
 	tfx_library library;
 
+#ifdef __cplusplus
+	tfx_vector_t<tfxU32> ribbon_indexes[2];
+#else
+	tfx_vector_t ribbon_indexes[2];
+#endif
+
 	//Control Data
 	tfxU32 ribbon_segments_index;
 	tfxU32 spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
@@ -5748,7 +5755,7 @@ typedef struct tfx_effect_descriptor_s {
 	tfxEmitterStateFlags state_flags;
 	//Property flags for emitters
 	tfxEmitterPropertyFlags property_flags;
-	//Property flags for ribbons
+	//Property flags for ribbon_emitters
 	tfxRibbonPropertyFlags ribbon_property_flags;
 	//Flags specific to effects
 	tfxEffectPropertyFlags effect_flags;
@@ -6072,8 +6079,10 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_ribbon_bucket_globals_t globals;
 	tfx_ribbon_buffer_info_t buffer_info;
 	tfxU32 ribbon_index_offset;
+	tfxU32 first_ribbon_index;
 	tfx_vector_t<tfx_ribbon_segment_t> segments;
 	tfx_vector_t<tfx_ribbon_t> ribbons;
+	tfx_vector_t<tfxU32> free_ribbons;
 } tfx_ribbon_bucket_t;
 
 typedef struct tfx_ribbon_dispatch_s {
@@ -6187,7 +6196,7 @@ typedef struct tfx_ribbon_work_entry_s {
 	tfx_random_t random;
 	tfx_particle_manager pm;
 	tfx_ribbon_properties_t *properties;
-	tfxU32 ribbon_index;
+	tfxU32 ribbon_emitter_index;
 	tfxU32 parent_index;
 	tfxRibbonPropertyFlags property_flags;
 	tfxEffectPropertyFlags effect_flags;
@@ -6389,9 +6398,9 @@ typedef struct tfx_effect_index_s {
 typedef struct tfx_particle_manager_info_s {
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time.
-	tfxU32 max_ribbons_per_bucket;          //The default number of maximum ribbons per bucket. A bucket contains all the ribbons for a given segment length. Segment lengths are always in multiples of 32.
+	tfxU32 max_ribbons_per_bucket;          //The default number of maximum ribbon_emitters per bucket. A bucket contains all the ribbon_emitters for a given segment length. Segment lengths are always in multiples of 32.
 											//You can call tfx_SetMaxRibbonsForBucket to specific individual limits for certain segment sizes if needed. These buffers will not grow dynamically so will simply 
-											//not produce any more ribbons for that segment size once the limit is hit.
+											//not produce any more ribbon_emitters for that segment size once the limit is hit.
 	tfx_particle_manager_mode order_mode;   //When not grouping instance_data by effect, you can set the mode of the particle manager to order instance_data or not.
 	//When set to false, all instance_data will be kept together in a large list.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
@@ -6442,13 +6451,14 @@ typedef struct tfx_particle_manager_s {
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
-	tfx_vector_t<tfxU32> free_ribbons;
+	tfx_vector_t<tfxU32> free_ribbon_emitters;
 	tfx_vector_t<tfxU32> free_path_quaternions;
 	tfx_vector_t<tfx_path_quaternion_t *> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
 	tfx_vector_t<tfx_emitter_state_t> emitters;
-	tfx_vector_t<tfx_ribbon_emitter_state_t> ribbons;
+	tfx_vector_t<tfx_ribbon_emitter_state_t> ribbon_emitters;
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
+	tfx_vector_t<tfx_ribbon_work_entry_t *> deffered_ribbon_spawn_work;
 	tfx_vector_t<tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
 	tfx_vector_t<unsigned int> free_compute_controllers;
 
@@ -6473,7 +6483,7 @@ typedef struct tfx_particle_manager_s {
 	tfxU32 max_cpu_particles_per_layer[tfxLAYERS];
 	//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
 	tfxU32 max_new_compute_particles;
-	//The default number of maximum ribbons per bucket. A bucket contains all the ribbons for a given segment length. Segment lengths are always in multiples of 32.
+	//The default number of maximum ribbon_emitters per bucket. A bucket contains all the ribbon_emitters for a given segment length. Segment lengths are always in multiples of 32.
 	tfxU32 max_ribbons_per_bucket;
 	//The current effect buffer in use, can be either 0 or 1
 	tfxU32 current_ebuff;
@@ -6633,6 +6643,7 @@ tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
 tfxINTERNAL tfxU32 tfx__grab_particle_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
+tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_particle_manager pm, tfxU32 segment_count);
 tfxINTERNAL tfxU32 tfx__grab_ribbon_segment_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxKey segment_count, int tessellation);
@@ -7222,6 +7233,9 @@ tfxINTERNAL void tfx__spawn_particle_spin_2d(tfx_work_queue_t *queue, void *data
 tfxINTERNAL void tfx__do_spawn_work_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__do_spawn_work_3d(tfx_work_queue_t *queue, void *data);
 
+tfxINTERNAL void tfx__do_ribbon_spawn_work_2d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__do_ribbon_spawn_work_3d(tfx_work_queue_t *queue, void *data);
+
 tfxINTERNAL void tfx__spawn_particle_point_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_single_2d(tfx_work_queue_t *queue, void *data);
@@ -7238,6 +7252,7 @@ tfxINTERNAL void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, vo
 tfxINTERNAL void tfx__spawn_particle_spin_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data);
 
+tfxINTERNAL void tfx__spawn_ribbons(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
@@ -7720,14 +7735,14 @@ a vertex buffer for rendering.
 tfxAPI tfx_ribbon_bucket_t *tfx_Get3dRibbonBuffers(tfx_particle_manager pm, tfxU32 ribbon_length);
 
 /*
-Call this to determine whether or not the particle manager has ribbons to draw this frame.
+Call this to determine whether or not the particle manager has ribbon_emitters to draw this frame.
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 * @returns						  True or false
 */
 tfxAPI bool tfx_HasRibbonsToDraw(tfx_particle_manager pm);
 
 /*
-Get a struct containing the info you need to compute and render ribbons of a specific length. 
+Get a struct containing the info you need to compute and render ribbon_emitters of a specific length. 
 * @param pm                       A pointer to an intialised tfx_particle_manager_t.
 * @param segment_count            An unsigned int specifying the ribbon length that you want the rendering info for.
 * @returns						  A tfx_ribbon_buffer_info_t struct
