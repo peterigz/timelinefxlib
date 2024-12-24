@@ -5699,6 +5699,13 @@ typedef struct tfx_ribbon_s {
 	tfxU32 quaternion;
 } tfx_ribbon_t;
 
+typedef struct tfx_ribbon_soa_s {
+	tfx_ribbon_t *ribbon_instances;
+	float *age;
+	float *max_age;
+	tfxU32 *path_index;
+} tfx_ribbon_soa_t;
+
 typedef struct tfx_ribbon_emitter_state_s {
 	//State data
 	float frame;
@@ -6040,11 +6047,6 @@ typedef struct tfx_ribbon_segment_s {
 	tfx_float16x2_t ribbon_position;				//normalised position of the vertex on the ribbon
 } tfx_ribbon_segment_t;
 
-typedef struct tfx_ribbon_instance_s {
-	float width_scale;
-	tfxU32 start_index;
-} tfx_ribbon_instance_t;
-
 typedef struct tfx_ribbon_bucket_globals_s  {
 	tfx_vec4_t camera_position;
 	tfxU32 segment_count;
@@ -6079,9 +6081,12 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_ribbon_bucket_globals_t globals;
 	tfx_ribbon_buffer_info_t buffer_info;
 	tfxU32 ribbon_index_offset;
-	tfxU32 first_ribbon_index;
+	tfxU32 active_ribbons;
+	tfxU32 highest_ribbon_index;
+	tfxU32 lowest_ribbon_index;
 	tfx_vector_t<tfx_ribbon_segment_t> segments;
-	tfx_vector_t<tfx_ribbon_t> ribbons;
+	tfx_soa_buffer_t ribbons_buffer;
+	tfx_ribbon_soa_t ribbons;
 	tfx_vector_t<tfxU32> free_ribbons;
 } tfx_ribbon_bucket_t;
 
@@ -6234,11 +6239,11 @@ typedef struct tfx_control_work_entry_s {
 	float global_noise;
 }tfx_control_work_entry_t;
 
-typedef struct tfx_control_ribbon_segment_work_entry_s {
+typedef struct tfx_control_ribbon_work_entry_s {
 	tfxU32 segment_array_index;
 	tfxU32 ribbon_index;
 	tfx_particle_manager pm;
-} tfx_control_ribbon_segment_work_entry_t;
+} tfx_control_ribbon_work_entry_t;
 
 typedef struct tfx_particle_age_work_entry_s {
 	tfxU32 start_index;
@@ -6442,6 +6447,7 @@ typedef struct tfx_particle_manager_s {
 	tfx_vector_t<tfx_spawn_work_entry_t> spawn_work;
 	tfx_vector_t<tfx_ribbon_work_entry_t> ribbon_work;
 	tfx_vector_t<tfx_control_work_entry_t> control_work;
+	tfx_vector_t<tfx_control_ribbon_work_entry_t> ribbon_control_work;
 	tfx_vector_t<tfx_particle_age_work_entry_t> age_work;
 	tfx_vector_t<tfxParticleID> particle_indexes;
 	tfx_vector_t<tfxU32> free_particle_indexes;
@@ -6644,6 +6650,7 @@ tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
 tfxINTERNAL tfxU32 tfx__grab_particle_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_particle_manager pm, tfxU32 segment_count);
+tfxINTERNAL void tfx__free_ribbon(tfx_particle_manager pm, tfxU32 segment_count, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_ribbon_segment_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxKey segment_count, int tessellation);
@@ -6779,7 +6786,7 @@ tfxAPI_EDITOR void tfx__copy_graph_color(tfx_overtime_attributes_t *from, tfx_ov
 tfxAPI_EDITOR void tfx__copy_graph_color_hint(tfx_overtime_attributes_t *from, tfx_overtime_attributes_t *to);
 tfxAPI_EDITOR void tfx__copy_graph_colors(tfx_graph_t *from_red, tfx_graph_t *from_blue, tfx_graph_t *from_green, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue);
 tfxAPI_EDITOR bool tfx__sort_graph(tfx_graph_t *graph);
-tfxAPI_EDITOR void tfx__glip_graph(tfx_graph_t *graph);
+tfxAPI_EDITOR void tfx__flip_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_blend_factor_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_overtime_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_factor_graph(tfx_graph_t *graph);
@@ -7278,6 +7285,7 @@ tfxINTERNAL void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue,
 tfxINTERNAL void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, void *data);
 
+tfxINTERNAL void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__init_sprite_data_soa_compression_3d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
@@ -7288,6 +7296,7 @@ tfxINTERNAL void tfx__init_particle_soa_2d(tfx_soa_buffer_t *buffer, tfx_particl
 tfxINTERNAL void tfx__init_particle_soa_3d(tfx_soa_buffer_t *buffer, tfx_particle_soa_t *soa, tfxU32 reserve_amount, tfxEmitterControlProfileFlags control_profile);
 tfxINTERNAL void tfx__init_particle_location_soa_3d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_particle_location_soa_2d(tfx_soa_buffer_t *buffer, tfx_spawn_points_soa_t *soa, tfxU32 reserve_amount);
+tfxINTERNAL void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_soa_3d(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_soa_2d(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__copy_emitter_properties(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);
