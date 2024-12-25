@@ -15472,13 +15472,13 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 	tfxPROFILE;
 
 	tfx_spawn_work_entry_t *entry = static_cast<tfx_spawn_work_entry_t *>(data);
-	tfx_random_t random = entry->random;
 	const tfx_emitter_properties_t &properties = *entry->properties;
 	float tween = entry->tween;
 	tfxU32 emitter_index = entry->emitter_index;
 	tfx_particle_manager_t &pm = *entry->pm;
 	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
+	tfx_random_t random = entry->random;
 	tfx_AlterRandomSeedU32(&random, 2 + emitter.seed_index);
 
 	//const float life = pm.emitters.life[emitter_index];
@@ -17406,6 +17406,12 @@ void tfx__spawn_ribbons(tfx_work_queue_t *queue, void *data) {
 	tfx_ribbon_work_entry_t *entry = static_cast<tfx_ribbon_work_entry_t *>(data);
 	tfx_particle_manager_t &pm = *entry->pm;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[entry->ribbon_emitter_index];
+	tfx_library_t *library = ribbon_emitter.library;
+	tfx_random_t random = entry->random;
+	tfx_AlterRandomSeedU32(&random, 1 + ribbon_emitter.seed_index);
+
+	const float life = lookup_callback(&library->emitter_attributes[ribbon_emitter.emitter_attributes].base.life, ribbon_emitter.frame) * entry->parent_spawn_controls->life;
+	const float life_variation = lookup_callback(&library->emitter_attributes[ribbon_emitter.emitter_attributes].variation.life, ribbon_emitter.frame) * entry->parent_spawn_controls->life;
 
 	if (ribbon_emitter.path_state.active_paths != ribbon_emitter.active_ribbons > 0) {
 		tfx_ribbon_bucket_t *ribbon_bucket = &pm.ribbon_segments_buckets.At(ribbon_emitter.segment_count);
@@ -17419,8 +17425,8 @@ void tfx__spawn_ribbons(tfx_work_queue_t *queue, void *data) {
 			tfx_ribbon_t &ribbon = ribbon_bucket->ribbons.ribbon_instances[ribbon_index];
 			ribbon.quaternion = ribbon_emitter.path_state.path_quaternions[i].quaternion;
 			ribbon.global_width = 1.f;
-			ribbon_bucket->ribbons.age[ribbon_index] = 0;
-			ribbon_bucket->ribbons.max_age[ribbon_index] = 5000.f;
+			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
+			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
 		}
 		pm.deffered_ribbon_spawn_work.push_back(entry);
 	}
