@@ -20,6 +20,7 @@
 
 	[Zest_Pocket_Allocator]				A single header library for allocating memory from a large pool.
 	[Header_Includes_and_Typedefs]		Just your basic header stuff for setting up typedefs and some #defines
+	[Macros]							Macro definitions
 	[OS_Specific_Functions]				OS specific multithreading and file access
 	[Pocket_Hasher]						XXHasher for the storage map.
 	[SIMD_defines]						Defines for SIMD intrinsics
@@ -1125,6 +1126,9 @@ typedef unsigned short tfxUShort;
 #include <Windows.h>
 #endif
 
+//--------------------------------------------------------------
+//Macros
+
 #define tfxTWO63 0x8000000000000000u 
 #define tfxTWO64f (tfxTWO63*2.0)
 #define tfxPI 3.14159265359f
@@ -1148,21 +1152,13 @@ typedef unsigned short tfxUShort;
 #define tfxPACK_SCALE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 127.9960938f) | ((tfxU16)(y * 127.9960938f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
 #define tfxPACK_SIZE_AND_HANDLE(x, y, lib, property_index) (tfxU16)(x * 7.999755859f) | ((tfxU16)(y * 7.999755859f) << 16) | ((tfxU64)lib->emitter_properties[property_index].image_handle_packed << 32)
 #define tfxCIRCLENODES 16
+#define tfxMIN_SEGMENT_COUNT 32 
+#define tfxMAX_SEGMENT_COUNT 1024 
+#define tfxRibbonBucketIndex(segment_count) ((segment_count) / tfxMIN_SEGMENT_COUNT - 1)
+#define tfxFlagRibbonBucketInUse(flags, index) (flags |= (TFX_ONE << (index)))
+#define tfxUnFlagRibbonBucketInUse(flags, index) (flags &= ~(TFX_ONE << (index)))
 #define tfxPrint(message, ...) printf(message tfxNL, ##__VA_ARGS__)
 
-//----------------------------------------------------------
-//Forward declarations
-
-typedef struct tfx_effect_descriptor_s tfx_effect_descriptor_t;
-typedef struct tfx_particle_manager_s tfx_particle_manager_t;
-typedef struct tfx_effect_template_s tfx_effect_template_t;
-typedef struct tfx_compute_sprite_s tfx_compute_sprite_t;
-typedef struct tfx_compute_particle_s tfx_compute_particle_t;
-typedef struct tfx_library_s tfx_library_t;
-typedef struct tfx_animation_manager_s tfx_animation_manager_t;
-
-//--------------------------------------------------------------
-//macros
 #define TFX_VERSION "Alpha"
 #define TFX_VERSION_NUMBER 6.18.2024
 
@@ -1219,7 +1215,16 @@ You can then use layer inside the loop to get the current layer
 #define tfxEachLayer int layer = 0; layer != tfxLAYERS; ++layer
 #define tfxForEachLayer for (int layer = 0; layer != tfxLAYERS; ++layer)
 
-//Internal use macro
+//----------------------------------------------------------
+//Forward declarations
+
+typedef struct tfx_effect_descriptor_s tfx_effect_descriptor_t;
+typedef struct tfx_particle_manager_s tfx_particle_manager_t;
+typedef struct tfx_effect_template_s tfx_effect_template_t;
+typedef struct tfx_compute_sprite_s tfx_compute_sprite_t;
+typedef struct tfx_compute_particle_s tfx_compute_particle_t;
+typedef struct tfx_library_s tfx_library_t;
+typedef struct tfx_animation_manager_s tfx_animation_manager_t;
 
 union tfxUInt10bit
 {
@@ -2285,6 +2290,7 @@ typedef tfxU32 tfxParticleFlags;                //tfx_particle_flag_bits
 typedef tfxU32 tfxEmitterStateFlags;            //tfx_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonEmitterStateFlags;      //tfx_ribbon_emitter_state_flag_bits
 typedef tfxU32 tfxRibbonFlags;		            //tfx_ribbon_flag_bits
+typedef tfxU32 tfxRibbonBucketFlags;            //tfx_ribbon_bucket_flag_bits
 typedef tfxU32 tfxEffectStateFlags;             //tfx_effect_state_flag_bits
 typedef tfxU32 tfxParticleControlFlags;         //tfx_particle_control_flag_bits
 typedef tfxU32 tfxAttributeNodeFlags;           //tfx_attribute_node_flag_bits
@@ -2584,6 +2590,11 @@ typedef enum {
 } tfx_ribbon_flag_bits;
 
 typedef enum {
+	tfxRibbonBucketFlags_none = 0,
+	tfxRibbonBucketFlags_initialised = 1 << 1 
+} tfx_ribbon_bucket_flag_bits;
+
+typedef enum {
 	tfxEffectStateFlags_none = 0,
 	tfxEffectStateFlags_stop_spawning = 1 << 3,                         //Tells the emitter to stop spawning
 	tfxEffectStateFlags_remove = 1 << 4,                                //Tells the effect/emitter to remove itself from the particle manager immediately
@@ -2631,6 +2642,11 @@ typedef enum {
 	tfxAnimationManagerFlags_initialised = 1 << 1,
 	tfxAnimationManagerFlags_is_3d = 1 << 2,
 } tfx_animation_manager_flag_bits;
+
+//Array_sizes
+typedef enum {
+	tfxArraySize_segment_bucket = tfxMAX_SEGMENT_COUNT / tfxMIN_SEGMENT_COUNT,
+} tfx_array_sizes;
 
 //-----------------------------------------------------------
 //Constants
@@ -3426,6 +3442,7 @@ inline void tfx__reset_soa_buffer(tfx_soa_buffer_t *buffer) {
 	buffer->resize_callback = nullptr;
 	buffer->struct_of_arrays = nullptr;
 	buffer->data = nullptr;
+	buffer->array_ptrs.init();
 }
 
 inline void *tfx__get_end_of_buffer_ptr(tfx_soa_buffer_t *buffer) {
@@ -6088,6 +6105,7 @@ typedef struct tfx_ribbon_bucket_s {
 	tfx_soa_buffer_t ribbons_buffer;
 	tfx_ribbon_soa_t ribbons;
 	tfx_vector_t<tfxU32> free_ribbons;
+	tfxRibbonBucketFlags flags;
 } tfx_ribbon_bucket_t;
 
 typedef struct tfx_ribbon_dispatch_s {
@@ -6207,6 +6225,7 @@ typedef struct tfx_ribbon_work_entry_s {
 	tfxEffectPropertyFlags effect_flags;
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
 	tfx_overtime_attributes_t *graphs;
+	tfxU32 new_ribbons;
 	float overal_scale;
 }tfx_ribbon_work_entry_t;
 
@@ -6439,8 +6458,9 @@ typedef struct tfx_particle_manager_s {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
 	tfx_vector_t<tfx_soa_buffer_t> ribbon_segment_buffers;
 	tfx_bucket_array_t<tfx_ribbon_segment_soa_t> ribbon_segment_arrays;
-	tfx_storage_map_t<tfx_ribbon_bucket_t> ribbon_segments_buckets;
-	tfx_storage_map_t<tfxU32> ribbon_bucket_limits;
+	tfx_ribbon_bucket_t ribbon_segment_buckets[tfxArraySize_segment_bucket];
+	tfx_size ribbon_buckets_in_use;
+	tfxU32 ribbon_bucket_limits[tfxArraySize_segment_bucket];
 
 	//Only used when using distance from camera ordering. New particles are put in this list and then merge sorted into the particles buffer
 	tfx_vector_t<tfx_sort_work_entry_t> sorting_work_entry;
@@ -6497,7 +6517,7 @@ typedef struct tfx_particle_manager_s {
 	//For looping through active effects with GetNextEffect function
 	tfxU32 effect_index_position;
 	//For looping through ribbon compute dispatches
-	tfxU32 ribbon_index_position;
+	tfx_size ribbon_dispatches;
 	tfx_ribbon_buffer_requirements_t ribbon_buffer_requirements;
 	tfx_ribbon_dispatch_t last_ribbon_dispatch;
 
@@ -6653,7 +6673,7 @@ tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_particle_manager pm, tfxU32 segment_coun
 tfxINTERNAL void tfx__free_ribbon(tfx_particle_manager pm, tfxU32 segment_count, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_ribbon_segment_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxKey segment_count, int tessellation);
+tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxU32 index, int tessellation);
 tfxAPI_EDITOR tfx_ribbon_buffer_info_t tfx__generate_ribbon_buffer_info(tfxU32 tessellation);
 
 //--------------------------------
@@ -7757,6 +7777,8 @@ Get a struct containing the info you need to compute and render ribbon_emitters 
 * @returns						  A tfx_ribbon_buffer_info_t struct
 */
 tfxAPI tfx_ribbon_buffer_info_t tfx_GetRibbonBufferInfo(tfx_particle_manager pm, tfxU32 ribbon_length);
+
+tfxAPI tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch();
 
 tfxAPI bool tfx_NextRibbonDispatch(tfx_particle_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
 
