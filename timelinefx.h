@@ -3341,6 +3341,16 @@ struct tfx_storage_map_t {
 		return data[index];
 	}
 
+	inline T *AtPtr(const char *name) {
+		int index = GetIndex(name);
+		return index != -1 ? &data[index] : nullptr;
+	}
+
+	inline T *AtPtr(tfxKey key) {
+		int index = GetIndex(key);
+		return index != -1 ? &data[index] : nullptr;
+	}
+
 	inline T &AtInt(int name) {
 		int index = GetIntIndex(name);
 		TFX_ASSERT(index > -1);                        //Key was not found
@@ -5710,6 +5720,7 @@ typedef struct tfx_effect_state_s {
 }tfx_effect_state_t TFX_ALIGN_AFFIX(16);
 
 typedef struct tfx_ribbon_s {
+	tfx_vec4_t position;
 	float global_width;
 	tfxU32 start_index;
 	tfxU32 flags;
@@ -5764,7 +5775,8 @@ typedef struct tfx_ribbon_emitter_state_s {
 
 	//Control Data
 	tfxU32 ribbon_segments_index;
-	tfxU32 spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
+	tfxU32 static_segment_start_index;				//For static paths so that we only have to build the ribbon once for all instances of it.
+	tfxU32 spawn_locations_index;					//For other_emitter emission type and storing the last known position of the particle
 	float image_frame_rate;
 	float end_frame;
 	tfx_vec3_t emitter_size;
@@ -6460,6 +6472,7 @@ typedef struct tfx_particle_manager_s {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
 	tfx_vector_t<tfx_soa_buffer_t> ribbon_segment_buffers;
 	tfx_bucket_array_t<tfx_ribbon_segment_soa_t> ribbon_segment_arrays;
+	tfx_storage_map_t<tfxU32> cached_static_path_segments;
 	tfx_ribbon_bucket_t ribbon_segment_buckets[tfxArraySize_segment_bucket];
 	tfx_size ribbon_buckets_in_use;
 	tfxU32 ribbon_bucket_limits[tfxArraySize_segment_bucket];
@@ -6670,7 +6683,7 @@ tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
 tfxINTERNAL tfxU32 tfx__grab_particle_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
-tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_particle_manager pm, tfxU32 segment_count);
+tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_particle_manager pm, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_particle_manager pm, tfxU32 segment_count, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_ribbon_segment_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
