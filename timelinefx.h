@@ -6422,9 +6422,11 @@ typedef struct tfx_effect_index_s {
 typedef struct tfx_particle_manager_info_s {
 	tfxU32 max_particles;					//The maximum number of instance_data for each layer. This setting is not relevent if dynamic_sprite_allocation is set to true or group_sprites_by_effect is true.
 	tfxU32 max_effects;                     //The maximum number of effects that can be updated at the same time.
-	tfxU32 max_ribbons_per_bucket;          //The default number of maximum ribbon_emitters per bucket. A bucket contains all the ribbon_emitters for a given segment length. Segment lengths are always in multiples of 32.
-											//You can call tfx_SetMaxRibbonsForBucket to specific individual limits for certain segment sizes if needed. These buffers will not grow dynamically so will simply 
-											//not produce any more ribbon_emitters for that segment size once the limit is hit.
+	tfxU32 max_ribbon_segments;             //All segments for ribbons are stored in a single buffer. You will need to create buffers for rendering and so whatever you decide the max segments should be your buffers
+											//should be big enough to contain all ribbon segments that you might need. You can call tfx_GetSegmentBufferSizeInBytes after creating the particle manager to get the byte
+											//value that you can use to create the buffers. Also note that segments are always created in multiples of 32, so whatever number you put here it will be rounded to the
+											//nearest multiple of 32.
+	tfxU32 ribbon_tessellation;				//The amount of tessellation used for ribbons. Currently this is set globally. 1 is generally enough for most cases.
 	tfx_particle_manager_mode order_mode;   //When not grouping instance_data by effect, you can set the mode of the particle manager to order instance_data or not.
 	//When set to false, all instance_data will be kept together in a large list.
 	tfxU32 multi_threaded_batch_size;       //The size of each batch of particles to be processed when multithreading. Must be a power of 2 and 256 or greater.
@@ -6509,8 +6511,6 @@ typedef struct tfx_particle_manager_s {
 	tfxU32 max_cpu_particles_per_layer[tfxLAYERS];
 	//The maximum number of particles that can be updated per frame per layer in the compute shader. #define tfxLAYERS to set the number of allowed layers. This is currently 4 by default
 	tfxU32 max_new_compute_particles;
-	//The default number of maximum ribbon_emitters per bucket. A bucket contains all the ribbon_emitters for a given segment length. Segment lengths are always in multiples of 32.
-	tfxU32 max_ribbons_per_bucket;
 	//The current effect buffer in use, can be either 0 or 1
 	tfxU32 current_ebuff;
 	tfxU32 next_ebuff;
@@ -6526,6 +6526,7 @@ typedef struct tfx_particle_manager_s {
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 cumulative_index_point[tfxLAYERS];
 	tfxU32 layer_sizes[tfxLAYERS];
+	tfxU32 running_segment_count;
 
 	int mt_batch_size;
 	tfx_sync_t particle_index_mutex;
@@ -7786,6 +7787,14 @@ tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements(tfx_part
 
 tfxAPI void tfx_CopyRibbonDataToStagingBuffers(tfx_particle_manager pm, void *segments_dst, void *ribbons_dst);
 
+tfxAPI size_t tfx_GetSegmentBufferSizeInBytes(tfx_particle_manager pm);
+
+tfxAPI size_t tfx_GetSegment3dVertexBufferSizeInBytes(tfx_particle_manager pm, tfxU32 vertex_size);
+
+tfxAPI size_t tfx_GetSegmentIndexBufferSizeInBytes(tfx_particle_manager pm);
+
+tfxAPI size_t tfx_GetRibbonBufferSizeInBytes(tfx_particle_manager pm, tfxU32 max_ribbons);
+
 /*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
 more than enough for most situations. However you can increase the sizes here if needed. You only need to set this manually if you hit one of the asserts when these
@@ -7978,18 +7987,18 @@ tfxAPI void tfx_SetPMCamera(tfx_particle_manager pm, float front[3], float posit
 /*
 Each effect in the particle manager can have bounding box which you can decide to keep updated or not if you wanted to do any offscreen culling of effects. Theres some
 extra overhead to keep the bounding boxes updated but that can be made back if you have a number of effect particles offscreen that don't need to be drawn.
-* @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
-* @param yesno            Set to true or false if you want the bounding boxes to be udpated.
+* @param pm					A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param yesno				Set to true or false if you want the bounding boxes to be udpated.
 */
 tfxAPI void tfx_KeepBoundingBoxesUpdated(tfx_particle_manager pm, bool yesno);
 
 /*
 Set the effect user data for an effect already added to a particle manager
-* @param pm                A pointer to a tfx_particle_manager_t where the effect is being managed
-* @param effect_index    The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToParticleManager
-* @param user_data        A void* pointing to the user_data that you want to store in the effect
+* @param pm					A pointer to a tfx_particle_manager_t where the effect is being managed
+* @param effect_index		The index of the effect that you want to expire. This is the index returned when calling tfx_AddEffectTemplateToParticleManager
+* @param user_data			A void* pointing to the user_data that you want to store in the effect
 */
-tfxAPI void tfx_SetEffectUserData(tfx_particle_manager pm, tfxEffectID effect_index, void *user_data);
+tfxAPI void tfx_SetEffectUserData(tfx_particle_manager pm, tfxU32 effect_index, void *data);
 
 /*
 Force a particle manager to only run in single threaded mode. In other words, only use the main thread to update particles
