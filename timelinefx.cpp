@@ -10866,7 +10866,6 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				tfx_ribbon_properties_t *ribbon_properties = tfx__get_ribbon_properties(&e);
 				//Not enough buffer memory for the necessary segments.
 				//Todo: Need to decide how to handle feedback to the user for this.
-				TFX_ASSERT(pm->running_segment_count + ribbon_properties->segment_count <= pm->info.max_ribbon_segments);
 				new_effect.ribbon_indexes[pm->current_ebuff].push_back(index);
 				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
 				ribbon_emitter.path_hash = e.path_hash;
@@ -11177,7 +11176,6 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 	memset(pm->sprite_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(pm->layer_sizes, 0, sizeof(tfxU32) * tfxLAYERS);
 	memset(pm->cumulative_index_point, 0, sizeof(tfxU32) * tfxLAYERS);
-	pm->ribbon_buckets_in_use = 0;
 
 	pm->instance_buffer.clear();
 	pm->highest_depth_index = 0;
@@ -11186,9 +11184,10 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 	for (int depth = 0; depth != tfxMAXDEPTH; ++depth) {
 		effects_start_size[depth] = pm->effects_in_use[depth][pm->current_ebuff].current_size;
 	}
-	
-	pm->ribbon_buffer_requirements = {};
 
+	tfx__reset_ribbon_buffer_requirements(pm);
+	pm->ribbon_buckets_in_use = 0;
+	
 	pm->control_emitter_queue.clear();
 	pm->control_ribbon_queue.clear();
 
@@ -11407,6 +11406,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 			}
 		}
 
+		pm->running_ribbon_vertex_count = 0;
 		for (int index : pm->control_ribbon_queue) {
 			tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
 			if (ribbon_emitter.active_ribbons > 0) {
@@ -11420,6 +11420,9 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 	tfx__complete_all_work(&pm->work_queue);
 	pm->age_work.clear();
 	pm->ribbon_control_work.clear();
+
+	pm->ribbon_dispatches = pm->ribbon_buckets_in_use;
+	tfx__update_ribbon_buffer_requirements(pm);
 
 	for (tfx_effect_index_t effect_index : pm->effects_in_use[0][next_buffer]) {
 		tfx_effect_instance_data_t &sprites = pm->effects[effect_index.index].instance_data;
@@ -11523,7 +11526,6 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 	}
 
 	pm->flags &= ~tfxParticleManagerFlags_update_base_values;
-	pm->ribbon_dispatches = pm->ribbon_buckets_in_use;
 }
 
 void *tfx_GetSpriteImagePointer(tfx_particle_manager pm, tfxU32 property_indexes) {
@@ -13425,8 +13427,6 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 	tfx_ribbon_bucket_t &bucket = pm.ribbon_segment_buckets[tfxRibbonBucketIndex(ribbon_emitter.segment_count)];
 
 	tfxU32 next_buffer = pm.current_ebuff ^ 1;
-	bucket.highest_ribbon_index = 0;
-	bucket.lowest_ribbon_index = tfxINVALID;
 
 	for (tfxU32 ribbon_index : ribbon_emitter.ribbon_indexes[pm.current_ebuff]) {
 		float &age = bucket.ribbons.age[ribbon_index];
@@ -13440,14 +13440,15 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 		}
 		bucket.highest_ribbon_index = tfx__Max(bucket.highest_ribbon_index, ribbon_index);
 		bucket.lowest_ribbon_index = tfx__Min(bucket.lowest_ribbon_index, ribbon_index);
+		bucket.highest_segment_index = tfx__Max(bucket.highest_segment_index, bucket.ribbons.ribbon_instances->start_index + ribbon_emitter.segment_count);
+		bucket.lowest_segment_index = tfx__Min(bucket.lowest_segment_index, bucket.ribbons.ribbon_instances->start_index);
 	}
 
 	if (bucket.highest_ribbon_index >= bucket.lowest_ribbon_index) {
 		pm.flags |= tfxParticleManagerFlags_has_ribbons_to_draw;
-		tfxU32 ribbon_count = bucket.highest_ribbon_index - bucket.lowest_ribbon_index + 1;
-		pm.ribbon_buffer_requirements.ribbon_buffer_size_in_bytes += ribbon_count * sizeof(tfx_ribbon_t);
-		pm.ribbon_buffer_requirements.segment_buffer_size_in_bytes += ribbon_count * ribbon_emitter.segment_count * sizeof(tfx_ribbon_segment_t);
 		tfxFlagRibbonBucketInUse(pm.ribbon_buckets_in_use, tfxRibbonBucketIndex(ribbon_emitter.segment_count));
+		tfxU32 ribbon_count = bucket.highest_ribbon_index - bucket.lowest_ribbon_index + 1;
+		pm.running_ribbon_vertex_count += ribbon_count * ribbon_emitter.segment_count * bucket.buffer_info.vertices_per_segment;
 	}
 }
 
@@ -14186,6 +14187,40 @@ tfx_ribbon_dispatch_t tfx_CreateRibbonDispatch() {
 	return {};
 }
 
+void tfx__reset_ribbon_buffer_requirements(tfx_particle_manager pm) {
+	pm->ribbon_buffer_requirements.segment_buffer_size_in_bytes = 0;
+	pm->ribbon_buffer_requirements.ribbon_buffer_size_in_bytes = 0;
+	int index = tfx__scan_forward(pm->ribbon_dispatches);
+	while (index != -1) {
+		tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets[index];
+		tfxUnFlagRibbonBucketInUse(pm->ribbon_dispatches, index);
+		bucket->highest_ribbon_index = 0;
+		bucket->lowest_ribbon_index = tfxINVALID;
+		bucket->highest_segment_index = 0;
+		bucket->lowest_segment_index = tfxINVALID;
+		index = tfx__scan_forward(pm->ribbon_dispatches);
+	}
+	pm->ribbon_dispatches = pm->ribbon_buckets_in_use;
+}
+
+void tfx__update_ribbon_buffer_requirements(tfx_particle_manager pm) {
+	int index = tfx__scan_forward(pm->ribbon_dispatches);
+	while (index != -1) {
+		tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets[index];
+		tfxUnFlagRibbonBucketInUse(pm->ribbon_dispatches, index);
+		if (bucket->lowest_ribbon_index > bucket->highest_ribbon_index) {
+			index = tfx__scan_forward(pm->ribbon_dispatches);
+			continue;
+		}
+		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
+		tfxU32 segment_count = bucket->highest_segment_index - bucket->lowest_segment_index;
+		pm->ribbon_buffer_requirements.segment_buffer_size_in_bytes += segment_count * sizeof(tfx_ribbon_segment_t);
+		pm->ribbon_buffer_requirements.ribbon_buffer_size_in_bytes += ribbon_count * sizeof(tfx_ribbon_t);
+		index = tfx__scan_forward(pm->ribbon_dispatches);
+	}
+	pm->ribbon_dispatches = pm->ribbon_buckets_in_use;
+}
+
 bool tfx_NextRibbonDispatch(tfx_particle_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch) {
 	int index = tfx__scan_forward(pm->ribbon_dispatches);
 	while (index != -1) {
@@ -14224,16 +14259,23 @@ tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements(tfx_particle_ma
 void tfx_CopyRibbonDataToStagingBuffers(tfx_particle_manager pm, void *segments_dst, void *ribbons_dst) {
 	tfxU32 running_segment_offset = 0;
 	tfxU32 running_ribbon_offset = 0;
-	for (tfx_ribbon_bucket_t &bucket : pm->ribbon_segment_buckets) {
-		if (bucket.active_ribbons) {
-			tfxU32 ribbon_count = bucket.highest_ribbon_index - bucket.lowest_ribbon_index + 1;
-			tfxU32 segment_range_size = bucket.globals.segment_count * sizeof(tfx_ribbon_segment_t);
-			memcpy((tfx_ribbon_segment_t*)segments_dst + running_segment_offset, bucket.segments.data + (bucket.lowest_ribbon_index * bucket.globals.segment_count), ribbon_count * segment_range_size);
-			memcpy((tfx_ribbon_t*)ribbons_dst + running_ribbon_offset, bucket.ribbons.ribbon_instances + bucket.lowest_ribbon_index, ribbon_count * sizeof(tfx_ribbon_t));
-			running_segment_offset += ribbon_count * bucket.globals.segment_count;
-			running_ribbon_offset += ribbon_count;
+	int index = tfx__scan_forward(pm->ribbon_dispatches);
+	while (index != -1) {
+		tfx_ribbon_bucket_t *bucket = &pm->ribbon_segment_buckets[index];
+		tfxUnFlagRibbonBucketInUse(pm->ribbon_dispatches, index);
+		if (bucket->active_ribbons == 0) {
+			index = tfx__scan_forward(pm->ribbon_dispatches);
+			continue;
 		}
+		tfxU32 ribbon_count = bucket->highest_ribbon_index - bucket->lowest_ribbon_index + 1;
+		tfxU32 segment_count = bucket->highest_segment_index - bucket->lowest_segment_index;
+		memcpy((tfx_ribbon_segment_t*)segments_dst + running_segment_offset, bucket->segments.data + bucket->lowest_segment_index, segment_count * sizeof(tfx_ribbon_segment_t));
+		memcpy((tfx_ribbon_t*)ribbons_dst + running_ribbon_offset, bucket->ribbons.ribbon_instances + bucket->lowest_ribbon_index, ribbon_count * sizeof(tfx_ribbon_t));
+		running_segment_offset += ribbon_count * bucket->globals.segment_count;
+		running_ribbon_offset += ribbon_count;
+		index = tfx__scan_forward(pm->ribbon_dispatches);
 	}
+	pm->ribbon_dispatches = pm->ribbon_buckets_in_use;
 }
 
 size_t tfx_GetSegmentBufferSizeInBytes(tfx_particle_manager pm) {
@@ -14357,7 +14399,7 @@ void tfx_ClearParticleManager(tfx_particle_manager pm, bool free_particle_banks,
 			pm->instance_buffer_for_recording[1][layer].clear();
 		}
 	}
-	pm->running_segment_count = 0;
+	pm->running_ribbon_vertex_count = 0;
 }
 
 void tfx_FreeParticleManager(tfx_particle_manager pm) {
@@ -14657,14 +14699,15 @@ tfxU32 tfx__grab_ribbon(tfx_particle_manager pm, tfx_ribbon_emitter_state_t *rib
 		return bucket.free_ribbons.pop_back();
 	}
 	tfxU32 start_index = ribbon_emitter->static_segment_start_index;
-	if (pm->running_segment_count < pm->info.max_ribbon_segments) {
+	pm->running_ribbon_vertex_count += ribbon_emitter->segment_count * bucket.buffer_info.vertices_per_segment;
+	if (pm->running_ribbon_vertex_count < (pm->info.max_ribbon_segments * bucket.buffer_info.vertices_per_segment)) {
 		tfxU32 index = tfx__add_soa_row(&bucket.ribbons_buffer, true);
 		tfx_ribbon_t &ribbon = bucket.ribbons.ribbon_instances[index];
 		ribbon.start_index = start_index;
 		bucket.active_ribbons++;
 		return index;
 	}
-	pm->running_segment_count -= bucket.globals.segment_count;
+	pm->running_ribbon_vertex_count -= ribbon_emitter->segment_count * bucket.buffer_info.vertices_per_segment;
 	return tfxINVALID;
 }
 
@@ -15010,7 +15053,7 @@ void tfx__update_ribbon_emitter(tfx_work_queue_t *work_queue, void *data) {
 
 	tfx__update_ribbon_emitter_state(pm, ribbon_emitter, ribbon_emitter.parent_index, ribbon_work_entry->parent_spawn_controls, ribbon_work_entry);
 	if (properties.emission_type == tfxPath && ribbon_emitter.property_flags & tfxRibbonPropertyFlags_static) {
-		tfx__spawn_ribbons(&pm->work_queue, data);
+		tfx__spawn_static_ribbons(&pm->work_queue, data);
 	}
 }
 
@@ -17467,7 +17510,7 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 
 }
 
-void tfx__spawn_ribbons(tfx_work_queue_t *queue, void *data) {
+void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 	tfx_ribbon_work_entry_t *entry = static_cast<tfx_ribbon_work_entry_t *>(data);
 	tfx_particle_manager_t &pm = *entry->pm;
 	tfx_ribbon_emitter_state_t &ribbon_emitter = pm.ribbon_emitters[entry->ribbon_emitter_index];
@@ -17517,9 +17560,8 @@ void tfx__spawn_ribbons(tfx_work_queue_t *queue, void *data) {
 		tfxU32 index = tfxRibbonBucketIndex(ribbon_emitter.segment_count);
 		tfx_ribbon_bucket_t &ribbon_bucket = pm.ribbon_segment_buckets[index];
 		ribbon_emitter.static_segment_start_index = ribbon_bucket.ribbons_buffer.current_size * ribbon_bucket.globals.segment_count;
-		tfxU32 total_segment_count = pm.running_segment_count + ribbon_bucket.globals.segment_count;
-		if (total_segment_count < pm.info.max_ribbon_segments) {
-			pm.running_segment_count = total_segment_count;
+		tfxU32 total_vertex_count = pm.running_ribbon_vertex_count + ribbon_bucket.globals.segment_count * ribbon_bucket.globals.segment_count;
+		if (total_vertex_count < pm.info.max_ribbon_segments * ribbon_bucket.globals.segment_count) {
 			ribbon_bucket.segments.resize(ribbon_bucket.segments.current_size + ribbon_bucket.globals.segment_count);
 			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes[0]) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes[0]) << 16) | properties.image->compute_shape_index;
 			tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket.segments;

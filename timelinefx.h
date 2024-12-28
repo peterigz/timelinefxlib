@@ -6113,6 +6113,8 @@ typedef struct tfx_ribbon_bucket_s {
 	tfxU32 active_ribbons;
 	tfxU32 highest_ribbon_index;
 	tfxU32 lowest_ribbon_index;
+	tfxU32 highest_segment_index;
+	tfxU32 lowest_segment_index;
 	tfx_vector_t<tfx_ribbon_segment_t> segments;
 	tfx_soa_buffer_t ribbons_buffer;
 	tfx_ribbon_soa_t ribbons;
@@ -6529,7 +6531,7 @@ typedef struct tfx_particle_manager_s {
 	tfxU32 next_ebuff;
 	//For looping through active effects with GetNextEffect function
 	tfxU32 effect_index_position;
-	//For looping through ribbon compute dispatches
+	//For looping through ribbon compute dispatches. Each bit represents a segment buffer bucket with segments in multiples of 32. Default max ribbon size is 1024 segments.
 	tfx_size ribbon_dispatches;
 	tfx_ribbon_buffer_requirements_t ribbon_buffer_requirements;
 	tfx_ribbon_dispatch_t last_ribbon_dispatch;
@@ -6539,7 +6541,7 @@ typedef struct tfx_particle_manager_s {
 	tfxU32 sprite_index_point[tfxLAYERS];
 	tfxU32 cumulative_index_point[tfxLAYERS];
 	tfxU32 layer_sizes[tfxLAYERS];
-	tfxU32 running_segment_count;
+	tfxU32 running_ribbon_vertex_count;
 
 	int mt_batch_size;
 	tfx_sync_t particle_index_mutex;
@@ -7293,7 +7295,7 @@ tfxINTERNAL void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, vo
 tfxINTERNAL void tfx__spawn_particle_spin_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data);
 
-tfxINTERNAL void tfx__spawn_ribbons(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_ribbon_path_3d(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__control_particles(tfx_work_queue_t *queue, void *data);
@@ -7321,6 +7323,9 @@ tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, voi
 
 tfxINTERNAL void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
+
+tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_particle_manager pm);
+tfxINTERNAL void tfx__reset_ribbon_buffer_requirements(tfx_particle_manager pm);
 
 tfxINTERNAL void tfx__init_sprite_data_soa_compression_3d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_sprite_data_soa_3d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
