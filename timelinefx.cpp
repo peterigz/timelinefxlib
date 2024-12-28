@@ -1585,6 +1585,20 @@ tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t q) {
 	return result;
 }
 
+tfxU32 tfx__pack8bit_quaternion_for_gpu(tfx_quaternion_t q) {
+	int8_t x = static_cast<int8_t>(q.x * 127.0f);
+	int8_t y = static_cast<int8_t>(q.y * 127.0f);
+	int8_t z = static_cast<int8_t>(q.z * 127.0f);
+	int8_t w = static_cast<int8_t>(q.w * 127.0f);
+
+	uint32_t ux = static_cast<uint8_t>(x);
+	uint32_t uy = static_cast<uint8_t>(y);
+	uint32_t uz = static_cast<uint8_t>(z);
+	uint32_t uw = static_cast<uint8_t>(w);
+
+	return (uw << 24) | (uz << 16) | (uy << 8) | ux;
+}
+
 tfxWideInt tfx__wide_pack16bit(tfxWideFloat v_x, tfxWideFloat v_y) {
 	tfxWideFloat w32k = tfxWideSetSingle(32767.f);
 	tfxWideInt bits16 = tfxWideSetSinglei(0xFFFF);
@@ -10913,10 +10927,10 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 						for (int qi = 0; qi != path_state.active_paths; ++qi) {
 							if (path->flags & tfxPathFlags_2d) {
 								tfx_quaternion_t q = tfx__get_path_rotation_2d(&pm->random, path->rotation_range, path->rotation_pitch);
-								path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+								path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion_for_gpu(q);
 							} else {
 								tfx_quaternion_t q = tfx__get_path_rotation_3d(&pm->random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-								path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+								path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion_for_gpu(q);
 							}
 							path_state.path_quaternions[qi].grid_coord = (ribbon_emitter.property_flags & tfxEmitterPropertyFlags_grid_spawn_clockwise) ? 0.f : (float)path->node_count - 4;
 							path_state.path_quaternions[qi].age = 0.f;
@@ -17528,7 +17542,7 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 				ribbon_emitter.path_state.path_quaternions[qi].age += pm.frame_length;
 				if (ribbon_emitter.path_state.path_quaternions[qi].age >= path->rotation_cycle_length) {
 					tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-					ribbon_emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+					ribbon_emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion_for_gpu(q);
 					ribbon_emitter.path_state.path_quaternions[qi].age = 0.f;
 					ribbon_emitter.path_state.path_cycle_count--;
 				}
@@ -17545,7 +17559,7 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 			qi = (ribbon_emitter.path_state.path_start_index + ribbon_emitter.path_state.active_paths++) % path->maximum_active_paths;
 			TFX_ASSERT(qi < path->maximum_active_paths);
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
-			ribbon_emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion(q);
+			ribbon_emitter.path_state.path_quaternions[qi].quaternion = tfx__pack8bit_quaternion_for_gpu(q);
 			ribbon_emitter.path_state.path_quaternions[qi].cycles = 0;
 			ribbon_emitter.path_state.path_cycle_count--;
 			ribbon_emitter.path_state.path_stagger_counter = 0.f;
@@ -17606,7 +17620,6 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 			ribbon_emitter.ribbon_indexes[pm.current_ebuff].push_back(ribbon_index);
 			tfx_ribbon_t &ribbon = ribbon_bucket->ribbons.ribbon_instances[ribbon_index];
 			ribbon.position = ribbon_emitter.world_position;
-			ribbon.position.x += float(i);
 			ribbon.quaternion = ribbon_emitter.path_state.path_quaternions[i].quaternion;
 			ribbon.global_width = 1.f;
 			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
