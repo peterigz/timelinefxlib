@@ -2523,6 +2523,7 @@ typedef enum {
 	tfxRibbonPropertyFlags_none = 0,
 	tfxRibbonPropertyFlags_use_path_from_another_emitter = 1 << 0,
 	tfxRibbonPropertyFlags_static						 = 1 << 1,
+	tfxRibbonPropertyFlags_single						 = 1 << 4,               
 } tfx_ribbon_property_flag_bits;
 
 typedef enum {
@@ -2581,7 +2582,9 @@ typedef enum {
 
 typedef enum {
 	tfxRibbonEmitterStateFlags_none = 0,
+	tfxRibbonEmitterStateFlags_stop_spawning = 1 << 3,                 //Tells the emitter to stop spawning
 	tfxRibbonEmitterStateFlags_remove = 1 << 4,                        //Tells the effect/emitter to remove itself from the particle manager immediately
+	tfxRibbonEmitterStateFlags_single_shot_done = 1 << 17,
 } tfx_ribbon_emitter_state_flag_bits;
 
 typedef enum {
@@ -5573,6 +5576,8 @@ typedef struct tfx_ribbon_properties_s {
 	tfx_image_data_t *image;
 	float path_start_offset;
 	float path_size_fraction;
+	tfxU32 spawn_amount;
+	tfxU32 spawn_amount_variation;
 } tfx_ribbon_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -5738,6 +5743,9 @@ typedef struct tfx_ribbon_emitter_state_s {
 	//State data
 	float frame;
 	float age;
+	float amount_remainder;
+	float spawn_quantity;
+	float qty_step_size;
 	tfx_vec3_t handle;
 	tfxRibbonPropertyFlags property_flags;
 	tfxRibbonEmitterStateFlags state_flags;
@@ -6240,6 +6248,9 @@ typedef struct tfx_ribbon_work_entry_s {
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
 	tfx_overtime_attributes_t *graphs;
 	tfxU32 new_ribbons;
+	tfxU32 amount_to_spawn;
+	float tween;
+	float qty_step_size;
 	float overal_scale;
 }tfx_ribbon_work_entry_t;
 
@@ -6276,6 +6287,7 @@ typedef struct tfx_control_ribbon_work_entry_s {
 	tfxU32 segment_array_index;
 	tfxU32 ribbon_index;
 	tfx_particle_manager pm;
+	tfx_random_t random;
 } tfx_control_ribbon_work_entry_t;
 
 typedef struct tfx_particle_age_work_entry_s {
@@ -7253,6 +7265,7 @@ tfxINTERNAL void tfx__update_effect(tfx_particle_manager pm, tfxU32 index, tfxU3
 tfxINTERNAL void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_particle_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties);
+tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_particle_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_ribbon_properties_t *properties);
 tfxINTERNAL void tfx__update_emitter_state(tfx_particle_manager pm, tfx_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void tfx__update_ribbon_emitter_state(tfx_particle_manager pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry);
 tfxINTERNAL void tfx__update_effect_state(tfx_particle_manager pm, tfxU32 index);
