@@ -2521,9 +2521,12 @@ typedef enum {
 
 typedef enum {
 	tfxRibbonPropertyFlags_none = 0,
-	tfxRibbonPropertyFlags_use_path_from_another_emitter = 1 << 0,
-	tfxRibbonPropertyFlags_static						 = 1 << 1,
-	tfxRibbonPropertyFlags_single						 = 1 << 4,               
+	tfxRibbonPropertyFlags_use_path_from_another_emitter	= 1 << 0,
+	tfxRibbonPropertyFlags_relative_position				= 1 << 1,                 //Keep the particles position relative to the current position of the emitter
+	tfxRibbonPropertyFlags_static							= 1 << 2,
+	tfxRibbonPropertyFlags_single							= 1 << 4,                 //Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
+	tfxRibbonPropertyFlags_emitter_handle_auto_center		= 1 << 8,			      //Center the handle of the emitter
+	tfxRibbonPropertyFlags_effect_is_3d						= 1 << 19,                //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
 } tfx_ribbon_property_flag_bits;
 
 typedef enum {
@@ -5726,10 +5729,10 @@ typedef struct tfx_effect_state_s {
 
 typedef struct tfx_ribbon_s {
 	tfx_vec4_t position;
-	float global_width;
 	tfxU32 start_index;
 	tfxU32 flags;
 	tfxU32 quaternion;
+	tfxU32 emitter_index;
 } tfx_ribbon_t;
 
 typedef struct tfx_ribbon_soa_s {
@@ -5739,6 +5742,11 @@ typedef struct tfx_ribbon_soa_s {
 	tfxU32 *path_index;
 } tfx_ribbon_soa_t;
 
+typedef struct tfx_gpu_emitter_s {
+	tfx_vec4_t position;
+	tfx_vec4_t captured_position;
+} tfx_gpu_emitter_t;
+
 typedef struct tfx_ribbon_emitter_state_s {
 	//State data
 	float frame;
@@ -5747,7 +5755,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 	float spawn_quantity;
 	float qty_step_size;
 	tfx_vec3_t handle;
-	tfxRibbonPropertyFlags property_flags;
+	tfxRibbonPropertyFlags ribbon_property_flags;
 	tfxRibbonEmitterStateFlags state_flags;
 	//Position, scale and rotation values
 	tfx_vec3_t local_position;
@@ -5788,6 +5796,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 	float image_frame_rate;
 	float end_frame;
 	tfx_vec3_t emitter_size;
+	tfxU32 gpu_emitter_index;
 } tfx_ribbon_emitter_state_t TFX_ALIGN_AFFIX(16);
 
 //An tfx_effect_descriptor_t can either be an effect which stores effects and global graphs for affecting all the attributes in the emitters,
@@ -6092,6 +6101,7 @@ typedef struct tfx_ribbon_bucket_globals_s  {
 	tfxU32 ribbon_count;
 	tfxU32 ribbon_offset;
 	tfxU32 segment_offset;
+	float lerp;
 } tfx_ribbon_bucket_globals_t;
 
 typedef struct tfx_ribbon_segment_soa_s {
@@ -6471,6 +6481,7 @@ typedef struct tfx_particle_manager_info_s {
 typedef struct tfx_ribbon_buffer_requirements_s {
 	tfxU32 segment_buffer_size_in_bytes;
 	tfxU32 ribbon_buffer_size_in_bytes;
+	tfxU32 emitter_buffer_size_in_bytes;
 } tfx_ribbon_buffer_requirements_t;
 
 //Use the particle manager to add multiple effects to your scene 
@@ -6506,16 +6517,18 @@ typedef struct tfx_particle_manager_s {
 	tfx_vector_t<tfxU32> emitters_check_capture;
 	tfx_vector_t<tfx_effect_index_t> free_effects;
 	tfx_vector_t<tfxU32> free_emitters;
+	tfx_vector_t<tfxU32> free_gpu_emitters;
 	tfx_vector_t<tfxU32> free_ribbon_emitters;
 	tfx_vector_t<tfxU32> free_path_quaternions;
 	tfx_vector_t<tfx_path_quaternion_t *> path_quaternions;
 	tfx_vector_t<tfx_effect_state_t> effects;
 	tfx_vector_t<tfx_emitter_state_t> emitters;
+	tfx_vector_t<tfx_gpu_emitter_t> gpu_emitters;
 	tfx_vector_t<tfx_ribbon_emitter_state_t> ribbon_emitters;
 	tfx_vector_t<tfx_spawn_work_entry_t *> deffered_spawn_work;
 	tfx_vector_t<tfx_ribbon_work_entry_t *> deffered_ribbon_spawn_work;
 	tfx_vector_t<tfx_unique_sprite_id_t> unique_sprite_ids[2][tfxLAYERS];
-	tfx_vector_t<unsigned int> free_compute_controllers;
+	tfx_vector_t<tfxU32> free_compute_controllers;
 
 	tfx_work_queue_t work_queue;
 	//The info config that was used to initialise the particle manager. This can be used to alter and the reconfigure the particle manager
@@ -6697,6 +6710,8 @@ tfxINTERNAL inline tfxParticleID tfx__make_particle_id(tfxU32 bank_index, tfxU32
 tfxINTERNAL inline tfxU32 tfx__particle_index(tfxParticleID id) { return id & 0x000FFFFF; }
 tfxINTERNAL inline tfxU32 tfx__particle_bank(tfxParticleID id) { return (id & 0xFFF00000) >> 20; }
 tfxINTERNAL tfxU32 tfx__grab_particle_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
+tfxINTERNAL tfxU32 tfx__grab_gpu_emitter(tfx_particle_manager pm);
+tfxINTERNAL void tfx__free_gpu_emitter(tfx_particle_manager pm, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_particle_manager pm, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_particle_manager pm, tfxU32 segment_count, tfxU32 ribbon_index);
 tfxINTERNAL tfxU32 tfx__grab_ribbon_segment_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
@@ -7335,7 +7350,9 @@ tfxINTERNAL void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue,
 tfxINTERNAL void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, void *data);
 
+tfxINTERNAL void tfx__control_ribbons(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_ribbon_position_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_particle_manager pm);
@@ -7817,15 +7834,17 @@ tfxAPI bool tfx_NextRibbonDispatch(tfx_particle_manager pm, tfx_ribbon_dispatch_
 
 tfxAPI tfx_ribbon_buffer_requirements_t tfx_GetRibbonBufferRequirements(tfx_particle_manager pm);
 
-tfxAPI void tfx_CopyRibbonDataToStagingBuffers(tfx_particle_manager pm, void *segments_dst, void *ribbons_dst);
+tfxAPI void tfx_CopyRibbonDataToStagingBuffers(tfx_particle_manager pm, void *segments_dst, void *ribbons_dst, void *emitters_dst);
 
-tfxAPI size_t tfx_GetSegmentBufferSizeInBytes(tfx_particle_manager pm);
+tfxAPI size_t tfx_GetSegmentBufferMaxSizeInBytes(tfx_particle_manager pm);
 
-tfxAPI size_t tfx_GetSegment3dVertexBufferSizeInBytes(tfx_particle_manager pm, tfxU32 vertex_size);
+tfxAPI size_t tfx_GetSegment3dVertexBufferMaxSizeInBytes(tfx_particle_manager pm, tfxU32 vertex_size);
 
-tfxAPI size_t tfx_GetSegmentIndexBufferSizeInBytes(tfx_particle_manager pm);
+tfxAPI size_t tfx_GetSegmentIndexBufferMaxSizeInBytes(tfx_particle_manager pm);
 
-tfxAPI size_t tfx_GetRibbonBufferSizeInBytes(tfx_particle_manager pm, tfxU32 max_ribbons);
+tfxAPI size_t tfx_GetRibbonBufferMaxSizeInBytes(tfx_particle_manager pm, tfxU32 max_ribbons);
+
+tfxAPI size_t tfx_GetEmitterBufferMaxSizeInBytes(tfx_particle_manager pm);
 
 /*
 When a particle manager updates particles it creates work queues to handle the work. By default these each have a maximum amount of 1000 entries which should be
