@@ -10889,6 +10889,8 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				ribbon_emitter.local_rotations = {};
 				ribbon_emitter.age = 0.f;
 				ribbon_emitter.frame = 0.f;
+				ribbon_emitter.timeout = 1000.f;
+				ribbon_emitter.timeout_counter = 0.f;
 				ribbon_emitter.ribbon_property_flags = e.ribbon_property_flags;
 				ribbon_emitter.library = effect->library;
 				ribbon_emitter.parent_index = parent_index.index;
@@ -11241,9 +11243,6 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
                 spawn_work_entry->particle_uid = emitter_index * 100000;
 
 				float &timeout_counter = pm->emitters[emitter_index].timeout_counter;
-				//if (pm->emitters[emitter_index].particles_index == tfxINVALID) {
-					//tfxPrint("Error");
-				//}
 				TFX_ASSERT(pm->emitters[emitter_index].particles_index != tfxINVALID);
 
 				tfx__update_emitter(&pm->work_queue, spawn_work_entry);
@@ -11278,8 +11277,15 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 				ribbon_work_entry->new_ribbons = 0;
 				ribbon_work_entry->ribbon_emitter_index = ribbon_index;
 				tfx__update_ribbon_emitter(&pm->work_queue, ribbon_work_entry);
-				effect.ribbon_indexes[next_buffer].push_back(ribbon_index);
-				pm->control_ribbon_queue.push_back(ribbon_index);
+				float &timeout_counter = pm->ribbon_emitters[ribbon_index].timeout_counter;
+				if (timeout_counter <= pm->ribbon_emitters[ribbon_index].timeout) {
+					effect.ribbon_indexes[next_buffer].push_back(ribbon_index);
+					pm->control_ribbon_queue.push_back(ribbon_index);
+				} else {
+					tfx__sync_lock(&pm->add_effect_mutex);
+					pm->free_ribbon_emitters.push_back(ribbon_index);
+					tfx__sync_unlock(&pm->add_effect_mutex);
+				}
 			}
 
 			if (depth == 0) {
@@ -15146,6 +15152,20 @@ void tfx__update_ribbon_emitter(tfx_work_queue_t *work_queue, void *data) {
 	}
 
 	ribbon_emitter.age += pm->frame_length;
+
+	if (properties.loop_length && ribbon_emitter.age > properties.loop_length) {
+		ribbon_emitter.age -= properties.loop_length;
+	}
+
+	if (ribbon_emitter.ribbon_indexes[pm->current_ebuff].current_size == 0 && ribbon_emitter.age > pm->frame_length * 5.f) {
+		ribbon_emitter.timeout_counter += pm->frame_length;
+	} else {
+		ribbon_emitter.timeout_counter = 0;
+	}
+
+	if (ribbon_emitter.state_flags & tfxEmitterStateFlags_remove) {
+		ribbon_emitter.timeout = 0;
+	}
 }
 
 void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {

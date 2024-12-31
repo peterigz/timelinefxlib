@@ -5574,6 +5574,7 @@ typedef struct tfx_ribbon_properties_s {
 	tfxKey image_hash;
 	tfx_emission_type emission_type;
 	tfx_vec3_t emitter_handle;
+	float loop_length;
 	float frame_rate;
 	float end_frame;
 	tfx_image_data_t *image;
@@ -5581,6 +5582,7 @@ typedef struct tfx_ribbon_properties_s {
 	float path_size_fraction;
 	tfxU32 spawn_amount;
 	tfxU32 spawn_amount_variation;
+	tfxU32 single_shot_limit;
 } tfx_ribbon_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
@@ -5754,6 +5756,8 @@ typedef struct tfx_ribbon_emitter_state_s {
 	float amount_remainder;
 	float spawn_quantity;
 	float qty_step_size;
+	float timeout_counter;
+	float timeout;
 	tfx_vec3_t handle;
 	tfxRibbonPropertyFlags ribbon_property_flags;
 	tfxRibbonEmitterStateFlags state_flags;
@@ -6553,7 +6557,6 @@ typedef struct tfx_particle_manager_s {
 	tfxU32 max_new_compute_particles;
 	//The current effect buffer in use, can be either 0 or 1
 	tfxU32 current_ebuff;
-	tfxU32 next_ebuff;
 	//For looping through active effects with GetNextEffect function
 	tfxU32 effect_index_position;
 	//For looping through ribbon compute dispatches. Each bit represents a segment buffer bucket with segments in multiples of 32. Default max ribbon size is 1024 segments.
