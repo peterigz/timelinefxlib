@@ -15144,6 +15144,8 @@ void tfx__update_ribbon_emitter(tfx_work_queue_t *work_queue, void *data) {
 	if (properties.emission_type == tfxPath && ribbon_emitter.ribbon_property_flags & tfxRibbonPropertyFlags_static) {
 		tfx__spawn_static_ribbons(&pm->work_queue, data);
 	}
+
+	ribbon_emitter.age += pm->frame_length;
 }
 
 void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
@@ -15443,8 +15445,12 @@ tfxU32 tfx__new_sprites_needed(tfx_particle_manager pm, tfx_random_t *random, tf
 		step_size = 1.f / emitter.spawn_quantity;
 	}
 
-	float tween = emitter.amount_remainder;
-	return tween >= 1.f ? 0 : tfxU32((1.f - emitter.amount_remainder) / step_size) + 1;
+	if (emitter.age == 0.f && emitter.spawn_quantity < 1.f) {
+		emitter.amount_remainder = 1.f + emitter.spawn_quantity;
+		emitter.qty_step_size = step_size;
+	}
+
+	return emitter.amount_remainder >= 1.f ? 0 : tfxU32((1.f - emitter.amount_remainder) / step_size) + 1;
 }
 
 tfxU32 tfx__new_ribbons_needed(tfx_particle_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_ribbon_properties_t *properties) {
@@ -15483,8 +15489,11 @@ tfxU32 tfx__new_ribbons_needed(tfx_particle_manager pm, tfx_random_t *random, tf
 		step_size = 1.f / ribbon_emitter.spawn_quantity;
 	}
 
-	float tween = ribbon_emitter.amount_remainder;
-	return tween >= 1.f ? 0 : tfxU32((1.f - ribbon_emitter.amount_remainder) / step_size) + 1;
+	if (ribbon_emitter.age == 0.f && ribbon_emitter.spawn_quantity < 1.f) {
+		ribbon_emitter.amount_remainder = 1.f + ribbon_emitter.spawn_quantity;
+		ribbon_emitter.qty_step_size = step_size;
+	}
+	return ribbon_emitter.amount_remainder >= 1.f ? 0 : tfxU32((1.f - ribbon_emitter.amount_remainder) / step_size) + 1;
 }
 
 void tfx__complete_particle_manager_work(tfx_particle_manager pm) {
