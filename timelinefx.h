@@ -7355,7 +7355,7 @@ tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, voi
 
 tfxINTERNAL void tfx__control_ribbons(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_ribbon_position_3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_ribbon_width(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_particle_manager pm);
