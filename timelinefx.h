@@ -2756,13 +2756,13 @@ const int tfxMOTION_VARIATION_INTERVAL = 30;
 //Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 static float tfxLOOKUP_FREQUENCY = 10.f;
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
-static float tfxLOOKUP_FREQUENCY_OVERTIME = 1.f;
+static float tfxLOOKUP_FREQUENCY_OVERTIME = 10.f;
 
 //Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 static tfxWideArray tfxLOOKUP_FREQUENCY_WIDE = tfxWideSetConst(10.f);
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
 //Experiment with lower resolution and use interpolation instead? Could be a lot better on the cache.
-static tfxWideArray tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetConst(1.f);
+static tfxWideArray tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetConst(10.f);
 
 //-----------------------------------------------------------
 //Section: forward_declarations
@@ -5149,7 +5149,7 @@ typedef struct tfx_random_s {
 }tfx_random_t;
 
 typedef struct tfx_color_ramp_s {
-	//These vectors are for sinusoidal color ramp generation
+	//These vectors are for sinusoidal color ramp generation (currently unused)
 	tfx_vec3_t brightness;
 	tfx_vec3_t contrast;
 	tfx_vec3_t frequency;
@@ -5170,7 +5170,7 @@ typedef struct tfx_bitmap_s {
 	int stride;
 	tfx_size size;
 	tfx_byte *data;
-}tfx_bitmap_t;
+} tfx_bitmap_t;
 
 typedef struct tfx_graph_id_s {
 	tfx_graph_category category;
@@ -5178,14 +5178,14 @@ typedef struct tfx_graph_id_s {
 	tfxU32 graph_id;
 	tfxU32 node_id;
 	tfxKey path_hash;
-}tfx_graph_id_t;
+} tfx_graph_id_t;
 
 typedef struct tfx_graph_lookup_index_s {
 	tfxU32 start_index;
 	tfxU32 length;
 	float max_life;
 	float padding1;
-}tfx_graph_lookup_index_t;
+} tfx_graph_lookup_index_t;
 
 //This typedef struct is used to store indexing data in order to index into large lists containing either the node data of graphs
 //or the lookup data of compiled graphs. This is so that we can upload that data into a buffer on the GPU to get the particles
@@ -6887,6 +6887,19 @@ tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
 tfxINTERNAL tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset);
 tfxINTERNAL tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
 tfxINTERNAL tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
+tfxINTERNAL inline float tfx__get_quad_bezier_clamp_value(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
+	float ti = 1.f - t;
+	float t_ti = t * ti;
+	return tfx__Clamp(ymin, ymax, ti * ti * p0.y + 2.f * t_ti * p1.y + t * t * p2.y);
+}
+tfxINTERNAL inline float tfx__get_cubic_bezier_clamp_value(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
+	float ti = 1.f - t;
+	float t2 = t * t;
+	float ti2 = ti * ti;
+	float t_ti2 = t * ti2;
+	float t2_ti = t2 * ti;
+	return tfx__Clamp(ymin, ymax, ti2 * ti * p0.y + 3.f * t_ti2 * p1.y + 3.f * t2_ti * p2.y + t2 * t * p3.y);
+}
 tfxINTERNAL tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t);
 tfxINTERNAL float tfx__get_bezier_value(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
 tfxINTERNAL inline float tfx__get_vector_angle(float x, float y) { return atan2f(x, -y); }

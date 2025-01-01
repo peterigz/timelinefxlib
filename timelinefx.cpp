@@ -7367,29 +7367,26 @@ tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
 const float BEZIER_ACCURACY = 0.01f;
 
 tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
-	tfx_vec2_t b;
 	float ti = 1.f - t;
-	float ti2 = ti * ti;
-	float t2 = t * t;
-	b.x = ti2 * p0.x + 2.f * t * ti * p1.x + t2 * p2.x;
-	b.y = ti2 * p0.y + 2.f * t * ti * p1.y + t2 * p2.y;
-	b.x = tfx__Clamp(p0.x, p2.x, b.x);
-	b.y = tfx__Clamp(ymin, ymax, b.y);
-	return b;
+	float t_ti = t * ti;
+
+	return {
+		tfx__Clamp(p0.x, p2.x, ti * ti * p0.x + 2.f * t_ti * p1.x + t * t * p2.x),
+		tfx__Clamp(ymin, ymax, ti * ti * p0.y + 2.f * t_ti * p1.y + t * t * p2.y)
+	};
 }
 
 tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
-	tfx_vec2_t b;
 	float ti = 1.f - t;
-	float ti3 = ti * ti * ti;
-	float ti2 = ti * ti;
-	float t3 = t * t * t;
 	float t2 = t * t;
-	b.x = ti3 * p0.x + 3.f * t * ti2 * p1.x + 3.f * t2 * ti * p2.x + t3 * p3.x;
-	b.y = ti3 * p0.y + 3.f * t * ti2 * p1.y + 3.f * t2 * ti * p2.y + t3 * p3.y;
-	b.x = tfx__Clamp(p0.x, p2.x, b.x);
-	b.y = tfx__Clamp(ymin, ymax, b.y);
-	return b;
+	float ti2 = ti * ti;
+	float t_ti2 = t * ti2;
+	float t2_ti = t2 * ti;
+
+	return {
+		tfx__Clamp(p0.x, p2.x, ti2 * ti * p0.x + 3.f * t_ti2 * p1.x + 3.f * t2_ti * p2.x + t2 * t * p3.x),
+		tfx__Clamp(ymin, ymax, ti2 * ti * p0.y + 3.f * t_ti2 * p1.y + 3.f * t2_ti * p2.y + t2 * t * p3.y)
+	};
 }
 
 tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t) {
@@ -7405,38 +7402,25 @@ tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *
 	return b;
 }
 
-float tfx__get_bezier_value(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax) {
-	if (lastec) {
-		if (a->flags & tfxAttributeNodeFlags_is_curve) {
-			if (lastec->flags & tfxAttributeNodeFlags_is_curve) {
-				tfx_vec2_t p0(lastec->frame, lastec->value);
-				tfx_vec2_t p1(lastec->right.x, lastec->right.y);
-				tfx_vec2_t p2(a->left.x, a->left.y);
-				tfx_vec2_t p3(a->frame, a->value);
-				tfx_vec2_t value = tfx__get_cubic_bezier_clamp(p0, p1, p2, p3, t, ymin, ymax);
-				return value.y;
-			}
-			else {
-				tfx_vec2_t p0(lastec->frame, lastec->value);
-				tfx_vec2_t p1(a->left.x, a->left.y);
-				tfx_vec2_t p2(a->frame, a->value);
-				tfx_vec2_t value = tfx__get_quad_bezier_clamp(p0, p1, p2, t, ymin, ymax);
-				return value.y;
-			}
-		}
-		else if (lastec->flags & tfxAttributeNodeFlags_is_curve) {
-			tfx_vec2_t p0(lastec->frame, lastec->value);
-			tfx_vec2_t p1(lastec->right.x, lastec->right.y);
-			tfx_vec2_t p2(a->frame, a->value);
-			tfx_vec2_t value = tfx__get_quad_bezier_clamp(p0, p1, p2, t, ymin, ymax);
-			return value.y;
-		}
-	}
-	else {
-		return 0;
+float tfx__get_bezier_value(const tfx_attribute_node_t *last_node, const tfx_attribute_node_t *a, float t, float ymin, float ymax) {
+	TFX_ASSERT(last_node);
+
+	bool a_is_curve = a->flags & tfxAttributeNodeFlags_is_curve;
+	bool lastec_is_curve = last_node->flags & tfxAttributeNodeFlags_is_curve;
+
+	tfx_vec2_t p0(last_node->frame, last_node->value);
+	tfx_vec2_t p2;
+
+	if (a_is_curve && lastec_is_curve) {
+		return tfx__get_cubic_bezier_clamp_value( p0, tfx_vec2_t(last_node->right.x, last_node->right.y), tfx_vec2_t(a->left.x, a->left.y), tfx_vec2_t(a->frame, a->value), t, ymin, ymax);
+	} else if(!a_is_curve && !lastec_is_curve) {
+		return 0.f;
 	}
 
-	return 0;
+	p2 = tfx_vec2_t(a->frame, a->value);
+	tfx_vec2_t p1 = a_is_curve ? tfx_vec2_t(a->left.x, a->left.y) : lastec_is_curve ? tfx_vec2_t(last_node->right.x, last_node->right.y) : p2;
+
+	return tfx__get_quad_bezier_clamp_value(p0, p1, p2, t, ymin, ymax);
 }
 
 void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size) {
@@ -7571,26 +7555,17 @@ float tfx__graph_frame_by_index(tfx_graph_t *graph, tfxU32 index) {
 }
 
 float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age) {
-	float lastv = 0;
-	float lastf = 0;
-	float p = 0;
-	tfx_attribute_node_t *lastec = nullptr;
-	for (tfxBucketLoop(graph->nodes, i)) {
-		if (age < graph->nodes[i].frame) {
-			p = (age - lastf) / (graph->nodes[i].frame - lastf);
-			float bezier_value = tfx__get_bezier_value(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
-			if (bezier_value) {
-				return bezier_value;
-			}
-			else {
-				return lastv - p * (lastv - graph->nodes[i].value);
-			}
+	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
+	float prev_frame = prev->frame;
+	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
+		curr = &graph->nodes[i];
+		if (age < curr->frame) {
+			float p = (age - prev_frame) / (curr->frame - prev_frame);
+			float bezier = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
+			return bezier ? bezier : prev->value - p * (prev->value - curr->value);
 		}
-		lastv = graph->nodes[i].value;
-		lastf = graph->nodes[i].frame;
-		lastec = &graph->nodes[i];
 	}
-	return lastv;
+	return prev->value;
 
 }
 
@@ -7615,51 +7590,36 @@ tfx_attribute_node_t *tfx__get_graph_last_node(tfx_graph_t *graph) {
 }
 
 float tfx__get_graph_random_value(tfx_graph_t *graph, float age, tfx_random_t *random) {
-	float lastv = 0;
-	float lastf = 0;
-	float p = 0;
-	tfx_attribute_node_t *lastec = nullptr;
-	for (tfxBucketLoop(graph->nodes, i)) {
-		if (age < graph->nodes[i].frame) {
-			p = (age - lastf) / (graph->nodes[i].frame - lastf);
-			float bezier_value = tfx__get_bezier_value(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
-			if (bezier_value) {
-				return tfx_RandomRangeZeroToMax(random, bezier_value);
-			}
-			else {
-				return tfx_RandomRangeZeroToMax(random, lastv - p * (lastv - graph->nodes[i].value));
-			}
+	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
+	float prev_frame = prev->frame;
+	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
+		curr = &graph->nodes[i];
+		if (age < curr->frame) {
+			float p = (age - prev_frame) / (curr->frame - prev_frame);
+			float bezier_value = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
+			return bezier_value ? tfx_RandomRangeZeroToMax(random, bezier_value) : tfx_RandomRangeZeroToMax(random, prev->value - p * (prev->value - curr->value));
 		}
-		lastv = graph->nodes[i].value;
-		lastf = graph->nodes[i].frame - 1;
-		lastec = &graph->nodes[i];
+		prev = curr;
+		prev_frame = curr->frame;
 	}
-	return tfx_RandomRangeZeroToMax(random, lastv);
-
+	return tfx_RandomRangeZeroToMax(random, prev->value);
 }
 
 float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life) {
-	float lastv = 0;
-	float lastf = 0;
-	float p = 0;
-	tfx_attribute_node_t *lastec = nullptr;
-	for (tfxBucketLoop(graph->nodes, i)) {
-		float frame = graph->nodes[i].frame * life;
+	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
+	float prev_frame = prev->frame;
+	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
+		curr = &graph->nodes[i];
+		float frame = curr->frame * life;
 		if (age < frame) {
-			p = (age - lastf) / (frame - lastf);
-			float bezier_value = tfx__get_bezier_value(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
-			if (bezier_value) {
-				return bezier_value;
-			}
-			else {
-				return lastv - p * (lastv - graph->nodes[i].value);
-			}
+			float p = (age - prev_frame) / (frame - prev_frame);
+			float bezier = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
+			return bezier ? bezier : prev->value - p * (prev->value - curr->value);
 		}
-		lastv = graph->nodes[i].value;
-		lastf = frame - 1;
-		lastec = &graph->nodes[i];
+		prev = curr;
+		prev_frame = frame - 1.f;
 	}
-	return lastv;
+	return prev->value;
 }
 
 float tfx__get_graph_first_value(tfx_graph_t *graph) {
@@ -8432,50 +8392,39 @@ float tfx__lookup_fast(tfx_graph_t *graph, float frame) {
 }
 
 float tfx__lookup_precise_overtime(tfx_graph_t *graph, float age, float life) {
-	float lastv = 0;
-	float lastf = 0;
-	float p = 0;
-	tfx_attribute_node_t *lastec = nullptr;
-	for (tfxBucketLoop(graph->nodes, i)) {
-		float frame = graph->nodes[i].frame * life;
-		if (age < frame) {
-			p = (age - lastf) / (frame - lastf);
-			float bezier_value = tfx__get_bezier_value(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
-			if (bezier_value) {
-				return bezier_value;
-			}
-			else {
-				return lastv - p * (lastv - graph->nodes[i].value);
-			}
+	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
+	float prev_frame = prev->frame;
+	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
+		curr = &graph->nodes[i];
+		float frame = curr->frame * life;
+		if (age < curr->frame) {
+			float p = (age - prev_frame) / (frame - prev_frame);
+			float bezier = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
+			return bezier ? bezier : prev->value - p * (prev->value - curr->value);
 		}
-		lastv = graph->nodes[i].value;
-		lastf = frame - 1;
-		lastec = &graph->nodes[i];
+		prev = curr;
+		prev_frame = frame - 1.f;
 	}
-	return lastv;
+	return prev->value;
 }
 
 float tfx__lookup_precise(tfx_graph_t *graph, float age) {
-	float lastv = 0;
-	float lastf = 0;
-	float p = 0;
-	tfx_attribute_node_t *lastec = nullptr;
-	for (tfxBucketLoop(graph->nodes, i)) {
-		if (age < graph->nodes[i].frame) {
-			p = (age - lastf) / (graph->nodes[i].frame - lastf);
-			float bezier_value = tfx__get_bezier_value(lastec, &graph->nodes[i], p, graph->min.y, graph->max.y);
-			if (bezier_value) {
-				return bezier_value;
-			}
-			else {
-				return lastv - p * (lastv - graph->nodes[i].value);
-			}
+	if (graph->nodes.empty()) return 0.f;
+
+	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
+	float prev_frame = prev->frame;
+
+	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
+		curr = &graph->nodes[i];
+		if (age < curr->frame) {
+			float p = (age - prev_frame) / (curr->frame - prev_frame);
+			float bezier = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
+			return bezier ? bezier : prev->value - p * (prev->value - curr->value);
 		}
-		lastv = graph->nodes[i].value;
-		lastf = graph->nodes[i].frame - 1;
-		lastec = &graph->nodes[i];
+		prev = curr;
+		prev_frame = curr->frame;
 	}
-	return lastv;
+	return prev->value;
 }
 
 float tfx__get_random_fast(tfx_graph_t *graph, float frame, tfx_random_t *random) {
@@ -13788,10 +13737,10 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 			life = tfxWideMul(life, max_life);
 		}
 
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), width_last_frame);
+		lookup_frame.m = tfxWideMini(tfxWideConverti(tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m)), width_last_frame);
 		const tfxWideFloat lookup_width = tfxWideLookupSet(work_entry->graphs->width.lookup.values, lookup_frame);
 
-		lookup_frame.m = tfxWideMini(tfxWideConverti(life), height_last_frame);
+		lookup_frame.m = tfxWideMini(tfxWideConverti(tfxWideDiv(life, tfxLOOKUP_FREQUENCY_OVERTIME_WIDE.m)), height_last_frame);
 		const tfxWideFloat lookup_height = tfxWideLookupSet(work_entry->graphs->height.lookup.values, lookup_frame);
 
 		const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
