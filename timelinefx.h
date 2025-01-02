@@ -2756,13 +2756,13 @@ const int tfxMOTION_VARIATION_INTERVAL = 30;
 //Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 static float tfxLOOKUP_FREQUENCY = 10.f;
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
-static float tfxLOOKUP_FREQUENCY_OVERTIME = 10.f;
+static float tfxLOOKUP_OVERTIME_ARRAY_SIZE = 64.f;
 
 //Look up frequency determines the resolution of graphs that are compiled into look up arrays.
 static tfxWideArray tfxLOOKUP_FREQUENCY_WIDE = tfxWideSetConst(10.f);
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
 //Experiment with lower resolution and use interpolation instead? Could be a lot better on the cache.
-static tfxWideArray tfxLOOKUP_FREQUENCY_OVERTIME_WIDE = tfxWideSetConst(10.f);
+static tfxWideArray tfxLOOKUP_OVERTIME_ARRAY_SIZE_WIDE = tfxWideSetConst(tfxLOOKUP_OVERTIME_ARRAY_SIZE);
 
 //-----------------------------------------------------------
 //Section: forward_declarations
@@ -5405,7 +5405,6 @@ typedef struct tfx_emitter_attributes_s {
 } tfx_emitter_attributes_t;
 
 static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age, float lifetime);
-static float(*lookup_callback)(tfx_graph_t *graph, float age);
 static float(*lookup_random_callback)(tfx_graph_t *graph, float age, tfx_random_t * random);
 
 typedef struct tfx_base_s {
@@ -6888,21 +6887,7 @@ tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
 tfxINTERNAL tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset);
 tfxINTERNAL tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
 tfxINTERNAL tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
-tfxINTERNAL inline float tfx__get_quad_bezier_clamp_value(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t) {
-	float ti = 1.f - t;
-	float t_ti = t * ti;
-	return ti * ti * p0.y + 2.f * t_ti * p1.y + t * t * p2.y;
-}
-tfxINTERNAL inline float tfx__get_cubic_bezier_value(float p0, float p1, float p2, float p3, float t) {
-	float ti = 1.f - t;
-	float t2 = t * t;
-	float ti2 = ti * ti;
-	float t_ti2 = t * ti2;
-	float t2_ti = t2 * ti;
-	return ti2 * ti * p0 + 3.f * t_ti2 * p1 + 3.f * t2_ti * p2 + t2 * t * p3;
-}
 tfxINTERNAL tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t);
-tfxINTERNAL float tfx__get_bezier_value(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t);
 tfxINTERNAL inline float tfx__get_vector_angle(float x, float y) { return atan2f(x, -y); }
 tfxINTERNAL bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxINTERNAL void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph);
@@ -6917,11 +6902,11 @@ tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_ov
 tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp);
 tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor_t *e);
-tfxINTERNAL float tfx__lookup_fast_overtime(tfx_graph_t *graph, float age, float lifetime);
-tfxINTERNAL float tfx__lookup_fast(tfx_graph_t *graph, float frame);
+tfxINTERNAL inline float tfx__lookup_fast_overtime(tfx_graph_t *graph, float age, float lifetime) {
+	return graph->lookup.values[tfx__Min(tfxU32((age / lifetime) * tfxLOOKUP_OVERTIME_ARRAY_SIZE), graph->lookup.last_frame)];
+}
 tfxINTERNAL float tfx__lookup_precise_overtime(tfx_graph_t *graph, float age, float lifetime);
 tfxINTERNAL float tfx__lookup_precise(tfx_graph_t *graph, float frame);
-tfxINTERNAL float tfx__lookup_precise_test(tfx_graph_t *graph, float frame);
 tfxINTERNAL float tfx__get_random_fast(tfx_graph_t *graph, float frame, tfx_random_t *random);
 tfxINTERNAL float tfx__get_random_precise(tfx_graph_t *graph, float frame, tfx_random_t *random);
 
