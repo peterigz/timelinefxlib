@@ -6597,8 +6597,9 @@ void tfx__assign_node_data(tfx_attribute_node_t *n, tfx_vector_t<tfx_str256_t> *
 	n->left.y = (float)atof((*values)[5].c_str());
 	n->right.x = (float)atof((*values)[6].c_str());
 	n->right.y = (float)atof((*values)[7].c_str());
-	if (n->flags & tfxAttributeNodeFlags_is_curve)
+	if (n->flags & tfxAttributeNodeFlags_is_curve) {
 		n->flags |= tfxAttributeNodeFlags_curves_initialised;
+	}
 }
 
 void tfx__assign_stage_property_u32(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU32 value) {
@@ -7212,6 +7213,32 @@ bool tfx__set_node_curve_initialised(tfx_attribute_node_t *node) {
 	return node->flags |= tfxAttributeNodeFlags_curves_initialised;
 }
 
+void tfx__unset_curves(tfx_graph_t *graph, tfxU32 index) {
+	TFX_ASSERT(index < graph->nodes.current_size);
+	tfx_attribute_node_t *node = &graph->nodes[index];
+	float third = 1.0f / 3.0f;
+
+	if (index == 0 && graph->nodes.current_size == 1) {
+		node->left.x = node->frame;
+		node->left.y = node->value;
+		node->right.x = node->frame;
+		node->right.y = node->value;
+	} else if (index == 0) {
+		tfx_attribute_node_t *next = &graph->nodes[index + 1];
+		node->right.x = node->frame - third * (node->frame - next->frame);
+		node->right.y = node->value - third * (node->value - next->value);
+	} else {
+		if (index + 1 < graph->nodes.current_size) {
+			tfx_attribute_node_t *next = &graph->nodes[index + 1];
+			node->right.x = node->frame - third * (node->frame - next->frame);
+			node->right.y = node->value - third * (node->value - next->value);
+		}
+		tfx_attribute_node_t *prev = &graph->nodes[index - 1];
+		node->left.x = node->frame - third * (node->frame - prev->frame);
+		node->left.y = node->value - third * (node->value - prev->value);
+	}
+}
+
 bool tfx__set_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame, float *value) {
 	float old_frame = node->frame;
 	float old_value = node->value;
@@ -7234,6 +7261,8 @@ bool tfx__set_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame,
 		node->right.x += node->frame - old_frame;
 		tfx__clamp_node_curve(graph, &node->right, node);
 		tfx__clamp_node_curve(graph, &node->left, node);
+	} else {
+		tfx__unset_curves(graph, node->index);
 	}
 
 	*frame = node->frame;
@@ -7251,8 +7280,9 @@ void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is
 	if (is_left_curve) {
 		node->left.x = *frame;
 		node->left.y = *value;
-		if (node->left.x > node->frame)
+		if (node->left.x > node->frame) {
 			node->left.x = node->frame;
+		}
 		tfx__clamp_node_curve(graph, &node->left, node);
 		*frame = node->left.x;
 		*value = node->left.y;
@@ -7260,8 +7290,9 @@ void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is
 	else {
 		node->right.x = *frame;
 		node->right.y = *value;
-		if (node->right.x < node->frame)
+		if (node->right.x < node->frame) {
 			node->right.x = node->frame;
+		}
 		tfx__clamp_node_curve(graph, &node->right, node);
 		*frame = node->right.x;
 		*value = node->right.y;
@@ -7290,6 +7321,8 @@ bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame,
 		node->right.x += node->frame - old_frame;
 		tfx__clamp_node_curve(graph, &node->right, node);
 		tfx__clamp_node_curve(graph, &node->left, node);
+	} else {
+		tfx__unset_curves(graph, node->index);
 	}
 
 	if (sort) {
@@ -7315,6 +7348,11 @@ void tfx__clamp_graph_nodes(tfx_graph_t *graph) {
 		if (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve) {
 			tfx__clamp_node_curve(graph, &graph->nodes[i].left, &graph->nodes[i]);
 			tfx__clamp_node_curve(graph, &graph->nodes[i].right, &graph->nodes[i]);
+		} else {
+			graph->nodes[i].left.x = graph->nodes[i].frame;
+			graph->nodes[i].left.y = graph->nodes[i].value;
+			graph->nodes[i].right.x = graph->nodes[i].frame;
+			graph->nodes[i].right.y = graph->nodes[i].value;
 		}
 	}
 }
@@ -7335,36 +7373,6 @@ void tfx__clamp_node_curve(tfx_graph_t *graph, tfx_vec2_t *p, tfx_attribute_node
 		if (p->x < prev->frame) p->x = prev->frame;
 	}
 }
-
-/*
-tfx_graph_t::tfx_graph_t() {
-	graph_preset = tfxGlobalPercentPreset;
-	index = 0;
-	gamma = 0.f;
-	type = tfxEmitterGraphMaxIndex;
-	min.x = 0.f;
-	min.y = 0.f;
-	max.x = 1000.f;
-	max.y = 1000.f;
-	effector = nullptr;
-	tfxInitBucketArray<tfx_attribute_node_t>(&nodes, 8);
-}
-
-tfx_graph_t::tfx_graph_t(tfxU32 bucket_size) {
-	type = tfxEmitterGraphMaxIndex;
-	graph_preset = tfxGlobalPercentPreset;
-	index = 0;
-	gamma = 0.f;
-	min.x = 0.f;
-	min.y = 0.f;
-	max.x = 1000.f;
-	max.y = 1000.f;
-	effector = nullptr;
-	tfxInitBucketArray<tfx_attribute_node_t>(&nodes, bucket_size);
-}
-*/
-
-const float BEZIER_ACCURACY = 0.01f;
 
 tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
 	float ti = 1.f - t;
@@ -7402,25 +7410,10 @@ tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *
 	return b;
 }
 
-float tfx__get_bezier_value(const tfx_attribute_node_t *last_node, const tfx_attribute_node_t *a, float t, float ymin, float ymax) {
+float tfx__get_bezier_value(const tfx_attribute_node_t *last_node, const tfx_attribute_node_t *a, float t) {
 	TFX_ASSERT(last_node);
 
-	bool a_is_curve = a->flags & tfxAttributeNodeFlags_is_curve;
-	bool lastec_is_curve = last_node->flags & tfxAttributeNodeFlags_is_curve;
-
-	tfx_vec2_t p0(last_node->frame, last_node->value);
-	tfx_vec2_t p2;
-
-	if (a_is_curve && lastec_is_curve) {
-		return tfx__get_cubic_bezier_clamp_value( p0, tfx_vec2_t(last_node->right.x, last_node->right.y), tfx_vec2_t(a->left.x, a->left.y), tfx_vec2_t(a->frame, a->value), t, ymin, ymax);
-	} else if(!a_is_curve && !lastec_is_curve) {
-		return 0.f;
-	}
-
-	p2 = tfx_vec2_t(a->frame, a->value);
-	tfx_vec2_t p1 = a_is_curve ? tfx_vec2_t(a->left.x, a->left.y) : lastec_is_curve ? tfx_vec2_t(last_node->right.x, last_node->right.y) : p2;
-
-	return tfx__get_quad_bezier_clamp_value(p0, p1, p2, t, ymin, ymax);
+	return tfx__get_cubic_bezier_value(  last_node->value, last_node->right.y, a->left.y, a->value, t);
 }
 
 void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size) {
@@ -7453,8 +7446,9 @@ tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float _fram
 
 void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node) {
 	for (tfxBucketLoop(graph->nodes, i)) {
-		if (graph->nodes[i].frame == node->frame && graph->nodes[i].value == node->value)
+		if (graph->nodes[i].frame == node->frame && graph->nodes[i].value == node->value) {
 			return;
+		}
 	}
 	graph->nodes.push_back(*node);
 	tfx__sort_graph(graph);
@@ -7496,10 +7490,10 @@ tfx_attribute_node_t *tfx__insert_graph_node(tfx_graph_t *graph, float _frame, f
 
 	node.value = _value;
 	node.flags = 0;
-	node.left.x = 0.f;
-	node.left.y = 0.f;
-	node.right.x = 0.f;
-	node.right.y = 0.f;
+	node.left.x = _frame;
+	node.left.y = _value;
+	node.right.x = _frame;
+	node.right.y = _value;
 	tfx__clamp_node(graph, &node);
 
 	if (graph->nodes.size() > 1) {
@@ -7530,10 +7524,10 @@ void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 i, float _frame, float _valu
 		graph->nodes[i].frame = _frame;
 		graph->nodes[i].value = _value;
 		graph->nodes[i].flags = flags;
-		graph->nodes[i].left.x = _c0x;
-		graph->nodes[i].left.y = _c0y;
-		graph->nodes[i].right.x = _c1x;
-		graph->nodes[i].right.y = _c1y;
+		graph->nodes[i].left.x = _c0x ? _c0x : _frame;
+		graph->nodes[i].left.y = _c0y ? _c0y : _value;
+		graph->nodes[i].right.x = _c1x ? _c1x : _frame;
+		graph->nodes[i].right.y = _c1y ? _c1y : _value;
 		if (tfx__sort_graph(graph))
 			tfx__reindex_graph(graph);
 	}
@@ -7556,14 +7550,18 @@ float tfx__graph_frame_by_index(tfx_graph_t *graph, tfxU32 index) {
 
 float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age) {
 	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
-	float prev_frame = prev->frame;
 	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
 		curr = &graph->nodes[i];
 		if (age < curr->frame) {
-			float p = (age - prev_frame) / (curr->frame - prev_frame);
-			float bezier = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
-			return bezier ? bezier : prev->value - p * (prev->value - curr->value);
+			float t = (age - prev->frame) / (curr->frame - prev->frame);
+			float ti = 1.f - t;
+			float t2 = t * t;
+			float ti2 = ti * ti;
+			float t_ti2 = t * ti2;
+			float t2_ti = t2 * ti;
+			return ti2 * ti * prev->value + 3.f * t_ti2 * prev->right.y + 3.f * t2_ti * curr->left.y + t2 * t * curr->value;
 		}
+		prev = curr;
 	}
 	return prev->value;
 
@@ -7591,16 +7589,14 @@ tfx_attribute_node_t *tfx__get_graph_last_node(tfx_graph_t *graph) {
 
 float tfx__get_graph_random_value(tfx_graph_t *graph, float age, tfx_random_t *random) {
 	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
-	float prev_frame = prev->frame;
 	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
 		curr = &graph->nodes[i];
 		if (age < curr->frame) {
-			float p = (age - prev_frame) / (curr->frame - prev_frame);
-			float bezier_value = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
-			return bezier_value ? tfx_RandomRangeZeroToMax(random, bezier_value) : tfx_RandomRangeZeroToMax(random, prev->value - p * (prev->value - curr->value));
+			float p = (age - prev->frame) / (curr->frame - prev->frame);
+			float bezier_value = tfx__get_bezier_value(prev, curr, p);
+			return tfx_RandomRangeZeroToMax(random, bezier_value);
 		}
 		prev = curr;
-		prev_frame = curr->frame;
 	}
 	return tfx_RandomRangeZeroToMax(random, prev->value);
 }
@@ -7612,9 +7608,29 @@ float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, flo
 		curr = &graph->nodes[i];
 		float frame = curr->frame * life;
 		if (age < frame) {
+			float t = (age - prev_frame) / (frame - prev_frame);
+			float ti = 1.f - t;
+			float t2 = t * t;
+			float ti2 = ti * ti;
+			float t_ti2 = t * ti2;
+			float t2_ti = t2 * ti;
+			return ti2 * ti * prev->value + 3.f * t_ti2 * prev->right.y + 3.f * t2_ti * curr->left.y + t2 * t * curr->value;
+		}
+		prev = curr;
+		prev_frame = frame - 1.f;
+	}
+	return prev->value;
+}
+
+float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life) {
+	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
+	float prev_frame = prev->frame;
+	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
+		curr = &graph->nodes[i];
+		float frame = curr->frame * life;
+		if (age < frame) {
 			float p = (age - prev_frame) / (frame - prev_frame);
-			float bezier = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
-			return bezier ? bezier : prev->value - p * (prev->value - curr->value);
+			return prev->value - p * (prev->value - curr->value);
 		}
 		prev = curr;
 		prev_frame = frame - 1.f;
@@ -8036,11 +8052,9 @@ void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to, bool compile) {
 	if (compile) {
 		if (tfx__color_graph(from)) {
 			tfx__compile_color_overtime(to);
-		}
-		else if (tfx__is_overtime_graph(from)) {
+		} else if (tfx__is_overtime_graph(from)) {
 			tfx__compile_graph_overtime(to);
-		}
-		else {
+		} else {
 			tfx__compile_graph(to);
 		}
 	}
@@ -8122,6 +8136,9 @@ void tfx__reindex_graph(tfx_graph_t *graph) {
 	tfxU32 index = 0;
 	for (tfxBucketLoop(graph->nodes, i)) {
 		graph->nodes[i].index = index++;
+		if (!(graph->nodes[i].flags & tfxAttributeNodeFlags_curves_initialised)) {
+			tfx__unset_curves(graph, index - 1);
+		}
 	}
 }
 
@@ -8169,7 +8186,7 @@ void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph) {
 	graph->lookup.values.resize(tfxCOLOR_RAMP_WIDTH);
 	for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 		float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * graph->lookup.life;
-		graph->lookup.values[f] = tfx__get_graph_value_by_percent_of_life(graph, age, graph->lookup.life);
+		graph->lookup.values[f] = tfx__get_linear_graph_value_by_percent_of_life(graph, age, graph->lookup.life);
 	}
 	graph->lookup.values[tfxCOLOR_RAMP_WIDTH - 1] = tfx__get_graph_last_value(graph);
 }
@@ -8179,7 +8196,7 @@ void tfx__compile_color_overtime(tfx_graph_t *graph, float gamma) {
 		graph->lookup.last_frame = tfxU32(graph->lookup.life / tfxLOOKUP_FREQUENCY_OVERTIME);
 		graph->lookup.values.resize(graph->lookup.last_frame + 1);
 		for (tfxU32 f = 0; f != graph->lookup.last_frame + 1; ++f) {
-			graph->lookup.values[f] = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(graph, (float)f * tfxLOOKUP_FREQUENCY_OVERTIME, graph->lookup.life), gamma);
+			graph->lookup.values[f] = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(graph, (float)f * tfxLOOKUP_FREQUENCY_OVERTIME, graph->lookup.life), gamma);
 		}
 		graph->lookup.values[graph->lookup.last_frame] = tfx__gamma_correct(tfx__get_graph_last_value(graph), gamma);
 	}
@@ -8253,7 +8270,7 @@ void tfx__compile_color_ramp(tfx_overtime_attributes_t *attributes, tfx_color_ra
 			r = color_ramp->brightness.x + color_ramp->contrast.x * cosf(tfxPI2 * (color_ramp->frequency.x * x + color_ramp->offsets.x));
 			g = color_ramp->brightness.y + color_ramp->contrast.y * cosf(tfxPI2 * (color_ramp->frequency.y * x + color_ramp->offsets.y));
 			b = color_ramp->brightness.z + color_ramp->contrast.z * cosf(tfxPI2 * (color_ramp->frequency.z * x + color_ramp->offsets.z));
-			a = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
+			a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
@@ -8262,10 +8279,10 @@ void tfx__compile_color_ramp(tfx_overtime_attributes_t *attributes, tfx_color_ra
 	} else {
 		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 			float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * attributes->red.lookup.life;
-			r = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->red, age, attributes->red.lookup.life), gamma);
-			g = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->green, age, attributes->green.lookup.life), gamma);
-			b = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blue, age, attributes->blue.lookup.life), gamma);
-			a = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
+			r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->red, age, attributes->red.lookup.life), gamma);
+			g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->green, age, attributes->green.lookup.life), gamma);
+			b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->blue, age, attributes->blue.lookup.life), gamma);
+			a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->blendfactor, age, attributes->blendfactor.lookup.life), gamma);
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
@@ -8282,10 +8299,10 @@ void tfx__compile_color_ramp_hint(tfx_overtime_attributes_t *attributes, tfx_col
 	float r, g, b, a;
 	for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 		float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * attributes->red.lookup.life;
-		r = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->red_hint, age, attributes->red.lookup.life), gamma);
-		g = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->green_hint, age, attributes->green.lookup.life), gamma);
-		b = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blue_hint, age, attributes->blue.lookup.life), gamma);
-		a = tfx__gamma_correct(tfx__get_graph_value_by_percent_of_life(&attributes->blendfactor_hint, age, attributes->blendfactor_hint.lookup.life), gamma);
+		r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->red_hint, age, attributes->red.lookup.life), gamma);
+		g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->green_hint, age, attributes->green.lookup.life), gamma);
+		b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->blue_hint, age, attributes->blue.lookup.life), gamma);
+		a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&attributes->blendfactor_hint, age, attributes->blendfactor_hint.lookup.life), gamma);
 		color_ramp->colors[f].r = tfxU32(r * 255.f);
 		color_ramp->colors[f].g = tfxU32(g * 255.f);
 		color_ramp->colors[f].b = tfxU32(b * 255.f);
@@ -8398,9 +8415,13 @@ float tfx__lookup_precise_overtime(tfx_graph_t *graph, float age, float life) {
 		curr = &graph->nodes[i];
 		float frame = curr->frame * life;
 		if (age < curr->frame) {
-			float p = (age - prev_frame) / (frame - prev_frame);
-			float bezier = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
-			return bezier ? bezier : prev->value - p * (prev->value - curr->value);
+			float t = (age - prev_frame) / (frame - prev_frame);
+			float ti = 1.f - t;
+			float t2 = t * t;
+			float ti2 = ti * ti;
+			float t_ti2 = t * ti2;
+			float t2_ti = t2 * ti;
+			return ti2 * ti * prev->value + 3.f * t_ti2 * prev->right.y + 3.f * t2_ti * curr->left.y + t2 * t * curr->value;
 		}
 		prev = curr;
 		prev_frame = frame - 1.f;
@@ -8417,9 +8438,13 @@ float tfx__lookup_precise(tfx_graph_t *graph, float age) {
 	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
 		curr = &graph->nodes[i];
 		if (age < curr->frame) {
-			float p = (age - prev_frame) / (curr->frame - prev_frame);
-			float bezier = tfx__get_bezier_value(prev, curr, p, graph->min.y, graph->max.y);
-			return bezier ? bezier : prev->value - p * (prev->value - curr->value);
+			float t = (age - prev_frame) / (curr->frame - prev_frame);
+			float ti = 1.f - t;
+			float t2 = t * t;
+			float ti2 = ti * ti;
+			float t_ti2 = t * ti2;
+			float t2_ti = t2 * ti;
+			return ti2 * ti * prev->value + 3.f * t_ti2 * prev->right.y + 3.f * t2_ti * curr->left.y + t2 * t * curr->value;
 		}
 		prev = curr;
 		prev_frame = curr->frame;

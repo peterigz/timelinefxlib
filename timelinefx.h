@@ -6834,6 +6834,7 @@ tfxAPI_EDITOR void tfx__init_emitter_properties(tfx_emitter_properties_t *proper
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxAPI_EDITOR float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age);
 tfxAPI_EDITOR float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
+tfxAPI_EDITOR float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__get_graph_last_node(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_first_value(tfx_graph_t *graph);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__insert_graph_node(tfx_graph_t *graph, float, float);
@@ -6887,21 +6888,21 @@ tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
 tfxINTERNAL tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset);
 tfxINTERNAL tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
 tfxINTERNAL tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
-tfxINTERNAL inline float tfx__get_quad_bezier_clamp_value(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax) {
+tfxINTERNAL inline float tfx__get_quad_bezier_clamp_value(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t) {
 	float ti = 1.f - t;
 	float t_ti = t * ti;
-	return tfx__Clamp(ymin, ymax, ti * ti * p0.y + 2.f * t_ti * p1.y + t * t * p2.y);
+	return ti * ti * p0.y + 2.f * t_ti * p1.y + t * t * p2.y;
 }
-tfxINTERNAL inline float tfx__get_cubic_bezier_clamp_value(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax) {
+tfxINTERNAL inline float tfx__get_cubic_bezier_value(float p0, float p1, float p2, float p3, float t) {
 	float ti = 1.f - t;
 	float t2 = t * t;
 	float ti2 = ti * ti;
 	float t_ti2 = t * ti2;
 	float t2_ti = t2 * ti;
-	return tfx__Clamp(ymin, ymax, ti2 * ti * p0.y + 3.f * t_ti2 * p1.y + 3.f * t2_ti * p2.y + t2 * t * p3.y);
+	return ti2 * ti * p0 + 3.f * t_ti2 * p1 + 3.f * t2_ti * p2 + t2 * t * p3;
 }
 tfxINTERNAL tfx_vec3_t tfx__get_cubic_bezier_3d(tfx_vec4_t *p0, tfx_vec4_t *p1, tfx_vec4_t *p2, tfx_vec4_t *p3, float t);
-tfxINTERNAL float tfx__get_bezier_value(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t, float ymin, float ymax);
+tfxINTERNAL float tfx__get_bezier_value(const tfx_attribute_node_t *lastec, const tfx_attribute_node_t *a, float t);
 tfxINTERNAL inline float tfx__get_vector_angle(float x, float y) { return atan2f(x, -y); }
 tfxINTERNAL bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right);
 tfxINTERNAL void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph);
@@ -6920,10 +6921,12 @@ tfxINTERNAL float tfx__lookup_fast_overtime(tfx_graph_t *graph, float age, float
 tfxINTERNAL float tfx__lookup_fast(tfx_graph_t *graph, float frame);
 tfxINTERNAL float tfx__lookup_precise_overtime(tfx_graph_t *graph, float age, float lifetime);
 tfxINTERNAL float tfx__lookup_precise(tfx_graph_t *graph, float frame);
+tfxINTERNAL float tfx__lookup_precise_test(tfx_graph_t *graph, float frame);
 tfxINTERNAL float tfx__get_random_fast(tfx_graph_t *graph, float frame, tfx_random_t *random);
 tfxINTERNAL float tfx__get_random_precise(tfx_graph_t *graph, float frame, tfx_random_t *random);
 
 //Node Manipulation
+tfxAPI_EDITOR void tfx__unset_curves(tfx_graph_t *graph, tfxU32 index);
 tfxAPI_EDITOR bool tfx__set_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame, float *value);
 tfxAPI_EDITOR void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve, float *frame, float *value);
 tfxAPI_EDITOR bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame, float value, bool sort = true);
