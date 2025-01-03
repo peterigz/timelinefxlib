@@ -2107,14 +2107,6 @@ typedef enum {
 	tfxVariation_noise_resolution,
 	tfxVariation_motion_randomness,
 
-	tfxOvertime_velocity,
-	tfxOvertime_width,
-	tfxOvertime_height,
-	tfxOvertime_weight,
-	tfxOvertime_pitch_spin,
-	tfxOvertime_yaw_spin,
-	tfxOvertime_roll_spin,
-	tfxOvertime_stretch,
 	tfxOvertime_red,
 	tfxOvertime_green,
 	tfxOvertime_blue,
@@ -2123,16 +2115,26 @@ typedef enum {
 	tfxOvertime_green_hint,
 	tfxOvertime_blue_hint,
 	tfxOvertime_blendfactor_hint,
-	tfxOvertime_velocity_turbulance,
-	tfxOvertime_direction_turbulance,
-	tfxOvertime_velocity_adjuster,
 	tfxOvertime_intensity,
 	tfxOvertime_alpha_sharpness,
 	tfxOvertime_curved_alpha,
+	tfxOvertime_velocity_adjuster,
 	tfxOvertime_gradient_mapper,
+	//--These compiled graph values are uploaded to the GPU
+	tfxOvertime_velocity,
+	tfxOvertime_width,
+	tfxOvertime_height,
+	tfxOvertime_weight,
+	tfxOvertime_pitch_spin,
+	tfxOvertime_yaw_spin,
+	tfxOvertime_roll_spin,
+	tfxOvertime_stretch,
+	tfxOvertime_velocity_turbulance,
+	tfxOvertime_direction_turbulance,
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
+	//--
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -5176,45 +5178,6 @@ typedef struct tfx_graph_id_s {
 	tfxKey path_hash;
 } tfx_graph_id_t;
 
-typedef struct tfx_graph_lookup_index_s {
-	tfxU32 start_index;
-	tfxU32 length;
-	float max_life;
-	float padding1;
-} tfx_graph_lookup_index_t;
-
-//This typedef struct is used to store indexing data in order to index into large lists containing either the node data of graphs
-//or the lookup data of compiled graphs. This is so that we can upload that data into a buffer on the GPU to get the particles
-//updating in a compute shader.
-typedef struct tfx_effect_lookup_data_s {
-	tfx_graph_lookup_index_t overtime_velocity;
-	tfx_graph_lookup_index_t overtime_width;
-	tfx_graph_lookup_index_t overtime_height;
-	tfx_graph_lookup_index_t overtime_weight;
-	tfx_graph_lookup_index_t overtime_roll_spin;
-	tfx_graph_lookup_index_t overtime_pitch_spin;
-	tfx_graph_lookup_index_t overtime_yaw_spin;
-	tfx_graph_lookup_index_t overtime_stretch;
-	tfx_graph_lookup_index_t overtime_red;
-	tfx_graph_lookup_index_t overtime_green;
-	tfx_graph_lookup_index_t overtime_blue;
-	tfx_graph_lookup_index_t overtime_blendfactor;
-	tfx_graph_lookup_index_t overtime_red_hint;
-	tfx_graph_lookup_index_t overtime_green_hint;
-	tfx_graph_lookup_index_t overtime_blue_hint;
-	tfx_graph_lookup_index_t overtime_blendfactor_hint;
-	tfx_graph_lookup_index_t overtime_velocity_turbulance;
-	tfx_graph_lookup_index_t overtime_direction_turbulance;
-	tfx_graph_lookup_index_t overtime_velocity_adjuster;
-	tfx_graph_lookup_index_t overtime_intensity;
-	tfx_graph_lookup_index_t overtime_hint_intensity;
-	tfx_graph_lookup_index_t overtime_color_mix_overtime;
-	tfx_graph_lookup_index_t overtime_gradient_mapper;
-	tfx_graph_lookup_index_t overtime_direction;
-	tfx_graph_lookup_index_t overtime_noise_resolution;
-	tfx_graph_lookup_index_t overtime_motion_randomness;
-}tfx_effect_lookup_data_t;
-
 typedef struct tfx_graph_s {
 	//The ratio to transalte graph frame/value to grid x/y coords on a graph editor
 	tfx_vec2_t min;
@@ -5235,6 +5198,7 @@ typedef struct tfx_graph_s {
 tfxAPI_EDITOR void tfx__init_graph(tfx_graph_t * graph, tfxU32 node_bucket_size);
 
 //The following structs group graphs together under the attribute categories Global, Transform, Properties, Base, Variation and Overtime
+//Note: all of the tfx_graph_t types need to be in the same order as the enum tfx_graph_type
 typedef struct tfx_global_attributes_s {
 	tfx_graph_t life;
 	tfx_graph_t amount;
@@ -5306,14 +5270,6 @@ typedef struct tfx_variation_attributes_s {
 } tfx_variation_attributes_t;
 
 typedef struct tfx_overtime_attributes_s {
-	tfx_graph_t velocity;
-	tfx_graph_t width;
-	tfx_graph_t height;
-	tfx_graph_t weight;
-	tfx_graph_t pitch_spin;
-	tfx_graph_t yaw_spin;
-	tfx_graph_t spin;
-	tfx_graph_t stretch;
 	tfx_graph_t red;
 	tfx_graph_t green;
 	tfx_graph_t blue;
@@ -5322,13 +5278,21 @@ typedef struct tfx_overtime_attributes_s {
 	tfx_graph_t green_hint;
 	tfx_graph_t blue_hint;
 	tfx_graph_t blendfactor_hint;
-	tfx_graph_t velocity_turbulance;
-	tfx_graph_t direction_turbulance;
-	tfx_graph_t velocity_adjuster;
 	tfx_graph_t intensity;
 	tfx_graph_t alpha_sharpness;
 	tfx_graph_t curved_alpha;
+	tfx_graph_t velocity_adjuster;
 	tfx_graph_t gradient_mapper;
+	tfx_graph_t velocity;
+	tfx_graph_t width;
+	tfx_graph_t height;
+	tfx_graph_t weight;
+	tfx_graph_t pitch_spin;
+	tfx_graph_t yaw_spin;
+	tfx_graph_t spin;
+	tfx_graph_t stretch;
+	tfx_graph_t velocity_turbulance;
+	tfx_graph_t direction_turbulance;
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
@@ -5742,6 +5706,10 @@ typedef struct tfx_ribbon_soa_s {
 typedef struct tfx_gpu_emitter_s {
 	tfx_vec4_t position;
 	tfx_vec4_t captured_position;
+	tfxU32 lookup_offset;
+	tfxU32 padding1;
+	tfxU32 padding2;
+	tfxU32 padding3;
 } tfx_gpu_emitter_t;
 
 typedef struct tfx_ribbon_emitter_state_s {
@@ -5824,6 +5792,8 @@ typedef struct tfx_effect_descriptor_s {
 	tfxU32 emitter_attributes;
 	tfxU32 transform_attributes;
 	tfxU32 path_attributes;
+	//Graph data is compiled and uploaded to the GPU (currently for ribbons only) this is the offset into the buffer where the data starts for this emitter
+	tfxU32 gpu_lookup_offset;
 	//The type of function that should be called to update particle positions
 	tfxEmitterControlProfileFlags control_profile;
 	//Pointer to the immediate parent
@@ -6640,9 +6610,7 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfx_sprite_data_settings_t> sprite_data_settings;
 	tfx_vector_t<tfx_preview_camera_settings_t> preview_camera_settings;
 	tfx_vector_t<tfx_attribute_node_t> all_nodes;
-	tfx_vector_t<tfx_effect_lookup_data_t> node_lookup_indexes;
 	tfx_vector_t<float> compiled_lookup_values;
-	tfx_vector_t<tfx_graph_lookup_index_t> compiled_lookup_indexes;
 	//This could probably be stored globally
 	tfx_vector_t<tfx_vec4_t> graph_min_max;
 
@@ -6879,6 +6847,7 @@ tfxINTERNAL void tfx__delete_graph_node_at_frame(tfx_graph_t *graph, float frame
 tfxINTERNAL void tfx__clear_graph(tfx_graph_t *graph);
 tfxINTERNAL void tfx__reindex_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
+tfxINTERNAL bool tfx__gpu_overtime_graph(tfx_graph_t *graph);
 tfxINTERNAL tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset);
 tfxINTERNAL tfx_vec2_t tfx__get_quad_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, float t, float ymin, float ymax);
 tfxINTERNAL tfx_vec2_t tfx__get_cubic_bezier_clamp(tfx_vec2_t p0, tfx_vec2_t p1, tfx_vec2_t p2, tfx_vec2_t p3, float t, float ymin, float ymax);
@@ -6975,6 +6944,7 @@ tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_properties(tfx_library lib
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_ribbon_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_key_frames(tfx_library library);
 tfxAPI_EDITOR void tfx__update_library_compute_nodes(tfx_library library);
+tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_library library, tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR void tfx__compile_library_overtime_graph(tfx_library library, tfxU32 index, bool including_color_ramps = true);
 tfxAPI_EDITOR void tfx__compile_library_color_graphs(tfx_library library, tfxU32 index);
@@ -7008,7 +6978,6 @@ tfxINTERNAL void tfx__copy_global_attributes_no_lookups(tfx_global_attributes_t 
 tfxINTERNAL void tfx__copy_global_attributes(tfx_global_attributes_t *src, tfx_global_attributes_t *dst);
 tfxINTERNAL int tfx__get_effect_library_stats(const char *filename, tfx_effect_library_stats_t *stats);
 tfxINTERNAL void tfx__toggle_sprites_with_uid(tfx_particle_manager pm, bool switch_on);
-tfxINTERNAL tfxU32 tfx__get_library_lookup_indexes_size_in_bytes(tfx_library library);
 tfxINTERNAL tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library library);
 tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descriptor_t *effect_emitter, const char *path, bool skip_existing);
 tfxINTERNAL tfxU32 tfx__add_library_global(tfx_library library);
@@ -7726,6 +7695,19 @@ tfx_GetGPUShapesCount etc.
 * @param library        A handle to a tfx_library
 */
 tfxAPI tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library);
+
+/*
+Get the gpu graph lookup data pointer in library. This lookup data can be used by shaders to update attributes of particles and ribbons (currently ribbons only). Use with 
+tfx_GetLibraryGPUGraphLookupsBufferSizeInBytes to upload to your GPU buffer.
+* @param library        A handle to a tfx_library
+*/
+tfxAPI float *tfx_GetLibraryGPUGraphLookupsBuffer(tfx_library library);
+
+/*
+Get the gpu graph lookup data size in bytes contained within the library you pass into the function.
+* @param library        A handle to a tfx_library
+*/
+tfxAPI tfxU32 tfx_GetLibraryGPUGraphLookupsBufferSizeInBytes(tfx_library library);
 
 //--------------------------------
 //Particle_Manager_functions

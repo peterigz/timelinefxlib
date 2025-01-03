@@ -5079,6 +5079,18 @@ tfx_gpu_shapes tfx_GetLibraryGPUShapes(tfx_library library) {
 	return library->gpu_shapes;
 }
 
+float *tfx_GetLibraryGPUGraphLookupsBuffer(tfx_library library) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
+	TFX_ASSERT(library->compiled_lookup_values.current_size > 0);	//No data in buffer, did you load a library with this library handle?
+	return library->compiled_lookup_values.data;
+}
+
+tfxU32 tfx_GetLibraryGPUGraphLookupsBufferSizeInBytes(tfx_library library) {
+	TFX_CHECK_HANDLE(library);	//Not a valid library handle
+	return library->compiled_lookup_values.size_in_bytes();
+}
+
+
 
 void tfx_BuildAnimationManagerGPUShapeData(tfx_animation_manager animation_manager, tfx_gpu_shapes shapes, void(uv_lookup)(void *ptr, tfx_gpu_image_data_t *image_data, int offset)) {
 	TFX_CHECK_HANDLE(shapes);				//shapes handle is not initialised. Use tfx_CreateGPUShapes() to create a new tfx_gpu_shapes object
@@ -5090,12 +5102,8 @@ tfx_gpu_image_data_t *tfx_GetGPUShapesArray(tfx_gpu_shapes shapes) {
 	return shapes->list.data;
 }
 
-tfxU32 tfx__get_library_lookup_indexes_size_in_bytes(tfx_library library) {
-	return sizeof(tfx_graph_lookup_index_t) * TFX_OVERTIME_COUNT * library->compiled_lookup_indexes.size();
-}
-
 tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library library) {
-	return sizeof(float) * library->compiled_lookup_values.size();
+	return library->compiled_lookup_values.size_in_bytes();
 }
 
 bool tfx__is_library_shape_used(tfx_library library, tfxKey image_hash) {
@@ -5587,9 +5595,7 @@ void tfx__init_library(tfx_library library) {
 	library->sprite_data_settings.init();
 	library->preview_camera_settings.init();
 	library->all_nodes.init();
-	library->node_lookup_indexes.init();
 	library->compiled_lookup_values.init();
-	library->compiled_lookup_indexes.init();
 	library->graph_min_max.init();
 	library->free_global_graphs.init();
 	library->free_keyframe_graphs.init();
@@ -5688,8 +5694,6 @@ void tfx_FreeLibrary(tfx_library library) {
 	library->sprite_sheet_settings.free();
 	library->preview_camera_settings.free();
 	library->all_nodes.free();
-	library->node_lookup_indexes.free();
-	library->compiled_lookup_indexes.free();
 	library->compiled_lookup_values.free();
 	library->emitter_properties.free();
 	library->graph_min_max.free();
@@ -5716,13 +5720,9 @@ void tfx_FreeLibrary(tfx_library library) {
 }
 
 void tfx__update_library_compute_nodes(tfx_library library) {
-	tfxU32 running_node_index = 0;
-	tfxU32 running_value_index = 0;
 	tmpStack(tfx_effect_descriptor_t *, stack);
 	library->all_nodes.clear();
-	library->node_lookup_indexes.clear();
 	library->compiled_lookup_values.clear();
-	library->compiled_lookup_indexes.clear();
 	for (auto &effect : library->effects) {
 		stack.push_back(&effect);
 		while (!stack.empty()) {
@@ -5733,45 +5733,68 @@ void tfx__update_library_compute_nodes(tfx_library library) {
 				}
 				continue;
 			}
-			tfx_effect_lookup_data_t lookup_data;
-			tfx_effect_lookup_data_t value_lookup_data;
-			memset(&lookup_data, 0, sizeof(tfx_effect_lookup_data_t));
-			memset(&value_lookup_data, 0, sizeof(tfx_effect_lookup_data_t));
-			if (current->type == tfxEmitterType) {
+			if (current->type == tfxEmitterType || current->type == tfxRibbonType) {
 
-				int offset = TFX_GLOBAL_COUNT + TFX_PROPERTY_COUNT + TFX_BASE_COUNT + TFX_VARIATION_COUNT;
+				current->gpu_lookup_offset = library->compiled_lookup_values.current_size;
 
-				tfx_GetEffectInfo(current)->lookup_value_index = library->compiled_lookup_indexes.size();
 				for (int i = 0; i != TFX_OVERTIME_COUNT; ++i) {
 					tfx_graph_t &graph = ((tfx_graph_t *)(&library->emitter_attributes[current->emitter_attributes].overtime))[i];
-					tfx_graph_lookup_index_t &index = ((tfx_graph_lookup_index_t *)&lookup_data)[i];
-					index.start_index = running_node_index;
-					index.length = graph.nodes.size();
-					index.max_life = graph.lookup.life;
+
+					if (!tfx__gpu_overtime_graph(&graph)) continue;
+
 					for (tfxBucketLoop(graph.nodes, i)) {
 						library->all_nodes.push_back(graph.nodes[i]);
-						running_node_index++;
 					}
 
-					tfx_graph_lookup_index_t value_index;
-					value_index.start_index = running_value_index;
-					value_index.length = graph.lookup.values.size();
-					value_index.max_life = graph.lookup.life;
-					library->compiled_lookup_indexes.push_back(value_index);
-					for (auto value : graph.lookup.values) {
-						library->compiled_lookup_values.push_back(value);
-						running_value_index++;
+					if (graph.lookup.values.current_size == tfxLOOKUP_OVERTIME_ARRAY_SIZE) {
+						for (float value : graph.lookup.values) {
+							library->compiled_lookup_values.push_back(value);
+						}
+					} else {
+						TFX_ASSERT(graph.lookup.values.current_size == 1);	//The lookup values container should only be 1 or tfxLOOKUP_OVERTIME_ARRAY_SIZE in size
+						for (int i = 0; i != tfxLOOKUP_OVERTIME_ARRAY_SIZE; ++i) {
+							library->compiled_lookup_values.push_back(graph.lookup.values[0]);
+						}
 					}
 				}
-
-				library->node_lookup_indexes.push_back(lookup_data);
-				tfx_GetEffectInfo(current)->lookup_node_index = library->node_lookup_indexes.size() - 1;
-
 			}
 
 			for (auto &sub : tfx_GetEffectInfo(current)->sub_effectors) {
 				stack.push_back(&sub);
 			}
+		}
+	}
+	stack.free();
+}
+
+void tfx__update_library_emitter_compute_nodes(tfx_library library, tfx_effect_descriptor_t *emitter) {
+	if (emitter->type != tfxEmitterType && emitter->type != tfxRibbonType) {
+		return;
+	}
+	tmpStack(tfx_effect_descriptor_t *, stack);
+	stack.push_back(emitter);
+	while (!stack.empty()) {
+		tfx_effect_descriptor_t *current = stack.pop_back();
+
+		for (int i = 0; i != TFX_OVERTIME_COUNT; ++i) {
+			tfx_graph_t &graph = ((tfx_graph_t *)(&library->emitter_attributes[current->emitter_attributes].overtime))[i];
+
+			if (!tfx__gpu_overtime_graph(&graph)) continue;
+
+			if (graph.lookup.values.current_size == tfxLOOKUP_OVERTIME_ARRAY_SIZE) {
+				for (int ni = 0; ni != tfxLOOKUP_OVERTIME_ARRAY_SIZE; ++ni) {
+					library->compiled_lookup_values[current->gpu_lookup_offset + ni] = graph.lookup.values[ni];
+				}
+			} else {
+				TFX_ASSERT(graph.lookup.values.current_size == 1);	//The lookup values container should only be 1 or tfxLOOKUP_OVERTIME_ARRAY_SIZE in size
+				for (int ni = 0; ni != tfxLOOKUP_OVERTIME_ARRAY_SIZE; ++ni) {
+					library->compiled_lookup_values[current->gpu_lookup_offset + ni] = graph.lookup.values[0];
+				}
+			}
+		}
+
+		for (auto &sub : tfx_GetEffectInfo(current)->sub_effectors) {
+			stack.push_back(&sub);
 		}
 	}
 	stack.free();
@@ -6971,7 +6994,7 @@ bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right)
 }
 
 bool tfx__is_overtime_graph(tfx_graph_t *graph) {
-	return (graph->type >= tfxOvertime_velocity && graph->type <= tfxOvertime_motion_randomness && graph->type != tfxOvertime_velocity_adjuster) || graph->type > tfxEmitterGraphMaxIndex;
+	return (graph->type >= tfxOvertime_red && graph->type <= tfxOvertime_motion_randomness && graph->type != tfxOvertime_velocity_adjuster) || graph->type > tfxEmitterGraphMaxIndex;
 }
 
 bool tfx__is_factor_graph(tfx_graph_t *graph) {
@@ -6980,6 +7003,10 @@ bool tfx__is_factor_graph(tfx_graph_t *graph) {
 
 bool tfx__color_graph(tfx_graph_t *graph) {
 	return graph->type >= tfxOvertime_red && graph->type <= tfxOvertime_blendfactor_hint;
+}
+
+bool tfx__gpu_overtime_graph(tfx_graph_t *graph) {
+	return graph->type >= tfxOvertime_velocity && graph->type <= tfxOvertime_motion_randomness;
 }
 
 bool tfx__is_blend_factor_graph(tfx_graph_t *graph) {
@@ -8279,7 +8306,7 @@ float tfx__get_max_life(tfx_effect_descriptor_t *e) {
 }
 
 bool tfx__is_overtime_graph_type(tfx_graph_type type) {
-	return type >= tfxOvertime_velocity && type != tfxOvertime_noise_resolution && type <= tfxOvertime_noise_resolution;
+	return type >= tfxOvertime_red && type != tfxOvertime_noise_resolution && type <= tfxOvertime_motion_randomness;
 }
 
 bool tfx__is_color_graph_type(tfx_graph_type type) {
@@ -8287,7 +8314,7 @@ bool tfx__is_color_graph_type(tfx_graph_type type) {
 }
 
 bool tfx__is_overtime_percentage_graph_type(tfx_graph_type type) {
-	return type >= tfxOvertime_velocity && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && type <= tfxOvertime_noise_resolution;
+	return type >= tfxOvertime_red && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && type <= tfxOvertime_motion_randomness;
 }
 
 bool tfx__is_global_graph_type(tfx_graph_type type) {
@@ -8763,7 +8790,6 @@ tfx_effect_library_stats_t tfx__create_library_stats(tfx_library lib) {
 	tfx_effect_library_stats_t stats;
 	memset(&stats, 0, sizeof(stats));
 	stats.total_effects = lib->effects.size();
-	stats.total_node_lookup_indexes = lib->node_lookup_indexes.size();
 	stats.total_attribute_nodes = lib->all_nodes.size();
 	tmpStack(tfx_effect_descriptor_t, stack);
 	for (auto &effect : lib->effects) {
@@ -10666,6 +10692,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				new_effect.ribbon_indexes[pm->current_ebuff].push_back(index);
 				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
 				ribbon_emitter.gpu_emitter_index = tfx__grab_gpu_emitter(pm);
+				pm->gpu_emitters[ribbon_emitter.gpu_emitter_index].lookup_offset = e.gpu_lookup_offset;
 				ribbon_emitter.amount_remainder = 0.f;
 				ribbon_emitter.qty_step_size = 0.f;
 				ribbon_emitter.spawn_quantity = 0.f;
@@ -11068,6 +11095,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 					pm->control_ribbon_queue.push_back(ribbon_index);
 				} else {
 					tfx__sync_lock(&pm->add_effect_mutex);
+					tfx__free_gpu_emitter(pm, pm->ribbon_emitters[ribbon_index].gpu_emitter_index);
 					pm->free_ribbon_emitters.push_back(ribbon_index);
 					tfx__sync_unlock(&pm->add_effect_mutex);
 				}
