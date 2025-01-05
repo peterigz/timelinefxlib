@@ -25,6 +25,7 @@
 	[Pocket_Hasher]						XXHasher for the storage map.
 	[SIMD_defines]						Defines for SIMD intrinsics
 	[Enums]								All the definitions for enums and bit flags
+		-[Graph_types]				
 		-[Bit_fields]				
 	[Constants]							Various constant definitions
 	[String_Buffers]					Basic string buffers for storing names of things in the library and reading from library files.
@@ -2034,6 +2035,9 @@ typedef enum tfx_color_ramp_format {
 	tfx_color_format_bgra
 } tfx_color_ramp_format;
 
+//--------------------------------------------
+//--Graph_types
+//--------------------------------------------
 #define TFX_GLOBAL_COUNT     17
 #define TFX_PROPERTY_COUNT   10
 #define TFX_BASE_COUNT       10
@@ -2134,12 +2138,12 @@ typedef enum {
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
-	//--
 
 	tfxFactor_life,
 	tfxFactor_size,
 	tfxFactor_velocity,
 	tfxFactor_intensity,
+	//------------------------------------------------------
 
 	tfxTransform_roll,
 	tfxTransform_pitch,
@@ -2279,12 +2283,14 @@ typedef enum {
 	tfxEndFrameMeta,
 	tfxStartFrameOffsets,
 	tfxEndFrameOffsets,
+	tfxStartRibbonEmitter,
+	tfxEndRibbonEmitter,
 } tfx_effect_library_stream_context;
 
 // -- [Bit_fields]
-typedef tfxU32 tfxEmitterPropertyFlags;         //tfx_emitter_property_flag_bits
-typedef tfxU32 tfxEmitterPropertyExtFlags;      //tfx_emitter_property_flag_ext_bits
-typedef tfxU32 tfxRibbonPropertyFlags;          //tfx_ribbon_property_flag_bits
+typedef tfxU32 tfxParticleEmitterFlags;			//tfx_particle_emitter_flag_bits
+typedef tfxU32 tfxRibbonEmitterFlags;			//tfx_ribbon_emitter_flag_bits
+typedef tfxU32 tfxSharedEmitterFlags;			//tfx_shared_emitter_flag_bits
 typedef tfxU32 tfxColorRampFlags;		        //tfx_color_ramp_flag_bits
 typedef tfxU32 tfxEffectPropertyFlags;          //tfx_effect_property_flag_bits
 typedef tfxU32 tfxVectorFieldFlags;             //tfx_vector_field_flag_bits
@@ -2481,55 +2487,57 @@ typedef enum {
 	tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
 	tfxEffectPropertyFlags_age_order = 1 << 3,
 	tfxEffectPropertyFlags_use_keyframes = 1 << 4,
-	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,        //In the editor you can specify which effects you want to be included in a spritedata export
+	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,      //In the editor you can specify which effects you want to be included in a spritedata export
 	tfxEffectPropertyFlags_global_uniform_size = 1 << 6,                //Keep the global particle size uniform
+	tfxEffectPropertyFlags_is_in_folder = 1 << 7,                      //This effect is located inside a folder. 
+	tfxEffectPropertyFlags_effect_is_3d					= 1 << 11,          //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
 } tfx_effect_property_flag_bits;
 
 typedef enum {
-	tfxEmitterPropertyFlags_none = 0,
-	tfxEmitterPropertyFlags_random_color = 1 << 0,                      //Pick a random color from the color overtime gradient rather then change the color over the lifetime of the particle
-	tfxEmitterPropertyFlags_relative_position = 1 << 1,                 //Keep the particles position relative to the current position of the emitter
-	tfxEmitterPropertyFlags_relative_angle = 1 << 2,                    //Keep the angle of the particles relative to the current angle of the emitter
-	tfxEmitterPropertyFlags_image_handle_auto_center = 1 << 3,          //Set the offset of the particle to the center of the image
-	tfxEmitterPropertyFlags_single = 1 << 4,                            //Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
-	tfxEmitterPropertyFlags_spawn_on_grid = 1 << 5,                     //When using an area, line or ellipse emitter, spawn along a grid
-	tfxEmitterPropertyFlags_grid_spawn_clockwise = 1 << 6,              //Spawn clockwise/left to right around the area
-	tfxEmitterPropertyFlags_fill_area = 1 << 7,                         //Fill the area
-	tfxEmitterPropertyFlags_emitter_handle_auto_center = 1 << 8,        //Center the handle of the emitter
-	tfxEmitterPropertyFlags_edge_traversal = 1 << 9,                    //Line and Path emitters only: make particles traverse the line/path
-	tfxEmitterPropertyFlags_base_uniform_size = 1 << 10,                //Keep the base particle size uniform
-	tfxEmitterPropertyFlags_lifetime_uniform_size = 1 << 11,            //Keep the size over lifetime of the particle uniform
-	tfxEmitterPropertyFlags_animate = 1 << 12,                          //Animate the particle shape if it has more than one frame of animation
-	tfxEmitterPropertyFlags_reverse_animation = 1 << 13,                //Make the image animation go in reverse
-	tfxEmitterPropertyFlags_play_once = 1 << 14,                        //Play the animation once only
-	tfxEmitterPropertyFlags_random_start_frame = 1 << 15,               //Start the animation of the image from a random frame
-	tfxEmitterPropertyFlags_wrap_single_sprite = 1 << 16,               //When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
-	tfxEmitterPropertyFlags_is_in_folder = 1 << 17,                     //This effect is located inside a folder. Todo: move this to effect properties
-	tfxEmitterPropertyFlags_use_spawn_ratio = 1 << 18,                  //Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
-	tfxEmitterPropertyFlags_effect_is_3d = 1 << 19,                     //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
-	tfxEmitterPropertyFlags_grid_spawn_random = 1 << 20,                //Spawn on grid points but randomly rather then in sequence
-	tfxEmitterPropertyFlags_area_open_ends = 1 << 21,                   //Only sides of the area/cylinder are spawned on when fill area is not checked
-	tfxEmitterPropertyFlags_exclude_from_hue_adjustments = 1 << 22,     //Emitter will be excluded from effect hue adjustments if this flag is checked
-	tfxEmitterPropertyFlags_enabled = 1 << 23,                          //The emitter is enabled or not, meaning it will or will not be added the particle manager with tfx__add_effect
-	tfxEmitterPropertyFlags_match_amount_to_grid_points = 1 << 24,      //Match the amount to spawn with a single emitter to the number of grid points in the effect
-	tfxEmitterPropertyFlags_use_path_for_direction = 1 << 25,           //Make the particles use a path to dictate their direction of travel
-	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling = 1 << 26,	//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
-	tfxEmitterPropertyFlags_alt_color_lifetime_sampling = 1 << 27,      //The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
-	tfxEmitterPropertyFlags_alt_size_lifetime_sampling = 1 << 28,       //The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
-	tfxEmitterPropertyFlags_use_simple_motion_randomness = 1 << 29,     //Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
-	tfxEmitterPropertyFlags_spawn_location_source = 1 << 30,            //This emitter is the source for another emitter that uses it to spawn particles at the location of this emitters' particles
-	tfxEmitterPropertyFlags_use_color_hint = 1 << 31	                //Activate a second color to tint the particles and mix between the two colors.
-} tfx_emitter_property_flag_bits;
+	tfxEmitterPropertyFlags_none							= 0,
+	tfxEmitterPropertyFlags_random_color					= 1 << 0,               //Pick a random color from the color overtime gradient rather then change the color over the lifetime of the particle
+	tfxEmitterPropertyFlags_relative_angle					= 1 << 1,               //Keep the angle of the particles relative to the current angle of the emitter
+	tfxEmitterPropertyFlags_image_handle_auto_center		= 1 << 2,			    //Set the offset of the particle to the center of the image
+	tfxEmitterPropertyFlags_edge_traversal					= 1 << 3,               //Line and Path emitters only: make particles traverse the line/path
+	tfxEmitterPropertyFlags_base_uniform_size				= 1 << 4,              //Keep the base particle size uniform
+	tfxEmitterPropertyFlags_lifetime_uniform_size			= 1 << 5,			    //Keep the size over lifetime of the particle uniform
+	tfxEmitterPropertyFlags_wrap_single_sprite				= 1 << 6,				//When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
+	tfxEmitterPropertyFlags_use_spawn_ratio					= 1 << 7,              //Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
+	tfxEmitterPropertyFlags_area_open_ends					= 1 << 8,              //Only sides of the area/cylinder are spawned on when fill area is not checked
+	tfxEmitterPropertyFlags_exclude_from_hue_adjustments	= 1 << 9,				//Emitter will be excluded from effect hue adjustments if this flag is checked
+	tfxEmitterPropertyFlags_match_amount_to_grid_points		= 1 << 10,				//Match the amount to spawn with a single emitter to the number of grid points in the effect
+	tfxEmitterPropertyFlags_use_path_for_direction			= 1 << 11,				//Make the particles use a path to dictate their direction of travel
+	tfxEmitterPropertyFlags_alt_velocity_lifetime_sampling	= 1 << 12,				//The point on the path dictates where on the velocity overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_alt_color_lifetime_sampling		= 1 << 13,				//The point on the path dictates where on the color overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_alt_size_lifetime_sampling		= 1 << 14,				//The point on the path dictates where on the size overtime graph that the particle should sample from rather then the age of the particle
+	tfxEmitterPropertyFlags_use_simple_motion_randomness	= 1 << 15,				//Use a simplified way to generate random particle movement which is much less computationally intensive than simplex noise
+} tfx_particle_emitter_flag_bits;
+
+typedef enum {
+	tfxSharedEmitterPropertyFlags_none = 0,
+	tfxSharedEmitterPropertyFlags_relative_position				= 1 << 1,           //Keep the particles position relative to the current position of the emitter
+	tfxSharedEmitterPropertyFlags_single						= 1 << 2,           //Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
+	tfxSharedEmitterPropertyFlags_spawn_on_grid					= 1 << 3,           //When using an area, line or ellipse emitter, spawn along a grid
+	tfxSharedEmitterPropertyFlags_grid_spawn_clockwise			= 1 << 4,	        //Spawn clockwise/left to right around the area
+	tfxSharedEmitterPropertyFlags_fill_area						= 1 << 5,           //Fill the area
+	tfxSharedEmitterPropertyFlags_emitter_handle_auto_center	= 1 << 6,			//Center the handle of the emitter
+	tfxSharedEmitterPropertyFlags_animate						= 1 << 7,           //Animate the particle shape if it has more than one frame of animation
+	tfxSharedEmitterPropertyFlags_reverse_animation				= 1 << 8,           //Make the image animation go in reverse
+	tfxSharedEmitterPropertyFlags_play_once						= 1 << 9,           //Play the animation once only
+	tfxSharedEmitterPropertyFlags_random_start_frame			= 1 << 10,          //Start the animation of the image from a random frame
+	tfxSharedEmitterPropertyFlags_effect_is_3d					= 1 << 11,          //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
+	tfxSharedEmitterPropertyFlags_grid_spawn_random				= 1 << 12,			//Spawn on grid points but randomly rather then in sequence
+	tfxSharedEmitterPropertyFlags_spawn_location_source			= 1 << 13,	        //This emitter is the source for another emitter that uses it to spawn particles at the location of this emitters' particles
+	tfxSharedEmitterPropertyFlags_enabled						= 1 << 14,          //The emitter is enabled or not, meaning it will or will not be added the particle manager with tfx__add_effect
+	tfxSharedEmitterPropertyFlags_use_color_hint				= 1 << 15,	        //Activate a second color to tint the particles and mix between the two colors.
+	tfxSharedEmitterPropertyFlags_is_in_folder					= 1 << 16,
+} tfx_shared_emitter_flag_bits;
 
 typedef enum {
 	tfxRibbonPropertyFlags_none = 0,
 	tfxRibbonPropertyFlags_use_path_from_another_emitter	= 1 << 0,
-	tfxRibbonPropertyFlags_relative_position				= 1 << 1,                 //Keep the particles position relative to the current position of the emitter
-	tfxRibbonPropertyFlags_static							= 1 << 2,
-	tfxRibbonPropertyFlags_single							= 1 << 4,                 //Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
-	tfxRibbonPropertyFlags_emitter_handle_auto_center		= 1 << 8,			      //Center the handle of the emitter
-	tfxRibbonPropertyFlags_effect_is_3d						= 1 << 19,                //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
-} tfx_ribbon_property_flag_bits;
+	tfxRibbonPropertyFlags_static							= 1 << 1,
+} tfx_ribbon_emitter_flag_bits;
 
 typedef enum {
 	tfxEmitterPropertyExtFlags_none = 0,
@@ -2756,11 +2764,11 @@ const float tfxMAX_VELOCITY_VARIATION = 30.f;
 const int tfxMOTION_VARIATION_INTERVAL = 30;
 
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
-static float tfxLOOKUP_OVERTIME_ARRAY_SIZE = 64.f;
+static float tfxLOOKUP_TABLE_ARRAY_SIZE = 64.f;
 
 //Overtime frequency is for lookups that will vary in length depending on the lifetime of the particle. It should generally be a higher resolution than the base graphs
 //Experiment with lower resolution and use interpolation instead? Could be a lot better on the cache.
-static tfxWideArray tfxLOOKUP_OVERTIME_ARRAY_SIZE_WIDE = tfxWideSetConst(tfxLOOKUP_OVERTIME_ARRAY_SIZE);
+static tfxWideArray tfxLOOKUP_TABLE_ARRAY_SIZE_WIDE = tfxWideSetConst(tfxLOOKUP_TABLE_ARRAY_SIZE);
 
 //-----------------------------------------------------------
 //Section: forward_declarations
@@ -5464,35 +5472,17 @@ typedef struct tfx_image_data_s {
 #endif // tfxCUSTOM_IMAGE_DATA
 } tfx_image_data_t;
 
-typedef struct tfx_emitter_properties_s {
+typedef struct tfx_emitter_emitter_properties_s {
 	//Angle added to the rotation of the particle when spawned or random angle range if angle setting is set to tfx_random_t
 	tfx_vec3_t angle_offsets;
 	//When aligning the billboard along a vector, you can set the type of vector that it aligns with
 	tfx_vector_align_type vector_align_type;
-	//Point, area, ellipse emitter etc.
-	tfx_emission_type emission_type;
 	//For other emitter emission types, this hash is the location of the other emitter so that it can be used to connect the two
-	//emitters together when added to a particle manager.
-	tfxKey paired_emitter_hash;
-	//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
-	tfxU32 single_shot_limit;
-	//Animation frame rate
-	float frame_rate;
-	//The final frame index of the animation
-	float end_frame;
-	//Pointer to the ImageData in the EffectLibary. 
-	tfx_image_data_t *image;
 	//For 3d effects, the type of billboarding: 0 = use billboarding (always face camera), 1 = No billboarding, 2 = No billboarding and align with motion
 	tfx_billboarding_option billboard_option;
 
-	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
-	tfx_vec3_t grid_points;
 	//The rotation of particles when they spawn, or behave overtime if tfxAlign is used
 	tfxAngleSettingFlags angle_settings;
-	//Layer of the particle manager that the particle is added to
-	tfxU32 layer;
-	//Milliseconds to delay spawing
-	float delay_spawning;
 	//Should particles emit towards the center of the emitter or away, or in a specific direction
 	tfx_emission_direction emission_direction;
 
@@ -5504,45 +5494,57 @@ typedef struct tfx_emitter_properties_s {
 	tfx_vec2_t image_handle;
 	//image handle packed into 16bit floats
 	tfxU32 image_handle_packed;
-	//Offset of emitters and effects
-	tfx_vec3_t emitter_handle;
-	//When single flag is set, spawn this amount of particles in one go
-	tfxU32 spawn_amount;
-	//When single flag is set, spawn this variable amount of particles in one go
-	tfxU32 spawn_amount_variation;
-	//The shape being used for all particles spawned from the emitter (deprecated, hash now used instead)
-	tfxU32 image_index;
-	//The shape being used for all particles spawned from the emitter
-	tfxKey image_hash;
-	//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
-	float loop_length;
-	//The start frame index of the animation
-	float start_frame;
 	//Base noise offset random range so that noise patterns don't repeat so much over multiple effects
 	float noise_base_offset_range;
 	//This is only used for the animation manager when sprite data is added to the animation manager. This is used to map
 	//the property_index to the animation property index so the sprite data can point to a new index where some emitter properties
 	//are stored on the GPU for looking up from the sprite data
 	tfxU32 animation_property_index;
-} tfx_emitter_properties_t;
+} tfx_particle_emitter_properties_t;
 
-typedef struct tfx_ribbon_properties_s {
+typedef struct tfx_shared_emitter_properties_s {
+	//The number of millisecs before an effect or emitter will loop back round to the beginning of it's graph lookups
+	float loop_length;
+	//Animation frame rate
+	float frame_rate;
+	//The final frame index of the animation
+	float end_frame;
+	//The start frame index of the animation
+	float start_frame;
+	//Pointer to the ImageData in the EffectLibary. 
+	tfx_image_data_t *image;
+	//Point, area, ellipse emitter etc.
+	tfx_emission_type emission_type;
+	//Offset of emitters and effects
+	tfx_vec3_t emitter_handle;
+	//The number of rows/columns/ellipse/line points in the grid when spawn on grid flag is used
+	tfx_vec3_t grid_points;
+	//Can this be removed if we're using the image hash now?
+	tfxU32 image_index;
+	//The shape being used for all particles spawned from the emitter
+	tfxKey image_hash;
+	//When single flag is set, spawn this amount of particles in one go
+	tfxU32 spawn_amount;
+	//When single flag is set, spawn this variable amount of particles in one go
+	tfxU32 spawn_amount_variation;
+	//If single shot flag is set then you can limit how many times it will loop over it's overtime graphs before expiring
+	tfxU32 single_shot_limit;
+	//Milliseconds to delay spawing
+	float delay_spawning;
+	//emitters together when added to a particle manager.
+	tfxKey paired_emitter_hash;
+	//Layer of the particle manager that the particle is added to
+	tfxU32 layer;
+} tfx_shared_properties_t;
+
+typedef struct tfx_ribbon_emitter_properties_s {
 	tfxU32 segment_count;
 	tfx_vec2_t uv_offsets;
 	tfx_vec2_t uv_scale;
-	tfxKey image_hash;
-	tfx_emission_type emission_type;
-	tfx_vec3_t emitter_handle;
-	float loop_length;
-	float frame_rate;
-	float end_frame;
-	tfx_image_data_t *image;
 	float path_start_offset;
 	float path_size_fraction;
-	tfxU32 spawn_amount;
-	tfxU32 spawn_amount_variation;
 	tfxU32 single_shot_limit;
-} tfx_ribbon_properties_t;
+} tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.
 typedef struct tfx_parent_spawn_controls_s {
@@ -5584,7 +5586,8 @@ typedef struct tfx_emitter_state_s {
 	float spawn_quantity;
 	float qty_step_size;
 	tfx_vec3_t handle;
-	tfxEmitterPropertyFlags property_flags;
+	tfxParticleEmitterFlags property_flags;
+	tfxSharedEmitterFlags shared_flags;
 	//Position, scale and rotation values
 	tfx_vec3_t local_position;
 	tfx_vec3_t world_position;
@@ -5606,6 +5609,7 @@ typedef struct tfx_emitter_state_s {
 	tfxU32 root_index;
 	tfxU32 parent_index;
 	tfxU32 properties_index;
+	tfxU32 shared_index;
 	tfxU32 info_index;
 	tfxU32 hierarchy_depth;
 	tfxU32 sprites_count;
@@ -5639,7 +5643,7 @@ typedef struct tfx_effect_state_s {
 	float timeout_counter;
 	float timeout;
 	tfx_vec3_t handle;
-	tfxEmitterPropertyFlags property_flags;
+	tfxParticleEmitterFlags property_flags;
 	tfxEffectPropertyFlags effect_flags;
 	float loop_length;
 	//Position, scale and rotation values
@@ -5655,6 +5659,7 @@ typedef struct tfx_effect_state_s {
 	tfxU32 transform_attributes;
 
 	tfxU32 properties_index;
+	tfxU32 shared_index;
 	tfxU32 info_index;
 	tfxU32 parent_particle_index;
 	tfx_library library;
@@ -5722,8 +5727,8 @@ typedef struct tfx_ribbon_emitter_state_s {
 	float timeout_counter;
 	float timeout;
 	tfx_vec3_t handle;
-	tfxRibbonPropertyFlags ribbon_property_flags;
-	tfxRibbonEmitterStateFlags state_flags;
+	tfxRibbonEmitterFlags ribbon_property_flags;
+	tfxSharedEmitterFlags shared_flags;
 	//Position, scale and rotation values
 	tfx_vec3_t local_position;
 	tfx_vec3_t world_position;
@@ -5742,8 +5747,10 @@ typedef struct tfx_ribbon_emitter_state_s {
 
 	tfx_path_state_t path_state;
 
+	tfxRibbonEmitterStateFlags state_flags;
 	tfxU32 parent_index;
 	tfxU32 properties_index;
+	tfxU32 shared_index;
 	tfxU32 info_index;
 	tfxU32 segment_count;
 	tfxU32 active_ribbons;
@@ -5774,9 +5781,11 @@ typedef struct tfx_effect_descriptor_s {
 	//The current state of the effect/emitter used in the editor only at this point
 	tfxEmitterStateFlags state_flags;
 	//Property flags for emitters
-	tfxEmitterPropertyFlags property_flags;
+	tfxParticleEmitterFlags property_flags;
 	//Property flags for ribbon_emitters
-	tfxRibbonPropertyFlags ribbon_property_flags;
+	tfxRibbonEmitterFlags ribbon_flags;
+	//Shared flags for all emitter types
+	tfxSharedEmitterFlags shared_flags;
 	//Flags specific to effects
 	tfxEffectPropertyFlags effect_flags;
 	//A link to the library that this effect/emitter belongs to
@@ -5809,7 +5818,8 @@ typedef struct tfx_effect_descriptor_s {
 
 	//Indexes into library storage
 	tfxU32 info_index;
-	tfxU32 property_index;
+	tfxU32 property_index;		//this will be the index to either particle emitter, ribbon emitter or effect properties.
+	tfxU32 shared_index;
 } tfx_effect_descriptor_t;
 
 typedef struct tfx_effect_emitter_info_s {
@@ -6186,13 +6196,15 @@ tfxMAKE_HANDLE(tfx_gpu_shapes);
 typedef struct tfx_spawn_work_entry_s {
 	tfx_random_t random;
 	tfx_particle_manager pm;
-	tfx_emitter_properties_t *properties;
+	tfx_particle_emitter_properties_t *properties;
+	tfx_shared_properties_t *shared_properties;
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
 	tfxU32 emitter_index;
 	tfxU32 parent_index;
 	tfx_emission_type emission_type;
-	tfxEmitterPropertyFlags property_flags;
-	tfxEmitterPropertyFlags parent_property_flags;
+	tfxParticleEmitterFlags property_flags;
+	tfxSharedEmitterFlags shared_flags;
+	tfxParticleEmitterFlags parent_property_flags;
 	tfxEffectPropertyFlags root_effect_flags;
 	tfx_particle_soa_t *particle_data;
 #ifdef __cplusplus
@@ -6219,10 +6231,11 @@ typedef struct tfx_spawn_work_entry_s {
 typedef struct tfx_ribbon_work_entry_s {
 	tfx_random_t random;
 	tfx_particle_manager pm;
-	tfx_ribbon_properties_t *properties;
+	tfx_ribbon_emitter_properties_t *properties;
+	tfx_shared_properties_t *shared_properties;
 	tfxU32 ribbon_emitter_index;
 	tfxU32 parent_index;
-	tfxRibbonPropertyFlags property_flags;
+	tfxRibbonEmitterFlags property_flags;
 	tfxEffectPropertyFlags effect_flags;
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
 	tfx_overtime_attributes_t *graphs;
@@ -6247,7 +6260,8 @@ typedef struct tfx_control_work_entry_s {
 	tfx_particle_manager pm;
 	tfx_overtime_attributes_t *graphs;
 	tfxU32 layer;
-	tfx_emitter_properties_t *properties;
+	tfx_particle_emitter_properties_t *properties;
+	tfx_shared_properties_t *shared_properties;
 	tfx_buffer_t *sprite_instances;
 #ifdef __cplusplus
 	tfx_vector_t<tfx_depth_index_t> *depth_indexes;
@@ -6274,7 +6288,8 @@ typedef struct tfx_particle_age_work_entry_s {
 	tfxU32 emitter_index;
 	tfxU32 wide_end_index;
 	tfxU32 start_diff;
-	tfx_emitter_properties_t *properties;
+	tfx_particle_emitter_properties_t *properties;
+	tfx_shared_properties_t *shared_properties;
 	tfx_particle_manager pm;
 }tfx_particle_age_work_entry_t;
 
@@ -6598,8 +6613,9 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfx_effect_descriptor_t> effects;
 	tfx_storage_map_t<tfx_image_data_t> particle_shapes;
 	tfx_vector_t<tfx_effect_emitter_info_t> effect_infos;
-	tfx_vector_t<tfx_emitter_properties_t> emitter_properties;
-	tfx_vector_t<tfx_ribbon_properties_t> ribbon_properties;
+	tfx_vector_t<tfx_particle_emitter_properties_t> emitter_properties;
+	tfx_vector_t<tfx_shared_properties_t> shared_properties;
+	tfx_vector_t<tfx_ribbon_emitter_properties_t> ribbon_properties;
 	tfx_storage_map_t<tfx_sprite_data_t> pre_recorded_effects;
 
 	tfx_bucket_array_t<tfx_emitter_path_t> paths;
@@ -6619,8 +6635,9 @@ typedef struct tfx_library_s {
 	tfx_vector_t<tfxU32> free_emitter_attributes;
 	tfx_vector_t<tfxU32> free_animation_settings;
 	tfx_vector_t<tfxU32> free_preview_camera_settings;
-	tfx_vector_t<tfxU32> free_emitter_properties;
-	tfx_vector_t<tfxU32> free_ribbon_properties;
+	tfx_vector_t<tfxU32> free_particle_emitter_properties;
+	tfx_vector_t<tfxU32> free_shared_emitter_properties;
+	tfx_vector_t<tfxU32> free_ribbon_emitter_properties;
 	tfx_vector_t<tfxU32> free_infos;
 	tfx_vector_t<tfxU32> free_keyframes;
 
@@ -6724,7 +6741,8 @@ tfxAPI_EDITOR tfx_rgba8_t tfx__get_data_color_value(tfx_storage_map_t<tfx_data_e
 tfxAPI_EDITOR float tfx__get_data_float_value(tfx_storage_map_t<tfx_data_entry_t> *config, const char *key);
 tfxAPI_EDITOR bool tfx__save_data_file(tfx_storage_map_t<tfx_data_entry_t> *config, const char *path = "");
 tfxAPI_EDITOR bool tfx__load_data_file(tfx_data_types_dictionary_t *data_types, tfx_storage_map_t<tfx_data_entry_t> *config, const char *path);
-tfxAPI_EDITOR void tfx__stream_emitter_properties(tfx_emitter_properties_t *property, tfxEmitterPropertyFlags flags, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared, tfx_particle_emitter_properties_t *properties, tfxSharedEmitterFlags shared_flags, tfxParticleEmitterFlags flags, tfx_stream_t *file);
+tfxAPI_EDITOR void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags flags, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_effect_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_path_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file);
 tfxAPI_EDITOR void tfx__stream_graph(const char *name, tfx_graph_t *graph, tfx_stream_t *file);
@@ -6793,7 +6811,8 @@ tfxINTERNAL int tfx__get_data_int_value(tfx_storage_map_t<tfx_data_entry_t> *con
 //Mainly used by the editor to edit graphs so these are kind of API functions but you wouldn't generally use these outside of the particle editor
 //--------------------------------
 tfxAPI_EDITOR void tfx__init_paths_soa_3d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
-tfxAPI_EDITOR void tfx__init_emitter_properties(tfx_emitter_properties_t *properties);
+tfxAPI_EDITOR void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties);
+tfxAPI_EDITOR void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxAPI_EDITOR float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age);
 tfxAPI_EDITOR float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
@@ -6867,7 +6886,7 @@ tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *r
 tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor_t *e);
 tfxINTERNAL inline float tfx__lookup_fast_overtime(tfx_graph_t *graph, float age, float lifetime) {
-	return graph->lookup.values[tfx__Min(tfxU32((age / lifetime) * tfxLOOKUP_OVERTIME_ARRAY_SIZE), graph->lookup.last_frame)];
+	return graph->lookup.values[tfx__Min(tfxU32((age / lifetime) * tfxLOOKUP_TABLE_ARRAY_SIZE), graph->lookup.last_frame)];
 }
 tfxINTERNAL float tfx__lookup_precise_overtime(tfx_graph_t *graph, float age, float lifetime);
 tfxINTERNAL float tfx__lookup_precise(tfx_graph_t *graph, float frame);
@@ -6941,6 +6960,7 @@ tfxAPI_EDITOR void tfx__add_library_preview_camera_settings_sub_effects(tfx_libr
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_info(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_properties(tfx_library library);
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_shared_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_ribbon_properties(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_key_frames(tfx_library library);
 tfxAPI_EDITOR void tfx__update_library_compute_nodes(tfx_library library);
@@ -6987,12 +7007,13 @@ tfxINTERNAL void tfx__free_library_key_frames(tfx_library library, tfxU32 index)
 tfxINTERNAL void tfx__free_library_emitter_attributes(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index);
+tfxINTERNAL void tfx__free_library_shared_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx_free_library_info(tfx_library library, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__clone_library_global(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL tfxU32 tfx__clone_library_key_frames(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL tfxU32 tfx__clone_library_emitter_attributes(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL tfxU32 tfx__clone_library_info(tfx_library library, tfxU32 source_index, tfx_library destination_library);
-tfxINTERNAL tfxU32 tfx__clone_library_properties(tfx_library library, tfx_emitter_properties_t *source, tfx_library destination_library);
+tfxINTERNAL tfxU32 tfx__clone_library_properties(tfx_library library, tfx_particle_emitter_properties_t *source, tfx_library destination_library);
 tfxINTERNAL void tfx__compile_library_emitter_graphs(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__compile_library_factor_graphs(tfx_library library, tfxU32 index);
 tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path);
@@ -7001,8 +7022,9 @@ tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library library, const char
 tfxAPI_EDITOR void tfx__set_effect_user_data(tfx_effect_descriptor_t *e, void *data);
 tfxAPI_EDITOR void *tfx__get_effect_user_data(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_effect_descriptor_t tfx__new_effect_descriptor();
-tfxAPI_EDITOR tfx_emitter_properties_t *tfx__get_effect_properties(tfx_effect_descriptor_t *e);
-tfxAPI_EDITOR tfx_ribbon_properties_t *tfx__get_ribbon_properties(tfx_effect_descriptor_t *e);
+tfxAPI_EDITOR tfx_particle_emitter_properties_t *tfx__get_particle_emitter_properties(tfx_effect_descriptor_t *e);
+tfxAPI_EDITOR tfx_shared_properties_t *tfx__get_shared_emitter_properties(tfx_effect_descriptor_t *e);
+tfxAPI_EDITOR tfx_ribbon_emitter_properties_t *tfx__get_ribbon_properties(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *effect, tfx_str64_t *name);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_effect_to_emitter(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e);
@@ -7242,8 +7264,8 @@ tfxINTERNAL void tfx__transform_effector_3d(tfx_vec3_t *world_rotations, tfx_vec
 tfxINTERNAL void tfx__update_effect(tfx_particle_manager pm, tfxU32 index, tfxU32 parent_index = tfxINVALID);
 tfxINTERNAL void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data);
 tfxINTERNAL void tfx__update_ribbon_emitter(tfx_work_queue_t *work_queue, void *data);
-tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_particle_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_emitter_properties_t *properties);
-tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_particle_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_ribbon_properties_t *properties);
+tfxINTERNAL tfxU32 tfx__new_sprites_needed(tfx_particle_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
+tfxINTERNAL tfxU32 tfx__new_ribbons_needed(tfx_particle_manager pm, tfx_random_t *random, tfxU32 index, tfx_effect_state_t *parent, tfx_shared_properties_t *shared_properties);
 tfxINTERNAL void tfx__update_emitter_state(tfx_particle_manager pm, tfx_emitter_state_t &emitter, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_spawn_work_entry_t *entry);
 tfxINTERNAL void tfx__update_ribbon_emitter_state(tfx_particle_manager pm, tfx_ribbon_emitter_state_t &ribbon, tfxU32 parent_index, const tfx_parent_spawn_controls_t *parent_spawn_controls, tfx_ribbon_work_entry_t *entry);
 tfxINTERNAL void tfx__update_effect_state(tfx_particle_manager pm, tfxU32 index);
@@ -7332,7 +7354,7 @@ tfxINTERNAL void tfx__init_particle_location_soa_2d(tfx_soa_buffer_t *buffer, tf
 tfxINTERNAL void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_soa_3d(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_soa_2d(tfx_soa_buffer_t *buffer, tfx_ribbon_segment_soa_t *soa, tfxU32 reserve_amount);
-tfxINTERNAL void tfx__copy_emitter_properties(tfx_emitter_properties_t *from_properties, tfx_emitter_properties_t *to_properties);
+tfxINTERNAL void tfx__copy_emitter_properties(tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties);
 tfxINTERNAL inline void tfx__free_sprite_data(tfx_sprite_data_t *sprite_data);
 tfxINTERNAL inline bool tfx__is_graph_transform_rotation(tfx_graph_type type) {
 	return type == tfxTransform_roll || type == tfxTransform_pitch || type == tfxTransform_yaw;
