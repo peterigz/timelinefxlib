@@ -2499,11 +2499,11 @@ typedef enum {
 	tfxEmitterPropertyFlags_relative_angle					= 1 << 1,               //Keep the angle of the particles relative to the current angle of the emitter
 	tfxEmitterPropertyFlags_image_handle_auto_center		= 1 << 2,			    //Set the offset of the particle to the center of the image
 	tfxEmitterPropertyFlags_edge_traversal					= 1 << 3,               //Line and Path emitters only: make particles traverse the line/path
-	tfxEmitterPropertyFlags_base_uniform_size				= 1 << 4,              //Keep the base particle size uniform
+	tfxEmitterPropertyFlags_base_uniform_size				= 1 << 4,               //Keep the base particle size uniform
 	tfxEmitterPropertyFlags_lifetime_uniform_size			= 1 << 5,			    //Keep the size over lifetime of the particle uniform
 	tfxEmitterPropertyFlags_wrap_single_sprite				= 1 << 6,				//When recording sprite data, single particles can have their invalid capured index set to the current frame for better looping
-	tfxEmitterPropertyFlags_use_spawn_ratio					= 1 << 7,              //Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
-	tfxEmitterPropertyFlags_area_open_ends					= 1 << 8,              //Only sides of the area/cylinder are spawned on when fill area is not checked
+	tfxEmitterPropertyFlags_use_spawn_ratio					= 1 << 7,               //Option for area emitters to multiply the amount spawned by a ration of particles per pixels squared
+	tfxEmitterPropertyFlags_area_open_ends					= 1 << 8,               //Only sides of the area/cylinder are spawned on when fill area is not checked
 	tfxEmitterPropertyFlags_exclude_from_hue_adjustments	= 1 << 9,				//Emitter will be excluded from effect hue adjustments if this flag is checked
 	tfxEmitterPropertyFlags_match_amount_to_grid_points		= 1 << 10,				//Match the amount to spawn with a single emitter to the number of grid points in the effect
 	tfxEmitterPropertyFlags_use_path_for_direction			= 1 << 11,				//Make the particles use a path to dictate their direction of travel
@@ -2560,9 +2560,6 @@ typedef enum {
 
 typedef enum {
 	tfxEmitterStateFlags_none = 0,
-	tfxEmitterStateFlags_random_color = 1 << 0,
-	tfxEmitterStateFlags_relative_position = 1 << 1,                    //Keep the particles position relative to the current position of the emitter
-	tfxEmitterStateFlags_relative_angle = 1 << 2,                       //Keep the angle of the particles relative to the current angle of the emitter
 	tfxEmitterStateFlags_stop_spawning = 1 << 3,                        //Tells the emitter to stop spawning
 	tfxEmitterStateFlags_remove = 1 << 4,                               //Tells the effect/emitter to remove itself from the particle manager immediately
 	tfxEmitterStateFlags_unused1 = 1 << 5,                              //the emitter is enabled. **moved to property state_flags**
@@ -2570,11 +2567,8 @@ typedef enum {
 	tfxEmitterStateFlags_no_tween_this_update = 1 << 7,                 //Internal flag generally, but you could use it if you want to teleport the effect to another location
 	tfxEmitterStateFlags_is_single = 1 << 8,
 	tfxEmitterStateFlags_not_line = 1 << 9,
-	tfxEmitterStateFlags_base_uniform_size = 1 << 10,
-	tfxEmitterStateFlags_lifetime_uniform_size = 1 << 11,               //Keep the size over lifetime of the particle uniform
 	tfxEmitterStateFlags_can_spin = 1 << 12,
 	tfxEmitterStateFlags_is_edge_traversal = 1 << 13,
-	tfxEmitterStateFlags_play_once = 1 << 14,                           //Play the animation once only
 	tfxEmitterStateFlags_loop = 1 << 15,
 	tfxEmitterStateFlags_kill = 1 << 16,
 	tfxEmitterStateFlags_single_shot_done = 1 << 17,
