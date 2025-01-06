@@ -7158,17 +7158,32 @@ void tfx__unset_curves(tfx_graph_t *graph, tfxU32 index) {
 		node->right.y = node->value;
 	} else if (index == 0) {
 		tfx_attribute_node_t *next = &graph->nodes[index + 1];
-		node->right.x = node->frame - third * (node->frame - next->frame);
-		node->right.y = node->value - third * (node->value - next->value);
-	} else {
-		if (index + 1 < graph->nodes.current_size) {
-			tfx_attribute_node_t *next = &graph->nodes[index + 1];
+		if (tfx__node_curves_are_initialised(next)) {
+			node->right.x = node->frame - 0.5f * (node->frame - next->left.x);
+			node->right.y = node->value - 0.5f * (node->value - next->left.y);
+		} else {
 			node->right.x = node->frame - third * (node->frame - next->frame);
 			node->right.y = node->value - third * (node->value - next->value);
 		}
+	} else {
+		if (index + 1 < graph->nodes.current_size) {
+			tfx_attribute_node_t *next = &graph->nodes[index + 1];
+			if (tfx__node_curves_are_initialised(next)) {
+				node->right.x = node->frame - 0.5f * (node->frame - next->left.x);
+				node->right.y = node->value - 0.5f * (node->value - next->left.y);
+			} else {
+				node->right.x = node->frame - third * (node->frame - next->frame);
+				node->right.y = node->value - third * (node->value - next->value);
+			}
+		}
 		tfx_attribute_node_t *prev = &graph->nodes[index - 1];
-		node->left.x = node->frame - third * (node->frame - prev->frame);
-		node->left.y = node->value - third * (node->value - prev->value);
+		if (tfx__node_curves_are_initialised(prev)) {
+			node->left.x = node->frame - 0.5f * (node->frame - prev->right.x);
+			node->left.y = node->value - 0.5f * (node->value - prev->right.y);
+		} else {
+			node->left.x = node->frame - third * (node->frame - prev->frame);
+			node->left.y = node->value - third * (node->value - prev->value);
+		}
 	}
 }
 
@@ -7194,8 +7209,6 @@ bool tfx__set_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame,
 		node->right.x += node->frame - old_frame;
 		tfx__clamp_node_curve(graph, &node->right, node);
 		tfx__clamp_node_curve(graph, &node->left, node);
-	} else {
-		tfx__unset_curves(graph, node->index);
 	}
 
 	*frame = node->frame;
@@ -7203,10 +7216,32 @@ bool tfx__set_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame,
 
 	if (tfx__sort_graph(graph)) {
 		tfx__reindex_graph(graph);
+		if (!(node->flags & tfxAttributeNodeFlags_curves_initialised)) {
+			tfx__unset_curves(graph, node->index);
+		}
 		return true;
 	}
 
+	if (!(node->flags & tfxAttributeNodeFlags_curves_initialised)) {
+		tfx__unset_curves(graph, node->index);
+	}
+
 	return false;
+}
+
+void tfx__set_adjacent_node_curves(tfx_graph_t *graph, tfx_attribute_node_t *node) {
+	if (node->index > 0) {
+		tfx_attribute_node_t &left_node = graph->nodes[node->index - 1];
+		if (!(left_node.flags & tfxAttributeNodeFlags_curves_initialised)) {
+			tfx__unset_curves(graph, left_node.index);
+		}
+	}
+	if (node->index < graph->nodes.current_size - 1) {
+		tfx_attribute_node_t &right_node = graph->nodes[node->index + 1];
+		if (!(right_node.flags & tfxAttributeNodeFlags_curves_initialised)) {
+			tfx__unset_curves(graph, right_node.index);
+		}
+	}
 }
 
 void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve, float *frame, float *value) {
@@ -7638,17 +7673,25 @@ void tfx__validate_graph_curves(tfx_graph_t *graph) {
 	for (tfxBucketLoop(graph->nodes, i)) {
 		if (graph->nodes[i].flags & tfxAttributeNodeFlags_is_curve) {
 			if (index < last_index) {
-				if (graph->nodes[index + 1].frame < graph->nodes[i].right.x)
+				if (graph->nodes[index + 1].frame < graph->nodes[i].right.x) {
 					graph->nodes[i].right.x = graph->nodes[index + 1].frame;
+					tfx__set_adjacent_node_curves(graph, &graph->nodes[i]);
+				}
 			}
 			if (index > 0) {
-				if (graph->nodes[index - 1].frame > graph->nodes[i].left.x)
+				if (graph->nodes[index - 1].frame > graph->nodes[i].left.x) {
 					graph->nodes[i].left.x = graph->nodes[index - 1].frame;
+					tfx__set_adjacent_node_curves(graph, &graph->nodes[i]);
+				}
 			}
-			if (graph->nodes[i].left.x > graph->nodes[i].frame)
+			if (graph->nodes[i].left.x > graph->nodes[i].frame) {
 				graph->nodes[i].left.x = graph->nodes[i].frame;
-			if (graph->nodes[i].right.x < graph->nodes[i].frame)
+				tfx__set_adjacent_node_curves(graph, &graph->nodes[i]);
+			}
+			if (graph->nodes[i].right.x < graph->nodes[i].frame) {
 				graph->nodes[i].right.x = graph->nodes[i].frame;
+				tfx__set_adjacent_node_curves(graph, &graph->nodes[i]);
+			}
 		}
 		index++;
 	}
@@ -15273,10 +15316,6 @@ tfxU32 tfx__new_sprites_needed(tfx_particle_manager pm, tfx_random_t *random, tf
 		return 0;
 	}
 
-	if (emitter.spawn_quantity == 0) {
-		return 0;
-	}
-
 	if (shared_properties->emission_type == tfxPath && emitter.state_flags & tfxEmitterStateFlags_has_rotated_path) {
 		tfx_emitter_path_t *path = &library->paths[emitter.path_attributes];
 		emitter.spawn_quantity *= (float)emitter.path_state.active_paths / (float)path->maximum_active_paths;
@@ -15286,6 +15325,10 @@ tfxU32 tfx__new_sprites_needed(tfx_particle_manager pm, tfx_random_t *random, tf
 	if (emitter.spawn_locations_index != tfxINVALID && shared_properties->emission_type == tfxOtherEmitter && emitter.property_flags & tfxEmitterPropertyFlags_use_spawn_ratio && !(emitter.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
 		tfx_soa_buffer_t &spawn_point_buffer = pm->particle_array_buffers[emitter.spawn_locations_index];
 		emitter.spawn_quantity *= spawn_point_buffer.current_size;
+	}
+
+	if (emitter.spawn_quantity == 0) {
+		return 0;
 	}
 
 	float step_size = 0;
@@ -15443,6 +15486,7 @@ tfxU32 tfx__spawn_particles(tfx_particle_manager pm, tfx_spawn_work_entry_t *wor
 		tween -= emitter.spawn_quantity;
 	}
 
+	work_entry->emission_type = shared_properties.emission_type;
 	work_entry->tween = tween;
 	work_entry->qty_step_size = step_size;
 	work_entry->amount_to_spawn = 0;
@@ -15468,7 +15512,6 @@ tfxU32 tfx__spawn_particles(tfx_particle_manager pm, tfx_spawn_work_entry_t *wor
 		work_entry->amount_to_spawn = (tfxU32)emitter.spawn_quantity;
 	}
 
-	work_entry->emission_type = shared_properties.emission_type;
 	if (work_entry->emission_type == tfxOtherEmitter) {
 		if (emitter.spawn_locations_index == tfxINVALID) {
 			work_entry->amount_to_spawn = 0;

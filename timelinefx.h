@@ -6890,6 +6890,7 @@ tfxINTERNAL float tfx__get_random_precise(tfx_graph_t *graph, float frame, tfx_r
 //Node Manipulation
 tfxAPI_EDITOR void tfx__unset_curves(tfx_graph_t *graph, tfxU32 index);
 tfxAPI_EDITOR bool tfx__set_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float *frame, float *value);
+tfxAPI_EDITOR void tfx__set_adjacent_node_curves(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxAPI_EDITOR void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve, float *frame, float *value);
 tfxAPI_EDITOR bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame, float value, bool sort = true);
 tfxAPI_EDITOR void tfx__clamp_graph_nodes(tfx_graph_t *graph);
