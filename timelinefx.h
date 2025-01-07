@@ -5537,7 +5537,6 @@ typedef struct tfx_ribbon_emitter_properties_s {
 	tfx_vec2_t uv_scale;
 	float path_start_offset;
 	float path_size_fraction;
-	tfxU32 single_shot_limit;
 } tfx_ribbon_emitter_properties_t;
 
 //Stores the most recent parent effect (with global attributes) spawn control values to be applied to sub emitters.

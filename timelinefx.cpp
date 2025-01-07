@@ -3082,13 +3082,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 		tfxU32 emitter_attributes = effect->emitter_attributes;
 		float default_dimensions = 128.f;
 		if (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d) {
-			if (effect->type == tfxEmitterType) {
-				default_dimensions = 0.1f;
-			} else if (effect->type == tfxRibbonType) {
-				default_dimensions = 0.2f;
-			}
-		} else if (effect->type == tfxRibbonType) {
-			default_dimensions = 32.f;
+			default_dimensions = 0.1f;
 		}
 		if (library->emitter_attributes[emitter_attributes].base.life.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].base.life, 1000.f, tfxLifePreset);
 		if (library->emitter_attributes[emitter_attributes].base.amount.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].base.amount, 1.f, tfxAmountPreset);
@@ -3154,6 +3148,47 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 
 		if (library->emitter_attributes[emitter_attributes].factor.life.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.life, 1.f, tfxPercentOvertime);
 		if (library->emitter_attributes[emitter_attributes].factor.velocity.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.velocity, 1.f, tfxPercentOvertime);
+		if (library->emitter_attributes[emitter_attributes].factor.size.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.size, 1.f, tfxPercentOvertime);
+		if (library->emitter_attributes[emitter_attributes].factor.intensity.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.intensity, 1.f, tfxPercentOvertime);
+	}
+
+	if (effect->type == tfxRibbonType && effect->emitter_attributes != tfxINVALID) {
+		tfxU32 emitter_attributes = effect->emitter_attributes;
+		float default_dimensions = 32.f;
+		if (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d) {
+			default_dimensions = 0.2f;
+		}
+		if (library->emitter_attributes[emitter_attributes].base.life.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].base.life, 1000.f, tfxLifePreset);
+		if (library->emitter_attributes[emitter_attributes].base.amount.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].base.amount, 1.f, tfxAmountPreset);
+		if (library->emitter_attributes[emitter_attributes].base.width.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].base.width, default_dimensions, tfxDimensionsPreset);
+
+		if (library->emitter_attributes[emitter_attributes].properties.splatter.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.splatter, 0.f, tfxDimensionsPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.emitter_width.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.emitter_width, 1.f, tfxDimensionsPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.emitter_height.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.emitter_height, 1.f, tfxDimensionsPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.emitter_depth.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.emitter_depth, 1.f, tfxDimensionsPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.extrusion.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.extrusion, 0.f, tfxDimensionsPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.arc_size.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.arc_size, tfx_DegreesToRadians(360.f), tfxArcPreset);
+		if (library->emitter_attributes[emitter_attributes].properties.arc_offset.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].properties.arc_offset, 0.f, tfxArcPreset);
+
+		if (library->emitter_attributes[emitter_attributes].variation.life.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].variation.life, 0.f, tfxLifePreset);
+		if (library->emitter_attributes[emitter_attributes].variation.amount.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].variation.amount, 0.f, tfxAmountPreset);
+		if (library->emitter_attributes[emitter_attributes].variation.width.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].variation.width, 0.f, tfxDimensionsPreset);
+
+		if (library->emitter_attributes[emitter_attributes].overtime.width.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.width, 1.f, tfxPercentOvertime);
+		if (library->emitter_attributes[emitter_attributes].overtime.red.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.red, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.green.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.green, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.blue.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.blue, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.blendfactor.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.blendfactor, 1.f, tfxOpacityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.intensity.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.intensity, 1.f, tfxIntensityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.red_hint.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.red_hint, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.green_hint.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.green_hint, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.blue_hint.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.blue_hint, 1.f, tfxColorPreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.blendfactor_hint, 1.f, tfxOpacityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.alpha_sharpness.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.alpha_sharpness, 0.f, tfxOpacityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.curved_alpha.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.curved_alpha, 1.f, tfxOpacityOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.gradient_mapper.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.gradient_mapper, 0.f, tfxGradientMapperOvertimePreset);
+
+		if (library->emitter_attributes[emitter_attributes].factor.life.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.life, 1.f, tfxPercentOvertime);
 		if (library->emitter_attributes[emitter_attributes].factor.size.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.size, 1.f, tfxPercentOvertime);
 		if (library->emitter_attributes[emitter_attributes].factor.intensity.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.intensity, 1.f, tfxPercentOvertime);
 	}
@@ -4960,39 +4995,39 @@ void tfx__update_library_particle_shape_references(tfx_library library, tfxKey d
 	}
 	while (stack.size()) {
 		tfx_effect_descriptor_t &current = *stack.pop_back();
-		if (current.type == tfxEmitterType) {
+		if (current.type == tfxEmitterType || current.type == tfxRibbonType) {
 			bool shape_found = false;
-			tfxKey hash = library->shared_properties[current.property_index].image_hash;
+			tfxKey hash = library->shared_properties[current.shared_index].image_hash;
 			if (hash == 0) {
 				//Try to match index instead might be a converted eff file
-				tfxU32 image_index = library->shared_properties[current.property_index].image_index;
+				tfxU32 image_index = library->shared_properties[current.shared_index].image_index;
 				for (tfx_image_data_t &image_data : library->particle_shapes.data) {
 					if (image_data.shape_index == image_index) {
-						library->shared_properties[current.property_index].image = &image_data;
-						library->shared_properties[current.property_index].end_frame = image_data.animation_frames - 1;
-						library->shared_properties[current.property_index].image_hash = image_data.image_hash;
+						library->shared_properties[current.shared_index].image = &image_data;
+						library->shared_properties[current.shared_index].end_frame = image_data.animation_frames - 1;
+						library->shared_properties[current.shared_index].image_hash = image_data.image_hash;
 					}
 				}
 			}
-			if (library->particle_shapes.ValidKey(library->shared_properties[current.property_index].image_hash)) {
-				library->shared_properties[current.property_index].image = &library->particle_shapes.At(library->shared_properties[current.property_index].image_hash);
-				library->shared_properties[current.property_index].end_frame = library->particle_shapes.At(library->shared_properties[current.property_index].image_hash).animation_frames - 1;
+			if (library->particle_shapes.ValidKey(library->shared_properties[current.shared_index].image_hash)) {
+				library->shared_properties[current.shared_index].image = &library->particle_shapes.At(library->shared_properties[current.shared_index].image_hash);
+				library->shared_properties[current.shared_index].end_frame = library->particle_shapes.At(library->shared_properties[current.shared_index].image_hash).animation_frames - 1;
 				shape_found = true;
 			}
 			else {
 				for (auto &shape : library->particle_shapes.data) {
-					if (shape.image_hash == library->shared_properties[current.property_index].image_hash) {
-						library->shared_properties[current.property_index].image_hash = shape.image_hash;
-						library->shared_properties[current.property_index].image = &library->particle_shapes.At(library->shared_properties[current.property_index].image_hash);
-						library->shared_properties[current.property_index].end_frame = library->particle_shapes.At(library->shared_properties[current.property_index].image_hash).animation_frames - 1;
+					if (shape.image_hash == library->shared_properties[current.shared_index].image_hash) {
+						library->shared_properties[current.shared_index].image_hash = shape.image_hash;
+						library->shared_properties[current.shared_index].image = &library->particle_shapes.At(library->shared_properties[current.shared_index].image_hash);
+						library->shared_properties[current.shared_index].end_frame = library->particle_shapes.At(library->shared_properties[current.shared_index].image_hash).animation_frames - 1;
 						shape_found = true;
 						break;
 					}
 				}
 			}
 			if (!shape_found) {
-				library->shared_properties[current.property_index].image = &library->particle_shapes.At(default_hash);
-				library->shared_properties[current.property_index].end_frame = library->particle_shapes.At(default_hash).animation_frames - 1;
+				library->shared_properties[current.shared_index].image = &library->particle_shapes.At(default_hash);
+				library->shared_properties[current.shared_index].end_frame = library->particle_shapes.At(default_hash).animation_frames - 1;
 			}
 		}
 		for (auto &sub : tfx_GetEffectInfo(&current)->sub_effectors) {
@@ -6119,6 +6154,10 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("use_color_hint", tfxBool);
 	//names_and_types.Insert("simple_motion_smoothstep", tfxBool);
 
+	//Ribbon properties
+	names_and_types.Insert("ribbon_segment_count", tfxUint);
+	names_and_types.Insert("static_ribbon", tfxBool);
+
 	//Graphs
 	names_and_types.Insert("global_life", tfxFloat);
 	names_and_types.Insert("global_amount", tfxFloat);
@@ -6625,7 +6664,13 @@ void tfx__assign_effector_property_u64(tfx_effect_descriptor_t *effect, tfx_str2
 
 void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU32 value, tfxU32 file_version) {
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(effect);
-	tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(effect);
+	tfx_particle_emitter_properties_t *emitter_properties = nullptr;
+	tfx_ribbon_emitter_properties_t *ribbon_properties = nullptr;
+	if (effect->type == tfxEmitterType) {
+		emitter_properties = tfx__get_particle_emitter_properties(effect);
+	} else if (effect->type == tfxRibbonType) {
+		ribbon_properties = tfx__get_ribbon_properties(effect);
+	}
 	if (*field == "spawn_amount") shared_properties->spawn_amount = value;
 	if (*field == "spawn_amount_variation") shared_properties->spawn_amount_variation = value;
 	if (*field == "frames") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frames = value;
@@ -6634,6 +6679,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str2
 	if (*field == "layer") shared_properties->layer = value >= tfxLAYERS ? value = tfxLAYERS - 1 : value;
 	if (*field == "frame_offset") effect->library->sprite_sheet_settings[tfx_GetEffectInfo(effect)->sprite_sheet_settings_index].frame_offset = value;
 	if (*field == "single_shot_limit") shared_properties->single_shot_limit = value;
+	if (*field == "ribbon_segment_count") ribbon_properties->segment_count = value;
 	if (*field == "billboard_option") {
 		//billboard options were changed so I added this to at least update the align to camera and vector values.
 		//0 and 1 should still be ok, 4 now maps to 2, and 2 should now be 3 but I'll just manually update the effect
@@ -6910,6 +6956,10 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_use_color_hint; }
 		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_use_color_hint; }
 	}
+	if (*field == "static_ribbon") {
+		if (value) { effect->ribbon_flags |= tfxRibbonPropertyFlags_static; }
+		else { effect->ribbon_flags &= ~tfxRibbonPropertyFlags_static; }
+	}
 	//if (*field == "simple_motion_smoothstep") {
 		//if (value) { effect->property_flags |= tfxEmitterPropertyFlags_simple_motion_smoothstep; } else { effect->property_flags &= ~tfxEmitterPropertyFlags_simple_motion_smoothstep; }
 	//}
@@ -6994,7 +7044,6 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 }
 
 void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared_properties, tfx_ribbon_emitter_properties_t *ribbon_properties, tfxSharedEmitterFlags shared_flags, tfxRibbonEmitterFlags ribbon_flags, tfx_stream_t *file) {
-	//Todo: clean this up and only save what's needed for ribbons
 	file->AddLine("image_hash=%llu", shared_properties->image_hash);
 	file->AddLine("image_start_frame=%f", shared_properties->start_frame);
 	file->AddLine("image_end_frame=%f", shared_properties->end_frame);
@@ -7022,6 +7071,8 @@ void tfx__stream_ribbon_emitter_properties(tfx_shared_properties_t *shared_prope
 	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
 	file->AddLine("layer=%i", shared_properties->layer);
 	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
+	file->AddLine("ribbon_segment_count=%i", ribbon_properties->segment_count);
+	file->AddLine("static_ribbon=%i", (ribbon_flags & tfxRibbonPropertyFlags_static));
 }
 
 void tfx__stream_effect_properties(tfx_effect_descriptor_t *effect, tfx_stream_t *file) {
@@ -9302,6 +9353,25 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				tfx__reset_transform_graphs(&emitter, false);
 				tfx_GetEffectInfo(&emitter)->uid = uid++;
 				effect_stack.push_back(emitter);
+			} else if (context == tfxStartRibbonEmitter) {
+				tfx_effect_descriptor_t ribbon = {};
+				ribbon.path_attributes = tfxINVALID;
+				ribbon.effect_flags = 0;
+				ribbon.property_flags = 0;
+				ribbon.shared_flags = 0;
+				ribbon.ribbon_flags = 0;
+				ribbon.library = lib;
+				ribbon.info_index = tfx__allocate_library_descriptor_info(lib);
+				ribbon.property_index = tfx__allocate_library_ribbon_properties(lib);
+				ribbon.shared_index = tfx__allocate_library_descriptor_shared_properties(lib);
+				ribbon.transform_attributes = tfx__allocate_library_key_frames(lib);
+				tfx__add_library_emitter_graphs(lib, &ribbon);
+				tfx__add_library_transform_graphs(lib, &ribbon);
+				ribbon.type = tfx_effect_descriptor_type::tfxRibbonType;
+				tfx__reset_emitter_graphs(&ribbon, false, false);
+				tfx__reset_transform_graphs(&ribbon, false);
+				tfx_GetEffectInfo(&ribbon)->uid = uid++;
+				effect_stack.push_back(ribbon);
 			}
 		}
 
@@ -9317,13 +9387,13 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				}
 			}
 
-			if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
+			if (context == tfxStartAnimationSettings || context == tfxStartEmitter || context == tfxStartRibbonEmitter || context == tfxStartEffect || context == tfxStartFolder || context == tfxStartPreviewCameraSettings) {
 				if (names_and_types.ValidName(pair[0].c_str())) {
 					tfx__assign_property_line(&effect_stack.back(), &pair, package->header.file_version);
 				} else {
 					error |= tfxErrorCode_some_data_not_loaded;
 				}
-			} else if (context == tfxStartGraphs && effect_stack.back().type == tfxEmitterType) {
+			} else if (context == tfxStartGraphs && (effect_stack.back().type == tfxEmitterType || effect_stack.back().type == tfxRibbonType)) {
 				tfx__assign_graph_data(&effect_stack.back(), &pair);
 			} else if (context == tfxStartGraphs && effect_stack.back().type == tfxEffectType) {
 				if (effect_stack.size() <= 2) {
@@ -9409,6 +9479,19 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 			}
 			tfx_vec2_t handle = lib->emitter_properties[effect_stack.back().property_index].image_handle;
 			lib->emitter_properties[effect_stack.back().property_index].image_handle_packed = tfx__pack16bit_sscaled(handle.x, handle.y, 128.f);
+			effect_stack.back().shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
+			if (effect_stack.back().path_attributes != tfxINVALID) {
+				if (tfx__is_3d_effect(&effect_stack.parent())) {
+					tfx_GetEmitterPath(&effect_stack.back())->flags &= ~tfxPathFlags_2d;
+				}
+			}
+			tfx_GetEffectInfo(&effect_stack.parent())->sub_effectors.push_back(effect_stack.back());
+			effect_stack.pop();
+		}
+
+		if (context == tfxEndRibbonEmitter) {
+			tfx__initialise_unitialised_graphs(&effect_stack.back());
+			tfx__update_effect_max_life(&effect_stack.back());
 			effect_stack.back().shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
 			if (effect_stack.back().path_attributes != tfxINVALID) {
 				if (tfx__is_3d_effect(&effect_stack.parent())) {
