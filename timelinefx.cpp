@@ -6941,10 +6941,10 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("image_start_frame=%f", shared_properties->start_frame);
 	file->AddLine("image_end_frame=%f", shared_properties->end_frame);
 	file->AddLine("image_frame_rate=%f", shared_properties->frame_rate);
-	file->AddLine("image_play_once=%i", (flags & tfxSharedEmitterPropertyFlags_play_once));
-	file->AddLine("image_reverse_animation=%i", (flags & tfxSharedEmitterPropertyFlags_reverse_animation));
-	file->AddLine("image_animate=%i", (flags & tfxSharedEmitterPropertyFlags_animate));
-	file->AddLine("image_random_start_frame=%i", (flags & tfxSharedEmitterPropertyFlags_random_start_frame));
+	file->AddLine("image_play_once=%i", (shared_flags & tfxSharedEmitterPropertyFlags_play_once));
+	file->AddLine("image_reverse_animation=%i", (shared_flags & tfxSharedEmitterPropertyFlags_reverse_animation));
+	file->AddLine("image_animate=%i", (shared_flags & tfxSharedEmitterPropertyFlags_animate));
+	file->AddLine("image_random_start_frame=%i", (shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame));
 	file->AddLine("image_handle_auto_center=%i", (flags & tfxEmitterPropertyFlags_image_handle_auto_center));
 	file->AddLine("paired_emitter_hash=%llu", shared_properties->paired_emitter_hash);
 	file->AddLine("spawn_amount=%i", shared_properties->spawn_amount);
@@ -6961,17 +6961,17 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("emitter_handle_z=%f", shared_properties->emitter_handle.z);
 	file->AddLine("end_behaviour=%i", properties->end_behaviour);
 	file->AddLine("random_color=%i", (flags & tfxEmitterPropertyFlags_random_color));
-	file->AddLine("relative_position=%i", (flags & tfxSharedEmitterPropertyFlags_relative_position));
+	file->AddLine("relative_position=%i", (shared_flags & tfxSharedEmitterPropertyFlags_relative_position));
 	file->AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
-	file->AddLine("single=%i", (flags & tfxSharedEmitterPropertyFlags_single));
+	file->AddLine("single=%i", (shared_flags & tfxSharedEmitterPropertyFlags_single));
 	file->AddLine("wrap_single_sprite=%i", (flags & tfxEmitterPropertyFlags_wrap_single_sprite));
 	file->AddLine("single_shot_limit=%i", shared_properties->single_shot_limit);
-	file->AddLine("spawn_on_grid=%i", (flags & tfxSharedEmitterPropertyFlags_spawn_on_grid));
-	file->AddLine("grid_spawn_clockwise=%i", (flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
-	file->AddLine("fill_area=%i", (flags & tfxSharedEmitterPropertyFlags_fill_area));
-	file->AddLine("grid_spawn_random=%i", (flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
+	file->AddLine("spawn_on_grid=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_on_grid));
+	file->AddLine("grid_spawn_clockwise=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_clockwise));
+	file->AddLine("fill_area=%i", (shared_flags & tfxSharedEmitterPropertyFlags_fill_area));
+	file->AddLine("grid_spawn_random=%i", (shared_flags & tfxSharedEmitterPropertyFlags_grid_spawn_random));
 	file->AddLine("area_open_ends=%i", (flags & tfxEmitterPropertyFlags_area_open_ends));
-	file->AddLine("emitter_handle_auto_center=%i", (flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
+	file->AddLine("emitter_handle_auto_center=%i", (shared_flags & tfxSharedEmitterPropertyFlags_emitter_handle_auto_center));
 	file->AddLine("edge_traversal=%i", (flags & tfxEmitterPropertyFlags_edge_traversal));
 	file->AddLine("angle_setting=%i", properties->angle_settings);
 	file->AddLine("angle_offset=%f", properties->angle_offsets.roll);
@@ -6988,8 +6988,8 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("alt_color_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_color_lifetime_sampling));
 	file->AddLine("alt_size_lifetime_sampling=%i", (flags & tfxEmitterPropertyFlags_alt_size_lifetime_sampling));
 	file->AddLine("use_simple_motion_randomness=%i", (flags & tfxEmitterPropertyFlags_use_simple_motion_randomness));
-	file->AddLine("spawn_location_source=%i", (flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
-	file->AddLine("use_color_hint=%i", (flags & tfxSharedEmitterPropertyFlags_use_color_hint));
+	file->AddLine("spawn_location_source=%i", (shared_flags & tfxSharedEmitterPropertyFlags_spawn_location_source));
+	file->AddLine("use_color_hint=%i", (shared_flags & tfxSharedEmitterPropertyFlags_use_color_hint));
 	//file->AddLine("simple_motion_smoothstep=%i", (flags & tfxEmitterPropertyFlags_simple_motion_smoothstep));
 }
 
@@ -18260,7 +18260,7 @@ void tfx__update_effect_state(tfx_particle_manager pm, tfxU32 index) {
 	//If this effect is a sub effect then the graph index will reference the global graphs for the root parent effect
 	tfx_parent_spawn_controls_t &spawn_controls = pm->effects[index].spawn_controls;
 	spawn_controls.life = tfx__lookup_precise(&library->global_graphs[global_attributes].life, frame);
-	if (!(pm->effects[index].property_flags & tfxEffectPropertyFlags_global_uniform_size)) {
+	if (!(pm->effects[index].effect_flags & tfxEffectPropertyFlags_global_uniform_size)) {
 		spawn_controls.size_x = tfx__lookup_precise(&library->global_graphs[global_attributes].width, frame);
 		spawn_controls.size_y = tfx__lookup_precise(&library->global_graphs[global_attributes].height, frame);
 	}
