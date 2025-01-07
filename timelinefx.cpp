@@ -8116,10 +8116,7 @@ void tfx__reindex_graph(tfx_graph_t *graph) {
 }
 
 void tfx__compile_graph_overtime(tfx_graph_t *graph) {
-	if (graph->type == tfxOvertime_intensity || graph->type == tfxOvertime_curved_alpha || graph->type == tfxOvertime_alpha_sharpness) {
-		tfx__compile_graph_ramp_overtime(graph);
-		return;
-	} else if (graph->type == tfxOvertime_gradient_mapper) {
+	if (graph->type == tfxOvertime_gradient_mapper || graph->type == tfxOvertime_intensity || graph->type == tfxOvertime_curved_alpha || graph->type == tfxOvertime_alpha_sharpness) {
 		tfx__compile_graph_ramp_overtime(graph);
 		return;
 	}
@@ -8144,7 +8141,7 @@ void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph) {
 	graph->lookup.values.resize(tfxCOLOR_RAMP_WIDTH);
 	for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 		float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * graph->lookup.life;
-		graph->lookup.values[f] = tfx__get_linear_graph_value_by_percent_of_life(graph, age, graph->lookup.life);
+		graph->lookup.values[f] = tfx__get_graph_value_by_percent_of_life(graph, age, graph->lookup.life);
 	}
 	graph->lookup.values[tfxCOLOR_RAMP_WIDTH - 1] = tfx__get_graph_last_value(graph);
 }
@@ -13822,6 +13819,7 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 		else {
 			life = tfxWideDiv(age, max_age);
 		}
+
 		ramp_index.m = tfxWideMini(tfxWideConverti(tfxWideMul(life, color_ramp_size)), color_ramp_sizei);
 		tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
 		tfxWideFloat dissolve_lerp = tfxWideLookupSet(work_entry->graphs->curved_alpha.lookup.values, ramp_index);
