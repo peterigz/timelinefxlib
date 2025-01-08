@@ -2596,7 +2596,7 @@ typedef enum {
 
 typedef enum {
 	tfxRibbonFlags_none = 0,
-	tfxRibbonFlags_active = 1 << 1 
+	tfxRibbonFlags_active = 1 << 0 
 } tfx_ribbon_flag_bits;
 
 typedef enum {

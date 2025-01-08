@@ -13495,6 +13495,7 @@ void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data) {
 		float &max_age = bucket.ribbons.max_age[ribbon_index];
 		age += pm.frame_length;
 		if (age > max_age) {
+			bucket.ribbons.ribbon_instances[ribbon_index].flags &= ~tfxRibbonFlags_active;
 			tfx__free_ribbon(&pm, ribbon_emitter.segment_count, ribbon_index);
 			ribbon_emitter.active_ribbons--;
 		} else {
@@ -14805,7 +14806,6 @@ void tfx__free_ribbon(tfx_particle_manager pm, tfxU32 segment_count, tfxU32 ribb
 	tfxU32 index = tfxRibbonBucketIndex(segment_count);
 	TFX_ASSERT(pm->ribbon_segment_buckets[index].flags & tfxRibbonBucketFlags_initialised);
 	tfx_ribbon_bucket_t &bucket = pm->ribbon_segment_buckets[index];
-	bucket.ribbons.ribbon_instances[ribbon_index].position.w = 0.f;
 	bucket.free_ribbons.push_back(ribbon_index);
 	bucket.active_ribbons--;
 }
@@ -17751,6 +17751,7 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
 			ribbon.quaternion = tfx__pack8bit_quaternion_for_gpu(q);
 			ribbon.position.w = 0.f;
+			ribbon.flags |= tfxRibbonFlags_active;
 			ribbon.emitter_index = ribbon_emitter.gpu_emitter_index;
 			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
