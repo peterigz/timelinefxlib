@@ -2042,7 +2042,7 @@ typedef enum tfx_color_ramp_format {
 #define TFX_PROPERTY_COUNT   10
 #define TFX_BASE_COUNT       10
 #define TFX_VARIATION_COUNT  12
-#define TFX_OVERTIME_COUNT   26
+#define TFX_OVERTIME_COUNT   28
 #define TFX_FACTOR_COUNT     4
 #define TFX_TRANSFORM_COUNT  6
 
@@ -2138,6 +2138,8 @@ typedef enum {
 	tfxOvertime_direction,
 	tfxOvertime_noise_resolution,
 	tfxOvertime_motion_randomness,
+	tfxOvertime_uv_offset_y,
+	tfxOvertime_uv_scale_y,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2164,9 +2166,31 @@ typedef enum {
 	tfxPath_rotation_pitch,
 	tfxPath_rotation_yaw,
 
-	tfxRibbon_path_start_overtime,
 	tfxGraphMaxIndex
 } tfx_graph_type;
+
+typedef enum {
+	tfxGlobal_start = tfxGlobal_life,
+	tfxGlobal_end = tfxGlobal_emitter_depth,
+	tfxProperty_start = tfxProperty_emission_pitch,
+	tfxProperty_end = tfxProperty_arc_offset,
+	tfxBase_start = tfxBase_life,
+	tfxBase_end = tfxBase_noise_offset,
+	tfxVariation_start = tfxVariation_life,
+	tfxVariation_end = tfxVariation_motion_randomness,
+	tfxOvertime_start = tfxOvertime_red,
+	tfxOvertime_end = tfxOvertime_uv_scale_y,
+	tfxOvertime_color_start = tfxOvertime_red,
+	tfxOvertime_color_end = tfxOvertime_blendfactor_hint,
+	tfxFactor_start = tfxFactor_life,
+	tfxFactor_end = tfxFactor_intensity,
+	tfxTransform_start = tfxTransform_roll,
+	tfxTransform_end = tfxTransform_translate_z,
+	tfxPath_start = tfxPath_angle_x,
+	tfxPath_end = tfxPath_rotation_yaw,
+	tfxGPU_lookup_start = tfxOvertime_velocity,
+	tfxGPU_lookup_end = tfxOvertime_uv_scale_y,
+} tfx_graph_ranges;
 
 //tfx_effect_descriptor_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
 typedef enum {
@@ -5298,6 +5322,8 @@ typedef struct tfx_overtime_attributes_s {
 	tfx_graph_t direction;
 	tfx_graph_t noise_resolution;
 	tfx_graph_t motion_randomness;
+	tfx_graph_t uv_offset_y;
+	tfx_graph_t uv_scale_y;
 	tfx_color_ramp_t color_ramps[2];
 	tfx_index color_ramp_bitmap_indexes[2];
 } tfx_overtime_attributes_t;
@@ -6065,6 +6091,7 @@ typedef struct tfx_ribbon_segment_s {
 	tfx_float16x2_t ribbon_position;				//normalised position of the vertex on the ribbon
 } tfx_ribbon_segment_t;
 
+//This can be sent as a push constant to the gpu
 typedef struct tfx_ribbon_bucket_globals_s  {
 	tfx_vec4_t camera_position;
 	tfxU32 segment_count;
@@ -6086,6 +6113,8 @@ typedef struct tfx_ribbon_segment_soa_s {
 typedef struct tfx_3d_ribbon_vertex_s {
 	tfx_vec3_t position;
 	tfxU32 segment_index;
+	tfx_vec2_t uv_offset_scale;
+	tfx_vec2_t padding;
 } tfx_3d_ribbon_vertex_t;
 
 typedef struct tfx_ribbon_buffer_info_s {

@@ -2281,6 +2281,8 @@ void tfx__update_effect_max_life(tfx_effect_descriptor_t *effect) {
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_direction)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_motion_randomness)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxOvertime_noise_resolution)->lookup.life = info->max_life;
+	tfx__get_effect_graph_by_type(effect, tfxOvertime_uv_offset_y)->lookup.life = info->max_life;
+	tfx__get_effect_graph_by_type(effect, tfxOvertime_uv_scale_y)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxFactor_life)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxFactor_velocity)->lookup.life = info->max_life;
 	tfx__get_effect_graph_by_type(effect, tfxFactor_size)->lookup.life = info->max_life;
@@ -3021,6 +3023,8 @@ void tfx__reset_emitter_overtime_graphs(tfx_effect_descriptor_t *effect, bool ad
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.direction, 0.f, tfxDirectionOvertimePreset, add_node); library->emitter_attributes[emitter_attributes].overtime.direction.type = tfxOvertime_direction;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.noise_resolution, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.noise_resolution.type = tfxOvertime_noise_resolution;
 	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.motion_randomness, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.motion_randomness.type = tfxOvertime_motion_randomness;
+	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.uv_offset_y, 0.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.uv_offset_y.type = tfxOvertime_uv_offset_y;
+	tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.uv_scale_y, 1.f, tfxPercentOvertime, add_node); library->emitter_attributes[emitter_attributes].overtime.uv_scale_y.type = tfxOvertime_uv_scale_y;
 	if (compile) {
 		tfx__compile_library_overtime_graph(library, emitter_attributes);
 	}
@@ -3187,6 +3191,8 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 		if (library->emitter_attributes[emitter_attributes].overtime.alpha_sharpness.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.alpha_sharpness, 0.f, tfxOpacityOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.curved_alpha.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.curved_alpha, 1.f, tfxOpacityOvertimePreset);
 		if (library->emitter_attributes[emitter_attributes].overtime.gradient_mapper.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.gradient_mapper, 0.f, tfxGradientMapperOvertimePreset);
+		if (library->emitter_attributes[emitter_attributes].overtime.uv_offset_y.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.uv_offset_y, 0.f, tfxPercentOvertime);
+		if (library->emitter_attributes[emitter_attributes].overtime.uv_scale_y.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].overtime.uv_scale_y, 1.f, tfxPercentOvertime);
 
 		if (library->emitter_attributes[emitter_attributes].factor.life.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.life, 1.f, tfxPercentOvertime);
 		if (library->emitter_attributes[emitter_attributes].factor.size.nodes.size() == 0) tfx__reset_graph(&library->emitter_attributes[emitter_attributes].factor.size, 1.f, tfxPercentOvertime);
@@ -4562,6 +4568,8 @@ void tfx__initialise_overtime_attributes(tfx_overtime_attributes_t *attributes, 
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->direction.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->noise_resolution.nodes ,bucket_size);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->motion_randomness.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->uv_offset_y.nodes ,bucket_size);
+	 tfxInitBucketArray<tfx_attribute_node_t>(&attributes->uv_scale_y.nodes ,bucket_size);
 	 attributes->color_ramps[0].flags = 0;
 	 attributes->color_ramps[1].flags = 0;
 	 attributes->color_ramp_bitmap_indexes[0] = 0;
@@ -4602,6 +4610,8 @@ void tfx__free_overtime_attributes(tfx_overtime_attributes_t *attributes) {
 	tfx__free_graph(&attributes->direction);
 	tfx__free_graph(&attributes->noise_resolution);
 	tfx__free_graph(&attributes->motion_randomness);
+	tfx__free_graph(&attributes->uv_offset_y);
+	tfx__free_graph(&attributes->uv_scale_y);
 	attributes->color_ramp_bitmap_indexes[0] = 0;
 	attributes->color_ramp_bitmap_indexes[1] = 0;
 }
@@ -4634,6 +4644,8 @@ void tfx__copy_overtime_attributes_no_lookups(tfx_overtime_attributes_t *src, tf
 	tfx__copy_graph_no_lookups(&src->direction, &dst->direction);
 	tfx__copy_graph_no_lookups(&src->noise_resolution, &dst->noise_resolution);
 	tfx__copy_graph_no_lookups(&src->motion_randomness, &dst->motion_randomness);
+	tfx__copy_graph_no_lookups(&src->uv_offset_y, &dst->uv_offset_y);
+	tfx__copy_graph_no_lookups(&src->uv_scale_y, &dst->uv_scale_y);
 	dst->color_ramps[0] = src->color_ramps[0];
 	dst->color_ramps[1] = src->color_ramps[1];
 	dst->color_ramp_bitmap_indexes[0] = src->color_ramp_bitmap_indexes[0];
@@ -4664,6 +4676,8 @@ void tfx__copy_overtime_attributes(tfx_overtime_attributes_t *src, tfx_overtime_
 	tfx__copy_graph(&src->direction, &dst->direction);
 	tfx__copy_graph(&src->noise_resolution, &dst->noise_resolution);
 	tfx__copy_graph(&src->motion_randomness, &dst->motion_randomness);
+	tfx__copy_graph(&src->uv_offset_y, &dst->uv_offset_y);
+	tfx__copy_graph(&src->uv_scale_y, &dst->uv_scale_y);
 	dst->color_ramp_bitmap_indexes[0] = src->color_ramp_bitmap_indexes[0];
 	dst->color_ramp_bitmap_indexes[1] = src->color_ramp_bitmap_indexes[1];
 	tfxUnFlagColorRampIDAsEdited(dst->color_ramp_bitmap_indexes[0]);
@@ -5327,6 +5341,8 @@ tfxU32 tfx__count_library_emitter_lookup_values(tfx_library library, tfxU32 inde
 	count += attributes.overtime.direction.lookup.values.capacity;
 	count += attributes.overtime.noise_resolution.lookup.values.capacity;
 	count += attributes.overtime.motion_randomness.lookup.values.capacity;
+	count += attributes.overtime.uv_offset_y.lookup.values.capacity;
+	count += attributes.overtime.uv_scale_y.lookup.values.capacity;
 
 	count += attributes.factor.life.lookup.values.capacity;
 	count += attributes.factor.velocity.lookup.values.capacity;
@@ -5929,6 +5945,8 @@ void tfx__compile_all_library_graphs(tfx_library library) {
 		tfx__compile_graph_overtime(&g.overtime.direction);
 		tfx__compile_graph_overtime(&g.overtime.noise_resolution);
 		tfx__compile_graph_overtime(&g.overtime.motion_randomness);
+		tfx__compile_graph_overtime(&g.overtime.uv_offset_y);
+		tfx__compile_graph_overtime(&g.overtime.uv_scale_y);
 		tfx__compile_graph_overtime(&g.factor.life);
 		tfx__compile_graph_overtime(&g.factor.velocity);
 		tfx__compile_graph_overtime(&g.factor.size);
@@ -5969,6 +5987,8 @@ void tfx__compile_library_overtime_graph(tfx_library library, tfxU32 index, bool
 	tfx__compile_graph_overtime(&g.direction);
 	tfx__compile_graph_overtime(&g.noise_resolution);
 	tfx__compile_graph_overtime(&g.motion_randomness);
+	tfx__compile_graph_overtime(&g.uv_offset_y);
+	tfx__compile_graph_overtime(&g.uv_scale_y);
 }
 
 void tfx__compile_library_factor_graphs(tfx_library library, tfxU32 index) {
@@ -6500,6 +6520,8 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 		if ((*values)[0] == "overtime_velocity_adjuster") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.velocity_adjuster, &n); }
 		if ((*values)[0] == "overtime_noise_resolution") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.noise_resolution, &n); }
 		if ((*values)[0] == "overtime_motion_randomness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.motion_randomness, &n); }
+		if ((*values)[0] == "overtime_uv_offset_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.uv_offset_y, &n); }
+		if ((*values)[0] == "overtime_uv_scale_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].overtime.uv_scale_y, &n); }
 
 		if ((*values)[0] == "factor_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].factor.life, &n); }
 		if ((*values)[0] == "factor_velocity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->emitter_attributes[effect->emitter_attributes].factor.velocity, &n); }
@@ -7133,19 +7155,19 @@ bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right)
 }
 
 bool tfx__is_overtime_graph(tfx_graph_t *graph) {
-	return (graph->type >= tfxOvertime_red && graph->type <= tfxOvertime_motion_randomness && graph->type != tfxOvertime_velocity_adjuster) || graph->type > tfxEmitterGraphMaxIndex;
+	return (graph->type >= tfxOvertime_start && graph->type <= tfxOvertime_end && graph->type != tfxOvertime_velocity_adjuster) || graph->type > tfxEmitterGraphMaxIndex;
 }
 
 bool tfx__is_factor_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxFactor_life && graph->type <= tfxFactor_intensity;
+	return graph->type >= tfxFactor_start && graph->type <= tfxFactor_end;
 }
 
 bool tfx__color_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxOvertime_red && graph->type <= tfxOvertime_blendfactor_hint;
+	return graph->type >= tfxOvertime_color_start && graph->type <= tfxOvertime_color_end;
 }
 
 bool tfx__gpu_overtime_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxOvertime_velocity && graph->type <= tfxOvertime_motion_randomness;
+	return graph->type >= tfxGPU_lookup_start && graph->type <= tfxGPU_lookup_end;
 }
 
 bool tfx__is_blend_factor_graph(tfx_graph_t *graph) {
@@ -7153,7 +7175,7 @@ bool tfx__is_blend_factor_graph(tfx_graph_t *graph) {
 }
 
 bool tfx__is_global_graph(tfx_graph_t *graph) {
-	return graph->type >= tfxGlobal_life && graph->type <= tfxGlobal_splatter;
+	return graph->type >= tfxGlobal_start && graph->type <= tfxGlobal_end;
 }
 
 bool tfx__is_angle_graph(tfx_graph_t *graph) {
@@ -8485,19 +8507,19 @@ float tfx__get_max_life(tfx_effect_descriptor_t *e) {
 }
 
 bool tfx__is_overtime_graph_type(tfx_graph_type type) {
-	return type >= tfxOvertime_red && type != tfxOvertime_noise_resolution && type <= tfxOvertime_motion_randomness;
+	return type >= tfxOvertime_start && type != tfxOvertime_noise_resolution && type <= tfxOvertime_end;
 }
 
 bool tfx__is_color_graph_type(tfx_graph_type type) {
-	return type >= tfxOvertime_red && type <= tfxOvertime_blue;
+	return type >= tfxOvertime_color_start && type <= tfxOvertime_color_end;
 }
 
 bool tfx__is_overtime_percentage_graph_type(tfx_graph_type type) {
-	return type >= tfxOvertime_red && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && type <= tfxOvertime_motion_randomness;
+	return type >= tfxOvertime_start && type != tfxOvertime_velocity_adjuster && type != tfxOvertime_direction && type <= tfxOvertime_end;
 }
 
 bool tfx__is_global_graph_type(tfx_graph_type type) {
-	return type >= tfxGlobal_life && type <= tfxGlobal_emitter_depth;
+	return type >= tfxGlobal_start && type <= tfxGlobal_end;
 }
 
 bool tfx__is_emitter_graph_type(tfx_graph_type type) {
@@ -8509,7 +8531,7 @@ bool tfx__is_transform_graph_type(tfx_graph_type type) {
 }
 
 bool tfx__is_global_percentage_graph_type(tfx_graph_type type) {
-	return type >= tfxGlobal_life && type <= tfxGlobal_splatter;
+	return type >= tfxGlobal_start && type <= tfxGlobal_end;
 }
 
 bool tfx__is_emitter_size_graph_type(tfx_graph_type type) {
@@ -17702,7 +17724,7 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 		tfxU32 total_vertex_count = pm.running_ribbon_vertex_count + ribbon_bucket.globals.segment_count * ribbon_bucket.globals.segment_count;
 		if (total_vertex_count < pm.info.max_ribbon_segments * ribbon_bucket.globals.segment_count) {
 			ribbon_bucket.segments.resize(ribbon_bucket.segments.current_size + ribbon_bucket.globals.segment_count);
-			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes[0]) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes[0]) << 16) | entry->shared_properties->image->compute_shape_index;
+			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes[0]) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes[0]) << 16) | (entry->shared_properties->image->compute_shape_index + (tfxU32)entry->shared_properties->start_frame);
 			tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket.segments;
 			tfxWideFloat segment_count = tfxWideSetSingle(float(ribbon_emitter.segment_count - 1));
 			tfxWideFloat num_path_nodes = tfxWideSetSingle(float(path->node_count - 3));
