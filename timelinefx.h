@@ -2170,6 +2170,7 @@ typedef enum {
 } tfx_graph_type;
 
 #define tfxEffectGraph(graph, index_name) graph.graphs[tfxEffect_##index_name##_index]
+#define tfxTransformGraph(graph, index_name) graph.graphs[tfxTransform_##index_name##_index]
 
 typedef enum {
 	tfxEffect_global_life_index,
@@ -2356,7 +2357,8 @@ typedef enum {
 	tfxEmitterType,
 	tfxRibbonType,
 	tfxStage,
-	tfxFolder
+	tfxFolder,
+	tfxMaxDescriptorTypes
 } tfx_effect_descriptor_type;
 
 //Different ways that particles can be emitted
@@ -5379,6 +5381,17 @@ typedef struct tfx_graph_s {
 	float gamma;
 } tfx_graph_t;
 
+typedef struct tfx_graph_list_s {
+#ifdef __cplusplus
+	tfx_vector_t<tfx_graph_t> graphs;
+#else
+	tfx_vector_t graphs;
+#endif
+	tfx_effect_descriptor_type effect_descriptor_type;
+	tfx_color_ramp_t color_ramps;
+	tfx_index color_ramp_bitmap_indexes;
+} tfx_graph_list_t;
+
 tfxAPI_EDITOR void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size);
 
 typedef struct tfx_path_nodes_soa_s {
@@ -5657,6 +5670,7 @@ typedef struct tfx_emitter_state_s {
 	tfx_bounding_box_t bounding_box;
 
 	tfxU32 graph_list_index;
+	tfxU32 transform_index;
 	tfxU32 path_attributes;
 
 	tfx_path_state_t path_state;
@@ -5711,6 +5725,7 @@ typedef struct tfx_effect_state_s {
 	tfx_bounding_box_t bounding_box;
 
 	tfxU32 graph_list_index;
+	tfxU32 transform_index;
 
 	tfxU32 properties_index;
 	tfxU32 shared_index;
@@ -5797,9 +5812,8 @@ typedef struct tfx_ribbon_emitter_state_s {
 
 	tfx_bounding_box_t bounding_box;
 
-	tfxU32 emitter_attributes;
-	tfxU32 transform_attributes;
-	tfxU32 overtime_attributes;
+	tfxU32 graph_list_index;
+	tfxU32 transform_index;
 	tfxU32 path_attributes;
 	tfxU32 seed_index;
 
@@ -6301,7 +6315,7 @@ typedef struct tfx_ribbon_work_entry_s {
 	tfxRibbonEmitterFlags property_flags;
 	tfxEffectPropertyFlags effect_flags;
 	tfx_parent_spawn_controls_t *parent_spawn_controls;
-	tfx_overtime_attributes_t *graphs;
+	tfx_graph_list_t *graphs;
 	tfxU32 new_ribbons;
 	tfxU32 amount_to_spawn;
 	float tween;
@@ -6321,7 +6335,7 @@ typedef struct tfx_control_work_entry_s {
 	tfxU32 sprite_buffer_end_index;
 	tfxU32 emitter_index;
 	tfx_particle_manager pm;
-	tfx_overtime_attributes_t *graphs;
+	tfx_graph_list_t *graphs;
 	tfxU32 layer;
 	tfx_particle_emitter_properties_t *properties;
 	tfx_shared_properties_t *shared_properties;
@@ -6668,12 +6682,6 @@ typedef struct tfx_effect_library_stats_s {
 	tfxU32 reserved7;
 }tfx_effect_library_stats_t;
 
-typedef struct tfx_graph_list_s {
-	tfx_vector_t<tfx_graph_t> graphs;
-	tfx_color_ramp_t color_ramps;
-	tfx_index color_ramp_bitmap_indexes;
-} tfx_graph_list_t;
-
 #ifdef __cplusplus
 typedef struct tfx_library_s {
 	tfxU32 magic;
@@ -6997,6 +7005,7 @@ tfxAPI_EDITOR void tfx__build_path_nodes_3d(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__build_path_nodes_2d(tfx_emitter_path_t *path);
 tfxAPI_EDITOR tfxU32 tfx__add_emitter_path_attributes(tfx_library library);
 tfxAPI_EDITOR void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *emitter_path);
+tfxAPI_EDITOR bool tfx__has_translation_key_frames(tfx_graph_list_t *graphs);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_graph(tfx_library library, tfx_graph_id_t graph_id);
 tfxAPI_EDITOR tfx_effect_library_stats_t tfx__create_library_stats(tfx_library lib);
 tfxAPI_EDITOR bool tfx__is_library_shape_used(tfx_library library, tfxKey image_hash);
@@ -7038,6 +7047,7 @@ tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library library, const char *pa
 tfxAPI_EDITOR bool tfx__is_valid_effect_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__get_library_effect_by_key(tfx_library library, tfxKey key);
 tfxAPI_EDITOR void tfx__record_sprite_data(tfx_particle_manager pm, tfx_effect_descriptor_t *effect, float update_frequency, float camera_position[3], int *progress);
+tfxAPI_EDITOR tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type type);
 tfxINTERNAL void tfx__build_path_nodes_complex(tfx_emitter_path_t *path);
 tfxINTERNAL void tfx__init_graph_list(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__copy_graph_list_no_lookups(tfx_graph_list_t *src, tfx_graph_list_t *dst);
@@ -7048,7 +7058,6 @@ tfxINTERNAL int tfx__get_effect_library_stats(const char *filename, tfx_effect_l
 tfxINTERNAL void tfx__toggle_sprites_with_uid(tfx_particle_manager pm, bool switch_on);
 tfxINTERNAL tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library library);
 tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descriptor_t *effect_emitter, const char *path, bool skip_existing);
-tfxINTERNAL tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type type);
 tfxINTERNAL void tfx__free_library_graphs(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__free_library_graph_list(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index);
@@ -7081,9 +7090,11 @@ tfxAPI_EDITOR void tfx__clean_up_effect(tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR void tfx__reset_effect_graphs(tfx_effect_descriptor_t *effect, bool add_node = true);
 tfxAPI_EDITOR void tfx__reset_transform_graphs(tfx_effect_descriptor_t *effect, bool add_node = true);
 tfxAPI_EDITOR void tfx__reset_emitter_graphs(tfx_effect_descriptor_t *effect, bool add_node = true, bool compile = true);
+tfxAPI_EDITOR void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node = true, bool compile = true);
 tfxAPI_EDITOR void tfx__add_emitter_color_overtime(tfx_effect_descriptor_t *effect, float frame, tfx_rgb_t color);
 tfxAPI_EDITOR void tfx__update_effect_max_life(tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR tfx_graph_t *tfx__get_effect_graph_by_index(tfx_effect_descriptor_t *effect, tfxU32 index);
+tfxAPI_EDITOR tfx_graph_t *tfx__get_effect_transform_graph_by_index(tfx_effect_descriptor_t *effect, tfxU32 index);
 tfxAPI_EDITOR tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_descriptor_t *effect, tfx_graph_type type);
 tfxAPI_EDITOR tfx_graph_list_t *tfx__get_graph_list(tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect);
@@ -7106,8 +7117,6 @@ tfxAPI_EDITOR float tfx__get_effect_highest_loop_length(tfx_effect_descriptor_t 
 tfxINTERNAL void tfx__swap_effects(tfx_effect_descriptor_t *left, tfx_effect_descriptor_t *right);
 tfxINTERNAL void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right);
 tfxINTERNAL tfx_effect_descriptor_t *tfx__add_effect(tfx_effect_descriptor_t *effect);
-tfxINTERNAL void tfx__reset_emitter_graphs(tfx_effect_descriptor_t *effect, bool add_node = true, bool compile = true);
-tfxINTERNAL void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node = true, bool compile = true);
 tfxINTERNAL void tfx__enable_emitter(tfx_effect_descriptor_t *effect);
 tfxINTERNAL bool tfx__is_ordered_effect_state(tfx_effect_state_t *effect);
 tfxINTERNAL void tfx__assign_stage_property_u32(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU32 value);

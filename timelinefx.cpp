@@ -2910,7 +2910,7 @@ void tfx__reset_transform_graphs(tfx_effect_descriptor_t *effect, bool add_node)
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxTransform_translate_z_index], 0.f, tfxTranslationPreset, add_node); library->graphs[graph_list_index].graphs[tfxTransform_translate_x_index].type = tfxTransform_translate_z;
 }
 
-void tfx__reset_emitter_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile = true) {
+void tfx__reset_emitter_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 graph_list_index = effect->graph_list_index;
 	float default_dimensions = 128.f;
@@ -2980,7 +2980,7 @@ void tfx__reset_emitter_graphs(tfx_effect_descriptor_t *effect, bool add_node, b
 	}
 }
 
-void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile = true) {
+void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bool compile) {
 	tfx_library library = effect->library;
 	tfxU32 graph_list_index = effect->graph_list_index;
 	float default_dimensions = 32.f;
@@ -3017,7 +3017,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bo
 }
 
 void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
-	TFX_ASSERT(effect->graph_list_index);
+	TFX_ASSERT(effect->graph_list_index != tfxINVALID);
 	tfxU32 graph_list_index = effect->graph_list_index;
 	tfx_library library = effect->library;
 
@@ -3656,6 +3656,10 @@ void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_
 	path->rotation_yaw = src->rotation_yaw;
 	tfx__initialise_path_graphs(path);
 	tfx__copy_path_graphs(src, path);
+}
+
+bool tfx__has_translation_key_frames(tfx_graph_list_t *graphs) {
+	return graphs->graphs[tfxTransform_translate_x].nodes.current_size + graphs->graphs[tfxTransform_translate_y].nodes.current_size + graphs->graphs[tfxTransform_translate_z].nodes.current_size > 0;
 }
 
 tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor_t *emitter, bool add_node) {
@@ -4652,6 +4656,7 @@ tfxU32 tfx__add_library_graphs(tfx_library library, tfx_effect_descriptor_type t
 		index = library->graphs.size() - 1;
 	}
 	tfx_graph_list_t &graph_list = library->graphs[index];
+	graph_list.effect_descriptor_type = type;
 	switch (type) {
 	case tfxEffectType:
 		tfx__initialise_effect_graphs(&graph_list);
@@ -5762,36 +5767,36 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 			if ((*values)[0] == "factor_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_size_index], &n); }
 			if ((*values)[0] == "factor_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_intensity_index], &n); }
 		} else if (effect->type == tfxRibbonType) {
-			if ((*values)[0] == "property_arc_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_arc_offset_index], &n); }
-			if ((*values)[0] == "property_arc_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_arc_size_index], &n); }
-			if ((*values)[0] == "property_extrusion") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_extrusion_index], &n); }
-			if ((*values)[0] == "property_emitter_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_height_index], &n); }
-			if ((*values)[0] == "property_emitter_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_width_index], &n); }
-			if ((*values)[0] == "property_emitter_depth") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_depth_index], &n); }
-			if ((*values)[0] == "property_splatter") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_property_splatter_index], &n); }
+			if ((*values)[0] == "property_arc_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_arc_offset_index], &n); }
+			if ((*values)[0] == "property_arc_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_arc_size_index], &n); }
+			if ((*values)[0] == "property_extrusion") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_extrusion_index], &n); }
+			if ((*values)[0] == "property_emitter_height") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_height_index], &n); }
+			if ((*values)[0] == "property_emitter_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_width_index], &n); }
+			if ((*values)[0] == "property_emitter_depth") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_depth_index], &n); }
+			if ((*values)[0] == "property_splatter") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_property_splatter_index], &n); }
 
-			if ((*values)[0] == "base_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_amount_index], &n); }
-			if ((*values)[0] == "base_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_life_index], &n); }
-			if ((*values)[0] == "base_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_base_width_index], &n); }
+			if ((*values)[0] == "base_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_base_amount_index], &n); }
+			if ((*values)[0] == "base_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_base_life_index], &n); }
+			if ((*values)[0] == "base_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_base_width_index], &n); }
 
-			if ((*values)[0] == "variation_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_amount_index], &n); }
-			if ((*values)[0] == "variation_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_width_index], &n); }
-			if ((*values)[0] == "variation_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_variation_life_index], &n); }
+			if ((*values)[0] == "variation_amount") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_variation_amount_index], &n); }
+			if ((*values)[0] == "variation_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_variation_width_index], &n); }
+			if ((*values)[0] == "variation_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_variation_life_index], &n); }
 
-			if ((*values)[0] == "overtime_red") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_red_index], &n); }
-			if ((*values)[0] == "overtime_green") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_green_index], &n); }
-			if ((*values)[0] == "overtime_blue") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_blue_index], &n); }
-			if ((*values)[0] == "overtime_blendfactor") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_blendfactor_index], &n); }
-			if ((*values)[0] == "overtime_opacity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_blendfactor_index], &n); }    //Legacy
-			if ((*values)[0] == "overtime_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_intensity_index], &n); }
-			if ((*values)[0] == "overtime_alpha_sharpness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_alpha_sharpness_index], &n); }
-			if ((*values)[0] == "overtime_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_curved_alpha_index], &n); }
-			if ((*values)[0] == "overtime_gradient_mapper") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_gradient_mapper_index], &n); }
-			if ((*values)[0] == "overtime_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_overtime_width_index], &n); }
+			if ((*values)[0] == "overtime_red") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_red_index], &n); }
+			if ((*values)[0] == "overtime_green") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_green_index], &n); }
+			if ((*values)[0] == "overtime_blue") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_blue_index], &n); }
+			if ((*values)[0] == "overtime_blendfactor") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_blendfactor_index], &n); }
+			if ((*values)[0] == "overtime_opacity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_blendfactor_index], &n); }    //Legacy
+			if ((*values)[0] == "overtime_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_intensity_index], &n); }
+			if ((*values)[0] == "overtime_alpha_sharpness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_alpha_sharpness_index], &n); }
+			if ((*values)[0] == "overtime_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_curved_alpha_index], &n); }
+			if ((*values)[0] == "overtime_gradient_mapper") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_gradient_mapper_index], &n); }
+			if ((*values)[0] == "overtime_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_width_index], &n); }
 
-			if ((*values)[0] == "factor_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_life_index], &n); }
-			if ((*values)[0] == "factor_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_size_index], &n); }
-			if ((*values)[0] == "factor_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxEmitter_factor_intensity_index], &n); }
+			if ((*values)[0] == "factor_life") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_factor_life_index], &n); }
+			if ((*values)[0] == "factor_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_factor_size_index], &n); }
+			if ((*values)[0] == "factor_intensity") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_factor_intensity_index], &n); }
 			if ((*values)[0] == "overtime_uv_offset_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_offset_y_index], &n); }
 			if ((*values)[0] == "overtime_uv_scale_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_scale_y_index], &n); }
 		}
@@ -7376,17 +7381,48 @@ void tfx__copy_graph(tfx_graph_t *from, tfx_graph_t *to, bool compile) {
 }
 
 void tfx__copy_graph_color(tfx_graph_list_t *from, tfx_graph_list_t *to) {
-	tfx__clear_graph(&to->graphs[tfxEmitter_overtime_red_index]);
-	tfx__clear_graph(&to->graphs[tfxEmitter_overtime_green_index]);
-	tfx__clear_graph(&to->graphs[tfxEmitter_overtime_blue_index]);
-	for (tfxBucketLoop(from->graphs[tfxEmitter_overtime_red_index].nodes, i)) {
-		to->graphs[tfxEmitter_overtime_red_index].nodes.push_back(from->graphs[tfxEmitter_overtime_red_index].nodes[i]);
+	TFX_ASSERT(from->effect_descriptor_type == to->effect_descriptor_type);
+	if (from->effect_descriptor_type == tfxEmitterType) {
+		tfx__clear_graph(&to->graphs[tfxEmitter_overtime_red_index]);
+		tfx__clear_graph(&to->graphs[tfxEmitter_overtime_green_index]);
+		tfx__clear_graph(&to->graphs[tfxEmitter_overtime_blue_index]);
+		for (tfxBucketLoop(from->graphs[tfxEmitter_overtime_red_index].nodes, i)) {
+			to->graphs[tfxEmitter_overtime_red_index].nodes.push_back(from->graphs[tfxEmitter_overtime_red_index].nodes[i]);
+		}
+		for (tfxBucketLoop(from->graphs[tfxEmitter_overtime_green_index].nodes, i)) {
+			to->graphs[tfxEmitter_overtime_green_index].nodes.push_back(from->graphs[tfxEmitter_overtime_green_index].nodes[i]);
+		}
+		for (tfxBucketLoop(from->graphs[tfxEmitter_overtime_blue_index].nodes, i)) {
+			to->graphs[tfxEmitter_overtime_blue_index].nodes.push_back(from->graphs[tfxEmitter_overtime_blue_index].nodes[i]);
+		}
+	} else if(from->effect_descriptor_type == tfxRibbonType) {
+		tfx__clear_graph(&to->graphs[tfxRibbon_overtime_red_index]);
+		tfx__clear_graph(&to->graphs[tfxRibbon_overtime_green_index]);
+		tfx__clear_graph(&to->graphs[tfxRibbon_overtime_blue_index]);
+		for (tfxBucketLoop(from->graphs[tfxRibbon_overtime_red_index].nodes, i)) {
+			to->graphs[tfxRibbon_overtime_red_index].nodes.push_back(from->graphs[tfxRibbon_overtime_red_index].nodes[i]);
+		}
+		for (tfxBucketLoop(from->graphs[tfxRibbon_overtime_green_index].nodes, i)) {
+			to->graphs[tfxRibbon_overtime_green_index].nodes.push_back(from->graphs[tfxRibbon_overtime_green_index].nodes[i]);
+		}
+		for (tfxBucketLoop(from->graphs[tfxRibbon_overtime_blue_index].nodes, i)) {
+			to->graphs[tfxRibbon_overtime_blue_index].nodes.push_back(from->graphs[tfxRibbon_overtime_blue_index].nodes[i]);
+		}
 	}
-	for (tfxBucketLoop(from->graphs[tfxEmitter_overtime_green_index].nodes, i)) {
-		to->graphs[tfxEmitter_overtime_green_index].nodes.push_back(from->graphs[tfxEmitter_overtime_green_index].nodes[i]);
+}
+
+void tfx__copy_graph_colors(tfx_graph_t *from_red, tfx_graph_t *from_green, tfx_graph_t *from_blue, tfx_graph_t *to_red, tfx_graph_t *to_green, tfx_graph_t *to_blue) {
+	tfx__clear_graph(to_red);
+	tfx__clear_graph(to_green);
+	tfx__clear_graph(to_blue);
+	for (tfxBucketLoop(from_red->nodes, i)) {
+		to_red->nodes.push_back(from_red->nodes[i]);
 	}
-	for (tfxBucketLoop(from->graphs[tfxEmitter_overtime_blue_index].nodes, i)) {
-		to->graphs[tfxEmitter_overtime_blue_index].nodes.push_back(from->graphs[tfxEmitter_overtime_blue_index].nodes[i]);
+	for (tfxBucketLoop(from_green->nodes, i)) {
+		to_green->nodes.push_back(from_green->nodes[i]);
+	}
+	for (tfxBucketLoop(from_blue->nodes, i)) {
+		to_blue->nodes.push_back(from_blue->nodes[i]);
 	}
 }
 
@@ -7529,21 +7565,21 @@ void tfx__free_bitmap(tfx_bitmap_t *bitmap) {
 	}
 }
 
-void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *color_ramp, float gamma = tfxGAMMA) {
+void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *color_ramp, float gamma) {
 	float r, g, b, a;
-	tfx_graph_t &red = graph_list->graphs[tfxEmitter_overtime_red_index];
-	tfx_graph_t &green = graph_list->graphs[tfxEmitter_overtime_green_index];
-	tfx_graph_t &blue = graph_list->graphs[tfxEmitter_overtime_blue_index];
-	tfx_graph_t &blendfactor = graph_list->graphs[tfxEmitter_overtime_blendfactor_index];
+	tfx_graph_t *red = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_red_index] : &graph_list->graphs[tfxRibbon_overtime_red_index];
+	tfx_graph_t *green = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_green_index] : &graph_list->graphs[tfxRibbon_overtime_green_index];
+	tfx_graph_t *blue = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blue_index] : &graph_list->graphs[tfxRibbon_overtime_blue_index];
+	tfx_graph_t *blendfactor = graph_list->effect_descriptor_type == tfxEmitterType ? &graph_list->graphs[tfxEmitter_overtime_blendfactor_index] : &graph_list->graphs[tfxRibbon_overtime_blendfactor_index];
 	if (color_ramp->flags & tfxColorRampFlags_use_sinusoidal_ramp_generation) {
 		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 			float x = (float)f / tfxCOLOR_RAMP_WIDTH;
-			float age = x * red.lookup.life;
+			float age = x * red->lookup.life;
 
 			r = color_ramp->brightness.x + color_ramp->contrast.x * cosf(tfxPI2 * (color_ramp->frequency.x * x + color_ramp->offsets.x));
 			g = color_ramp->brightness.y + color_ramp->contrast.y * cosf(tfxPI2 * (color_ramp->frequency.y * x + color_ramp->offsets.y));
 			b = color_ramp->brightness.z + color_ramp->contrast.z * cosf(tfxPI2 * (color_ramp->frequency.z * x + color_ramp->offsets.z));
-			a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&blendfactor, age, blendfactor.lookup.life), gamma);
+			a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blendfactor, age, blendfactor->lookup.life), gamma);
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
@@ -7551,20 +7587,20 @@ void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *col
 		}
 	} else {
 		for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
-			float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * red.lookup.life;
-			r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&red, age, red.lookup.life), gamma);
-			g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&green, age, green.lookup.life), gamma);
-			b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&blue, age, blue.lookup.life), gamma);
-			a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(&blendfactor, age, blendfactor.lookup.life), gamma);
+			float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * red->lookup.life;
+			r = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(red, age, red->lookup.life), gamma);
+			g = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(green, age, green->lookup.life), gamma);
+			b = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blue, age, blue->lookup.life), gamma);
+			a = tfx__gamma_correct(tfx__get_linear_graph_value_by_percent_of_life(blendfactor, age, blendfactor->lookup.life), gamma);
 			color_ramp->colors[f].r = tfxU32(r * 255.f);
 			color_ramp->colors[f].g = tfxU32(g * 255.f);
 			color_ramp->colors[f].b = tfxU32(b * 255.f);
 			color_ramp->colors[f].a = tfxU32(a * 255.f);
 		}
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(&red) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(&green) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(&blue) * 255.f);
-		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(&blendfactor) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].r = tfxU32(tfx__get_graph_last_value(red) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].g = tfxU32(tfx__get_graph_last_value(green) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].b = tfxU32(tfx__get_graph_last_value(blue) * 255.f);
+		color_ramp->colors[tfxCOLOR_RAMP_WIDTH - 1].a = tfxU32(tfx__get_graph_last_value(blendfactor) * 255.f);
 	}
 }
 
@@ -7600,16 +7636,15 @@ void tfx__create_color_ramp_bitmaps(tfx_library library) {
 	library->color_ramps.color_ramp_bitmaps.clear();
 	library->color_ramps.color_ramp_ids.Clear();
 	library->color_ramps.color_ramp_count = 0;
-	for (tfx_emitter_attributes_t &a : library->emitter_attributes) {
-		for (int i = 0; i != 2; ++i) {
-			tfx_color_ramp_t &ramp = a.overtime.color_ramps[i];
+	for (tfx_graph_list_t &graph_list : library->graphs) {
+		if (graph_list.effect_descriptor_type == tfxEmitterType || graph_list.effect_descriptor_type == tfxRibbonType) {
+			tfx_color_ramp_t &ramp = graph_list.color_ramps;
 			tfxKey hash = tfx_Hash(&tfxStore->hasher, ramp.colors, sizeof(tfx_rgba8_t) * tfxCOLOR_RAMP_WIDTH, 0);
 			if (library->color_ramps.color_ramp_ids.ValidKey(hash)) {	//0 = main color, 1 = color hint
-				a.overtime.color_ramp_bitmap_indexes[i] = library->color_ramps.color_ramp_ids.At(hash);
-			}
-			else {
-				a.overtime.color_ramp_bitmap_indexes[i] = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
-				library->color_ramps.color_ramp_ids.Insert(hash, a.overtime.color_ramp_bitmap_indexes[i]);
+				graph_list.color_ramp_bitmap_indexes = library->color_ramps.color_ramp_ids.At(hash);
+			} else {
+				graph_list.color_ramp_bitmap_indexes = tfx__add_color_ramp_to_bitmap(&library->color_ramps, &ramp);
+				library->color_ramps.color_ramp_ids.Insert(hash, graph_list.color_ramp_bitmap_indexes);
 			}
 		}
 	}
@@ -7787,28 +7822,29 @@ bool tfx__has_node_at_frame(tfx_graph_t *graph, float frame) {
 }
 
 bool tfx__has_key_frames(tfx_effect_descriptor_t *e) {
-	TFX_ASSERT(e->transform_attributes < e->library->transform_attributes.size());        //Must be a valid keyframes index into the library
-	tfx_transform_attributes_t &keyframes = e->library->transform_attributes[e->transform_attributes];
-	tfxU32 size = keyframes.translation_x.nodes.size() +
-		keyframes.translation_y.nodes.size() +
-		keyframes.translation_z.nodes.size();
+	TFX_ASSERT(e->transform_index < e->library->graphs.size());        //Must be a valid index into the library graphs
+	tfx_graph_list_t &graph_list = e->library->graphs[e->transform_index];
+	tfxU32 size = graph_list.graphs[tfxTransform_translate_x].nodes.size() +
+		graph_list.graphs[tfxTransform_translate_y].nodes.size() +
+		graph_list.graphs[tfxTransform_translate_z].nodes.size();
 	return size > 0;
 }
 
+
 bool tfx__has_more_than_one_key_frame(tfx_effect_descriptor_t *e) {
-	TFX_ASSERT(e->transform_attributes < e->library->transform_attributes.size());        //Must be a valid keyframes index into the library
-	tfx_transform_attributes_t &keyframes = e->library->transform_attributes[e->transform_attributes];
-	return    keyframes.translation_x.nodes.size() > 1 ||
-		keyframes.translation_y.nodes.size() > 1 ||
-		keyframes.translation_z.nodes.size() > 1;
+	TFX_ASSERT(e->transform_index < e->library->graphs.size());        //Must be a valid index into the library graphs
+	tfx_graph_list_t &graph_list = e->library->graphs[e->transform_index];
+	return graph_list.graphs[tfxTransform_translate_x].nodes.size() > 1 || 
+		graph_list.graphs[tfxTransform_translate_y].nodes.size()  > 1 ||
+		graph_list.graphs[tfxTransform_translate_z].nodes.size() > 1;
 }
 
 void tfx__push_translation_points(tfx_effect_descriptor_t *e, tfx_vector_t<tfx_vec3_t> *points, float frame) {
-	TFX_ASSERT(e->transform_attributes < e->library->transform_attributes.size());        //Must be a valid keyframes index into the library
-	tfx_transform_attributes_t *keyframes = &e->library->transform_attributes[e->transform_attributes];
-	tfx_vec3_t point(tfx__lookup_precise(&keyframes->translation_x, frame),
-		tfx__lookup_precise(&keyframes->translation_y, frame),
-		tfx__lookup_precise(&keyframes->translation_z, frame));
+	TFX_ASSERT(e->transform_index < e->library->graphs.size());        //Must be a valid index into the library graphs
+	tfx_graph_list_t &graph_list = e->library->graphs[e->transform_index];
+	tfx_vec3_t point(tfx__lookup_precise(&graph_list.graphs[tfxTransform_translate_x], frame),
+		tfx__lookup_precise(&graph_list.graphs[tfxTransform_translate_y], frame),
+		tfx__lookup_precise(&graph_list.graphs[tfxTransform_translate_z], frame));
 	points->push_back(point);
 }
 
@@ -8055,40 +8091,7 @@ bool tfx__line_is_uint(tfx_line_t *line) {
 
 //Get a graph by tfx_graph_id_t
 tfx_graph_t *tfx__get_graph(tfx_library library, tfx_graph_id_t graph_id) {
-	tfx_graph_type type = graph_id.type;
-
-	if (type < TFX_GLOBAL_COUNT) {
-		return &library->graphs[graph_id.graph_id].graphs[graph_id.index];
-	}
-	else if (type >= TFX_PROPERTY_START && type < TFX_BASE_START) {
-		int ref = type - TFX_PROPERTY_START;
-		return &((tfx_graph_t *)&library->emitter_attributes[graph_id.graph_id].properties)[ref];
-	}
-	else if (type >= TFX_BASE_START && type < TFX_VARIATION_START) {
-		int ref = type - TFX_BASE_START;
-		return &((tfx_graph_t *)&library->emitter_attributes[graph_id.graph_id].base)[ref];
-	}
-	else if (type >= TFX_VARIATION_START && type < TFX_OVERTIME_START) {
-		int ref = type - TFX_VARIATION_START;
-		return &((tfx_graph_t *)&library->emitter_attributes[graph_id.graph_id].variation)[ref];
-	}
-	else if (type >= TFX_OVERTIME_START && type < TFX_FACTOR_START) {
-		int ref = type - TFX_OVERTIME_START;
-		return &((tfx_graph_t *)&library->emitter_attributes[graph_id.graph_id].overtime)[ref];
-	}
-	else if (type >= TFX_FACTOR_START && type < TFX_TRANSFORM_START) {
-		int ref = type - TFX_FACTOR_START;
-		return &((tfx_graph_t *)&library->emitter_attributes[graph_id.graph_id].factor)[ref];
-	}
-	else if (type >= TFX_TRANSFORM_START) {
-		int ref = type - TFX_TRANSFORM_START;
-		return &((tfx_graph_t *)&library->transform_attributes[graph_id.graph_id])[ref];
-	}
-
-	TFX_ASSERT(0);    //This function must return a value, make sure the graph_id is valid
-
-	return nullptr;
-
+	return &library->graphs[graph_id.graph_id].graphs[graph_id.index];
 }
 
 //API Functions
@@ -8614,7 +8617,7 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				ribbon.graph_list_index = tfx__add_library_graphs(lib, tfxRibbonType);
 				tfx__add_library_transform_graphs(lib, &ribbon);
 				ribbon.type = tfx_effect_descriptor_type::tfxRibbonType;
-				tfx__reset_emitter_graphs(&ribbon, false, false);
+				tfx__reset_ribbon_graphs(&ribbon, false, false);
 				tfx__reset_transform_graphs(&ribbon, false);
 				tfx_GetEffectInfo(&ribbon)->uid = uid++;
 				effect_stack.push_back(ribbon);
@@ -9541,9 +9544,9 @@ void tfx__add_effect_emitter_properties(tfx_animation_manager animation_manager,
 			effect->library->emitter_properties[effect->property_index].animation_property_index = animation_manager->emitter_properties.current_size;
 			tfx__readbarrier;
 			tfxU32 index = animation_manager->emitter_properties.current_size;
-			tfx_overtime_attributes_t &a = effect->library->emitter_attributes[effect->emitter_attributes].overtime;
+			tfx_graph_list_t &graph_list = effect->library->graphs[effect->graph_list_index];
 			animation_manager->emitter_properties.push_back_copy(properties);
-			tfx__copy_color_ramp_to_animation_manager(animation_manager, index, &a.color_ramps[0]);
+			tfx__copy_color_ramp_to_animation_manager(animation_manager, index, &graph_list.color_ramps);
 			for (auto &sub : tfx_GetEffectInfo(effect)->sub_effectors) {
 				tfx__add_effect_emitter_properties(animation_manager, &sub, has_animated_shape);
 			}
@@ -9864,22 +9867,24 @@ void tfx_EnableTemplateEmitter(tfx_effect_template t, const char *path) {
 }
 
 void tfx_ScaleTemplateGlobalMultiplier(tfx_effect_template t, tfx_global_graph_index graph_index, float amount) {
-	tfx_graph_t *graph = tfx__get_effect_graph_by_type(&t->effect, global_type);
+	TFX_ASSERT(graph_index < tfxEffectGraphs_max_index);
+	tfx_graph_t &graph = t->effect.library->graphs[t->effect.graph_list_index].graphs[graph_index];
 	tfx_effect_descriptor_t *original_effect = tfx__get_library_effect_by_key(t->effect.library, t->original_effect_hash);
-	tfx_graph_t *original_graph = tfx__get_effect_graph_by_type(original_effect, global_type);
-	tfx__copy_graph(original_graph, graph, false);
-	tfx__multiply_all_graph_values(graph, amount);
+	tfx_graph_t &original_graph = original_effect->library->graphs[original_effect->graph_list_index].graphs[graph_index];
+	tfx__copy_graph(&original_graph, &graph, false);
+	tfx__multiply_all_graph_values(&graph, amount);
 }
 
-void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_graph_type graph_type, float amount) {
-	TFX_ASSERT(tfx__is_emitter_graph_type(graph_type));        //Must be an emitter graph type. This is any property, base, variaion or overtime graph
+void tfx_ScaleTemplateEmitterGraph(tfx_effect_template t, const char *emitter_path, tfx_emitter_graph_index graph_index, float amount) {
+	TFX_ASSERT(graph_index < tfxEmitterGraphs_max_index);	 //Not a valid graph index
 	TFX_ASSERT(t->paths.ValidName(emitter_path));            //Must be a valid path to the emitter
 	tfx_effect_descriptor_t *emitter = t->paths.At(emitter_path);
-	tfx_graph_t *graph = tfx__get_effect_graph_by_type(emitter, graph_type);
+	TFX_ASSERT(emitter->type == tfxEmitterType);			 //The path does not point to a emitter type
+	tfx_graph_t &graph = emitter->library->graphs[emitter->graph_list_index].graphs[graph_index];
 	tfx_effect_descriptor_t *original_emitter = tfx_GetLibraryEffectPath(t->effect.library, emitter_path);
-	tfx_graph_t *original_graph = tfx__get_effect_graph_by_type(original_emitter, graph_type);
-	tfx__copy_graph(original_graph, graph, false);
-	tfx__multiply_all_graph_values(graph, amount);
+	tfx_graph_t &original_graph = original_emitter->library->graphs[original_emitter->graph_list_index].graphs[graph_index];
+	tfx__copy_graph(&original_graph, &graph, false);
+	tfx__multiply_all_graph_values(&graph, amount);
 }
 
 void tfx_SetTemplateSingleSpawnAmount(tfx_effect_template t, const char *emitter_path, tfxU32 amount) {
@@ -9974,6 +9979,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 	tfx_effect_state_t &new_effect = pm->effects[parent_index.index];
 	new_effect.path_hash = effect->path_hash;
 	new_effect.graph_list_index = effect->graph_list_index;
+	new_effect.transform_index = effect->transform_index;
 	new_effect.age = -add_delayed_spawning;
 	new_effect.state_flags = 0;
 	new_effect.frame = 0.f;
@@ -10031,8 +10037,8 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				emitter.info_index = e.info_index;
 				emitter.properties_index = e.property_index;
 				emitter.shared_index = e.shared_index;
-				emitter.emitter_attributes = e.emitter_attributes;
-				emitter.transform_attributes = e.transform_attributes;
+				emitter.graph_list_index = e.graph_list_index;
+				emitter.transform_index = e.transform_index;
 				emitter.path_attributes = e.path_attributes;
 				emitter.delay_spawning = shared_properties->delay_spawning;
 				emitter.age = 0.f;
@@ -10169,8 +10175,8 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				ribbon_emitter.info_index = e.info_index;
 				ribbon_emitter.properties_index = e.property_index;
 				ribbon_emitter.shared_index = e.shared_index;
-				ribbon_emitter.emitter_attributes = e.emitter_attributes;
-				ribbon_emitter.transform_attributes = e.transform_attributes;
+				ribbon_emitter.graph_list_index = e.graph_list_index;
+				ribbon_emitter.transform_index = e.transform_index;
 				ribbon_emitter.path_attributes = e.path_attributes;
 				ribbon_emitter.seed_index = seed_index++;
 				ribbon_emitter.segment_count = ribbon_properties->segment_count;
@@ -10266,13 +10272,13 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor_t *emitter) {
 	tfx_particle_emitter_properties_t *props = tfx__get_particle_emitter_properties(emitter);
 	tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(emitter);
 	emitter->control_profile = 0;
-	if (emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness && tfx__get_graph_max_value(&emitter->library->emitter_attributes[emitter->emitter_attributes].overtime.motion_randomness) > 0.f) {
+	if (emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness && tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index]) > 0.f) {
 		emitter->control_profile |= tfxEmitterControlProfile_motion_randomness;
 	}
 	if (props->emission_direction == tfxOrbital && shared_properties->emission_type != tfxPoint) {
 		emitter->control_profile |= tfxEmitterControlProfile_orbital;
 	}
-	if ((!(emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness) && tfx__get_graph_max_value(&emitter->library->emitter_attributes[emitter->emitter_attributes].overtime.velocity_turbulance) && tfx__get_graph_max_value(&emitter->library->emitter_attributes[emitter->emitter_attributes].overtime.noise_resolution))) {
+	if ((!(emitter->property_flags & tfxEmitterPropertyFlags_use_simple_motion_randomness) && tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_velocity_turbulance_index]) && tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_noise_resolution_index]))) {
 		emitter->control_profile |= tfxEmitterControlProfile_noise;
 	}
 	if (shared_properties->emission_type == tfxPath) {
@@ -10287,7 +10293,7 @@ void tfx__update_emitter_control_profile(tfx_effect_descriptor_t *emitter) {
 			emitter->control_profile |= tfxEmitterControlProfile_edge_kill;
 		}
 	}
-	if (tfx__get_graph_max_value(&emitter->library->emitter_attributes[emitter->emitter_attributes].overtime.stretch)) {
+	if (tfx__get_graph_max_value(&emitter->library->graphs[emitter->graph_list_index].graphs[tfxEmitter_overtime_stretch_index])) {
 		emitter->control_profile |= tfxEmitterControlProfile_stretch;
 	}
 }
@@ -11015,8 +11021,8 @@ tfxAPI tfx_effect_descriptor_t tfx_NewEffect() {
 	new_effect.property_index = tfxINVALID;
 	new_effect.graph_list_index = tfxINVALID;
 	new_effect.path_attributes = tfxINVALID;
-	new_effect.emitter_attributes = tfxINVALID;
-	new_effect.transform_attributes = tfxINVALID;
+	new_effect.graph_list_index = tfxINVALID;
+	new_effect.transform_index = tfxINVALID;
 	new_effect.control_profile = 0;
 	new_effect.type = tfxEffectType;
 	new_effect.property_flags = tfxEmitterPropertyFlags_image_handle_auto_center |
@@ -11062,20 +11068,20 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 	TFX_ASSERT(emitter.path_attributes != tfxINVALID);
 	tfx_emitter_path_t *path = &library->paths[emitter.path_attributes];
 	tfxWideFloat node_count = tfxWideSetSingle((float)path->node_count - 3.f);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
 	tfxWideFloat life;
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
 	const tfxWideFloat emitter_width = tfxWideSetSingle(emitter.emitter_size.x);
 	const tfxWideFloat emitter_height = tfxWideSetSingle(emitter.emitter_size.y);
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
-	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
-	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
+	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.last_frame);
+	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.last_frame);
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
 
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
-	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
+	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index].lookup.last_frame);
 	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->global_stretch);
 	tfxWideArray p_stretch;
 	tfxU32 start_diff = work_entry->start_diff;
@@ -11110,7 +11116,7 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 		life = tfxWideMul(life, tfxLOOKUP_TABLE_ARRAY_SIZE_WIDE.m);
 
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 		tfxWideFloat velocity_scalar = tfxWideMul(tfxWideMul(base_velocity, lookup_velocity), velocity_adjuster);
 		path_position = tfxWideAdd(path_position, tfxWideMul(velocity_scalar, pm.update_time_wide));
 
@@ -11181,9 +11187,9 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 			tfx__readbarrier;
 
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), noise_resolution_last_frame);
-			const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->noise_resolution.lookup.values, lookup_frame), noise_resolution);
+			const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.values, lookup_frame), noise_resolution);
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_turbulance_last_frame);
-			const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->velocity_turbulance.lookup.values, lookup_frame);
+			const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.values, lookup_frame);
 
 			tfxWideArray x, y;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
@@ -11222,7 +11228,7 @@ void tfx__control_particle_position_path_2d(tfx_work_queue_t *queue, void *data)
 		if (emitter.control_profile & tfxEmitterControlProfile_stretch) {
 			//Stretch
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
-			const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->stretch.lookup.values, lookup_frame);
+			const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index].lookup.values, lookup_frame);
 			p_stretch.m = tfxWideMul(lookup_stretch, stretch);
 
 			tfxWideFloat stretch_velocity_x;
@@ -11305,18 +11311,18 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 	TFX_ASSERT(emitter.path_attributes != tfxINVALID);
 	tfx_emitter_path_t *path = &library->paths[emitter.path_attributes];
 	tfxWideFloat node_count = tfxWideSetSingle((float)path->node_count - 3.f);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
 	tfxWideFloat life;
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
 	const tfxWideFloat emitter_width = tfxWideSetSingle(emitter.emitter_size.x);
 	const tfxWideFloat emitter_height = tfxWideSetSingle(emitter.emitter_size.y);
 	const tfxWideFloat emitter_depth = tfxWideSetSingle(emitter.emitter_size.z);
 	const tfxWideFloat e_handle_x = tfxWideSetSingle(emitter.handle.x);
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
-	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
-	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
+	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.last_frame);
+	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.last_frame);
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 
@@ -11347,7 +11353,7 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 		life = tfxWideMul(life, tfxLOOKUP_TABLE_ARRAY_SIZE_WIDE.m);
 
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 		tfxWideFloat velocity_scalar = tfxWideMul(tfxWideMul(base_velocity, lookup_velocity), velocity_adjuster);
 		path_position = tfxWideAdd(path_position, tfxWideMul(velocity_scalar, pm.update_time_wide));
 
@@ -11423,10 +11429,10 @@ void tfx__control_particle_position_path_3d(tfx_work_queue_t *queue, void *data)
 
 			tfxWideArrayi lookup_frame;
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_turbulance_last_frame);
-			const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->velocity_turbulance.lookup.values, lookup_frame);
+			const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.values, lookup_frame);
 
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), noise_resolution_last_frame);
-			const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->noise_resolution.lookup.values, lookup_frame), noise_resolution);
+			const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.values, lookup_frame), noise_resolution);
 
 			tfxWideArray x, y, z;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
@@ -11483,7 +11489,7 @@ tfx__readbarrier;
 #define tfxControlParticleUpdatePosition \
 tfxWideArrayi lookup_frame_weight;    \
 lookup_frame_weight.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);    \
-const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->weight.lookup.values, lookup_frame_weight);    \
+const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.values, lookup_frame_weight);    \
 tfxWideFloat age_fraction = tfxWideMin(tfxWideDiv(age, pm.frame_length_wide), tfxWIDEONE.m);    \
 current_velocity_y = tfxWideSub(current_velocity_y, tfxWideMul(base_weight, lookup_weight));    \
 current_velocity_x = tfxWideMul(tfxWideMul(tfxWideMul(current_velocity_x, pm.update_time_wide), velocity_adjuster), age_fraction);    \
@@ -11511,9 +11517,9 @@ const tfxWideFloat base_noise_offset = tfxWideLoad(&bank.noise_offset[index]);  
 tfxWideFloat noise_offset = tfxWideMul(base_noise_offset, overal_scale_wide);    \
 tfx__readbarrier;    \
 lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_turbulance_last_frame);    \
-const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->velocity_turbulance.lookup.values, lookup_frame);    \
+const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.values, lookup_frame);    \
 lookup_frame.m = tfxWideMini(tfxWideConverti(life), noise_resolution_last_frame);    \
-const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->noise_resolution.lookup.values, lookup_frame), noise_resolution);    \
+const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.values, lookup_frame), noise_resolution);    \
 tfxWideArray x, y, z;    \
 x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);    \
 y.m = tfxWideAdd(tfxWideDiv(local_position_y, lookup_noise_resolution), noise_offset);    \
@@ -11549,7 +11555,7 @@ tfxWideInt seed = tfx__wide_seedgen_base(time_step, uid);    \
 tfxWideFloat speed = tfxWideLoad(&bank.noise_offset[index]);    \
 tfxWideArrayi lookup_motion_randomness;    \
 lookup_motion_randomness.m = tfxWideMini(tfxWideConverti(life), motion_randomness_last_frame);	\
-const tfxWideFloat influence = tfxWideMul(tfxWideMul(motion_randomness_base, global_noise), tfxWideLookupSet(work_entry->graphs->motion_randomness.lookup.values, lookup_motion_randomness));    \
+const tfxWideFloat influence = tfxWideMul(tfxWideMul(motion_randomness_base, global_noise), tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index].lookup.values, lookup_motion_randomness));    \
 tfxWideFloat point_one_influence = tfxWideMul(tfxWideSetSingle(0.1f), influence);    \
 tfxWideFloat random_speed = tfxWideMul(tfxWideDiv(tfx__wide_seedgen(seed), tfxMAXUINTf.m), tfxWideMul(tfxWideSetSingle(0.01f), influence));    \
 tfxWideFloat random_x, random_y, random_z;    \
@@ -11575,10 +11581,10 @@ void tfx__control_particle_position_basic_3d(tfx_work_queue_t *queue, void *data
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	tfx_library library = emitter.library;
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
-	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
+	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.last_frame);
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
@@ -11595,7 +11601,7 @@ void tfx__control_particle_position_basic_3d(tfx_work_queue_t *queue, void *data
 
 		tfxWideArrayi lookup_frame;
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -11621,10 +11627,10 @@ void tfx__control_particle_position_orbital_3d(tfx_work_queue_t *queue, void *da
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
-	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
+	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.last_frame);
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
 	tfxWideFloat emitter_x = {};
@@ -11657,7 +11663,7 @@ void tfx__control_particle_position_orbital_3d(tfx_work_queue_t *queue, void *da
 
 		tfxWideArrayi lookup_frame;
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -11681,13 +11687,13 @@ void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
 	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
-	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
-	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
-	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
+	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.last_frame);
+	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.last_frame);
+	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.last_frame);
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
 	for (tfxU32 i = work_entry->start_index; i != work_entry->wide_end_index; i += tfxDataWidth) {
@@ -11704,7 +11710,7 @@ void tfx__control_particle_noise_3d(tfx_work_queue_t *queue, void *data) {
 
 		tfxWideArrayi lookup_frame;
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -11750,13 +11756,13 @@ void tfx__control_particle_orbital_noise_3d(tfx_work_queue_t *queue, void *data)
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
-	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
-	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
+	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.last_frame);
+	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.last_frame);
 	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
-	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
+	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.last_frame);
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 	tfxWideFloat emitter_x = {};
 	tfxWideFloat emitter_z = {};
@@ -11788,7 +11794,7 @@ void tfx__control_particle_orbital_noise_3d(tfx_work_queue_t *queue, void *data)
 
 		tfxWideArrayi lookup_frame;
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -11830,13 +11836,13 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
 	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
-	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
-	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->motion_randomness.lookup.last_frame);
-	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame));
+	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.last_frame);
+	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index].lookup.last_frame);
+	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index], emitter.frame));
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
 	tfxWideInt time_step = tfxWideConverti(tfxWideSetSingle(emitter.age / 250.f));
@@ -11859,7 +11865,7 @@ void tfx__control_particle_motion_randomness_3d(tfx_work_queue_t *queue, void *d
 
 		tfxWideArrayi lookup_frame;
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -11909,12 +11915,12 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = work_entry->pm->particle_arrays[emitter.particles_index];
 	const tfxWideFloat overal_scale_wide = tfxWideSetSingle(work_entry->overal_scale);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
-	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
-	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->motion_randomness.lookup.last_frame);
-	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame));
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
+	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.last_frame);
+	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index].lookup.last_frame);
+	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index], emitter.frame));
 	const tfxWideFloat global_noise = tfxWideSetSingle(work_entry->global_noise);
 	const tfxWideFloat node_count = tfxWideSetSingle(work_entry->node_count);
 
@@ -11954,7 +11960,7 @@ void tfx__control_particle_motion_randomness_orbital_3d(tfx_work_queue_t *queue,
 
 		tfxWideArrayi lookup_frame;
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 
 		//----Velocity Changes
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
@@ -12071,8 +12077,8 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_handle_z = tfxWideSetSingle(emitter.handle.z);
 	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
+	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index].lookup.last_frame);
 	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->global_stretch);
 	tfxWideArray p_stretch;
 	tfxU32 start_diff = work_entry->start_diff;
@@ -12096,7 +12102,7 @@ void tfx__control_particle_transform_3d(tfx_work_queue_t *queue, void *data) {
 
 		tfxWideArrayi lookup_frame;
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
-		const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->stretch.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index].lookup.values, lookup_frame);
 		p_stretch.m = tfxWideMul(lookup_stretch, stretch);
 
 		tfxWideArray position_x;
@@ -12271,21 +12277,21 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 	tfx_2d_instance_t *sprites = tfxCastBuffer(tfx_2d_instance_t, work_entry->sprite_instances);
 
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
-	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity_turbulance.lookup.last_frame);
-	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->noise_resolution.lookup.last_frame);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
+	const tfxWideInt velocity_turbulance_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.last_frame);
+	const tfxWideInt noise_resolution_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.last_frame);
 	tfxWideInt time_step = tfxWideConverti(tfxWideSetSingle(emitter.age / 100.f));
 
 	//Noise
-	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->velocity.lookup.last_frame);
-	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
-	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame));
-	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->weight.lookup.last_frame);
-	const tfxWideInt direction_last_frame = tfxWideSetSinglei(work_entry->graphs->direction.lookup.last_frame);
-	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->stretch.lookup.last_frame);
+	const tfxWideInt velocity_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.last_frame);
+	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.last_frame);
+	const tfxWideFloat velocity_adjuster = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame));
+	const tfxWideInt weight_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.last_frame);
+	const tfxWideInt direction_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_direction_index].lookup.last_frame);
+	const tfxWideInt stretch_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index].lookup.last_frame);
 	const tfxWideFloat stretch = tfxWideSetSingle(work_entry->global_stretch);
-	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->motion_randomness.lookup.last_frame);
-	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.motion_randomness, emitter.frame));
+	const tfxWideInt motion_randomness_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index].lookup.last_frame);
+	const tfxWideFloat motion_randomness_base = tfxWideSetSingle(tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_motion_randomness_index], emitter.frame));
 	tfxWideFloat emitter_x;
 	tfxWideFloat emitter_y;
 	tfxWideArray p_stretch;
@@ -12355,7 +12361,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat angle = tfxWideLoad(&bank.local_rotations_x[index]);
 			tfxWideArray lookup_direction;
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), direction_last_frame);
-			lookup_direction.m = tfxWideLookupSet(work_entry->graphs->direction.lookup.values, lookup_frame);
+			lookup_direction.m = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_direction_index].lookup.values, lookup_frame);
 			lookup_direction.m = tfxWideAdd(lookup_direction.m, angle);
 			tfxWideSinCos(lookup_direction.m, &velocity_normal_x, &velocity_normal_y);
 			velocity_normal_y = tfxWideMul(velocity_normal_y, tfxWideSetSingle(-1.f));
@@ -12372,7 +12378,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 
 		//----Velocity Changes
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_last_frame);
-		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->velocity.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_velocity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.values, lookup_frame);
 		tfxWideFloat velocity_scalar = tfxWideMul(base_velocity, lookup_velocity);
 
 		if (emitter.control_profile & tfxEmitterControlProfile_noise) {
@@ -12388,9 +12394,9 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			tfx__readbarrier;
 
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), noise_resolution_last_frame);
-			const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->noise_resolution.lookup.values, lookup_frame), noise_resolution);
+			const tfxWideFloat lookup_noise_resolution = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_noise_resolution_index].lookup.values, lookup_frame), noise_resolution);
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), velocity_turbulance_last_frame);
-			const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->velocity_turbulance.lookup.values, lookup_frame);
+			const tfxWideFloat lookup_velocity_turbulance = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_turbulance_index].lookup.values, lookup_frame);
 
 			tfxWideArray x, y;
 			x.m = tfxWideAdd(tfxWideDiv(local_position_x, lookup_noise_resolution), noise_offset);
@@ -12428,7 +12434,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 
 			tfxWideArrayi lookup_motion_randomness;
 			lookup_motion_randomness.m = tfxWideMini(tfxWideConverti(life), motion_randomness_last_frame);
-			const tfxWideFloat influence = tfxWideMul(motion_randomness_base, tfxWideLookupSet(work_entry->graphs->motion_randomness.lookup.values, lookup_motion_randomness));
+			const tfxWideFloat influence = tfxWideMul(motion_randomness_base, tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_motion_randomness_index].lookup.values, lookup_motion_randomness));
 
 			tfxWideFloat speed_influence = tfxWideMul(tfxWideSetSingle(10.f), influence);
 			tfxWideFloat max_degrees = tfxWideMul(tfxWideSetSingle(0.3926991f), influence); //22.5 degrees
@@ -12439,7 +12445,7 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 			tfxWideFloat angle = tfxWideLoad(&bank.local_rotations_x[index]);
 			tfxWideArray lookup_direction;
 			lookup_frame.m = tfxWideMini(tfxWideConverti(life), direction_last_frame);
-			lookup_direction.m = tfxWideLookupSet(work_entry->graphs->direction.lookup.values, lookup_frame);
+			lookup_direction.m = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_direction_index].lookup.values, lookup_frame);
 			lookup_direction.m = tfxWideAdd(lookup_direction.m, angle);
 			direction = tfxWideAdd(direction, random_direction);
 			if (orbit_relative + orbit_non_relative) {
@@ -12477,11 +12483,11 @@ void tfx__control_particle_position_2d(tfx_work_queue_t *queue, void *data) {
 		}
 
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
-		const tfxWideFloat lookup_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
+		const tfxWideFloat lookup_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.values, lookup_frame), base_spin);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), weight_last_frame);
-		const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->weight.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_weight = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_weight_index].lookup.values, lookup_frame);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), stretch_last_frame);
-		const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->stretch.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_stretch = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_stretch_index].lookup.values, lookup_frame);
 		p_stretch.m = tfxWideMul(lookup_stretch, stretch);
 
 		tfxWideFloat stretch_velocity_x;
@@ -12600,7 +12606,7 @@ void tfx__control_particle_transform_2d(tfx_work_queue_t *queue, void *data) {
 	const tfxWideFloat e_handle_y = tfxWideSetSingle(emitter.handle.y);
 	const tfxWideFloat e_scale = tfxWideSetSingle(work_entry->overal_scale);
 	const tfxWideInt capture_after_transform = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
 
 	tfxU32 start_diff = work_entry->start_diff;
 
@@ -12799,11 +12805,11 @@ void tfx__control_particle_spin(tfx_work_queue_t *queue, void *data) {
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
-	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
+	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.last_frame);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
 
 	tfxU32 start_diff = work_entry->start_diff;
 
@@ -12830,7 +12836,7 @@ void tfx__control_particle_spin(tfx_work_queue_t *queue, void *data) {
 		rotations_z.m = tfxWideLoad(&bank.local_rotations_z[index]);
 
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
-		const tfxWideFloat lookup_roll_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
+		const tfxWideFloat lookup_roll_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.values, lookup_frame), base_spin);
 
 		//----Spin and angle Changes
 		rotations_z.m = tfxWideAdd(rotations_z.m, tfxWideMul(lookup_roll_spin, pm.update_time_wide));
@@ -12892,13 +12898,13 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 	const tfx_emission_type emission_type = work_entry->shared_properties->emission_type;
 
-	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->spin.lookup.last_frame);
-	const tfxWideInt spin_pitch_last_frame = tfxWideSetSinglei(work_entry->graphs->pitch_spin.lookup.last_frame);
-	const tfxWideInt spin_yaw_last_frame = tfxWideSetSinglei(work_entry->graphs->yaw_spin.lookup.last_frame);
+	const tfxWideInt spin_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.last_frame);
+	const tfxWideInt spin_pitch_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.last_frame);
+	const tfxWideInt spin_yaw_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.last_frame);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
 
 	tfxU32 start_diff = work_entry->start_diff;
 
@@ -12933,11 +12939,11 @@ void tfx__control_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 		rotations_z.m = tfxWideLoad(&bank.local_rotations_z[index]);
 
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_last_frame);
-		const tfxWideFloat lookup_roll_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->spin.lookup.values, lookup_frame), base_spin);
+		const tfxWideFloat lookup_roll_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.values, lookup_frame), base_spin);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_pitch_last_frame);
-		const tfxWideFloat lookup_pitch_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->pitch_spin.lookup.values, lookup_frame), base_pitch_spin);
+		const tfxWideFloat lookup_pitch_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.values, lookup_frame), base_pitch_spin);
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), spin_yaw_last_frame);
-		const tfxWideFloat lookup_yaw_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->yaw_spin.lookup.values, lookup_frame), base_yaw_spin);
+		const tfxWideFloat lookup_yaw_spin = tfxWideMul(tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_roll_spin_index].lookup.values, lookup_frame), base_yaw_spin);
 
 		//----Spin and angle Changes
 		rotations_x.m = tfxWideAdd(rotations_x.m, tfxWideMul(lookup_pitch_spin, pm.update_time_wide));
@@ -12989,13 +12995,13 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_particle_soa_t &bank = pm.particle_arrays[emitter.particles_index];
 
-	const tfxWideInt width_last_frame = tfxWideSetSinglei(work_entry->graphs->width.lookup.last_frame);
-	const tfxWideInt height_last_frame = tfxWideSetSinglei(work_entry->graphs->height.lookup.last_frame);
+	const tfxWideInt width_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_width_index].lookup.last_frame);
+	const tfxWideInt height_last_frame = tfxWideSetSinglei(work_entry->graphs->graphs[tfxEmitter_overtime_height_index].lookup.last_frame);
 	const tfxWideFloat overal_scale = tfxWideSetSingle(work_entry->overal_scale);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
 
 	tfxU32 start_diff = work_entry->start_diff;
 
@@ -13032,10 +13038,10 @@ void tfx__control_particle_size(tfx_work_queue_t *queue, void *data) {
 		life = tfxWideMul(life, tfxLOOKUP_TABLE_ARRAY_SIZE_WIDE.m);
 
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), width_last_frame);
-		const tfxWideFloat lookup_width = tfxWideLookupSet(work_entry->graphs->width.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_width = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_width_index].lookup.values, lookup_frame);
 
 		lookup_frame.m = tfxWideMini(tfxWideConverti(life), height_last_frame);
-		const tfxWideFloat lookup_height = tfxWideLookupSet(work_entry->graphs->height.lookup.values, lookup_frame);
+		const tfxWideFloat lookup_height = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_height_index].lookup.values, lookup_frame);
 
 		const tfxWideFloat base_size_x = tfxWideLoad(&bank.base_size_x[index]);
 		const tfxWideFloat base_size_y = tfxWideLoad(&bank.base_size_y[index]);
@@ -13113,10 +13119,10 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
 
-	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->velocity.lookup.life);
+	tfxWideFloat max_life = tfxWideSetSingle(work_entry->graphs->graphs[tfxEmitter_overtime_velocity_index].lookup.life);
 	tfxU32 start_diff = work_entry->start_diff;
 
-	tfx_color_ramp_t &ramp = work_entry->graphs->color_ramps[0];
+	tfx_color_ramp_t &ramp = work_entry->graphs->color_ramps;
 	tfxWideFloat life;
 	tfxWideArrayi ramp_index;
 	tfxWideFloat color_ramp_size = tfxWideSetSingle(tfxCOLOR_RAMP_WIDTH);
@@ -13149,10 +13155,10 @@ void tfx__control_particle_color(tfx_work_queue_t *queue, void *data) {
 		}
 
 		ramp_index.m = tfxWideMini(tfxWideConverti(tfxWideMul(life, color_ramp_size)), color_ramp_sizei);
-		tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->intensity.lookup.values, ramp_index);
-		tfxWideFloat dissolve_lerp = tfxWideLookupSet(work_entry->graphs->curved_alpha.lookup.values, ramp_index);
-		tfxWideFloat sharpness = tfxWideLookupSet(work_entry->graphs->alpha_sharpness.lookup.values, ramp_index);
-		tfxWideFloat gradient_mapper = tfxWideLookupSet(work_entry->graphs->gradient_mapper.lookup.values, ramp_index);
+		tfxWideFloat lookup_intensity = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_intensity_index].lookup.values, ramp_index);
+		tfxWideFloat dissolve_lerp = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_curved_alpha_index].lookup.values, ramp_index);
+		tfxWideFloat sharpness = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_alpha_sharpness_index].lookup.values, ramp_index);
+		tfxWideFloat gradient_mapper = tfxWideLookupSet(work_entry->graphs->graphs[tfxEmitter_overtime_gradient_mapper_index].lookup.values, ramp_index);
 
 		//----Color changes
 		lookup_intensity = tfxWideMul(tfxWideMul(global_intensity, lookup_intensity), intensity_factor);
@@ -13205,8 +13211,8 @@ void tfx__control_particle_image_frame(tfx_work_queue_t *queue, void *data) {
 	const tfxWideInt capture_after_transform_flag = tfxWideSetSinglei(tfxParticleFlags_capture_after_transform);
 
 	tfxWideInt color_ramp_indexes;
-	color_ramp_indexes = tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 24);
-	color_ramp_indexes = tfxWideOri(color_ramp_indexes, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes[0]) << 16));
+	color_ramp_indexes = tfxWideSetSinglei(tfxColorRampIndex(work_entry->graphs->color_ramp_bitmap_indexes) << 24);
+	color_ramp_indexes = tfxWideOri(color_ramp_indexes, tfxWideSetSinglei(tfxColorRampLayer(work_entry->graphs->color_ramp_bitmap_indexes) << 16));
 	tfxWideInt image_start_index = tfxWideSetSinglei((pm->flags & tfxParticleManagerFlags_recording_sprites) && (pm->flags & tfxParticleManagerFlags_using_uids) ? 0 : image->compute_shape_index);
 
 	tfxU32 running_sprite_index = work_entry->sprites_index;
@@ -14342,17 +14348,17 @@ void tfx__update_ribbon_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_vec3_t local_rotations;
 	tfx_library library = ribbon_emitter.library;
 	tfx_vec3_t translation;
-	translation.x = tfx__lookup_precise(&library->transform_attributes[ribbon_emitter.transform_attributes].translation_x, ribbon_emitter.age);
-	translation.y = tfx__lookup_precise(&library->transform_attributes[ribbon_emitter.transform_attributes].translation_y, ribbon_emitter.age);
-	translation.z = tfx__lookup_precise(&library->transform_attributes[ribbon_emitter.transform_attributes].translation_z, ribbon_emitter.age);
+	translation.x = tfx__lookup_precise(&library->graphs[ribbon_emitter.transform_index].graphs[tfxTransform_translate_x_index], ribbon_emitter.age);
+	translation.y = tfx__lookup_precise(&library->graphs[ribbon_emitter.transform_index].graphs[tfxTransform_translate_y_index], ribbon_emitter.age);
+	translation.z = tfx__lookup_precise(&library->graphs[ribbon_emitter.transform_index].graphs[tfxTransform_translate_z_index], ribbon_emitter.age);
 
 	ribbon_emitter.captured_position = ribbon_emitter.world_position;
 
 	ribbon_emitter.frame = ribbon_emitter.age;
 
-	local_rotations.roll = tfx__lookup_precise(&library->transform_attributes[ribbon_emitter.transform_attributes].roll, ribbon_emitter.age);
-	local_rotations.pitch = tfx__lookup_precise(&library->transform_attributes[ribbon_emitter.transform_attributes].pitch, ribbon_emitter.age);
-	local_rotations.yaw = tfx__lookup_precise(&library->transform_attributes[ribbon_emitter.transform_attributes].yaw, ribbon_emitter.age);
+	local_rotations.roll = tfx__lookup_precise(&library->graphs[ribbon_emitter.transform_index].graphs[tfxTransform_roll_index], ribbon_emitter.age);
+	local_rotations.pitch = tfx__lookup_precise(&library->graphs[ribbon_emitter.transform_index].graphs[tfxTransform_pitch_index], ribbon_emitter.age);
+	local_rotations.yaw = tfx__lookup_precise(&library->graphs[ribbon_emitter.transform_index].graphs[tfxTransform_yaw_index], ribbon_emitter.age);
 
 	TFX_ASSERT(ribbon_emitter.parent_index != tfxINVALID);    //Emitter must have a valid parent (an effect)
 
@@ -14367,7 +14373,7 @@ void tfx__update_ribbon_emitter(tfx_work_queue_t *work_queue, void *data) {
 	ribbon_work_entry->parent_spawn_controls = &parent_effect.spawn_controls;
 	ribbon_work_entry->parent_index = ribbon_emitter.parent_index;
 	ribbon_work_entry->overal_scale = parent_effect.overal_scale;
-	ribbon_work_entry->graphs = &ribbon_emitter.library->emitter_attributes[ribbon_emitter.emitter_attributes].overtime;
+	ribbon_work_entry->graphs = &ribbon_emitter.library->graphs[ribbon_emitter.graph_list_index];
 
 	if (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d) {
 		tfx__transform_3d(&ribbon_emitter.world_rotations, &local_rotations, &ribbon_work_entry->overal_scale, &ribbon_emitter.world_position, &ribbon_emitter.local_position, &translation, &ribbon_emitter.rotation, &parent_effect);
@@ -14454,17 +14460,17 @@ void tfx__update_emitter(tfx_work_queue_t *work_queue, void *data) {
 	tfx_vec3_t local_rotations;
 	tfx_library library = emitter.library;
 	tfx_vec3_t translation;
-	translation.x = tfx__lookup_precise(&library->transform_attributes[emitter.transform_attributes].translation_x, emitter.age);
-	translation.y = tfx__lookup_precise(&library->transform_attributes[emitter.transform_attributes].translation_y, emitter.age);
-	translation.z = tfx__lookup_precise(&library->transform_attributes[emitter.transform_attributes].translation_z, emitter.age);
+	translation.x = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_translate_x_index], emitter.age);
+	translation.y = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_translate_y_index], emitter.age);
+	translation.z = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_translate_z_index], emitter.age);
 
 	emitter.captured_position = emitter.world_position;
 
 	emitter.frame = emitter.age;
 
-	local_rotations.roll = tfx__lookup_precise(&library->transform_attributes[emitter.transform_attributes].roll, emitter.age);
-	local_rotations.pitch = tfx__lookup_precise(&library->transform_attributes[emitter.transform_attributes].pitch, emitter.age);
-	local_rotations.yaw = tfx__lookup_precise(&library->transform_attributes[emitter.transform_attributes].yaw, emitter.age);
+	local_rotations.roll = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_roll_index], emitter.age);
+	local_rotations.pitch = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_pitch_index], emitter.age);
+	local_rotations.yaw = tfx__lookup_precise(&library->graphs[emitter.transform_index].graphs[tfxTransform_yaw_index], emitter.age);
 
 	spawn_work_entry->highest_particle_age = emitter.highest_particle_age;
 
@@ -14616,8 +14622,8 @@ tfxU32 tfx__new_sprites_needed(tfx_particle_manager pm, tfx_random_t *random, tf
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(random, 25 + emitter.seed_index);
 	if (!(emitter.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
-		emitter.spawn_quantity = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.amount, emitter.frame);
-		float amount_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.amount, emitter.frame);
+		emitter.spawn_quantity = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_amount_index], emitter.frame);
+		float amount_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_amount_index], emitter.frame);
 		emitter.spawn_quantity += amount_variation > 0.f ? tfx_RandomRangeFromTo(random, 1.f, amount_variation) : 0.f;
 	}
 	else if (shared_properties->emission_type == tfxOtherEmitter) {
@@ -14742,8 +14748,8 @@ tfxU32 tfx__new_ribbons_needed(tfx_particle_manager pm, tfx_random_t *random, tf
 	tfx_library library = ribbon_emitter.library;
 	tfx_AlterRandomSeedU32(random, 25 + ribbon_emitter.seed_index);
 	if (!(ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_single)) {
-		ribbon_emitter.spawn_quantity = tfx__lookup_precise(&library->emitter_attributes[ribbon_emitter.emitter_attributes].base.amount, ribbon_emitter.frame);
-		float amount_variation = tfx__lookup_precise(&library->emitter_attributes[ribbon_emitter.emitter_attributes].variation.amount, ribbon_emitter.frame);
+		ribbon_emitter.spawn_quantity = tfx__lookup_precise(&library->graphs[ribbon_emitter.graph_list_index].graphs[tfxRibbon_base_amount_index], ribbon_emitter.frame);
+		float amount_variation = tfx__lookup_precise(&library->graphs[ribbon_emitter.graph_list_index].graphs[tfxRibbon_variation_amount_index], ribbon_emitter.frame);
 		ribbon_emitter.spawn_quantity += amount_variation > 0.f ? tfx_RandomRangeFromTo(random, 1.f, amount_variation) : 0.f;
 	} else {
 		ribbon_emitter.spawn_quantity = (float)shared_properties->spawn_amount + tfx_RandomRangeZeroToMax(random, (float)shared_properties->spawn_amount_variation);
@@ -15011,15 +15017,15 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 
 	//const float life = pm.emitters.life[emitter_index];
 	//const float life_variation = pm.emitters.life_variation[emitter_index];
-	const float life = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.life, emitter.frame) * entry->parent_spawn_controls->life;
-	const float life_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.life, emitter.frame) * entry->parent_spawn_controls->life;
+	const float life = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_life_index], emitter.frame) * entry->parent_spawn_controls->life;
+	const float life_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_life_index], emitter.frame) * entry->parent_spawn_controls->life;
 	const tfxU32 loop_count = entry->shared_properties->single_shot_limit + 1;
 	const float emitter_intensity = entry->parent_spawn_controls->intensity;
-	const float first_red_value = tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.red);
-	const float first_green_value = tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.green);
-	const float first_blue_value = tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.blue);
-	const float first_alpha_value = tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.blendfactor);
-	const tfx_color_ramp_t &color_ramp = library->emitter_attributes[emitter.emitter_attributes].overtime.color_ramps[0];
+	const float first_red_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_red_index]);
+	const float first_green_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_green_index]);
+	const float first_blue_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_blue_index]);
+	const float first_alpha_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_blendfactor_index]);
+	const tfx_color_ramp_t &color_ramp = library->graphs[emitter.graph_list_index].color_ramps;
 
 	TFX_ASSERT(random.seeds[0] > 0);
 
@@ -15073,10 +15079,10 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 			if ((tfxU32)emitter.grid_coords.x >= pm.particle_location_buffers[emitter.spawn_locations_index].current_size) {
 				emitter.grid_coords.x = 0.f;
 			}
-			float factor = lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].factor.life, age_lerp * max_age, max_age);
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_life_index], age_lerp * max_age, max_age);
 			max_age *= factor;
 			max_age = tfx__Max(max_age, pm.frame_length);
-			factor = lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].factor.intensity, age_lerp * max_age, max_age);
+			factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_intensity_index], age_lerp * max_age, max_age);
 			entry->particle_data->intensity_factor[index] = factor;
 		}
 		else {
@@ -15155,11 +15161,11 @@ void tfx__spawn_particle_size_2d(tfx_work_queue_t *queue, void *data) {
 
 	tfx_vec2_t size;
 	if (!(emitter.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-		size.x = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.width, emitter.frame) * entry->parent_spawn_controls->size_x;
-		size.y = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.height, emitter.frame) * entry->parent_spawn_controls->size_y;
+		size.x = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_width_index], emitter.frame) * entry->parent_spawn_controls->size_x;
+		size.y = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_height_index], emitter.frame) * entry->parent_spawn_controls->size_y;
 	}
 	else {
-		size.x = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.width, emitter.frame);
+		size.x = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_width_index], emitter.frame);
 		if (entry->parent_property_flags & tfxEffectPropertyFlags_global_uniform_size)
 			size.y = size.x * entry->parent_spawn_controls->size_x;
 		else
@@ -15167,8 +15173,8 @@ void tfx__spawn_particle_size_2d(tfx_work_queue_t *queue, void *data) {
 		size.x *= entry->parent_spawn_controls->size_x;
 	}
 	tfx_vec2_t size_variation;
-	size_variation.x = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.width, emitter.frame) * entry->parent_spawn_controls->size_x;
-	size_variation.y = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.height, emitter.frame) * entry->parent_spawn_controls->size_y;
+	size_variation.x = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_width_index], emitter.frame) * entry->parent_spawn_controls->size_x;
+	size_variation.y = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_height_index], emitter.frame) * entry->parent_spawn_controls->size_y;
 
 	if (entry->emission_type == tfxOtherEmitter) {
 		emitter.grid_coords.x = emitter.grid_coords.y;
@@ -15203,7 +15209,7 @@ void tfx__spawn_particle_size_2d(tfx_work_queue_t *queue, void *data) {
 				emitter.grid_coords.x = 0.f;
 			}
 			float max_age = entry->particle_data->max_age[index];
-			float factor = lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].factor.size, age_lerp * max_age, max_age);
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_size_index], age_lerp * max_age, max_age);
 			base_size_x *= factor;
 			base_size_y *= factor;
 		}
@@ -15224,11 +15230,11 @@ void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data) {
 
 	tfx_vec2_t size;
 	if (!(emitter.property_flags & tfxEmitterPropertyFlags_base_uniform_size)) {
-		size.x = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.width, emitter.frame) * entry->parent_spawn_controls->size_x;
-		size.y = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.height, emitter.frame) * entry->parent_spawn_controls->size_y;
+		size.x = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_width_index], emitter.frame) * entry->parent_spawn_controls->size_x;
+		size.y = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_height_index], emitter.frame) * entry->parent_spawn_controls->size_y;
 	}
 	else {
-		size.x = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.width, emitter.frame);
+		size.x = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_width_index], emitter.frame);
 		if (entry->parent_property_flags & tfxEffectPropertyFlags_global_uniform_size)
 			size.y = size.x * entry->parent_spawn_controls->size_x;
 		else
@@ -15236,8 +15242,8 @@ void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data) {
 		size.x *= entry->parent_spawn_controls->size_x;
 	}
 	tfx_vec2_t size_variation;
-	size_variation.x = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.width, emitter.frame) * entry->parent_spawn_controls->size_x;
-	size_variation.y = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.height, emitter.frame) * entry->parent_spawn_controls->size_y;
+	size_variation.x = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_width_index], emitter.frame) * entry->parent_spawn_controls->size_x;
+	size_variation.y = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_height_index], emitter.frame) * entry->parent_spawn_controls->size_y;
 	tfx_vec2_t &image_size = entry->shared_properties->image->image_size;
 
 	if (entry->emission_type == tfxOtherEmitter) {
@@ -15273,7 +15279,7 @@ void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data) {
 				emitter.grid_coords.x = 0.f;
 			}
 			float max_age = entry->particle_data->max_age[index];
-			float factor = lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].factor.size, age_lerp * max_age, max_age);
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_size_index], age_lerp * max_age, max_age);
 			base_size_x *= factor;
 			base_size_y *= factor;
 		}
@@ -15293,9 +15299,9 @@ void tfx__spawn_particle_noise(tfx_work_queue_t *queue, void *data) {
 	tfx_emitter_state_t &emitter = pm.emitters[emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 6 + emitter.seed_index);
-	float emitter_noise_offset_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.noise_offset, emitter.frame);
-	float emitter_noise_offset = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.noise_offset, emitter.frame);
-	float emitter_noise_resolution = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.noise_resolution, emitter.frame);
+	float emitter_noise_offset_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_noise_offset_index], emitter.frame);
+	float emitter_noise_offset = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_noise_offset_index], emitter.frame);
+	float emitter_noise_resolution = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_noise_resolution_index], emitter.frame);
 	const float parent_noise_base_offset = pm.effects[emitter.parent_index].noise_base_offset;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -15336,8 +15342,8 @@ void tfx__spawn_particle_spin_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 7 + emitter.seed_index);
 
-	const float spin = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.spin, emitter.frame) * entry->parent_spawn_controls->spin;
-	const float spin_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.spin, emitter.frame) * entry->parent_spawn_controls->spin;
+	const float spin = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_roll_spin_index], emitter.frame) * entry->parent_spawn_controls->spin;
+	const float spin_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_roll_spin_index], emitter.frame) * entry->parent_spawn_controls->spin;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 
@@ -15362,12 +15368,12 @@ void tfx__spawn_particle_spin_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 8 + emitter.seed_index);
 
-	const float roll_spin = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.spin, emitter.frame) * entry->parent_spawn_controls->spin;
-	const float pitch_spin = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.pitch_spin, emitter.frame) * entry->parent_spawn_controls->pitch_spin;
-	const float yaw_spin = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.yaw_spin, emitter.frame) * entry->parent_spawn_controls->yaw_spin;
-	const float spin_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.spin, emitter.frame) * entry->parent_spawn_controls->spin;
-	const float spin_pitch_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.pitch_spin, emitter.frame) * entry->parent_spawn_controls->pitch_spin;
-	const float spin_yaw_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.yaw_spin, emitter.frame) * entry->parent_spawn_controls->yaw_spin;
+	const float roll_spin = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_roll_spin_index], emitter.frame) * entry->parent_spawn_controls->spin;
+	const float pitch_spin = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_pitch_spin_index], emitter.frame) * entry->parent_spawn_controls->pitch_spin;
+	const float yaw_spin = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_yaw_spin_index], emitter.frame) * entry->parent_spawn_controls->yaw_spin;
+	const float spin_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_roll_spin_index], emitter.frame) * entry->parent_spawn_controls->spin;
+	const float spin_pitch_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_pitch_spin_index], emitter.frame) * entry->parent_spawn_controls->pitch_spin;
+	const float spin_yaw_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_yaw_spin_index], emitter.frame) * entry->parent_spawn_controls->yaw_spin;
 	const tfxAngleSettingFlags angle_settings = entry->properties->angle_settings;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -16237,8 +16243,8 @@ void tfx__spawn_particle_ellipse_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_AlterRandomSeedU32(&random, 15 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
 	const tfx_vec2_t &emitter_size = emitter.emitter_size.xy();
-	float arc_size = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
-	float arc_offset = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
+	float arc_size = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_size_index], emitter.frame);
+	float arc_offset = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_offset_index], emitter.frame);
 	const float grid_segment_size_x = arc_size / tfxMax(grid_points.x, 1.f);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -16326,9 +16332,9 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_emitter_path_t *path = &library->paths[emitter.path_attributes];
 	float total_grid_points = (float)path->node_count - 3.f;
 	float increment = 1.f / grid_points.x;
-	float arc_size = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
-	float arc_offset = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
-	float extrusion = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.extrusion, emitter.frame);
+	float arc_size = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_size_index], emitter.frame);
+	float arc_offset = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_offset_index], emitter.frame);
+	float extrusion = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_extrusion_index], emitter.frame);
 	tfx_vec2_t point;
 	bool has_rotation = path->rotation_range > 0 || path->rotation_pitch != 0 || path->rotation_yaw != 0;
 
@@ -16338,8 +16344,8 @@ void tfx__spawn_particle_path_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_vec2_t velocity_direction;
 
 	if (properties.emission_direction == tfxPathGradient) {
-		emission_direction = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);
-		emission_angle_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_range, emitter.frame);
+		emission_direction = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], emitter.frame);
+		emission_angle_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.frame);
 		range = emission_angle_variation * .5f;
 	}
 
@@ -16580,8 +16586,8 @@ void tfx__spawn_particle_ellipsoid(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 16 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
-	float arc_size = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
-	float arc_offset = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
+	float arc_size = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_size_index], emitter.frame);
+	float arc_offset = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_offset_index], emitter.frame);
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -16694,9 +16700,9 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_emitter_path_t *path = &library->paths[emitter.path_attributes];
 	float total_grid_points = (float)path->node_count - 3.f;
 	float increment = 1.f / grid_points.x;
-	float arc_size = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
-	float arc_offset = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
-	float extrusion = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.extrusion, emitter.frame);
+	float arc_size = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_size_index], emitter.frame);
+	float arc_offset = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_offset_index], emitter.frame);
+	float extrusion = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_extrusion_index], emitter.frame);
 	tfx_vec3_t point;
 	bool has_rotation = path->rotation_range > 0 || path->rotation_pitch != 0 || path->rotation_yaw != 0;
 
@@ -16707,9 +16713,9 @@ void tfx__spawn_particle_path_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_vec3_t velocity_direction;
 
 	if (properties.emission_direction == tfxPathGradient) {
-		emission_pitch = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);
-		emission_yaw = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_yaw, emitter.frame);
-		emission_angle_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_range, emitter.frame);
+		emission_pitch = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], emitter.frame);
+		emission_yaw = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_yaw_index], emitter.frame);
+		emission_angle_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_range_index], emitter.frame);
 		range = emission_angle_variation * .5f;
 	}
 
@@ -16930,11 +16936,11 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 	tfx_random_t random = entry->random;
 	tfx_AlterRandomSeedU32(&random, 1 + ribbon_emitter.seed_index);
 	tfx_emitter_path_t *path = &library->paths[ribbon_emitter.path_attributes];
-	tfx_emitter_attributes_t &attributes = library->emitter_attributes[ribbon_emitter.emitter_attributes];
+	tfx_graph_list_t &graph_list = library->graphs[ribbon_emitter.graph_list_index];
 
-	const float life = tfx__lookup_precise(&attributes.base.life, ribbon_emitter.frame) * entry->parent_spawn_controls->life;
-	const float life_variation = tfx__lookup_precise(&attributes.variation.life, ribbon_emitter.frame) * entry->parent_spawn_controls->life;
-	const float base_width = tfx__lookup_precise(&attributes.base.width, ribbon_emitter.frame) * entry->parent_spawn_controls->size_x;
+	const float life = tfx__lookup_precise(&graph_list.graphs[tfxRibbon_base_life_index], ribbon_emitter.frame) * entry->parent_spawn_controls->life;
+	const float life_variation = tfx__lookup_precise(&graph_list.graphs[tfxRibbon_variation_life_index], ribbon_emitter.frame) * entry->parent_spawn_controls->life;
+	const float base_width = tfx__lookup_precise(&graph_list.graphs[tfxRibbon_base_width_index], ribbon_emitter.frame) * entry->parent_spawn_controls->size_x;
 
 	if (ribbon_emitter.static_segment_start_index == tfxINVALID) {
 		tfxU32 index = tfxRibbonBucketIndex(ribbon_emitter.segment_count);
@@ -16943,7 +16949,7 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 		tfxU32 total_vertex_count = pm.running_ribbon_vertex_count + ribbon_bucket.globals.segment_count * ribbon_bucket.globals.segment_count;
 		if (total_vertex_count < pm.info.max_ribbon_segments * ribbon_bucket.globals.segment_count) {
 			ribbon_bucket.segments.resize(ribbon_bucket.segments.current_size + ribbon_bucket.globals.segment_count);
-			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes[0]) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes[0]) << 16) | (entry->shared_properties->image->compute_shape_index + (tfxU32)entry->shared_properties->start_frame);
+			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | (entry->shared_properties->image->compute_shape_index + (tfxU32)entry->shared_properties->start_frame);
 			tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket.segments;
 			tfxWideFloat segment_count = tfxWideSetSingle(float(ribbon_emitter.segment_count - 1));
 			tfxWideFloat num_path_nodes = tfxWideSetSingle(float(path->node_count - 3));
@@ -17071,8 +17077,8 @@ void tfx__spawn_particle_cylinder(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 19 + emitter.seed_index);
 	const tfx_vec3_t &grid_points = entry->shared_properties->grid_points;
-	float arc_size = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_size, emitter.frame);
-	float arc_offset = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.arc_offset, emitter.frame);
+	float arc_size = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_size_index], emitter.frame);
+	float arc_offset = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_arc_offset_index], emitter.frame);
 	const float grid_segment_size_x = arc_size / tfxMax(grid_points.x, 1.f);
 	const float grid_segment_size_y = emitter.emitter_size.y / tfxMax(grid_points.y - 1.f, 1.f);
 	tfx_vec3_t half_emitter_size = emitter.emitter_size * .5f;
@@ -17168,8 +17174,8 @@ void tfx__spawn_particle_weight(tfx_work_queue_t *queue, void *data) {
 	tfx_emitter_state_t &emitter = pm.emitters[entry->emitter_index];
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 20 + emitter.seed_index);
-	float weight = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.weight, emitter.frame) * entry->parent_spawn_controls->weight;
-	float weight_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.weight, emitter.frame) * entry->parent_spawn_controls->weight;
+	float weight = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_weight_index], emitter.frame) * entry->parent_spawn_controls->weight;
+	float weight_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_weight_index], emitter.frame) * entry->parent_spawn_controls->weight;
 
 	for (int i = 0; i != entry->amount_to_spawn; ++i) {
 		tfxU32 index = tfx__get_circular_index(&pm.particle_array_buffers[emitter.particles_index], entry->spawn_start_index + i);
@@ -17198,8 +17204,8 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 21 + emitter.seed_index);
 
-	float velocity = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].base.velocity, emitter.frame) * entry->parent_spawn_controls->velocity;
-	float velocity_variation = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].variation.velocity, emitter.frame) * entry->parent_spawn_controls->velocity;
+	float velocity = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_base_velocity_index], emitter.frame) * entry->parent_spawn_controls->velocity;
+	float velocity_variation = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_variation_velocity_index], emitter.frame) * entry->parent_spawn_controls->velocity;
 
 	if (entry->emission_type == tfxOtherEmitter) {
 		emitter.grid_coords.x = emitter.grid_coords.y;
@@ -17222,7 +17228,7 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 				emitter.grid_coords.x = 0.f;
 			}
 			float max_age = entry->particle_data->max_age[index];
-			float factor = lookup_overtime_callback(&library->emitter_attributes[emitter.emitter_attributes].factor.velocity, age_lerp * max_age, max_age);
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_velocity_index], age_lerp * max_age, max_age);
 			base_velocity *= factor;
 		}
 
@@ -17268,7 +17274,7 @@ void tfx__spawn_particle_micro_update_2d(tfx_work_queue_t *queue, void *data) {
 	tfx_library library = emitter.library;
 	tfx_AlterRandomSeedU32(&random, 23 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
-	const float splatter = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.splatter, emitter.frame) * entry->parent_spawn_controls->splatter;
+	const float splatter = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_splatter_index], emitter.frame) * entry->parent_spawn_controls->splatter;
 
 	if (splatter) {
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -17297,8 +17303,8 @@ void tfx__spawn_particle_micro_update_2d(tfx_work_queue_t *queue, void *data) {
 		}
 	}
 
-	const float first_velocity_value = tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity);
-	const float first_weight_value = tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.weight);
+	const float first_velocity_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_index]);
+	const float first_weight_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_weight_index]);
 	const tfxAngleSettingFlags angle_settings = properties.angle_settings;
 	const float angle_roll_offset = properties.angle_offsets.roll;
 	const tfx_emission_type emission_type = entry->shared_properties->emission_type;
@@ -17325,7 +17331,7 @@ void tfx__spawn_particle_micro_update_2d(tfx_work_queue_t *queue, void *data) {
 
 		if (!line) {
 			if (properties.emission_direction != tfxPathGradient) {
-				direction = tfx__get_emission_direciton_2d(&pm, library, &random, emitter, tfx_vec2_t(local_position_x, local_position_y), sprite_transform_position) + tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.direction);
+				direction = tfx__get_emission_direciton_2d(&pm, library, &random, emitter, tfx_vec2_t(local_position_x, local_position_y), sprite_transform_position) + tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_direction_index]);
 			}
 		}
 		else {
@@ -17366,7 +17372,7 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 	tfx_AlterRandomSeedU32(&random, 24 + emitter.seed_index);
 	const tfx_particle_emitter_properties_t &properties = *entry->properties;
 	const tfx_shared_properties_t &shared_properties = *entry->shared_properties;
-	const float splatter = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.splatter, emitter.frame) * entry->parent_spawn_controls->splatter;
+	const float splatter = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_splatter_index], emitter.frame) * entry->parent_spawn_controls->splatter;
 
 	if (splatter) {
 		for (int i = 0; i != entry->amount_to_spawn; ++i) {
@@ -17403,13 +17409,13 @@ void tfx__spawn_particle_micro_update_3d(tfx_work_queue_t *queue, void *data) {
 	}
 
 
-	float emission_pitch = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_pitch, emitter.frame);
-	float emission_yaw = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emission_yaw, emitter.frame);
-	const float first_velocity_value = tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity);
-	const float first_weight_value = tfx__get_graph_first_value(&library->emitter_attributes[emitter.emitter_attributes].overtime.weight);
+	float emission_pitch = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_pitch_index], emitter.frame);
+	float emission_yaw = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_emission_yaw_index], emitter.frame);
+	const float first_velocity_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_index]);
+	const float first_weight_value = tfx__get_graph_first_value(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_weight_index]);
 	const tfx_emission_type emission_type = shared_properties.emission_type;
 	const bool line = emitter.property_flags & tfxEmitterPropertyFlags_edge_traversal && emission_type == tfxLine;
-	const float velocity_adjuster = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].overtime.velocity_adjuster, emitter.frame);
+	const float velocity_adjuster = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_overtime_velocity_adjuster_index], emitter.frame);
 	const tfxU32 layer = shared_properties.layer;
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.properties_index].emission_direction;
 	bool ordered_effect = (entry->parent_property_flags & tfxEffectPropertyFlags_age_order) || (entry->parent_property_flags & tfxEffectPropertyFlags_depth_draw_order) > 0;
@@ -17514,10 +17520,10 @@ void tfx__update_ribbon_emitter_state(tfx_particle_manager pm, tfx_ribbon_emitte
 	ribbon.bounding_box.max_corner.z = -FLT_MAX;
 
 	ribbon.emitter_size = { 0 };
-	ribbon.emitter_size.y = tfx__lookup_precise(&library->emitter_attributes[ribbon.emitter_attributes].properties.emitter_height, ribbon.age);
-	ribbon.emitter_size.x = tfx__lookup_precise(&library->emitter_attributes[ribbon.emitter_attributes].properties.emitter_width, ribbon.age);
+	ribbon.emitter_size.y = tfx__lookup_precise(&library->graphs[ribbon.graph_list_index].graphs[tfxRibbon_property_height_index], ribbon.age);
+	ribbon.emitter_size.x = tfx__lookup_precise(&library->graphs[ribbon.graph_list_index].graphs[tfxRibbon_property_width_index], ribbon.age);
 	if (ribbon.shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d) {
-		ribbon.emitter_size.z = tfx__lookup_precise(&library->emitter_attributes[ribbon.emitter_attributes].properties.emitter_depth, ribbon.age);
+		ribbon.emitter_size.z = tfx__lookup_precise(&library->graphs[ribbon.graph_list_index].graphs[tfxRibbon_property_depth_index], ribbon.age);
 	}
 
 	ribbon.emitter_size *= pm->effects[parent_index].emitter_size;
@@ -17546,15 +17552,15 @@ void tfx__update_emitter_state(tfx_particle_manager pm, tfx_emitter_state_t &emi
 
 	emitter.emitter_size = { 0 };
 	if (is_area) {
-		emitter.emitter_size.y = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_height, emitter.age);
-		emitter.emitter_size.x = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_width, emitter.age);
+		emitter.emitter_size.y = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_height_index], emitter.age);
+		emitter.emitter_size.x = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_width_index], emitter.age);
 	}
 	else if (shared_properties.emission_type == tfxLine) {
-		emitter.emitter_size.y = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_height, emitter.age);
+		emitter.emitter_size.y = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_height_index], emitter.age);
 	}
 
 	if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d) {
-		emitter.emitter_size.z = tfx__lookup_precise(&library->emitter_attributes[emitter.emitter_attributes].properties.emitter_depth, emitter.age);
+		emitter.emitter_size.z = tfx__lookup_precise(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_property_depth_index], emitter.age);
 	}
 
 	emitter.emitter_size *= pm->effects[parent_index].emitter_size;
@@ -17572,6 +17578,7 @@ void tfx__update_effect_state(tfx_particle_manager pm, tfxU32 index) {
 	const float frame = pm->effects[index].frame;
 	const float age = pm->effects[index].age;
 	const tfxU32 graph_list_index = pm->effects[index].graph_list_index;
+	const tfxU32 transform_index = pm->effects[index].transform_index;
 	tfx_library library = pm->effects[index].library;
 	tfx_vec3_t &translation = pm->effects[index].translation;
 	tfx_vec3_t &local_rotations = pm->effects[index].local_rotations;
@@ -17609,9 +17616,9 @@ void tfx__update_effect_state(tfx_particle_manager pm, tfxU32 index) {
 	overal_scale = state_flags & tfxEffectStateFlags_override_overal_scale ? overal_scale : tfx__lookup_precise(&library->graphs[graph_list_index].graphs[tfxEffect_global_overal_scale_index], frame);
 	if (pm->effects[index].parent_particle_index == tfxINVALID) {
 		if (!(state_flags & tfxEffectStateFlags_override_orientiation)) {
-			local_rotations.roll = tfx__lookup_precise(&library->graphs[graph_list_index].graphs[tfxEffect_roll_index], age);
-			local_rotations.pitch = tfx__lookup_precise(&library->graphs[graph_list_index].graphs[tfxEffect_pitch_index], age);
-			local_rotations.yaw = tfx__lookup_precise(&library->graphs[graph_list_index].graphs[tfxEffect_yaw_index], age);
+			local_rotations.roll = tfx__lookup_precise(&library->graphs[transform_index].graphs[tfxTransform_roll_index], age);
+			local_rotations.pitch = tfx__lookup_precise(&library->graphs[transform_index].graphs[tfxTransform_pitch_index], age);
+			local_rotations.yaw = tfx__lookup_precise(&library->graphs[transform_index].graphs[tfxTransform_yaw_index], age);
 		}
 	}
 	else {
@@ -17620,9 +17627,9 @@ void tfx__update_effect_state(tfx_particle_manager pm, tfxU32 index) {
 		local_rotations.yaw = 0.f;
 	}
 	pm->effects[index].stretch = tfx__lookup_precise(&library->graphs[graph_list_index].graphs[tfxEffect_global_stretch_index], frame);
-	translation.x = tfx__lookup_precise(&library->graphs[graph_list_index].graphs[tfxEffect_translate_x_index], age);
-	translation.y = tfx__lookup_precise(&library->graphs[graph_list_index].graphs[tfxEffect_translate_y_index], age);
-	translation.z = tfx__lookup_precise(&library->graphs[graph_list_index].graphs[tfxEffect_translate_z_index], age);
+	translation.x = tfx__lookup_precise(&library->graphs[transform_index].graphs[tfxTransform_translate_x_index], age);
+	translation.y = tfx__lookup_precise(&library->graphs[transform_index].graphs[tfxTransform_translate_y_index], age);
+	translation.z = tfx__lookup_precise(&library->graphs[transform_index].graphs[tfxTransform_translate_z_index], age);
 
 	if (pm->effects[index].update_callback) {
 		pm->effects[index].update_callback(pm, index);
@@ -17790,7 +17797,7 @@ void tfx__control_particles(tfx_work_queue_t *queue, void *data) {
 	//it's lifetime
 	//-------------------------------------------------------
 
-	work_entry->graphs = &library->emitter_attributes[emitter.emitter_attributes].overtime;
+	work_entry->graphs = &library->graphs[emitter.graph_list_index];
 	//work_entry->c.particle_update_callback = e.particle_update_callback;
 	//work_entry->c.user_data = e.user_data;
 
