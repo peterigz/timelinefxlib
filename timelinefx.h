@@ -2142,9 +2142,9 @@ typedef enum {
 	tfxFactor_velocity,
 	tfxFactor_intensity,
 
-	tfxOverlength_intensity_over_length,
-	tfxOverlength_alpha_sharpness_over_length,
-	tfxOverlength_curved_alpha_over_length,
+	tfxOverlength_intensity,
+	tfxOverlength_alpha_sharpness,
+	tfxOverlength_curved_alpha,
 	//------------------------------------------------------
 
 	tfxTransform_roll,
@@ -2314,6 +2314,10 @@ typedef enum {
 	tfxRibbon_factor_size_index,
 	tfxRibbon_factor_intensity_index,
 
+	tfxRibbon_overlength_intensity_index,
+	tfxRibbon_overlength_alpha_sharpness_index,
+	tfxRibbon_overlength_curved_alpha_index,
+
 	tfxRibbonGraphs_max_index,
 
 	tfxRibbon_property_start_index = 0,
@@ -2326,6 +2330,8 @@ typedef enum {
 	tfxRibbon_variation_end_index = tfxRibbon_variation_width_index + 1,
 	tfxRibbon_overtime_end_index = tfxRibbon_overtime_uv_scale_y_index + 1,
 	tfxRibbon_factor_end_index = tfxRibbon_factor_intensity_index + 1,
+	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
+	tfxRibbon_overlength_end = tfxRibbon_overlength_curved_alpha_index,
 } tfx_ribbon_graph_index;
 
 typedef enum {
