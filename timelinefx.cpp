@@ -2259,7 +2259,7 @@ void tfx__update_effect_max_life(tfx_effect_descriptor_t *effect) {
 	tfx_effect_emitter_info_t *info = tfx_GetEffectInfo(effect);
 	info->max_life = tfx__get_max_life(effect);
 	for (tfx_graph_t &graph : effect->library->graphs[effect->graph_list_index].graphs) {
-		if (tfx__is_overtime_graph(&graph) || tfx__is_factor_graph(&graph)) {
+		if (tfx__is_overtime_graph(&graph) || tfx__is_factor_graph(&graph) || tfx__is_overlength_graph(&graph)) {
 			graph.lookup.life = info->max_life;
 		}
 	}
@@ -5227,7 +5227,7 @@ void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descr
 void tfx__compile_all_library_graphs(tfx_library library) {
 	for (tfx_graph_list_t &graph_list : library->graphs) {
 		for (tfx_graph_t &graph : graph_list.graphs) {
-			if (!tfx__is_color_graph_type(graph.type) && (tfx__is_overtime_graph(&graph) || tfx__is_factor_graph(&graph))) {
+			if (!tfx__is_color_graph_type(graph.type) && (tfx__is_overtime_graph(&graph) || tfx__is_factor_graph(&graph) || tfx__is_overlength_graph(&graph))) {
 				tfx__compile_graph_overtime(&graph);
 			} else if (tfx__is_color_graph_type(graph.type)) {
 				tfx__compile_color_ramp(&graph_list, &graph_list.color_ramps);
@@ -5239,7 +5239,7 @@ void tfx__compile_all_library_graphs(tfx_library library) {
 
 void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, bool including_color_ramps) {
 	for (tfx_graph_t &graph : library->graphs[index].graphs) {
-		if (!tfx__is_color_graph_type(graph.type) && (tfx__is_overtime_graph(&graph) || tfx__is_factor_graph(&graph))) {
+		if (!tfx__is_color_graph_type(graph.type) && (tfx__is_overtime_graph(&graph) || tfx__is_factor_graph(&graph) || tfx__is_overlength_graph(&graph))) {
 			tfx__compile_graph_overtime(&graph);
 		}
 	}
@@ -6448,6 +6448,10 @@ bool tfx__is_overtime_graph(tfx_graph_t *graph) {
 	return (graph->type >= tfxOvertime_start && graph->type <= tfxOvertime_end && graph->type != tfxOvertime_velocity_adjuster) || graph->type > tfxEmitterGraphMaxIndex;
 }
 
+bool tfx__is_overlength_graph(tfx_graph_t *graph) {
+	return (graph->type >= tfxOverlength_start && graph->type <= tfxOverlength_end);
+}
+
 bool tfx__is_factor_graph(tfx_graph_t *graph) {
 	return graph->type >= tfxFactor_start && graph->type <= tfxFactor_end;
 }
@@ -6854,8 +6858,9 @@ void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 i, float _frame, float _valu
 		graph->nodes[i].left.y = _c0y ? _c0y : _value;
 		graph->nodes[i].right.x = _c1x ? _c1x : _frame;
 		graph->nodes[i].right.y = _c1y ? _c1y : _value;
-		if (tfx__sort_graph(graph))
+		if (tfx__sort_graph(graph)) {
 			tfx__reindex_graph(graph);
+		}
 	}
 }
 
@@ -16985,6 +16990,8 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 					tfxU32 segment_index = s + j + ribbon_emitter.static_segment_start_index;
 					segments[segment_index].position_and_width = { point_x.a[j], point_y.a[j], point_z.a[j], base_width};
 					segments[segment_index].texture_indexes = texture_indexes;
+					segments[segment_index].intensity_gradient_map.packed = 0;
+					segments[segment_index].curved_alpha_life.packed = 0;
 				}
 			}
 			ribbon_bucket.buffer_info.index_count = ribbon_bucket.buffer_info.indices_per_segment * ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths;

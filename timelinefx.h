@@ -2137,14 +2137,14 @@ typedef enum {
 	tfxOvertime_uv_offset_y,
 	tfxOvertime_uv_scale_y,
 
+	tfxOverlength_intensity,
+	tfxOverlength_alpha_sharpness,
+	tfxOverlength_curved_alpha,
+
 	tfxFactor_life,
 	tfxFactor_size,
 	tfxFactor_velocity,
 	tfxFactor_intensity,
-
-	tfxOverlength_intensity,
-	tfxOverlength_alpha_sharpness,
-	tfxOverlength_curved_alpha,
 	//------------------------------------------------------
 
 	tfxTransform_roll,
@@ -2310,13 +2310,13 @@ typedef enum {
 	tfxRibbon_overtime_uv_offset_y_index,
 	tfxRibbon_overtime_uv_scale_y_index,
 
-	tfxRibbon_factor_life_index,
-	tfxRibbon_factor_size_index,
-	tfxRibbon_factor_intensity_index,
-
 	tfxRibbon_overlength_intensity_index,
 	tfxRibbon_overlength_alpha_sharpness_index,
 	tfxRibbon_overlength_curved_alpha_index,
+
+	tfxRibbon_factor_life_index,
+	tfxRibbon_factor_size_index,
+	tfxRibbon_factor_intensity_index,
 
 	tfxRibbonGraphs_max_index,
 
@@ -2347,6 +2347,8 @@ typedef enum {
 	tfxOvertime_end = tfxOvertime_uv_scale_y,
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_blendfactor,
+	tfxOverlength_start = tfxOverlength_intensity,
+	tfxOverlength_end = tfxOverlength_curved_alpha,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -2354,7 +2356,7 @@ typedef enum {
 	tfxPath_start = tfxPath_angle_x,
 	tfxPath_end = tfxPath_rotation_yaw,
 	tfxGPU_lookup_start = tfxOvertime_intensity,
-	tfxGPU_lookup_end = tfxOvertime_uv_scale_y,
+	tfxGPU_lookup_end = tfxOverlength_curved_alpha,
 } tfx_graph_ranges;
 
 //tfx_effect_descriptor_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
@@ -6917,6 +6919,7 @@ tfxAPI_EDITOR bool tfx__sort_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__flip_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_blend_factor_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_overtime_graph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool tfx__is_overlength_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_factor_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_global_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_angle_graph(tfx_graph_t *graph);
