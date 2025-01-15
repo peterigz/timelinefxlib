@@ -2407,7 +2407,7 @@ tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *
 	ribbon.library = effect->library;
 	ribbon.parent = effect;
 	ribbon.info_index = tfx__allocate_library_descriptor_info(ribbon.library);
-	ribbon.property_index = tfx__allocate_library_ribbon_properties(ribbon.library);
+	ribbon.property_index = tfx__allocate_library_ribbon_emitter_properties(ribbon.library);
 	ribbon.library->shared_properties[ribbon.property_index].emission_type = tfxOtherEmitter;
 	ribbon.library->ribbon_properties[ribbon.property_index].segment_count = 32;
 	if (tfx__is_3d_effect(effect)) {
@@ -3195,7 +3195,7 @@ tfx_shared_properties_t *tfx__get_shared_emitter_properties(tfx_effect_descripto
 	return &effect->library->shared_properties[effect->shared_index];
 }
 
-tfx_ribbon_emitter_properties_t *tfx__get_ribbon_properties(tfx_effect_descriptor_t *effect) {
+tfx_ribbon_emitter_properties_t *tfx__get_ribbon_emitter_properties(tfx_effect_descriptor_t *effect) {
 	return &effect->library->ribbon_properties[effect->property_index];
 }
 
@@ -3342,7 +3342,15 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 	*clone = *effect_to_clone;
 	clone->info_index = tfx__clone_library_info(clone->library, effect_to_clone->info_index, destination_library);
 	if (clone->type != tfxFolder) {
-		clone->property_index = tfx__clone_library_properties(clone->library, tfx__get_particle_emitter_properties(effect_to_clone), destination_library);
+		clone->shared_index = tfx__clone_library_shared_properties(clone->library, tfx__get_shared_emitter_properties(effect_to_clone), destination_library);
+	}
+	switch (clone->type) {
+	case tfxEmitterType:
+		clone->property_index = tfx__clone_library_particle_emitter_properties(clone->library, tfx__get_particle_emitter_properties(effect_to_clone), destination_library);
+		break;
+	case tfxRibbonType:
+		clone->property_index = tfx__clone_library_ribbon_emitter_properties(clone->library, tfx__get_ribbon_emitter_properties(effect_to_clone), destination_library);
+		break;
 	}
 	clone->shared_flags |= tfxSharedEmitterPropertyFlags_enabled;
 	if (!(flags & tfxEffectCloningFlags_keep_user_data))
@@ -3408,6 +3416,11 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 			tfx__add_effect_to_emitter(clone, &effect_copy);
 		}
 	}
+}
+
+void tfx__clone_effect_into_library(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_descriptor_t *clone, tfx_effect_descriptor_t *root_parent, tfx_library destination_library, tfxEffectCloningFlags flags) {
+	tfx__clone_effect(effect_to_clone, clone, root_parent, destination_library, flags);
+	tfx__update_library_compute_nodes(destination_library);
 }
 
 void tfx__add_template_path(tfx_effect_template effect_template, tfx_effect_descriptor_t *effect_emitter, const char *path) {
@@ -4449,7 +4462,7 @@ void tfx__prepare_library_effect_template_path(tfx_library library, const char *
 	TFX_ASSERT(effect);                                //Effect was not found, make sure the path exists
 	TFX_ASSERT(effect->type == tfxEffectType);         //The effect must be an effect type, not an emitter
 	effect_template->original_effect_hash = effect->path_hash;
-	tfx__clone_effect(effect, &effect_template->effect, &effect_template->effect, library, tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_compile_graphs);
+	tfx__clone_effect_into_library(effect, &effect_template->effect, &effect_template->effect, library, tfxEffectCloningFlags_clone_graphs | tfxEffectCloningFlags_compile_graphs);
 	tfx__add_template_path(effect_template, &effect_template->effect, tfx_GetEffectInfo(&effect_template->effect)->name.c_str());
 }
 
@@ -4742,9 +4755,21 @@ tfxU32 tfx__clone_library_info(tfx_library library, tfxU32 source_index, tfx_lib
 	return index;
 }
 
-tfxU32 tfx__clone_library_properties(tfx_library library, tfx_particle_emitter_properties_t *source, tfx_library destination_library) {
-	tfxU32 dst_index = tfx__allocate_library_descriptor_properties(destination_library);
+tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfx_particle_emitter_properties_t *source, tfx_library destination_library) {
+	tfxU32 dst_index = tfx__allocate_library_particle_emitter_properties(destination_library);
 	tfx__copy_emitter_properties(source, &destination_library->emitter_properties[dst_index]);
+	return dst_index;
+}
+
+tfxU32 tfx__clone_library_ribbon_emitter_properties(tfx_library library, tfx_ribbon_emitter_properties_t *source, tfx_library destination_library) {
+	tfxU32 dst_index = tfx__allocate_library_ribbon_emitter_properties(destination_library);
+	destination_library->ribbon_properties[dst_index] = *source;
+	return dst_index;
+}
+
+tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfx_shared_properties_t *source, tfx_library destination_library) {
+	tfxU32 dst_index = tfx__allocate_library_shared_properties(destination_library);
+	destination_library->shared_properties[dst_index] = *source;
 	return dst_index;
 }
 
@@ -4974,7 +4999,7 @@ tfxU32 tfx__allocate_library_descriptor_info(tfx_library library) {
 	return library->effect_infos.size() - 1;
 }
 
-tfxU32 tfx__allocate_library_descriptor_properties(tfx_library library) {
+tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library) {
 	if (library->free_particle_emitter_properties.size()) {
 		return library->free_particle_emitter_properties.pop_back();
 	}
@@ -4983,7 +5008,7 @@ tfxU32 tfx__allocate_library_descriptor_properties(tfx_library library) {
 	return library->emitter_properties.current_size - 1;
 }
 
-tfxU32 tfx__allocate_library_descriptor_shared_properties(tfx_library library) {
+tfxU32 tfx__allocate_library_shared_properties(tfx_library library) {
 	if (library->free_shared_emitter_properties.size()) {
 		return library->free_shared_emitter_properties.pop_back();
 	}
@@ -4992,7 +5017,7 @@ tfxU32 tfx__allocate_library_descriptor_shared_properties(tfx_library library) {
 	return library->shared_properties.current_size - 1;
 }
 
-tfxU32 tfx__allocate_library_ribbon_properties(tfx_library library) {
+tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library) {
 	if (library->free_ribbon_emitter_properties.size()) {
 		return library->free_ribbon_emitter_properties.pop_back();
 	}
@@ -5981,7 +6006,7 @@ void tfx__assign_effector_property_u32(tfx_effect_descriptor_t *effect, tfx_str2
 	if (effect->type == tfxEmitterType) {
 		emitter_properties = tfx__get_particle_emitter_properties(effect);
 	} else if (effect->type == tfxRibbonType) {
-		ribbon_properties = tfx__get_ribbon_properties(effect);
+		ribbon_properties = tfx__get_ribbon_emitter_properties(effect);
 	}
 	if (*field == "spawn_amount") shared_properties->spawn_amount = value;
 	if (*field == "spawn_amount_variation") shared_properties->spawn_amount_variation = value;
@@ -8592,8 +8617,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				tfx_effect_descriptor_t effect{};
 				effect.library = lib;
 				effect.info_index = tfx__allocate_library_descriptor_info(lib);
-				effect.property_index = tfx__allocate_library_descriptor_properties(lib);
-				effect.shared_index = tfx__allocate_library_descriptor_shared_properties(lib);
+				effect.property_index = tfx__allocate_library_particle_emitter_properties(lib);
+				effect.shared_index = tfx__allocate_library_shared_properties(lib);
 				if (effect_stack.size() <= 1) { //Only root effects get the global graphs
 					tfx__add_library_effect_graphs(lib, &effect);
 					tfx__reset_effect_graphs(&effect, false);
@@ -8616,8 +8641,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				emitter.ribbon_flags = 0;
 				emitter.library = lib;
 				emitter.info_index = tfx__allocate_library_descriptor_info(lib);
-				emitter.property_index = tfx__allocate_library_descriptor_properties(lib);
-				emitter.shared_index = tfx__allocate_library_descriptor_shared_properties(lib);
+				emitter.property_index = tfx__allocate_library_particle_emitter_properties(lib);
+				emitter.shared_index = tfx__allocate_library_shared_properties(lib);
 				emitter.graph_list_index = tfx__add_library_graphs(lib, tfxEmitterType);
 				tfx__add_library_transform_graphs(lib, &emitter);
 				emitter.type = tfx_effect_descriptor_type::tfxEmitterType;
@@ -8634,8 +8659,8 @@ tfxErrorFlags tfx__load_effect_library_package(tfx_package package, tfx_library 
 				ribbon.ribbon_flags = 0;
 				ribbon.library = lib;
 				ribbon.info_index = tfx__allocate_library_descriptor_info(lib);
-				ribbon.property_index = tfx__allocate_library_ribbon_properties(lib);
-				ribbon.shared_index = tfx__allocate_library_descriptor_shared_properties(lib);
+				ribbon.property_index = tfx__allocate_library_ribbon_emitter_properties(lib);
+				ribbon.shared_index = tfx__allocate_library_shared_properties(lib);
 				ribbon.graph_list_index = tfx__add_library_graphs(lib, tfxRibbonType);
 				tfx__add_library_transform_graphs(lib, &ribbon);
 				ribbon.type = tfx_effect_descriptor_type::tfxRibbonType;
@@ -10174,7 +10199,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 
 			} else if (e.type == tfxRibbonType) {
 				index = tfx__get_ribbon_slot(pm);
-				tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_properties(&e);
+				tfx_ribbon_emitter_properties_t *ribbon_properties = tfx__get_ribbon_emitter_properties(&e);
 				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(&e);
 				new_effect.ribbon_indexes[pm->current_ebuff].push_back(index);
 				tfx_ribbon_emitter_state_t &ribbon_emitter = pm->ribbon_emitters[index];
@@ -10537,7 +10562,7 @@ void tfx_UpdateParticleManager(tfx_particle_manager pm, float elapsed_time) {
 				spawn_work_entry->next_buffer = next_buffer;
 				tfx_library library = pm->emitters[emitter_index].library;
 				spawn_work_entry->properties = &library->emitter_properties[pm->emitters[emitter_index].properties_index];
-				spawn_work_entry->shared_properties = &library->shared_properties[pm->emitters[emitter_index].properties_index];
+				spawn_work_entry->shared_properties = &library->shared_properties[pm->emitters[emitter_index].shared_index];
 				spawn_work_entry->sub_effects = &library->effect_infos[pm->emitters[emitter_index].info_index].sub_effectors;
 				spawn_work_entry->amount_to_spawn = 0;
 				spawn_work_entry->highest_particle_age = pm->emitters[emitter_index].highest_particle_age;
@@ -18260,7 +18285,6 @@ void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties) {
 	shared_properties->paired_emitter_hash = 0;
 }
 
-//Use with care, no checks for out of bounds
 void tfx__copy_emitter_properties(tfx_particle_emitter_properties_t *from_properties, tfx_particle_emitter_properties_t *to_properties) {
 	*to_properties = *from_properties;
 }

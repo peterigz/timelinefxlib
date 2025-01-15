@@ -2204,6 +2204,19 @@ typedef enum {
 } tfx_transform_graph_index;
 
 typedef enum {
+	tfxPath_angle_x_index,
+	tfxPath_angle_y_index,
+	tfxPath_angle_z_index,
+	tfxPath_offset_x_index,
+	tfxPath_offset_y_index,
+	tfxPath_offset_z_index,
+	tfxPath_distance_index,
+	tfxPath_rotation_range_index,
+	tfxPath_rotation_pitch_index,
+	tfxPath_rotation_yaw_index,
+} tfx_path_graph_index;
+
+typedef enum {
 	tfxEmitter_property_emission_pitch_index,
 	tfxEmitter_property_emission_yaw_index,
 	tfxEmitter_property_emission_range_index,
@@ -7041,9 +7054,9 @@ tfxAPI_EDITOR tfxU32 tfx__add_library_preview_camera_settings_effect(tfx_library
 tfxAPI_EDITOR void tfx__add_library_preview_camera_settings_sub_effects(tfx_library library, tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_preview_camera_settings(tfx_library library);
 tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_info(tfx_library library);
-tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_properties(tfx_library library);
-tfxAPI_EDITOR tfxU32 tfx__allocate_library_descriptor_shared_properties(tfx_library library);
-tfxAPI_EDITOR tfxU32 tfx__allocate_library_ribbon_properties(tfx_library library);
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_particle_emitter_properties(tfx_library library);
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_shared_properties(tfx_library library);
+tfxAPI_EDITOR tfxU32 tfx__allocate_library_ribbon_emitter_properties(tfx_library library);
 tfxAPI_EDITOR void tfx__update_library_compute_nodes(tfx_library library);
 tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_library library, tfx_effect_descriptor_t *emitter);
 tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
@@ -7075,7 +7088,9 @@ tfxINTERNAL void tfx__free_library_shared_properties(tfx_library library, tfxU32
 tfxINTERNAL void tfx_free_library_info(tfx_library library, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, tfx_library destination_library);
 tfxINTERNAL tfxU32 tfx__clone_library_info(tfx_library library, tfxU32 source_index, tfx_library destination_library);
-tfxINTERNAL tfxU32 tfx__clone_library_properties(tfx_library library, tfx_particle_emitter_properties_t *source, tfx_library destination_library);
+tfxINTERNAL tfxU32 tfx__clone_library_particle_emitter_properties(tfx_library library, tfx_particle_emitter_properties_t *source, tfx_library destination_library);
+tfxINTERNAL tfxU32 tfx__clone_library_ribbon_emitter_properties(tfx_library library, tfx_ribbon_emitter_properties_t *source, tfx_library destination_library);
+tfxINTERNAL tfxU32 tfx__clone_library_shared_properties(tfx_library library, tfx_shared_properties_t *source, tfx_library destination_library);
 tfxINTERNAL tfx_str256_t tfx__find_new_path_name(tfx_library library, const char *path);
 
 //Effect/Emitter functions
@@ -7084,7 +7099,7 @@ tfxAPI_EDITOR void *tfx__get_effect_user_data(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_effect_descriptor_t tfx__new_effect_descriptor();
 tfxAPI_EDITOR tfx_particle_emitter_properties_t *tfx__get_particle_emitter_properties(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_shared_properties_t *tfx__get_shared_emitter_properties(tfx_effect_descriptor_t *e);
-tfxAPI_EDITOR tfx_ribbon_emitter_properties_t *tfx__get_ribbon_properties(tfx_effect_descriptor_t *e);
+tfxAPI_EDITOR tfx_ribbon_emitter_properties_t *tfx__get_ribbon_emitter_properties(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *effect, tfx_str64_t *name);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_effect_to_emitter(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e);
@@ -7110,7 +7125,7 @@ tfxAPI_EDITOR void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *e
 tfxAPI_EDITOR void tfx__set_effect_name(tfx_effect_descriptor_t *effect, const char *n);
 tfxAPI_EDITOR bool tfx__rename_sub_effector(tfx_effect_descriptor_t *effect, const char *new_name);
 tfxAPI_EDITOR bool tfx__effect_name_exists(tfx_effect_descriptor_t *in_effect, tfx_effect_descriptor_t *excluding_effect, const char *name);
-tfxAPI_EDITOR void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_descriptor_t *clone, tfx_effect_descriptor_t *root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
+tfxAPI_EDITOR void tfx__clone_effect_into_library(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_descriptor_t *clone, tfx_effect_descriptor_t *root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxAPI_EDITOR void tfx__enable_all_emitters(tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR void tfx__disable_all_emitters(tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR void tfx__disable_all_emitters_except(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *emitter);
@@ -7123,6 +7138,7 @@ tfxAPI_EDITOR bool tfx__is_ordered_effect(tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR tfx_particle_manager_mode tfx__get_required_particle_manager_mode(tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR tfx_preview_camera_settings_t *tfx__effect_camera_settings(tfx_effect_descriptor_t *effect);
 tfxAPI_EDITOR float tfx__get_effect_highest_loop_length(tfx_effect_descriptor_t *effect);
+tfxINTERNAL void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_descriptor_t *clone, tfx_effect_descriptor_t *root_parent, tfx_library destination_library, tfxEffectCloningFlags flags = 0);
 tfxINTERNAL void tfx__swap_effects(tfx_effect_descriptor_t *left, tfx_effect_descriptor_t *right);
 tfxINTERNAL void tfx__swap_depth_index(tfx_depth_index_t *left, tfx_depth_index_t *right);
 tfxINTERNAL tfx_effect_descriptor_t *tfx__add_effect(tfx_effect_descriptor_t *effect);
