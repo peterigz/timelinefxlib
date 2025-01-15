@@ -3376,7 +3376,7 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->transform_index, destination_library) : effect_to_clone->transform_index;
 		tfx__update_effect_max_life(clone);
 		if (flags & tfxEffectCloningFlags_compile_graphs) {
-			tfx__compile_library_overtime_graphs(clone->library, clone->graph_list_index, false);
+			tfx__compile_library_overtime_graphs(clone->library, clone->graph_list_index, true);
 			if (destination_library != effect_to_clone->library) {
 				tfx__maybe_insert_color_ramp_bitmap(destination_library, &destination_library->graphs[clone->graph_list_index]);
 			}
@@ -3518,42 +3518,42 @@ void tfx__initialise_path(tfx_emitter_path_t *path) {
 	tfx__reset_soa_buffer(&path->node_buffer);
 }
 
-void tfx__initialise_path_graphs(tfx_emitter_path_t *path, tfxU32 bucket_size) {
+void tfx__initialise_path_graphs(tfx_emitter_path_t *path, bool add_node, tfxU32 bucket_size) {
 	tfxInitBucketArray<tfx_attribute_node_t>(&path->angle_x.nodes ,bucket_size);
 	path->angle_x.type = tfxPath_angle_x;
 	path->angle_x.graph_preset = tfxPathDirectionOvertimePreset;
 	path->angle_x.nodes.bucket_list.init();
-	tfx__reset_graph(&path->angle_x, 0.f, path->angle_x.graph_preset, true, 1.f);
+	tfx__reset_graph(&path->angle_x, 0.f, path->angle_x.graph_preset, add_node, 1.f);
 	tfxInitBucketArray<tfx_attribute_node_t>(&path->angle_y.nodes, bucket_size);
 	path->angle_y.type = tfxPath_angle_y;
 	path->angle_y.graph_preset = tfxPathDirectionOvertimePreset;
 	path->angle_y.nodes.bucket_list.init();
-	tfx__reset_graph(&path->angle_y, 0.f, path->angle_y.graph_preset, true, 1.f);
+	tfx__reset_graph(&path->angle_y, 0.f, path->angle_y.graph_preset, add_node, 1.f);
 	tfxInitBucketArray<tfx_attribute_node_t>(&path->angle_z.nodes, bucket_size);
 	path->angle_z.type = tfxPath_angle_z;
 	path->angle_z.graph_preset = tfxPathDirectionOvertimePreset;
 	path->angle_z.nodes.bucket_list.init();
-	tfx__reset_graph(&path->angle_z, 0.f, path->angle_z.graph_preset, true, 1.f);
+	tfx__reset_graph(&path->angle_z, 0.f, path->angle_z.graph_preset, add_node, 1.f);
 	tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_x.nodes, bucket_size);
 	path->offset_x.type = tfxPath_offset_x;
 	path->offset_x.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_x.nodes.bucket_list.init();
-	tfx__reset_graph(&path->offset_x, 0.f, path->offset_x.graph_preset, true, 1.f);
+	tfx__reset_graph(&path->offset_x, 0.f, path->offset_x.graph_preset, add_node, 1.f);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_y.nodes ,bucket_size);
 	path->offset_y.type = tfxPath_offset_y;
 	path->offset_y.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_y.nodes.bucket_list.init();
-	tfx__reset_graph(&path->offset_y, 0.f, path->offset_y.graph_preset, true, 1.f);
+	tfx__reset_graph(&path->offset_y, 0.f, path->offset_y.graph_preset, add_node, 1.f);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&path->offset_z.nodes ,bucket_size);
 	path->offset_z.type = tfxPath_offset_z;
 	path->offset_z.graph_preset = tfxPathTranslationOvertimePreset;
 	path->offset_z.nodes.bucket_list.init();
-	tfx__reset_graph(&path->offset_z, 0.f, path->offset_z.graph_preset, true, 1.f);
+	tfx__reset_graph(&path->offset_z, 0.f, path->offset_z.graph_preset, add_node, 1.f);
 	 tfxInitBucketArray<tfx_attribute_node_t>(&path->distance.nodes ,bucket_size);
 	path->distance.type = tfxPath_distance;
 	path->distance.graph_preset = tfxPathTranslationOvertimePreset;
 	path->distance.nodes.bucket_list.init();
-	tfx__reset_graph(&path->distance, 0.f, path->distance.graph_preset, true, 1.f);
+	tfx__reset_graph(&path->distance, 0.f, path->distance.graph_preset, add_node, 1.f);
 }
 
 void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_generator_type generator) {
@@ -3660,22 +3660,22 @@ void tfx__copy_path_graphs(tfx_emitter_path_t *src, tfx_emitter_path_t *dst) {
 	tfx__copy_graph_no_lookups(&src->distance, &dst->distance);
 }
 
-void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *path) {
-	path->flags = src->flags;
-	path->name.Set(name);
-	path->node_count = src->node_count;
-	path->generator_type = src->generator_type;
-	path->extrusion_type = src->extrusion_type;
-	path->offset = src->offset;
-	path->maximum_active_paths = src->maximum_active_paths;
-	path->maximum_paths = src->maximum_paths;
-	path->rotation_cycle_length = src->rotation_cycle_length;
-	path->rotation_stagger = src->rotation_stagger;
-	path->rotation_range = src->rotation_range;
-	path->rotation_pitch = src->rotation_pitch;
-	path->rotation_yaw = src->rotation_yaw;
-	tfx__initialise_path_graphs(path);
-	tfx__copy_path_graphs(src, path);
+void tfx__copy_path(tfx_emitter_path_t *src, const char *name, tfx_emitter_path_t *dst) {
+	dst->flags = src->flags;
+	dst->name.Set(name);
+	dst->node_count = src->node_count;
+	dst->generator_type = src->generator_type;
+	dst->extrusion_type = src->extrusion_type;
+	dst->offset = src->offset;
+	dst->maximum_active_paths = src->maximum_active_paths;
+	dst->maximum_paths = src->maximum_paths;
+	dst->rotation_cycle_length = src->rotation_cycle_length;
+	dst->rotation_stagger = src->rotation_stagger;
+	dst->rotation_range = src->rotation_range;
+	dst->rotation_pitch = src->rotation_pitch;
+	dst->rotation_yaw = src->rotation_yaw;
+	tfx__initialise_path_graphs(dst, false);
+	tfx__copy_path_graphs(src, dst);
 }
 
 bool tfx__has_translation_key_frames(tfx_graph_list_t *graphs) {
@@ -3699,7 +3699,7 @@ tfxU32 tfx__create_emitter_path_attributes(tfx_effect_descriptor_t *emitter, boo
 		path.rotation_pitch = 0.f;
 		path.rotation_yaw = 0.f;
 		path.rotation_stagger = 0.f;
-		tfx__initialise_path_graphs(&path);
+		tfx__initialise_path_graphs(&path, false);
 		//tfx__reset_graph(&path.angle_x, 0.f, path.angle_x.graph_preset, add_node, 1.f);
 		//tfx__reset_graph(&path.angle_y, 0.f, path.angle_y.graph_preset, add_node, 1.f);
 		//tfx__reset_graph(&path.angle_z, 0.f, path.angle_z.graph_preset, add_node, 1.f);
@@ -3727,7 +3727,7 @@ tfxU32 tfx__add_emitter_path_attributes(tfx_library library) {
 	path.rotation_pitch = 0.f;
 	path.rotation_yaw = 0.f;
 	path.rotation_stagger = 0.f;
-	tfx__initialise_path_graphs(&path);
+	tfx__initialise_path_graphs(&path, true);
 	return library->paths.size() - 1;
 }
 
@@ -4229,6 +4229,7 @@ void tfx__build_path_nodes_2d(tfx_emitter_path_t *path) {
 
 void tfx__initialise_effect_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size) {
 	graph_list->graphs.resize(tfxEffectGraphs_max_index);
+	graph_list->effect_descriptor_type = tfxEffectType;
 	for (int i = 0; i != tfxEffectGraphs_max_index; ++i) {
 		tfx__init_graph(&graph_list->graphs[i], 8);
 	}
@@ -4236,6 +4237,7 @@ void tfx__initialise_effect_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_s
 
 void tfx__initialise_emitter_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size) {
 	graph_list->graphs.resize(tfxEmitterGraphs_max_index);
+	graph_list->effect_descriptor_type = tfxEmitterType;
 	for (int i = 0; i != tfxEmitterGraphs_max_index; ++i) {
 		tfx__init_graph(&graph_list->graphs[i], 8);
 	}
@@ -4243,6 +4245,7 @@ void tfx__initialise_emitter_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_
 
 void tfx__initialise_ribbon_graphs(tfx_graph_list_t *graph_list, tfxU32 bucket_size) {
 	graph_list->graphs.resize(tfxRibbonGraphs_max_index);
+	graph_list->effect_descriptor_type = tfxRibbonType;
 	for (int i = 0; i != tfxRibbonGraphs_max_index; ++i) {
 		tfx__init_graph(&graph_list->graphs[i], 8);
 	}
@@ -4735,6 +4738,7 @@ tfxU32 tfx__clone_library_graph_list(tfx_library library, tfxU32 source_index, t
 	tfx_graph_list_t &src_list = library->graphs[source_index];
 	dst_list.graphs.resize(src_list.graphs.current_size);
 	tfx__init_graph_list(&dst_list);
+	dst_list.effect_descriptor_type = src_list.effect_descriptor_type;
 	tfx__copy_graph_list_no_lookups(&src_list, &dst_list);
 	return destination_library->graphs.current_size - 1;
 }

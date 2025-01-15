@@ -7021,7 +7021,7 @@ tfxINTERNAL inline tfx_graph_t *tfx__get_descriptor_graph(tfx_effect_descriptor_
 	return &effect->library->graphs[effect->graph_list_index].graphs[graph_index];
 }
 tfxAPI_EDITOR void tfx__initialise_path(tfx_emitter_path_t *path);
-tfxAPI_EDITOR void tfx__initialise_path_graphs(tfx_emitter_path_t *path, tfxU32 bucket_size = 8);
+tfxAPI_EDITOR void tfx__initialise_path_graphs(tfx_emitter_path_t *path, bool add_node, tfxU32 bucket_size = 8);
 tfxAPI_EDITOR void tfx__reset_path_graphs(tfx_emitter_path_t *path, tfx_path_generator_type generator);
 tfxAPI_EDITOR void tfx__build_path_nodes_3d(tfx_emitter_path_t *path);
 tfxAPI_EDITOR void tfx__build_path_nodes_2d(tfx_emitter_path_t *path);
