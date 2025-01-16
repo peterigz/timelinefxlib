@@ -6892,7 +6892,7 @@ tfxINTERNAL tfx_vec3_t tfx__ellipse_surface_normal(float x, float y, float z, fl
 tfxINTERNAL tfx_vec2_t tfx__catmull_rom_spline_gradient_2d_soa(const float *px, const float *py, float t);
 tfxINTERNAL tfx_vec3_t tfx__catmull_rom_spline_gradient_3d_soa(const float *px, const float *py, const float *pz, float t);
 tfxINTERNAL void tfx__wide_catmull_rom_spline_2d(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, tfxWideFloat *vx, tfxWideFloat *vy);
-tfxINTERNAL void tfx__wide_catmull_rom_spline_3d(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
+tfxAPI_EDITOR void tfx__wide_catmull_rom_spline_3d(tfxWideArrayi *pi, tfxWideFloat t, float *x, float *y, float *z, tfxWideFloat *vx, tfxWideFloat *vy, tfxWideFloat *vz);
 tfxINTERNAL void tfx__catmull_rom_spline_2d(const tfx_vec4_t *p0, const tfx_vec4_t *p1, const tfx_vec4_t *p2, const tfx_vec4_t *p3, float t, float vec[2]);
 tfxINTERNAL float tfx__length_vec3_nosqr(tfx_vec3_t const *v);
 tfxINTERNAL void tfx__assign_effector_property_u64(tfx_effect_descriptor_t *effect, tfx_str256_t *field, tfxU64 value, tfxU32 file_version);
@@ -6908,6 +6908,7 @@ tfxAPI_EDITOR void tfx__init_paths_soa_3d(tfx_soa_buffer_t *buffer, tfx_path_nod
 tfxAPI_EDITOR void tfx__init_emitter_properties(tfx_particle_emitter_properties_t *properties);
 tfxAPI_EDITOR void tfx__init_shared_properties(tfx_shared_properties_t *shared_properties);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
+tfxAPI_EDITOR tfx_attribute_node_t *tfx__append_graph_node_values(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxAPI_EDITOR float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age);
 tfxAPI_EDITOR float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
 tfxAPI_EDITOR float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
@@ -6931,6 +6932,7 @@ tfxAPI_EDITOR void tfx__copy_graph_colors(tfx_graph_t *from_red, tfx_graph_t *fr
 tfxAPI_EDITOR bool tfx__sort_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__flip_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_blend_factor_graph(tfx_graph_t *graph);
+tfxAPI_EDITOR bool tfx__is_lerp_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_overtime_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_overlength_graph(tfx_graph_t *graph);
 tfxAPI_EDITOR bool tfx__is_factor_graph(tfx_graph_t *graph);
@@ -6943,6 +6945,7 @@ tfxAPI_EDITOR void tfx__drag_graph_values(tfx_graph_preset preset, float *frame,
 tfxAPI_EDITOR void tfx__compile_graph_overtime(tfx_graph_t *graph);
 tfxAPI_EDITOR void tfx__compile_color_ramp(tfx_graph_list_t *graph_list, tfx_color_ramp_t *ramp, float gamma = tfxGAMMA);
 tfxAPI_EDITOR void tfx__edit_color_ramp_bitmap(tfx_library library, tfx_graph_list_t *graph_list);
+tfxAPI_EDITOR void tfx__reindex_graph(tfx_graph_t *graph);
 tfxINTERNAL void tfx__init_paths_soa_2d(tfx_soa_buffer_t *buffer, tfx_path_nodes_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__add_graph_node(tfx_graph_t *graph, tfx_attribute_node_t *node);
 tfxINTERNAL void tfx__set_graph_node(tfx_graph_t *graph, tfxU32 index, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
@@ -6957,7 +6960,6 @@ tfxINTERNAL tfx_attribute_node_t *tfx__graph_node_by_index(tfx_graph_t *graph, t
 tfxINTERNAL float tfx__graph_frame_by_index(tfx_graph_t *graph, tfxU32 index);
 tfxINTERNAL void tfx__delete_graph_node_at_frame(tfx_graph_t *graph, float frame);
 tfxINTERNAL void tfx__clear_graph(tfx_graph_t *graph);
-tfxINTERNAL void tfx__reindex_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__color_graph(tfx_graph_t *graph);
 tfxINTERNAL bool tfx__gpu_overtime_graph(tfx_graph_t *graph);
 tfxINTERNAL tfx_vec4_t tfx__get_min_max_graph_values(tfx_graph_preset preset);

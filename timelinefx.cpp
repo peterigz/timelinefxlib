@@ -6473,6 +6473,11 @@ bool tfx__compare_nodes(tfx_attribute_node_t *left, tfx_attribute_node_t *right)
 	return left->frame < right->frame;
 }
 
+bool tfx__is_lerp_graph(tfx_graph_t *graph) {
+	return graph->max.x == 1.f;
+	//return tfx__is_overtime_graph(graph) || tfx__is_factor_graph(graph) || tfx__is_overlength_graph(graph);
+}
+
 bool tfx__is_overtime_graph(tfx_graph_t *graph) {
 	return (graph->type >= tfxOvertime_start && graph->type <= tfxOvertime_end && graph->type != tfxOvertime_velocity_adjuster) || graph->type > tfxEmitterGraphMaxIndex;
 }
@@ -6779,6 +6784,27 @@ void tfx__init_graph(tfx_graph_t *graph, tfxU32 node_bucket_size) {
 	graph->nodes.init();
 	graph->nodes.size_of_each_bucket = node_bucket_size;
 	graph->lookup.values.init();
+}
+
+tfx_attribute_node_t *tfx__append_graph_node_values(tfx_graph_t *graph, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
+	tfx_attribute_node_t node;
+
+	if (graph->nodes.size())
+		node.frame = _frame;
+	else
+		node.frame = 0.f;
+
+	node.value = _value;
+	node.flags = flags;
+	node.left.x = _c0x;
+	node.left.y = _c0y;
+	node.right.x = _c1x;
+	node.right.y = _c1y;
+	node.index = graph->nodes.current_size;
+	tfx__clamp_node(graph, &node);
+	graph->nodes.push_back(node);
+
+	return &graph->nodes.back();
 }
 
 tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float _frame, float _value, tfxAttributeNodeFlags flags, float _c0x, float _c0y, float _c1x, float _c1y) {
@@ -17019,8 +17045,6 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 					tfxU32 segment_index = s + j + ribbon_emitter.static_segment_start_index;
 					segments[segment_index].position_and_width = { point_x.a[j], point_y.a[j], point_z.a[j], base_width};
 					segments[segment_index].texture_indexes = texture_indexes;
-					segments[segment_index].intensity_gradient_map.packed = 0;
-					segments[segment_index].curved_alpha_life.packed = 0;
 				}
 			}
 			ribbon_bucket.buffer_info.index_count = ribbon_bucket.buffer_info.indices_per_segment * ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths;
