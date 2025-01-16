@@ -3014,7 +3014,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bo
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index].type = tfxFactor_life;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index].type = tfxFactor_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_intensity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_intensity_index].type = tfxFactor_intensity;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].type = tfxOverlength_intensity;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 0.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].type = tfxOverlength_intensity;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].type = tfxOverlength_alpha_sharpness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].type = tfxOverlength_curved_alpha;
 }
@@ -3481,9 +3481,14 @@ void tfx__disable_all_emitters_except(tfx_effect_descriptor_t *effect, tfx_effec
 	}
 }
 
-tfx_graph_list_t *tfx__get_graph_list(tfx_effect_descriptor_t *emitter) {
+tfx_graph_list_t *tfx__get_descriptor_graph_list(tfx_effect_descriptor_t *emitter) {
 	TFX_ASSERT(emitter->graph_list_index != tfxINVALID);    //Must be a valid emitter_attributes index into the library;
 	return &emitter->library->graphs[emitter->graph_list_index];
+}
+
+tfx_graph_list_t *tfx__get_library_graph_list(tfx_library_t *library, tfxU32 index) {
+	TFX_ASSERT(index < library->graphs.current_size);    //Must be a valid emitter_attributes index into the library;
+	return &library->graphs[index];
 }
 
 tfx_graph_t *tfx__get_effect_graph_by_index(tfx_effect_descriptor_t *effect, tfxU32 index) {
