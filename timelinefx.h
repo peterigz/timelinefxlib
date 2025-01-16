@@ -2140,6 +2140,7 @@ typedef enum {
 	tfxOverlength_intensity,
 	tfxOverlength_alpha_sharpness,
 	tfxOverlength_curved_alpha,
+	tfxOverlength_gradient_map,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2326,6 +2327,7 @@ typedef enum {
 	tfxRibbon_overlength_intensity_index,
 	tfxRibbon_overlength_alpha_sharpness_index,
 	tfxRibbon_overlength_curved_alpha_index,
+	tfxRibbon_overlength_gradient_map_index,
 
 	tfxRibbon_factor_life_index,
 	tfxRibbon_factor_size_index,
@@ -2344,7 +2346,7 @@ typedef enum {
 	tfxRibbon_overtime_end_index = tfxRibbon_overtime_uv_scale_y_index + 1,
 	tfxRibbon_factor_end_index = tfxRibbon_factor_intensity_index + 1,
 	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
-	tfxRibbon_overlength_end = tfxRibbon_overlength_curved_alpha_index,
+	tfxRibbon_overlength_end = tfxRibbon_overlength_gradient_map_index,
 } tfx_ribbon_graph_index;
 
 typedef enum {
@@ -2361,7 +2363,7 @@ typedef enum {
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_blendfactor,
 	tfxOverlength_start = tfxOverlength_intensity,
-	tfxOverlength_end = tfxOverlength_curved_alpha,
+	tfxOverlength_end = tfxOverlength_gradient_map,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -2369,7 +2371,7 @@ typedef enum {
 	tfxPath_start = tfxPath_angle_x,
 	tfxPath_end = tfxPath_rotation_yaw,
 	tfxGPU_lookup_start = tfxOvertime_intensity,
-	tfxGPU_lookup_end = tfxOverlength_curved_alpha,
+	tfxGPU_lookup_end = tfxOverlength_gradient_map,
 } tfx_graph_ranges;
 
 //tfx_effect_descriptor_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
@@ -5785,6 +5787,7 @@ typedef struct tfx_effect_state_s {
 
 typedef struct tfx_ribbon_s {
 	tfx_vec4_t position;
+    float width;
 	tfxU32 start_index;
 	tfxU32 flags;
 	tfxU32 quaternion;
@@ -5792,7 +5795,6 @@ typedef struct tfx_ribbon_s {
 	tfxU32 texture_indexes;
 	tfxU32 intensity_gradient_map;			//Multiplier for the color of the ribbon
 	tfxU32 curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
-    tfxU32 padding;
 } tfx_ribbon_t;
 
 typedef struct tfx_ribbon_soa_s {
@@ -6159,10 +6161,11 @@ typedef struct tfx_sprite_data_s {
 }tfx_sprite_data_t;
 
 typedef struct tfx_ribbon_segment_s {
-	tfx_vec4_t position_and_width;
+	tfx_vec3_t position;
 	tfxU32 texture_indexes;
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color of the ribbon
 	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
+	tfxU32 ribbon_position;							//normalised position of the vertex on the ribbon	
 	tfxU32 padding;
 } tfx_ribbon_segment_t;
 
@@ -7412,7 +7415,7 @@ tfxINTERNAL void tfx__control_particle_bounding_box(tfx_work_queue_t *queue, voi
 
 tfxINTERNAL void tfx__control_ribbons(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_path_age(tfx_work_queue_t *queue, void *data);
-tfxINTERNAL void tfx__control_ribbon_width(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_particle_manager pm);
