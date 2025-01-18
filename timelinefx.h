@@ -2141,6 +2141,7 @@ typedef enum {
 	tfxOverlength_alpha_sharpness,
 	tfxOverlength_curved_alpha,
 	tfxOverlength_gradient_map,
+	tfxOverlength_offset,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2328,6 +2329,7 @@ typedef enum {
 	tfxRibbon_overlength_alpha_sharpness_index,
 	tfxRibbon_overlength_curved_alpha_index,
 	tfxRibbon_overlength_gradient_map_index,
+	tfxRibbon_overlength_offset_index,
 
 	tfxRibbon_factor_life_index,
 	tfxRibbon_factor_size_index,
@@ -2346,7 +2348,7 @@ typedef enum {
 	tfxRibbon_overtime_end_index = tfxRibbon_overtime_uv_scale_y_index + 1,
 	tfxRibbon_factor_end_index = tfxRibbon_factor_intensity_index + 1,
 	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
-	tfxRibbon_overlength_end = tfxRibbon_overlength_gradient_map_index,
+	tfxRibbon_overlength_end = tfxRibbon_overlength_offset_index,
 } tfx_ribbon_graph_index;
 
 typedef enum {
@@ -2363,7 +2365,7 @@ typedef enum {
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_blendfactor,
 	tfxOverlength_start = tfxOverlength_intensity,
-	tfxOverlength_end = tfxOverlength_gradient_map,
+	tfxOverlength_end = tfxOverlength_offset,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -2371,7 +2373,7 @@ typedef enum {
 	tfxPath_start = tfxPath_angle_x,
 	tfxPath_end = tfxPath_rotation_yaw,
 	tfxGPU_lookup_start = tfxOvertime_intensity,
-	tfxGPU_lookup_end = tfxOverlength_gradient_map,
+	tfxGPU_lookup_end = tfxOverlength_offset,
 } tfx_graph_ranges;
 
 //tfx_effect_descriptor_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
@@ -5805,12 +5807,12 @@ typedef struct tfx_ribbon_soa_s {
 } tfx_ribbon_soa_t;
 
 typedef struct tfx_gpu_emitter_s {
-	tfx_vec4_t position;
-	tfx_vec4_t captured_position;
+	tfx_vec3_t position;
 	tfxU32 lookup_offset;
+	tfx_vec3_t captured_position;
 	tfxU32 padding1;
+	tfx_vec3_t scale;
 	tfxU32 padding2;
-	tfxU32 padding3;
 } tfx_gpu_emitter_t;
 
 typedef struct tfx_ribbon_emitter_state_s {
@@ -6998,6 +7000,8 @@ tfxAPI_EDITOR void tfx__set_adjacent_node_curves(tfx_graph_t *graph, tfx_attribu
 tfxAPI_EDITOR void tfx__set_node_curve(tfx_graph_t *graph, tfx_attribute_node_t *node, bool is_left_curve, float *frame, float *value);
 tfxAPI_EDITOR bool tfx__move_node(tfx_graph_t *graph, tfx_attribute_node_t *node, float frame, float value, bool sort = true);
 tfxAPI_EDITOR void tfx__clamp_graph_nodes(tfx_graph_t *graph);
+tfxAPI_EDITOR bool tfx__is_path_graph_type(tfx_graph_type type);
+tfxAPI_EDITOR bool tfx__is_gpu_graph_type(tfx_graph_type type);
 tfxAPI_EDITOR bool tfx__is_overtime_graph_type(tfx_graph_type type);
 tfxAPI_EDITOR bool tfx__is_overtime_percentage_graph_type(tfx_graph_type type);
 tfxAPI_EDITOR bool tfx__is_global_graph_type(tfx_graph_type type);
