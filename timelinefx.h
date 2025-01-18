@@ -2373,7 +2373,7 @@ typedef enum {
 	tfxPath_start = tfxPath_angle_x,
 	tfxPath_end = tfxPath_rotation_yaw,
 	tfxGPU_lookup_start = tfxOvertime_intensity,
-	tfxGPU_lookup_end = tfxOverlength_offset,
+	tfxGPU_lookup_end = tfxFactor_intensity,
 } tfx_graph_ranges;
 
 //tfx_effect_descriptor_t type - effect contains emitters, and emitters spawn particles, but they both share the same struct for simplicity
@@ -5468,7 +5468,7 @@ typedef struct tfx_emitter_path_s {
 	tfx_path_extrusion_type extrusion_type;
 } tfx_emitter_path_t;
 
-static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age, float lifetime);
+static float(*lookup_overtime_callback)(tfx_graph_t *graph, float age_lerp);
 static float(*lookup_random_callback)(tfx_graph_t *graph, float age, tfx_random_t * random);
 
 typedef struct tfx_base_s {
@@ -6166,7 +6166,7 @@ typedef struct tfx_ribbon_segment_s {
 	tfx_vec3_t position;
 	tfxU32 texture_indexes;
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color of the ribbon
-	tfx_float8x4_t curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
+	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
 	tfxU32 ribbon_position;							//normalised position of the vertex on the ribbon	
 	tfxU32 padding;
 } tfx_ribbon_segment_t;
@@ -6870,6 +6870,7 @@ tfxAPI_EDITOR float tfx__vec3_length_fast(tfx_vec3_t const *v);
 tfxAPI_EDITOR void tfx__wide_transform_quaternion_vec3(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxAPI_EDITOR void tfx__wide_transform_quaternion_vec2(const tfx_quaternion_t *q, tfxWideFloat *x, tfxWideFloat *y);
 tfxAPI_EDITOR tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value);
+tfxAPI_EDITOR tfxU32 tfx__pack16bit_unorm(float x, float y);
 tfxAPI_EDITOR float tfx__distance_2d(float fromx, float fromy, float tox, float toy);
 tfxAPI_EDITOR void tfx__transform_3d(tfx_vec3_t *out_rotations, tfx_vec3_t *out_local_rotations, float *out_scale, tfx_vec3_t *out_position, tfx_vec3_t *out_local_position, tfx_vec3_t *out_translation, tfx_quaternion_t *out_q, const tfx_effect_state_t *parent);
 tfxAPI_EDITOR void tfx__update_emitter_control_profile(tfx_effect_descriptor_t *emitter);
@@ -6915,7 +6916,7 @@ tfxAPI_EDITOR void tfx__init_shared_properties(tfx_shared_properties_t *shared_p
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__add_graph_node_values(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__append_graph_node_values(tfx_graph_t *graph, float frame, float value, tfxAttributeNodeFlags flags = 0, float x1 = 0, float y1 = 0, float x2 = 0, float y2 = 0);
 tfxAPI_EDITOR float tfx__get_graph_value_by_age(tfx_graph_t *graph, float age);
-tfxAPI_EDITOR float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
+tfxAPI_EDITOR float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age);
 tfxAPI_EDITOR float tfx__get_linear_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life);
 tfxAPI_EDITOR tfx_attribute_node_t *tfx__get_graph_last_node(tfx_graph_t *graph);
 tfxAPI_EDITOR float tfx__get_graph_first_value(tfx_graph_t *graph);
@@ -6985,8 +6986,8 @@ tfxINTERNAL void tfx__maybe_insert_color_ramp_bitmap(tfx_library library, tfx_gr
 tfxINTERNAL tfxU32 tfx__add_color_ramp_to_bitmap(tfx_color_ramp_bitmap_data_t *ramp_data, tfx_color_ramp_t *ramp);
 tfxINTERNAL void tfx__copy_color_ramp_to_animation_manager(tfx_animation_manager animation_manager, tfxU32 properties_index, tfx_color_ramp_t *ramp);
 tfxINTERNAL float tfx__get_max_life(tfx_effect_descriptor_t *e);
-tfxINTERNAL inline float tfx__lookup_fast_overtime(tfx_graph_t *graph, float age, float lifetime) {
-	return graph->lookup.values[tfx__Min(tfxU32((age / lifetime) * tfxLOOKUP_TABLE_ARRAY_SIZE), graph->lookup.last_frame)];
+tfxAPI_EDITOR inline float tfx__lookup_fast_overtime(tfx_graph_t *graph, float age_lerp) {
+	return graph->lookup.values[tfx__Min(tfxU32(age_lerp * tfxLOOKUP_TABLE_ARRAY_SIZE), graph->lookup.last_frame)];
 }
 tfxINTERNAL float tfx__lookup_precise_overtime(tfx_graph_t *graph, float age, float lifetime);
 tfxINTERNAL float tfx__lookup_precise(tfx_graph_t *graph, float frame);
@@ -7071,7 +7072,7 @@ tfxAPI_EDITOR void tfx__update_library_emitter_compute_nodes(tfx_library library
 tfxAPI_EDITOR void tfx__compile_all_library_graphs(tfx_library library);
 tfxAPI_EDITOR void tfx__compile_library_overtime_graphs(tfx_library library, tfxU32 index, bool including_color_ramps = true);
 tfxAPI_EDITOR void tfx__compile_library_color_graphs(tfx_library library, tfxU32 index);
-tfxAPI_EDITOR void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfxU32 depth = 0);
+tfxAPI_EDITOR void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfxU32 depth = 0, bool including_color_ramps = true);
 tfxAPI_EDITOR void tfx__set_library_min_max_data(tfx_library library);
 tfxAPI_EDITOR void tfx__init_library(tfx_library library);
 tfxAPI_EDITOR bool tfx__is_valid_effect_path(tfx_library library, const char *path);

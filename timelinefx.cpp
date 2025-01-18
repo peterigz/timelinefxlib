@@ -1568,8 +1568,14 @@ tfxU32 tfx__pack10bit_unsigned(tfx_vec3_t const *v) {
 }
 
 tfxU32 tfx__pack16bit_sscaled(float x, float y, float max_value) {
-	int16_t x_scaled = (int16_t)(x * 32767.0f / max_value);
-	int16_t y_scaled = (int16_t)(y * 32767.0f / max_value);
+	int16_t x_scaled = (int16_t)(x * 32767.f / max_value);
+	int16_t y_scaled = (int16_t)(y * 32767.f / max_value);
+	return ((tfxU32)x_scaled) | ((tfxU32)y_scaled << 16);
+}
+
+tfxU32 tfx__pack16bit_unorm(float x, float y) {
+	tfxU32 x_scaled = (tfxU32)(x * 65535.0);
+	tfxU32 y_scaled = (tfxU32)(y * 65535.0);
 	return ((tfxU32)x_scaled) | ((tfxU32)y_scaled << 16);
 }
 
@@ -5242,22 +5248,22 @@ void tfx__update_library_emitter_compute_nodes(tfx_library library, tfx_effect_d
 	stack.free();
 }
 
-void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfxU32 depth) {
+void tfx__compile_library_graphs_of_effect(tfx_library library, tfx_effect_descriptor_t *effect, tfxU32 depth, bool include_color_ramps) {
 	tfx_effect_emitter_info_t *info = tfx_GetEffectInfo(effect);
 	if (effect->type == tfxEmitterType || effect->type == tfxRibbonType) {
-		tfx__compile_library_overtime_graphs(library, effect->graph_list_index);
+		tfx__compile_library_overtime_graphs(library, effect->graph_list_index, include_color_ramps);
 		for (auto &sub : info->sub_effectors) {
-			tfx__compile_library_graphs_of_effect(library, &sub, ++depth);
+			tfx__compile_library_graphs_of_effect(library, &sub, ++depth, include_color_ramps);
 		}
 	}
 	else if (effect->type == tfxFolder) {
 		for (auto &sub : info->sub_effectors) {
-			tfx__compile_library_graphs_of_effect(library, &sub, 0);
+			tfx__compile_library_graphs_of_effect(library, &sub, 0, include_color_ramps);
 		}
 	}
 	if (effect->type == tfxEffectType) {
 		for (auto &sub : info->sub_effectors) {
-			tfx__compile_library_graphs_of_effect(library, &sub, ++depth);
+			tfx__compile_library_graphs_of_effect(library, &sub, ++depth, include_color_ramps);
 		}
 	}
 }
@@ -7005,12 +7011,12 @@ float tfx__get_graph_random_value(tfx_graph_t *graph, float age, tfx_random_t *r
 	return tfx_RandomRangeZeroToMax(random, prev->value);
 }
 
-float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age, float life) {
+float tfx__get_graph_value_by_percent_of_life(tfx_graph_t *graph, float age) {
 	tfx_attribute_node_t *curr, *prev = &graph->nodes[0];
 	float prev_frame = prev->frame;
 	for (tfxU32 i = 1; i < graph->nodes.current_size; i++) {
 		curr = &graph->nodes[i];
-		float frame = curr->frame * life;
+		float frame = curr->frame * graph->lookup.life;
 		if (age < frame) {
 			float t = (age - prev_frame) / (frame - prev_frame);
 			float ti = 1.f - t;
@@ -7564,7 +7570,7 @@ void tfx__compile_graph_overtime(tfx_graph_t *graph) {
 		graph->lookup.values.resize(tfxU32(tfxLOOKUP_TABLE_ARRAY_SIZE));
 		for (tfxU32 f = 0; f != graph->lookup.last_frame; ++f) {
 			float age = ((float)f / tfxLOOKUP_TABLE_ARRAY_SIZE) * graph->lookup.life;
-			graph->lookup.values[f] = tfx__get_graph_value_by_percent_of_life(graph, age, graph->lookup.life);
+			graph->lookup.values[f] = tfx__get_graph_value_by_percent_of_life(graph, age);
 		}
 		graph->lookup.values[graph->lookup.last_frame] = tfx__get_graph_last_value(graph);
 	}
@@ -7580,7 +7586,7 @@ void tfx__compile_graph_ramp_overtime(tfx_graph_t *graph) {
 	graph->lookup.values.resize(tfxCOLOR_RAMP_WIDTH);
 	for (tfxU32 f = 0; f != tfxCOLOR_RAMP_WIDTH; ++f) {
 		float age = ((float)f / tfxCOLOR_RAMP_WIDTH) * graph->lookup.life;
-		graph->lookup.values[f] = tfx__get_graph_value_by_percent_of_life(graph, age, graph->lookup.life);
+		graph->lookup.values[f] = tfx__get_graph_value_by_percent_of_life(graph, age);
 	}
 	graph->lookup.values[tfxCOLOR_RAMP_WIDTH - 1] = tfx__get_graph_last_value(graph);
 }
@@ -15177,10 +15183,10 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 			if ((tfxU32)emitter.grid_coords.x >= pm.particle_location_buffers[emitter.spawn_locations_index].current_size) {
 				emitter.grid_coords.x = 0.f;
 			}
-			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_life_index], age_lerp * max_age, max_age);
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_life_index], age_lerp);
 			max_age *= factor;
 			max_age = tfx__Max(max_age, pm.frame_length);
-			factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_intensity_index], age_lerp * max_age, max_age);
+			factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_intensity_index], age_lerp);
 			entry->particle_data->intensity_factor[index] = factor;
 		}
 		else {
@@ -15307,7 +15313,7 @@ void tfx__spawn_particle_size_2d(tfx_work_queue_t *queue, void *data) {
 				emitter.grid_coords.x = 0.f;
 			}
 			float max_age = entry->particle_data->max_age[index];
-			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_size_index], age_lerp * max_age, max_age);
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_size_index], age_lerp);
 			base_size_x *= factor;
 			base_size_y *= factor;
 		}
@@ -15377,7 +15383,7 @@ void tfx__spawn_particle_size_3d(tfx_work_queue_t *queue, void *data) {
 				emitter.grid_coords.x = 0.f;
 			}
 			float max_age = entry->particle_data->max_age[index];
-			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_size_index], age_lerp * max_age, max_age);
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_size_index], age_lerp);
 			base_size_x *= factor;
 			base_size_y *= factor;
 		}
@@ -17065,8 +17071,17 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 				tfx__wide_catmull_rom_spline_3d(&pi, t, path->node_soa.x, path->node_soa.y, path->node_soa.z, &point_x.m, &point_y.m, &point_z.m);
 				for (int j = 0; j != tfxDataWidth; ++j) {
 					tfxU32 segment_index = s + j + ribbon_emitter.static_segment_start_index;
+					float age_lerp = float(segment_index) / float(ribbon_emitter.segment_count);
 					segments[segment_index].position = { point_x.a[j], point_y.a[j], point_z.a[j]};
 					segments[segment_index].texture_indexes = texture_indexes;
+					segments[segment_index].intensity_gradient_map.packed = tfx__pack16bit_sscaled(   
+						lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overlength_intensity_index], age_lerp),
+						lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overlength_gradient_map_index], age_lerp), 128.f
+					);
+					segments[segment_index].curved_alpha.packed = tfx__pack16bit_unorm(
+						lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overlength_curved_alpha_index], age_lerp),
+						lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overlength_alpha_sharpness_index], age_lerp)
+					);
 				}
 			}
 			ribbon_bucket.buffer_info.index_count = ribbon_bucket.buffer_info.indices_per_segment * ribbon_emitter.segment_count * ribbon_emitter.path_state.active_paths;
@@ -17327,7 +17342,7 @@ void tfx__spawn_particle_velocity(tfx_work_queue_t *queue, void *data) {
 				emitter.grid_coords.x = 0.f;
 			}
 			float max_age = entry->particle_data->max_age[index];
-			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_velocity_index], age_lerp * max_age, max_age);
+			float factor = lookup_overtime_callback(&library->graphs[emitter.graph_list_index].graphs[tfxEmitter_factor_velocity_index], age_lerp);
 			base_velocity *= factor;
 		}
 
