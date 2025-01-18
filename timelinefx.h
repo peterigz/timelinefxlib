@@ -2038,23 +2038,6 @@ typedef enum tfx_color_ramp_format {
 //--------------------------------------------
 //--Graph_types
 //--------------------------------------------
-#define TFX_GLOBAL_COUNT     17
-#define TFX_PROPERTY_COUNT   10
-#define TFX_BASE_COUNT       10
-#define TFX_VARIATION_COUNT  12
-#define TFX_OVERTIME_COUNT   25
-#define TFX_FACTOR_COUNT     4
-#define TFX_TRANSFORM_COUNT  6
-
-enum {
-	TFX_GLOBAL_START = 0,
-	TFX_PROPERTY_START = TFX_GLOBAL_COUNT,
-	TFX_BASE_START = (TFX_PROPERTY_START + TFX_PROPERTY_COUNT),
-	TFX_VARIATION_START = (TFX_BASE_START + TFX_BASE_COUNT),
-	TFX_OVERTIME_START = (TFX_VARIATION_START + TFX_VARIATION_COUNT),
-	TFX_FACTOR_START = (TFX_OVERTIME_START + TFX_OVERTIME_COUNT),
-	TFX_TRANSFORM_START = (TFX_FACTOR_START + TFX_FACTOR_COUNT)
-};
 
 //All the different types of graphs, split into main type: global, property, base, variation and overtime
 typedef enum {
@@ -2136,12 +2119,13 @@ typedef enum {
 	tfxOvertime_motion_randomness,
 	tfxOvertime_uv_offset_y,
 	tfxOvertime_uv_scale_y,
+	tfxOvertime_clip_offset,
+	tfxOvertime_clip_size,
 
 	tfxOverlength_intensity,
 	tfxOverlength_alpha_sharpness,
 	tfxOverlength_curved_alpha,
 	tfxOverlength_gradient_map,
-	tfxOverlength_offset,
 
 	tfxFactor_life,
 	tfxFactor_size,
@@ -2324,12 +2308,13 @@ typedef enum {
 	tfxRibbon_overtime_width_index,
 	tfxRibbon_overtime_uv_offset_y_index,
 	tfxRibbon_overtime_uv_scale_y_index,
+	tfxRibbon_overtime_clip_offset_index,
+	tfxRibbon_overtime_clip_size_index,
 
 	tfxRibbon_overlength_intensity_index,
 	tfxRibbon_overlength_alpha_sharpness_index,
 	tfxRibbon_overlength_curved_alpha_index,
 	tfxRibbon_overlength_gradient_map_index,
-	tfxRibbon_overlength_offset_index,
 
 	tfxRibbon_factor_life_index,
 	tfxRibbon_factor_size_index,
@@ -2345,10 +2330,10 @@ typedef enum {
 	tfxRibbon_property_end_index = tfxRibbon_property_arc_offset_index + 1,
 	tfxRibbon_base_end_index = tfxRibbon_base_width_index + 1,
 	tfxRibbon_variation_end_index = tfxRibbon_variation_width_index + 1,
-	tfxRibbon_overtime_end_index = tfxRibbon_overtime_uv_scale_y_index + 1,
+	tfxRibbon_overtime_end_index = tfxRibbon_overtime_clip_size_index + 1,
 	tfxRibbon_factor_end_index = tfxRibbon_factor_intensity_index + 1,
 	tfxRibbon_overlength_start = tfxRibbon_overlength_intensity_index,
-	tfxRibbon_overlength_end = tfxRibbon_overlength_offset_index,
+	tfxRibbon_overlength_end = tfxRibbon_overlength_gradient_map_index + 1,
 } tfx_ribbon_graph_index;
 
 typedef enum {
@@ -2361,11 +2346,11 @@ typedef enum {
 	tfxVariation_start = tfxVariation_life,
 	tfxVariation_end = tfxVariation_motion_randomness,
 	tfxOvertime_start = tfxOvertime_red,
-	tfxOvertime_end = tfxOvertime_uv_scale_y,
+	tfxOvertime_end = tfxOvertime_clip_size,
 	tfxOvertime_color_start = tfxOvertime_red,
 	tfxOvertime_color_end = tfxOvertime_blendfactor,
 	tfxOverlength_start = tfxOverlength_intensity,
-	tfxOverlength_end = tfxOverlength_offset,
+	tfxOverlength_end = tfxOverlength_gradient_map,
 	tfxFactor_start = tfxFactor_life,
 	tfxFactor_end = tfxFactor_intensity,
 	tfxTransform_start = tfxTransform_roll,
@@ -6195,7 +6180,7 @@ typedef struct tfx_3d_ribbon_vertex_s {
 	tfxU32 segment_index;
 	tfx_vec2_t uv_offset_scale;
 	tfxU32 ribbon_index;
-	tfxU32 padding;
+	tfxU32 clipped;
 } tfx_3d_ribbon_vertex_t;
 
 typedef struct tfx_ribbon_buffer_info_s {

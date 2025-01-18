@@ -3024,7 +3024,8 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bo
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].type = tfxOverlength_alpha_sharpness;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].type = tfxOverlength_curved_alpha;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].type = tfxOverlength_gradient_map;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_offset_index], 0.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_offset_index].type = tfxOverlength_offset;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].type = tfxOvertime_clip_offset;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].type = tfxOvertime_clip_size;
 }
 
 void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
@@ -3165,7 +3166,8 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 1.f, tfxGradientMapperOvertimePreset);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_offset_index], 0.f, tfxPercentOvertime);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index], 1.f, tfxPercentOvertime);
@@ -3514,7 +3516,7 @@ tfx_graph_t *tfx__get_effect_transform_graph_by_index(tfx_effect_descriptor_t *e
 }
 
 tfxU32 tfx__get_effect_graph_index_by_type(tfx_effect_descriptor_t *effect, tfx_graph_type type) {
-	if (type < TFX_TRANSFORM_START) {
+	if (type < tfxTransform_start) {
 		return effect->graph_list_index;
 	}
 	else {
@@ -5561,7 +5563,8 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overlength_alpha_sharpness", tfxFloat);
 	names_and_types.Insert("overlength_curved_alpha", tfxFloat);
 	names_and_types.Insert("overlength_gradient_map", tfxFloat);
-	names_and_types.Insert("overlength_offset", tfxFloat);
+	names_and_types.Insert("overtime_clip_offset", tfxFloat);
+	names_and_types.Insert("overtime_clip_size", tfxFloat);
 
 	names_and_types.Insert("transform_roll", tfxFloat);
 	names_and_types.Insert("transform_pitch", tfxFloat);
@@ -5863,7 +5866,8 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 			if ((*values)[0] == "overlength_alpha_sharpness") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], &n); }
 			if ((*values)[0] == "overlength_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_curved_alpha_index], &n); }
 			if ((*values)[0] == "overlength_gradient_map") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_gradient_map_index], &n); }
-			if ((*values)[0] == "overlength_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overlength_offset_index], &n); }
+			if ((*values)[0] == "overtime_clip_offset") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_clip_offset_index], &n); }
+			if ((*values)[0] == "overtime_clip_size") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_clip_size_index], &n); }
 		}
 
 		if ((*values)[0] == "path_pitch") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); 
@@ -7886,10 +7890,6 @@ bool tfx__is_overtime_percentage_graph_type(tfx_graph_type type) {
 
 bool tfx__is_global_graph_type(tfx_graph_type type) {
 	return type >= tfxGlobal_start && type <= tfxGlobal_end;
-}
-
-bool tfx__is_emitter_graph_type(tfx_graph_type type) {
-	return type >= TFX_PROPERTY_START && type < TFX_TRANSFORM_START;
 }
 
 bool tfx__is_transform_graph_type(tfx_graph_type type) {
