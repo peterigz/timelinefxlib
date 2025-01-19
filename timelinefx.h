@@ -6149,11 +6149,10 @@ typedef struct tfx_sprite_data_s {
 
 typedef struct tfx_ribbon_segment_s {
 	tfx_vec3_t position;
-	tfxU32 texture_indexes;
 	tfx_float16x2_t intensity_gradient_map;			//Multiplier for the color of the ribbon
 	tfx_float8x4_t curved_alpha;					//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
 	tfxU32 ribbon_position;							//normalised position of the vertex on the ribbon	
-	tfxU32 padding;
+	tfxU32 padding[2];
 } tfx_ribbon_segment_t;
 
 //This can be sent as a push constant to the gpu

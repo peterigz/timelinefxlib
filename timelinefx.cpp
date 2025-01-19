@@ -3020,12 +3020,12 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bo
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_life_index].type = tfxFactor_life;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_size_index].type = tfxFactor_size;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_factor_intensity_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_factor_intensity_index].type = tfxFactor_intensity;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 0.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].type = tfxOverlength_intensity;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].type = tfxOverlength_alpha_sharpness;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].type = tfxOverlength_curved_alpha;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].type = tfxOverlength_intensity;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].type = tfxOverlength_alpha_sharpness;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].type = tfxOverlength_curved_alpha;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 0.f, tfxGradientMapperOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].type = tfxOverlength_gradient_map;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].type = tfxOvertime_clip_offset;
-	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 0.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].type = tfxOvertime_clip_size;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].type = tfxOvertime_clip_size;
 }
 
 void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
@@ -3165,7 +3165,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_intensity_index], 1.f, tfxIntensityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_alpha_sharpness_index], 1.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_curved_alpha_index], 1.f, tfxOpacityOvertimePreset);
-		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 1.f, tfxGradientMapperOvertimePreset);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overlength_gradient_map_index], 0.f, tfxGradientMapperOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_offset_index], 0.f, tfxOpacityOvertimePreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_clip_size_index], 1.f, tfxOpacityOvertimePreset);
 
@@ -17053,7 +17053,6 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 		tfxU32 total_vertex_count = pm.running_ribbon_vertex_count + ribbon_bucket.globals.segment_count * ribbon_bucket.globals.segment_count;
 		if (total_vertex_count < pm.info.max_ribbon_segments * ribbon_bucket.globals.segment_count) {
 			ribbon_bucket.segments.resize(ribbon_bucket.segments.current_size + ribbon_bucket.globals.segment_count);
-			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | (entry->shared_properties->image->compute_shape_index + (tfxU32)entry->shared_properties->start_frame);
 			tfx_vector_t<tfx_ribbon_segment_t> &segments = ribbon_bucket.segments;
 			tfxWideFloat segment_count = tfxWideSetSingle(float(ribbon_emitter.segment_count - 1));
 			tfxWideFloat num_path_nodes = tfxWideSetSingle(float(path->node_count - 3));
@@ -17073,7 +17072,6 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 					tfxU32 segment_index = s + j + ribbon_emitter.static_segment_start_index;
 					float age_lerp = float(segment_index) / float(ribbon_emitter.segment_count);
 					segments[segment_index].position = { point_x.a[j], point_y.a[j], point_z.a[j]};
-					segments[segment_index].texture_indexes = texture_indexes;
 					segments[segment_index].intensity_gradient_map.packed = tfx__pack16bit_sscaled(   
 						lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overlength_intensity_index], age_lerp),
 						lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overlength_gradient_map_index], age_lerp), 128.f
@@ -17108,8 +17106,11 @@ void tfx__spawn_static_ribbons(tfx_work_queue_t *queue, void *data) {
 			} else {
 				ribbon.position = ribbon_emitter.world_position;
 			}
+			float image_frame = (ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_start_frame && entry->shared_properties->image->animation_frames > 1) ? tfx_RandomRangeZeroToMax(&random, entry->shared_properties->image->animation_frames) : (tfxU32)entry->shared_properties->start_frame;
+			tfxU32 texture_indexes = (tfxColorRampIndex(entry->graphs->color_ramp_bitmap_indexes) << 24) | (tfxColorRampLayer(entry->graphs->color_ramp_bitmap_indexes) << 16) | (entry->shared_properties->image->compute_shape_index + tfxU32(image_frame));
 			tfx_quaternion_t q = tfx__get_path_rotation_3d(&random, path->rotation_range, path->rotation_pitch, path->rotation_yaw, ((path->flags & tfxPathFlags_rotation_range_yaw_only) > 0));
 			ribbon.quaternion = tfx__pack8bit_quaternion_for_gpu(q);
+			ribbon.texture_indexes = texture_indexes;
 			ribbon.width = base_width + tfx_RandomRangeZeroToMax(&random, tfx__lookup_precise(&graph_list.graphs[tfxRibbon_variation_width_index], ribbon_emitter.frame));
 			ribbon.position.w = 0.f;
 			ribbon.flags |= tfxRibbonFlags_active;
