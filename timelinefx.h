@@ -5760,10 +5760,8 @@ typedef struct tfx_effect_state_s {
 	//The emitters within this effect.
 #ifdef __cplusplus
 	tfx_vector_t<tfxU32> emitter_indexes[2];
-	tfx_vector_t<tfxU32> ribbon_indexes[2];
 #else
 	tfx_vector_t emitter_indexes[2];
-	tfx_vector_t ribbon_indexes[2];
 #endif
 	tfxU32 emitter_start_size;
 
@@ -5781,13 +5779,14 @@ typedef struct tfx_ribbon_s {
 	tfxU32 emitter_index;
 	tfxU32 texture_indexes;
 	tfxU32 intensity_gradient_map;			//Multiplier for the color of the ribbon
-	tfxU32 curved_alpha_life;				//Sharpness and dissolve amount value for fading the image plus the age of the particle value packed into 3 bit unorms
+	tfxU32 curved_alpha;					//Sharpness and dissolve amount value for fading the image
 } tfx_ribbon_t;
 
 typedef struct tfx_ribbon_soa_s {
 	tfx_ribbon_t *ribbon_instances;
 	float *age;
 	float *max_age;
+	float *image_frame;
 	tfxU32 *path_index;
 } tfx_ribbon_soa_t;
 
@@ -6199,10 +6198,17 @@ typedef struct tfx_ribbon_bucket_s {
 	tfxU32 lowest_ribbon_index;
 	tfxU32 highest_segment_index;
 	tfxU32 lowest_segment_index;
-	tfx_vector_t<tfx_ribbon_segment_t> segments;
 	tfx_soa_buffer_t ribbons_buffer;
 	tfx_ribbon_soa_t ribbons;
+#ifdef __cplusplus
+	tfx_vector_t<tfx_ribbon_segment_t> segments;
 	tfx_vector_t<tfxU32> free_ribbons;
+	tfx_vector_t<tfxU32> ribbon_emitter_indexes[2];
+#else
+	tfx_vector_t segments;
+	tfx_vector_t free_ribbons;
+	tfx_vector_t ribbon_indexes[2];
+#endif
 	tfxRibbonBucketFlags flags;
 } tfx_ribbon_bucket_t;
 
@@ -6630,6 +6636,7 @@ typedef struct tfx_particle_manager_s {
 	tfx_size ribbon_dispatches;
 	tfx_ribbon_buffer_requirements_t ribbon_buffer_requirements;
 	tfx_ribbon_dispatch_t last_ribbon_dispatch;
+	tfxU32 current_ribbon_count;
 
 	tfxU32 effects_start_size[tfxMAXDEPTH];
 
@@ -7094,7 +7101,7 @@ tfxAPI_EDITOR tfx_effect_descriptor_t tfx__new_effect_descriptor();
 tfxAPI_EDITOR tfx_particle_emitter_properties_t *tfx__get_particle_emitter_properties(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_shared_properties_t *tfx__get_shared_emitter_properties(tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR tfx_ribbon_emitter_properties_t *tfx__get_ribbon_emitter_properties(tfx_effect_descriptor_t *e);
-tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e);
+tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_emitter_to_effect(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e, tfx_effect_descriptor_type type);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *effect, tfx_str64_t *name);
 tfxAPI_EDITOR tfx_effect_descriptor_t *tfx__add_effect_to_emitter(tfx_effect_descriptor_t *effect, tfx_effect_descriptor_t *e);
 tfxAPI_EDITOR int tfx__get_effect_depth(tfx_effect_descriptor_t *e);
@@ -7409,6 +7416,7 @@ tfxINTERNAL void tfx__control_ribbon_paths(tfx_work_queue_t *queue, void *data);
 
 tfxINTERNAL void tfx__update_ribbon_buffer_requirements(tfx_particle_manager pm);
 tfxINTERNAL void tfx__reset_ribbon_buffer_requirements(tfx_particle_manager pm);
+tfxINTERNAL bool tfx__next_ribbon_emitter(tfx_particle_manager pm, tfx_ribbon_dispatch_t *ribbon_dispatch);
 
 tfxINTERNAL void tfx__init_sprite_data_soa_compression_3d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_sprite_data_soa_3d(tfx_soa_buffer_t *buffer, tfx_sprite_data_soa_t *soa, tfxU32 reserve_amount);
@@ -7936,6 +7944,13 @@ Get the current particle count for a particle manager
 * @returns tfxU32                  The total number of particles currently being updated
 */
 tfxAPI tfxU32 tfx_ParticleCount(tfx_particle_manager pm);
+
+/*
+Get the current ribbon count for a particle manager
+* @param pm                        A pointer to an tfx_particle_manager_t
+* @returns tfxU32                  The total number of particles currently being updated
+*/
+tfxAPI tfxU32 tfx_RibbonCount(tfx_particle_manager pm);
 
 /*
 Get the current number of effects that are currently being updated by a particle manager
