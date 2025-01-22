@@ -6576,8 +6576,6 @@ typedef struct tfx_particle_manager_s {
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_particle_location_lists;
 	tfx_storage_map_t<tfx_vector_t<tfxU32>> free_ribbon_segment_lists;
-	tfx_vector_t<tfx_soa_buffer_t> ribbon_segment_buffers;
-	tfx_bucket_array_t<tfx_ribbon_segment_soa_t> ribbon_segment_arrays;
 	tfx_storage_map_t<tfxU32> cached_static_path_segments;
 	tfx_ribbon_bucket_t ribbon_segment_buckets[tfxArraySize_segment_bucket];
 	tfx_size ribbon_buckets_in_use;
@@ -6790,7 +6788,6 @@ tfxINTERNAL tfxU32 tfx__grab_gpu_emitter(tfx_particle_manager pm);
 tfxINTERNAL void tfx__free_gpu_emitter(tfx_particle_manager pm, tfxU32 index);
 tfxINTERNAL tfxU32 tfx__grab_ribbon(tfx_particle_manager pm, tfx_ribbon_emitter_state_t *segment_count);
 tfxINTERNAL void tfx__free_ribbon(tfx_particle_manager pm, tfxU32 segment_count, tfxU32 ribbon_index);
-tfxINTERNAL tfxU32 tfx__grab_ribbon_segment_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount, tfxEmitterControlProfileFlags flags);
 tfxINTERNAL tfxU32 tfx__grab_particle_location_lists(tfx_particle_manager pm, tfxKey emitter_hash, bool is_3d, tfxU32 reserve_amount);
 tfxINTERNAL void tfx__init_ribbon_segment_buffer(tfx_particle_manager pm, tfxU32 index, int tessellation);
 tfxAPI_EDITOR tfx_ribbon_buffer_info_t tfx__generate_ribbon_buffer_info(tfxU32 tessellation);
