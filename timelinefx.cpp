@@ -3383,6 +3383,9 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 				clone->graph_list_index = tfx__clone_library_graph_list(library, root_parent->graph_list_index, destination_library);
 			}
 		}
+		if (flags & tfxEffectCloningFlags_history) {
+			clone->effect_flags |= tfxEffectPropertyFlags_history_effect;
+		}
 	} else if (effect_to_clone->type == tfxEmitterType || effect_to_clone->type == tfxRibbonType) {
 		clone->graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->graph_list_index, destination_library) : effect_to_clone->graph_list_index;
 		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->transform_index, destination_library) : effect_to_clone->transform_index;
@@ -5174,6 +5177,9 @@ void tfx__update_library_compute_nodes(tfx_library library) {
 	library->all_nodes.clear();
 	library->compiled_lookup_values.clear();
 	for (auto &effect : library->effects) {
+		if (effect.property_flags & tfxEffectPropertyFlags_history_effect) {
+			continue;
+		}
 		stack.push_back(&effect);
 		while (!stack.empty()) {
 			tfx_effect_descriptor_t *current = stack.pop_back();

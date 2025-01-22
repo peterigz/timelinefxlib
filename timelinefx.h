@@ -2536,7 +2536,8 @@ typedef enum {
 	tfxEffectCloningFlags_keep_user_data = 1 << 0,
 	tfxEffectCloningFlags_force_clone_global = 1 << 1,
 	tfxEffectCloningFlags_clone_graphs = 1 << 2,
-	tfxEffectCloningFlags_compile_graphs = 1 << 3
+	tfxEffectCloningFlags_compile_graphs = 1 << 3,
+	tfxEffectCloningFlags_history = 1 << 4
 } tfx_effect_cloning_flag_bits;
 
 typedef enum {
@@ -2681,10 +2682,11 @@ typedef enum {
 	tfxEffectPropertyFlags_guaranteed_order = 1 << 2,
 	tfxEffectPropertyFlags_age_order = 1 << 3,
 	tfxEffectPropertyFlags_use_keyframes = 1 << 4,
-	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,      //In the editor you can specify which effects you want to be included in a spritedata export
-	tfxEffectPropertyFlags_global_uniform_size = 1 << 6,                //Keep the global particle size uniform
-	tfxEffectPropertyFlags_is_in_folder = 1 << 7,                      //This effect is located inside a folder. 
-	tfxEffectPropertyFlags_effect_is_3d					= 1 << 11,          //Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
+	tfxEffectPropertyFlags_include_in_sprite_data_export = 1 << 5,					//In the editor you can specify which effects you want to be included in a spritedata export
+	tfxEffectPropertyFlags_global_uniform_size = 1 << 6,							//Keep the global particle size uniform
+	tfxEffectPropertyFlags_is_in_folder = 1 << 7,									//This effect is located inside a folder. 
+	tfxEffectPropertyFlags_effect_is_3d					= 1 << 11,					//Makes the effect run in 3d mode for 3d effects todo: does this need to be here, the effect dictates this?
+	tfxEffectPropertyFlags_history_effect					= 1 << 12,				//Flagged if the effect is just a change in the editor
 } tfx_effect_property_flag_bits;
 
 typedef enum {
