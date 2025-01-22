@@ -3341,7 +3341,7 @@ void tfx__clean_up_effect(tfx_effect_descriptor_t *effect) {
 			}
 			tfx_GetEffectInfo(&current)->sub_effectors.free();
 			tfx_GetEffectInfo(&current)->path.Clear();
-			tfx__free_library_emitter_properties(effect->library, current.property_index);
+			tfx__free_library_properties(effect);
 			tfx_free_library_info(effect->library, current.info_index);
 		}
 		stack.free();
@@ -3412,19 +3412,20 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 	}
 
 	for (auto &e : tfx_GetEffectInfo(effect_to_clone)->sub_effectors) {
-		if (e.type == tfxEmitterType) {
+		if (e.type == tfxEmitterType || e.type == tfxRibbonType) {
 			tfx_effect_descriptor_t emitter_copy;
 			tfx__clone_effect(&e, &emitter_copy, root_parent, destination_library, flags);
-			if (!(flags & tfxEffectCloningFlags_keep_user_data))
+			if (!(flags & tfxEffectCloningFlags_keep_user_data)) {
 				emitter_copy.user_data = nullptr;
-			tfx__add_emitter_to_effect(clone, &emitter_copy, tfxEmitterType);
-		}
-		else if (e.type == tfxEffectType) {
+			}
+			tfx__add_emitter_to_effect(clone, &emitter_copy, e.type);
+		} else if (e.type == tfxEffectType) {
 			tfx_effect_descriptor_t effect_copy;
-			if (clone->type == tfxFolder)
+			if (clone->type == tfxFolder) {
 				tfx__clone_effect(&e, &effect_copy, &effect_copy, destination_library, flags);
-			else
+			} else {
 				tfx__clone_effect(&e, &effect_copy, root_parent, destination_library, flags);
+			}
 			if (!(flags & tfxEffectCloningFlags_keep_user_data)) {
 				effect_copy.user_data = nullptr;
 			}
@@ -4725,6 +4726,18 @@ void tfx__free_library_graph_list(tfx_library library, tfxU32 index) {
 	TFX_ASSERT(index < library->graphs.size());
 	library->free_graph_lists.push_back(index);
 	tfx__free_library_graphs(&library->graphs[index]);
+}
+
+void tfx__free_library_properties(tfx_effect_descriptor_t *descriptor) {
+	TFX_ASSERT(descriptor->shared_index < descriptor->library->shared_properties.current_size);
+	tfx__free_library_shared_properties(descriptor->library, descriptor->shared_index);
+	if (descriptor->type != tfxRibbonType) {
+		TFX_ASSERT(descriptor->property_index < descriptor->library->emitter_properties.current_size);
+		tfx__free_library_emitter_properties(descriptor->library, descriptor->property_index);
+	} else if (descriptor->type == tfxRibbonType) {
+		TFX_ASSERT(descriptor->property_index < descriptor->library->ribbon_properties.current_size);
+		tfx__free_library_ribbon_properties(descriptor->library, descriptor->property_index);
+	}
 }
 
 void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index) {
@@ -8203,6 +8216,7 @@ bool tfx__line_is_uint(tfx_line_t *line) {
 
 //Get a graph by tfx_graph_id_t
 tfx_graph_t *tfx__get_graph(tfx_library library, tfx_graph_id_t graph_id) {
+	tfx_graph_list_t &list = library->graphs[graph_id.graph_id];
 	return &library->graphs[graph_id.graph_id].graphs[graph_id.index];
 }
 

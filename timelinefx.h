@@ -7085,6 +7085,7 @@ tfxINTERNAL tfxU32 tfx__get_library_lookup_values_size_in_bytes(tfx_library libr
 tfxINTERNAL void tfx__add_library_path(tfx_library library, tfx_effect_descriptor_t *effect_emitter, const char *path, bool skip_existing);
 tfxINTERNAL void tfx__free_library_graphs(tfx_graph_list_t *graph_list);
 tfxINTERNAL void tfx__free_library_graph_list(tfx_library library, tfxU32 index);
+tfxINTERNAL void tfx__free_library_properties(tfx_effect_descriptor_t *descriptor);
 tfxINTERNAL void tfx__free_library_emitter_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index);
 tfxINTERNAL void tfx__free_library_shared_properties(tfx_library library, tfxU32 index);
