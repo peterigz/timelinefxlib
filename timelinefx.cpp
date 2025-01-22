@@ -6210,8 +6210,8 @@ void tfx__assign_effector_property_bool(tfx_effect_descriptor_t *effect, tfx_str
 	if (*field == "preview_camera_hide_floor") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_hide_floor = value;
 	if (*field == "preview_camera_isometric") effect->library->preview_camera_settings[tfx_GetEffectInfo(effect)->preview_camera_settings].camera_settings.camera_isometric = value;
 	if (*field == "random_color") {
-		if (value) { effect->property_flags |= tfxEmitterPropertyFlags_random_color; }
-		else { effect->property_flags &= ~tfxEmitterPropertyFlags_random_color; }
+		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_random_color; }
+		else { effect->shared_flags &= ~tfxSharedEmitterPropertyFlags_random_color; }
 	}
 	if (*field == "relative_position") {
 		if (value) { effect->shared_flags |= tfxSharedEmitterPropertyFlags_relative_position; }
@@ -6395,7 +6395,7 @@ void tfx__stream_particle_emitter_properties(tfx_shared_properties_t *shared_pro
 	file->AddLine("emitter_handle_y=%f", shared_properties->emitter_handle.y);
 	file->AddLine("emitter_handle_z=%f", shared_properties->emitter_handle.z);
 	file->AddLine("end_behaviour=%i", properties->end_behaviour);
-	file->AddLine("random_color=%i", (flags & tfxEmitterPropertyFlags_random_color));
+	file->AddLine("random_color=%i", (flags & tfxSharedEmitterPropertyFlags_random_color));
 	file->AddLine("relative_position=%i", (shared_flags & tfxSharedEmitterPropertyFlags_relative_position));
 	file->AddLine("relative_angle=%i", (flags & tfxEmitterPropertyFlags_relative_angle));
 	file->AddLine("single=%i", (shared_flags & tfxSharedEmitterPropertyFlags_single));
@@ -12842,11 +12842,12 @@ void tfx__control_ribbon_attributes(tfx_work_queue_t *queue, void *data) {
 		tfx_ribbon_t &ribbon = bucket.ribbons.ribbon_instances[ribbon_index];
 		float &age = bucket.ribbons.age[ribbon_index];
 		float &max_age = bucket.ribbons.max_age[ribbon_index];
+		float &random_age = bucket.ribbons.random_age[ribbon_index];
 		float &image_frame = bucket.ribbons.image_frame[ribbon_index];
 		float age_lerp = age / max_age;
 		ribbon.intensity_gradient_map = tfx__pack16bit_sscaled(
 			lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overtime_intensity_index], age_lerp),
-			lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overtime_gradient_mapper_index], age_lerp), 128.f
+			lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overtime_gradient_mapper_index], ribbon_emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_color ? random_age : age_lerp), 128.f
 		);
 		ribbon.curved_alpha = tfx__pack16bit_sscaled(
 			lookup_overtime_callback(&graph_list.graphs[tfxRibbon_overtime_curved_alpha_index], age_lerp),
@@ -15265,7 +15266,7 @@ void tfx__spawn_particle_age(tfx_work_queue_t *queue, void *data) {
 			entry->particle_data->intensity_factor[index] = 1.f;
 		}
 
-		if (emitter.property_flags & tfxEmitterPropertyFlags_random_color) {
+		if (emitter.shared_flags & tfxSharedEmitterPropertyFlags_random_color) {
 			float age = tfx_RandomRangeZeroToMax(&random, max_age) / max_age * (tfxCOLOR_RAMP_WIDTH - 1.f);
 			color = color_ramp.colors[(int)age];
 			color.a = (tfxU32)alpha;
@@ -17191,6 +17192,7 @@ void tfx__spawn_static_ribbons(tfxU32 ribbon_emitter_index, tfx_work_queue_t *qu
 			ribbon_bucket->ribbons.age[ribbon_index] = 0.f;
 			ribbon_bucket->ribbons.image_frame[ribbon_index] = image_frame;
 			ribbon_bucket->ribbons.max_age[ribbon_index] = tfx__Max(life + tfx_RandomRangeZeroToMax(&random, life_variation), 1.f);
+			ribbon_bucket->ribbons.random_age[ribbon_index] = tfx_GenerateRandom(&random);
 			ribbon_emitter.active_ribbons++;
 		}
 		entry->new_ribbons = actual_new_ribbons;
@@ -18325,6 +18327,7 @@ void tfx__init_ribbons_soa(tfx_soa_buffer_t *buffer, tfx_ribbon_soa_t *soa, tfxU
 	tfx__add_struct_array(buffer, sizeof(tfx_ribbon_t), offsetof(tfx_ribbon_soa_t, ribbon_instances));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, max_age));
+	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, random_age));
 	tfx__add_struct_array(buffer, sizeof(float), offsetof(tfx_ribbon_soa_t, image_frame));
 	tfx__add_struct_array(buffer, sizeof(tfxU32), offsetof(tfx_ribbon_soa_t, path_index));
 	tfx__finish_soa_buffer_setup(buffer, soa, reserve_amount, 16);

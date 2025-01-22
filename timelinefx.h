@@ -2691,7 +2691,6 @@ typedef enum {
 
 typedef enum {
 	tfxEmitterPropertyFlags_none							= 0,
-	tfxEmitterPropertyFlags_random_color					= 1 << 0,               //Pick a random color from the color overtime gradient rather then change the color over the lifetime of the particle
 	tfxEmitterPropertyFlags_relative_angle					= 1 << 1,               //Keep the angle of the particles relative to the current angle of the emitter
 	tfxEmitterPropertyFlags_image_handle_auto_center		= 1 << 2,			    //Set the offset of the particle to the center of the image
 	tfxEmitterPropertyFlags_edge_traversal					= 1 << 3,               //Line and Path emitters only: make particles traverse the line/path
@@ -2711,6 +2710,7 @@ typedef enum {
 
 typedef enum {
 	tfxSharedEmitterPropertyFlags_none = 0,
+	tfxSharedEmitterPropertyFlags_random_color					= 1 << 0,           //Pick a random color from the color overtime gradient rather then change the color over the lifetime of the particle
 	tfxSharedEmitterPropertyFlags_relative_position				= 1 << 1,           //Keep the particles position relative to the current position of the emitter
 	tfxSharedEmitterPropertyFlags_single						= 1 << 2,           //Only spawn a single particle (or number of particles specified by spawn_amount) that does not expire
 	tfxSharedEmitterPropertyFlags_spawn_on_grid					= 1 << 3,           //When using an area, line or ellipse emitter, spawn along a grid
@@ -5788,6 +5788,7 @@ typedef struct tfx_ribbon_soa_s {
 	tfx_ribbon_t *ribbon_instances;
 	float *age;
 	float *max_age;
+	float *random_age;
 	float *image_frame;
 	tfxU32 *path_index;
 } tfx_ribbon_soa_t;
