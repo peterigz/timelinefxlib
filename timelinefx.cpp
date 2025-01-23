@@ -3007,6 +3007,7 @@ void tfx__reset_ribbon_graphs(tfx_effect_descriptor_t *effect, bool add_node, bo
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_amount_index], 0.f, tfxAmountPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_variation_amount_index].type = tfxVariation_amount;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index], 0.f, tfxDimensionsPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index].type = tfxVariation_width;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index].type = tfxOvertime_width;
+	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_scale_index], 1.f, tfxPercentOvertime, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_scale_index].type = tfxOvertime_scale;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index].type = tfxOvertime_red;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index].type = tfxOvertime_green;
 	tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index], 1.f, tfxColorPreset, add_node); library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index].type = tfxOvertime_blue;
@@ -3151,6 +3152,7 @@ void tfx__initialise_unitialised_graphs(tfx_effect_descriptor_t *effect) {
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_variation_width_index], 0.f, tfxDimensionsPreset);
 
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_width_index], 1.f, tfxPercentOvertime);
+		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_scale_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_scale_index], 1.f, tfxPercentOvertime);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_red_index], 1.f, tfxColorPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_green_index], 1.f, tfxColorPreset);
 		if (library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index].nodes.size() == 0) tfx__reset_graph(&library->graphs[graph_list_index].graphs[tfxRibbon_overtime_blue_index], 1.f, tfxColorPreset);
@@ -5545,6 +5547,7 @@ void tfx__initialise_dictionary(tfx_data_types_dictionary_t *dictionary) {
 	names_and_types.Insert("overtime_velocity", tfxFloat);
 	names_and_types.Insert("overtime_width", tfxFloat);
 	names_and_types.Insert("overtime_height", tfxFloat);
+	names_and_types.Insert("overtime_scale", tfxFloat);
 	names_and_types.Insert("overtime_weight", tfxFloat);
 	names_and_types.Insert("overtime_spin", tfxFloat);
 	names_and_types.Insert("overtime_roll_spin", tfxFloat);
@@ -5874,6 +5877,7 @@ void tfx__assign_graph_data(tfx_effect_descriptor_t *effect, tfx_vector_t<tfx_st
 			if ((*values)[0] == "overtime_curved_alpha") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_curved_alpha_index], &n); }
 			if ((*values)[0] == "overtime_gradient_mapper") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_gradient_mapper_index], &n); }
 			if ((*values)[0] == "overtime_width") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_width_index], &n); }
+			if ((*values)[0] == "overtime_scale") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_scale_index], &n); }
 			if ((*values)[0] == "overtime_uv_offset_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_offset_y_index], &n); }
 			if ((*values)[0] == "overtime_uv_scale_y") { tfx_attribute_node_t n; tfx__assign_node_data(&n, values); tfx__add_graph_node(&effect->library->graphs[graph_index].graphs[tfxRibbon_overtime_uv_scale_y_index], &n); }
 
