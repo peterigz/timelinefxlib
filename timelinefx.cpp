@@ -2414,7 +2414,8 @@ tfx_effect_descriptor_t *tfx__add_new_ribbon_to_effect(tfx_effect_descriptor_t *
 	ribbon.parent = effect;
 	ribbon.info_index = tfx__allocate_library_descriptor_info(ribbon.library);
 	ribbon.property_index = tfx__allocate_library_ribbon_emitter_properties(ribbon.library);
-	ribbon.library->shared_properties[ribbon.property_index].emission_type = tfxOtherEmitter;
+	ribbon.shared_index = tfx__allocate_library_shared_properties(ribbon.library);
+	ribbon.library->shared_properties[ribbon.shared_index].emission_type = tfxOtherEmitter;
 	ribbon.library->ribbon_properties[ribbon.property_index].segment_count = 32;
 	if (tfx__is_3d_effect(effect)) {
 		ribbon.shared_flags = tfxSharedEmitterPropertyFlags_effect_is_3d;
@@ -3318,6 +3319,7 @@ void tfx__delete_emitter_from_effect(tfx_effect_descriptor_t *emitter) {
 	while (stack.size()) {
 		tfx_effect_descriptor_t &current = stack.pop_back();
 		tfx__free_library_graph_list(library, current.graph_list_index);
+		tfx__free_library_properties(&current);
 		for (auto &sub : tfx_GetEffectInfo(&current)->sub_effectors) {
 			stack.push_back(sub);
 		}
@@ -3360,6 +3362,7 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 	}
 	switch (clone->type) {
 	case tfxEmitterType:
+	case tfxEffectType:
 		clone->property_index = tfx__clone_library_particle_emitter_properties(clone->library, tfx__get_particle_emitter_properties(effect_to_clone), destination_library);
 		break;
 	case tfxRibbonType:
@@ -3375,10 +3378,10 @@ void tfx__clone_effect(tfx_effect_descriptor_t *effect_to_clone, tfx_effect_desc
 	tfx_library library = effect_to_clone->library;
 
 	if (effect_to_clone->type == tfxEffectType) {
+		clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->transform_index, destination_library) : clone->transform_index = effect_to_clone->transform_index;
 		if (root_parent == clone) {
 			clone->graph_list_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->graph_list_index, destination_library) : clone->graph_list_index = effect_to_clone->graph_list_index;
 		} else {
-			clone->transform_index = flags & tfxEffectCloningFlags_clone_graphs ? tfx__clone_library_graph_list(library, effect_to_clone->transform_index, destination_library) : clone->transform_index = effect_to_clone->transform_index;
 			if (!(flags & tfxEffectCloningFlags_force_clone_global)) {
 				clone->graph_list_index = root_parent->graph_list_index;
 			} else {
