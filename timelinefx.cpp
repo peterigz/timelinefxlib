@@ -2573,14 +2573,16 @@ float tfx__get_emission_direciton_2d(tfx_particle_manager pm, tfx_library librar
 	tfx_emission_type emission_type = library->shared_properties[emitter.shared_index].emission_type;
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.properties_index].emission_direction;
 
-	if (emission_type == tfxPoint)
+	if (emission_type == tfxPoint) {
 		return direction + emission_angle + tfx_RandomRangeFromTo(random, -range, range);
+	}
 
 	tfx_vec2_t tmp_position;
-	if (emitter.handle.x + local_position.x == 0 && emitter.handle.y + local_position.y == 0)
+	if (emitter.handle.x + local_position.x == 0 && emitter.handle.y + local_position.y == 0) {
 		tmp_position = emitter.emitter_size.xy();
-	else
+	} else {
 		tmp_position = local_position + emitter.handle.xy();
+	}
 
 	if (emission_direction == tfx_emission_direction::tfxOutwards) {
 
@@ -2762,7 +2764,7 @@ tfx_vec3_t tfx__get_emission_direciton_3d(tfx_particle_manager pm, tfx_library l
 	else
 		tmp_position = local_position + emitter.handle;
 
-	tfx_emission_type emission_type = library->shared_properties[emitter.properties_index].emission_type;
+	tfx_emission_type emission_type = library->shared_properties[emitter.shared_index].emission_type;
 	tfx_emission_direction emission_direction = library->emitter_properties[emitter.properties_index].emission_direction;
 
 	tfx_vec3_t to_handle(0.f, 1.f, 0.f);
@@ -3345,8 +3347,8 @@ void tfx__clean_up_effect(tfx_effect_descriptor_t *effect) {
 			}
 			tfx_GetEffectInfo(&current)->sub_effectors.free();
 			tfx_GetEffectInfo(&current)->path.Clear();
-			tfx__free_library_properties(effect);
-			tfx_free_library_info(effect->library, current.info_index);
+			tfx__free_library_properties(&current);
+			tfx_free_library_info(current.library, current.info_index);
 		}
 		stack.free();
 	}
@@ -4757,6 +4759,9 @@ void tfx__free_library_ribbon_properties(tfx_library library, tfxU32 index) {
 
 void tfx__free_library_shared_properties(tfx_library library, tfxU32 index) {
 	TFX_ASSERT(index < library->shared_properties.current_size);
+	for (tfxU32 index_check : library->free_shared_emitter_properties) {
+		TFX_ASSERT(index_check != index);
+	}
 	library->free_shared_emitter_properties.push_back(index);
 }
 
@@ -10160,6 +10165,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				emitter.parent_index = parent_index.index;
 				tfx_particle_emitter_properties_t *emitter_properties = tfx__get_particle_emitter_properties(&e);
 				tfx_shared_properties_t *shared_properties = tfx__get_shared_emitter_properties(&e);
+				tfx_effect_emitter_info_t *info = tfx_GetEffectInfo(&e);
 				emitter.grid_coords = tfx_vec3_t();
 				emitter.library = effect->library;
 				tfx_path_state_t &path_state = emitter.path_state;
@@ -10217,6 +10223,7 @@ tfxEffectID tfx__add_effect_to_particle_manager(tfx_particle_manager pm, tfx_eff
 				state_flags |= (effect->shared_flags & tfxSharedEmitterPropertyFlags_effect_is_3d) && (emitter_properties->billboard_option == tfxBillboarding_free_align || emitter_properties->billboard_option == tfxBillboarding_align_to_vector) ? tfxEmitterStateFlags_can_spin_pitch_and_yaw : 0;
 				state_flags |= shared_properties->emission_type == tfxPath ? tfxEmitterStateFlags_has_path : 0;
 				if (shared_properties->emission_type == tfxPath) {
+					TFX_ASSERT(emitter.path_attributes != tfxINVALID);
 					tfx_emitter_path_t *path = &emitter.library->paths[emitter.path_attributes];
 					state_flags |= (path->rotation_range > 0) ? tfxEmitterStateFlags_has_rotated_path : 0;
 					path_state.last_path_index = 0;
