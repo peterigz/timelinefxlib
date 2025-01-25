@@ -2383,6 +2383,7 @@ typedef enum {
 	tfxIcosphere,
 	tfxPath,
 	tfxOtherEmitter,
+	tfxSpawnOnRibbon,
 	tfxEmissionTypeMax,
 } tfx_emission_type;
 
@@ -2579,7 +2580,8 @@ typedef enum {
 	tfxEmitterControlProfile_edge_traversal = 1 << 5,
 	tfxEmitterControlProfile_edge_kill = 1 << 6,
 	tfxEmitterControlProfile_edge_loop = 1 << 7,
-	tfxEmitterControlProfile_stretch = 1 << 8
+	tfxEmitterControlProfile_stretch = 1 << 8,
+	tfxEmitterControlProfile_other_ribbon_emitter_path = 1 << 9
 } tfx_emitter_control_profile_flag_bits;
 
 typedef enum {
@@ -5616,7 +5618,7 @@ typedef struct tfx_shared_emitter_properties_s {
 	tfxU32 single_shot_limit;
 	//Milliseconds to delay spawing
 	float delay_spawning;
-	//emitters together when added to a particle manager.
+	//When the emission type is shared emitter then this is the hash of the shared emitter.
 	tfxKey paired_emitter_hash;
 	//Layer of the particle manager that the particle is added to
 	tfxU32 layer;
@@ -5704,6 +5706,8 @@ typedef struct tfx_emitter_state_s {
 	//Control Data
 	tfxU32 particles_index;
 	tfxU32 spawn_locations_index;    //For other_emitter emission type and storing the last known position of the particle
+	tfxU32 ribbon_bucket_index;		 //For spawn on ribbon emission type and storing the last known position of the particle
+	tfxU32 other_emitter_index;      //For other_emitter emission type, this in the index of the other emitter in the particle manager
 	float image_frame_rate;
 	float end_frame;
 	tfx_vec3_t grid_coords;
@@ -5793,6 +5797,7 @@ typedef struct tfx_ribbon_soa_s {
 	float *random_age;
 	float *image_frame;
 	tfxU32 *path_index;
+	float *grid_index;
 } tfx_ribbon_soa_t;
 
 typedef struct tfx_gpu_emitter_s {
@@ -5850,7 +5855,7 @@ typedef struct tfx_ribbon_emitter_state_s {
 #endif
 
 	//Control Data
-	tfxU32 ribbon_segments_index;
+	tfxU32 ribbon_bucket_index;
 	tfxU32 static_segment_start_index;				//For static paths so that we only have to build the ribbon once for all instances of it.
 	tfxU32 spawn_locations_index;					//For other_emitter emission type and storing the last known position of the particle
 	float image_frame_rate;
@@ -5989,7 +5994,7 @@ typedef struct tfx_particle_soa_s {
 	tfx_rgba8_t *color;
 	float *image_frame;
 	tfxU32 *single_loop_count;
-}tfx_particle_soa_t;
+} tfx_particle_soa_t;
 
 typedef struct tfx_spawn_points_soa_s {
 	float *position_x;
@@ -6871,11 +6876,13 @@ tfxAPI_EDITOR void tfx__complete_particle_manager_work(tfx_particle_manager pm);
 tfxAPI_EDITOR tfx_mat3_t tfx__create_matrix3(float v = 1.f);
 tfxAPI_EDITOR tfx_mat3_t tfx__rotate_matrix3(tfx_mat3_t const *m, float r);
 tfxAPI_EDITOR void tfx__split_string_vec(const char *s, int length, tfx_vector_t<tfx_str256_t> *pair, char delim = 61);
+tfxINTERNAL void tfx__update_library_control_profiles(tfx_library library);
 tfxINTERNAL	tfx_line_t tfx__read_line(const char *s);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec2(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y);
 tfxINTERNAL void tfx__wide_transform_packed_quaternion_vec3(tfxWideInt *quaternion, tfxWideFloat *x, tfxWideFloat *y, tfxWideFloat *z);
 tfxINTERNAL tfxU32 tfx__pack8bit_quaternion(tfx_quaternion_t v);
 tfxINTERNAL tfxU32 tfx__pack8bit_quaternion_for_gpu(tfx_quaternion_t q);
+tfxINTERNAL tfxU32 tfx__unpack8bit_quaternion_from_gpu(tfx_quaternion_t q);
 tfxINTERNAL tfxWideInt tfx__wide_pack16bit(tfxWideFloat v_x, tfxWideFloat v_y);
 tfxINTERNAL tfxWideInt tfx__wide_pack16bit_2sscaled(tfxWideFloat v_x, tfxWideFloat  v_y, float max_value);
 tfxINTERNAL tfxWideInt tfx__wide_pack8bit_xyz(tfxWideFloat const &v_x, tfxWideFloat const &v_y, tfxWideFloat const &v_z);
@@ -7375,6 +7382,7 @@ tfxINTERNAL void tfx__spawn_particle_point_3d(tfx_work_queue_t *queue, void *dat
 tfxINTERNAL void tfx__spawn_particle_other_emitter_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_single_2d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_3d(tfx_work_queue_t *queue, void *data);
+tfxINTERNAL void tfx__spawn_particle_other_ribbon_emitter_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_other_emitter_single_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_line_3d(tfx_work_queue_t *queue, void *data);
 tfxINTERNAL void tfx__spawn_particle_area_3d(tfx_work_queue_t *queue, void *data);
